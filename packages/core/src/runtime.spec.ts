@@ -2,7 +2,7 @@ import { fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { releasedBy } from "./runtime.js";
+import { releasedBy, traceIdOfTraceparent } from "./runtime.js";
 
 describe("releasedBy", () => {
   it("waits for the work when the work settles first", async () => {
@@ -62,5 +62,80 @@ describe("releasedBy", () => {
 
     // THEN it releases without waiting on a listener that would never fire
     expect({ ok: result.isOk(), finished }).toEqual({ ok: true, finished: false });
+  });
+});
+
+describe("traceIdOfTraceparent", () => {
+  it("takes the trace-id field and drops the parent's span id", () => {
+    // GIVEN a well-formed W3C traceparent
+    const header = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+
+    // WHEN it is read
+    const traceId = traceIdOfTraceparent(header);
+
+    // THEN what comes back is the trace id alone: a correlation id, never a
+    // span context half-carried
+    expect(traceId).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
+  });
+
+  it("refuses every header the specification calls invalid", () => {
+    // GIVEN the ways a header fails to name a usable trace: malformed,
+    // truncated, an all-zero trace id, an all-zero PARENT id (well-formed, and
+    // naming no span), and the reserved version `ff`
+    const refused = {
+      malformed: traceIdOfTraceparent("not-a-traceparent"),
+      truncated: traceIdOfTraceparent("00-4bf92f3577b34da6-00f067aa0ba902b7-01"),
+      allZeroTrace: traceIdOfTraceparent("00-00000000000000000000000000000000-00f067aa0ba902b7-01"),
+      allZeroParent: traceIdOfTraceparent(
+        "00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01",
+      ),
+      reservedVersion: traceIdOfTraceparent(
+        "ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+      ),
+    };
+
+    // WHEN each is read
+    // THEN each answers undefined, leaving the runtime's own fallback id to
+    // run — adopting one would replace a usable id with a meaningless one
+    expect(refused).toEqual({
+      malformed: undefined,
+      truncated: undefined,
+      allZeroTrace: undefined,
+      allZeroParent: undefined,
+      reservedVersion: undefined,
+    });
+  });
+
+  it("reads a higher version that appended fields it does not understand", () => {
+    // GIVEN a version-01 header carrying a field this parser never heard of,
+    // and a version-00 one carrying the same
+    const versions = {
+      higher: traceIdOfTraceparent(
+        "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-something",
+      ),
+      exact: traceIdOfTraceparent(
+        "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-something",
+      ),
+    };
+
+    // WHEN each is read — the specification says to parse what you understand
+    // and ignore the rest at a HIGHER version, while `00` is exactly 55
+    // characters and a trailing field makes it malformed
+    // THEN the newer header still correlates and the malformed one does not
+    expect(versions).toEqual({
+      higher: "4bf92f3577b34da6a3ce929d0e0e4736",
+      exact: undefined,
+    });
+  });
+
+  it("tolerates the surrounding whitespace a header may arrive with", () => {
+    // GIVEN a valid header padded the way a proxy may forward it
+    const padded = "  00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\t";
+
+    // WHEN it is read
+    const traceId = traceIdOfTraceparent(padded);
+
+    // THEN the padding is not what makes a trace unreadable
+    expect(traceId).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
   });
 });

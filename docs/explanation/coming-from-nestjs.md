@@ -53,7 +53,8 @@ declared; `start`'s `NO RUNTIME` arm, for a root that exports no runtime port;
 and plain assignability on `start`'s `module` parameter, for a composition that
 imports a starter without providing its router, activities or handlers — that
 last one is not a gate arm at all, just a `Needs` the parameter will not take.
-The container's rules are in `packages/di/CLAUDE.md`; the reasoning is on
+The container's surface is [Modules](/reference/di/modules) and
+[Ports](/reference/di/ports), and the reasoning is on
 [Compile errors, not surprises](/explanation/compile-time-wiring).
 
 The cost is real and worth naming: there is no auto-discovery. A provider writes
@@ -75,8 +76,8 @@ strings or symbols as the DI token"_ — and then injection needs an explicit
 both as properties a project must add.
 
 btravstack has no decorators. A port is a class
-(`class OrderRepository extends Port("OrderRepository")<Shape> {}`,
-`packages/di/CLAUDE.md`), a provider is a value, and its dependencies are named
+(`class OrderRepository extends Port("OrderRepository")<Shape> {}` —
+[Ports](/reference/di/ports)), a provider is a value, and its dependencies are named
 by key in a record. No tsconfig in this repository sets `experimentalDecorators`
 or `emitDecoratorMetadata`, and no published package depends on
 `reflect-metadata` — checkable in one grep over `packages/*/package.json`.
@@ -102,8 +103,8 @@ its job is to leave the `Result` world and become an exit code; `UnitWork`'s
 `Promise<Result<T, E>>` arm exists to accept a caller's own `async` handler; and
 `@btravstack/testing`'s `bootFixture` follows vitest's
 `(ctx, use) => Promise<void>` fixture protocol, which the harness does not get
-to choose. Each carries a reason where it lives; the full statement is thesis #6
-in the repository's root `CLAUDE.md`.
+to choose. Each carries a reason where it lives, and the rule they are exceptions to is
+[Nothing throws](/explanation/nothing-throws).
 
 The other half of this is that mapping an outcome to a transport is not the
 kernel's business either — `Result` → HTTP status belongs to the router, and
@@ -127,8 +128,8 @@ and the unit counts are sampled, synchronously; then it waits `preDrainDelayMs`
 (default `5_000`) **before** telling the runtime to stop accepting; then
 in-flight work gets `drainTimeoutMs` (default `20_000`), and whatever is still
 open at the deadline is aborted and reported `abandoned`. Both defaults are in
-`packages/core/src/start.ts`; the sequence is thesis #5 in the root `CLAUDE.md`
-and [Draining, in three beats](/explanation/draining-in-three-beats).
+`packages/core/src/start.ts`, and the sequence is
+[Draining, in three beats](/explanation/draining-in-three-beats).
 
 Beat 2 is the one that is easy to read as a pointless sleep. Kubernetes endpoint
 removal is eventually consistent, so a pod that stops accepting the instant
@@ -164,7 +165,7 @@ Here there is no lookup at all: `Config.provider(port)(schema)` reads the `Env`
 port, validates once as the graph is built, and the **validated object is the
 service on the port**. A field that is not in the schema is not a key that
 returns `undefined`; it is a property that does not exist
-(`packages/config/CLAUDE.md`).
+([`@btravstack/config`](/reference/config)).
 
 **The failure is a value, not a throw.** `Config.object`'s `validate` never
 throws, walks every field so an operator gets one round trip rather than one

@@ -125,4 +125,10 @@ you compose `observability()` and `otel()` and change nothing here.
 to invalidate them. The one place it does decide is `getOrSet`, where an
 unreachable cache runs your loader and a failed write is not your error. There
 is no stampede protection, no eviction on the memory adapter, and no namespace
-parameter; the reasons are in [`CLAUDE.md`](./CLAUDE.md).
+parameter — each reason is on
+[the reference page](https://btravstack.github.io/btravstack/reference/cache),
+and the same reasoning is in [`CLAUDE.md`](./CLAUDE.md) for contributors.
+
+## License
+
+MIT

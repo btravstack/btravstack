@@ -79,6 +79,13 @@ an options literal supplying two arms' keys fails to compile, not merely warns:
 | `class`               | `new (services) => S`                                                                               | Built by constructing a class, which takes the services record as its one argument. | No                  |
 | `acquire` + `release` | `acquire: (services) => Result<S, E> \| AsyncResult<S, E>`, `release: (s) => void \| Promise<void>` | A real resource — a connection, a file handle — that must be torn down.             | Yes                 |
 
+**The axis the names encode is failability, not timing.** `sync` is "cannot
+fail", `make` is "may fail" — and a `make` is free to be synchronous, returning
+a plain `Result`. The reverse is what does not exist: there is no asynchronous
+arm that cannot fail, because an `AsyncResult<S, never>` is already what a
+`make` returns when nothing in it fails. Read `sync` as _infallible_ and `make`
+as _fallible_, and the pair stops looking like a question about `await`.
+
 Notes per arm:
 
 - **`value`** cannot fail and contributes `never` to the module's error

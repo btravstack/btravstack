@@ -45,7 +45,13 @@ All runtime code lives in `packages/di/src`, one concept per file:
   construction family of
   mutually exclusive option arms: `value` / `sync` / `make` (fallible, returns
   `Result`) / `class` / `acquire`+`release` (resourceful — puts `Scope` in
-  `Needs`). Exclusivity is enforced by giving each arm the other keys as optional
+  `Needs`). **The axis those two names encode is FAILABILITY, not timing**:
+  `sync` is "cannot fail" and `make` is "may fail", and a `make` returning a
+  plain `Result` is synchronous. The arm that does not exist is the reverse —
+  asynchronous and infallible — because `AsyncResult<S, never>` is what a
+  `make` already returns when nothing in it fails. Worth stating because the
+  names read as a question about `await`, and it is the one place a reader
+  guesses wrong. Exclusivity is enforced by giving each arm the other keys as optional
   `never`. `Provider.member` contributes one member to a set port. Dependencies are
   a **record**, never an array or a parameter list, and the
   factory receives one services record keyed the same way.

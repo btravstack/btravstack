@@ -247,13 +247,28 @@ crash.
 
 ## Step 7 — Start a workflow
 
+Name the workflow id yourself, so the second command has something to ask
+about — `start` prints the one it minted otherwise, and you would be copying it
+back out of the output:
+
 ```sh
-temporal workflow start --task-queue greetings --type greeting --input '{"name":"world"}'
-temporal workflow result --workflow-id <id>
+temporal workflow start \
+  --task-queue greetings \
+  --type greeting \
+  --workflow-id greeting-1 \
+  --input '{"name":"world"}'
+
+temporal workflow result --workflow-id greeting-1
 ```
 
 The worker picks the task up, runs `greet` through the same `Greeter` lesson
 one served over HTTP, and answers `{"message":"Hello, world!"}`.
+
+A workflow id is **yours to choose and yours to reuse**: Temporal refuses a
+second run with an id that is already running, which is the deduplication a
+job queue would ask you to build. Run the pair again with the same id after it
+has finished and you get a second run; run it while the first is still going
+and Temporal says so.
 
 ## What you now have
 

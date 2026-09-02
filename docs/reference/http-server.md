@@ -1290,6 +1290,14 @@ read as unmarked here. Node `>=22`.
   composition root ([`cors`, `bodyLimit`, `compression`](#cors-bodylimit-compression),
   [`securityHeaders`](#securityheaders)), and an application middleware acting
   on the handler's `Result` is what this package refuses.
+- **Rate limiting**, and it is a stated non-goal rather than a gap. A
+  per-process counter is the wrong **unit**: an `api` deployment is N pods
+  (one process, one runtime), so a per-process budget is N independent budgets
+  and none of them is the limit anybody meant. Where a request is counted once
+  is the ingress or the gateway, which is also where it can be refused before
+  it costs a process anything. An application that wants one anyway writes an
+  oRPC plugin and passes it through [`plugins`](#plugins) — the escape hatch
+  doing its job.
 - **`Result` → HTTP status.** The router's `.result()` triage owns it.
 - **Resource-dependent authorization.** A **scope** is checked here, because it
   is a property of the credential and answerable before dispatch. "Is this

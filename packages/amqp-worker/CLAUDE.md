@@ -247,6 +247,16 @@ not a defect"` guards it). Everything else `create` can fail with stays a
   leaves for the adapters that read it, and it is how the package's own suite
   observes the trace id (`seam` in `test-fixtures.ts` records
   `currentUnit()` inside the handler).
+- **The first contract a runtime owes — "get the answer out of the process
+  inside the unit" — is DELEGATED here, not skipped.** The unit closes when
+  `next()` settles, and the ack goes out after it: the middleware does not wrap
+  the acknowledgement, because `@amqp-contract/worker` owns it. What keeps the
+  contract is the drain — `worker.close()` waits for the deliveries it has
+  already taken, and `Serving.stop` waits for that — so the transport is not
+  torn down under an ack in flight. Do not "fix" the middleware to wrap the ack:
+  it would put the library's own retry and dead-letter routing inside a unit
+  whose settling the kernel reads as "this work is finished", and the three-way
+  ack/nack/DLQ split is deliberately not this package's (thesis #3).
 - **The kernel's per-unit `AbortSignal` rides that record too, and there is no
   other route to it here.** `host.run` hands one to its work callback, and the
   callback IS `next()` — a handler has no parameter to receive it through, and

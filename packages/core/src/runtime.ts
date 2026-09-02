@@ -109,6 +109,46 @@ export type RuntimeResolvesOf<X> =
 export type RuntimeInfoOf<X> = RuntimeOf<X> extends Runtime<AnyPort, infer Info> ? Info : never;
 
 /**
+ * The trace id inside a W3C `traceparent` header, and nothing else of it.
+ *
+ * @remarks
+ * The parent's **span id is dropped**, deliberately: `UnitMeta.traceId` is a
+ * correlation id rather than a span context, and half-carrying one would
+ * suggest a parent-child link nothing here maintains.
+ *
+ * Three things the specification calls invalid are refused like a malformed
+ * header, because adopting one would replace a runtime's own usable id with a
+ * value that means nothing: an **all-zero trace id**, an **all-zero parent
+ * id** (the header is well-formed and names no span), and **version `ff`**,
+ * which is reserved and never a version a caller may send.
+ *
+ * It is here rather than in a runtime because **every** transport carrying an
+ * inbound trace needs the same answer, and two copies of a parser is two
+ * places for the all-zero rule to be forgotten. A runtime pairs it with the
+ * adopt-only-a-non-blank-inbound-id rule its own headers need:
+ * `UnitMeta.traceId` defaults to `meta.id` when it is nullish and `""` is not,
+ * so an empty header would hand a caller's every unit the same blank id.
+ *
+ * @example
+ * ```ts
+ * const parent = request.headers["traceparent"];
+ * const traceId = typeof parent === "string" ? traceIdOfTraceparent(parent) : undefined;
+ * ```
+ */
+export const traceIdOfTraceparent = (header: string): string | undefined => {
+  // `(?!ff)` refuses the reserved version at the point it is read, rather than
+  // leaving a second test to remember. The trailing group is what a future
+  // version may append; `00` is the one version that must not carry it.
+  const match = /^(?!ff)([\da-f]{2})-([\da-f]{32})-([\da-f]{16})-[\da-f]{2}(-.*)?$/.exec(
+    header.trim(),
+  );
+  const [, version, traceId, parentId, extra] = match ?? [];
+  if (traceId === undefined || parentId === undefined) return undefined;
+  if (version === "00" && extra !== undefined) return undefined;
+  return /^0+$/.test(traceId) || /^0+$/.test(parentId) ? undefined : traceId;
+};
+
+/**
  * `running`, but no later than the kernel's drain deadline — the primitive a
  * `Serving.drain` needs when the work it awaits settles on somebody else's
  * clock (Temporal's `shutdownForceTime`, a broker library's close) and so

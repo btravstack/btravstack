@@ -181,6 +181,15 @@ export const Config = {
    * `check`: "set but empty" is a deployment mistake, where a pinned `""` is a
    * decision. `http({ cors: false })` pins exactly that, and an off switch
    * spelled as the empty string must not be refused as a blank variable.
+   *
+   * @remarks
+   * **The bound value is trimmed.** `X=" abc "` binds `"abc"`, because every
+   * field parses the trimmed string — it is what makes a whitespace-only
+   * variable "set but empty" rather than a value, and what stops a stray space
+   * from turning a port into a parse error. A **secret whose whitespace is
+   * significant** is therefore the one value this field cannot carry: pin it
+   * through the composition root instead, where `Config.pinned` hands the value
+   * over untouched.
    */
   string: (variable: string, options: WithDefault<string> = {}): ConfigField<string> =>
     present(variable, options, (value) => Ok(value)),

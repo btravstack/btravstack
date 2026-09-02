@@ -1,7 +1,12 @@
+import { Env } from "@btravstack/config";
+import { HealthChecks, runHealthChecks } from "@btravstack/core";
+import { Module, Provider } from "@btravstack/di";
 import { describe, expect } from "vitest";
 import { vi } from "vitest";
+import { inject } from "vitest";
 
 import { aMail, it } from "./__tests__/test-fixtures.js";
+import { smtpMailer, verifyWithin } from "./smtp.js";
 
 describe("smtpMailer", () => {
   it("delivers the message to the server", async ({ smtp, recipient, delivered }) => {
@@ -84,5 +89,61 @@ describe("smtpMailer", () => {
         reason: expect.any(String),
       }),
     );
+  });
+
+  it("contributes a health check the kernel folds into /healthz", async () => {
+    // GIVEN the adapter composed over the shared SMTP server
+    const env = { SMTP_URL: inject("__TESTCONTAINERS_SMTP_URL__") };
+    const root = Module("HealthFixture")({
+      imports: [smtpMailer()],
+      provides: [Provider(Env)({ inject: {}, value: env })],
+      exports: [HealthChecks],
+    });
+
+    // WHEN the contributed check is run
+    const report = await Module.scoped(root, (ctx) => runHealthChecks(ctx.get(HealthChecks)));
+
+    // THEN the relay answered `verify()` — a connection and an authentication,
+    // which is the half of a send provable without sending
+    expect(report).toBeOkWith({
+      status: "healthy",
+      components: [{ name: "mailer", status: "healthy" }],
+    });
+  });
+
+  it("reports the mailer unhealthy when the relay will not answer", async () => {
+    // GIVEN the adapter pointed at a port nothing is listening on
+    const root = Module("UnhealthyFixture")({
+      imports: [smtpMailer()],
+      provides: [Provider(Env)({ inject: {}, value: { SMTP_URL: "smtp://127.0.0.1:1" } })],
+      exports: [HealthChecks],
+    });
+
+    // WHEN the contributed check is run
+    const report = await Module.scoped(root, (ctx) => runHealthChecks(ctx.get(HealthChecks)));
+
+    // THEN the component is named and unhealthy, carrying the transport's own
+    // words, and the report is unhealthy with it — one failing component is
+    // what makes the whole report say so
+    expect(report).toBeOkWith({
+      status: "unhealthy",
+      components: [{ name: "mailer", status: "unhealthy", reason: expect.any(String) }],
+    });
+  });
+
+  it("gives up on a relay that never answers, rather than holding the probe open", async () => {
+    // GIVEN a transport whose `verify()` never settles — the shape a relay
+    // that accepts the connection and never greets presents
+    const hanging = {
+      verify: () => new Promise<boolean>(() => {}),
+    } as unknown as Parameters<typeof verifyWithin>[0];
+
+    // WHEN the health check's own deadline passes
+    // THEN it reports rather than waiting: `runHealthChecks` has no deadline
+    // of its own, so a probe that hangs is one an orchestrator times out
+    // instead of reading
+    await expect(verifyWithin(hanging, 5)).toBeErrTagged("HealthCheckFailed", {
+      reason: "the relay did not answer within 5 ms",
+    });
   });
 });

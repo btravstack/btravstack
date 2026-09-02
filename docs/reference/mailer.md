@@ -173,6 +173,22 @@ an operation costs one inert call per module that reads the port. Composing
 composing `otel()` beside it opens the spans and mints the instruments. Neither
 changes a line of this composition.
 
+## The health check is the adapter's
+
+`smtpMailer()` contributes one `HealthChecks` member, named `mailer`, which the
+kernel folds into `GET /healthz` with nothing wired at the composition root.
+The probe is nodemailer's `verify()`: a connection to the relay and an
+authentication.
+
+It is on the **adapter** rather than on `mailer({ adapter })` — unlike
+[`cache`](/reference/cache), whose probe is a `get` every backend answers. The
+recording adapter sends nowhere, so a check there would report healthy for
+free, and a probe that proves nothing reads as coverage.
+
+What it proves is the half of a send that is provable without sending. Whether
+a message is delivered is the provider's answer, later, through webhooks this
+port does not model — `send` means accepted.
+
 ## What it deliberately does not do
 
 - **No templating and no i18n.** `text` and `html` are strings; what rendered

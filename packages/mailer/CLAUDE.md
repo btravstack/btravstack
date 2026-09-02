@@ -73,6 +73,25 @@ What the observers make of a send:
   close — so the transporter rides the graph and the scope closing is what
   closes its pool.
 
+## Health check
+
+`smtpMailer()` contributes one `HealthChecks` member, named `mailer`, so the
+kernel's `GET /healthz` reports on the relay without the application wiring
+anything. The probe is nodemailer's `verify()` — a connection and an
+authentication.
+
+**It lives on the ADAPTER, not on `mailer({ adapter })`**, which is the
+difference from `@btravstack/cache`: there the probe is a `get` every backend
+answers, so it belongs to the composition. Here the recording adapter sends
+nowhere and would report healthy for free — a probe that proves nothing is
+worse than no probe, because an operator reads it as coverage.
+
+**What it proves is half a send, and that is the honest half.** `verify()`
+reaches the relay and authenticates; whether a message is _delivered_ is the
+provider's answer, days later, through webhooks the port deliberately does not
+model (`send` means accepted). A probe cannot speak for that, so it does not
+try.
+
 ## Deliberately not here
 
 - **No templating.** A subject and two bodies; rendering belongs to a library

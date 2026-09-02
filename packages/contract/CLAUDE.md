@@ -151,6 +151,31 @@ marked node still satisfies the plain shape, a plain one does not satisfy the
 marked shape, and `RequirementsOf` reads the exact requirements back for a
 marked node and is `never` for an unmarked one.
 
+## Marking is opt-in, and an unmarked node is public
+
+`authenticated(...requirements)(node)` marks; `isAuthenticated(node)` reads the
+node's **own** mark and answers `undefined` when it has none. There is no
+default requirement anywhere, so **forgetting the marker fails nothing** — the
+one property worth stating out loud, because it is the failure mode a reader
+should expect to own.
+
+**Unmarked is not the same as public.** A mark applies to a node and everything
+below it: `@btravstack/http-server`'s `routerOf` walks the tree carrying the
+nearest ancestor's requirements down (`declared ?? inherited`), so an unmarked
+procedure under a marked namespace is protected by that namespace. Unmarked
+means _no requirement of its own_; public means no marked ancestor either.
+
+That is also why there is no `public(node)` escape: deleting a node's entry
+would not clear an ancestor's, so an opt-out would have to be an explicit mark
+of its own — a third state this package does not have and does not need until
+somebody has a marked ancestor they want a hole in.
+
+Deny-by-default is deliberately not taken: this package has **zero
+dependencies** and knows nothing about who is calling, so a default requirement
+would be a deployment's decision made for every consumer of the contract,
+including the client that only ever calls. Where a deny-by-default posture is
+wanted it belongs at the composition root that owns the authenticators.
+
 ## Deferred, deliberately
 
 **A transport other than HTTP reading the marker.** `@btravstack/http-server` is the
