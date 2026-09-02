@@ -175,7 +175,10 @@ changes a line of this composition.
 
 ## What it deliberately does not do
 
-- **No templating, no attachments, no cc/bcc, no custom headers.**
+- **No templating and no i18n.** `text` and `html` are strings; what rendered
+  them is a library you chose. The envelope itself — `cc`, `bcc`,
+  `attachments`, `headers` — is carried, because the second mail a service
+  sends is an invoice.
 - **No bulk send and no scheduling.** Sending many is your loop; scheduling
   one is [`@btravstack/temporal-worker`](/reference/temporal-worker)'s job.
 - **No address validation.** The transport rejects what it will not take, and
