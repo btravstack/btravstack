@@ -1,5 +1,16 @@
 # @btravstack/observability
 
+## 0.11.0
+
+### Patch Changes
+
+- Updated dependencies [f3cc6d5]
+- Updated dependencies [f3cc6d5]
+- Updated dependencies [51e67bd]
+  - @btravstack/config@0.11.0
+  - @btravstack/core@0.11.0
+  - @btravstack/di@0.11.0
+
 ## 0.10.0
 
 ### Minor Changes
