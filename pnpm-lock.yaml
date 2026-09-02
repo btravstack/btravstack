@@ -1402,6 +1402,9 @@ importers:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.2.0
+      '@temporal-contract/client':
+        specifier: 'catalog:'
+        version: 8.0.0-beta.5(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)
       '@temporal-contract/contract':
         specifier: 'catalog:'
         version: 8.0.0-beta.5(unthrown@5.7.0)
