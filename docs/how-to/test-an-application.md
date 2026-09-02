@@ -504,7 +504,7 @@ the schema rejects. The brand is why the fixture's type matters rather than
 being decoration: with two bare `string`s, `repository.find(id, tenant)` would
 have compiled and read another tenant's rows. See [Multi-tenancy is the
 application's, not the
-framework's](/how-to/read-the-ambient-unit#multi-tenancy-is-the-application-s-not-the-framework-s)
+framework's](/explanation/ambient-vs-context#multi-tenancy-is-the-application-s-not-the-framework-s)
 for why the tenant is an argument rather than something the transport reads.
 
 ## Follow the repo's test conventions

@@ -24,7 +24,7 @@ Beat 2 looks like a pointless sleep. It is the most valuable line in the
 package.
 
 ```text
-SIGTERM
+SIGTERM, with the process already serving
   │
   ├─ 0 ms ── beat 1 ──────────────────────────────────────────────────────────
   │          /readyz → 503, in-flight sampled          (synchronous, no await)
@@ -38,8 +38,10 @@ SIGTERM
   │          ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  Serving.stop, then in-flight work finishes
   │          anything still open at the deadline: aborted, counted `abandoned`
   │
-  ├─ stopping ── the runtime closes, the application scope closes ────────────
-  │          finalisers run, LIFO; failures land in ExitReport.teardownErrors
+  ├─ stopping ── Serving.stop, then the application scope closes ─────────────
+  │          the runtime finishes closing on its OWN clock here — a broker's
+  │          close, a worker's shutdown — and finalisers run, LIFO; failures
+  │          land in ExitReport.teardownErrors
   │
   └─ exited ── exit 0 clean, 2 if anything was abandoned or a teardown failed
              │
@@ -47,9 +49,12 @@ SIGTERM
                  default) — which is why 5 + 20 leaves five seconds in hand
 ```
 
-Every number in that figure is a variable a deployment sets, and the two on the
-left must stay under the one at the bottom. The rest of this page is why each
-beat is where it is.
+The two durations are variables a deployment sets (`PRE_DRAIN_DELAY_MS`,
+`DRAIN_TIMEOUT_MS`) and must stay under `terminationGracePeriodSeconds`, which
+is Kubernetes' own; the exit codes are the kernel's, not configuration. And the
+figure assumes the signal found the process **serving** — one that lands
+mid-build is buffered, and beat 2 then pays only what is left of the delay
+(below). The rest of this page is why each beat is where it is.
 
 ## Beat 1 — readiness first, and sample now
 

@@ -37,7 +37,7 @@ type UnitRecord = {
 the one that joins a line logged here to a trace that started elsewhere.
 `tenantId` is plain data the runtime may stamp; **no shipped starter sets it
 today**, and none has a tenancy concept — see
-[Multi-tenancy is the application's, not the framework's](#multi-tenancy-is-the-application-s-not-the-framework-s). `signal` is always there: the kernel mints one
+[The tenant is your application's](#the-tenant-is-your-application-s-and-no-starter-sets-it). `signal` is always there: the kernel mints one
 `AbortController` per unit, hands its signal to the work callback **and** puts
 that same object on the record, so both routes see one abort — at the drain
 deadline, or at once on a path that skips the drain.
