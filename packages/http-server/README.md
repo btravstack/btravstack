@@ -26,14 +26,17 @@ holds a single copy of each. Node `>=22`.
 <!-- doctest: isolate
 import { oc, type } from "@orpc/contract";
 import { Port, type Module } from "@btravstack/di";
-import type { AsyncResult } from "unthrown";
-import {
-  DuplicateOrder,
-  InvalidOrderId,
-  InvalidQuantity,
-  OrderNotFound,
-  type Order,
-} from "@btravstack/example-order-domain";
+import { TaggedError, type AsyncResult } from "unthrown";
+// The application's own domain, declared here so this sample stands on the
+// published packages alone: these are yours, not this package's.
+class InvalidQuantity extends TaggedError("InvalidQuantity")<{
+  readonly id: string;
+  readonly quantity: number;
+}> {}
+class InvalidOrderId extends TaggedError("InvalidOrderId")<{ readonly id: string }> {}
+class DuplicateOrder extends TaggedError("DuplicateOrder")<{ readonly id: string }> {}
+class OrderNotFound extends TaggedError("OrderNotFound")<{ readonly id: string }> {}
+type Order = { readonly id: string; readonly quantity: number };
 type OrderView = { readonly id: string; readonly quantity: number };
 type OrderRef = { readonly id: string };
 declare const view: (order: Order) => OrderView;
@@ -152,14 +155,17 @@ already have:
 <!-- doctest: isolate
 import { oc, type } from "@orpc/contract";
 import { Port, type Module } from "@btravstack/di";
-import type { AsyncResult } from "unthrown";
-import {
-  DuplicateOrder,
-  InvalidOrderId,
-  InvalidQuantity,
-  OrderNotFound,
-  type Order,
-} from "@btravstack/example-order-domain";
+import { TaggedError, type AsyncResult } from "unthrown";
+// The application's own domain, declared here so this sample stands on the
+// published packages alone: these are yours, not this package's.
+class InvalidQuantity extends TaggedError("InvalidQuantity")<{
+  readonly id: string;
+  readonly quantity: number;
+}> {}
+class InvalidOrderId extends TaggedError("InvalidOrderId")<{ readonly id: string }> {}
+class DuplicateOrder extends TaggedError("DuplicateOrder")<{ readonly id: string }> {}
+class OrderNotFound extends TaggedError("OrderNotFound")<{ readonly id: string }> {}
+type Order = { readonly id: string; readonly quantity: number };
 type OrderView = { readonly id: string; readonly quantity: number };
 type OrderRef = { readonly id: string };
 declare const view: (order: Order) => OrderView;
@@ -398,14 +404,17 @@ export const api = defineHttp({
 <!-- doctest: isolate
 import { oc, type } from "@orpc/contract";
 import { Port, type Module } from "@btravstack/di";
-import type { AsyncResult } from "unthrown";
-import {
-  DuplicateOrder,
-  InvalidOrderId,
-  InvalidQuantity,
-  OrderNotFound,
-  type Order,
-} from "@btravstack/example-order-domain";
+import { TaggedError, type AsyncResult } from "unthrown";
+// The application's own domain, declared here so this sample stands on the
+// published packages alone: these are yours, not this package's.
+class InvalidQuantity extends TaggedError("InvalidQuantity")<{
+  readonly id: string;
+  readonly quantity: number;
+}> {}
+class InvalidOrderId extends TaggedError("InvalidOrderId")<{ readonly id: string }> {}
+class DuplicateOrder extends TaggedError("DuplicateOrder")<{ readonly id: string }> {}
+class OrderNotFound extends TaggedError("OrderNotFound")<{ readonly id: string }> {}
+type Order = { readonly id: string; readonly quantity: number };
 type OrderView = { readonly id: string; readonly quantity: number };
 type OrderRef = { readonly id: string };
 declare const view: (order: Order) => OrderView;

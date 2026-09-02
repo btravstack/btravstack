@@ -21,21 +21,27 @@ them. Node `>=22`.
 ## A worked example
 
 <!-- doctest: prelude
-import { Module } from "@btravstack/di";
-import { FindCustomer } from "@btravstack/example-order-application";
-import type { CustomerNotFound } from "@btravstack/example-order-domain";
-import { TenantId } from "@btravstack/example-order-domain";
-import { OkAsync, P } from "unthrown";
+import { Module, Port, type AnyModule } from "@btravstack/di";
+import { OkAsync, P, TaggedError, type AsyncResult } from "unthrown";
 import { Logger } from "@btravstack/core";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
-import { CustomerApplicationModule } from "@btravstack/example-order-application";
-import { CustomerPersistenceModule } from "@btravstack/example-order-infrastructure";
 
-// The application's own view type and the conversion into it — its layer's
-// business, not the cache's, so it stands in here rather than in the sample.
+// The application's own layers, declared here so this sample stands on the
+// published packages alone: the use case, its error, its tenant id and its
+// view type are yours, not this package's.
+class CustomerNotFound extends TaggedError("CustomerNotFound")<{ readonly id: string }> {}
 type CustomerView = { readonly id: string; readonly name: string };
 declare const view: (customer: { readonly id: string; readonly name: string }) => CustomerView;
+declare const TenantId: (value: string) => string;
+class FindCustomer extends Port("FindCustomer")<{
+  readonly execute: (
+    tenantId: string,
+    id: string,
+  ) => AsyncResult<{ readonly id: string; readonly name: string }, CustomerNotFound>;
+}> {}
+declare const CustomerApplicationModule: Module<FindCustomer, never, never>;
+declare const CustomerPersistenceModule: AnyModule;
 -->
 
 A read-through, and the two recoveries that make it honest:

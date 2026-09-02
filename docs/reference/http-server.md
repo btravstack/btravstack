@@ -979,7 +979,8 @@ call, and how the bytes travel — and a framework guessing either is worse than
 one that stays quiet; a body nobody bounded is a request that can consume the
 process. Over the limit is oRPC's `PAYLOAD_TOO_LARGE`, decided on
 `content-length` when one is sent and while streaming otherwise. An application
-serving uploads raises it, and `false` — like `BODY_LIMIT=0` — turns it off.
+serving uploads raises it, and `false` — like `HTTP_BODY_LIMIT=0` — turns it
+off.
 
 `compression` is the **response** half. Request decompression is a separate
 oRPC plugin (`RequestCompressionHandlerPlugin`), left to `plugins` because

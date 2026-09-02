@@ -34,6 +34,7 @@
     "unthrown": "catalog:"
   },
   "devDependencies": {
+    "@amqp-contract/contract": "catalog:",
     "@amqp-contract/testing": "catalog:",
     "@btravstack/internal-test-infra": "workspace:*",
     "@btravstack/testing": "workspace:*",
@@ -43,6 +44,7 @@
     "tsx": "catalog:",
     "typescript": "catalog:",
     "uuidv7": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "zod": "catalog:"
   }
 }

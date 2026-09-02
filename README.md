@@ -1,12 +1,15 @@
 <!-- doctest: prelude
 import { Port, type Module } from "@btravstack/di";
-import type { AsyncResult } from "unthrown";
-import {
-  DuplicateOrder,
-  InvalidOrderId,
-  InvalidQuantity,
-  type Order,
-} from "@btravstack/example-order-domain";
+import { TaggedError, type AsyncResult } from "unthrown";
+// The application's own domain, declared here so this sample stands on the
+// published packages alone: these are yours, not this package's.
+class InvalidQuantity extends TaggedError("InvalidQuantity")<{
+  readonly id: string;
+  readonly quantity: number;
+}> {}
+class InvalidOrderId extends TaggedError("InvalidOrderId")<{ readonly id: string }> {}
+class DuplicateOrder extends TaggedError("DuplicateOrder")<{ readonly id: string }> {}
+type Order = { readonly id: string; readonly quantity: number };
 class PlaceOrder extends Port("PlaceOrder")<{
   readonly execute: (
     id: string,

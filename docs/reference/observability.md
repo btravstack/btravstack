@@ -26,10 +26,12 @@ import { RequestModule } from "../../request-scope.js";
 > [Log and correlate](/how-to/log-and-correlate); for the generated
 > signatures, see the [API reference](/api/observability/).
 
-Logging, today. The package is named for the whole of observability because
-logs, traces and metrics share a correlation id, a resource, a configuration
-slice and a flush-on-shutdown lifecycle — splitting them across two packages
-would duplicate all four. **Traces and metrics are not here yet.**
+Logs, traces and metrics. The package is named for the whole of observability
+because the three share a correlation id, a resource, a configuration slice and
+a flush-on-shutdown lifecycle — splitting them across two packages would
+duplicate all four. Logging is the root entry point; tracing and metrics ride
+`@btravstack/observability/otel`, whose OpenTelemetry peers a consumer that
+never imports it never installs.
 
 ## Install
 

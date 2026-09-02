@@ -59,6 +59,19 @@ was folded in here when the container was merged; nothing under
   workspace installs `pino` — held by `packages/observability/src/pino.spec.ts`
   and skipped with that reason.
 
+  **A prelude may import the real artifact a page describes; it may NOT import
+  a private workspace** (issue #193). The generated module lives inside an
+  example workspace, so `@btravstack/example-order-*` resolves there and the
+  gate stays green — while a reader on npm cannot install any of it, which
+  makes a "minimal example" unfollowable on the one surface read outside this
+  repository. So a package README's prelude declares the application's own
+  half inline (a `TaggedError`, a `Port`, a `declare const` module) and imports
+  only published packages. That is why `examples/order-amqp-worker` carries
+  `@amqp-contract/contract` and `zod` as devDependencies it never imports
+  itself, both ignored for it in `knip.json`: the amqp README's own contract is
+  built there, from the packages a reader would install, exactly as the
+  temporal README's already was.
+
   **A ` ```tsx ` fence must carry a skip reason.** JSX compiles in no workspace
   here — none installs React — so the extractor admits the fence only to refuse
   it unless a `skip` says why. Letting the fence LANGUAGE decide what is gated

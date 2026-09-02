@@ -23,13 +23,31 @@ All nine are peer dependencies — install them. Node `>=22`.
 <!-- doctest: prelude
 import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
-import { Module } from "@btravstack/di";
-import { PlaceOrder, OrderRepository, Outbox, OrderApplicationModule } from "@btravstack/example-order-application";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
-import { TenantId } from "@btravstack/example-order-domain";
+import { Module, Port, type AnyModule } from "@btravstack/di";
+import { TaggedError, type AsyncResult } from "unthrown";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { z } from "zod";
+
+// The application's own layers, declared here so this sample stands on the
+// published packages alone: the use case, its errors and its tenant id are
+// yours, not this package's.
+class DuplicateOrder extends TaggedError("DuplicateOrder")<{ readonly id: string }> {}
+class InvalidOrderId extends TaggedError("InvalidOrderId")<{ readonly id: string }> {}
+class InvalidQuantity extends TaggedError("InvalidQuantity")<{ readonly id: string }> {}
+declare const TenantId: (value: string) => string;
+class PlaceOrder extends Port("PlaceOrder")<{
+  readonly execute: (
+    tenantId: string,
+    id: string,
+    quantity: number,
+  ) => AsyncResult<
+    { readonly id: string },
+    DuplicateOrder | InvalidOrderId | InvalidQuantity
+  >;
+}> {}
+declare const OrderApplicationModule: Module<PlaceOrder, never, never>;
+declare const OrderPersistenceModule: AnyModule;
 
 // The contract this README's worker serves — one workflow, one activity, one
 // modeled contract error.
@@ -58,7 +76,7 @@ const contract = defineContract({
 
 const AppModule = Module("App")({
   imports: [OrderApplicationModule, OrderPersistenceModule, observability(), otel()],
-  exports: [PlaceOrder, OrderRepository, Outbox, Logger],
+  exports: [PlaceOrder, Logger],
 });
 -->
 
@@ -128,9 +146,12 @@ typed by the key alone, and `TemporalActivities(contract)([...])` composes an
 array of them into the same activities provider `TemporalModule` takes — the
 array must cover every key the contract declares, and each piece's own port
 must still be discharged (`provides`), since the composed provider's deps are
-the pieces' ports, not what they close over. Two slices claiming one key are
-di's duplicate-provider defect at build, which is the point: a workflow's
-activities belong to exactly one slice.
+the pieces' ports, not what they close over. A workflow's activities belong to exactly
+one slice, and the compiler holds only half of that: coverage is checked,
+injectivity is not, so two slices claiming one key type-check together. It is
+di's duplicate-provider defect at build once **both** pieces are discharged as
+providers in one graph — wire in only one and the other's implementation is
+silently never registered.
 
 Its own test suite needs a **Docker daemon**: the specs run against the shared
 `temporalio/auto-setup` container `internal/test-infra` starts once per machine and every

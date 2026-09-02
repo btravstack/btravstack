@@ -22,7 +22,7 @@ generated from your schema. Node `>=22`.
 <!-- doctest: group=order-api -->
 <!-- doctest: prelude
 import { Env } from "@btravstack/config";
-import { Logger, Meter, Tracer } from "@btravstack/core";
+import { Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { PrismaPg } from "@prisma/adapter-pg";
 
@@ -46,14 +46,15 @@ const database = prismaDatabase("OrderDatabase")({
 });
 ```
 
-That is the whole surface. `database` carries three pieces, and a composition
-root wants all three:
+That is the whole surface. `database` is a **module** carrying the port a
+composition root reads; the provider binding `DATABASE_URL`, the resourceful
+client provider, the health check and the engine-tracing loader are inside it:
 
 ```ts
 export const PersistenceModule = Module("Persistence")({
   imports: [database],
   exports: [database.port],
-  needs: [Env, Logger, Meter, Tracer],
+  needs: [Env, Logger],
 });
 ```
 
@@ -72,6 +73,17 @@ port is typed by exactly what it returns.
   reachable — build it in your own `client` arrow and ignore the one passed in.
 - **The pool's lifetime.** The provider is _resourceful_, so `release` closes it
   on every exit path, including a boot that fails after it ran.
+- **A health check**, named after the starter — `SELECT 1` through `$queryRaw`,
+  folded into the kernel's `GET /healthz` with nothing wired. `/readyz` does not
+  read it: failing readiness on a dependency every replica shares removes them
+  all at once.
+- **Engine tracing, offered rather than registered.** The starter contributes a
+  loader for the optional `@prisma/instrumentation` peer to `Instrumentations`;
+  composing `@btravstack/observability/otel` is what turns it on, and a graph
+  with no SDK never imports it. A missing peer is a `debug` line, never silence.
+- **Every query handed to `Observers`**, so composing `observability()` writes
+  the failures as lines and `otel()` mints the instruments — with no flag here
+  and no port list to satisfy when you compose neither.
 
 ## What it does not
 
@@ -89,9 +101,17 @@ package's.
 
 ## Options
 
-| Option   | Default | What it does                                       |
-| -------- | ------- | -------------------------------------------------- |
-| `client` | —       | Builds the client from the driver adapter and URL. |
+| Option         | Where                                       | What it is                                                                               |
+| -------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `name`         | `prismaDatabase(name)`                      | the port's id and the health check's name — required                                     |
+| `client`       | `prismaDatabase(name)({ client })`          | builds your client from the driver adapter this package built from the URL — required    |
+| `DATABASE_URL` | environment, read by `prismaDatabase(name)` | the connection string — required, validated at graph build; blank is an error, exit `78` |
+
+There is **no `instrumented` flag**: observation is a set port every call is
+handed to, so a graph composing no observability pays one inert call and no
+port list. The full table — defaults, semantics and the reasoning — lives on
+[the reference page](https://btravstack.github.io/btravstack/reference/prisma),
+which is this list's one detailed home.
 
 ## License
 

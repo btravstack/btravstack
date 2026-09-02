@@ -23,20 +23,79 @@ All six are peer dependencies — install them (`@opentelemetry/api` because
 
 <!-- doctest: prelude
 import { NonRetryableError, RetryableError } from "@amqp-contract/worker";
-import { orderContract } from "@btravstack/example-order-amqp-contract";
-import { PlaceOrder } from "@btravstack/example-order-application";
-import { TenantId } from "@btravstack/example-order-domain";
-import { Module } from "@btravstack/di";
-import { OrderApplicationModule, OrderRepository, Outbox } from "@btravstack/example-order-application";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import {
+  defineContract,
+  defineEventConsumer,
+  defineEventPublisher,
+  defineExchange,
+  defineMessage,
+  defineQueue,
+} from "@amqp-contract/contract";
+import { Module, Port, type AnyModule } from "@btravstack/di";
+import { TaggedError, type AsyncResult } from "unthrown";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
+import { z } from "zod";
+
+// The contract this README's worker serves: one event, broadcast to two
+// subscribers' queues. It is the application's own artifact — a client takes
+// it without this package.
+const orders = defineExchange("orders");
+const parked = defineExchange("orders-dlx", { type: "direct" });
+const orderChanged = defineMessage(
+  z.object({
+    tenantId: z.uuidv7(),
+    kind: z.literal("order"),
+    id: z.uuidv7(),
+    occurredAt: z.string(),
+    payload: z.object({ quantity: z.number() }).nullable(),
+  }),
+);
+const orderChangedEvent = defineEventPublisher(orders, orderChanged, {
+  routingKey: "order.changed",
+});
+const queueOptions = {
+  deadLetter: { exchange: parked, externalConsumers: true },
+  retry: { mode: "ttl-backoff", maxRetries: 3, initialDelayMs: 10 },
+} as const;
+const orderContract = defineContract({
+  publishers: { orderChanged: orderChangedEvent },
+  consumers: {
+    orderNotifications: defineEventConsumer(
+      orderChangedEvent,
+      defineQueue("order-notifications", queueOptions),
+    ),
+    orderAudit: defineEventConsumer(
+      orderChangedEvent,
+      defineQueue("order-audit", queueOptions),
+    ),
+  },
+});
+
+// The application's own layers, declared here for the same reason: the use
+// case, its errors and its tenant id are yours, not this package's.
+class DuplicateOrder extends TaggedError("DuplicateOrder")<{ readonly id: string }> {}
+class InvalidOrderId extends TaggedError("InvalidOrderId")<{ readonly id: string }> {}
+class InvalidQuantity extends TaggedError("InvalidQuantity")<{ readonly id: string }> {}
+declare const TenantId: (value: string) => string;
+class PlaceOrder extends Port("PlaceOrder")<{
+  readonly execute: (
+    tenantId: string,
+    id: string,
+    quantity: number,
+  ) => AsyncResult<
+    { readonly id: string },
+    DuplicateOrder | InvalidOrderId | InvalidQuantity
+  >;
+}> {}
+declare const OrderApplicationModule: Module<PlaceOrder, never, never>;
+declare const OrderPersistenceModule: AnyModule;
 
 // The application module the README's composition imports — the orders
 // vertical plus its persistence, as an application would compose it.
 const AppModule = Module("App")({
   imports: [OrderApplicationModule, OrderPersistenceModule, observability(), otel()],
-  exports: [PlaceOrder, OrderRepository, Outbox, Logger],
+  exports: [PlaceOrder, Logger],
 });
 -->
 
@@ -102,9 +161,11 @@ rpc, typed by the key alone, and `AmqpHandlers(contract)([...])` composes an
 array of them into the same handlers provider `AmqpModule` takes — the array
 must cover every key the contract declares, and each piece's own port must
 still be discharged (`provides`), since the composed provider's deps are the
-pieces' ports, not what they close over. Two slices claiming one key are di's
-duplicate-provider defect at build, which is the point: a consumer belongs to
-exactly one slice.
+pieces' ports, not what they close over. A consumer belongs to exactly one slice, and the
+compiler holds only half of that: coverage is checked, injectivity is not, so
+two slices claiming one key type-check together. It is di's duplicate-provider
+defect at build once **both** pieces are discharged as providers in one graph
+— wire in only one and the other's handler is silently never registered.
 
 Its own test suite needs a **Docker daemon**: the specs run against the shared
 `rabbitmq` container `internal/test-infra` starts once per machine and every

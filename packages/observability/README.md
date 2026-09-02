@@ -1,13 +1,21 @@
 <!-- doctest: prelude
-import { HttpModule } from "@btravstack/http-server";
-import { Port } from "@btravstack/di";
-import type { AsyncResult } from "unthrown";
-import { orderRouter } from "../../module.js";
+import { HttpModule, defineHttp } from "@btravstack/http-server";
+import { Port, type AnyModule } from "@btravstack/di";
+import { OkAsync, type AsyncResult } from "unthrown";
+import { oc } from "@orpc/contract";
 import { otel } from "@btravstack/observability/otel";
 import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
-import { CustomersSlice } from "../../slices/customers/module.js";
-import { OrdersSlice } from "../../slices/orders/module.js";
+
+// The application's own router and slices, declared here so this sample stands
+// on the published packages alone.
+const api = defineHttp();
+const orderRouter = api.OrpcRouter({ orders: { place: oc } })({
+  inject: {},
+  sync: () => ({ orders: { place: () => OkAsync("placed") } }),
+});
+declare const OrdersSlice: AnyModule;
+declare const CustomersSlice: AnyModule;
 class PlaceOrder extends Port("PlaceOrder")<{
   readonly execute: (id: string, quantity: number) => AsyncResult<void, never>;
 }> {}
