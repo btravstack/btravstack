@@ -50,225 +50,28 @@ module provides one. There is one such module per vertical, so each gate
 carries the repository that vertical actually uses — carries, not prints: di's
 gate is an arity error, and the port is in the parameter's type.
 
-## The contract tier, which depends on nothing and is depended upon
+## What each one shows, in full
 
-A transport's contract is a **shared artifact**, so each one is a package of its
-own:
+The walkthroughs live on the documentation site, one page per example — the
+contract tier, what each runtime calls a "unit", what it resolves and how the
+gate sees it, and `order-api`'s two-slice modulith end to end:
 
-```text
-   order-api      any API client        order-temporal-worker   any workflow client        order-amqp-worker     any publisher
-       └──────────────┬───────┘              └───────────────┬───────┘                  └────────────┬────────┘
-                      ▼                                      ▼                                        ▼
-            order-api-contract                    order-temporal-contract                    order-amqp-contract
-            ← @orpc/contract                      ← @temporal-contract/contract, zod         ← @amqp-contract/contract, zod
-```
+- [Examples](https://btravstack.github.io/btravstack/examples/) — the index, and the layering again with links.
+- [The order application](https://btravstack.github.io/btravstack/examples/order-application) — domain, use cases, ports, adapters.
+- [Order API (HTTP)](https://btravstack.github.io/btravstack/examples/order-api) — the modulith, the controllers, the triage.
+- [Order Temporal worker](https://btravstack.github.io/btravstack/examples/order-temporal-worker) — the sagas and their compensation.
+- [Order AMQP worker](https://btravstack.github.io/btravstack/examples/order-amqp-worker) — the outbox, the relay, the two subscribers.
+- [Hexagonal (di alone)](https://btravstack.github.io/btravstack/examples/di-hexagonal) — wiring without a lifecycle.
 
-Every arrow points _at_ a contract and none points out of one. That is the whole
-of contract-first design: a client is entitled to the wire shapes and the
-declared errors without the router or activity that implements them, the di
-wiring behind it, the Prisma-backed repository behind that, or the kernel
-booting the lot. The api and temporal contracts sat inside
-`order-api/src/contract.ts` and `order-temporal-worker/src/contract.ts` before being
-extracted, so no client could take one without the others until then;
-`order-amqp-contract` started as its own package from the outset, the same
-shape without the detour. None of the three depends on `@btravstack/core`, on
-`@btravstack/di`, or on any other example — the transports depend on **them**.
-
-The rule is enforced by the compiler rather than by review: each contract
-package's `src/layering.test-d.ts` imports its transport package under a
-`@ts-expect-error`, so adding the implementation to the contract's dependencies
-makes the directive unused and fails `test:types` — the same shape
-`order-domain` uses to keep the application layer out of the domain.
-
-And the payoff is demonstrated rather than asserted. `order-api-contract`'s own
-spec builds a real oRPC client from `RouterContractClient<typeof contract>`
-and drives it over a stub `fetch`, with nothing from `order-api` in scope;
-`order-temporal-contract`'s runs the workflow's input schema as a validator
-returning a `Result`, which is the check a caller makes before starting an
-execution — all a Temporal client can do without a running service.
-`order-amqp-contract`'s runs the placement message's own payload schema the
-same way, with no worker, no connection and no broker in scope — the check a
-publisher makes before sending a message.
-
-## One application, three deployments — each doing what its transport is for
-
-Every deployment composes the same pair — `OrderApplicationModule`,
-`OrderPersistenceModule` — and nothing in either differs between them, though
-not always at the same level: `order-api`'s root and `order-amqp-worker`'s
-root import the pair directly (the relay owns the outbox vertical, and
-neither of `order-amqp-worker`'s subscriber slices owns any vertical at all),
-while `order-temporal-worker`'s `FulfillmentSlice` imports it instead — the
-orders vertical is `fulfillOrder`'s alone there, and `chargeOrder`'s
-`BillingSlice` carries a different one, `BillingModule`, instead. The
-customers vertical is a separate pair of modules everywhere, so a deployment
-that never answers a customer question does not carry its use case or its
-repository. What differs is what each transport is **for**:
-
-- **`order-api`** answers a caller: a request arrives, a typed answer leaves.
-- **`order-temporal-worker`** owns two journeys: the fulfillment saga runs
-  steps in order and compensates in reverse when one answers a permanent no;
-  the billing saga authorizes and captures a payment, refunding it on
-  failure — orchestration, which needs a durable owner.
-- **`order-amqp-worker`** tells everyone what happened: every committed write
-  leaves an event through a transactional outbox — and a cancellation leaves
-  a tombstone — broadcast, which needs no addressee at all.
-
-The use cases return a `Result`, and what a `Result` means to a transport is
-the transport's business — **the same `Err` becomes different outcomes** where
-a caller exists to hear it:
-
-| unthrown               | `order-api`             | `order-temporal-worker`                 |
-| ---------------------- | ----------------------- | --------------------------------------- |
-| `Ok(order)`            | the procedure's output  | the workflow's output                   |
-| `Err(InvalidQuantity)` | `INVALID_QUANTITY`      | `InvalidQuantity`, **non-retryable**    |
-| `Err(InvalidOrderId)`  | `BAD_REQUEST`           | `InvalidOrderId`, **non-retryable**     |
-| `Err(DuplicateOrder)`  | `CONFLICT`              | `OrderAlreadyPlaced`, **non-retryable** |
-| `Defect`               | `INTERNAL_SERVER_ERROR` | **retried by the platform**, then fails |
-
-`order-amqp-worker` is deliberately absent from that table: on a broadcast
-there is no caller waiting to be told, so a placement's `Err` never crosses the
-broker — only the committed fact does. The kernel appears in none of the
-columns either way. `RunUnit` hands a runtime the work's own `Result` and stays
-out of what it means.
-
-The fourth and fifth columns carry something the second and third do not.
-Naming a failure on a Temporal contract decides not only what the caller sees
-but **whether the platform retries it** — both domain errors are declared
-`nonRetryable`, so Temporal asks exactly once, while an unmodelled failure
-stays unnamed and the retry policy takes over. A hand-rolled worker spells that
-distinction as an attempt budget; on Temporal it is a line of contract, and
-on AMQP it is too, in the broker's own vocabulary: `order-notifications`'s
-`retry: { mode: "ttl-backoff", maxRetries: 3 }` is contract configuration the
-broker itself enforces, not a runtime constant. The count means something
-different, though — `maxRetries: 3` is retries **on top of** the first
-attempt, so an unmodelled failure is attempted **four** times in total before
-it is parked, not the three `maximumAttempts: 3` names on Temporal.
-
-## What each runtime calls a "unit"
-
-The three deployments disagree about what one piece of work is, and the kernel
-does not care — which is the point of `RunUnit` being parameterised by nothing
-but `UnitMeta`:
-
-|                         | one unit is              | `id`                    | `traceId`                         |
-| ----------------------- | ------------------------ | ----------------------- | --------------------------------- |
-| `order-api`             | one HTTP request         | a fresh `randomUUID()`  | an inbound `x-request-id`, if any |
-| `order-temporal-worker` | one **activity attempt** | Temporal's task token   | the workflow id                   |
-| `order-amqp-worker`     | one **delivery**         | a minted `randomUUID()` | the publisher's `messageId`       |
-
-All three are answering the same obligation — `UnitMeta.id` must be unique per
-unit, because `traceId` defaults to it — and all three land on "the attempt, not
-the logical thing", because a retry is a second unit and the same trace.
-`order-amqp-worker` mints its `id` rather than reusing the broker's: a delivery
-tag is not unique per attempt (see
-[`@btravstack/amqp-worker`'s README](../packages/amqp-worker/README.md) for why), where a
-queue job id or a task token already is.
-
-## What each runtime resolves, and how the gate sees it
-
-A runtime is a service the composition root exports, on a port each starter
-ships over the kernel's `RuntimePort` (`HttpRuntime`, `TemporalRuntime`,
-`AmqpRuntime`), and every application-specific thing a runtime used to
-resolve is now a **port its provider depends on** through di — the starter's
-own fixed port, provided with the starter's own sugar and never named (a
-process serves one router / activities record / handlers record as it boots
-one runtime): `order-api`'s `orderRouter = OrpcRouter(contract)([ordersController,
-customersController])`, one `OrpcController` piece per slice, minted by
-contract path (below); `order-temporal-worker`'s `orderActivities =
-TemporalActivities(orderContract)([fulfillOrder, chargeOrder])`, one
-`TemporalWorkflowActivities` piece per saga slice; `order-amqp-worker`'s
-`orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit])`,
-one `AmqpHandler` piece per subscriber slice — di's own
-`Provider(port)({ inject, ...arm })` on that port either way, typed by the
-contract, and each composition root the matching `HttpModule` / `TemporalModule` /
-`AmqpModule` taking the provider. Every piece's port id carries its own
-contract path or key, so the starter composes an **array** — the same
-exactness (every path or key covered, two slices claiming one is di's
-duplicate-provider defect at build) reached the same way across all three. No
-starter
-runtime resolves anything any more — all three are `Runtime<never, Info>`
-— so `start`'s `UNSATISFIED RUNTIME PORTS` arm is exercised only by the
-kernel's own type test now; what the examples pin is the other two gates.
-
-Pinned in `order-api/src/needs-gate.test-d.ts`,
-`order-temporal-worker/src/needs-gate.test-d.ts` and
-`order-amqp-worker/src/needs-gate.test-d.ts`: the wired call is an ordinary
-one; a composition that forgets its starter is refused against
-`"NO RUNTIME — the module exports no port declared over RuntimePort"`, the
-sentence `start` intersects onto its `module` parameter; and a composition that
-imports the starter without providing its router / activities / handlers port
-fails at `start` too, but by a different mechanism — the port stays in the
-module's `Needs`, which `start`'s parameter accepts only as `Scope | Env`, so
-the diagnostic names the port. That second one is **not** di's
-`UNSATISFIED DEPENDENCIES` arity gate, which guards `Module.build` and
-`Module.scoped`; `order-application`'s file is where that one is pinned.
-`order-api` also pins both halves of the `unit` gate.
-
-The two **worker** files pin one more, and it is the one worth reading if you
-are about to write a slice: a slice does **not** shield the ports its own
-pieces declare. Composing pieces into one provider shields them from the root
-— the composed provider's `deps` are the piece ports, not what a piece closes
-over — and it is easy to read that as slices hiding their needs generally.
-They do not: `AmqpHandler(contract, key)` and
-`TemporalWorkflowActivities(contract, key)` both declare the REAL ports named
-in their `sync` call, so a slice that forgets a vertical surfaces them the
-moment it is composed into a root. `order-temporal-worker`'s
-`FulfillmentlessSlice` leaks `StockService | ShippingService`;
-`order-amqp-worker`'s `LoggerlessAmqp` leaks `Logger`.
-
-## `order-api` is a two-slice modulith
-
-`order-api` is the one deployment whose surface is big enough to split, so it
-is: `src/slices/orders/` and `src/slices/customers/`, each owning a fragment
-of the contract and a controller over that fragment, and each backed by the
-same three-package vertical below it.
-
-```text
-order-api-contract     contract.orders         contract.customers    ← private fragments; the root contract is { orders, customers }
-                            │                        │
-order-api              slices/orders/           slices/customers/
-                         controller.ts            controller.ts     ← OrpcController(contract, "orders")({ inject: { name: Dep }, sync })
-                         module.ts                module.ts         ← the slice's own di module
-                            └───────────┬────────────┘
-                                   module.ts                        ← OrpcRouter(contract)([ordersController, customersController])
-                            ┌───────────┴────────────┐
-                       PlaceOrder / FindOrder    FindCustomer       ← use cases, entities, Prisma adapters — the same three packages
-```
-
-A **controller** is `OrpcController(contract, "orders")({ inject: { place:
-PlaceOrder, find: FindOrder }, sync })` — an ordinary di provider on a port `OrpcController`
-mints from the path itself and hands back on `.port`. A **slice** is an ordinary di `Module` that
-**imports the vertical it needs**, provides its controller and exports
-**only** that controller, so nothing outside the slice can reach anything else
-it holds. Neither slice owns a private adapter: both go through the use cases,
-the entities and the Prisma repositories, and each controller converts its own
-entity to its own wire shape. Each imports its **own** vertical —
-`OrderApplicationModule` + `OrderPersistenceModule`, `CustomerApplicationModule`
-
-- `CustomerPersistenceModule` — so neither slice carries the other's use case or
-  adapter. They converge only on the internal database module both persistence
-  halves import: a diamond, not duplication, since di flattens the tree into a
-  `Set` keyed by provider reference and builds one database. The **root** is then a list of
-  slices plus what no slice owns (`observability()`), composed with the array
-  `OrpcRouter(contract)([ordersController, customersController])` form, which
-  is exact against the contract — a piece missing from the array, a path the
-  contract does not declare, and a piece under the wrong path are all compile
-  errors, the last two at `OrpcController(contract, path)` itself.
-
-Nothing here is a new concept: a controller is a provider, a slice is a
-module, a modulith is several slice modules in one root — and `exports:
-[ordersController]` is di's provider form, since `OrpcController` mints the
-port and there is no class to name. And because a
-fragment is itself a valid contract, lifting `orders` into a process of its
-own leaves the slice untouched —
-`OrpcRouter(contract.orders)({ inject: { implementation: ordersController.port }, sync: ({ implementation }) => implementation })`
-is the whole of the lifted root's router. `packages/http-server/src/controller.test-d.ts`
-pins that, and the four other gates, at compile time.
+This file is the **index a contributor reads in the repository**: the table
+above, the layering, and the two facts below that are about this checkout
+rather than about the application. Everything else is one page away, written
+once.
 
 ## Why these are tests, not just illustrations
 
-Each package reads as application code, and each is covered by real specs — 86
-of them, run by the repository's own `pnpm test`:
+Each package reads as application code, and each is covered by real specs the
+repository's own `pnpm test` runs:
 
 ```sh
 pnpm install
@@ -294,10 +97,11 @@ in-flight activity finish is the SDK's own `DRAINING` state and not a mock of
 it. The fixtures reach for the cheapest thing that tests the real behaviour,
 and then **share** it: the Prisma client is generated by turbo's own task, and
 the three servers these examples need — PostgreSQL, RabbitMQ, Temporal — are
-one container each for the whole repository, owned by
-[`internal/test-infra`](../internal/test-infra/README.md).
+one shared container each for the whole repository, owned by
+[`internal/test-infra`](../internal/test-infra/README.md), which is where the
+list lives.
 
-**Four of these workspaces need a Docker daemon**: `order-infrastructure`,
+**Four of these workspaces need a Docker daemon** — `order-infrastructure`,
 `order-api`, `order-amqp-worker` and `order-temporal-worker`. None of them
 starts a server of its own, and none cleans up after a test — isolation is the
 boundary each system already has, minted in setup: a **vhost** per test, a

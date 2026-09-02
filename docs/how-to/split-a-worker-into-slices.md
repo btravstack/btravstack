@@ -284,36 +284,18 @@ AmqpHandlers(orderContract)([orderNotifications]);
 TemporalActivities(orderContract)([chargeOrder]);
 ```
 
-**Where the marker actually is.** Both are a `TS2769` —
-`No overload matches this call` — three lines long, and the sentence is at the
-**tail of the third line**, past three hundred characters of type. TypeScript
-names the source type first, and the source is the piece you wrote: di's
-`Provider<…>` over your contract, which expands to the contract literal itself.
-So this one is not readable at a glance; it is readable once you know the
-sentence is the last thing on that line. Nothing either package can spell
-shortens it — measured, the width is the caller's own contract in the type
-arguments, not a name a package could alias — which is why the marker is a
-whole sentence rather than a label: it is the only part of the line a reader
-can act on, and it prints where the eye ends up.
-
-Both diagnostics name the missing key beside the marker, whatever the array's
-length: the refusal is a tuple **as long as the array you wrote** — its head
-your own elements, which match, and its last element the marker paired with
-what is missing — so TypeScript lines the two up element by element and reports
-one error, on the trailing element. Measured on a one-element array:
+**Where the marker actually is.** Both are a `TS2769`, three lines long, with
+the sentence at the **tail of the third line** — and the missing key beside it,
+whatever the array's length:
 
 ```text
 … is not assignable to type 'readonly ["UNCOVERED HANDLERS — the contract declares a consumer this array does not cover", "right"]'.
 ```
 
-It used to be a fixed two-element tuple, and then the key was named only when
-the array happened to be two elements long; at one or three you diffed the
-contract against the array by hand.
-
-This is why the composing arm is declared **last** in the intersection both
-packages build it from — di's builder first, the composer last — so
-TypeScript reports the composer's own failure against the marker rather than
-degrading to di's generic `Qualification`, which names nothing at all.
+Read the last line and read it from the end; the width in front of it is your
+own contract, expanded. Why it prints there, and what every other marker in
+this framework looks like, is
+[Read a wiring error](/how-to/read-a-wiring-error).
 
 ## Two slices, one key: di's own defect, once both are wired in
 

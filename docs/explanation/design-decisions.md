@@ -14,6 +14,11 @@ The guiding aim is a kernel that owns three things — the lifecycle state
 machine, the unit registry, the `Runtime` contract — and can be **done**. Each
 entry below was weighed against that.
 
+Every entry states a decision, what it rules out, and nothing else: where an
+argument has a page of its own — the drain's three beats, the gate's shape,
+what a starter is — this one links it rather than restating it. A decision
+restated in two places is a decision that will disagree with itself.
+
 ## The runtime is a service of the module, not an option
 
 `start(module)` takes no `runtime` argument. The module exports a port
@@ -147,10 +152,10 @@ one activities record, one handlers record as it boots one runtime, so there
 is nothing to tell apart and a name would only be a second thing to keep in
 step; two providers for the port in one graph are di's duplicate-provider
 defect at build, which is the right answer. For Temporal and AMQP the port is
-one id at the value level and typed per contract at the type level — the move
-the kernel's `RuntimePort` makes — so a provider built for one contract still
-cannot be handed to a `TemporalModule` / `AmqpModule` declaring another; the
-check moved from a name to the record's own shape. It rules out a `router` /
+one id at the value level and typed per contract at the type level, so a
+provider built for one contract cannot be handed to a module declaring
+another — what a starter is, and why it owns its ports, is
+[Starters](/explanation/starters). It rules out a `router` /
 `activities` / `handlers` option on `http()` / `temporal()` / `amqp()` — the
 primitives simply **need** the port — and a per-application port class for
 what the starter consumes. `Config.provider("Name")(schema)` keeps its name
@@ -242,10 +247,10 @@ fires and every open unit's signal fires. There is no stronger step, and the
 Temporal runtime is where that was tested: `@temporalio/worker` exposes no
 public forced shutdown (`Worker.forceShutdown$` is `protected`,
 `Runtime.shutdown()` is process-global), so `@btravstack/temporal-worker` races
-`run()` against the signal and stops waiting. The kernel is released on time,
-the work is reported `abandoned`, and the worker keeps winding down on
-Temporal's clock until the process exits. It rules out the kernel ever calling
-`process.exit()` to enforce a deadline.
+`run()` against the signal and stops waiting — one runtime per process is what
+makes that a local decision, and the reasoning is
+[One process, one runtime](/explanation/one-process-one-runtime). It rules out
+the kernel ever calling `process.exit()` to enforce a deadline.
 
 ## What there deliberately is not
 
