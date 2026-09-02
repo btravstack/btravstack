@@ -114,9 +114,13 @@ export type RuntimeInfoOf<X> = RuntimeOf<X> extends Runtime<AnyPort, infer Info>
  * @remarks
  * The parent's **span id is dropped**, deliberately: `UnitMeta.traceId` is a
  * correlation id rather than a span context, and half-carrying one would
- * suggest a parent-child link nothing here maintains. An all-zero trace id is
- * the specification's own "invalid" value and is refused like a malformed
- * header, as is a header that does not match the format exactly.
+ * suggest a parent-child link nothing here maintains.
+ *
+ * Three things the specification calls invalid are refused like a malformed
+ * header, because adopting one would replace a runtime's own usable id with a
+ * value that means nothing: an **all-zero trace id**, an **all-zero parent
+ * id** (the header is well-formed and names no span), and **version `ff`**,
+ * which is reserved and never a version a caller may send.
  *
  * It is here rather than in a runtime because **every** transport carrying an
  * inbound trace needs the same answer, and two copies of a parser is two
@@ -132,9 +136,17 @@ export type RuntimeInfoOf<X> = RuntimeOf<X> extends Runtime<AnyPort, infer Info>
  * ```
  */
 export const traceIdOfTraceparent = (header: string): string | undefined => {
-  const match = /^[\da-f]{2}-([\da-f]{32})-[\da-f]{16}-[\da-f]{2}$/.exec(header.trim());
+  // `(?!ff)` refuses the reserved version at the point it is read, rather than
+  // leaving a second test to remember.
+  const match = /^(?!ff)[\da-f]{2}-([\da-f]{32})-([\da-f]{16})-[\da-f]{2}$/.exec(header.trim());
   const traceId = match?.[1];
-  return traceId === undefined || /^0{32}$/.test(traceId) ? undefined : traceId;
+  const parentId = match?.[2];
+  return traceId === undefined ||
+    parentId === undefined ||
+    /^0+$/.test(traceId) ||
+    /^0+$/.test(parentId)
+    ? undefined
+    : traceId;
 };
 
 /**

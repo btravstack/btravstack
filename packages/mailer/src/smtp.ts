@@ -5,6 +5,17 @@ import { Module, Port, Provider } from "@btravstack/di";
 import { createTransport, type Transporter } from "nodemailer";
 import { fromPromise, fromSafePromise } from "unthrown";
 
+/**
+ * How long the health check waits for the relay before calling it unhealthy.
+ *
+ * `runHealthChecks` has no deadline of its own — a check is trusted to answer —
+ * and nodemailer's own defaults do not bound this one usefully: an unanswering
+ * relay can hold `verify()` for its greeting timeout, and a probe that hangs is
+ * a probe an orchestrator times out instead of reading. Five seconds sits under
+ * a stock `periodSeconds`, so a slow relay is reported rather than skipped.
+ */
+const HEALTH_TIMEOUT_MS = 5_000;
+
 import { MailNotSent, MailerBackend, type MailerService } from "./mailer.js";
 
 /** What the graph bound from the environment for the SMTP adapter. */
@@ -73,6 +84,28 @@ export const smtpMailerBackend = (transport: Transporter): MailerService => ({
 });
 
 /**
+ * `transport.verify()`, but never longer than `ms`.
+ *
+ * The timer is `unref`ed and cleared on the winning branch: a probe must not
+ * keep the event loop alive, and a `/healthz` served during a drain must not
+ * hold the process open past it.
+ *
+ * @internal Exported for `smtp.spec.ts` alone — the timeout arm needs a relay
+ * that never answers, which no real one reliably is, and a five-second wait in
+ * the suite to reach it otherwise.
+ */
+export const verifyWithin = (transport: Transporter, ms: number): Promise<void> => {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`the relay did not answer within ${ms} ms`)), ms);
+    timer.unref();
+  });
+  return Promise.race([transport.verify().then((): void => undefined), timeout]).finally(() => {
+    clearTimeout(timer);
+  });
+};
+
+/**
  * The SMTP adapter: one pooled transport, opened with the scope and closed with
  * it, and `MailerBackend` over it. `nodemailer` is an **optional** peer reached
  * only through this subpath.
@@ -93,20 +126,13 @@ export const smtpMailer = (): Module<MailerBackend | HealthChecks, ConfigInvalid
         inject: { transport: SmtpTransport },
         sync: ({ transport }) => smtpMailerBackend(transport),
       }),
-      // The health check lives on the ADAPTER, not on `mailer({ adapter })`,
-      // because it is the only thing here with a server to reach: the
-      // recording adapter sends nowhere and would answer healthy for free,
-      // which is a probe that reports nothing. `verify()` opens a connection
-      // and authenticates, which is the half of a send that can be proved
-      // without sending — a message's fate after acceptance belongs to the
-      // provider's webhooks, and no probe here can speak for it.
       Provider.member(HealthChecks)({
         inject: { transport: SmtpTransport },
         sync: ({ transport }) => ({
           name: "mailer",
           check: () =>
             fromPromise(
-              transport.verify(),
+              verifyWithin(transport, HEALTH_TIMEOUT_MS),
               (cause: unknown) =>
                 new HealthCheckFailed({
                   reason: cause instanceof Error ? cause.message : "the relay did not answer",

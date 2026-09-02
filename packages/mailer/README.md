@@ -121,12 +121,15 @@ which is this list's one detailed home.
 
 ## What it decides, and what it does not
 
-**It decides** that the SMTP adapter contributes a health check — `verify()`,
+**It decides** that every send is handed to whatever contributed to
+`Observers` — there is no flag and no opt-out, because a graph that composed no
+observability pays one inert call and reports to nobody. It decides that the
+SMTP adapter contributes a health check — `verify()`,
 a connection and an authentication, folded into the kernel's `/healthz` with
 nothing wired, while the recording adapter contributes none because it would
-report healthy for free. It decides that a send is _accepted_, not delivered; that a failure is a
-modeled `MailNotSent` carrying the envelope and never the body; and that
-sends are reported unless you say otherwise.
+report healthy for free. And it decides that a send is _accepted_, not
+delivered, and that a failure is a modeled `MailNotSent` carrying the envelope
+and never the body.
 
 **It does not decide** what happens after a failure — retrying belongs to your
 transport, and the example answers a `RetryableError` so the broker's budget

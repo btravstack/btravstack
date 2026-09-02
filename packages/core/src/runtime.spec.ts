@@ -78,21 +78,31 @@ describe("traceIdOfTraceparent", () => {
     expect(traceId).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
   });
 
-  it("refuses a header that is malformed, all-zero, or of another shape", () => {
-    // GIVEN the three ways a header fails to name a trace
+  it("refuses every header the specification calls invalid", () => {
+    // GIVEN the ways a header fails to name a usable trace: malformed,
+    // truncated, an all-zero trace id, an all-zero PARENT id (well-formed, and
+    // naming no span), and the reserved version `ff`
     const refused = {
       malformed: traceIdOfTraceparent("not-a-traceparent"),
-      allZero: traceIdOfTraceparent("00-00000000000000000000000000000000-00f067aa0ba902b7-01"),
       truncated: traceIdOfTraceparent("00-4bf92f3577b34da6-00f067aa0ba902b7-01"),
+      allZeroTrace: traceIdOfTraceparent("00-00000000000000000000000000000000-00f067aa0ba902b7-01"),
+      allZeroParent: traceIdOfTraceparent(
+        "00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01",
+      ),
+      reservedVersion: traceIdOfTraceparent(
+        "ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+      ),
     };
 
-    // WHEN they are read — the all-zero id is the specification's own
-    // "invalid", so it is refused like a header that never parsed
-    // THEN each answers undefined, leaving the runtime's own fallback to run
+    // WHEN each is read
+    // THEN each answers undefined, leaving the runtime's own fallback id to
+    // run — adopting one would replace a usable id with a meaningless one
     expect(refused).toEqual({
       malformed: undefined,
-      allZero: undefined,
       truncated: undefined,
+      allZeroTrace: undefined,
+      allZeroParent: undefined,
+      reservedVersion: undefined,
     });
   });
 

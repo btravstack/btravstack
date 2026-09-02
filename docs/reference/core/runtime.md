@@ -134,6 +134,31 @@ with `runtime: "kernel"` when one of its own variables is malformed —
 `PROBE_PORT`, `PRE_DRAIN_DELAY_MS`, `DRAIN_TIMEOUT_MS` — its `cause` then a
 `ConfigInvalid` naming every one of them that was wrong.
 
+## `traceIdOfTraceparent`
+
+<!-- doctest: signature=@btravstack/core -->
+
+```ts
+const traceIdOfTraceparent: (header: string) => string | undefined;
+```
+
+The trace-id field of a W3C `traceparent` header, and nothing else of it. Reach
+for it when your runtime carries an inbound trace: `@btravstack/http-server` reads
+it off `traceparent` (outranking `x-request-id`) and `@btravstack/amqp-worker` off
+the message headers (outranking `messageId`).
+
+**The parent's span id is dropped**, deliberately: `UnitMeta.traceId` is a
+correlation id, not a span context, and half-carrying one would suggest a
+parent-child edge nothing here maintains. What comes back is `undefined` for
+anything the specification calls invalid — a malformed header, an **all-zero
+trace id**, an **all-zero parent id** (well-formed, and naming no span), and the
+reserved version **`ff`** — so a runtime falls back to its own id instead of
+adopting one that means nothing.
+
+Pair it with the rule your own headers need: adopt only a **non-blank** inbound
+id, because `UnitMeta.traceId` defaults to `meta.id` when it is nullish and
+`""` is not.
+
 ## `releasedBy`
 
 <!-- doctest: signature=@btravstack/core -->

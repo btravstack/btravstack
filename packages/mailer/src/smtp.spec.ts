@@ -6,7 +6,7 @@ import { vi } from "vitest";
 import { inject } from "vitest";
 
 import { aMail, it } from "./__tests__/test-fixtures.js";
-import { smtpMailer } from "./smtp.js";
+import { smtpMailer, verifyWithin } from "./smtp.js";
 
 describe("smtpMailer", () => {
   it("delivers the message to the server", async ({ smtp, recipient, delivered }) => {
@@ -123,10 +123,30 @@ describe("smtpMailer", () => {
     const report = await Module.scoped(root, (ctx) => runHealthChecks(ctx.get(HealthChecks)));
 
     // THEN the component is named and unhealthy, carrying the transport's own
-    // words — and the application with it, since `/healthz` is the whole
+    // words, and the report is unhealthy with it — one failing component is
+    // what makes the whole report say so
     expect(report).toBeOkWith({
       status: "unhealthy",
       components: [{ name: "mailer", status: "unhealthy", reason: expect.any(String) }],
     });
+  });
+
+  it("gives up on a relay that never answers, rather than holding the probe open", async () => {
+    // GIVEN a transport whose `verify()` never settles — the shape a relay
+    // that accepts the connection and never greets presents
+    const hanging = {
+      verify: () => new Promise<boolean>(() => {}),
+    } as unknown as Parameters<typeof verifyWithin>[0];
+
+    // WHEN the health check's own deadline passes
+    const verified = verifyWithin(hanging, 5).then(
+      () => "answered",
+      (cause: unknown) => (cause instanceof Error ? cause.message : String(cause)),
+    );
+
+    // THEN it reports rather than waiting: `runHealthChecks` has no deadline
+    // of its own, so a probe that hangs is one an orchestrator times out
+    // instead of reading
+    await expect(verified).resolves.toBe("the relay did not answer within 5 ms");
   });
 });

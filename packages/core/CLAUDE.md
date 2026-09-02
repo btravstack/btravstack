@@ -56,6 +56,19 @@ PORTS`, a correct diagnosis of the second mistake that reads as a wrong one
   leaves the module type untouched, so a good call infers exactly as it
   would without the marker.
 
+- **`traceIdOfTraceparent(header)`** — the trace-id field of a W3C
+  `traceparent`, and nothing else of it: the parent's **span id is dropped**,
+  since `UnitMeta.traceId` is a correlation id rather than a span context.
+  Refuses what the specification calls invalid — an all-zero trace id, an
+  all-zero parent id, and the reserved version `ff` — because adopting one
+  would replace a runtime's own usable id with a value that means nothing.
+  Hoisted here for the same reason `releasedBy` was (#24's shape): it was
+  duplicated verbatim in `@btravstack/http-server` and `@btravstack/amqp-worker`,
+  and two copies of a parser is two places for the all-zero rule to be
+  forgotten. A runtime pairs it with the rule its own headers need — adopt only
+  a NON-BLANK inbound id, since `traceId` defaults to `meta.id` when it is
+  nullish and `""` is not.
+
 - **`releasedBy(signal, running)`** — `running`, but no later than the kernel's
   drain deadline: `race([running, whenAborted(signal)])`, for a `Serving.drain`
   whose work settles on somebody else's clock (Temporal's `shutdownForceTime`,
