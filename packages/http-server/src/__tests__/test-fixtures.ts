@@ -23,7 +23,7 @@ vi.mock("node:http", async (importOriginal) => {
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer, request as httpRequest } from "node:http";
-import { connect, type Socket } from "node:net";
+import { connect, type AddressInfo, type Socket } from "node:net";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
@@ -40,15 +40,19 @@ import { bootFixture, type Boot } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { oc, type as ocType, type RouterContractClient } from "@orpc/contract";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
 import { z } from "zod";
 
+import { apiKeyAuthenticator } from "../api-key.js";
 import {
   HttpAuthenticator,
   Unauthenticated,
   authenticatorPort,
   granted,
+  type Authenticator,
+  type AuthenticatorService,
   type Grant,
 } from "../auth.js";
 import { defineHttp } from "../define-http.js";
@@ -59,6 +63,7 @@ import { htmx } from "../htmx.js";
 import { HttpConfig } from "../http-config.js";
 import { HttpModule } from "../http-module.js";
 import { HttpRuntime, http, httpServer, type HttpInfo, type HttpOptions } from "../http-runtime.js";
+import { jwtAuthenticator } from "../jwt.js";
 
 /** What a bare answerer's `handle` is, without the mount point around it. */
 type Handler = HttpAnswerer["handle"];
@@ -131,6 +136,111 @@ const observedAppOf = (handler: Handler, member: (operation: Operation) => Settl
     ],
     exports: [HttpRuntime, HttpHandler],
   });
+
+/**
+ * The `AuthenticatorService` inside a description, without a graph.
+ *
+ * `Authenticator` erases `options` to `unknown` on purpose — `defineHttp` is
+ * what binds it to a port — so a unit test of an authenticator has to reach
+ * through that erasure. It is the one cast here, and it is the shape
+ * `defineHttp` itself reads.
+ */
+const serviceOf = <P, Scope extends string>(
+  authenticator: Authenticator<P, Scope, never>,
+): AuthenticatorService<P, Scope> =>
+  (
+    authenticator.options as {
+      readonly sync: (services: Record<never, never>) => AuthenticatorService<P, Scope>;
+    }
+  ).sync({});
+
+/**
+ * A local issuer: one generated key pair, its JWKS on an ephemeral port, and a
+ * signer. A real fetch against a real JWKS document is what makes the rotation
+ * and caching under test the library's own rather than a double's.
+ */
+const issuerOf = async () => {
+  const { publicKey, privateKey } = await generateKeyPair("RS256", { extractable: true });
+  const { privateKey: otherPrivate } = await generateKeyPair("RS256", { extractable: true });
+  const jwk = { ...(await exportJWK(publicKey)), kid: "k1", alg: "RS256", use: "sig" };
+  const server = createServer((_request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ keys: [jwk] }));
+  });
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", () => done()));
+  const { port } = server.address() as AddressInfo;
+
+  return {
+    jwks: `http://127.0.0.1:${port}/jwks.json`,
+    issuer: "https://issuer.test",
+    audience: "orders-api",
+    /** A token this issuer signed, with whatever claims and overrides a test needs. */
+    sign: (
+      claims: Record<string, unknown> = {},
+      overrides: { issuer?: string; audience?: string; expiresIn?: string } = {},
+    ) =>
+      new SignJWT(claims)
+        .setProtectedHeader({ alg: "RS256", kid: "k1" })
+        .setIssuer(overrides.issuer ?? "https://issuer.test")
+        .setAudience(overrides.audience ?? "orders-api")
+        .setIssuedAt()
+        .setExpirationTime(overrides.expiresIn ?? "5m")
+        .sign(privateKey),
+    /** A properly signed token carrying no `exp` — valid forever unless the verifier requires the claim. */
+    signWithoutExpiry: () =>
+      new SignJWT({ sub: "u-1", tenant: "acme" })
+        .setProtectedHeader({ alg: "RS256", kid: "k1" })
+        .setIssuer("https://issuer.test")
+        .setAudience("orders-api")
+        .setIssuedAt()
+        .sign(privateKey),
+    /** A token signed by a key this issuer's JWKS does not publish. */
+    signWithStranger: (claims: Record<string, unknown> = {}) =>
+      new SignJWT(claims)
+        .setProtectedHeader({ alg: "RS256", kid: "k1" })
+        .setIssuer("https://issuer.test")
+        .setAudience("orders-api")
+        .setExpirationTime("5m")
+        .sign(otherPrivate),
+    /**
+     * The algorithm-confusion attack's own payload: `HS256` signed with the
+     * PUBLISHED public key as the shared secret — the very JWK this issuer
+     * serves, which is what makes it an attack anyone can mount rather than one
+     * needing a key they do not have.
+     */
+    signHmacWithPublicKey: () =>
+      new SignJWT({ sub: "u-1", tenant: "acme" })
+        .setProtectedHeader({ alg: "HS256", kid: "k1" })
+        .setIssuer("https://issuer.test")
+        .setAudience("orders-api")
+        .setExpirationTime("5m")
+        .sign(new TextEncoder().encode(JSON.stringify(jwk))),
+    close: () => new Promise<void>((done) => server.close(() => done())),
+  };
+};
+
+/** What both shipped authenticators resolve to in these specs. */
+export type ServiceIdentity = { readonly appId: string };
+export type JwtIdentity = { readonly tenantId: string; readonly userId: string };
+
+/** Two issued keys, one scoped and one not, so a spec can tell which key answered. */
+const apiKeys = apiKeyAuthenticator<ServiceIdentity>()({
+  keys: [
+    { key: "first-secret", principal: { appId: "reporting" }, scopes: ["reports:read"] },
+    { key: "second-secret", principal: { appId: "billing" }, scopes: [] },
+  ],
+});
+
+/** A scheme with no scope vocabulary, on a header of its own — where `scopes` is not expressible. */
+const bareApiKey = apiKeyAuthenticator<ServiceIdentity>()({
+  header: "x-service-key",
+  keys: [{ key: "plain-secret", principal: { appId: "plain" } }],
+});
+
+const jwtPrincipal = (claims: { sub?: string; [key: string]: unknown }): JwtIdentity | undefined =>
+  typeof claims["tenant"] === "string" && typeof claims.sub === "string"
+    ? { tenantId: claims["tenant"], userId: claims.sub }
+    : undefined;
 
 /** A greeting service, so the router has a real dependency to declare. */
 class Greeter extends Port("Greeter")<{ readonly greet: (name: string) => string }> {}
@@ -1154,6 +1264,17 @@ export type HttpFixtures = {
     readonly origin: string;
     readonly taken: () => readonly Observation[];
   }>;
+
+  /** A local JWT issuer: a served JWKS, and signers for every token a spec needs. */
+  readonly issuer: Awaited<ReturnType<typeof issuerOf>>;
+  /** The API-key scheme with two issued keys, resolved. */
+  readonly apiKeyService: AuthenticatorService<ServiceIdentity, "reports:read">;
+  /** The API-key scheme with no scope vocabulary, resolved. */
+  readonly bareApiKeyService: AuthenticatorService<ServiceIdentity>;
+  /** The JWT scheme with no scope vocabulary, over this test's own issuer. */
+  readonly jwtService: AuthenticatorService<JwtIdentity>;
+  /** The JWT scheme declaring `orders:export`, where `scopes` is required. */
+  readonly scopedJwtService: AuthenticatorService<JwtIdentity, "orders:export">;
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -1167,6 +1288,50 @@ export const it = test.extend<HttpFixtures>({
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return { origin: `http://127.0.0.1:${info.port}`, taken: observer.taken };
     });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  issuer: async ({}, use) => {
+    const local = await issuerOf();
+    await use(local);
+    await local.close();
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  apiKeyService: async ({}, use) => {
+    await use(serviceOf(apiKeys));
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  bareApiKeyService: async ({}, use) => {
+    await use(serviceOf(bareApiKey));
+  },
+
+  jwtService: async ({ issuer }, use) => {
+    await use(
+      serviceOf(
+        jwtAuthenticator<JwtIdentity>()({
+          jwks: issuer.jwks,
+          issuer: "https://issuer.test",
+          audience: "orders-api",
+          principal: jwtPrincipal,
+        }),
+      ),
+    );
+  },
+
+  scopedJwtService: async ({ issuer }, use) => {
+    await use(
+      serviceOf(
+        jwtAuthenticator<JwtIdentity>()({
+          jwks: issuer.jwks,
+          issuer: "https://issuer.test",
+          audience: "orders-api",
+          scopes: ["orders:export"],
+          principal: jwtPrincipal,
+        }),
+      ),
+    );
   },
 
   serve: async ({ boot }, use) => {

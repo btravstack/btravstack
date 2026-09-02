@@ -7,6 +7,8 @@ export {
   resolvePrincipal,
 } from "./auth.js";
 export type { Authenticator, AuthenticatorService, Grant, Granted } from "./auth.js";
+export { apiKeyAuthenticator } from "./api-key.js";
+export type { ApiKey, ApiKeyOptions } from "./api-key.js";
 export type { ControllerKeyOf, ControllerPortOf } from "./controller.js";
 export type { ParamsOf } from "./fragments.js";
 export { defineHttp } from "./define-http.js";

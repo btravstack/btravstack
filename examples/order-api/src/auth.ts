@@ -1,5 +1,11 @@
 import { TenantId } from "@btravstack/example-order-domain";
-import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http-server";
+import {
+  HttpAuthenticator,
+  Unauthenticated,
+  apiKeyAuthenticator,
+  defineHttp,
+  granted,
+} from "@btravstack/http-server";
 import { ErrAsync, OkAsync } from "unthrown";
 
 /**
@@ -50,15 +56,18 @@ export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
   },
 });
 
-/** The second scheme: an API key, no scopes, no tenant — what a reporting job presents. */
-export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
-  inject: {},
-  sync: () => (headers) => {
-    const key = headers["x-api-key"];
-    return typeof key === "string" && key !== ""
-      ? OkAsync({ appId: key })
-      : ErrAsync(new Unauthenticated());
-  },
+/**
+ * The second scheme: an API key, no scopes, no tenant — what a reporting job
+ * presents. Unlike `userAuth` above, this one is NOT a stand-in: it is the
+ * starter's own `apiKeyAuthenticator`, which compares digests rather than
+ * strings and checks every issued key without an early return.
+ *
+ * The key list is inline here because an example has no secret store. A
+ * deployment reads it from a config field bound off `Env`, since a key list in
+ * the image is a key list in the repository.
+ */
+export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({
+  keys: [{ key: "reporting", principal: { appId: "reporting" } }],
 });
 
 /**

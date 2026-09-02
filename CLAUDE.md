@@ -973,7 +973,9 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   shape, and `@btravstack/observability`'s `pino` was the first: a consumer
   that never imports `@btravstack/observability/pino` never installs it, and
   the package's own `tsdown` build emits `src/pino.ts` as a second entry
-  point for exactly that. `@btravstack/observability/otel` follows it, and
+  point for exactly that. `@btravstack/observability/otel` follows it, `jose`
+  behind `@btravstack/http-server/jwt` (issue #157's JWT/JWKS authenticator —
+  its API-key sibling needs no peer and is on the main entry point), and
   each of the three application-service ports carries exactly one more:
   `redis` behind `@btravstack/cache/redis`, `nodemailer` behind
   `@btravstack/mailer/smtp`, and the two `@aws-sdk` packages behind
