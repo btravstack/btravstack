@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/observability",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Observability for @btravstack/core: a strict Logger port correlated with the kernel's units, a dependency-free JSON sink, and the lifecycle events as log lines",
   "keywords": [
     "dependency-injection",
