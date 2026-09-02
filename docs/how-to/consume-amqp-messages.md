@@ -62,6 +62,12 @@ declare const startOutboxRelay: (
 import { currentUnit, Meter, Logger } from "@btravstack/core";
 import { RetryableError } from "@amqp-contract/worker";
 import { ErrAsync } from "unthrown";
+import type { AnyProvider } from "@btravstack/di";
+
+// The relay's own two providers, built on /how-to/publish-a-message — this
+// page composes them and does not restate them.
+declare const relayConfig: AnyProvider;
+declare const outboxRelay: AnyProvider;
 -->
 
 ```ts
@@ -185,6 +191,7 @@ import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure
 import { observability } from "@btravstack/observability";
 
 import { orderHandlers } from "./handlers.js";
+// The relay's providers — see [Publish a message](/how-to/publish-a-message).
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
 
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
@@ -295,60 +302,13 @@ Redelivery happens only once the connection actually drops — when the
 process exits, not when the drain deadline passes.
 :::
 
-## The publishing half: an outbox relay as a resource
+## The publishing half
 
-The example's producer is not a runtime. `outbox-relay.ts` provides
-`OutboxRelay` with `acquire`/`release`, so di starts it as the graph builds
-and stops it when the application scope closes — after the consumer stopped,
-which is fine: rows published during the drain window are safer out than left
-to the next boot. Its poll interval is a config slice of its own:
-
-```ts
-export const relayConfig = Config.provider("RelayConfig")(
-  Config.object({
-    pollMs: Config.integer("OUTBOX_POLL_MS", {
-      min: 1,
-      max: 60_000,
-      default: 200,
-    }),
-    tenants: Config.string("OUTBOX_TENANTS"),
-  }),
-);
-
-export const outboxRelay = Provider(OutboxRelay)({
-  inject: {
-    outbox: Outbox,
-    logger: Logger,
-    meter: Meter,
-    broker: AmqpConfig,
-    config: relayConfig.port,
-  },
-  acquire: ({
-    outbox,
-    logger,
-    meter,
-    broker: { url },
-    config: { pollMs, tenants },
-  }) =>
-    startOutboxRelay(outbox, logger, meter, {
-      url,
-      pollMs,
-      tenants: tenantsOf(tenants),
-    }),
-  release: (running) => running.stop().get(),
-});
-```
-
-It reads `AmqpConfig` — the broker the starter bound — and shares the
-worker's connection lease through `@amqp-contract/core`'s pool. A broker it
-cannot reach is the modeled `BrokerUnreachable`, a startup `Err` and exit `1`.
-
-`OUTBOX_TENANTS` is a comma-separated list with **no default**, and
-`tenantsOf` splits it and claims the `TenantId` brand once — the relay is the
-one caller with no request, delivery or activity behind it, so its tenants are
-deployment configuration rather than something to read off an ambient record.
-The sweep then goes tenant by tenant, so one tenant's backlog cannot starve
-another's.
+A producer is not a runtime — a graph holds exactly one of those, and this
+process's is the consumer. The example's relay is an ordinary resourceful
+provider that sweeps an outbox table and publishes what committed, started as
+the graph builds and stopped when the application scope closes. That half has a
+page of its own: [Publish a message](/how-to/publish-a-message).
 
 ## See also
 

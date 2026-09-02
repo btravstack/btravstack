@@ -61,6 +61,11 @@ export const customersProvider = Provider(Customers)({
 | `delete(key)`                       | `AsyncResult<void, CacheUnavailable>`                  |
 | `getOrSet(key, loader, { ttlMs? })` | `AsyncResult<T, E>` — the loader's own channels        |
 
+`ttlMs` is **optional, and omitting it means no expiry**: the entry stays
+until something deletes it, the memory adapter's process ends, or Redis evicts
+it under its own policy. There is no default TTL — a cache that quietly forgot
+entries after some interval nobody chose would be the worst of both.
+
 Four things the signatures decide:
 
 **A miss is `Ok(undefined)`.** Absence is the cache working, not failing, so

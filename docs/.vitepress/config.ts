@@ -35,6 +35,9 @@ const GUIDE_SIDEBAR = [
           { text: "Log and correlate", link: "/how-to/log-and-correlate" },
           { text: "Open a per-request scope", link: "/how-to/open-a-per-request-scope" },
           { text: "Manage a resource's lifetime", link: "/how-to/manage-a-resource" },
+          { text: "Talk to a database", link: "/how-to/talk-to-the-database" },
+          { text: "Cache a read", link: "/how-to/cache-a-read" },
+          { text: "Send an email", link: "/how-to/send-an-email" },
           { text: "Keep a port private", link: "/how-to/keep-a-port-private" },
           { text: "Build a plugin registry", link: "/how-to/build-a-plugin-registry" },
           {
@@ -71,6 +74,7 @@ const GUIDE_SIDEBAR = [
             link: "/how-to/run-something-on-a-schedule",
           },
           { text: "Consume AMQP messages", link: "/how-to/consume-amqp-messages" },
+          { text: "Publish a message", link: "/how-to/publish-a-message" },
           { text: "Split a worker into slices", link: "/how-to/split-a-worker-into-slices" },
         ],
       },
