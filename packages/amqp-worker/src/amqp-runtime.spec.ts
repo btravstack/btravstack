@@ -22,10 +22,12 @@ describe("amqp", () => {
 
     // WHEN the application is started
     // THEN it never comes up, and the failure is the kernel's own modeled Err
-    // rather than an unmodelled Defect. `TypedAmqpWorker.create` reports a
-    // connection failure on the DEFECT channel with a `TechnicalError` cause;
-    // dropping the `recoverDefect` in `createWorker` turns every unreachable
-    // broker into `runMain` exit 70 where a startup failure earns 1.
+    // rather than an unmodelled Defect. `TypedAmqpWorker.create` answers a
+    // modeled `ConnectionError` for an unreachable broker; `createWorker` names
+    // that tag and maps it. Dropping that arm turns every unreachable broker
+    // into `runMain` exit 70 where a startup failure earns 1 — and recovering
+    // every DEFECT instead, which is what used to stand there, would drag a
+    // genuine startup bug into the same modeled error.
     await expect(app.exited).toBeErrTagged(
       "RuntimeStartFailed",
       expect.objectContaining({ runtime: "amqp" }),

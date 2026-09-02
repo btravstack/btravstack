@@ -222,16 +222,19 @@ HandlersPortOf<…>` (here and in `AmqpHandlers`) is the only cast the record
 - **`queuesOf`** derives `AmqpInfo.queues` from `contract.consumers` and
   `contract.rpcs` — sorted, de-duplicated, never a separate option — so
   `Serving.info` cannot disagree with what the worker actually consumes.
-- **`TypedAmqpWorker.create` reports a connection failure on the defect
-  channel** with a `TechnicalError` cause — never a modeled `Err` — and
-  `createWorker` calls it inside `.recoverDefect(...)`, turning that defect
-  into `Err(RuntimeStartFailed({ runtime: "amqp", cause }))`. Dropping that
-  `recoverDefect` is the one-line regression that turns every unreachable
-  broker into `runMain` exit `70` where a startup failure earns `1`
+- **`TypedAmqpWorker.create` reports an unreachable broker as a modeled
+  `Err(ConnectionError)`** (amqp-contract#645), so `createWorker` NAMES that
+  tag — `mapErrCases` with `P.tag("@amqp-contract/ConnectionError")` — and maps
+  it to `Err(RuntimeStartFailed({ runtime: "amqp", cause }))`. That is what
+  keeps an unreachable broker at `runMain` exit `1` where a bug earns `70`
   (`amqp-runtime.spec.ts`'s `"reports a broker that will not answer as Err,
-not a defect"` guards it). `create` never throws synchronously (its own
-  handler-record checks come back as defects too), so there is no
-  `fromThrowable` around it any more — the builders that could throw are gone
+not a defect"` guards it). Everything else `create` can fail with stays a
+  defect and exits `70` — a topology the broker refuses (amqp-contract#675), a
+  bad option, a bug in a provider. **The blanket `.recoverDefect(...)` that
+  used to stand here is the regression to avoid**: it caught the connection
+  failure and every genuine startup bug with it, reporting both as the same
+  modeled error. `create` never throws synchronously, so there is no
+  `fromThrowable` around it either — the builders that could throw are gone
   with `needs`.
 - **`messageUnits(host)` is internal** (`message-units.ts`, typed as
   `@amqp-contract/worker`'s own `WorkerMiddleware`, since the peer is already

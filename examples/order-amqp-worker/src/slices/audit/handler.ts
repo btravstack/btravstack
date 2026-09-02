@@ -22,7 +22,11 @@ export const orderAudit = AmqpHandler(
   inject: { logger: Logger },
   sync:
     ({ logger }) =>
-    ({ payload: { tenantId, id, occurredAt, payload } }) => {
+    ({
+      input: {
+        payload: { tenantId, id, occurredAt, payload },
+      },
+    }) => {
       logger.info("recording an order change", {
         tenantId,
         orderId: id,

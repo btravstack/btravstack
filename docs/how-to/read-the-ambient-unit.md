@@ -237,7 +237,7 @@ export const orderNotifications = AmqpHandler(
   inject: { logger: Logger },
   sync:
     ({ logger }) =>
-    (message) => {
+    ({ input: message }) => {
       const { tenantId, id, payload } = message.payload;
       if (currentUnit()?.signal.aborted === true) {
         return ErrAsync(

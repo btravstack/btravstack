@@ -73,7 +73,7 @@ const EchoActivities = TemporalActivities(echoContract);
 
 const echoing = EchoActivities({
   inject: {},
-  value: { runEcho: { echo: (value) => OkAsync(value) } },
+  value: { runEcho: { echo: ({ input }) => OkAsync(input) } },
 });
 
 /**
@@ -96,7 +96,10 @@ const failingEcho = EchoActivities({
  * rejects it at startup — instead of the excess-property check.
  */
 const undeclaredEcho = {
-  runEcho: { echo: (value: string) => OkAsync(value), undeclared: () => OkAsync(undefined) },
+  runEcho: {
+    echo: ({ input }: { input: string }) => OkAsync(input),
+    undeclared: () => OkAsync(undefined),
+  },
 };
 export const undeclared = EchoActivities({ inject: {}, value: undeclaredEcho });
 
@@ -114,7 +117,7 @@ const contractSeamOf = () => {
       inject: { greeting: Greeting },
       sync: ({ greeting: service }) => ({
         runEcho: {
-          echo: (value) => {
+          echo: ({ input: value }) => {
             seen.push(currentUnit());
             greeting = service.text;
             return OkAsync(value);
@@ -144,7 +147,7 @@ const deadlineOf = () => {
       inject: {},
       value: {
         runEcho: {
-          echo: (value) => {
+          echo: ({ input: value }) => {
             const signal = currentUnit()?.signal;
             entered();
             return fromSafePromise(
@@ -203,7 +206,7 @@ const gateOf = () => {
       inject: {},
       value: {
         runEcho: {
-          echo: (value) => {
+          echo: ({ input: value }) => {
             entered();
             return fromSafePromise(held.then(() => value));
           },
@@ -286,7 +289,7 @@ const slicesOf = () => {
   )({
     inject: { greeting: Greeting },
     sync: ({ greeting: service }) => ({
-      echo: (value) => {
+      echo: ({ input: value }) => {
         greeting = service.text;
         return OkAsync(value);
       },
@@ -295,7 +298,7 @@ const slicesOf = () => {
   const shout = TemporalWorkflowActivities(
     slicedContract,
     "runShout",
-  )({ inject: {}, value: { shout: (value) => OkAsync(value.toUpperCase()) } });
+  )({ inject: {}, value: { shout: ({ input }) => OkAsync(input.toUpperCase()) } });
   return {
     activities: TemporalActivities(slicedContract)([echo, shout]),
     pieces: [echo, shout] as const,

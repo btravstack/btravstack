@@ -13,7 +13,7 @@
 
 ```sh
 pnpm add @btravstack/amqp-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
-  @amqp-contract/worker@^3.0.0-beta @opentelemetry/api
+  @amqp-contract/worker@^3.0.0-beta.7 @opentelemetry/api
 ```
 
 All six are peer dependencies — install them (`@opentelemetry/api` because
@@ -53,7 +53,7 @@ import { ErrAsync, OkAsync, P } from "unthrown";
 const orderHandlers = AmqpHandlers(orderContract)({
   inject: { placeOrder: PlaceOrder },
   sync: ({ placeOrder }) => ({
-    orderNotifications: (message) =>
+    orderNotifications: ({ input: message }) =>
       placeOrder
         .execute(
           TenantId(message.payload.tenantId),

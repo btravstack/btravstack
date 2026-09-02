@@ -172,7 +172,7 @@ the one `orderChanged` event on their own queue:
 export const orderHandlers = AmqpHandlers(orderContract)({
   inject: { logger: Logger },
   sync: ({ logger }) => ({
-    orderNotifications: (message) => {
+    orderNotifications: ({ input: message }) => {
       const { tenantId, id, payload } = message.payload;
       logger.info(
         payload === null
@@ -186,7 +186,7 @@ export const orderHandlers = AmqpHandlers(orderContract)({
       );
       return OkAsync();
     },
-    orderAudit: (message) => {
+    orderAudit: ({ input: message }) => {
       const { tenantId, id, occurredAt, payload } = message.payload;
       logger.info("recording an order change", {
         tenantId,
@@ -262,7 +262,7 @@ const orderNotifications = AmqpHandler(
   inject: { logger: Logger },
   sync:
     ({ logger }) =>
-    (message) => {
+    ({ input: message }) => {
       logger.info("order changed", { orderId: message.payload.id });
       return OkAsync(undefined);
     },
@@ -275,7 +275,7 @@ const orderAudit = AmqpHandler(
   inject: { logger: Logger },
   sync:
     ({ logger }) =>
-    (message) => {
+    ({ input: message }) => {
       logger.info("order audited", { orderId: message.payload.id });
       return OkAsync(undefined);
     },
@@ -325,10 +325,13 @@ A blank value is a `ConfigInvalid` — `startFailed` and exit `78` under
 Declared over the kernel's `RuntimePort` with service
 `Runtime<never, AmqpInfo>` — it resolves nothing. Its `start` calls
 `TypedAmqpWorker.create({ contract, handlers, middleware, urls: [url], … })`.
-`create` reports a connection failure on the **defect** channel with a
-`TechnicalError` cause; the starter recovers that into
+`create` reports an unreachable broker as a modeled `Err(ConnectionError)`;
+the starter names that tag and maps it to
 `Err(RuntimeStartFailed({ runtime: "amqp", cause }))`, which is what keeps an
-unreachable broker at exit `1` rather than `70`.
+unreachable broker at exit `1` rather than `70`. Everything else `create` can
+fail with — a topology the broker refuses, a bad option, a bug in a provider —
+stays a **defect** and exits `70`, which is the distinction the blanket
+`recoverDefect` that used to sit here could not make.
 
 `AmqpInfo.queues` is **derived** — every queue named by the contract's
 `consumers` and `rpcs`, sorted and de-duplicated — never configured, so

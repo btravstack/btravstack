@@ -898,6 +898,55 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   makes composing several slices into one router a starting point rather than a
   trap, and it is the one property marked do-not-break in the design.
 
+  **The LEAF is one shape, and oRPC's is the one** (issue #207, closed by
+  btravstack/temporal-contract#415 and btravstack/amqp-contract#671). A
+  developer writes the same function on all three transports: **one record
+  carrying everything the invocation has — the input included — and that input
+  repeated as a second positional parameter.**
+
+  ```ts
+  place:   ({ errors, context, input })      => …   // HTTP, oRPC's own shape
+  place:   ({ errors, context, input })      => …   // Temporal
+  process: ({ errors, context, raw, input }) => …   // AMQP
+  ```
+
+  **oRPC is the reference because it is the most widely used of the three**,
+  not because the shape is inherently better: a developer arriving here is more
+  likely to have seen it than either of the others, so it is what costs the
+  least to match. It is oRPC's shape down to the DUPLICATION — its
+  `ProcedureHandlerOptions` carries `input` and its handler still takes it
+  positionally — so `({ errors }, input)` remains the same call, and a caller
+  picks. The record is what the docs teach, because it is the spelling that
+  needs no `_` placeholder when a leaf wants only its input.
+
+  **`input` is the field name on all three**, not `args` or `message`. A local
+  synonym per transport would put the relearning back on the one field every
+  leaf touches.
+
+  **The convergence happened UPSTREAM, not in an adapter here.** A starter
+  could have reshaped the leaf at the call site it already owns, and did not:
+  the leaf's type is INFERRED from each contract library's own types, so an
+  adapter would re-derive rather than infer it, and it would leave the
+  starter's documentation and the library's documentation describing the same
+  function with two different signatures. Both libraries are this org's and
+  were in beta, so it cost a beta bump rather than a deprecation cycle.
+
+  The AMQP half was the one that was not merely cosmetic: it had no helpers
+  record at all, so a handler wanting "infrastructure comes back" imported and
+  constructed `RetryableError` by hand. Its record now carries `retryable` and
+  `nonRetryable` beside `errors`, so that triage reads like HTTP's — and `raw`,
+  the amqplib delivery, which used to be a third parameter no other transport
+  had.
+
+  **The naming asymmetry is a separate, smaller decision and is still NOT
+  made.** `AmqpHandler`/`AmqpHandlers` differ by one letter, and
+  `TemporalWorkflowActivities`/`TemporalActivities` give the piece the longer
+  name where HTTP gives the composer a different word entirely
+  (`OrpcController`/`OrpcRouter`). The recommendation on the table is HTTP's
+  rule — piece and composer get different words, never singular and plural —
+  but it renames public API on two packages with no obviously-right
+  replacement, so it is recorded here rather than guessed at.
+
   **All three starters share one shape**: mint a piece straight from a
   contract key — HTTP's `api.OrpcController(contract, path)`,
   `@btravstack/amqp-worker`'s `AmqpHandler(contract, key)`,
@@ -939,7 +988,7 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   contract until v2 goes stable; raise it deliberately, not on a bot bump.
 - **`temporal-contract` is pinned to an exact beta, for the same shape of
   reason.** `@temporal-contract/{client,contract,testing,worker}` sit at
-  `8.0.0-beta.5` because the `latest` dist-tag is the **7.x** line, which peers
+  `8.0.0-beta.7` because the `latest` dist-tag is the **7.x** line, which peers
   on `unthrown@^4` while this repo pins 5.2.0 — and 7.x ships neither the
   `test-rig` nor the `workflow-bundle` subpath the Temporal example's specs are
   built on. `testcontainers` is an **optional** peer of

@@ -42,17 +42,17 @@ const pinContract = defineContract({
 const echo = TemporalWorkflowActivities(
   pinContract,
   "runEcho",
-)({ inject: {}, value: { echo: (value) => OkAsync(value) } });
+)({ inject: {}, value: { echo: ({ input }) => OkAsync(input) } });
 const shout = TemporalWorkflowActivities(
   pinContract,
   "runShout",
-)({ inject: {}, value: { shout: (value) => OkAsync(value) } });
+)({ inject: {}, value: { shout: ({ input }) => OkAsync(input) } });
 // A contract-global activity is a top-level key of the record too, so the same
 // builder builds it — the name is imprecise here, and that is documented.
 const audit = TemporalWorkflowActivities(
   pinContract,
   "audit",
-)({ inject: {}, value: (value) => OkAsync(value) });
+)({ inject: {}, value: ({ input }) => OkAsync(input) });
 
 // Positive: the piece carries the port it was minted under, typed for its key.
 const _echoPort: WorkflowActivitiesPortOf<typeof pinContract, "runEcho"> = echo.port;
@@ -115,7 +115,7 @@ const otherContract = defineContract({
 const otherEcho = TemporalWorkflowActivities(
   otherContract,
   "runEcho",
-)({ inject: {}, value: { echo: (value) => OkAsync(value) } });
+)({ inject: {}, value: { echo: ({ input }) => OkAsync(input) } });
 // @ts-expect-error -- built for `otherContract`, whose `runEcho` activities take and answer a number
 TemporalActivities(pinContract)([otherEcho, shout, audit]);
 
@@ -123,8 +123,8 @@ TemporalActivities(pinContract)([otherEcho, shout, audit]);
 TemporalActivities(pinContract)({
   inject: {},
   value: {
-    runEcho: { echo: (value) => OkAsync(value) },
-    runShout: { shout: (value) => OkAsync(value) },
-    audit: (value) => OkAsync(value),
+    runEcho: { echo: ({ input }) => OkAsync(input) },
+    runShout: { shout: ({ input }) => OkAsync(input) },
+    audit: ({ input }) => OkAsync(input),
   },
 });

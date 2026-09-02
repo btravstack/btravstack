@@ -55,17 +55,17 @@ export const chargeOrder = TemporalWorkflowActivities(
 )({
   inject: { payments: PaymentService },
   sync: ({ payments }) => ({
-    authorizePayment: (args, { errors }) =>
+    authorizePayment: ({ errors, input }) =>
       payments
-        .authorize(args.orderId, args.amount)
+        .authorize(input.orderId, input.amount)
         .map((authorizationId) => ({ authorizationId }))
         .mapErrCases((matcher) =>
           matcher.with(P.tag("PaymentDeclined"), (error) =>
             errors.PaymentDeclined({ id: error.id }),
           ),
         ),
-    capturePayment: (args) => payments.capture(args.authorizationId),
-    refundPayment: (args) => payments.refund(args.authorizationId),
+    capturePayment: ({ input }) => payments.capture(input.authorizationId),
+    refundPayment: ({ input }) => payments.refund(input.authorizationId),
   }),
 });
 ```
@@ -183,7 +183,7 @@ same PostgreSQL the Temporal server uses.
 
 `tenantId` rides every workflow's arguments and every activity's input, because
 the **contract** declares it — `@btravstack/temporal-worker` knows nothing about
-tenants. An activity hands `args.tenantId` to the use case, which hands it to
+tenants. An activity hands `input.tenantId` to the use case, which hands it to
 the repository. On the input rather than a Temporal header because an input is
 persisted in the event history: a replay a year later reconstructs the tenant
 along with everything else.
