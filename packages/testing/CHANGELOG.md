@@ -1,5 +1,29 @@
 # @btravstack/testing
 
+## 0.11.0
+
+### Minor Changes
+
+- fe2c174: `BootDefaults` and `SubmittedUnit` are exported.
+
+  Both were already documented as part of this package's surface — one is
+  `bootFixture`'s parameter type, the other what `TestRuntime.submit()` returns —
+  and `index.ts` exported neither, so a consumer could use them and not name them.
+
+  Found by the doc-samples **signature gate** (issue #195), which now checks a
+  reference page's quoted declaration against the real export in both directions
+  rather than trusting a skip reason that said the surface "is compiled as the
+  package itself".
+
+### Patch Changes
+
+- Updated dependencies [f3cc6d5]
+- Updated dependencies [f3cc6d5]
+- Updated dependencies [51e67bd]
+  - @btravstack/config@0.11.0
+  - @btravstack/core@0.11.0
+  - @btravstack/di@0.11.0
+
 ## 0.10.0
 
 ### Patch Changes
