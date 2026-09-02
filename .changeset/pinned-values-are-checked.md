@@ -13,7 +13,9 @@ reported it. A `default` had the same hole — `present` returned `Ok(default)`
 without running the field's rule.
 
 `ConfigField` now carries an optional `check` — the field's rule over a value
-that is already a `T` — which `pinned` and `default` both run. The diagnostic is
+that is already a `T` — which `pinned` and `default` both run. `integer` and
+`port` carry one; a field without one (`string`, or any hand-written field)
+accepts whatever it is pinned. The diagnostic is
 identical whichever route the bad value came from:
 
 ```text

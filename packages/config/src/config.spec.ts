@@ -1,8 +1,8 @@
-import { Ok } from "unthrown";
+import { Ok, type Result } from "unthrown";
 import { describe, expect } from "vitest";
 
 import { it, settingsSchema } from "./__tests__/test-fixtures.js";
-import { Config, ConfigInvalid, type ConfigField } from "./config.js";
+import { Config, ConfigInvalid, type ConfigField, type ConfigFieldInvalid } from "./config.js";
 
 const validate = (env: Record<string, string | undefined>) =>
   settingsSchema["~standard"].validate(env);
@@ -183,29 +183,37 @@ describe("Config.pinned", () => {
     });
   });
 
-  it("refuses a pin the environment route would have refused, with the same message", () => {
-    // GIVEN the body-limit shape that used to fail in silence: `size > NaN` is
-    // `false`, so a pinned NaN turned the limit off and reported nothing
+  it("refuses a pinned NaN, the case that used to disable a limit in silence", () => {
+    // GIVEN the body-limit shape: `size > NaN` is `false`, so a pinned NaN
+    // turned the trust boundary off and reported nothing, ever
     const field = Config.integer("HTTP_BODY_LIMIT", { min: 0 });
 
-    // WHEN a composition root pins values the deployment route would refuse
-    const pinned = {
-      nan: Config.pinned(Number.NaN, field).parse(undefined),
-      negative: Config.pinned(-1, field).parse(undefined),
-      fromEnvironment: field.parse("-1"),
-    };
+    // WHEN a composition root pins it
+    const pinned = Config.pinned(Number.NaN, field).parse(undefined);
 
-    // THEN the pin is checked by the field's own rule, and the diagnostic is
-    // the one an operator would have got for the same value
+    // THEN the field's own rule refuses it, naming the value it was handed —
+    // `NaN`, not the `null` a JSON rendering would have printed
+    expect(pinned).toBeErrTagged("ConfigFieldInvalid", {
+      reason: "is not a whole number: NaN",
+    });
+  });
+
+  it("gives a pin the message the environment route would have given", () => {
+    // GIVEN one bounded field, and the same out-of-range value arriving by
+    // both routes — pinned by a composition root, set by a deployment
+    const field = Config.integer("HTTP_BODY_LIMIT", { min: 0 });
+    const reasonOf = (result: Result<number, ConfigFieldInvalid>): string =>
+      result.isErr() ? result.error.reason : "WRONGLY ACCEPTED";
+
+    // WHEN both are read
+    // THEN the diagnostic is the same one. A projection rather than a deep
+    // assertion on either result: the claim is that the two routes AGREE,
+    // which neither result carries on its own.
     expect({
-      nan: pinned.nan.isErr() ? pinned.nan.error.message : "WRONGLY ACCEPTED",
-      negative: pinned.negative.isErr() ? pinned.negative.error.message : "WRONGLY ACCEPTED",
-      fromEnvironment: pinned.fromEnvironment.isErr()
-        ? pinned.fromEnvironment.error.message
-        : "WRONGLY ACCEPTED",
+      pinned: reasonOf(Config.pinned(-1, field).parse(undefined)),
+      fromEnvironment: reasonOf(field.parse("-1")),
     }).toEqual({
-      nan: "is not a whole number: null",
-      negative: `must be between 0 and ${Number.MAX_SAFE_INTEGER}, got -1`,
+      pinned: `must be between 0 and ${Number.MAX_SAFE_INTEGER}, got -1`,
       fromEnvironment: `must be between 0 and ${Number.MAX_SAFE_INTEGER}, got -1`,
     });
   });

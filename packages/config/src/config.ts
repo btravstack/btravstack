@@ -144,8 +144,9 @@ const present = <T>(
 const wholeNumberIn =
   (min: number, max: number) =>
   (parsed: number): Result<number, ConfigFieldInvalid> => {
-    if (!Number.isInteger(parsed))
-      return invalid(`is not a whole number: ${JSON.stringify(parsed)}`);
+    // `String`, not `JSON.stringify`: the latter renders `NaN` and `Infinity`
+    // as `null`, and those two are exactly the pins this check exists to catch.
+    if (!Number.isInteger(parsed)) return invalid(`is not a whole number: ${String(parsed)}`);
     if (parsed < min || parsed > max)
       return invalid(`must be between ${min} and ${max}, got ${parsed}`);
     return Ok(parsed);
