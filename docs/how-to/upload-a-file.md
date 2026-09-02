@@ -6,7 +6,9 @@ description: Hand the client a presigned URL and let it write straight to the st
 <!-- doctest: group=order-temporal-worker -->
 <!-- doctest: prelude
 import { Port, Provider } from "@btravstack/di";
-import { Storage, StorageUnavailable } from "@btravstack/storage";
+import { Storage, StorageUnavailable, storage } from "@btravstack/storage";
+import { s3Storage } from "@btravstack/storage/s3";
+import { Module, type AnyPort } from "@btravstack/di";
 import { OkAsync, P, TaggedError, type AsyncResult } from "unthrown";
 
 type TenantId = string;
@@ -19,14 +21,8 @@ class UnsupportedType extends TaggedError("UnsupportedType")<{
 # Upload a file
 
 > **How-to.** Accept a file from a client without the bytes going through your
-> process, and read one back the same way.
-
-`@btravstack/storage` has no multipart parsing and no streaming request body,
-on purpose. An upload that transits the application is a request held open for
-the length of a transfer, a unit the drain has to wait on, and a copy of every
-byte in a process sized for JSON. The store already accepts writes directly;
-what it needs is your permission, and a presigned URL is that permission
-written down.
+> process, and read one back the same way. For the port's surface, see
+> [`@btravstack/storage`](/reference/storage).
 
 ## The three steps
 
@@ -34,9 +30,35 @@ written down.
 2. You decide whether it may, and hand back a URL good for exactly that write.
 3. The client `PUT`s straight at the store, then tells you it is done.
 
-Nothing in step 3 goes through your process.
+Nothing in step 3 goes through your process, which is the point: an upload that
+transits the application is a request held open for the length of a transfer, a
+unit the drain has to wait on, and a copy of every byte in a process sized for
+JSON. `@btravstack/storage` therefore has no multipart parsing and no streaming
+request body — the store already accepts writes directly, and a presigned URL
+is your permission for one, written down.
 
-## Minting the URL
+## 1. Compose the starter
+
+<!-- doctest: defer -->
+
+```ts
+export const AttachmentsApp = Module("AttachmentsApp")({
+  imports: [storage({ adapter: s3Storage() })],
+  provides: [attachments],
+  exports: [Attachments],
+});
+```
+
+`s3Storage()` binds `STORAGE_S3_ENDPOINT`, `STORAGE_S3_BUCKET`,
+`STORAGE_S3_ACCESS_KEY_ID` and `STORAGE_S3_SECRET_ACCESS_KEY` (plus an optional
+`STORAGE_S3_REGION`) through `Config`, and holds one client as a resource of
+the graph. It works against any S3-compatible store — AWS, RustFS, MinIO, R2,
+B2 — and the endpoint is **required rather than defaulted to AWS**, because a
+default pointing at Amazon would be a surprising bill rather than a
+convenience. The two `@aws-sdk` packages are **optional peers**, reached only
+through the `@btravstack/storage/s3` subpath.
+
+## 2. Minting the URL
 
 `presignedUpload` signs the key, the content type and the content length. All
 three are part of the signature, so the URL grants exactly one write, of

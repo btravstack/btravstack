@@ -67,6 +67,13 @@ export const documents = Provider(
 | `presignedUrl(key, { ttlMs })`                                | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`  |
 | `presignedUpload(key, { ttlMs, contentType, contentLength })` | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`  |
 
+`ttlMs` is **required on both presign arms** — there is no default, because a
+link's lifetime is a security decision and a framework guessing at it is a
+framework guessing at your threat model. The S3 adapter rounds **up** to whole
+seconds (`expiresIn` is seconds), so `1_500` is a two-second URL; AWS's own
+ceiling for SigV4 is seven days, and a longer one is refused by the store
+rather than by this package.
+
 **Bytes, not streams.** An object here is a document — an invoice, a
 confirmation, an export — and `Uint8Array` is what every adapter and every
 caller already has. Streaming would change every signature, adapter and test

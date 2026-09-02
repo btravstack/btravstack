@@ -56,6 +56,11 @@ was folded in here when the container was merged; nothing under
   fence's private prelude and makes it fully self-contained). A marker not
   directly above a ` ```ts ` fence fails the generate task. `@ts-expect-error`
   fences are the negative samples, exactly as in the `needs-gate` files. The
+  A page whose fences import a package its group's workspace does not have
+  needs that package as a **devDependency there**, ignored for it in
+  `knip.json` — `examples/order-api` carries `@btravstack/prisma` and
+  `@prisma/adapter-pg` for `how-to/talk-to-the-database.md` on exactly those
+  terms, the way `examples/order-temporal-worker` already carried `zod`. The
   one sample that cannot compile anywhere is `pinoSink`'s — no example
   workspace installs `pino` — held by `packages/observability/src/pino.spec.ts`
   and skipped with that reason.

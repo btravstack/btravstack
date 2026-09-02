@@ -46,13 +46,13 @@ type ConfigField<T> = {
 };
 ```
 
-| Constructor                          | Value                                                                                                                 | Options                                            |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `Config.string(variable, options?)`  | a non-empty string                                                                                                    | `{ default?: string }`                             |
-| `Config.integer(variable, options?)` | a whole number, bounds inclusive                                                                                      | `{ default?: number; min?: number; max?: number }` |
-| `Config.boolean(variable, options?)` | a flag: `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, case-insensitive                                           | `{ default?: boolean }`                            |
-| `Config.port(variable, options?)`    | a whole number in `0..65535`, `0` (an ephemeral bind) included                                                        | `{ default?: number }`                             |
-| `Config.pinned(value, field)`        | `field` unless `value` is given, then a field answering `value` and reading nothing — checked by the field's own rule | —                                                  |
+| Constructor                          | Value                                                                                                                 | Options                                                                                                                                    |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Config.string(variable, options?)`  | a non-empty string                                                                                                    | `{ default?: string }`                                                                                                                     |
+| `Config.integer(variable, options?)` | a whole number, bounds inclusive                                                                                      | `{ default?: number; min?: number; max?: number }` — unset bounds mean the safe-integer range, so an unbounded field still refuses `1e400` |
+| `Config.boolean(variable, options?)` | a flag: `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, case-insensitive                                           | `{ default?: boolean }`                                                                                                                    |
+| `Config.port(variable, options?)`    | a whole number in `0..65535`, `0` (an ephemeral bind) included                                                        | `{ default?: number }`                                                                                                                     |
+| `Config.pinned(value, field)`        | `field` unless `value` is given, then a field answering `value` and reading nothing — checked by the field's own rule | —                                                                                                                                          |
 
 Semantics shared by every field, in one place:
 
