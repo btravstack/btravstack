@@ -37,77 +37,27 @@ type UnitRecord = {
 the one that joins a line logged here to a trace that started elsewhere.
 `tenantId` is plain data the runtime may stamp; **no shipped starter sets it
 today**, and none has a tenancy concept — see
-[Multi-tenancy is the application's, not the framework's](#multi-tenancy-is-the-application-s-not-the-framework-s). `signal` is always there: the kernel mints one
+[The tenant is your application's](#the-tenant-is-your-application-s-and-no-starter-sets-it). `signal` is always there: the kernel mints one
 `AbortController` per unit, hands its signal to the work callback **and** puts
 that same object on the record, so both routes see one abort — at the drain
 deadline, or at once on a path that skips the drain.
 
-## Multi-tenancy is the application's, not the framework's
+## The tenant is your application's, and no starter sets it
 
-`UnitRecord` has a `tenantId` field and **no shipped starter sets it.** That is
-deliberate, and it is worth saying why, because the field's presence invites
-the opposite conclusion.
+`UnitRecord` has a `tenantId` field and **no shipped starter fills it**: what
+establishes a tenant — a header, a subdomain, an authenticated subject, a field
+on a message — is a decision about a specific system, and so is what happens
+when it is missing. The field is there for a hand-rolled runtime whose author
+has answered both.
 
-A tenant is _context_, and context is the application's to own. What
-establishes it — a header, a subdomain, an authenticated subject, a field on
-the message — is a decision about a specific system, and so is what happens
-when it is missing. A starter that read a tenant off a request would be
-deciding both on the application's behalf, and it would be the beginning of a
-framework tenancy model that has to answer many more questions than that one.
-The `tenantId` field exists for a **hand-rolled** runtime whose author has
-already answered them.
+So the practical rule for reading one: **do not**. Take it as a parameter the
+way `repository.find(tenantId, id)` does, and a use case that forgot it will
+not compile. `currentUnit()?.tenantId` is for the adapter that has no parameter
+to receive it through — an exporter tagging a span, a database adapter choosing
+a schema — and only once a runtime you wrote put it there.
 
-The example application is multi-tenant, and it needs none of that. It makes
-the tenant part of its **own** vocabulary — the ports name it, so it is an
-argument a caller cannot forget and a reader can see:
-
-**`examples/order-application/src/ports.ts`**
-
-<!-- doctest: skip — quotes examples/order-application/src/ports.ts, which its own workspace compiles -->
-
-```ts
-export class OrderRepository extends Port("OrderRepository")<{
-  readonly save: (
-    tenantId: TenantId,
-    order: Order,
-  ) => AsyncResult<Order, DuplicateOrder>;
-  readonly find: (
-    tenantId: TenantId,
-    id: string,
-  ) => AsyncResult<Order, OrderNotFound>;
-  readonly remove: (
-    tenantId: TenantId,
-    id: string,
-  ) => AsyncResult<void, OrderNotFound>;
-}> {}
-```
-
-`TenantId` is a branded `string` the domain owns, and the ids beside it are
-not: a pair need differ in one position to become unswappable, and
-`find(id, tenantId)` used to compile and query the wrong tenant. Each
-transport claims the brand once, where a validated value arrives — the
-authenticator, an activity's input, the relay's own configuration.
-
-Each transport then supplies it from its own contract, which is where a client
-already has to say what it wants:
-
-| Deployment              | Where the tenant comes from                                                                             |
-| ----------------------- | ------------------------------------------------------------------------------------------------------- |
-| `order-api`             | an input field on a public procedure (`Tenanted`), the authenticated caller's principal on a marked one |
-| `order-amqp-worker`     | a field on the broadcast envelope                                                                       |
-| `order-temporal-worker` | a field on every workflow and activity input                                                            |
-
-Two consequences are the point rather than the price. A use case that forgot
-its tenant **does not compile**, where an ambient one would have failed at
-runtime or, worse, silently read the wrong tenant's rows. And a test needs no
-machinery at all: `repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001")` says what it is scoped to
-at the call, with no fixture that "enters" a tenant and no store to set.
-
-The relay in `order-amqp-worker` is the case that shows why ambient would not
-have been enough anyway: it sweeps on its own clock, with no request, delivery
-or activity behind it, so there is no unit to read a tenant from. Which tenants
-it serves is deployment configuration (`OUTBOX_TENANTS`) — a question ambient
-context cannot answer.
+The reasoning, and what a framework tenancy model would have had to answer, is
+[Ambient data, injected capabilities](/explanation/ambient-vs-context#multi-tenancy-is-the-application-s-not-the-framework-s).
 
 ## Who may read it
 

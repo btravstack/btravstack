@@ -75,8 +75,8 @@ to start with
 ```
 
 **So both are `0` — bind an ephemeral port, and read back which one you got.**
-`Config.port`'s floor is `0` precisely so this stays expressible, and since
-issue #117 the `serving` event says what was bound:
+`Config.port`'s floor is `0` precisely so this stays expressible, and the
+`serving` event says what was bound:
 
 ```json
 {
@@ -92,10 +92,8 @@ Pinning `3000` and `9000`/`9001`/`9002` also broke the moment a second
 checkouts collide on all four ports. With the bound port on the event there is
 nothing left to collide.
 
-which is the kernel reporting an `EADDRINUSE` correctly rather than anything
-going wrong. In production each pod has the port to itself, so `9000` is the
-right default and the local loop is what overrides it — here `9000`, `9001`
-and `9002`.
+In production each pod has the port to itself, so `9000` is the right default,
+and the local loop is what overrides it.
 
 **`.env.dev`, generated rather than committed.** `pnpm dev` first runs
 `internal/test-infra`'s `dev:env`, which starts the three shared containers —

@@ -44,10 +44,7 @@ The message ends on the missing ports — `Cfg` here; a union when several are
 unmet. This is the same mechanism as declaration-time
 [`NeedsGate`](/reference/di/modules) and `@btravstack/core`'s
 [`start`](/reference/core/start) gate, one shape everywhere a composing
-application is refused. (It replaced a conditional rest tuple whose failure
-was `error TS2554: Expected 3 arguments, but got 1.` and nothing else — this
-page used to teach hand-spelling the phantom arguments to make the port
-print, a technique the marker made unnecessary.)
+application is refused.
 
 | Entry point        | Excludes from `Needs` before checking |
 | ------------------ | ------------------------------------- |
