@@ -10,18 +10,46 @@ import { TaggedError } from "unthrown";
  * that shape would name a persistence library in the application's vocabulary,
  * which is the same mistake as a port naming a transaction.
  *
- * The two cursors are `null` exactly when there is nothing on that side of this
- * page — which is NOT what the underlying `startCursor`/`endCursor` mean (a last
- * page has a non-null `endCursor`), so the adapter folds the flags in and a
- * caller gets one field to follow per direction.
+ * **A flag and its cursor are one fact, spelled once.** `hasNextPage: true`
+ * carries the `nextCursor` that continues the listing; `hasNextPage: false` has
+ * no `nextCursor` field at all. So "there is more, and nothing to follow it
+ * with" — and its twin, a cursor nobody may use — are unrepresentable rather
+ * than merely unexpected, and a reader that checks the flag has the cursor in
+ * hand, with no null to widen it. `page` is the one constructor, so no caller
+ * spells the pairing itself.
  */
-export type Page<T> = {
-  readonly items: readonly T[];
-  readonly previousCursor: string | null;
-  readonly nextCursor: string | null;
-  readonly hasPreviousPage: boolean;
-  readonly hasNextPage: boolean;
-};
+export type Page<T> = { readonly items: readonly T[] } & (
+  | { readonly hasPreviousPage: true; readonly previousCursor: string }
+  | { readonly hasPreviousPage: false; readonly previousCursor?: never }
+) &
+  (
+    | { readonly hasNextPage: true; readonly nextCursor: string }
+    | { readonly hasNextPage: false; readonly nextCursor?: never }
+  );
+
+/**
+ * A page from its items and the cursor on each side, `null` where there is
+ * nothing to follow.
+ *
+ * The flags are DERIVED rather than given: a cursor is what a caller needs to
+ * ask for the page on that side, so a side with no cursor is a side it cannot
+ * reach — which is what the flags say now. An adapter whose library reports a
+ * page that way round (`@unthrown/prisma` answers `hasPreviousPage: true` with
+ * a null `startCursor` for an empty page past the end) therefore reports the
+ * reachable answer.
+ */
+export const page = <T>(
+  items: readonly T[],
+  cursors: { readonly previous: string | null; readonly next: string | null },
+): Page<T> => ({
+  items,
+  ...(cursors.previous === null
+    ? { hasPreviousPage: false as const }
+    : { hasPreviousPage: true as const, previousCursor: cursors.previous }),
+  ...(cursors.next === null
+    ? { hasNextPage: false as const }
+    : { hasNextPage: true as const, nextCursor: cursors.next }),
+});
 
 /**
  * What a caller asks for: a size, and at most one cursor.

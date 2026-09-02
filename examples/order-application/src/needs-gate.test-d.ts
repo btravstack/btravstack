@@ -31,6 +31,7 @@ import {
   FindOrder,
   OrderApplicationModule,
   OrderRepository,
+  page,
   PlaceOrder,
 } from "./index.js";
 import { findOrderProvider, placeOrderProvider } from "./use-cases.js";
@@ -40,14 +41,7 @@ const orderRepository = Provider(OrderRepository)({
   value: {
     save: (_tenantId: TenantId, order: Order) => ErrAsync(new DuplicateOrder({ id: order.id })),
     find: (_tenantId: TenantId, id: string) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
-    list: () =>
-      OkAsync({
-        items: [],
-        previousCursor: null,
-        nextCursor: null,
-        hasPreviousPage: false,
-        hasNextPage: false,
-      }),
+    list: () => OkAsync(page([], { previous: null, next: null })),
     remove: (_tenantId: TenantId, id: string) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
   },
 });

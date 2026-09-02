@@ -418,19 +418,47 @@ describe("order-api", () => {
     const second = await client.orders.list({ limit: 1 }).flatMap((page) =>
       client.orders.list({
         limit: 1,
-        ...(page.nextCursor === null ? {} : { after: page.nextCursor }),
+        ...(page.hasNextPage ? { after: page.nextCursor } : {}),
       }),
     );
 
     // THEN the cursor made the round trip opaque: the client passed back a
-    // string it never read, and the listing closed with a null
+    // string it never read, and the listing closed with no cursor at all —
+    // `nextCursor` is absent on the wire, not null
     expect(second).toBeOkWith({
       items: [{ id: "0199a1e0-0000-7000-8000-00000000000b", quantity: 2 }],
       previousCursor: "page-2-start",
-      nextCursor: null,
       hasPreviousPage: true,
       hasNextPage: false,
     });
+  });
+
+  it("leaves the closed side's cursor off the wire entirely, rather than sending a null", async ({
+    tenant,
+    serve,
+    originFor,
+    stubbed,
+  }) => {
+    // GIVEN the stub root on the raw transport surface, where the typed client's
+    // shape is not what decides the payload
+    const origin = await originFor(serve(stubbed));
+
+    // WHEN the last page is read as raw JSON
+    const response = await request(origin)
+      .post("/rpc/orders/list")
+      .set("authorization", `Bearer ${tenant}:u-1`)
+      .set("content-type", "application/json")
+      .send({ json: { limit: 1, after: "page-1-end" } });
+
+    // THEN `hasNextPage: false` arrives with no `nextCursor` KEY at all — the
+    // arm of the output schema that carries the cursor is the one that claims
+    // the page, so a null nobody may follow cannot be sent
+    expect(Object.keys(response.body.json as object).sort()).toEqual([
+      "hasNextPage",
+      "hasPreviousPage",
+      "items",
+      "previousCursor",
+    ]);
   });
 
   it("pages backward over the wire, following previousCursor", async ({
@@ -447,13 +475,13 @@ describe("order-api", () => {
       .flatMap((page) =>
         client.orders.list({
           limit: 1,
-          ...(page.nextCursor === null ? {} : { after: page.nextCursor }),
+          ...(page.hasNextPage ? { after: page.nextCursor } : {}),
         }),
       )
       .flatMap((page) =>
         client.orders.list({
           limit: 1,
-          ...(page.previousCursor === null ? {} : { before: page.previousCursor }),
+          ...(page.hasPreviousPage ? { before: page.previousCursor } : {}),
         }),
       );
 
@@ -462,9 +490,8 @@ describe("order-api", () => {
     // only one of them may be set
     expect(back).toBeOkWith({
       items: [{ id: "0199a1e0-0000-7000-8000-00000000000a", quantity: 1 }],
-      previousCursor: null,
-      nextCursor: "page-1-end",
       hasPreviousPage: false,
+      nextCursor: "page-1-end",
       hasNextPage: true,
     });
   });

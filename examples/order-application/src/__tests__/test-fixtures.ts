@@ -23,6 +23,7 @@ import {
   OrderApplicationModule,
   MalformedCursor,
   OrderRepository,
+  page,
   PlaceOrder,
   type OrderQuery,
 } from "../index.js";
@@ -85,15 +86,12 @@ const stubRepository = Provider(OrderRepository)({
               : at(after) + 1;
         const to = before !== undefined ? at(before) : from + limit;
         const items = scoped.slice(from, to);
-        const hasPreviousPage = from > 0;
-        const hasNextPage = to < scoped.length;
-        return OkAsync({
-          items,
-          previousCursor: hasPreviousPage ? (items[0]?.id ?? null) : null,
-          nextCursor: hasNextPage ? (items.at(-1)?.id ?? null) : null,
-          hasPreviousPage,
-          hasNextPage,
-        });
+        return OkAsync(
+          page(items, {
+            previous: from > 0 ? (items[0]?.id ?? null) : null,
+            next: to < scoped.length ? (items.at(-1)?.id ?? null) : null,
+          }),
+        );
       },
       remove: (tenantId: TenantId, id: string) =>
         rows.delete(key(tenantId, id))
