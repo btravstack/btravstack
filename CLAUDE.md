@@ -541,8 +541,11 @@ unit open for the process lifetime.
 ## Health checks: a module declares one, the kernel collects them
 
 A starter that owns a dependency declares a health check; the kernel folds every
-one into `GET /healthz`. `@btravstack/cache`, `@btravstack/storage` and
-`@btravstack/prisma` each contribute one, named for the component; a starter an
+one into `GET /healthz`. `@btravstack/cache`, `@btravstack/storage`,
+`@btravstack/prisma` and `@btravstack/mailer` each contribute one, named for
+the component — the mailer's on its SMTP **adapter** rather than on the
+composition, since the recording adapter sends nowhere and would report healthy
+for free; a starter an
 application never composed contributes nothing, and a set port with no
 contributors is empty rather than missing.
 

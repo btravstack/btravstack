@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { WorkerMiddleware } from "@amqp-contract/worker";
 import {
   observe,
+  traceIdOfTraceparent,
   type Operation,
   type RuntimeHost,
   type Settle,
@@ -70,23 +71,12 @@ const metaFor = (raw: {
   };
 }): UnitMeta => {
   const id = randomUUID();
+  // `traceparent` outranks `messageId`: it is the one value minted to span
+  // processes.
   const parent = raw.properties.headers?.["traceparent"];
   const fromParent = typeof parent === "string" ? traceIdOfTraceparent(parent) : undefined;
   const inbound = [raw.properties.messageId, raw.properties.correlationId]
     .map((value) => value?.trim() ?? "")
     .find((value) => value !== "");
   return { kind: "delivery", id, traceId: fromParent ?? inbound ?? id };
-};
-
-/**
- * The trace id inside a W3C `traceparent` header, which outranks `messageId`
- * because it is the one value minted to span processes. Only the trace-id field
- * is taken: `traceId` is a correlation id, not a span context, so the parent's
- * span id is dropped rather than half-carried. The all-zero id is the spec's own
- * "invalid" and is refused like a malformed header.
- */
-const traceIdOfTraceparent = (header: string): string | undefined => {
-  const match = /^[\da-f]{2}-([\da-f]{32})-[\da-f]{16}-[\da-f]{2}$/.exec(header.trim());
-  const traceId = match?.[1];
-  return traceId === undefined || /^0{32}$/.test(traceId) ? undefined : traceId;
 };

@@ -2,7 +2,7 @@ import { fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { releasedBy } from "./runtime.js";
+import { releasedBy, traceIdOfTraceparent } from "./runtime.js";
 
 describe("releasedBy", () => {
   it("waits for the work when the work settles first", async () => {
@@ -62,5 +62,48 @@ describe("releasedBy", () => {
 
     // THEN it releases without waiting on a listener that would never fire
     expect({ ok: result.isOk(), finished }).toEqual({ ok: true, finished: false });
+  });
+});
+
+describe("traceIdOfTraceparent", () => {
+  it("takes the trace-id field and drops the parent's span id", () => {
+    // GIVEN a well-formed W3C traceparent
+    const header = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+
+    // WHEN it is read
+    const traceId = traceIdOfTraceparent(header);
+
+    // THEN what comes back is the trace id alone: a correlation id, never a
+    // span context half-carried
+    expect(traceId).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
+  });
+
+  it("refuses a header that is malformed, all-zero, or of another shape", () => {
+    // GIVEN the three ways a header fails to name a trace
+    const refused = {
+      malformed: traceIdOfTraceparent("not-a-traceparent"),
+      allZero: traceIdOfTraceparent("00-00000000000000000000000000000000-00f067aa0ba902b7-01"),
+      truncated: traceIdOfTraceparent("00-4bf92f3577b34da6-00f067aa0ba902b7-01"),
+    };
+
+    // WHEN they are read — the all-zero id is the specification's own
+    // "invalid", so it is refused like a header that never parsed
+    // THEN each answers undefined, leaving the runtime's own fallback to run
+    expect(refused).toEqual({
+      malformed: undefined,
+      allZero: undefined,
+      truncated: undefined,
+    });
+  });
+
+  it("tolerates the surrounding whitespace a header may arrive with", () => {
+    // GIVEN a valid header padded the way a proxy may forward it
+    const padded = "  00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\t";
+
+    // WHEN it is read
+    const traceId = traceIdOfTraceparent(padded);
+
+    // THEN the padding is not what makes a trace unreadable
+    expect(traceId).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
   });
 });

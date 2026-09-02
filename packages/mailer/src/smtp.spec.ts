@@ -1,7 +1,12 @@
+import { Env } from "@btravstack/config";
+import { HealthChecks, runHealthChecks } from "@btravstack/core";
+import { Module, Provider } from "@btravstack/di";
 import { describe, expect } from "vitest";
 import { vi } from "vitest";
+import { inject } from "vitest";
 
 import { aMail, it } from "./__tests__/test-fixtures.js";
+import { smtpMailer } from "./smtp.js";
 
 describe("smtpMailer", () => {
   it("delivers the message to the server", async ({ smtp, recipient, delivered }) => {
@@ -84,5 +89,44 @@ describe("smtpMailer", () => {
         reason: expect.any(String),
       }),
     );
+  });
+
+  it("contributes a health check the kernel folds into /healthz", async () => {
+    // GIVEN the adapter composed over the shared SMTP server
+    const env = { SMTP_URL: inject("__TESTCONTAINERS_SMTP_URL__") };
+    const root = Module("HealthFixture")({
+      imports: [smtpMailer()],
+      provides: [Provider(Env)({ inject: {}, value: env })],
+      exports: [HealthChecks],
+    });
+
+    // WHEN the contributed check is run
+    const report = await Module.scoped(root, (ctx) => runHealthChecks(ctx.get(HealthChecks)));
+
+    // THEN the relay answered `verify()` — a connection and an authentication,
+    // which is the half of a send provable without sending
+    expect(report).toBeOkWith({
+      status: "healthy",
+      components: [{ name: "mailer", status: "healthy" }],
+    });
+  });
+
+  it("reports the mailer unhealthy when the relay will not answer", async () => {
+    // GIVEN the adapter pointed at a port nothing is listening on
+    const root = Module("UnhealthyFixture")({
+      imports: [smtpMailer()],
+      provides: [Provider(Env)({ inject: {}, value: { SMTP_URL: "smtp://127.0.0.1:1" } })],
+      exports: [HealthChecks],
+    });
+
+    // WHEN the contributed check is run
+    const report = await Module.scoped(root, (ctx) => runHealthChecks(ctx.get(HealthChecks)));
+
+    // THEN the component is named and unhealthy, carrying the transport's own
+    // words — and the application with it, since `/healthz` is the whole
+    expect(report).toBeOkWith({
+      status: "unhealthy",
+      components: [{ name: "mailer", status: "unhealthy", reason: expect.any(String) }],
+    });
   });
 });

@@ -9,6 +9,7 @@ import {
   RuntimeStartFailed,
   noObserver,
   observe,
+  traceIdOfTraceparent,
   type Operation,
   type Runtime,
   type RuntimeHost,
@@ -407,18 +408,6 @@ const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
   response.closed
     ? OkAsync()
     : fromSafePromise(new Promise<void>((done) => response.once("close", () => done())));
-
-/**
- * The trace id inside a W3C `traceparent` header, and nothing else of it: the
- * parent's span id is dropped, because `UnitMeta.traceId` is a correlation id
- * rather than a span context. An all-zero trace id is the spec's own "invalid"
- * value and is refused like a malformed header.
- */
-const traceIdOfTraceparent = (header: string): string | undefined => {
-  const match = /^[\da-f]{2}-([\da-f]{32})-[\da-f]{16}-[\da-f]{2}$/.exec(header.trim());
-  const traceId = match?.[1];
-  return traceId === undefined || /^0{32}$/.test(traceId) ? undefined : traceId;
-};
 
 /**
  * `id` is minted fresh per request and never taken from the route, since

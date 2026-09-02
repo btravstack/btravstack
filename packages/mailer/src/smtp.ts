@@ -1,4 +1,5 @@
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
+import { HealthCheckFailed, HealthChecks } from "@btravstack/core";
 import type { Scope } from "@btravstack/di";
 import { Module, Port, Provider } from "@btravstack/di";
 import { createTransport, type Transporter } from "nodemailer";
@@ -76,7 +77,7 @@ export const smtpMailerBackend = (transport: Transporter): MailerService => ({
  * it, and `MailerBackend` over it. `nodemailer` is an **optional** peer reached
  * only through this subpath.
  */
-export const smtpMailer = (): Module<MailerBackend, ConfigInvalid, Env | Scope> =>
+export const smtpMailer = (): Module<MailerBackend | HealthChecks, ConfigInvalid, Env | Scope> =>
   Module("SmtpMailer")({
     needs: [Env],
     provides: [
@@ -92,6 +93,27 @@ export const smtpMailer = (): Module<MailerBackend, ConfigInvalid, Env | Scope> 
         inject: { transport: SmtpTransport },
         sync: ({ transport }) => smtpMailerBackend(transport),
       }),
+      // The health check lives on the ADAPTER, not on `mailer({ adapter })`,
+      // because it is the only thing here with a server to reach: the
+      // recording adapter sends nowhere and would answer healthy for free,
+      // which is a probe that reports nothing. `verify()` opens a connection
+      // and authenticates, which is the half of a send that can be proved
+      // without sending — a message's fate after acceptance belongs to the
+      // provider's webhooks, and no probe here can speak for it.
+      Provider.member(HealthChecks)({
+        inject: { transport: SmtpTransport },
+        sync: ({ transport }) => ({
+          name: "mailer",
+          check: () =>
+            fromPromise(
+              transport.verify(),
+              (cause: unknown) =>
+                new HealthCheckFailed({
+                  reason: cause instanceof Error ? cause.message : "the relay did not answer",
+                }),
+            ).map((): void => undefined),
+        }),
+      }),
     ],
-    exports: [MailerBackend],
+    exports: [MailerBackend, HealthChecks],
   });

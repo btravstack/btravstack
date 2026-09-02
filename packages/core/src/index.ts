@@ -28,7 +28,7 @@ export type {
 } from "./observability.js";
 export type { Phase } from "./phase.js";
 export { runMain } from "./run-main.js";
-export { RuntimePort, RuntimeStartFailed, releasedBy } from "./runtime.js";
+export { RuntimePort, RuntimeStartFailed, releasedBy, traceIdOfTraceparent } from "./runtime.js";
 export type { RunUnit, Runtime, RuntimeHost, RuntimeInfoOf, Serving } from "./runtime.js";
 export { start } from "./start.js";
 export type { ExitReport, RunningApp, StartGate, StartOptions, TeardownError } from "./start.js";

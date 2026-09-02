@@ -121,7 +121,10 @@ which is this list's one detailed home.
 
 ## What it decides, and what it does not
 
-**It decides** that a send is _accepted_, not delivered; that a failure is a
+**It decides** that the SMTP adapter contributes a health check — `verify()`,
+a connection and an authentication, folded into the kernel's `/healthz` with
+nothing wired, while the recording adapter contributes none because it would
+report healthy for free. It decides that a send is _accepted_, not delivered; that a failure is a
 modeled `MailNotSent` carrying the envelope and never the body; and that
 sends are reported unless you say otherwise.
 
@@ -129,5 +132,10 @@ sends are reported unless you say otherwise.
 transport, and the example answers a `RetryableError` so the broker's budget
 owns it. `Mail` carries the whole envelope — `cc`, `bcc`, `attachments` and
 `headers` beside `to`, `subject` and the two bodies — but there is no
-templating, no bulk send and no address validation; the reasons are in
-[`CLAUDE.md`](./CLAUDE.md).
+templating, no bulk send and no address validation — each reason is on
+[the reference page](https://btravstack.github.io/btravstack/reference/mailer),
+and the same reasoning is in [`CLAUDE.md`](./CLAUDE.md) for contributors.
+
+## License
+
+MIT

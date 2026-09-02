@@ -127,5 +127,10 @@ says so instead of minting a URL that would fail only in production.
 
 **It does not decide** what your keys look like, whether a failed write should
 fail your request, or how long a link should live. There is no streaming, no
-no listing and no bucket management; the reasons are in
-[`CLAUDE.md`](./CLAUDE.md).
+listing and no bucket management — each reason is on
+[the reference page](https://btravstack.github.io/btravstack/reference/storage),
+and the same reasoning is in [`CLAUDE.md`](./CLAUDE.md) for contributors.
+
+## License
+
+MIT

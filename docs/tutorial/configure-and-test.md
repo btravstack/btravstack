@@ -180,7 +180,11 @@ const it = test.extend({
 describe("the greeting service", () => {
   it("serves the configured greeting", async ({ boot }) => {
     // GIVEN the real application, with this test's own environment
-    const app = boot(App, { env: { GREETING: "Ahoy" } });
+    // `env` REPLACES the fixture's rather than merging, so `PORT`/`HOST`
+    // are restated here.
+    const app = boot(App, {
+      env: { PORT: "0", HOST: "127.0.0.1", GREETING: "Ahoy" },
+    });
     const info = (await app.runtimeInfo()).get();
     assert.ok(info !== undefined, "the runtime published no Serving.info");
 
@@ -204,6 +208,14 @@ Run it:
 ```sh
 npx vitest run
 ```
+
+**A call's `env` REPLACES the fixture's, it does not merge with it.** The
+options are spread — the fixture's `defaults` first, then the call's — so
+`{ env: { GREETING: "Ahoy" } }` is the whole environment this application sees,
+`PORT` and `HOST` included. That is why the call above cannot simply add
+`GREETING` on top: spell out every variable the test needs, or leave `env` off
+the call and let the fixture's stand. It is per option, so a call may override
+`env` and still take the fixture's `probes` and `preDrainDelayMs`.
 
 Two things to notice. The test booted the **whole** application — the graph,
 the config validation, the HTTP listener — not a handler in isolation; and

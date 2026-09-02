@@ -1,13 +1,7 @@
-import { Module, type ScopedOptions } from "@btravstack/di";
-// Side-effect import: brings `@unthrown/vitest`'s `toBeOkWith`/`toBeErrTagged`
-// module augmentation of vitest's `Assertion` into this compilation — `tsc`
-// only sees an ambient augmentation once some file in the program imports
-// the module that declares it. Runtime registration is separate (this
-// package's `vitest.config.ts` `setupFiles`); this import exists purely for
-// `tsc --noEmit`, mirroring `@btravstack/di`'s own `provider.spec.ts`.
-import "@unthrown/vitest";
-import { expect, test } from "vitest";
+import { Module } from "@btravstack/di";
+import { describe, expect } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import {
   GetOrder,
   InMemoryPersistenceModule,
@@ -15,42 +9,57 @@ import {
   makePersistenceModule,
 } from "./index.js";
 
-test("the production graph resolves a use case through its ports, and releases what it acquired", async () => {
-  const teardownErrors: (readonly [string, unknown])[] = [];
-  const options: ScopedOptions = {
-    onTeardownError: (portId, cause) => void teardownErrors.push([portId, cause]),
-  };
+describe("the hexagonal composition", () => {
+  it("resolves a use case through its ports and releases what it acquired", async ({
+    teardown,
+  }) => {
+    // GIVEN the production graph — the application over the pooled adapter
+    const app = makeAppModule(makePersistenceModule());
 
-  const outcome = await Module.scoped(
-    makeAppModule(makePersistenceModule()),
-    (ctx) => ctx.get(GetOrder).execute("0199a1e0-0000-7000-8000-000000000001"),
-    options,
-  );
+    // WHEN a use case is resolved and run inside a scope
+    const outcome = await Module.scoped(
+      app,
+      (ctx) => ctx.get(GetOrder).execute("0199a1e0-0000-7000-8000-000000000001"),
+      teardown.options,
+    );
 
-  expect(outcome).toBeOkWith({ id: "0199a1e0-0000-7000-8000-000000000001", total: 4_200 });
-  // No teardown failures — proof the pool's `release` actually ran cleanly,
-  // not just that the graph type-checked.
-  expect(teardownErrors).toEqual([]);
-});
+    // THEN the order came back through the ports AND the pool's `release` ran
+    // cleanly — the second half is what proves the graph was torn down rather
+    // than merely type-checked
+    expect({ outcome, teardownErrors: teardown.errors() }).toEqual({
+      outcome: expect.objectContaining({
+        value: { id: "0199a1e0-0000-7000-8000-000000000001", total: 4_200 },
+      }),
+      teardownErrors: [],
+    });
+  });
 
-test("an id the pool does not carry comes back as a modeled error, not an exception", async () => {
-  const outcome = await Module.scoped(makeAppModule(makePersistenceModule()), (ctx) =>
-    ctx.get(GetOrder).execute("does-not-exist"),
-  );
+  it("answers an unknown id as a modeled error, not an exception", async ({ teardown }) => {
+    // GIVEN the same production graph
+    const app = makeAppModule(makePersistenceModule());
 
-  expect(outcome).toBeErrTagged("OrderNotFound", { id: "does-not-exist" });
-});
+    // WHEN a use case is asked for an id the pool does not carry
+    const outcome = await Module.scoped(
+      app,
+      (ctx) => ctx.get(GetOrder).execute("does-not-exist"),
+      teardown.options,
+    );
 
-test("the same application module builds against an in-memory adapter, with no Scope required", async () => {
-  // `Module.build` — not `.scoped` — is the point: `InMemoryPersistenceModule`
-  // has no resourceful provider, so `makeAppModule`'s `Needs` collapses to
-  // `never` for this instantiation, and `Module.build`'s compile-time gate
-  // accepts it with no extra argument. Swapping in `makePersistenceModule()`
-  // here is a compile error, not a runtime surprise — see
-  // `src/index.test-d.ts`.
-  const built = await Module.build(makeAppModule(InMemoryPersistenceModule));
+    // THEN the miss is a value on the error channel, with the id it was asked for
+    expect(outcome).toBeErrTagged("OrderNotFound", { id: "does-not-exist" });
+  });
 
-  expect(built).toBeOk();
-  const order = built.isOk() ? await built.value.get(GetOrder).execute("anything") : undefined;
-  expect(order).toBeOkWith({ id: "anything", total: 99 });
+  it("builds the same application against the in-memory adapter, with no Scope", async () => {
+    // GIVEN the application over the adapter that acquires nothing —
+    // `makeAppModule`'s `Needs` collapses to `never` for this instantiation,
+    // which is why `Module.build` takes it with no scope argument (swapping in
+    // `makePersistenceModule()` here is a compile error: `index.test-d.ts`)
+    const app = makeAppModule(InMemoryPersistenceModule);
+
+    // WHEN it is built and the use case run
+    const order = await Module.build(app).flatMap((ctx) => ctx.get(GetOrder).execute("anything"));
+
+    // THEN the port answered from memory, and the swap cost the application nothing
+    expect(order).toBeOkWith({ id: "anything", total: 99 });
+  });
 });

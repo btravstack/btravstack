@@ -100,7 +100,21 @@ The two rules this half exists to state, before the detail:
   `defineHttp` binds and reads the registry off.
   Both type arguments are explicit rather than inferred from `sync`: inference
   through a returned function's `AsyncResult` is exactly where a principal
-  silently widens to `unknown`. The **scheme name is not stated here** — it is
+  silently widens to `unknown`.
+
+  **The empty parens are TypeScript's, not a style choice, and the alternative
+  was measured.** Type arguments are all-or-nothing per call: naming `P` and
+  `Scope` on a single-call form means `D` — the `inject` record — stops being
+  inferred and falls back to its constraint, so `sync`'s services parameter
+  degrades from `{ verify: JwtVerifier's service }` to an index signature and
+  every key's type is lost (verified with a probe against this package's own
+  `tsconfig.test-d.json`). Currying is what lets `P` and `Scope` be stated
+  while `D` is still inferred. The one shape that removes the parens is a
+  value-level type witness — `principal: type<Identity>()`, the way oRPC
+  carries a schema-less type — which compiles, and trades a syntactic oddity
+  for a phantom argument in every authenticator plus an `@orpc/contract`
+  import in packages that have no other reason to hold one. Not taken, and
+  not to be re-attempted without a third option. The **scheme name is not stated here** — it is
   the key this authenticator sits under in `defineHttp({ authenticators })`, so
   it is written once. `Unauthenticated` is a `TaggedError` with an
   **empty payload**: the starter surfaces no reason — a refused caller gets an
@@ -108,6 +122,7 @@ The two rules this half exists to state, before the detail:
   write-only. An authenticator that wants to record why logs it before
   returning. Forwarding a reason would put "no such user" versus "bad
   signature" in a 401 body by default.
+
 - **`apiKeyAuthenticator<P>()({ header?, keys })` → `Authenticator<P, ScopesOf<Keys>, never>`**
   (`api-key.ts`, on the main entry point — it has no peer to be optional
   about). Each key carries the principal presenting it makes, and optionally

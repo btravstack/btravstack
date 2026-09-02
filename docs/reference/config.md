@@ -65,15 +65,22 @@ Semantics shared by every field, in one place:
 | out of range (integer/port) | `must be between <min> and <max>, got <n>` — both bounds inclusive       |
 | `0` (port)                  | valid — a port's floor is `0` so an ephemeral bind stays expressible     |
 
-Values are trimmed before being read; integers are `Number()` plus
+Values are **trimmed** before being read, `Config.string` included: `X=" abc "`
+binds `"abc"`. That is what makes a whitespace-only variable "set but empty"
+rather than a value, and it is the one thing to know before putting a secret
+whose surrounding whitespace is significant in the environment — pin that one
+through the composition root, where `Config.pinned` hands the value over
+untouched.
+
+Integers are `Number()` plus `Number.isInteger`; an unbounded `Config.integer`
+spans the safe-integer range. `""` being an error rather than an absent
+variable is what stops `PORT=` binding the ephemeral port through
+`Number("") === 0`.
+
 A flag is `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, in either case.
 Anything else is an **error rather than a falsy reading**: a deployment that
-wrote `HTTP_COMPRESSION=enabled` meant to turn it on, and silently reading that as
-`false` is a configuration bug nothing reports.
-
-`Number.isInteger`; an unbounded `Config.integer` spans the safe-integer
-range. `""` being an error rather than an absent variable is what stops
-`PORT=` binding the ephemeral port through `Number("") === 0`.
+wrote `HTTP_COMPRESSION=enabled` meant to turn it on, and silently reading that
+as `false` is a configuration bug nothing reports.
 
 `Config.pinned` is what a starter's options do to its own fields, so
 precedence is **explicit > environment > default, per field**:

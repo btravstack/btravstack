@@ -2,6 +2,10 @@ import { describe, test } from "vitest";
 
 import { Port, type ServiceOf } from "./index.js";
 
+// The workspace's one `interface`, and it is the subject rather than a slip: a
+// consumer's service type is often an interface, and a port has to carry one
+// as faithfully as it carries a `type` — `ServiceOf` reading through a
+// declaration-merged shape is what these assertions pin.
 interface Clock {
   readonly now: () => string;
 }

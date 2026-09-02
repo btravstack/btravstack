@@ -12,7 +12,7 @@ description: Short definitions of the terms used throughout the btravstack docum
 `AbortSignal` and counted in `DrainReport.abandoned` — the field the exit code
 keys on (`2`). See [ExitReport and DrainReport](/reference/core/exit-report).
 
-**ambient record** — The small, fixed `UnitRecord` — `{ unitId, traceId, tenantId, deadline, signal }` —
+**ambient record** — The small, fixed `UnitRecord` — `{ unitId, traceId, tenantId, signal }` —
 the kernel opens in an `AsyncLocalStorage` store for a unit's whole extent, and
 `currentUnit()` reads. It carries **data**, never services; `signal` is the
 very `AbortSignal` the unit's work callback is handed, so a middleware-shaped
@@ -51,6 +51,12 @@ get `drainTimeoutMs`. Only a signal drains; `stop()` and a crash do not. See
 context; a provided-but-unexported port is private to the module. See
 [Modules](/reference/di/modules) and [Keep a port private](/how-to/keep-a-port-private).
 
+**fragment** — A sub-tree of a contract that is itself a valid contract: `contract.orders`
+is one. It is what a **piece** implements, and what makes a slice liftable —
+`api.OrpcRouter(contract.orders)([…])` serves the fragment alone, with the
+slice's own piece unchanged. See
+[Split a router into controllers](/how-to/split-a-router-into-controllers).
+
 **fork** — `Module.forkScope` — a scope opened over an existing context for a module's
 providers, then closed. `StartOptions.unit` is a fork the kernel opens around
 every unit. See [Open a per-request scope](/how-to/open-a-per-request-scope).
@@ -82,6 +88,15 @@ exports, its error channel and its unmet needs. See [Modules](/reference/di/modu
 **need** — A dependency a module has not satisfied itself, carried in its type. `Scope`
 and `Env` are the two the kernel discharges. See [Modules](/reference/di/modules).
 
+**piece** — One contract key's implementation as a provider of its own, minted from the
+contract: `api.OrpcController(contract, "orders")`, `AmqpHandler(contract,
+"orderAudit")`, `TemporalWorkflowActivities(contract, "fulfillOrder")`. The key
+rides the piece's own port id, so a piece cannot sit under the wrong key, and
+an array of them composes into the one provider a runtime takes — every leaf
+covered, or the call is refused. See
+[Split a router into controllers](/how-to/split-a-router-into-controllers) and
+[Split a worker into slices](/how-to/split-a-worker-into-slices).
+
 **port** — `class Logger extends Port("Logger")<Service> {}` — a nominal name for a
 service, the vocabulary an application defines. `RuntimePort` is the one the
 kernel resolves its runtime from. See [Ports](/reference/di/ports).
@@ -111,6 +126,12 @@ is the adapter that makes the first out of the second. Neither may take the
 process down: a throwing one is swallowed. See [Kernel
 events](/reference/core/events) and
 [@btravstack/observability](/reference/observability).
+
+**slice** — A feature's vertical, as an ordinary module: its **piece**, whatever
+private providers that piece needs, and a `needs` list naming what it expects
+from the root. It exports only its piece's port; several slices in one root are
+a modulith, and one lifts into a process of its own without its piece changing.
+See [Split a router into controllers](/how-to/split-a-router-into-controllers).
 
 **starter** — A package that brings one concern's defaults for the standard case, in the
 Spring Boot sense: `@btravstack/http-server`, `@btravstack/temporal-worker` and

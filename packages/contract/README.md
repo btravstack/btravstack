@@ -2,15 +2,21 @@
 
 > Contract-level markers shared by a client and the server that implements
 > it: declare **which security schemes** a procedure accepts and which scopes
-> each must grant, and nothing about who the caller is. Zero dependencies,
-> zero peers — a client can take a contract without the server, and any
+> each must grant, and nothing about who the caller is. Zero dependencies of
+> its own — a client can take a contract without the server, and any
 > transport's contract can use the same marker.
+
+📖 **[Documentation](https://btravstack.github.io/btravstack/reference/contract)** ·
+[API Reference](https://btravstack.github.io/btravstack/api/contract/)
 
 ```sh
 pnpm add @btravstack/contract
 ```
 
-Node `>=22`.
+Nothing to install beside it. **A package that ships a marked contract takes
+this one as a `peerDependency`** rather than an ordinary one — the marker is
+identity-based, so one copy per application is the point; see
+[Why a peer](#the-marker-is-a-weakmap-not-a-property) below. Node `>=22`.
 
 ## Usage
 
@@ -52,6 +58,8 @@ never inside one.
 `defineHttp({ authenticators })` says what each one resolves to.** No identity
 type is named here, so nothing about the server's own view of a caller reaches
 a client, and enriching it is never a contract change.
+
+### The marker is a WeakMap, not a property
 
 The marker is **identity-based** — a `WeakMap`, no property on the node — which
 is why a package shipping a marked contract takes this one as a **peer**

@@ -109,6 +109,35 @@ export type RuntimeResolvesOf<X> =
 export type RuntimeInfoOf<X> = RuntimeOf<X> extends Runtime<AnyPort, infer Info> ? Info : never;
 
 /**
+ * The trace id inside a W3C `traceparent` header, and nothing else of it.
+ *
+ * @remarks
+ * The parent's **span id is dropped**, deliberately: `UnitMeta.traceId` is a
+ * correlation id rather than a span context, and half-carrying one would
+ * suggest a parent-child link nothing here maintains. An all-zero trace id is
+ * the specification's own "invalid" value and is refused like a malformed
+ * header, as is a header that does not match the format exactly.
+ *
+ * It is here rather than in a runtime because **every** transport carrying an
+ * inbound trace needs the same answer, and two copies of a parser is two
+ * places for the all-zero rule to be forgotten. A runtime pairs it with the
+ * adopt-only-a-non-blank-inbound-id rule its own headers need:
+ * `UnitMeta.traceId` defaults to `meta.id` when it is nullish and `""` is not,
+ * so an empty header would hand a caller's every unit the same blank id.
+ *
+ * @example
+ * ```ts
+ * const parent = request.headers["traceparent"];
+ * const traceId = typeof parent === "string" ? traceIdOfTraceparent(parent) : undefined;
+ * ```
+ */
+export const traceIdOfTraceparent = (header: string): string | undefined => {
+  const match = /^[\da-f]{2}-([\da-f]{32})-[\da-f]{16}-[\da-f]{2}$/.exec(header.trim());
+  const traceId = match?.[1];
+  return traceId === undefined || /^0{32}$/.test(traceId) ? undefined : traceId;
+};
+
+/**
  * `running`, but no later than the kernel's drain deadline — the primitive a
  * `Serving.drain` needs when the work it awaits settles on somebody else's
  * clock (Temporal's `shutdownForceTime`, a broker library's close) and so

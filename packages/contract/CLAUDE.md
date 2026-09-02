@@ -151,6 +151,22 @@ marked node still satisfies the plain shape, a plain one does not satisfy the
 marked shape, and `RequirementsOf` reads the exact requirements back for a
 marked node and is `never` for an unmarked one.
 
+## Marking is opt-in, and an unmarked node is public
+
+`authenticated(node, requirements)` marks; `isAuthenticated(node)` reads. There
+is no `public(node)`, and no default requirement on the root — so **forgetting
+the marker fails nothing**, which is the one property worth stating out loud
+because it is the failure mode a reader should expect to own.
+
+Deny-by-default is three lines away and deliberately not taken: mark the root
+with a deployment's default requirements and add a `public(node)` that deletes
+the entry. What stops it is that this package has **zero dependencies and zero
+peers** and knows nothing about who is calling — a default requirement is a
+deployment's decision, and a contract that carried one would be making it for
+every consumer of the contract, including the client that only ever calls.
+Where a deny-by-default posture is wanted it belongs at the composition root
+that owns the authenticators, which is where the scheme ports are discharged.
+
 ## Deferred, deliberately
 
 **A transport other than HTTP reading the marker.** `@btravstack/http-server` is the
