@@ -61,9 +61,15 @@ through the `@btravstack/storage/s3` subpath.
 ## 2. Minting the URL
 
 `presignedUpload` signs the key, the content type and the content length. All
-three are part of the signature, so the URL grants exactly one write, of
-exactly that many bytes, of exactly that type — a client that sends anything
+three are part of the signature, so the URL grants a write of exactly that many
+bytes, of exactly that type, at exactly that key — a client that sends anything
 else is refused by the store, not by you.
+
+It is **time-limited, not single-use**: until `ttlMs` runs out, the same URL
+can `PUT` that key again and replace the object. Where one-shot really matters,
+mint the key per attempt and record completion in your own state — the
+signature bounds _what_ may be written, and your application bounds _how many
+times_.
 
 ```ts
 class Attachments extends Port("Attachments")<{

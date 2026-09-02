@@ -439,12 +439,14 @@ exit `2`, never silence. Compose it beside `observability()` in a root's
 `imports`.
 
 **`otel()` takes no options of its own.** Its parameter is the SDK's own
-`Partial<NodeSDKConfiguration>`, passed through untouched, and **unset means
-the SDK's defaults** — which for an unconfigured process is an OTLP/HTTP
-exporter at `http://localhost:4318`, no sampler override, and a resource built
-from the `OTEL_*` variables. The two fields this repository's own specs set are
-`spanProcessors` and `metricReader`, which is how a test collects without a
-collector.
+`Partial<NodeSDKConfiguration>`, passed through untouched, and **unset means the
+SDK's defaults** — for an unconfigured process: an OTLP/HTTP span exporter at
+`http://localhost:4318`, a periodic OTLP **metric** reader alongside it unless
+`OTEL_METRICS_EXPORTER=none`, and a resource combining the `OTEL_*` resource
+variables with the SDK's environment, process and host detectors. The two
+fields this repository's own specs set are `spanProcessors` and `metricReader`
+— the latter accepted but superseded by `metricReaders`, which takes a list —
+and that is how a test collects without a collector.
 
 There is **no config slice, deliberately**: the SDK reads the `OTEL_*`
 environment conventions itself (`OTEL_EXPORTER_OTLP_ENDPOINT`,

@@ -6,6 +6,7 @@ description: "Broadcast a committed fact over AMQP — why the write and the row
 <!-- doctest: group=order-amqp-worker -->
 <!-- doctest: prelude
 import { TypedAmqpClient } from "@amqp-contract/client";
+import { AmqpConfig } from "@btravstack/amqp-worker";
 import { Config, Env } from "@btravstack/config";
 import { Logger } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
@@ -96,8 +97,11 @@ export const relayConfig = Config.provider("RelayConfig")(
 );
 
 export const outboxRelay = Provider(OutboxRelay)({
-  inject: { config: relayConfig.port },
-  acquire: ({ config }) => startRelay("amqp://127.0.0.1:5672", config.pollMs),
+  // `AmqpConfig` is the starter's own — the relay publishes to the broker this
+  // process already consumes from, rather than to a URL of its own that a
+  // deployment would have to remember to set twice.
+  inject: { broker: AmqpConfig, config: relayConfig.port },
+  acquire: ({ broker, config }) => startRelay(broker.url, config.pollMs),
   release: (running) => running.stop().get(),
 });
 ```
@@ -176,10 +180,11 @@ fit is a `MessageValidationError` before anything reaches the broker.
 
 ```ts
 export const Producer = Module("Producer")({
-  imports: [],
   provides: [relayConfig, outboxRelay],
   exports: [OutboxRelay],
-  needs: [Env, Logger],
+  // `AmqpConfig` comes from the starter this process already composes; `Env`
+  // and `Logger` are the root's.
+  needs: [Env, Logger, AmqpConfig],
 });
 ```
 
