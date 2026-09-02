@@ -197,9 +197,24 @@ spec:
 template can be changed by a re-apply — which is why the name carries the
 version: each release applies a _new_ Job rather than trying to update a
 completed one. (`generateName` is the alternative when a release has no version
-string to hang it on.) In a pipeline: apply the Job, wait for it
-(`kubectl wait --for=condition=complete job/orders-migrate-1.4.0`), then apply
-the Deployment.
+string to hang it on.) In a pipeline: apply the Job, wait for it, then apply the
+Deployment — waiting on **both** conditions, since `kubectl wait` defaults to
+30 seconds and only ever watches the one you name:
+
+```sh
+kubectl apply -f migrate-job.yaml
+
+# Whichever lands first wins; without the `failed` watch, a Job that died in
+# ten seconds is only noticed when the timeout expires — and a slow image pull
+# looks identical to it.
+kubectl wait --for=condition=complete --timeout=10m job/orders-migrate-1.4.0 &
+complete=$!
+kubectl wait --for=condition=failed --timeout=10m job/orders-migrate-1.4.0 && exit 1 &
+failed=$!
+wait -n "$complete" "$failed"
+
+kubectl apply -f deployment.yaml
+```
 
 ::: warning
 An `initContainer` looks like the tidier answer and is not: it runs **once per
