@@ -150,7 +150,8 @@ callback — which contains every fork — has settled.
 ## The process is a scope too
 
 `start` is `Module.scoped` with the callback written for you. The application
-module goes in as a `Module<X, E, Scope | Env>`; the kernel opens the
+module goes in as a `Module<X, E, N>`, with `Scope` and `Env` the two needs the
+kernel discharges itself; the kernel opens the
 application scope as it builds, hands the built context to the one runtime,
 and closes the scope on **every** path out — a signal, `stop()`, an uncaught
 exception, a runtime that stopped on its own — before `RunningApp.exited`

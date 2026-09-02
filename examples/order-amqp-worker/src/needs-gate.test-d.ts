@@ -75,7 +75,7 @@ const HandlerlessAmqp = Module("HandlerlessAmqp")({
   exports: [AmqpRuntime, PlaceOrder, Logger],
 });
 
-// @ts-expect-error — the module's needs channel carries the handlers port, which nothing provides.
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides the handlers port.
 const _missingHandlers = start(HandlerlessAmqp, options);
 
 // The two real slices, composed into a root that forgets `observability()`.
@@ -95,5 +95,5 @@ const LoggerlessAmqp = AmqpModule("LoggerlessAmqp")({
   imports: [NotificationsSlice, AuditSlice],
 });
 
-// @ts-expect-error — UNMET NEED: `Logger` is not assignable to `Env | Scope`.
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides `Logger`.
 const _missingLogger = start(LoggerlessAmqp, options);

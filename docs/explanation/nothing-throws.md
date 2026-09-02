@@ -66,7 +66,7 @@ where it lives:
 
 ## The startup channel is the application's own
 
-`start` takes a `Module<X, E, Scope | Env>` and returns
+`start` takes a `Module<X, E, N>` and returns
 `AsyncResult<ExitReport, E | RuntimeStartFailed>`. **`E` is the module's own
 error type, passed through unwrapped and still typed.** A `ConfigInvalid` from
 a configuration provider arrives at `exited` as a `ConfigInvalid`, not as a

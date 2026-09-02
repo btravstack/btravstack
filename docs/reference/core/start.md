@@ -16,8 +16,8 @@ description: The signature of start, every StartOptions field with its default, 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-const start: <X, E, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
+const start: <X, E, N, UnitX = never, UnitNeeds = never>(
+  module: Module<X, E, N> & StartGate<X, UnitNeeds, N>,
   options?: StartOptions<UnitX, UnitNeeds>,
 ) => RunningApp<E, RuntimeInfoOf<X>>;
 ```
@@ -28,12 +28,12 @@ const start: <X, E, UnitX = never, UnitNeeds = never>(
 
 ### The module
 
-`Module<X, E, Scope | Env>`, not `Module<X, E, never>`. `Needs` sits in a
-covariant position on `Module`, so this accepts three kinds of module: one with
-no needs, one whose `acquire`/`release` provider adds `Scope` (the need
-`Module.scoped` discharges by opening the scope itself), and one whose
-configuration reads `Env`, which the kernel provides. A module with any other
-unmet need is rejected at the call site, as di's own gate would reject it.
+`Module<X, E, N>`, with `N` inferred and then checked by the gate. Three kinds
+of module pass: one with no needs, one whose `acquire`/`release` provider adds
+`Scope` (the need `Module.scoped` discharges by opening the scope itself), and
+one whose configuration reads `Env`, which the kernel provides. A module with
+any other unmet need is rejected at the call site — in di's own words, and
+naming the port.
 
 **The runtime is a service of the module.** The module exports a port declared
 over `RuntimePort`; `start` builds the graph, resolves that port and drives what
@@ -77,32 +77,35 @@ built — after an `await` when a unit provider is async — so a runtime that
 subscribes to an event from inside its work must first check whether it has
 already fired.
 
-## The gate: `StartGate<X, UnitNeeds>`
+## The gate: `StartGate<X, UnitNeeds, N>`
 
 `StartGate` is a **phantom marker intersected onto the `module` parameter**: no
 argument ever carries it. It is `unknown` — and therefore invisible — when the
-module is boot-able, and one of three sentences otherwise, so a bad composition
-fails to match the parameter type at the call site.
+module is boot-able, and a diagnostic otherwise, so a bad composition fails to
+match the parameter type at the call site.
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-type StartGate<X, UnitNeeds = never> = [Extract<X, RuntimeInstance>] extends [
-  never,
-]
-  ? "NO RUNTIME — the module exports no port declared over RuntimePort"
-  : [InstanceType<RuntimeResolvesOf<X>>] extends [X]
-    ? [Exclude<UnitNeeds, X | Scope | Env>] extends [never]
-      ? unknown
-      : "UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"
-    : "UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export";
+type StartGate<X, UnitNeeds = never, N = never> = [
+  Exclude<N, Scope | Env>,
+] extends [never]
+  ? [Extract<X, RuntimeInstance>] extends [never]
+    ? "NO RUNTIME — the module exports no port declared over RuntimePort"
+    : [InstanceType<RuntimeResolvesOf<X>>] extends [X]
+      ? [Exclude<UnitNeeds, X | Scope | Env>] extends [never]
+        ? unknown
+        : "UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"
+      : "UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export"
+  : { readonly "UNSATISFIED DEPENDENCIES — nothing provides": PortIdOf<Exclude<N, Scope | Env>> };
 ```
 
-| Arm                         | Fires when                                                                                                                                                                        |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NO RUNTIME`                | `X` contains no port declared over `RuntimePort`. Every starter's module sugar exports one; a hand-rolled root must export its runtime port.                                      |
-| `UNSATISFIED RUNTIME PORTS` | The runtime's declared `resolves` are not all among the module's exports — the **module's alone**, never the unit module's, because `RuntimeHost.ctx` is the application context. |
-| `UNSATISFIED UNIT NEEDS`    | The `unit` module's needs are not covered by the module's exports, `Scope` or `Env` — `Module.forkScope`'s gate, stated where the parent is actually known.                       |
+| Arm                         | Fires when                                                                                                                                                                                                      |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UNSATISFIED DEPENDENCIES`  | Something in the graph needs a port nothing provides — checked **first**, and answered in di's own words, ending on the port's id (`"OrpcRouter"`). `Scope` and `Env` are the two the kernel itself discharges. |
+| `NO RUNTIME`                | `X` contains no port declared over `RuntimePort`. Every starter's module sugar exports one; a hand-rolled root must export its runtime port.                                                                    |
+| `UNSATISFIED RUNTIME PORTS` | The runtime's declared `resolves` are not all among the module's exports — the **module's alone**, never the unit module's, because `RuntimeHost.ctx` is the application context.                               |
+| `UNSATISFIED UNIT NEEDS`    | The `unit` module's needs are not covered by the module's exports, `Scope` or `Env` — `Module.forkScope`'s gate, stated where the parent is actually known.                                                     |
 
 `runMain`, and `@btravstack/testing`'s `Boot`, carry the same marker.
 
@@ -110,9 +113,22 @@ type StartGate<X, UnitNeeds = never> = [Extract<X, RuntimeInstance>] extends [
 runtime port:
 
 ```text
-error TS2345: Argument of type 'Module<Greeter, never, never>' is not assignable to parameter of type 'Module<Greeter, never, Env | Scope> & "NO RUNTIME — the module exports no port declared over RuntimePort"'.
+error TS2345: Argument of type 'Module<Greeter, never, never>' is not assignable to parameter of type 'Module<Greeter, never, never> & "NO RUNTIME — the module exports no port declared over RuntimePort"'.
   Type 'Module<Greeter, never, never>' is not assignable to type '"NO RUNTIME — the module exports no port declared over RuntimePort"'.
 ```
+
+And the unmet-need arm, on a root that imports `http()` and forgets
+`provides: [router]` — the mistake a hand-rolled root makes most:
+
+```text
+error TS2345: Argument of type 'Module<any, ConfigInvalid, Env | OrpcRouterPort>' is not assignable to parameter of type 'Module<any, ConfigInvalid, Env | OrpcRouterPort> & { readonly "UNSATISFIED DEPENDENCIES — nothing provides": "OrpcRouter"; }'.
+  Property '"UNSATISFIED DEPENDENCIES — nothing provides"' is missing in type 'Module<any, ConfigInvalid, Env | OrpcRouterPort>' but required in type '{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "OrpcRouter"; }'.
+```
+
+The port is named by its **id**, not by its type: `AmqpHandlers` as a type is
+its contract expanded — hundreds of characters of the caller's own schema,
+truncated long before a name is reached — where `"AmqpHandlers"` is what the
+application wrote in `Port("…")` and always fits.
 
 The sentence prints because the marker rides the `module` parameter — an
 argument that fails a parameter type makes TypeScript name that type. This was

@@ -84,8 +84,8 @@ and the message ends on the missing piece: `required in type '{ readonly
 ## Under `start`, the process is the scope
 
 An application booted by the kernel never calls `Module.scoped` itself.
-[`start`](/reference/core/start) accepts a `Module<X, E, Scope | Env>` — the
-resourceful module is welcome as it is — wraps it and hands it to
+[`start`](/reference/core/start) accepts a `Module<X, E, N>` and discharges
+`Scope` itself — the resourceful module is welcome as it is — wraps it and hands it to
 `Module.scoped`, so the **application scope spans the whole process**: opened
 during `building`, closed on every exit path (`stop()`, a signal, an uncaught
 exception, a runtime that stopped on its own). What a finaliser reports on the

@@ -13,8 +13,8 @@ import type { Module, Scope } from "@btravstack/di";
  * gate, minus `signals` (always off) — every application it starts is stopped
  * when the test ends.
  */
-export type Boot = <X, E, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
+export type Boot = <X, E, N, UnitX = never, UnitNeeds = never>(
+  module: Module<X, E, N> & StartGate<X, UnitNeeds, N>,
   options?: Omit<StartOptions<UnitX, UnitNeeds>, "signals">,
 ) => RunningApp<E, RuntimeInfoOf<X>>;
 

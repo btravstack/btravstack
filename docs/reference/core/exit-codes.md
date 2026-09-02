@@ -25,8 +25,8 @@ import { runMain } from "@btravstack/core";
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-const runMain: <X, E, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
+const runMain: <X, E, N, UnitX = never, UnitNeeds = never>(
+  module: Module<X, E, N> & StartGate<X, UnitNeeds, N>,
   options?: StartOptions<UnitX, UnitNeeds>,
   exit?: (code: number) => void,
 ) => Promise<void>;

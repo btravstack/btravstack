@@ -1,4 +1,5 @@
-import { Module, Port, Provider } from "@btravstack/di";
+import type { Env } from "@btravstack/config";
+import { Module, Port, Provider, type Scope } from "@btravstack/di";
 import { testRuntime, type TestRuntimeInfo } from "@btravstack/testing";
 import { OkAsync } from "unthrown";
 import { expectTypeOf } from "vitest";
@@ -69,6 +70,36 @@ start(AppModule);
 expectTypeOf<
   StartGate<Greeting>
 >().toEqualTypeOf<"NO RUNTIME — the module exports no port declared over RuntimePort">();
+
+// The gate that fires FIRST, and the one a newcomer meets most: a root whose
+// own providers read a port nothing in the graph provides. Before it existed,
+// this printed `Type 'Clock' is not assignable to type 'Scope'` — an internal
+// phantom — or, when the port was missing from `exports` too, the RUNTIME
+// PORTS sentence, which diagnoses the second mistake and hides the first.
+const Unprovided = Module("Unprovided")({
+  needs: [Greeting],
+  provides: [
+    Provider(NeedsGreeting)({
+      inject: { greeting: Greeting },
+      value: needsGreeting,
+    }),
+  ],
+  exports: [NeedsGreeting],
+});
+// @ts-expect-error -- UNSATISFIED DEPENDENCIES: nothing in the graph provides `Greeting`
+start(Unprovided);
+// Both mistakes are present — `Greeting` is provided by nobody AND missing from
+// `exports`, which the runtime resolves — and the FIRST one is what prints.
+// The port is named by its ID, not by its type: a starter's own generic port
+// expands to hundreds of characters of the caller's schema and truncates
+// before the name is reached, where `"Greeting"` never does.
+expectTypeOf<StartGate<NeedsGreeting, never, Greeting>>().toEqualTypeOf<{
+  readonly "UNSATISFIED DEPENDENCIES — nothing provides": "Greeting";
+}>();
+
+// `Scope` and `Env` are the two the kernel itself discharges, so a module
+// needing them is satisfied rather than reported.
+expectTypeOf<StartGate<Greeting | NeedsGreeting, never, Scope | Env>>().toEqualTypeOf<unknown>();
 
 // A runtime that resolves nothing works against any module: `InstanceType<never>` is
 // `never`, and `[never] extends [X]` holds for every `X`. `testRuntime` ships
