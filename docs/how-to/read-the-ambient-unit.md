@@ -29,15 +29,14 @@ type UnitRecord = {
   readonly unitId: string; // minted per unit by the kernel, always unique
   readonly traceId: string; // the correlation id — `UnitMeta.traceId`, defaulting to `UnitMeta.id`
   readonly tenantId: string | undefined; // `UnitMeta.tenantId`, if the runtime supplied one
-  readonly deadline: number | undefined; // `UnitMeta.deadline`, if the runtime supplied one
   readonly signal: AbortSignal; // the unit's own — the very one the work callback is handed
 };
 ```
 
 `unitId` tells two units apart and needs nothing from the runtime. `traceId` is
 the one that joins a line logged here to a trace that started elsewhere.
-`tenantId` and `deadline` are plain data the runtime may stamp; **no shipped
-starter sets either today**, and none has a tenancy concept — see
+`tenantId` is plain data the runtime may stamp; **no shipped starter sets it
+today**, and none has a tenancy concept — see
 [Multi-tenancy is the application's, not the framework's](#multi-tenancy-is-the-application-s-not-the-framework-s). `signal` is always there: the kernel mints one
 `AbortController` per unit, hands its signal to the work callback **and** puts
 that same object on the record, so both routes see one abort — at the drain

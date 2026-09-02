@@ -1,8 +1,8 @@
-import { Ok } from "unthrown";
+import { Ok, type Result } from "unthrown";
 import { describe, expect } from "vitest";
 
 import { it, settingsSchema } from "./__tests__/test-fixtures.js";
-import { Config, ConfigInvalid, type ConfigField } from "./config.js";
+import { Config, ConfigInvalid, type ConfigField, type ConfigFieldInvalid } from "./config.js";
 
 const validate = (env: Record<string, string | undefined>) =>
   settingsSchema["~standard"].validate(env);
@@ -181,6 +181,77 @@ describe("Config.pinned", () => {
       pinned: 0,
       free: 8080,
     });
+  });
+
+  it("refuses a pinned NaN, the case that used to disable a limit in silence", () => {
+    // GIVEN the body-limit shape: `size > NaN` is `false`, so a pinned NaN
+    // turned the trust boundary off and reported nothing, ever
+    const field = Config.integer("HTTP_BODY_LIMIT", { min: 0 });
+
+    // WHEN a composition root pins it
+    const pinned = Config.pinned(Number.NaN, field).parse(undefined);
+
+    // THEN the field's own rule refuses it, naming the value it was handed —
+    // `NaN`, not the `null` a JSON rendering would have printed
+    expect(pinned).toBeErrTagged("ConfigFieldInvalid", {
+      reason: "is not a whole number: NaN",
+    });
+  });
+
+  it("gives a pin the message the environment route would have given", () => {
+    // GIVEN one bounded field, and the same out-of-range value arriving by
+    // both routes — pinned by a composition root, set by a deployment
+    const field = Config.integer("HTTP_BODY_LIMIT", { min: 0 });
+    const reasonOf = (result: Result<number, ConfigFieldInvalid>): string =>
+      result.isErr() ? result.error.reason : "WRONGLY ACCEPTED";
+
+    // WHEN both are read
+    // THEN the diagnostic is the same one. A projection rather than a deep
+    // assertion on either result: the claim is that the two routes AGREE,
+    // which neither result carries on its own.
+    expect({
+      pinned: reasonOf(Config.pinned(-1, field).parse(undefined)),
+      fromEnvironment: reasonOf(field.parse("-1")),
+    }).toEqual({
+      pinned: `must be between 0 and ${Number.MAX_SAFE_INTEGER}, got -1`,
+      fromEnvironment: `must be between 0 and ${Number.MAX_SAFE_INTEGER}, got -1`,
+    });
+  });
+
+  it("keeps a pinned 0 on a port, because the floor is 0 and not 1", () => {
+    // GIVEN the ephemeral bind every spec in this repository relies on
+    // WHEN it is pinned
+    const bound = Config.pinned(0, Config.port("PORT")).parse(undefined);
+
+    // THEN the check admits it
+    expect(bound).toBeOkWith(0);
+  });
+
+  it("checks a default the same way, since it is the other route past `parse`", () => {
+    // GIVEN a bounded field whose DEFAULT is out of its own bounds
+    const field = Config.integer("RETRIES", { min: 0, max: 10, default: -1 });
+
+    // WHEN nothing sets the variable, so the default is what binds
+    const bound = field.parse(undefined);
+
+    // THEN the default is refused rather than smuggled past the bound
+    expect(bound).toBeErrTagged("ConfigFieldInvalid", {
+      reason: "must be between 0 and 10, got -1",
+    });
+  });
+
+  it("leaves a hand-written field with no `check` accepting whatever it is pinned", () => {
+    // GIVEN the shape `docs/reference/config.md` shows a reader writing
+    const handWritten: ConfigField<string> = {
+      variable: "GREETING",
+      parse: (raw) => Ok(raw ?? "hello"),
+    };
+
+    // WHEN a value is pinned over it
+    const bound = Config.pinned("anything at all", handWritten).parse("ignored");
+
+    // THEN it binds: `check` is optional, so nothing about the old shape breaks
+    expect(bound).toBeOkWith("anything at all");
   });
 });
 

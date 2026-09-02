@@ -286,8 +286,7 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
 
 2. **Ambient carries DATA. The DI `Context` carries CAPABILITIES.** The kernel
    opens one `AsyncLocalStorage` store per unit holding a small, fixed record —
-   `{ unitId, traceId, tenantId, deadline, signal }` (`UnitRecord` in
-   `units.ts`) —
+   `{ unitId, traceId, tenantId, signal }` (`UnitRecord` in `units.ts`) —
    and nothing else. Services never go in it. The line holds because what `di`
    exists to prevent is hidden _dependencies_: code that secretly needs a
    collaborator it never declared and cannot be tested without it. A trace id is

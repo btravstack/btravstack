@@ -176,7 +176,6 @@ type UnitMeta = {
   readonly id: string;
   readonly traceId?: string;
   readonly tenantId?: string;
-  readonly deadline?: number;
 };
 
 type UnitWork<T, E> = (
@@ -198,7 +197,6 @@ type UnitRecord = {
   readonly unitId: string;
   readonly traceId: string;
   readonly tenantId: string | undefined;
-  readonly deadline: number | undefined;
   readonly signal: AbortSignal;
 };
 

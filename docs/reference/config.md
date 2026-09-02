@@ -41,16 +41,18 @@ A field reads **one** variable into a typed value:
 type ConfigField<T> = {
   readonly variable: string;
   readonly parse: (raw: string | undefined) => Result<T, ConfigFieldInvalid>;
+  /** The same rule over a value that is already a `T` — a pin, or a default. Optional. */
+  readonly check?: (value: T) => Result<T, ConfigFieldInvalid>;
 };
 ```
 
-| Constructor                          | Value                                                                              | Options                                            |
-| ------------------------------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `Config.string(variable, options?)`  | a non-empty string                                                                 | `{ default?: string }`                             |
-| `Config.integer(variable, options?)` | a whole number, bounds inclusive                                                   | `{ default?: number; min?: number; max?: number }` |
-| `Config.boolean(variable, options?)` | a flag: `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, case-insensitive        | `{ default?: boolean }`                            |
-| `Config.port(variable, options?)`    | a whole number in `0..65535`, `0` (an ephemeral bind) included                     | `{ default?: number }`                             |
-| `Config.pinned(value, field)`        | `field` unless `value` is given, then a field answering `value` that reads nothing | —                                                  |
+| Constructor                          | Value                                                                                                                 | Options                                            |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `Config.string(variable, options?)`  | a non-empty string                                                                                                    | `{ default?: string }`                             |
+| `Config.integer(variable, options?)` | a whole number, bounds inclusive                                                                                      | `{ default?: number; min?: number; max?: number }` |
+| `Config.boolean(variable, options?)` | a flag: `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, case-insensitive                                           | `{ default?: boolean }`                            |
+| `Config.port(variable, options?)`    | a whole number in `0..65535`, `0` (an ephemeral bind) included                                                        | `{ default?: number }`                             |
+| `Config.pinned(value, field)`        | `field` unless `value` is given, then a field answering `value` and reading nothing — checked by the field's own rule | —                                                  |
 
 Semantics shared by every field, in one place:
 
@@ -76,6 +78,19 @@ range. `""` being an error rather than an absent variable is what stops
 `Config.pinned` is what a starter's options do to its own fields, so
 precedence is **explicit > environment > default, per field**:
 `http({ port: 0 })` pins `PORT` and still reads `HOST`.
+
+A pin is **validated by the field's own `check`**, where the field has one.
+`Config.pinned(-1, bodyLimit)` is a `ConfigInvalid` at graph build, with the
+message the deployment route would have produced for `HTTP_BODY_LIMIT=-1` — and
+`Config.pinned(NaN, …)` likewise, which is the case that used to disable a limit
+in silence (`size > NaN` is `false`). Defaults are checked on the same rule.
+
+`integer` and `port` carry a `check`; **`string` does not**, and that is
+deliberate: "set but empty" is a rule about the raw variable — a deployment
+mistake — where a pinned `""` is a decision, and `http({ cors: false })` pins
+exactly that as its off switch. A field written by hand without a `check`
+likewise accepts whatever it is pinned, so nothing about the shape above stops
+compiling.
 
 ## `Config.object(fields)`
 

@@ -98,7 +98,15 @@ const requestOperation = (method: string, answerer: string): Operation => ({
   attributes: { method, answerer },
 });
 
-const httpRuntime = (
+/**
+ * The runtime over a bound `HttpConfig`, with no configuration of its own —
+ * what `httpServer()` provides after `Config` has answered.
+ *
+ * @internal Exported for `http-server`'s own specs: a hand-provided
+ * `HttpConfig` is the one route left to a port `listen` refuses synchronously,
+ * now that `Config.port` checks a pin.
+ */
+export const _internal_httpRuntime = (
   config: ServiceOf<HttpConfig>,
   securityHeaders: HttpOptions["securityHeaders"],
   observers: readonly ((operation: Operation) => Settle)[],
@@ -148,7 +156,8 @@ export const httpServer = (
       Provider.member(Observers)({ inject: {}, value: noObserver }),
       Provider(HttpRuntime)({
         inject: { config: HttpConfig, observers: Observers },
-        sync: ({ config: bound, observers }) => httpRuntime(bound, securityHeaders, observers),
+        sync: ({ config: bound, observers }) =>
+          _internal_httpRuntime(bound, securityHeaders, observers),
       }),
     ],
     exports: [HttpRuntime, HttpConfig, HttpHandler],
