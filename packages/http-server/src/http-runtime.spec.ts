@@ -41,15 +41,36 @@ describe("httpRuntime", () => {
     );
   });
 
-  it("reports an out-of-range port as a modeled failure, not a defect", async ({ appOnPort }) => {
-    // GIVEN a port node rejects synchronously — `listen` validates the range
-    // itself and THROWS `ERR_SOCKET_BAD_PORT` rather than emitting `'error'`
-    // WHEN the runtime is asked to bind it
+  it("names an out-of-range port as a configuration fault, before anything binds", async ({
+    appOnPort,
+  }) => {
+    // GIVEN a port outside `0..65535`, pinned by the composition root
+    // WHEN the application is started
     const exited = appOnPort(70_000).exited;
 
-    // THEN it lands in the declared error channel. A defect here would bypass
-    // `AsyncResult<Serving, RuntimeStartFailed>` and exit 70 where a startup
-    // failure exits 1.
+    // THEN the field's own rule refuses it at graph build — the pin is checked
+    // exactly as `PORT=70000` would be — so it is `ConfigInvalid` (exit 78,
+    // "the configuration is wrong") rather than a bind failure discovered
+    // later by `listen`'s `ERR_SOCKET_BAD_PORT`. A DEFECT here would be the
+    // regression: it bypasses the declared channel and exits 70.
+    await expect(exited).toBeErrTagged(
+      "ConfigInvalid",
+      expect.objectContaining({ port: "HttpConfig" }),
+    );
+  });
+
+  it("still models a port `listen` refuses when the config was not built by `Config`", async ({
+    appOnUncheckedPort,
+  }) => {
+    // GIVEN a consumer binding `HttpConfig` itself — the route that skips
+    // `Config.port`'s rule — with a port node validates and THROWS on
+    // (`ERR_SOCKET_BAD_PORT`) rather than emitting `'error'`
+    // WHEN the runtime is asked to bind it
+    const exited = appOnUncheckedPort(70_000).exited;
+
+    // THEN the synchronous throw is caught into the declared error channel. A
+    // defect here would bypass `AsyncResult<Serving, RuntimeStartFailed>` and
+    // exit 70 where a startup failure exits 1.
     await expect(exited).toBeErrTagged(
       "RuntimeStartFailed",
       expect.objectContaining({ runtime: "http" }),

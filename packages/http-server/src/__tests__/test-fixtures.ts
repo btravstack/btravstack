@@ -30,6 +30,7 @@ import { authenticated } from "@btravstack/contract";
 import {
   Observers,
   currentUnit,
+  noObserver,
   type Attributes,
   type Operation,
   type RunningApp,
@@ -62,7 +63,14 @@ import { HtmxFragmentsPort } from "../htmx-route.js";
 import { htmx } from "../htmx.js";
 import { HttpConfig } from "../http-config.js";
 import { HttpModule } from "../http-module.js";
-import { HttpRuntime, http, httpServer, type HttpInfo, type HttpOptions } from "../http-runtime.js";
+import {
+  HttpRuntime,
+  _internal_httpRuntime,
+  http,
+  httpServer,
+  type HttpInfo,
+  type HttpOptions,
+} from "../http-runtime.js";
 import { jwtAuthenticator } from "../jwt.js";
 
 /** What a bare answerer's `handle` is, without the mount point around it. */
@@ -89,6 +97,31 @@ const appOf = (handler: Handler, port = 0, securityHeaders?: HttpOptions["securi
       }),
     ],
     provides: [answering(handler)],
+    exports: [HttpRuntime, HttpHandler],
+  });
+
+/**
+ * The runtime over a hand-provided `HttpConfig`, bypassing `Config` entirely —
+ * the one route left to a port `listen` refuses synchronously, now that
+ * `Config.port`'s own rule catches an out-of-range pin at graph build. A
+ * consumer binding `HttpConfig` itself is the case that still reaches
+ * `ERR_SOCKET_BAD_PORT`, and the guard exists so it arrives as a modeled
+ * `RuntimeStartFailed` rather than a defect.
+ */
+const appOnUncheckedPort = (port: number) =>
+  Module("AppOnUncheckedPort")({
+    provides: [
+      Provider(HttpConfig)({
+        inject: {},
+        value: { port, hostname: "127.0.0.1", bodyLimit: 0, corsOrigin: "", compression: false },
+      }),
+      Provider.member(Observers)({ inject: {}, value: noObserver }),
+      Provider(HttpRuntime)({
+        inject: { config: HttpConfig, observers: Observers },
+        sync: ({ config, observers }) => _internal_httpRuntime(config, undefined, observers),
+      }),
+      answering(noop),
+    ],
     exports: [HttpRuntime, HttpHandler],
   });
 
@@ -1089,6 +1122,8 @@ export type HttpFixtures = {
   readonly slowUnit: SlowUnit;
   /** An app started on an explicit port, for the failure paths. Shut down by the fixture. */
   readonly appOnPort: (port: number) => App;
+  /** The same, over a hand-provided `HttpConfig` — no `Config` rule in the way. */
+  readonly appOnUncheckedPort: (port: number) => App;
   readonly occupied: { readonly appOnTakenPort: App };
   /** The `http.Server` the runtime just created. Asserted here so a test body cannot pass on an empty capture. */
   readonly boundServer: () => Server;
@@ -1373,6 +1408,10 @@ export const it = test.extend<HttpFixtures>({
 
   appOnPort: async ({ boot }, use) => {
     await use((port) => boot(appOf(noop, port)));
+  },
+
+  appOnUncheckedPort: async ({ boot }, use) => {
+    await use((port) => boot(appOnUncheckedPort(port)));
   },
 
   occupied: async ({ appOnPort }, use) => {

@@ -7,7 +7,6 @@ const record = {
   unitId: "u-1",
   traceId: "t-1",
   tenantId: "acme",
-  deadline: undefined,
   signal: new AbortController().signal,
 } as const;
 

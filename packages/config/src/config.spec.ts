@@ -182,6 +182,69 @@ describe("Config.pinned", () => {
       free: 8080,
     });
   });
+
+  it("refuses a pin the environment route would have refused, with the same message", () => {
+    // GIVEN the body-limit shape that used to fail in silence: `size > NaN` is
+    // `false`, so a pinned NaN turned the limit off and reported nothing
+    const field = Config.integer("HTTP_BODY_LIMIT", { min: 0 });
+
+    // WHEN a composition root pins values the deployment route would refuse
+    const pinned = {
+      nan: Config.pinned(Number.NaN, field).parse(undefined),
+      negative: Config.pinned(-1, field).parse(undefined),
+      fromEnvironment: field.parse("-1"),
+    };
+
+    // THEN the pin is checked by the field's own rule, and the diagnostic is
+    // the one an operator would have got for the same value
+    expect({
+      nan: pinned.nan.isErr() ? pinned.nan.error.message : "WRONGLY ACCEPTED",
+      negative: pinned.negative.isErr() ? pinned.negative.error.message : "WRONGLY ACCEPTED",
+      fromEnvironment: pinned.fromEnvironment.isErr()
+        ? pinned.fromEnvironment.error.message
+        : "WRONGLY ACCEPTED",
+    }).toEqual({
+      nan: "is not a whole number: null",
+      negative: `must be between 0 and ${Number.MAX_SAFE_INTEGER}, got -1`,
+      fromEnvironment: `must be between 0 and ${Number.MAX_SAFE_INTEGER}, got -1`,
+    });
+  });
+
+  it("keeps a pinned 0 on a port, because the floor is 0 and not 1", () => {
+    // GIVEN the ephemeral bind every spec in this repository relies on
+    // WHEN it is pinned
+    const bound = Config.pinned(0, Config.port("PORT")).parse(undefined);
+
+    // THEN the check admits it
+    expect(bound).toBeOkWith(0);
+  });
+
+  it("checks a default the same way, since it is the other route past `parse`", () => {
+    // GIVEN a bounded field whose DEFAULT is out of its own bounds
+    const field = Config.integer("RETRIES", { min: 0, max: 10, default: -1 });
+
+    // WHEN nothing sets the variable, so the default is what binds
+    const bound = field.parse(undefined);
+
+    // THEN the default is refused rather than smuggled past the bound
+    expect(bound).toBeErrTagged("ConfigFieldInvalid", {
+      reason: "must be between 0 and 10, got -1",
+    });
+  });
+
+  it("leaves a hand-written field with no `check` accepting whatever it is pinned", () => {
+    // GIVEN the shape `docs/reference/config.md` shows a reader writing
+    const handWritten: ConfigField<string> = {
+      variable: "GREETING",
+      parse: (raw) => Ok(raw ?? "hello"),
+    };
+
+    // WHEN a value is pinned over it
+    const bound = Config.pinned("anything at all", handWritten).parse("ignored");
+
+    // THEN it binds: `check` is optional, so nothing about the old shape breaks
+    expect(bound).toBeOkWith("anything at all");
+  });
 });
 
 describe("ConfigInvalid", () => {

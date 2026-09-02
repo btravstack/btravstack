@@ -81,7 +81,9 @@ An unset variable takes its `default` (or `is required`); a **set but empty or
 blank** one is an error, never the default; `abc`, `3.5` and out-of-range
 values are named; every field is read before answering, so one validation
 names every fault at once. `Config.pinned(value, field)` is how a starter's
-option beats the environment, per field. Any Standard Schema (`zod`,
+option beats the environment, per field — and the pin is checked by the same
+rule the environment route uses, so a value a deployment could not set is not
+one a composition root can pin. Any Standard Schema (`zod`,
 `valibot`, `arktype`) is accepted in place of `Config.object`. The full
 semantics, `ConfigInvalid`'s message and `ConfigFieldInvalid` are on the
 [documentation site](https://btravstack.github.io/btravstack/reference/config).

@@ -16,7 +16,6 @@ export type UnitRecord = {
   readonly unitId: string;
   readonly traceId: string;
   readonly tenantId: string | undefined;
-  readonly deadline: number | undefined;
   readonly signal: AbortSignal;
 };
 
@@ -46,7 +45,6 @@ export type UnitMeta = {
   readonly id: string;
   readonly traceId?: string;
   readonly tenantId?: string;
-  readonly deadline?: number;
 };
 
 export type UnitWork<T, E> = (
@@ -91,7 +89,6 @@ export const createUnitRegistry = (): UnitRegistry => {
         unitId: nextId(),
         traceId: meta.traceId ?? meta.id,
         tenantId: meta.tenantId,
-        deadline: meta.deadline,
         // The very signal `work` is handed below: one abort, two ways to reach
         // it. Do not mirror it onto a second controller.
         signal: controller.signal,

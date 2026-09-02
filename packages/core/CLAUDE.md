@@ -162,15 +162,14 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
   `runtime: "probes"`; a variable the kernel itself could not read uses
   `runtime: "kernel"`.
 - **`UnitMeta` / `UnitWork` / `UnitRegistry`** — `UnitMeta` is
-  `{ kind, id, traceId?, tenantId?, deadline? }`; `traceId` defaults to `id`,
+  `{ kind, id, traceId?, tenantId? }`; `traceId` defaults to `id`,
   which is why **`id` must be unique per unit** unless the runtime supplies one
   (see _Two contracts a runtime owes_ above).
   `UnitWork` may return an `AsyncResult`, a `Promise<Result>` or a plain
   `Result` — the `Promise` arm is Thesis #6's second exception, since it exists
   to accept a caller's `async` handler. `UnitRegistry.awaitIdle()` returns
   `AsyncResult<void, never>`.
-- **`UnitRecord`** — the ambient record: `{ unitId, traceId, tenantId, deadline,
-signal }`. `signal` is the same `AbortSignal` `UnitWork` receives as its
+- **`UnitRecord`** — the ambient record: `{ unitId, traceId, tenantId, signal }`. `signal` is the same `AbortSignal` `UnitWork` receives as its
   argument — aborted at the drain deadline, or at once on a path that skips the
   drain (`abortAll`) — carried here so a runtime whose work callback is a
   library's `next()` still reaches it. Guarded by `units.spec.ts` → _"carries

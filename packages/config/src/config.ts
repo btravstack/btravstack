@@ -83,10 +83,30 @@ export class ConfigFieldInvalid extends TaggedError("ConfigFieldInvalid")<{
  * One environment variable, read into a value: `parse` receives the raw
  * string (or `undefined` when unset) and answers the value or the reason it
  * is not one. Compose them with `Config.object`.
+ *
+ * `check` is the same field's rule applied to a value that is ALREADY a `T` —
+ * a pin, or a default — so the two routes into a configuration cannot disagree
+ * about what is valid. It is optional: a hand-written field keeps compiling and
+ * simply accepts whatever it is handed.
  */
 export type ConfigField<T> = {
   readonly variable: string;
   readonly parse: (raw: string | undefined) => Result<T, ConfigFieldInvalid>;
+  readonly check?: (value: T) => Result<T, ConfigFieldInvalid>;
+};
+
+/**
+ * Any field, whatever it reads — the shape `Config.object` collects.
+ *
+ * `check`'s parameter is `never` rather than `unknown` so a `ConfigField<T>`
+ * of any `T` is assignable here: a function is contravariant in its parameter,
+ * and adding `check` to {@link ConfigField} otherwise makes it invariant in
+ * `T`, which a `Record<string, ConfigField<unknown>>` constraint cannot hold.
+ */
+export type AnyConfigField = {
+  readonly variable: string;
+  readonly parse: (raw: string | undefined) => Result<unknown, ConfigFieldInvalid>;
+  readonly check?: (value: never) => Result<unknown, ConfigFieldInvalid>;
 };
 
 const invalid = (reason: string): Result<never, ConfigFieldInvalid> =>
@@ -101,27 +121,47 @@ const present = <T>(
   variable: string,
   options: WithDefault<T>,
   read: (value: string) => Result<T, ConfigFieldInvalid>,
+  check?: (value: T) => Result<T, ConfigFieldInvalid>,
 ): ConfigField<T> => ({
   variable,
   parse: (raw) => {
     if (raw === undefined) {
-      return options.default === undefined ? invalid("is required") : Ok(options.default);
+      // A default takes the same rule as a read value: a bound the environment
+      // route would refuse is not one a default gets to smuggle past.
+      return options.default === undefined
+        ? invalid("is required")
+        : (check?.(options.default) ?? Ok(options.default));
     }
     const value = raw.trim();
     return value === "" ? invalid("is set but empty") : read(value);
   },
+  ...(check === undefined ? {} : { check }),
 });
 
-const integerIn =
+// The rule, over a value that is already a number — the half a pin and a
+// default take. `Number.isInteger` also refuses `NaN` and `Infinity`, which is
+// the pinned case that used to disable a limit in silence.
+const wholeNumberIn =
   (min: number, max: number) =>
-  (value: string): Result<number, ConfigFieldInvalid> => {
-    const parsed = Number(value);
+  (parsed: number): Result<number, ConfigFieldInvalid> => {
     if (!Number.isInteger(parsed))
-      return invalid(`is not a whole number: ${JSON.stringify(value)}`);
+      return invalid(`is not a whole number: ${JSON.stringify(parsed)}`);
     if (parsed < min || parsed > max)
       return invalid(`must be between ${min} and ${max}, got ${parsed}`);
     return Ok(parsed);
   };
+
+const integerIn = (min: number, max: number) => {
+  const rule = wholeNumberIn(min, max);
+  return (value: string): Result<number, ConfigFieldInvalid> => {
+    const parsed = Number(value);
+    // The raw string is what an operator wrote, so it is what the message
+    // quotes; the shared rule takes over once there is a number to bound.
+    return Number.isInteger(parsed)
+      ? rule(parsed)
+      : invalid(`is not a whole number: ${JSON.stringify(value)}`);
+  };
+};
 
 const TRUTHY = new Set(["true", "1", "yes", "on"]);
 const FALSY = new Set(["false", "0", "no", "off"]);
@@ -135,7 +175,12 @@ const FALSY = new Set(["false", "0", "no", "off"]);
  * into a provider that reads {@link Env} and answers `ConfigInvalid`.
  */
 export const Config = {
-  /** A non-empty string. */
+  /**
+   * A non-empty string — a rule about the RAW value, deliberately not a
+   * `check`: "set but empty" is a deployment mistake, where a pinned `""` is a
+   * decision. `http({ cors: false })` pins exactly that, and an off switch
+   * spelled as the empty string must not be refused as a blank variable.
+   */
   string: (variable: string, options: WithDefault<string> = {}): ConfigField<string> =>
     present(variable, options, (value) => Ok(value)),
 
@@ -148,6 +193,7 @@ export const Config = {
       variable,
       options,
       integerIn(options.min ?? Number.MIN_SAFE_INTEGER, options.max ?? Number.MAX_SAFE_INTEGER),
+      wholeNumberIn(options.min ?? Number.MIN_SAFE_INTEGER, options.max ?? Number.MAX_SAFE_INTEGER),
     ),
 
   /**
@@ -167,22 +213,34 @@ export const Config = {
 
   /** A TCP port: a whole number the OS will accept, `0` (an ephemeral bind) included. */
   port: (variable: string, options: WithDefault<number> = {}): ConfigField<number> =>
-    present(variable, options, integerIn(0, 65_535)),
+    present(variable, options, integerIn(0, 65_535), wholeNumberIn(0, 65_535)),
 
   /**
-   * `field`, unless `value` is given — then a field answering `value` that
-   * reads nothing. Explicit beats environment beats default, per field:
+   * `field`, unless `value` is given — then a field answering `value` and
+   * reading nothing. Explicit beats environment beats default, per field:
    * `http({ port: 0 })` still reads `HOST`.
+   *
+   * The pin is CHECKED against the field's own rule, so a value the deployment
+   * route would refuse is refused here too, with the same message. Without
+   * that, a pinned `NaN` body limit turned a trust boundary off in silence —
+   * `size > NaN` is `false` — and the composition root was the one input to
+   * the configuration system nothing validated.
    */
   pinned: <T>(value: T | undefined, field: ConfigField<T>): ConfigField<T> =>
-    value === undefined ? field : { variable: field.variable, parse: () => Ok(value) },
+    value === undefined
+      ? field
+      : {
+          variable: field.variable,
+          parse: () => field.check?.(value) ?? Ok(value),
+          ...(field.check === undefined ? {} : { check: field.check }),
+        },
 
   /**
    * A record of fields, as a Standard Schema over the environment. Every field
    * is read, so one validation names every offending variable at once — an
    * operator fixes the deployment in one round trip.
    */
-  object: <F extends Record<string, ConfigField<unknown>>>(
+  object: <F extends Record<string, AnyConfigField>>(
     fields: F,
   ): ConfigSchema<
     Environment,

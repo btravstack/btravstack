@@ -25,10 +25,17 @@ Result<T, ConfigFieldInvalid> }`. All go through one `present()` helper that
   deployment that wrote `HTTP_COMPRESSION=enabled` meant to turn it on, and a silent
   `false` there is the kind of configuration bug nothing reports.
 - **`Config.pinned(value, field)`** — `field` unless `value` is given, then a
-  field answering `value` that reads nothing (same `variable`, `parse: () =>
-Ok(value)`). What a starter's options do to its own fields — explicit beats
-  environment beats default, **per field** — declared once here rather than
-  as a local helper in each starter (`http` and `temporal` had one apiece).
+  field answering `value` and reading nothing. What a starter's options do to
+  its own fields — explicit beats environment beats default, **per field** —
+  declared once here rather than as a local helper in each starter (`http` and
+  `temporal` had one apiece). **The pin is CHECKED** against the field's own
+  rule (`ConfigField.check`, run on a value that is already a `T`), so the two
+  routes into a configuration cannot disagree about what is valid: a pinned
+  `NaN` body limit used to turn a trust boundary off in silence, since
+  `size > NaN` is `false`, and the composition root was the one input nothing
+  validated (#177). A `default` takes the same check, for the same reason.
+  `check` is optional, so a hand-written `ConfigField` keeps compiling and
+  accepts whatever it is handed.
 - **`Config.object(fields)`** — a hand-rolled Standard Schema v1
   (`~standard: { version: 1, vendor: "btravstack", validate }`) over
   `Environment`, typed `ConfigSchema<Environment, { [K]: T }>`. `validate` is

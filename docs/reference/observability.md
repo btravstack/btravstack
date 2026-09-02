@@ -217,8 +217,8 @@ type Sink = (line: Line) => void;
 `unit` is what [`currentUnit()`](/how-to/read-the-ambient-unit) carried, or
 `undefined` outside a unit — a startup line, a package's own specs. `tenantId`
 is present only when the runtime supplied one; no shipped starter does.
-`deadline` and `signal` are on the ambient record but not on the line: they
-are for code that must act on them, not for a log backend.
+`signal` is on the ambient record but not on the line: it is for code that must
+act on it, not for a log backend.
 
 A `Sink` is allowed to throw. `createLogger` is what makes that safe, which is
 why a sink is a plain function with no error channel of its own.
