@@ -35,6 +35,7 @@ import {
   type CORSHandlerPluginOptions,
   type ResponseCompressionHandlerPluginOptions,
 } from "@orpc/server/plugins";
+import { RPC_DEFAULT_ALLOW_METHODS } from "@orpc/server/standard";
 import "@unthrown/orpc/extensions/result";
 
 import { authenticatorPort, principalMiddleware, type AuthenticatorService } from "./auth.js";
@@ -140,7 +141,7 @@ export const OrpcRouterPort = Port("OrpcRouter") as PortClassOf<
 export type OrpcRouterPort = PortInstance<"OrpcRouter", Router<Record<never, never>>>;
 
 /** oRPC's own default set; GET is the one addition, and only where a browser has to send it. */
-const RPC_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const RPC_METHODS: ReadonlySet<string> = new Set(RPC_DEFAULT_ALLOW_METHODS);
 
 /** Whether a procedure's declared output is an event iterator — the shape `EventSource` consumes. */
 const streamsOutput = (procedure: AnyProcedure): boolean =>
