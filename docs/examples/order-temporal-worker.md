@@ -74,20 +74,55 @@ export const chargeOrder = TemporalWorkflowActivities(
 )({
   inject: { payments: PaymentService },
   sync: ({ payments }) => ({
-    authorizePayment: ({ errors, input }) =>
+    authorizePayment: ({ errors, idempotencyKey, input }) =>
       payments
-        .authorize(input.orderId, input.amount)
+        .authorize(input.orderId, input.amount, idempotencyKey)
         .map((authorizationId) => ({ authorizationId }))
         .mapErrCases((matcher) =>
           matcher.with(P.tag("PaymentDeclined"), (error) =>
             errors.PaymentDeclined({ id: error.id }),
           ),
         ),
-    capturePayment: ({ input }) => payments.capture(input.authorizationId),
-    refundPayment: ({ input }) => payments.refund(input.authorizationId),
+    capturePayment: ({ idempotencyKey, input }) =>
+      payments.capture(input.authorizationId, idempotencyKey),
+    refundPayment: ({ idempotencyKey, input }) =>
+      payments.refund(input.authorizationId, idempotencyKey),
   }),
 });
 ```
+
+All three take an **`idempotencyKey`**, and billing is the slice where that
+earns its place: Temporal runs an activity _at least once_, so a retry after a
+timeout the gateway never saw would authorize the card twice. The contract
+derives each key from the activity's own input —
+
+<!-- doctest: skip — one property of a `defineActivity` call; the contract that carries it is compiled by examples/order-temporal-contract -->
+
+```ts
+idempotencyKey: ({ tenantId, orderId }) => `authorize:${tenantId}:${orderId}`,
+```
+
+— which makes it stable across a retry, a worker crash, and a fresh execution
+with the same input.
+
+**Stability is the whole property, and it decides what may go in.** The key is
+built only from the fields that _identify_ the operation: the tenant, because
+every port here is tenant-scoped and an id is only unique within one, and the
+order. `amount` is deliberately absent — it _describes_ the charge rather than
+identifying it, so folding it in would make the key move whenever the
+description does, which is exactly the retry the key exists to collapse. The
+sibling mistake is keying on a descriptive field **instead** of an identifying
+one: `authorize:${tenantId}:${amount}` would make one customer's two orders of
+the same value collide on a single key, and the second would never be charged.
+
+The compensation gets one too, and arguably needs it most: `refundPayment`'s
+sibling rule is that a repeated compensation must be a no-op, and for a refund
+the gateway is the only thing that can make it one.
+
+`helpers.idempotencyKey` is typed `string` for an activity whose contract
+declares a key and `undefined` for one that does not, so reaching for a key
+nobody declared is a compile error rather than a silent `undefined` on the
+wire.
 
 `fulfillOrder`'s own piece is the same activities record this example always
 had, moved into `src/slices/fulfillment/activities.ts` unchanged and typed by

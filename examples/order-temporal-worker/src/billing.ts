@@ -12,6 +12,12 @@ import { OkAsync } from "unthrown";
  *
  * It always says yes. What this deployment demonstrates is the orchestration;
  * the specs supply the refusing provider, which is where compensation runs.
+ *
+ * Each call takes the `idempotencyKey` the contract derives from the activity's
+ * input. A real gateway is where that key does its work — it collapses a retry
+ * into the first attempt — so a stand-in that dropped it would teach the wrong
+ * shape; this one logs it, which is what an anti-corruption boundary with
+ * nothing behind it can honestly do.
  */
 export const BillingModule = Module("Billing")({
   needs: [Logger, Meter],
@@ -22,17 +28,17 @@ export const BillingModule = Module("Billing")({
         // Counted at the adapter, the seam metrics share with the logger.
         const authorized = meter.createCounter("btravstack.payments.authorized");
         return {
-          authorize: (orderId, amount) => {
+          authorize: (orderId, amount, idempotencyKey) => {
             authorized.add(1);
-            logger.info("authorized the payment", { orderId, amount });
+            logger.info("authorized the payment", { orderId, amount, idempotencyKey });
             return OkAsync(`auth-${orderId}`);
           },
-          capture: (authorizationId) => {
-            logger.info("captured the payment", { authorizationId });
+          capture: (authorizationId, idempotencyKey) => {
+            logger.info("captured the payment", { authorizationId, idempotencyKey });
             return OkAsync();
           },
-          refund: (authorizationId) => {
-            logger.info("refunded the payment", { authorizationId });
+          refund: (authorizationId, idempotencyKey) => {
+            logger.info("refunded the payment", { authorizationId, idempotencyKey });
             return OkAsync();
           },
         };
