@@ -1222,7 +1222,14 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   `createFakeClock`, never a real `setTimeout` — a kernel whose own tests are
   slow gets tested badly. `*.test-d.ts` files are excluded from the build, from
   oxlint and from knip; they are checked by `tsc -p tsconfig.test-d.json`, which
-  `pnpm typecheck` runs. The structural rules are in **Test conventions** below.
+  `pnpm typecheck` runs. Every one of those files is two lines over
+  `@btravstack/tsconfig/test-d.json` — the preset carries the reason
+  (`noUnusedLocals` and `noUnusedParameters` off, because an assertion binding
+  is never read) and each workspace states only its own globs. The preset goes
+  **last** in the `extends` array so its relaxations win, and it carries no
+  `include`: TypeScript resolves a base config's globs relative to the base
+  file's own directory, so a shipped one would point inside `node_modules`.
+  The structural rules are in **Test conventions** below.
 - **Prose carries reasons, never counts.** A number in a spec file either sits
   behind a gate that recomputes it or is deleted in favour of the reason it was
   counting. Measured across the whole repository (#192): every claim behind the

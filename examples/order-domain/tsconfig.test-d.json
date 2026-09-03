@@ -1,6 +1,5 @@
 {
-  "extends": "./tsconfig.json",
-  "compilerOptions": { "noUnusedLocals": false, "noUnusedParameters": false },
+  "extends": ["./tsconfig.json", "@btravstack/tsconfig/test-d.json"],
   "include": ["src/**/*.test-d.ts"],
   "exclude": ["node_modules"]
 }
