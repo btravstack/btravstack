@@ -1,11 +1,5 @@
 {
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "declaration": false,
-    "declarationMap": false,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false
-  },
+  "extends": ["./tsconfig.json", "@btravstack/tsconfig/test-d.json"],
   "include": ["src/**/*.test-d.ts", "src/vitest.d.ts"],
   "exclude": ["node_modules"]
 }
