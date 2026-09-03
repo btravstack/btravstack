@@ -131,6 +131,16 @@ const authorizePayment = defineActivity({
   input: amountInput,
   output: z.object({ authorizationId: z.string() }),
   errors: { PaymentDeclined: { data: orderRef, nonRetryable: true } },
+  // Temporal runs an activity AT LEAST once, and money is where that bites:
+  // a retry after a timeout the gateway never saw would authorize twice.
+  // The key is derived from the payload, so it is stable across a retry, a
+  // worker crash, and a fresh execution with the same input.
+  //
+  // Keyed on what IDENTIFIES the charge, never on what describes it: `amount`
+  // is out, or one customer's two identical orders would collide on one key.
+  // The tenant is in because every port here is tenant-scoped, and an id is
+  // only unique within one.
+  idempotencyKey: ({ tenantId, orderId }) => `authorize:${tenantId}:${orderId}`,
   activityOptions: {
     startToCloseTimeout: "1 minute",
     retry: { maximumAttempts: 3, initialInterval: "10 milliseconds" },
@@ -140,6 +150,7 @@ const authorizePayment = defineActivity({
 const capturePayment = defineActivity({
   input: authorizationTarget,
   output: z.void(),
+  idempotencyKey: ({ tenantId, authorizationId }) => `capture:${tenantId}:${authorizationId}`,
   activityOptions: {
     startToCloseTimeout: "1 minute",
     retry: { maximumAttempts: 5, initialInterval: "10 milliseconds" },
@@ -149,6 +160,10 @@ const capturePayment = defineActivity({
 const refundPayment = defineActivity({
   input: authorizationTarget,
   output: z.void(),
+  // The compensation needs one too, and arguably most: `cancelPlacement`'s
+  // sibling rule is that a repeated compensation must be a no-op, and for a
+  // refund the gateway is the only thing that can make it one.
+  idempotencyKey: ({ tenantId, authorizationId }) => `refund:${tenantId}:${authorizationId}`,
   activityOptions: {
     startToCloseTimeout: "1 minute",
     retry: { maximumAttempts: 5, initialInterval: "10 milliseconds" },

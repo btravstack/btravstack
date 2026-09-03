@@ -115,9 +115,13 @@ export class ShippingService extends Port("ShippingService")<{
  * unmodelled, so the platform retries it.
  */
 export class PaymentService extends Port("PaymentService")<{
-  readonly authorize: (orderId: string, amount: number) => AsyncResult<string, PaymentDeclined>;
-  readonly capture: (authorizationId: string) => AsyncResult<void, never>;
-  readonly refund: (authorizationId: string) => AsyncResult<void, never>;
+  readonly authorize: (
+    orderId: string,
+    amount: number,
+    idempotencyKey: string,
+  ) => AsyncResult<string, PaymentDeclined>;
+  readonly capture: (authorizationId: string, idempotencyKey: string) => AsyncResult<void, never>;
+  readonly refund: (authorizationId: string, idempotencyKey: string) => AsyncResult<void, never>;
 }> {}
 
 export class PlaceOrder extends Port("PlaceOrder")<{

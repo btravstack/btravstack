@@ -13,6 +13,13 @@ import { P } from "unthrown";
  * The compensation declares no errors and triages nothing: `refund` promises
  * `never`, because a compensation that could answer no would leave the saga
  * stuck half-done.
+ *
+ * All three take the `idempotencyKey` the contract derives from their input.
+ * Temporal runs an activity at least once, and this is the slice where that
+ * costs money — the key is what makes the gateway collapse a retry into the
+ * first attempt. It is typed `string` here because the contract declares one;
+ * an activity that does not gets `undefined`, so reaching for a key nobody
+ * declared is a compile error rather than a silent `undefined` on the wire.
  */
 export const chargeOrder = TemporalWorkflowActivities(
   orderContract,
@@ -20,16 +27,18 @@ export const chargeOrder = TemporalWorkflowActivities(
 )({
   inject: { payments: PaymentService },
   sync: ({ payments }) => ({
-    authorizePayment: ({ errors, input }) =>
+    authorizePayment: ({ errors, idempotencyKey, input }) =>
       payments
-        .authorize(input.orderId, input.amount)
+        .authorize(input.orderId, input.amount, idempotencyKey)
         .map((authorizationId) => ({ authorizationId }))
         .mapErrCases((matcher) =>
           matcher.with(P.tag("PaymentDeclined"), (error) =>
             errors.PaymentDeclined({ id: error.id }),
           ),
         ),
-    capturePayment: ({ input }) => payments.capture(input.authorizationId),
-    refundPayment: ({ input }) => payments.refund(input.authorizationId),
+    capturePayment: ({ idempotencyKey, input }) =>
+      payments.capture(input.authorizationId, idempotencyKey),
+    refundPayment: ({ idempotencyKey, input }) =>
+      payments.refund(input.authorizationId, idempotencyKey),
   }),
 });
