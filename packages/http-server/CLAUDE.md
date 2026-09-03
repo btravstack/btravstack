@@ -505,8 +505,12 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   browser's CORS preflight, so the day a cookie authenticator lands, CSRF stops
   being inert for both answerers at once. Admitting `GET` on an event-iterator
   procedure gives the oRPC answerer its own preflight-free surface now too, so
-  the day a cookie authenticator lands, `GetMethodCsrfProtectionHandlerPlugin`
-  is the `plugins` line for both answerers, not `htmx()` alone.
+  both halves will need protecting — and only one of them can be protected by a
+  plugin. `GetMethodCsrfProtectionHandlerPlugin` rides `plugins` into
+  `RPCHandler`, so it covers oRPC alone; `HtmxOptions` is `{ prefix }` and
+  nothing else, so no oRPC plugin ever reaches a fragment and that half has to
+  be protected inside this package. Do not write that one plugins line covers
+  both — it cannot.
 
   **`securityHeaders` stays composition-time on purpose** — a deployment that
   can silently turn `x-frame-options` off is a footgun the other three are not.

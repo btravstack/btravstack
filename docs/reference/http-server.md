@@ -1010,9 +1010,13 @@ once claimed it: oRPC's protection is meaningful only once a request carries a
 `SameSite` cookie, and this package configures no cookies. It stays reachable
 through `plugins`, and becomes an option when cookies do. Admitting `GET` on
 an event-iterator procedure gives the oRPC answerer its own preflight-free
-surface now too, so the day a cookie authenticator lands,
-`GetMethodCsrfProtectionHandlerPlugin` is the `plugins` line for both
-answerers, not `htmx()` alone.
+surface now too, so the day a cookie authenticator lands both answerers need
+protecting — but only one of them can be protected by a plugin.
+`GetMethodCsrfProtectionHandlerPlugin` rides `plugins` into `RPCHandler` and
+so covers oRPC alone; `htmx()` takes a `prefix` and nothing else, so no oRPC
+plugin ever sees a fragment request, and the fragment half has to be
+protected inside this package. Today neither is a live gap, because nothing
+here configures a cookie for a browser to attach.
 
 ### `plugins`
 
@@ -1263,7 +1267,12 @@ cleanly because oRPC's client reads a clean end as the iterator finishing
 and never reconnects; on a reset both it and a browser's `EventSource`
 reconnect, carrying `Last-Event-ID`. The stream's unit closes on the
 response and is counted `completed`, so `abandoned` keeps meaning work that
-ignored the deadline. The deadline `signal` is noted and not otherwise used:
+ignored the deadline. The check reads **queued** headers, through
+`response.getHeader("content-type")`, so an answerer that streams must set
+that header with `response.setHeader(...)` and not through `writeHead` alone:
+a response whose content type node has never queued is invisible here, and is
+retired as an ordinary sent response instead of reset. The deadline `signal`
+is noted and not otherwise used:
 closing a listener is instantaneous, so there is nothing to escalate to.
 `Serving.stop()` destroys whatever sockets are still open and resolves once
 the server has closed. Why the stream is ended here and not held is
