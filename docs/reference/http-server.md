@@ -1008,7 +1008,11 @@ should make in the open.
 **CSRF is deliberately not an option here**, though this package's own spec
 once claimed it: oRPC's protection is meaningful only once a request carries a
 `SameSite` cookie, and this package configures no cookies. It stays reachable
-through `plugins`, and becomes an option when cookies do.
+through `plugins`, and becomes an option when cookies do. Admitting `GET` on
+an event-iterator procedure gives the oRPC answerer its own preflight-free
+surface now too, so the day a cookie authenticator lands,
+`GetMethodCsrfProtectionHandlerPlugin` is the `plugins` line for both
+answerers, not `htmx()` alone.
 
 ### `plugins`
 

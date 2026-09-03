@@ -55,10 +55,10 @@ export const router = api.OrpcRouter(contract)({
       const from = lastEventId === undefined ? 0 : Number(lastEventId) + 1;
       async function* events() {
         for (let i = from; i < statuses.length && !signal?.aborted; i += 1) {
-          yield withEventMeta({ status: statuses[i] ?? "unknown" }, { id: String(i), retry: 2_000 });
+          const status = `${input.orderId}:${statuses[i] ?? "unknown"}`;
+          yield withEventMeta({ status }, { id: String(i), retry: 2_000 });
         }
       }
-      void input;
       return OkAsync(events());
     },
   }),
@@ -105,12 +105,16 @@ browser reconnects on its own, after the `retry` delay, with
 <!-- doctest: skip — browser code, `EventSource` is not in the node typings this gate compiles under -->
 
 ```ts
-const source = new EventSource("/rpc/orderEvents?data=%7B%22orderId%22%3A%2242%22%7D");
-source.onmessage = (event) => console.log(JSON.parse(event.data));
+const data = encodeURIComponent(JSON.stringify({ json: { orderId: "42" } }));
+const source = new EventSource(`/rpc/orderEvents?data=${data}`);
+source.onmessage = (event) => console.log(JSON.parse(event.data).json);
 ```
 
-The RPC protocol carries a `GET` input as the `data` query parameter,
-JSON-encoded.
+The RPC protocol carries a `GET` input as the `data` query parameter, holding
+oRPC's own serialized envelope `{"json": <input>}` rather than the input
+itself — `RPCJsonSerializer` reads its `json` key back out on decode. Each
+event's `data` is the same envelope, so a reader parses it and reaches for
+`.json` too.
 
 ## What a deploy does to an open stream
 
@@ -118,8 +122,11 @@ A stream is a unit: it opened with the request and closes with the
 response. When a drain begins, the runtime **resets** every open
 `text/event-stream` response at beat 3's start — after readiness went false
 and the pre-drain delay gave the ingress time to stop routing here — and
-the client's reconnect lands on a replica that is staying. The unit is
-counted `completed`, never `abandoned`, and the generator's `finally` runs.
+the client's reconnect lands on a replica that is staying. Once its headers
+have flushed, the unit is counted `completed` rather than `abandoned`, and
+the generator's `finally` runs; a stream still waiting on its first event
+when the drain begins is only marked to close, and is abandoned like any
+other unit still open past `drainTimeoutMs`.
 
 It is a reset rather than a clean end on purpose: an oRPC client reads a
 clean end as the iterator finishing and does not reconnect. So a client

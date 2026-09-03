@@ -503,7 +503,10 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   its own **today** — but it is the answerer where the gap will bite first: a
   fragment's `POST` is form-urlencoded, exactly the request shape that skips a
   browser's CORS preflight, so the day a cookie authenticator lands, CSRF stops
-  being inert for both answerers at once.
+  being inert for both answerers at once. Admitting `GET` on an event-iterator
+  procedure gives the oRPC answerer its own preflight-free surface now too, so
+  the day a cookie authenticator lands, `GetMethodCsrfProtectionHandlerPlugin`
+  is the `plugins` line for both answerers, not `htmx()` alone.
 
   **`securityHeaders` stays composition-time on purpose** — a deployment that
   can silently turn `x-frame-options` off is a footgun the other three are not.
@@ -591,8 +594,11 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   to it. A stream is reset rather than ended cleanly because oRPC's client
   reads a clean end as the iterator finishing and never reconnects, while
   both it and a bare `EventSource` reconnect on a reset; the unit closes on
-  the response and counts `completed`. The position and its survey are in
-  the root `CLAUDE.md`, thesis #5.
+  the response and counts `completed`. The check reads **queued** headers
+  (`getHeader`), so a future streaming answerer must set its `content-type`
+  through `setHeader` rather than `writeHead` alone, or it is invisible to
+  `isEventStream` and gets ended instead of reset. The position and its
+  survey are in the root `CLAUDE.md`, thesis #5.
 - **GET, for streams only**: the RPC handler's `allowMethods` admits `GET`
   when the matched procedure declares an event-iterator output
   (`getAsyncIteratorObjectSchemaDetails` on its `outputSchemas`) and keeps
