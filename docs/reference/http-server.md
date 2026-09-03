@@ -1205,18 +1205,19 @@ that is the only way to learn the port that was actually bound.
 
 ## What it decides about a request
 
-| Request                                                      | Answer                                                                 | Decided by       |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------- | ---------------- |
-| a procedure under `prefix`                                   | the procedure's output, or the `ORPCError` its `Result` was mapped to  | oRPC, the router |
-| a defect thrown inside a procedure                           | oRPC's own `INTERNAL_SERVER_ERROR` collapse                            | oRPC             |
-| a protected procedure no requirement accepted the caller for | `401 UNAUTHORIZED`, the handler never entered                          | this package     |
-| a protected procedure whose caller lacked a required scope   | `403 FORBIDDEN`, the handler never entered                             | this package     |
-| a protected procedure whose authenticator defected           | oRPC's `INTERNAL_SERVER_ERROR` collapse — a bug, not a rejected caller | oRPC             |
-| a path under `prefix` naming no procedure                    | `404 {"error":"NotFound"}` — oRPC declines it unwritten                | this package     |
-| any path outside `prefix`                                    | `404 {"error":"NotFound"}` — likewise                                  | this package     |
-| the listener resolved without writing                        | `404 {"error":"NotFound"}`                                             | this package     |
-| the listener failed before headers were out                  | `500 {"error":"InternalError"}`                                        | this package     |
-| a failure with headers already on the wire                   | the socket is destroyed — a reset, not a hang                          | this package     |
+| Request                                                      | Answer                                                                    | Decided by       |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------- | ---------------- |
+| a procedure under `prefix`                                   | the procedure's output, or the `ORPCError` its `Result` was mapped to     | oRPC, the router |
+| a `GET` for a procedure whose output is an event iterator    | the stream, as `text/event-stream` — the one `GET` the RPC handler admits | this package     |
+| a defect thrown inside a procedure                           | oRPC's own `INTERNAL_SERVER_ERROR` collapse                               | oRPC             |
+| a protected procedure no requirement accepted the caller for | `401 UNAUTHORIZED`, the handler never entered                             | this package     |
+| a protected procedure whose caller lacked a required scope   | `403 FORBIDDEN`, the handler never entered                                | this package     |
+| a protected procedure whose authenticator defected           | oRPC's `INTERNAL_SERVER_ERROR` collapse — a bug, not a rejected caller    | oRPC             |
+| a path under `prefix` naming no procedure                    | `404 {"error":"NotFound"}` — oRPC declines it unwritten                   | this package     |
+| any path outside `prefix`                                    | `404 {"error":"NotFound"}` — likewise                                     | this package     |
+| the listener resolved without writing                        | `404 {"error":"NotFound"}`                                                | this package     |
+| the listener failed before headers were out                  | `500 {"error":"InternalError"}`                                           | this package     |
+| a failure with headers already on the wire                   | the socket is destroyed — a reset, not a hang                             | this package     |
 
 The last three are the package's own fallbacks, guaranteeing that every
 request produces exactly one completed response. The two `500` shapes are
@@ -1247,15 +1248,22 @@ and would otherwise win over the minted id.
 ## The drain
 
 `Serving.drain(signal)` marks the server draining, **retires every open
-response** — an unsent header gets `Connection: close`, a sent one ends its
-socket on `'finish'` — then calls `server.close()` and
+response** — an unsent header gets `Connection: close`, a sent
+`text/event-stream` response is destroyed on the spot, any other sent one
+ends its socket on `'finish'` — then calls `server.close()` and
 `closeIdleConnections()`. `closeIdleConnections()` alone reaches only
 connections idle at that instant, and node would keep serving keep-alive
 requests down a busy one for the whole drain window; retirement per response
-is what actually stops accepting. The deadline `signal` is noted and not
-otherwise used: closing a listener is instantaneous, so there is nothing to
-escalate to. `Serving.stop()` destroys whatever sockets are still open and
-resolves once the server has closed.
+is what actually stops accepting. A stream is reset rather than ended
+cleanly because oRPC's client reads a clean end as the iterator finishing
+and never reconnects; on a reset both it and a browser's `EventSource`
+reconnect, carrying `Last-Event-ID`. The stream's unit closes on the
+response and is counted `completed`, so `abandoned` keeps meaning work that
+ignored the deadline. The deadline `signal` is noted and not otherwise used:
+closing a listener is instantaneous, so there is nothing to escalate to.
+`Serving.stop()` destroys whatever sockets are still open and resolves once
+the server has closed. Why the stream is ended here and not held is
+[Draining, in three beats](/explanation/draining-in-three-beats).
 
 ## Startup failures
 

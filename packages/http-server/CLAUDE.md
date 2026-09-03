@@ -583,10 +583,21 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   so the two contracts a runtime owes are structural here rather than left to
   a caller's care.
 - **Drain**: `stopAccepting` retires every open response — an unsent header
-  gets `Connection: close`, a sent one ends its socket on `'finish'` — and
-  `stop()` destroys what is still open. `closeIdleConnections()` alone would
-  miss a response with a request in flight; that is why retirement is tracked
-  per-response rather than left to it.
+  gets `Connection: close`, a sent `text/event-stream` response is
+  **destroyed** on the spot, any other sent one ends its socket on
+  `'finish'` — and `stop()` destroys what is still open.
+  `closeIdleConnections()` alone would miss a response with a request in
+  flight; that is why retirement is tracked per-response rather than left
+  to it. A stream is reset rather than ended cleanly because oRPC's client
+  reads a clean end as the iterator finishing and never reconnects, while
+  both it and a bare `EventSource` reconnect on a reset; the unit closes on
+  the response and counts `completed`. The position and its survey are in
+  the root `CLAUDE.md`, thesis #5.
+- **GET, for streams only**: the RPC handler's `allowMethods` admits `GET`
+  when the matched procedure declares an event-iterator output
+  (`getAsyncIteratorObjectSchemaDetails` on its `outputSchemas`) and keeps
+  oRPC's default set otherwise. A browser's `EventSource` can only GET;
+  nothing else a browser has reason to GET exists on an RPC surface.
 - **Not included, deliberately**: another ROUTER for oRPC's own answerer (there
   is no `handler` option on `http()`; a second protocol is a second answerer,
   not a swap of this one), a middleware

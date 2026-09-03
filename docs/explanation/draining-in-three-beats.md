@@ -137,6 +137,36 @@ drain. That is honest reporting: the obvious formula goes negative the moment
 a unit starts after the sample and closes before the deadline, and a report
 that can say `-1` is not a report.
 
+## A stream is a unit, and the runtime ends it
+
+A server-sent-events response is a unit like any other: it opened when the
+request arrived and closes when the response does. Left alone, it would sit
+through the whole in-flight budget, be aborted at the deadline, and be
+reported `abandoned` — an exit code `2` on every deploy for an application
+with one subscriber.
+
+So `@btravstack/http-server` ends it itself, at beat 3's start. When the
+kernel calls `Serving.drain`, the runtime walks its open responses, and one
+whose content type is `text/event-stream` is **reset**. That is the one
+moment a reconnect is free: readiness has been false since beat 1, beat 2
+gave the ingress time to hear it, and the client's reconnect lands on a
+replica that is staying, carrying `Last-Event-ID`. The unit closes on the
+response and is counted `completed`.
+
+A reset and not a clean end, by measurement. oRPC's client reads a clean
+end as the iterator finishing and stops for good; both it and a browser's
+`EventSource` treat a reset as "reconnect". The application's own `finally`
+still runs, through oRPC's signal, which the reset aborts.
+
+This is transport semantics inside the runtime's own `drain`, not a fourth
+beat — the same shape as the Temporal worker's `shutdown()`. Every server
+surveyed (Go's `net/http`, hyper, Spring Boot, Node's `server.close()`)
+counts a stream as in flight and leaves closing it to the application;
+graphql-ws is the one library that closes them itself, with `1001 Going
+Away`. The SSE specification makes reconnection the client's default, so
+shipping the close as a default costs the client nothing it was not built
+for. The recipe is [Stream with server-sent events](/how-to/stream-with-server-sent-events).
+
 ## Why 5 and 20
 
 `preDrainDelayMs` at 5 s is the budget for endpoint propagation to catch up
