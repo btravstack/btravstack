@@ -471,6 +471,40 @@ describe("httpRuntime", () => {
     expect(released()).toBe(true);
   });
 
+  it("serves a GET on a stream procedure, which is the only request an EventSource can send", async ({
+    streaming,
+  }) => {
+    // GIVEN a router with an event-iterator procedure
+    const { origin } = await streaming.serve();
+
+    // WHEN a browser-shaped GET arrives for it
+    const response = await fetch(`${origin}/rpc/ticks`, {
+      headers: { accept: "text/event-stream" },
+    });
+    await response.body?.cancel();
+
+    // THEN it is the stream, not the runtime's 404
+    expect({ status: response.status, type: response.headers.get("content-type") }).toEqual({
+      status: 200,
+      type: "text/event-stream",
+    });
+  });
+
+  it("still refuses a GET on a procedure that does not stream", async ({ streaming }) => {
+    // GIVEN the same router, whose other procedure answers a value
+    const { origin } = await streaming.serve();
+
+    // WHEN a GET arrives for the plain procedure
+    const response = await fetch(`${origin}/rpc/hello`);
+
+    // THEN oRPC declines it and the runtime answers its own 404: GET stays
+    // closed on everything a browser has no reason to GET
+    expect({ status: response.status, body: await response.json() }).toEqual({
+      status: 404,
+      body: { error: "NotFound" },
+    });
+  });
+
   it("serves a fragments-only graph, with no oRPC router anywhere", async ({ serveAnswerer }) => {
     // GIVEN a graph composing the socket half and one bare answerer — no
     // router, no oRPC, which `http()` would have forced

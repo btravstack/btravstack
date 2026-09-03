@@ -15,9 +15,14 @@ import {
   type PortInstance,
   type ServiceOf,
 } from "@btravstack/di";
-import type { ProcedureContract, RouterContract } from "@orpc/contract";
+import {
+  getAsyncIteratorObjectSchemaDetails,
+  type ProcedureContract,
+  type RouterContract,
+} from "@orpc/contract";
 import {
   implement,
+  type AnyProcedure,
   type DefaultInitialContext,
   type ProcedureImplementer,
   type Router,
@@ -134,6 +139,15 @@ export const OrpcRouterPort = Port("OrpcRouter") as PortClassOf<
 >;
 export type OrpcRouterPort = PortInstance<"OrpcRouter", Router<Record<never, never>>>;
 
+/** oRPC's own default set; GET is the one addition, and only where a browser has to send it. */
+const RPC_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/** Whether a procedure's declared output is an event iterator — the shape `EventSource` consumes. */
+const streamsOutput = (procedure: AnyProcedure): boolean =>
+  (procedure["~orpc"].outputSchemas ?? []).some(
+    (schema) => getAsyncIteratorObjectSchemaDetails(schema) !== undefined,
+  );
+
 /**
  * The oRPC starter: a provider of `HttpHandler` built from the router port,
  * mounted under `prefix`. A request oRPC does not match resolves unwritten and
@@ -144,7 +158,11 @@ export const orpc = (options: OrpcOptions = {}) => {
   return Provider.member(HttpHandler)({
     inject: { router: OrpcRouterPort, config: HttpConfig },
     sync: ({ router, config }) => {
-      const rpc = new RPCHandler(router, { plugins: [...pluginsOf(options, config)] });
+      const rpc = new RPCHandler(router, {
+        plugins: [...pluginsOf(options, config)],
+        allowMethods: (method, procedure) =>
+          method === "GET" ? streamsOutput(procedure) : RPC_METHODS.has(method),
+      });
       return {
         prefix,
         // The request rides oRPC's initial context so `principalMiddleware`
