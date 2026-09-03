@@ -40,7 +40,7 @@ import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
-import { oc, type as ocType, type RouterContractClient } from "@orpc/contract";
+import { eventIterator, oc, type as ocType, type RouterContractClient } from "@orpc/contract";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
@@ -669,6 +669,43 @@ const bothProtocolsAppOf = () =>
     provides: [bothStatusFragment],
   });
 
+/** One procedure that streams and one that does not, so a method rule can be told apart from a path rule. */
+const streamContract = oc.router({
+  ticks: oc.output(eventIterator(z.object({ n: z.number() }))),
+  hello: oc,
+});
+
+const streamRouterOf = (released: { value: boolean }) =>
+  publicApi.OrpcRouter(streamContract)({
+    inject: {},
+    sync: () => ({
+      ticks: ({ signal }) => {
+        async function* ticks() {
+          let n = 0;
+          try {
+            while (!signal?.aborted) {
+              yield { n };
+              n += 1;
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+          } finally {
+            released.value = true;
+          }
+        }
+        return OkAsync(ticks());
+      },
+      hello: () => OkAsync("hello"),
+    }),
+  });
+
+const streamAppOf = (released: { value: boolean }) =>
+  HttpModule("StreamApp")({
+    router: streamRouterOf(released),
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [],
+  });
+
 /**
  * The same fragments alone, mounted off a PINNED prefix instead of the
  * default `/` — proves `fragmentsPrefix` actually reaches `htmx()` rather
@@ -1161,6 +1198,22 @@ export type HttpFixtures = {
     }>;
     readonly stoppedAccepting: (origin: string) => Promise<void>;
   };
+  /**
+   * A stream procedure under the real starter, and a raw subscriber that
+   * reports how the body ended — the observable that tells a reset from a
+   * clean end, which an oRPC client reads as "finished".
+   */
+  readonly streaming: {
+    readonly serve: () => Promise<{
+      readonly app: RunningApp<unknown, unknown>;
+      readonly origin: string;
+      readonly released: () => boolean;
+    }>;
+    readonly subscribe: (origin: string) => Promise<{
+      readonly frames: () => number;
+      readonly ended: Promise<"done" | "reset">;
+    }>;
+  };
   /** The pieces the composing router form takes, and what the unmarked router they build declares. */
   readonly controllers: {
     readonly controller: typeof helloController;
@@ -1541,6 +1594,44 @@ export const it = test.extend<HttpFixtures>({
     });
 
     for (const socket of opened) socket.destroy();
+  },
+
+  streaming: async ({ boot }, use) => {
+    await use({
+      serve: async () => {
+        const released = { value: false };
+        const app = boot(streamAppOf(released), { drainTimeoutMs: 200 });
+        const info = (await app.runtimeInfo()).get();
+        assert.ok(info !== undefined, "the runtime published no Serving.info");
+        return {
+          app,
+          origin: `http://127.0.0.1:${info.port}`,
+          released: () => released.value,
+        };
+      },
+      subscribe: async (origin) => {
+        const response = await fetch(`${origin}/rpc/ticks`, {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "text/event-stream" },
+          body: "{}",
+        });
+        assert.ok(response.body !== null, "the stream has no body");
+        const reader = response.body.getReader();
+        let frames = 0;
+        const ended = (async (): Promise<"done" | "reset"> => {
+          try {
+            for (;;) {
+              const { done } = await reader.read();
+              if (done) return "done";
+              frames += 1;
+            }
+          } catch {
+            return "reset";
+          }
+        })();
+        return { frames: () => frames, ended };
+      },
+    });
   },
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture

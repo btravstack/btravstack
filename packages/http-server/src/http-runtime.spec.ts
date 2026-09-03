@@ -417,6 +417,60 @@ describe("httpRuntime", () => {
     await expect(held.closed()).resolves.toBeUndefined();
   });
 
+  it("counts a stream open when the drain begins as completed, not abandoned", async ({
+    streaming,
+  }) => {
+    // GIVEN a stream that has delivered at least one event
+    const { app, origin } = await streaming.serve();
+    const stream = await streaming.subscribe(origin);
+    await vi.waitUntil(() => stream.frames() >= 2);
+
+    // WHEN the drain begins
+    app.requestDrain();
+
+    // THEN the runtime ended the stream at beat 3's start and the kernel saw
+    // its unit close inside the budget. Waiting for `finish` instead — the
+    // keep-alive branch — would hold it to the deadline and report it abandoned.
+    await expect(app.exited).toBeOkWith(
+      expect.objectContaining({
+        drain: { inFlightAtStart: 1, completed: 1, abandoned: 0 },
+      }),
+    );
+  });
+
+  it("resets a stream rather than ending it cleanly, so a client reconnects", async ({
+    streaming,
+  }) => {
+    // GIVEN a stream that has delivered at least one event
+    const { app, origin } = await streaming.serve();
+    const stream = await streaming.subscribe(origin);
+    await vi.waitUntil(() => stream.frames() >= 2);
+
+    // WHEN the drain begins
+    app.requestDrain();
+
+    // THEN the body ends in a socket error. A clean end is read by oRPC's
+    // client as the iterator finishing, and it never reconnects; a reset is
+    // what both it and a bare `EventSource` treat as "reconnect".
+    await expect(stream.ended).resolves.toBe("reset");
+  });
+
+  it("releases the stream's procedure when it resets the stream", async ({ streaming }) => {
+    // GIVEN a stream whose generator is inside its loop
+    const { app, origin, released } = await streaming.serve();
+    const stream = await streaming.subscribe(origin);
+    await vi.waitUntil(() => stream.frames() >= 2);
+
+    // WHEN the drain begins and the stream is reset
+    app.requestDrain();
+    await stream.ended;
+    await vi.waitUntil(released);
+
+    // THEN the generator's `finally` ran: an application's cleanup is reached
+    // through oRPC's own signal, which the reset aborts
+    expect(released()).toBe(true);
+  });
+
   it("serves a fragments-only graph, with no oRPC router anywhere", async ({ serveAnswerer }) => {
     // GIVEN a graph composing the socket half and one bare answerer — no
     // router, no oRPC, which `http()` would have forced
