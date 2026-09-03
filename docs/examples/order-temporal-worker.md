@@ -140,7 +140,7 @@ place ──▶ reserveStock ──▶ arrangeShipping ──▶ done
 which failures earn one. A **declared** error is a permanent domain answer, so
 it compensates. Temporal's own machinery tags (an activity that exhausted its
 retries unmodeled, or was cancelled) are handed back as-is and re-raised by
-`propagateActivityFailure`, and compensation deliberately does **not** run for
+`propagateFailure`, and compensation deliberately does **not** run for
 them, since a step that died mid-flight left unknown state — so what remains is
 one triage at the end, re-minting each declared error against `context.errors`
 so the client branches on it by name.
@@ -151,7 +151,7 @@ import {
   ACTIVITY_CANCELLED_ERROR_TAG,
   ACTIVITY_ERROR_TAG,
   declareWorkflow,
-  propagateActivityFailure,
+  propagateFailure,
 } from "@temporal-contract/worker/workflow";
 import { P } from "unthrown";
 -->
@@ -166,7 +166,7 @@ export const fulfillOrder = declareWorkflow({
     // PLACEMENT's — so the first step keeps it and the last hands it back.
     let placed!: PlacedOrder;
 
-    return propagateActivityFailure(
+    return propagateFailure(
       context
         .saga()
         .step(
@@ -234,7 +234,7 @@ import {
   ACTIVITY_CANCELLED_ERROR_TAG,
   ACTIVITY_ERROR_TAG,
   declareWorkflow,
-  propagateActivityFailure,
+  propagateFailure,
 } from "@temporal-contract/worker/workflow";
 import { ErrAsync, P } from "unthrown";
 -->
@@ -244,7 +244,7 @@ export const chargeOrder = declareWorkflow({
   workflowName: "chargeOrder",
   contract: orderContract,
   implementation: (context, args) =>
-    propagateActivityFailure(
+    propagateFailure(
       context.activities
         .authorizePayment({
           tenantId: args.tenantId,

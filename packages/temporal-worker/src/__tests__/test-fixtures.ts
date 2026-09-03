@@ -56,7 +56,7 @@ const echoContract = defineContract({
     runEcho: defineWorkflow({
       input: z.string(),
       output: z.string(),
-      idempotency: "allow-duplicate",
+      startPolicy: "allow-duplicate",
       activities: {
         echo: defineActivity({
           input: z.string(),
@@ -248,7 +248,7 @@ const slicedContract = defineContract({
     runEcho: defineWorkflow({
       input: z.string(),
       output: z.string(),
-      idempotency: "allow-duplicate",
+      startPolicy: "allow-duplicate",
       activities: {
         echo: defineActivity({
           input: z.string(),
@@ -260,7 +260,7 @@ const slicedContract = defineContract({
     runShout: defineWorkflow({
       input: z.string(),
       output: z.string(),
-      idempotency: "allow-duplicate",
+      startPolicy: "allow-duplicate",
       activities: {
         shout: defineActivity({
           input: z.string(),

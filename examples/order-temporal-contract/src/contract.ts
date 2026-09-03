@@ -113,7 +113,7 @@ const cancelPlacement = defineActivity({
 const fulfillOrder = defineWorkflow({
   input: orderInput,
   output: orderView,
-  idempotency: "allow-duplicate",
+  startPolicy: "allow-duplicate",
   errors: {
     InvalidQuantity: { data: orderRef, nonRetryable: true },
     InvalidOrderId: { data: malformedRef, nonRetryable: true },
@@ -162,7 +162,7 @@ const refundPayment = defineActivity({
 const chargeOrder = defineWorkflow({
   input: amountInput,
   output: z.object({ authorizationId: z.string() }),
-  idempotency: "allow-duplicate",
+  startPolicy: "allow-duplicate",
   errors: { PaymentDeclined: { data: orderRef, nonRetryable: true } },
   activities: { authorizePayment, capturePayment, refundPayment },
 });

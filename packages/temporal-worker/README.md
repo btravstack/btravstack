@@ -57,7 +57,7 @@ const contract = defineContract({
     placeOrder: defineWorkflow({
       input: z.object({ tenantId: z.uuidv7(), orderId: z.uuidv7(), quantity: z.number() }),
       output: z.object({ id: z.uuidv7() }),
-      idempotency: "allow-duplicate",
+      startPolicy: "allow-duplicate",
       activities: {
         place: defineActivity({
           input: z.object({ tenantId: z.uuidv7(), orderId: z.uuidv7(), quantity: z.number() }),

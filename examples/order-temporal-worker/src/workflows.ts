@@ -3,7 +3,7 @@ import {
   ACTIVITY_CANCELLED_ERROR_TAG,
   ACTIVITY_ERROR_TAG,
   declareWorkflow,
-  propagateActivityFailure,
+  propagateFailure,
 } from "@temporal-contract/worker/workflow";
 import { ErrAsync, P } from "unthrown";
 
@@ -37,7 +37,7 @@ export const fulfillOrder = declareWorkflow({
     // scope is the hazard, not this.
     let placed!: PlacedOrder;
 
-    return propagateActivityFailure(
+    return propagateFailure(
       context
         .saga()
         .step(
@@ -95,7 +95,7 @@ export const chargeOrder = declareWorkflow({
   workflowName: "chargeOrder",
   contract: orderContract,
   implementation: (context, args) =>
-    propagateActivityFailure(
+    propagateFailure(
       context.activities
         .authorizePayment({ tenantId: args.tenantId, orderId: args.orderId, amount: args.amount })
         .mapErrCases((matcher) =>
