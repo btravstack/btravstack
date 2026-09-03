@@ -449,37 +449,49 @@ activities, `shutdownGraceTime` and `shutdownForceTime`. Once `run()` has
 started polling it publishes `TemporalInfo`, `{ taskQueue, namespace }`, on
 `Serving.info`.
 
-## Sequencing a saga: `flatTap`, never sibling `const`s
+## Sequencing a saga: `context.saga()`, never sibling `const`s
 
 An `AsyncResult` is **eager** — constructing it starts the work. So the
 readable spelling of a sequence, each step in its own `const` and then chained,
 is a **race**: it type-checks, it returns a `Result`, and it runs the steps
 concurrently. Nothing catches it.
 
-Sequence with [`flatTap`](https://github.com/btravstack/unthrown) instead. It
-runs a failable step, discards its value and passes the **original** one
-through, so the next step is a callback that cannot start before the previous
-settles — and each step's error triage and compensation stay at one level of
-indentation rather than accumulating:
+Where the steps carry compensations, `context.saga()` is the answer. Every
+argument is a **thunk**, so nothing is built before the saga reaches it, and
+the undos are its own business rather than each step's:
 
 <!-- doctest: skip — a saga excerpt with elided arms; the full workflow is compiled by docs/examples/order-temporal-worker.md -->
 
 ```ts
-context.activities
-  .place(order)
-  .mapErrCases(/* triage */)
-  .flatTap(() =>
-    context.activities.reserveStock(order).flatMapErrCases(/* compensate */),
+context
+  .saga()
+  .step(
+    () => context.activities.place(order),
+    () => context.activities.cancelPlacement(order),
   )
-  .flatTap(() =>
-    context.activities.arrangeShipping(order).flatMapErrCases(/* compensate */),
-  );
+  .step(
+    () => context.activities.reserveStock(order),
+    () => context.activities.releaseStock(order),
+  )
+  .step(() => context.activities.arrangeShipping(order))
+  .run()
+  .mapErrCases(/* one triage, at the end */);
 ```
 
-Where a later step needs an earlier step's _value_ rather than just its
-success, `DoAsync().bind("name", (scope) => …)` is the same idea with an
-accumulating scope. See
-[Order Temporal worker](/examples/order-temporal-worker) for both at full size.
+`context.saga()` runs the undos **LIFO** and decides which failures earn one: a
+declared contract error compensates, an activity that failed unmodelled or was
+cancelled does not — a step that died mid-flight left state nobody can see. So
+the machinery-tag arm every step used to repeat is gone, and the re-mint
+against `context.errors` happens once.
+
+A sequence with **no** compensations does not need a saga:
+[`flatTap`](https://github.com/btravstack/unthrown) runs a failable step,
+discards its value and passes the **original** one through, so the next step is
+a callback that cannot start before the previous settles. Where a later step
+needs an earlier step's _value_ rather than just its success,
+`DoAsync().bind("name", (scope) => …)` is the same idea with an accumulating
+scope. See [Order Temporal worker](/examples/order-temporal-worker) for all
+three at full size.
 
 ## The unit
 

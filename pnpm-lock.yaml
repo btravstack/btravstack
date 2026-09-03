@@ -94,17 +94,17 @@ catalogs:
       specifier: 5.102.8
       version: 5.102.8
     '@temporal-contract/client':
-      specifier: 8.0.0-beta.7
-      version: 8.0.0-beta.7
+      specifier: 8.0.0-beta.8
+      version: 8.0.0-beta.8
     '@temporal-contract/contract':
-      specifier: 8.0.0-beta.7
-      version: 8.0.0-beta.7
+      specifier: 8.0.0-beta.8
+      version: 8.0.0-beta.8
     '@temporal-contract/testing':
-      specifier: 8.0.0-beta.7
-      version: 8.0.0-beta.7
+      specifier: 8.0.0-beta.8
+      version: 8.0.0-beta.8
     '@temporal-contract/worker':
-      specifier: 8.0.0-beta.7
-      version: 8.0.0-beta.7
+      specifier: 8.0.0-beta.8
+      version: 8.0.0-beta.8
     '@temporalio/activity':
       specifier: 1.23.0
       version: 1.23.0
@@ -729,7 +729,7 @@ importers:
     dependencies:
       '@temporal-contract/contract':
         specifier: 'catalog:'
-        version: 8.0.0-beta.7(unthrown@5.7.0)
+        version: 8.0.0-beta.8(unthrown@5.7.0)
       zod:
         specifier: 'catalog:'
         version: 4.5.3
@@ -796,10 +796,10 @@ importers:
         version: 0.221.0(@opentelemetry/api@1.9.1)
       '@temporal-contract/client':
         specifier: 'catalog:'
-        version: 8.0.0-beta.7(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)
+        version: 8.0.0-beta.8(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)
       '@temporal-contract/worker':
         specifier: 'catalog:'
-        version: 8.0.0-beta.7(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)
+        version: 8.0.0-beta.8(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)
       '@temporalio/client':
         specifier: 'catalog:'
         version: 1.23.0
@@ -824,10 +824,10 @@ importers:
         version: 0.2.0
       '@temporal-contract/contract':
         specifier: 'catalog:'
-        version: 8.0.0-beta.7(unthrown@5.7.0)
+        version: 8.0.0-beta.8(unthrown@5.7.0)
       '@temporal-contract/testing':
         specifier: 'catalog:'
-        version: 8.0.0-beta.7(@temporal-contract/client@8.0.0-beta.7(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0))(@temporal-contract/contract@8.0.0-beta.7(unthrown@5.7.0))(@temporal-contract/worker@8.0.0-beta.7(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0))(@temporalio/client@1.23.0)(@temporalio/testing@1.23.0)(@temporalio/worker@1.23.0)(testcontainers@12.1.0)(unthrown@5.7.0)(vitest@4.1.11)
+        version: 8.0.0-beta.8(@temporal-contract/client@8.0.0-beta.8(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0))(@temporal-contract/contract@8.0.0-beta.8(unthrown@5.7.0))(@temporal-contract/worker@8.0.0-beta.8(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0))(@temporalio/client@1.23.0)(@temporalio/testing@1.23.0)(@temporalio/worker@1.23.0)(testcontainers@12.1.0)(unthrown@5.7.0)(vitest@4.1.11)
       '@temporalio/testing':
         specifier: 'catalog:'
         version: 1.23.0
@@ -1416,13 +1416,13 @@ importers:
         version: 0.2.0
       '@temporal-contract/client':
         specifier: 'catalog:'
-        version: 8.0.0-beta.7(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)
+        version: 8.0.0-beta.8(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)
       '@temporal-contract/contract':
         specifier: 'catalog:'
-        version: 8.0.0-beta.7(unthrown@5.7.0)
+        version: 8.0.0-beta.8(unthrown@5.7.0)
       '@temporal-contract/worker':
         specifier: 'catalog:'
-        version: 8.0.0-beta.7(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)
+        version: 8.0.0-beta.8(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)
       '@temporalio/activity':
         specifier: 'catalog:'
         version: 1.23.0
@@ -3873,16 +3873,16 @@ packages:
   '@tanstack/query-core@5.102.8':
     resolution: {integrity: sha512-ZNjkJ33CqvPNec/6lZBnHqLc3EVGPZ9ySLhYahU9TcuRFdmwXewuj0c4hwSWcGHqEUwcSrKeZ+oGcvPBqXcQcg==}
 
-  '@temporal-contract/client@8.0.0-beta.7':
-    resolution: {integrity: sha512-+uw4MsezgzNkFOS0fkDkN+VWHJLCObur/TN9kFP37TgUVH8PGjak1TckwQI8awzXkYwcLa/el5xSWwbk0GXTLg==}
+  '@temporal-contract/client@8.0.0-beta.8':
+    resolution: {integrity: sha512-Nxiv0jQsFEGAYHgzOxUC/K5oj8+qm/omFq0dWkJ1s0fFbNGZWHWV7/+5mT1fec00F019ZIciqTzcvkNtFDlctA==}
     engines: {node: '>=22.22.0'}
     peerDependencies:
       '@temporalio/client': ^1.16.0
       '@temporalio/common': ^1.16.0
       unthrown: ^5.0.0
 
-  '@temporal-contract/contract@8.0.0-beta.7':
-    resolution: {integrity: sha512-0cntnq1F0cG4dQUQnmkMggZQpWfONDDrt2PQ3qP3hpWQKnmSZV7YozDzkLkptq2Cs29UvtVsFSByYl4+yZ7Nlg==}
+  '@temporal-contract/contract@8.0.0-beta.8':
+    resolution: {integrity: sha512-LTg24kZsrCd3ho0WEXuTyQ7VavZZsn1NfwOgct6Ix0Sa5v3qxZxgqMN3S0sxYPzc6lvZZmOdqCmop0+UYiReqw==}
     engines: {node: '>=22.22.0'}
     peerDependencies:
       unthrown: ^5.0.0
@@ -3890,13 +3890,13 @@ packages:
       unthrown:
         optional: true
 
-  '@temporal-contract/testing@8.0.0-beta.7':
-    resolution: {integrity: sha512-rWujLrMeAMw+0KMfEvc7LQAY3vn3d3WFoz2wJ9YvTgW+LjnohSLpBpqyfoFrPo6uShIlRliAfpbS6qSZOD4Z/g==}
+  '@temporal-contract/testing@8.0.0-beta.8':
+    resolution: {integrity: sha512-w/gtmjb9nkYDLkfp4zZOypjV/rxeBQz8wFNB/XXRCy/pebBApwjbluPDo5sOgDk3kC9v7+LPSjBvnlcxPuwWaw==}
     engines: {node: '>=22.22.0'}
     peerDependencies:
-      '@temporal-contract/client': ^8.0.0-beta.7
-      '@temporal-contract/contract': ^8.0.0-beta.7
-      '@temporal-contract/worker': ^8.0.0-beta.7
+      '@temporal-contract/client': ^8.0.0-beta.8
+      '@temporal-contract/contract': ^8.0.0-beta.8
+      '@temporal-contract/worker': ^8.0.0-beta.8
       '@temporalio/client': ^1.16.0
       '@temporalio/testing': ^1.16.0
       '@temporalio/worker': ^1.16.0
@@ -3907,8 +3907,8 @@ packages:
       testcontainers:
         optional: true
 
-  '@temporal-contract/worker@8.0.0-beta.7':
-    resolution: {integrity: sha512-Kfjv4NcvzqyFl/6RY5I0c6+lpNX3LtG4q73+NsBWCCIJM4RgRN7QizsiK+NVe+4AgTCs/CiNPjDiB8oxYomW6A==}
+  '@temporal-contract/worker@8.0.0-beta.8':
+    resolution: {integrity: sha512-StmNyu82V3pWJIRIyWnR8amqTW3ib3GGvqhgCdzpjLgzBkyTuX5gPdZ4r/qxHsYE2KwcVQihaE5JLACvfpzGDQ==}
     engines: {node: '>=22.22.0'}
     peerDependencies:
       '@temporalio/common': ^1.16.0
@@ -4259,6 +4259,12 @@ packages:
     engines: {node: '>=20.19'}
     peerDependencies:
       '@prisma/client': ^7
+      unthrown: ^5.7.0
+
+  '@unthrown/saga@5.7.0':
+    resolution: {integrity: sha512-U03nHwKNiuWoOe64G6UgyGnnjPfzvTkSRsj0mBxfkt4/X4feiGaoPHCU5gsW2/Wt8sm+pGhjXSllFIxszKIIYQ==}
+    engines: {node: '>=20'}
+    peerDependencies:
       unthrown: ^5.7.0
 
   '@unthrown/standard-schema@5.7.0':
@@ -9227,25 +9233,25 @@ snapshots:
 
   '@tanstack/query-core@5.102.8': {}
 
-  '@temporal-contract/client@8.0.0-beta.7(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)':
+  '@temporal-contract/client@8.0.0-beta.8(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)':
     dependencies:
       '@standard-schema/spec': 1.1.0
-      '@temporal-contract/contract': 8.0.0-beta.7(unthrown@5.7.0)
+      '@temporal-contract/contract': 8.0.0-beta.8(unthrown@5.7.0)
       '@temporalio/client': 1.23.0
       '@temporalio/common': 1.23.0
       unthrown: 5.7.0
 
-  '@temporal-contract/contract@8.0.0-beta.7(unthrown@5.7.0)':
+  '@temporal-contract/contract@8.0.0-beta.8(unthrown@5.7.0)':
     dependencies:
       '@standard-schema/spec': 1.1.0
     optionalDependencies:
       unthrown: 5.7.0
 
-  '@temporal-contract/testing@8.0.0-beta.7(@temporal-contract/client@8.0.0-beta.7(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0))(@temporal-contract/contract@8.0.0-beta.7(unthrown@5.7.0))(@temporal-contract/worker@8.0.0-beta.7(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0))(@temporalio/client@1.23.0)(@temporalio/testing@1.23.0)(@temporalio/worker@1.23.0)(testcontainers@12.1.0)(unthrown@5.7.0)(vitest@4.1.11)':
+  '@temporal-contract/testing@8.0.0-beta.8(@temporal-contract/client@8.0.0-beta.8(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0))(@temporal-contract/contract@8.0.0-beta.8(unthrown@5.7.0))(@temporal-contract/worker@8.0.0-beta.8(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0))(@temporalio/client@1.23.0)(@temporalio/testing@1.23.0)(@temporalio/worker@1.23.0)(testcontainers@12.1.0)(unthrown@5.7.0)(vitest@4.1.11)':
     dependencies:
-      '@temporal-contract/client': 8.0.0-beta.7(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)
-      '@temporal-contract/contract': 8.0.0-beta.7(unthrown@5.7.0)
-      '@temporal-contract/worker': 8.0.0-beta.7(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)
+      '@temporal-contract/client': 8.0.0-beta.8(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)
+      '@temporal-contract/contract': 8.0.0-beta.8(unthrown@5.7.0)
+      '@temporal-contract/worker': 8.0.0-beta.8(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)
       '@temporalio/client': 1.23.0
       '@temporalio/testing': 1.23.0
       '@temporalio/worker': 1.23.0
@@ -9254,13 +9260,14 @@ snapshots:
     optionalDependencies:
       testcontainers: 12.1.0
 
-  '@temporal-contract/worker@8.0.0-beta.7(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)':
+  '@temporal-contract/worker@8.0.0-beta.8(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)':
     dependencies:
       '@standard-schema/spec': 1.1.0
-      '@temporal-contract/contract': 8.0.0-beta.7(unthrown@5.7.0)
+      '@temporal-contract/contract': 8.0.0-beta.8(unthrown@5.7.0)
       '@temporalio/common': 1.23.0
       '@temporalio/worker': 1.23.0
       '@temporalio/workflow': 1.23.0
+      '@unthrown/saga': 5.7.0(unthrown@5.7.0)
       unthrown: 5.7.0
 
   '@temporalio/activity@1.23.0':
@@ -9613,6 +9620,10 @@ snapshots:
   '@unthrown/prisma@0.4.0(@prisma/client@7.10.0(prisma@7.10.0(@types/node@26.4.0)(@types/react@19.2.18)(magicast@0.5.4)(typescript@7.0.2))(typescript@7.0.2))(unthrown@5.7.0)':
     dependencies:
       '@prisma/client': 7.10.0(prisma@7.10.0(@types/node@26.4.0)(@types/react@19.2.18)(magicast@0.5.4)(typescript@7.0.2))(typescript@7.0.2)
+      unthrown: 5.7.0
+
+  '@unthrown/saga@5.7.0(unthrown@5.7.0)':
+    dependencies:
       unthrown: 5.7.0
 
   '@unthrown/standard-schema@5.7.0(unthrown@5.7.0)':

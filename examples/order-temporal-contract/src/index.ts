@@ -1,1 +1,1 @@
-export { orderContract, type OrderContract } from "./contract.js";
+export { orderContract, type OrderContract, type PlacedOrder } from "./contract.js";
