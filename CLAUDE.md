@@ -1054,6 +1054,26 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   `packages/core`. Four places; a change to one is a change to all.
 - `declarationMap: false` on all thirteen published packages — the published
   tarball has no `src/`, so maps would be dead ends.
+- **A deployment extends `@btravstack/tsconfig/app.json`; everything that
+  exports something keeps `base.json`.** The two differ in one thing,
+  `declaration: false`, and the split is a DX decision rather than tidiness.
+  With `declaration: true`, an exported binding whose inferred type is a
+  wiring ERROR state exposes di's unexported brand symbols — and TypeScript
+  reports that **before** it reports the mistake, so the first thing a reader
+  meets is di's internals rather than their own error. Dropping a controller
+  from `api.OrpcRouter(contract)([...])` in `examples/order-api` is the probe;
+  under `app.json` the `TS4023` block is gone and the real `TS2345` is line
+  one. It is not every wiring mistake — one that surfaces at a call site
+  rather than in an exported binding produces no `TS4023` at all — but the
+  router case is the common one.
+
+  Only the three deployments move (`order-api`, `order-temporal-worker`,
+  `order-amqp-worker`): they emit no declarations in production, and they are
+  where the composition roots live. **Every workspace that exports a port or a
+  contract stays on `base.json`**, and `di-hexagonal` most of all — examples
+  carrying `declaration: false` is precisely what let the `TS4020` class ship
+  once already, with the repo green and no consumer able to build.
+
 - **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
   `verbatimModuleSyntax`, both inherited from `@btravstack/tsconfig/base.json` —
   an external package under `node_modules`, so this is the one convention here

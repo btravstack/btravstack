@@ -30,7 +30,7 @@ catalog:
   "@btravstack/lefthook": 0.1.1
   "@btravstack/oxlint": 0.2.1
   "@btravstack/theme": 2.0.0
-  "@btravstack/tsconfig": 0.2.0
+  "@btravstack/tsconfig": 0.3.0
   "@btravstack/typedoc": 0.1.0
   "@changesets/cli": 3.0.1
   "@commitlint/cli": 21.2.2
@@ -178,6 +178,7 @@ peerDependencyRules:
 minimumReleaseAgeExclude:
   # First-party shared config (@btravstack scope): adopt immediately, skip the delay.
   - "@btravstack/theme"
+  - "@btravstack/tsconfig"
   - "@btravstack/typedoc"
   - "@amqp-contract/contract@3.0.0-beta.7"
   - "@amqp-contract/core@3.0.0-beta.7"
