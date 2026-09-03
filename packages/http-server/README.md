@@ -292,8 +292,10 @@ A procedure whose output is an `eventIterator` is served as
 `text/event-stream`, and `GET` is admitted for exactly those procedures — the
 one request a browser's `EventSource` can send — so a stream is reachable
 from a browser and from a typed oRPC client alike. A deploy resets an open
-stream at the start of the drain, and the client resumes from
-`Last-Event-ID`. The recipe is
+stream at the start of the drain's third beat — after readiness has gone
+false and the pre-drain delay has been paid, so the reconnect lands on a
+replica that is staying — and the client resumes from `Last-Event-ID`. The
+recipe is
 [Stream with server-sent events](https://btravstack.github.io/btravstack/how-to/stream-with-server-sent-events).
 
 ## What it does not do
