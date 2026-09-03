@@ -27,13 +27,13 @@ const pinContract = defineContract({
     runEcho: defineWorkflow({
       input: z.string(),
       output: z.string(),
-      idempotency: "allow-duplicate",
+      startPolicy: "allow-duplicate",
       activities: { echo: step },
     }),
     runShout: defineWorkflow({
       input: z.string(),
       output: z.string(),
-      idempotency: "allow-duplicate",
+      startPolicy: "allow-duplicate",
       activities: { shout: step },
     }),
   },
@@ -107,7 +107,7 @@ const otherContract = defineContract({
     runEcho: defineWorkflow({
       input: z.number(),
       output: z.number(),
-      idempotency: "allow-duplicate",
+      startPolicy: "allow-duplicate",
       activities: { echo: otherStep },
     }),
   },

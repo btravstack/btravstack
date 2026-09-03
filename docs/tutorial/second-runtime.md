@@ -92,7 +92,7 @@ const greet = defineActivity({
 const greeting = defineWorkflow({
   input: z.object({ name: z.string() }),
   output: z.object({ message: z.string() }),
-  idempotency: "allow-duplicate",
+  startPolicy: "allow-duplicate",
   activities: { greet },
 });
 
@@ -162,7 +162,7 @@ const greetingContract = defineContract({
     greeting: defineWorkflow({
       input: z.object({ name: z.string() }),
       output: z.object({ message: z.string() }),
-      idempotency: "allow-duplicate",
+      startPolicy: "allow-duplicate",
       activities: { greet },
     }),
   },
@@ -172,7 +172,7 @@ const greetingContract = defineContract({
 ```ts
 import {
   declareWorkflow,
-  propagateActivityFailure,
+  propagateFailure,
 } from "@temporal-contract/worker/workflow";
 
 import { greetingContract } from "./temporal-contract.js";
@@ -181,11 +181,11 @@ export const greeting = declareWorkflow({
   workflowName: "greeting",
   contract: greetingContract,
   implementation: (context, args) =>
-    propagateActivityFailure(context.activities.greet({ name: args.name })),
+    propagateFailure(context.activities.greet({ name: args.name })),
 });
 ```
 
-`propagateActivityFailure` hands an activity's platform failure — retries
+`propagateFailure` hands an activity's platform failure — retries
 exhausted, cancelled — back to Temporal untouched. The contract declared no
 errors of its own, so there is nothing else to triage.
 
