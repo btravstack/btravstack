@@ -136,10 +136,10 @@ const authorizePayment = defineActivity({
   // The key is derived from the payload, so it is stable across a retry, a
   // worker crash, and a fresh execution with the same input.
   //
-  // Keyed on what IDENTIFIES the charge, never on what describes it: `amount`
-  // is out, or one customer's two identical orders would collide on one key.
-  // The tenant is in because every port here is tenant-scoped, and an id is
-  // only unique within one.
+  // Built only from what IDENTIFIES the operation: the tenant, since every
+  // port here is tenant-scoped and an id is only unique within one, and the
+  // order. `amount` DESCRIBES the charge, so folding it in would move the key
+  // whenever the description does — the retry this exists to collapse.
   idempotencyKey: ({ tenantId, orderId }) => `authorize:${tenantId}:${orderId}`,
   activityOptions: {
     startToCloseTimeout: "1 minute",

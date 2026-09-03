@@ -84,9 +84,9 @@ export const chargeOrder = TemporalWorkflowActivities(
           ),
         ),
     capturePayment: ({ idempotencyKey, input }) =>
-        payments.capture(input.authorizationId, idempotencyKey),
+      payments.capture(input.authorizationId, idempotencyKey),
     refundPayment: ({ idempotencyKey, input }) =>
-        payments.refund(input.authorizationId, idempotencyKey),
+      payments.refund(input.authorizationId, idempotencyKey),
   }),
 });
 ```
@@ -103,10 +103,17 @@ idempotencyKey: ({ tenantId, orderId }) => `authorize:${tenantId}:${orderId}`,
 ```
 
 — which makes it stable across a retry, a worker crash, and a fresh execution
-with the same input. It is keyed on what **identifies** the charge, never on
-what describes it: `amount` is deliberately absent, or one customer's two
-identical orders would collide on a single key. The tenant is present because
-every port here is tenant-scoped, so an id is only unique within one.
+with the same input.
+
+**Stability is the whole property, and it decides what may go in.** The key is
+built only from the fields that _identify_ the operation: the tenant, because
+every port here is tenant-scoped and an id is only unique within one, and the
+order. `amount` is deliberately absent — it _describes_ the charge rather than
+identifying it, so folding it in would make the key move whenever the
+description does, which is exactly the retry the key exists to collapse. The
+sibling mistake is keying on a descriptive field **instead** of an identifying
+one: `authorize:${tenantId}:${amount}` would make one customer's two orders of
+the same value collide on a single key, and the second would never be charged.
 
 The compensation gets one too, and arguably needs it most: `refundPayment`'s
 sibling rule is that a repeated compensation must be a no-op, and for a refund

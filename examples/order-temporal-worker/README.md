@@ -55,17 +55,19 @@ export const chargeOrder = TemporalWorkflowActivities(
 )({
   inject: { payments: PaymentService },
   sync: ({ payments }) => ({
-    authorizePayment: ({ errors, input }) =>
+    authorizePayment: ({ errors, idempotencyKey, input }) =>
       payments
-        .authorize(input.orderId, input.amount)
+        .authorize(input.orderId, input.amount, idempotencyKey)
         .map((authorizationId) => ({ authorizationId }))
         .mapErrCases((matcher) =>
           matcher.with(P.tag("PaymentDeclined"), (error) =>
             errors.PaymentDeclined({ id: error.id }),
           ),
         ),
-    capturePayment: ({ input }) => payments.capture(input.authorizationId),
-    refundPayment: ({ input }) => payments.refund(input.authorizationId),
+    capturePayment: ({ idempotencyKey, input }) =>
+      payments.capture(input.authorizationId, idempotencyKey),
+    refundPayment: ({ idempotencyKey, input }) =>
+      payments.refund(input.authorizationId, idempotencyKey),
   }),
 });
 ```
