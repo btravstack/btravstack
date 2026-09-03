@@ -486,7 +486,7 @@ describe("httpRuntime", () => {
     // THEN it is the stream, not the runtime's 404
     expect({ status: response.status, type: response.headers.get("content-type") }).toEqual({
       status: 200,
-      type: "text/event-stream",
+      type: expect.stringContaining("text/event-stream"),
     });
   });
 

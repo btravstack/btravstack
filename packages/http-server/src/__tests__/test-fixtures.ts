@@ -1205,7 +1205,7 @@ export type HttpFixtures = {
    */
   readonly streaming: {
     readonly serve: () => Promise<{
-      readonly app: RunningApp<unknown, unknown>;
+      readonly app: App;
       readonly origin: string;
       readonly released: () => boolean;
     }>;
