@@ -1,4 +1,5 @@
 import { Env } from "@btravstack/config";
+import { page } from "@btravstack/contract";
 import { Module, Provider } from "@btravstack/di";
 import {
   Customer,
@@ -23,7 +24,6 @@ import {
   OrderApplicationModule,
   MalformedCursor,
   OrderRepository,
-  page,
   PlaceOrder,
   type OrderQuery,
 } from "../index.js";

@@ -9,3 +9,4 @@ export {
   type Requirements,
   type RequirementsOf,
 } from "./auth.js";
+export { page, pageRequest, type Page, type PageQuery, type PageRequest } from "./pagination.js";

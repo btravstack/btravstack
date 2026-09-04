@@ -1,13 +1,14 @@
 ---
 title: "@btravstack/contract"
-description: The contract-level auth marker — authenticated(), Requirement, Requirements, OneScheme, Authenticated, PrincipalKey, IsMarked, RequirementsOf and isAuthenticated — what it puts on a contract node, and what it deliberately does not.
+description: The contract tier — the authenticated() marker and everything it puts on a contract node, plus the cursor page shapes Page, PageRequest, page and pageRequest, with pageOf and pageRequestOf behind the /zod subpath.
 ---
 
 # @btravstack/contract
 
-> **Reference.** A complete, structured description of the contract marker's
-> public surface: every export of `@btravstack/contract`, what a marked node
-> carries and what reads it. For the task, see
+> **Reference.** A complete, structured description of the contract tier's
+> public surface: every export of `@btravstack/contract` and of its `/zod`
+> subpath — what a marked node carries and what reads it, and the one shape of
+> a page. For the task, see
 > [Protect a procedure](/how-to/protect-a-procedure); for how the HTTP starter
 > turns the marker into a typed `opts.context.principal`, see
 > [`@btravstack/http-server`](/reference/http-server). Generated signatures are under
@@ -41,6 +42,25 @@ the server's view of a caller reaches a client.
 | `PrincipalKey`        | type  | `typeof PRINCIPAL`, the marker's key — exported so a consumer's mapped type can `Exclude<keyof C, PrincipalKey>` and land on the contract's own keys                                                             |
 | `IsMarked<T>`         | type  | `T extends { readonly [PrincipalKey]: Requirements } ? true : false` — whether **this exact node** carries the marker, as a yes/no rather than a type                                                            |
 | `RequirementsOf<T>`   | type  | the exact `Requirements` **this exact node** was marked with, `never` when it is unmarked                                                                                                                        |
+
+### The page, under `@btravstack/contract/zod`
+
+`packages/contract/src/pagination.ts` adds these to the root, and
+`src/zod.ts` is the subpath:
+
+| Export          | Where  | Kind  | What it is                                                                                                                          |
+| --------------- | ------ | ----- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `Page<T>`       | root   | type  | `{ items: readonly T[] }` and, per side, either a `true` flag with its cursor or a `false` flag with no cursor field                |
+| `page`          | root   | value | `<T>(items: readonly T[], cursors: { previous: string \| null; next: string \| null }) => Page<T>` — the flags are derived          |
+| `PageRequest`   | root   | type  | `{ limit: number }` with `after` **or** `before`, never both                                                                        |
+| `PageQuery`     | root   | type  | `{ limit: number; after?: string; before?: string }` — the flat shape a schema validates to                                         |
+| `pageRequest`   | root   | value | `<Q extends PageQuery>(query: Q) => PageRequest & Omit<Q, "after" \| "before">` — the crossing, filters carried through             |
+| `pageOf`        | `/zod` | value | `<Item extends z.ZodType>(item: Item)` — the four pages that exist, as a union of four `strictObject`s                              |
+| `pageRequestOf` | `/zod` | value | `<F extends z.ZodRawShape>(filters: F, limits?: PageLimits)` — the input schema, refusing both cursors, with this listing's filters |
+| `PageLimits`    | `/zod` | type  | `{ defaultLimit?: number; maxLimit?: number }` — default `20`, ceiling `100`                                                        |
+
+A cursor is an **opaque string**: the server's to mint and read, the client's
+to hand back verbatim.
 
 ## `authenticated(...requirements)(node)`
 
@@ -196,10 +216,94 @@ a bypass. No oRPC builder has to know the marker exists.
   `type: http`, `bearerFormat`, an OAuth flow — belongs beside the contract,
   not in the marker.
 
+## Paging a listing
+
+One page, described once. The type a port speaks and the schema a contract
+publishes are the same shape:
+
+<!-- doctest: prelude
+declare const orderView: import("zod").ZodObject<{ id: import("zod").ZodString }>;
+declare const rows: readonly { readonly id: string }[];
+declare const startCursor: string | null;
+declare const endCursor: string | null;
+-->
+
+```ts
+import { pageOf, pageRequestOf } from "@btravstack/contract/zod";
+
+export const listing = oc
+  .input(pageRequestOf({ minQuantity: z.number().int().min(1).optional() }))
+  .output(pageOf(orderView));
+```
+
+**A flag and its cursor are one fact.** `hasNextPage: true` carries the
+`nextCursor` that continues the listing; `hasNextPage: false` has no
+`nextCursor` field at all. So "there is more, and nothing to follow it with" —
+and its twin, a cursor nobody may use — are unrepresentable rather than merely
+unexpected, and a client that checked the flag holds the cursor with no null
+to widen it.
+
+**A page runs in one direction.** `after` and `before` are a union in
+`PageRequest` and a refusal in `pageRequestOf`'s schema, so the type and the
+wire say the same thing: "after X and before Y" is a range query wearing a
+page's clothes. The schema refuses it rather than a handler, so the rule is
+published in the OpenAPI document and answered as a validation error.
+
+`pageOf` emits a **union** of four closed objects rather than an
+intersection: `allOf` of closed objects validates nothing in JSON Schema, and
+the emitted document is an interop surface. `strictObject`, so a cursor on a
+closed side is refused rather than stripped — a stripping parser would accept
+what its own published schema rejects.
+
+**The two halves cannot drift.** A type test pins that what `pageOf` parses to
+is a `Page`, and a spec closes the loop where `readonly` no longer exists:
+every page `page()` builds parses against `pageOf`.
+
+### The three call sites
+
+An adapter builds a page from the cursors its pagination library reports,
+`null` where there is nothing to follow:
+
+```ts
+import { page } from "@btravstack/contract";
+
+const listed = page(rows, { previous: startCursor, next: endCursor });
+```
+
+A controller turns a validated input into what the port takes, carrying the
+listing's own filters through untouched:
+
+```ts
+import { pageRequest } from "@btravstack/contract";
+
+const requested = pageRequest({ limit: 20, after: "c", minQuantity: 2 });
+```
+
+A port names `Page` and `PageRequest` in its own signature, and neither the
+adapter nor the transport gets to invent a different one.
+
+### What it deliberately is not
+
+**A branded cursor.** A brand would have to be minted by the schema to survive
+parsing, and both zod's own brand and a `transform` change what
+`toJSONSchema` emits — trading the interop target for a guarantee the server
+already gives by refusing a cursor it cannot read.
+
+**Offset pages, page numbers, totals.** A cursor page is one opinion, and a
+second one is a second way to do the same thing. A listing that needs a count
+returns it as its own field.
+
+**An error.** A malformed cursor is the application's error, named in its own
+vocabulary and triaged at each transport — the same reason this package ships
+no shared `NotFound`.
+
 ## Peer dependencies
 
-None, and no runtime dependencies either. `pnpm add @btravstack/contract`, and
-that is the whole install. Node `>=22`.
+`zod`, optional, and only for the `/zod` subpath. The root has no runtime
+dependencies and no required peers, so `pnpm add @btravstack/contract` is the
+whole install for a contract that only marks its procedures; a contract that
+uses `pageOf` or `pageRequestOf` already has `zod` for its own schemas.
+Node `>=22`.
 
 ::: warning One copy — and a second one is a compile error, not an open route
 `PrincipalKey` is a `unique symbol`, so two copies of this package mint two

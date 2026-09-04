@@ -21,8 +21,10 @@ throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
 pnpm workspace + turbo monorepo. `packages/` holds thirteen published packages,
-`contract` (contract-level markers shared by a client and the server that
-implements it — zero dependencies, zero peers), `di` (the container), `config`
+`contract` (the contract tier: markers and normed shapes a client and the
+server that implements it both need — the `authenticated` marker and a cursor
+page, with the page's schema behind a `/zod` subpath so the root keeps its
+zero dependencies and zero required peers), `di` (the container), `config`
 (configuration from the environment, as
 providers), `core` (the kernel), `testing` (the test harness — `bootFixture`,
 `tapped`, the in-memory runtime, the fake clock; peers on `core`),
@@ -1026,8 +1028,11 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   a hardcoded `^0.1.0` until the versions went lockstep; a literal range in a
   peer field is a pin that goes stale silently the first time the dependency
   is bumped. `di` itself peers on
-  `unthrown` and depends on nothing; `contract` depends on nothing at all, not
-  even `unthrown`; `config` peers on `di` and `unthrown`;
+  `unthrown` and depends on nothing; `contract`'s root depends on nothing at
+  all, not even `unthrown`, and its one peer — `zod`, behind
+  `@btravstack/contract/zod` — is optional on the subpath protocol, so a
+  contract that only marks its procedures installs nothing;
+  `config` peers on `di` and `unthrown`;
   `core` peers on all three; `testing` peers on all four (and not on
   `vitest` — `bootFixture` is a plain function in vitest's fixture shape);
   `observability` peers on all four too and has **no runtime dependency of its

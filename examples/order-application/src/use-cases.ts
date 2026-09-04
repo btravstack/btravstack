@@ -1,3 +1,4 @@
+import type { Page } from "@btravstack/contract";
 import { Logger } from "@btravstack/core";
 import { Provider, type ServiceOf } from "@btravstack/di";
 import {
@@ -13,7 +14,7 @@ import {
 } from "@btravstack/example-order-domain";
 import type { AsyncResult } from "unthrown";
 
-import type { MalformedCursor, Page } from "./pagination.js";
+import type { MalformedCursor } from "./pagination.js";
 import {
   CustomerRepository,
   FindCustomer,

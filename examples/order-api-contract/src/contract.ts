@@ -1,4 +1,5 @@
 import { authenticated } from "@btravstack/contract";
+import { pageOf, pageRequestOf } from "@btravstack/contract/zod";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
@@ -54,18 +55,6 @@ export type CustomerView = z.infer<typeof customerView>;
 const customerRef = z.object({ id: z.uuidv7().brand("CustomerId") });
 export type CustomerRef = z.infer<typeof customerRef>;
 
-/**
- * The four halves a page is built from: its items, and each side either open —
- * a flag and the cursor that continues the listing — or closed, with no cursor
- * field at all. Spread into the four arms of `list`'s output, which is every
- * page that exists.
- */
-const pageItems = { items: z.array(orderView) };
-const aPrevious = { hasPreviousPage: z.literal(true), previousCursor: z.string() };
-const noPrevious = { hasPreviousPage: z.literal(false) };
-const aNext = { hasNextPage: z.literal(true), nextCursor: z.string() };
-const noNext = { hasNextPage: z.literal(false) };
-
 /** The orders slice's own fragment — a contract in its own right, so the slice can be served alone. */
 const ordersContract = authenticated({ user: [] })({
   place: oc
@@ -84,55 +73,16 @@ const ordersContract = authenticated({ user: [] })({
   // The shape 80% of a real API has, and the one that decides whether a client
   // can be written at all.
   //
-  // `after` and `before` are OPAQUE strings — the cursors a previous page handed
-  // back — so they are `z.string()` and nothing narrower: the server owns their
-  // meaning, and a contract that described it would be publishing the adapter's
-  // ordering. They are also the only parts of this input that did not come from
-  // the caller's own vocabulary, which is why `BAD_REQUEST` is declared here and
-  // names the offending one.
+  // The page shape is the contract tier's, not this contract's:
+  // `pageRequestOf` carries the bounded limit, the two opaque cursors and the
+  // refusal of both at once, and `pageOf` carries the four pages that exist.
+  // `minQuantity` is this listing's own, and rides through as a filter. The
+  // cursor is the only part of the input that did not come from the caller's
+  // own vocabulary, which is why `BAD_REQUEST` is declared here.
   //
-  // **At most one of them**, refused by the SCHEMA rather than by the handler: a
-  // page runs in one direction, and "after X and before Y" is a range query
-  // wearing a page's clothes. The application's `PageRequest` makes the pair a
-  // union, so the refusal and the type say the same thing at the two ends of the
-  // wire — and the controller's one branch is where a validated input becomes
-  // that union.
-  //
-  // **A flag and its cursor are one fact on the wire too.** The four arms below
-  // are the four pages that exist: a `hasNextPage: true` page carries the
-  // `nextCursor` that continues it, and a `hasNextPage: false` one has no such
-  // field. So a client that checked the flag holds the cursor, with no null to
-  // widen it.
-  //
-  // `strictObject`, so a cursor on a closed side is REFUSED rather than
-  // stripped: the arms differ by which fields they carry, and the JSON Schema
-  // this generates already says `additionalProperties: false` — a stripping
-  // parser would answer what its own published schema rejects.
-  //
-  // A union rather than an intersection of two: `allOf` of closed objects
-  // validates nothing in JSON Schema, and the OpenAPI document is an interop
-  // surface.
   list: oc
-    .input(
-      z
-        .object({
-          limit: z.number().int().min(1).max(100).default(20),
-          after: z.string().optional(),
-          before: z.string().optional(),
-          minQuantity: z.number().int().min(1).optional(),
-        })
-        .refine(({ after, before }) => after === undefined || before === undefined, {
-          message: "a page runs in one direction: pass `after` or `before`, not both",
-        }),
-    )
-    .output(
-      z.union([
-        z.strictObject({ ...pageItems, ...noPrevious, ...noNext }),
-        z.strictObject({ ...pageItems, ...noPrevious, ...aNext }),
-        z.strictObject({ ...pageItems, ...aPrevious, ...noNext }),
-        z.strictObject({ ...pageItems, ...aPrevious, ...aNext }),
-      ]),
-    )
+    .input(pageRequestOf({ minQuantity: z.number().int().min(1).optional() }))
+    .output(pageOf(orderView))
     .errors({ BAD_REQUEST: { data: z.object({ cursor: z.string() }) } }),
 
   // Overrides the group default for itself: a service token may export too,

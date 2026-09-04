@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import type { Env } from "@btravstack/config";
+import { page } from "@btravstack/contract";
 import {
   type RunningApp,
   type StartOptions,
@@ -13,7 +14,6 @@ import {
   CustomerRepository,
   MalformedCursor,
   OrderRepository,
-  page,
 } from "@btravstack/example-order-application";
 import {
   Customer,
