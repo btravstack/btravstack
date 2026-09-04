@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import type { UnitHost } from "@btravstack/core";
 import { Port } from "@btravstack/di";
 
 /**
@@ -15,6 +16,11 @@ import { Port } from "@btravstack/di";
  * result, and the runtime reads "did you answer?" off the response rather than
  * off this — which is what lets an answerer be written against `node:http`
  * alone.
+ *
+ * `host` is how an answerer opens the unit's scope for a request it handles —
+ * `host.fork(module, seed)`, once, for a request this answerer is about to
+ * answer. The runtime's own `404` never forks: only an answerer that claims a
+ * request does.
  */
 export type HttpAnswerer = {
   /**
@@ -27,6 +33,7 @@ export type HttpAnswerer = {
   readonly handle: (
     request: IncomingMessage,
     response: ServerResponse,
+    host: UnitHost<never>,
     signal: AbortSignal,
   ) => PromiseLike<unknown>;
 };

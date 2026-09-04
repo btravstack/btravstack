@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 
+import type { UnitHost } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { OkAsync } from "unthrown";
 import { describe, expect } from "vitest";
@@ -239,8 +240,14 @@ describe("htmx", () => {
       },
     } as unknown as ServerResponse;
 
-    // WHEN the request stream errors mid-read
-    const handled = answerer.handle(request, response, new AbortController().signal);
+    // WHEN the request stream errors mid-read — no unit is bound, so the host
+    // is never touched
+    const handled = answerer.handle(
+      request,
+      response,
+      {} as unknown as UnitHost<never>,
+      new AbortController().signal,
+    );
     request.emit("error", new Error("stream boom"));
 
     // THEN the fault propagates rather than being swallowed or mapped to a status
@@ -274,8 +281,13 @@ describe("htmx", () => {
 
     // WHEN the request is marked destroyed in the SAME tick `handle` is
     // called — before the authenticator's own await ever lets control
-    // return to `readBody`
-    const handled = answerer.handle(request, response, new AbortController().signal);
+    // return to `readBody`. No unit is bound, so the host is never touched.
+    const handled = answerer.handle(
+      request,
+      response,
+      {} as unknown as UnitHost<never>,
+      new AbortController().signal,
+    );
     fakeRequest.destroyed = true;
 
     // THEN `readBody`'s own already-fired guard settles a defect instead of
@@ -345,5 +357,35 @@ describe("htmx", () => {
     expect(built).toBeDefectWith(
       expect.objectContaining({ message: expect.stringContaining("two providers") }),
     );
+  });
+
+  it("forks the anonymous unit module once per matched route, and tears it down", async ({
+    scopedFragment,
+  }) => {
+    // GIVEN an app bound to an anonymous unit module, serving a fragment
+    const { app, origin, counts } = await scopedFragment.serve();
+
+    // WHEN the fragment route is requested twice and the app stops
+    await fetch(`${origin}/frag`);
+    await fetch(`${origin}/frag`);
+    app.stop();
+    await app.exited;
+
+    // THEN the module was built and torn down once per matched request
+    expect(counts()).toEqual({ builds: 2, stops: 2 });
+  });
+
+  it("answers 500 when the bound anonymous unit module fails to build", async ({
+    brokenScoped,
+  }) => {
+    // GIVEN an app whose anonymous unit module's provider throws on build
+    const { origin } = await brokenScoped();
+
+    // WHEN the fragment route is requested
+    const response = await fetch(`${origin}/frag`);
+
+    // THEN the fork's defect answers 500, from htmx's own `refuse` — the
+    // status helper this file already writes through
+    expect(response.status).toBe(500);
   });
 });

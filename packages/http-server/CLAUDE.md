@@ -562,8 +562,10 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   parameter's `Module<X, E, Scope | Env>` half, ending on
   `Type '"OrpcRouter"' is not assignable to type '"@di/Scope"'`. Neither is
   di's `UNSATISFIED DEPENDENCIES` dependency gate.
-  `examples/order-api/src/needs-gate.test-d.ts` pins both, plus the
-  `StartOptions.unit` halves. **`UNSATISFIED RUNTIME PORTS` is live for this
+  `examples/order-api/src/needs-gate.test-d.ts` pins both — it still shows the
+  kernel-level `StartOptions.unit` gate the answerers-fork change (below)
+  retired, and is stale until the narrative-docs sweep updates it alongside
+  the pages that quote it. **`UNSATISFIED RUNTIME PORTS` is live for this
   runtime again**: `HttpRuntime` resolves `HttpHandler`, so a root that does not
   export it is refused at `start` — `HttpModule` adds it to `exports` itself, and
   a hand-written root writes `exports: [HttpRuntime, HttpHandler]`.
@@ -577,18 +579,48 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   failed before headers were out, socket destroyed once they were — are
   unreachable over the oRPC surface and exist because the transport is proven
   against a bare listener. A defect
-  that never reaches the listener's promise — a synchronous throw, a
-  `StartOptions.unit` provider failing to build — gets its `500` from the
+  that never reaches the listener's promise — a synchronous throw, an
+  answerer's own fork (below) failing to build — gets its `500` from the
   unit's `recoverDefect`, which destroys the socket only once headers are
   already out.
 - **The guarantee**: the unit's lifetime **is** the response's — it does not
   close until the response's `'close'` event fires, and closes at once if that
-  event already fired before the work ran (a client hanging up during a slow
-  `StartOptions.unit` build; the unit's work is deferred behind the fork) — so
+  event already fired before the work ran — so
   there is no seam for a late write to land in, and `id: randomUUID()` is
   minted per request (a non-blank inbound `x-request-id` becomes `traceId`),
   so the two contracts a runtime owes are structural here rather than left to
   a caller's care.
+- **The fork is the answerer's, for a request it handles — not the kernel's.**
+  `http()`/`httpServer()`/`HttpModule` all take `unit?: { anonymous?: Module }`,
+  provided on `HttpUnit` (`Port("HttpUnit")<{ anonymous?: Module<unknown, never, unknown> }>`,
+  not exported from the package — reached the same way `OrpcRouterPort` is,
+  never by name) and injected by both answerers. `orpc.ts`'s `unitScope`
+  middleware forks it on **every leaf**, installed in `routerOf` after
+  `principalMiddleware` where a leaf carries one — so a later phase can seed
+  the fork with what the principal resolved to. It runs only when oRPC's own
+  dispatch reaches the leaf: an input oRPC's own schema refuses before any
+  leaf middleware runs never forks either — proved by
+  `examples/order-api/src/api.spec.ts`'s "never enters the handler for a
+  malformed input", exactly as the runtime's own `404` does not.
+  `htmx.ts` forks once a route has matched and before its handler runs; a
+  fork's own defect answers `500` through the same path each answerer already
+  had for any other defect — the runtime's `recoverDefect` for oRPC (a throw
+  escapes `unitScope`), `refuse(response, 500)` for htmx. **The runtime's own
+  `404` never forks** — the
+  behaviour change from the kernel forking a `StartOptions.unit` module around
+  every unit, which is gone. A bound `unit.anonymous` module's own unmet needs
+  join `httpServer`'s own Needs channel, structurally, through a single
+  `Unit extends AnyUnitModule | undefined` type parameter (`AnyUnitModule =
+Module<never, never, unknown>` — `Module`'s `_exports` channel is
+  contravariant, so the bound had to be `never`, not `unknown`, for a concrete
+  module to infer against it at all; `@btravstack/testing`'s
+  `TestRuntimeOptions.unit` carries the same bound for the same reason). An
+  import's own unmet needs are not `HttpModule`'s OWN call to re-declare (di's
+  `NeedsGate` TSDoc), so they surface where any unmet need does — at
+  `start`'s own `UNSATISFIED DEPENDENCIES`, never a marker of the kernel's:
+  the module is forked over the application context, so its needs are exactly
+  what the composition root must supply.
+  `http-module.test-d.ts` pins both directions.
 - **Drain**: `stopAccepting` retires every open response — an unsent header
   gets `Connection: close`, a sent `text/event-stream` response is
   **destroyed** on the spot, any other sent one ends its socket on

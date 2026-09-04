@@ -11,6 +11,7 @@ import {
   Provider,
   type AnyPort,
   type AnyProvider,
+  type Module,
   type PortClassOf,
   type PortInstance,
   type ServiceOf,
@@ -42,7 +43,9 @@ import { authenticatorPort, principalMiddleware, type AuthenticatorService } fro
 import { CONTROLLER_PREFIX, type ControllerKeyOf, type ControllerPortOf } from "./controller.js";
 import { HttpHandler } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
+import { HttpUnit } from "./http-runtime.js";
 import type { Principal, SchemesOf } from "./principal.js";
+import { unitScope } from "./unit-scope.js";
 
 export type OrpcOptions = {
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
@@ -166,10 +169,10 @@ export const orpc = (options: OrpcOptions = {}) => {
       });
       return {
         prefix,
-        // The request rides oRPC's initial context so `principalMiddleware`
-        // can read its headers; nothing else in this package reads it.
-        handle: (request, response) =>
-          rpc.handle(request, response, { prefix, context: { request } }),
+        // The request and the unit host both ride oRPC's initial context:
+        // `principalMiddleware` reads the former, `unitScope` the latter.
+        handle: (request, response, host) =>
+          rpc.handle(request, response, { prefix, context: { request, host } }),
       };
     },
   });
@@ -288,13 +291,16 @@ export const routerFor =
       const schemes = schemesOf(contract);
       const own = (services: Record<string, unknown>): Record<string, unknown> =>
         Object.fromEntries(
-          Object.entries(services).filter(([key]) => !key.startsWith(AUTHENTICATOR)),
+          Object.entries(services).filter(
+            ([key]) => key !== UNIT && !key.startsWith(AUTHENTICATOR),
+          ),
         );
       const withSchemes = (deps: Record<string, AnyPort>): Record<string, AnyPort> => ({
         ...deps,
         ...Object.fromEntries(
           schemes.map((scheme) => [`${AUTHENTICATOR}${scheme}`, authenticatorPort(scheme)]),
         ),
+        [UNIT]: HttpUnit,
       });
       const routerFrom = (
         implementation: Record<string, unknown>,
@@ -312,6 +318,7 @@ export const routerFor =
                 services[`${AUTHENTICATOR}${scheme}`] as AuthenticatorService<unknown>,
               ]),
             ),
+            (services[UNIT] as ServiceOf<HttpUnit> | undefined)?.anonymous,
           ),
         );
 
@@ -351,6 +358,10 @@ export const routerFor =
 // Namespaced so a scheme's key cannot collide with one the caller wrote. The
 // trailing colon is part of the prefix: the scheme name follows it.
 const AUTHENTICATOR = "@btravstack/http-server/authenticator:";
+
+// Namespaced for the same reason: the router's own `HttpUnit` dependency,
+// stripped by `own` before an application's `sync` sees its services.
+const UNIT = "@btravstack/http-server/unit";
 
 // A piece's dotted path becomes the nesting the contract already has, so
 // `routerOf` walks the same tree it always did — marks, inheritance and the
@@ -651,31 +662,36 @@ export const schemesOf = (contract: unknown): readonly string[] => {
 // marked record's requirements down to its procedures, as `Inherit<T, R>` does
 // in the types. `.use` must come BEFORE `.result`: `.result` returns an
 // `ImplementedProcedure`, whose own `.use` has no `.result` left.
+/**
+ * A node of `implement(contract)`'s own tree, as far as the walk uses it:
+ * `.use` returns the SAME shape, so two chained calls — `principalMiddleware`
+ * then `unitScope` — still carry `.use` and `.result` on the second result.
+ */
+type ChainableImplementer = Record<string, unknown> & {
+  readonly result: (fn: unknown) => unknown;
+  readonly use: (middleware: unknown) => ChainableImplementer;
+};
+
 const routerOf = (
   implementer: Record<string, unknown>,
   implementation: Record<string, unknown>,
   contract: Record<string, unknown>,
   inherited: Requirements | undefined,
   authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
+  unit: Module<unknown, never, unknown> | undefined,
 ): Record<string, unknown> =>
   Object.fromEntries(
     Object.entries(implementation).flatMap(([key, value]) => {
-      const node = implementer[key] as
-        | (Record<string, unknown> & {
-            readonly result: (fn: unknown) => unknown;
-            readonly use: (middleware: unknown) => Record<string, unknown> & {
-              readonly result: (fn: unknown) => unknown;
-            };
-          })
-        | undefined;
+      const node = implementer[key] as ChainableImplementer | undefined;
       if (node === undefined) return [];
       const child = contract[key];
       const declared =
         typeof child === "object" && child !== null ? isAuthenticated(child) : undefined;
       const effective = declared ?? inherited;
       if (typeof value === "function") {
-        const target =
+        const guarded =
           effective === undefined ? node : node.use(principalMiddleware(effective, authenticators));
+        const target = guarded.use(unitScope(unit));
         return [[key, target.result(value)]];
       }
       return [
@@ -687,6 +703,7 @@ const routerOf = (
             (child ?? {}) as Record<string, unknown>,
             effective,
             authenticators,
+            unit,
           ),
         ],
       ];

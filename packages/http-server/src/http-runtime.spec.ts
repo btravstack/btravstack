@@ -216,37 +216,6 @@ describe("httpRuntime", () => {
     await expect(fetch(origin).then((response) => response.text())).rejects.toThrow();
   });
 
-  it("closes the unit when the client hung up before its work began", async ({
-    serve,
-    slowUnit,
-    boundServer,
-  }) => {
-    // GIVEN a unit module that builds only when released, and a request whose
-    // client gives up while it is building — the server has already seen the
-    // response close by the time the unit's work runs
-    const { app, origin } = await serve(undefined, slowUnit.module);
-    const hungUp = new Promise<void>((done) => {
-      boundServer().once("request", (_request, response) => response.once("close", () => done()));
-    });
-    const controller = new AbortController();
-    const abandonedByClient = fetch(origin, { signal: controller.signal }).catch(() => undefined);
-    await slowUnit.arrived;
-    controller.abort();
-    await hungUp;
-
-    // WHEN the unit is released and its work runs to completion
-    slowUnit.release();
-    await abandonedByClient;
-    await new Promise<void>((tick) => setImmediate(tick));
-
-    // THEN a drain finds nothing in flight: the unit closed on the response that
-    // was already closed, rather than waiting for a `'close'` that had fired
-    app.requestDrain();
-    await expect(app.exited).toBeOkWith(
-      expect.objectContaining({ drain: { inFlightAtStart: 0, completed: 0, abandoned: 0 } }),
-    );
-  });
-
   it("adopts a non-blank x-request-id as the trace id", async ({ serve, traced }) => {
     // GIVEN a caller that supplies a correlation id
     const { origin } = await serve(traced.handler);
@@ -365,7 +334,7 @@ describe("httpRuntime", () => {
 
   it("omits the security headers when securityHeaders is false", async ({ serve }) => {
     // GIVEN an app with the feature explicitly disabled
-    const { origin } = await serve(undefined, undefined, false);
+    const { origin } = await serve(undefined, false);
 
     // WHEN a request is answered
     const response = await fetch(origin);
@@ -376,7 +345,7 @@ describe("httpRuntime", () => {
 
   it("applies a custom securityHeaders record verbatim", async ({ serve }) => {
     // GIVEN an app whose starter was handed a record of its own
-    const { origin } = await serve(undefined, undefined, {
+    const { origin } = await serve(undefined, {
       "permissions-policy": "geolocation=()",
       "x-frame-options": "SAMEORIGIN",
     });
@@ -515,5 +484,42 @@ describe("httpRuntime", () => {
 
     // THEN it was served: the socket half stands on its own
     expect(await response.text()).toBe("hello from a fragment");
+  });
+
+  it("forks the anonymous unit module once per handled request, and tears it down", async ({
+    scoped,
+  }) => {
+    // GIVEN an app bound to an anonymous unit module
+    const { app, origin, counts } = await scoped.serve();
+
+    // WHEN two procedures are answered and the app stops
+    await fetch(`${origin}/rpc/hello`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    await fetch(`${origin}/rpc/hello`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    app.stop();
+    await app.exited;
+
+    // THEN the module was built and torn down once per request
+    expect(counts()).toEqual({ builds: 2, stops: 2 });
+  });
+
+  it("does not fork for a path no answerer handles", async ({ scoped }) => {
+    // GIVEN the same app
+    const { app, origin, counts } = await scoped.serve();
+
+    // WHEN a path outside every answerer is requested, and the app stops
+    await fetch(`${origin}/nowhere`);
+    app.stop();
+    await app.exited;
+
+    // THEN nothing was forked: the fork is the answerer's, for a request it handles
+    expect(counts()).toEqual({ builds: 0, stops: 0 });
   });
 });

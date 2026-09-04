@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { Provider } from "@btravstack/di";
+import type { UnitHost } from "@btravstack/core";
+import { Provider, type Module } from "@btravstack/di";
 import { Err, Ok, P, fromExecutor, type AsyncResult } from "unthrown";
 
 import { resolvePrincipal, type AuthenticatorService } from "./auth.js";
@@ -8,6 +9,7 @@ import { matchPath } from "./fragments.js";
 import { HttpHandler } from "./handler.js";
 import { HtmxFragmentsPort, type FragmentAnswer } from "./htmx-route.js";
 import { HttpConfig } from "./http-config.js";
+import { HttpUnit } from "./http-runtime.js";
 
 export type HtmxOptions = {
   /** Where fragments are mounted. Default `/`. */
@@ -33,10 +35,10 @@ export type HtmxOptions = {
 export const htmx = (options: HtmxOptions = {}) => {
   const prefix = options.prefix ?? "/";
   return Provider.member(HttpHandler)({
-    inject: { fragments: HtmxFragmentsPort, config: HttpConfig },
-    sync: ({ fragments, config }) => ({
+    inject: { fragments: HtmxFragmentsPort, config: HttpConfig, unit: HttpUnit },
+    sync: ({ fragments, config, unit }) => ({
       prefix,
-      handle: (request, response, _signal) =>
+      handle: (request, response, host, _signal) =>
         respond(
           fragments.routes,
           fragments.authenticators,
@@ -44,6 +46,8 @@ export const htmx = (options: HtmxOptions = {}) => {
           prefix,
           request,
           response,
+          host,
+          unit.anonymous,
         ),
     }),
   });
@@ -134,12 +138,22 @@ const respond = async (
   prefix: `/${string}`,
   request: IncomingMessage,
   response: ServerResponse,
+  host: UnitHost<never>,
+  anonymous: Module<unknown, never, unknown> | undefined,
 ): Promise<void> => {
   const matched = matchRoute(routes, request.method, relativePath(request.url, prefix));
   // No route claims this request: resolve unwritten so the runtime's own 404
   // answers, rather than stealing it from an answerer mounted deeper.
   if (matched === undefined) return;
   const { route, params } = matched;
+
+  if (anonymous !== undefined) {
+    const scope = await host.fork(anonymous as never, []);
+    if (scope.isDefect()) {
+      refuse(response, 500);
+      return;
+    }
+  }
 
   let principal: unknown;
   if (route.requirements !== undefined) {

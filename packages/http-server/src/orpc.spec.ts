@@ -211,4 +211,22 @@ describe("http, over a router", () => {
     // THEN the configured scheme is what the response used
     expect(encoding).toBe("deflate");
   });
+
+  it("answers 500 when the bound anonymous unit module fails to build", async ({
+    brokenScoped,
+  }) => {
+    // GIVEN an app whose anonymous unit module's provider throws on build
+    const { origin } = await brokenScoped();
+
+    // WHEN a procedure is called
+    const response = await fetch(`${origin}/rpc/hello`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+
+    // THEN the fork's defect reaches the caller as the runtime's own 500,
+    // never a hung request
+    expect(response.status).toBe(500);
+  });
 });

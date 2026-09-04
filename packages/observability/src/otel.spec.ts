@@ -62,13 +62,13 @@ describe("otel", () => {
   it("opens a span per unit and flushes it out on the scope's close", async ({ boot, spans }) => {
     // GIVEN an app whose unit module opens a span, exporting through a batch
     // processor an hour from its next scheduled export
-    const runtime = testRuntime();
+    const runtime = testRuntime("test", { unit: UnitSpanModule });
     const App = Module("OtelApp")({
       imports: [batchedOtel(spans), runtime.module],
       exports: [TestRuntimePort, Tracer],
     });
     const clock = createFakeClock();
-    const app = boot(App, { unit: UnitSpanModule, clock });
+    const app = boot(App, { clock });
     await runtime.untilStarted();
 
     // WHEN a unit runs and the app exits — the flush window — with the
