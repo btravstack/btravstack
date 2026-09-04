@@ -5,6 +5,7 @@
 "@btravstack/http-server": minor
 "@btravstack/amqp-worker": minor
 "@btravstack/temporal-worker": minor
+"@btravstack/observability": minor
 ---
 
 **Breaking.** `StartOptions.unit` is removed. A runtime forks the unit scope
@@ -27,5 +28,14 @@ exports are — though no starter seeds anything yet; each forks with `[]`.
 `testRuntime(name, { unit })` forks per submitted unit; `bootFixture` no
 longer takes `unit`.
 
-One behaviour change: the HTTP runtime's own `404` no longer forks a unit
-scope, since the fork is the answerer's, for a request it handles.
+`UnitSpanModule` moves with them: it is no longer composed as `start`'s
+`unit`, but bound on a starter's own option — `unit: { anonymous:
+UnitSpanModule }` — and forked by the runtime around every unit it opens.
+
+Behaviour change: both HTTP answerers now fork **exactly once dispatch has
+cleared every guard**, so a request that never reaches a handler never opens
+a unit scope — the runtime's own `404`, a request oRPC's schema refuses before
+dispatch, one `principalMiddleware` refuses, and an htmx request refused by
+auth or by body validation. For a consumer whose unit module provides a
+request-scoped logger, those four now log nothing where they used to log a
+request's worth of lines.
