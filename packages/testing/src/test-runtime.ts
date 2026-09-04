@@ -1,11 +1,5 @@
-import {
-  RuntimePort,
-  type RunUnit,
-  type Runtime,
-  type RuntimeHost,
-  type Serving,
-} from "@btravstack/core";
-import { Module, Provider } from "@btravstack/di";
+import { RuntimePort, type Runtime, type RuntimeHost, type Serving } from "@btravstack/core";
+import { Module, Provider, type Scope } from "@btravstack/di";
 import { OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 export type SubmittedUnit<T, E> = {
@@ -23,7 +17,23 @@ export type TestRuntimeInfo = { readonly name: string };
 /** The in-memory runtime's port: what `TestRuntime.module` provides, and what a test composition exports. */
 export class TestRuntimePort extends RuntimePort<Runtime<never, TestRuntimeInfo>> {}
 
-export type TestRuntime = Runtime<never, TestRuntimeInfo> & {
+export type TestRuntimeOptions = {
+  /** A module every submitted unit forks, with no seed, before its work runs. */
+  readonly unit?: Module<never, never, unknown>;
+};
+
+/**
+ * What `TestRuntimeOptions.unit` needs, `Scope` aside — `never` when no module
+ * was bound.
+ *
+ * The pattern's own `Exports` is `never`, not `unknown`: `Module`'s `Exports`
+ * channel is contravariant, so a concrete module — `Module<Span, never,
+ * Parent>`, say — matches a `never`-Exports pattern (`never` is assignable to
+ * anything) and never an `unknown`-Exports one.
+ */
+type UnitNeedsOf<U> = U extends Module<never, never, infer N> ? Exclude<N, Scope> : never;
+
+export type TestRuntime<UnitNeeds = never> = Runtime<never, TestRuntimeInfo, UnitNeeds> & {
   /**
    * A module providing this very runtime on `TestRuntimePort`: import it next
    * to the module under test, export the port, and `start` finds it.
@@ -44,10 +54,15 @@ export type TestRuntime = Runtime<never, TestRuntimeInfo> & {
   readonly accepting: () => boolean;
   readonly serving: () => Serving<TestRuntimeInfo>;
   readonly submit: <T = string, E = never>() => SubmittedUnit<T, E>;
+  /** The `RuntimeHost` the kernel last called `start` with — `undefined` before then. */
+  readonly host: () => RuntimeHost<never>;
 };
 
-export const testRuntime = (name = "test"): TestRuntime => {
-  let run: RunUnit<never> | undefined;
+export const testRuntime = <U extends Module<never, never, unknown> | undefined = undefined>(
+  name = "test",
+  options: { readonly unit?: U } = {},
+): TestRuntime<UnitNeedsOf<U>> => {
+  let host: RuntimeHost<never> | undefined;
   let accepting = false;
   let serving: Serving<TestRuntimeInfo> | undefined;
   let submitted = 0;
@@ -69,7 +84,7 @@ export const testRuntime = (name = "test"): TestRuntime => {
     },
   });
 
-  const runtime: TestRuntime = {
+  const runtime: TestRuntime<UnitNeedsOf<U>> = {
     name,
     module: Module("TestRuntime")({
       // Resolved lazily so the object literal can name itself.
@@ -77,8 +92,8 @@ export const testRuntime = (name = "test"): TestRuntime => {
       exports: [TestRuntimePort],
     }),
     resolves: [],
-    start: (host: RuntimeHost<never>) => {
-      run = host.run;
+    start: (h: RuntimeHost<never>) => {
+      host = h;
       accepting = true;
       serving = make();
       onStarted();
@@ -94,8 +109,15 @@ export const testRuntime = (name = "test"): TestRuntime => {
       }
       return serving;
     },
+    host: () => {
+      if (host === undefined) {
+        // oxlint-disable-next-line unthrown/no-throw -- same rationale as `serving()` above: a test asserting post-drain behaviour wants this loud, not routed
+        throw new Error("[test-runtime] not started");
+      }
+      return host;
+    },
     submit: <T, E>() => {
-      if (run === undefined || !accepting) {
+      if (host === undefined || !accepting) {
         // oxlint-disable-next-line unthrown/no-throw -- same rationale as `serving()` above: a test asserting post-drain behaviour wants this loud, not routed
         throw new Error("[test-runtime] not accepting work");
       }
@@ -105,14 +127,17 @@ export const testRuntime = (name = "test"): TestRuntime => {
       const held = new Promise<Result<T, E>>((resolve) => {
         settle = resolve;
       });
-      // Forwarded rather than captured: with a `unit` module the kernel runs
-      // the work only once the fork is built, so a captured signal would be
-      // `undefined` for a caller reading it right after `submit()`.
+      // Forwarded rather than captured: the work runs only once the fork is
+      // built, so a captured signal would be `undefined` for a caller reading
+      // it right after `submit()`.
       const forwarded = new AbortController();
-      const result = run<T, E>({ kind: "test", id: `${submitted}` }, (_ctx, signal) => {
+      const unit = options.unit;
+      const result = host.run<T, E>({ kind: "test", id: `${submitted}` }, (unitHost, signal) => {
         if (signal.aborted) forwarded.abort(signal.reason);
         else signal.addEventListener("abort", () => forwarded.abort(signal.reason), { once: true });
-        return held;
+        return unit === undefined
+          ? held
+          : unitHost.fork(unit as never, []).flatMap(() => fromSafePromise(held).flatMap((r) => r));
       });
 
       return { settle, result, signal: forwarded.signal };

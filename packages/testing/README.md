@@ -11,7 +11,6 @@ declare const OrderApi: Module<
   never,
   Env | Scope
 >;
-declare const RequestModule: Module<never, never, Logger>;
 -->
 
 # @btravstack/testing
@@ -48,7 +47,7 @@ const it = test.extend<{ boot: Boot }>({
 });
 
 it("serves on an ephemeral port", async ({ boot }) => {
-  const app = boot(OrderApi, { unit: RequestModule });
+  const app = boot(OrderApi);
 
   await expect(app.runtimeInfo()).toBeOkWith(
     expect.objectContaining({ port: expect.any(Number) }),
@@ -57,7 +56,7 @@ it("serves on an ephemeral port", async ({ boot }) => {
 
 it("holds the very logger the use cases write to", async ({ boot }) => {
   const tap = tapped(OrderApi, [Logger]);
-  await boot(tap.module, { unit: RequestModule }).runtimeInfo();
+  await boot(tap.module).runtimeInfo();
 
   const [logger] = tap.services();
   expect(logger.lines()).toEqual([]);
@@ -85,9 +84,11 @@ answers the very instances the running graph holds once it is built — after
   are its types.
 - **`tapped(module, ports)`** → `{ module, services() }` — read services out
   of a booted application.
-- **`testRuntime(name?)`** / **`TestRuntimePort`** — an in-memory `Runtime`
-  with `submit()` to hold a unit open across a drain, and a `module` that
-  provides it where a starter would.
+- **`testRuntime(name?, { unit? })`** / **`TestRuntimePort`** — an in-memory
+  `Runtime` with `submit()` to hold a unit open across a drain, `host()` to
+  reach the `RuntimeHost` it was last started with, and a `module` that
+  provides it where a starter would; `unit` is a module every submitted unit
+  forks, with no seed, before its work runs.
 - **`createFakeClock(start?)`** — a `Clock` for `StartOptions.clock` whose
   time moves only on `advance(ms)`.
 

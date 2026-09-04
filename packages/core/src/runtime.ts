@@ -1,4 +1,14 @@
-import { Port, type AnyPort, type Context, type PortClass, type ServiceOf } from "@btravstack/di";
+import {
+  Port,
+  type AnyPort,
+  type Context,
+  type DependencyGate,
+  type Module,
+  type PortClass,
+  type Scope,
+  type SeedEntry,
+  type ServiceOf,
+} from "@btravstack/di";
 import { OkAsync, TaggedError, fromSafePromise, type AsyncResult } from "unthrown";
 
 import type { UnitMeta, UnitWork } from "./units.js";
@@ -26,17 +36,38 @@ export class RuntimeStartFailed extends TaggedError("RuntimeStartFailed")<{
  * `UnitMeta.id` must be unique per unit unless a `traceId` is supplied — see
  * {@link UnitMeta}.
  *
- * With a `StartOptions.unit` module in play, `work` runs only once the fork is
- * built. A runtime that subscribes to an event from inside `work` must first
- * check whether it has already fired.
+ * A runtime forks the unit's scope itself, through `UnitHost.fork`, at the
+ * moment it holds the unit's input; the kernel closes that scope when the
+ * unit settles, after the response is flushed. Work that subscribes to an
+ * event after a `fork` must first check whether it already fired.
  */
 // `Context<InstanceType<Resolves>>`, not `Context<Resolves>`: di parameterises
 // `Context<in R>` by port instance types, while a runtime declares what it
 // resolves as port classes.
 export type RunUnit<Resolves extends AnyPort> = <T, E>(
   meta: UnitMeta,
-  work: (ctx: Context<InstanceType<Resolves>>, signal: AbortSignal) => ReturnType<UnitWork<T, E>>,
+  work: (unit: UnitHost<Resolves>, signal: AbortSignal) => ReturnType<UnitWork<T, E>>,
 ) => AsyncResult<T, E>;
+
+/**
+ * What the kernel hands a unit's work: the application context, and the one
+ * way to open the unit's own scope.
+ *
+ * `fork` builds `module` over the application context plus `seed` and hands
+ * the forked context back. The scope is torn down when the unit closes —
+ * inside the registry's unit, so the unit is not counted closed until its
+ * finalisers have run, and inside the unit's ambient record, so a teardown
+ * log line carries the unit's ids. A construction failure rides the unit's
+ * defect path. A unit forks once; a second call is a defect.
+ */
+export type UnitHost<Resolves extends AnyPort> = {
+  readonly ctx: Context<InstanceType<Resolves>>;
+  readonly fork: <UnitX, N, Seeded extends AnyPort = never>(
+    module: Module<UnitX, never, N> &
+      DependencyGate<Exclude<N, InstanceType<Resolves> | InstanceType<Seeded> | Scope>>,
+    seed: readonly SeedEntry<Seeded>[],
+  ) => AsyncResult<Context<InstanceType<Resolves> | UnitX | InstanceType<Seeded>>, never>;
+};
 
 /**
  * What a runtime is handed at `start`: the application services **and** the
@@ -49,8 +80,8 @@ export type RunUnit<Resolves extends AnyPort> = <T, E>(
  * {@link RunUnit}), and `UnitMeta.id` must be unique per unit unless a
  * `traceId` is supplied (see {@link UnitMeta}).
  *
- * `ctx` is the **application** context: a port a `StartOptions.unit` module
- * provides exists only while a unit is open, so a runtime naming it in
+ * `ctx` is the **application** context: a port a unit's `fork` module provides
+ * exists only in the `Context` `fork` hands back, so a runtime naming it in
  * `resolves` is rejected at `start`'s call site.
  */
 export type RuntimeHost<Resolves extends AnyPort> = {
@@ -74,7 +105,7 @@ export type Serving<Info = never> = {
   readonly info?: Info;
 };
 
-export type Runtime<Resolves extends AnyPort = never, Info = never> = {
+export type Runtime<Resolves extends AnyPort = never, Info = never, UnitNeeds = never> = {
   readonly name: string;
   // `resolves`, not `needs`: a module's `needs` is what a composition root
   // supplies it, this is what the runtime reads back out of the built
@@ -82,6 +113,8 @@ export type Runtime<Resolves extends AnyPort = never, Info = never> = {
   // inferable from the value.
   readonly resolves: readonly Resolves[];
   readonly start: (host: RuntimeHost<Resolves>) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
+  /** Phantom: what the runtime's bound unit modules need beyond what it seeds. Never read. */
+  readonly __unitNeeds?: (needs: UnitNeeds) => void;
 };
 
 /**
@@ -103,10 +136,28 @@ export type RuntimeInstance = InstanceType<PortClass<"Runtime">>;
 /** The `Runtime<Resolves, Info>` a module exports, or `never` when it exports none. */
 export type RuntimeOf<X> = ServiceOf<Extract<X, RuntimeInstance>>;
 
+// Structural, against `resolves`/`start`/`__unitNeeds` directly rather than
+// `RuntimeOf<X> extends Runtime<..., infer T>`: matching the ALIAS forces a
+// full structural comparison across all three of `Runtime`'s parameters at
+// once, and the optional `__unitNeeds` phantom made that comparison fail to
+// infer even when `RuntimeOf<X>` provably equals the pattern (regression-
+// tested — a `never`-Resolves runtime like `testRuntime`'s used to infer
+// `Info` as `never` this way). Reading one field at a time sidesteps it.
 export type RuntimeResolvesOf<X> =
-  RuntimeOf<X> extends Runtime<infer Resolves, unknown> ? Resolves : never;
+  RuntimeOf<X> extends { readonly resolves: readonly (infer Resolves extends AnyPort)[] }
+    ? Resolves
+    : never;
 
-export type RuntimeInfoOf<X> = RuntimeOf<X> extends Runtime<AnyPort, infer Info> ? Info : never;
+export type RuntimeInfoOf<X> =
+  RuntimeOf<X> extends {
+    readonly start: (host: never) => AsyncResult<Serving<infer Info>, RuntimeStartFailed>;
+  }
+    ? Info
+    : never;
+
+/** What the runtime a module exports declares its bound unit modules need, or `never` for one that declares none. */
+export type RuntimeUnitNeedsOf<X> =
+  RuntimeOf<X> extends { readonly __unitNeeds?: (needs: infer U) => void } ? U : never;
 
 /**
  * The trace id inside a W3C `traceparent` header, and nothing else of it.

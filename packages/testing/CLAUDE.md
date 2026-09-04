@@ -24,7 +24,7 @@ Promise<void>` handing `use` a **`Boot`** — `start`'s own signature and
   precedence order: `signals: false` always (last spread, uncancellable —
   process-wide handlers would fight across a file); then a call's own
   options; then `defaults` (**`BootDefaults`** = `StartOptions` minus
-  `signals` and `unit` — a unit module is a call's business; exported, like
+  `signals`; exported, like
   **`SubmittedUnit`**, because a documented parameter or return type a
   consumer cannot name is a surface gap, and the doc-samples signature gate
   is what found both); then
@@ -77,30 +77,38 @@ readonly "NOT EXPORTED — tap only what the module exports": Missing }`
   is a bug in the test, not a modeled outcome, and an `undefined` a careless
   assertion could swallow is worse than a throw. Read it after
   `runtimeInfo()` (or `untilStarted()`) resolves.
-- **`testRuntime(name?)`** / **`TestRuntimePort`** / **`TestRuntime`** /
-  **`TestRuntimeInfo`** / **`SubmittedUnit`** — an in-memory
-  `Runtime<never, TestRuntimeInfo>` plus `started()`, `untilStarted()` (an
-  `AsyncResult<void, never>`), `accepting()`, `serving()`, `submit<T, E>()`,
-  and **`module`** — a `Module<TestRuntimePort, never, never>` providing
-  **this** object on `TestRuntimePort` (declared over `RuntimePort`), which
-  is how a test composition gets a runtime: import `runtime.module`, export
-  `TestRuntimePort`. A wrapper built by spreading (`{ ...runtime, start }`)
-  copies the module too, so its module still boots the inner runtime — a
-  wrapper provides itself with a module of its own (`test-fixtures.ts`'s
-  `runtimeModule(runtime)`, here and in the kernel). It publishes `{ name }`
-  on `Serving.info` — the one thing an in-memory runtime genuinely knows about
-  itself — so the kernel's `runtimeInfo()` channel is exercised end to end.
-  `submit` returns a `SubmittedUnit` (`settle`, `result`, `signal`) so a test
-  can hold a unit open across a drain; `signal` is **forwarded** through an
-  `AbortController` rather than captured, because with a `unit` module the
-  kernel runs the work only once the fork is built, and a captured signal
-  would be `undefined` for a caller reading it right after `submit()`. It
-  deliberately **ignores** the `Serving.drain(signal)` deadline — `drain`
-  flips `accepting` and returns at once — which is what makes the kernel's
-  abort tests tests of the kernel, not of the fake. `serving()` and
-  `submit()` are its two misuse guards: each throws (`no-throw` disabled with
-  a reason) when the runtime was never started or is no longer accepting — a
-  bug in the test, loud on purpose.
+- **`testRuntime(name?, { unit? })`** / **`TestRuntimePort`** / **`TestRuntime`**
+  / **`TestRuntimeInfo`** / **`TestRuntimeOptions`** / **`SubmittedUnit`** — an
+  in-memory `Runtime<never, TestRuntimeInfo>` plus `started()`, `untilStarted()`
+  (an `AsyncResult<void, never>`), `accepting()`, `serving()`, `host()`,
+  `submit<T, E>()`, and **`module`** — a `Module<TestRuntimePort, never,
+never>` providing **this** object on `TestRuntimePort` (declared over
+  `RuntimePort`), which is how a test composition gets a runtime: import
+  `runtime.module`, export `TestRuntimePort`. A wrapper built by spreading
+  (`{ ...runtime, start }`) copies the module too, so its module still boots
+  the inner runtime — a wrapper provides itself with a module of its own
+  (`test-fixtures.ts`'s `runtimeModule(runtime)`, here and in the kernel). It
+  publishes `{ name }` on `Serving.info` — the one thing an in-memory runtime
+  genuinely knows about itself — so the kernel's `runtimeInfo()` channel is
+  exercised end to end. **`host()`** answers the `RuntimeHost` the kernel
+  last called `start` with — loud (same rationale as `serving()`) before
+  then — which is how a spec opens a fork of its own outside `submit`, the way
+  `unit-module.spec.ts`'s "second fork is a defect" test does. **`unit`**
+  (`TestRuntimeOptions`) is a module every submitted unit forks, with no seed,
+  before its work runs — `submit`'s work callback is `unit === undefined ?
+held : unitHost.fork(unit, []).flatMap(() => …)`, so `testRuntime` is what a
+  spec composes to exercise the same `UnitHost.fork` path a real runtime
+  drives, without booting one. `submit` returns a `SubmittedUnit` (`settle`,
+  `result`, `signal`) so a test can hold a unit open across a drain; `signal`
+  is **forwarded** through an `AbortController` rather than captured, because
+  the work runs only once the fork is built (with a `unit` module bound), and
+  a captured signal would be `undefined` for a caller reading it right after
+  `submit()`. It deliberately **ignores** the `Serving.drain(signal)` deadline
+  — `drain` flips `accepting` and returns at once — which is what makes the
+  kernel's abort tests tests of the kernel, not of the fake. `serving()`,
+  `host()` and `submit()` are its three misuse guards: each throws
+  (`no-throw` disabled with a reason) when the runtime was never started or is
+  no longer accepting — a bug in the test, loud on purpose.
 - **`createFakeClock(start?)`** / **`FakeClock`** — a `Clock` whose time moves
   only on `advance(ms)` (an `AsyncResult<void, never>`), which **brackets
   itself with a real macrotask at each end** (`setTimeout(resolve, 0)`) — the
@@ -129,12 +137,15 @@ what `tapped` and `boot` are exercised against) and `runtimeModule(runtime)`.
   `onEvent` beating the fixture's.
 - `tapped.spec.ts` (2): the very service instance the graph holds, and the
   loud read before boot.
-- `test-runtime.spec.ts` (7): started, work routed through the host, the two
-  misuse guards, the abort forwarded when the host opens units already aborted
-  and when it fires while the unit is open, `accepting()` before/after the
-  drain. Its `hostFor` stub **replaces the kernel's registry** — a
-  `RuntimeHost` counting open units and handing each an `AbortSignal` in a
-  dozen lines — so the runtime is tested without booting a kernel around it.
+- `test-runtime.spec.ts` (10): started, work routed through the host, the
+  three misuse guards (`serving()`, `host()`, `submit()`), the abort forwarded
+  when the host opens units already aborted and when it fires while the unit
+  is open, `accepting()` before/after the drain, `host()` answering the
+  `RuntimeHost` last started with, and a `unit`-bound runtime forking it
+  before the work runs. Its `hostFor` stub **replaces the kernel's registry**
+  — a `RuntimeHost` counting open units, handing each an `AbortSignal` and a
+  real (if minimal) `UnitHost.fork` over `Module.forkScope`, in a few dozen
+  lines — so the runtime is tested without booting a kernel around it.
 - `fake-clock.spec.ts` (6): starts at 0 / at the supplied instant, a sleep
   pending until its deadline, non-positive sleep, already-aborted signal, an
   abort cutting a sleep short and forgetting it.

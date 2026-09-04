@@ -32,15 +32,17 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
   over `RuntimePort`, the kernel builds the graph, resolves that port and
   drives what it finds. The kernel is DI initialisation and lifecycle, nothing
   else. The `module` parameter is intersected with the phantom marker
-  `StartGate<X, UnitNeeds, N>`: `UNSATISFIED DEPENDENCIES — nothing provides`
+  `StartGate<X, N>`: `UNSATISFIED DEPENDENCIES — nothing provides`
   when something in the graph needs a port nothing provides — checked FIRST,
   in di's own words, ending on the port's **id** rather than its type —
   `NO RUNTIME` when the module exports no runtime
   port, `UNSATISFIED RUNTIME PORTS` when what the runtime resolves is not
-  among the module's exports (the module's alone — a unit-only port exists only
-  while a unit is open, and `RuntimeHost.ctx` is the application context),
-  `UNSATISFIED UNIT NEEDS` for the fork's own direction — all four at the
-  call site, as an assignability failure that **prints the arm's diagnostic**.
+  among the module's exports (the module's alone — a port a `fork` provides
+  exists only in the `Context` `fork` hands back, never in `RuntimeHost.ctx`,
+  the application context), `UNSATISFIED UNIT NEEDS` when the runtime's own
+  `UnitNeeds` phantom names a port the module does not export — all four at
+  the call site, as an assignability failure that **prints the arm's
+  diagnostic**.
 
   **Why needs are checked first, and why in di's words.** The parameter used to
   be `Module<X, E, Scope | Env>`, so an unmet need was a plain assignability
@@ -92,11 +94,24 @@ PORTS`, a correct diagnosis of the second mistake that reads as a wrong one
   service): a runtime package declares its own concrete port over it —
   `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}`
   — so every runtime is one id at runtime while each carries its own
-  `Resolves`/`Info` in the type. `RuntimeOf<X>` / `RuntimeResolvesOf<X>` /
-  `RuntimeInfoOf<X>` read those back out of a module's exports (only
-  `RuntimeInfoOf` is exported — the other two are the gate's internals);
-  `RuntimeInstance` is the shared instance type
-  (`InstanceType<PortClass<"Runtime">>`, internal too). Every
+  `Resolves`/`Info`/`UnitNeeds` in the type. `RuntimeOf<X>` /
+  `RuntimeResolvesOf<X>` / `RuntimeInfoOf<X>` / `RuntimeUnitNeedsOf<X>` read
+  those back out of a module's exports (only `RuntimeInfoOf` and
+  `RuntimeUnitNeedsOf` are exported — the other two are the gate's
+  internals); `RuntimeInstance` is the shared instance type
+  (`InstanceType<PortClass<"Runtime">>`, internal too). `Runtime`'s third
+  parameter, `UnitNeeds`, is a phantom — `readonly __unitNeeds?: (needs:
+UnitNeeds) => void`, never read at run time — that lets a runtime state
+  what its own bound unit modules need beyond what it seeds, so `StartGate`
+  can check it against the application module's exports the same way it
+  checks `Resolves`. The three helper types read it (and `Resolves`/`Info`)
+  structurally, field by field, rather than through `RuntimeOf<X> extends
+Runtime<..., infer T>`: matching the whole alias forces a full structural
+  comparison across all three parameters at once, and the optional
+  `__unitNeeds` phantom made that comparison fail to infer even when
+  `RuntimeOf<X>` provably equalled the pattern — a `never`-Resolves runtime
+  (`testRuntime`'s) inferred `Info` as `never` this way, caught by
+  `start.test-d.ts`'s own assertions the moment the phantom landed. Every
   runtime package ships its port and a starter — `HttpRuntime`/`http()`,
   `TemporalRuntime`/`temporal()`, `AmqpRuntime`/`amqp()` — and none of them
   has a `resolves` any more: each takes the application's router / activities /
@@ -106,36 +121,35 @@ PORTS`, a correct diagnosis of the second mistake that reads as a wrong one
   contract at the type level, the same generic-value move `RuntimePort`
   itself makes), which the application provides and never names — so their
   `Resolves` is `never` and `RuntimeHost.ctx` goes unread by every shipped
-  runtime. The kernel keeps `Runtime.resolves`, `RunUnit`'s typed `ctx` and the
+  runtime. The kernel keeps `Runtime.resolves`, `RuntimeHost`/`UnitHost`'s
+  typed `ctx` and the
   `UNSATISFIED RUNTIME PORTS` arm as the general contract (`testRuntime` and a
   hand-rolled runtime still use it), but no starter does. A port's service
   type is fixed at declaration, which is why a runtime with application-specific
   needs could not ship its port — the reason the needs went, not a constraint
   to work around.
-- **`StartOptions<UnitX, UnitNeeds>`** — `env` (the environment the graph is
+- **`UnitHost<Resolves>`** — `{ ctx, fork }`, what a unit's work callback is
+  handed instead of a bare `Context`: `ctx` is the application context
+  (unchanged from before), and `fork(module, seed)` is the runtime's own way
+  to open the unit's scope — building `module` over `ctx` plus `seed` and
+  handing the forked `Context` back. The kernel closes that scope when the
+  unit settles: inside the registry's unit (so the unit is not counted closed
+  until the fork's finalisers have run) and inside the unit's ambient record
+  (so a teardown log line carries the unit's ids). A construction failure
+  rides the unit's defect path — `ready.reject(cause)` inside a
+  `recoverDefect`, so the caller's `fork(...)` call settles as a `Defect`
+  rather than hanging. A second `fork` call in one unit is a defect too
+  (`"a unit forks its scope once"`) — two scopes forked from the same unit is
+  the design `unit-module.spec.ts` rejects. `StartOptions.unit` is gone: a
+  runtime that wants a per-unit scope calls `unit.fork(...)` itself, from
+  inside `host.run`'s work callback, at the moment it holds the unit's own
+  input (a request, a delivery) — which is also the seam a later seed (a
+  per-request principal) attaches to.
+- **`StartOptions`** — `env` (the environment the graph is
   configured from, provided to it as `@btravstack/config`'s `Env` port and
   what the kernel reads its own `PROBE_PORT`, `PRE_DRAIN_DELAY_MS` and
   `DRAIN_TIMEOUT_MS` from; default `process.env`, a test hands in a record);
-  `unit` (a `Module<UnitX, never, UnitNeeds>` the kernel forks around **every
-  unit**: built as the unit opens, torn down as it closes — while the unit's
-  ambient record is still open — reading anything the application context
-  carries; this is what makes a per-request scope transparent, so no handler
-  ever calls `Module.forkScope` itself. Its error channel is pinned to `never`
-  — a construction failure at unit scope has no modeled channel and rides the
-  unit's defect path, which every runtime already answers — `@btravstack/http-server`
-  writes the `500` from its `recoverDefect`, precisely because that failure
-  happens before the handler is reached. A unit finaliser that fails is
-  emitted as a `teardownError` event only, never pushed into
-  `ExitReport.teardownErrors` (which is the application scope's, and would
-  grow unbounded). With the option, unit work runs only once the fork is
-  built — after an `await` when a unit provider is async — so a runtime that
-  subscribes to an event from inside its work must check it has not already
-  fired (see contract 3 above). The gate checks
-  both directions at the call site: runtime `resolves` may draw on `UnitX`, and
-  `UnitNeeds` must be covered by the module's exports or `Scope`. One caveat:
-  `RuntimeHost.ctx` is the **application** context, so a unit-provided port
-  exists only inside unit work — resolving one at runtime startup is a
-  defect); `clock`
+  `clock`
   (default `systemClock`); `signals` (default `true`; **`false` disables the
   SIGTERM/SIGINT handlers _and_ the uncaught ones together**); `probes`
   (`{ port }` or `false`; unset, bound from `PROBE_PORT` in `env`, default
@@ -169,11 +183,14 @@ PORTS`, a correct diagnosis of the second mistake that reads as a wrong one
   `inFlightAtStart` if in-flight work spawned more, which is honest reporting,
   not a bug), `abandoned` (units still open at the deadline; **the field the
   exit code keys on**).
-- **`Runtime<Resolves, Info>` / `RuntimeHost<Resolves>` / `RunUnit<Resolves>` /
-  `Serving<Info>`** — the runtime contract (the _service_ behind a runtime
-  port). All parameterised by port **classes**
-  (`Resolves extends AnyPort`) but handing out `Context<InstanceType<Resolves>>`,
-  because di parameterises `Context<in R>` by port **instance** types.
+- **`Runtime<Resolves, Info, UnitNeeds>` / `RuntimeHost<Resolves>` /
+  `UnitHost<Resolves>` / `RunUnit<Resolves>` / `Serving<Info>`** — the runtime
+  contract (the _service_ behind a runtime port). `RunUnit`'s work callback
+  receives a `UnitHost<Resolves>` — `{ ctx, fork }`, not a bare `Context` —
+  alongside the `AbortSignal`; both `RuntimeHost.ctx` and `UnitHost.ctx`
+  parameterise by port **classes** (`Resolves extends AnyPort`) but hand out
+  `Context<InstanceType<Resolves>>`, because di parameterises `Context<in R>`
+  by port **instance** types.
   `Serving.drain(signal)` returns `AsyncResult<void, never>` — **not** a
   `DrainReport`: only the kernel can see the unit registry, so the kernel owns
   the accounting. `drain` means "stop accepting"; the `AbortSignal` fires when
@@ -577,10 +594,11 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   trailing rest tuple.**
   `module: Module<X, E, Scope | Env> & ([InstanceType<RuntimeResolvesOf<X>>] extends [X] ? unknown : "UNSATISFIED RUNTIME PORTS — …")`
   (preceded by the `NO RUNTIME` arm on `Extract<X, RuntimeInstance>`) —
-  against the module's exports alone, never the `unit` module's: a unit-only
-  port exists only while a unit is open, and `RuntimeHost.ctx` is the
-  application context, so accepting it would type-check into a startup defect
-  (`start.test-d.ts`'s `SpanApp` pins the rejection).
+  against the module's exports alone, never a fork's: a port a `fork` module
+  provides exists only in the `Context` `fork` hands back, and `RuntimeHost.ctx`
+  is the application context, so a runtime naming it in `resolves` would
+  type-check into a startup defect (`start.test-d.ts`'s `SpanApp` pins the
+  rejection).
   A rest tuple was the earlier spelling, on the grounds that a conditional type
   in an inference-bearing position can defer that parameter's inference and
   collapse `X` or `E` to `unknown`. It bought that safety at the cost of the
@@ -740,28 +758,35 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   the inner `Result` is unwrapped — and there is no cause a `qualify` could
   triage into a modeled error.
 
-- **The `unit` module forks INSIDE `registry.run`, and both halves of that
-  placement are load-bearing** (`unit-module.spec.ts` guards them). Inside
-  `registry.run`'s work means the fork's teardown runs while the unit's
-  ambient record is still open — a span's `onStop` logs under the request's
+- **The fork is the runtime's to START, through `UnitHost.fork`, and the
+  kernel's to CLOSE — and both halves of that split are load-bearing**
+  (`unit-module.spec.ts` guards them). `fork` calls `Module.forkScope` with a
+  `use` callback that resolves the built `Context` to the caller (through a
+  `Promise.withResolvers` named `ready`) and then **holds the scope open**
+  by returning a second deferred (`settled`) that only resolves once the
+  unit's own work has settled — so the fork's teardown still runs while the
+  unit's ambient record is open — a span's `onStop` logs under the request's
   own trace id (_"builds and tears down inside the unit's own ambient
-  record"_) — and the unit is not counted closed until the scope is, so a
-  drain waits for unit teardown too (_"keeps a unit in flight until its scope
-  has closed"_: the teardown is held open across `requestDrain()`, and the
-  report says `inFlightAtStart: 1, completed: 1`). The fork passes its own
-  `onTeardownError`, which **emits and does not push**: `teardownErrors` is
-  the application scope's array and rides the exit report, and a per-unit
+  record"_) — and the unit is not counted closed until the scope is, because
+  `run`'s `finally` awaits the fork's `closing` promise before letting
+  `registry.run`'s own callback return (_"keeps a unit in flight until its
+  scope has closed"_: the teardown is held open across `requestDrain()`, and
+  the report says `inFlightAtStart: 1, completed: 1`). The fork passes its
+  own `onTeardownError`, which **emits and does not push**: `teardownErrors`
+  is the application scope's array and rides the exit report, and a per-unit
   finaliser failing on every request would grow it without bound (_"reports
-  a failing unit teardown as an event and keeps it off the exit report"_).
-  `run` stays an **annotation** against
-  `RunUnit` (a divergence is reported, not absorbed); with no `unit` option
-  the work receives `runtimeCtx` exactly as before, zero overhead. The
-  `forkScope` call goes through a discharged-signature cast — the same move
-  `runMain` and `@btravstack/testing`'s `bootFixture` make on `start` — because
-  the fork's gates are
-  proven by `start`'s intersected marker at the call site and invisible in a body
-  where `X`, `Needs` and `UnitX` are unresolved. The work's return union is
-  normalised by an `async` wrapper exactly as `registry.run` does it.
+  a failing unit teardown as an event and keeps it off the exit report"_). A
+  construction failure — the module never reaches `use` — is recovered onto
+  `ready.reject(cause)` before `.get()` resolves `closing`, so the caller's
+  `fork(...)` call settles as a `Defect` instead of hanging forever
+  (_"recovers a fork's construction failure onto the caller's defect
+  path"_). A unit forks once: a second `fork` call sees `closing` already set
+  and short-circuits into a rejected promise, `"a unit forks its scope
+once"` (_"reports a second fork in one unit as a defect"_) — two open
+  scopes per unit is the design this rejects, not an oversight. With no
+  runtime-side `fork` call at all, the work receives `{ ctx: runtimeCtx,
+fork }` and never opens a second scope, zero overhead beyond the `fork`
+  closure itself.
 
 - **`options.signals === false` disables the uncaught handlers too.** One flag,
   two handler families, because both are process-global and a test harness needs
