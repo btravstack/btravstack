@@ -15,21 +15,27 @@ import {
   type AmqpConfig,
   type AmqpTuning,
   type AnyAmqpContract,
+  type AnyUnitModule,
   type HandlersInstanceOf,
+  type UnitNeedsOf,
 } from "./amqp-runtime.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
-type AmqpStarter<TContract extends AnyAmqpContract> = Module<
+type AmqpStarter<
+  TContract extends AnyAmqpContract,
+  Unit extends AnyUnitModule | undefined,
+> = Module<
   AmqpRuntime | AmqpConfig,
   ConfigInvalid,
-  Env | HandlersInstanceOf<TContract>
+  Env | HandlersInstanceOf<TContract> | UnitNeedsOf<Unit>
 >;
 
 /** The application's imports plus the starter — the tuple `Module(name)` is handed. */
-type Imports<I extends readonly AnyModule[], TContract extends AnyAmqpContract> = readonly [
-  ...I,
-  AmqpStarter<TContract>,
-];
+type Imports<
+  I extends readonly AnyModule[],
+  TContract extends AnyAmqpContract,
+  Unit extends AnyUnitModule | undefined,
+> = readonly [...I, AmqpStarter<TContract, Unit>];
 
 /** The handlers provider plus the application's own — the tuple `Module(name)` is handed. */
 type Provides<
@@ -43,14 +49,15 @@ export type AmqpModuleOptions<
   TContract extends AnyAmqpContract,
   HandlersError,
   HandlersNeeds,
+  Unit extends AnyUnitModule | undefined,
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
   X extends readonly Exportable<
-    Imports<I, TContract>,
+    Imports<I, TContract, Unit>,
     Provides<P, TContract, HandlersError, HandlersNeeds>
   >[],
   N extends readonly AnyPort[],
-> = AmqpTuning & {
+> = AmqpTuning<Unit> & {
   readonly contract: TContract;
   /** The application's handlers — what `AmqpHandlers(contract)(…)` returns for THIS contract. */
   readonly handlers: Provider<HandlersInstanceOf<TContract>, HandlersError, HandlersNeeds>;
@@ -63,7 +70,7 @@ export type AmqpModuleOptions<
    * over the augmented tuples below, so forgetting one is an error at THIS call.
    */
   readonly needs?: N;
-} & NeedsGate<Imports<I, TContract>, Provides<P, TContract, HandlersError, HandlersNeeds>, N>;
+} & NeedsGate<Imports<I, TContract, Unit>, Provides<P, TContract, HandlersError, HandlersNeeds>, N>;
 
 /**
  * `Module(name)({...})` for an AMQP deployment: everything a di module takes,
@@ -87,15 +94,16 @@ export const AmqpModule =
     TContract extends AnyAmqpContract,
     HandlersError,
     HandlersNeeds,
+    Unit extends AnyUnitModule | undefined = undefined,
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
     const X extends readonly Exportable<
-      Imports<I, TContract>,
+      Imports<I, TContract, Unit>,
       Provides<P, TContract, HandlersError, HandlersNeeds>
     >[] = [],
     const N extends readonly AnyPort[] = [],
   >(
-    options: AmqpModuleOptions<TContract, HandlersError, HandlersNeeds, I, P, X, N>,
+    options: AmqpModuleOptions<TContract, HandlersError, HandlersNeeds, Unit, I, P, X, N>,
   ) => {
     const { handlers } = options;
     const imports = (options.imports ?? []) as I;
@@ -111,14 +119,18 @@ export const AmqpModule =
     // because the options type re-declares it. Spelled out rather than
     // `as never`, which collapses the return to `Module<never, never, never>`.
     return Module(name)({
-      imports: [...imports, starter] as Imports<I, TContract>,
+      imports: [...imports, starter] as Imports<I, TContract, Unit>,
       provides: [handlers, ...provides] as Provides<P, TContract, HandlersError, HandlersNeeds>,
       exports: [AmqpRuntime, ...exports] as readonly [typeof AmqpRuntime, ...X],
       needs: (options.needs ?? []) as N,
     } as {
-      readonly imports: Imports<I, TContract>;
+      readonly imports: Imports<I, TContract, Unit>;
       readonly provides: Provides<P, TContract, HandlersError, HandlersNeeds>;
       readonly exports: readonly [typeof AmqpRuntime, ...X];
       readonly needs: N;
-    } & NeedsGate<Imports<I, TContract>, Provides<P, TContract, HandlersError, HandlersNeeds>, N>);
+    } & NeedsGate<
+      Imports<I, TContract, Unit>,
+      Provides<P, TContract, HandlersError, HandlersNeeds>,
+      N
+    >);
   };

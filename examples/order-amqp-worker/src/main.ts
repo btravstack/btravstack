@@ -1,5 +1,4 @@
 import { runMain } from "@btravstack/core";
-import { UnitSpanModule } from "@btravstack/observability/otel";
 
 import { OrderAmqpWorker } from "./module.js";
 
@@ -15,6 +14,4 @@ import { OrderAmqpWorker } from "./module.js";
  * Typechecked by the gate, not executed by it — the example packages are
  * source-only, and every spec drives `start` directly.
  */
-// `UnitSpanModule` opens an OTel span per delivery, carrying the same unit
-// ids the logger stamps.
-await runMain(OrderAmqpWorker, { unit: UnitSpanModule });
+await runMain(OrderAmqpWorker);

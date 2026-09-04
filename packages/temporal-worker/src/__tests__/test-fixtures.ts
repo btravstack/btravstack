@@ -11,7 +11,7 @@ import {
   type Settle,
   type UnitRecord,
 } from "@btravstack/core";
-import { Port, Provider, type ServiceOf } from "@btravstack/di";
+import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { TypedClient } from "@temporal-contract/client";
@@ -31,6 +31,7 @@ import { ensureSchedule } from "../schedule.js";
 import { TemporalActivities, TemporalModule } from "../temporal-module.js";
 import {
   TemporalConfig,
+  type AnyUnitModule,
   type TemporalInfo,
   type TemporalUnreachable,
   type WorkflowSource,
@@ -338,6 +339,33 @@ type BootOptions = {
   readonly workflows?: WorkflowSource;
   readonly drainTimeoutMs?: number;
   readonly tap?: ReturnType<typeof configuredOf>["tap"];
+  readonly unit?: AnyUnitModule;
+};
+
+class CountingMark extends Port("CountingMark")<{ readonly at: number }> {}
+
+/** A unit module that counts its builds and teardowns, for the fork's own tests. */
+export const countingUnit = (): {
+  readonly module: Module<CountingMark, never, Scope>;
+  readonly counts: () => { readonly builds: number; readonly stops: number };
+} => {
+  const counts = { builds: 0, stops: 0 };
+  const module = Module("CountingUnit")({
+    provides: [
+      Provider(CountingMark)({
+        inject: {},
+        sync: () => {
+          counts.builds += 1;
+          return { at: counts.builds };
+        },
+        onStop: () => {
+          counts.stops += 1;
+        },
+      }),
+    ],
+    exports: [CountingMark],
+  });
+  return { module, counts: () => counts };
 };
 
 export type TemporalFixtures = {
@@ -436,6 +464,11 @@ const compose = (server: Server, boot: Boot, options: BootOptions) => {
     ...(options.address === undefined ? {} : { address: options.address }),
     ...(options.namespace === undefined ? {} : { namespace: options.namespace }),
     ...(options.gracePeriod === undefined ? {} : { gracePeriod: options.gracePeriod }),
+    // `as never`: `options.unit` is `AnyUnitModule`, whose own needs are
+    // erased to `unknown` — passed through untyped it would poison
+    // `TemporalModule`'s inferred `Unit` into an unsatisfiable `unknown` need
+    // for every caller of this fixture, unit-bound test or not.
+    unit: { activity: options.unit as never },
     provides: [
       Provider(Greeting)({ inject: {}, value: { text: "hello" } }),
       ...(options.tap === undefined ? [] : [options.tap]),

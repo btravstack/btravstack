@@ -8,12 +8,12 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, imports?, provides?, exports?, needs? })`**
+- **`AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, unit?, imports?, provides?, exports?, needs? })`**
   (`amqp-module.ts`) — THE way an application declares an AMQP deployment:
   `Module(name)({...})` plus the contract and the handlers **provider**. It
   appends `amqp({ contract, … })` to `imports`,
   prepends the provider to `provides` and `AmqpRuntime` to `exports`, and
-  hands the augmented tuples — `Imports<I, TContract>` / `Provides<P,
+  hands the augmented tuples — `Imports<I, TContract, Unit>` / `Provides<P,
 TContract, HandlersError, HandlersNeeds>`, readonly and exact — to
   di's own `Module(name)({...})`, whose return type IS the sugar's: nothing
   spelled twice (di exports `AnyModule`, `AnyProvider`, `Exportable` for the
@@ -29,7 +29,7 @@ HandlersNeeds>` — a provider on the starter's handlers port typed for THIS
   starter needs its own port, and the sugar's job is to provide it. The
   starter it adds
   is typed `Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env |
-HandlersInstanceOf<TContract>>` whether or not `url` is pinned — one declared
+HandlersInstanceOf<TContract> | UnitNeedsOf<Unit>>` whether or not `url` is pinned — one declared
   type, no
   overload pair — so a pinned composition still carries `ConfigInvalid` in its
   error channel (the package's own `App` fixture type is
@@ -157,7 +157,7 @@ K]`, which always names the marker — printed as the **bare string**, the
   `verbatimModuleSyntax` — while `amqp-runtime.ts` imports `HANDLER_PREFIX`
   from `handler.ts` as a value, so the two files reference each other in the
   type graph with **no runtime cycle**.
-- **`amqp(options)` → `Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>`**
+- **`amqp(options)` → `Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract> | UnitNeedsOf<Unit>>`**
   — the starter, the same shape as `@btravstack/http-server`'s `http()`. It provides
   the runtime on **`AmqpRuntime`** (`extends RuntimePort<Runtime<never,
 AmqpInfo>>` — the runtime resolves **nothing**) and the broker on
@@ -174,7 +174,7 @@ AmqpInfo>>` — the runtime resolves **nothing**) and the broker on
   port (`examples/order-amqp-worker/src/needs-gate.test-d.ts` pins that
   diagnostic, since `start`'s own gate has no `UNSATISFIED RUNTIME PORTS` arm
   to fire any more).
-  `AmqpOptions<TContract>` — `contract: TContract` (`TContract` bounded by
+  `AmqpOptions<TContract, Unit>` — `contract: TContract` (`TContract` bounded by
   `Parameters<typeof TypedAmqpWorker.create>[0]["contract"]`, never imported
   by name; there is no `handlers` option), `url?` (pinning it reads
   nothing from the environment; the declared type stays `Module<AmqpRuntime |
@@ -201,11 +201,24 @@ AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>` either way,
   should be reported rather than sat on. The fully-pinned shortcut provider is
   gone with it — `Config.pinned` already reads nothing.
 
-  `AmqpTuning` is where `url`, `connectionOptions`, `defaultConsumerOptions`
-  and `connectTimeoutMs` are declared, and both `AmqpOptions` and
-  `AmqpModuleOptions` intersect it — one spelling, so the sugar cannot drift
-  from the starter it forwards to.
+  `AmqpTuning<Unit>` is where `url`, `connectionOptions`,
+  `defaultConsumerOptions`, `connectTimeoutMs` and `unit` are declared, and
+  both `AmqpOptions` and `AmqpModuleOptions` intersect it — one spelling, so
+  the sugar cannot drift from the starter it forwards to.
   `AmqpInfo` is `{ queues }`, published on `Serving.info` once consuming.
+
+  **`unit?: { message?: Unit }`** — the unit module `messageUnits` (the
+  worker's dispatch middleware) forks around every delivery, with no seed.
+  Built after the message is validated, before the handler runs; torn down
+  when the unit closes — the point a later phase seeds with the delivery's
+  tenant. `Unit extends AnyUnitModule | undefined = undefined` bounds both
+  `amqp()`'s and `AmqpModule`'s own type parameter (`AnyUnitModule =
+Module<never, never, unknown>`, the same contravariant-exports bound
+  `@btravstack/http-server`'s `unit.anonymous` uses), so a bound module's own
+  unmet needs join the starter's `Needs` channel as `UnitNeedsOf<Unit>` — a
+  composition root that binds a `unit` owing a port it does not supply is
+  refused the same way an unmet handlers port is. With no `unit` bound,
+  dispatch is unchanged: `messageUnits` calls `next()` directly.
 
 - **The handlers port's service is `WorkerInferHandlers<TContract>`** —
   the record `TypedAmqpWorker.create` takes, with **no injected context**.

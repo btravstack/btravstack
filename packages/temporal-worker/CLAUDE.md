@@ -9,7 +9,7 @@ with the code in the same commit, and with `README.md` — the package ships no
 ## Public surface
 
 - **`TemporalModule(name)({ contract, activities, workflows, address?,
-namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports?, needs? })`** —
+namespace?, gracePeriod?, forceAfter?, unit?, imports?, provides?, exports?, needs? })`** —
   THE way an application writes its worker root; `temporal-module.ts`, the
   same shape as `@btravstack/http-server`'s `HttpModule`. `activities` is the
   **provider** of the starter's activities port for THIS contract — a plain
@@ -18,13 +18,14 @@ namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports?, needs? })`
   of anything but the implementations record for `contract` fails there
   (structurally, on the record: one built for another contract is refused).
   It delegates to `temporal({ contract, workflows, … })` and hands the
-  augmented tuples — `Imports<I, C>` / `Provides<P, C, ActivitiesError,
+  augmented tuples — `Imports<I, C, Unit>` / `Provides<P, C, ActivitiesError,
 ActivitiesNeeds>`, readonly and exact — to di's own
   `Module(name)({...})`, whose return type IS the sugar's: nothing spelled
   twice (di exports `AnyModule`, `AnyProvider`, `Exportable` for the tuple
   constraints; a named generic alias for the return was tried and removed,
   TS2883). The starter's type in that tuple is always `Module<Provided,
-ConfigInvalid | TemporalUnreachable, Env | Scope | ActivitiesInstanceOf<C>>`,
+ConfigInvalid | TemporalUnreachable, Env | Scope | ActivitiesInstanceOf<C> |
+UnitNeedsOf<Unit>>`,
   pins or not — `Env` is discharged by `start` anyway. `TemporalModuleOptions`
   is exported for the type. Covered by `test-fixtures.ts`'s `compose`, which
   is written with it. `temporal()` stays exported as the primitive it
@@ -146,7 +147,7 @@ Provider<WorkflowActivitiesPortOf<C, K>>>`** (`workflow-activities.ts`,
   needs the string.
 - **`temporal(options)` → `Module<TemporalRuntime | TemporalConfig |
 TemporalConnection, ConfigInvalid | TemporalUnreachable, Env | Scope |
-ActivitiesInstanceOf<C>>`** — the starter, the same shape as `@btravstack/http-server`'s
+ActivitiesInstanceOf<C> | UnitNeedsOf<Unit>>`** — the starter, the same shape as `@btravstack/http-server`'s
   `http()`. It provides `Runtime<never, TemporalInfo>` on the **`TemporalRuntime`**
   port (a class over core's `RuntimePort`, the package's own now that the
   runtime resolves nothing), **`TemporalConfig`**
@@ -157,7 +158,7 @@ ActivitiesInstanceOf<C>>`** — the starter, the same shape as `@btravstack/http
   **`TemporalConnection`** (a `NativeConnection`) as a **resourceful** provider
   from `[TemporalConfig]` — `acquire: NativeConnection.connect`, `release:
 close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
-  `TemporalOptions<C>`: `contract` (a `temporal-contract` contract; the task
+  `TemporalOptions<C, Unit>`: `contract` (a `temporal-contract` contract; the task
   queue is read off it, and the activities port is typed by it — see below;
   there is no `activities` option, the module **needs** the port), `workflows` (a
   `WorkflowSource`: `{ workflowsPath }` or `{ workflowBundle }`), `address?` /
@@ -179,10 +180,23 @@ close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
   provider is gone, because `Config.pinned` already reads nothing and a
   four-field version of that branch would have been unsatisfiable in practice.
 
-  `TemporalTuning` is where `address`/`namespace`/`gracePeriod`/`forceAfter`
+  `TemporalTuning<Unit>` is where `address`/`namespace`/`gracePeriod`/`forceAfter`/`unit`
   are declared, and `TemporalOptions` and `TemporalModuleOptions` both
   intersect it — one spelling, so the sugar cannot drift from the starter it
   forwards to.
+
+  **`unit?: { activity?: Unit }`** — the unit module `activityUnits` (the
+  worker's dispatch middleware) forks around every activity attempt, with no
+  seed. Built after the activity is invoked, before it runs; torn down when
+  the unit closes — the point a later phase seeds with the workflow's tenant.
+  `Unit extends AnyUnitModule | undefined = undefined` bounds both
+  `temporal()`'s and `TemporalModule`'s own type parameter, the same
+  contravariant-exports bound `@btravstack/amqp-worker`'s `unit.message` and
+  `@btravstack/http-server`'s `unit.anonymous` use, so a bound module's own
+  unmet needs join the starter's `Needs` channel as `UnitNeedsOf<Unit>` — a
+  composition root that binds a `unit` owing a port it does not supply is
+  refused the same way an unmet activities port is. With no `unit` bound,
+  dispatch is unchanged: `activityUnits` calls `next()` directly.
 
 - **The activities port is the starter's, provided by the application, and
   the module's one need.** Its service is `ActivitiesOf<C>` =

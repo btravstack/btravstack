@@ -90,6 +90,24 @@ export class TemporalUnreachable extends TaggedError("TemporalUnreachable")<{
 /** The runtime's port: what `temporal()` provides, and what the module `start` boots must export. */
 export class TemporalRuntime extends RuntimePort<Runtime<never, TemporalInfo>> {}
 
+/**
+ * A module `unit.activity` may bind, as the upper bound `temporal()`
+ * constrains its own `Unit` type parameter to. `Module`'s `_exports` channel
+ * is contravariant, so `Exports = never` — never `unknown` — is what makes a
+ * REAL module's own (necessarily narrower) export type assignable to this
+ * bound: `(x: Concrete) => void` is assignable to `(x: never) => void`, not
+ * to `(x: unknown) => void`.
+ */
+export type AnyUnitModule = Module<never, never, unknown>;
+
+/**
+ * The needs a bound `unit.activity` module still owes, or `never` when none is
+ * bound. `Scope` is excluded, since nothing can ever provide it — the same
+ * exemption `NeedsGate` itself carries.
+ */
+export type UnitNeedsOf<Unit> =
+  Unit extends Module<never, never, infer N> ? Exclude<N, Scope> : never;
+
 /** The activity implementations `declareActivitiesHandler` takes for `C`, with no injected context. */
 export type ActivitiesOf<C extends ContractDefinition> =
   DeclareActivitiesHandlerOptions<C>["activities"];
@@ -121,7 +139,7 @@ export type ActivitiesInstanceOf<C extends ContractDefinition> = PortInstance<
  * `TemporalModule` — spelled once so the two cannot drift, which is what a
  * second copy of an option list always eventually does.
  */
-export type TemporalTuning = {
+export type TemporalTuning<Unit extends AnyUnitModule | undefined = undefined> = {
   /** Pins `TemporalConfig.address` instead of reading `TEMPORAL_ADDRESS`. */
   readonly address?: string;
   /** Pins `TemporalConfig.namespace` instead of reading `TEMPORAL_NAMESPACE`. */
@@ -140,9 +158,19 @@ export type TemporalTuning = {
    * `shutdownGraceTime`.
    */
   readonly gracePeriod?: Duration;
+  /**
+   * The unit module the worker forks around every activity attempt it
+   * dispatches, with no seed. Built after the activity is invoked, torn down
+   * when the unit closes — the point where a later phase seeds it with the
+   * workflow's tenant.
+   */
+  readonly unit?: { readonly activity?: Unit };
 };
 
-export type TemporalOptions<C extends ContractDefinition> = TemporalTuning & {
+export type TemporalOptions<
+  C extends ContractDefinition,
+  Unit extends AnyUnitModule | undefined = undefined,
+> = TemporalTuning<Unit> & {
   /**
    * The contract; the task queue this worker polls is read off it, and the
    * activities port is typed by it. The starter calls
@@ -177,9 +205,16 @@ type Provided = TemporalRuntime | TemporalConfig | TemporalConnection;
  * With both configuration fields pinned the module reads nothing from the
  * environment; pin only one and the other still comes from it.
  */
-export const temporal = <C extends ContractDefinition>(
-  options: TemporalOptions<C>,
-): Module<Provided, ConfigInvalid | TemporalUnreachable, Env | Scope | ActivitiesInstanceOf<C>> => {
+export const temporal = <
+  C extends ContractDefinition,
+  Unit extends AnyUnitModule | undefined = undefined,
+>(
+  options: TemporalOptions<C, Unit>,
+): Module<
+  Provided,
+  ConfigInvalid | TemporalUnreachable,
+  Env | Scope | ActivitiesInstanceOf<C> | UnitNeedsOf<Unit>
+> => {
   const { address, namespace } = options;
   const activities = TemporalActivitiesPort as ActivitiesPortOf<C>;
   const config = Config.provider(TemporalConfig)(
@@ -245,10 +280,15 @@ export const temporal = <C extends ContractDefinition>(
       }),
     ],
     exports: [TemporalRuntime, TemporalConfig, TemporalConnection],
+    // `as never`/`as unknown as Module<…>`, below: the Needs channel carries a
+    // bound `unit.activity` module's own unmet needs, though nothing HERE
+    // reads them — it is forked over the application context at dispatch, so
+    // what it needs is exactly what the composition root must supply, and
+    // this is what makes di's own `UNSATISFIED DEPENDENCIES` gate say so.
   } as never) as unknown as Module<
     Provided,
     ConfigInvalid | TemporalUnreachable,
-    Env | Scope | ActivitiesInstanceOf<C>
+    Env | Scope | ActivitiesInstanceOf<C> | UnitNeedsOf<Unit>
   >;
 };
 
@@ -258,12 +298,12 @@ const startFailed = (cause: unknown): RuntimeStartFailed =>
 const heldByWorker = (cause: unknown): boolean =>
   cause instanceof Error && cause.name === "IllegalStateError";
 
-const createWorker = <C extends ContractDefinition>(
+const createWorker = <C extends ContractDefinition, Unit extends AnyUnitModule | undefined>(
   host: RuntimeHost<never>,
   connection: NativeConnection,
   config: ServiceOf<TemporalConfig>,
   activities: ActivitiesOf<C>,
-  options: TemporalOptions<C>,
+  options: TemporalOptions<C, Unit>,
   observers: readonly ((operation: Operation) => Settle)[],
 ): AsyncResult<Serving<TemporalInfo>, RuntimeStartFailed> => {
   const { taskQueue } = options.contract;
@@ -276,7 +316,7 @@ const createWorker = <C extends ContractDefinition>(
     () =>
       declareActivitiesHandler({
         contract: options.contract,
-        middleware: activityUnits(host, observers),
+        middleware: activityUnits(host, observers, options.unit?.activity),
         activities,
       }),
     startFailed,

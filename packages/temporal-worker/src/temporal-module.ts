@@ -17,10 +17,12 @@ import {
   temporal,
   type ActivitiesInstanceOf,
   type ActivitiesPortOf,
+  type AnyUnitModule,
   type TemporalConfig,
   type TemporalConnection,
   type TemporalTuning,
   type TemporalUnreachable,
+  type UnitNeedsOf,
   type WorkflowSource,
 } from "./temporal-runtime.js";
 import {
@@ -30,17 +32,18 @@ import {
 } from "./workflow-activities.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
-type TemporalStarter<C extends ContractDefinition> = Module<
+type TemporalStarter<C extends ContractDefinition, Unit extends AnyUnitModule | undefined> = Module<
   TemporalRuntime | TemporalConfig | TemporalConnection,
   ConfigInvalid | TemporalUnreachable,
-  Env | Scope | ActivitiesInstanceOf<C>
+  Env | Scope | ActivitiesInstanceOf<C> | UnitNeedsOf<Unit>
 >;
 
 /** The application's imports plus the starter — the tuple `Module(name)` is handed. */
-type Imports<I extends readonly AnyModule[], C extends ContractDefinition> = readonly [
-  ...I,
-  TemporalStarter<C>,
-];
+type Imports<
+  I extends readonly AnyModule[],
+  C extends ContractDefinition,
+  Unit extends AnyUnitModule | undefined,
+> = readonly [...I, TemporalStarter<C, Unit>];
 
 /** The activities provider plus the application's own — the tuple `Module(name)` is handed. */
 type Provides<
@@ -54,11 +57,15 @@ export type TemporalModuleOptions<
   C extends ContractDefinition,
   ActivitiesError,
   ActivitiesNeeds,
+  Unit extends AnyUnitModule | undefined,
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
-  X extends readonly Exportable<Imports<I, C>, Provides<P, C, ActivitiesError, ActivitiesNeeds>>[],
+  X extends readonly Exportable<
+    Imports<I, C, Unit>,
+    Provides<P, C, ActivitiesError, ActivitiesNeeds>
+  >[],
   N extends readonly AnyPort[],
-> = TemporalTuning & {
+> = TemporalTuning<Unit> & {
   /** The `temporal-contract` contract; the task queue this worker polls is read off it. */
   readonly contract: C;
   readonly workflows: WorkflowSource;
@@ -73,7 +80,7 @@ export type TemporalModuleOptions<
    * over the augmented tuples below, so forgetting one is an error at THIS call.
    */
   readonly needs?: N;
-} & NeedsGate<Imports<I, C>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N>;
+} & NeedsGate<Imports<I, C, Unit>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N>;
 
 /**
  * `Module(name)({...})` for a Temporal worker deployment: everything a di module
@@ -98,15 +105,16 @@ export const TemporalModule =
     C extends ContractDefinition,
     ActivitiesError,
     ActivitiesNeeds,
+    Unit extends AnyUnitModule | undefined = undefined,
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
     const X extends readonly Exportable<
-      Imports<I, C>,
+      Imports<I, C, Unit>,
       Provides<P, C, ActivitiesError, ActivitiesNeeds>
     >[] = [],
     const N extends readonly AnyPort[] = [],
   >(
-    options: TemporalModuleOptions<C, ActivitiesError, ActivitiesNeeds, I, P, X, N>,
+    options: TemporalModuleOptions<C, ActivitiesError, ActivitiesNeeds, Unit, I, P, X, N>,
   ) => {
     const { activities } = options;
     const imports = (options.imports ?? []) as I;
@@ -123,16 +131,16 @@ export const TemporalModule =
     // because the options type re-declares it. Spelled out rather than
     // `as never`, which collapses the return to `Module<never, never, never>`.
     return Module(name)({
-      imports: [...imports, starter] as Imports<I, C>,
+      imports: [...imports, starter] as Imports<I, C, Unit>,
       provides: [activities, ...provides] as Provides<P, C, ActivitiesError, ActivitiesNeeds>,
       exports: [TemporalRuntime, ...exports] as readonly [typeof TemporalRuntime, ...X],
       needs: (options.needs ?? []) as N,
     } as {
-      readonly imports: Imports<I, C>;
+      readonly imports: Imports<I, C, Unit>;
       readonly provides: Provides<P, C, ActivitiesError, ActivitiesNeeds>;
       readonly exports: readonly [typeof TemporalRuntime, ...X];
       readonly needs: N;
-    } & NeedsGate<Imports<I, C>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N>);
+    } & NeedsGate<Imports<I, C, Unit>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N>);
   };
 
 /** One piece of the activities record — what `TemporalWorkflowActivities(contract, key)(…)` returns. */

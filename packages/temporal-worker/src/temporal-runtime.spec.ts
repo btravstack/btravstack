@@ -1,6 +1,6 @@
 import { describe, expect, vi } from "vitest";
 
-import { it, undeclared } from "./__tests__/test-fixtures.js";
+import { countingUnit, it, undeclared } from "./__tests__/test-fixtures.js";
 
 describe("temporal", () => {
   it("publishes the task queue and namespace it polls", async ({ server, serve }) => {
@@ -211,6 +211,31 @@ describe("temporal", () => {
     // the unit's own `id`, which is the task token: an activity is retried
     // under the same execution, so a workflow id could never be the id
     expect(contractSeam.seen().map((unit) => unit?.traceId)).toEqual(["wf-unit-1"]);
+  });
+
+  it("forks its unit module once per activity attempt, and tears it down", async ({
+    serve,
+    contractSeam,
+  }) => {
+    // GIVEN a worker bound to a unit module that counts its builds and teardowns
+    const counting = countingUnit();
+    const { client, taskQueue } = await serve({
+      activities: contractSeam.activities,
+      unit: counting.module,
+    });
+
+    // WHEN a workflow drives one attempt — waited out WHILE the worker is
+    // still running, so a scope only closed by the application's own
+    // shutdown cannot pass this test
+    await client.workflow.execute("runEcho", {
+      taskQueue,
+      workflowId: "wf-unit-fork",
+      args: ["x"],
+    });
+    await vi.waitUntil(() => counting.counts().stops === 1);
+
+    // THEN the module was built and torn down once, for that attempt
+    expect(counting.counts()).toEqual({ builds: 1, stops: 1 });
   });
 
   it("builds the activities from the graph, closing over the services their provider declared", async ({
