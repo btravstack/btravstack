@@ -1,9 +1,13 @@
 import type { RunUnit, RuntimeHost, UnitHost } from "@btravstack/core";
-import { Context, Module } from "@btravstack/di";
+import { Context, Module, Port, Provider } from "@btravstack/di";
 import { Ok, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, it } from "vitest";
 
 import { testRuntime } from "./test-runtime.js";
+
+// What "forks the bound unit module before the work runs" builds, to prove
+// the fork actually ran rather than the work simply resolving on its own.
+class SpecMarker extends Port("SpecMarker")<{ readonly note: string }> {}
 
 // A `RuntimeHost` sized for the double: the kernel's registry counts open
 // units and hands each an `AbortSignal`; this stub does the same in a dozen
@@ -139,16 +143,29 @@ describe("testRuntime", () => {
   });
 
   it("forks the bound unit module before the work runs", async () => {
-    // GIVEN a runtime bound to a unit module, with one unit submitted
-    const UnitModule = Module("SpecUnit")({ provides: [], exports: [] });
+    // GIVEN a runtime bound to a unit module whose provider records it was built
+    let built = false;
+    const UnitModule = Module("SpecUnit")({
+      provides: [
+        Provider(SpecMarker)({
+          inject: {},
+          sync: () => {
+            built = true;
+            return { note: "built" };
+          },
+        }),
+      ],
+      exports: [SpecMarker],
+    });
     const runtime = testRuntime("with-unit", { unit: UnitModule });
     await runtime.start(hostFor());
     const unit = runtime.submit<string>();
-
-    // WHEN the unit settles
     unit.settle(Ok("done"));
 
-    // THEN the work's own result still comes back, once the fork resolved
-    await expect(unit.result).toBeOkWith("done");
+    // WHEN the unit settles
+    const value = (await unit.result).get();
+
+    // THEN the module was forked and built before the work's own result came back
+    expect({ built, value }).toEqual({ built: true, value: "done" });
   });
 });

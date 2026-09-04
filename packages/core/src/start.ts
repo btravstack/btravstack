@@ -24,7 +24,6 @@ import {
   type RuntimeInfoOf,
   type RuntimeInstance,
   type RuntimeResolvesOf,
-  type RuntimeUnitNeedsOf,
   type Serving,
   type UnitHost,
 } from "./runtime.js";
@@ -156,15 +155,18 @@ export type RunningApp<E, Info = never> = {
 /**
  * The phantom marker `start`, `runMain` and `Boot` all intersect onto their
  * `module` parameter: `unknown` — and invisible — when nothing the module
- * needs is unprovided, it exports a runtime, its exports cover what that
- * runtime resolves and they cover the unit module's needs; a diagnostic
- * otherwise, printed at the call site as the parameter type the argument did
- * not match.
+ * needs is unprovided, it exports a runtime and its exports cover what that
+ * runtime resolves; a diagnostic otherwise, printed at the call site as the
+ * parameter type the argument did not match.
  *
  * `unknown` is the satisfied arm because intersecting it leaves the module
  * type untouched. A runtime's `resolves` is checked against the module's
- * exports only, never the unit module's: `RuntimeHost.ctx` is the application
- * context, so a unit-only port would resolve to nothing there.
+ * exports only: `RuntimeHost.ctx` is the application context, so a port only
+ * a `fork` provides would resolve to nothing there. A `fork`'s own needs are
+ * not this marker's business at all — a `fork` module is forked over the
+ * application context, so its needs are exactly what a starter's own `needs`
+ * channel already asks the composition root to supply, and di's ordinary
+ * `UNSATISFIED DEPENDENCIES` gate is what refuses a root that does not.
  *
  * **Unmet needs are checked FIRST, and answered in di's own words rather than
  * a sentence of the kernel's.** A root that forgot `provides: [router]` used
@@ -188,9 +190,7 @@ export type StartGate<X, N = never> = [Exclude<N, Scope | Env>] extends [never]
   ? [Extract<X, RuntimeInstance>] extends [never]
     ? "NO RUNTIME — the module exports no port declared over RuntimePort"
     : [InstanceType<RuntimeResolvesOf<X>>] extends [X]
-      ? [Exclude<RuntimeUnitNeedsOf<X>, X | Scope | Env>] extends [never]
-        ? unknown
-        : "UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"
+      ? unknown
       : "UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export"
   : { readonly "UNSATISFIED DEPENDENCIES — nothing provides": PortIdOf<Exclude<N, Scope | Env>> };
 

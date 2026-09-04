@@ -183,11 +183,10 @@ type ReadmeServing<Info = never> = {
   readonly info?: Info;
 };
 
-type ReadmeRuntime<Resolves extends AnyPort = never, Info = never, UnitNeeds = never> = {
+type ReadmeRuntime<Resolves extends AnyPort = never, Info = never> = {
   readonly name: string;
   readonly resolves: readonly Resolves[];
   readonly start: (host: RuntimeHost<Resolves>) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
-  readonly __unitNeeds?: (needs: UnitNeeds) => void;
 };
 
 type ReadmeRuntimeHost<Resolves extends AnyPort> = {

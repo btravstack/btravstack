@@ -105,7 +105,7 @@ export type Serving<Info = never> = {
   readonly info?: Info;
 };
 
-export type Runtime<Resolves extends AnyPort = never, Info = never, UnitNeeds = never> = {
+export type Runtime<Resolves extends AnyPort = never, Info = never> = {
   readonly name: string;
   // `resolves`, not `needs`: a module's `needs` is what a composition root
   // supplies it, this is what the runtime reads back out of the built
@@ -113,8 +113,6 @@ export type Runtime<Resolves extends AnyPort = never, Info = never, UnitNeeds = 
   // inferable from the value.
   readonly resolves: readonly Resolves[];
   readonly start: (host: RuntimeHost<Resolves>) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
-  /** Phantom: what the runtime's bound unit modules need beyond what it seeds. Never read. */
-  readonly __unitNeeds?: (needs: UnitNeeds) => void;
 };
 
 /**
@@ -136,13 +134,15 @@ export type RuntimeInstance = InstanceType<PortClass<"Runtime">>;
 /** The `Runtime<Resolves, Info>` a module exports, or `never` when it exports none. */
 export type RuntimeOf<X> = ServiceOf<Extract<X, RuntimeInstance>>;
 
-// Structural, against `resolves`/`start`/`__unitNeeds` directly rather than
+// Structural, against `resolves`/`start` directly rather than
 // `RuntimeOf<X> extends Runtime<..., infer T>`: matching the ALIAS forces a
-// full structural comparison across all three of `Runtime`'s parameters at
-// once, and the optional `__unitNeeds` phantom made that comparison fail to
-// infer even when `RuntimeOf<X>` provably equals the pattern (regression-
-// tested — a `never`-Resolves runtime like `testRuntime`'s used to infer
-// `Info` as `never` this way). Reading one field at a time sidesteps it.
+// full structural comparison across every one of `Runtime`'s parameters at
+// once, which is what broke when `Runtime` briefly carried a third, optional
+// phantom parameter — the alias match stopped inferring even though
+// `RuntimeOf<X>` provably equalled the pattern (a `never`-Resolves runtime
+// like `testRuntime`'s inferred `Info` as `never` that way). `Runtime` is
+// back to two parameters, but reading one field at a time is still the
+// sturdier form against whatever `Runtime` grows next, so it stays.
 export type RuntimeResolvesOf<X> =
   RuntimeOf<X> extends { readonly resolves: readonly (infer Resolves extends AnyPort)[] }
     ? Resolves
@@ -154,10 +154,6 @@ export type RuntimeInfoOf<X> =
   }
     ? Info
     : never;
-
-/** What the runtime a module exports declares its bound unit modules need, or `never` for one that declares none. */
-export type RuntimeUnitNeedsOf<X> =
-  RuntimeOf<X> extends { readonly __unitNeeds?: (needs: infer U) => void } ? U : never;
 
 /**
  * The trace id inside a W3C `traceparent` header, and nothing else of it.

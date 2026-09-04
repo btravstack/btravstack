@@ -36,8 +36,8 @@ const runMain: <X, E, N>(
 `Result` into a code. It carries the same phantom marker as `start`, intersected
 onto `module` (see
 [The gate](/reference/core/start#the-gate-startgate-x-n)), so
-`NO RUNTIME — …`, `UNSATISFIED RUNTIME PORTS — …` and
-`UNSATISFIED UNIT NEEDS — …` are printed at this call site too.
+`NO RUNTIME — …` and `UNSATISFIED RUNTIME PORTS — …` are printed at this call
+site too.
 
 | Parameter | Default                                  | Semantics                                                                                                                                                                                                                                                           |
 | --------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

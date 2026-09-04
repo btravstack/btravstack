@@ -106,32 +106,12 @@ expectTypeOf<StartGate<Greeting | NeedsGreeting, Scope | Env>>().toEqualTypeOf<u
 // its own module, so nothing else needs composing.
 expectTypeOf(start(testRuntime().module)).toEqualTypeOf<RunningApp<never, TestRuntimeInfo>>();
 
-// The unit half of the gate, isolated: what the runtime resolves is satisfied
-// (it resolves nothing), so only the runtime's own bound-unit-module needs —
-// carried on `Runtime`'s `UnitNeeds` phantom — can be what rejects the call.
-// A runtime never gets a `StartOptions.unit` module handed to it any more; it
-// declares what such a module of its own would need, the same way it
-// declares `Resolves`/`Info`.
+// A per-unit fork's needs are no longer this gate's concern at all: a `fork`
+// module is forked over the application context, so its needs are exactly
+// what a starter's own `needs` channel already asks the composition root
+// to supply — di's ordinary `UNSATISFIED DEPENDENCIES` gate covers that,
+// with no arm of `StartGate` involved.
 class Span extends Port("GateSpan")<{ readonly note: string }> {}
-
-class NeedsUnitClock extends RuntimePort<Runtime<never, never, typeof Clock>> {}
-
-const needsUnitClock: Runtime<never, never, typeof Clock> = {
-  name: "needs-clock-unit",
-  resolves: [],
-  start: () => OkAsync(serving),
-};
-
-const UnsatisfiedUnit = Module("UnsatisfiedUnit")({
-  imports: [AppModule],
-  provides: [Provider(NeedsUnitClock)({ inject: {}, value: needsUnitClock })],
-  exports: [Greeting, NeedsUnitClock],
-});
-// @ts-expect-error -- UNSATISFIED UNIT NEEDS: the runtime's bound unit module reads `Clock`, which the module does not export
-start(UnsatisfiedUnit);
-expectTypeOf<
-  StartGate<Greeting | NeedsUnitClock>
->().toEqualTypeOf<"UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export">();
 
 // A runtime's `resolves` is checked against the module's own exports only —
 // `Span` here is never exported by `SpanApp`, so the runtime naming it is

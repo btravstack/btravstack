@@ -81,7 +81,7 @@ const settingsApp = () =>
   });
 
 export type UnitApp = {
-  readonly runtime: TestRuntime<InstanceType<typeof Parent>>;
+  readonly runtime: TestRuntime;
   readonly app: RunningApp<never, TestRuntimeInfo>;
   /** Mutated live by the providers; a test reads it after its units settle. */
   readonly counts: { parentBuilds: number; spanBuilds: number; spanStops: number };

@@ -15,32 +15,37 @@ import type { UnitMeta, UnitRecord, UnitWork } from "@btravstack/core";
 > [Write a runtime](/how-to/write-a-runtime); for why the kernel maps nothing,
 > see [The kernel maps nothing](/explanation/the-kernel-maps-nothing).
 
-## `Runtime<Resolves, Info, UnitNeeds>`
+## `Runtime<Resolves, Info>`
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-type Runtime<Resolves extends AnyPort = never, Info = never, UnitNeeds = never> = {
+type Runtime<Resolves extends AnyPort = never, Info = never> = {
   readonly name: string;
   readonly resolves: readonly Resolves[];
   readonly start: (
     host: RuntimeHost<Resolves>,
   ) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
-  readonly __unitNeeds?: (needs: UnitNeeds) => void;
 };
 ```
 
-| Member        | Semantics                                                                                                                                                                                                                                                                                                                             |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`        | Reported on the `serving` event.                                                                                                                                                                                                                                                                                                      |
-| `resolves`    | The port **classes** the runtime resolves from `host.ctx`. `start`'s gate checks them against the module's exports at the call site. Every shipped starter declares `resolves: []` — what its handlers read is its provider's business, through di — so this is the general contract, used by `testRuntime` and hand-rolled runtimes. |
-| `start`       | Called once, after the graph is built. `Ok(serving)` moves the phase to `serving`; `Err(RuntimeStartFailed)` is a startup failure the kernel reports through `exited`.                                                                                                                                                                |
-| `__unitNeeds` | A phantom, never read at run time: what a module the runtime binds through `UnitHost.fork` needs beyond what it seeds. `start`'s gate checks it against the module's exports the same way it checks `resolves` — `RuntimeUnitNeedsOf<X>` is the helper type that reads it back.                                                       |
+| Member     | Semantics                                                                                                                                                                                                                                                                                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`     | Reported on the `serving` event.                                                                                                                                                                                                                                                                                                      |
+| `resolves` | The port **classes** the runtime resolves from `host.ctx`. `start`'s gate checks them against the module's exports at the call site. Every shipped starter declares `resolves: []` — what its handlers read is its provider's business, through di — so this is the general contract, used by `testRuntime` and hand-rolled runtimes. |
+| `start`    | Called once, after the graph is built. `Ok(serving)` moves the phase to `serving`; `Err(RuntimeStartFailed)` is a startup failure the kernel reports through `exited`.                                                                                                                                                                |
 
 `Resolves` is parameterised by port **classes** (`AnyPort`) but hands out
 `Context<InstanceType<Resolves>>`, because di parameterises `Context<in R>` by
 port **instance** types. `InstanceType<never>` is `never`, so a runtime that
 resolves nothing gets a context it can read nothing from.
+
+A `UnitHost.fork` module's own needs are not part of this contract: a `fork`
+module is forked over the application context, so its needs are exactly what
+a starter's own `needs` channel already asks the composition root to supply,
+and di's ordinary `UNSATISFIED DEPENDENCIES` gate is what refuses a root that
+does not — the same gate a starter's own `needs: [Logger]` triggers, not a
+`Runtime` type parameter.
 
 ## `RuntimeHost<Resolves>`
 

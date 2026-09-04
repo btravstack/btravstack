@@ -92,9 +92,7 @@ type StartGate<X, N = never> = [Exclude<N, Scope | Env>] extends [never]
   ? [Extract<X, RuntimeInstance>] extends [never]
     ? "NO RUNTIME — the module exports no port declared over RuntimePort"
     : [InstanceType<RuntimeResolvesOf<X>>] extends [X]
-      ? [Exclude<RuntimeUnitNeedsOf<X>, X | Scope | Env>] extends [never]
-        ? unknown
-        : "UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"
+      ? unknown
       : "UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export"
   : { readonly "UNSATISFIED DEPENDENCIES — nothing provides": PortIdOf<Exclude<N, Scope | Env>> };
 ```
@@ -104,9 +102,13 @@ type StartGate<X, N = never> = [Exclude<N, Scope | Env>] extends [never]
 | `UNSATISFIED DEPENDENCIES`  | Something in the graph needs a port nothing provides — checked **first**, and answered in di's own words, ending on the port's id (`"OrpcRouter"`). `Scope` and `Env` are the two the kernel itself discharges. |
 | `NO RUNTIME`                | `X` contains no port declared over `RuntimePort`. Every starter's module sugar exports one; a hand-rolled root must export its runtime port.                                                                    |
 | `UNSATISFIED RUNTIME PORTS` | The runtime's declared `resolves` are not all among the module's exports — the **module's alone**, never a `fork`'s, because `RuntimeHost.ctx` is the application context.                                      |
-| `UNSATISFIED UNIT NEEDS`    | The runtime's own `RuntimeUnitNeedsOf<X>` — what a module it binds through `UnitHost.fork` needs — is not covered by the module's exports, `Scope` or `Env`.                                                    |
 
-`runMain`, and `@btravstack/testing`'s `Boot`, carry the same marker.
+`runMain`, and `@btravstack/testing`'s `Boot`, carry the same marker. There is
+no arm for a `UnitHost.fork` module's own needs: a `fork` module is forked
+over the application context, so its needs are exactly what a starter's own
+`needs` channel already asks the composition root to supply, and
+`UNSATISFIED DEPENDENCIES` — di's own gate above, not a fourth arm here — is
+what refuses a root that does not.
 
 **What a failing arm prints, measured** — a root exporting a `Greeter` and no
 runtime port:

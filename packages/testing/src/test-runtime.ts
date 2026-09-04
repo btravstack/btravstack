@@ -1,5 +1,5 @@
 import { RuntimePort, type Runtime, type RuntimeHost, type Serving } from "@btravstack/core";
-import { Module, Provider, type Scope } from "@btravstack/di";
+import { Module, Provider } from "@btravstack/di";
 import { OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 export type SubmittedUnit<T, E> = {
@@ -22,18 +22,7 @@ export type TestRuntimeOptions = {
   readonly unit?: Module<never, never, unknown>;
 };
 
-/**
- * What `TestRuntimeOptions.unit` needs, `Scope` aside — `never` when no module
- * was bound.
- *
- * The pattern's own `Exports` is `never`, not `unknown`: `Module`'s `Exports`
- * channel is contravariant, so a concrete module — `Module<Span, never,
- * Parent>`, say — matches a `never`-Exports pattern (`never` is assignable to
- * anything) and never an `unknown`-Exports one.
- */
-type UnitNeedsOf<U> = U extends Module<never, never, infer N> ? Exclude<N, Scope> : never;
-
-export type TestRuntime<UnitNeeds = never> = Runtime<never, TestRuntimeInfo, UnitNeeds> & {
+export type TestRuntime = Runtime<never, TestRuntimeInfo> & {
   /**
    * A module providing this very runtime on `TestRuntimePort`: import it next
    * to the module under test, export the port, and `start` finds it.
@@ -54,14 +43,11 @@ export type TestRuntime<UnitNeeds = never> = Runtime<never, TestRuntimeInfo, Uni
   readonly accepting: () => boolean;
   readonly serving: () => Serving<TestRuntimeInfo>;
   readonly submit: <T = string, E = never>() => SubmittedUnit<T, E>;
-  /** The `RuntimeHost` the kernel last called `start` with — `undefined` before then. */
+  /** The `RuntimeHost` the kernel last called `start` with. **Throws** if the runtime was never started — the same misuse guard as `serving()`. */
   readonly host: () => RuntimeHost<never>;
 };
 
-export const testRuntime = <U extends Module<never, never, unknown> | undefined = undefined>(
-  name = "test",
-  options: { readonly unit?: U } = {},
-): TestRuntime<UnitNeedsOf<U>> => {
+export const testRuntime = (name = "test", options: TestRuntimeOptions = {}): TestRuntime => {
   let host: RuntimeHost<never> | undefined;
   let accepting = false;
   let serving: Serving<TestRuntimeInfo> | undefined;
@@ -84,7 +70,7 @@ export const testRuntime = <U extends Module<never, never, unknown> | undefined 
     },
   });
 
-  const runtime: TestRuntime<UnitNeedsOf<U>> = {
+  const runtime: TestRuntime = {
     name,
     module: Module("TestRuntime")({
       // Resolved lazily so the object literal can name itself.

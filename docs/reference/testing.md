@@ -5,7 +5,7 @@ description: The @btravstack/testing surface — bootFixture and Boot, tapped, t
 
 <!-- doctest: prelude
 import type { Env } from "@btravstack/config";
-import type { AnyPort, Module, Scope } from "@btravstack/di";
+import type { AnyPort, Module } from "@btravstack/di";
 import type { RunningApp, RuntimeInfoOf, StartGate, StartOptions } from "@btravstack/core";
 import type {
   Boot,
@@ -14,6 +14,7 @@ import type {
   SubmittedUnit,
   TestRuntime,
   TestRuntimeInfo,
+  TestRuntimeOptions,
 } from "@btravstack/testing";
 import { TestRuntimePort } from "@btravstack/testing";
 import type { Clock, Runtime, RuntimeHost, Serving } from "@btravstack/core";
@@ -254,12 +255,9 @@ either is recomposing the lazy way.
 <!-- doctest: signature=@btravstack/testing -->
 
 ```ts
-const testRuntime: <U extends Module<never, never, unknown> | undefined = undefined>(
-  name?: string, // defaults to "test"
-  options?: { readonly unit?: U },
-) => TestRuntime<U extends Module<never, never, infer N> ? Exclude<N, Scope> : never>;
+const testRuntime: (name?: string, options?: TestRuntimeOptions) => TestRuntime; // name defaults to "test"
 
-type TestRuntime<UnitNeeds = never> = Runtime<never, TestRuntimeInfo, UnitNeeds> & {
+type TestRuntime = Runtime<never, TestRuntimeInfo> & {
   readonly module: Module<TestRuntimePort, never, never>;
   readonly started: () => boolean;
   readonly untilStarted: () => AsyncResult<void, never>;

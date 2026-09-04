@@ -39,10 +39,19 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
   port, `UNSATISFIED RUNTIME PORTS` when what the runtime resolves is not
   among the module's exports (the module's alone — a port a `fork` provides
   exists only in the `Context` `fork` hands back, never in `RuntimeHost.ctx`,
-  the application context), `UNSATISFIED UNIT NEEDS` when the runtime's own
-  `UnitNeeds` phantom names a port the module does not export — all four at
-  the call site, as an assignability failure that **prints the arm's
-  diagnostic**.
+  the application context) — all three at the call site, as an assignability
+  failure that **prints the arm's diagnostic**. A `fork` module's own needs
+  are not a fourth arm here: a `fork` module is forked over the application
+  context, so its needs are exactly what a starter's own `needs` channel
+  already asks the composition root to supply, and `UNSATISFIED
+DEPENDENCIES` — di's own gate, not a phantom of this package's — is what
+  refuses a root that does not. A `Runtime` phantom carrying those needs
+  through this marker was tried and reverted: every shipped runtime port
+  fixes its `Runtime` argument at declaration (`class HttpRuntime extends
+RuntimePort<Runtime<never, HttpInfo>> {}`), so the phantom's arm was
+  unreachable for every runtime the repository ships, and reaching it would
+  have meant making every runtime port generic — a wall documented at
+  `RuntimePort` below.
 
   **Why needs are checked first, and why in di's words.** The parameter used to
   be `Module<X, E, Scope | Env>`, so an unmet need was a plain assignability
@@ -94,24 +103,20 @@ PORTS`, a correct diagnosis of the second mistake that reads as a wrong one
   service): a runtime package declares its own concrete port over it —
   `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}`
   — so every runtime is one id at runtime while each carries its own
-  `Resolves`/`Info`/`UnitNeeds` in the type. `RuntimeOf<X>` /
-  `RuntimeResolvesOf<X>` / `RuntimeInfoOf<X>` / `RuntimeUnitNeedsOf<X>` read
-  those back out of a module's exports (only `RuntimeInfoOf` and
-  `RuntimeUnitNeedsOf` are exported — the other two are the gate's
-  internals); `RuntimeInstance` is the shared instance type
-  (`InstanceType<PortClass<"Runtime">>`, internal too). `Runtime`'s third
-  parameter, `UnitNeeds`, is a phantom — `readonly __unitNeeds?: (needs:
-UnitNeeds) => void`, never read at run time — that lets a runtime state
-  what its own bound unit modules need beyond what it seeds, so `StartGate`
-  can check it against the application module's exports the same way it
-  checks `Resolves`. The three helper types read it (and `Resolves`/`Info`)
-  structurally, field by field, rather than through `RuntimeOf<X> extends
-Runtime<..., infer T>`: matching the whole alias forces a full structural
-  comparison across all three parameters at once, and the optional
-  `__unitNeeds` phantom made that comparison fail to infer even when
-  `RuntimeOf<X>` provably equalled the pattern — a `never`-Resolves runtime
-  (`testRuntime`'s) inferred `Info` as `never` this way, caught by
-  `start.test-d.ts`'s own assertions the moment the phantom landed. Every
+  `Resolves`/`Info` in the type. `RuntimeOf<X>` / `RuntimeResolvesOf<X>` /
+  `RuntimeInfoOf<X>` read those back out of a module's exports (only
+  `RuntimeInfoOf` is exported — the other two are the gate's internals);
+  `RuntimeInstance` is the shared instance type
+  (`InstanceType<PortClass<"Runtime">>`, internal too). The two helper types
+  read `resolves`/`start` **structurally, field by field**, rather than
+  through `RuntimeOf<X> extends Runtime<..., infer T>`: matching the whole
+  alias forces a full structural comparison across every parameter at once,
+  which is what broke — silently, for any `never`-Resolves runtime
+  (`testRuntime`'s inferred `Info` as `never`) — the one time `Runtime`
+  briefly carried a third, optional phantom parameter (see the note on
+  `start`'s marker above for why that phantom is gone). The structural form
+  survives the revert because it is the sturdier one regardless, not because
+  `Runtime` is back to two parameters. Every
   runtime package ships its port and a starter — `HttpRuntime`/`http()`,
   `TemporalRuntime`/`temporal()`, `AmqpRuntime`/`amqp()` — and none of them
   has a `resolves` any more: each takes the application's router / activities /
@@ -183,7 +188,7 @@ Runtime<..., infer T>`: matching the whole alias forces a full structural
   `inFlightAtStart` if in-flight work spawned more, which is honest reporting,
   not a bug), `abandoned` (units still open at the deadline; **the field the
   exit code keys on**).
-- **`Runtime<Resolves, Info, UnitNeeds>` / `RuntimeHost<Resolves>` /
+- **`Runtime<Resolves, Info>` / `RuntimeHost<Resolves>` /
   `UnitHost<Resolves>` / `RunUnit<Resolves>` / `Serving<Info>`** — the runtime
   contract (the _service_ behind a runtime port). `RunUnit`'s work callback
   receives a `UnitHost<Resolves>` — `{ ctx, fork }`, not a bare `Context` —
@@ -505,7 +510,7 @@ Type-level invariants live in `start.test-d.ts` and are checked by
 
 - **The module must export a runtime, and that runtime's declared `resolves` are
   checked against the module's exports at the `start` call site** (the phantom
-  marker `StartGate<X, UnitNeeds, N>`, intersected onto `module`). A composition
+  marker `StartGate<X, N>`, intersected onto `module`). A composition
   with no port declared over `RuntimePort` among its exports fails to match
   `NO RUNTIME — …`; a port the module does not export fails to match
   `UNSATISFIED RUNTIME PORTS — …`; a module whose own needs are unprovided
