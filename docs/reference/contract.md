@@ -48,19 +48,19 @@ the server's view of a caller reaches a client.
 `packages/contract/src/pagination.ts` adds these to the root, and
 `src/zod.ts` is the subpath:
 
-| Export          | Where  | Kind  | What it is                                                                                                                          |
-| --------------- | ------ | ----- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `Page<T>`       | root   | type  | `{ items: readonly T[] }` and, per side, either a `true` flag with its cursor or a `false` flag with no cursor field                |
-| `page`          | root   | value | `<T>(items: readonly T[], cursors: { previous: string \| null; next: string \| null }) => Page<T>` — the flags are derived          |
-| `PageRequest`   | root   | type  | `{ limit: number }` with `after` **or** `before`, never both                                                                        |
-| `PageQuery`     | root   | type  | `{ limit: number; after?: string; before?: string }` — the flat shape a schema validates to                                         |
-| `pageRequest`   | root   | value | `<Q extends PageQuery>(query: Q) => PageRequest & Omit<Q, "after" \| "before">` — the crossing, filters carried through             |
-| `pageOf`        | `/zod` | value | `<Item extends z.ZodType>(item: Item)` — the four pages that exist, as a union of four `strictObject`s                              |
-| `pageRequestOf` | `/zod` | value | `<F extends z.ZodRawShape>(filters: F, limits?: PageLimits)` — the input schema, refusing both cursors, with this listing's filters |
-| `PageLimits`    | `/zod` | type  | `{ defaultLimit?: number; maxLimit?: number }` — default `20`, ceiling `100`                                                        |
+| Export          | Where  | Kind  | What it is                                                                                                                                          |
+| --------------- | ------ | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Page<T>`       | root   | type  | `{ items: readonly T[] }` and, per side, either a `true` flag with its cursor or a `false` flag with no cursor field                                |
+| `page`          | root   | value | `<T>(items: readonly T[], cursors: { previous: string \| null; next: string \| null }) => Page<T>` — the flags are derived                          |
+| `PageRequest`   | root   | type  | `{ limit: number }` with `after` **or** `before`, never both                                                                                        |
+| `PageQuery`     | root   | type  | `{ limit: number; after?: string; before?: string }` — the flat shape a schema validates to                                                         |
+| `pageRequest`   | root   | value | `<Q extends PageQuery>(query: Q) => PageRequest & Omit<Q, "after" \| "before">` — the crossing, filters carried through                             |
+| `pageOf`        | `/zod` | value | `<Item extends z.ZodType>(item: Item)` — the four pages that exist, as a union of four `strictObject`s                                              |
+| `pageRequestOf` | `/zod` | value | `(filters, limits?: PageLimits)` — the input schema, refusing both cursors, with this listing's filters. `limit`, `after` and `before` are reserved |
+| `PageLimits`    | `/zod` | type  | `{ defaultLimit?: number; maxLimit?: number }` — default `20`, ceiling `100`                                                                        |
 
-A cursor is an **opaque string**: the server's to mint and read, the client's
-to hand back verbatim.
+A cursor is an **opaque string**. The server mints it and is the only side
+that may read it; the client hands it back verbatim and interprets nothing.
 
 ## `authenticated(...requirements)(node)`
 
@@ -175,8 +175,9 @@ to use the factory, not a fallback.
 
 ## Three load-bearing properties
 
-**Zero dependencies and zero peers.** Nothing here imports oRPC, `di`, `core`
-or `unthrown`. That is what lets a client take a contract without pulling in
+**Zero dependencies and no required peers.** Nothing in the root imports
+oRPC, `di`, `core` or `unthrown`; the `/zod` subpath is the one exception, and
+its `zod` is optional. That is what lets a client take a contract without pulling in
 the server that implements it, and what would let an AMQP or Temporal contract
 reuse the same marker: it has no opinion about which transport reads it.
 
@@ -256,8 +257,14 @@ closed side is refused rather than stripped — a stripping parser would accept
 what its own published schema rejects.
 
 **The two halves cannot drift.** A type test pins that what `pageOf` parses to
-is a `Page`, and a spec closes the loop where `readonly` no longer exists:
-every page `page()` builds parses against `pageOf`.
+is a `Page`, and a spec pins that every page `page()` builds parses against
+`pageOf` — so a field dropped, loosened or renamed on either side fails a
+check.
+
+The limit uses zod's `prefault` rather than `default`, because a default is
+handed back **unparsed**: a listing whose `defaultLimit` sat above its own
+`maxLimit` would otherwise serve a page larger than it published. The emitted
+input schema is identical either way.
 
 ### The three call sites
 

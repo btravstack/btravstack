@@ -6,12 +6,8 @@ import { pageOf, pageRequestOf } from "./zod.js";
 const item = z.object({ id: z.string() });
 type Item = z.infer<typeof item>;
 
-// The gate this package exists for: what `pageOf` parses to IS a `Page`, so
-// the wire shape and the type a port speaks cannot drift apart. The reverse
-// assignment is deliberately not asserted — `Page` declares its items
-// `readonly` and a parsed array is mutable, which is the safe direction of
-// the two. `pagination.spec.ts` closes the loop at runtime, where `readonly`
-// does not exist: every page `page()` builds parses.
+// The gate this package exists for: what `pageOf` parses to is a `Page`, so a
+// field dropped, loosened or renamed on either side fails a check.
 type Parsed = z.infer<ReturnType<typeof pageOf<typeof item>>>;
 const parsedIsAPage: Page<Item> = {} as Parsed;
 void parsedIsAPage;
@@ -54,3 +50,13 @@ const parsedRequestNarrows: PageRequest & { readonly minQuantity: number } = pag
   {} as ParsedRequest,
 );
 void parsedRequestNarrows;
+
+// The three fields a page owns are not a listing's to redefine: `.extend`
+// overwrites, so a filter named `limit` would silently unbound it.
+// @ts-expect-error -- `limit` is the page's own
+const reservedLimit = pageRequestOf({ limit: z.string() });
+void reservedLimit;
+
+// @ts-expect-error -- and so is a cursor
+const reservedCursor = pageRequestOf({ after: z.number() });
+void reservedCursor;

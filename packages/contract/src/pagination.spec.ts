@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect } from "vitest";
 import { z } from "zod";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { page, pageRequest } from "./index.js";
 import { pageOf, pageRequestOf } from "./zod.js";
 
@@ -55,7 +56,7 @@ describe("pageOf", () => {
 
     // THEN it is refused rather than stripped: the arms are closed objects, and
     // the emitted schema already says so
-    expect(parsed.success).toBe(false);
+    expect(parsed).toMatchObject({ success: false });
   });
 });
 
@@ -72,21 +73,38 @@ describe("pageRequestOf", () => {
     expect(parsed).toMatchObject({ success: false });
   });
 
-  it("applies the limit a listing asked for, and bounds it", () => {
-    // GIVEN a listing with its own default and ceiling
+  it("fills in the default limit a listing asked for", () => {
+    // GIVEN a listing with its own default
     const schema = pageRequestOf({}, { defaultLimit: 5, maxLimit: 10 });
 
-    // WHEN a caller names no limit, and another names one past the ceiling
-    const outcome = {
-      absent: schema.safeParse({}),
-      overCeiling: schema.safeParse({ limit: 11 }).success,
-    };
+    // WHEN a caller names no limit
+    const parsed = schema.safeParse({});
 
-    // THEN the default fills in and the ceiling holds
-    expect(outcome).toMatchObject({
-      absent: { success: true, data: { limit: 5 } },
-      overCeiling: false,
-    });
+    // THEN the listing's default is what it gets
+    expect(parsed).toMatchObject({ success: true, data: { limit: 5 } });
+  });
+
+  it("holds the ceiling a listing asked for", () => {
+    // GIVEN the same listing
+    const schema = pageRequestOf({}, { defaultLimit: 5, maxLimit: 10 });
+
+    // WHEN a caller asks for a page past it
+    const parsed = schema.safeParse({ limit: 11 });
+
+    // THEN the ceiling refuses it
+    expect(parsed).toMatchObject({ success: false });
+  });
+
+  it("refuses a default limit its own ceiling forbids", () => {
+    // GIVEN a listing configured with a default above its ceiling
+    const schema = pageRequestOf({}, { defaultLimit: 101, maxLimit: 100 });
+
+    // WHEN a caller names no limit at all
+    const parsed = schema.safeParse({});
+
+    // THEN the ceiling still binds. A `default` is handed back unparsed, and
+    // would have served a page larger than the schema published.
+    expect(parsed).toMatchObject({ success: false });
   });
 
   it("carries the listing's own filters through the schema", () => {
@@ -111,7 +129,7 @@ describe("pageRequest", () => {
 
     // THEN neither key is present: a `PageRequest` says which direction it runs
     // by which field it has, so an `undefined` one would be a third state
-    expect(Object.keys(narrowed)).toEqual(["limit"]);
+    expect(narrowed).toEqual({ limit: 20 });
   });
 
   it("keeps `before` when a caller somehow named both", () => {

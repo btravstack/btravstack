@@ -15,6 +15,17 @@ export type PageLimits = {
 };
 
 /**
+ * A filter shape that leaves the three fields a page owns alone.
+ *
+ * `.extend` overwrites rather than merges, so without this a filter named
+ * `limit` would silently replace the bounded one, and one named `after` would
+ * re-type a cursor. Naming any of the three is a compile error at the call.
+ */
+type ReservedKeysFree = z.ZodRawShape & {
+  readonly [K in "limit" | "after" | "before"]?: never;
+};
+
+/**
  * The schema of one page of `item`: the four pages that exist, as four closed
  * objects.
  *
@@ -25,9 +36,11 @@ export type PageLimits = {
  * schema this generates already says `additionalProperties: false` — a
  * stripping parser would accept what its own published schema rejects.
  *
- * What it parses to is `Page<T>` exactly, which `pagination.test-d.ts` pins in
- * both directions: the wire shape and the type a port speaks cannot drift
- * apart.
+ * What it parses to is assignable to `Page<T>`, which `pagination.test-d.ts`
+ * pins, and every page `page` builds parses against it, which
+ * `pagination.spec.ts` pins — so a field dropped, loosened or renamed on
+ * either side fails a check. Widening `Page<T>` with a field no page carries
+ * is the one drift neither sees.
  */
 export const pageOf = <Item extends z.ZodType>(item: Item) => {
   const items = { items: z.array(item) };
@@ -55,8 +68,11 @@ export const pageOf = <Item extends z.ZodType>(item: Item) => {
  *
  * `filters` is required, and `{}` is how a listing says it has none — an
  * absent argument and an empty shape would be the same call spelled two ways.
+ * `limit`, `after` and `before` are the page's own and cannot be among them:
+ * a filter replacing one would silently unbound the limit or re-type a cursor,
+ * so the shape refuses it at the call.
  */
-export const pageRequestOf = <Filters extends z.ZodRawShape>(
+export const pageRequestOf = <Filters extends ReservedKeysFree>(
   filters: Filters,
   limits: PageLimits = {},
 ) =>
@@ -67,7 +83,10 @@ export const pageRequestOf = <Filters extends z.ZodRawShape>(
         .int()
         .min(1)
         .max(limits.maxLimit ?? 100)
-        .default(limits.defaultLimit ?? 20),
+        // `prefault`, not `default`: a default is handed back unparsed, so a
+        // listing whose `defaultLimit` sits above its own ceiling would serve a
+        // page larger than it published. The emitted input schema is identical.
+        .prefault(limits.defaultLimit ?? 20),
       after: z.string().optional(),
       before: z.string().optional(),
     })

@@ -117,7 +117,9 @@ extends Requirements } ? R : never`. What this exact node's mark requires, at
   bounded `limit` (default 20, ceiling 100, both overridable through
   `PageLimits`), the two optional cursors, a refusal of the pair, and this
   listing's own filters merged in. `filters` is required; `{}` is how a
-  listing says it has none.
+  listing says it has none, and naming `limit`, `after` or `before` among them
+  is a compile error — `.extend` overwrites, so a filter could otherwise
+  unbound the limit silently.
 
 ## The contract says which schemes; the application says what each one is
 
@@ -137,8 +139,9 @@ names with no authenticator behind it is di's own unmet need on
 
 ## Three load-bearing properties
 
-**Zero dependencies and zero peers.** Nothing here imports oRPC, `di`, `core`
-or `unthrown`. That is what lets a client take a contract without pulling in
+**Zero dependencies and no required peers.** Nothing in the root imports
+oRPC, `di`, `core` or `unthrown`; the `/zod` subpath is the one exception, and
+its `zod` is optional. That is what lets a client take a contract without pulling in
 the server that implements it, and what would let an AMQP or Temporal
 contract reuse the exact same `authenticated` marker — the marker has no
 opinion about which transport reads it.
@@ -190,15 +193,18 @@ builder has to know the marker exists or preserve it through its own chain.
 
 ## Specs
 
-`vitest run --coverage`, 100% lines/functions, 13 tests in two files.
+`vitest run --coverage`, 100% lines/functions, 15 tests in two files.
 
 `pagination.spec.ts` covers the page: the flags are derived from the cursors,
 every page `page()` builds parses against `pageOf` (all four), a cursor on a
 closed side is refused rather than stripped, the schema refuses both cursors
 at once, `PageLimits` applies and bounds, a filter survives the schema and the
 narrowing, an absent cursor is dropped rather than carried as `undefined`, and
-`before` wins when both somehow arrive. `pagination.test-d.ts` pins the
-no-drift claim and the unrepresentable states.
+`before` wins when both somehow arrive. A `defaultLimit` above the listing's
+own ceiling is refused, which is why the limit uses `prefault` rather than
+`default` — a default is handed back unparsed. `pagination.test-d.ts` pins
+what `pageOf` parses to, the unrepresentable states, and the refusal of a
+filter named `limit`, `after` or `before`.
 
 `auth.spec.ts` covers the marker: marking returns the same reference and readable requirements,
 several requirements survive in the order given, no enumerable key is added,
