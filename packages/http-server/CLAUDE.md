@@ -578,11 +578,14 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   package's own `404`. The other two fallbacks — `500` when the listener
   failed before headers were out, socket destroyed once they were — are
   unreachable over the oRPC surface and exist because the transport is proven
-  against a bare listener. A defect
-  that never reaches the listener's promise — a synchronous throw, an
-  answerer's own fork (below) failing to build — gets its `500` from the
-  unit's `recoverDefect`, which destroys the socket only once headers are
-  already out.
+  against a bare listener. A defect that never reaches the listener's promise
+  — a synchronous throw out of a bare `HttpAnswerer.handle`, before it ever
+  returns a promise — gets its `500` from the unit's `recoverDefect`, which
+  destroys the socket only once headers are already out. An answerer's own
+  fork (below) failing to build never lands here: oRPC catches a middleware
+  throw itself and collapses it to its own `INTERNAL_SERVER_ERROR`, before
+  `recoverDefect` or even `answer` ever sees it, and `htmx()` writes its own
+  `500` directly, through `refuse`.
 - **The guarantee**: the unit's lifetime **is** the response's — it does not
   close until the response's `'close'` event fires, and closes at once if that
   event already fired before the work ran — so
@@ -592,7 +595,7 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   a caller's care.
 - **The fork is the answerer's, for a request it handles — not the kernel's.**
   `http()`/`httpServer()`/`HttpModule` all take `unit?: { anonymous?: Module }`,
-  provided on `HttpUnit` (`Port("HttpUnit")<{ anonymous?: Module<unknown, never, unknown> }>`,
+  provided on `HttpUnit` (`Port("HttpUnit")<{ anonymous?: AnyUnitModule }>`,
   not exported from the package — reached the same way `OrpcRouterPort` is,
   never by name) and injected by both answerers. `orpc.ts`'s `unitScope`
   middleware forks it on **every leaf**, installed in `routerOf` after
@@ -602,10 +605,14 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   leaf middleware runs never forks either — proved by
   `examples/order-api/src/api.spec.ts`'s "never enters the handler for a
   malformed input", exactly as the runtime's own `404` does not.
-  `htmx.ts` forks once a route has matched and before its handler runs; a
-  fork's own defect answers `500` through the same path each answerer already
-  had for any other defect — the runtime's `recoverDefect` for oRPC (a throw
-  escapes `unitScope`), `refuse(response, 500)` for htmx. **The runtime's own
+  `htmx.ts` forks at the SAME point in the request's life — after
+  authentication has succeeded and the body has validated, immediately before
+  its handler runs, never for a request either answerer refuses — so both
+  answerers fork exactly once dispatch has cleared every guard. A fork's own
+  defect answers `500` through the path each answerer already had for any
+  other defect: oRPC's own `INTERNAL_SERVER_ERROR` collapse for a throw out of
+  `unitScope`, `refuse(response, 500)` for htmx — never `recoverDefect`, which
+  sees only a bare answerer's own synchronous throw (above). **The runtime's own
   `404` never forks** — the
   behaviour change from the kernel forking a `StartOptions.unit` module around
   every unit, which is gone. A bound `unit.anonymous` module's own unmet needs

@@ -1271,7 +1271,7 @@ and would otherwise win over the minted id.
 <!-- doctest: skip — a bare property signature, not a program -->
 
 ```ts
-readonly unit?: { readonly anonymous?: Module<unknown, never, unknown> };
+readonly unit?: { readonly anonymous?: AnyUnitModule };
 ```
 
 `http()`, `httpServer()` and `HttpModule` all take a `unit` option: the module
@@ -1280,6 +1280,14 @@ as the answerer takes the request, torn down when the unit closes, after the
 response is flushed — the module's own unmet needs join the composition
 root's, exactly as any other `needs` does, since it is forked over the
 application context.
+
+`AnyUnitModule` is `Module<never, never, unknown>` — not exported from the
+package, reached the same way `OrpcRouterPort` is, never by name. `never`,
+not `unknown`, in the **first** position: `Module`'s `_exports` channel is
+contravariant, so `Module<unknown, …>` is a bound no real module can ever
+satisfy, and `unknown` in the **third** (Needs) position is what lets a
+module with real needs infer against the bound at all — the same shape
+`@btravstack/testing`'s `TestRuntimeOptions.unit` uses.
 
 `orpc()` installs the fork as a middleware — `unitScope` — on every leaf, after
 the principal middleware where a leaf carries one, so a later phase can seed it
