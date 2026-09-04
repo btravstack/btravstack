@@ -1,7 +1,7 @@
 import { Ok, OkAsync } from "unthrown";
 import { expect, test } from "vitest";
 
-import { Module, Port, Provider } from "./index.js";
+import { Context, Module, Port, Provider } from "./index.js";
 
 class Pool extends Port("FPool")<{ readonly id: string }> {}
 class Txn extends Port("FTxn")<{ readonly id: string }> {}
@@ -50,4 +50,29 @@ test("a fork releases only its own resources and leaves the parent up", async ()
 
   expect(outcome).toBeOk();
   expect(released).toEqual(["txn", "txn", "pool"]);
+});
+
+test("builds a forked module over a seeded value the parent never provided", async () => {
+  // GIVEN a parent with no principal, and a unit module that needs one
+  class Principal extends Port("SeedPrincipal")<{ readonly userId: string }> {}
+  class Greeting extends Port("SeedGreeting")<{ readonly text: string }> {}
+  const Unit = Module("SeedUnit")({
+    needs: [Principal],
+    provides: [
+      Provider(Greeting)({
+        inject: { principal: Principal },
+        sync: ({ principal }) => ({ text: `hello ${principal.userId}` }),
+      }),
+    ],
+    exports: [Greeting],
+  });
+  const parent = Context.empty();
+
+  // WHEN the fork is seeded with a principal
+  const greeting = Module.forkScope(parent, Unit, (ctx) => OkAsync(ctx.get(Greeting).text), {
+    seed: [[Principal, { userId: "ada" }]],
+  });
+
+  // THEN the module was built over it
+  await expect(greeting).toBeOkWith("hello ada");
 });

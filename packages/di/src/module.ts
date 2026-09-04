@@ -1,6 +1,6 @@
 import type { AsyncResult } from "unthrown";
 
-import { run, runScoped, type ScopedOptions } from "./build.js";
+import { run, runScoped, type ScopedOptions, type SeedEntry } from "./build.js";
 import { type Context } from "./context.js";
 import type { AnyPort, Scope } from "./port.js";
 import type { Provider } from "./provider.js";
@@ -157,7 +157,7 @@ function ModuleDeclaration<const Name extends string>(name: Name) {
  * `unknown` when nothing is unmet, the one-property object otherwise, so the
  * diagnostic ends on the missing port.
  */
-type DependencyGate<N> = [N] extends [never]
+export type DependencyGate<N> = [N] extends [never]
   ? unknown
   : { readonly "UNSATISFIED DEPENDENCIES — nothing provides": N };
 
@@ -191,13 +191,15 @@ export const Module = Object.assign(ModuleDeclaration, {
    * The fork gets a fresh scope, so closing it releases only what the fork
    * acquired and the parent stays up for a sibling. The gate subtracts
    * `PParent` as well as `Scope`: a request module may depend on anything the
-   * parent already provides.
+   * parent already provides. It also subtracts `InstanceType<Seeded>`, for the
+   * same reason: a `seed` entry supplies a port from outside the tree exactly
+   * as the parent does.
    */
-  forkScope: <PParent, X, E, N, A, E2>(
+  forkScope: <PParent, X, E, N, A, E2, Seeded extends AnyPort = never>(
     parent: Context<PParent>,
-    module: Module<X, E, N> & DependencyGate<Exclude<N, PParent | Scope>>,
-    use: (ctx: Context<PParent | X>) => AsyncResult<A, E2>,
-    options?: ScopedOptions,
+    module: Module<X, E, N> & DependencyGate<Exclude<N, PParent | InstanceType<Seeded> | Scope>>,
+    use: (ctx: Context<PParent | X | InstanceType<Seeded>>) => AsyncResult<A, E2>,
+    options?: Omit<ScopedOptions, "seed"> & { readonly seed?: readonly SeedEntry<Seeded>[] },
   ): AsyncResult<A, E | E2> =>
-    runScoped(module as never, use as never, options, parent as never) as never,
+    runScoped(module as never, use as never, options as ScopedOptions, parent as never) as never,
 });
