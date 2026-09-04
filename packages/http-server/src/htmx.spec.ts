@@ -4,7 +4,7 @@ import { request as httpRequest, type IncomingMessage, type ServerResponse } fro
 import type { UnitHost } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { OkAsync } from "unthrown";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
 import { defineHttp } from "./define-http.js";
@@ -363,13 +363,14 @@ describe("htmx", () => {
     scopedFragment,
   }) => {
     // GIVEN an app bound to an anonymous unit module, serving a fragment
-    const { app, origin, counts } = await scopedFragment.serve();
+    const { origin, counts } = await scopedFragment.serve();
 
-    // WHEN the fragment route is requested twice and the app stops
+    // WHEN the fragment route is requested twice — waited out WHILE the app
+    // is still running, so a scope only closed by the application's own
+    // shutdown cannot pass this test
     await fetch(`${origin}/frag`);
     await fetch(`${origin}/frag`);
-    app.stop();
-    await app.exited;
+    await vi.waitUntil(() => counts().stops === 2);
 
     // THEN the module was built and torn down once per matched request
     expect(counts()).toEqual({ builds: 2, stops: 2 });

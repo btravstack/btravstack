@@ -11,7 +11,6 @@ import {
   Provider,
   type AnyPort,
   type AnyProvider,
-  type Module,
   type PortClassOf,
   type PortInstance,
   type ServiceOf,
@@ -43,7 +42,7 @@ import { authenticatorPort, principalMiddleware, type AuthenticatorService } fro
 import { CONTROLLER_PREFIX, type ControllerKeyOf, type ControllerPortOf } from "./controller.js";
 import { HttpHandler } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
-import { HttpUnit } from "./http-runtime.js";
+import { HttpUnit, type AnyUnitModule } from "./http-runtime.js";
 import type { Principal, SchemesOf } from "./principal.js";
 import { unitScope } from "./unit-scope.js";
 
@@ -678,7 +677,7 @@ const routerOf = (
   contract: Record<string, unknown>,
   inherited: Requirements | undefined,
   authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
-  unit: Module<unknown, never, unknown> | undefined,
+  unit: AnyUnitModule | undefined,
 ): Record<string, unknown> =>
   Object.fromEntries(
     Object.entries(implementation).flatMap(([key, value]) => {

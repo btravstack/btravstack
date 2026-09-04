@@ -97,6 +97,12 @@ export type UnitApp = {
   readonly forkTwice: () => AsyncResult<unknown, never>;
   /** Forks a module whose provider fails to construct, over the running app's host. */
   readonly forkBroken: () => AsyncResult<unknown, never>;
+  /**
+   * Forks the unit module only once the unit's own work has already
+   * returned — the shape an answerer racing a client's abort against its own
+   * fork produces.
+   */
+  readonly forkAfterSettled: () => AsyncResult<unknown, never>;
 };
 
 /**
@@ -267,6 +273,19 @@ export const it = test.extend<{ boot: Boot; unitApp: UnitApp; configured: Config
         .host()
         .run({ kind: "test", id: "broken" }, (unit) => unit.fork(BrokenModule as never, []));
 
+    // The work callback returns before ever forking — captured for the
+    // caller to invoke once the unit this `.run()` call settles, which is
+    // exactly the shape a fork racing a client's abort against its own
+    // answerer produces.
+    const forkAfterSettled = (): AsyncResult<unknown, never> => {
+      let lateFork: (() => AsyncResult<unknown, never>) | undefined;
+      const settled = runtime.host().run({ kind: "test", id: "after-settled" }, (unit) => {
+        lateFork = () => unit.fork(UnitModule as never, []);
+        return OkAsync("done");
+      });
+      return settled.flatMap(() => (lateFork as () => AsyncResult<unknown, never>)());
+    };
+
     await use({
       runtime,
       app,
@@ -277,6 +296,7 @@ export const it = test.extend<{ boot: Boot; unitApp: UnitApp; configured: Config
       failTeardown,
       forkTwice,
       forkBroken,
+      forkAfterSettled,
     });
 
     app.stop();

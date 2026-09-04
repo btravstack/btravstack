@@ -1081,14 +1081,14 @@ const htmx: (
 
 The second answerer: fragments, mounted under `prefix` (default `/`). It
 matches a request against the composed fragments' routes by method and path,
-forks `unit.anonymous` once a route has matched and before its handler runs,
 resolves the principal through [`resolvePrincipal`](#authentication) when the
 route carries a requirement, reads and validates a `POST` body against the
-route's own schema, and writes the handler's `Html` with
+route's own schema, forks `unit.anonymous` once all of that has succeeded and
+immediately before the handler runs, and writes the handler's `Html` with
 `content-type: text/html; charset=utf-8`. A request no route claims resolves
 unwritten, exactly like oRPC's answerer, so the runtime's own `404` answers
 it — and never forks, since the fork is the answerer's, for a request it
-handles.
+handles and is about to hand to its own route.
 
 | Option   | Required | Default | What it is                  |
 | -------- | -------- | ------- | --------------------------- |
@@ -1223,27 +1223,30 @@ that is the only way to learn the port that was actually bound.
 
 ## What it decides about a request
 
-| Request                                                      | Answer                                                                    | Decided by       |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------- | ---------------- |
-| a procedure under `prefix`                                   | the procedure's output, or the `ORPCError` its `Result` was mapped to     | oRPC, the router |
-| a `GET` for a procedure whose output is an event iterator    | the stream, as `text/event-stream` — the one `GET` the RPC handler admits | this package     |
-| a defect thrown inside a procedure                           | oRPC's own `INTERNAL_SERVER_ERROR` collapse                               | oRPC             |
-| a protected procedure no requirement accepted the caller for | `401 UNAUTHORIZED`, the handler never entered                             | this package     |
-| a protected procedure whose caller lacked a required scope   | `403 FORBIDDEN`, the handler never entered                                | this package     |
-| a protected procedure whose authenticator defected           | oRPC's `INTERNAL_SERVER_ERROR` collapse — a bug, not a rejected caller    | oRPC             |
-| a path under `prefix` naming no procedure                    | `404 {"error":"NotFound"}` — oRPC declines it unwritten                   | this package     |
-| any path outside `prefix`                                    | `404 {"error":"NotFound"}` — likewise                                     | this package     |
-| the listener resolved without writing                        | `404 {"error":"NotFound"}`                                                | this package     |
-| the listener failed before headers were out                  | `500 {"error":"InternalError"}`                                           | this package     |
-| a failure with headers already on the wire                   | the socket is destroyed — a reset, not a hang                             | this package     |
+| Request                                                          | Answer                                                                    | Decided by       |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------- |
+| a procedure under `prefix`                                       | the procedure's output, or the `ORPCError` its `Result` was mapped to     | oRPC, the router |
+| a `GET` for a procedure whose output is an event iterator        | the stream, as `text/event-stream` — the one `GET` the RPC handler admits | this package     |
+| a defect thrown inside a procedure, or in `unitScope`'s own fork | oRPC's own `INTERNAL_SERVER_ERROR` collapse                               | oRPC             |
+| a protected procedure no requirement accepted the caller for     | `401 UNAUTHORIZED`, the handler never entered                             | this package     |
+| a protected procedure whose caller lacked a required scope       | `403 FORBIDDEN`, the handler never entered                                | this package     |
+| a protected procedure whose authenticator defected               | oRPC's `INTERNAL_SERVER_ERROR` collapse — a bug, not a rejected caller    | oRPC             |
+| a path under `prefix` naming no procedure                        | `404 {"error":"NotFound"}` — oRPC declines it unwritten                   | this package     |
+| any path outside `prefix`                                        | `404 {"error":"NotFound"}` — likewise                                     | this package     |
+| the listener resolved without writing                            | `404 {"error":"NotFound"}`                                                | this package     |
+| the listener failed before headers were out                      | `500 {"error":"InternalError"}`                                           | this package     |
+| a failure with headers already on the wire                       | the socket is destroyed — a reset, not a hang                             | this package     |
 
 The last three are the package's own fallbacks, guaranteeing that every
 request produces exactly one completed response. The two `500` shapes are
-unreachable over the oRPC surface, which collapses every defect itself; they
-exist because the transport is proven against a bare listener. "Failed"
-covers a rejected promise, a synchronous throw, and a `StartOptions.unit`
-provider that failed to build — the last two never reach the listener's
-promise, so that `500` is written from the unit's own defect path.
+unreachable over the oRPC surface, which collapses every defect itself —
+`unitScope`'s own fork failure included, since a throw out of it is a
+middleware throw exactly like a throw out of the procedure it wraps — and
+they exist because the transport is proven against a bare listener.
+"Failed" covers only a rejected promise or a synchronous throw out of a
+hand-written `HttpAnswerer.handle`, never a promise this package's own
+answerers hand back: `htmx()`'s own fork failure writes its `500` directly,
+through the same `refuse` every other htmx refusal uses.
 
 `Result` → HTTP status is deliberately **not** in the table: it is the
 router's `.result()` triage, at the one place that decides what a client sees.
@@ -1280,11 +1283,14 @@ application context.
 
 `orpc()` installs the fork as a middleware — `unitScope` — on every leaf, after
 the principal middleware where a leaf carries one, so a later phase can seed it
-with what the principal resolved to; `htmx()` forks once a route has matched,
-before its handler runs. **The runtime's own `404` never forks**: only an
-answerer that claims a request does, which is the behaviour change from the
-kernel forking a `StartOptions.unit` module around every unit — that option is
-gone, and the fork is now each answerer's own.
+with what the principal resolved to — `principalMiddleware` refuses without
+calling `next()`, so `unitScope`, nested inside it, never runs for a refused
+caller. `htmx()` forks at the same point in the request's life: after
+authentication succeeds and the body validates, immediately before the
+handler — never for a request either answerer refuses. **The runtime's own
+`404` never forks**: only an answerer that claims a request does, which is the
+behaviour change from the kernel forking a `StartOptions.unit` module around
+every unit — that option is gone, and the fork is now each answerer's own.
 
 ## The drain
 

@@ -107,6 +107,22 @@ describe("the unit module", () => {
     );
   });
 
+  it("reports a fork issued after the unit has already settled as a defect", async ({
+    unitApp,
+  }) => {
+    // GIVEN a runtime whose unit work returns before ever forking, the shape
+    // a fork racing a client's abort against its own answerer produces
+    const { forkAfterSettled } = unitApp;
+
+    // WHEN the fork is attempted once the unit that would have supervised it
+    // has already closed
+    // THEN it lands on the defect path rather than opening a scope nothing
+    // awaits, whose teardown could run after the registry reports idle
+    await expect(forkAfterSettled()).toBeDefectWith(
+      expect.objectContaining({ message: "a unit forks after it has already settled" }),
+    );
+  });
+
   it("recovers a fork's construction failure onto the caller's defect path", async ({
     unitApp,
   }) => {

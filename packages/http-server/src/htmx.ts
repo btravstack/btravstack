@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { UnitHost } from "@btravstack/core";
-import { Provider, type Module } from "@btravstack/di";
+import { Provider } from "@btravstack/di";
 import { Err, Ok, P, fromExecutor, type AsyncResult } from "unthrown";
 
 import { resolvePrincipal, type AuthenticatorService } from "./auth.js";
@@ -9,7 +9,7 @@ import { matchPath } from "./fragments.js";
 import { HttpHandler } from "./handler.js";
 import { HtmxFragmentsPort, type FragmentAnswer } from "./htmx-route.js";
 import { HttpConfig } from "./http-config.js";
-import { HttpUnit } from "./http-runtime.js";
+import { HttpUnit, type AnyUnitModule } from "./http-runtime.js";
 
 export type HtmxOptions = {
   /** Where fragments are mounted. Default `/`. */
@@ -139,21 +139,13 @@ const respond = async (
   request: IncomingMessage,
   response: ServerResponse,
   host: UnitHost<never>,
-  anonymous: Module<unknown, never, unknown> | undefined,
+  anonymous: AnyUnitModule | undefined,
 ): Promise<void> => {
   const matched = matchRoute(routes, request.method, relativePath(request.url, prefix));
   // No route claims this request: resolve unwritten so the runtime's own 404
   // answers, rather than stealing it from an answerer mounted deeper.
   if (matched === undefined) return;
   const { route, params } = matched;
-
-  if (anonymous !== undefined) {
-    const scope = await host.fork(anonymous as never, []);
-    if (scope.isDefect()) {
-      refuse(response, 500);
-      return;
-    }
-  }
 
   let principal: unknown;
   if (route.requirements !== undefined) {
@@ -200,6 +192,23 @@ const respond = async (
         return;
       }
       input = validated.value;
+    }
+  }
+
+  // Forked here — after authentication has succeeded and the body has
+  // validated, immediately before the handler — so a refused or malformed
+  // request never opens a scope: the same point in the request's life oRPC's
+  // own `unitScope` forks at, since `principalMiddleware` short-circuits
+  // without calling `next()` on a refusal, and `unitScope` sits inside it.
+  if (anonymous !== undefined) {
+    // `as never`: see `unit-scope.ts`'s own comment on the identical cast —
+    // `AnyUnitModule` erases the module's Needs to `unknown`, which `fork`'s
+    // `DependencyGate` can never clear on its own; the check already ran once,
+    // at the `Unit`-generic call site that bound this module.
+    const scope = await host.fork(anonymous as never, []);
+    if (scope.isDefect()) {
+      refuse(response, 500);
+      return;
     }
   }
 

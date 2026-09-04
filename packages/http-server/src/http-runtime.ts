@@ -57,7 +57,7 @@ export type HttpOptions = OrpcOptions & {
    * with no seed. Built as the answerer takes the request, torn down when
    * the unit closes, after the response is flushed.
    */
-  readonly unit?: { readonly anonymous?: Module<unknown, never, unknown> };
+  readonly unit?: { readonly anonymous?: AnyUnitModule };
 };
 
 /** What `httpServer` pins on the config it binds — everything but the router's own. */
@@ -116,7 +116,7 @@ export class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInf
  * every answerer's own fork is then a no-op.
  */
 export class HttpUnit extends Port("HttpUnit")<{
-  readonly anonymous?: Module<unknown, never, unknown>;
+  readonly anonymous?: AnyUnitModule;
 }> {}
 
 /**
@@ -206,10 +206,7 @@ export const httpServer = <Unit extends AnyUnitModule | undefined = undefined>(
         // `exactOptionalPropertyTypes` refuses `{ anonymous: undefined }` where
         // `HttpUnit`'s own shape declares `anonymous` optional rather than
         // nullable — an unbound `unit.anonymous` is left OFF the value instead.
-        value:
-          options.unit?.anonymous === undefined
-            ? {}
-            : { anonymous: options.unit.anonymous as never },
+        value: options.unit?.anonymous === undefined ? {} : { anonymous: options.unit.anonymous },
       }),
     ],
     exports: [HttpRuntime, HttpConfig, HttpHandler, HttpUnit],
@@ -388,8 +385,13 @@ const listen = (
                 return closedOf(response);
               })
               .recoverDefect((cause) => {
-                // The unit failed outside `answer`'s reach — a synchronous throw, or
-                // an answerer's own fork failing to build. Guarded, because
+                // The unit failed outside `answer`'s reach — a synchronous throw
+                // from a bare `HttpAnswerer.handle` before it ever returns a
+                // promise. Neither an oRPC fork failure nor a synchronous throw
+                // inside it lands here: oRPC catches a middleware throw itself
+                // and collapses it to its own `INTERNAL_SERVER_ERROR`, the same
+                // path a procedure's own defect takes, before `answer` or this
+                // callback ever sees it. Guarded, because
                 // `recoverDefect` would wrap a throw here into a fresh defect that
                 // the `void` below drops.
                 try {
@@ -472,14 +474,12 @@ const listen = (
       ).flatMap((result) => result),
     );
 
-// `closed` is checked first: subscribing to an event that already fired would
-// hold the unit open for the process lifetime, so a response already closed
-// by the time this runs resolves at once instead of waiting for a `'close'`
-// that never comes again.
+// `listen`'s callback always calls this in the SAME synchronous tick a fresh
+// request arrives in, so there is never an already-closed response to
+// special-case here — only an answerer's own later `await`, well after this
+// has already subscribed, could race a client's abort against it.
 const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
-  response.closed
-    ? OkAsync()
-    : fromSafePromise(new Promise<void>((done) => response.once("close", () => done())));
+  fromSafePromise(new Promise<void>((done) => response.once("close", () => done())));
 
 const isEventStream = (response: ServerResponse): boolean =>
   String(response.getHeader("content-type") ?? "").startsWith("text/event-stream");

@@ -490,9 +490,11 @@ describe("httpRuntime", () => {
     scoped,
   }) => {
     // GIVEN an app bound to an anonymous unit module
-    const { app, origin, counts } = await scoped.serve();
+    const { origin, counts } = await scoped.serve();
 
-    // WHEN two procedures are answered and the app stops
+    // WHEN two procedures are answered — waited out WHILE the app is still
+    // running, so a scope only closed by the application's own shutdown
+    // cannot pass this test
     await fetch(`${origin}/rpc/hello`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -503,8 +505,7 @@ describe("httpRuntime", () => {
       headers: { "content-type": "application/json" },
       body: "{}",
     });
-    app.stop();
-    await app.exited;
+    await vi.waitUntil(() => counts().stops === 2);
 
     // THEN the module was built and torn down once per request
     expect(counts()).toEqual({ builds: 2, stops: 2 });

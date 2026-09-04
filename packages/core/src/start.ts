@@ -402,8 +402,20 @@ export const start = <X, E, N>(
           registry.run(meta, (signal) => {
             const settled = Promise.withResolvers<void>();
             let closing: Promise<unknown> | undefined;
+            // Set in the SAME `finally` that resolves `settled`, not derived
+            // from it: a fork arriving after `work` has returned is not
+            // awaited by anything, so nothing supervises its scope or its
+            // `onStop` — unsupervised is unsupervised whether or not this
+            // unit ever forked at all, which is why this guard is separate
+            // from `closing`'s own "once" one below.
+            let hasSettled = false;
 
             const fork: UnitHost<Resolves>["fork"] = (module, seed) => {
+              if (hasSettled) {
+                return fromSafePromise(
+                  Promise.reject(new Error("a unit forks after it has already settled")),
+                ) as never;
+              }
               if (closing !== undefined) {
                 return fromSafePromise(
                   Promise.reject(new Error("a unit forks its scope once")),
@@ -445,6 +457,7 @@ export const start = <X, E, N>(
               try {
                 return await work({ ctx: runtimeCtx, fork }, signal);
               } finally {
+                hasSettled = true;
                 settled.resolve();
                 if (closing !== undefined) await closing;
               }
