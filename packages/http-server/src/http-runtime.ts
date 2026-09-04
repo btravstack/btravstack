@@ -474,12 +474,14 @@ const listen = (
       ).flatMap((result) => result),
     );
 
-// `listen`'s callback always calls this in the SAME synchronous tick a fresh
-// request arrives in, so there is never an already-closed response to
-// special-case here — only an answerer's own later `await`, well after this
-// has already subscribed, could race a client's abort against it.
+// `closed` is checked first because a response that has already emitted
+// `'close'` never emits it again: any caller reached after an `await` — a fork
+// built before the subscription, the way `htmx`'s `readBody` is — would wait on
+// an event that has fired and hold the unit open for the process lifetime.
 const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
-  fromSafePromise(new Promise<void>((done) => response.once("close", () => done())));
+  response.closed
+    ? OkAsync()
+    : fromSafePromise(new Promise<void>((done) => response.once("close", () => done())));
 
 const isEventStream = (response: ServerResponse): boolean =>
   String(response.getHeader("content-type") ?? "").startsWith("text/event-stream");

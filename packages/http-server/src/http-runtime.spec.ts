@@ -193,8 +193,7 @@ describe("httpRuntime", () => {
     // WHEN a request arrives
     const response = await fetch(origin);
 
-    // THEN the unit's defect path still answers it — the same path a
-    // `StartOptions.unit` construction failure takes
+    // THEN the unit's defect path still answers it
     expect(response.status).toBe(500);
   });
 
