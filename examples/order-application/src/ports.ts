@@ -1,3 +1,4 @@
+import type { Page, PageRequest } from "@btravstack/contract";
 import { Port } from "@btravstack/di";
 import type {
   Customer,
@@ -14,7 +15,7 @@ import type {
 } from "@btravstack/example-order-domain";
 import type { AsyncResult } from "unthrown";
 
-import type { MalformedCursor, Page, PageRequest } from "./pagination.js";
+import type { MalformedCursor } from "./pagination.js";
 
 /**
  * The port the infrastructure layer fills, declared here rather than in the

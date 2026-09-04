@@ -10,6 +10,7 @@
  * half, and the compiler says so at each module rather than once for the
  * layer. Type-checked by this package's `test:types` script, never executed.
  */
+import { page } from "@btravstack/contract";
 import { Logger } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import {
@@ -31,7 +32,6 @@ import {
   FindOrder,
   OrderApplicationModule,
   OrderRepository,
-  page,
   PlaceOrder,
 } from "./index.js";
 import { findOrderProvider, placeOrderProvider } from "./use-cases.js";

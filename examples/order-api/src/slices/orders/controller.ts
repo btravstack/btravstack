@@ -1,3 +1,4 @@
+import { pageRequest } from "@btravstack/contract";
 import { Logger } from "@btravstack/core";
 import { contract, type OrderView } from "@btravstack/example-order-api-contract";
 import { FindOrder, ListOrders, PlaceOrder } from "@btravstack/example-order-application";
@@ -71,23 +72,16 @@ export const ordersController = api.OrpcController(
         ),
     // The listing. The one translation is the CURSOR: the contract carries
     // `after` and `before` as two optional fields and refuses both at once,
-    // where the port makes them a union — so this branch is where a validated
-    // input becomes a value whose type says a page runs in one direction.
-    // Everything else reaches the use case unchanged, which is what a filter
-    // being a FIELD rather than a query object buys.
+    // where the port makes them a union — and `pageRequest` is that crossing,
+    // carrying this listing's own filters through untouched.
     //
-    // The tenant is still not among them. A page of somebody else's orders is
-    // not a request this controller can express, because the caller has no slot
-    // to name a tenant in and `principal.tenantId` is the only value that
-    // reaches the port.
-    list: ({ errors, context }, { after, before, ...page }) =>
+    // The tenant is not among them. A page of somebody else's orders is not a
+    // request this controller can express, because the caller has no slot to
+    // name a tenant in and `principal.tenantId` is the only value that reaches
+    // the port.
+    list: ({ errors, context }, input) =>
       list
-        .execute(
-          context.principal.tenantId,
-          before === undefined
-            ? { ...page, ...(after === undefined ? {} : { after }) }
-            : { ...page, before },
-        )
+        .execute(context.principal.tenantId, pageRequest(input))
         .map((found) => ({ ...found, items: found.items.map(view) }))
         .mapErrCases((matcher) =>
           matcher.with(P.tag("MalformedCursor"), (error) =>

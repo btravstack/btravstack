@@ -1,5 +1,5 @@
 export { CustomerApplicationModule, OrderApplicationModule } from "./module.js";
-export { MalformedCursor, page, type Page, type PageRequest } from "./pagination.js";
+export { MalformedCursor } from "./pagination.js";
 export {
   CustomerRepository,
   FindCustomer,

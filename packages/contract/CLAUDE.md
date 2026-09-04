@@ -8,6 +8,36 @@ ships no `docs-examples.test-d.ts`, so nothing else compiles these claims.
 
 ## What this is
 
+**The contract tier: what a client and the server that implements it both
+need, and no transport owns.** Two things live here today, admitted by one
+rule (below): the `authenticated` marker, and the shape of a cursor page.
+
+### The admission rule
+
+A shape belongs in this package when **both ends of a contract need it and no
+transport owns it**. A page passes: a client reads `hasNextPage` and hands
+`nextCursor` back, a server builds one, and HTTP, AMQP and Temporal would each
+describe the same thing. An error vocabulary does not: thesis #3 keeps triage
+per contract, and each transport's destination is its own library's
+(`errors.CONFLICT` is oRPC's constructor). A domain type does not either — it
+is the application's.
+
+The test is deliberately narrow, because the name promises a tier and the
+package is what stops that promise from being a slogan. Filters and sorts are
+the next candidates and are **not** here: nothing has written the same one
+twice yet.
+
+### The root is zero-dependency; schemas are behind `/zod`
+
+The root imports nothing, not even `unthrown` — a client takes a contract
+without taking a runtime. A **schema** needs a schema library, so the four-arm
+page schema and the page input live behind `@btravstack/contract/zod`, with
+`zod` as an **optional peer**: the subpath protocol `@btravstack/cache/redis`
+and `@btravstack/observability/pino` already follow. A contract that only
+marks its procedures installs nothing.
+
+## The marker
+
 A marker a contract puts on a node — a record of procedures or a single
 procedure — to say "this requires an authenticated principal, satisfying one
 of these requirements", readable by both the client that imports the contract
@@ -68,6 +98,29 @@ extends Requirements } ? R : never`. What this exact node's mark requires, at
   nothing satisfiable". Ancestry (a marked parent implying a marked child) is
   the caller's to carry; the package tracks nodes, not trees.
 
+### The page (`pagination.ts`, and `zod.ts` behind `/zod`)
+
+- **`Page<T>`** — `{ items: readonly T[] }` intersected with each side's
+  flag-and-cursor pair, so a `hasNextPage: false` page has no `nextCursor`
+  field at all.
+- **`page(items, { previous, next })`** — a `Page<T>` from its items and the
+  cursor on each side, `null` where there is none. The flags are derived.
+- **`PageRequest`** — `{ limit }` with `after` **or** `before`, never both.
+- **`PageQuery`** — the flat `{ limit, after?, before? }` a schema validates
+  to, before narrowing.
+- **`pageRequest(query)`** — `PageQuery & filters` to `PageRequest & filters`.
+  `before` wins if both are present, which `pageRequestOf` makes unreachable;
+  the precedence exists so the function is total.
+- **`pageOf(item)`** (`/zod`) — the four pages, as a union of four
+  `strictObject`s.
+- **`pageRequestOf(filters, limits?)`** (`/zod`) — the input schema: a
+  bounded `limit` (default 20, ceiling 100, both overridable through
+  `PageLimits`), the two optional cursors, a refusal of the pair, and this
+  listing's own filters merged in. `filters` is required; `{}` is how a
+  listing says it has none, and naming `limit`, `after` or `before` among them
+  is a compile error — `.extend` overwrites, so a filter could otherwise
+  unbound the limit silently.
+
 ## The contract says which schemes; the application says what each one is
 
 **The contract names no identity type at all.** A marked node names the
@@ -86,8 +139,9 @@ names with no authenticator behind it is di's own unmet need on
 
 ## Three load-bearing properties
 
-**Zero dependencies and zero peers.** Nothing here imports oRPC, `di`, `core`
-or `unthrown`. That is what lets a client take a contract without pulling in
+**Zero dependencies and no required peers.** Nothing in the root imports
+oRPC, `di`, `core` or `unthrown`; the `/zod` subpath is the one exception, and
+its `zod` is optional. That is what lets a client take a contract without pulling in
 the server that implements it, and what would let an AMQP or Temporal
 contract reuse the exact same `authenticated` marker — the marker has no
 opinion about which transport reads it.
@@ -139,8 +193,20 @@ builder has to know the marker exists or preserve it through its own chain.
 
 ## Specs
 
-`vitest run --coverage`, 100% lines/functions, 5 tests in one file,
-`auth.spec.ts`: marking returns the same reference and readable requirements,
+`vitest run --coverage`, 100% lines/functions, 15 tests in two files.
+
+`pagination.spec.ts` covers the page: the flags are derived from the cursors,
+every page `page()` builds parses against `pageOf` (all four), a cursor on a
+closed side is refused rather than stripped, the schema refuses both cursors
+at once, `PageLimits` applies and bounds, a filter survives the schema and the
+narrowing, an absent cursor is dropped rather than carried as `undefined`, and
+`before` wins when both somehow arrive. A `defaultLimit` above the listing's
+own ceiling is refused, which is why the limit uses `prefault` rather than
+`default` — a default is handed back unparsed. `pagination.test-d.ts` pins
+what `pageOf` parses to, the unrepresentable states, and the refusal of a
+filter named `limit`, `after` or `before`.
+
+`auth.spec.ts` covers the marker: marking returns the same reference and readable requirements,
 several requirements survive in the order given, no enumerable key is added,
 an unmarked node reads as `undefined`, and the mark lands in the `globalThis`
 registry a second copy would read. `test-fixtures.ts` provides a one-key
@@ -175,6 +241,41 @@ dependencies** and knows nothing about who is calling, so a default requirement
 would be a deployment's decision made for every consumer of the contract,
 including the client that only ever calls. Where a deny-by-default posture is
 wanted it belongs at the composition root that owns the authenticators.
+
+## The page, and what it deliberately is not
+
+`Page<T>` pairs each side's flag with the cursor that continues it, so
+"there is more, and nothing to follow it with" is unrepresentable rather than
+merely unexpected. `page(items, cursors)` derives the flags from the cursors,
+because a side with no cursor is a side a caller cannot reach. `PageRequest`
+makes `after` and `before` a union, so a page runs in one direction by
+construction; `pageRequest(query)` is the crossing from the flat shape a
+schema validates into that union, carrying a listing's own filters through.
+
+`pageOf(item)` is the four pages that exist, as four closed objects in a
+union — a union rather than an intersection because `allOf` of closed objects
+validates nothing in JSON Schema, and the emitted OpenAPI document is an
+interop surface. `pageRequestOf(filters, limits?)` is the input, refusing both
+cursors at once in the **schema**, so the refusal is published rather than
+left to a handler.
+
+**The two halves cannot drift.** `pagination.test-d.ts` pins that what
+`pageOf` parses to is a `Page`, and `pagination.spec.ts` closes the loop the
+type test cannot: every page `page()` builds parses against `pageOf`, where
+`readonly` no longer exists. That pair is the reason this shape is worth a
+package rather than a doc.
+
+**A cursor is an opaque `string`, not a branded type.** A brand was considered
+and declined: it would have to be minted by the schema to survive parsing, and
+zod's own brand or a `transform` degrades what `toJSONSchema` emits — trading
+the interop target for a guarantee the server already gives by refusing a
+cursor it cannot read. Offsets, page numbers and totals are not offered
+either; a cursor page is one opinion, and a second one is a second way.
+
+**No `MalformedCursor` here.** The framework norms the shape; each
+application keeps its own error vocabulary, which is thesis #3 at this tier.
+`examples/order-application` declares that error, and its listing's `Page`
+comes from here.
 
 ## Deferred, deliberately
 

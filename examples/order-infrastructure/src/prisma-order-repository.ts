@@ -1,5 +1,6 @@
+import { page } from "@btravstack/contract";
 import { Provider, type ServiceOf } from "@btravstack/di";
-import { MalformedCursor, OrderRepository, page } from "@btravstack/example-order-application";
+import { MalformedCursor, OrderRepository } from "@btravstack/example-order-application";
 import {
   DuplicateOrder,
   Order,

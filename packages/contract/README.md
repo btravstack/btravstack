@@ -1,10 +1,12 @@
 # @btravstack/contract
 
-> Contract-level markers shared by a client and the server that implements
-> it: declare **which security schemes** a procedure accepts and which scopes
-> each must grant, and nothing about who the caller is. Zero dependencies of
-> its own — a client can take a contract without the server, and any
-> transport's contract can use the same marker.
+> The contract tier: what a client and the server that implements it both
+> need, and no transport owns. Declare **which security schemes** a procedure
+> accepts and which scopes each must grant, and nothing about who the caller
+> is; and describe **one page of a listing** once, as the type a port speaks
+> and the schema a contract publishes. The root has zero dependencies — a
+> client can take a contract without the server, and any transport's contract
+> can use the same marker.
 
 📖 **[Documentation](https://btravstack.github.io/btravstack/reference/contract)** ·
 [API Reference](https://btravstack.github.io/btravstack/api/contract/)
@@ -13,10 +15,12 @@
 pnpm add @btravstack/contract
 ```
 
-Nothing to install beside it. **A package that ships a marked contract takes
-this one as a `peerDependency`** rather than an ordinary one — the marker is
-identity-based, so one copy per application is the point; see
-[Why a peer](#the-marker-is-a-weakmap-not-a-property) below. Node `>=22`.
+Nothing to install beside it, unless you use the page **schemas** under
+`@btravstack/contract/zod`, whose `zod` is an optional peer. **A package that
+ships a marked contract takes this one as a `peerDependency`** rather than an
+ordinary one — the marker is identity-based, so one copy per application is
+the point; see [Why a peer](#the-marker-is-a-weakmap-not-a-property) below.
+Node `>=22`.
 
 ## Usage
 
@@ -72,6 +76,38 @@ mismatched marker symbol, not an open route.
 
 `isAuthenticated(node)` reads back the `Requirements` a node was marked with,
 or `undefined` when nobody marked it.
+
+## Paging a listing
+
+One page, described once: the type a port speaks and the schema the contract
+publishes are the same shape, and a test pins that they cannot drift apart.
+
+<!-- doctest: prelude
+import { oc } from "@orpc/contract";
+import { z } from "zod";
+const orderView = z.object({ id: z.uuidv7(), quantity: z.number() });
+-->
+
+```ts
+import { pageOf, pageRequestOf } from "@btravstack/contract/zod";
+
+export const orders = oc.router({
+  list: oc
+    .input(pageRequestOf({ minQuantity: z.number().int().min(1).optional() }))
+    .output(pageOf(orderView)),
+});
+```
+
+A flag and its cursor are one fact. `hasNextPage: true` carries the
+`nextCursor` that continues the listing, and `hasNextPage: false` has no such
+field — so "there is more, and nothing to follow it with" is unrepresentable,
+and a client that checked the flag holds the cursor with no null to widen it.
+`after` and `before` are a union in the type and refused as a pair by the
+schema: a page runs in one direction.
+
+An adapter builds one with `page(items, { previous, next })`, which derives
+the flags, and a controller turns a validated input into the port's
+`PageRequest` with `pageRequest(input)`.
 
 ## License
 
