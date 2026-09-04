@@ -280,9 +280,23 @@ made structural. A procedure's output or the `ORPCError` its `Result` was
 mapped to is oRPC's; a defect inside a procedure is oRPC's own
 `INTERNAL_SERVER_ERROR` collapse; an unmatched path is the package's `404`.
 `Result` → HTTP status is the router's `.result()` triage — this package maps
-nothing. The drain retires busy keep-alive connections; a client's
-`x-request-id` becomes the unit's `traceId`. The rest is on the
+nothing. The drain retires busy keep-alive connections and resets open
+server-sent-event streams, so a client reconnects to a replica that is
+staying rather than being reported abandoned; a client's `x-request-id`
+becomes the unit's `traceId`. The rest is on the
 [documentation site](https://btravstack.github.io/btravstack/reference/http-server).
+
+## Streaming
+
+A procedure whose output is an `eventIterator` is served as
+`text/event-stream`, and `GET` is admitted for exactly those procedures — the
+one request a browser's `EventSource` can send — so a stream is reachable
+from a browser and from a typed oRPC client alike. A deploy resets an open
+stream at the start of the drain's third beat — after readiness has gone
+false and the pre-drain delay has been paid, so the reconnect lands on a
+replica that is staying — and the client resumes from `Last-Event-ID`. The
+recipe is
+[Stream with server-sent events](https://btravstack.github.io/btravstack/how-to/stream-with-server-sent-events).
 
 ## What it does not do
 

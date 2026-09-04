@@ -503,7 +503,14 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   its own **today** — but it is the answerer where the gap will bite first: a
   fragment's `POST` is form-urlencoded, exactly the request shape that skips a
   browser's CORS preflight, so the day a cookie authenticator lands, CSRF stops
-  being inert for both answerers at once.
+  being inert for both answerers at once. Admitting `GET` on an event-iterator
+  procedure gives the oRPC answerer its own preflight-free surface now too, so
+  both halves will need protecting — and only one of them can be protected by a
+  plugin. `GetMethodCsrfProtectionHandlerPlugin` rides `plugins` into
+  `RPCHandler`, so it covers oRPC alone; `HtmxOptions` is `{ prefix }` and
+  nothing else, so no oRPC plugin ever reaches a fragment and that half has to
+  be protected inside this package. Do not write that one plugins line covers
+  both — it cannot.
 
   **`securityHeaders` stays composition-time on purpose** — a deployment that
   can silently turn `x-frame-options` off is a footgun the other three are not.
@@ -583,10 +590,24 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   so the two contracts a runtime owes are structural here rather than left to
   a caller's care.
 - **Drain**: `stopAccepting` retires every open response — an unsent header
-  gets `Connection: close`, a sent one ends its socket on `'finish'` — and
-  `stop()` destroys what is still open. `closeIdleConnections()` alone would
-  miss a response with a request in flight; that is why retirement is tracked
-  per-response rather than left to it.
+  gets `Connection: close`, a sent `text/event-stream` response is
+  **destroyed** on the spot, any other sent one ends its socket on
+  `'finish'` — and `stop()` destroys what is still open.
+  `closeIdleConnections()` alone would miss a response with a request in
+  flight; that is why retirement is tracked per-response rather than left
+  to it. A stream is reset rather than ended cleanly because oRPC's client
+  reads a clean end as the iterator finishing and never reconnects, while
+  both it and a bare `EventSource` reconnect on a reset; the unit closes on
+  the response and counts `completed`. The check reads **queued** headers
+  (`getHeader`), so a future streaming answerer must set its `content-type`
+  through `setHeader` rather than `writeHead` alone, or it is invisible to
+  `isEventStream` and gets ended instead of reset. The position and its
+  survey are in the root `CLAUDE.md`, thesis #5.
+- **GET, for streams only**: the RPC handler's `allowMethods` admits `GET`
+  when the matched procedure declares an event-iterator output
+  (`getAsyncIteratorObjectSchemaDetails` on its `outputSchemas`) and keeps
+  oRPC's default set otherwise. A browser's `EventSource` can only GET;
+  nothing else a browser has reason to GET exists on an RPC surface.
 - **Not included, deliberately**: another ROUTER for oRPC's own answerer (there
   is no `handler` option on `http()`; a second protocol is a second answerer,
   not a swap of this one), a middleware

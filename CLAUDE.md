@@ -414,6 +414,22 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    Only a **signal** drains — `stop()` and an uncaught exception both go
    straight to `stopping`, leaving `ExitReport.drain` `undefined`.
 
+   **A long-lived stream is a unit, and the HTTP runtime resets it at beat
+   3's start** (issue #137). A server-sent-events response never finishes on
+   its own, so `@btravstack/http-server`'s retire step destroys a
+   `text/event-stream` response the moment `Serving.drain` is called — after
+   beat 2, when the ingress has stopped routing here — and the client
+   reconnects to a replica that is staying, carrying `Last-Event-ID`. The
+   unit closes on the response and is counted `completed`; `abandoned` keeps
+   meaning work that ignored the deadline. It is a **reset**, not a clean
+   end, by measurement: oRPC's client reads a clean end as the iterator
+   finishing and never reconnects, while both it and a bare `EventSource`
+   reconnect on a reset. Every ecosystem surveyed (Go, hyper, Spring, Node)
+   counts a stream as in flight and tells the application to close it at
+   shutdown by hand; graphql-ws is the one library that does it itself. This
+   ships that as a default, on beat 2's own argument, and it is transport
+   semantics inside the runtime's `drain` — the kernel stays three beats.
+
 6. **Every async API returns an `AsyncResult`, never a bare `Promise`.** Not
    only the fallible ones: `AsyncResult<T, never>` is this package's spelling of
    "async, and cannot fail", which is what `fromSafePromise` produces. The point

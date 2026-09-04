@@ -272,6 +272,13 @@ const listen = (
               response.setHeader("Connection", "close");
               return;
             }
+            // A stream never finishes on its own, and a clean `end()` is read by
+            // oRPC's client as the iterator completing — only a reset makes it
+            // and a bare `EventSource` reconnect.
+            if (isEventStream(response)) {
+              response.destroy();
+              return;
+            }
             // Headers already on the wire: no header left to change, so the socket
             // is ended once the response is out.
             const { socket } = response;
@@ -408,6 +415,9 @@ const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
   response.closed
     ? OkAsync()
     : fromSafePromise(new Promise<void>((done) => response.once("close", () => done())));
+
+const isEventStream = (response: ServerResponse): boolean =>
+  String(response.getHeader("content-type") ?? "").startsWith("text/event-stream");
 
 /**
  * `id` is minted fresh per request and never taken from the route, since
