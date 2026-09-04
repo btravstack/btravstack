@@ -258,6 +258,7 @@ supplies it:
 | `compression`     | pins `HTTP_COMPRESSION` — response compression, `true` for oRPC's defaults or its options record; oRPC-only            |
 | `plugins`         | any other oRPC handler plugin, forwarded to `RPCHandler`                                                               |
 | `securityHeaders` | response headers set on the raw listener, before dispatch (default on)                                                 |
+| `unit`            | `{ anonymous }` — the module both answerers fork around every request they handle                                      |
 
 `cors`, `bodyLimit` and `compression` **pin** a field of `HttpConfig` that is
 otherwise bound from the environment — explicit beats environment beats

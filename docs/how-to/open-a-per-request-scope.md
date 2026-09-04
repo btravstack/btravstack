@@ -143,8 +143,10 @@ settles.
 channel is `never`. A unit is already inside the running application, so a
 construction failure has no modeled startup channel to land in — **it rides
 the unit's defect path**, which every runtime already answers:
-`@btravstack/http-server` writes its `500` from the unit's `recoverDefect`,
-before any procedure is reached; a queue consumer dead-letters. Keep the unit
+`@btravstack/http-server` writes its `500` through the path each answerer
+already had for any other defect — oRPC's own `INTERNAL_SERVER_ERROR` collapse,
+`refuse(response, 500)` for htmx — before any procedure or fragment handler is
+reached; a queue consumer dead-letters. Keep the unit
 module's providers infallible — `sync`, `value`, `class`, or a `make`/`acquire`
 whose `E` is `never`.
 

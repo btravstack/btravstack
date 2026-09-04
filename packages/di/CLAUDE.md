@@ -116,6 +116,7 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   marker an object ending on the ports where `start`'s is a fixed sentence.
   The covariant `_needs` refusal is unchanged beside it — the gate is a
   message, not the check.
+
   **A fork may be seeded.** `forkScope(parent, module, use, { seed: [[Port, value]] })`
   supplies per-scope values from outside the module tree; the planner treats a
   seeded port as provided, the way it treats the parent's services, so a module
