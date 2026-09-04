@@ -1,6 +1,6 @@
 ---
 title: The Runtime contract
-description: Runtime, RuntimeHost, RunUnit, Serving, RuntimePort and RuntimeStartFailed, the unit-of-work types, currentUnit, Clock — and the three contracts a runtime owes that the kernel cannot check.
+description: Runtime, RuntimeHost, UnitHost, RunUnit, Serving, RuntimePort and RuntimeStartFailed, the unit-of-work types, currentUnit, Clock — and the three contracts a runtime owes that the kernel cannot check.
 ---
 
 <!-- doctest: prelude
@@ -15,25 +15,27 @@ import type { UnitMeta, UnitRecord, UnitWork } from "@btravstack/core";
 > [Write a runtime](/how-to/write-a-runtime); for why the kernel maps nothing,
 > see [The kernel maps nothing](/explanation/the-kernel-maps-nothing).
 
-## `Runtime<Resolves, Info>`
+## `Runtime<Resolves, Info, UnitNeeds>`
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-type Runtime<Resolves extends AnyPort = never, Info = never> = {
+type Runtime<Resolves extends AnyPort = never, Info = never, UnitNeeds = never> = {
   readonly name: string;
   readonly resolves: readonly Resolves[];
   readonly start: (
     host: RuntimeHost<Resolves>,
   ) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
+  readonly __unitNeeds?: (needs: UnitNeeds) => void;
 };
 ```
 
-| Member     | Semantics                                                                                                                                                                                                                                                                                                                             |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`     | Reported on the `serving` event.                                                                                                                                                                                                                                                                                                      |
-| `resolves` | The port **classes** the runtime resolves from `host.ctx`. `start`'s gate checks them against the module's exports at the call site. Every shipped starter declares `resolves: []` — what its handlers read is its provider's business, through di — so this is the general contract, used by `testRuntime` and hand-rolled runtimes. |
-| `start`    | Called once, after the graph is built. `Ok(serving)` moves the phase to `serving`; `Err(RuntimeStartFailed)` is a startup failure the kernel reports through `exited`.                                                                                                                                                                |
+| Member        | Semantics                                                                                                                                                                                                                                                                                                                             |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | Reported on the `serving` event.                                                                                                                                                                                                                                                                                                      |
+| `resolves`    | The port **classes** the runtime resolves from `host.ctx`. `start`'s gate checks them against the module's exports at the call site. Every shipped starter declares `resolves: []` — what its handlers read is its provider's business, through di — so this is the general contract, used by `testRuntime` and hand-rolled runtimes. |
+| `start`       | Called once, after the graph is built. `Ok(serving)` moves the phase to `serving`; `Err(RuntimeStartFailed)` is a startup failure the kernel reports through `exited`.                                                                                                                                                                |
+| `__unitNeeds` | A phantom, never read at run time: what a module the runtime binds through `UnitHost.fork` needs beyond what it seeds. `start`'s gate checks it against the module's exports the same way it checks `resolves` — `RuntimeUnitNeedsOf<X>` is the helper type that reads it back.                                                       |
 
 `Resolves` is parameterised by port **classes** (`AnyPort`) but hands out
 `Context<InstanceType<Resolves>>`, because di parameterises `Context<in R>` by
@@ -51,9 +53,34 @@ type RuntimeHost<Resolves extends AnyPort> = {
 };
 ```
 
-`ctx` is the **application** context — the module's exports, never a
-`StartOptions.unit` module's. `run` is the kernel's unit registry, closed over
-that context.
+`ctx` is the **application** context — the module's exports, never a port a
+`fork` module provides, which exists only in the `Context` `fork` hands back.
+`run` is the kernel's unit registry, closed over that context.
+
+## `UnitHost<Resolves>`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
+```ts
+type UnitHost<Resolves extends AnyPort> = {
+  readonly ctx: Context<InstanceType<Resolves>>;
+  readonly fork: <UnitX, N, Seeded extends AnyPort = never>(
+    module: Module<UnitX, never, N>,
+    seed: readonly SeedEntry<Seeded>[],
+  ) => AsyncResult<Context<InstanceType<Resolves> | UnitX | InstanceType<Seeded>>, never>;
+};
+```
+
+What a unit's work callback is handed instead of a bare `Context`: `ctx` is
+the same application context `RuntimeHost.ctx` is, and `fork(module, seed)` is
+the one way to open the unit's own scope — building `module` over `ctx` plus
+`seed` and handing the forked `Context` back. The kernel closes that scope
+when the unit settles: inside the registry's unit, so the unit is not counted
+closed until the fork's finalisers have run, and inside the unit's ambient
+record, so a teardown log line carries the unit's ids. A construction failure
+rides the unit's defect path — the caller's `fork(...)` call settles as a
+`Defect` rather than hanging. A unit forks once; a second `fork` call is a
+defect too.
 
 ## `RunUnit<Resolves>`
 
@@ -62,10 +89,7 @@ that context.
 ```ts
 type RunUnit<Resolves extends AnyPort> = <T, E>(
   meta: UnitMeta,
-  work: (
-    ctx: Context<InstanceType<Resolves>>,
-    signal: AbortSignal,
-  ) => ReturnType<UnitWork<T, E>>,
+  work: (unit: UnitHost<Resolves>, signal: AbortSignal) => ReturnType<UnitWork<T, E>>,
 ) => AsyncResult<T, E>;
 ```
 
@@ -75,9 +99,8 @@ deadline, or at once when the drain is skipped — the same object is on the
 record as `signal`, for a runtime whose work callback is a library's `next()`)
 and gives the work's own
 `Result` **straight back** — mapping that outcome to a transport is the
-runtime's job. With a `unit` module, `ctx` is the forked context
-(`Context<X | UnitX>`), built before `work` runs and torn down after it
-settles.
+runtime's job. A runtime that wants a per-unit scope calls `unit.fork(...)`
+itself, from inside `work`, at the moment it holds the unit's own input.
 
 ## `Serving<Info>`
 
@@ -279,12 +302,12 @@ None of these is checkable by the kernel, and each is silent when broken.
    `traceId` defaults to `id`, so passing a category (a route template) as the
    id gives every request the same trace id. A broker message id or job id is
    already unique; a route template is a `kind`.
-3. **`RuntimeHost.ctx` is the application context, and unit work is not
-   synchronous with `host.run`.** A unit-provided port reaches the runtime only
-   through `run`'s work callback, and with a `unit` module the callback runs
-   after an `await` — a runtime subscribing to an event from inside it must
-   check whether it already fired (`@btravstack/http-server` checks `response.closed`
-   for exactly this).
+3. **`RuntimeHost.ctx` is the application context, and a fork's own scope is
+   not synchronous with `host.run`.** A port a `fork` module provides reaches
+   the runtime only through the `Context` `fork` hands back, and the work
+   runs after an `await` once that module's own provider is async — a runtime
+   subscribing to an event from inside it must check whether it already fired
+   (`@btravstack/http-server` checks `response.closed` for exactly this).
 
 ## A minimal runtime
 
@@ -308,8 +331,8 @@ const ticker: Runtime<typeof Greeter> = {
       // Every piece of work goes through `host.run`: that is what makes it
       // count towards the drain, and what gives it an `AbortSignal`.
       void host
-        .run({ kind: "tick", id: `${Date.now()}` }, (ctx, signal) =>
-          signal.aborted ? Ok("") : Ok(ctx.get(Greeter).greet("world")),
+        .run({ kind: "tick", id: `${Date.now()}` }, (unit, signal) =>
+          signal.aborted ? Ok("") : Ok(unit.ctx.get(Greeter).greet("world")),
         )
         .tapFailure((failure) => {
           process.stderr.write(`${JSON.stringify({ tick: failure.tag })}\n`);

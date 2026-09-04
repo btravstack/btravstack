@@ -90,8 +90,8 @@ const ticker: Runtime<typeof Greeter> = {
       // and stays out of it. A timer has nowhere to return one, so it observes
       // it instead; dropping it would hide the work's `Err` *and* a `Defect`.
       void host
-        .run({ kind: "tick", id: `${Date.now()}` }, (ctx, signal) =>
-          signal.aborted ? Ok("") : Ok(ctx.get(Greeter).greet("world")),
+        .run({ kind: "tick", id: `${Date.now()}` }, (unit, signal) =>
+          signal.aborted ? Ok("") : Ok(unit.ctx.get(Greeter).greet("world")),
         )
         .tapFailure((failure) => {
           process.stderr.write(`${JSON.stringify({ tick: failure.tag })}\n`);
@@ -218,8 +218,8 @@ const serveOne = (
 ) =>
   // Flushed inside the work callback. Sending after `await host.run(...)`
   // returns is the race: the unit is already closed by then.
-  host.run(meta, async (ctx, signal) => {
-    const body = signal.aborted ? "" : ctx.get(Greeter).greet("world");
+  host.run(meta, async (unit, signal) => {
+    const body = signal.aborted ? "" : unit.ctx.get(Greeter).greet("world");
     await send(body);
     return Ok(body);
   });
@@ -251,16 +251,44 @@ const metaFor = (inboundTraceId: string | undefined): UnitMeta => ({
 });
 ```
 
-**3. `host.ctx` is the application context, and unit work is not synchronous
-with `host.run`.** Both follow from `StartOptions.unit`. A port the unit
-module provides exists only while a unit is open and reaches you through
-`run`'s work callback alone — resolve at `start` only what the application
-module itself exports. And with a unit module the work runs only once the fork
-is built, after an `await` when a unit provider is async: a runtime that
-subscribes to an event from inside its work (a response's `'close'`) must first
-check whether it already fired, or a client that hung up during a slow
-per-request acquire leaves the unit open for the process lifetime.
-`@btravstack/http-server` checks `response.closed` for exactly this.
+**3. `host.ctx` is the application context, and a fork's own scope is not
+synchronous with `host.run`.** A per-unit scope is the runtime's own to
+open — call `unit.fork(module, seed)` from inside `host.run`'s work callback,
+at the moment you hold the unit's own input (a request, a delivery):
+
+```ts
+class TickSpan extends Port("TickSpan")<{ readonly note: string }> {}
+
+const TickModule = Module("Tick")({
+  needs: [Greeter],
+  provides: [
+    Provider(TickSpan)({
+      inject: { greeter: Greeter },
+      sync: ({ greeter }) => ({ note: greeter.greet("span") }),
+    }),
+  ],
+  exports: [TickSpan],
+});
+
+const tickWithSpan = (host: RuntimeHost<typeof Greeter>) =>
+  host.run({ kind: "tick", id: `${Date.now()}` }, (unit, signal) =>
+    unit
+      .fork(TickModule, [])
+      .flatMap((forked) => (signal.aborted ? Ok("") : Ok(forked.get(TickSpan).note))),
+  );
+```
+
+`fork` builds `module` over `host.ctx` plus `seed` and hands back the forked
+`Context` — so a port `module` provides exists only inside `fork`'s own
+`Context`, never in `host.ctx` itself, and resolving one at runtime startup is
+a defect rather than something to reach for. The kernel closes that scope when
+the unit settles, after your work returns. It runs only once the fork is
+built — after an `await` when the module's own provider is async — so a
+runtime that subscribes to an event from inside its work (a response's
+`'close'`) must first check whether it already fired, or a client that hung up
+during a slow per-request acquire leaves the unit open for the process
+lifetime. `@btravstack/http-server` checks `response.closed` for exactly
+this.
 
 ## Ship it like a starter
 
