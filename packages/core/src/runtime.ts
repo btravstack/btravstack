@@ -58,7 +58,8 @@ export type RunUnit<Resolves extends AnyPort> = <T, E>(
  * inside the registry's unit, so the unit is not counted closed until its
  * finalisers have run, and inside the unit's ambient record, so a teardown
  * log line carries the unit's ids. A construction failure rides the unit's
- * defect path. A unit forks once; a second call is a defect.
+ * defect path. A unit forks once; a second call is a defect, and so is a call
+ * made after the unit has settled — nothing awaits that scope's teardown.
  */
 export type UnitHost<Resolves extends AnyPort> = {
   readonly ctx: Context<InstanceType<Resolves>>;
@@ -134,15 +135,9 @@ export type RuntimeInstance = InstanceType<PortClass<"Runtime">>;
 /** The `Runtime<Resolves, Info>` a module exports, or `never` when it exports none. */
 export type RuntimeOf<X> = ServiceOf<Extract<X, RuntimeInstance>>;
 
-// Structural, against `resolves`/`start` directly rather than
-// `RuntimeOf<X> extends Runtime<..., infer T>`: matching the ALIAS forces a
-// full structural comparison across every one of `Runtime`'s parameters at
-// once, which is what broke when `Runtime` briefly carried a third, optional
-// phantom parameter — the alias match stopped inferring even though
-// `RuntimeOf<X>` provably equalled the pattern (a `never`-Resolves runtime
-// like `testRuntime`'s inferred `Info` as `never` that way). `Runtime` is
-// back to two parameters, but reading one field at a time is still the
-// sturdier form against whatever `Runtime` grows next, so it stays.
+// Read field by field, not `RuntimeOf<X> extends Runtime<…>`: an alias match
+// compares every parameter at once and stops inferring `Info` for a
+// `never`-Resolves runtime.
 export type RuntimeResolvesOf<X> =
   RuntimeOf<X> extends { readonly resolves: readonly (infer Resolves extends AnyPort)[] }
     ? Resolves

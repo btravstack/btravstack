@@ -70,7 +70,8 @@ type RuntimeHost<Resolves extends AnyPort> = {
 type UnitHost<Resolves extends AnyPort> = {
   readonly ctx: Context<InstanceType<Resolves>>;
   readonly fork: <UnitX, N, Seeded extends AnyPort = never>(
-    module: Module<UnitX, never, N>,
+    module: Module<UnitX, never, N> &
+      DependencyGate<Exclude<N, InstanceType<Resolves> | InstanceType<Seeded> | Scope>>,
     seed: readonly SeedEntry<Seeded>[],
   ) => AsyncResult<Context<InstanceType<Resolves> | UnitX | InstanceType<Seeded>>, never>;
 };
@@ -85,7 +86,14 @@ closed until the fork's finalisers have run, and inside the unit's ambient
 record, so a teardown log line carries the unit's ids. A construction failure
 rides the unit's defect path — the caller's `fork(...)` call settles as a
 `Defect` rather than hanging. A unit forks once; a second `fork` call is a
-defect too.
+defect too, and so is one made after the unit has settled — nothing awaits
+that scope's teardown.
+
+The `DependencyGate` intersection is how a seed **subtracts** a need: what the
+module still owes (`N`) is checked after the ports the application context
+already resolves, the ports `seed` supplies, and `Scope` have been excluded, so
+a module needing only a seeded port compiles and one needing a port neither
+side supplies is refused at the `fork` call.
 
 ## `RunUnit<Resolves>`
 

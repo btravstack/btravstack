@@ -788,7 +788,12 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   path"_). A unit forks once: a second `fork` call sees `closing` already set
   and short-circuits into a rejected promise, `"a unit forks its scope
 once"` (_"reports a second fork in one unit as a defect"_) — two open
-  scopes per unit is the design this rejects, not an oversight. With no
+  scopes per unit is the design this rejects, not an oversight. A fork
+  issued **after** the unit has settled is a defect on its own separate
+  latch (`hasSettled`, set in the same `finally` that resolves `settled`),
+  `"a unit forks after it has already settled"`: nothing awaits such a
+  scope, so nothing would supervise its `onStop` (_"reports a fork issued
+  after the unit has already settled as a defect"_). With no
   runtime-side `fork` call at all, the work receives `{ ctx: runtimeCtx,
 fork }` and never opens a second scope, zero overhead beyond the `fork`
   closure itself.
