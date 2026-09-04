@@ -233,10 +233,10 @@ missing piece is the convention, not the rule.
 forked di `Context` itself into `AsyncLocalStorage`, so a handler anywhere can
 `get()` a request-scoped port. That is a service locator, and it deletes the
 one thing the container is for. The kernel's answer to per-request services is
-[`StartOptions.unit`](/how-to/open-a-per-request-scope): a module the kernel
-forks around every unit and hands to the unit's work as an ordinary `Context`,
-so a request-scoped provider reaches a handler through the argument list, not
-the store.
+[a bound `unit` module](/how-to/open-a-per-request-scope): a runtime forks it,
+through `UnitHost.fork`, around every unit it opens, and hands the forked
+`Context` to the unit's own work, so a request-scoped provider reaches a
+handler through the argument list, not the store.
 
 **A richer record.** A store that also carried the request, the user, the
 locale — every framework's `ctx` — was the first thing not to build. Each

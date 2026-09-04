@@ -114,7 +114,9 @@ which is the point: a starter with no sugar of its own is still a starter, and
 `Logger` is exported here only because the per-request module reads it.
 
 The kernel and both gates see nothing new — `OrderApi` is a `Module`, and
-`await runMain(OrderApi, { unit: RequestModule })` is the whole `main.ts`. The
+`await runMain(OrderApi)` is the whole `main.ts`, once `HttpModule`'s own
+`unit: { anonymous: RequestModule }` field has bound the per-request module.
+The
 plain starter (`http()`, `temporal({...})`, `amqp({...})`) stays
 exported as the primitive the sugar delegates to; the sugar is syntax over
 the same module, not a second way.

@@ -8,7 +8,7 @@ import { Tracer } from "@btravstack/core";
 import { TemporalActivities, TemporalModule, TemporalWorkflowActivities } from "@btravstack/temporal-worker";
 import { P } from "unthrown";
 import { observability } from "@btravstack/observability";
-import { otel } from "@btravstack/observability/otel";
+import { otel, UnitSpanModule } from "@btravstack/observability/otel";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { PaymentService } from "@btravstack/example-order-application";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
@@ -142,8 +142,9 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
     workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
   },
   imports: [FulfillmentSlice, BillingSlice, observability(), otel()],
-  // `UnitSpanModule`, passed as `StartOptions.unit` in `main.ts`, reads
-  // `Tracer` out of the application scope.
+  // The worker forks `UnitSpanModule` once per activity attempt, after it is
+  // invoked; its own need, `Tracer`, is satisfied by `otel()` above.
+  unit: { activity: UnitSpanModule },
   exports: [Tracer],
 });
 ```

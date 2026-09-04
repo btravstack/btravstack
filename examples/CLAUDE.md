@@ -327,8 +327,9 @@ AuditSlice, observability(), otel()], … })`),
   `orderRouter = api.OrpcRouter(contract)([ordersController,
 customersController])` and `orderFragments = api.HtmxFragments([orderRowFragment])`,
   each the composing array form — and
-  **`HttpModule("OrderApi")({ router: orderRouter, fragments: orderFragments, imports: [OrdersSlice,
-CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`** is the whole
+  **`HttpModule("OrderApi")({ router: orderRouter, fragments: orderFragments, unit: { anonymous:
+RequestModule }, imports: [OrdersSlice, CustomersSlice, observability(), otel()], exports: [Logger,
+Tracer, Meter] })`** is the whole
   composition root, a list of slices plus what no slice owns — the
   sugar imports `http()`, provides the router and the fragments provider on the
   starter's own ports and
@@ -347,21 +348,27 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   tenancy.
   `observability()` is what provides the `Logger` the interactors and the
   request scope write to, and `Logger` is in `exports` because `RequestModule`
-  reads it out of the application scope. `RequestModule` rides
-  `StartOptions.unit` so
-  the per-request fork is the kernel's. There is no `runtime`, `resolves`,
+  reads it out of the application scope once forked. `RequestModule` rides
+  `HttpModule`'s own `unit: { anonymous: RequestModule }` field, so the
+  per-request fork is the answerers' — each one opens it around the request it
+  is handling, not the kernel's, which forks nothing of its own any more.
+  There is no `runtime`, `resolves`,
   `handler`, `port` or env-reading to spell anywhere. Its `main.ts` passes
   `onEvent: kernelEvents(createLogger(jsonSink()))` so the kernel's nine events
   land in the application's own stream, with the logger built by hand because
   `building` is emitted while the graph still is — the kernel's stderr sink
   is a fine default and this is the upgrade, not the requirement. All three
-  `main.ts` files pass a unit module since the examples were instrumented
-  with the trio: `RequestModule` here (which imports `UnitSpanModule` and
+  composition roots bind a unit module on their own runtime options since the
+  examples were instrumented with the trio — `unit: { anonymous: RequestModule }`
+  here (which imports `UnitSpanModule` and
   records a request-duration histogram beside the finish line it logs), bare
-  `UnitSpanModule` on the two workers — so every unit, request or delivery
+  `unit: { message: UnitSpanModule }` / `unit: { activity: UnitSpanModule }` on
+  the two workers — so every unit, request or delivery
   or activity attempt, opens an OTel span carrying the same ids the logger
   stamps, and the roots compose `otel()` beside `observability()` and export
-  its ports for the fork to read. Each metric sits at an adapter seam, never
+  its ports for the fork to read. None of this rides `main.ts` any more — all
+  three are the one line `await runMain(<Root>)`, `OrderApi`'s own the sole
+  exception, for `onEvent`. Each metric sits at an adapter seam, never
   in the application layer: the request span's histogram, the outbox relay's
   per-tenant `relayed` counter, the billing stand-in's `authorized` counter. Each procedure is a plain
   `Result`-returning function typed by its slice's fragment (`@unthrown/orpc`'s

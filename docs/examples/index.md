@@ -123,9 +123,10 @@ two kinds of type test that keep the arrows pointing the right way.
 `api.OrpcRouter(contract)` — every procedure a plain
 `Result`-returning function and one exhaustive `mapErrCases` where a domain
 `Err` becomes a typed `ORPCError`; `HttpModule("OrderApi")` as the whole
-composition root; `RequestModule` forked per request through
-`StartOptions.unit`; a one-line `main.ts`; a spec booting the real module on
-`PORT=0`; and a `needs-gate.test-d.ts` pinning three compile-time gates.
+composition root; `RequestModule` forked per request through its own
+`unit: { anonymous }` option; a one-line `main.ts`; a spec booting the real
+module on `PORT=0`; and a `needs-gate.test-d.ts` pinning three compile-time
+gates.
 
 ### [Order Temporal worker](/examples/order-temporal-worker)
 

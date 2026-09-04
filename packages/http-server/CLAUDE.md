@@ -562,10 +562,11 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   parameter's `Module<X, E, Scope | Env>` half, ending on
   `Type '"OrpcRouter"' is not assignable to type '"@di/Scope"'`. Neither is
   di's `UNSATISFIED DEPENDENCIES` dependency gate.
-  `examples/order-api/src/needs-gate.test-d.ts` pins both — it still shows the
-  kernel-level `StartOptions.unit` gate the answerers-fork change (below)
-  retired, and is stale until the narrative-docs sweep updates it alongside
-  the pages that quote it. **`UNSATISFIED RUNTIME PORTS` is live for this
+  `examples/order-api/src/needs-gate.test-d.ts` pins both, plus a third —
+  `HttpModule`'s own `unit.anonymous` needs-propagation gate, the same shape
+  as the two workers' — now that the answerers-fork change (below) retired the
+  kernel-level `StartOptions.unit` gate it used to show instead.
+  **`UNSATISFIED RUNTIME PORTS` is live for this
   runtime again**: `HttpRuntime` resolves `HttpHandler`, so a root that does not
   export it is refused at `start` — `HttpModule` adds it to `exports` itself, and
   a hand-written root writes `exports: [HttpRuntime, HttpHandler]`.

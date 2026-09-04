@@ -155,9 +155,10 @@ kernel discharges itself; the kernel opens the
 application scope as it builds, hands the built context to the one runtime,
 and closes the scope on **every** path out — a signal, `stop()`, an uncaught
 exception, a runtime that stopped on its own — before `RunningApp.exited`
-settles. `StartOptions.unit` is `Module.forkScope` written for you: one fork
-per unit, opened as the unit opens and closed as it closes, so no handler ever
-calls `forkScope` itself. What a finaliser reports on the way down is not
+settles. A starter's own `unit` option is `Module.forkScope` written for the
+runtime: `unit.fork(module, seed)`, called from inside its work callback, one
+fork per unit, opened as the unit's work runs and closed once it settles, so
+no handler ever calls `forkScope` itself. What a finaliser reports on the way down is not
 swallowed into silence at that level: an application-scope failure becomes a
 `teardownError` event and an entry in `ExitReport.teardownErrors`, and
 `runMain` exits `2` over it; a unit-scope failure is the event alone, since a

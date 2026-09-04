@@ -96,7 +96,7 @@ both.
 A per-unit scope is not a `boot`/`StartOptions` concern any more: a runtime
 opens one itself, through `UnitHost.fork`, so there is nothing here for a
 fixture or a call to bind — see
-[The Runtime contract](/reference/core/runtime#unithostresolves).
+[The Runtime contract](/reference/core/runtime#unithost-resolves).
 
 **Teardown** runs per started application, in order: `stop()`,
 then `exited` is awaited and examined. A **`Defect`** is rethrown, so a

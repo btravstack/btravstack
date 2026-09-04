@@ -10,7 +10,7 @@ import { Config, Env } from "@btravstack/config";
 import { currentUnit, Logger, Meter, Tracer } from "@btravstack/core";
 import { Provider, type ServiceOf } from "@btravstack/di";
 import { observability } from "@btravstack/observability";
-import { otel } from "@btravstack/observability/otel";
+import { otel, UnitSpanModule } from "@btravstack/observability/otel";
 import { ErrAsync, OkAsync, TaggedError } from "unthrown";
 import { TenantId } from "@btravstack/example-order-domain";
 import {
@@ -275,8 +275,11 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     otel(),
   ],
   provides: [relayConfig, outboxRelay],
-  // `Tracer` beside `Logger`: `UnitSpanModule`, passed as `StartOptions.unit`
-  // in `main.ts`, reads it out of the application scope.
+  // The worker forks `UnitSpanModule` once per delivery, after the message is
+  // validated; its own need, `Tracer`, is satisfied by `otel()` above.
+  unit: { message: UnitSpanModule },
+  // `Tracer` beside `Logger`: `UnitSpanModule` reads it out of the
+  // application scope once forked.
   exports: [PlaceOrder, OrderRepository, Outbox, Logger, Tracer],
 });
 ```

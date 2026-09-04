@@ -43,8 +43,8 @@ happened. The recipe is one import.
    `unthrown`).
 2. Add `observability()` to the composition root's `imports`.
 3. Depend on `Logger` from any provider that writes lines.
-4. Export `Logger` if anything outside the root reads it — a
-   `StartOptions.unit` module, a test.
+4. Export `Logger` if anything outside the root reads it — a bound `unit`
+   module, a test.
 
 ```ts
 import { Module, Provider } from "@btravstack/di";
@@ -54,6 +54,7 @@ import { observability } from "@btravstack/observability";
 
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
+  unit: { anonymous: RequestModule },
   imports: [
     OrdersSlice,
     CustomersSlice,
@@ -61,7 +62,7 @@ export const OrderApi = HttpModule("OrderApi")({
     observability(),
     otel(),
   ],
-  // `RequestModule` reads all three out of the application scope.
+  // `RequestModule` reads all three out of the application scope once forked.
   exports: [Logger, Tracer, Meter],
 });
 ```
@@ -238,7 +239,6 @@ import {
 } from "@btravstack/observability";
 
 await runMain(OrderApi, {
-  unit: RequestModule,
   onEvent: kernelEvents(createLogger(jsonSink())),
 });
 ```

@@ -157,9 +157,10 @@ the next time a case is added (#192):
   ours silently collapses into another.
 
 `test-fixtures.ts` carries a `Recorder` (the sink a spec asserts on), a
-`Written` stream, `loggerAt(level)`, a `unitLogging` module for
-`StartOptions.unit` — the only code that genuinely runs **inside** the kernel's
-ambient record, since a test body does not — and a `tenantApp` whose
+`Written` stream, `loggerAt(level)`, a `unitLogging` module forked through
+`testRuntime`'s own `unit` option — the only code that genuinely runs
+**inside** the kernel's ambient record, since a test body does not — and a
+`tenantApp` whose
 hand-rolled runtime opens a unit with a `tenantId`, which no shipped runtime
 sets.
 
@@ -185,9 +186,11 @@ reason `Config` is a hand-rolled Standard Schema.
   a dying process and a lost flush becomes a `teardownError` and exit `2`
   rather than silence (pinned by `otel.spec.ts` with an hour-delayed batch
   processor: the span leaves only because release flushed it) — and
-  `UnitSpanModule`, a `StartOptions.unit` module opening a span per kernel
-  unit with the ambient record's `unitId`/`traceId`/`tenantId` as attributes,
-  ended by `onStop` on every path out. **No config slice, deliberately**: the
+  `UnitSpanModule`, a module a starter's own `unit` option binds — `unit: {
+message: UnitSpanModule }`, `unit: { activity: UnitSpanModule }` — opening a
+  span per unit the runtime forks it around, with the ambient record's
+  `unitId`/`traceId`/`tenantId` as attributes, ended by `onStop` on every path
+  out. **No config slice, deliberately**: the
   SDK reads the `OTEL_*` env conventions itself, and re-binding them through
   `Config` would be a second spelling of names operators already know. **One
   `otel()` per process**: the api's globals register once — the SDK's own

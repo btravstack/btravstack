@@ -76,7 +76,7 @@ refused to start, or the probe server could not bind.
 
 A per-unit scope is no longer a `start` option: a runtime opens one itself,
 through `UnitHost.fork`, from inside its `host.run` work callback — see
-[The Runtime contract](/reference/core/runtime#unithostresolves).
+[The Runtime contract](/reference/core/runtime#unithost-resolves).
 
 ## The gate: `StartGate<X, N>`
 

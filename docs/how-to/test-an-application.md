@@ -59,8 +59,10 @@ export const it = test.extend<{ boot: Boot }>({
 `probes: false`, `preDrainDelayMs: 0`, a silent `onEvent` — and **every
 application it starts is stopped when the test ends**, on every exit path.
 A call's own options win over the fixture's (`boot(module, { probes: { port:
-0 } })` binds an ephemeral probe port), and `unit` goes on the call, because a
-unit module is the composition's choice, not the fixture's:
+0 } })` binds an ephemeral probe port). There is no `unit` option to pass any
+more: a unit module rides the composition root's own `unit` field, so `boot`
+takes the real module unchanged and the fork is whichever runtime forks it —
+the fixture supplies nothing about it either way:
 
 **`src/api.spec.ts`**
 
@@ -73,7 +75,7 @@ import { it } from "./__tests__/test-fixtures.js";
 describe("order-api", () => {
   it("answers a real oRPC call on an ephemeral port", async ({ boot }) => {
     // GIVEN the real composition root, bound to a loopback port the OS picks
-    const app = boot(OrderApi, { unit: RequestModule });
+    const app = boot(OrderApi);
     const info = (await app.runtimeInfo()).get();
     const client = createOrderApiClient(
       `http://127.0.0.1:${info?.port}`,
@@ -377,16 +379,15 @@ export const it = test.extend<ApiFixtures>({
   }),
 
   serve: async ({ boot }, use) => {
-    await use((module, options) =>
-      boot(module, { unit: RequestModule, ...options }),
-    );
+    await use((module, options) => boot(module, options));
   },
   // …clientFor, probesFor, statusOf, api, unmodelled, gate, recording
 });
 ```
 
-`serve` is `boot` with `RequestModule` forked around every request, so its
-shutdown is still the fixture's; `clientFor` builds the oRPC client from
+`serve` has nothing to add over `boot` — `RequestModule` is forked by the
+answerers themselves, per `OrderApi`'s own `unit` option, not by anything a
+fixture supplies — so its shutdown is still the fixture's; `clientFor` builds the oRPC client from
 `runtimeInfo()` **and gives it credentials for this test's tenant**
 (`Bearer ${tenant}:u-1`), since the contract marks the `orders` fragment and an
 anonymous call to it never reaches a use case; and `recording` is the real

@@ -151,7 +151,7 @@ see [Peer dependencies](/explanation/peer-dependencies).
 | Probes             | `@nestjs/terminus`, on the app's HTTP routes | none                                   | a route you write        | the kernel's own server, from the state machine           |
 | Exit code          | not set                                      | non-zero on failure                    | `process.exit(0)`        | `runMain`'s table, via `process.exitCode`                 |
 | Transport          | built in (Express/Fastify adapters)          | `@effect/platform`                     | whatever you import      | a starter module providing a `Runtime` port               |
-| Per-request scope  | request-scoped providers bubble up the chain | `Layer` per request, by hand           | closures                 | `StartOptions.unit`, forked by the kernel                 |
+| Per-request scope  | request-scoped providers bubble up the chain | `Layer` per request, by hand           | closures                 | a bound `unit` module, forked by the runtime              |
 
 The row that matters most is the first: everything else the kernel does is
 only safe because nothing about the graph is left to find out at boot.

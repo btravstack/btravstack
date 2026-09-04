@@ -154,8 +154,10 @@ import { UnitSpanModule, otel } from "@btravstack/observability/otel";
 // Configuration is the OTEL_* environment conventions, read by the SDK itself.
 const AppImports = [observability(), otel()];
 
-// A span per kernel unit, correlated with the same ids the logger stamps:
-// runMain(App, { unit: UnitSpanModule })
+// A span per unit, correlated with the same ids the logger stamps — bound on
+// the starter's own `unit` option and forked by the runtime around each
+// request, delivery or activity attempt, e.g.
+// http({ unit: { anonymous: UnitSpanModule } })
 ```
 
 Inbound W3C `traceparent` feeds the unit's trace id in `@btravstack/http-server` and
