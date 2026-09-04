@@ -32,8 +32,10 @@ yarn add @btravstack/contract
 
 :::
 
-It is a tiny package — zero dependencies — because a **client** must be able
-to depend on a marked contract without pulling in any server code.
+It is a tiny package, and its root has zero dependencies, because a **client**
+must be able to depend on a marked contract without pulling in any server
+code. The page schemas under `@btravstack/contract/zod` are the one thing that
+asks for anything, and their `zod` is an optional peer.
 
 ## Step 2 — Mark a procedure
 
