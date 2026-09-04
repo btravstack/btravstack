@@ -1,5 +1,3 @@
-import { Env } from "@btravstack/config";
-import { start, Logger } from "@btravstack/core";
 /**
  * The compile-time half of the transport layer: `start` resolves its runtime
  * from the `HttpRuntime` port the composition root exports, and
@@ -13,12 +11,14 @@ import { start, Logger } from "@btravstack/core";
  * gate. Type-checked by
  * this package's `test:types` script, never executed.
  */
-import { Module } from "@btravstack/di";
-import { HttpRuntime, http } from "@btravstack/http-server";
+import { cache, memoryCache } from "@btravstack/cache";
+import { Env } from "@btravstack/config";
+import { start, Logger } from "@btravstack/core";
+import { Module, Port, Provider } from "@btravstack/di";
+import { HttpModule, HttpRuntime, http } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 
 import { OrderApi, orderRouter } from "./module.js";
-import { RequestModule } from "./request-scope.js";
 import { CustomersSlice } from "./slices/customers/module.js";
 import { OrdersSlice } from "./slices/orders/module.js";
 
@@ -61,21 +61,45 @@ const RouterlessApi = Module("RouterlessApi")({
 // @ts-expect-error — the composition needs the router port and nothing provides it.
 const _missingRouter = start(RouterlessApi, options);
 
-// Positive: a `unit` module rides the same gate — `RequestModule` needs
-// `Logger`, which the composition root exports, so the fork the kernel opens
-// per request is proven satisfiable here, at the call site.
-const _withUnit = start(OrderApi, { ...options, unit: RequestModule });
-
-// Negative, the OTHER direction: the unit module's own needs must be covered
-// by the module's exports (or `Scope`, which the fork opens). This composition
-// has its runtime and router but does not export `Logger`, so only the unit
-// half of the gate can be what rejects the call.
-const UnloggedApi = Module("UnloggedApi")({
-  needs: [Env],
-  imports: [OrdersSlice, CustomersSlice, observability(), http()],
-  provides: [orderRouter, ...orderRouter.authenticators],
-  exports: [HttpRuntime],
+// The `unit` needs-propagation gate: a bound `unit.anonymous` module's own
+// unmet needs join `HttpModule`'s own Needs channel (an import's own unmet
+// needs are not `HttpModule`'s OWN call to re-declare — di's `NeedsGate`
+// TSDoc), so the gate that refuses them is `start`'s ordinary
+// `UNSATISFIED DEPENDENCIES`, never a marker of the kernel's.
+//
+// A trivial dep/mark pair, deliberately unrelated to `RequestModule`: the
+// only need either call below can leak is this module's own.
+class HttpUnitDep extends Port("HttpUnitDep")<{ readonly value: number }> {}
+class HttpUnitMark extends Port("HttpUnitMark")<{ readonly at: number }> {}
+const HttpUnitModule = Module("HttpUnitModule")({
+  needs: [HttpUnitDep],
+  provides: [
+    Provider(HttpUnitMark)({
+      inject: { dep: HttpUnitDep },
+      sync: ({ dep }) => ({ at: dep.value }),
+    }),
+  ],
+  exports: [HttpUnitMark],
 });
 
-// @ts-expect-error — UNSATISFIED UNIT NEEDS: the module does not export Logger for RequestModule to read.
-const _unitUnmet = start(UnloggedApi, { ...options, unit: RequestModule });
+const _withUnitSatisfied = start(
+  HttpModule("WithUnitSatisfied")({
+    router: orderRouter,
+    unit: { anonymous: HttpUnitModule },
+    imports: [OrdersSlice, CustomersSlice, observability(), cache({ adapter: memoryCache() })],
+    provides: [Provider(HttpUnitDep)({ inject: {}, value: { value: 1 } })],
+    exports: [Logger],
+  }),
+  options,
+);
+void _withUnitSatisfied;
+
+const _unloggedUnit = HttpModule("WithUnitUnmet")({
+  router: orderRouter,
+  unit: { anonymous: HttpUnitModule },
+  imports: [OrdersSlice, CustomersSlice, observability(), cache({ adapter: memoryCache() })],
+  exports: [Logger],
+});
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides `HttpUnitDep`, which `HttpUnitModule` needs
+const _withUnitUnmet = start(_unloggedUnit, options);
+void _withUnitUnmet;
