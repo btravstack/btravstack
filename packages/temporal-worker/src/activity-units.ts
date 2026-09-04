@@ -42,7 +42,18 @@ export const activityUnits =
     });
     return host
       .run(metaFor(), (scope) =>
-        unit === undefined ? next() : scope.fork(unit as never, []).flatMap(() => next()),
+        unit === undefined
+          ? next()
+          : // `as never`: `AnyUnitModule` erases a module's Needs to `unknown` —
+            // the only bound a module with real needs can infer against — so
+            // `fork`'s own `DependencyGate` sees `Exclude<unknown, Scope>`,
+            // still `unknown`, and never clears on its own. The needs were
+            // already checked once, at the `Unit`-generic call site that bound
+            // this module (`temporal()`'s own type parameter, proven by
+            // `examples/order-temporal-worker/src/needs-gate.test-d.ts`'s
+            // positive/negative pair) — this reasserts that proof rather than
+            // bypassing it.
+            scope.fork(unit as never, []).flatMap(() => next()),
       )
       .tap(() => settle({ outcome: "ok" }))
       .tapFailure((failure) =>

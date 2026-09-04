@@ -1,4 +1,4 @@
-import { AmqpModule, AmqpRuntime, amqp } from "@btravstack/amqp-worker";
+import { AmqpHandlers, AmqpModule, AmqpRuntime, amqp } from "@btravstack/amqp-worker";
 /**
  * The compile-time half of the broadcast deployment: `start` resolves its
  * runtime from the `AmqpRuntime` port `@btravstack/amqp-worker`'s starter provides
@@ -28,11 +28,12 @@ import { AmqpModule, AmqpRuntime, amqp } from "@btravstack/amqp-worker";
  */
 import { Env } from "@btravstack/config";
 import { start, Logger } from "@btravstack/core";
-import { Module } from "@btravstack/di";
+import { Module, Port, Provider } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { observability } from "@btravstack/observability";
+import { OkAsync } from "unthrown";
 
 import { OrderAmqpWorker, orderHandlers } from "./module.js";
 import { AuditSlice } from "./slices/audit/module.js";
@@ -97,3 +98,52 @@ const LoggerlessAmqp = AmqpModule("LoggerlessAmqp")({
 
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides `Logger`.
 const _missingLogger = start(LoggerlessAmqp, options);
+
+// The `unit` needs-propagation gate: a bound `unit.message` module's own
+// unmet needs join `AmqpModule`'s own Needs channel (an import's own unmet
+// needs are not `AmqpModule`'s OWN call to re-declare — di's `NeedsGate`
+// TSDoc), so the gate that refuses them is `start`'s ordinary
+// `UNSATISFIED DEPENDENCIES`, never a marker of the kernel's.
+//
+// A trivial handlers provider, deliberately with no injected services of its
+// own: the only need either call below can leak is the unit module's.
+const unitGateHandlers = AmqpHandlers(orderContract)({
+  inject: {},
+  value: {
+    orderNotifications: () => OkAsync(undefined),
+    orderAudit: () => OkAsync(undefined),
+  },
+});
+
+class AmqpUnitDep extends Port("AmqpUnitDep")<{ readonly value: number }> {}
+class AmqpUnitMark extends Port("AmqpUnitMark")<{ readonly at: number }> {}
+const AmqpUnitModule = Module("AmqpUnitModule")({
+  needs: [AmqpUnitDep],
+  provides: [
+    Provider(AmqpUnitMark)({
+      inject: { dep: AmqpUnitDep },
+      sync: ({ dep }) => ({ at: dep.value }),
+    }),
+  ],
+  exports: [AmqpUnitMark],
+});
+
+const _withUnitSatisfied = start(
+  AmqpModule("WithUnitSatisfied")({
+    contract: orderContract,
+    handlers: unitGateHandlers,
+    unit: { message: AmqpUnitModule },
+    provides: [Provider(AmqpUnitDep)({ inject: {}, value: { value: 1 } })],
+  }),
+  options,
+);
+void _withUnitSatisfied;
+
+const _unloggedUnit = AmqpModule("WithUnitUnmet")({
+  contract: orderContract,
+  handlers: unitGateHandlers,
+  unit: { message: AmqpUnitModule },
+});
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides `AmqpUnitDep`, which `AmqpUnitModule` needs
+const _withUnitUnmet = start(_unloggedUnit, options);
+void _withUnitUnmet;

@@ -29,7 +29,7 @@ import { start, Logger } from "@btravstack/core";
  *
  * Type-checked by this package's `test:types` script, never executed.
  */
-import { Module } from "@btravstack/di";
+import { Module, Port, Provider } from "@btravstack/di";
 import {
   OrderApplicationModule,
   ShippingService,
@@ -39,7 +39,13 @@ import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
 import { Storage } from "@btravstack/storage";
-import { TemporalModule, TemporalRuntime, temporal } from "@btravstack/temporal-worker";
+import {
+  TemporalActivities,
+  TemporalModule,
+  TemporalRuntime,
+  temporal,
+} from "@btravstack/temporal-worker";
+import { OkAsync } from "unthrown";
 
 import { OrderTemporalWorker, orderActivities } from "./module.js";
 import { BillingSlice } from "./slices/billing/module.js";
@@ -132,3 +138,64 @@ const FulfillmentlessTemporal = TemporalModule("FulfillmentlessTemporal")({
 // now surfacing through a slice instead.
 // @ts-expect-error — UNMET NEED: `Logger | StockService | ShippingService` is not assignable to `Env | Scope`.
 const _missingFulfillment = start(FulfillmentlessTemporal, options);
+
+// The `unit` needs-propagation gate: a bound `unit.activity` module's own
+// unmet needs join `TemporalModule`'s own Needs channel (an import's own
+// unmet needs are not `TemporalModule`'s OWN call to re-declare — di's
+// `NeedsGate` TSDoc), so the gate that refuses them is `start`'s ordinary
+// `UNSATISFIED DEPENDENCIES`, never a marker of the kernel's.
+//
+// A trivial activities provider, deliberately with no injected services of
+// its own: the only need either call below can leak is the unit module's.
+const unitGateActivities = TemporalActivities(orderContract)({
+  inject: {},
+  value: {
+    fulfillOrder: {
+      place: () => OkAsync(null as never),
+      reserveStock: () => OkAsync(undefined),
+      arrangeShipping: () => OkAsync(undefined),
+      releaseStock: () => OkAsync(undefined),
+      cancelPlacement: () => OkAsync(undefined),
+    },
+    chargeOrder: {
+      authorizePayment: () => OkAsync(null as never),
+      capturePayment: () => OkAsync(undefined),
+      refundPayment: () => OkAsync(undefined),
+    },
+  },
+});
+
+class TemporalUnitDep extends Port("TemporalUnitDep")<{ readonly value: number }> {}
+class TemporalUnitMark extends Port("TemporalUnitMark")<{ readonly at: number }> {}
+const TemporalUnitModule = Module("TemporalUnitModule")({
+  needs: [TemporalUnitDep],
+  provides: [
+    Provider(TemporalUnitMark)({
+      inject: { dep: TemporalUnitDep },
+      sync: ({ dep }) => ({ at: dep.value }),
+    }),
+  ],
+  exports: [TemporalUnitMark],
+});
+
+const _withUnitSatisfied = start(
+  TemporalModule("WithUnitSatisfied")({
+    contract: orderContract,
+    activities: unitGateActivities,
+    workflows: { workflowsPath: "./workflows.js" },
+    unit: { activity: TemporalUnitModule },
+    provides: [Provider(TemporalUnitDep)({ inject: {}, value: { value: 1 } })],
+  }),
+  options,
+);
+void _withUnitSatisfied;
+
+const _unloggedUnit = TemporalModule("WithUnitUnmet")({
+  contract: orderContract,
+  activities: unitGateActivities,
+  workflows: { workflowsPath: "./workflows.js" },
+  unit: { activity: TemporalUnitModule },
+});
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides `TemporalUnitDep`, which `TemporalUnitModule` needs
+const _withUnitUnmet = start(_unloggedUnit, options);
+void _withUnitUnmet;
