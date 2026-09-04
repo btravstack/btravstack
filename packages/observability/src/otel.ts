@@ -170,9 +170,9 @@ export const otel = (
 export class UnitSpan extends Port("UnitSpan")<Span> {}
 
 /**
- * A span per kernel unit, as a `StartOptions.unit` module: the kernel forks it
- * per unit and tears it down inside the unit's ambient record, so the span opens
- * when the unit does and `onStop` ends it on every path out.
+ * A span per unit, as a module a starter's own `unit` option binds: the runtime
+ * forks it around every unit it opens, so the span opens when the fork is built
+ * and `onStop` ends it on every path out.
  *
  * The correlation is the ambient record's own, carried as attributes so a span
  * joins the same query the logger's lines answer. The remote PARENT is
@@ -180,7 +180,8 @@ export class UnitSpan extends Port("UnitSpan")<Span> {}
  * id alone, so this correlates by attribute rather than pretending to a W3C
  * parent-child edge it cannot prove.
  *
- * Compose it as `start`'s `unit`; the root must export `Tracer`.
+ * Bind it as a starter's `unit` module — `unit: { anonymous: UnitSpanModule }`,
+ * `unit: { message: … }`, `unit: { activity: … }`; the root must export `Tracer`.
  */
 export const UnitSpanModule = Module("UnitSpan")({
   needs: [Tracer],
