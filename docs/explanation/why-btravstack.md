@@ -107,9 +107,9 @@ The kernel is one piece of a stack with a stated goal: **you write business
 code, the framework owns the plumbing, and the type checker is what you
 trust**. A composition root that forgets its runtime is a compile error, not a
 boot-time crash. Configuration is a provider bound from the environment and
-validated once, not a string read at call time. A per-request scope is an
-option the kernel forks around every unit, not a `forkScope` call in every
-handler.
+validated once, not a string read at call time. A per-request scope is a
+starter's own bound `unit` option, forked by the runtime through
+`UnitHost.fork`, not a `forkScope` call in every handler.
 
 The model for the extensibility half is Spring Boot: an opinionated default
 for the standard case, configurable where a deployment differs, and a
