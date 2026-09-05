@@ -22,6 +22,12 @@ module's own unmet needs: they join the starter's ordinary `Needs` channel,
 exactly like an import's, and surface through `start`'s existing
 `UNSATISFIED DEPENDENCIES` diagnostic.
 
+`HttpAnswerer.handle` gains a fourth parameter, `host: UnitHost<never>` —
+appended rather than inserted, so an answerer that does not fork is unchanged.
+`testRuntime` is generic over the module bound on `unit`, and what that module
+needs joins `TestRuntime.module`'s own `Needs`, so a test composition that
+cannot satisfy it is refused at `start` rather than on the first `submit()`.
+
 `Module.forkScope` accepts a typed `seed` — entries seeded from outside the
 module tree are subtracted from the gate the same way the parent's own
 exports are — though no starter seeds anything yet; each forks with `[]`.
