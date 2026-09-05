@@ -78,6 +78,15 @@ one-property object, ending on the missing ports:
 to its `EventSink`; `stderrSink` writes one JSON line each. See
 [Kernel events](/reference/core/events).
 
+**kind** — Which unit module a runtime forks for one unit, and the key `unit` is a record
+of. `@btravstack/http-server` has one kind per authentication scheme plus
+`anonymous`, and forks the kind that authenticated the request — a scheme
+binding no module of its own falls back to `anonymous`; the two workers have
+exactly one each (`message`, `activity`). A kind's fork is **seeded** with what
+the unit was opened for — the principal, the delivery, the activity input — and
+a leaf reads that fork's services off `context.unit`. See
+[Open a per-request scope](/how-to/open-a-per-request-scope).
+
 **liveness / readiness** — The two probes the kernel serves itself. `/livez` is `200` in every phase
 before `exited`; `/readyz` is `200` only while `serving` and not forced
 unready, and once false never returns to true. See [Probes](/reference/core/probes).

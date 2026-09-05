@@ -49,7 +49,7 @@ declare const view: (order: Order) => OrderView;
 | Export                 | Kind  | What it is                                                                                                                                                                                                                                                                                                   |
 | ---------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `defineHttp`           | value | `defineHttp({ authenticators })`, or `defineHttp()` for a public API — **the one door**: it declares this deployment's security schemes and hands back `OrpcController`, `OrpcRouter` and `authenticators` typed by them                                                                                     |
-| `Http`                 | type  | `Http<A>` — what `defineHttp` returns, held as one binding and never destructured                                                                                                                                                                                                                            |
+| `Http`                 | type  | `Http<A, Units>` — what `defineHttp` returns, held as one binding and never destructured; `Units` is the record `auth.units<…>()` binds, empty until that second call                                                                                                                                        |
 | `Authenticators`       | type  | `Readonly<Record<string, Authenticator<…>>>` — the registry `defineHttp` takes, keyed by scheme name                                                                                                                                                                                                         |
 | `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                                                                                                 |
 | `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                            |
@@ -61,6 +61,10 @@ declare const view: (order: Order) => OrderView;
 | `Grant`                | type  | `Grant<P, Scope>` — the branded `{ identity, scopes }` `granted()` returns; unforgeable from outside the package                                                                                                                                                                                             |
 | `AuthenticatorService` | type  | `(headers: IncomingHttpHeaders) => AsyncResult<Granted<P, Scope>, Unauthenticated>` — headers in, credential out                                                                                                                                                                                             |
 | `authenticatorPort`    | value | `authenticatorPort(scheme)` — the di port whose id is `` `HttpAuthenticator:${scheme}` ``; a router declares one per scheme its contract names                                                                                                                                                               |
+| `principalPort`        | value | `principalPort(scheme)` — the di port whose id is `` `HttpPrincipal:${scheme}` ``, carrying that scheme's principal; a unit module names it in `needs` and the fork seeds it                                                                                                                                 |
+| `Principals`           | type  | `Principals<A>` — the scheme → principal-port map, what `auth.principals` is                                                                                                                                                                                                                                 |
+| `Kinds`                | type  | `Kinds<A>` — `"anonymous"` plus every declared scheme: every kind a unit may be opened under                                                                                                                                                                                                                 |
+| `UnitsOf`              | type  | `UnitsOf<A>` — `Partial<Record<Kinds<A>, Module>>`, the record `auth.units<…>()` takes                                                                                                                                                                                                                       |
 | `Unauthenticated`      | value | a `TaggedError` with an empty payload — the refusal itself; the starter surfaces no reason to the client                                                                                                                                                                                                     |
 | `UnderScoped`          | value | `TaggedError("UnderScoped")` — a valid credential missing a declared scope, answered `403`                                                                                                                                                                                                                   |
 | `resolvePrincipal`     | value | the protocol-neutral authentication walk, shared by every answerer                                                                                                                                                                                                                                           |
@@ -80,7 +84,7 @@ declare const view: (order: Order) => OrderView;
 | `Html`                 | type  | `{ readonly [HTML]: true; readonly value: string }` — the output of `html`/`raw`, and nothing else                                                                                                                                                                                                           |
 | `ParamsOf`             | type  | `ParamsOf<Path>` — the `:name` segments a path template names, e.g. `ParamsOf<"/orders/:id/row">` is `{ readonly id: string }`                                                                                                                                                                               |
 | `HtmxFragmentsPort`    | value | `class HtmxFragmentsPort extends Port("HtmxFragments")<{ routes; authenticators }> {}` — every route composed into one port; what `htmx()` answers from                                                                                                                                                      |
-| `FragmentAnswer`       | type  | what the composed port carries for one route — principal and input erased to `unknown`                                                                                                                                                                                                                       |
+| `FragmentAnswer`       | type  | what the composed port carries for one route — its declared `unit` record, and a `handle` taking the whole `{ principal, unit }` context, both erased to `unknown`                                                                                                                                           |
 | `htmx`                 | value | `htmx({ prefix? })` — the second answerer, one `HttpHandler` member serving fragments, mounted under `prefix` (default `/`)                                                                                                                                                                                  |
 | `HtmxOptions`          | type  | `htmx()`'s options                                                                                                                                                                                                                                                                                           |
 
@@ -120,23 +124,23 @@ provide is deduplicated by reference before it reaches `provides`. It prepends
 di's own `Module(name)`, whose return type is the sugar's. The kernel and both
 gates see a plain module.
 
-| Option            | Required | Default                      | What it is                                                                                                                                                                              |
-| ----------------- | -------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `router`          | no\*     | —                            | the application's router **provider** — a `Provider<OrpcRouterPort, E, N>`, what `api.OrpcRouter(contract)({ inject, ...arm })` returns; a provider on any other port fails at the call |
-| `fragments`       | no\*     | —                            | the application's fragments **provider** — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces; likewise typed to its own port                         |
-| `prefix`          | no       | `/rpc`                       | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                             |
-| `fragmentsPrefix` | no       | `/`                          | where htmx fragments are mounted — `htmx()`'s own default, a separate field because one cannot carry two mount points with two different defaults                                       |
-| `port`            | no       | read from `PORT`             | pins the port instead of reading it                                                                                                                                                     |
-| `hostname`        | no       | read from `HOST`             | pins the host instead of reading it                                                                                                                                                     |
-| `cors`            | no       | read from `HTTP_CORS_ORIGIN` | pins the CORS policy — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                          |
-| `bodyLimit`       | no       | read from `HTTP_BODY_LIMIT`  | pins the largest request body a procedure or a fragment POST reads, in bytes; `false` is unbounded                                                                                      |
-| `compression`     | no       | read from `HTTP_COMPRESSION` | pins response compression — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                     |
-| `plugins`         | no       | `[]`                         | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                                                                                |
-| `securityHeaders` | no       | `true`                       | response headers set on the raw listener, before dispatch — covers both answerers                                                                                                       |
-| `unit`            | no       | none                         | `{ anonymous?: Module }` — the module each answerer forks around a request it handles; see [The unit](#the-unit)                                                                        |
-| `imports`         | no       | `[]`                         | the application's modules                                                                                                                                                               |
-| `provides`        | no       | `[]`                         | the application's own providers                                                                                                                                                         |
-| `exports`         | no       | `[]`                         | the application's own exports; `HttpRuntime` and `HttpHandler` are added                                                                                                                |
+| Option            | Required | Default                      | What it is                                                                                                                                                                                      |
+| ----------------- | -------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `router`          | no\*     | —                            | the application's router **provider** — a `Provider<OrpcRouterPort, E, N>`, what `api.OrpcRouter(contract)({ inject, ...arm })` returns; a provider on any other port fails at the call         |
+| `fragments`       | no\*     | —                            | the application's fragments **provider** — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces; likewise typed to its own port                                 |
+| `prefix`          | no       | `/rpc`                       | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                                     |
+| `fragmentsPrefix` | no       | `/`                          | where htmx fragments are mounted — `htmx()`'s own default, a separate field because one cannot carry two mount points with two different defaults                                               |
+| `port`            | no       | read from `PORT`             | pins the port instead of reading it                                                                                                                                                             |
+| `hostname`        | no       | read from `HOST`             | pins the host instead of reading it                                                                                                                                                             |
+| `cors`            | no       | read from `HTTP_CORS_ORIGIN` | pins the CORS policy — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                                  |
+| `bodyLimit`       | no       | read from `HTTP_BODY_LIMIT`  | pins the largest request body a procedure or a fragment POST reads, in bytes; `false` is unbounded                                                                                              |
+| `compression`     | no       | read from `HTTP_COMPRESSION` | pins response compression — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                             |
+| `plugins`         | no       | `[]`                         | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                                                                                        |
+| `securityHeaders` | no       | `true`                       | response headers set on the raw listener, before dispatch — covers both answerers                                                                                                               |
+| `unit`            | no       | none                         | kind → module — the module each answerer forks around a request it handles, chosen by the kind that authenticated it; **gated** against the kinds this root can open. See [The unit](#the-unit) |
+| `imports`         | no       | `[]`                         | the application's modules                                                                                                                                                                       |
+| `provides`        | no       | `[]`                         | the application's own providers                                                                                                                                                                 |
+| `exports`         | no       | `[]`                         | the application's own exports; `HttpRuntime` and `HttpHandler` are added                                                                                                                        |
 
 \* at least one of `router`/`fragments` is required.
 
@@ -464,11 +468,15 @@ const OrpcController: <
 >(
   contract: C,
   path: K,
-) => <const D extends Readonly<Record<string, AnyPort>>>(options: {
+) => <
+  const D extends Readonly<Record<string, AnyPort>>,
+  const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+>(options: {
   readonly inject: D;
+  readonly unit?: U;
   readonly sync: (services: {
     readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
-  }) => Implementation<FragmentAt<C, K>, Schemes>;
+  }) => Implementation<FragmentAt<C, K>, Schemes, never, Units, U>;
 }) => Provider<
   PortInstance<
     `OrpcController:${K}`,
@@ -481,6 +489,7 @@ const OrpcController: <
     `OrpcController:${K}`,
     Implementation<FragmentAt<C, K>, Schemes>
   >;
+  readonly unit: U;
 };
 ```
 
@@ -824,8 +833,10 @@ setting, or its rendered output drifts the moment a formatter runs.
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-type RouteHandler<Path extends string, Input, Principal> = (
-  context: [Principal] extends [never] ? object : { readonly principal: Principal },
+type RouteHandler<Path extends string, Input, Principal, Units, U> = (
+  context: ([Principal] extends [never] ? object : { readonly principal: Principal }) & {
+    readonly unit: UnitFor<U, Units, KindOf<R>>;
+  },
   params: ParamsOf<Path>,
   input: Input, // GET: Readonly<Record<string, string>>, `{}` at runtime; POST: the schema's output, or the raw decoded form when `options.input` is omitted
 ) => AsyncResult<Html, never>;
@@ -874,6 +885,12 @@ same `401`/`403` path and the same `Principal<S, Schemes>` typing on
 authenticator never grants fails the compile ending on
 `"UNGRANTABLE SCOPE — its scheme's authenticator cannot grant it"`, naming
 the scope.
+
+Both mint factories also take an optional `unit: { name: Port }` beside
+`inject`, exactly as
+[`api.OrpcController`](#api-orpccontroller-contract-path) does, and the handler
+reads it as `context.unit.name` — typed by the kind this route's own `requires`
+selects. See [What a leaf reads off the fork](#what-a-leaf-reads-off-the-fork).
 
 Only `HtmxPost`'s `options` carry an `input` field — `HtmxGet`'s options type
 has none, so passing one is a compile error naming the unknown property
@@ -933,14 +950,15 @@ hand. `HttpOptions`:
 | `compression`     | no       | `HTTP_COMPRESSION` | `boolean \| ResponseCompressionHandlerPluginOptions`            |
 | `plugins`         | no       | `[]`               | `NodeHttpHandlerPlugin[]`, forwarded to oRPC's own `RPCHandler` |
 | `securityHeaders` | no       | `true`             | `boolean \| Record<string, string>`, applied on the listener    |
-| `unit`            | no       | none               | `{ anonymous?: Module }` — see [The unit](#the-unit)            |
+| `unit`            | no       | none               | kind → module, **un-gated** here — see [The unit](#the-unit)    |
 
 The module **provides** `HttpRuntime`, `HttpConfig` and `HttpUnit`, exports
 `HttpRuntime` and `HttpConfig`, and **needs** `Env` (the kernel discharges it),
 the starter's router port
 (`OrpcRouterPort`, the port `api.OrpcRouter(contract)({ inject, ...arm })` provides on) and,
-when `unit.anonymous` is bound, that module's own unmet needs (`Scope`
-excluded, since nothing can provide it) —
+for every kind `unit` binds, that module's own unmet needs — `Scope` excluded,
+since nothing can provide it, and the scheme's own principal port excluded too,
+since the fork seeds it —
 the runtime provider depends on the router through di, which is why a
 composition that imports `http()` without providing the router carries an
 unmet need `start` refuses (di's gate, not the kernel's). The router is not an
@@ -1083,8 +1101,10 @@ The second answerer: fragments, mounted under `prefix` (default `/`). It
 matches a request against the composed fragments' routes by method and path,
 resolves the principal through [`resolvePrincipal`](#authentication) when the
 route carries a requirement, reads and validates a `POST` body against the
-route's own schema, forks `unit.anonymous` once all of that has succeeded and
-immediately before the handler runs, and writes the handler's `Html` with
+route's own schema, forks the unit module of the **kind** that authenticated
+the request — `anonymous` for a route with no `requires`, and `anonymous`
+again for a scheme that binds no module of its own — once all of that has
+succeeded and immediately before the handler runs, and writes the handler's `Html` with
 `content-type: text/html; charset=utf-8`. A request no route claims resolves
 unwritten, exactly like oRPC's answerer, so the runtime's own `404` answers
 it — and never forks, since the fork is the answerer's, for a request it
@@ -1271,15 +1291,16 @@ and would otherwise win over the minted id.
 <!-- doctest: skip — a bare property signature, not a program -->
 
 ```ts
-readonly unit?: { readonly anonymous?: AnyUnitModule };
+readonly unit?: Readonly<Record<string, AnyUnitModule>>;
 ```
 
-`http()`, `httpServer()` and `HttpModule` all take a `unit` option: the module
-the **answerers** fork around every request they handle, with no seed. Built
-as the answerer takes the request, torn down when the unit closes, after the
-response is flushed — the module's own unmet needs join the composition
-root's, exactly as any other `needs` does, since it is forked over the
-application context.
+`http()`, `httpServer()` and `HttpModule` all take a `unit` option: a record of
+**kind → module**, where a kind is `anonymous` — a request no leaf asked to
+authenticate — or the **scheme** that resolved the caller. The answerers fork
+the module of the kind a request opened under. Built as the answerer takes the
+request, torn down when the unit closes, after the response is flushed — every
+bound module's own unmet needs join the composition root's, exactly as any
+other `needs` does, since it is forked over the application context.
 
 `AnyUnitModule` is `Module<never, never, unknown>` — not exported from the
 package, reached the same way `OrpcRouterPort` is, never by name. `never`,
@@ -1290,8 +1311,8 @@ module with real needs infer against the bound at all — the same shape
 `@btravstack/testing`'s `TestRuntimeOptions.unit` uses.
 
 `orpc()` installs the fork as a middleware — `unitScope` — on every leaf, after
-the principal middleware where a leaf carries one, so a later phase can seed it
-with what the principal resolved to — `principalMiddleware` refuses without
+the principal middleware where a leaf carries one, which is how the resolved
+scheme reaches it — `principalMiddleware` refuses without
 calling `next()`, so `unitScope`, nested inside it, never runs for a refused
 caller. `htmx()` forks at the same point in the request's life: after
 authentication succeeds and the body validates, immediately before the
@@ -1299,6 +1320,143 @@ handler — never for a request either answerer refuses. **The runtime's own
 `404` never forks**: only an answerer that claims a request does, which is the
 behaviour change from the kernel forking a `StartOptions.unit` module around
 every unit — that option is gone, and the fork is now each answerer's own.
+
+**A scheme that binds no module of its own falls back to `anonymous`**, and
+nothing is forked only when neither binds one. A scheme's module is how one
+kind is **specialised**, not how the others are switched off: binding
+`{ anonymous }` alone keeps forking on every leaf, exactly as it did before
+kinds existed. The alternative — an unbound kind forks nothing — would make
+every existing `unit: { anonymous }` application silently lose its request
+scope on precisely its **authenticated** procedures, with no diagnostic
+anywhere.
+
+The fork is **seeded** with the principal, on `auth.principals[scheme]`,
+whenever a scheme resolved — whichever module ends up forked, so the anonymous
+fallback carries the seed too and an unread entry is the whole cost. A request
+no leaf authenticated is seeded with nothing, since there is no caller to name.
+
+### The kinds, and what a kind binds
+
+A unit module may inject the caller its unit was opened for, so `defineHttp`
+mints one **principal port** per declared scheme, and a second call binds a
+module per kind:
+
+<!-- doctest: isolate
+import { defineHttp } from "@btravstack/http-server";
+import { Module, Port, Provider } from "@btravstack/di";
+import { TenantId } from "@btravstack/example-order-domain";
+import { userAuth } from "../../auth.js";
+declare const Anonymous: Module<never, never, never>;
+-->
+
+```ts
+export const auth = defineHttp({ authenticators: { user: userAuth } });
+
+export class Tenant extends Port("Tenant")<TenantId> {}
+
+// `auth.principals.user` carries `userAuth`'s own principal type.
+export const User = Module("User")({
+  needs: [auth.principals.user],
+  provides: [
+    Provider(Tenant)({
+      inject: { principal: auth.principals.user },
+      sync: ({ principal }) => principal.tenantId,
+    }),
+  ],
+  exports: [Tenant],
+});
+
+export const api = auth.units<{ anonymous: typeof Anonymous; user: typeof User }>();
+```
+
+`principals` is a port per scheme, typed by the principal that scheme's
+authenticator declared. It is a **port**, not a value: a unit module names it
+in `needs` and injects it, and the seed lands on it once per unit — so a module
+naming it owes the composition root nothing for it, while everything else it
+needs still surfaces at `start`'s `UNSATISFIED DEPENDENCIES`.
+
+**`units<…>()` is a second call, and that is the whole design.** A unit module
+names `auth.principals.<scheme>`, so its type depends on `typeof auth`; if
+`auth` in turn depended on the modules the kinds bind, the two would be
+mutually recursive and TypeScript reports **TS7022** — `auth` implicitly `any`
+because it references itself. Splitting the call breaks the loop: `typeof auth`
+depends on the authenticators alone, and `units` hands back the **same object**
+under a narrower type. Nothing is rebuilt, and the factories on `api` are the
+ones `defineHttp` already built.
+
+A key the authenticators never declared is refused at `units<…>()` itself,
+against the authenticator **registry** — the constraint requires `never` for
+every key outside `"anonymous" | keyof A`, which no real module satisfies, and
+the diagnostic names that key. With `units<…>()` never called, `Units` is the
+empty record and everything below degrades to the pre-kinds behaviour.
+
+### What a leaf reads off the fork
+
+A piece — or a fragment route — declares the unit-scoped ports its leaves may
+read **once**, beside `inject`, and every leaf reads them off `context.unit`:
+
+<!-- doctest: skip — an excerpt over an `api` whose kinds are declared elsewhere; the `units<…>()` call it depends on is the fence above -->
+
+```ts
+api.OrpcController(contract, "orders")({
+  inject: { place: PlaceOrder },
+  unit: { tenant: Tenant },
+  sync: ({ place }) => ({
+    place: ({ context, input }) =>
+      place.execute(context.unit.tenant, input.id, input.quantity),
+  }),
+});
+```
+
+The declared record is **filtered per leaf** by the kind that leaf's own
+requirements select — `anonymous` for a leaf nothing marks, else the schemes
+its mark names, read off `requires` for a fragment route. A name the kind's
+module does not export is not a property at all, so reading it is TypeScript's
+own `Property 'tenant' does not exist`, at the line that reads it rather than
+at the mint. A leaf accepting **several** schemes keeps only what every one of
+their modules exports, because the runtime forks exactly one of them and cannot
+know which in advance; the `anonymous` fallback is applied per scheme here too,
+so the type side and the runtime cannot part.
+
+Entries are **lazy getters** over the forked context, neither writable nor
+configurable: a name `UnitFor` hid costs nothing, where eager resolution would
+defect on a port no leaf of that kind could have named.
+
+The port a piece is minted on keeps a **unit-free** service type, which is what
+lets two pieces declaring different records compose under one contract and
+keeps the lifted-fragment property intact. The cost is that a lifted
+single-slice root injects that port, so a piece that declared `unit:` receives
+`{}` once lifted — **a lifted root must restate `unit:` on the router arm**.
+
+### The gate on the kinds a root binds
+
+The `anonymous` fallback makes a typo silent: `unit: { usre: M }` would fork
+`anonymous` on every request and diagnose nothing. So `HttpModule` **gates**
+what a root binds, in two cases:
+
+| The router                        | Bindable kinds                                    | Each value must be                 |
+| --------------------------------- | ------------------------------------------------- | ---------------------------------- |
+| comes from `auth.units<…>()`      | exactly the kinds that call declared              | the module type that kind declared |
+| comes from a plain `defineHttp()` | `anonymous` plus every scheme the answerers serve | any unit module                    |
+
+An undeclared kind is refused against an
+`"UNDECLARED UNIT KIND — no request opens under it, so it would silently fall back to anonymous"`
+marker, rather than by excess-property checking — which cannot see one, since
+the record's type is inferred **from** the value. A declared kind bound to the
+wrong module is ordinary assignability, and the diagnostic naming the kind and
+both modules is better than any marker.
+
+The second case's set comes from the answerers' own needs channel — a router
+already owes one authenticator port per scheme its contract marks, and a
+fragments provider one per scheme its routes require — so no second phantom is
+needed. It is also where a **fragments-only** root lands even under a
+`units<…>()` api: the kinds ride the **router**'s phantom, and the fragments
+provider carries none.
+
+**`http()` and `httpServer()` are un-gated**, and structurally so: they take
+the router as a **need**, never as a value, so there is nothing to check
+against. Their `unit` keeps the wide record. A hand-rolled composition that
+wants the gate composes through `HttpModule`.
 
 ## The drain
 

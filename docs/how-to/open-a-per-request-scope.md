@@ -1,6 +1,6 @@
 ---
 title: Open a per-request scope
-description: Bind a module on the runtime's own unit option and let it fork the module around every unit it opens — built as the request opens, torn down as it closes, with no handler code managing the fork.
+description: Bind a module per unit KIND on the runtime's own unit option and let it fork the one that authenticated the request — built as the request opens, torn down as it closes, seeded with the caller, with no handler code managing the fork.
 ---
 
 <!-- doctest: prelude
@@ -24,17 +24,23 @@ option is that: the runtime forks the bound module itself, through
 `UnitHost.fork`, at the moment it holds the unit's own input — and no handler
 code ever calls `Module.forkScope` itself.
 
+`unit` is keyed by **kind**. HTTP has one kind per authentication scheme plus
+`anonymous`, and forks the kind that authenticated the request; the two workers
+have exactly one kind each (`message`, `activity`), because a delivery is a
+delivery.
+
 ## Recipe
 
 1. Write a `Module` whose providers are the per-unit services. Anything
    application-scoped they need arrives through their `inject` record.
-2. Bind it on the starter's own `unit` option — `HttpModule`'s
+2. Bind it under its kind on the starter's own `unit` option — `HttpModule`'s
    `unit: { anonymous }`, `AmqpModule`'s `unit: { message }`,
    `TemporalModule`'s `unit: { activity }` — or `@btravstack/testing`'s
    `testRuntime(name, { unit })`.
 3. Export from the composition root whatever the unit module reads — the
    gate checks it at the call site, the same `UNSATISFIED DEPENDENCIES` one
-   any other unmet need is refused on.
+   any other unmet need is refused on. What the fork **seeds** is the one
+   exception: it is subtracted from what the module owes.
 
 ## Step 1 — the unit module
 
@@ -122,6 +128,118 @@ dispatch — not `host.run`, which stays the kernel's alone, counting the unit
 towards the drain and closing the fork's scope once the unit's `Result`
 settles.
 
+Binding `anonymous` alone keeps forking on **every** leaf, authenticated or
+not: a scheme that binds no module of its own falls back to `anonymous`. That
+is what the next step specialises.
+
+## Step 3 — a module per kind, and the caller it is seeded with
+
+A unit module may inject the caller its unit was opened for. `defineHttp` mints
+one **principal port** per declared scheme, on `auth.principals`, and a second
+call binds the module each kind forks:
+
+<!-- doctest: isolate
+import { contract } from "@btravstack/example-order-api-contract";
+import { FindOrder } from "@btravstack/example-order-application";
+import { TenantId } from "@btravstack/example-order-domain";
+import { Module, Port, Provider } from "@btravstack/di";
+import { defineHttp } from "@btravstack/http-server";
+import { P } from "unthrown";
+import { userAuth } from "../../auth.js";
+import { RequestModule } from "../../request-scope.js";
+-->
+
+```ts
+export const auth = defineHttp({ authenticators: { user: userAuth } });
+
+export class Tenant extends Port("Tenant")<TenantId> {}
+
+// The `user` kind. `auth.principals.user` carries `userAuth`'s own principal
+// type, and the fork seeds it — so this module owes the composition root
+// nothing for it.
+const UserUnit = Module("UserUnit")({
+  needs: [auth.principals.user],
+  provides: [
+    Provider(Tenant)({
+      inject: { principal: auth.principals.user },
+      sync: ({ principal }) => principal.tenantId,
+    }),
+  ],
+  exports: [Tenant],
+});
+
+export const api = auth.units<{
+  anonymous: typeof RequestModule;
+  user: typeof UserUnit;
+}>();
+
+// A leaf declares what it reads ONCE, beside `inject`, and reads it off
+// `context.unit`. `orders.find` is marked `user`, so this leaf sees `UserUnit`'s
+// exports; an unmarked one would see `RequestModule`'s.
+export const findOrder = api.OrpcController(
+  contract,
+  "orders.find",
+)({
+  inject: { find: FindOrder },
+  unit: { tenant: Tenant },
+  sync:
+    ({ find }) =>
+    ({ errors, context }, input) =>
+      find
+        .execute(context.unit.tenant, input.id)
+        .map((order) => ({ id: order.id, quantity: order.quantity }))
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("OrderNotFound"), (error) =>
+            errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
+          ),
+        ),
+});
+```
+
+**The kinds arrive on a second call for a reason a single call cannot have.** A
+unit module names `auth.principals.<scheme>`, so its type depends on
+`typeof auth`; if `auth` also depended on the modules the kinds bind, the two
+would be mutually recursive and TypeScript reports `TS7022`. `auth.units<U>()`
+hands back the **same object** under a narrower type — nothing is rebuilt.
+
+The root then binds the values, and `HttpModule` gates them against the kinds
+that call declared:
+
+<!-- doctest: skip — binds the two kinds the fence above declares; `examples/order-api` composes a plain `defineHttp()` api and binds `anonymous` alone -->
+
+```ts
+export const OrderApi = HttpModule("OrderApi")({
+  router: orderRouter,
+  unit: { anonymous: RequestModule, user: UserUnit },
+  imports: [OrdersSlice, CustomersSlice, observability(), otel()],
+  exports: [Logger, Tracer, Meter],
+});
+```
+
+A kind nothing can open under is refused against an
+`"UNDECLARED UNIT KIND — no request opens under it, so it would silently fall back to anonymous"`
+marker — the fallback is what makes `unit: { usre: … }` otherwise silent. See
+[the gate](/reference/http-server#the-gate-on-the-kinds-a-root-binds).
+
+Reading a name the leaf's kind cannot provide is TypeScript's own
+`Property 'tenant' does not exist`, at the line that reads it. A leaf accepting
+**several** schemes keeps only what every one of their modules exports, since
+the runtime forks exactly one of them and cannot know which in advance.
+
+## On a worker, the seed is the work itself
+
+The two workers have one kind each and seed it with what they were handed:
+`AmqpMessage(contract)` carries the validated delivery, `ActivityInput(contract)`
+the validated activity input. A module naming either in `needs` owes the
+composition root nothing for it, and a piece declares what its handler reads
+the same way — `AmqpHandler(contract, key)({ inject, unit, sync })`,
+`TemporalWorkflowActivities(contract, key)({ inject, unit, sync })`, read off
+`context.unit`. Both roots **gate** the bound module against what the pieces
+declared, against a
+`"UNIT DOES NOT PROVIDE — a piece injects a port the bound unit module does not export"`
+marker. See [@btravstack/amqp-worker](/reference/amqp-worker#the-unit) and
+[@btravstack/temporal-worker](/reference/temporal-worker#the-unit).
+
 ## What the fork gives you
 
 - **Teardown runs inside the unit's ambient record.** `RequestSpan.finish`
@@ -152,7 +270,7 @@ whose `E` is `never`.
 
 ## The gate is the ordinary one
 
-There is no separate marker for this any more — a bound `unit.anonymous`
+There is no separate marker for this any more — every bound kind's
 module's own unmet needs simply **join `HttpModule`'s own `Needs` channel**,
 so the gate that refuses them is `start`'s ordinary
 `UNSATISFIED DEPENDENCIES`, never a fourth arm of the kernel's own marker (an
