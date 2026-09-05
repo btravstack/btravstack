@@ -51,8 +51,10 @@ export type Http<A extends Authenticators, Units extends UnitsOf<A> = Record<nev
     typeof routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>, Units>
   >;
   readonly HtmxFragments: ReturnType<typeof htmxFragmentsFor<SchemeProviders<A>>>;
-  readonly HtmxGet: ReturnType<typeof htmxRouteFor<SchemesFrom<A>, VocabFrom<A>>>["HtmxGet"];
-  readonly HtmxPost: ReturnType<typeof htmxRouteFor<SchemesFrom<A>, VocabFrom<A>>>["HtmxPost"];
+  readonly HtmxGet: ReturnType<typeof htmxRouteFor<SchemesFrom<A>, VocabFrom<A>, Units>>["HtmxGet"];
+  readonly HtmxPost: ReturnType<
+    typeof htmxRouteFor<SchemesFrom<A>, VocabFrom<A>, Units>
+  >["HtmxPost"];
   /**
    * The declarations as given, for a hand-rolled composition or a custom sugar
    * that reads the registry off them the way `defineHttp` does. No in-repo

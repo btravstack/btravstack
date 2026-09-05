@@ -395,9 +395,13 @@ grant it"` sentence oRPC's `routerFor` gives — and each requirement is also
   `params` typed from the path template's `:name` segments (`ParamsOf<P>`,
   `fragments.ts`), `context.principal` typed from `requires` exactly as an
   oRPC leaf's is, `input` typed from the schema or the raw decoded form when
-  none is given. The minted provider carries `.port` and `.route` (`method`,
-  `path`, `input`, `requires`) — what the array arm below reads back to
-  compose without the path or the requirement being spelled twice.
+  none is given. An optional `unit: { name: Port }` rides beside `inject`, and
+  `context.unit` is that record narrowed to the kind the route's own
+  `requires` selects — `KindOf<R>` read straight off the data, where an oRPC
+  leaf reads the same kind off its contract's marks; see **`context.unit` and
+  `UnitFor`**. The minted provider carries `.port`, `.route` (`method`,
+  `path`, `input`, `requires`) and `.unit` — what the array arm below reads
+  back to compose without the path or the requirement being spelled twice.
 
   ```ts
   const orderRow = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({ inject: {}, sync: () => (context, params) => repository.find(params.id).map(rowOf) });
@@ -839,15 +843,16 @@ export const api = auth.units<{ anonymous: typeof Anonymous; user: typeof User }
   TypeScript erases the parameter and `Http<A, U>` collapses back to `Http<A>`.
 
 `unit.ts` is where `AnyUnitModule`, `UnitExportsOf`, `UnitNeedsOf`,
-`UnitsNeedsOf`, `PrincipalInstance`, `Kinds`, `UnitsOf`, `KindOf`, `InAll` and
-`UnitFor` live; `http-runtime.ts` re-exports
+`UnitsNeedsOf`, `PrincipalInstance`, `Kinds`, `UnitsOf`, `KindOf`, `InAll`,
+`UnitFor` and `unitRecordOf` live; `http-runtime.ts` re-exports
 the two `http-module.ts` imports through it — knip refuses a re-export nothing
 consumes, so the rest stay reached at their own path.
 
 ### `context.unit` and `UnitFor`
 
-A piece declares the unit-scoped ports its leaves may read **once**, as a
-record beside `inject`, and every leaf reads them off `context.unit`:
+A piece — or a fragment route — declares the unit-scoped ports its leaves may
+read **once**, as a record beside `inject`, and every leaf reads them off
+`context.unit`:
 
 ```ts
 api.OrpcController(contract, "orders")({
@@ -864,8 +869,10 @@ api.OrpcController(contract, "orders")({
   `as InAll<…> extends true ? N : never`, so a name the leaf's kind cannot
   provide is not a property at all — reading it is TypeScript's own
   `Property 'tenant' does not exist`, at the line that reads it rather than at
-  the mint. `KindOf<Effective<C, R>>` is what selects the kind: `anonymous`
-  for a leaf no mark reaches, else the schemes its requirements name. A leaf
+  the mint. `KindOf<…>` is what selects the kind: `anonymous`
+  for a leaf nothing marks, else the schemes its requirements name — read off
+  `Effective<C, R>` for an oRPC leaf, and straight off `requires` for a
+  fragment route, which has no contract to fold. A leaf
   accepting several schemes keeps only what **every** one of their modules
   exports — `InAll` is a conjunction over the distributed union — because the
   runtime forks exactly one of them and cannot know which in advance.
@@ -877,23 +884,40 @@ api.OrpcController(contract, "orders")({
   called, `Units` is the empty record, every name filters out and
   `context.unit` is `{}` on every leaf — which is what keeps a piece that
   declares no record compiling exactly as before.
-- **The record's entries are LAZY getters.** `unitScope` installs one
+- **The record's entries are LAZY getters, built by one function both
+  answerers call.** `unitRecordOf(forked, record)` installs one
   `Object.defineProperty(unit, name, { enumerable: true, get })` per declared
-  name over the forked `Context`. Eager resolution would call `forked.get` for
+  name over the forked `Context` — neither writable nor configurable, so a
+  handler reads what the fork holds and cannot reshape the record under the
+  next one. Eager resolution would call `forked.get` for
   every declared port on every request, the ones `UnitFor` hid included — a
   defect for a port the forked kind never provided, raised on a name no leaf
-  of that kind could have read. Lazy, an unreadable name costs nothing.
+  of that kind could have read. Lazy, an unreadable name costs nothing. It
+  lives in `unit.ts` rather than in either answerer because `unit-scope.ts`
+  and `htmx.ts` fork at their own sites and must agree on the record's shape:
+  two copies of a lazy getter is exactly the drift `seedOf` was extracted to
+  prevent one seam earlier.
 - **The record is per PIECE, and a leaf takes its nearest one.** The
   `{ inject, sync }` arm registers one record under `""` and every leaf gets
   it; the array arm builds a `Map<piecePath, record>` off each minted piece's
   own `unit` field, and `routerOf` walks the dotted path it is already
   building to find the nearest ancestor entry. That is why `Minted` carries
-  `unit` at runtime, the way `MintedRoute` carries `route`.
+  `unit` at runtime, the way `MintedRoute` carries `route`. A fragment route
+  has no tree and needs no lookup: `MintedRoute` carries its own `unit`
+  beside `route`, `HtmxFragments` copies it onto that route's
+  `FragmentAnswer`, and `htmx.ts` builds the record right after its own fork.
+  A route that binds no kind at all is handed `{}` rather than nothing —
+  `UnitFor` has hidden every name in that case, so there is nothing to read.
 - **The port's own service type stays unit-free.** `ControllerPortOf` is
   `Implementation<FragmentAt<C, K>, Schemes>` with the record defaulted empty,
   so two pieces declaring different records still compose under one contract
   and the lifted-fragment property (`controller.test-d.ts`'s fifth gate)
-  survives. Only the mint's `sync` parameter is typed by the record.
+  survives. Only the mint's `sync` parameter is typed by the record. The cost
+  is that a **lifted** single-slice root
+  (`api.OrpcRouter(contract.orders)({ inject: { implementation: piece.port }, sync: ({ implementation }) => implementation })`)
+  injects the PORT, whose service type erased `U`, so the router registers no
+  record and a piece that declared `unit:` receives `{}` at runtime once
+  lifted. A lifted root must restate `unit:` on the router arm.
 
 ## The two authenticators that ship
 

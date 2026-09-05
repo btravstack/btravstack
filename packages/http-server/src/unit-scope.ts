@@ -3,6 +3,7 @@ import type { AnyPort, Context } from "@btravstack/di";
 
 import type { Resolved } from "./auth.js";
 import type { AnyUnitModule } from "./http-runtime.js";
+import { unitRecordOf } from "./unit.js";
 
 /**
  * The principal the fork is seeded with, on the port its own scheme minted —
@@ -68,14 +69,5 @@ export const unitScope =
     const forked = (await options.context.host
       .fork(module as never, seedOf(principals, resolved) as never)
       .get()) as Context<never>;
-    // A getter per declared name, resolved on read: `UnitFor` hides the names
-    // the forked kind cannot provide, so resolving them eagerly would defect on
-    // a port no leaf of this kind can name.
-    const unit: Record<string, unknown> = {};
-    for (const [name, port] of Object.entries(record))
-      Object.defineProperty(unit, name, {
-        enumerable: true,
-        get: () => forked.get(port as never),
-      });
-    return await options.next({ context: { unit } });
+    return await options.next({ context: { unit: unitRecordOf(forked, record) } });
   };

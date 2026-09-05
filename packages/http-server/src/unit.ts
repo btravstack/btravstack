@@ -1,5 +1,5 @@
 import type { Requirements } from "@btravstack/contract";
-import type { AnyPort, Module, PortInstance, Scope, ServiceOf } from "@btravstack/di";
+import type { AnyPort, Context, Module, PortInstance, Scope, ServiceOf } from "@btravstack/di";
 
 import type { SchemesOf } from "./principal.js";
 
@@ -83,4 +83,25 @@ export type UnitFor<U extends Readonly<Record<string, AnyPort>>, Units, K extend
   readonly [
     N in keyof U as InAll<InstanceType<U[N]>, Units, K> extends true ? N : never
   ]: ServiceOf<InstanceType<U[N]>>;
+};
+
+/**
+ * The declared record, as a getter per name resolved on read out of the fork:
+ * `UnitFor` hides the names the forked kind cannot provide, so resolving them
+ * eagerly would defect on a port no leaf of this kind can name. Neither
+ * writable nor configurable — a handler reads what the fork holds, and cannot
+ * reshape the record under the next one. Built once per unit, by both
+ * answerers: `unit-scope.ts` is oRPC's, `htmx.ts` the fragments'.
+ */
+export const unitRecordOf = (
+  forked: Context<never>,
+  record: Readonly<Record<string, AnyPort>>,
+): Readonly<Record<string, unknown>> => {
+  const unit: Record<string, unknown> = {};
+  for (const [name, port] of Object.entries(record))
+    Object.defineProperty(unit, name, {
+      enumerable: true,
+      get: () => forked.get(port as never),
+    });
+  return unit;
 };

@@ -1131,9 +1131,25 @@ const htmxKindedPrivateFragment = htmxRuntimeApi.HtmxGet("/kinded/private", {
   requires: [{ user: [] }],
 })({ inject: {}, sync: () => () => OkAsync(html`<p>private</p>`) });
 
+/** The same registry, retyped by the kinds it binds — what types `context.unit`. */
+const kindedHtmxApi = htmxRuntimeApi.units<{
+  anonymous: KindedUnits["anonymous"];
+  user: KindedUnits["user"];
+}>();
+
+/** A third route, reading a port only the `user` kind's module exports back off its fork. */
+const htmxKindedWhoamiFragment = kindedHtmxApi.HtmxGet("/kinded/whoami", {
+  requires: [{ user: [] }],
+})({
+  inject: {},
+  unit: { userId: KindedUserId },
+  sync: () => (context) => OkAsync(html`<p>${context.unit.userId}</p>`),
+});
+
 const htmxKindedFragmentsProvider = htmxRuntimeApi.HtmxFragments([
   htmxKindedPublicFragment,
   htmxKindedPrivateFragment,
+  htmxKindedWhoamiFragment,
 ]);
 
 const htmxRuntimeAppOf = (bodyLimit?: number) =>
@@ -1709,7 +1725,11 @@ export const it = test.extend<HttpFixtures>({
             port: 0,
             hostname: "127.0.0.1",
             unit: Object.fromEntries(kinds.map((kind) => [kind, units[kind]])),
-            provides: [htmxKindedPublicFragment, htmxKindedPrivateFragment],
+            provides: [
+              htmxKindedPublicFragment,
+              htmxKindedPrivateFragment,
+              htmxKindedWhoamiFragment,
+            ],
           }),
         );
         const info = (await app.runtimeInfo()).get();

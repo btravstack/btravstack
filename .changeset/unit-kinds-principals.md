@@ -38,3 +38,17 @@ lazily, on read.
 a minted piece now carries its declared record as `piece.unit`, the way an
 htmx route carries `route`. With `units<…>()` never called, `context.unit` is
 `{}` on every leaf and a piece declaring no record compiles unchanged.
+
+Fragments are at parity. `api.HtmxGet(path, options?)` and `api.HtmxPost` take
+the same optional `unit: { name: Port }` beside `inject`, and a route's handler
+reads `context.unit.name` — typed by the kind its own `requires` selects, where
+an oRPC leaf reads that kind off its contract's marks. A route with no
+`requires` sees `anonymous`'s exports; one naming several schemes sees only
+what every one of their modules exports. A minted route carries its declared
+record as `piece.unit` beside `piece.route`.
+
+**Breaking beyond the added option**: `FragmentAnswer.handle` — what
+`HtmxFragments` composes and the htmx answerer calls — takes the handler's
+whole `context` object as its first argument rather than the bare principal.
+It was `handle(principal, params, input)` and is now
+`handle({ principal, unit }, params, input)`.

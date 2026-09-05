@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { UnitHost } from "@btravstack/core";
-import { Provider, type AnyPort } from "@btravstack/di";
+import { Provider, type AnyPort, type Context } from "@btravstack/di";
 import { Err, Ok, P, fromExecutor, type AsyncResult } from "unthrown";
 
 import { principalOf, resolveScheme, type AuthenticatorService, type Resolved } from "./auth.js";
@@ -11,6 +11,7 @@ import { HtmxFragmentsPort, type FragmentAnswer } from "./htmx-route.js";
 import { HttpConfig } from "./http-config.js";
 import { HttpUnit, type AnyUnitModule } from "./http-runtime.js";
 import { seedOf } from "./unit-scope.js";
+import { unitRecordOf } from "./unit.js";
 
 export type HtmxOptions = {
   /** Where fragments are mounted. Default `/`. */
@@ -206,6 +207,9 @@ const respond = async (
   // own `unitScope` forks at, since `principalMiddleware` short-circuits
   // without calling `next()` on a refusal, and `unitScope` sits inside it.
   const module = units[authenticated?.scheme ?? "anonymous"] ?? units["anonymous"];
+  // Nothing forked is an empty record rather than an absent one: `UnitFor`
+  // hides every name in that case, so a handler has nothing to read anyway.
+  let unit: Readonly<Record<string, unknown>> = {};
   if (module !== undefined) {
     // `as never` on both: see `unit-scope.ts`'s own comment on the identical
     // pair of casts — `AnyUnitModule` erases the module's Needs to `unknown`,
@@ -217,9 +221,10 @@ const respond = async (
       refuse(response, 500);
       return;
     }
+    unit = unitRecordOf(scope.get() as Context<never>, route.unit);
   }
 
-  const rendered = await route.handle(principal, params, input).get();
+  const rendered = await route.handle({ principal, unit }, params, input).get();
   // Unconditional, not keyed on `route.requirements`: a public route can
   // still render caller- or resource-scoped HTML (a path parameter alone is
   // enough), and this package has no way to know a route is safe to cache.

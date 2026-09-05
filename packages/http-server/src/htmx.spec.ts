@@ -410,6 +410,22 @@ describe("htmx unit kinds", () => {
     });
   });
 
+  it("renders a port only the forked kind's module exports, read off context.unit", async ({
+    kindedHtmx,
+  }) => {
+    // GIVEN a route requiring `user` and declaring `unit: { userId }` — a port
+    // the `user` module derives from the principal its fork was seeded with
+    const { origin } = await kindedHtmx.serve(["anonymous", "user"]);
+
+    // WHEN it is fetched with a credential that scheme accepts
+    const response = await fetch(`${origin}/kinded/whoami`, {
+      headers: { authorization: "Bearer good" },
+    });
+
+    // THEN the declared name resolved out of the fork, into the rendered fragment
+    expect(await response.text()).toBe("<p>u-1</p>");
+  });
+
   it("forks anonymous, with no seed, for a route requiring nothing", async ({ kindedHtmx }) => {
     // GIVEN the same fragments binding both kinds
     const { origin, counts, seen } = await kindedHtmx.serve(["anonymous", "user"]);
