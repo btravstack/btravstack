@@ -44,7 +44,7 @@ the one `orderChanged` event on their own queue:
 import { Config } from "@btravstack/config";
 import { AmqpConfig } from "@btravstack/amqp-worker";
 import { Provider, type ServiceOf } from "@btravstack/di";
-import { Outbox, PlaceOrder } from "@btravstack/example-order-application";
+import { Outbox, PlaceOrder, Tenant } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
 import type { AsyncResult } from "unthrown";
 import { otel } from "@btravstack/observability/otel";
@@ -78,25 +78,29 @@ import { OkAsync } from "unthrown";
 
 export const orderHandlers = AmqpHandlers(orderContract)({
   inject: { logger: Logger },
+  // The envelope's own tenant, claimed ONCE by the unit module the worker
+  // forks per delivery — see Step 3 — rather than destructured again in each
+  // leaf.
+  unit: { tenant: Tenant },
   sync: ({ logger }) => ({
-    orderNotifications: ({ input: message }) => {
-      const { tenantId, id, payload } = message.payload;
+    orderNotifications: ({ context, input: message }) => {
+      const { id, payload } = message.payload;
       logger.info(
         payload === null
           ? "order gone — notifying"
           : "order placed — notifying",
         {
-          tenantId,
+          tenantId: context.unit.tenant,
           orderId: id,
           ...(payload === null ? {} : { quantity: payload.quantity }),
         },
       );
       return OkAsync();
     },
-    orderAudit: ({ input: message }) => {
-      const { tenantId, id, occurredAt, payload } = message.payload;
+    orderAudit: ({ context, input: message }) => {
+      const { id, occurredAt, payload } = message.payload;
       logger.info("recording an order change", {
-        tenantId,
+        tenantId: context.unit.tenant,
         orderId: id,
         occurredAt,
         change: payload === null ? "removed" : "placed",

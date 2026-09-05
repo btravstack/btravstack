@@ -183,15 +183,17 @@ export class OrderRepository extends Port("OrderRepository")<{
 
 `TenantId` is a branded `string` the domain owns, and each transport claims
 the brand once, where a validated value arrives — the authenticator, an
-activity's input, the message envelope, the relay's own configuration. What
-each transport then does with it is provide `Tenant` inside the unit module it
-binds, so the repository a call reaches was already built for one tenant:
+activity's input, the message envelope, the relay's own configuration. Where a
+unit HAS one to give, the transport provides `Tenant` inside the module it
+binds, so the repository a call reaches was already built for it; where it
+does not — an unmarked procedure, opening an anonymous unit with no principal
+— the caller names it on the input instead:
 
-| Deployment              | Where the unit's tenant comes from                                    |
-| ----------------------- | --------------------------------------------------------------------- |
-| `order-api`             | the authenticated caller's principal, in the `user` kind's own module |
-| `order-amqp-worker`     | the broadcast envelope the fork is seeded with                        |
-| `order-temporal-worker` | the activity input the fork is seeded with                            |
+| Deployment              | Where the tenant comes from                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `order-api`             | the authenticated caller's principal, in the `user` kind's own module — or an input field (`tenanted`) on an unmarked procedure |
+| `order-amqp-worker`     | the broadcast envelope the fork is seeded with                                                                                  |
+| `order-temporal-worker` | the activity input the fork is seeded with                                                                                      |
 
 Two consequences are the point rather than the price. A graph that never said
 which tenant it is scoped to **does not compile** — `OrderApplicationModule`

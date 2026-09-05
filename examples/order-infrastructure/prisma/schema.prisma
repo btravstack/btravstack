@@ -3,9 +3,13 @@
 //
 // Every table carries `tenantId`, and it is the LEADING column of every
 // business-identity constraint. That is what makes the application
-// multi-tenant at the layer that should own it: the adapters read the tenant
-// off the kernel's ambient unit record and scope each statement by it, so no
-// use case, port or entity mentions a tenant at all. `orderId` is still the
+// multi-tenant at the layer that should own it: the order adapter is BUILT
+// inside a unit, over the `Tenant` port that unit's module provides, and
+// scopes every statement by the tenant it closed over — so no orders port
+// names one. The customer adapter takes it as an argument instead, because
+// the procedures it serves are unmarked and open no unit that has one to
+// give. Either way it is the application's own vocabulary, never the
+// kernel's ambient record. `orderId` is still the
 // business id the domain speaks, kept distinct from the surrogate primary
 // key — it is now unique *per tenant*, and it is that composite constraint
 // whose violation (P2002) the adapter translates into the domain's own
