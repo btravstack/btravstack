@@ -3,7 +3,7 @@
 // router declares from them. Each `@ts-expect-error` is an assertion: if one
 // stops erroring, the gate is gone.
 import { authenticated } from "@btravstack/contract";
-import type { PortInstance, Provider } from "@btravstack/di";
+import { Module, Port, Provider, type PortInstance } from "@btravstack/di";
 import { oc, type as ocType } from "@orpc/contract";
 import { OkAsync } from "unthrown";
 import { expectTypeOf } from "vitest";
@@ -384,3 +384,127 @@ const healthDotted = publicApi.OrpcController(
   "health",
 )({ inject: {}, sync: () => () => OkAsync("ok") });
 void publicApi.OrpcRouter(dottedDeep)([v1Dotted, healthDotted]);
+
+// ── `context.unit`: the record is declared once, and typed per leaf ─────────
+// The kind a leaf's own requirements select decides which of the declared names
+// are properties at all. A scheme that binds no module falls back to
+// `anonymous`, so a leaf accepting two schemes sees what BOTH forked modules
+// export — which is the intersection the runtime can actually satisfy.
+
+class ControllerSpan extends Port("ControllerSpan")<{ readonly finish: () => void }> {}
+class ControllerTenant extends Port("ControllerTenant")<string> {}
+
+const AnonymousUnit = Module("ControllerAnonymousUnit")({
+  provides: [Provider(ControllerSpan)({ inject: {}, sync: () => ({ finish: () => undefined }) })],
+  exports: [ControllerSpan],
+});
+
+const UserUnit = Module("ControllerUserUnit")({
+  needs: [api.principals.user],
+  imports: [AnonymousUnit],
+  provides: [
+    Provider(ControllerTenant)({
+      inject: { principal: api.principals.user },
+      sync: ({ principal }) => principal.userId,
+    }),
+  ],
+  exports: [ControllerTenant, AnonymousUnit],
+});
+
+// `service` is a declared scheme that binds NO module, so its leaves fall back
+// to `anonymous` — the runtime rule, restated in the types.
+const kinded = api.units<{ anonymous: typeof AnonymousUnit; user: typeof UserUnit }>();
+
+const kindedContract = {
+  customers: { find: oc },
+  orders: authenticated({ user: [] })({
+    find: oc,
+    export: authenticated({ user: [] }, { service: [] })(oc),
+  }),
+};
+
+// An UNMARKED leaf opens `anonymous`, which exports the span and not the tenant.
+void kinded.OrpcController(
+  kindedContract,
+  "customers",
+)({
+  inject: {},
+  unit: { span: ControllerSpan, tenant: ControllerTenant },
+  sync: () => ({
+    find: ({ context }) => {
+      context.unit.span.finish();
+      // @ts-expect-error — `tenant` is absent: the anonymous kind's module does not export it
+      void context.unit.tenant;
+      return OkAsync("found");
+    },
+  }),
+});
+
+// A `user`-marked leaf opens the module that kind bound, and sees both.
+void kinded.OrpcController(
+  kindedContract,
+  "orders",
+)({
+  inject: {},
+  unit: { span: ControllerSpan, tenant: ControllerTenant },
+  sync: () => ({
+    find: ({ context }) => {
+      const tenant: string = context.unit.tenant;
+      context.unit.span.finish();
+      return OkAsync(tenant);
+    },
+    export: ({ context }) => {
+      context.unit.span.finish();
+      // @ts-expect-error — `tenant`: the `service` kind falls back to anonymous, which does not export it
+      void context.unit.tenant;
+      return OkAsync("csv");
+    },
+  }),
+});
+
+// Without `units<…>()` no kind binds a module, so every name is filtered out
+// and `context.unit` is empty on every leaf — which is what keeps a piece
+// declaring no `unit:` compiling exactly as it always did.
+void api.OrpcController(
+  kindedContract,
+  "orders",
+)({
+  inject: {},
+  unit: { tenant: ControllerTenant },
+  sync: () => ({
+    find: ({ context }) => {
+      // @ts-expect-error — no kinds bound: `tenant` is absent
+      void context.unit.tenant;
+      return OkAsync("found");
+    },
+    export: () => OkAsync("csv"),
+  }),
+});
+
+// The record rides the whole-router arm too, one record for every leaf.
+void kinded.OrpcRouter(kindedContract)({
+  inject: {},
+  unit: { span: ControllerSpan, tenant: ControllerTenant },
+  sync: () => ({
+    customers: {
+      find: ({ context }) => {
+        context.unit.span.finish();
+        // @ts-expect-error — an unmarked leaf under the router arm sees anonymous's exports alone
+        void context.unit.tenant;
+        return OkAsync("found");
+      },
+    },
+    orders: {
+      find: ({ context }) => OkAsync(context.unit.tenant),
+      export: () => OkAsync("csv"),
+    },
+  }),
+});
+
+// A piece declaring no `unit:` at all still carries a record — the empty one —
+// so the array arm reads the same field off every element.
+const kindedCustomers = kinded.OrpcController(
+  kindedContract,
+  "customers",
+)({ inject: {}, sync: () => ({ find: () => OkAsync("found") }) });
+type _EmptyUnitRecord = Expect<keyof typeof kindedCustomers.unit extends never ? true : false>;

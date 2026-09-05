@@ -97,6 +97,9 @@ PortInstance<…> }`) rather than the class's own type because a class
   `provider.port` stays on the result for a hand-declared provider or a type
   test, and `provider.authenticators` carries the per-scheme providers
   `defineHttp` bound — on the router because the router is what needs them.
+  An optional `unit: { name: Port }` beside `inject` declares what every leaf
+  may read off `context.unit`, typed per leaf by its own kind — see
+  **`context.unit` and `UnitFor`**.
   Only the `sync` arm: a router is built, not
   acquired. `HttpModule({ router: orderRouter })`, or `http()` next to
   `provides: [orderRouter]`, take it from there. Covered by the `rpc` fixture's
@@ -282,9 +285,11 @@ not cover"` marker, and what the marker names is a procedure path
   written. The second call is di's `Provider(port)({ inject: { name: Dep }, sync })`,
   unchanged — **`inject` included, and required**: a piece that calls no use
   case is the common shape here, not an edge case, and it spells
-  `{ inject: {}, sync }` like every other no-deps provider (issue #227).
+  `{ inject: {}, sync }` like every other no-deps provider (issue #227). An
+  optional `unit: { name: Port }` rides beside it — see **`context.unit` and
+  `UnitFor`**.
   Returns
-  `Provider<InstanceType<ControllerPortOf<C, K, Schemes>>, never, N> & { readonly port: ControllerPortOf<C, K, Schemes> }` —
+  `Provider<InstanceType<ControllerPortOf<C, K, Schemes>>, never, N> & { readonly port: ControllerPortOf<C, K, Schemes>; readonly unit: U }` —
   `ControllerPortOf<C, K, Schemes>` being `PortClassOf` over the prefixed
   path and `Implementation<FragmentAt<C, K>, Schemes>`, the same
   `PortInstance`/`PortClassOf` spelling `OrpcRouter` uses and for the same
@@ -833,10 +838,62 @@ export const api = auth.units<{ anonymous: typeof Anonymous; user: typeof User }
   piece factories' leaf typing and never at runtime. Without the field
   TypeScript erases the parameter and `Http<A, U>` collapses back to `Http<A>`.
 
-`unit.ts` is where `AnyUnitModule`, `UnitNeedsOf`, `UnitsNeedsOf`,
-`PrincipalInstance`, `Kinds` and `UnitsOf` live; `http-runtime.ts` re-exports
+`unit.ts` is where `AnyUnitModule`, `UnitExportsOf`, `UnitNeedsOf`,
+`UnitsNeedsOf`, `PrincipalInstance`, `Kinds`, `UnitsOf`, `KindOf`, `InAll` and
+`UnitFor` live; `http-runtime.ts` re-exports
 the two `http-module.ts` imports through it — knip refuses a re-export nothing
 consumes, so the rest stay reached at their own path.
+
+### `context.unit` and `UnitFor`
+
+A piece declares the unit-scoped ports its leaves may read **once**, as a
+record beside `inject`, and every leaf reads them off `context.unit`:
+
+```ts
+api.OrpcController(contract, "orders")({
+  inject: {},
+  unit: { span: Span, tenant: Tenant },
+  sync: () => ({
+    find: ({ context }) => OkAsync(context.unit.tenant),
+  }),
+});
+```
+
+- **The gate is a mapped type's key filter, not a checker this package
+  writes.** `UnitFor<U, Units, K>` re-keys the declared record with
+  `as InAll<…> extends true ? N : never`, so a name the leaf's kind cannot
+  provide is not a property at all — reading it is TypeScript's own
+  `Property 'tenant' does not exist`, at the line that reads it rather than at
+  the mint. `KindOf<Effective<C, R>>` is what selects the kind: `anonymous`
+  for a leaf no mark reaches, else the schemes its requirements name. A leaf
+  accepting several schemes keeps only what **every** one of their modules
+  exports — `InAll` is a conjunction over the distributed union — because the
+  runtime forks exactly one of them and cannot know which in advance.
+- **The fallback is restated on the type side, and has to be.** A scheme that
+  binds no module falls back to `anonymous` at runtime, so `ModuleOf<Units, K>`
+  answers `anonymous`'s module for an unbound kind. Without it a two-scheme
+  leaf with only `user` bound would see `user`'s exports and then read a port
+  off an `anonymous` fork that never provided it. With `units<…>()` never
+  called, `Units` is the empty record, every name filters out and
+  `context.unit` is `{}` on every leaf — which is what keeps a piece that
+  declares no record compiling exactly as before.
+- **The record's entries are LAZY getters.** `unitScope` installs one
+  `Object.defineProperty(unit, name, { enumerable: true, get })` per declared
+  name over the forked `Context`. Eager resolution would call `forked.get` for
+  every declared port on every request, the ones `UnitFor` hid included — a
+  defect for a port the forked kind never provided, raised on a name no leaf
+  of that kind could have read. Lazy, an unreadable name costs nothing.
+- **The record is per PIECE, and a leaf takes its nearest one.** The
+  `{ inject, sync }` arm registers one record under `""` and every leaf gets
+  it; the array arm builds a `Map<piecePath, record>` off each minted piece's
+  own `unit` field, and `routerOf` walks the dotted path it is already
+  building to find the nearest ancestor entry. That is why `Minted` carries
+  `unit` at runtime, the way `MintedRoute` carries `route`.
+- **The port's own service type stays unit-free.** `ControllerPortOf` is
+  `Implementation<FragmentAt<C, K>, Schemes>` with the record defaulted empty,
+  so two pieces declaring different records still compose under one contract
+  and the lifted-fragment property (`controller.test-d.ts`'s fifth gate)
+  survives. Only the mint's `sync` parameter is typed by the record.
 
 ## The two authenticators that ship
 

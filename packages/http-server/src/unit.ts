@@ -1,8 +1,11 @@
-import type { Module, PortInstance, Scope } from "@btravstack/di";
+import type { Requirements } from "@btravstack/contract";
+import type { AnyPort, Module, PortInstance, Scope, ServiceOf } from "@btravstack/di";
+
+import type { SchemesOf } from "./principal.js";
 
 /**
- * A module a unit kind may bind: the value type of the record `httpServer`/
- * `http` bound their own `Units` type parameter by. `Module`'s `_exports` channel
+ * A module a unit kind may bind: the value type of the record that `httpServer`
+ * and `http` bind their own `Units` type parameter to. `Module`'s `_exports` channel
  * is contravariant, so `Exports = never` — never `unknown` — is what makes a
  * REAL module's own (necessarily narrower) export type assignable to this
  * bound: `(x: Concrete) => void` is assignable to `(x: never) => void`, not
@@ -10,6 +13,9 @@ import type { Module, PortInstance, Scope } from "@btravstack/di";
  * carries the same bound for the same reason.
  */
 export type AnyUnitModule = Module<never, never, unknown>;
+
+/** What a bound unit module exports — the port instances a leaf of that kind may read. */
+export type UnitExportsOf<M> = M extends Module<infer X, never, unknown> ? X : never;
 
 /**
  * The needs a bound unit module still owes, or `never` when none is bound.
@@ -46,3 +52,35 @@ export type Kinds<A> = "anonymous" | (keyof A & string);
  * argument would not get.
  */
 export type UnitsOf<A> = Partial<Readonly<Record<Kinds<A>, AnyUnitModule>>>;
+
+/** The kind a leaf's effective requirements select: `anonymous` when unmarked, else its schemes. */
+export type KindOf<R extends Requirements> = [R] extends [never] ? "anonymous" : SchemesOf<R>;
+
+/**
+ * The module kind `K` forks: the one it bound, or `anonymous`'s when it bound
+ * none — the fallback `unitScope` applies at runtime, restated here so the two
+ * cannot part.
+ */
+type ModuleOf<Units, K extends string> = [NonNullable<Units[K & keyof Units]>] extends [never]
+  ? NonNullable<Units["anonymous" & keyof Units]>
+  : NonNullable<Units[K & keyof Units]>;
+
+/** True when port instance `P` is exported by the module of EVERY kind in `K`. */
+export type InAll<P, Units, K extends string> = [K] extends [never]
+  ? false
+  : (
+        K extends unknown ? (P extends UnitExportsOf<ModuleOf<Units, K>> ? true : false) : never
+      ) extends true
+    ? true
+    : false;
+
+/**
+ * The declared `unit:` record, keeping only the ports the leaf's kind(s) can
+ * provide. A name the kind's module does not export is not a property, so
+ * reading it is TypeScript's own "property does not exist".
+ */
+export type UnitFor<U extends Readonly<Record<string, AnyPort>>, Units, K extends string> = {
+  readonly [
+    N in keyof U as InAll<InstanceType<U[N]>, Units, K> extends true ? N : never
+  ]: ServiceOf<InstanceType<U[N]>>;
+};

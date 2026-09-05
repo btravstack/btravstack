@@ -1,5 +1,5 @@
 ---
-"@btravstack/http-server": minor
+"@btravstack/http-server": major
 ---
 
 `defineHttp` mints one principal port per declared scheme, on
@@ -21,5 +21,20 @@ breaks the loop: `typeof auth` depends on the authenticators alone, and
 rebuilt.
 
 `principalPort(scheme)`, `Principals<A>` and `UnitsOf<A>` are exported.
-Nothing existing changes: `Units` defaults to the empty record and is a
-phantom on `Http<A, Units>` until the piece factories read it.
+
+The piece factories read those kinds. `api.OrpcController(contract, key)` and
+`api.OrpcRouter(contract)` both take an optional `unit: { name: Port }` beside
+`inject`, declared once, and every leaf reads it as `context.unit.name` — typed
+by the KIND that leaf's own requirements select, so a port the kind's module
+does not export is not a property and reading it is TypeScript's own
+"property does not exist". An unmarked leaf sees `anonymous`'s exports, a
+marked one its scheme's, and a leaf accepting several schemes only what every
+one of their modules exports. A scheme that binds no module falls back to
+`anonymous` on the type side exactly as it does at runtime. Entries resolve
+lazily, on read.
+
+`Implementation<C, Schemes, R>` gains two further parameters,
+`Implementation<C, Schemes, R, Units, U>`, both defaulted to the empty record;
+a minted piece now carries its declared record as `piece.unit`, the way an
+htmx route carries `route`. With `units<…>()` never called, `context.unit` is
+`{}` on every leaf and a piece declaring no record compiles unchanged.

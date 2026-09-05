@@ -38,16 +38,20 @@ export const seedOf = (
  * applies the same rule at its own fork site, over the same {@link seedOf}.
  */
 export const unitScope =
-  (units: Readonly<Record<string, AnyUnitModule>>, principals: Readonly<Record<string, AnyPort>>) =>
+  (
+    units: Readonly<Record<string, AnyUnitModule>>,
+    principals: Readonly<Record<string, AnyPort>>,
+    record: Readonly<Record<string, AnyPort>>,
+  ) =>
   async (options: {
     readonly context: { readonly host: UnitHost<never>; readonly resolved?: Resolved };
     readonly next: (injected: {
-      readonly context: { readonly unit: Context<never> | undefined };
+      readonly context: { readonly unit: Readonly<Record<string, unknown>> };
     }) => Promise<unknown>;
   }): Promise<unknown> => {
     const { resolved } = options.context;
     const module = units[resolved?.scheme ?? "anonymous"] ?? units["anonymous"];
-    if (module === undefined) return await options.next({ context: { unit: undefined } });
+    if (module === undefined) return await options.next({ context: { unit: {} } });
     // `.get()` on an `AsyncResult<T, never>` rethrows a defect's own cause,
     // which is how it reaches oRPC — the middleware protocol has no returned-
     // error arm of its own.
@@ -61,8 +65,17 @@ export const unitScope =
     // `Units`-generic call site that bound this module (`httpServer`'s own
     // type parameter, proven by `http-module.test-d.ts`'s positive/negative
     // pair) — this reasserts that proof rather than bypassing it.
-    const unit = await options.context.host
+    const forked = (await options.context.host
       .fork(module as never, seedOf(principals, resolved) as never)
-      .get();
-    return await options.next({ context: { unit: unit as Context<never> } });
+      .get()) as Context<never>;
+    // A getter per declared name, resolved on read: `UnitFor` hides the names
+    // the forked kind cannot provide, so resolving them eagerly would defect on
+    // a port no leaf of this kind can name.
+    const unit: Record<string, unknown> = {};
+    for (const [name, port] of Object.entries(record))
+      Object.defineProperty(unit, name, {
+        enumerable: true,
+        get: () => forked.get(port as never),
+      });
+    return await options.next({ context: { unit } });
   };

@@ -46,9 +46,9 @@ type SchemeProviders<A extends Authenticators> = {
  * which is nameable — so an application writes no annotation at all.
  */
 export type Http<A extends Authenticators, Units extends UnitsOf<A> = Record<never, never>> = {
-  readonly OrpcController: ReturnType<typeof controllerFor<SchemesFrom<A>>>;
+  readonly OrpcController: ReturnType<typeof controllerFor<SchemesFrom<A>, Units>>;
   readonly OrpcRouter: ReturnType<
-    typeof routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>>
+    typeof routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>, Units>
   >;
   readonly HtmxFragments: ReturnType<typeof htmxFragmentsFor<SchemeProviders<A>>>;
   readonly HtmxGet: ReturnType<typeof htmxRouteFor<SchemesFrom<A>, VocabFrom<A>>>["HtmxGet"];

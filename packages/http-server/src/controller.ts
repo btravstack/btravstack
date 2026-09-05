@@ -102,8 +102,11 @@ type Minted<
   K extends ControllerKeyOf<C>,
   Schemes,
   N,
+  U,
 > = Provider<InstanceType<ControllerPortOf<C, K, Schemes>>, never, N> & {
   readonly port: ControllerPortOf<C, K, Schemes>;
+  /** The declared `unit:` record, which `OrpcRouter`'s array arm reads back off the piece. */
+  readonly unit: U;
 };
 
 /**
@@ -122,7 +125,7 @@ type Minted<
  * marked ancestor types `context.principal` where the handler is written.
  */
 export const controllerFor =
-  <Schemes>() =>
+  <Schemes, Units = Record<never, never>>() =>
   <
     const C extends Record<string, RouterContract>,
     const K extends AnyKeyOf<C>,
@@ -142,11 +145,18 @@ export const controllerFor =
       Implementation<FragmentAt<C, Key>, Schemes>
     > {};
 
-    return <const D extends Readonly<Record<string, AnyPort>>>(options: {
+    return <
+      const D extends Readonly<Record<string, AnyPort>>,
+      const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+    >(options: {
       readonly inject: D;
+      /** The unit-scoped ports every leaf may read off `context.unit`, per its own kind. */
+      readonly unit?: U;
       readonly sync: (services: {
         readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
-      }) => Implementation<FragmentAt<C, Key>, Schemes>;
-    }): Minted<C, Key, Schemes, InstanceType<D[keyof D]>> =>
-      Provider(port as never)(options as never) as never;
+      }) => Implementation<FragmentAt<C, Key>, Schemes, never, Units, U>;
+    }): Minted<C, Key, Schemes, InstanceType<D[keyof D]>, U> =>
+      Object.assign(Provider(port as never)(options as never), {
+        unit: options.unit ?? {},
+      }) as never;
   };

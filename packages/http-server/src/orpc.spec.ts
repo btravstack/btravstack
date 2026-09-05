@@ -283,6 +283,19 @@ describe("unit kinds", () => {
     });
   });
 
+  it("hands a marked leaf the forked kind's export on context.unit", async ({ unitRecordRpc }) => {
+    // GIVEN a router whose `orders` piece declares a port only the user kind
+    // exports, over an app binding both kinds
+    const { clientWith } = await unitRecordRpc();
+
+    // WHEN the MARKED procedure is called with a credential the scheme accepts
+    const answer = await clientWith("good").orders.whoami({ id: "o-1" });
+
+    // THEN the leaf read the port off the fork its own kind opened, built from
+    // the principal that fork was seeded with
+    expect(answer).toEqual({ userId: "u-good" });
+  });
+
   it("forks nothing when neither the scheme nor anonymous is bound", async ({ kindedRpc }) => {
     // GIVEN a router binding no kind at all
     const { clientWith, counts } = await kindedRpc.serve([]);

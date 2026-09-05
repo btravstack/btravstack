@@ -36,7 +36,7 @@ import {
   type RunningApp,
   type Settle,
 } from "@btravstack/core";
-import { Module, Port, Provider, type AnyPort, type ServiceOf } from "@btravstack/di";
+import { Module, Port, Provider, type PortClassOf, type ServiceOf } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
@@ -606,12 +606,19 @@ const rpcSubstitutedAppOf = () =>
 class KindedAnonSpan extends Port("KindedAnonSpan")<{ readonly at: number }> {}
 class KindedUserSpan extends Port("KindedUserSpan")<{ readonly at: number }> {}
 
+/** Derived from the seeded principal — what a leaf reads back off `context.unit`. */
+class KindedUserId extends Port("KindedUserId")<string> {}
+
 /**
  * The two kinds' modules, counting builds and stops, the `user` one recording
  * the principal the fork seeded it with — the observable that tells "forked the
  * right kind" from "forked at all". Fresh per call, so counts start at zero.
  */
-const kindedUnitsOf = <P extends AnyPort>(principal: P) => {
+const kindedUnitsOf = <
+  P extends PortClassOf<`HttpPrincipal:${string}`, { readonly userId: string }>,
+>(
+  principal: P,
+) => {
   const counts = {
     anonymous: { builds: 0, stops: 0 },
     user: { builds: 0, stops: 0 },
@@ -646,11 +653,47 @@ const kindedUnitsOf = <P extends AnyPort>(principal: P) => {
           counts.user.stops += 1;
         },
       }),
+      Provider(KindedUserId)({
+        inject: { principal },
+        sync: ({ principal: injected }) => injected.userId,
+      }),
     ],
-    exports: [KindedUserSpan],
+    exports: [KindedUserSpan, KindedUserId],
   });
   return { anonymous, user, counts: () => counts, seen: () => seen };
 };
+
+type KindedUnits = ReturnType<typeof kindedUnitsOf>;
+
+/** The same scheme registry, retyped by the kinds it binds — what types `context.unit`. */
+const kindedApi = api.units<{
+  anonymous: KindedUnits["anonymous"];
+  user: KindedUnits["user"];
+}>();
+
+/**
+ * The pair that reads the fork back: a MARKED leaf declaring a port only the
+ * `user` kind's module exports, beside a piece declaring no record at all. Two
+ * pieces, so the array arm's nearest-piece lookup is what finds each leaf's.
+ */
+const unitOrdersController = kindedApi.OrpcController(
+  authedContract,
+  "orders",
+)({
+  inject: {},
+  unit: { userId: KindedUserId },
+  sync: () => ({ whoami: ({ context }) => OkAsync({ userId: context.unit.userId }) }),
+});
+
+const unitHealthController = kindedApi.OrpcController(
+  authedContract,
+  "health",
+)({ inject: {}, sync: () => ({ ping: () => OkAsync({ ok: true as const }) }) });
+
+const unitRouter = kindedApi.OrpcRouter(authedContract)([
+  unitOrdersController,
+  unitHealthController,
+]);
 
 /** `Bearer ${token}`, or no credentials at all when `token` is `undefined`. */
 const linkOf = (origin: string, token: string | undefined) =>
@@ -1224,6 +1267,13 @@ export type HttpFixtures = {
       readonly seen: () => readonly unknown[];
     }>;
   };
+  /**
+   * The same app whose marked leaf reads the forked module's export back off
+   * `context.unit`, with both kinds bound.
+   */
+  readonly unitRecordRpc: () => Promise<{
+    readonly clientWith: (token: string | undefined) => AuthedClient;
+  }>;
   /** The same over htmx fragments — one public route, one requiring `user`. */
   readonly kindedHtmx: {
     readonly serve: (kinds: readonly ("anonymous" | "user")[]) => Promise<{
@@ -1627,6 +1677,25 @@ export const it = test.extend<HttpFixtures>({
           seen: units.seen,
         };
       },
+    });
+  },
+
+  unitRecordRpc: async ({ boot }, use) => {
+    await use(async () => {
+      const units = kindedUnitsOf(api.principals.user);
+      const app = boot(
+        HttpModule("UnitRecordRpcApp")({
+          router: unitRouter,
+          port: 0,
+          hostname: "127.0.0.1",
+          unit: { anonymous: units.anonymous, user: units.user },
+          provides: [unitOrdersController, unitHealthController],
+        }),
+      );
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const origin = `http://127.0.0.1:${info.port}`;
+      return { clientWith: (token) => createORPCClient(linkOf(origin, token)) };
     });
   },
 
