@@ -24,3 +24,13 @@ The walk behind it is now `resolveScheme(requirements, authenticators,
 headers)`, answering `{ scheme, identity }`, with `principalOf(requirements,
 resolved)` the fold to what a handler is injected. `resolvePrincipal` is the
 two composed and is unchanged for callers.
+
+`HttpModule` now GATES the kinds a root binds, because that fallback makes a
+typo silent: `unit: { usre: M }` would fork `anonymous` on every request and
+report nothing. When the router comes from `api.units<…>()` the bindable keys
+are the kinds it declared and each value must be the module that kind declared;
+when it comes from a plain `defineHttp()` they are `anonymous` plus every
+scheme the answerers serve, read off their own authenticator ports. An
+undeclared kind is refused against `UNDECLARED UNIT KIND — …`. `http()` and
+`httpServer()` take the router as a need rather than a value, so their `unit`
+stays the wide record.

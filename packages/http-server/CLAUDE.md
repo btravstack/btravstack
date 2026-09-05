@@ -670,6 +670,48 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   a port and gets it, one that does not, and one owing nothing but its scheme's
   principal, which starts with no provider at all.
 
+- **`HttpModule` gates the kinds a root binds, because the fallback makes a
+  typo silent.** An unbound scheme forks `anonymous` (above), so
+  `unit: { usre: M }` would fork `anonymous` on every request and diagnose
+  nothing — the one place the fallback's kindness turns into a trap.
+  `UnitGate<Units, Router, Fragments>` rides an intersection on the option
+  (`unit?: Units & UnitGate<…>`, the same shape as `routerFor`'s
+  `contract: C & ScopeGate<C, Vocab>`) so `Units` still infers from the value
+  and `UnitsNeedsOf<Units>` still reads it. Two cases:
+
+  - **The router carries kinds** — an `api` from `units<…>()`, read back off
+    the `_units` phantom by `UnitsOfRouter<R>`. The bindable set is
+    `keyof UnitsOfRouter<Router>`, and each bound value must be assignable to
+    the module type that kind declared. That half is **ordinary
+    assignability**, not a marker: the diagnostic bottoms out at
+    `Type 'Module<UnitSpan, …>' is not assignable to type 'Module<UnitTenant, …>'`,
+    naming the kind and both modules, which no marker improves on. `Module`'s
+    `_exports` channel being contravariant means a module exporting a
+    SUPERSET is accepted, which is sound.
+  - **The router carries none** — a plain `defineHttp()` api, which is what
+    `examples/order-api` composes. The bindable set is `anonymous` plus every
+    scheme the answerers serve, recovered by `SchemesOfAnswerer<T>` off the
+    provider's own needs channel (`_needs: () => N`, then matching
+    `PortInstance<"HttpAuthenticator:${infer S}", unknown>`): a router already
+    owes one authenticator port per scheme its contract marks and a fragments
+    provider one per scheme its routes require, so **no second phantom is
+    needed** — the names are already carried where the graph needs them
+    anyway. Both answerers are read, so a fragments-only root is gated by its
+    own routes' schemes.
+
+  An undeclared kind is refused against an `"UNDECLARED UNIT KIND — …"` marker
+  rather than by excess-property checking, which cannot see one: `Units` is
+  inferred FROM the value, so the typo'd key is part of the very type the
+  check compares against. A record whose keys are not literal — one built by
+  `Object.fromEntries`, as the runtime fixtures do — has no name to check and
+  is passed rather than refused for carrying a `string` key.
+
+  **`http()` and `httpServer()` stay un-gated**, and that is structural: they
+  take the router as a NEED (`OrpcRouterPort`), never as a value, so their
+  `unit` has nothing to check against. Their option keeps the wide
+  `Readonly<Record<string, AnyUnitModule>>`. A hand-rolled composition that
+  wants the gate composes through `HttpModule`.
+
 - **Drain**: `stopAccepting` retires every open response — an unsent header
   gets `Connection: close`, a sent `text/event-stream` response is
   **destroyed** on the spot, any other sent one ends its socket on

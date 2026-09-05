@@ -6,6 +6,7 @@ import {
   type AnyProvider,
   type Exportable,
   type NeedsGate,
+  type PortInstance,
   type Provider,
 } from "@btravstack/di";
 
@@ -70,6 +71,67 @@ type Provides<P extends readonly AnyProvider[], Router, Fragments> = readonly (
 )[];
 
 /**
+ * The kinds `units<…>()` declared, read back off the router's `_units` phantom.
+ * A provider carrying no such property infers `unknown`, and a router `units`
+ * was never called on carries the empty record — both give no keys, which is
+ * what the gate below reads as "this api declared none".
+ */
+type UnitsOfRouter<R> = R extends { readonly _units?: infer U } ? U : Record<never, never>;
+
+/**
+ * Every scheme a supplied answerer serves. Recovered from its needs channel
+ * rather than from a phantom of its own: a router already owes one
+ * `HttpAuthenticator:${scheme}` port per scheme its contract marks, and a
+ * fragments provider one per scheme its routes require, so the names are
+ * already there to be read.
+ */
+type SchemesOfAnswerer<T> = T extends { readonly _needs: () => infer N }
+  ? N extends PortInstance<`HttpAuthenticator:${infer S}`, unknown>
+    ? S
+    : never
+  : never;
+
+/**
+ * The kinds this root may bind: the ones `units<…>()` declared when the router
+ * carries them, else `anonymous` and every scheme the answerers serve. An
+ * unbound scheme falls back to `anonymous` at runtime, so without this a
+ * misspelled kind would fork `anonymous` for every request and diagnose
+ * nothing.
+ */
+type BindableKinds<Router, Fragments> = [keyof UnitsOfRouter<Router>] extends [never]
+  ? "anonymous" | SchemesOfAnswerer<Router> | SchemesOfAnswerer<Fragments>
+  : keyof UnitsOfRouter<Router>;
+
+/**
+ * A bound kind no request can ever open under. A record whose keys are not
+ * literal — one built by `Object.fromEntries` — carries no name to check, so it
+ * is passed rather than refused for having a `string` key outside the set.
+ */
+type UndeclaredKind<Units, Router, Fragments> = string extends keyof Units
+  ? never
+  : Exclude<keyof Units, BindableKinds<Router, Fragments>>;
+
+/**
+ * The `unit` gate, riding an intersection on the option so `Units` still infers
+ * from the value. An undeclared kind is refused against a marker — an
+ * excess-property check cannot see one, since the key is part of the very type
+ * it inferred. A declared kind bound to the wrong module is refused by ordinary
+ * assignability against the module type `units<…>()` named, which is the
+ * diagnostic worth having.
+ */
+type UnitGate<Units, Router, Fragments> = [UndeclaredKind<Units, Router, Fragments>] extends [never]
+  ? {
+      readonly [K in keyof Units & keyof UnitsOfRouter<Router>]: UnitsOfRouter<Router>[K];
+    }
+  : {
+      readonly "UNDECLARED UNIT KIND — no request opens under it, so it would silently fall back to `anonymous`": UndeclaredKind<
+        Units,
+        Router,
+        Fragments
+      >;
+    };
+
+/**
  * The "serves nothing" gate: `unknown` once at least one of `router` /
  * `fragments` is supplied, an object with one required property when
  * neither is — `NeedsGate`'s own construction, so a root declaring no
@@ -97,8 +159,12 @@ export type HttpModuleOptions<
    * module's own unmet needs join this root's, less the principal the fork
    * seeds: a composition that binds one owes the composition root the same way
    * any other `needs` does.
+   *
+   * The kinds are gated against the router: the ones `units<…>()` declared, or
+   * — for a plain `defineHttp()` api — `anonymous` and every scheme the
+   * answerers serve.
    */
-  readonly unit?: Units;
+  readonly unit?: Units & UnitGate<Units, Router, Fragments>;
   /**
    * The application's oRPC router — what `api.OrpcRouter(contract)(…)` returns.
    * It carries the scheme authenticators `defineHttp` bound, which is how they

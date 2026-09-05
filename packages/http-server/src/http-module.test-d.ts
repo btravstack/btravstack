@@ -3,6 +3,7 @@
 // everything would pass this file on the negative case alone, so all three
 // valid shapes are pinned as positives too. Each `@ts-expect-error` is an
 // assertion: if one stops erroring, the gate is gone.
+import { authenticated } from "@btravstack/contract";
 import { start } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { oc } from "@orpc/contract";
@@ -85,6 +86,14 @@ const withUser = defineHttp({
   },
 });
 
+// Marked, so `user` is a kind a request can open under: the root's own gate
+// (case 2, below) reads the bindable set off the schemes the contract names.
+const userContract = { me: authenticated({ user: [] })({ hello: oc }) };
+const userRouter = withUser.OrpcRouter(userContract)({
+  inject: {},
+  sync: () => ({ me: { hello: () => OkAsync("hi") } }),
+});
+
 const UserUnitModule = Module("UserUnitTypeD")({
   needs: [withUser.principals.user, UnitDep],
   provides: [
@@ -98,7 +107,7 @@ const UserUnitModule = Module("UserUnitTypeD")({
 
 const _withKindSatisfied = start(
   HttpModule("WithKindSatisfied")({
-    router,
+    router: userRouter,
     port: 0,
     unit: { anonymous: UnitModule, user: UserUnitModule },
     provides: [Provider(UnitDep)({ inject: {}, value: { value: 1 } })],
@@ -108,7 +117,7 @@ const _withKindSatisfied = start(
 void _withKindSatisfied;
 
 const _unloggedKind = HttpModule("WithKindUnmet")({
-  router,
+  router: userRouter,
   port: 0,
   unit: { user: UserUnitModule },
 });
@@ -131,7 +140,77 @@ const PrincipalOnlyUnit = Module("PrincipalOnlyUnitTypeD")({
 });
 
 const _principalOnly = start(
-  HttpModule("PrincipalOnly")({ router, port: 0, unit: { user: PrincipalOnlyUnit } }),
+  HttpModule("PrincipalOnly")({ router: userRouter, port: 0, unit: { user: PrincipalOnlyUnit } }),
   startOptions,
 );
 void _principalOnly;
+
+// The root's `unit` gate, case 1: the router carries the kinds `units<…>()`
+// declared, so a bound value must BE the module that kind declared and a kind
+// outside the declaration is refused.
+const AnonymousUnit = Module("GatedAnonymousTypeD")({
+  provides: [Provider(UnitSpan)({ inject: {}, value: { at: 0 } })],
+  exports: [UnitSpan],
+});
+class UnitTenant extends Port("UnitModuleTypeDTenant")<{ readonly id: string }> {}
+const UserUnit = Module("GatedUserTypeD")({
+  needs: [withUser.principals.user],
+  provides: [
+    Provider(UnitTenant)({
+      inject: { principal: withUser.principals.user },
+      sync: ({ principal }) => ({ id: principal.userId }),
+    }),
+  ],
+  exports: [UnitTenant],
+});
+
+const gated = withUser.units<{ anonymous: typeof AnonymousUnit; user: typeof UserUnit }>();
+const gatedRouter = gated.OrpcRouter(contract)({
+  inject: {},
+  sync: () => ({ hello: () => OkAsync("hi") }),
+});
+
+void HttpModule("GatedDeclared")({
+  router: gatedRouter,
+  port: 0,
+  unit: { anonymous: AnonymousUnit, user: UserUnit },
+});
+
+const _wrongModule = {
+  router: gatedRouter,
+  port: 0,
+  unit: { anonymous: AnonymousUnit, user: AnonymousUnit },
+} as const;
+// @ts-expect-error — the bound module is not the one units<…>() declared for `user`
+void HttpModule("GatedWrongModule")(_wrongModule);
+
+const _undeclaredKind = {
+  router: gatedRouter,
+  port: 0,
+  unit: { anonymous: AnonymousUnit, service: AnonymousUnit },
+} as const;
+// @ts-expect-error — UNDECLARED UNIT KIND: `units<…>()` declared no `service`
+void HttpModule("GatedUndeclaredKind")(_undeclaredKind);
+
+// Case 2: a plain `defineHttp` api declares no kinds, so the bindable set is
+// `anonymous` plus every scheme the answerers serve — which is what keeps
+// `examples/order-api`'s `unit: { anonymous }` compiling while refusing a typo.
+void HttpModule("PlainAnonymousOnly")({
+  router: userRouter,
+  port: 0,
+  unit: { anonymous: UnitModule },
+});
+
+void HttpModule("PlainBothKinds")({
+  router: userRouter,
+  port: 0,
+  unit: { anonymous: UnitModule, user: PrincipalOnlyUnit },
+});
+
+const _typoedKind = {
+  router: userRouter,
+  port: 0,
+  unit: { anonymous: UnitModule, usre: UnitModule },
+} as const;
+// @ts-expect-error — UNDECLARED UNIT KIND: `usre` is no scheme the contract names
+void HttpModule("PlainTypoedKind")(_typoedKind);
