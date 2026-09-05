@@ -1,4 +1,8 @@
-import type { OrderEvent } from "@btravstack/example-order-application";
+import {
+  OrderRepository,
+  PlaceOrder,
+  type OrderEvent,
+} from "@btravstack/example-order-application";
 import type { Line } from "@btravstack/observability";
 import { describe, expect, vi } from "vitest";
 
@@ -25,15 +29,14 @@ const notifications = (lines: readonly Line[]) =>
     .map(({ tenantId: _tenantId, ...line }) => line);
 
 describe("the broadcast deployment", () => {
-  it("broadcasts every committed write, end to end", async ({ tenant, serve, tapped }) => {
+  it("broadcasts every committed write, end to end", async ({ serve, tapped, writer }) => {
     // GIVEN the app serving: relay sweeping the outbox, consumer on the queue
     await serve(tapped.module);
-    const { placeOrder } = tapped.services();
 
     // WHEN an order is placed — one ordinary write, no publish in sight
-    await expect(placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000001", 2)).toBeOkWith(
-      expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000001" }),
-    );
+    await expect(
+      writer((ctx) => ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-000000000001", 2)),
+    ).toBeOkWith(expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000001" }));
 
     // THEN the fact crosses the outbox, the broker and the queue, and the
     // consumer reacts — the write-side never spoke AMQP
@@ -46,11 +49,18 @@ describe("the broadcast deployment", () => {
       });
   });
 
-  it("marks relayed events published, exactly once each", async ({ tenant, serve, tapped }) => {
+  it("marks relayed events published, exactly once each", async ({
+    tenant,
+    serve,
+    tapped,
+    writer,
+  }) => {
     // GIVEN a served app and a committed write
     await serve(tapped.module);
-    const { placeOrder, outbox } = tapped.services();
-    await expect(placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000002", 1)).toBeOk();
+    const { outbox } = tapped.services();
+    await expect(
+      writer((ctx) => ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-000000000002", 1)),
+    ).toBeOk();
     const pending = async (): Promise<readonly OrderEvent[]> =>
       (await outbox.pending(tenant, 10)).get();
 
@@ -76,14 +86,16 @@ describe("the broadcast deployment", () => {
     });
   });
 
-  it("relays in commit order", async ({ tenant, serve, tapped }) => {
+  it("relays in commit order", async ({ serve, tapped, writer }) => {
     // GIVEN a served app
     await serve(tapped.module);
-    const { placeOrder } = tapped.services();
-
     // WHEN two writes commit in order
-    await expect(placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000003", 1)).toBeOk();
-    await expect(placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000004", 1)).toBeOk();
+    await expect(
+      writer((ctx) => ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-000000000003", 1)),
+    ).toBeOk();
+    await expect(
+      writer((ctx) => ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-000000000004", 1)),
+    ).toBeOk();
 
     // THEN the notifications arrive in the same order: the relay publishes by
     // outbox id, the queue preserves it, the consumer is sequential
@@ -104,17 +116,20 @@ describe("the broadcast deployment", () => {
   });
 
   it("broadcasts the cancellation as a tombstone, after the placement", async ({
-    tenant,
     serve,
     tapped,
+    writer,
   }) => {
     // GIVEN a served app and a placed order
     await serve(tapped.module);
-    const { placeOrder, repository } = tapped.services();
-    await expect(placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000006", 2)).toBeOk();
+    await expect(
+      writer((ctx) => ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-000000000006", 2)),
+    ).toBeOk();
 
     // WHEN the order is cancelled — the write path the saga's compensation uses
-    await expect(repository.remove(tenant, "0199a1e0-0000-7000-8000-000000000006")).toBeOk();
+    await expect(
+      writer((ctx) => ctx.get(OrderRepository).remove("0199a1e0-0000-7000-8000-000000000006")),
+    ).toBeOk();
 
     // THEN the subscriber hears both words about the subject, in order: what
     // it was, then that it is gone. Without the tombstone a reader keeping its
@@ -135,6 +150,7 @@ describe("the broadcast deployment", () => {
     tenant,
     serve,
     tapped,
+    writer,
     initConsumer,
   }) => {
     // GIVEN a served app — whose worker declares the `orders` exchange — AND
@@ -145,7 +161,7 @@ describe("the broadcast deployment", () => {
 
     // WHEN an order is placed
     await expect(
-      tapped.services().placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000005", 4),
+      writer((ctx) => ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-000000000005", 4)),
     ).toBeOk();
 
     // THEN the foreign queue receives the same fact the notifier does — the
@@ -164,16 +180,18 @@ describe("the broadcast deployment", () => {
     tenant,
     serve,
     tapped,
+    writer,
     delivered,
   }) => {
     // GIVEN the worker serving, with its notifications slice on the shared
     // SMTP server
     await serve(tapped.module);
-    const { placeOrder } = tapped.services();
 
     // WHEN one order is placed, so the relay publishes and the subscriber
     // notifies
-    await expect(placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000009", 3)).toBeOk();
+    await expect(
+      writer((ctx) => ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-000000000009", 3)),
+    ).toBeOk();
 
     // THEN a mail for this tenant reached the server — the proof the port is
     // wired to a transport and not to a stub, which no recording adapter
@@ -187,14 +205,15 @@ describe("the broadcast deployment", () => {
     );
   });
 
-  it("delivers one committed fact to every subscriber", async ({ tenant, serve, tapped }) => {
+  it("delivers one committed fact to every subscriber", async ({ serve, tapped, writer }) => {
     // GIVEN a worker whose two slices each drain their own queue off the one
     // orders exchange
     await serve(tapped.module);
-    const { placeOrder } = tapped.services();
 
     // WHEN one order is placed, so the relay publishes exactly one event
-    await expect(placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000007", 2)).toBeOk();
+    await expect(
+      writer((ctx) => ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-000000000007", 2)),
+    ).toBeOk();
 
     // THEN both subscribers logged it — a broadcast, not a work queue. The
     // writer's own line is named rather than filtered out by "has no kernel

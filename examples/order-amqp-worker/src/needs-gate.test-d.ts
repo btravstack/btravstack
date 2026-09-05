@@ -30,11 +30,12 @@ import { Env } from "@btravstack/config";
 import { start, Logger } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
-import { OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
+import { Outbox } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { observability } from "@btravstack/observability";
 import { OkAsync } from "unthrown";
 
+import { MessageUnitModule } from "./message-unit.js";
 import { OrderAmqpWorker, orderHandlers } from "./module.js";
 import { AuditSlice } from "./slices/audit/module.js";
 import { NotificationsSlice } from "./slices/notifications/module.js";
@@ -49,8 +50,8 @@ const _wired = start(OrderAmqpWorker, options);
 // exported, so there is no runtime for `start` to resolve.
 const RuntimelessAmqp = Module("RuntimelessAmqp")({
   needs: [Env],
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
-  exports: [PlaceOrder, Logger],
+  imports: [OrderPersistenceModule, observability()],
+  exports: [Outbox, Logger],
 });
 
 // Negative: the marker becomes the `NO RUNTIME — …` sentence, which the module
@@ -67,13 +68,8 @@ const _noRuntime = start(RuntimelessAmqp, options);
 // channel. That is the division the two gates draw: a module declares what its
 // OWN providers read, and an import's needs travel published in its type.
 const HandlerlessAmqp = Module("HandlerlessAmqp")({
-  imports: [
-    OrderApplicationModule,
-    OrderPersistenceModule,
-    observability(),
-    amqp({ contract: orderContract }),
-  ],
-  exports: [AmqpRuntime, PlaceOrder, Logger],
+  imports: [OrderPersistenceModule, observability(), amqp({ contract: orderContract })],
+  exports: [AmqpRuntime, Outbox, Logger],
 });
 
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides the handlers port.
@@ -93,11 +89,26 @@ const _missingHandlers = start(HandlerlessAmqp, options);
 const LoggerlessAmqp = AmqpModule("LoggerlessAmqp")({
   contract: orderContract,
   handlers: orderHandlers,
+  unit: { message: MessageUnitModule },
   imports: [NotificationsSlice, AuditSlice],
 });
 
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides `Logger`.
 const _missingLogger = start(LoggerlessAmqp, options);
+
+// The OTHER unit gate, and the one both handlers' `unit: { tenant: Tenant }`
+// bought: a root binding no unit module at all is refused at `AmqpModule`
+// itself, against a marker naming the port the pieces declared —
+// `context.unit.tenant` would otherwise resolve out of an empty fork and
+// defect on the first delivery.
+// @ts-expect-error — UNIT DOES NOT PROVIDE: a piece injects a port the bound unit module does not export.
+const _unboundUnit = AmqpModule("UnboundUnit")({
+  contract: orderContract,
+  handlers: orderHandlers,
+  imports: [NotificationsSlice, AuditSlice, observability()],
+});
+
+void _unboundUnit;
 
 // The `unit` needs-propagation gate: a bound `unit.message` module's own
 // unmet needs join `AmqpModule`'s own Needs channel (an import's own unmet

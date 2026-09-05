@@ -1,6 +1,7 @@
 import { AmqpHandler } from "@btravstack/amqp-worker";
 import { Logger } from "@btravstack/core";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
+import { Tenant } from "@btravstack/example-order-application";
 import { OkAsync } from "unthrown";
 
 /**
@@ -20,15 +21,17 @@ export const orderAudit = AmqpHandler(
   "orderAudit",
 )({
   inject: { logger: Logger },
+  unit: { tenant: Tenant },
   sync:
     ({ logger }) =>
     ({
+      context,
       input: {
-        payload: { tenantId, id, occurredAt, payload },
+        payload: { id, occurredAt, payload },
       },
     }) => {
       logger.info("recording an order change", {
-        tenantId,
+        tenantId: context.unit.tenant,
         orderId: id,
         occurredAt,
         change: payload === null ? "removed" : "placed",

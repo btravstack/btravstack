@@ -2,6 +2,7 @@ import { RetryableError } from "@amqp-contract/worker";
 import { AmqpHandler } from "@btravstack/amqp-worker";
 import { currentUnit, Logger } from "@btravstack/core";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
+import { Tenant } from "@btravstack/example-order-application";
 import { Mailer } from "@btravstack/mailer";
 import { ErrAsync, P } from "unthrown";
 
@@ -13,7 +14,9 @@ import { ErrAsync, P } from "unthrown";
  * drifted is a compile error in this file rather than at the composition root.
  *
  * It declares only what it calls: `Logger` and `Mailer`, and nothing the
- * audit slice needs.
+ * audit slice needs. The tenant comes off `context.unit`, where
+ * `MessageUnitModule` claimed it from the very envelope this handler is
+ * reading — the same fact, claimed once.
  *
  * The mail is what the slice is for, and its failure arm is the interesting
  * half: a `MailNotSent` becomes a `RetryableError`, so the delivery is left
@@ -36,13 +39,16 @@ export const orderNotifications = AmqpHandler(
   "orderNotifications",
 )({
   inject: { logger: Logger, mailer: Mailer },
+  unit: { tenant: Tenant },
   sync:
     ({ logger, mailer }) =>
     ({
+      context,
       input: {
-        payload: { tenantId, id, payload },
+        payload: { id, payload },
       },
     }) => {
+      const tenantId = context.unit.tenant;
       if (currentUnit()?.signal.aborted === true) {
         return ErrAsync(
           new RetryableError(`the drain deadline passed before order ${id} was notified`),

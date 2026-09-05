@@ -16,10 +16,11 @@ src/slices/notifications/handler.ts   the notifier: orderNotifications, one piec
 src/slices/notifications/module.ts    NotificationsSlice — provides the piece, exports only it
 src/slices/audit/handler.ts           the auditor: orderAudit, one piece on the "orderAudit" consumer, built by AmqpHandler from Logger
 src/slices/audit/module.ts            AuditSlice — same shape as NotificationsSlice
+src/message-unit.ts    MessageUnitModule — forked per delivery, seeded with the validated message; Tenant from the envelope
 src/outbox-relay.ts    the publishing half: sweep the outbox, publish, mark sent — a resourceful provider
 src/module.ts          orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit]); OrderAmqpWorker — the composition root, an AmqpModule importing both slices and observability(), a constant
 src/main.ts            the process: runMain(OrderAmqpWorker), and nothing else
-src/__tests__/test-fixtures.ts   boot / serve / tapped, as Vitest fixtures, against a real RabbitMQ — boot and tapped from @btravstack/testing
+src/__tests__/test-fixtures.ts   boot / serve / tapped / writer, as Vitest fixtures, against a real RabbitMQ — boot and tapped from @btravstack/testing
 ```
 
 ## Two subscribers, not one
@@ -44,11 +45,14 @@ version of the HTTP one — a subscriber reacts to a fact somebody else already
 committed, so it has no business the way a controller handling a command
 does. What each slice still declares for itself is the **ports its own
 handler calls** — `Logger`, here, for both, but nothing stops one subscriber
-from needing a service the other has no reason to know about. The vertical
-in this deployment — `OrderApplicationModule` / `OrderPersistenceModule` —
-belongs to the **relay**, the publishing half, not to either subscriber; it
-sits in the root's own `imports` for that reason, next to the two slices
-rather than inside one of them.
+from needing a service the other has no reason to know about. Both also
+declare `unit: { tenant: Tenant }` and read `context.unit.tenant`, which
+`MessageUnitModule` claimed once from the envelope they are already handed.
+
+`OrderPersistenceModule` in the root's own `imports` belongs to the
+**relay**, the publishing half, not to either subscriber: the outbox it
+sweeps, and the one Prisma client behind it. The orders vertical is in
+neither — nothing here places an order off a message.
 
 A wiring rule worth stating because the reason isn't obvious: `orderHandlers`'s
 pieces are the composed provider's `deps`, and di's `flatten` discovers
@@ -189,7 +193,9 @@ and a **tenant** of its own on the one migrated database.
 Tenancy crosses the broker here, which the other two deployments do not have to
 do: a broadcast leaves the process. The **contract** carries it — `tenantId` is
 a field on the envelope — so the relay reads it off the outbox row, puts it on
-the event, and a subscriber reads it off the message it was already handed.
+the event, and the worker seeds the per-delivery fork with that very message.
+`MessageUnitModule` turns it into `Tenant` once, and both handlers read it off
+`context.unit` rather than destructuring the payload again.
 `@btravstack/amqp-worker` knows nothing about tenants; there is nothing to configure
 and nothing to hook.
 
@@ -202,9 +208,11 @@ broadcasting another's facts.
 The fixtures are [`@btravstack/testing`](../../packages/testing)'s: `serve`
 boots the worker against the test's own vhost through the `boot` fixture, so
 it is stopped when the test ends, and `tapped` hands back the very
-`PlaceOrder`, `OrderRepository` and `Outbox` the running app was
-built with — the writer the spec places orders through is the one the relay
-sweeps. Neither subscriber's own lines need a tap: the fixture composes the
+`Outbox` and Prisma client the running app was built with. `writer` composes
+a scope over that client for the test's own tenant — `tenantOf` plus
+`OrderTenantPersistence` plus the orders vertical, the shape a unit module
+has — so the writer the spec places orders through commits to the very rows
+the relay sweeps. Neither subscriber's own lines need a tap: the fixture composes the
 root's shape with `observability({ sink })`, so what each one said arrives as
 `Line` values and the assertions read `{ message, orderId, quantity }` rather
 than a formatted sentence.
