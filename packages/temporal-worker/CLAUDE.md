@@ -296,14 +296,22 @@ close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
   wants the gate goes through `TemporalModule`.
 
   What that costs is worth stating, because it is the one path where a
-  declared port is not checked: a piece declaring `unit: { tenant: Tenant }`
-  under a `temporal()` root with no module bound reads `undefined` off
-  `context.unit.tenant`, and the property access after it throws. That is a
-  **Defect**, which `declareActivitiesHandler` re-throws at the activity edge
-  with its original cause — so Temporal fails that attempt with the raw
-  `TypeError` rather than a modeled `ApplicationFailure`, and the contract's
-  own retry policy decides whether it comes back. Loud, on the first attempt,
-  never a silent wrong answer. The gate turns it into a compile error.
+  declared port is not checked, and the two ways it can go wrong fail
+  differently. With **no module bound**, `unitRecordOf` hands back the empty
+  record, so a piece declaring `unit: { tenant: Tenant }` reads `undefined` off
+  `context.unit.tenant` and the property access after it throws a `TypeError`.
+  With a **module bound that does not export `Tenant`**, the record's getter
+  runs and `Context.get` throws di's own
+  `[di] no service registered for port …`, naming the port — not `undefined`.
+  Either way it is a throw out of the activity body, and a SYNCHRONOUS one
+  never reaches `declareActivitiesHandler`'s `defect` arm at all: the
+  implementation is called inside the wrapped activity's own `async` function,
+  so the throw becomes that function's rejection and no `Result` is ever
+  produced to match on. The outcome is the same as the arm's own `throw cause`
+  — Temporal fails the attempt with the raw error rather than a modeled
+  `ApplicationFailure`, and the contract's retry policy decides whether it
+  comes back. Loud, on the first attempt, never a silent wrong answer. The gate
+  turns it into a compile error.
 
 - **The activities port is the starter's, provided by the application, and
   the module's one need.** Its service is `ActivitiesOf<C>` =
@@ -416,14 +424,15 @@ ActivitiesPortOf<C> }, sync })` —
   fixture's activity waiting on `currentUnit()?.signal` and reporting
   `sawAbort` alongside the report's `abandoned: 1`; _"releases the kernel at
   its own deadline, not Temporal's"_).
-  All boot through the `env` fixture (one `TestWorkflowEnvironment` per test)
-  and `test-fixtures.ts`'s `compose`: `TemporalModule("Worker")({ contract: {
+  All boot through the `server` fixture — the shared Temporal container, plus
+  the namespace this spec file registered on it — and `test-fixtures.ts`'s
+  `compose`: `TemporalModule("Worker")({ contract: {
 ...echoContract, taskQueue }, activities: <the provider under test>,
-workflows, provides: [Greeting] })`, `env: { TEMPORAL_ADDRESS: env.address }`
+workflows, provides: [Greeting] })`, `env: { TEMPORAL_ADDRESS: server.address,
+TEMPORAL_NAMESPACE: server.namespace }`
   — a per-test connection measured as free — handed to the `boot` fixture,
   `@btravstack/testing`'s `bootFixture()`, which `serve` and `serveBroken`
-  both depend on: every app is stopped when the test ends (`env` is torn
-  down after them, cleanup running in reverse dependency order), and the
+  both depend on: every app is stopped when the test ends, and the
   teardown is **Defect-only** — a shutdown defect fails the test, a modeled
   `Err` passes — so `serveBroken`'s `Err` exit is the test's own to assert
   on `app.exited`, not the fixture's.

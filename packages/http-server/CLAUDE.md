@@ -702,9 +702,29 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   An undeclared kind is refused against an `"UNDECLARED UNIT KIND — …"` marker
   rather than by excess-property checking, which cannot see one: `Units` is
   inferred FROM the value, so the typo'd key is part of the very type the
-  check compares against. A record whose keys are not literal — one built by
-  `Object.fromEntries`, as the runtime fixtures do — has no name to check and
-  is passed rather than refused for carrying a `string` key.
+  check compares against. The marker's text carries no backticks, so it reads
+  the way its siblings here do — `"UNIT DOES NOT PROVIDE — …"`,
+  `"SERVES NOTHING — …"` — in a diagnostic that is already quoting a type.
+
+  **The two cases treat a record whose keys are NOT literal — one built by
+  `Object.fromEntries`, as the runtime fixtures do — differently, because they
+  check against different things.** `UndeclaredKind` bails to `never` on
+  `string extends keyof Units`, so neither case reaches the marker; what is
+  left is the positive arm, and that is where they part. Case 1 keeps
+  requiring every kind `units<…>()` declared, and a `Record<string, …>`
+  supplies no NAMED property, so it is refused with TypeScript's own
+  `Property 'anonymous' is missing` — the `units<…>()` half gates against the
+  authenticator REGISTRY and holds either way. Case 2's set comes from the
+  router's contract instead, and with no `_units` to intersect against, the
+  arm is the empty object: a non-literal record passes ungated. That is the
+  weaker of the two and where a fixture lands.
+
+  It is also where a **fragments-only** root lands even under a `units<…>()`
+  api: `UnitsOfRouter` reads the `_units` phantom off the ROUTER, and
+  `htmxFragmentsFor` carries none — the phantom rides `orpc.ts`'s provider and
+  `define-http.ts`'s `Http` object alone. So a root supplying `fragments` and
+  no `router` is gated by case 2, against `anonymous` plus its own routes'
+  schemes, and never against the modules the kinds declared.
 
   **`http()` and `httpServer()` stay un-gated**, and that is structural: they
   take the router as a NEED (`OrpcRouterPort`), never as a value, so their

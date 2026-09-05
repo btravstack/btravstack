@@ -316,13 +316,19 @@ Module<never, never, unknown>`, the same contravariant-exports bound
   A hand-composed root that wants the gate goes through `AmqpModule`.
 
   What that costs is worth stating, because it is the one path where a
-  declared port is not checked: a piece declaring `unit: { tenant: Tenant }`
-  under an `amqp()` root with no module bound reads `undefined` off
-  `context.unit.tenant`, and the property access after it throws. That is a
-  **Defect**, so the delivery is nacked once and goes straight to the
-  dead-letter queue with the `TypeError` in the report — loud and on the first
-  message, never a silent wrong answer. The gate turns that into a compile
-  error; without it the failure is still unmissable.
+  declared port is not checked, and the two ways it can go wrong fail
+  differently. With **no module bound**, `unitRecordOf` hands back the empty
+  record, so a piece declaring `unit: { tenant: Tenant }` reads `undefined` off
+  `context.unit.tenant` and the property access after it throws a `TypeError`.
+  With a **module bound that does not export `Tenant`**, the record's getter
+  runs and `Context.get` throws di's own
+  `[di] no service registered for port …`, naming the port — not `undefined`.
+  Either way the handler is invoked from inside one of the library's own
+  `unthrown` combinators, so even a synchronous throw is qualified as a
+  **Defect**: the delivery is nacked once and goes straight to the dead-letter
+  queue with that error in the report — loud and on the first message, never a
+  silent wrong answer. The gate turns that into a compile error; without it the
+  failure is still unmissable.
 
 - **The handlers port's service is `WorkerInferHandlers<TContract>`** —
   the record `TypedAmqpWorker.create` takes, with **no injected context**.

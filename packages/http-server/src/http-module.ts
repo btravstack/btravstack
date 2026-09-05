@@ -124,7 +124,7 @@ type UnitGate<Units, Router, Fragments> = [UndeclaredKind<Units, Router, Fragmen
       readonly [K in keyof Units & keyof UnitsOfRouter<Router>]: UnitsOfRouter<Router>[K];
     }
   : {
-      readonly "UNDECLARED UNIT KIND — no request opens under it, so it would silently fall back to `anonymous`": UndeclaredKind<
+      readonly "UNDECLARED UNIT KIND — no request opens under it, so it would silently fall back to anonymous": UndeclaredKind<
         Units,
         Router,
         Fragments
