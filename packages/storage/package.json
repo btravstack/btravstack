@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/storage",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "A Storage port for @btravstack/core: an in-memory adapter, an S3-compatible adapter with presigned reads, and a composition that spans, counts and logs every operation",
   "keywords": [
     "dependency-injection",
