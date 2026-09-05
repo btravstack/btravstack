@@ -390,3 +390,89 @@ describe("htmx", () => {
     expect(response.status).toBe(500);
   });
 });
+
+describe("htmx unit kinds", () => {
+  it("forks the user module, seeded with the principal, for a route that requires one", async ({
+    kindedHtmx,
+  }) => {
+    // GIVEN fragments binding both kinds
+    const { origin, counts, seen } = await kindedHtmx.serve(["anonymous", "user"]);
+
+    // WHEN the route requiring `user` is fetched with a credential it accepts
+    await fetch(`${origin}/kinded/private`, { headers: { authorization: "Bearer good" } });
+    await vi.waitUntil(() => counts().user.stops === 1);
+
+    // THEN only the user kind was opened, seeded with what its scheme resolved
+    expect({ user: counts().user, anonymous: counts().anonymous, seen: seen() }).toEqual({
+      user: { builds: 1, stops: 1 },
+      anonymous: { builds: 0, stops: 0 },
+      seen: [{ userId: "u-1" }],
+    });
+  });
+
+  it("renders a port only the forked kind's module exports, read off context.unit", async ({
+    kindedHtmx,
+  }) => {
+    // GIVEN a route requiring `user` and declaring `unit: { userId }` — a port
+    // the `user` module derives from the principal its fork was seeded with
+    const { origin } = await kindedHtmx.serve(["anonymous", "user"]);
+
+    // WHEN it is fetched with a credential that scheme accepts
+    const response = await fetch(`${origin}/kinded/whoami`, {
+      headers: { authorization: "Bearer good" },
+    });
+
+    // THEN the declared name resolved out of the fork, into the rendered fragment
+    expect(await response.text()).toBe("<p>u-1</p>");
+  });
+
+  it("forks anonymous, with no seed, for a route requiring nothing", async ({ kindedHtmx }) => {
+    // GIVEN the same fragments binding both kinds
+    const { origin, counts, seen } = await kindedHtmx.serve(["anonymous", "user"]);
+
+    // WHEN the public route is fetched, credential or not
+    await fetch(`${origin}/kinded/public`, { headers: { authorization: "Bearer good" } });
+    await vi.waitUntil(() => counts().anonymous.stops === 1);
+
+    // THEN the anonymous kind was opened and nothing was seeded
+    expect({ anonymous: counts().anonymous, user: counts().user, seen: seen() }).toEqual({
+      anonymous: { builds: 1, stops: 1 },
+      user: { builds: 0, stops: 0 },
+      seen: [],
+    });
+  });
+
+  it("falls back to anonymous when the scheme binds no module", async ({ kindedHtmx }) => {
+    // GIVEN fragments binding `anonymous` alone — what an application that never
+    // specialised a kind has
+    const { origin, counts } = await kindedHtmx.serve(["anonymous"]);
+
+    // WHEN the route requiring `user` resolves that scheme, which binds nothing
+    await fetch(`${origin}/kinded/private`, { headers: { authorization: "Bearer good" } });
+    await vi.waitUntil(() => counts().anonymous.stops === 1);
+
+    // THEN the anonymous module was forked all the same, so binding it alone
+    // keeps forking on every route
+    expect(counts()).toEqual({
+      anonymous: { builds: 1, stops: 1 },
+      user: { builds: 0, stops: 0 },
+    });
+  });
+
+  it("forks nothing when neither the scheme nor anonymous is bound", async ({ kindedHtmx }) => {
+    // GIVEN fragments binding no kind at all
+    const { origin, counts } = await kindedHtmx.serve([]);
+
+    // WHEN the route requiring `user` is fetched with a credential it accepts
+    const response = await fetch(`${origin}/kinded/private`, {
+      headers: { authorization: "Bearer good" },
+    });
+
+    // THEN nothing was forked, and the fragment was still rendered
+    expect({ status: response.status, body: await response.text(), counts: counts() }).toEqual({
+      status: 200,
+      body: "<p>private</p>",
+      counts: { anonymous: { builds: 0, stops: 0 }, user: { builds: 0, stops: 0 } },
+    });
+  });
+});

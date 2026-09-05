@@ -102,6 +102,17 @@ The two rules this half exists to state, before the detail:
   through a returned function's `AsyncResult` is exactly where a principal
   silently widens to `unknown`.
 
+  **A principal is now a PORT too.** `principalPort(scheme)` mints
+  ``Port(`HttpPrincipal:${scheme}`)<P>`` on the **same memoising map**, for the
+  same reason: `defineHttp` mints one per declared scheme and a unit module
+  depends on it, which is the designed two-call pattern rather than the
+  duplicate declaration di's warning exists to catch. It is what lets a
+  per-request module name the caller it was opened for in its own `needs` —
+  the scheme name is on the port **id**, so `HttpPrincipal:user` and
+  `HttpPrincipal:service` are different types and a module needing one is met
+  only by a unit opened under that scheme. Exported for the same consumer
+  `authenticatorPort` is: a test seeding one scheme's principal by hand.
+
   **The empty parens are TypeScript's, not a style choice, and the alternative
   was measured.** Type arguments are all-or-nothing per call: naming `P` and
   `Scope` on a single-call form means `D` — the `inject` record — stops being
@@ -202,7 +213,8 @@ The two rules this half exists to state, before the detail:
   dependency and no framework opinion, which is the right size for it.
 
 - **`defineHttp({ authenticators })` → `Http<A>`, carrying `OrpcController`,
-  `OrpcRouter` and `authenticators`** (`define-http.ts`) — **the one door** to
+  `OrpcRouter`, `authenticators`, `principals` and `units`** (`define-http.ts`)
+  — **the one door** to
   the marker-typed entities, and the place a scheme registry is stated.
   **The contract says which schemes protect a route; this says what each one
   resolves to.** `SchemesFrom<A>` reads the registry off the authenticators
@@ -230,6 +242,15 @@ The two rules this half exists to state, before the detail:
   inferred type collapses to `Http<A>`, which is nameable — so an application
   writes **no type annotation at all**, and the three `…Of<Identity>` aliases
   the previous factory needed are gone with the annotations they existed for.
+  **`principals` and `units<U>()`** are the unit-kinds half: one principal port
+  per declared scheme, and a second call that retypes the same object by the
+  module each kind binds. The ports also reach the answerers at RUNTIME —
+  `defineHttp` hands the record to `routerFor` and `htmxFragmentsFor` beside
+  the authenticators — since a seed needs the port object, not only its type. The two steps exist because a unit module names
+  `auth.principals.<scheme>` in its `needs`, so folding the kinds into
+  `defineHttp` itself would make `auth` reference its own type — TS7022. The
+  reasoning and the `UnitsOf` weak-type rule are in
+  `packages/http-server/CLAUDE.md`.
   At runtime the call binds one provider per scheme —
   `Provider(authenticatorPort(scheme))(options)`, the very options object
   `HttpAuthenticator` held on to — and hands them to
@@ -247,15 +268,22 @@ The two rules this half exists to state, before the detail:
   authenticators, the no-argument call, an authenticator's own dependency
   riding through), by `auth.test-d.ts`'s arms 7–12, and at runtime by
   `auth.spec.ts`'s `rpcAuthed`, `rpcRootMarked` and `rpcVerified` fixtures.
-- **`resolvePrincipal(requirements, authenticators, headers)` →
-  `AsyncResult<unknown, Unauthenticated | UnderScoped>`** (`auth.ts`) — the
-  authentication walk, protocol-neutral: headers in, a principal or a typed
-  refusal out, with no oRPC in the signature. It tries the requirements **in
-  the order the contract declared them**, taking the first a caller satisfies.
-  Every answerer shares this one walk, so a scope check cannot drift between
-  protocols. Four decisions live here, each pinned by `auth.spec.ts`:
+- **`resolveScheme(requirements, authenticators, headers)` →
+  `AsyncResult<{ scheme, identity }, Unauthenticated | UnderScoped>`**
+  (`auth.ts`) — the authentication walk, protocol-neutral: headers in, the
+  scheme that answered and what it answered with, or a typed refusal, out —
+  with no oRPC in the signature. It tries the requirements **in the order the
+  contract declared them**, taking the first a caller satisfies. Every answerer
+  shares this one walk, so a scope check cannot drift between protocols. It
+  reports the SCHEME on every success rather than only on a multi-scheme leaf,
+  because the scheme is also the **unit kind** the request opens under, which
+  every leaf has whether or not its handler is told which one answered.
+  `principalOf(requirements, resolved)` is the fold to what a handler is
+  injected, and `resolvePrincipal` is the two composed — the shape `index.ts`
+  exports, unchanged. Four decisions live here, each pinned by `auth.spec.ts`:
   - **Tagged when the leaf names more than one SCHEME**, not more than one
-    requirement — `new Set(requirements.flatMap(Object.keys)).size > 1`. One
+    requirement — `new Set(requirements.flatMap(Object.keys)).size > 1`, in
+    `principalOf`, the one site both answerers fold through. One
     requirement may name several schemes, and counting requirements disagreed
     with `SchemesOf`, which unions scheme names across all of them: the handler
     typed `Tagged` while this injected bare, so `principal.scheme` read
@@ -287,7 +315,7 @@ The two rules this half exists to state, before the detail:
   the one middleware this package installs, only on a leaf whose effective
   requirements say so. It reads the request off oRPC's **initial context**
   (`orpc()` passes `context: { request }` to `RPCHandler.handle`, which is what
-  initial context is for), calls `resolvePrincipal` with the headers, and turns
+  initial context is for), calls `resolveScheme` with the headers, and turns
   its two error cases into `throw new ORPCError("UNAUTHORIZED")` for
   `Unauthenticated` and `("FORBIDDEN")` for `UnderScoped` — oRPC's middleware
   protocol has no returned-error arm, which is the one place in this package a
@@ -296,7 +324,14 @@ The two rules this half exists to state, before the detail:
   the client, so the caller gets oRPC's default and the reason never leaves the
   process. A defect from the walk is rethrown as its own cause, so it stays
   oRPC's `INTERNAL_SERVER_ERROR` collapse. On success it injects
-  `{ context: { principal } }` through `next`.
+  `{ context: { principal, resolved } }` through `next` — `principal` for the
+  handler, `resolved` for `unitScope`, which reads `resolved.scheme` as the
+  unit KIND and seeds the fork with `resolved.identity` on that scheme's
+  principal port. The kind selects `units[scheme] ?? units.anonymous` — a
+  scheme that binds no module of its own falls back, so binding `{ anonymous }`
+  alone keeps forking on every leaf, and a scheme's module is how one kind is
+  specialised rather than how the others are switched off. The seed lands
+  whichever module is forked; an unread entry is the whole cost.
 
 - **A contract may name a scope only if the scheme's authenticator can grant
   it — for an oRPC contract.** `routerFor` intersects `ScopeGate<C, Vocab>`

@@ -8,6 +8,7 @@ import {
 } from "@amqp-contract/contract";
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
+import type { WorkerInferConsumerHandler } from "@amqp-contract/worker";
 import type { ConfigInvalid, Environment } from "@btravstack/config";
 import {
   Observers,
@@ -32,7 +33,7 @@ import {
   type AnyUnitModule,
   type HandlersPortOf,
 } from "../amqp-runtime.js";
-import { AmqpHandler } from "../handler.js";
+import { AmqpHandler, AmqpMessage } from "../handler.js";
 
 const echoExchange = defineExchange("amqp-test");
 const echoDlx = defineExchange("amqp-test-dlx", { type: "direct" });
@@ -147,7 +148,7 @@ class BoundConfig extends Port("BoundAmqpConfig")<ServiceOf<AmqpConfig>> {}
 
 const plainHandlers: EchoProvider = echoHandlers({
   inject: {},
-  value: { echo: () => OkAsync(undefined) },
+  sync: () => ({ echo: () => OkAsync(undefined) }),
 });
 
 /**
@@ -157,7 +158,9 @@ const plainHandlers: EchoProvider = echoHandlers({
  */
 const failingHandlers: EchoProvider = echoHandlers({
   inject: {},
-  value: { echo: () => fromSafePromise(Promise.reject(new Error("the handler is on fire"))) },
+  sync: () => ({
+    echo: () => fromSafePromise(Promise.reject(new Error("the handler is on fire"))),
+  }),
 });
 
 type App = RunningApp<ConfigInvalid, AmqpInfo>;
@@ -229,7 +232,7 @@ const deadlineHandler = () => {
 
   const handlers: EchoProvider = echoHandlers({
     inject: {},
-    value: {
+    sync: () => ({
       echo: () => {
         const signal = currentUnit()?.signal;
         entered();
@@ -263,7 +266,7 @@ const deadlineHandler = () => {
           }),
         );
       },
-    },
+    }),
   });
 
   return { handlers, arrived, sawAbort: (): boolean | undefined => sawAbort };
@@ -286,12 +289,12 @@ const gatedHandler = () => {
 
   const handlers: EchoProvider = echoHandlers({
     inject: {},
-    value: {
+    sync: () => ({
       echo: () => {
         entered();
         return fromSafePromise(held.then(() => undefined));
       },
-    },
+    }),
   });
 
   return { handlers, arrived, release: () => release() };
@@ -305,6 +308,86 @@ const rightQueue = defineQueue("amqp-sliced-right", {
   deadLetter: { exchange: echoDlx, externalConsumers: true },
   retry: { mode: "immediate-requeue", maxRetries: 1 },
 });
+
+export class Tenant extends Port("Tenant")<{ readonly id: string }> {}
+
+/** The delivery's own port, as a unit module reads it: one seed, typed by the contract. */
+const EchoMessage = AmqpMessage(echoContract);
+
+/**
+ * The seeded fork, end to end: a `message` module deriving a tenant from the
+ * delivery, and a piece declaring it — so what the handler reads off
+ * `context.unit.tenant` can only have come through the seed.
+ *
+ * `entry` picks which shape the piece hands back. A contract's handler entry is
+ * `handler | [handler, ConsumerOptions]`, and `withUnit` has to reach inside the
+ * tuple to wrap the function — so the two forms are two code paths, and both
+ * are served here rather than only the one every other fixture happens to use.
+ */
+const TenantUnitModule = Module("TenantUnit")({
+  needs: [EchoMessage],
+  provides: [
+    Provider(Tenant)({
+      inject: { message: EchoMessage },
+      sync: ({ message }) => ({ id: message.payload.value }),
+    }),
+  ],
+  exports: [Tenant],
+});
+
+const scopedOf = (entry: "bare" | "tupled" = "bare") => {
+  const seen: string[] = [];
+  const module = TenantUnitModule;
+
+  const piece = AmqpHandler(
+    echoContract,
+    "echo",
+  )({
+    inject: {},
+    unit: { tenant: Tenant },
+    sync: () => {
+      const handler: WorkerInferConsumerHandler<
+        typeof echoContract,
+        "echo",
+        { readonly unit: { readonly tenant: ServiceOf<Tenant> } }
+      > = ({ context }) => {
+        seen.push(context.unit.tenant.id);
+        return OkAsync(undefined);
+      };
+      return entry === "bare" ? handler : [handler, { prefetch: 1 }];
+    },
+  });
+
+  return {
+    module,
+    pieces: [piece] as const,
+    handlers: AmqpHandlers(echoContract)([piece]),
+    seen: (): readonly string[] => seen,
+  };
+};
+
+/**
+ * The same seeded fork through the WHOLE-RECORD arm: one `unit:` for every
+ * entry in the record, and no piece for the root to provide.
+ */
+const wholeScopedOf = () => {
+  const seen: string[] = [];
+  return {
+    module: TenantUnitModule,
+    pieces: [] as const,
+    handlers: AmqpHandlers(echoContract)({
+      inject: {},
+      unit: { tenant: Tenant },
+      sync: () => ({
+        echo: ({ context }) => {
+          seen.push(context.unit.tenant.id);
+          return OkAsync(undefined);
+        },
+      }),
+    }),
+    seen: (): readonly string[] => seen,
+  };
+};
 
 /** Two consumers of ONE publisher, on two queues — a broadcast with two subscribers, which is what a sliced worker is. Not exported: only this module's own fixtures build on it, and knip flags an export nothing imports. */
 const slicedContract = defineContract({
@@ -325,6 +408,7 @@ const slicedContract = defineContract({
  */
 const slicesOf = () => {
   const ran: string[] = [];
+  const units: (readonly string[])[] = [];
   let greeting = "";
 
   const left = AmqpHandler(
@@ -345,16 +429,21 @@ const slicesOf = () => {
     "right",
   )({
     inject: {},
-    value: () => {
-      ran.push("right");
-      return OkAsync(undefined);
-    },
+    sync:
+      () =>
+      ({ context }) => {
+        ran.push("right");
+        units.push(Object.keys(context.unit));
+        return OkAsync(undefined);
+      },
   });
 
   return {
     handlers: AmqpHandlers(slicedContract)([left, right]),
     pieces: [left, right] as const,
     ran: (): readonly string[] => ran,
+    /** What `right` found on `context.unit` — nothing declared, no module bound. */
+    units: (): readonly (readonly string[])[] => units,
     greeting: (): string => greeting,
   };
 };
@@ -373,6 +462,15 @@ export type AmqpFixtures = {
   readonly deadline: ReturnType<typeof deadlineHandler>;
   readonly slices: ReturnType<typeof slicesOf>;
   readonly serveSliced: (slices: ReturnType<typeof slicesOf>) => Promise<App>;
+  /** A piece reading `context.unit.tenant` out of a `message` module built from the seed. */
+  readonly scoped: ReturnType<typeof scopedOf>;
+  /** The same piece handing back `[handler, ConsumerOptions]` — `withUnit`'s other path. */
+  readonly tupled: ReturnType<typeof scopedOf>;
+  /** The same seed read through the whole-record arm's own `unit:`, no piece involved. */
+  readonly wholeScoped: ReturnType<typeof wholeScopedOf>;
+  readonly serveScoped: (
+    scoped: ReturnType<typeof scopedOf> | ReturnType<typeof wholeScopedOf>,
+  ) => Promise<App>;
   /** The starter served over an observer that records what it was handed. */
   readonly serveObserved: (
     handlers?: EchoProvider,
@@ -449,6 +547,33 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
   // oxlint-disable-next-line no-empty-pattern -- see above
   slices: async ({}, use) => {
     await use(slicesOf());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  scoped: async ({}, use) => {
+    await use(scopedOf());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  tupled: async ({}, use) => {
+    await use(scopedOf("tupled"));
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  wholeScoped: async ({}, use) => {
+    await use(wholeScopedOf());
+  },
+  serveScoped: async ({ amqpConnectionUrl, boot }, use) => {
+    await use(async (scoped) => {
+      const app = boot(
+        AmqpModule("Scoped")({
+          contract: echoContract,
+          handlers: scoped.handlers,
+          url: amqpConnectionUrl,
+          provides: scoped.pieces,
+          unit: { message: scoped.module },
+        }),
+      );
+      await app.runtimeInfo();
+      return app;
+    });
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   counting: async ({}, use) => {

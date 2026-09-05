@@ -9,12 +9,24 @@ import type { ActivityMiddleware } from "@temporal-contract/worker/activity";
 import { activityInfo } from "@temporalio/activity";
 
 import type { AnyUnitModule } from "./temporal-runtime.js";
+import { UNIT_SCOPE } from "./unit.js";
+import { ActivityInputPort } from "./workflow-activities.js";
 
 /**
  * Open one kernel unit per activity attempt, forking `unit` — when one is
  * bound — after the activity is invoked, before it runs; the fork is torn down
- * when the unit closes. With no `unit` bound, `next()` runs unchanged, so the
- * ambient `currentUnit()` record is what an adapter reads.
+ * when the unit closes. It is seeded with the validated input on
+ * `ActivityInput(contract)`, so a unit module derives a tenant from the
+ * invocation rather than reading one off an ambient record. With no `unit`
+ * bound, `next()` runs unchanged, so the ambient `currentUnit()` record is what
+ * an adapter reads.
+ *
+ * The forked context rides the invocation's context under {@link UNIT_SCOPE},
+ * where each piece's own wrapper turns it into the typed `context.unit` record
+ * that piece declared — the records live with the pieces, so a hand-composed
+ * `temporal()` gets them without threading a second option through the starter,
+ * and the middleware never has to map Temporal's FLAT activity name back to the
+ * workflow key its piece was minted under.
  *
  * **That includes the kernel's per-unit `AbortSignal`**, and it is the only
  * route to it: an activity has no parameter to receive one through. Temporal's
@@ -30,7 +42,7 @@ export const activityUnits =
     observers: readonly ((operation: Operation) => Settle)[],
     unit: AnyUnitModule | undefined,
   ): ActivityMiddleware =>
-  (_invocation, next) => {
+  (invocation, next) => {
     const settle = observe(observers, {
       component: "temporal",
       // Per ATTEMPT, not per activity: an activity is retried under the same
@@ -53,7 +65,9 @@ export const activityUnits =
             // `examples/order-temporal-worker/src/needs-gate.test-d.ts`'s
             // positive/negative pair) — this reasserts that proof rather than
             // bypassing it.
-            scope.fork(unit as never, []).flatMap(() => next()),
+            scope
+              .fork(unit as never, [[ActivityInputPort, invocation.input]] as never)
+              .flatMap((forked) => next({ context: { [UNIT_SCOPE]: forked } } as never)),
       )
       .tap(() => settle({ outcome: "ok" }))
       .tapFailure((failure) =>

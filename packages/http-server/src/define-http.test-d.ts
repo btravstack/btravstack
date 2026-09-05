@@ -1,4 +1,4 @@
-import { Port } from "@btravstack/di";
+import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { OkAsync } from "unthrown";
 import { describe, expectTypeOf, test } from "vitest";
 
@@ -44,3 +44,71 @@ describe("defineHttp", () => {
     expectTypeOf(api.authenticators.user.needs).toEqualTypeOf<Verifier>();
   });
 });
+
+// ── Unit kinds: the two-step breaks the cycle ────────────────────────────────
+
+class Span extends Port("DefineSpan")<{ readonly finish: () => void }> {}
+class Tenant extends Port("DefineTenant")<string> {}
+
+const userAuth = HttpAuthenticator<{ readonly tenantId: string }>()({
+  inject: {},
+  sync: () => () => OkAsync({ tenantId: "t-1" }),
+});
+
+const withUser = defineHttp({ authenticators: { user: userAuth } });
+
+// `typeof withUser` depends on the authenticators alone, so a module may
+// name a principal in `needs` without a cycle.
+const Anonymous = Module("DefineAnonymous")({
+  provides: [Provider(Span)({ inject: {}, sync: () => ({ finish: () => undefined }) })],
+  exports: [Span],
+});
+const User = Module("DefineUser")({
+  needs: [withUser.principals.user],
+  imports: [Anonymous],
+  provides: [
+    Provider(Tenant)({
+      inject: { principal: withUser.principals.user },
+      sync: ({ principal }) => principal.tenantId,
+    }),
+  ],
+  exports: [Tenant, Anonymous],
+});
+
+const kinded = withUser.units<{ anonymous: typeof Anonymous; user: typeof User }>();
+
+// The principal port carries the identity the authenticator declared.
+const _principalTyped: ServiceOf<InstanceType<typeof withUser.principals.user>> extends {
+  readonly tenantId: string;
+}
+  ? true
+  : never = true;
+
+// Retyping keeps every factory; nothing is rebuilt.
+const _sameFactories: typeof kinded.OrpcController extends typeof withUser.OrpcController
+  ? true
+  : never = true;
+
+// A record naming ONLY undeclared kinds is refused — every member of `UnitsOf`
+// is optional, so this one shares no property with it at all.
+// @ts-expect-error — "service" is not a scheme of these authenticators
+withUser.units<{ service: typeof User }>();
+
+// Every declared kind is accepted together.
+withUser.units<{ anonymous: typeof Anonymous; user: typeof User }>();
+
+// And an undeclared kind is still refused when a declared one sits beside it —
+// the case the shared property makes structurally assignable, which only the
+// exactness arm catches.
+// @ts-expect-error — "service" is not a scheme of these authenticators
+withUser.units<{ anonymous: typeof Anonymous; service: typeof User }>();
+
+// A non-module under a kind is refused.
+// @ts-expect-error — a kind binds a Module, not a port
+withUser.units<{ anonymous: typeof Span }>();
+
+// `defineHttp()` with no authenticators has `anonymous` as its only kind.
+const bare = defineHttp();
+bare.units<{ anonymous: typeof Anonymous }>();
+// @ts-expect-error — no scheme named "user" on a bare defineHttp
+bare.units<{ user: typeof User }>();

@@ -127,15 +127,16 @@ What the application supplies to a starter — a router, an activities record,
 a handlers record — is a **service on a port**, and each starter ships one
 call that returns di's own provider builder on that port:
 
-- `api.OrpcRouter(contract)({ inject: deps, sync })` — `api` being the application's
+- `api.OrpcRouter(contract)({ inject, unit?, sync })` — `api` being the application's
   one `defineHttp(...)` binding, which is also what types a protected
   procedure's principal
-- `TemporalActivities(contract)({ inject, ...arm })`
-- `AmqpHandlers(contract)({ inject, ...arm })`
+- `TemporalActivities(contract)({ inject, unit?, sync })`
+- `AmqpHandlers(contract)({ inject, unit?, sync })`
 
-The first call fixes the contract and hands back `Provider(port)`, so the
-second is `Provider(port)({ inject, ...arm })` exactly as everywhere else in the
-graph. **The port is the starter's, and nothing names it.** A process serves
+The first call fixes the contract and hands back a builder on the starter's
+port, so the second is `{ inject, unit?, sync }` — the same arm on all three,
+which is what makes the three transports one thing to learn.
+**The port is the starter's, and nothing names it.** A process serves
 one router, one activities record, one handlers record as it boots one
 runtime, so there is nothing to tell apart: the port is fixed and
 framework-owned — `Port("OrpcRouter")`, `Port("TemporalActivities")`,

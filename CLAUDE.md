@@ -1535,7 +1535,7 @@ And a seventh, about the infrastructure a suite runs against:
   order id where a tenant goes was exactly the drift. It covers both
   controllers, the composed router, the `HttpModule` root whose authenticators
   ride the router,
-  the lifted single-slice root and the bare `api.OrpcRouter(contract)({ inject, ...arm })`
+  the lifted single-slice root and the bare `api.OrpcRouter(contract)({ inject, unit?, sync })`
   form the three router-shaped pages share — `docs/index.md`,
   `docs/reference/http-server.md` and `docs/how-to/serve-orpc-over-http.md`, none of
   which puts a controller in between. Every deps record it compiles is

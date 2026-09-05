@@ -27,13 +27,13 @@ import { AuditSlice } from "../../slices/audit/module.js";
 # Split a worker into slices
 
 > **How-to.** For an AMQP consumer or a Temporal worker that has outgrown one
-> `AmqpHandlers(contract)({ inject, ...arm })` or `TemporalActivities(contract)({ inject, ...arm })`.
+> `AmqpHandlers(contract)({ inject, unit?, sync })` or `TemporalActivities(contract)({ inject, unit?, sync })`.
 > For the single-record shape, see
 > [Consume AMQP messages](/how-to/consume-amqp-messages) and
 > [Run a Temporal worker](/how-to/run-a-temporal-worker).
 
-`AmqpHandlers(contract)({ inject, ...arm })` and
-`TemporalActivities(contract)({ inject, ...arm })` put every consumer's or every workflow's implementation in one
+`AmqpHandlers(contract)({ inject, unit?, sync })` and
+`TemporalActivities(contract)({ inject, unit?, sync })` put every consumer's or every workflow's implementation in one
 function — right for a worker with one or two of them, wrong once a worker
 grows enough consumers or workflows that one function means one slice's typo
 failing the whole record's type-check. A **piece** is the fix: one consumer or

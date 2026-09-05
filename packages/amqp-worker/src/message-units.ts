@@ -11,13 +11,22 @@ import {
 } from "@btravstack/core";
 
 import type { AnyUnitModule } from "./amqp-runtime.js";
+import { AmqpMessagePort } from "./handler.js";
+import { UNIT_SCOPE } from "./unit.js";
 
 /**
  * Open one kernel unit per delivery, forking `unit` — when one is bound — after
  * the message is validated, before the handler runs; the fork is torn down
- * when the unit closes. With no `unit` bound, `next()` runs unchanged, so the
- * ambient `currentUnit()` record is what the unit leaves for the adapters that
- * read it.
+ * when the unit closes. It is seeded with the validated delivery on
+ * `AmqpMessage(contract)`, so a unit module derives a tenant from the message
+ * rather than reading one off an ambient record. With no `unit` bound, `next()`
+ * runs unchanged, so the ambient `currentUnit()` record is what the unit leaves
+ * for the adapters that read it.
+ *
+ * The forked context rides the dispatcher's context under {@link UNIT_SCOPE},
+ * where each piece's own wrapper turns it into the typed `context.unit` record
+ * that piece declared — the records live with the pieces, so a hand-composed
+ * `amqp()` gets them without threading a second option through the starter.
  *
  * **The kernel's per-unit `AbortSignal` rides that record too**, and it is the
  * only route to it here: a handler has no parameter to receive one through. A
@@ -56,7 +65,9 @@ export const messageUnits =
             // `examples/order-amqp-worker/src/needs-gate.test-d.ts`'s
             // positive/negative pair) — this reasserts that proof rather than
             // bypassing it.
-            scope.fork(unit as never, []).flatMap(() => next()),
+            scope
+              .fork(unit as never, [[AmqpMessagePort, args.message]] as never)
+              .flatMap((forked) => next({ context: { [UNIT_SCOPE]: forked } } as never)),
       )
       .tap(() => settle({ outcome: "ok" }))
       .tapFailure((failure) =>

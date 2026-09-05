@@ -109,10 +109,10 @@ const _missingLogger = start(LoggerlessAmqp, options);
 // own: the only need either call below can leak is the unit module's.
 const unitGateHandlers = AmqpHandlers(orderContract)({
   inject: {},
-  value: {
+  sync: () => ({
     orderNotifications: () => OkAsync(undefined),
     orderAudit: () => OkAsync(undefined),
-  },
+  }),
 });
 
 class AmqpUnitDep extends Port("AmqpUnitDep")<{ readonly value: number }> {}

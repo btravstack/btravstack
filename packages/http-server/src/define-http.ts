@@ -1,9 +1,15 @@
-import { Provider, type AnyProvider, type PortInstance } from "@btravstack/di";
+import { Provider, type AnyProvider, type PortClassOf, type PortInstance } from "@btravstack/di";
 
-import { authenticatorPort, type Authenticator, type AuthenticatorService } from "./auth.js";
+import {
+  authenticatorPort,
+  principalPort,
+  type Authenticator,
+  type AuthenticatorService,
+} from "./auth.js";
 import { controllerFor } from "./controller.js";
 import { htmxFragmentsFor, htmxRouteFor } from "./htmx-route.js";
 import { routerFor } from "./orpc.js";
+import type { Kinds, UnitsOf } from "./unit.js";
 
 /** The authenticators an application declares, keyed by scheme name. */
 export type Authenticators = Readonly<Record<string, Authenticator<unknown, string, unknown>>>;
@@ -39,20 +45,43 @@ type SchemeProviders<A extends Authenticators> = {
  * TS2527 (measured). Held whole, the inferred type collapses to `Http<A>`,
  * which is nameable — so an application writes no annotation at all.
  */
-export type Http<A extends Authenticators> = {
-  readonly OrpcController: ReturnType<typeof controllerFor<SchemesFrom<A>>>;
+export type Http<A extends Authenticators, Units extends UnitsOf<A> = Record<never, never>> = {
+  readonly OrpcController: ReturnType<typeof controllerFor<SchemesFrom<A>, Units>>;
   readonly OrpcRouter: ReturnType<
-    typeof routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>>
+    typeof routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>, Units>
   >;
-  readonly HtmxFragments: ReturnType<typeof htmxFragmentsFor<SchemeProviders<A>>>;
-  readonly HtmxGet: ReturnType<typeof htmxRouteFor<SchemesFrom<A>, VocabFrom<A>>>["HtmxGet"];
-  readonly HtmxPost: ReturnType<typeof htmxRouteFor<SchemesFrom<A>, VocabFrom<A>>>["HtmxPost"];
+  readonly HtmxFragments: ReturnType<typeof htmxFragmentsFor<SchemeProviders<A>, Units>>;
+  readonly HtmxGet: ReturnType<typeof htmxRouteFor<SchemesFrom<A>, VocabFrom<A>, Units>>["HtmxGet"];
+  readonly HtmxPost: ReturnType<
+    typeof htmxRouteFor<SchemesFrom<A>, VocabFrom<A>, Units>
+  >["HtmxPost"];
   /**
    * The declarations as given, for a hand-rolled composition or a custom sugar
    * that reads the registry off them the way `defineHttp` does. No in-repo
    * example needs it — `HttpModule` carries the bound providers on the router.
    */
   readonly authenticators: A;
+  /**
+   * One port per scheme carrying that scheme's principal, for a unit module to
+   * name in `needs` and inject.
+   */
+  readonly principals: Principals<A>;
+  /**
+   * The second step: the SAME object, retyped by the module each kind binds.
+   * A kind the authenticators never declared is refused here — the mapped arm
+   * demands `never` for every key outside `Kinds<A>`, which a real module can
+   * never satisfy, and it names that key in the diagnostic.
+   */
+  readonly units: <
+    U extends UnitsOf<A> & { readonly [K in Exclude<keyof U, Kinds<A>>]: never },
+  >() => Http<A, U>;
+  /** Phantom: `Units` is read by the piece factories' leaf typing, never at runtime. */
+  readonly _units?: Units;
+};
+
+/** One port per scheme, typed by the principal that scheme's authenticator declared. */
+export type Principals<A extends Authenticators> = {
+  readonly [K in keyof A & string]: PortClassOf<`HttpPrincipal:${K}`, A[K]["principal"]>;
 };
 
 /**
@@ -80,14 +109,23 @@ export const defineHttp = <const A extends Authenticators = Record<never, never>
     bind(scheme, authenticator),
   );
   const routes = htmxRouteFor<SchemesFrom<A>, VocabFrom<A>>();
-  return {
+  const principals = Object.fromEntries(
+    Object.keys(declared).map((scheme) => [scheme, principalPort(scheme)]),
+  );
+  const http: Http<A> = {
     OrpcController: controllerFor<SchemesFrom<A>>(),
-    OrpcRouter: routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>>(providers as never),
-    HtmxFragments: htmxFragmentsFor<SchemeProviders<A>>(providers as never),
+    OrpcRouter: routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>>(
+      providers as never,
+      principals,
+    ),
+    HtmxFragments: htmxFragmentsFor<SchemeProviders<A>>(providers as never, principals),
     HtmxGet: routes.HtmxGet,
     HtmxPost: routes.HtmxPost,
     authenticators: declared as A,
+    principals: principals as Principals<A>,
+    units: () => http as never,
   };
+  return http;
 };
 
 /** The description `HttpAuthenticator` held, bound now that the scheme NAME exists to mint a port from. */

@@ -140,7 +140,7 @@ startup `Err`, not a defect. `runtimeInfo()` reads `{ taskQueue, namespace }`
 back once the worker is polling.
 
 A worker polling for several workflows can be several slices instead of one
-record: `TemporalWorkflowActivities(contract, key)({ inject: { name: Dep }, ...arm })` mints a
+record: `TemporalWorkflowActivities(contract, key)({ inject: { name: Dep }, unit, sync })` mints a
 provider for ONE workflow's activities (or a contract-global activity),
 typed by the key alone, and `TemporalActivities(contract)([...])` composes an
 array of them into the same activities provider `TemporalModule` takes — the
@@ -152,6 +152,16 @@ injectivity is not, so two slices claiming one key type-check together. It is
 di's duplicate-provider defect at build once **both** pieces are discharged as
 providers in one graph — wire in only one and the other's implementation is
 silently never registered.
+
+A piece's `unit` names the ports its activities read off `context.unit`,
+resolved out of the per-attempt fork of the module bound on `unit.activity` —
+which is seeded with the validated input on `ActivityInput(contract)`, so a unit
+module derives a tenant from the invocation rather than from an ambient record.
+The record arm above takes the same `unit:` — one record for every entry in it —
+so a worker that has not outgrown one function reaches `context.unit` without
+slicing first. The root is checked against what was declared either way: bind a
+module that does not export one of those ports and `TemporalModule` refuses it,
+naming the port.
 
 Its own test suite needs a **Docker daemon**: the specs run against the shared
 `temporalio/auto-setup` container `internal/test-infra` starts once per machine and every
@@ -184,7 +194,7 @@ supplies it:
 | `namespace`   | pins the namespace instead of reading `TEMPORAL_NAMESPACE`                                                              |
 | `gracePeriod` | pins `TEMPORAL_GRACE_PERIOD_MS` — Temporal's `shutdownGraceTime`, a `Duration` (default `10_000` ms)                    |
 | `forceAfter`  | pins `TEMPORAL_FORCE_AFTER_MS` — Temporal's `shutdownForceTime` (default `15_000` ms); keep it under `DRAIN_TIMEOUT_MS` |
-| `unit`        | `{ activity }` — the module the worker forks around every activity it dispatches                                        |
+| `unit`        | `{ activity }` — the module the worker forks around every activity it dispatches, seeded with the validated input       |
 
 The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/temporal-worker),

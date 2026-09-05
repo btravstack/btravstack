@@ -33,7 +33,7 @@ the same commit, and with `README.md` — the package ships no
   declaration emit keeps such an alias unreduced and cannot name imported
   modules' internal ports — TS2883, measured.) `router` is
   `Provider<OrpcRouterPort, RouterError, RouterNeeds>` — what
-  `api.OrpcRouter(contract)({ inject, ...arm })` returns; `fragments` is
+  `api.OrpcRouter(contract)({ inject, unit?, sync })` returns; `fragments` is
   `Provider<HtmxFragmentsPort, …>` — what `api.HtmxFragments([…])`
   returns. A provider of anything else fails at the call, and there is no
   port to read off either: the sugar's job is to provide the port the
@@ -97,6 +97,9 @@ PortInstance<…> }`) rather than the class's own type because a class
   `provider.port` stays on the result for a hand-declared provider or a type
   test, and `provider.authenticators` carries the per-scheme providers
   `defineHttp` bound — on the router because the router is what needs them.
+  An optional `unit: { name: Port }` beside `inject` declares what every leaf
+  may read off `context.unit`, typed per leaf by its own kind — see
+  **`context.unit` and `UnitFor`**.
   Only the `sync` arm: a router is built, not
   acquired. `HttpModule({ router: orderRouter })`, or `http()` next to
   `provides: [orderRouter]`, take it from there. Covered by the `rpc` fixture's
@@ -160,7 +163,7 @@ not cover"` marker, and what the marker names is a procedure path
   because the alias route rides a compiler heuristic that has already changed
   behaviour across one key-shape refactor — see `PieceOf`'s own TSDoc. At
   runtime `Array.isArray`
-  alone identifies this arm — an array is never a valid `{ inject, ...arm }`
+  alone identifies this arm — an array is never a valid `{ inject, unit?, sync }`
   call — so the retired keyed record's three-form
   `sync`-holds-a-function discrimination is gone, and there is nothing left to
   discriminate: the other arm is one options object, as di's own is. The
@@ -171,7 +174,7 @@ not cover"` marker, and what the marker names is a procedure path
   `routerFrom`: `routerOf` walks the same tree it always did, marks,
   inheritance and the stray-key drop included. The walk itself is untouched —
   `nest` lives in the composing arm because the walk is shared with the
-  `{ inject, ...arm }` form, which never nests. The pieces themselves still need
+  `{ inject, unit?, sync }` form, which never nests. The pieces themselves still need
   discharging — listed in `provides` alongside the router, or exported by a
   slice module imported in — exactly as in `packages/amqp-worker`. Coverage
   is not uniqueness, but with paths the split moved: a piece **inside**
@@ -196,7 +199,7 @@ not cover"` marker, and what the marker names is a procedure path
   level carries one, against `"UNSLICEABLE CONTRACT KEY — …"` reported ahead
   of `Uncovered`, because "no piece can name this" is a different fact from
   "no piece did" and only the first says the array form is the wrong tool.
-  Both sentences point at the `{ inject, ...arm }` form, which splits nothing and
+  Both sentences point at the `{ inject, unit?, sync }` form, which splits nothing and
   serves such a contract correctly. Only the **top** level is fatal: a piece
   at a dotted key's parent hands its implementation record to `routerOf`
   whole, and that walk splits paths, never the keys underneath them — so
@@ -282,9 +285,11 @@ not cover"` marker, and what the marker names is a procedure path
   written. The second call is di's `Provider(port)({ inject: { name: Dep }, sync })`,
   unchanged — **`inject` included, and required**: a piece that calls no use
   case is the common shape here, not an edge case, and it spells
-  `{ inject: {}, sync }` like every other no-deps provider (issue #227).
+  `{ inject: {}, sync }` like every other no-deps provider (issue #227). An
+  optional `unit: { name: Port }` rides beside it — see **`context.unit` and
+  `UnitFor`**.
   Returns
-  `Provider<InstanceType<ControllerPortOf<C, K, Schemes>>, never, N> & { readonly port: ControllerPortOf<C, K, Schemes> }` —
+  `Provider<InstanceType<ControllerPortOf<C, K, Schemes>>, never, N> & { readonly port: ControllerPortOf<C, K, Schemes>; readonly unit: U }` —
   `ControllerPortOf<C, K, Schemes>` being `PortClassOf` over the prefixed
   path and `Implementation<FragmentAt<C, K>, Schemes>`, the same
   `PortInstance`/`PortClassOf` spelling `OrpcRouter` uses and for the same
@@ -390,9 +395,13 @@ grant it"` sentence oRPC's `routerFor` gives — and each requirement is also
   `params` typed from the path template's `:name` segments (`ParamsOf<P>`,
   `fragments.ts`), `context.principal` typed from `requires` exactly as an
   oRPC leaf's is, `input` typed from the schema or the raw decoded form when
-  none is given. The minted provider carries `.port` and `.route` (`method`,
-  `path`, `input`, `requires`) — what the array arm below reads back to
-  compose without the path or the requirement being spelled twice.
+  none is given. An optional `unit: { name: Port }` rides beside `inject`, and
+  `context.unit` is that record narrowed to the kind the route's own
+  `requires` selects — `KindOf<R>` read straight off the data, where an oRPC
+  leaf reads the same kind off its contract's marks; see **`context.unit` and
+  `UnitFor`**. The minted provider carries `.port`, `.route` (`method`,
+  `path`, `input`, `requires`) and `.unit` — what the array arm below reads
+  back to compose without the path or the requirement being spelled twice.
 
   ```ts
   const orderRow = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({ inject: {}, sync: () => (context, params) => repository.find(params.id).map(rowOf) });
@@ -429,7 +438,7 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   option: the module **needs** `OrpcRouterPort`, and the application provides
   it — a provider that declares the use cases its procedures call (di injects
   them, oRPC's context stays empty), built by
-  `api.OrpcRouter(contract)({ inject, ...arm })`. The starter provides
+  `api.OrpcRouter(contract)({ inject, unit?, sync })`. The starter provides
   `Runtime<never, HttpInfo>` on the **`HttpRuntime`** port (a class over
   core's `RuntimePort`, **an empty `resolves`**), which the composition root imports
   next to the application and exports so `start` finds it, and **`HttpConfig`**
@@ -594,14 +603,38 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   minted per request (a non-blank inbound `x-request-id` becomes `traceId`),
   so the two contracts a runtime owes are structural here rather than left to
   a caller's care.
-- **The fork is the answerer's, for a request it handles — not the kernel's.**
-  `http()`/`httpServer()`/`HttpModule` all take `unit?: { anonymous?: Module }`,
-  provided on `HttpUnit` (`Port("HttpUnit")<{ anonymous?: AnyUnitModule }>`,
+- **The fork is the answerer's, for a request it handles — not the kernel's,
+  and it is the KIND that decides which module.**
+  `http()`/`httpServer()`/`HttpModule` all take
+  `unit?: Readonly<Record<string, AnyUnitModule>>` — kind → module — provided
+  on `HttpUnit` (`Port("HttpUnit")<Readonly<Record<string, AnyUnitModule>>>`,
   not exported from the package — reached the same way `OrpcRouterPort` is,
-  never by name) and injected by both answerers. `orpc.ts`'s `unitScope`
-  middleware forks it on **every leaf**, installed in `routerOf` after
-  `principalMiddleware` where a leaf carries one — so a later phase can seed
-  the fork with what the principal resolved to. It runs only when oRPC's own
+  never by name) and injected by both answerers. The kind is `anonymous` for a
+  leaf that asked for no credential, else the SCHEME that resolved one:
+  `resolveScheme` reports `{ scheme, identity }` on every success, and each
+  answerer looks the module up by it — `units[kind] ?? units.anonymous`.
+
+  **A scheme that binds no module of its own FALLS BACK to `anonymous`**, and
+  nothing is forked only when neither binds one. A scheme's module is how one
+  kind is SPECIALISED, not how the others are switched off: binding
+  `{ anonymous }` alone has to keep forking on every leaf, exactly as it did
+  before kinds existed. The alternative — an unbound kind forks nothing — was
+  written first and reverted, because it made every existing
+  `unit: { anonymous }` application silently lose its request scope on
+  precisely its AUTHENTICATED procedures at upgrade, with no diagnostic
+  anywhere; `examples/order-api` is the worked case, and its
+  `"runs each call in its own unit"` spec is what caught it. A silent
+  regression loses to a name reading slightly oddly.
+
+  The fork is SEEDED with `[[auth.principals[scheme], identity]]` whenever a
+  scheme resolved — **regardless of which module ends up forked**, so the
+  anonymous fallback carries the seed too and an unread entry is the whole
+  cost. That is what discharges a unit module's
+  `needs: [auth.principals.user]`. A request no leaf authenticated is seeded
+  with nothing, since there is no caller to name. `orpc.ts`'s
+  `unitScope` middleware forks on **every leaf**, installed in `routerOf` after
+  `principalMiddleware` where a leaf carries one — which is how the resolved
+  scheme reaches it, on oRPC's own context as `resolved`. It runs only when oRPC's own
   dispatch reaches the leaf: an input oRPC's own schema refuses before any
   leaf middleware runs never forks either — proved by
   `examples/order-api/src/api.spec.ts`'s "never enters the handler for a
@@ -616,19 +649,93 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   sees only a bare answerer's own synchronous throw (above). **The runtime's own
   `404` never forks** — the
   behaviour change from the kernel forking a `StartOptions.unit` module around
-  every unit, which is gone. A bound `unit.anonymous` module's own unmet needs
-  join `httpServer`'s own Needs channel, structurally, through a single
-  `Unit extends AnyUnitModule | undefined` type parameter (`AnyUnitModule =
-Module<never, never, unknown>` — `Module`'s `_exports` channel is
-  contravariant, so the bound had to be `never`, not `unknown`, for a concrete
-  module to infer against it at all; `@btravstack/testing`'s
-  `TestRuntimeOptions.unit` carries the same bound for the same reason). An
-  import's own unmet needs are not `HttpModule`'s OWN call to re-declare (di's
-  `NeedsGate` TSDoc), so they surface where any unmet need does — at
-  `start`'s own `UNSATISFIED DEPENDENCIES`, never a marker of the kernel's:
-  the module is forked over the application context, so its needs are exactly
-  what the composition root must supply.
-  `http-module.test-d.ts` pins both directions.
+  every unit, which is gone. Every bound kind's module's own unmet needs join
+  `httpServer`'s own Needs channel, structurally, through a single
+  `Units extends Readonly<Record<string, AnyUnitModule>> | undefined` type
+  parameter — **less the principal the fork seeds**, which `UnitsNeedsOf<Units>`
+  subtracts with `Exclude<…, PrincipalInstance>`, a `PortInstance` over the
+  template-literal id every principal port carries. Measured: removing that
+  `Exclude` makes `start` report
+  `UNSATISFIED DEPENDENCIES — nothing provides: "HttpPrincipal:user"`, which is
+  the whole point of the seed. (`AnyUnitModule = Module<never, never, unknown>`
+  — `Module`'s `_exports` channel is contravariant, so the bound had to be
+  `never`, not `unknown`, for a concrete module to infer against it at all;
+  `@btravstack/testing`'s `TestRuntimeOptions.unit` carries the same bound for
+  the same reason.) An import's own unmet needs are not `HttpModule`'s OWN call
+  to re-declare (di's `NeedsGate` TSDoc), so they surface where any unmet need
+  does — at `start`'s own `UNSATISFIED DEPENDENCIES`, never a marker of the
+  kernel's: the module is forked over the application context, so its needs are
+  exactly what the composition root must supply.
+  `http-module.test-d.ts` pins all three directions — a kind whose module owes
+  a port and gets it, one that does not, and one owing nothing but its scheme's
+  principal, which starts with no provider at all.
+
+- **`HttpModule` gates the kinds a root binds, because the fallback makes a
+  typo silent.** An unbound scheme forks `anonymous` (above), so
+  `unit: { usre: M }` would fork `anonymous` on every request and diagnose
+  nothing — the one place the fallback's kindness turns into a trap.
+  `UnitGate<Units, Router, Fragments>` rides an intersection on the option
+  (`unit?: Units & UnitGate<…>`, the same shape as `routerFor`'s
+  `contract: C & ScopeGate<C, Vocab>`) so `Units` still infers from the value
+  and `UnitsNeedsOf<Units>` still reads it. Two cases:
+
+  - **An answerer carries kinds** — an `api` from `units<…>()`, read back off
+    the `_units` phantom by `UnitsOfAnswerer<T>`. **The router and the
+    fragments both carry it**, so `DeclaredUnits<Router, Fragments>` takes
+    whichever of the two has keys — a root supplying both got them from ONE
+    `api`, so the two are the same type and the preference decides nothing.
+    That is what puts a **fragments-only** root in this case rather than the
+    weaker one below. The bindable set is
+    `keyof DeclaredUnits<Router, Fragments>`, and each bound value must be
+    assignable to the module type that kind declared. That half is **ordinary
+    assignability**, not a marker: the diagnostic bottoms out at
+    `Type 'Module<UnitSpan, …>' is not assignable to type 'Module<UnitTenant, …>'`,
+    naming the kind and both modules, which no marker improves on. `Module`'s
+    `_exports` channel being contravariant means a module exporting a
+    SUPERSET is accepted, which is sound.
+  - **Neither answerer carries any** — a plain `defineHttp()` api, which is what
+    `examples/order-api` composes. The bindable set is `anonymous` plus every
+    scheme the answerers serve, recovered by `SchemesOfAnswerer<T>` off the
+    provider's own needs channel (`_needs: () => N`, then matching
+    `PortInstance<"HttpAuthenticator:${infer S}", unknown>`): a router already
+    owes one authenticator port per scheme its contract marks and a fragments
+    provider one per scheme its routes require, so **no second phantom is
+    needed** — the names are already carried where the graph needs them
+    anyway. Both answerers are read, so a plain-api fragments-only root is
+    gated by its own routes' schemes.
+
+  An undeclared kind is refused against an `"UNDECLARED UNIT KIND — …"` marker
+  rather than by excess-property checking, which cannot see one: `Units` is
+  inferred FROM the value, so the typo'd key is part of the very type the
+  check compares against. The marker's text carries no backticks, so it reads
+  the way its siblings here do — `"UNIT DOES NOT PROVIDE — …"`,
+  `"SERVES NOTHING — …"` — in a diagnostic that is already quoting a type.
+
+  **The two cases treat a record whose keys are NOT literal — one built by
+  `Object.fromEntries`, as the runtime fixtures do — differently, because they
+  check against different things.** `UndeclaredKind` bails to `never` on
+  `string extends keyof Units`, so neither case reaches the marker; what is
+  left is the positive arm, and that is where they part. Case 1 keeps
+  requiring every kind `units<…>()` declared, and a `Record<string, …>`
+  supplies no NAMED property, so it is refused with TypeScript's own
+  `Property 'anonymous' is missing` — the `units<…>()` half gates against the
+  authenticator REGISTRY and holds either way. Case 2's set comes from the
+  answerers' contracts instead, and with no `_units` to intersect against, the
+  arm is the empty object: a non-literal record passes ungated. That is the
+  weaker of the two and where a fixture lands.
+
+  A **fragments-only** root under a `units<…>()` api lands in case 1 like any
+  other: `htmxFragmentsFor` carries the phantom the router does, so its kinds
+  are checked against the modules the declaration named rather than against
+  `anonymous` plus the routes' own schemes. Case 2 is reached by a plain
+  `defineHttp()` api and by nothing else.
+
+  **`http()` and `httpServer()` stay un-gated**, and that is structural: they
+  take the router as a NEED (`OrpcRouterPort`), never as a value, so their
+  `unit` has nothing to check against. Their option keeps the wide
+  `Readonly<Record<string, AnyUnitModule>>`. A hand-rolled composition that
+  wants the gate composes through `HttpModule`.
+
 - **Drain**: `stopAccepting` retires every open response — an unsent header
   gets `Connection: close`, a sent `text/event-stream` response is
   **destroyed** on the spot, any other sent one ends its socket on
@@ -669,9 +776,10 @@ Module<never, never, unknown>` — `Module`'s `_exports` channel is
   `RPCHandler.handle(req, res, { prefix })` plus the runtime's own `404` do
   with two dependencies fewer — and no `overrideGlobalObjects` footgun to
   disarm.
-- **`httpServer({ port?, hostname?, cors?, bodyLimit?, compression?, securityHeaders? })`
-  → `Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env>`** — the
-  socket half: the runtime, its config, and no answerer. `http()` is
+- **`httpServer({ port?, hostname?, cors?, bodyLimit?, compression?, securityHeaders?, unit? })`
+  → `Module<HttpRuntime | HttpConfig | HttpHandler | HttpUnit, ConfigInvalid, Env | UnitsNeedsOf<Units>>`** —
+  the socket half: the runtime, its config, the kind → module record on
+  `HttpUnit`, and no answerer. `http()` is
   `Module("Http")({ imports: [httpServer(options)], provides: [orpc(options)],
 exports: [HttpRuntime, HttpConfig, HttpHandler] })` — this plus `orpc()`. The
   package's own transport specs, and a fragments-only graph, compose
@@ -736,12 +844,156 @@ URLSearchParams(...))`, which keeps only the LAST value for a repeated key.**
   own `404`/`500` fallback carries `application/json` — `refuse` owes the
   caller nothing beyond the status.
 
+- **`resolveScheme(requirements, authenticators, headers)`
+  → `AsyncResult<{ scheme, identity }, Unauthenticated | UnderScoped>`**
+  (internal — not exported from `index.ts`) — the authentication walk, protocol-neutral, shared by every answerer so a scope
+  check cannot drift between protocols. It reports the SCHEME as well as the
+  identity, because the scheme is the unit kind a request opens under.
+  `UnderScoped` is the `403` case, distinct from `Unauthenticated`'s `401`.
+- **`principalOf(requirements, resolved)`** (internal — not exported from
+  `index.ts`) folds that to what a handler is injected: the identity bare, or `{ scheme, identity }` when the endpoint
+  named more than one scheme. One decision site, so the two answerers cannot
+  drift.
 - **`resolvePrincipal(requirements, authenticators, headers)`
-  → `AsyncResult<unknown, Unauthenticated | UnderScoped>`** — the authentication
-  walk, protocol-neutral, shared by every answerer so a scope check cannot drift
-  between protocols. `principalMiddleware` is oRPC's adapter over it and keeps
-  the throw at the boundary that demands one. `UnderScoped` is the `403` case,
-  distinct from `Unauthenticated`'s `401`.
+  → `AsyncResult<unknown, Unauthenticated | UnderScoped>`** — the two composed,
+  and the shape `index.ts` exports. `principalMiddleware` is oRPC's adapter
+  over the pair and keeps the throw at the boundary that demands one; it puts
+  both `principal` and `resolved` on the context, the second for `unitScope`.
+
+### Unit kinds: `auth.principals` and `auth.units<…>()`
+
+A unit is opened under a KIND — `anonymous`, or the scheme that resolved a
+credential — and a kind binds a `Module` whose providers may inject the caller
+the unit was opened for. Two members on `Http<A>` carry that:
+
+```ts
+export const auth = defineHttp({ authenticators: { user: userAuth } });
+// `auth.principals.user` is a port carrying `userAuth`'s own principal type.
+
+export const api = auth.units<{ anonymous: typeof Anonymous; user: typeof User }>();
+```
+
+- **`principals`** is one port per declared scheme, minted by `principalPort`
+  on the same memoising map as `authenticatorPort` and typed by the principal
+  that scheme's authenticator declared. It is a PORT, not a value: a unit
+  module names it in `needs` and injects it, and the seed lands on it per unit.
+- **`units<U>()` is a SECOND step, and that is the whole design.** A unit
+  module names `auth.principals.<scheme>` in its own `needs`, so its type
+  depends on `typeof auth`; if `auth` in turn depended on the modules the kinds
+  bind, the two would be mutually recursive and TypeScript reports TS7022 —
+  `auth` implicitly `any` because it references itself. Splitting the call in
+  two breaks the loop: **`typeof auth` depends on the authenticators ALONE**,
+  and the modules arrive on a call that only retypes what already exists.
+  Nothing is rebuilt — `units` hands back the very same object
+  (`define-http.spec.ts` pins the identity), so the factories on it are the
+  ones the first step built. Do not fold `Units` into `defineHttp`'s own type
+  parameters.
+- **`UnitsOf<A>` alone does NOT refuse an undeclared kind — the exactness arm
+  on `units` does.** `UnitsOf<A>` is
+  `Partial<Record<Kinds<A>, AnyUnitModule>>`, and a type argument gets no
+  excess-property check, so `{ anonymous, service }` is structurally assignable
+  to it and `service` would be silently ignored — a kind whose module is never
+  forked and whose seed never lands, with no diagnostic. What closes it is the
+  second half of `units`' constraint,
+  `{ readonly [K in Exclude<keyof U, Kinds<A>>]: never }`: every key outside
+  `Kinds<A>` is required to be `never`, which no real module is, and the error
+  names that key. (A record of _only_ undeclared kinds is refused a second way,
+  by weak-type detection — every member of `UnitsOf` is optional, so it shares
+  no property at all — but that rule fires on zero overlap and is why the
+  mixed record needed the exactness arm.) `Kinds<A>` is
+  `"anonymous" | (keyof A & string)`, so `defineHttp()` with no authenticators
+  has exactly one kind. `define-http.test-d.ts` pins both refusals and the
+  positive between them; removing the exactness arm leaves the mixed record's
+  `@ts-expect-error` unused, which is a `TS2578` (measured).
+- **`Units` is a phantom on `Http<A, Units>`** (`_units?: Units`), read by the
+  piece factories' leaf typing and never at runtime. Without the field
+  TypeScript erases the parameter and `Http<A, U>` collapses back to `Http<A>`.
+
+`unit.ts` is where `AnyUnitModule`, `UnitExportsOf`, `UnitNeedsOf`,
+`UnitsNeedsOf`, `PrincipalInstance`, `Kinds`, `UnitsOf`, `KindOf`, `InAll`,
+`UnitFor` and `unitRecordOf` live; `http-runtime.ts` re-exports
+the two `http-module.ts` imports through it — knip refuses a re-export nothing
+consumes, so the rest stay reached at their own path.
+
+### `context.unit` and `UnitFor`
+
+A piece — or a fragment route — declares the unit-scoped ports its leaves may
+read **once**, as a record beside `inject`, and every leaf reads them off
+`context.unit`:
+
+```ts
+api.OrpcController(contract, "orders")({
+  inject: {},
+  unit: { span: Span, tenant: Tenant },
+  sync: () => ({
+    find: ({ context }) => OkAsync(context.unit.tenant),
+  }),
+});
+```
+
+- **The gate is a mapped type's key filter, not a checker this package
+  writes.** `UnitFor<U, Units, K>` re-keys the declared record with
+  `as InAll<…> extends true ? N : never`, so a name the leaf's kind cannot
+  provide is not a property at all — reading it is TypeScript's own
+  `Property 'tenant' does not exist`, at the line that reads it rather than at
+  the mint. `KindOf<…>` is what selects the kind: `anonymous`
+  for a leaf nothing marks, else the schemes its requirements name — read off
+  `Effective<C, R>` for an oRPC leaf, and straight off `requires` for a
+  fragment route, which has no contract to fold. A leaf
+  accepting several schemes keeps only what **every** one of their modules
+  exports — `InAll` is a conjunction over the distributed union — because the
+  runtime forks exactly one of them and cannot know which in advance.
+- **The fallback is restated on the type side, and has to be.** A scheme that
+  binds no module falls back to `anonymous` at runtime, so `ModuleOf<Units, K>`
+  answers `anonymous`'s module for an unbound kind. Without it a two-scheme
+  leaf with only `user` bound would see `user`'s exports and then read a port
+  off an `anonymous` fork that never provided it. With `units<…>()` never
+  called, `Units` is the empty record, every name filters out and
+  `context.unit` is `{}` on every leaf — which is what keeps a piece that
+  declares no record compiling exactly as before.
+- **The record's entries are LAZY getters, built by one function both
+  answerers call.** `unitRecordOf(forked, record)` installs one
+  `Object.defineProperty(unit, name, { enumerable: true, get })` per declared
+  name over the forked `Context` — neither writable nor configurable, so a
+  handler reads what the fork holds and cannot reshape the record under the
+  next one. Eager resolution would call `forked.get` for
+  every declared port on every request, the ones `UnitFor` hid included — a
+  defect for a port the forked kind never provided, raised on a name no leaf
+  of that kind could have read. Lazy, an unreadable name costs nothing.
+  **Past the types, the getter is what fails**: `forked.get` throws di's own
+  `[di] no service registered for port …`, naming the port, and that is a fork
+  defect answering `500` like any other. Reaching it takes a cast, and the two
+  routes in are closed differently — `HttpModule` checks a bound module's TYPE
+  per kind, so a kind whose module does not export what a leaf reads is refused
+  there; and under a plain `defineHttp()` api, where the bindable set carries no
+  kinds, `UnitFor` filters out **every** declared name (`ModuleOf` resolves to
+  `never`, so `InAll` is `false` for each), which makes the read a compile
+  error rather than a runtime one. It
+  lives in `unit.ts` rather than in either answerer because `unit-scope.ts`
+  and `htmx.ts` fork at their own sites and must agree on the record's shape:
+  two copies of a lazy getter is exactly the drift `seedOf` was extracted to
+  prevent one seam earlier.
+- **The record is per PIECE, and a leaf takes its nearest one.** The
+  `{ inject, sync }` arm registers one record under `""` and every leaf gets
+  it; the array arm builds a `Map<piecePath, record>` off each minted piece's
+  own `unit` field, and `routerOf` walks the dotted path it is already
+  building to find the nearest ancestor entry. That is why `Minted` carries
+  `unit` at runtime, the way `MintedRoute` carries `route`. A fragment route
+  has no tree and needs no lookup: `MintedRoute` carries its own `unit`
+  beside `route`, `HtmxFragments` copies it onto that route's
+  `FragmentAnswer`, and `htmx.ts` builds the record right after its own fork.
+  A route that binds no kind at all is handed `{}` rather than nothing —
+  `UnitFor` has hidden every name in that case, so there is nothing to read.
+- **The port's own service type stays unit-free.** `ControllerPortOf` is
+  `Implementation<FragmentAt<C, K>, Schemes>` with the record defaulted empty,
+  so two pieces declaring different records still compose under one contract
+  and the lifted-fragment property (`controller.test-d.ts`'s fifth gate)
+  survives. Only the mint's `sync` parameter is typed by the record. The cost
+  is that a **lifted** single-slice root
+  (`api.OrpcRouter(contract.orders)({ inject: { implementation: piece.port }, sync: ({ implementation }) => implementation })`)
+  injects the PORT, whose service type erased `U`, so the router registers no
+  record and a piece that declared `unit:` receives `{}` at runtime once
+  lifted. A lifted root must restate `unit:` on the router arm.
 
 ## The two authenticators that ship
 

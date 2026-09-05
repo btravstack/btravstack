@@ -318,6 +318,65 @@ describe("temporal", () => {
     ).toBeOkWith({ abandoned: 1, sawAbort: true });
   });
 
+  it("hands a piece the ports it declared, built from the seeded input", async ({
+    serveScoped,
+    scoped,
+  }) => {
+    // GIVEN a worker whose `activity` module derives a tenant from the
+    // validated input, and two pieces declaring that port on their own `unit:`
+    // record — one a workflow's record of implementations, one a
+    // contract-global implementation on its own
+    const { client, taskQueue } = await serveScoped(scoped);
+
+    // WHEN one workflow drives both activities
+    await client.workflow.execute("runAudited", {
+      taskQueue,
+      workflowId: `audited-${taskQueue}`,
+      args: ["acme"],
+    });
+
+    // THEN what each activity read off `context.unit.tenant` came through the
+    // seed: nothing else in the graph knows the input
+    expect(scoped.seen()).toEqual(["echo:acme", "audit:acme"]);
+  });
+
+  it("hands the whole-record arm the ports it declared, built from the seeded input", async ({
+    serveScoped,
+    wholeScoped,
+  }) => {
+    // GIVEN a worker whose activities come from the record arm, declaring one
+    // `unit:` for every entry, over the same seeded `activity` module
+    const { client, taskQueue } = await serveScoped(wholeScoped);
+
+    // WHEN one workflow drives both entry shapes the record carries
+    await client.workflow.execute("runAudited", {
+      taskQueue,
+      workflowId: `whole-${taskQueue}`,
+      args: ["globex"],
+    });
+
+    // THEN both read the same seed a piece would, so the arm is not a hole
+    // where `context.unit` goes missing
+    expect(wholeScoped.seen()).toEqual(["echo:globex", "audit:globex"]);
+  });
+
+  it("hands a piece that declared nothing an empty record", async ({ serveSliced, slices }) => {
+    // GIVEN a worker with no `unit.activity` bound, whose pieces declare no
+    // `unit:` either
+    const { client, taskQueue } = await serveSliced(slices);
+
+    // WHEN an attempt reaches one of them
+    await client.workflow.execute("runShout", {
+      taskQueue,
+      workflowId: `shout-unit-${taskQueue}`,
+      args: ["hello"],
+    });
+
+    // THEN `context.unit` is the empty record rather than absent, so an
+    // activity reads it without asking whether a fork happened
+    expect(slices.units()).toEqual([[]]);
+  });
+
   it("releases the kernel at its own deadline, not Temporal's", async ({ serve, gate }) => {
     // GIVEN an activity that never finishes, and a drain with no time to give it
     const { app, client, taskQueue } = await serve({

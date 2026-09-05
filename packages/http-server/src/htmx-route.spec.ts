@@ -65,7 +65,9 @@ describe("HtmxFragments", () => {
     assert.ok(orderRow !== undefined, "the orderRow route was not composed");
 
     // WHEN its handler is called through `handle`
-    const answered = (await orderRow.handle({ userId: "u-1" }, { id: "42" }, {})).get();
+    const answered = (
+      await orderRow.handle({ principal: { userId: "u-1" }, unit: {} }, { id: "42" }, {})
+    ).get();
 
     // THEN it received both, exactly as the piece's own function reads them
     expect(answered.value).toBe("<tr>hi u-1:42</tr>");

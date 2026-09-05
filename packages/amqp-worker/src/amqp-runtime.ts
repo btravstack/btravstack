@@ -20,6 +20,7 @@ import {
   Module,
   Port,
   Provider,
+  type AnyPort,
   type PortClassOf,
   type PortInstance,
   type Scope,
@@ -27,8 +28,14 @@ import {
 } from "@btravstack/di";
 import { P, type AsyncResult } from "unthrown";
 
-import { HANDLER_PREFIX, type HandlerKeyOf, type HandlerPortOf } from "./handler.js";
+import {
+  HANDLER_PREFIX,
+  type AmqpMessageInstance,
+  type HandlerKeyOf,
+  type HandlerPortOf,
+} from "./handler.js";
 import { messageUnits } from "./message-units.js";
+import { withUnit, type UnitRecordOf } from "./unit.js";
 
 /** What the worker publishes once it is consuming, read back through `RunningApp.runtimeInfo()`. */
 export type AmqpInfo = { readonly queues: readonly string[] };
@@ -68,10 +75,11 @@ export type AnyUnitModule = Module<never, never, unknown>;
 /**
  * The needs a bound `unit.message` module still owes, or `never` when none is
  * bound. `Scope` is excluded, since nothing can ever provide it — the same
- * exemption `NeedsGate` itself carries.
+ * exemption `NeedsGate` itself carries — and so is the delivery, which the
+ * fork's own seed discharges.
  */
 export type UnitNeedsOf<Unit> =
-  Unit extends Module<never, never, infer N> ? Exclude<N, Scope> : never;
+  Unit extends Module<never, never, infer N> ? Exclude<N, Scope | AmqpMessageInstance> : never;
 
 /**
  * The contract type `TypedAmqpWorker.create` accepts, extracted rather than
@@ -144,10 +152,10 @@ export type AmqpTuning<Unit extends AnyUnitModule | undefined = undefined> = {
    */
   readonly connectTimeoutMs?: number;
   /**
-   * The unit module the worker forks around every delivery it dispatches, with
-   * no seed. Built after the message is validated, torn down when the unit
-   * closes — the point where a later phase seeds it with the delivery's
-   * tenant.
+   * The unit module the worker forks around every delivery it dispatches,
+   * seeded with the validated message on `AmqpMessage(contract)`. Built after
+   * the message is validated, torn down when the unit closes; what it exports
+   * is what a piece may declare on its own `unit:` record.
    */
   readonly unit?: { readonly message?: Unit };
 };
@@ -217,8 +225,17 @@ export const amqp = <
 
 /** One piece of the handlers record — what `AmqpHandler(contract, key)(…)` returns, as the composing form consumes it. */
 type PieceOf<C extends AnyAmqpContract> = {
-  readonly [K in HandlerKeyOf<C>]: { readonly port: HandlerPortOf<C, K> };
+  readonly [K in HandlerKeyOf<C>]: {
+    readonly port: HandlerPortOf<C, K>;
+    /** Phantom, carrying the ports the piece injects off `context.unit`. */
+    readonly _declared?: unknown;
+  };
 }[HandlerKeyOf<C>];
+
+/** Every port the pieces in `T` inject off `context.unit` — what the root's `unit.message` must export. */
+type DeclaredOf<T extends readonly { readonly _declared?: unknown }[]> = NonNullable<
+  T[number]["_declared"]
+>;
 
 /** The key a piece carries, read back off its port id. */
 type KeyOfPiece<P> = P extends {
@@ -253,6 +270,33 @@ type Refuse<T extends readonly unknown[], Marker extends string, Detail> = T ext
   : readonly [readonly [Marker, Detail]];
 
 /**
+ * The record arm: the whole handlers record from one `sync`, with one `unit:`
+ * record shared by every entry in it.
+ *
+ * It is `{ inject, unit?, sync }` — di's other arms are gone — for PARITY, not
+ * for a type-system reason: `value` could have carried the record just as well,
+ * since `U` infers from `unit` and never from the arm. `@btravstack/http-server`'s
+ * `api.OrpcRouter(contract)` is `{ inject, unit?, sync }` and so are all three
+ * packages' piece factories, so one arm across the family is one surface to
+ * learn and one to keep.
+ */
+type Whole<C extends AnyAmqpContract> = <
+  const D extends Readonly<Record<string, AnyPort>>,
+  const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+>(options: {
+  readonly inject: D;
+  /** The unit-scoped ports every handler in the record reads off `context.unit`. */
+  readonly unit?: U;
+  readonly sync: (services: {
+    readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+  }) => WorkerInferHandlers<C, { readonly unit: UnitRecordOf<U> }>;
+}) => Provider<HandlersInstanceOf<C>, never, InstanceType<D[keyof D]>> & {
+  readonly port: HandlersPortOf<C>;
+  /** Phantom: the declared ports, which `AmqpModule` gates `unit.message` against. */
+  readonly _declaredUnit?: InstanceType<U[keyof U]>;
+};
+
+/**
  * The composing arm. Declared LAST in the intersection below on purpose:
  * TypeScript reports the last overload's failure, so a non-covering array is
  * refused against the `"UNCOVERED HANDLERS — …"` marker rather than degrading
@@ -271,6 +315,8 @@ type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]
       >,
 ) => Provider<HandlersInstanceOf<C>, never, InstanceType<T[number]["port"]>> & {
   readonly port: HandlersPortOf<C>;
+  /** Phantom: the union of every piece's declared ports, which `AmqpModule` gates `unit.message` against. */
+  readonly _declaredUnit?: DeclaredOf<T>;
 };
 
 /**
@@ -281,16 +327,14 @@ type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]
  * AmqpHandlers(orderContract)([orderNotifications, orderAudit])
  * ```
  *
- * The first is di's own `Provider(port)` on the starter's handlers port
- * typed for the contract. The second takes the pieces `AmqpHandler(contract,
- * key)` builds: they are the provider's deps, keyed by the contract key each
- * piece's port id carries, so the services record IS the handlers record. Every
- * declared key must be covered, and two slices claiming one key are di's
- * duplicate-provider defect at build.
+ * The first is `{ inject, unit?, sync }`, whose `sync` hands back the whole
+ * handlers record — one `unit:` record for every entry in it. The second takes
+ * the pieces `AmqpHandler(contract, key)` builds: they are the provider's deps,
+ * keyed by the contract key each piece's port id carries, so the services
+ * record IS the handlers record. Every declared key must be covered, and two
+ * slices claiming one key are di's duplicate-provider defect at build.
  */
-export const AmqpHandlers = <C extends AnyAmqpContract>(
-  contract: C,
-): ReturnType<typeof Provider<HandlersPortOf<C>>> & Compose<C> => {
+export const AmqpHandlers = <C extends AnyAmqpContract>(contract: C): Whole<C> & Compose<C> => {
   void contract;
   const build = Provider(AmqpHandlersPort as HandlersPortOf<C>);
   const compose = (pieces: readonly { readonly port: { readonly portId: string } }[]): unknown =>
@@ -300,12 +344,29 @@ export const AmqpHandlers = <C extends AnyAmqpContract>(
       ),
       sync: (services: unknown) => services,
     } as never);
-  // An array is never a valid `Provider(port)` call — its one argument is a
-  // record — so `Array.isArray` alone identifies the composing arm.
+  const whole = (options: {
+    readonly inject: Readonly<Record<string, AnyPort>>;
+    readonly unit?: Readonly<Record<string, AnyPort>>;
+    readonly sync: (services: never) => Readonly<Record<string, unknown>>;
+  }): unknown => {
+    const record = options.unit ?? {};
+    return build({
+      inject: options.inject,
+      sync: (services: never) =>
+        Object.fromEntries(
+          Object.entries(options.sync(services)).map(([key, entry]) => [
+            key,
+            withUnit(record, entry),
+          ]),
+        ),
+    } as never);
+  };
+  // An array is never a valid record call — its one argument is a record — so
+  // `Array.isArray` alone identifies the composing arm.
   return ((first: unknown) =>
     Array.isArray(first)
       ? compose(first as readonly { readonly port: { readonly portId: string } }[])
-      : (build as (a: never) => unknown)(first as never)) as never;
+      : whole(first as Parameters<typeof whole>[0])) as never;
 };
 
 const startFailed = (cause: unknown): RuntimeStartFailed =>

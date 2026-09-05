@@ -45,6 +45,7 @@ import { HttpConfig } from "./http-config.js";
 import { HttpUnit, type AnyUnitModule } from "./http-runtime.js";
 import type { Principal, SchemesOf } from "./principal.js";
 import { unitScope } from "./unit-scope.js";
+import type { KindOf, UnitFor } from "./unit.js";
 
 export type OrpcOptions = {
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
@@ -197,7 +198,7 @@ type Refuse<T extends readonly unknown[], Marker extends string, Detail> = T ext
   : readonly [readonly [Marker, Detail]];
 
 /** What every `OrpcRouter` arm returns; only the needs channel `N` differs. */
-type Built<Auth, N> = Provider<
+type Built<Auth, N, Units> = Provider<
   PortInstance<"OrpcRouter", Router<Record<never, never>>>,
   never,
   N
@@ -208,6 +209,8 @@ type Built<Auth, N> = Provider<
    * the router is what needs them: they discharge its scheme ports.
    */
   readonly authenticators: readonly Auth[];
+  /** Phantom: the kinds bound at `units<…>()`, read by `HttpModule`, never at runtime. */
+  readonly _units?: Units;
 };
 
 /**
@@ -240,8 +243,14 @@ type Built<Auth, N> = Provider<
  * `{ inject, sync }` arm instead.
  */
 export const routerFor =
-  <Schemes, Auth extends AnyProvider = never, Vocab = Record<never, never>>(
+  <
+    Schemes,
+    Auth extends AnyProvider = never,
+    Vocab = Record<never, never>,
+    Units = Record<never, never>,
+  >(
     authenticators: readonly Auth[],
+    principals: Readonly<Record<string, AnyPort>> = {},
   ) =>
   <C extends Record<string, RouterContract>>(contract: C & ScopeGate<C, Vocab>) => {
     // Walked untyped: `Implementation<C>` is the whole check, and
@@ -251,12 +260,17 @@ export const routerFor =
       readonly router: (record: Record<string, unknown>) => Router<Record<never, never>>;
     };
 
-    function build<const D extends Readonly<Record<string, AnyPort>>>(options: {
+    function build<
+      const D extends Readonly<Record<string, AnyPort>>,
+      const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+    >(options: {
       readonly inject: D;
+      /** The unit-scoped ports every leaf may read off `context.unit`, per its own kind. */
+      readonly unit?: U;
       readonly sync: (services: {
         readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
-      }) => Implementation<C, Schemes>;
-    }): Built<Auth, InstanceType<D[keyof D]> | SchemePortsOf<AllRequirementsOf<C>>>;
+      }) => Implementation<C, Schemes, never, Units, U>;
+    }): Built<Auth, InstanceType<D[keyof D]> | SchemePortsOf<AllRequirementsOf<C>>, Units>;
     // Declared LAST on purpose: TypeScript reports the last overload's
     // failure, so a bad array is refused against the markers below rather than
     // degrading to di's `Qualification`, which names nothing (measured in
@@ -285,7 +299,7 @@ export const routerFor =
               "UNSLICEABLE CONTRACT KEY — a top-level key contains a dot, which a piece path cannot encode; serve this contract with the { inject, sync } form instead",
               Unsliceable<C>
             >,
-    ): Built<Auth, InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<C>>>;
+    ): Built<Auth, InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<C>>, Units>;
     function build(depsOrPieces: unknown): unknown {
       const schemes = schemesOf(contract);
       const own = (services: Record<string, unknown>): Record<string, unknown> =>
@@ -304,6 +318,7 @@ export const routerFor =
       const routerFrom = (
         implementation: Record<string, unknown>,
         services: Record<string, unknown>,
+        records: ReadonlyMap<string, Readonly<Record<string, AnyPort>>>,
       ): Router<Record<never, never>> =>
         os.router(
           routerOf(
@@ -317,22 +332,31 @@ export const routerFor =
                 services[`${AUTHENTICATOR}${scheme}`] as AuthenticatorService<unknown>,
               ]),
             ),
-            (services[UNIT] as ServiceOf<HttpUnit> | undefined)?.anonymous,
+            (services[UNIT] as ServiceOf<HttpUnit> | undefined) ?? {},
+            principals,
+            records,
+            "",
           ),
         );
 
       // An array is never a valid `Provider(port)` call — its one argument is
       // a record — so `Array.isArray` alone identifies the composing arm.
       if (Array.isArray(depsOrPieces)) {
-        const pieces = depsOrPieces as readonly { readonly port: AnyPort }[];
+        const pieces = depsOrPieces as readonly {
+          readonly port: AnyPort;
+          readonly unit: Readonly<Record<string, AnyPort>>;
+        }[];
         // Each piece is declared under the dotted path its port id carries;
         // `nest` folds those paths back into the contract's own tree before
         // the `routerOf` walk.
         const deps = Object.fromEntries(
           pieces.map((piece) => [piece.port.portId.slice(CONTROLLER_PREFIX.length), piece.port]),
         );
+        const records = new Map(
+          pieces.map((piece) => [piece.port.portId.slice(CONTROLLER_PREFIX.length), piece.unit]),
+        );
         const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
-          routerFrom(nest(own(services)), services);
+          routerFrom(nest(own(services)), services, records);
         return Object.assign(
           Provider(OrpcRouterPort)({ inject: withSchemes(deps), sync } as never),
           { authenticators },
@@ -341,10 +365,12 @@ export const routerFor =
 
       const supplied = depsOrPieces as {
         readonly inject: Record<string, AnyPort>;
+        readonly unit?: Readonly<Record<string, AnyPort>>;
         readonly sync: (s: Record<string, unknown>) => unknown;
       };
+      const wholeRecords = new Map([["", supplied.unit ?? {}]]);
       const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
-        routerFrom(supplied.sync(own(services)) as Record<string, unknown>, services);
+        routerFrom(supplied.sync(own(services)) as Record<string, unknown>, services, wholeRecords);
       return Object.assign(
         Provider(OrpcRouterPort)({ inject: withSchemes(supplied.inject), sync } as never),
         { authenticators },
@@ -513,12 +539,18 @@ type Overlapping<Paths extends string> = {
 // deferred `FragmentAt<C, K>`, whose branches TypeScript cannot prove
 // `RouterContract` for a generic contract — the mapped arm below already
 // guards each child with `C[K] extends RouterContract`.
-export type Implementation<C, Schemes = never, R extends Requirements = never> =
+export type Implementation<
+  C,
+  Schemes = never,
+  R extends Requirements = never,
+  Units = Record<never, never>,
+  U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+> =
   C extends ProcedureContract<infer I, infer O, infer E>
     ? Parameters<
         ProcedureImplementer<
           DefaultInitialContext & object,
-          ContextOf<C, R, Schemes>,
+          ContextOf<C, R, Schemes, Units, U>,
           I,
           O,
           E
@@ -526,7 +558,7 @@ export type Implementation<C, Schemes = never, R extends Requirements = never> =
       >[0]
     : {
         readonly [K in Exclude<keyof C, PrincipalKey>]: C[K] extends RouterContract
-          ? Implementation<C[K], Schemes, Effective<C, R>>
+          ? Implementation<C[K], Schemes, Effective<C, R>, Units, U>
           : never;
       };
 
@@ -542,10 +574,22 @@ export type Effective<C, R extends Requirements> = IsMarked<C> extends true ? Re
  * channel. A leaf reached without `defineHttp` sees `Schemes = never`, so
  * `principal` is `never` and any read of it is a compile error — the "use the
  * factory" signal.
+ *
+ * `unit` is the declared `unit:` record narrowed to the kind this leaf's own
+ * requirements select, so a port the kind's module cannot provide is absent
+ * rather than `undefined`.
  */
-type ContextOf<C, R extends Requirements, Schemes> = [Effective<C, R>] extends [never]
+type ContextOf<
+  C,
+  R extends Requirements,
+  Schemes,
+  Units,
+  U extends Readonly<Record<string, AnyPort>>,
+> = ([Effective<C, R>] extends [never]
   ? object
-  : { readonly principal: Principal<SchemesOf<Effective<C, R>>, Schemes> };
+  : { readonly principal: Principal<SchemesOf<Effective<C, R>>, Schemes> }) & {
+  readonly unit: UnitFor<U, Units, KindOf<Effective<C, R>>>;
+};
 
 /**
  * Pushes a record's requirements onto a child that carries none. The type side
@@ -671,13 +715,32 @@ type ChainableImplementer = Record<string, unknown> & {
   readonly use: (middleware: unknown) => ChainableImplementer;
 };
 
+/**
+ * The `unit:` record in force at `path`: the nearest ancestor piece's, falling
+ * back to `""` — the key the `{ inject, sync }` arm registers its one record
+ * under, and the root of the array arm, where no piece sits.
+ */
+const recordAt = (
+  records: ReadonlyMap<string, Readonly<Record<string, AnyPort>>>,
+  path: string,
+): Readonly<Record<string, AnyPort>> => {
+  for (let at = path; at !== ""; at = at.slice(0, Math.max(at.lastIndexOf("."), 0))) {
+    const found = records.get(at);
+    if (found !== undefined) return found;
+  }
+  return records.get("") ?? {};
+};
+
 const routerOf = (
   implementer: Record<string, unknown>,
   implementation: Record<string, unknown>,
   contract: Record<string, unknown>,
   inherited: Requirements | undefined,
   authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
-  unit: AnyUnitModule | undefined,
+  units: Readonly<Record<string, AnyUnitModule>>,
+  principals: Readonly<Record<string, AnyPort>>,
+  records: ReadonlyMap<string, Readonly<Record<string, AnyPort>>>,
+  path: string,
 ): Record<string, unknown> =>
   Object.fromEntries(
     Object.entries(implementation).flatMap(([key, value]) => {
@@ -687,10 +750,11 @@ const routerOf = (
       const declared =
         typeof child === "object" && child !== null ? isAuthenticated(child) : undefined;
       const effective = declared ?? inherited;
+      const here = path === "" ? key : `${path}.${key}`;
       if (typeof value === "function") {
         const guarded =
           effective === undefined ? node : node.use(principalMiddleware(effective, authenticators));
-        const target = guarded.use(unitScope(unit));
+        const target = guarded.use(unitScope(units, principals, recordAt(records, here)));
         return [[key, target.result(value)]];
       }
       return [
@@ -702,7 +766,10 @@ const routerOf = (
             (child ?? {}) as Record<string, unknown>,
             effective,
             authenticators,
-            unit,
+            units,
+            principals,
+            records,
+            here,
           ),
         ],
       ];

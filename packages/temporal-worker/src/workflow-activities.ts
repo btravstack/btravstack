@@ -1,18 +1,88 @@
-import { Port, Provider, type PortClassOf } from "@btravstack/di";
+import {
+  Port,
+  Provider,
+  type AnyPort,
+  type PortClassOf,
+  type PortInstance,
+  type ServiceOf,
+} from "@btravstack/di";
 import type { ContractDefinition } from "@temporal-contract/contract";
+import type { EmptyContext } from "@temporal-contract/worker/activity";
 
 import type { ActivitiesOf } from "./temporal-runtime.js";
+import { withUnit, type UnitRecordOf } from "./unit.js";
 
 /**
- * `ActivitiesOf<C>` is a `NoInfer`-wrapped conditional TypeScript refuses to
+ * `ActivitiesOf<C, …>` is a `NoInfer`-wrapped conditional TypeScript refuses to
  * index by a generic key. Routing it through `infer` resolves it to a plain
  * object type first, which IS indexable.
  */
-type ActivitiesRecordOf<C extends ContractDefinition> =
-  ActivitiesOf<C> extends infer Resolved ? Resolved : never;
+type ActivitiesRecordOf<
+  C extends ContractDefinition,
+  TContext extends Record<string, unknown> | EmptyContext = EmptyContext,
+> = ActivitiesOf<C, TContext> extends infer Resolved ? Resolved : never;
 
 /** The top-level keys of `C`'s activities record: a workflow that declares activities, or a contract-global activity. */
 export type ActivitiesKeyOf<C extends ContractDefinition> = keyof ActivitiesRecordOf<C> & string;
+
+/**
+ * One entry's validated input, reached through the implementation's own second
+ * parameter — a workflow key carries a record of implementations, a
+ * contract-global one carries the implementation itself. `WorkerInferInput` is
+ * declared by `@temporal-contract/worker` and exported from none of its
+ * subpaths, so the by-index route is the only one open.
+ */
+type InputOfEntry<V> = V extends (helpers: never, input: infer I) => unknown
+  ? I
+  : V extends Readonly<Record<string, unknown>>
+    ? InputOfEntry<V[keyof V]>
+    : never;
+
+/** The validated activity input, typed by the contract: the union of every activity's own input. */
+export type ActivityInputOf<C extends ContractDefinition> = InputOfEntry<
+  ActivitiesRecordOf<C>[ActivitiesKeyOf<C>]
+>;
+
+/** The seeded port's class, typed for `C`: what `ActivityInput(contract)` answers. */
+export type ActivityInputPortOf<C extends ContractDefinition> = PortClassOf<
+  "ActivityInput",
+  ActivityInputOf<C>
+>;
+
+/**
+ * The seed's port instance, as it appears in a needs union — subtracted from
+ * what a bound `unit.activity` module still owes, since the fork is what
+ * discharges it.
+ */
+export type ActivityInputInstance = PortInstance<"ActivityInput", unknown>;
+
+/** One id, declared once, so no contract instantiating it warns about a duplicate. */
+export const ActivityInputPort = Port("ActivityInput");
+
+/**
+ * The validated activity input as a port: the one thing the worker seeds the
+ * fork with, so a `unit.activity` module derives a tenant — or anything else —
+ * from the invocation rather than from an ambient record.
+ *
+ * ```ts
+ * const Input = ActivityInput(orderContract);
+ * const ActivityUnit = Module("ActivityUnit")({
+ *   needs: [Input],
+ *   provides: [Provider(Tenant)({ inject: { input: Input }, sync: ({ input }) => input.tenantId })],
+ *   exports: [Tenant],
+ * });
+ * ```
+ *
+ * `contract` is read for its TYPE only. One `Port(...)` call fixed per contract
+ * at the type level, the move `TemporalActivitiesPort` makes, so a module built
+ * for one contract cannot read another's input.
+ */
+export const ActivityInput = <C extends ContractDefinition>(
+  contract: C,
+): ActivityInputPortOf<C> => {
+  void contract;
+  return ActivityInputPort as ActivityInputPortOf<C>;
+};
 
 /** The prefix a piece's port id carries; the composing form strips it to recover the key. */
 export const WORKFLOW_ACTIVITIES_PREFIX = "TemporalWorkflowActivities:";
@@ -26,6 +96,28 @@ export type WorkflowActivitiesPortOf<
   C extends ContractDefinition,
   K extends ActivitiesKeyOf<C>,
 > = PortClassOf<`${typeof WORKFLOW_ACTIVITIES_PREFIX}${K}`, ActivitiesRecordOf<C>[K]>;
+
+/** What a minted piece returns. */
+type MintedActivities<
+  C extends ContractDefinition,
+  K extends ActivitiesKeyOf<C>,
+  N,
+  U extends Readonly<Record<string, AnyPort>>,
+> = Provider<InstanceType<WorkflowActivitiesPortOf<C, K>>, never, N> & {
+  readonly port: WorkflowActivitiesPortOf<C, K>;
+  /** The declared `unit:` record, which the wrapper resolves against. */
+  readonly unit: U;
+  /** Phantom: the ports this piece injects, which the root's `unit.activity` must export. */
+  readonly _declared?: InstanceType<U[keyof U]>;
+};
+
+/** The activities `sync` hands back, typed by the record THIS piece declared. */
+type ScopedActivitiesOf<
+  C extends ContractDefinition,
+  K extends ActivitiesKeyOf<C>,
+  U extends Readonly<Record<string, AnyPort>>,
+> = ActivitiesRecordOf<C, { readonly unit: UnitRecordOf<U> }>[K &
+  keyof ActivitiesRecordOf<C, { readonly unit: UnitRecordOf<U> }>];
 
 /**
  * One workflow's activities, as a provider on a port of its own.
@@ -42,6 +134,10 @@ export type WorkflowActivitiesPortOf<
  * the split.
  *
  * There is no name to give: the key IS the port's name.
+ *
+ * `unit` declares the ports the activities read off `context.unit`, resolved
+ * out of the fork the attempt opened; the root's `unit.activity` module must
+ * export every one of them.
  */
 export const TemporalWorkflowActivities = <
   C extends ContractDefinition,
@@ -49,7 +145,7 @@ export const TemporalWorkflowActivities = <
 >(
   contract: C,
   key: K,
-): ReturnType<typeof Provider<WorkflowActivitiesPortOf<C, K>>> => {
+) => {
   // Named rather than `_`-prefixed so it reads as `contract` in the published
   // `.d.ts`; nothing needs its value.
   void contract;
@@ -57,5 +153,25 @@ export const TemporalWorkflowActivities = <
   const port = class extends Port(`${WORKFLOW_ACTIVITIES_PREFIX}${key}`)<
     ActivitiesRecordOf<C>[K]
   > {};
-  return Provider(port as never) as never;
+
+  return <
+    const D extends Readonly<Record<string, AnyPort>>,
+    const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+  >(options: {
+    readonly inject: D;
+    /** The unit-scoped ports these activities read off `context.unit`. */
+    readonly unit?: U;
+    readonly sync: (services: {
+      readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+    }) => ScopedActivitiesOf<C, K, U>;
+  }): MintedActivities<C, K, InstanceType<D[keyof D]>, U> => {
+    const record = options.unit ?? {};
+    return Object.assign(
+      Provider(port as never)({
+        inject: options.inject,
+        sync: (services: never) => withUnit(record, options.sync(services)),
+      } as never),
+      { unit: record },
+    ) as never;
+  };
 };

@@ -104,6 +104,27 @@ export const authenticatorPort = <const S extends string>(
 };
 
 /**
+ * One port per scheme carrying that scheme's PRINCIPAL, so a unit module the
+ * kind binds may name it in `needs` and inject the caller it was opened for.
+ * Minted from the scheme name alone — the seed lands on it per unit.
+ *
+ * Memoised on the same map as {@link authenticatorPort}, and for the same
+ * reason: `defineHttp` mints, a unit module depends, and a second `Port(id)`
+ * call would cost di's duplicate-id warning for what is the designed pattern.
+ */
+export const principalPort = <const S extends string, P = unknown>(
+  scheme: S,
+): PortClassOf<`HttpPrincipal:${S}`, P> => {
+  const id = `HttpPrincipal:${scheme}` as const;
+  const existing = ports.get(id);
+  if (existing !== undefined) return existing as never;
+  // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
+  const minted = class extends Port(id)<P> {};
+  ports.set(id, minted);
+  return minted as never;
+};
+
+/**
  * What `HttpAuthenticator` hands back: a description `defineHttp` binds to a
  * port once the scheme name is known, carrying its principal and scope types
  * so the registry can be inferred rather than declared.
@@ -148,6 +169,9 @@ export const HttpAuthenticator = <P, Scope extends string = never>() => {
   }): Authenticator<P, Scope, InstanceType<D[keyof D]>> => ({ options }) as never;
 };
 
+/** Which scheme answered, and what it answered with — the unit kind a request opens under. */
+export type Resolved = { readonly scheme: string; readonly identity: unknown };
+
 /**
  * The authentication walk, protocol-neutral: requirements in the order the
  * contract declared them, first satisfied wins. Shared by every answerer, so a
@@ -157,23 +181,42 @@ export const HttpAuthenticator = <P, Scope extends string = never>() => {
  * refusal — it stays on the defect channel rather than falling through, which
  * would let a broken verifier silently promote every caller to the next scheme.
  */
+export const resolveScheme = (
+  requirements: Requirements,
+  authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
+  headers: IncomingHttpHeaders,
+): AsyncResult<Resolved, Unauthenticated | UnderScoped> =>
+  fromSafePromise(walk(requirements, authenticators, headers)).flatMap((result) => result);
+
+/**
+ * What a handler is injected: the identity bare, or `{ scheme, identity }` when
+ * the endpoint names more than one scheme and the handler has to tell them
+ * apart. One decision site, so the two answerers cannot drift.
+ */
+export const principalOf = (requirements: Requirements, resolved: Resolved): unknown =>
+  // More than one SCHEME, not more than one requirement: one requirement may
+  // name several schemes, and counting requirements disagreed with `SchemesOf`,
+  // so the handler typed `Tagged` while this injected bare.
+  new Set(requirements.flatMap((requirement) => Object.keys(requirement))).size > 1
+    ? resolved
+    : resolved.identity;
+
+/** {@link resolveScheme} folded to what a handler is injected. */
 export const resolvePrincipal = (
   requirements: Requirements,
   authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
   headers: IncomingHttpHeaders,
 ): AsyncResult<unknown, Unauthenticated | UnderScoped> =>
-  fromSafePromise(walk(requirements, authenticators, headers)).flatMap((result) => result);
+  resolveScheme(requirements, authenticators, headers).map((resolved) =>
+    principalOf(requirements, resolved),
+  );
 
 const walk = async (
   requirements: Requirements,
   authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
   headers: IncomingHttpHeaders,
-  // oxlint-disable-next-line unthrown/prefer-async-result -- module-private; resolvePrincipal wraps it in fromSafePromise, which is the AsyncResult surface callers see
-): Promise<Result<unknown, Unauthenticated | UnderScoped>> => {
-  // More than one SCHEME, not more than one requirement: one requirement may
-  // name several schemes, and counting requirements disagreed with `SchemesOf`,
-  // so the handler typed `Tagged` while this injected bare.
-  const tagged = new Set(requirements.flatMap((requirement) => Object.keys(requirement))).size > 1;
+  // oxlint-disable-next-line unthrown/prefer-async-result -- module-private; resolveScheme wraps it in fromSafePromise, which is the AsyncResult surface callers see
+): Promise<Result<Resolved, Unauthenticated | UnderScoped>> => {
   let underScoped = false;
   for (const requirement of requirements) {
     for (const [scheme, required] of Object.entries(requirement)) {
@@ -183,8 +226,9 @@ const walk = async (
       const resolved = await authenticate(headers);
       // Returned rather than unwrapped: the defect channel survives the
       // `flatMap` above, so a broken authenticator reaches the caller as a
-      // defect instead of a refusal.
-      if (resolved.isDefect()) return resolved;
+      // defect instead of a refusal. `as never`: a defect carries no value, so
+      // the Ok channel it declares is uninhabited whatever this walk answers.
+      if (resolved.isDefect()) return resolved as never;
       if (resolved.isErr()) continue;
       const answer = resolved.value;
       // The BRAND, never a structural `"scopes" in answer` test, which misreads
@@ -201,7 +245,7 @@ const walk = async (
         continue;
       }
       const identity = scoped === undefined ? answer : scoped.identity;
-      return Ok(tagged ? { scheme, identity } : identity);
+      return Ok({ scheme, identity });
     }
   }
   return Err(underScoped ? new UnderScoped() : new Unauthenticated());
@@ -220,10 +264,10 @@ export const principalMiddleware =
   async (options: {
     readonly context: { readonly request: IncomingMessage };
     readonly next: (injected: {
-      readonly context: { readonly principal: unknown };
+      readonly context: { readonly principal: unknown; readonly resolved: Resolved };
     }) => Promise<unknown>;
   }): Promise<unknown> => {
-    const resolved = await resolvePrincipal(
+    const resolved = await resolveScheme(
       requirements,
       authenticators,
       options.context.request.headers,
@@ -238,5 +282,10 @@ export const principalMiddleware =
       // oxlint-disable-next-line unthrown/no-throw -- oRPC terminates a request by throwing an ORPCError; its middleware protocol has no returned-error arm
       throw new ORPCError(resolved.error._tag === "UnderScoped" ? "FORBIDDEN" : "UNAUTHORIZED");
     }
-    return await options.next({ context: { principal: resolved.value } });
+    return await options.next({
+      context: {
+        principal: principalOf(requirements, resolved.value),
+        resolved: resolved.value,
+      },
+    });
   };

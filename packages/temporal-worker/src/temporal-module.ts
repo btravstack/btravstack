@@ -8,6 +8,7 @@ import {
   type Exportable,
   type NeedsGate,
   type Scope,
+  type ServiceOf,
 } from "@btravstack/di";
 import type { ContractDefinition } from "@temporal-contract/contract";
 
@@ -16,6 +17,7 @@ import {
   TemporalRuntime,
   temporal,
   type ActivitiesInstanceOf,
+  type ActivitiesOf,
   type ActivitiesPortOf,
   type AnyUnitModule,
   type TemporalConfig,
@@ -25,6 +27,7 @@ import {
   type UnitNeedsOf,
   type WorkflowSource,
 } from "./temporal-runtime.js";
+import { withUnit, type UnitGate, type UnitRecordOf } from "./unit.js";
 import {
   WORKFLOW_ACTIVITIES_PREFIX,
   type ActivitiesKeyOf,
@@ -57,6 +60,7 @@ export type TemporalModuleOptions<
   C extends ContractDefinition,
   ActivitiesError,
   ActivitiesNeeds,
+  Declared,
   Unit extends AnyUnitModule | undefined,
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
@@ -69,8 +73,15 @@ export type TemporalModuleOptions<
   /** The `temporal-contract` contract; the task queue this worker polls is read off it. */
   readonly contract: C;
   readonly workflows: WorkflowSource;
-  /** The application's activity implementations — what `TemporalActivities(contract)(…)` returns. */
-  readonly activities: Provider<ActivitiesInstanceOf<C>, ActivitiesError, ActivitiesNeeds>;
+  /**
+   * The application's activity implementations — what
+   * `TemporalActivities(contract)(…)` returns. Its `_declaredUnit` phantom
+   * carries every port its pieces read off `context.unit`, which is what
+   * {@link UnitGate} checks `unit.activity` against.
+   */
+  readonly activities: Provider<ActivitiesInstanceOf<C>, ActivitiesError, ActivitiesNeeds> & {
+    readonly _declaredUnit?: Declared;
+  };
   readonly imports?: I;
   readonly provides?: P;
   /** The application's own exports; `TemporalRuntime` is added, since `start` resolves it. */
@@ -80,7 +91,12 @@ export type TemporalModuleOptions<
    * over the augmented tuples below, so forgetting one is an error at THIS call.
    */
   readonly needs?: N;
-} & NeedsGate<Imports<I, C, Unit>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N>;
+} & NeedsGate<Imports<I, C, Unit>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N> &
+  // Riding the whole options record rather than `unit.activity`: a root that
+  // declares a piece's `unit:` and then binds NO module at all is the case
+  // worth catching, and a gate on the property is not read when the property
+  // is absent.
+  UnitGate<Unit, Declared>;
 
 /**
  * `Module(name)({...})` for a Temporal worker deployment: everything a di module
@@ -105,6 +121,7 @@ export const TemporalModule =
     C extends ContractDefinition,
     ActivitiesError,
     ActivitiesNeeds,
+    Declared = never,
     Unit extends AnyUnitModule | undefined = undefined,
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
@@ -114,7 +131,7 @@ export const TemporalModule =
     >[] = [],
     const N extends readonly AnyPort[] = [],
   >(
-    options: TemporalModuleOptions<C, ActivitiesError, ActivitiesNeeds, Unit, I, P, X, N>,
+    options: TemporalModuleOptions<C, ActivitiesError, ActivitiesNeeds, Declared, Unit, I, P, X, N>,
   ) => {
     const { activities } = options;
     const imports = (options.imports ?? []) as I;
@@ -145,8 +162,17 @@ export const TemporalModule =
 
 /** One piece of the activities record — what `TemporalWorkflowActivities(contract, key)(…)` returns. */
 type PieceOf<C extends ContractDefinition> = {
-  readonly [K in ActivitiesKeyOf<C>]: { readonly port: WorkflowActivitiesPortOf<C, K> };
+  readonly [K in ActivitiesKeyOf<C>]: {
+    readonly port: WorkflowActivitiesPortOf<C, K>;
+    /** Phantom, carrying the ports the piece injects off `context.unit`. */
+    readonly _declared?: unknown;
+  };
 }[ActivitiesKeyOf<C>];
+
+/** Every port the pieces in `T` inject off `context.unit` — what the root's `unit.activity` must export. */
+type DeclaredOf<T extends readonly { readonly _declared?: unknown }[]> = NonNullable<
+  T[number]["_declared"]
+>;
 
 /** The key a piece carries, read back off its port id. */
 type KeyOfPiece<P> = P extends {
@@ -181,6 +207,33 @@ type Refuse<T extends readonly unknown[], Marker extends string, Detail> = T ext
   : readonly [readonly [Marker, Detail]];
 
 /**
+ * The record arm: the whole activities record from one `sync`, with one `unit:`
+ * record shared by every entry in it.
+ *
+ * It is `{ inject, unit?, sync }` — di's other arms are gone — for PARITY, not
+ * for a type-system reason: `value` could have carried the record just as well,
+ * since `U` infers from `unit` and never from the arm. `@btravstack/http-server`'s
+ * `api.OrpcRouter(contract)` is `{ inject, unit?, sync }` and so are all three
+ * packages' piece factories, so one arm across the family is one surface to
+ * learn and one to keep.
+ */
+type Whole<C extends ContractDefinition> = <
+  const D extends Readonly<Record<string, AnyPort>>,
+  const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+>(options: {
+  readonly inject: D;
+  /** The unit-scoped ports every activity in the record reads off `context.unit`. */
+  readonly unit?: U;
+  readonly sync: (services: {
+    readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+  }) => ActivitiesOf<C, { readonly unit: UnitRecordOf<U> }>;
+}) => Provider<ActivitiesInstanceOf<C>, never, InstanceType<D[keyof D]>> & {
+  readonly port: ActivitiesPortOf<C>;
+  /** Phantom: the declared ports, which `TemporalModule` gates `unit.activity` against. */
+  readonly _declaredUnit?: InstanceType<U[keyof U]>;
+};
+
+/**
  * The composing arm. Declared LAST in the intersection below on purpose:
  * TypeScript reports the last overload's failure, so a non-covering array is
  * refused against the `"UNCOVERED ACTIVITIES — …"` marker rather than degrading
@@ -199,6 +252,8 @@ type Compose<C extends ContractDefinition> = <const T extends readonly PieceOf<C
       >,
 ) => Provider<ActivitiesInstanceOf<C>, never, InstanceType<T[number]["port"]>> & {
   readonly port: ActivitiesPortOf<C>;
+  /** Phantom: the union of every piece's declared ports, which `TemporalModule` gates `unit.activity` against. */
+  readonly _declaredUnit?: DeclaredOf<T>;
 };
 
 /**
@@ -209,16 +264,16 @@ type Compose<C extends ContractDefinition> = <const T extends readonly PieceOf<C
  * TemporalActivities(orderContract)([fulfillOrder, chargeOrder])
  * ```
  *
- * The first is di's own `Provider(port)` on the starter's activities port
- * typed for the contract. The second takes the pieces
- * `TemporalWorkflowActivities(contract, key)` builds: they are the provider's
- * deps, keyed by the contract key each piece's port id carries, so the services
- * record IS the activities record. Every key must be covered, and two slices
- * claiming one key are di's duplicate-provider defect at build.
+ * The first is `{ inject, unit?, sync }`, whose `sync` hands back the whole
+ * activities record — one `unit:` record for every entry in it. The second
+ * takes the pieces `TemporalWorkflowActivities(contract, key)` builds: they are
+ * the provider's deps, keyed by the contract key each piece's port id carries,
+ * so the services record IS the activities record. Every key must be covered,
+ * and two slices claiming one key are di's duplicate-provider defect at build.
  */
 export const TemporalActivities = <C extends ContractDefinition>(
   contract: C,
-): ReturnType<typeof Provider<ActivitiesPortOf<C>>> & Compose<C> => {
+): Whole<C> & Compose<C> => {
   void contract;
   const build = Provider(TemporalActivitiesPort as ActivitiesPortOf<C>);
   const compose = (pieces: readonly { readonly port: { readonly portId: string } }[]): unknown =>
@@ -231,10 +286,27 @@ export const TemporalActivities = <C extends ContractDefinition>(
       ),
       sync: (services: unknown) => services,
     } as never);
-  // An array is never a valid `Provider(port)` call — its one argument is a
-  // record — so `Array.isArray` alone identifies the composing arm.
+  const whole = (options: {
+    readonly inject: Readonly<Record<string, AnyPort>>;
+    readonly unit?: Readonly<Record<string, AnyPort>>;
+    readonly sync: (services: never) => Readonly<Record<string, unknown>>;
+  }): unknown => {
+    const record = options.unit ?? {};
+    return build({
+      inject: options.inject,
+      sync: (services: never) =>
+        Object.fromEntries(
+          Object.entries(options.sync(services)).map(([key, entry]) => [
+            key,
+            withUnit(record, entry),
+          ]),
+        ),
+    } as never);
+  };
+  // An array is never a valid record call — its one argument is a record — so
+  // `Array.isArray` alone identifies the composing arm.
   return ((first: unknown) =>
     Array.isArray(first)
       ? compose(first as readonly { readonly port: { readonly portId: string } }[])
-      : (build as (a: never) => unknown)(first as never)) as never;
+      : whole(first as Parameters<typeof whole>[0])) as never;
 };

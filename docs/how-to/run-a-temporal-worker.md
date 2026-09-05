@@ -22,7 +22,7 @@ package's. Everything below is lifted from `examples/order-temporal-worker`.
 
 ## Recipe
 
-1. Implement the activities with `TemporalActivities(contract)({ inject, ...arm })`
+1. Implement the activities with `TemporalActivities(contract)({ inject, unit?, sync })`
    — a record shaped like the contract, closing over the services `inject` names.
 2. Compose with `TemporalModule(name)({ contract, activities, workflows, imports, needs })`.
 3. `await runMain(OrderTemporalWorker)`.
@@ -31,10 +31,11 @@ package's. Everything below is lifted from `examples/order-temporal-worker`.
 
 ## Step 1 — the activities, as a provider
 
-`TemporalActivities(orderContract)` is di's `Provider(port)` on the starter's
+`TemporalActivities(orderContract)` is the builder on the starter's
 own activities port, typed for the contract (its service the record
 `declareActivitiesHandler` takes) — no class, no name: a worker serves one
-activities record — so the next call is `{ inject, ...arm }` as anywhere else. **An activity is a closure over its provider's services** — the record it
+activities record — so the next call is `{ inject, unit?, sync }`, the same arm
+all three starters take. **An activity is a closure over its provider's services** — the record it
 receives at call time carries the invocation's own values (`input`, `errors`),
 never a service to resolve — and each `mapErrCases` names every domain error the
 contract declares:

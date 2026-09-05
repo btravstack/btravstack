@@ -36,7 +36,7 @@ import {
   type RunningApp,
   type Settle,
 } from "@btravstack/core";
-import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { Module, Port, Provider, type PortClassOf, type ServiceOf } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
@@ -603,6 +603,98 @@ const rpcSubstitutedAppOf = () =>
     exports: [HttpRuntime, HttpHandler],
   });
 
+class KindedAnonSpan extends Port("KindedAnonSpan")<{ readonly at: number }> {}
+class KindedUserSpan extends Port("KindedUserSpan")<{ readonly at: number }> {}
+
+/** Derived from the seeded principal — what a leaf reads back off `context.unit`. */
+class KindedUserId extends Port("KindedUserId")<string> {}
+
+/**
+ * The two kinds' modules, counting builds and stops, the `user` one recording
+ * the principal the fork seeded it with — the observable that tells "forked the
+ * right kind" from "forked at all". Fresh per call, so counts start at zero.
+ */
+const kindedUnitsOf = <
+  P extends PortClassOf<`HttpPrincipal:${string}`, { readonly userId: string }>,
+>(
+  principal: P,
+) => {
+  const counts = {
+    anonymous: { builds: 0, stops: 0 },
+    user: { builds: 0, stops: 0 },
+  };
+  const seen: unknown[] = [];
+  const anonymous = Module("KindedAnonUnit")({
+    provides: [
+      Provider(KindedAnonSpan)({
+        inject: {},
+        sync: () => {
+          counts.anonymous.builds += 1;
+          return { at: counts.anonymous.builds };
+        },
+        onStop: () => {
+          counts.anonymous.stops += 1;
+        },
+      }),
+    ],
+    exports: [KindedAnonSpan],
+  });
+  const user = Module("KindedUserUnit")({
+    needs: [principal],
+    provides: [
+      Provider(KindedUserSpan)({
+        inject: { principal },
+        sync: ({ principal: injected }) => {
+          counts.user.builds += 1;
+          seen.push(injected);
+          return { at: counts.user.builds };
+        },
+        onStop: () => {
+          counts.user.stops += 1;
+        },
+      }),
+      Provider(KindedUserId)({
+        inject: { principal },
+        sync: ({ principal: injected }) => injected.userId,
+      }),
+    ],
+    exports: [KindedUserSpan, KindedUserId],
+  });
+  return { anonymous, user, counts: () => counts, seen: () => seen };
+};
+
+type KindedUnits = ReturnType<typeof kindedUnitsOf>;
+
+/** The same scheme registry, retyped by the kinds it binds — what types `context.unit`. */
+const kindedApi = api.units<{
+  anonymous: KindedUnits["anonymous"];
+  user: KindedUnits["user"];
+}>();
+
+/**
+ * The pair that reads the fork back: a MARKED leaf declaring a port only the
+ * `user` kind's module exports, beside a piece declaring no record at all. Two
+ * pieces, so the array arm's nearest-piece lookup is what finds each leaf's.
+ */
+const unitOrdersController = kindedApi.OrpcController(
+  authedContract,
+  "orders",
+)({
+  inject: {},
+  unit: { userId: KindedUserId },
+  sync: () => ({ whoami: ({ context }) => OkAsync({ userId: context.unit.userId }) }),
+});
+
+const unitHealthController = kindedApi.OrpcController(
+  authedContract,
+  "health",
+)({ inject: {}, sync: () => ({ ping: () => OkAsync({ ok: true as const }) }) });
+
+const unitRouter = kindedApi.OrpcRouter(authedContract)([
+  unitOrdersController,
+  unitHealthController,
+]);
+
 /** `Bearer ${token}`, or no credentials at all when `token` is `undefined`. */
 const linkOf = (origin: string, token: string | undefined) =>
   new RPCLink({
@@ -616,6 +708,9 @@ type AuthedClient = RouterContractClient<{
   readonly orders: { readonly whoami: typeof whoami };
   readonly health: { readonly ping: typeof ping };
 }>;
+
+/** Builds and stops, per kind. */
+type KindCounts = ReturnType<ReturnType<typeof kindedUnitsOf>["counts"]>;
 
 type RootMarkedClient = RouterContractClient<{
   readonly orders: { readonly whoami: typeof whoami };
@@ -1022,6 +1117,41 @@ const htmxRuntimeFragmentsProvider = htmxRuntimeApi.HtmxFragments([
   htmxSecureFragment,
 ]);
 
+/**
+ * One public route and one requiring `user`, both under `htmxRuntimeApi` — the
+ * pair the unit-kind tests need: an unmarked leaf opens `anonymous`, a marked
+ * one opens the scheme that resolved.
+ */
+const htmxKindedPublicFragment = htmxRuntimeApi.HtmxGet("/kinded/public")({
+  inject: {},
+  sync: () => () => OkAsync(html`<p>public</p>`),
+});
+
+const htmxKindedPrivateFragment = htmxRuntimeApi.HtmxGet("/kinded/private", {
+  requires: [{ user: [] }],
+})({ inject: {}, sync: () => () => OkAsync(html`<p>private</p>`) });
+
+/** The same registry, retyped by the kinds it binds — what types `context.unit`. */
+const kindedHtmxApi = htmxRuntimeApi.units<{
+  anonymous: KindedUnits["anonymous"];
+  user: KindedUnits["user"];
+}>();
+
+/** A third route, reading a port only the `user` kind's module exports back off its fork. */
+const htmxKindedWhoamiFragment = kindedHtmxApi.HtmxGet("/kinded/whoami", {
+  requires: [{ user: [] }],
+})({
+  inject: {},
+  unit: { userId: KindedUserId },
+  sync: () => (context) => OkAsync(html`<p>${context.unit.userId}</p>`),
+});
+
+const htmxKindedFragmentsProvider = htmxRuntimeApi.HtmxFragments([
+  htmxKindedPublicFragment,
+  htmxKindedPrivateFragment,
+  htmxKindedWhoamiFragment,
+]);
+
 const htmxRuntimeAppOf = (bodyLimit?: number) =>
   Module("HtmxRuntimeApp")({
     imports: [
@@ -1139,6 +1269,33 @@ export type HttpFixtures = {
       readonly app: App;
       readonly origin: string;
       readonly counts: () => { builds: number; stops: number };
+    }>;
+  };
+  /**
+   * The starter over a router with one MARKED and one unmarked leaf, bound to
+   * whichever kinds `serve` names — the unit-kind selection, end to end. Shut
+   * down by the fixture.
+   */
+  readonly kindedRpc: {
+    readonly serve: (kinds: readonly ("anonymous" | "user")[]) => Promise<{
+      readonly clientWith: (token: string | undefined) => AuthedClient;
+      readonly counts: () => KindCounts;
+      readonly seen: () => readonly unknown[];
+    }>;
+  };
+  /**
+   * The same app whose marked leaf reads the forked module's export back off
+   * `context.unit`, with both kinds bound.
+   */
+  readonly unitRecordRpc: () => Promise<{
+    readonly clientWith: (token: string | undefined) => AuthedClient;
+  }>;
+  /** The same over htmx fragments — one public route, one requiring `user`. */
+  readonly kindedHtmx: {
+    readonly serve: (kinds: readonly ("anonymous" | "user")[]) => Promise<{
+      readonly origin: string;
+      readonly counts: () => KindCounts;
+      readonly seen: () => readonly unknown[];
     }>;
   };
   /**
@@ -1348,7 +1505,7 @@ export type HttpFixtures = {
   readonly apiKeyService: AuthenticatorService<ServiceIdentity, "reports:read">;
   /** The API-key scheme with no scope vocabulary, resolved. */
   readonly bareApiKeyService: AuthenticatorService<ServiceIdentity>;
-  /** The JWT scheme with no scope vocabulary, over this test's own issuer. */
+  /** The JWT scheme with no scope vocabulary, over this file's own issuer. */
   readonly jwtService: AuthenticatorService<JwtIdentity>;
   /** The JWT scheme declaring `orders:export`, where `scopes` is required. */
   readonly scopedJwtService: AuthenticatorService<JwtIdentity, "orders:export">;
@@ -1367,12 +1524,17 @@ export const it = test.extend<HttpFixtures>({
     });
   },
 
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  issuer: async ({}, use) => {
-    const local = await issuerOf();
-    await use(local);
-    await local.close();
-  },
+  issuer: [
+    // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+    async ({}, use) => {
+      const local = await issuerOf();
+      await use(local);
+      await local.close();
+    },
+    // Per FILE, not per test: generating the key pairs is the cost, and nothing
+    // mutates the issuer, so a file's tests share one.
+    { scope: "file" },
+  ],
 
   // oxlint-disable-next-line no-empty-pattern -- see above
   apiKeyService: async ({}, use) => {
@@ -1510,6 +1672,78 @@ export const it = test.extend<HttpFixtures>({
         const info = (await app.runtimeInfo()).get();
         assert.ok(info !== undefined, "the runtime published no Serving.info");
         return { app, origin: `http://127.0.0.1:${info.port}`, counts: () => counts };
+      },
+    });
+  },
+
+  kindedRpc: async ({ boot }, use) => {
+    await use({
+      serve: async (kinds) => {
+        const units = kindedUnitsOf(api.principals.user);
+        const app = boot(
+          HttpModule("KindedRpcApp")({
+            router: authedRouter,
+            port: 0,
+            hostname: "127.0.0.1",
+            unit: Object.fromEntries(kinds.map((kind) => [kind, units[kind]])),
+            provides: [authedOrdersController, authedHealthController],
+          }),
+        );
+        const info = (await app.runtimeInfo()).get();
+        assert.ok(info !== undefined, "the runtime published no Serving.info");
+        const origin = `http://127.0.0.1:${info.port}`;
+        return {
+          clientWith: (token) => createORPCClient(linkOf(origin, token)),
+          counts: units.counts,
+          seen: units.seen,
+        };
+      },
+    });
+  },
+
+  unitRecordRpc: async ({ boot }, use) => {
+    await use(async () => {
+      const units = kindedUnitsOf(api.principals.user);
+      const app = boot(
+        HttpModule("UnitRecordRpcApp")({
+          router: unitRouter,
+          port: 0,
+          hostname: "127.0.0.1",
+          unit: { anonymous: units.anonymous, user: units.user },
+          provides: [unitOrdersController, unitHealthController],
+        }),
+      );
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const origin = `http://127.0.0.1:${info.port}`;
+      return { clientWith: (token) => createORPCClient(linkOf(origin, token)) };
+    });
+  },
+
+  kindedHtmx: async ({ boot }, use) => {
+    await use({
+      serve: async (kinds) => {
+        const units = kindedUnitsOf(htmxRuntimeApi.principals.user);
+        const app = boot(
+          HttpModule("KindedHtmxApp")({
+            fragments: htmxKindedFragmentsProvider,
+            port: 0,
+            hostname: "127.0.0.1",
+            unit: Object.fromEntries(kinds.map((kind) => [kind, units[kind]])),
+            provides: [
+              htmxKindedPublicFragment,
+              htmxKindedPrivateFragment,
+              htmxKindedWhoamiFragment,
+            ],
+          }),
+        );
+        const info = (await app.runtimeInfo()).get();
+        assert.ok(info !== undefined, "the runtime published no Serving.info");
+        return {
+          origin: `http://127.0.0.1:${info.port}`,
+          counts: units.counts,
+          seen: units.seen,
+        };
       },
     });
   },

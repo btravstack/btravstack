@@ -4,6 +4,7 @@
  * activities record, or a contract-global activity.
  */
 import { Env } from "@btravstack/config";
+import { Port } from "@btravstack/di";
 import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
 import { OkAsync } from "unthrown";
 import { z } from "zod";
@@ -39,20 +40,28 @@ const pinContract = defineContract({
   },
 });
 
+class Tenant extends Port("PinSliceTenant")<{ readonly id: string }> {}
+
 const echo = TemporalWorkflowActivities(
   pinContract,
   "runEcho",
-)({ inject: {}, value: { echo: ({ input }) => OkAsync(input) } });
+)({ inject: {}, sync: () => ({ echo: ({ input }) => OkAsync(input) }) });
 const shout = TemporalWorkflowActivities(
   pinContract,
   "runShout",
-)({ inject: {}, value: { shout: ({ input }) => OkAsync(input) } });
+)({ inject: {}, sync: () => ({ shout: ({ input }) => OkAsync(input) }) });
 // A contract-global activity is a top-level key of the record too, so the same
 // builder builds it — the name is imprecise here, and that is documented.
 const audit = TemporalWorkflowActivities(
   pinContract,
   "audit",
-)({ inject: {}, value: ({ input }) => OkAsync(input) });
+)({
+  inject: {},
+  sync:
+    () =>
+    ({ input }) =>
+      OkAsync(input),
+});
 
 // Positive: the piece carries the port it was minted under, typed for its key.
 const _echoPort: WorkflowActivitiesPortOf<typeof pinContract, "runEcho"> = echo.port;
@@ -115,16 +124,52 @@ const otherContract = defineContract({
 const otherEcho = TemporalWorkflowActivities(
   otherContract,
   "runEcho",
-)({ inject: {}, value: { echo: ({ input }) => OkAsync(input) } });
+)({ inject: {}, sync: () => ({ echo: ({ input }) => OkAsync(input) }) });
 // @ts-expect-error -- built for `otherContract`, whose `runEcho` activities take and answer a number
 TemporalActivities(pinContract)([otherEcho, shout, audit]);
 
-// Positive: the two existing arms still resolve, unchanged.
+// Positive: a piece declaring `unit:` reads those ports off `context.unit`,
+// typed by the record it declared — one kind, so no narrowing to apply; what a
+// name resolves to is the port's own service.
+const scoped = TemporalWorkflowActivities(
+  pinContract,
+  "runEcho",
+)({
+  inject: {},
+  unit: { tenant: Tenant },
+  sync: () => ({
+    echo: ({ context, input }) => {
+      const id: string = context.unit.tenant.id;
+      void id;
+      return OkAsync(input);
+    },
+  }),
+});
+void scoped.unit.tenant;
+
+// Negative: a name the piece did not declare is not on the record at all, so
+// reading it is TypeScript's own "property does not exist".
+TemporalWorkflowActivities(
+  pinContract,
+  "runShout",
+)({
+  inject: {},
+  unit: { tenant: Tenant },
+  sync: () => ({
+    shout: ({ context, input }) => {
+      // @ts-expect-error -- `user` is no name this piece declared on `unit`
+      void context.unit.user;
+      return OkAsync(input);
+    },
+  }),
+});
+
+// Positive: the record arm still resolves beside the composing one.
 TemporalActivities(pinContract)({
   inject: {},
-  value: {
+  sync: () => ({
     runEcho: { echo: ({ input }) => OkAsync(input) },
     runShout: { shout: ({ input }) => OkAsync(input) },
     audit: ({ input }) => OkAsync(input),
-  },
+  }),
 });

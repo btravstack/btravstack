@@ -17,12 +17,15 @@ import {
   type Settle,
   type UnitMeta,
 } from "@btravstack/core";
-import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
+import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 import { HttpHandler, type HttpAnswerer } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
 import { DEFAULT_BODY_LIMIT, orpc, type OrpcRouterPort, type OrpcOptions } from "./orpc.js";
+import type { AnyUnitModule, UnitsNeedsOf } from "./unit.js";
+
+export type { AnyUnitModule, UnitsNeedsOf } from "./unit.js";
 
 /** What the runtime publishes once it is listening, read back through `RunningApp.runtimeInfo()`. */
 export type HttpInfo = { readonly port: number };
@@ -53,11 +56,14 @@ export type HttpOptions = OrpcOptions & {
    */
   readonly securityHeaders?: boolean | Readonly<Record<string, string>>;
   /**
-   * The unit module the answerers fork around every request they handle,
-   * with no seed. Built as the answerer takes the request, torn down when
-   * the unit closes, after the response is flushed.
+   * The unit module each KIND binds: `anonymous` for a request no leaf asked to
+   * authenticate, else the scheme that resolved the caller. The answerers fork
+   * the one that matches — seeded, for a scheme, with that scheme's principal —
+   * as the request is taken, and tear it down when the unit closes, after the
+   * response is flushed. A kind that binds no module of its own falls back to
+   * `anonymous`, so binding that one alone keeps forking on every leaf.
    */
-  readonly unit?: { readonly anonymous?: AnyUnitModule };
+  readonly unit?: Readonly<Record<string, AnyUnitModule>>;
 };
 
 /** What `httpServer` pins on the config it binds — everything but the router's own. */
@@ -65,27 +71,6 @@ type SocketOptions = Pick<
   HttpOptions,
   "port" | "hostname" | "cors" | "bodyLimit" | "compression" | "securityHeaders" | "unit"
 >;
-
-/**
- * A module `unit.anonymous` may bind, as the upper bound `httpServer`/`http`
- * constrain their own `Unit` type parameter to. `Module`'s `_exports` channel
- * is contravariant, so `Exports = never` — never `unknown` — is what makes a
- * REAL module's own (necessarily narrower) export type assignable to this
- * bound: `(x: Concrete) => void` is assignable to `(x: never) => void`, not
- * to `(x: unknown) => void`. `@btravstack/testing`'s `TestRuntimeOptions.unit`
- * carries the same bound for the same reason.
- */
-export type AnyUnitModule = Module<never, never, unknown>;
-
-/**
- * The needs a bound `unit.anonymous` module still owes, or `never` when none
- * is bound. `Scope` is excluded, since nothing can ever provide it — the same
- * exemption `NeedsGate` itself carries. Exported for `http-module.ts`, which
- * types `HttpModule`'s own starter independently of `httpServer`'s return
- * type.
- */
-export type UnitNeedsOf<Unit> =
-  Unit extends Module<never, never, infer N> ? Exclude<N, Scope> : never;
 
 /**
  * Set before dispatch, so they also cover the runtime's own `404` and `500` —
@@ -112,12 +97,11 @@ export class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInf
 /**
  * What `httpServer(options)` provides from `options.unit`, and what `orpc()`
  * and `htmx()` inject to find the module they fork around a request they
- * handle. `anonymous` is `undefined` when the composition root bound none —
- * every answerer's own fork is then a no-op.
+ * handle: kind → module. A kind absent from the record falls back to
+ * `anonymous`; an empty record binds neither, which is what makes every
+ * answerer's own fork a no-op.
  */
-export class HttpUnit extends Port("HttpUnit")<{
-  readonly anonymous?: AnyUnitModule;
-}> {}
+export class HttpUnit extends Port("HttpUnit")<Readonly<Record<string, AnyUnitModule>>> {}
 
 /**
  * Rate, errors and duration, per request — the three a framework that owns the
@@ -160,12 +144,14 @@ export const _internal_httpRuntime = (
  * `http()`, `htmx()` from a fragment graph — which is what lets an application
  * serve one protocol, the other, or both.
  */
-export const httpServer = <Unit extends AnyUnitModule | undefined = undefined>(
-  options: Omit<SocketOptions, "unit"> & { readonly unit?: { readonly anonymous?: Unit } } = {},
+export const httpServer = <
+  Units extends Readonly<Record<string, AnyUnitModule>> | undefined = undefined,
+>(
+  options: Omit<SocketOptions, "unit"> & { readonly unit?: Units } = {},
 ): Module<
   HttpRuntime | HttpConfig | HttpHandler | HttpUnit,
   ConfigInvalid,
-  Env | UnitNeedsOf<Unit>
+  Env | UnitsNeedsOf<Units>
 > => {
   const { port, hostname, cors, bodyLimit, compression, securityHeaders } = options;
   const config = Config.provider(HttpConfig)(
@@ -201,26 +187,21 @@ export const httpServer = <Unit extends AnyUnitModule | undefined = undefined>(
         sync: ({ config: bound, observers }) =>
           _internal_httpRuntime(bound, securityHeaders, observers),
       }),
-      Provider(HttpUnit)({
-        inject: {},
-        // `exactOptionalPropertyTypes` refuses `{ anonymous: undefined }` where
-        // `HttpUnit`'s own shape declares `anonymous` optional rather than
-        // nullable — an unbound `unit.anonymous` is left OFF the value instead.
-        value: options.unit?.anonymous === undefined ? {} : { anonymous: options.unit.anonymous },
-      }),
+      Provider(HttpUnit)({ inject: {}, value: options.unit ?? {} }),
     ],
     exports: [HttpRuntime, HttpConfig, HttpHandler, HttpUnit],
     // `as never`/`as unknown as Module<…>`, below: `exports` includes
     // `HttpHandler`, a set port, though this module provides no member of it
-    // itself — a sibling module's answerer does. The Needs channel carries a
-    // bound `unit.anonymous` module's own unmet needs, though nothing HERE
-    // reads them: it is forked over the application context at request time,
-    // so what it needs is exactly what the composition root must supply, and
-    // this is what makes di's own `UNSATISFIED DEPENDENCIES` gate say so.
+    // itself — a sibling module's answerer does. The Needs channel carries every
+    // bound kind's module's own unmet needs, less the principal the fork seeds,
+    // though nothing HERE reads them: a kind's module is forked over the
+    // application context at request time, so what it needs is exactly what the
+    // composition root must supply, and this is what makes di's own
+    // `UNSATISFIED DEPENDENCIES` gate say so.
   } as never) as unknown as Module<
     HttpRuntime | HttpConfig | HttpHandler | HttpUnit,
     ConfigInvalid,
-    Env | UnitNeedsOf<Unit>
+    Env | UnitsNeedsOf<Units>
   >;
 };
 
@@ -235,12 +216,12 @@ export const httpServer = <Unit extends AnyUnitModule | undefined = undefined>(
  * Pin `port`/`hostname` and the module reads nothing from the environment; pin
  * only some and the rest still comes from it.
  */
-export const http = <Unit extends AnyUnitModule | undefined = undefined>(
-  options: Omit<HttpOptions, "unit"> & { readonly unit?: { readonly anonymous?: Unit } } = {},
+export const http = <Units extends Readonly<Record<string, AnyUnitModule>> | undefined = undefined>(
+  options: Omit<HttpOptions, "unit"> & { readonly unit?: Units } = {},
 ): Module<
   HttpRuntime | HttpConfig | HttpHandler,
   ConfigInvalid,
-  Env | OrpcRouterPort | UnitNeedsOf<Unit>
+  Env | OrpcRouterPort | UnitsNeedsOf<Units>
 > =>
   Module("Http")({
     imports: [httpServer(options)],
@@ -249,7 +230,7 @@ export const http = <Unit extends AnyUnitModule | undefined = undefined>(
   } as never) as unknown as Module<
     HttpRuntime | HttpConfig | HttpHandler,
     ConfigInvalid,
-    Env | OrpcRouterPort | UnitNeedsOf<Unit>
+    Env | OrpcRouterPort | UnitsNeedsOf<Units>
   >;
 
 /**

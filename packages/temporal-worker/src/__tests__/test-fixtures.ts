@@ -36,7 +36,7 @@ import {
   type TemporalUnreachable,
   type WorkflowSource,
 } from "../temporal-runtime.js";
-import { TemporalWorkflowActivities } from "../workflow-activities.js";
+import { ActivityInput, TemporalWorkflowActivities } from "../workflow-activities.js";
 
 /**
  * One Temporal server for the whole repository, with a namespace of this spec
@@ -74,7 +74,7 @@ const EchoActivities = TemporalActivities(echoContract);
 
 const echoing = EchoActivities({
   inject: {},
-  value: { runEcho: { echo: ({ input }) => OkAsync(input) } },
+  sync: () => ({ runEcho: { echo: ({ input }) => OkAsync(input) } }),
 });
 
 /**
@@ -84,11 +84,11 @@ const echoing = EchoActivities({
  */
 const failingEcho = EchoActivities({
   inject: {},
-  value: {
+  sync: () => ({
     runEcho: {
       echo: () => fromSafePromise(Promise.reject<string>(new Error("the activity is on fire"))),
     },
-  },
+  }),
 });
 
 /**
@@ -102,7 +102,7 @@ const undeclaredEcho = {
     undeclared: () => OkAsync(undefined),
   },
 };
-export const undeclared = EchoActivities({ inject: {}, value: undeclaredEcho });
+export const undeclared = EchoActivities({ inject: {}, sync: () => undeclaredEcho });
 
 /**
  * The activities built from a service they close over, recording what they saw.
@@ -146,7 +146,7 @@ const deadlineOf = () => {
   return {
     activities: EchoActivities({
       inject: {},
-      value: {
+      sync: () => ({
         runEcho: {
           echo: ({ input: value }) => {
             const signal = currentUnit()?.signal;
@@ -180,7 +180,7 @@ const deadlineOf = () => {
             );
           },
         },
-      },
+      }),
     }),
     arrived,
     sawAbort: (): boolean | undefined => sawAbort,
@@ -205,14 +205,14 @@ const gateOf = () => {
   return {
     activities: EchoActivities({
       inject: {},
-      value: {
+      sync: () => ({
         runEcho: {
           echo: ({ input: value }) => {
             entered();
             return fromSafePromise(held.then(() => value));
           },
         },
-      },
+      }),
     }),
     arrived,
     release: (): void => release(),
@@ -284,6 +284,7 @@ const slicedContract = defineContract({
  */
 const slicesOf = () => {
   let greeting = "";
+  const units: (readonly string[])[] = [];
   const echo = TemporalWorkflowActivities(
     slicedContract,
     "runEcho",
@@ -299,11 +300,139 @@ const slicesOf = () => {
   const shout = TemporalWorkflowActivities(
     slicedContract,
     "runShout",
-  )({ inject: {}, value: { shout: ({ input }) => OkAsync(input.toUpperCase()) } });
+  )({
+    inject: {},
+    sync: () => ({
+      shout: ({ context, input }) => {
+        units.push(Object.keys(context.unit));
+        return OkAsync(input.toUpperCase());
+      },
+    }),
+  });
   return {
     activities: TemporalActivities(slicedContract)([echo, shout]),
     pieces: [echo, shout] as const,
     greeting: (): string => greeting,
+    /** What `runShout`'s piece found on `context.unit` — nothing declared, no module bound. */
+    units: (): readonly (readonly string[])[] => units,
+  };
+};
+
+export class Tenant extends Port("Tenant")<{ readonly id: string }> {}
+
+/**
+ * One workflow and one contract-global activity on a queue of their own. The
+ * workflow drives both, which is what makes the seeded fork's two ENTRY SHAPES
+ * — a workflow key's record of implementations and a global key's bare
+ * implementation — run in the same attempt pair.
+ */
+const scopedContract = defineContract({
+  taskQueue: "scoped",
+  activities: {
+    audit: defineActivity({
+      input: z.string(),
+      output: z.string(),
+      activityOptions: { startToCloseTimeout: "30 seconds", retry: { maximumAttempts: 1 } },
+    }),
+  },
+  workflows: {
+    runAudited: defineWorkflow({
+      input: z.string(),
+      output: z.string(),
+      startPolicy: "allow-duplicate",
+      activities: {
+        echo: defineActivity({
+          input: z.string(),
+          output: z.string(),
+          activityOptions: { startToCloseTimeout: "30 seconds", retry: { maximumAttempts: 1 } },
+        }),
+      },
+    }),
+  },
+});
+
+/** The invocation's own port, as a unit module reads it: one seed, typed by the contract. */
+const ScopedInput = ActivityInput(scopedContract);
+
+/**
+ * The seeded fork, end to end: an `activity` module deriving a tenant from the
+ * validated input, and two pieces declaring it — so what an activity reads off
+ * `context.unit.tenant` can only have come through the seed.
+ */
+const TenantUnitModule = Module("TenantUnit")({
+  needs: [ScopedInput],
+  provides: [
+    Provider(Tenant)({ inject: { input: ScopedInput }, sync: ({ input }) => ({ id: input }) }),
+  ],
+  exports: [Tenant],
+});
+
+const scopedOf = () => {
+  const seen: string[] = [];
+  const module = TenantUnitModule;
+
+  const audited = TemporalWorkflowActivities(
+    scopedContract,
+    "runAudited",
+  )({
+    inject: {},
+    unit: { tenant: Tenant },
+    sync: () => ({
+      echo: ({ context, input }) => {
+        seen.push(`echo:${context.unit.tenant.id}`);
+        return OkAsync(input);
+      },
+    }),
+  });
+  const audit = TemporalWorkflowActivities(
+    scopedContract,
+    "audit",
+  )({
+    inject: {},
+    unit: { tenant: Tenant },
+    sync:
+      () =>
+      ({ context, input }) => {
+        seen.push(`audit:${context.unit.tenant.id}`);
+        return OkAsync(input);
+      },
+  });
+
+  return {
+    module,
+    pieces: [audited, audit] as const,
+    activities: TemporalActivities(scopedContract)([audited, audit]),
+    seen: (): readonly string[] => seen,
+  };
+};
+
+/**
+ * The same seeded fork through the WHOLE-RECORD arm: one `unit:` for every
+ * entry in the record — both of `withUnit`'s shapes, a workflow's record and a
+ * contract-global implementation — and no piece for the root to provide.
+ */
+const wholeScopedOf = () => {
+  const seen: string[] = [];
+  return {
+    module: TenantUnitModule,
+    pieces: [] as const,
+    activities: TemporalActivities(scopedContract)({
+      inject: {},
+      unit: { tenant: Tenant },
+      sync: () => ({
+        runAudited: {
+          echo: ({ context, input }) => {
+            seen.push(`echo:${context.unit.tenant.id}`);
+            return OkAsync(input);
+          },
+        },
+        audit: ({ context, input }) => {
+          seen.push(`audit:${context.unit.tenant.id}`);
+          return OkAsync(input);
+        },
+      }),
+    }),
+    seen: (): readonly string[] => seen,
   };
 };
 
@@ -397,6 +526,17 @@ export type TemporalFixtures = {
   readonly configured: ReturnType<typeof configuredOf>;
   readonly slices: ReturnType<typeof slicesOf>;
   readonly serveSliced: (slices: ReturnType<typeof slicesOf>) => Promise<{
+    readonly app: App;
+    readonly client: Client;
+    readonly taskQueue: string;
+  }>;
+  /** The seeded fork end to end: a tenant derived from the input, read off `context.unit`. */
+  readonly scoped: ReturnType<typeof scopedOf>;
+  /** The same seed read through the whole-record arm's own `unit:`, no piece involved. */
+  readonly wholeScoped: ReturnType<typeof wholeScopedOf>;
+  readonly serveScoped: (
+    scoped: ReturnType<typeof scopedOf> | ReturnType<typeof wholeScopedOf>,
+  ) => Promise<{
     readonly app: App;
     readonly client: Client;
     readonly taskQueue: string;
@@ -580,6 +720,31 @@ export const it = test.extend<TemporalFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   slices: async ({}, use) => {
     await use(slicesOf());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  scoped: async ({}, use) => {
+    await use(scopedOf());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  wholeScoped: async ({}, use) => {
+    await use(wholeScopedOf());
+  },
+  serveScoped: async ({ server, client, boot }, use) => {
+    await use(async (scoped) => {
+      const taskQueue = nextTaskQueue();
+      const app: App = boot(
+        TemporalModule("Scoped")({
+          contract: withTaskQueue(scopedContract, taskQueue),
+          activities: scoped.activities,
+          workflows: echoWorkflows,
+          provides: [...scoped.pieces],
+          unit: { activity: scoped.module },
+        }),
+        { env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace } },
+      );
+      await app.runtimeInfo();
+      return { app, client, taskQueue };
+    });
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   counting: async ({}, use) => {

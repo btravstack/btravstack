@@ -1,5 +1,5 @@
 import { CORSHandlerPlugin } from "@orpc/server/plugins";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
 
@@ -228,5 +228,85 @@ describe("http, over a router", () => {
     // THEN the fork's defect reaches the caller as the runtime's own 500,
     // never a hung request
     expect(response.status).toBe(500);
+  });
+});
+
+describe("unit kinds", () => {
+  it("forks the user module, seeded with the principal, for a marked leaf", async ({
+    kindedRpc,
+  }) => {
+    // GIVEN a router binding both kinds
+    const { clientWith, counts, seen } = await kindedRpc.serve(["anonymous", "user"]);
+
+    // WHEN a MARKED procedure is called with a credential the scheme accepts
+    await clientWith("good").orders.whoami({ id: "o-1" });
+    await vi.waitUntil(() => counts().user.stops === 1);
+
+    // THEN only the user kind was opened, seeded with what its scheme resolved
+    expect({ user: counts().user, anonymous: counts().anonymous, seen: seen() }).toEqual({
+      user: { builds: 1, stops: 1 },
+      anonymous: { builds: 0, stops: 0 },
+      seen: [{ tenantId: "t-good", userId: "u-good" }],
+    });
+  });
+
+  it("forks anonymous, with no seed, for an unmarked leaf", async ({ kindedRpc }) => {
+    // GIVEN the same router binding both kinds
+    const { clientWith, counts, seen } = await kindedRpc.serve(["anonymous", "user"]);
+
+    // WHEN an UNMARKED procedure is called, credential or not
+    await clientWith("good").health.ping();
+    await vi.waitUntil(() => counts().anonymous.stops === 1);
+
+    // THEN the anonymous kind was opened and nothing was seeded
+    expect({ anonymous: counts().anonymous, user: counts().user, seen: seen() }).toEqual({
+      anonymous: { builds: 1, stops: 1 },
+      user: { builds: 0, stops: 0 },
+      seen: [],
+    });
+  });
+
+  it("falls back to anonymous when the scheme binds no module", async ({ kindedRpc }) => {
+    // GIVEN a router binding `anonymous` alone — what an application that never
+    // specialised a kind has
+    const { clientWith, counts } = await kindedRpc.serve(["anonymous"]);
+
+    // WHEN a MARKED procedure resolves the `user` scheme, which binds nothing
+    await clientWith("good").orders.whoami({ id: "o-1" });
+    await vi.waitUntil(() => counts().anonymous.stops === 1);
+
+    // THEN the anonymous module was forked all the same, so binding it alone
+    // keeps forking on every leaf
+    expect(counts()).toEqual({
+      anonymous: { builds: 1, stops: 1 },
+      user: { builds: 0, stops: 0 },
+    });
+  });
+
+  it("hands a marked leaf the forked kind's export on context.unit", async ({ unitRecordRpc }) => {
+    // GIVEN a router whose `orders` piece declares a port only the user kind
+    // exports, over an app binding both kinds
+    const { clientWith } = await unitRecordRpc();
+
+    // WHEN the MARKED procedure is called with a credential the scheme accepts
+    const answer = await clientWith("good").orders.whoami({ id: "o-1" });
+
+    // THEN the leaf read the port off the fork its own kind opened, built from
+    // the principal that fork was seeded with
+    expect(answer).toEqual({ userId: "u-good" });
+  });
+
+  it("forks nothing when neither the scheme nor anonymous is bound", async ({ kindedRpc }) => {
+    // GIVEN a router binding no kind at all
+    const { clientWith, counts } = await kindedRpc.serve([]);
+
+    // WHEN a marked procedure is called
+    const answer = await clientWith("good").orders.whoami({ id: "o-1" });
+
+    // THEN nothing was forked, and the request was still answered
+    expect({ answer, counts: counts() }).toEqual({
+      answer: { userId: "u-good" },
+      counts: { anonymous: { builds: 0, stops: 0 }, user: { builds: 0, stops: 0 } },
+    });
   });
 });

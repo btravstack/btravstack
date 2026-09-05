@@ -6,6 +6,7 @@ import {
   type AnyProvider,
   type Exportable,
   type NeedsGate,
+  type PortInstance,
   type Provider,
 } from "@btravstack/di";
 
@@ -19,19 +20,19 @@ import {
   type AnyUnitModule,
   type HttpOptions,
   type HttpUnit,
-  type UnitNeedsOf,
+  type UnitsNeedsOf,
 } from "./http-runtime.js";
 import { orpc, type OrpcRouterPort } from "./orpc.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
-type HttpStarter<Unit> = Module<
+type HttpStarter<Units> = Module<
   HttpRuntime | HttpConfig | HttpHandler | HttpUnit,
   ConfigInvalid,
-  Env | UnitNeedsOf<Unit>
+  Env | UnitsNeedsOf<Units>
 >;
 
 /** The application's imports plus the starter — the tuple `Module(name)` is handed. */
-type Imports<I extends readonly AnyModule[], Unit> = readonly [...I, HttpStarter<Unit>];
+type Imports<I extends readonly AnyModule[], Units> = readonly [...I, HttpStarter<Units>];
 
 /** Whatever `api.OrpcRouter(contract)(…)` returns. */
 type AnyRouterProvider = Provider<OrpcRouterPort, unknown, unknown> & {
@@ -70,6 +71,78 @@ type Provides<P extends readonly AnyProvider[], Router, Fragments> = readonly (
 )[];
 
 /**
+ * The kinds `units<…>()` declared, read back off one answerer's `_units`
+ * phantom. A provider carrying no such property infers `unknown`, an answerer
+ * `units` was never called on carries the empty record, and an omitted option
+ * is `undefined` — all three give no keys, which is what the gate below reads
+ * as "this api declared none".
+ */
+type UnitsOfAnswerer<T> = T extends { readonly _units?: infer U } ? U : Record<never, never>;
+
+/**
+ * The kinds this root's answerers declare. An intersection, not a preference:
+ * an answerer that declared none contributes no keys, and a router and a
+ * fragments provider from two different apis must satisfy BOTH declarations.
+ */
+type DeclaredUnits<Router, Fragments> = UnitsOfAnswerer<Router> & UnitsOfAnswerer<Fragments>;
+
+/**
+ * Every scheme a supplied answerer serves. Recovered from its needs channel
+ * rather than from a phantom of its own: a router already owes one
+ * `HttpAuthenticator:${scheme}` port per scheme its contract marks, and a
+ * fragments provider one per scheme its routes require, so the names are
+ * already there to be read.
+ */
+type SchemesOfAnswerer<T> = T extends { readonly _needs: () => infer N }
+  ? N extends PortInstance<`HttpAuthenticator:${infer S}`, unknown>
+    ? S
+    : never
+  : never;
+
+/**
+ * The kinds this root may bind: the ones `units<…>()` declared when an answerer
+ * carries them, else `anonymous` and every scheme the answerers serve. An
+ * unbound scheme falls back to `anonymous` at runtime, so without this a
+ * misspelled kind would fork `anonymous` for every request and diagnose
+ * nothing.
+ */
+type BindableKinds<Router, Fragments> = [keyof DeclaredUnits<Router, Fragments>] extends [never]
+  ? "anonymous" | SchemesOfAnswerer<Router> | SchemesOfAnswerer<Fragments>
+  : keyof DeclaredUnits<Router, Fragments>;
+
+/**
+ * A bound kind no request can ever open under. A record whose keys are not
+ * literal — one built by `Object.fromEntries` — carries no name to check, so it
+ * is passed rather than refused for having a `string` key outside the set.
+ */
+type UndeclaredKind<Units, Router, Fragments> = string extends keyof Units
+  ? never
+  : Exclude<keyof Units, BindableKinds<Router, Fragments>>;
+
+/**
+ * The `unit` gate, riding an intersection on the option so `Units` still infers
+ * from the value. An undeclared kind is refused against a marker — an
+ * excess-property check cannot see one, since the key is part of the very type
+ * it inferred. A declared kind bound to the wrong module is refused by ordinary
+ * assignability against the module type `units<…>()` named, which is the
+ * diagnostic worth having.
+ */
+type UnitGate<Units, Router, Fragments> = [UndeclaredKind<Units, Router, Fragments>] extends [never]
+  ? {
+      readonly [K in keyof Units & keyof DeclaredUnits<Router, Fragments>]: DeclaredUnits<
+        Router,
+        Fragments
+      >[K];
+    }
+  : {
+      readonly "UNDECLARED UNIT KIND — no request opens under it, so it would silently fall back to anonymous": UndeclaredKind<
+        Units,
+        Router,
+        Fragments
+      >;
+    };
+
+/**
  * The "serves nothing" gate: `unknown` once at least one of `router` /
  * `fragments` is supplied, an object with one required property when
  * neither is — `NeedsGate`'s own construction, so a root declaring no
@@ -85,18 +158,24 @@ type ServesNothingGate<Router, Fragments> = [Router] extends [undefined]
 export type HttpModuleOptions<
   Router extends AnyRouterProvider | undefined,
   Fragments extends AnyFragmentsProvider | undefined,
-  Unit extends AnyUnitModule | undefined,
+  Units extends Readonly<Record<string, AnyUnitModule>> | undefined,
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
-  X extends readonly Exportable<Imports<I, Unit>, Provides<P, Router, Fragments>>[],
+  X extends readonly Exportable<Imports<I, Units>, Provides<P, Router, Fragments>>[],
   N extends readonly AnyPort[],
 > = Omit<HttpOptions, "unit"> & {
   /**
-   * The unit module the answerers fork around every request they handle, with
-   * no seed. Its own unmet needs join this root's — a composition that binds
-   * one owes the composition root the same way any other `needs` does.
+   * The unit module each KIND binds — `anonymous` for a request no leaf asked
+   * to authenticate, else the scheme that resolved the caller. Every bound
+   * module's own unmet needs join this root's, less the principal the fork
+   * seeds: a composition that binds one owes the composition root the same way
+   * any other `needs` does.
+   *
+   * The kinds are gated against the answerers: the ones `units<…>()` declared,
+   * carried by the router or the fragments alike, or — for a plain
+   * `defineHttp()` api — `anonymous` and every scheme the answerers serve.
    */
-  readonly unit?: { readonly anonymous?: Unit };
+  readonly unit?: Units & UnitGate<Units, Router, Fragments>;
   /**
    * The application's oRPC router — what `api.OrpcRouter(contract)(…)` returns.
    * It carries the scheme authenticators `defineHttp` bound, which is how they
@@ -130,7 +209,7 @@ export type HttpModuleOptions<
    * over the augmented tuples below, so forgetting one is an error at THIS call.
    */
   readonly needs?: N;
-} & NeedsGate<Imports<I, Unit>, Provides<P, Router, Fragments>, N> &
+} & NeedsGate<Imports<I, Units>, Provides<P, Router, Fragments>, N> &
   ServesNothingGate<Router, Fragments>;
 
 /**
@@ -158,13 +237,13 @@ export const HttpModule =
   <
     Router extends AnyRouterProvider | undefined = undefined,
     Fragments extends AnyFragmentsProvider | undefined = undefined,
-    Unit extends AnyUnitModule | undefined = undefined,
+    Units extends Readonly<Record<string, AnyUnitModule>> | undefined = undefined,
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
-    const X extends readonly Exportable<Imports<I, Unit>, Provides<P, Router, Fragments>>[] = [],
+    const X extends readonly Exportable<Imports<I, Units>, Provides<P, Router, Fragments>>[] = [],
     const N extends readonly AnyPort[] = [],
   >(
-    options: HttpModuleOptions<Router, Fragments, Unit, I, P, X, N>,
+    options: HttpModuleOptions<Router, Fragments, Units, I, P, X, N>,
   ) => {
     const { router, fragments } = options;
     const imports = (options.imports ?? []) as I;
@@ -190,7 +269,7 @@ export const HttpModule =
     // because `HttpModuleOptions` re-declares it. Spelled out rather than
     // `as never`, which collapses the return to `Module<never, never, never>`.
     return Module(name)({
-      imports: [...imports, starter] as Imports<I, Unit>,
+      imports: [...imports, starter] as Imports<I, Units>,
       provides: [
         ...(router === undefined ? [] : [router, orpc(options)]),
         ...(fragments === undefined
@@ -214,9 +293,9 @@ export const HttpModule =
       ],
       needs: (options.needs ?? []) as N,
     } as {
-      readonly imports: Imports<I, Unit>;
+      readonly imports: Imports<I, Units>;
       readonly provides: Provides<P, Router, Fragments>;
       readonly exports: readonly [typeof HttpRuntime, typeof HttpHandler, ...X];
       readonly needs: N;
-    } & NeedsGate<Imports<I, Unit>, Provides<P, Router, Fragments>, N>);
+    } & NeedsGate<Imports<I, Units>, Provides<P, Router, Fragments>, N>);
   };
