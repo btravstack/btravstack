@@ -452,7 +452,7 @@ into a process of its own with its piece untouched —
 `api.OrpcRouter(contract.orders)({ inject: { implementation: ordersController.port }, sync: ({ implementation }) => implementation })`
 compiles — the property a slice's independent deployability rests on. The
 `{ inject, sync }` form is unchanged and stays correct for a small API — an
-array is never a valid `{ inject, ...arm }` call, so `Array.isArray` alone
+array is never a valid `{ inject, unit?, sync }` call, so `Array.isArray` alone
 tells the two arms apart, and there is nothing else left to discriminate. See
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
 the worked recipe.

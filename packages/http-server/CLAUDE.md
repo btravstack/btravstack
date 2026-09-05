@@ -163,7 +163,7 @@ not cover"` marker, and what the marker names is a procedure path
   because the alias route rides a compiler heuristic that has already changed
   behaviour across one key-shape refactor — see `PieceOf`'s own TSDoc. At
   runtime `Array.isArray`
-  alone identifies this arm — an array is never a valid `{ inject, ...arm }`
+  alone identifies this arm — an array is never a valid `{ inject, unit?, sync }`
   call — so the retired keyed record's three-form
   `sync`-holds-a-function discrimination is gone, and there is nothing left to
   discriminate: the other arm is one options object, as di's own is. The
@@ -174,7 +174,7 @@ not cover"` marker, and what the marker names is a procedure path
   `routerFrom`: `routerOf` walks the same tree it always did, marks,
   inheritance and the stray-key drop included. The walk itself is untouched —
   `nest` lives in the composing arm because the walk is shared with the
-  `{ inject, ...arm }` form, which never nests. The pieces themselves still need
+  `{ inject, unit?, sync }` form, which never nests. The pieces themselves still need
   discharging — listed in `provides` alongside the router, or exported by a
   slice module imported in — exactly as in `packages/amqp-worker`. Coverage
   is not uniqueness, but with paths the split moved: a piece **inside**
@@ -199,7 +199,7 @@ not cover"` marker, and what the marker names is a procedure path
   level carries one, against `"UNSLICEABLE CONTRACT KEY — …"` reported ahead
   of `Uncovered`, because "no piece can name this" is a different fact from
   "no piece did" and only the first says the array form is the wrong tool.
-  Both sentences point at the `{ inject, ...arm }` form, which splits nothing and
+  Both sentences point at the `{ inject, unit?, sync }` form, which splits nothing and
   serves such a contract correctly. Only the **top** level is fatal: a piece
   at a dotted key's parent hands its implementation record to `routerOf`
   whole, and that walk splits paths, never the keys underneath them — so

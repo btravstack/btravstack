@@ -68,6 +68,7 @@ have carried the same record, since the options are each package's own and the
 declared record is what types it either way, and it was dropped so one arm reads
 the same as `@btravstack/http-server`'s `OrpcController` and `OrpcRouter` on all
 three transports.
+The record arm gives up di's `value`, `async` and resourceful forms for the whole record on all three transports; nothing in the repository needs one there, and a hand-written `Provider(port)` over the composer's port still works.
 
 **`http()`, `httpServer()`, `amqp()` and `temporal()` stay un-gated**, and
 structurally so: each takes its router, handlers or activities as a **need**,
