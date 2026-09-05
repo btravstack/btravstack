@@ -167,7 +167,7 @@ type ServeOptions = { readonly drainTimeoutMs: number; readonly unit?: AnyUnitMo
 class CountingMark extends Port("CountingMark")<{ readonly at: number }> {}
 
 /** A unit module that counts its builds and teardowns, for the fork's own tests. */
-export const countingUnit = (): {
+const countingUnit = (): {
   readonly module: Module<CountingMark, never, Scope>;
   readonly counts: () => { readonly builds: number; readonly stops: number };
 } => {
@@ -379,6 +379,8 @@ export type AmqpFixtures = {
   ) => Promise<{ readonly app: App; readonly taken: () => readonly Observation[] }>;
   /** The handlers whose one consumer fails in a way nobody modelled. */
   readonly failing: EchoProvider;
+  /** A unit module counting its builds and teardowns, to bind on `serve`'s `unit`. */
+  readonly counting: ReturnType<typeof countingUnit>;
 };
 
 // Annotated explicitly: TS2883 otherwise refuses to name the inferred type,
@@ -447,6 +449,10 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
   // oxlint-disable-next-line no-empty-pattern -- see above
   slices: async ({}, use) => {
     await use(slicesOf());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  counting: async ({}, use) => {
+    await use(countingUnit());
   },
   serveSliced: async ({ amqpConnectionUrl, boot }, use) => {
     await use(async (slices) => {

@@ -207,8 +207,8 @@ AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>` either way,
   the sugar cannot drift from the starter it forwards to.
   `AmqpInfo` is `{ queues }`, published on `Serving.info` once consuming.
 
-  **`unit?: { message?: Unit }`** — the unit module `messageUnits` (the
-  worker's dispatch middleware) forks around every delivery, with no seed.
+  **`unit?: { message?: Unit }`** — the module that `messageUnits`, the
+  worker's dispatch middleware, forks around every delivery, with no seed.
   Built after the message is validated, before the handler runs; torn down
   when the unit closes — the point a later phase seeds with the delivery's
   tenant. `Unit extends AnyUnitModule | undefined = undefined` bounds both

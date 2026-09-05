@@ -1,6 +1,6 @@
 import { describe, expect, vi } from "vitest";
 
-import { countingUnit, it } from "./__tests__/test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("amqp", () => {
   it("publishes the queues it drains", async ({ serve }) => {
@@ -72,9 +72,9 @@ describe("amqp", () => {
     serve,
     seam,
     publishMessage,
+    counting,
   }) => {
     // GIVEN a worker bound to a unit module that counts its builds and teardowns
-    const counting = countingUnit();
     await serve(seam.handlers, { drainTimeoutMs: 1_000, unit: counting.module });
 
     // WHEN one message is delivered — waited out WHILE the worker is still

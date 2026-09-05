@@ -1,6 +1,6 @@
 import { describe, expect, vi } from "vitest";
 
-import { countingUnit, it, undeclared } from "./__tests__/test-fixtures.js";
+import { it, undeclared } from "./__tests__/test-fixtures.js";
 
 describe("temporal", () => {
   it("publishes the task queue and namespace it polls", async ({ server, serve }) => {
@@ -216,9 +216,9 @@ describe("temporal", () => {
   it("forks its unit module once per activity attempt, and tears it down", async ({
     serve,
     contractSeam,
+    counting,
   }) => {
     // GIVEN a worker bound to a unit module that counts its builds and teardowns
-    const counting = countingUnit();
     const { client, taskQueue } = await serve({
       activities: contractSeam.activities,
       unit: counting.module,

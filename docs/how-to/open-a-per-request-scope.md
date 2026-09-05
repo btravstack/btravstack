@@ -157,8 +157,10 @@ module's own unmet needs simply **join `HttpModule`'s own `Needs` channel**,
 so the gate that refuses them is `start`'s ordinary
 `UNSATISFIED DEPENDENCIES`, never a fourth arm of the kernel's own marker (an
 import's needs travel published in its type, and a bound `unit` module is no
-different). A root that has its runtime and router but does not export
-`Logger` is refused the same way any other unmet need is, ending on the port:
+different). A root that has its runtime and router but whose bound unit module
+needs a port nothing in the graph provides is refused the same way any other
+unmet need is, ending on that port — `HttpUnitDep` below, which
+`HttpUnitModule` declares in its own `needs`:
 
 <!-- doctest: skip — quotes examples/order-api/src/needs-gate.test-d.ts, the real gate for the unit needs-propagation arm -->
 
@@ -173,13 +175,13 @@ const _unloggedUnit = HttpModule("WithUnitUnmet")({
 const _withUnitUnmet = start(_unloggedUnit, options);
 ```
 
-The port exists in that graph only if something provides it — `observability()`
-provides `Logger`, but the bound unit module here needs a port nothing does,
-and that is what the gate reads. That is why `OrderApi` exports `Logger`
-next to `HttpRuntime`:
-`HttpModule("OrderApi")({ router: orderRouter, unit: { anonymous: RequestModule },
-imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
-exports: [Logger] })`.
+`observability()` provides `Logger`, so exporting it clears nothing here: what
+the gate reads is `HttpUnitDep`, which the bound unit module needs and no
+provider in this graph supplies. Adding
+`provides: [Provider(HttpUnitDep)({ inject: {}, value: { value: 1 } })]` is
+what satisfies it. It is the same rule that makes `OrderApi` export `Logger`,
+`Tracer` and `Meter` next to `HttpRuntime` — `RequestModule`, the module it
+forks per request, reads all three out of the application scope.
 
 ::: warning `RuntimeHost.ctx` is the application context
 A unit-provided port exists only while a unit is open, and reaches a runtime

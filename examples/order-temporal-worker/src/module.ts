@@ -50,9 +50,10 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
     observability(),
     otel(),
   ],
-  // The worker forks `UnitSpanModule` once per activity attempt, after the
-  // activity is invoked; its own need, `Tracer`, is satisfied by `otel()` above.
+  // Forked once dispatch accepts the attempt and before the activity body
+  // runs, which is what lets the span wrap the whole attempt.
   unit: { activity: UnitSpanModule },
-  // `UnitSpanModule` reads `Tracer` out of the application scope once forked.
+  // Exported because `UnitSpanModule` reads `Tracer` out of the application
+  // scope once forked; `otel()` above is what provides it.
   exports: [Tracer],
 });

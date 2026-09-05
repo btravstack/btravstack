@@ -345,7 +345,7 @@ type BootOptions = {
 class CountingMark extends Port("CountingMark")<{ readonly at: number }> {}
 
 /** A unit module that counts its builds and teardowns, for the fork's own tests. */
-export const countingUnit = (): {
+const countingUnit = (): {
   readonly module: Module<CountingMark, never, Scope>;
   readonly counts: () => { readonly builds: number; readonly stops: number };
 } => {
@@ -401,6 +401,8 @@ export type TemporalFixtures = {
     readonly client: Client;
     readonly taskQueue: string;
   }>;
+  /** A unit module counting its builds and teardowns, to bind on `serve`'s `unit`. */
+  readonly counting: ReturnType<typeof countingUnit>;
 };
 
 /**
@@ -578,6 +580,10 @@ export const it = test.extend<TemporalFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   slices: async ({}, use) => {
     await use(slicesOf());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  counting: async ({}, use) => {
+    await use(countingUnit());
   },
   serveSliced: async ({ server, client, boot }, use) => {
     await use(async (slices) => {

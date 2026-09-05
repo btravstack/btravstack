@@ -185,8 +185,8 @@ close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
   intersect it — one spelling, so the sugar cannot drift from the starter it
   forwards to.
 
-  **`unit?: { activity?: Unit }`** — the unit module `activityUnits` (the
-  worker's dispatch middleware) forks around every activity attempt, with no
+  **`unit?: { activity?: Unit }`** — the module that `activityUnits`, the
+  worker's dispatch middleware, forks around every activity attempt, with no
   seed. Built after the activity is invoked, before it runs; torn down when
   the unit closes — the point a later phase seeds with the workflow's tenant.
   `Unit extends AnyUnitModule | undefined = undefined` bounds both
