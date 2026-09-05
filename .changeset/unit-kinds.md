@@ -51,8 +51,9 @@ everything else it needs still surfaces at `start`'s
 
 **Three gates.** `HttpModule` refuses a kind no request can open under, against
 `UNDECLARED UNIT KIND — …`: the bindable set is the kinds `units<…>()` declared
-when the router carries them, else `anonymous` plus every scheme the answerers
-serve, read off their own authenticator ports. `AmqpModule` and
+when an answerer carries them — the router and the fragments both do, so a
+fragments-only root is gated the same way — else `anonymous` plus every scheme
+the answerers serve, read off their own authenticator ports. `AmqpModule` and
 `TemporalModule` refuse a bound module that does not export a port some piece —
 or the whole-record arm — injects, against `UNIT DOES NOT PROVIDE — …`, naming
 the port, including the case where no module is bound at all.

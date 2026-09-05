@@ -679,16 +679,21 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `contract: C & ScopeGate<C, Vocab>`) so `Units` still infers from the value
   and `UnitsNeedsOf<Units>` still reads it. Two cases:
 
-  - **The router carries kinds** — an `api` from `units<…>()`, read back off
-    the `_units` phantom by `UnitsOfRouter<R>`. The bindable set is
-    `keyof UnitsOfRouter<Router>`, and each bound value must be assignable to
-    the module type that kind declared. That half is **ordinary
+  - **An answerer carries kinds** — an `api` from `units<…>()`, read back off
+    the `_units` phantom by `UnitsOfAnswerer<T>`. **The router and the
+    fragments both carry it**, so `DeclaredUnits<Router, Fragments>` takes
+    whichever of the two has keys — a root supplying both got them from ONE
+    `api`, so the two are the same type and the preference decides nothing.
+    That is what puts a **fragments-only** root in this case rather than the
+    weaker one below. The bindable set is
+    `keyof DeclaredUnits<Router, Fragments>`, and each bound value must be
+    assignable to the module type that kind declared. That half is **ordinary
     assignability**, not a marker: the diagnostic bottoms out at
     `Type 'Module<UnitSpan, …>' is not assignable to type 'Module<UnitTenant, …>'`,
     naming the kind and both modules, which no marker improves on. `Module`'s
     `_exports` channel being contravariant means a module exporting a
     SUPERSET is accepted, which is sound.
-  - **The router carries none** — a plain `defineHttp()` api, which is what
+  - **Neither answerer carries any** — a plain `defineHttp()` api, which is what
     `examples/order-api` composes. The bindable set is `anonymous` plus every
     scheme the answerers serve, recovered by `SchemesOfAnswerer<T>` off the
     provider's own needs channel (`_needs: () => N`, then matching
@@ -696,8 +701,8 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
     owes one authenticator port per scheme its contract marks and a fragments
     provider one per scheme its routes require, so **no second phantom is
     needed** — the names are already carried where the graph needs them
-    anyway. Both answerers are read, so a fragments-only root is gated by its
-    own routes' schemes.
+    anyway. Both answerers are read, so a plain-api fragments-only root is
+    gated by its own routes' schemes.
 
   An undeclared kind is refused against an `"UNDECLARED UNIT KIND — …"` marker
   rather than by excess-property checking, which cannot see one: `Units` is
@@ -715,16 +720,15 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   supplies no NAMED property, so it is refused with TypeScript's own
   `Property 'anonymous' is missing` — the `units<…>()` half gates against the
   authenticator REGISTRY and holds either way. Case 2's set comes from the
-  router's contract instead, and with no `_units` to intersect against, the
+  answerers' contracts instead, and with no `_units` to intersect against, the
   arm is the empty object: a non-literal record passes ungated. That is the
   weaker of the two and where a fixture lands.
 
-  It is also where a **fragments-only** root lands even under a `units<…>()`
-  api: `UnitsOfRouter` reads the `_units` phantom off the ROUTER, and
-  `htmxFragmentsFor` carries none — the phantom rides `orpc.ts`'s provider and
-  `define-http.ts`'s `Http` object alone. So a root supplying `fragments` and
-  no `router` is gated by case 2, against `anonymous` plus its own routes'
-  schemes, and never against the modules the kinds declared.
+  A **fragments-only** root under a `units<…>()` api lands in case 1 like any
+  other: `htmxFragmentsFor` carries the phantom the router does, so its kinds
+  are checked against the modules the declaration named rather than against
+  `anonymous` plus the routes' own schemes. Case 2 is reached by a plain
+  `defineHttp()` api and by nothing else.
 
   **`http()` and `httpServer()` stay un-gated**, and that is structural: they
   take the router as a NEED (`OrpcRouterPort`), never as a value, so their

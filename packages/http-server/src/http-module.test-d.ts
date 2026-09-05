@@ -192,6 +192,40 @@ const _undeclaredKind = {
 // @ts-expect-error — UNDECLARED UNIT KIND: `units<…>()` declared no `service`
 void HttpModule("GatedUndeclaredKind")(_undeclaredKind);
 
+// Case 1 again, off the FRAGMENTS: a fragments-only root under a kinded api
+// reaches the same gate, because `HtmxFragments` carries the `_units` phantom
+// the router does.
+const gatedRow = gated.HtmxGet("/row")({
+  inject: {},
+  sync: () => () => OkAsync(html`<p>row</p>`),
+});
+const gatedFragments = gated.HtmxFragments([gatedRow]);
+
+void HttpModule("GatedFragmentsDeclared")({
+  fragments: gatedFragments,
+  port: 0,
+  provides: [gatedRow],
+  unit: { anonymous: AnonymousUnit, user: UserUnit },
+});
+
+const _fragmentsWrongModule = {
+  fragments: gatedFragments,
+  port: 0,
+  provides: [gatedRow],
+  unit: { anonymous: AnonymousUnit, user: AnonymousUnit },
+} as const;
+// @ts-expect-error — the bound module is not the one units<…>() declared for `user`
+void HttpModule("GatedFragmentsWrongModule")(_fragmentsWrongModule);
+
+const _fragmentsUndeclaredKind = {
+  fragments: gatedFragments,
+  port: 0,
+  provides: [gatedRow],
+  unit: { anonymous: AnonymousUnit, service: AnonymousUnit },
+} as const;
+// @ts-expect-error — UNDECLARED UNIT KIND: `units<…>()` declared no `service`
+void HttpModule("GatedFragmentsUndeclaredKind")(_fragmentsUndeclaredKind);
+
 // Case 2: a plain `defineHttp` api declares no kinds, so the bindable set is
 // `anonymous` plus every scheme the answerers serve — which is what keeps
 // `examples/order-api`'s `unit: { anonymous }` compiling while refusing a typo.

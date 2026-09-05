@@ -1434,10 +1434,10 @@ The `anonymous` fallback makes a typo silent: `unit: { usre: M }` would fork
 `anonymous` on every request and diagnose nothing. So `HttpModule` **gates**
 what a root binds, in two cases:
 
-| The router                        | Bindable kinds                                    | Each value must be                 |
-| --------------------------------- | ------------------------------------------------- | ---------------------------------- |
-| comes from `auth.units<…>()`      | exactly the kinds that call declared              | the module type that kind declared |
-| comes from a plain `defineHttp()` | `anonymous` plus every scheme the answerers serve | any unit module                    |
+| The answerers                    | Bindable kinds                                    | Each value must be                 |
+| -------------------------------- | ------------------------------------------------- | ---------------------------------- |
+| come from `auth.units<…>()`      | exactly the kinds that call declared              | the module type that kind declared |
+| come from a plain `defineHttp()` | `anonymous` plus every scheme the answerers serve | any unit module                    |
 
 An undeclared kind is refused against an
 `"UNDECLARED UNIT KIND — no request opens under it, so it would silently fall back to anonymous"`
@@ -1449,9 +1449,11 @@ both modules is better than any marker.
 The second case's set comes from the answerers' own needs channel — a router
 already owes one authenticator port per scheme its contract marks, and a
 fragments provider one per scheme its routes require — so no second phantom is
-needed. It is also where a **fragments-only** root lands even under a
-`units<…>()` api: the kinds ride the **router**'s phantom, and the fragments
-provider carries none.
+needed. The **first** case reads the kinds off whichever answerer carries the
+`units<…>()` phantom, and the router and the fragments both carry it: a
+**fragments-only** root under a kinded api is gated against the declared
+modules exactly as a router-only one is. Supplying both answerers is no
+special case — they came from one `api`, so their phantoms are the same type.
 
 **`http()` and `httpServer()` are un-gated**, and structurally so: they take
 the router as a **need**, never as a value, so there is nothing to check

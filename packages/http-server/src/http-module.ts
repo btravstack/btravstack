@@ -71,12 +71,23 @@ type Provides<P extends readonly AnyProvider[], Router, Fragments> = readonly (
 )[];
 
 /**
- * The kinds `units<…>()` declared, read back off the router's `_units` phantom.
- * A provider carrying no such property infers `unknown`, and a router `units`
- * was never called on carries the empty record — both give no keys, which is
- * what the gate below reads as "this api declared none".
+ * The kinds `units<…>()` declared, read back off one answerer's `_units`
+ * phantom. A provider carrying no such property infers `unknown`, an answerer
+ * `units` was never called on carries the empty record, and an omitted option
+ * is `undefined` — all three give no keys, which is what the gate below reads
+ * as "this api declared none".
  */
-type UnitsOfRouter<R> = R extends { readonly _units?: infer U } ? U : Record<never, never>;
+type UnitsOfAnswerer<T> = T extends { readonly _units?: infer U } ? U : Record<never, never>;
+
+/**
+ * The kinds this root's answerers declare: whichever of the two carries them.
+ * A root supplying both got them from ONE `api`, so the two phantoms are the
+ * same type and the preference is not a choice between rivals — it is what
+ * lets a fragments-only root reach the same gate a router-only one does.
+ */
+type DeclaredUnits<Router, Fragments> = [keyof UnitsOfAnswerer<Router>] extends [never]
+  ? UnitsOfAnswerer<Fragments>
+  : UnitsOfAnswerer<Router>;
 
 /**
  * Every scheme a supplied answerer serves. Recovered from its needs channel
@@ -92,15 +103,15 @@ type SchemesOfAnswerer<T> = T extends { readonly _needs: () => infer N }
   : never;
 
 /**
- * The kinds this root may bind: the ones `units<…>()` declared when the router
+ * The kinds this root may bind: the ones `units<…>()` declared when an answerer
  * carries them, else `anonymous` and every scheme the answerers serve. An
  * unbound scheme falls back to `anonymous` at runtime, so without this a
  * misspelled kind would fork `anonymous` for every request and diagnose
  * nothing.
  */
-type BindableKinds<Router, Fragments> = [keyof UnitsOfRouter<Router>] extends [never]
+type BindableKinds<Router, Fragments> = [keyof DeclaredUnits<Router, Fragments>] extends [never]
   ? "anonymous" | SchemesOfAnswerer<Router> | SchemesOfAnswerer<Fragments>
-  : keyof UnitsOfRouter<Router>;
+  : keyof DeclaredUnits<Router, Fragments>;
 
 /**
  * A bound kind no request can ever open under. A record whose keys are not
@@ -121,7 +132,10 @@ type UndeclaredKind<Units, Router, Fragments> = string extends keyof Units
  */
 type UnitGate<Units, Router, Fragments> = [UndeclaredKind<Units, Router, Fragments>] extends [never]
   ? {
-      readonly [K in keyof Units & keyof UnitsOfRouter<Router>]: UnitsOfRouter<Router>[K];
+      readonly [K in keyof Units & keyof DeclaredUnits<Router, Fragments>]: DeclaredUnits<
+        Router,
+        Fragments
+      >[K];
     }
   : {
       readonly "UNDECLARED UNIT KIND — no request opens under it, so it would silently fall back to anonymous": UndeclaredKind<
@@ -160,9 +174,9 @@ export type HttpModuleOptions<
    * seeds: a composition that binds one owes the composition root the same way
    * any other `needs` does.
    *
-   * The kinds are gated against the router: the ones `units<…>()` declared, or
-   * — for a plain `defineHttp()` api — `anonymous` and every scheme the
-   * answerers serve.
+   * The kinds are gated against the answerers: the ones `units<…>()` declared,
+   * carried by the router or the fragments alike, or — for a plain
+   * `defineHttp()` api — `anonymous` and every scheme the answerers serve.
    */
   readonly unit?: Units & UnitGate<Units, Router, Fragments>;
   /**

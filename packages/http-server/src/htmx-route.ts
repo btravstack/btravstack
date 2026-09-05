@@ -266,7 +266,7 @@ const schemesInRoutes = (routes: readonly AnyRoutePiece[]): readonly string[] =>
  * collision di's duplicate-provider defect exists to catch.
  */
 export const htmxFragmentsFor =
-  <Auth extends AnyProvider = never>(
+  <Auth extends AnyProvider = never, Units = Record<never, never>>(
     authenticators: readonly Auth[],
     principals: Readonly<Record<string, AnyPort>> = {},
   ) =>
@@ -278,6 +278,8 @@ export const htmxFragmentsFor =
     InstanceType<T[number]["port"]> | SchemePortsOf<RequiresOfPiece<T[number]>>
   > & {
     readonly authenticators: readonly Auth[];
+    /** Phantom: the kinds bound at `units<…>()`, read by `HttpModule`, never at runtime. */
+    readonly _units?: Units;
   } => {
     const routeEntries = routes.map((piece, index) => [`route:${index}`, piece.port] as const);
     const schemes = schemesInRoutes(routes);

@@ -50,7 +50,7 @@ export type Http<A extends Authenticators, Units extends UnitsOf<A> = Record<nev
   readonly OrpcRouter: ReturnType<
     typeof routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>, Units>
   >;
-  readonly HtmxFragments: ReturnType<typeof htmxFragmentsFor<SchemeProviders<A>>>;
+  readonly HtmxFragments: ReturnType<typeof htmxFragmentsFor<SchemeProviders<A>, Units>>;
   readonly HtmxGet: ReturnType<typeof htmxRouteFor<SchemesFrom<A>, VocabFrom<A>, Units>>["HtmxGet"];
   readonly HtmxPost: ReturnType<
     typeof htmxRouteFor<SchemesFrom<A>, VocabFrom<A>, Units>
