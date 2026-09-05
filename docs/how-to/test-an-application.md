@@ -130,19 +130,21 @@ it was built with; boot `tap.module` in place of the module and read
 
 ```ts
 it("broadcasts every committed write, end to end", async ({
-  tenant,
   serve,
+  tapped,
+  writer,
 }) => {
-  // GIVEN the real graph, tapped on the writer the spec places orders through
-  const tap = tapped(OrderAmqpWorker, [PlaceOrder, OrderRepository, Outbox]);
-  await serve(tap.module);
-  const [placeOrder] = tap.services();
+  // GIVEN the real graph, tapped on the client the running app writes through
+  await serve(tapped.module);
 
-  // WHEN an order is placed — one ordinary write, no publish in sight
-  // THEN it is the very instance the relay sweeps, so the fact crosses the
+  // WHEN an order is placed in a scope over that client, for this test's own
+  // tenant — the shape a unit module has
+  // THEN it commits the very rows the relay sweeps, so the fact crosses the
   // outbox, the broker and the queue
   await expect(
-    placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000001", 2),
+    writer((ctx) =>
+      ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-000000000001", 2),
+    ),
   ).toBeOkWith(
     expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000001" }),
   );
@@ -420,8 +422,8 @@ const recordingApi = () => {
 };
 ```
 
-The tenant a handler serves is **not** an input field any more: the `orders`
-handlers read `context.principal.tenantId`, the value the authenticator
+The tenant a handler serves is **not** an input field: the `orders`
+handlers open a unit whose `Tenant` came from the principal, the value the authenticator
 resolved from the request's headers, and the marked fragment's inputs declare
 no tenant at all. So a spec's tenant reaches the server through the **token**
 `clientFor` mints and nowhere else. The unmarked `customers` fragment still
@@ -456,8 +458,9 @@ truncate, no drop, no purge — a test that needed one would be a test sharing a
 namespace it should have minted. One migration runs for the whole gate, and
 the tests that share that schema never see each other's rows.
 
-Reading a tenant back needs nothing at all, because the example application
-names it on its ports rather than reading it from ambient context:
+A tenant needs no machinery of its own either: it is a `Tenant` PORT the
+example application declares, provided by whatever opened the unit — so a
+spec provides one the same way, and the repository it builds is bound to it:
 
 <!-- doctest: isolate
 import { test } from "vitest";
@@ -477,18 +480,12 @@ export const it = test.extend<{ tenant: TenantId }>({
 <!-- doctest: skip — uses the `repository` and `anOrder` fixtures of examples/order-infrastructure/src/__tests__/test-fixtures.ts, which the gate runs -->
 
 ```ts
-it("reads back only its own tenant's order", async ({
-  tenant,
-  repository,
-  anOrder,
-}) => {
-  // GIVEN an order saved under this test's tenant
+it("reads back only its own tenant's order", async ({ repository, anOrder }) => {
+  // GIVEN an order saved through a repository BUILT for this test's tenant
   // WHEN it is read back
   const found = await repository
-    .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
-    .flatMap(() =>
-      repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001"),
-    );
+    .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
+    .flatMap(() => repository.find("0199a1e0-0000-7000-8000-000000000001"));
 
   // THEN the round trip is lossless, and scoped
   expect(found).toBeOkWith({
@@ -501,12 +498,14 @@ it("reads back only its own tenant's order", async ({
 That is the whole fixture. `TenantId` is `examples/order-domain`'s
 `z.uuidv7().brand("TenantId")`, and `uuidv7()` is
 `@btravstack/internal-test-infra`'s — `crypto.randomUUID()` mints a v4, which
-the schema rejects. The brand is why the fixture's type matters rather than
-being decoration: with two bare `string`s, `repository.find(id, tenant)` would
-have compiled and read another tenant's rows. See [Multi-tenancy is the
+the schema rejects. Where a spec exercises the layer rather than one adapter,
+the per-tenant SCOPE is what a fixture builds — `tenantOf(tenant)` beside the
+vertical, the shape a deployment's unit module has — and a spec that needs two
+tenants opens two scopes over one store. See [Multi-tenancy is the
 application's, not the
 framework's](/explanation/ambient-vs-context#multi-tenancy-is-the-application-s-not-the-framework-s)
-for why the tenant is an argument rather than something the transport reads.
+for why the tenant is the application's own rather than something the
+transport reads.
 
 ## Follow the repo's test conventions
 

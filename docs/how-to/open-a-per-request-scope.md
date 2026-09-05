@@ -122,7 +122,7 @@ await runMain(OrderApi, {
 That is the whole of `examples/order-api/src/main.ts` — `onEvent` being the
 separate matter of putting the kernel's own events in the same stream, covered
 in [Log and correlate](/how-to/log-and-correlate). From here each **answerer**
-forks `RequestModule` around **every unit it handles**: built as the request
+forks the bound module around **every unit it handles**: built as the request
 opens, torn down as it closes, through `UnitHost.fork` inside its own
 dispatch — not `host.run`, which stays the kernel's alone, counting the unit
 towards the drain and closing the fork's scope once the unit's `Result`
@@ -140,9 +140,10 @@ call binds the module each kind forks:
 
 <!-- doctest: isolate
 import { contract } from "@btravstack/example-order-api-contract";
-import { FindOrder } from "@btravstack/example-order-application";
-import { TenantId } from "@btravstack/example-order-domain";
-import { Module, Port, Provider } from "@btravstack/di";
+import { FindOrder, OrderApplicationModule, Tenant } from "@btravstack/example-order-application";
+import { OrderDatabase, OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
+import { Logger } from "@btravstack/core";
+import { Module, Provider } from "@btravstack/di";
 import { defineHttp } from "@btravstack/http-server";
 import { P } from "unthrown";
 import { userAuth } from "../../auth.js";
@@ -152,20 +153,21 @@ import { RequestModule } from "../../request-scope.js";
 ```ts
 export const auth = defineHttp({ authenticators: { user: userAuth } });
 
-export class Tenant extends Port("Tenant")<TenantId> {}
-
 // The `user` kind. `auth.principals.user` carries `userAuth`'s own principal
 // type, and the fork seeds it — so this module owes the composition root
-// nothing for it.
+// nothing for it. `OrderDatabase` and `Logger` it DOES owe: they are read out
+// of the application scope this fork sits over, which is what keeps one
+// Prisma client per process rather than one per request.
 const UserUnit = Module("UserUnit")({
-  needs: [auth.principals.user],
+  needs: [auth.principals.user, OrderDatabase, Logger],
+  imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({
       inject: { principal: auth.principals.user },
       sync: ({ principal }) => principal.tenantId,
     }),
   ],
-  exports: [Tenant],
+  exports: [RequestModule, Tenant, FindOrder],
 });
 
 export const api = auth.units<{
@@ -175,24 +177,23 @@ export const api = auth.units<{
 
 // A leaf declares what it reads ONCE, beside `inject`, and reads it off
 // `context.unit`. `orders.find` is marked `user`, so this leaf sees `UserUnit`'s
-// exports; an unmarked one would see `RequestModule`'s.
+// exports; an unmarked one would see `RequestModule`'s. `FindOrder` arrives
+// already bound to the tenant, so the call names no tenant at all.
 export const findOrder = api.OrpcController(
   contract,
   "orders.find",
 )({
-  inject: { find: FindOrder },
-  unit: { tenant: Tenant },
-  sync:
-    ({ find }) =>
-    ({ errors, context }, input) =>
-      find
-        .execute(context.unit.tenant, input.id)
-        .map((order) => ({ id: order.id, quantity: order.quantity }))
-        .mapErrCases((matcher) =>
-          matcher.with(P.tag("OrderNotFound"), (error) =>
-            errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
-          ),
+  inject: {},
+  unit: { find: FindOrder },
+  sync: () => ({ errors, context }, input) =>
+    context.unit.find
+      .execute(input.id)
+      .map((order) => ({ id: order.id, quantity: order.quantity }))
+      .mapErrCases((matcher) =>
+        matcher.with(P.tag("OrderNotFound"), (error) =>
+          errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
         ),
+      ),
 });
 ```
 
@@ -205,14 +206,16 @@ hands back the **same object** under a narrower type — nothing is rebuilt.
 The root then binds the values, and `HttpModule` gates them against the kinds
 that call declared:
 
-<!-- doctest: skip — binds the two kinds the fence above declares; `examples/order-api` composes a plain `defineHttp()` api and binds `anonymous` alone -->
+<!-- doctest: skip — binds the two kinds the fence above declares; `examples/order-api` declares three, `anonymous`, `user` and `service` -->
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
   unit: { anonymous: RequestModule, user: UserUnit },
-  imports: [OrdersSlice, CustomersSlice, observability(), otel()],
-  exports: [Logger, Tracer, Meter],
+  imports: [OrdersSlice, CustomersSlice, OrderPersistenceModule, observability(), otel()],
+  // `OrderDatabase` beside the three observability ports: everything a forked
+  // kind reads out of the application scope has to be exported from it.
+  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 

@@ -10,16 +10,12 @@ import { Config, Env } from "@btravstack/config";
 import { currentUnit, Logger, Meter, Tracer } from "@btravstack/core";
 import { Provider, type ServiceOf } from "@btravstack/di";
 import { observability } from "@btravstack/observability";
-import { otel, UnitSpanModule } from "@btravstack/observability/otel";
+import { otel } from "@btravstack/observability/otel";
 import { ErrAsync, OkAsync, TaggedError } from "unthrown";
 import { TenantId } from "@btravstack/example-order-domain";
-import {
-  OrderApplicationModule,
-  OrderRepository,
-  Outbox,
-  PlaceOrder,
-} from "@btravstack/example-order-application";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { Outbox } from "@btravstack/example-order-application";
+import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { MessageUnitModule } from "../../message-unit.js";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { OutboxRelay } from "../../outbox-relay.js";
 import { orderAudit } from "../../slices/audit/handler.js";
@@ -267,7 +263,6 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
   imports: [
-    OrderApplicationModule,
     OrderPersistenceModule,
     NotificationsSlice,
     AuditSlice,
@@ -275,24 +270,27 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     otel(),
   ],
   provides: [relayConfig, outboxRelay],
-  // The worker forks `UnitSpanModule` once per delivery, after the message is
-  // validated; its own need, `Tracer`, is satisfied by `otel()` above.
-  unit: { message: UnitSpanModule },
-  // `Tracer` beside `Logger`: `UnitSpanModule` reads it out of the
-  // application scope once forked.
-  exports: [PlaceOrder, OrderRepository, Outbox, Logger, Tracer],
+  // The worker forks this once per delivery, after the message is validated —
+  // which is where the envelope's `tenantId` becomes the fork's `Tenant`.
+  unit: { message: MessageUnitModule },
+  // Everything the fork and the relay read out of the application scope.
+  exports: [Outbox, OrderDatabase, Logger, Tracer],
 });
 ```
 
-The root is now a list of slices plus what no slice owns: the vertical the
-outbox relay writes from (`OrderApplicationModule` / `OrderPersistenceModule`
-— the relay's own, not either subscriber's), the starter over `orderHandlers`,
+The root is now a list of slices plus what no slice owns: the outbox the relay
+sweeps and the one Prisma client behind it (`OrderPersistenceModule` — the
+relay's own, not either subscriber's), the starter over `orderHandlers`,
 [`observability()`](/reference/observability) for the `Logger` every
 subscriber and the relay write to — `LOG_LEVEL`, JSON per line on stdout,
 every consumer line correlated with the delivery's own unit — and both
-halves of the outbox pattern in one graph. The exports are the writer's
-surface — what a writer in the same process places and cancels through, and
-what the specs tap. `main.ts` is `await runMain(OrderAmqpWorker);`.
+halves of the outbox pattern in one graph. `MessageUnitModule` is the
+per-delivery fork: it names `AmqpMessage(orderContract)` in its `needs`, which
+the worker seeds, and turns the envelope's `tenantId` into `Tenant` once, so
+both handlers read `context.unit.tenant` rather than the payload. The exports
+are what the fork and the relay read out of the application scope;
+`PlaceOrder` is not among them, because nothing at the root can build a
+tenant-bound repository. `main.ts` is `await runMain(OrderAmqpWorker);`.
 
 ## Retry and dead-letter live in the contract
 
@@ -352,9 +350,9 @@ await use(async (module, options) => {
 Every app is stopped by `boot`'s teardown when the test ends. The `tapped`
 fixture composes the root's own shape — both slices imported, same as
 `OrderAmqpWorker` — with `observability({ sink })` and taps the services on
-top of it — `tapped(recording, [PlaceOrder, OrderRepository, Outbox])`: the
-writer the spec places orders through and the outbox it asserts against are
-the very instances the running app uses, not fresh ones, while neither
+top of it — `tapped(recording, [OrderDatabase, Logger, Outbox])`: the `writer`
+fixture composes a per-tenant scope over that very client, so the rows the
+spec commits are the ones the relay sweeps, while neither
 subscriber's own lines need a tap at all — the sink hands them over as `Line`
 values, so the assertions read `{ message, orderId, quantity }` rather than a
 formatted sentence.
@@ -394,12 +392,11 @@ which is what it is for:
 ```ts
 const HandlerlessAmqp = Module("HandlerlessAmqp")({
   imports: [
-    OrderApplicationModule,
     OrderPersistenceModule,
     observability(),
     amqp({ contract: orderContract }),
   ],
-  exports: [AmqpRuntime, PlaceOrder, Logger],
+  exports: [AmqpRuntime, Outbox, Logger],
 });
 
 // @ts-expect-error — the module's needs channel carries the handlers port, which nothing provides.

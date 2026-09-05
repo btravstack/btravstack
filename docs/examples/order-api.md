@@ -11,8 +11,9 @@ import { OkAsync, P } from "unthrown";
 import { createLogger, jsonSink, kernelEvents, observability } from "@btravstack/observability";
 import { UnitSpanModule, otel } from "@btravstack/observability/otel";
 import type { Order } from "@btravstack/example-order-domain";
-import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { FindOrder, ListOrders, PlaceOrder } from "@btravstack/example-order-application";
+import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { ServiceModule, UserModule } from "../../request-scope.js";
 import { api } from "../../auth.js";
 import { customersController } from "../../slices/customers/controller.js";
 import { cache } from "@btravstack/cache";
@@ -260,11 +261,14 @@ Each slice lives under `slices/<name>/` — a `controller.ts` implementing that
 slice's fragment, and a `module.ts` exporting only that controller. Both are
 one file deep, because both are backed by the same three-package vertical:
 use cases in [`order-application`](/examples/order-application), and the
-entities and Prisma adapters behind it.
+entities and Prisma adapters behind it. The orders slice reaches that vertical
+off `context.unit` rather than through `inject`, because its use cases are
+built per request over the caller's own tenant — see **A request scope over
+the application scope** below.
 
 ```text
-src/slices/orders/controller.ts       api.OrpcController(contract, "orders")({ inject: { place: PlaceOrder, find: FindOrder, logger: Logger }, sync })
-src/slices/orders/module.ts           OrdersSlice — imports the vertical, provides the controller, exports only it
+src/slices/orders/controller.ts       api.OrpcController(contract, "orders")({ inject: { logger: Logger }, unit: { place: PlaceOrder, find: FindOrder, list: ListOrders }, sync })
+src/slices/orders/module.ts           OrdersSlice — provides the controller and the fragment, exports only them
 src/slices/customers/controller.ts    api.OrpcController(contract, "customers")({ inject: { find: FindCustomer }, sync })
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 ```
@@ -280,14 +284,15 @@ export const ordersController = api.OrpcController(
   contract,
   "orders",
 )({
-  inject: { place: PlaceOrder, find: FindOrder, logger: Logger },
-  sync: ({ place, find, logger }) => ({
+  inject: { logger: Logger },
+  unit: { place: PlaceOrder, find: FindOrder },
+  sync: ({ logger }) => ({
     place: ({ errors, context }, input) => {
       logger.info("order placement requested", {
         userId: context.principal.userId,
       });
-      return place
-        .execute(context.principal.tenantId, input.id, input.quantity)
+      return context.unit.place
+        .execute(input.id, input.quantity)
         .map(view)
         .mapErrCases((matcher) =>
           matcher
@@ -314,8 +319,8 @@ export const ordersController = api.OrpcController(
         );
     },
     find: ({ errors, context }, input) =>
-      find
-        .execute(context.principal.tenantId, input.id)
+      context.unit.find
+        .execute(input.id)
         .map(view)
         .mapErrCases((matcher) =>
           matcher.with(P.tag("OrderNotFound"), (error) =>
@@ -446,34 +451,33 @@ import { html } from "@btravstack/http-server";
 export const orderRowFragment = api.HtmxGet("/orders/:id/row", {
   requires: [{ user: [] }],
 })({
-  inject: { find: FindOrder },
-  sync:
-    ({ find }) =>
-    (context, params) =>
-      find
-        .execute(context.principal.tenantId, params.id)
-        .map(
-          (order) =>
-            html`<tr id="order-${order.id}">
-              <td>${order.quantity}</td>
+  inject: {},
+  unit: { find: FindOrder },
+  sync: () => (context, params) =>
+    context.unit.find
+      .execute(params.id)
+      .map(
+        (order) =>
+          html`<tr id="order-${order.id}">
+            <td>${order.quantity}</td>
+          </tr>`,
+      )
+      .recoverErrCases((matcher) =>
+        matcher.with(
+          P.tag("OrderNotFound"),
+          () =>
+            html`<tr>
+              <td>not found</td>
             </tr>`,
-        )
-        .recoverErrCases((matcher) =>
-          matcher.with(
-            P.tag("OrderNotFound"),
-            () =>
-              html`<tr>
-                <td>not found</td>
-              </tr>`,
-          ),
         ),
+      ),
 });
 ```
 
 `requires: [{ user: [] }]` marks the route exactly as `contract.orders` marks
-`ordersController` — the tenant comes off `context.principal`, the same
-tenant `ordersController` reads, and the route's own path names only `id`, so
-a caller's credential is what scopes the row, never the path.
+`ordersController` — so it opens the same `user` unit, and its `FindOrder` is
+the one that unit built over the caller's own tenant. The route's path names
+only `id`, so a caller's credential is what scopes the row, never the path.
 `.recoverErrCases` is this piece's own triage, at the place `mapErrCases`
 sits for the router: there is no declared error union for a client to branch
 on, so `OrderNotFound` becomes a rendered row here or not at all.
@@ -502,16 +506,24 @@ renders the slice's own not-found row rather than the owner's order.
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
   fragments: orderFragments,
-  unit: { anonymous: RequestModule },
+  // One module per kind a request can open under. `UserModule` is where the
+  // principal's tenant becomes a `Tenant` and the orders vertical is composed
+  // over it; `ServiceModule` adds nothing, because a machine caller has none.
+  unit: {
+    anonymous: RequestModule,
+    user: UserModule,
+    service: ServiceModule,
+  },
   imports: [
     OrdersSlice,
     CustomersSlice,
+    OrderPersistenceModule,
     cache({ adapter: redisCache() }),
     observability(),
     otel(),
   ],
-  // `RequestModule` reads all three out of the application scope once forked.
-  exports: [Logger, Tracer, Meter],
+  // Everything a forked kind reads out of the application scope.
+  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 
@@ -527,19 +539,17 @@ still checked is di's own gate: a scheme the contract names with no
 authenticator behind it leaves `HttpAuthenticator:<scheme>` in the root's
 needs, which `start` refuses, naming the port.
 
-Each slice imports its own vertical — `OrderApplicationModule`, whose
-repository is an unmet need, and `OrderPersistenceModule`, which provides it —
-so the root names what the process serves rather than everything every slice
-happens to depend on:
+A slice imports whatever its OWN providers close over. The orders one imports
+nothing at all, because its controller and fragment reach their use cases off
+`context.unit` — built per request, in the `user` kind's module, over the
+caller's own tenant:
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
   // The controller writes a line itself, so `Logger` is this slice's own
-  // provider's need. The environment its persistence reads `DATABASE_URL` from
-  // is not: that one is `DatabaseModule`'s, declared there and inherited
-  // through the imports below.
+  // provider's need. The use cases are not: a leaf reaches them off
+  // `context.unit`, never through `inject`.
   needs: [Logger],
-  imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [ordersController, orderRowFragment],
   exports: [ordersController, orderRowFragment],
 });
@@ -550,20 +560,21 @@ export const OrdersSlice = Module("OrdersSlice")({
 there is no class to name. A real slice carries its own htmx route rather
 than leaving it for the root to provide separately.
 
-The customers slice imports `CustomerApplicationModule` and
-`CustomerPersistenceModule` — a different vertical, so a different pair. The
-boundary reaches all the way down to the adapter: `FindCustomer` is not in the
-orders graph, and `PlaceOrder` is not in the customers one. It is also what
-lets the two workers, which have nothing to do with customers, import the
-orders vertical alone.
+The customers slice DOES import a vertical — `CustomerApplicationModule` and
+`CustomerPersistenceModule` — and the asymmetry is the tenancy showing through
+the composition: its procedures are unmarked, so they open an anonymous unit
+with no principal to take a tenant from, and `FindCustomer` takes its tenant
+as an argument off the input instead. A repository that needs no request to be
+built stays in the application scope.
 
-Where the slices do meet is one level below: both persistence modules import
-the same internal `DatabaseModule`, which owns the connection and is the only
-module that exports `OrderDatabase`. That is a diamond, not duplication: di
-flattens the module tree into a `Set` keyed by provider **reference**, so the
-graph builds one database. `exports` takes the provider
-rather than `ordersController.port` — `OrpcController` minted that port, so
-there is no class to spell back off it.
+Where the two meet is one level below: both persistence modules import the
+same `OrderDatabaseModule`, which owns the connection. That is a diamond, not
+duplication: di flattens the module tree into a `Set` keyed by provider
+**reference**, so the graph builds one database — and the root exports
+`OrderDatabase` so the `user` fork can build its per-request repository over
+that one client. `exports` takes the provider rather than
+`ordersController.port` — `OrpcController` minted that port, so there is no
+class to spell back off it.
 
 `HttpModule` imports the starter (`http()` — `HttpRuntime`, `HttpConfig` bound
 from `PORT` / `HOST`, the router mounted under `/rpc`, needing the router the
@@ -610,22 +621,21 @@ export class RequestSpan extends Port("RequestSpan")<{
 }> {}
 
 export const RequestModule = Module("Request")({
-  needs: [Logger, Meter],
+  needs: [Logger],
   imports: [UnitSpanModule],
   provides: [
     Provider(RequestSpan)({
-      inject: { logger: Logger, meter: Meter },
-      sync: ({ logger, meter }) => {
+      inject: { logger: Logger },
+      // No histogram here: `@btravstack/http-server` records
+      // `btravstack.http.duration` at the unit seam, dimensioned by answerer
+      // and status. What is left is the LINE.
+      sync: ({ logger }) => {
         const startedAt = Date.now();
-        const duration = meter.createHistogram("btravstack.request.duration", {
-          unit: "ms",
-        });
         return {
-          finish: () => {
-            const durationMs = Date.now() - startedAt;
-            duration.record(durationMs);
-            logger.info("request finished", { durationMs });
-          },
+          finish: () =>
+            logger.info("request finished", {
+              durationMs: Date.now() - startedAt,
+            }),
         };
       },
       onStop: (span) => span.finish(),
@@ -635,12 +645,19 @@ export const RequestModule = Module("Request")({
 });
 ```
 
-Bound as `HttpModule`'s own `unit: { anonymous: RequestModule }`, it is built
-as the request opens and torn down as it closes, reading `Logger` out of the
-parent without rebuilding it.
-`onStop` runs while the unit is still open, which is what gives its line the
-request's own trace id — and no handler code manages the fork. See
-[Open a per-request scope](/how-to/open-a-per-request-scope).
+Bound as `HttpModule`'s `anonymous` kind, it is built as the request opens and
+torn down as it closes, reading `Logger` out of the parent without rebuilding
+it. `onStop` runs while the unit is still open, which is what gives its line
+the request's own trace id — and no handler code manages the fork.
+
+`UserModule` is the same shape with the tenancy on top: it imports
+`RequestModule`, provides `Tenant` from `auth.principals.user` — the principal
+the fork is seeded with — and composes `OrderTenantPersistence` and
+`OrderApplicationModule` over it, so a marked leaf reads `PlaceOrder`,
+`FindOrder` and `ListOrders` already bound. `ServiceModule` imports
+`RequestModule` and adds nothing: an API key names no tenant, which is what
+makes `context.unit.place` unreadable from `export`, the one leaf both schemes
+serve. See [Open a per-request scope](/how-to/open-a-per-request-scope).
 
 ## The spec: booting the real module on `PORT=0`
 

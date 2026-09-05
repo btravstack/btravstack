@@ -7,11 +7,11 @@ description: Add @btravstack/observability, log structured attributes from a use
 import { type ServiceOf } from "@btravstack/di";
 import { type Line } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
-import { TenantId, placeOrder } from "@btravstack/example-order-domain";
-import { OrderApplicationModule, OrderRepository, PlaceOrder } from "@btravstack/example-order-application";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { placeOrder } from "@btravstack/example-order-domain";
+import { OrderRepository, PlaceOrder, Tenant } from "@btravstack/example-order-application";
+import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderRouter } from "../../module.js";
-import { RequestModule } from "../../request-scope.js";
+import { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
 import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
 import { CustomersSlice } from "../../slices/customers/module.js";
@@ -54,16 +54,21 @@ import { observability } from "@btravstack/observability";
 
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  unit: { anonymous: RequestModule },
+  unit: {
+    anonymous: RequestModule,
+    user: UserModule,
+    service: ServiceModule,
+  },
   imports: [
     OrdersSlice,
     CustomersSlice,
+    OrderPersistenceModule,
     cache({ adapter: redisCache() }),
     observability(),
     otel(),
   ],
-  // `RequestModule` reads all three out of the application scope once forked.
-  exports: [Logger, Tracer, Meter],
+  // Everything a forked kind reads out of the application scope.
+  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 
@@ -80,37 +85,48 @@ provider's `inject` record, never from a global or an ambient read:
 class PlaceOrderInteractor {
   readonly #repository: ServiceOf<OrderRepository>;
   readonly #logger: ServiceOf<Logger>;
+  readonly #tenant: ServiceOf<Tenant>;
 
   constructor({
     repository,
     logger,
+    tenant,
   }: {
     readonly repository: ServiceOf<OrderRepository>;
     readonly logger: ServiceOf<Logger>;
+    readonly tenant: ServiceOf<Tenant>;
   }) {
     this.#repository = repository;
     this.#logger = logger;
+    this.#tenant = tenant;
   }
 
-  execute(tenantId: TenantId, id: string, quantity: number) {
-    this.#logger.info("placing an order", { tenantId, orderId: id, quantity });
+  execute(id: string, quantity: number) {
+    this.#logger.info("placing an order", {
+      tenantId: this.#tenant,
+      orderId: id,
+      quantity,
+    });
     return placeOrder(id, quantity)
       .toAsync()
-      .flatMap((order) => this.#repository.save(tenantId, order));
+      .flatMap((order) => this.#repository.save(order));
   }
 }
 
 export const placeOrderProvider = Provider(PlaceOrder)({
-  inject: { repository: OrderRepository, logger: Logger },
+  inject: { repository: OrderRepository, logger: Logger, tenant: Tenant },
   class: PlaceOrderInteractor,
 });
 ```
 
-The tenant is an **argument**, not something read back out of the ambient
-record — `TenantId` is `examples/order-domain`'s brand, and a use case that
-forgot it, or swapped it with the id beside it, does not compile. It is a
-field on the line for the same reason `orderId` is: a fact worth grouping by,
-written down where the call is.
+The tenant is an **injected port**, not something read back out of the ambient
+record: `Tenant` is provided once by whatever opened the unit — an
+authenticated request, an activity attempt, a delivery — so a graph that never
+said which tenant it is scoped to does not compile. It is a field on the line
+for the same reason `orderId` is: a fact worth grouping by, written down where
+the call is. This is the distinction thesis #2 draws — the ambient record
+carries DATA the framework mints, and a tenant is the application's own
+capability, declared like any other.
 
 **The message is a constant and the ids are fields.** That is what makes a
 line groupable in the system that receives it: `message: "placing an order"`

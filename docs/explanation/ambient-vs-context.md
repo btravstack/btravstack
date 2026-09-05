@@ -164,50 +164,48 @@ The `tenantId` field exists for a **hand-rolled** runtime whose author has
 already answered them.
 
 The example application is multi-tenant, and it needs none of that. It makes
-the tenant part of its **own** vocabulary — the ports name it, so it is an
-argument a caller cannot forget and a reader can see:
+the tenant part of its **own** vocabulary — a di **port**, provided once by
+whatever opened the unit, injected like any other capability:
 
 **`examples/order-application/src/ports.ts`**
 
 <!-- doctest: skip — quotes examples/order-application/src/ports.ts, which its own workspace compiles -->
 
 ```ts
+export class Tenant extends Port("Tenant")<TenantId> {}
+
 export class OrderRepository extends Port("OrderRepository")<{
-  readonly save: (
-    tenantId: TenantId,
-    order: Order,
-  ) => AsyncResult<Order, DuplicateOrder>;
-  readonly find: (
-    tenantId: TenantId,
-    id: string,
-  ) => AsyncResult<Order, OrderNotFound>;
-  readonly remove: (
-    tenantId: TenantId,
-    id: string,
-  ) => AsyncResult<void, OrderNotFound>;
+  readonly save: (order: Order) => AsyncResult<Order, DuplicateOrder>;
+  readonly find: (id: string) => AsyncResult<Order, OrderNotFound>;
+  readonly remove: (id: string) => AsyncResult<void, OrderNotFound>;
 }> {}
 ```
 
-`TenantId` is a branded `string` the domain owns, and the ids beside it are
-not: a pair need differ in one position to become unswappable, and
-`find(id, tenantId)` used to compile and query the wrong tenant. Each
-transport claims the brand once, where a validated value arrives — the
-authenticator, an activity's input, the relay's own configuration.
+`TenantId` is a branded `string` the domain owns, and each transport claims
+the brand once, where a validated value arrives — the authenticator, an
+activity's input, the message envelope, the relay's own configuration. What
+each transport then does with it is provide `Tenant` inside the unit module it
+binds, so the repository a call reaches was already built for one tenant:
 
-Each transport then supplies it from its own contract, which is where a client
-already has to say what it wants:
+| Deployment              | Where the unit's tenant comes from                                    |
+| ----------------------- | --------------------------------------------------------------------- |
+| `order-api`             | the authenticated caller's principal, in the `user` kind's own module |
+| `order-amqp-worker`     | the broadcast envelope the fork is seeded with                        |
+| `order-temporal-worker` | the activity input the fork is seeded with                            |
 
-| Deployment              | Where the tenant comes from                                                                             |
-| ----------------------- | ------------------------------------------------------------------------------------------------------- |
-| `order-api`             | an input field on a public procedure (`Tenanted`), the authenticated caller's principal on a marked one |
-| `order-amqp-worker`     | a field on the broadcast envelope                                                                       |
-| `order-temporal-worker` | a field on every workflow and activity input                                                            |
+Two consequences are the point rather than the price. A graph that never said
+which tenant it is scoped to **does not compile** — `OrderApplicationModule`
+names `Tenant` in `needs`, so `Module.scoped` refuses it — where an ambient
+one would have failed at runtime or, worse, silently read the wrong tenant's
+rows. And a test needs no framework machinery: a fixture composes
+`tenantOf(tenant)` beside the vertical, which is the same shape a deployment's
+unit module has, and two tenants means two scopes rather than a store to set.
 
-Two consequences are the point rather than the price. A use case that forgot
-its tenant **does not compile**, where an ambient one would have failed at
-runtime or, worse, silently read the wrong tenant's rows. And a test needs no
-machinery at all: `repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001")` says what it is scoped to
-at the call, with no fixture that "enters" a tenant and no store to set.
+It is still not ambient. `Tenant` is a **capability the application declared**,
+resolved through di like a repository or a logger; the record the kernel mints
+carries none of it, and `UnitRecord.tenantId` stays unset by every starter.
+The difference is where it is written down: a port a module must be given, not
+a field a reader hopes was filled in.
 
 The relay in `order-amqp-worker` is the case that shows why ambient would not
 have been enough anyway: it sweeps on its own clock, with no request, delivery

@@ -28,6 +28,7 @@ import {
 import { ErrAsync, OkAsync, P } from "unthrown";
 import { customersController } from "../../slices/customers/controller.js";
 import { ordersController } from "../../slices/orders/controller.js";
+import type { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
 declare const view: (order: Order) => OrderView;
 -->
 
@@ -288,18 +289,20 @@ bound. The implementation below is the one in
 deps form — the example composes it as a controller instead (see the
 composing form), and a fragment is a contract, so the same `sync` reads either way.
 `contract.orders` is marked `authenticated({ user: [] })`, so `api` here is the
-application's own `defineHttp` binding, from its `src/auth.ts`, and the tenant
-comes off `context.principal` rather than off the input:
+application's own binding, from its `src/auth.ts`, and the tenant comes off
+`context.principal` rather than off the input — through the `user` kind's own
+module, which is where the use cases below were built over it:
 
 <!-- doctest: defer -->
 
 ```ts
 export const ordersRouter = api.OrpcRouter(contract.orders)({
-  inject: { place: PlaceOrder, find: FindOrder, list: ListOrders },
-  sync: ({ place, find, list }) => ({
+  inject: {},
+  unit: { place: PlaceOrder, find: FindOrder, list: ListOrders },
+  sync: () => ({
     place: ({ errors, context }, input) =>
-      place
-        .execute(context.principal.tenantId, input.id, input.quantity)
+      context.unit.place
+        .execute(input.id, input.quantity)
         .map(view)
         .mapErrCases((matcher) =>
           matcher
@@ -325,8 +328,8 @@ export const ordersRouter = api.OrpcRouter(contract.orders)({
             ),
         ),
     find: ({ errors, context }, input) =>
-      find
-        .execute(context.principal.tenantId, input.id)
+      context.unit.find
+        .execute(input.id)
         .map(view)
         .mapErrCases((matcher) =>
           matcher.with(P.tag("OrderNotFound"), (error) =>
@@ -341,9 +344,8 @@ export const ordersRouter = api.OrpcRouter(contract.orders)({
     // union — and the only modeled failure is that cursor, the one field
     // that came from outside.
     list: ({ errors, context }, { after, before, ...page }) =>
-      list
+      context.unit.list
         .execute(
-          context.principal.tenantId,
           before === undefined
             ? { ...page, ...(after === undefined ? {} : { after }) }
             : { ...page, before },
@@ -718,9 +720,18 @@ is not a state this can reach:
 export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 export type ServiceIdentity = { readonly appId: string };
 
-export const api = defineHttp({
+export const auth = defineHttp({
   authenticators: { user: userAuth, service: serviceAuth },
 });
+
+// The second call binds the module each KIND forks — see
+// [Unit kinds](#unit-kinds-auth-principals-and-auth-units) for why it cannot
+// be one call.
+export const api = auth.units<{
+  anonymous: typeof RequestModule;
+  user: typeof UserModule;
+  service: typeof ServiceModule;
+}>();
 ```
 
 Every slice mints its controller from that one `api`, and its handlers see the
@@ -853,27 +864,26 @@ import { P } from "unthrown";
 export const orderRowFragment = api.HtmxGet("/orders/:id/row", {
   requires: [{ user: [] }],
 })({
-  inject: { find: FindOrder },
-  sync:
-    ({ find }) =>
-    (context, params) =>
-      find
-        .execute(context.principal.tenantId, params.id)
-        .map(
-          (order) =>
-            html`<tr id="order-${order.id}">
-              <td>${order.quantity}</td>
+  inject: {},
+  unit: { find: FindOrder },
+  sync: () => (context, params) =>
+    context.unit.find
+      .execute(params.id)
+      .map(
+        (order) =>
+          html`<tr id="order-${order.id}">
+            <td>${order.quantity}</td>
+          </tr>`,
+      )
+      .recoverErrCases((matcher) =>
+        matcher.with(
+          P.tag("OrderNotFound"),
+          () =>
+            html`<tr>
+              <td>not found</td>
             </tr>`,
-        )
-        .recoverErrCases((matcher) =>
-          matcher.with(
-            P.tag("OrderNotFound"),
-            () =>
-              html`<tr>
-                <td>not found</td>
-              </tr>`,
-          ),
         ),
+      ),
 });
 ```
 
@@ -1399,11 +1409,11 @@ read **once**, beside `inject`, and every leaf reads them off `context.unit`:
 
 ```ts
 api.OrpcController(contract, "orders")({
-  inject: { place: PlaceOrder },
-  unit: { tenant: Tenant },
-  sync: ({ place }) => ({
+  inject: {},
+  unit: { place: PlaceOrder },
+  sync: () => ({
     place: ({ context, input }) =>
-      place.execute(context.unit.tenant, input.id, input.quantity),
+      context.unit.place.execute(input.id, input.quantity),
   }),
 });
 ```

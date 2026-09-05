@@ -62,9 +62,10 @@ composition root, and an entry point.
 <!-- doctest: prelude
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
-import { OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
+import { PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { api } from "../../auth.js";
+import { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
 -->
 
 ```ts
@@ -93,11 +94,12 @@ domain failure becomes a status code here, and nowhere else.
 import { P } from "unthrown";
 
 export const ordersRouter = api.OrpcRouter(ordersContract)({
-  inject: { place: PlaceOrder },
-  sync: ({ place }) => ({
+  inject: {},
+  unit: { place: PlaceOrder },
+  sync: () => ({
     place: ({ errors, context }, input) =>
-      place
-        .execute(context.principal.tenantId, input.id, input.quantity)
+      context.unit.place
+        .execute(input.id, input.quantity)
         .map((order) => ({ id: order.id, quantity: order.quantity }))
         .mapErrCases((matcher) =>
           matcher
@@ -128,12 +130,15 @@ import { HttpModule } from "@btravstack/http-server";
 
 export const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
-  imports: [
-    OrderApplicationModule,
-    OrderPersistenceModule,
-    observability(),
-    otel(),
-  ],
+  // One unit module per kind a request can open under. `UserModule` is where
+  // the principal's tenant becomes a `Tenant` and the use cases are composed
+  // over it — see [Open a per-request scope](/how-to/open-a-per-request-scope).
+  unit: {
+    anonymous: RequestModule,
+    user: UserModule,
+    service: ServiceModule,
+  },
+  imports: [OrderPersistenceModule, observability(), otel()],
 });
 ```
 

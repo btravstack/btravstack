@@ -139,12 +139,14 @@ import { TenantId } from "@btravstack/example-order-domain";
 import { ErrAsync, OkAsync, P } from "unthrown";
 
 export const placingHandlers = AmqpHandlers(orderContract)({
-  inject: { place: PlaceOrder },
-  sync: ({ place }) => ({
-    orderNotifications: ({ input: message }) =>
-      place
+  inject: {},
+  // `PlaceOrder` is bound to a tenant, so it comes off the fork the worker
+  // opened for this delivery — see the unit module in Step 3.
+  unit: { place: PlaceOrder },
+  sync: () => ({
+    orderNotifications: ({ context, input: message }) =>
+      context.unit.place
         .execute(
-          TenantId(message.payload.tenantId),
           message.payload.id,
           message.payload.payload?.quantity ?? 0,
         )
@@ -178,21 +180,34 @@ retries), not the same number Temporal's `maximumAttempts: 3` names.
 <!-- doctest: defer -->
 
 ```ts
+import { AmqpMessage, AmqpModule } from "@btravstack/amqp-worker";
 import { Env } from "@btravstack/config";
-import { AmqpModule } from "@btravstack/amqp-worker";
+import { Module, Provider } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
+import { Outbox, Tenant } from "@btravstack/example-order-application";
+import { TenantId } from "@btravstack/example-order-domain";
 import {
-  OrderApplicationModule,
-  OrderRepository,
-  Outbox,
-  PlaceOrder,
-} from "@btravstack/example-order-application";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+  OrderDatabase,
+  OrderPersistenceModule,
+} from "@btravstack/example-order-infrastructure";
 import { observability } from "@btravstack/observability";
 
 import { orderHandlers } from "./handlers.js";
 // The relay's providers — see [Publish a message](/how-to/publish-a-message).
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
+
+// Forked per delivery and seeded with the validated message, so the envelope's
+// own `tenantId` is claimed once rather than at every handler.
+export const MessageUnitModule = Module("MessageUnit")({
+  needs: [AmqpMessage(orderContract)],
+  provides: [
+    Provider(Tenant)({
+      inject: { message: AmqpMessage(orderContract) },
+      sync: ({ message }) => TenantId(message.payload.tenantId),
+    }),
+  ],
+  exports: [Tenant],
+});
 
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   needs: [Env],
@@ -200,14 +215,10 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   handlers: orderHandlers,
   // otel() supplies the `Meter` the relay counts through, beside the
   // `Logger` observability() does.
-  imports: [
-    OrderApplicationModule,
-    OrderPersistenceModule,
-    observability(),
-    otel(),
-  ],
+  imports: [OrderPersistenceModule, observability(), otel()],
   provides: [relayConfig, outboxRelay],
-  exports: [PlaceOrder, OrderRepository, Outbox, Logger],
+  unit: { message: MessageUnitModule },
+  exports: [Outbox, OrderDatabase, Logger],
 });
 ```
 

@@ -394,14 +394,13 @@ activities or handlers that implement it.
 // rides `Module.scoped`'s parameter and the call fails assignability.
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no OrderRepository is provided.
 const _unwiredOrders = Module.scoped(OrderApplicationModule, (ctx) =>
-  ctx
-    .get(PlaceOrder)
-    .execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001", 1),
+  ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-000000000001", 1),
 );
 ```
 
 What that prints ends on the ports: `required in type '{ readonly
-"UNSATISFIED DEPENDENCIES — nothing provides": Logger | OrderRepository; }'`
+"UNSATISFIED DEPENDENCIES — nothing provides": Logger | OrderRepository |
+Tenant; }'`
 (measured) — the label and the missing ports in one message, where the
 rest-tuple arity error this gate replaced printed `Expected 5 arguments, but
 got 2.` and nothing else.
