@@ -1,24 +1,31 @@
 import { Env } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";
-import { OrderRepository } from "@btravstack/example-order-application";
-import { TenantId } from "@btravstack/example-order-domain";
+import { OrderRepository, tenantOf } from "@btravstack/example-order-application";
+import type { TenantId } from "@btravstack/example-order-domain";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { fromSafePromise } from "unthrown";
-import { uuidv7 } from "uuidv7";
 import { describe, expect, inject, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { OrderPersistenceModule } from "./index.js";
+import { OrderPersistenceModule, OrderTenantPersistence } from "./index.js";
 
 /**
- * The persistence module plus the one thing only the kernel would otherwise
- * provide: the environment `databaseConfig` binds `DATABASE_URL` from. A
- * deployment gets it from `start`; a `Module.scoped` test has to say it.
+ * The two persistence modules a deployment composes — the application scope's
+ * and the unit's — flattened into one scope, plus the one thing only the
+ * kernel would otherwise provide: the environment `databaseConfig` binds
+ * `DATABASE_URL` from. A deployment gets it from `start`; a `Module.scoped`
+ * test has to say it.
  */
-const scopedPersistence = (applicationName?: string) =>
+const scopedPersistence = (tenant: TenantId, applicationName?: string) =>
   Module("ScopedPersistence")({
-    imports: [OrderPersistenceModule, observability(), otel()],
+    imports: [
+      OrderPersistenceModule,
+      OrderTenantPersistence,
+      tenantOf(tenant),
+      observability(),
+      otel(),
+    ],
     provides: [
       Provider(Env)({
         inject: {},
@@ -38,38 +45,36 @@ const scopedPersistence = (applicationName?: string) =>
   });
 
 describe("the Prisma OrderRepository", () => {
-  it("hands back the entity it saved", async ({ tenant, repository, anOrder }) => {
+  it("hands back the entity it saved", async ({ repository, anOrder }) => {
     // GIVEN this test's own tenant
     // WHEN an order is saved under it
     // THEN the write answers with the entity itself
-    await expect(
-      repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 3)),
-    ).toBeOkWith({
+    await expect(repository.save(anOrder("0199a1e0-0000-7000-8000-000000000001", 3))).toBeOkWith({
       id: "0199a1e0-0000-7000-8000-000000000001",
       quantity: 3,
     });
   });
 
-  it("reads a saved order back as the same entity", async ({ tenant, repository, anOrder }) => {
+  it("reads a saved order back as the same entity", async ({ repository, anOrder }) => {
     // GIVEN an order saved under this test's tenant
     // WHEN it is read back — chained, so the write's own `Result` is consumed
     // and a failed write cannot be mistaken for a failed read
     const roundTripped = await repository
-      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
-      .flatMap(() => repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001"));
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
+      .flatMap(() => repository.find("0199a1e0-0000-7000-8000-000000000001"));
 
     // THEN the round trip is lossless
     expect(roundTripped).toBeOkWith({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 3 });
   });
 
-  it("deletes the one row the unique key names", async ({ tenant, repository, anOrder }) => {
+  it("deletes the one row the unique key names", async ({ repository, anOrder }) => {
     // GIVEN a stored order
     // WHEN it is removed and then looked for — chained, so a failed removal
     // cannot be mistaken for a successful one
     const afterRemoval = await repository
-      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
-      .flatMap(() => repository.remove(tenant, "0199a1e0-0000-7000-8000-000000000001"))
-      .flatMap(() => repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001"));
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
+      .flatMap(() => repository.remove("0199a1e0-0000-7000-8000-000000000001"))
+      .flatMap(() => repository.find("0199a1e0-0000-7000-8000-000000000001"));
 
     // THEN it is gone: `(tenantId, orderId)` carries the UNIQUE index, so this
     // is a single-row `delete`, not a batch whose count has to be interpreted
@@ -78,11 +83,11 @@ describe("the Prisma OrderRepository", () => {
     });
   });
 
-  it("answers OrderNotFound when there is nothing to remove", async ({ tenant, repository }) => {
+  it("answers OrderNotFound when there is nothing to remove", async ({ repository }) => {
     // GIVEN a tenant with nothing in it
     // WHEN a placement that never landed is compensated — what a re-run of the
     // saga's `cancelPlacement` does
-    const removal = await repository.remove(tenant, "o-absent");
+    const removal = await repository.remove("o-absent");
 
     // THEN Prisma's P2025 arrives as the domain's own value, so the
     // compensation can ignore it on purpose rather than crash on a throw
@@ -90,15 +95,14 @@ describe("the Prisma OrderRepository", () => {
   });
 
   it("translates a real unique-constraint violation into DuplicateOrder", async ({
-    tenant,
     repository,
     anOrder,
   }) => {
     // GIVEN an order already stored in this tenant
     // WHEN the same id is saved again, in the same tenant
     const duplicate = await repository
-      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 1))
-      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 2)));
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 1))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000001", 2)));
 
     // THEN the load-bearing assertion: the UNIQUE index on
     // `Order(tenantId, orderId)` raises a real P2002, `@unthrown/prisma` hands
@@ -110,11 +114,11 @@ describe("the Prisma OrderRepository", () => {
     });
   });
 
-  it("returns the domain's OrderNotFound for an unknown id", async ({ tenant, repository }) => {
+  it("returns the domain's OrderNotFound for an unknown id", async ({ repository }) => {
     // GIVEN a tenant with nothing in it
     // WHEN an unknown id is looked up
     // THEN absence is the one thing `find` reports as an error
-    await expect(repository.find(tenant, "missing")).toBeErrTagged("OrderNotFound", {
+    await expect(repository.find("missing")).toBeErrTagged("OrderNotFound", {
       id: "missing",
     });
   });
@@ -122,33 +126,34 @@ describe("the Prisma OrderRepository", () => {
 
 describe("tenancy", () => {
   it("lets two tenants hold the same order id without either seeing the other", async ({
-    tenant,
     repository,
+    otherRepository,
     anOrder,
   }) => {
-    // GIVEN the same order id placed by two different tenants — which the
-    // composite unique key permits and a single-tenant schema would not
-    const other = TenantId(`${tenant}-other`);
+    // GIVEN the same order id placed through two repositories, each bound to
+    // its own tenant — which the composite unique key permits and a
+    // single-tenant schema would not
     const seen = await repository
-      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000501", 3))
-      .flatMap(() => repository.save(other, anOrder("0199a1e0-0000-7000-8000-000000000501", 7)))
-      .flatMap(() => repository.find(tenant, "0199a1e0-0000-7000-8000-000000000501"));
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000501", 3))
+      .flatMap(() => otherRepository.save(anOrder("0199a1e0-0000-7000-8000-000000000501", 7)))
+      .flatMap(() => repository.find("0199a1e0-0000-7000-8000-000000000501"));
 
     // WHEN the first tenant reads that id back
-    // THEN the read is scoped to the tenant the CALLER named: the first
-    // tenant's quantity, never the second's, and never a duplicate at the write
+    // THEN the read is scoped to the tenant its repository was BUILT for: the
+    // first tenant's quantity, never the second's, and never a duplicate at
+    // the write
     expect(seen).toBeOkWith({ id: "0199a1e0-0000-7000-8000-000000000501", quantity: 3 });
   });
 
   it("hides another tenant's order entirely, rather than merely reading past it", async ({
-    tenant,
     repository,
+    otherRepository,
     anOrder,
   }) => {
     // GIVEN an order that belongs to somebody else
-    const seen = await repository
-      .save(TenantId(`${tenant}-other`), anOrder("0199a1e0-0000-7000-8000-000000000502", 3))
-      .flatMap(() => repository.find(tenant, "0199a1e0-0000-7000-8000-000000000502"));
+    const seen = await otherRepository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000502", 3))
+      .flatMap(() => repository.find("0199a1e0-0000-7000-8000-000000000502"));
 
     // WHEN this tenant looks for it
     // THEN it does not exist as far as this tenant is concerned
@@ -166,7 +171,7 @@ describe("the read path's error channel", () => {
     );
 
     // WHEN it is read back
-    const corrupt = await repository.find(tenant, "o-corrupt");
+    const corrupt = await repository.find("o-corrupt");
 
     // THEN it is an unmodelled failure, so it arrives as a defect carrying the
     // entity's own rejection rather than widening `E` with infrastructure
@@ -176,20 +181,16 @@ describe("the read path's error channel", () => {
 });
 
 describe("OrderPersistenceModule", () => {
-  it("pages with the cursor the previous page handed back", async ({
-    tenant,
-    repository,
-    anOrder,
-  }) => {
+  it("pages with the cursor the previous page handed back", async ({ repository, anOrder }) => {
     // GIVEN three orders under this test's own tenant
     // WHEN a page of two is taken, then the page after its cursor
     const second = await repository
-      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000101", 1))
-      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000102", 5)))
-      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000103", 9)))
-      .flatMap(() => repository.list(tenant, { limit: 2 }))
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000101", 1))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000102", 5)))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000103", 9)))
+      .flatMap(() => repository.list({ limit: 2 }))
       .flatMap((page) =>
-        repository.list(tenant, {
+        repository.list({
           limit: 2,
           ...(page.hasNextPage ? { after: page.nextCursor } : {}),
         }),
@@ -206,27 +207,23 @@ describe("OrderPersistenceModule", () => {
     });
   });
 
-  it("pages backward from the cursor a page handed back", async ({
-    tenant,
-    repository,
-    anOrder,
-  }) => {
+  it("pages backward from the cursor a page handed back", async ({ repository, anOrder }) => {
     // GIVEN three orders under this test's own tenant, and the LAST page taken
     // by following the cursors forward
     // WHEN the page before it is asked for
     const back = await repository
-      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000131", 1))
-      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000132", 5)))
-      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000133", 9)))
-      .flatMap(() => repository.list(tenant, { limit: 2 }))
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000131", 1))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000132", 5)))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000133", 9)))
+      .flatMap(() => repository.list({ limit: 2 }))
       .flatMap((page) =>
-        repository.list(tenant, {
+        repository.list({
           limit: 2,
           ...(page.hasNextPage ? { after: page.nextCursor } : {}),
         }),
       )
       .flatMap((page) =>
-        repository.list(tenant, {
+        repository.list({
           limit: 2,
           ...(page.hasPreviousPage ? { before: page.previousCursor } : {}),
         }),
@@ -246,14 +243,14 @@ describe("OrderPersistenceModule", () => {
     });
   });
 
-  it("filters inside the page rather than after it", async ({ tenant, repository, anOrder }) => {
+  it("filters inside the page rather than after it", async ({ repository, anOrder }) => {
     // GIVEN three orders of different sizes
     // WHEN a page of two is taken with a minimum
     const page = await repository
-      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000111", 1))
-      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000112", 5)))
-      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000113", 9)))
-      .flatMap(() => repository.list(tenant, { limit: 2, minQuantity: 5 }));
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000111", 1))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000112", 5)))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000113", 9)))
+      .flatMap(() => repository.list({ limit: 2, minQuantity: 5 }));
 
     // THEN the page is FULL of matches — a filter applied after paging would
     // have answered one row and claimed the page was short
@@ -267,15 +264,17 @@ describe("OrderPersistenceModule", () => {
     });
   });
 
-  it("never pages into another tenant's orders", async ({ tenant, repository, anOrder }) => {
-    // GIVEN an order under this test's tenant and one under a tenant it invents
+  it("never pages into another tenant's orders", async ({
+    repository,
+    otherRepository,
+    anOrder,
+  }) => {
+    // GIVEN an order under this test's tenant and one under another
     // WHEN this tenant lists
     const page = await repository
-      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000121", 1))
-      .flatMap(() =>
-        repository.save(TenantId(uuidv7()), anOrder("0199a1e0-0000-7000-8000-000000000122", 1)),
-      )
-      .flatMap(() => repository.list(tenant, { limit: 10 }));
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000121", 1))
+      .flatMap(() => otherRepository.save(anOrder("0199a1e0-0000-7000-8000-000000000122", 1)))
+      .flatMap(() => repository.list({ limit: 10 }));
 
     // THEN it sees its own row only, on a server every other spec is writing to
     expect(page).toBeOkWith({
@@ -285,10 +284,10 @@ describe("OrderPersistenceModule", () => {
     });
   });
 
-  it("answers MalformedCursor for a cursor it cannot read", async ({ tenant, repository }) => {
+  it("answers MalformedCursor for a cursor it cannot read", async ({ repository }) => {
     // GIVEN nothing saved — the cursor is refused before any row is read
     // WHEN a page is asked for after a cursor the client made up
-    const page = await repository.list(tenant, { limit: 10, after: "not-a-cursor" });
+    const page = await repository.list({ limit: 10, after: "not-a-cursor" });
 
     // THEN it is a modeled error carrying the offending string, not a defect:
     // a cursor is the one part of the query that came from outside
@@ -302,11 +301,11 @@ describe("OrderPersistenceModule", () => {
     // GIVEN the module the composition root imports, plus the environment the
     // kernel would otherwise provide
     // WHEN a scope is opened over it and both operations run under a tenant
-    const result = await Module.scoped(scopedPersistence(), (ctx) => {
+    const result = await Module.scoped(scopedPersistence(tenant), (ctx) => {
       const repository = ctx.get(OrderRepository);
       return repository
-        .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 5))
-        .flatMap(() => repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001"));
+        .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 5))
+        .flatMap(() => repository.find("0199a1e0-0000-7000-8000-000000000001"));
     });
 
     // THEN the port resolves to a working repository
@@ -327,10 +326,10 @@ describe("OrderPersistenceModule", () => {
 
     // WHEN the scope acquires the database, writes through it, and closes
     let duringScope = 0;
-    await Module.scoped(scopedPersistence(applicationName), (ctx) =>
+    await Module.scoped(scopedPersistence(tenant, applicationName), (ctx) =>
       ctx
         .get(OrderRepository)
-        .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 1))
+        .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 1))
         .flatMap(() => fromSafePromise(backends().then((n) => (duringScope = n)))),
     );
     // Synchronising, not asserting: PostgreSQL retires a backend a moment

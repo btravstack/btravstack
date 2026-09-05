@@ -1,4 +1,3 @@
-import { TenantId } from "@btravstack/example-order-domain";
 import { P } from "unthrown";
 import { describe, expect } from "vitest";
 
@@ -14,7 +13,7 @@ describe("the transactional outbox", () => {
     // GIVEN a tenant with nothing in it
     // WHEN an order is saved
     const events = await repository
-      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
       .flatMap(() => outbox.pending(tenant, 10));
 
     // THEN the fact of the write is already in the outbox — no second call,
@@ -40,8 +39,8 @@ describe("the transactional outbox", () => {
     // WHEN the same id is saved again — a real UNIQUE violation, and the
     // transaction it happened in rolls back
     const events = await repository
-      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 1))
-      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 2)))
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 1))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000001", 2)))
       .recoverErrCases((matcher) => matcher.with(P.tag("DuplicateOrder"), () => undefined))
       .flatMap(() => outbox.pending(tenant, 10));
 
@@ -64,8 +63,8 @@ describe("the transactional outbox", () => {
     // GIVEN two placed orders and their pending events
     const pending = (
       await repository
-        .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 1))
-        .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000002", 2)))
+        .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 1))
+        .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000002", 2)))
         .flatMap(() => outbox.pending(tenant, 10))
     ).getOrThrow();
 
@@ -90,8 +89,8 @@ describe("the transactional outbox", () => {
     // GIVEN a placed order
     // WHEN it is removed
     const events = await repository
-      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
-      .flatMap(() => repository.remove(tenant, "0199a1e0-0000-7000-8000-000000000001"))
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
+      .flatMap(() => repository.remove("0199a1e0-0000-7000-8000-000000000001"))
       .flatMap(() => outbox.pending(tenant, 10));
 
     // THEN the log carries both words about the subject, in order: what it
@@ -115,7 +114,7 @@ describe("the transactional outbox", () => {
     // WHEN a placement that never landed is compensated — a re-run of the
     // saga's `cancelPlacement`
     const events = await repository
-      .remove(tenant, "o-absent")
+      .remove("o-absent")
       .recoverErrCases((matcher) => matcher.with(P.tag("OrderNotFound"), () => undefined))
       .flatMap(() => outbox.pending(tenant, 10));
 
@@ -127,13 +126,13 @@ describe("the transactional outbox", () => {
 
   it("does not hand one tenant another's pending events", async ({
     tenant,
-    repository,
+    otherRepository,
     outbox,
     anOrder,
   }) => {
     // GIVEN a write committed by somebody else
-    const events = await repository
-      .save(TenantId(`${tenant}-other`), anOrder("0199a1e0-0000-7000-8000-000000000502", 1))
+    const events = await otherRepository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000502", 1))
       .flatMap(() => outbox.pending(tenant, 10));
 
     // WHEN this tenant's relay sweeps

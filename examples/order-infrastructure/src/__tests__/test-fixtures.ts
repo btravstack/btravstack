@@ -31,13 +31,15 @@ export type PersistenceFixtures = {
    * one per test, and isolation comes from the tenant column rather than from
    * a database nobody else can see.
    *
-   * Every repository call takes it as its first argument, because the ports
-   * say so. There is no fixture that "enters" a tenant and no ambient store to
-   * set — which is exactly what makes these specs readable: what a call is
-   * scoped to is written at the call.
+   * The repository below is BUILT for it, the way a unit builds one, so no
+   * call names a tenant and none can name another's.
    */
   readonly tenant: TenantId;
+  /** A second tenant on the same database, for the specs that assert across the boundary. */
+  readonly otherTenant: TenantId;
   readonly repository: ServiceOf<OrderRepository>;
+  /** The same adapter bound to `otherTenant`, so a cross-tenant spec writes through a real one. */
+  readonly otherRepository: ServiceOf<OrderRepository>;
   readonly customers: ServiceOf<CustomerRepository>;
   readonly outbox: ServiceOf<Outbox>;
   readonly anOrder: (id: string, quantity: number) => Order;
@@ -66,8 +68,17 @@ export const it = test.extend<PersistenceFixtures>({
     await use(TenantId(uuidv7()));
   },
 
-  repository: async ({ db }, use) => {
-    await use(prismaOrderRepository(db));
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  otherTenant: async ({}, use) => {
+    await use(TenantId(uuidv7()));
+  },
+
+  repository: async ({ db, tenant }, use) => {
+    await use(prismaOrderRepository(db, tenant));
+  },
+
+  otherRepository: async ({ db, otherTenant }, use) => {
+    await use(prismaOrderRepository(db, otherTenant));
   },
 
   customers: async ({ db }, use) => {
