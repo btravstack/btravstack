@@ -4,7 +4,6 @@ import {
   ShippingService,
   StockService,
 } from "@btravstack/example-order-application";
-import { TenantId } from "@btravstack/example-order-domain";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { Storage } from "@btravstack/storage";
 import { TemporalWorkflowActivities } from "@btravstack/temporal-worker";
@@ -24,9 +23,10 @@ import { P } from "unthrown";
  * the retry policy takes over.
  *
  * `input.tenantId` arrives on the activity's own input because the CONTRACT
- * declares it — the starter knows nothing about tenants — and `TenantId(...)`
- * claims the brand at each activity that needs one, since an activity is its own
- * entry point.
+ * declares it — the starter knows nothing about tenants — and
+ * `ActivityUnitModule` is what turns it into the fork's `Tenant`, once per
+ * attempt. So the use cases below come off `context.unit` already bound to
+ * this attempt's tenant, and no activity claims the brand.
  *
  * `cancelPlacement` absorbs `OrderNotFound` on purpose: undoing a placement that
  * never landed is the no-op a REPEATED compensation performs, and an activity
@@ -46,17 +46,12 @@ export const fulfillOrder = TemporalWorkflowActivities(
   orderContract,
   "fulfillOrder",
 )({
-  inject: {
-    place: PlaceOrder,
-    repository: OrderRepository,
-    stock: StockService,
-    shipping: ShippingService,
-    storage: Storage,
-  },
-  sync: ({ place, repository, stock, shipping, storage }) => ({
-    place: ({ errors, input }) =>
-      place
-        .execute(TenantId(input.tenantId), input.orderId, input.quantity)
+  inject: { stock: StockService, shipping: ShippingService, storage: Storage },
+  unit: { place: PlaceOrder, repository: OrderRepository },
+  sync: ({ stock, shipping, storage }) => ({
+    place: ({ errors, context, input }) =>
+      context.unit.place
+        .execute(input.orderId, input.quantity)
         .map((order) => ({ id: order.id, quantity: order.quantity }))
         .mapErrCases((matcher) =>
           matcher
@@ -99,9 +94,9 @@ export const fulfillOrder = TemporalWorkflowActivities(
           ),
         ),
     releaseStock: ({ input }) => stock.release(input.orderId),
-    cancelPlacement: ({ input }) =>
-      repository
-        .remove(TenantId(input.tenantId), input.orderId)
+    cancelPlacement: ({ context, input }) =>
+      context.unit.repository
+        .remove(input.orderId)
         .recoverErrCases((matcher) => matcher.with(P.tag("OrderNotFound"), () => undefined)),
   }),
 });
