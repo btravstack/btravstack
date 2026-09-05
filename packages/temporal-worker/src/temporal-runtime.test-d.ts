@@ -102,6 +102,54 @@ const _noUnit = {
 // @ts-expect-error -- UNIT DOES NOT PROVIDE: nothing is bound, so `Tenant` is nowhere
 TemporalModule("PinUnitUnbound")(_noUnit);
 
+// The RECORD arm declares `unit:` too, and it reaches the root's gate exactly
+// as a piece's does: `sync` sees `context.unit` typed by what the record
+// declared, and `_declaredUnit` carries it to `TemporalModule`.
+const recordActivities = TemporalActivities(pinContract)({
+  inject: {},
+  unit: { tenant: Tenant },
+  sync: () => ({
+    runEcho: { echo: ({ context, input }) => OkAsync(`${context.unit.tenant.id}:${input}`) },
+  }),
+});
+
+// Negative: a name the record did not declare is not on `context.unit` at all.
+TemporalActivities(pinContract)({
+  inject: {},
+  unit: { tenant: Tenant },
+  sync: () => ({
+    runEcho: {
+      echo: ({ context, input }) => {
+        // @ts-expect-error -- `user` is no name this record declared on `unit`
+        void context.unit.user;
+        return OkAsync(input);
+      },
+    },
+  }),
+});
+
+// Positive: the bound module exports what the record arm declared, so the gate
+// clears — the record arm's own half of the pair the pieces pin above.
+const _recordUnitSatisfied = start(
+  TemporalModule("PinRecordUnitSatisfied")({
+    contract: pinContract,
+    activities: recordActivities,
+    workflows,
+    unit: { activity: TenantUnit },
+  }),
+  { signals: false, probes: false },
+);
+void _recordUnitSatisfied;
+
+const _wrongRecordUnit = {
+  contract: pinContract,
+  activities: recordActivities,
+  workflows,
+  unit: { activity: ElsewhereUnit },
+} as const;
+// @ts-expect-error -- UNIT DOES NOT PROVIDE: `ElsewhereUnit` exports no `Tenant`
+TemporalModule("PinRecordUnitWrong")(_wrongRecordUnit);
+
 // Positive: a root whose pieces declare no `unit:` is gated on nothing, bound
 // module or not — which is what keeps `examples/order-temporal-worker` compiling.
 const plainPiece = TemporalWorkflowActivities(

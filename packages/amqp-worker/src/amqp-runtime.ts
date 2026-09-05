@@ -20,6 +20,7 @@ import {
   Module,
   Port,
   Provider,
+  type AnyPort,
   type PortClassOf,
   type PortInstance,
   type Scope,
@@ -34,6 +35,7 @@ import {
   type HandlerPortOf,
 } from "./handler.js";
 import { messageUnits } from "./message-units.js";
+import { withUnit, type UnitRecordOf } from "./unit.js";
 
 /** What the worker publishes once it is consuming, read back through `RunningApp.runtimeInfo()`. */
 export type AmqpInfo = { readonly queues: readonly string[] };
@@ -268,6 +270,33 @@ type Refuse<T extends readonly unknown[], Marker extends string, Detail> = T ext
   : readonly [readonly [Marker, Detail]];
 
 /**
+ * The record arm: the whole handlers record from one `sync`, with one `unit:`
+ * record shared by every entry in it.
+ *
+ * It is `{ inject, unit?, sync }` — di's other arms are gone — for PARITY, not
+ * for a type-system reason: `value` could have carried the record just as well,
+ * since `U` infers from `unit` and never from the arm. `@btravstack/http-server`'s
+ * `api.OrpcRouter(contract)` is `{ inject, unit?, sync }` and so are all three
+ * packages' piece factories, so one arm across the family is one surface to
+ * learn and one to keep.
+ */
+type Whole<C extends AnyAmqpContract> = <
+  const D extends Readonly<Record<string, AnyPort>>,
+  const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+>(options: {
+  readonly inject: D;
+  /** The unit-scoped ports every handler in the record reads off `context.unit`. */
+  readonly unit?: U;
+  readonly sync: (services: {
+    readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+  }) => WorkerInferHandlers<C, { readonly unit: UnitRecordOf<U> }>;
+}) => Provider<HandlersInstanceOf<C>, never, InstanceType<D[keyof D]>> & {
+  readonly port: HandlersPortOf<C>;
+  /** Phantom: the declared ports, which `AmqpModule` gates `unit.message` against. */
+  readonly _declaredUnit?: InstanceType<U[keyof U]>;
+};
+
+/**
  * The composing arm. Declared LAST in the intersection below on purpose:
  * TypeScript reports the last overload's failure, so a non-covering array is
  * refused against the `"UNCOVERED HANDLERS — …"` marker rather than degrading
@@ -298,16 +327,14 @@ type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]
  * AmqpHandlers(orderContract)([orderNotifications, orderAudit])
  * ```
  *
- * The first is di's own `Provider(port)` on the starter's handlers port
- * typed for the contract. The second takes the pieces `AmqpHandler(contract,
- * key)` builds: they are the provider's deps, keyed by the contract key each
- * piece's port id carries, so the services record IS the handlers record. Every
- * declared key must be covered, and two slices claiming one key are di's
- * duplicate-provider defect at build.
+ * The first is `{ inject, unit?, sync }`, whose `sync` hands back the whole
+ * handlers record — one `unit:` record for every entry in it. The second takes
+ * the pieces `AmqpHandler(contract, key)` builds: they are the provider's deps,
+ * keyed by the contract key each piece's port id carries, so the services
+ * record IS the handlers record. Every declared key must be covered, and two
+ * slices claiming one key are di's duplicate-provider defect at build.
  */
-export const AmqpHandlers = <C extends AnyAmqpContract>(
-  contract: C,
-): ReturnType<typeof Provider<HandlersPortOf<C>>> & Compose<C> => {
+export const AmqpHandlers = <C extends AnyAmqpContract>(contract: C): Whole<C> & Compose<C> => {
   void contract;
   const build = Provider(AmqpHandlersPort as HandlersPortOf<C>);
   const compose = (pieces: readonly { readonly port: { readonly portId: string } }[]): unknown =>
@@ -317,12 +344,29 @@ export const AmqpHandlers = <C extends AnyAmqpContract>(
       ),
       sync: (services: unknown) => services,
     } as never);
-  // An array is never a valid `Provider(port)` call — its one argument is a
-  // record — so `Array.isArray` alone identifies the composing arm.
+  const whole = (options: {
+    readonly inject: Readonly<Record<string, AnyPort>>;
+    readonly unit?: Readonly<Record<string, AnyPort>>;
+    readonly sync: (services: never) => Readonly<Record<string, unknown>>;
+  }): unknown => {
+    const record = options.unit ?? {};
+    return build({
+      inject: options.inject,
+      sync: (services: never) =>
+        Object.fromEntries(
+          Object.entries(options.sync(services)).map(([key, entry]) => [
+            key,
+            withUnit(record, entry),
+          ]),
+        ),
+    } as never);
+  };
+  // An array is never a valid record call — its one argument is a record — so
+  // `Array.isArray` alone identifies the composing arm.
   return ((first: unknown) =>
     Array.isArray(first)
       ? compose(first as readonly { readonly port: { readonly portId: string } }[])
-      : (build as (a: never) => unknown)(first as never)) as never;
+      : whole(first as Parameters<typeof whole>[0])) as never;
 };
 
 const startFailed = (cause: unknown): RuntimeStartFailed =>

@@ -170,9 +170,12 @@ defect at build once **both** pieces are discharged as providers in one graph
 A piece's `unit` names the ports its handler reads off `context.unit`, resolved
 out of the per-delivery fork of the module bound on `unit.message` — which is
 seeded with the validated message on `AmqpMessage(contract)`, so a unit module
-derives a tenant from the delivery rather than from an ambient record. The root
-is checked against what the pieces declared: bind a module that does not export
-one of them and `AmqpModule` refuses it, naming the port.
+derives a tenant from the delivery rather than from an ambient record. The
+record arm above takes the same `unit:` — one record for every entry in it — so
+a worker that has not outgrown one function reaches `context.unit` without
+slicing first. The root is checked against what was declared either way: bind a
+module that does not export one of those ports and `AmqpModule` refuses it,
+naming the port.
 
 Its own test suite needs a **Docker daemon**: the specs run against the shared
 `rabbitmq` container `internal/test-infra` starts once per machine and every

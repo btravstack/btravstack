@@ -164,12 +164,12 @@ TemporalWorkflowActivities(
   }),
 });
 
-// Positive: the two existing arms still resolve, unchanged.
+// Positive: the record arm still resolves beside the composing one.
 TemporalActivities(pinContract)({
   inject: {},
-  value: {
+  sync: () => ({
     runEcho: { echo: ({ input }) => OkAsync(input) },
     runShout: { shout: ({ input }) => OkAsync(input) },
     audit: ({ input }) => OkAsync(input),
-  },
+  }),
 });

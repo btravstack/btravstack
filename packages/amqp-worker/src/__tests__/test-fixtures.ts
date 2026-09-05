@@ -148,7 +148,7 @@ class BoundConfig extends Port("BoundAmqpConfig")<ServiceOf<AmqpConfig>> {}
 
 const plainHandlers: EchoProvider = echoHandlers({
   inject: {},
-  value: { echo: () => OkAsync(undefined) },
+  sync: () => ({ echo: () => OkAsync(undefined) }),
 });
 
 /**
@@ -158,7 +158,9 @@ const plainHandlers: EchoProvider = echoHandlers({
  */
 const failingHandlers: EchoProvider = echoHandlers({
   inject: {},
-  value: { echo: () => fromSafePromise(Promise.reject(new Error("the handler is on fire"))) },
+  sync: () => ({
+    echo: () => fromSafePromise(Promise.reject(new Error("the handler is on fire"))),
+  }),
 });
 
 type App = RunningApp<ConfigInvalid, AmqpInfo>;
@@ -230,7 +232,7 @@ const deadlineHandler = () => {
 
   const handlers: EchoProvider = echoHandlers({
     inject: {},
-    value: {
+    sync: () => ({
       echo: () => {
         const signal = currentUnit()?.signal;
         entered();
@@ -264,7 +266,7 @@ const deadlineHandler = () => {
           }),
         );
       },
-    },
+    }),
   });
 
   return { handlers, arrived, sawAbort: (): boolean | undefined => sawAbort };
@@ -287,12 +289,12 @@ const gatedHandler = () => {
 
   const handlers: EchoProvider = echoHandlers({
     inject: {},
-    value: {
+    sync: () => ({
       echo: () => {
         entered();
         return fromSafePromise(held.then(() => undefined));
       },
-    },
+    }),
   });
 
   return { handlers, arrived, release: () => release() };
@@ -322,19 +324,20 @@ const EchoMessage = AmqpMessage(echoContract);
  * tuple to wrap the function — so the two forms are two code paths, and both
  * are served here rather than only the one every other fixture happens to use.
  */
+const TenantUnitModule = Module("TenantUnit")({
+  needs: [EchoMessage],
+  provides: [
+    Provider(Tenant)({
+      inject: { message: EchoMessage },
+      sync: ({ message }) => ({ id: message.payload.value }),
+    }),
+  ],
+  exports: [Tenant],
+});
+
 const scopedOf = (entry: "bare" | "tupled" = "bare") => {
   const seen: string[] = [];
-
-  const module = Module("TenantUnit")({
-    needs: [EchoMessage],
-    provides: [
-      Provider(Tenant)({
-        inject: { message: EchoMessage },
-        sync: ({ message }) => ({ id: message.payload.value }),
-      }),
-    ],
-    exports: [Tenant],
-  });
+  const module = TenantUnitModule;
 
   const piece = AmqpHandler(
     echoContract,
@@ -357,8 +360,31 @@ const scopedOf = (entry: "bare" | "tupled" = "bare") => {
 
   return {
     module,
-    piece,
+    pieces: [piece] as const,
     handlers: AmqpHandlers(echoContract)([piece]),
+    seen: (): readonly string[] => seen,
+  };
+};
+
+/**
+ * The same seeded fork through the WHOLE-RECORD arm: one `unit:` for every
+ * entry in the record, and no piece for the root to provide.
+ */
+const wholeScopedOf = () => {
+  const seen: string[] = [];
+  return {
+    module: TenantUnitModule,
+    pieces: [] as const,
+    handlers: AmqpHandlers(echoContract)({
+      inject: {},
+      unit: { tenant: Tenant },
+      sync: () => ({
+        echo: ({ context }) => {
+          seen.push(context.unit.tenant.id);
+          return OkAsync(undefined);
+        },
+      }),
+    }),
     seen: (): readonly string[] => seen,
   };
 };
@@ -440,7 +466,11 @@ export type AmqpFixtures = {
   readonly scoped: ReturnType<typeof scopedOf>;
   /** The same piece handing back `[handler, ConsumerOptions]` — `withUnit`'s other path. */
   readonly tupled: ReturnType<typeof scopedOf>;
-  readonly serveScoped: (scoped: ReturnType<typeof scopedOf>) => Promise<App>;
+  /** The same seed read through the whole-record arm's own `unit:`, no piece involved. */
+  readonly wholeScoped: ReturnType<typeof wholeScopedOf>;
+  readonly serveScoped: (
+    scoped: ReturnType<typeof scopedOf> | ReturnType<typeof wholeScopedOf>,
+  ) => Promise<App>;
   /** The starter served over an observer that records what it was handed. */
   readonly serveObserved: (
     handlers?: EchoProvider,
@@ -526,6 +556,10 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
   tupled: async ({}, use) => {
     await use(scopedOf("tupled"));
   },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  wholeScoped: async ({}, use) => {
+    await use(wholeScopedOf());
+  },
   serveScoped: async ({ amqpConnectionUrl, boot }, use) => {
     await use(async (scoped) => {
       const app = boot(
@@ -533,7 +567,7 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
           contract: echoContract,
           handlers: scoped.handlers,
           url: amqpConnectionUrl,
-          provides: [scoped.piece],
+          provides: scoped.pieces,
           unit: { message: scoped.module },
         }),
       );

@@ -74,7 +74,7 @@ const EchoActivities = TemporalActivities(echoContract);
 
 const echoing = EchoActivities({
   inject: {},
-  value: { runEcho: { echo: ({ input }) => OkAsync(input) } },
+  sync: () => ({ runEcho: { echo: ({ input }) => OkAsync(input) } }),
 });
 
 /**
@@ -84,11 +84,11 @@ const echoing = EchoActivities({
  */
 const failingEcho = EchoActivities({
   inject: {},
-  value: {
+  sync: () => ({
     runEcho: {
       echo: () => fromSafePromise(Promise.reject<string>(new Error("the activity is on fire"))),
     },
-  },
+  }),
 });
 
 /**
@@ -102,7 +102,7 @@ const undeclaredEcho = {
     undeclared: () => OkAsync(undefined),
   },
 };
-export const undeclared = EchoActivities({ inject: {}, value: undeclaredEcho });
+export const undeclared = EchoActivities({ inject: {}, sync: () => undeclaredEcho });
 
 /**
  * The activities built from a service they close over, recording what they saw.
@@ -146,7 +146,7 @@ const deadlineOf = () => {
   return {
     activities: EchoActivities({
       inject: {},
-      value: {
+      sync: () => ({
         runEcho: {
           echo: ({ input: value }) => {
             const signal = currentUnit()?.signal;
@@ -180,7 +180,7 @@ const deadlineOf = () => {
             );
           },
         },
-      },
+      }),
     }),
     arrived,
     sawAbort: (): boolean | undefined => sawAbort,
@@ -205,14 +205,14 @@ const gateOf = () => {
   return {
     activities: EchoActivities({
       inject: {},
-      value: {
+      sync: () => ({
         runEcho: {
           echo: ({ input: value }) => {
             entered();
             return fromSafePromise(held.then(() => value));
           },
         },
-      },
+      }),
     }),
     arrived,
     release: (): void => release(),
@@ -359,16 +359,17 @@ const ScopedInput = ActivityInput(scopedContract);
  * validated input, and two pieces declaring it — so what an activity reads off
  * `context.unit.tenant` can only have come through the seed.
  */
+const TenantUnitModule = Module("TenantUnit")({
+  needs: [ScopedInput],
+  provides: [
+    Provider(Tenant)({ inject: { input: ScopedInput }, sync: ({ input }) => ({ id: input }) }),
+  ],
+  exports: [Tenant],
+});
+
 const scopedOf = () => {
   const seen: string[] = [];
-
-  const module = Module("TenantUnit")({
-    needs: [ScopedInput],
-    provides: [
-      Provider(Tenant)({ inject: { input: ScopedInput }, sync: ({ input }) => ({ id: input }) }),
-    ],
-    exports: [Tenant],
-  });
+  const module = TenantUnitModule;
 
   const audited = TemporalWorkflowActivities(
     scopedContract,
@@ -401,6 +402,36 @@ const scopedOf = () => {
     module,
     pieces: [audited, audit] as const,
     activities: TemporalActivities(scopedContract)([audited, audit]),
+    seen: (): readonly string[] => seen,
+  };
+};
+
+/**
+ * The same seeded fork through the WHOLE-RECORD arm: one `unit:` for every
+ * entry in the record — both of `withUnit`'s shapes, a workflow's record and a
+ * contract-global implementation — and no piece for the root to provide.
+ */
+const wholeScopedOf = () => {
+  const seen: string[] = [];
+  return {
+    module: TenantUnitModule,
+    pieces: [] as const,
+    activities: TemporalActivities(scopedContract)({
+      inject: {},
+      unit: { tenant: Tenant },
+      sync: () => ({
+        runAudited: {
+          echo: ({ context, input }) => {
+            seen.push(`echo:${context.unit.tenant.id}`);
+            return OkAsync(input);
+          },
+        },
+        audit: ({ context, input }) => {
+          seen.push(`audit:${context.unit.tenant.id}`);
+          return OkAsync(input);
+        },
+      }),
+    }),
     seen: (): readonly string[] => seen,
   };
 };
@@ -501,7 +532,11 @@ export type TemporalFixtures = {
   }>;
   /** The seeded fork end to end: a tenant derived from the input, read off `context.unit`. */
   readonly scoped: ReturnType<typeof scopedOf>;
-  readonly serveScoped: (scoped: ReturnType<typeof scopedOf>) => Promise<{
+  /** The same seed read through the whole-record arm's own `unit:`, no piece involved. */
+  readonly wholeScoped: ReturnType<typeof wholeScopedOf>;
+  readonly serveScoped: (
+    scoped: ReturnType<typeof scopedOf> | ReturnType<typeof wholeScopedOf>,
+  ) => Promise<{
     readonly app: App;
     readonly client: Client;
     readonly taskQueue: string;
@@ -689,6 +724,10 @@ export const it = test.extend<TemporalFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   scoped: async ({}, use) => {
     await use(scopedOf());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  wholeScoped: async ({}, use) => {
+    await use(wholeScopedOf());
   },
   serveScoped: async ({ server, client, boot }, use) => {
     await use(async (scoped) => {

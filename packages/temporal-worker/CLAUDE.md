@@ -14,7 +14,7 @@ namespace?, gracePeriod?, forceAfter?, unit?, imports?, provides?, exports?, nee
   same shape as `@btravstack/http-server`'s `HttpModule`. `activities` is the
   **provider** of the starter's activities port for THIS contract — a plain
   `Provider<ActivitiesInstanceOf<C>, ActivitiesError, ActivitiesNeeds>`, which
-  is what `TemporalActivities(contract)({ inject, ...arm })` returns — so a provider
+  is what `TemporalActivities(contract)({ inject, unit?, sync })` returns — so a provider
   of anything but the implementations record for `contract` fails there
   (structurally, on the record: one built for another contract is refused).
   It delegates to `temporal({ contract, workflows, … })` and hands the
@@ -53,17 +53,34 @@ TemporalActivities(contract)([piece, piece])` and exports it by name needs
   through `TemporalActivities(contract)` or `TemporalWorkflowActivities(contract,
 key)`, both of which cast it to the typed alias), so there is nothing a
   type-only export would help with.
-- **`TemporalActivities(contract)` → `ReturnType<typeof
-Provider<ActivitiesPortOf<C>>>`** — the activities' provider builder,
-  `temporal-module.ts`, the same shape as `@btravstack/http-server`'s
-  `OrpcRouter(contract)`. The one call fixes `C` (the contract value is
-  otherwise unused; it exists so `C` is inferred rather than written) and
-  returns di's own `Provider(port)` on `TemporalActivitiesPort as
-ActivitiesPortOf<C>`, so the next call is di's `{ inject, ...arm }` unchanged and
+- **`TemporalActivities(contract)({ inject, unit?, sync })`** — the activities'
+  provider builder, `temporal-module.ts`, the same shape as
+  `@btravstack/http-server`'s `OrpcRouter(contract)`. The one call fixes `C` (the
+  contract value is otherwise unused; it exists so `C` is inferred rather than
+  written) and the next builds a provider on `TemporalActivitiesPort as
+ActivitiesPortOf<C>` whose `sync` hands back the whole activities record, and
   the provider it returns carries the port typed (`orderActivities.port`, for a
   hand-declared provider or a type test). No name, no class line. This is
   the way an application declares its activities; a hand-written
-  `Provider(port)` over the same port remains possible. `test-fixtures.ts`'s
+  `Provider(port)` over the same port remains possible.
+
+  **It is `{ inject, unit?, sync }`, not di's whole arm set, and the reason is
+  PARITY.** `value` would have typed exactly as well — the options record is
+  this package's own rather than di's `Provider` overload set, and `U` infers
+  from `unit`, never from the arm — but `@btravstack/http-server`'s
+  `api.OrpcRouter(contract)` is `{ inject, unit?, sync }` and so is every one of
+  the three packages' piece factories, so one arm across the family is one
+  surface to learn and one to keep. `inject: {}, sync: () => activities` is what
+  a record with no services now writes.
+
+  **`unit` declares the ports EVERY entry of that record reads off
+  `context.unit`** — one record for the whole worker, where a piece declares its
+  own — and the arm's `_declaredUnit` phantom carries them to `TemporalModule`'s
+  gate exactly as the composing arm's does. `withUnit` wraps each entry as di
+  constructs it, both of its shapes included, so a worker that has not outgrown
+  one function reaches `context.unit` the same way a sliced one does.
+
+  `test-fixtures.ts`'s
   `EchoActivities = TemporalActivities(echoContract)` builds all four fixture
   providers off the one builder, and
   `examples/order-temporal-worker/src/slices/fulfillment/activities.ts` and
@@ -280,9 +297,10 @@ close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
   `… : Tenant`).
 
   `Declared` is inferred from the activities provider's own `_declaredUnit`
-  phantom, the union of every piece's `_declared` collected by
-  `TemporalActivities(contract)([...])` — the composing arm is the only place
-  the pieces are known. The gate is intersected onto the **whole options
+  phantom — the union of every piece's `_declared` collected by
+  `TemporalActivities(contract)([...])`, since the composing arm is the only
+  place the pieces are known, or the record arm's own `unit:` where the worker
+  is one function. The gate is intersected onto the **whole options
   record**, the way `NeedsGate` is, rather than onto `unit.activity`: a gate on
   a property is not read when the property is absent, and a root that declares
   a piece's `unit:` and then binds no module AT ALL is exactly the case worth
@@ -418,7 +436,11 @@ ActivitiesPortOf<C> }, sync })` —
   drives both of `withUnit`'s entry shapes and the value each reads off
   `context.unit.tenant` could only have come through the seed; and, on the
   sliced worker, _"hands a piece that declared nothing an empty record"_,
-  which is `unitRecordOf`'s no-module-bound branch), three the drain
+  which is `unitRecordOf`'s no-module-bound branch), one the same seed read
+  through the RECORD arm's own `unit:` over the `wholeScoped` fixture — no piece
+  involved, both entry shapes in one record, so the arm a one-function worker
+  writes is held to the same behaviour (_"hands the whole-record arm the ports
+  it declared, built from the seeded input"_), three the drain
   (_"lets an in-flight activity finish while draining"_; _"hands the activity
   the unit's own AbortSignal, through the ambient record"_, the `deadline`
   fixture's activity waiting on `currentUnit()?.signal` and reporting
@@ -471,14 +493,17 @@ Provider(Greeting)(...)] })` through `boot` — the pieces are passed to
   declaring pair: a piece whose `unit: { tenant: Tenant }` types
   `context.unit.tenant` inside its own `sync` literal, and a name it did not
   declare refused as TypeScript's own "property does not exist". The record
-  arm on `TemporalActivities(contract)` still resolves unchanged.
+  arm on `TemporalActivities(contract)` still resolves beside the composing one.
 
   **`temporal-runtime.test-d.ts` pins the ROOT's gate**, on a contract of its
   own: `start(TemporalModule(...))` over a bound module that exports what the
   piece injects — one line asserting both that the gate clears and that the
   module's own `needs: [ActivityInput(contract)]` never surfaced as an unmet
   need — beside two negatives, a module exporting something else and no module
-  bound at all, and a positive for a root whose pieces declare nothing.
+  bound at all, and a positive for a root whose pieces declare nothing. The
+  RECORD arm carries the same trio of its own: a `sync` reading
+  `context.unit.tenant`, a name it did not declare refused, and the root's gate
+  clearing for a bound module that exports it and firing for one that does not.
 
   The wrong-contract negative needs care, and amqp's needed a fix before it
   bit: the port id carries only the KEY, so what separates two pieces for the

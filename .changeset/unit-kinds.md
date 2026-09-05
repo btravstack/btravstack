@@ -28,9 +28,10 @@ scheme and `anonymous` both bind no module. The fallback is deliberate: an unbou
 make every existing application silently lose its request scope on precisely
 its authenticated procedures.
 
-**`context.unit`, on all three transports.** Every piece —
-`OrpcController`, `OrpcRouter`'s `{ inject, sync }` arm, `HtmxGet`, `HtmxPost`,
-`AmqpHandler`, `TemporalWorkflowActivities` — takes an optional
+**`context.unit`, on all three transports.** Every piece — and every
+whole-record composer beside it: `OrpcController`, `OrpcRouter`,
+`AmqpHandler`, `AmqpHandlers`, `HtmxGet`, `HtmxPost`,
+`TemporalWorkflowActivities`, `TemporalActivities` — takes an optional
 `unit: { name: Port }` beside `inject`, declared once, and every leaf reads it
 as `context.unit.name`. On HTTP the record is filtered **per leaf** by the kind
 that leaf's own requirements select, with the `anonymous` fallback applied per
@@ -52,20 +53,21 @@ everything else it needs still surfaces at `start`'s
 `UNDECLARED UNIT KIND — …`: the bindable set is the kinds `units<…>()` declared
 when the router carries them, else `anonymous` plus every scheme the answerers
 serve, read off their own authenticator ports. `AmqpModule` and
-`TemporalModule` refuse a bound module that does not export a port some piece
-injects, against `UNIT DOES NOT PROVIDE — …`, naming the port — including the
-case where no module is bound at all.
+`TemporalModule` refuse a bound module that does not export a port some piece —
+or the whole-record arm — injects, against `UNIT DOES NOT PROVIDE — …`, naming
+the port, including the case where no module is bound at all.
 
-**Signature changes beyond the added option.** `HttpAnswerer.handle` takes
-`(request, response, signal, host)`. `FragmentAnswer.handle` takes the
+**Signature changes beyond the added option.** `FragmentAnswer.handle` takes the
 handler's whole `context` object rather than the bare principal: it was
 `handle(principal, params, input)` and is now
-`handle({ principal, unit }, params, input)`. `AmqpHandler(contract, key)` and
-`TemporalWorkflowActivities(contract, key)` take `{ inject, unit?, sync }`
-rather than di's whole arm set — `value` **could** have carried the same
-record, since the options are each package's own and the declared record is
-what types it either way, and it was dropped so one arm reads the same as
-`@btravstack/http-server`'s `OrpcController` on all three transports.
+`handle({ principal, unit }, params, input)`. `AmqpHandler(contract, key)`,
+`TemporalWorkflowActivities(contract, key)` and the record arms of
+`AmqpHandlers(contract)` and `TemporalActivities(contract)` take
+`{ inject, unit?, sync }` rather than di's whole arm set — `value` **could**
+have carried the same record, since the options are each package's own and the
+declared record is what types it either way, and it was dropped so one arm reads
+the same as `@btravstack/http-server`'s `OrpcController` and `OrpcRouter` on all
+three transports.
 
 **`http()`, `httpServer()`, `amqp()` and `temporal()` stay un-gated**, and
 structurally so: each takes its router, handlers or activities as a **need**,

@@ -340,6 +340,26 @@ describe("temporal", () => {
     expect(scoped.seen()).toEqual(["echo:acme", "audit:acme"]);
   });
 
+  it("hands the whole-record arm the ports it declared, built from the seeded input", async ({
+    serveScoped,
+    wholeScoped,
+  }) => {
+    // GIVEN a worker whose activities come from the record arm, declaring one
+    // `unit:` for every entry, over the same seeded `activity` module
+    const { client, taskQueue } = await serveScoped(wholeScoped);
+
+    // WHEN one workflow drives both entry shapes the record carries
+    await client.workflow.execute("runAudited", {
+      taskQueue,
+      workflowId: `whole-${taskQueue}`,
+      args: ["globex"],
+    });
+
+    // THEN both read the same seed a piece would, so the arm is not a hole
+    // where `context.unit` goes missing
+    expect(wholeScoped.seen()).toEqual(["echo:globex", "audit:globex"]);
+  });
+
   it("hands a piece that declared nothing an empty record", async ({ serveSliced, slices }) => {
     // GIVEN a worker with no `unit.activity` bound, whose pieces declare no
     // `unit:` either

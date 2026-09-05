@@ -39,13 +39,13 @@ const pinContract = defineContract({
   consumers: { echo: defineEventConsumer(pinPublished, pinQueue) },
 });
 
-// Positive: `AmqpHandlers(contract)` is di's `Provider(port)` on the starter's
-// handlers port typed for the contract, so a record with a handler for every
-// consumer/rpc key the contract declares compiles as an ordinary call, and the
+// Positive: `AmqpHandlers(contract)`'s record arm is `{ inject, unit?, sync }`
+// on the starter's handlers port typed for the contract, so a record with a
+// handler for every consumer/rpc key the contract declares compiles, and the
 // provider satisfies both the sugar and the primitive.
 const pinHandlers = AmqpHandlers(pinContract)({
   inject: {},
-  value: { echo: () => OkAsync(undefined) },
+  sync: () => ({ echo: () => OkAsync(undefined) }),
 });
 AmqpModule("Pin")({ contract: pinContract, handlers: pinHandlers, needs: [Env] });
 Module("PinByHand")({
@@ -60,13 +60,13 @@ const _pinPort: HandlersPortOf<typeof pinContract> = pinHandlers.port;
 // the port's service is the contract's own record, so the arm is checked
 // against it before any module sees it.
 // @ts-expect-error -- the `echo` consumer has no handler
-AmqpHandlers(pinContract)({ inject: {}, value: {} });
+AmqpHandlers(pinContract)({ inject: {}, sync: () => ({}) });
 
 // Negative: a typo'd key does not compile. `WorkerInferHandlers` requires
 // exactly the contract's own consumer/rpc names, so "ecoh" is neither the
 // required `echo` entry nor a key the contract declares.
 // @ts-expect-error -- "ecoh" is not one of `pinContract`'s consumer/RPC names, and "echo" is missing
-AmqpHandlers(pinContract)({ inject: {}, value: { ecoh: () => undefined, anything: 1 } });
+AmqpHandlers(pinContract)({ inject: {}, sync: () => ({ ecoh: () => undefined, anything: 1 }) });
 
 // Negative: a provider built for ANOTHER contract is refused by the module —
 // the port's instance is typed per contract, so the check is structural on
@@ -77,13 +77,11 @@ const otherContract = defineContract({
 });
 const otherHandlers = AmqpHandlers(otherContract)({
   inject: {},
-  value: { other: () => OkAsync(undefined) },
+  sync: () => ({ other: () => OkAsync(undefined) }),
 });
-AmqpModule("Other")({
-  contract: pinContract,
-  // @ts-expect-error -- built for `otherContract`: its record has `other`, not `echo`
-  handlers: otherHandlers,
-});
+const _otherOptions = { contract: pinContract, handlers: otherHandlers } as const;
+// @ts-expect-error -- built for `otherContract`: its record has `other`, not `echo`
+AmqpModule("Other")(_otherOptions);
 
 // Negative: a hand-declared port of another id is not the starter's — the
 // starter needs ITS port, so a root providing a different one still owes it.
@@ -193,6 +191,50 @@ const _noUnit = {
 } as const;
 // @ts-expect-error -- UNIT DOES NOT PROVIDE: nothing is bound, so `Tenant` is nowhere
 AmqpModule("PinUnitUnbound")(_noUnit);
+
+// The RECORD arm declares `unit:` too, and it reaches the root's gate exactly
+// as a piece's does: `sync` sees `context.unit` typed by what the record
+// declared, and `_declaredUnit` carries it to `AmqpModule`.
+const recordHandlers = AmqpHandlers(pinContract)({
+  inject: {},
+  unit: { tenant: Tenant },
+  sync: () => ({
+    echo: ({ context }) => OkAsync(void context.unit.tenant.id),
+  }),
+});
+
+// Negative: a name the record did not declare is not on `context.unit` at all.
+AmqpHandlers(pinContract)({
+  inject: {},
+  unit: { tenant: Tenant },
+  sync: () => ({
+    echo: (helpers) => {
+      // @ts-expect-error -- `user` is no name this record declared on `unit`
+      void helpers.context.unit.user;
+      return OkAsync(undefined);
+    },
+  }),
+});
+
+// Positive: the bound module exports what the record arm declared, so the gate
+// clears — the record arm's own half of the pair the pieces pin above.
+const _recordUnitSatisfied = start(
+  AmqpModule("PinRecordUnitSatisfied")({
+    contract: pinContract,
+    handlers: recordHandlers,
+    unit: { message: TenantUnit },
+  }),
+  { signals: false, probes: false },
+);
+void _recordUnitSatisfied;
+
+const _wrongRecordUnit = {
+  contract: pinContract,
+  handlers: recordHandlers,
+  unit: { message: ElsewhereUnit },
+} as const;
+// @ts-expect-error -- UNIT DOES NOT PROVIDE: `ElsewhereUnit` exports no `Tenant`
+AmqpModule("PinRecordUnitWrong")(_wrongRecordUnit);
 
 // Positive: a root whose pieces declare no `unit:` is gated on nothing, bound
 // module or not — which is what keeps `examples/order-amqp-worker` compiling.

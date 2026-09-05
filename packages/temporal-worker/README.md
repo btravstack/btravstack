@@ -153,6 +153,16 @@ di's duplicate-provider defect at build once **both** pieces are discharged as
 providers in one graph — wire in only one and the other's implementation is
 silently never registered.
 
+A piece's `unit` names the ports its activities read off `context.unit`,
+resolved out of the per-attempt fork of the module bound on `unit.activity` —
+which is seeded with the validated input on `ActivityInput(contract)`, so a unit
+module derives a tenant from the invocation rather than from an ambient record.
+The record arm above takes the same `unit:` — one record for every entry in it —
+so a worker that has not outgrown one function reaches `context.unit` without
+slicing first. The root is checked against what was declared either way: bind a
+module that does not export one of those ports and `TemporalModule` refuses it,
+naming the port.
+
 Its own test suite needs a **Docker daemon**: the specs run against the shared
 `temporalio/auto-setup` container `internal/test-infra` starts once per machine and every
 workspace reuses. Nothing else here does.

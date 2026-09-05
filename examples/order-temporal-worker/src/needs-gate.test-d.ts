@@ -149,7 +149,7 @@ const _missingFulfillment = start(FulfillmentlessTemporal, options);
 // its own: the only need either call below can leak is the unit module's.
 const unitGateActivities = TemporalActivities(orderContract)({
   inject: {},
-  value: {
+  sync: () => ({
     fulfillOrder: {
       place: () => OkAsync(null as never),
       reserveStock: () => OkAsync(undefined),
@@ -162,7 +162,7 @@ const unitGateActivities = TemporalActivities(orderContract)({
       capturePayment: () => OkAsync(undefined),
       refundPayment: () => OkAsync(undefined),
     },
-  },
+  }),
 });
 
 class TemporalUnitDep extends Port("TemporalUnitDep")<{ readonly value: number }> {}

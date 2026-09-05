@@ -22,7 +22,7 @@ TContract, HandlersError, HandlersNeeds>`, readonly and exact — to
   modules' internal ports, TS2883, measured on `HttpModule`). `handlers` is a
   plain `Provider<HandlersInstanceOf<TContract>, HandlersError,
 HandlersNeeds>` — a provider on the starter's handlers port typed for THIS
-  contract, which is what `AmqpHandlers(contract)({ inject, ...arm })` returns — so a
+  contract, which is what `AmqpHandlers(contract)({ inject, unit?, sync })` returns — so a
   provider whose service is not the contract's handlers fails at the call,
   structurally on the record: one built for another contract is refused
   (`amqp-runtime.test-d.ts` pins it). There is no port to read off it: the
@@ -60,14 +60,31 @@ piece])` and exports it by name needs declaration emit to be able to print
   consumer always goes through `AmqpHandlers(contract)` or `AmqpHandler(contract,
 key)`, both of which cast it to the typed alias), so there is nothing a
   type-only export would help with.
-- **`AmqpHandlers(contract)` → `ReturnType<typeof Provider<HandlersPortOf<C>>>`**
+- **`AmqpHandlers(contract)({ inject, unit?, sync })`**
   (`amqp-runtime.ts`) — the way to the handlers provider `AmqpModule` takes,
-  next to it: the one call fixes `C` and returns di's own `Provider(port)` on
-  `AmqpHandlersPort as HandlersPortOf<C>`, so the next call is exactly
-  `Provider(port)({ inject: { name: Dep }, ...arm })` — any arm, same typing, checked against the
-  contract's record before any module sees it — and the provider carries the
-  port typed (`provider.port`, di's `& { readonly port: P }`, for a
-  hand-declared provider or a type test). No name, no class line.
+  next to it: the one call fixes `C`, and the next builds a provider on
+  `AmqpHandlersPort as HandlersPortOf<C>` whose `sync` hands back the whole
+  handlers record, checked against the contract before any module sees it — and
+  the provider carries the port typed (`provider.port`, di's
+  `& { readonly port: P }`, for a hand-declared provider or a type test). No
+  name, no class line.
+
+  **It is `{ inject, unit?, sync }`, not di's whole arm set, and the reason is
+  PARITY.** `value` would have typed exactly as well — the options record is
+  this package's own rather than di's `Provider` overload set, and `U` infers
+  from `unit`, never from the arm — but `@btravstack/http-server`'s
+  `api.OrpcRouter(contract)` is `{ inject, unit?, sync }` and so is every one of
+  the three packages' piece factories, so one arm across the family is one
+  surface to learn and one to keep. `inject: {}, sync: () => handlers` is what a
+  record with no services now writes.
+
+  **`unit` declares the ports EVERY entry of that record reads off
+  `context.unit`** — one record for the whole worker, where a piece declares its
+  own — and the arm's `_declaredUnit` phantom carries them to `AmqpModule`'s
+  gate exactly as the composing arm's does. `withUnit` wraps each entry of the
+  returned record as di constructs it, tuple entries included, so a worker that
+  has not outgrown one function reaches `context.unit` the same way a sliced one
+  does.
   The contract argument is a value the type alone reads (`_contract`). Same
   shape as `@btravstack/http-server`'s `OrpcRouter(contract)` and
   `@btravstack/temporal-worker`'s `TemporalActivities(contract)` — unlike
@@ -81,7 +98,10 @@ key)`, both of which cast it to the typed alias), so there is nothing a
   key, is refused at the `AmqpHandlers(contract)(…)` call; that a provider
   built for another contract is refused by `AmqpModule`; and that a
   hand-declared port of another id leaves the starter's need unmet, so
-  `start` refuses the module.
+  `start` refuses the module. It carries the record arm's `unit:` trio too: a
+  `sync` reading `context.unit.tenant`, a name it did not declare refused, and
+  the root's gate clearing for a bound module that exports it and firing for one
+  that does not.
 
   It also takes **`needs`**, forwarded to di's own — what this root's OWN
   providers expect from outside. The starter's `Env` is not among them: the
@@ -300,9 +320,10 @@ Module<never, never, unknown>`, the same contravariant-exports bound
   (measured: `… : Tenant`).
 
   Two things about where it rides. `Declared` is inferred from the handlers
-  provider's own `_declaredUnit` phantom, the union of every piece's
-  `_declared` collected by `AmqpHandlers(contract)([...])` — the composing arm
-  is the only place the pieces are known. And the gate is intersected onto the
+  provider's own `_declaredUnit` phantom — the union of every piece's
+  `_declared` collected by `AmqpHandlers(contract)([...])`, since the composing
+  arm is the only place the pieces are known, or the record arm's own `unit:`
+  where the worker is one function. And the gate is intersected onto the
   **whole options record**, the way `NeedsGate` is, rather than onto
   `unit.message` the way `ScopeGate` rides `contract`: a gate on a property is
   not read when the property is absent, and a root that declares a piece's
@@ -476,7 +497,11 @@ right])`, pinning that both slices run (_"serves a record composed from one
   contract's handler entry is `handler | [handler, ConsumerOptions]`, so the
   wrapper has to reach inside the tuple, and the `tupled` fixture is the same
   declaring piece handing back that form (_"wraps a piece that hands back
-  [handler, options] too"_). `handler.test-d.ts` pins the
+  [handler, options] too"_). The `wholeScoped` fixture is the same seed read
+  through the RECORD arm's own `unit:` — no piece involved — so the arm a
+  one-function worker writes is held to the same behaviour (_"hands the
+  whole-record arm the ports it declared, built from the seeded delivery"_).
+  `handler.test-d.ts` pins the
   composing form's compile-time gates on a contract of its own — a piece typed
   by its own key, an array covering every declared key, an uncovered array
   refused as `@ts-expect-error` (its own single-element case reports only the
@@ -503,7 +528,9 @@ echoContract, handlers, url: amqpConnectionUrl, imports: [AppModule] })`
   are the pieces' ports, which nothing else in the graph would otherwise
   discharge. `serveScoped` is that shape again with `unit: { message:
 scoped.module }` bound, which is what makes the gate's positive case a
-  running worker rather than a type assertion.
+  running worker rather than a type assertion; it takes `scoped.pieces` rather
+  than one piece, so the record-arm fixture — which has none — boots through the
+  same call.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`,
   `@btravstack/di`, `unthrown`, `@amqp-contract/worker`, `@opentelemetry/api`.
 

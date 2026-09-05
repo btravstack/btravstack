@@ -91,10 +91,10 @@ const otherLeft = AmqpHandler(
 // @ts-expect-error -- built for `otherContract`, whose `left` message differs
 AmqpHandlers(pinContract)([otherLeft, right]);
 
-// Positive: the two existing arms still resolve, unchanged.
+// Positive: the record arm still resolves beside the composing one.
 AmqpHandlers(pinContract)({
   inject: {},
-  value: { left: () => OkAsync(undefined), right: () => OkAsync(undefined) },
+  sync: () => ({ left: () => OkAsync(undefined), right: () => OkAsync(undefined) }),
 });
 
 // Positive: a piece declaring `unit:` reads those ports off `context.unit`,

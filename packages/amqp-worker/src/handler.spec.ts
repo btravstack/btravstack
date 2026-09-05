@@ -56,6 +56,24 @@ describe("amqp handler units", () => {
     expect(scoped.seen()).toEqual(["acme"]);
   });
 
+  it("hands the whole-record arm the ports it declared, built from the seeded delivery", async ({
+    serveScoped,
+    wholeScoped,
+    publishMessage,
+  }) => {
+    // GIVEN a worker whose handlers come from the record arm, declaring one
+    // `unit:` for every entry, over the same seeded `message` module
+    await serveScoped(wholeScoped);
+
+    // WHEN one message is published
+    publishMessage({ exchange: "amqp-test", routingKey: "echo.requested" }, { value: "initech" });
+    await vi.waitUntil(() => wholeScoped.seen().length === 1);
+
+    // THEN the record's own handler read the same seed a piece would, so the
+    // arm is not a hole where `context.unit` goes missing
+    expect(wholeScoped.seen()).toEqual(["initech"]);
+  });
+
   it("hands a piece that declared nothing an empty record", async ({
     serveSliced,
     slices,
