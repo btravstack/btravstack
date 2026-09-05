@@ -52,9 +52,9 @@ import { FulfillmentModule } from "../../fulfillment.js";
 
 | Export                           | Kind  | What it is                                                                                                                                                                                                                                                                              |
 | -------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                                                                |
+| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                                                         |
 | `TemporalModuleOptions`          | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                                                                                         |
-| `TemporalActivities`             | value | `TemporalActivities(contract)` — di's `Provider(port)` builder on the starter's own activities port, typed for `contract`, so the next call is `{ inject: { name: Dep }, ...arm }`, or `([pieces])` to compose one provider per workflow                                                |
+| `TemporalActivities`             | value | `TemporalActivities(contract)` — the builder on the starter's own activities port, typed for `contract`, so the next call is `{ inject: { name: Dep }, unit?, sync }`, or `([pieces])` to compose one provider per workflow                                                             |
 | `ActivitiesPortOf<C>`            | type  | The activities port's class typed for `C` — what a composed `orderActivities`'s `.port` is                                                                                                                                                                                              |
 | `ActivitiesInstanceOf<C>`        | type  | That port's instance typed for `C`                                                                                                                                                                                                                                                      |
 | `TemporalWorkflowActivities`     | value | `TemporalWorkflowActivities(contract, key)` — one workflow's activities (or a contract-global activity) as a provider of its own, typed by `key` alone; the next call is `{ inject: { name: Dep }, unit?, sync }`, and the piece is what `TemporalActivities(contract)([...])` composes |
@@ -103,7 +103,7 @@ provider and the workflow source. It appends
 | Option        | Required | Default                              | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ------------- | -------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `contract`    | yes      | —                                    | a `temporal-contract` `ContractDefinition`; the task queue this worker polls is read off it                                                                                                                                                                                                                                                                                                                                                |
-| `activities`  | yes      | —                                    | the activities **provider** — a `Provider<ActivitiesInstanceOf<C>, E, N>`, what `TemporalActivities(contract)({ inject: { name: Dep }, ...arm })` returns for **this** `contract`; one built for another contract fails at the call                                                                                                                                                                                                        |
+| `activities`  | yes      | —                                    | the activities **provider** — a `Provider<ActivitiesInstanceOf<C>, E, N>`, what `TemporalActivities(contract)({ inject: { name: Dep }, unit?, sync })` returns for **this** `contract`; one built for another contract fails at the call                                                                                                                                                                                                   |
 | `workflows`   | yes      | —                                    | a `WorkflowSource`                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `address`     | no       | read from `TEMPORAL_ADDRESS`         | pins `TemporalConfig.address`                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `namespace`   | no       | read from `TEMPORAL_NAMESPACE`       | pins `TemporalConfig.namespace`                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -161,11 +161,17 @@ than what is present.** Per **attempt**, not per activity: a retried activity re
 ## `TemporalActivities(contract)`
 
 The first call fixes `C` (the contract value is otherwise unused; it exists so
-`C` is inferred rather than written) and returns `ReturnType<typeof
-Provider<ActivitiesPortOf<C>>>` — di's own `Provider(port)` builder on the
-starter's activities port, typed for `C` — so the second call is di's
-`{ inject, ...arm }` unchanged: any arm, the usual typing, and the provider it returns carries
-the port typed as `provider.port`. There is no name to give: a worker serves
+`C` is inferred rather than written) and returns a builder on the
+starter's activities port, typed for `C` — so the second call is
+`{ inject, unit?, sync }`, whose `sync` hands back the whole activities record,
+and the provider it returns carries the port typed as `provider.port`. It is
+`{ inject, unit?, sync }` rather than di's whole arm set for **parity**:
+`api.OrpcRouter(contract)` and all three packages' piece factories spell it
+that way, so one arm across the family is one surface to learn and one to keep.
+`unit` declares the ports **every** entry of the record reads off
+`context.unit`, resolved out of the per-attempt fork exactly as a piece's are
+and gated by `TemporalModule` the same way — so a worker that has not outgrown
+one function needs no slicing to reach it. There is no name to give: a worker serves
 one activities record as it polls one task queue, so the port is the starter's
 — one `Port("TemporalActivities")`, generic at the value level and fixed per
 contract at the type level (`ActivitiesPortOf<C>`, the move the kernel's
@@ -275,7 +281,7 @@ refuses the module.
 
 A third call composes several **pieces** instead of one record:
 `TemporalActivities(contract)([piece, piece, ...])`, where each piece is what
-`TemporalWorkflowActivities(contract, key)({ inject: { name: Dep }, ...arm })` returns. Di
+`TemporalWorkflowActivities(contract, key)({ inject: { name: Dep }, unit?, sync })` returns. Di
 constructs every piece first — they are the composed provider's own `deps`,
 declared under the very key each piece's port id carries, so the services
 record IS the activities record. Every top-level key the contract's
@@ -574,16 +580,20 @@ everything else the module needs still surfaces at `start`.
 ### `context.unit`, and the gate on the module bound
 
 A piece declares the unit-scoped ports its activities may read as `unit:`
-beside `inject`, and an activity reads them off `context.unit.name`. Entries
+beside `inject`, and an activity reads them off `context.unit.name`. The
+whole-record arm takes the same `unit:`, applied to **every** entry of the
+record it hands back, so a worker that has not outgrown one function reaches
+`context.unit` without slicing first. Entries
 are lazy getters over the forked context — neither writable nor configurable,
 so an activity reads what the fork holds and cannot reshape the record under
 the next attempt.
 
 That declaration is a promise the **root** has to keep, and nothing else checks
 it: the piece and the root are typed independently. So `TemporalModule`
-**gates** `unit.activity` against the union of every piece's declared record —
-collected by `TemporalActivities(contract)([...])`, the one place the pieces
-are known — and a bound module that does not export a declared port is refused
+**gates** `unit.activity` against what was declared — the union of every
+piece's record, collected by `TemporalActivities(contract)([...])` where the
+pieces are known, or the record arm's own `unit:` where the worker is one
+function — and a bound module that does not export a declared port is refused
 against a
 `"UNIT DOES NOT PROVIDE — a piece injects a port the bound unit module does not export"`
 marker, carrying the offending port. The gate rides the **whole options

@@ -33,7 +33,7 @@ the same commit, and with `README.md` — the package ships no
   declaration emit keeps such an alias unreduced and cannot name imported
   modules' internal ports — TS2883, measured.) `router` is
   `Provider<OrpcRouterPort, RouterError, RouterNeeds>` — what
-  `api.OrpcRouter(contract)({ inject, ...arm })` returns; `fragments` is
+  `api.OrpcRouter(contract)({ inject, unit?, sync })` returns; `fragments` is
   `Provider<HtmxFragmentsPort, …>` — what `api.HtmxFragments([…])`
   returns. A provider of anything else fails at the call, and there is no
   port to read off either: the sugar's job is to provide the port the
@@ -438,7 +438,7 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   option: the module **needs** `OrpcRouterPort`, and the application provides
   it — a provider that declares the use cases its procedures call (di injects
   them, oRPC's context stays empty), built by
-  `api.OrpcRouter(contract)({ inject, ...arm })`. The starter provides
+  `api.OrpcRouter(contract)({ inject, unit?, sync })`. The starter provides
   `Runtime<never, HttpInfo>` on the **`HttpRuntime`** port (a class over
   core's `RuntimePort`, **an empty `resolves`**), which the composition root imports
   next to the application and exports so `start` finds it, and **`HttpConfig`**
@@ -772,9 +772,10 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `RPCHandler.handle(req, res, { prefix })` plus the runtime's own `404` do
   with two dependencies fewer — and no `overrideGlobalObjects` footgun to
   disarm.
-- **`httpServer({ port?, hostname?, cors?, bodyLimit?, compression?, securityHeaders? })`
-  → `Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env>`** — the
-  socket half: the runtime, its config, and no answerer. `http()` is
+- **`httpServer({ port?, hostname?, cors?, bodyLimit?, compression?, securityHeaders?, unit? })`
+  → `Module<HttpRuntime | HttpConfig | HttpHandler | HttpUnit, ConfigInvalid, Env | UnitsNeedsOf<Units>>`** —
+  the socket half: the runtime, its config, the kind → module record on
+  `HttpUnit`, and no answerer. `http()` is
   `Module("Http")({ imports: [httpServer(options)], provides: [orpc(options)],
 exports: [HttpRuntime, HttpConfig, HttpHandler] })` — this plus `orpc()`. The
   package's own transport specs, and a fragments-only graph, compose
@@ -954,7 +955,16 @@ api.OrpcController(contract, "orders")({
   next one. Eager resolution would call `forked.get` for
   every declared port on every request, the ones `UnitFor` hid included — a
   defect for a port the forked kind never provided, raised on a name no leaf
-  of that kind could have read. Lazy, an unreadable name costs nothing. It
+  of that kind could have read. Lazy, an unreadable name costs nothing.
+  **Past the types, the getter is what fails**: `forked.get` throws di's own
+  `[di] no service registered for port …`, naming the port, and that is a fork
+  defect answering `500` like any other. Reaching it takes a cast, and the two
+  routes in are closed differently — `HttpModule` checks a bound module's TYPE
+  per kind, so a kind whose module does not export what a leaf reads is refused
+  there; and under a plain `defineHttp()` api, where the bindable set carries no
+  kinds, `UnitFor` filters out **every** declared name (`ModuleOf` resolves to
+  `never`, so `InAll` is `false` for each), which makes the read a compile
+  error rather than a runtime one. It
   lives in `unit.ts` rather than in either answerer because `unit-scope.ts`
   and `htmx.ts` fork at their own sites and must agree on the record's shape:
   two copies of a lazy getter is exactly the drift `seedOf` was extracted to

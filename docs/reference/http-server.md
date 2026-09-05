@@ -126,7 +126,7 @@ gates see a plain module.
 
 | Option            | Required | Default                      | What it is                                                                                                                                                                                      |
 | ----------------- | -------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `router`          | no\*     | —                            | the application's router **provider** — a `Provider<OrpcRouterPort, E, N>`, what `api.OrpcRouter(contract)({ inject, ...arm })` returns; a provider on any other port fails at the call         |
+| `router`          | no\*     | —                            | the application's router **provider** — a `Provider<OrpcRouterPort, E, N>`, what `api.OrpcRouter(contract)({ inject, unit?, sync })` returns; a provider on any other port fails at the call    |
 | `fragments`       | no\*     | —                            | the application's fragments **provider** — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces; likewise typed to its own port                                 |
 | `prefix`          | no       | `/rpc`                       | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                                     |
 | `fragmentsPrefix` | no       | `/`                          | where htmx fragments are mounted — `htmx()`'s own default, a separate field because one cannot carry two mount points with two different defaults                                               |
@@ -955,7 +955,7 @@ hand. `HttpOptions`:
 The module **provides** `HttpRuntime`, `HttpConfig` and `HttpUnit`, exports
 `HttpRuntime` and `HttpConfig`, and **needs** `Env` (the kernel discharges it),
 the starter's router port
-(`OrpcRouterPort`, the port `api.OrpcRouter(contract)({ inject, ...arm })` provides on) and,
+(`OrpcRouterPort`, the port `api.OrpcRouter(contract)({ inject, unit?, sync })` provides on) and,
 for every kind `unit` binds, that module's own unmet needs — `Scope` excluded,
 since nothing can provide it, and the scheme's own principal port excluded too,
 since the fork seeds it —
