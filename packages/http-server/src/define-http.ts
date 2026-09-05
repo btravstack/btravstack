@@ -1,9 +1,15 @@
-import { Provider, type AnyProvider, type PortInstance } from "@btravstack/di";
+import { Provider, type AnyProvider, type PortClassOf, type PortInstance } from "@btravstack/di";
 
-import { authenticatorPort, type Authenticator, type AuthenticatorService } from "./auth.js";
+import {
+  authenticatorPort,
+  principalPort,
+  type Authenticator,
+  type AuthenticatorService,
+} from "./auth.js";
 import { controllerFor } from "./controller.js";
 import { htmxFragmentsFor, htmxRouteFor } from "./htmx-route.js";
 import { routerFor } from "./orpc.js";
+import type { UnitsOf } from "./unit.js";
 
 /** The authenticators an application declares, keyed by scheme name. */
 export type Authenticators = Readonly<Record<string, Authenticator<unknown, string, unknown>>>;
@@ -39,7 +45,7 @@ type SchemeProviders<A extends Authenticators> = {
  * TS2527 (measured). Held whole, the inferred type collapses to `Http<A>`,
  * which is nameable — so an application writes no annotation at all.
  */
-export type Http<A extends Authenticators> = {
+export type Http<A extends Authenticators, Units extends UnitsOf<A> = Record<never, never>> = {
   readonly OrpcController: ReturnType<typeof controllerFor<SchemesFrom<A>>>;
   readonly OrpcRouter: ReturnType<
     typeof routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>>
@@ -53,6 +59,23 @@ export type Http<A extends Authenticators> = {
    * example needs it — `HttpModule` carries the bound providers on the router.
    */
   readonly authenticators: A;
+  /**
+   * One port per scheme carrying that scheme's principal, for a unit module to
+   * name in `needs` and inject.
+   */
+  readonly principals: Principals<A>;
+  /**
+   * The second step: the SAME object, retyped by the module each kind binds.
+   * A kind the authenticators never declared is refused here.
+   */
+  readonly units: <U extends UnitsOf<A>>() => Http<A, U>;
+  /** Phantom: `Units` is read by the piece factories' leaf typing, never at runtime. */
+  readonly _units?: Units;
+};
+
+/** One port per scheme, typed by the principal that scheme's authenticator declared. */
+export type Principals<A extends Authenticators> = {
+  readonly [K in keyof A & string]: PortClassOf<`HttpPrincipal:${K}`, A[K]["principal"]>;
 };
 
 /**
@@ -80,14 +103,19 @@ export const defineHttp = <const A extends Authenticators = Record<never, never>
     bind(scheme, authenticator),
   );
   const routes = htmxRouteFor<SchemesFrom<A>, VocabFrom<A>>();
-  return {
+  const http: Http<A> = {
     OrpcController: controllerFor<SchemesFrom<A>>(),
     OrpcRouter: routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>>(providers as never),
     HtmxFragments: htmxFragmentsFor<SchemeProviders<A>>(providers as never),
     HtmxGet: routes.HtmxGet,
     HtmxPost: routes.HtmxPost,
     authenticators: declared as A,
+    principals: Object.fromEntries(
+      Object.keys(declared).map((scheme) => [scheme, principalPort(scheme)]),
+    ) as Principals<A>,
+    units: () => http as never,
   };
+  return http;
 };
 
 /** The description `HttpAuthenticator` held, bound now that the scheme NAME exists to mint a port from. */

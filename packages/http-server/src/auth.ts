@@ -104,6 +104,27 @@ export const authenticatorPort = <const S extends string>(
 };
 
 /**
+ * One port per scheme carrying that scheme's PRINCIPAL, so a unit module the
+ * kind binds may name it in `needs` and inject the caller it was opened for.
+ * Minted from the scheme name alone — the seed lands on it per unit.
+ *
+ * Memoised on the same map as {@link authenticatorPort}, and for the same
+ * reason: `defineHttp` mints, a unit module depends, and a second `Port(id)`
+ * call would cost di's duplicate-id warning for what is the designed pattern.
+ */
+export const principalPort = <const S extends string, P = unknown>(
+  scheme: S,
+): PortClassOf<`HttpPrincipal:${S}`, P> => {
+  const id = `HttpPrincipal:${scheme}` as const;
+  const existing = ports.get(id);
+  if (existing !== undefined) return existing as never;
+  // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
+  const minted = class extends Port(id)<P> {};
+  ports.set(id, minted);
+  return minted as never;
+};
+
+/**
  * What `HttpAuthenticator` hands back: a description `defineHttp` binds to a
  * port once the scheme name is known, carrying its principal and scope types
  * so the registry can be inferred rather than declared.

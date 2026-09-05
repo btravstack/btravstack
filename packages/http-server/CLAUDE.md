@@ -743,6 +743,48 @@ URLSearchParams(...))`, which keeps only the LAST value for a repeated key.**
   the throw at the boundary that demands one. `UnderScoped` is the `403` case,
   distinct from `Unauthenticated`'s `401`.
 
+### Unit kinds: `auth.principals` and `auth.units<…>()`
+
+A unit is opened under a KIND — `anonymous`, or the scheme that resolved a
+credential — and a kind binds a `Module` whose providers may inject the caller
+the unit was opened for. Two members on `Http<A>` carry that:
+
+```ts
+export const auth = defineHttp({ authenticators: { user: userAuth } });
+// `auth.principals.user` is a port carrying `userAuth`'s own principal type.
+
+export const api = auth.units<{ anonymous: typeof Anonymous; user: typeof User }>();
+```
+
+- **`principals`** is one port per declared scheme, minted by `principalPort`
+  on the same memoising map as `authenticatorPort` and typed by the principal
+  that scheme's authenticator declared. It is a PORT, not a value: a unit
+  module names it in `needs` and injects it, and the seed lands on it per unit.
+- **`units<U>()` is a SECOND step, and that is the whole design.** A unit
+  module names `auth.principals.<scheme>` in its own `needs`, so its type
+  depends on `typeof auth`; if `auth` in turn depended on the modules the kinds
+  bind, the two would be mutually recursive and TypeScript reports TS7022 —
+  `auth` implicitly `any` because it references itself. Splitting the call in
+  two breaks the loop: **`typeof auth` depends on the authenticators ALONE**,
+  and the modules arrive on a call that only retypes what already exists.
+  Nothing is rebuilt — `units` hands back the very same object
+  (`define-http.spec.ts` pins the identity), so the factories on it are the
+  ones the first step built. Do not fold `Units` into `defineHttp`'s own type
+  parameters.
+- **`UnitsOf<A>` is `Partial<Record<Kinds<A>, AnyUnitModule>>` — deliberately a
+  WEAK type.** A type argument gets no excess-property check, so a kind the
+  authenticators never declared would pass a plain structural test; every
+  member being optional is what makes TypeScript refuse it for having no
+  property in common instead. `Kinds<A>` is `"anonymous" | (keyof A & string)`,
+  so `defineHttp()` with no authenticators has exactly one kind.
+- **`Units` is a phantom on `Http<A, Units>`** (`_units?: Units`), read by the
+  piece factories' leaf typing and never at runtime. Without the field
+  TypeScript erases the parameter and `Http<A, U>` collapses back to `Http<A>`.
+
+`unit.ts` is where `AnyUnitModule`, `UnitNeedsOf`, `Kinds` and `UnitsOf` live;
+`http-runtime.ts` re-exports the first two, so the sibling starters that
+declare their own copies and `http-module.ts`'s import path are untouched.
+
 ## The two authenticators that ship
 
 The seam was here and none of the implementations were, so every application

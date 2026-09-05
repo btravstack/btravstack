@@ -102,6 +102,17 @@ The two rules this half exists to state, before the detail:
   through a returned function's `AsyncResult` is exactly where a principal
   silently widens to `unknown`.
 
+  **A principal is now a PORT too.** `principalPort(scheme)` mints
+  ``Port(`HttpPrincipal:${scheme}`)<P>`` on the **same memoising map**, for the
+  same reason: `defineHttp` mints one per declared scheme and a unit module
+  depends on it, which is the designed two-call pattern rather than the
+  duplicate declaration di's warning exists to catch. It is what lets a
+  per-request module name the caller it was opened for in its own `needs` —
+  the scheme name is on the port **id**, so `HttpPrincipal:user` and
+  `HttpPrincipal:service` are different types and a module needing one is met
+  only by a unit opened under that scheme. Exported for the same consumer
+  `authenticatorPort` is: a test seeding one scheme's principal by hand.
+
   **The empty parens are TypeScript's, not a style choice, and the alternative
   was measured.** Type arguments are all-or-nothing per call: naming `P` and
   `Scope` on a single-call form means `D` — the `inject` record — stops being
@@ -202,7 +213,8 @@ The two rules this half exists to state, before the detail:
   dependency and no framework opinion, which is the right size for it.
 
 - **`defineHttp({ authenticators })` → `Http<A>`, carrying `OrpcController`,
-  `OrpcRouter` and `authenticators`** (`define-http.ts`) — **the one door** to
+  `OrpcRouter`, `authenticators`, `principals` and `units`** (`define-http.ts`)
+  — **the one door** to
   the marker-typed entities, and the place a scheme registry is stated.
   **The contract says which schemes protect a route; this says what each one
   resolves to.** `SchemesFrom<A>` reads the registry off the authenticators
@@ -230,6 +242,13 @@ The two rules this half exists to state, before the detail:
   inferred type collapses to `Http<A>`, which is nameable — so an application
   writes **no type annotation at all**, and the three `…Of<Identity>` aliases
   the previous factory needed are gone with the annotations they existed for.
+  **`principals` and `units<U>()`** are the unit-kinds half: one principal port
+  per declared scheme, and a second call that retypes the same object by the
+  module each kind binds. The two steps exist because a unit module names
+  `auth.principals.<scheme>` in its `needs`, so folding the kinds into
+  `defineHttp` itself would make `auth` reference its own type — TS7022. The
+  reasoning and the `UnitsOf` weak-type rule are in
+  `packages/http-server/CLAUDE.md`.
   At runtime the call binds one provider per scheme —
   `Provider(authenticatorPort(scheme))(options)`, the very options object
   `HttpAuthenticator` held on to — and hands them to
