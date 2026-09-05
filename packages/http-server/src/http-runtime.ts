@@ -379,7 +379,7 @@ const listen = (
                   end(response, 404, "NotFound");
                   return closedOf(response);
                 }
-                void answer(answerer.handle(request, response, unit, signal), response);
+                void answer(answerer.handle(request, response, signal, unit), response);
                 // The unit's lifetime IS the response's, which is what makes the
                 // kernel's "flush inside the unit" contract structural here.
                 return closedOf(response);

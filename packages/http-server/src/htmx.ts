@@ -38,7 +38,7 @@ export const htmx = (options: HtmxOptions = {}) => {
     inject: { fragments: HtmxFragmentsPort, config: HttpConfig, unit: HttpUnit },
     sync: ({ fragments, config, unit }) => ({
       prefix,
-      handle: (request, response, host, _signal) =>
+      handle: (request, response, _signal, host) =>
         respond(
           fragments.routes,
           fragments.authenticators,

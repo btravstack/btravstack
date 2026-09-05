@@ -868,8 +868,9 @@ subpath**, so a consumer that never imports it installs neither.
   internal is the oRPC answerer's own wiring: `orpc.ts`'s `orpc({ prefix })` is
   a `Provider.member(HttpHandler)({ router: OrpcRouterPort, config: HttpConfig
 }, …)` answering `{ prefix, handle }`, where `handle` is `@orpc/server/node`'s
-  `RPCHandler` — `(request, response) => rpc.handle(request, response, {
-prefix })`, unmatched → resolves unwritten. `handle` returns
+  `RPCHandler` — `(request, response, _signal, host) => rpc.handle(request,
+response, { prefix, context: { request, host } })`, unmatched → resolves
+  unwritten. `handle` returns
   `PromiseLike<unknown>` rather than `void` because the package must know when
   an answerer is finished to write a `404` over a declined request without
   racing a response still in flight; `unknown` because oRPC's `handle` resolves

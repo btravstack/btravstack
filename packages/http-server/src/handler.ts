@@ -33,8 +33,8 @@ export type HttpAnswerer = {
   readonly handle: (
     request: IncomingMessage,
     response: ServerResponse,
-    host: UnitHost<never>,
     signal: AbortSignal,
+    host: UnitHost<never>,
   ) => PromiseLike<unknown>;
 };
 

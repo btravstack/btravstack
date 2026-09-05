@@ -170,7 +170,7 @@ export const orpc = (options: OrpcOptions = {}) => {
         prefix,
         // The request and the unit host both ride oRPC's initial context:
         // `principalMiddleware` reads the former, `unitScope` the latter.
-        handle: (request, response, host) =>
+        handle: (request, response, _signal, host) =>
           rpc.handle(request, response, { prefix, context: { request, host } }),
       };
     },

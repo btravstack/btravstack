@@ -245,8 +245,8 @@ describe("htmx", () => {
     const handled = answerer.handle(
       request,
       response,
-      {} as unknown as UnitHost<never>,
       new AbortController().signal,
+      {} as unknown as UnitHost<never>,
     );
     request.emit("error", new Error("stream boom"));
 
@@ -285,8 +285,8 @@ describe("htmx", () => {
     const handled = answerer.handle(
       request,
       response,
-      {} as unknown as UnitHost<never>,
       new AbortController().signal,
+      {} as unknown as UnitHost<never>,
     );
     fakeRequest.destroyed = true;
 
