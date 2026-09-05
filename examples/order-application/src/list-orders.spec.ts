@@ -13,16 +13,16 @@ const B = "0199a1e0-0000-7000-8000-00000000000b";
 const C = "0199a1e0-0000-7000-8000-00000000000c";
 
 describe("ListOrders", () => {
-  it("answers one page and the cursor that continues it", async ({ testModule }) => {
+  it("answers one page and the cursor that continues it", async ({ scopeFor }) => {
     // GIVEN three orders placed for one tenant
     // WHEN two are asked for
-    const result = await Module.scoped(testModule, (ctx) =>
+    const result = await Module.scoped(scopeFor(ACME), (ctx) =>
       ctx
         .get(PlaceOrder)
-        .execute(ACME, A, 1)
-        .flatMap(() => ctx.get(PlaceOrder).execute(ACME, B, 5))
-        .flatMap(() => ctx.get(PlaceOrder).execute(ACME, C, 9))
-        .flatMap(() => ctx.get(ListOrders).execute(ACME, { limit: 2 })),
+        .execute(A, 1)
+        .flatMap(() => ctx.get(PlaceOrder).execute(B, 5))
+        .flatMap(() => ctx.get(PlaceOrder).execute(C, 9))
+        .flatMap(() => ctx.get(ListOrders).execute({ limit: 2 })),
     );
 
     // THEN the page is full, and it hands back A cursor for the rest — the one
@@ -37,19 +37,19 @@ describe("ListOrders", () => {
     });
   });
 
-  it("closes the listing with no cursor at all on the last page", async ({ testModule }) => {
+  it("closes the listing with no cursor at all on the last page", async ({ scopeFor }) => {
     // GIVEN the same three orders
     // WHEN the page after the first page's own cursor is asked for — round
     // tripped rather than spelled, which is how a caller uses it
-    const result = await Module.scoped(testModule, (ctx) =>
+    const result = await Module.scoped(scopeFor(ACME), (ctx) =>
       ctx
         .get(PlaceOrder)
-        .execute(ACME, A, 1)
-        .flatMap(() => ctx.get(PlaceOrder).execute(ACME, B, 5))
-        .flatMap(() => ctx.get(PlaceOrder).execute(ACME, C, 9))
-        .flatMap(() => ctx.get(ListOrders).execute(ACME, { limit: 2 }))
+        .execute(A, 1)
+        .flatMap(() => ctx.get(PlaceOrder).execute(B, 5))
+        .flatMap(() => ctx.get(PlaceOrder).execute(C, 9))
+        .flatMap(() => ctx.get(ListOrders).execute({ limit: 2 }))
         .flatMap((page) =>
-          ctx.get(ListOrders).execute(ACME, {
+          ctx.get(ListOrders).execute({
             limit: 2,
             ...(page.hasNextPage ? { after: page.nextCursor } : {}),
           }),
@@ -66,24 +66,24 @@ describe("ListOrders", () => {
     });
   });
 
-  it("pages backward from the cursor a page handed back", async ({ testModule }) => {
+  it("pages backward from the cursor a page handed back", async ({ scopeFor }) => {
     // GIVEN three orders, and the second page taken by following `nextCursor`
     // WHEN the page BEFORE that one is asked for
-    const result = await Module.scoped(testModule, (ctx) =>
+    const result = await Module.scoped(scopeFor(ACME), (ctx) =>
       ctx
         .get(PlaceOrder)
-        .execute(ACME, A, 1)
-        .flatMap(() => ctx.get(PlaceOrder).execute(ACME, B, 5))
-        .flatMap(() => ctx.get(PlaceOrder).execute(ACME, C, 9))
-        .flatMap(() => ctx.get(ListOrders).execute(ACME, { limit: 2 }))
+        .execute(A, 1)
+        .flatMap(() => ctx.get(PlaceOrder).execute(B, 5))
+        .flatMap(() => ctx.get(PlaceOrder).execute(C, 9))
+        .flatMap(() => ctx.get(ListOrders).execute({ limit: 2 }))
         .flatMap((page) =>
-          ctx.get(ListOrders).execute(ACME, {
+          ctx.get(ListOrders).execute({
             limit: 2,
             ...(page.hasNextPage ? { after: page.nextCursor } : {}),
           }),
         )
         .flatMap((page) =>
-          ctx.get(ListOrders).execute(ACME, {
+          ctx.get(ListOrders).execute({
             limit: 2,
             ...(page.hasPreviousPage ? { before: page.previousCursor } : {}),
           }),
@@ -101,16 +101,16 @@ describe("ListOrders", () => {
     });
   });
 
-  it("applies the filter", async ({ testModule }) => {
+  it("applies the filter", async ({ scopeFor }) => {
     // GIVEN three orders of different sizes
     // WHEN only the large ones are asked for
-    const result = await Module.scoped(testModule, (ctx) =>
+    const result = await Module.scoped(scopeFor(ACME), (ctx) =>
       ctx
         .get(PlaceOrder)
-        .execute(ACME, A, 1)
-        .flatMap(() => ctx.get(PlaceOrder).execute(ACME, B, 5))
-        .flatMap(() => ctx.get(PlaceOrder).execute(ACME, C, 9))
-        .flatMap(() => ctx.get(ListOrders).execute(ACME, { limit: 10, minQuantity: 5 })),
+        .execute(A, 1)
+        .flatMap(() => ctx.get(PlaceOrder).execute(B, 5))
+        .flatMap(() => ctx.get(PlaceOrder).execute(C, 9))
+        .flatMap(() => ctx.get(ListOrders).execute({ limit: 10, minQuantity: 5 })),
     );
 
     // THEN the small one is not in the page
@@ -121,19 +121,22 @@ describe("ListOrders", () => {
     });
   });
 
-  it("never pages across tenants", async ({ testModule }) => {
-    // GIVEN one order for each of two tenants
+  it("never pages across tenants", async ({ scopeFor }) => {
+    // GIVEN one order for each of two tenants, over the one store
     // WHEN one tenant lists
-    const result = await Module.scoped(testModule, (ctx) =>
-      ctx
-        .get(PlaceOrder)
-        .execute(ACME, A, 1)
-        .flatMap(() => ctx.get(PlaceOrder).execute(OTHER, B, 5))
-        .flatMap(() => ctx.get(ListOrders).execute(ACME, { limit: 10 })),
+    const result = await Module.scoped(scopeFor(OTHER), (ctx) =>
+      ctx.get(PlaceOrder).execute(B, 5),
+    ).flatMap(() =>
+      Module.scoped(scopeFor(ACME), (ctx) =>
+        ctx
+          .get(PlaceOrder)
+          .execute(A, 1)
+          .flatMap(() => ctx.get(ListOrders).execute({ limit: 10 })),
+      ),
     );
 
-    // THEN it sees its own and nothing else — the tenant is a parameter of the
-    // port, so the other tenant's page is not a request this can express
+    // THEN it sees its own and nothing else — the scope names the tenant, so
+    // the other tenant's page is not a request this can express
     expect(result).toBeOkWith({
       items: [expect.objectContaining({ id: A })],
       hasPreviousPage: false,
@@ -141,14 +144,14 @@ describe("ListOrders", () => {
     });
   });
 
-  it("refuses a cursor naming no order", async ({ testModule }) => {
+  it("refuses a cursor naming no order", async ({ scopeFor }) => {
     // GIVEN one order placed
     // WHEN a page is asked for after a cursor the listing never issued
-    const result = await Module.scoped(testModule, (ctx) =>
+    const result = await Module.scoped(scopeFor(ACME), (ctx) =>
       ctx
         .get(PlaceOrder)
-        .execute(ACME, A, 1)
-        .flatMap(() => ctx.get(ListOrders).execute(ACME, { limit: 2, after: "invented" })),
+        .execute(A, 1)
+        .flatMap(() => ctx.get(ListOrders).execute({ limit: 2, after: "invented" })),
     );
 
     // THEN it is the modeled error carrying the offending string, not the first

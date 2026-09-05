@@ -5,10 +5,10 @@ rules into operations — "place an order", "find an order" — and declares, as
 `@btravstack/di` ports, what it needs the outside world to supply.
 
 ```text
-src/ports.ts          OrderRepository, CustomerRepository, Outbox, StockService, ShippingService, PaymentService, PlaceOrder, FindOrder, FindCustomer
+src/ports.ts          Tenant, OrderRepository, CustomerRepository, Outbox, StockService, ShippingService, PaymentService, PlaceOrder, FindOrder, FindCustomer
 src/use-cases.ts      the interactors, and their providers
-src/module.ts         OrderApplicationModule, CustomerApplicationModule
-src/__tests__/test-fixtures.ts  the stub repositories and TestModule, as Vitest fixtures
+src/module.ts         OrderApplicationModule, CustomerApplicationModule, tenantOf
+src/__tests__/test-fixtures.ts  the stub repositories and the per-tenant scope, as Vitest fixtures
 ```
 
 ## The port is declared by the caller, not the adapter
@@ -24,6 +24,13 @@ export class OrderRepository extends Port("OrderRepository")<{
 error channel is spelled in the _domain's_ vocabulary — `DuplicateOrder`, not a
 Postgres `23505` or a Prisma `P2002` — so an adapter's job is to translate into
 these terms, and no database code can widen what the use cases have to handle.
+
+No method names a tenant, and that is the layer's own design rather than the
+framework's: `Tenant` is a port the unit provides, so the repository a call
+reaches was already built for one tenant and a caller has no slot to name
+another. `CustomerRepository` keeps its `tenantId` parameter, because the
+unmarked `customers` procedures open an anonymous unit — no principal, so no
+tenant to take — and the caller names it on the input instead.
 
 `CustomerRepository` is the same declaration for the customers vertical, and
 read-only: nothing in this application registers a customer, so the port says
@@ -45,6 +52,7 @@ provides it.
 
 ```ts
 export const OrderApplicationModule = Module("OrderApplication")({
+  needs: [OrderRepository, Logger, Tenant],
   provides: [placeOrderProvider, findOrderProvider],
   exports: [PlaceOrder, FindOrder],
 });
@@ -55,8 +63,8 @@ export const CustomerApplicationModule = Module("CustomerApplication")({
 });
 ```
 
-The interactors depend on `OrderRepository` and `CustomerRepository`, and
-nothing here provides either, so di propagates each as an unmet _need_ of the
+The interactors depend on `OrderRepository`, `Tenant` and `CustomerRepository`,
+and nothing here provides any of them, so di propagates each as an unmet _need_ of the
 module that has it. `Logger` is a need of the orders half only — `PlaceOrder`
 writes a line and nothing in the customers vertical does — and it is one for
 the same reason from the other direction: it is `@btravstack/observability`'s
@@ -83,26 +91,29 @@ provides stub repositories from a module declared alongside the spec, and
 injects it as a Vitest fixture:
 
 ```ts
-const testModuleWith = (sink: Sink) =>
-  Module("Test")({
+const scopeWith = (rows: Store, sink: Sink) => (tenantId: TenantId) =>
+  Module("Scope")({
     imports: [
+      tenantOf(tenantId),
       OrderApplicationModule,
       CustomerApplicationModule,
       observability({ sink, level: "trace" }),
     ],
     provides: [
-      stubRepository,
+      stubRepositoryFor(rows, tenantId),
       stubCustomerRepository,
       Provider(Env)({ inject: {}, value: {} }),
     ],
-    exports: [PlaceOrder, FindOrder, FindCustomer],
+    exports: [PlaceOrder, FindOrder, ListOrders, FindCustomer],
   });
 ```
 
-Nine specs cover placement, persistence, the duplicate path, the domain rule,
-the malformed id, the tenant boundary, the log line and both arms of the
-customer lookup — with no Prisma, no HTTP and
-no kernel booted. `observability()`
+It is the shape a deployment's unit module has — the tenant provided once, the
+vertical composed over it — and the store outlives the scope, so an isolation
+spec opens two scopes over one store and asserts across them. The specs cover
+placement, persistence, the duplicate path, the domain rule, the malformed id,
+the tenant boundary, the log line and both arms of the customer lookup — with
+no Prisma, no HTTP and no kernel booted. `observability()`
 binds its level from the `Env` port `start` normally provides, so a kernel-free
 spec provides an empty one itself; the `sink` is the seam a spec reads lines
 back through.
@@ -110,7 +121,7 @@ back through.
 ## Logging is attributes, not sentences
 
 ```ts
-this.#logger.info("placing an order", { tenantId, orderId: id, quantity });
+this.#logger.info("placing an order", { tenantId: this.#tenant, orderId: id, quantity });
 ```
 
 The message is a constant and the ids are fields, which is what makes a line

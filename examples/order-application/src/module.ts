@@ -1,5 +1,6 @@
 import { Logger } from "@btravstack/core";
-import { Module } from "@btravstack/di";
+import { Module, Provider } from "@btravstack/di";
+import type { TenantId } from "@btravstack/example-order-domain";
 
 import {
   CustomerRepository,
@@ -8,6 +9,7 @@ import {
   ListOrders,
   OrderRepository,
   PlaceOrder,
+  Tenant,
 } from "./ports.js";
 import {
   findCustomerProvider,
@@ -23,8 +25,8 @@ import {
  * The layer is a package, the module is a slice of it, and the difference is
  * what a consumer is made to depend on.
  *
- * `OrderRepository` and `Logger` are `needs`, not `provides`: the interactors
- * depend on them and nothing here satisfies them, so
+ * `OrderRepository`, `Logger` and `Tenant` are `needs`, not `provides`: the
+ * interactors depend on them and nothing here satisfies them, so
  * `Module.scoped(OrderApplicationModule, …)` does not compile — an importing
  * module must provide them first. That refusal is the layering, enforced by the
  * compiler rather than by convention, and the split sharpened it: each
@@ -36,7 +38,7 @@ import {
  * with whatever unit the runtime opened.
  */
 export const OrderApplicationModule = Module("OrderApplication")({
-  needs: [OrderRepository, Logger],
+  needs: [OrderRepository, Logger, Tenant],
   provides: [placeOrderProvider, findOrderProvider, listOrdersProvider],
   exports: [PlaceOrder, FindOrder, ListOrders],
 });
@@ -53,3 +55,10 @@ export const CustomerApplicationModule = Module("CustomerApplication")({
   provides: [findCustomerProvider],
   exports: [FindCustomer],
 });
+
+/** The tenant as a module, for a spec or a hand-composed scope. */
+export const tenantOf = (tenant: TenantId) =>
+  Module("Tenant")({
+    provides: [Provider(Tenant)({ inject: {}, value: tenant })],
+    exports: [Tenant],
+  });
