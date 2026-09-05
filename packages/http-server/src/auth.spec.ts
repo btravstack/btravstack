@@ -339,6 +339,30 @@ describe("a leaf naming several requirements", () => {
     expect(resolved).toBeErrTagged("UnderScoped");
   });
 
+  it("answers one scheme's identity bare, and a two-scheme walk's tagged", async ({ headers }) => {
+    // GIVEN one endpoint naming a single scheme and one naming two, over the
+    // same accepting authenticators
+    const authenticators = {
+      user: () => OkAsync({ userId: "u-1" }),
+      service: () => OkAsync({ appId: "a-1" }),
+    };
+
+    // WHEN each is resolved
+    const resolved = await resolvePrincipal([{ user: [] }], authenticators, headers).flatMap(
+      (bare) =>
+        resolvePrincipal([{ user: [] }, { service: [] }], authenticators, headers).map(
+          (tagged) => ({ bare, tagged }),
+        ),
+    );
+
+    // THEN the single-scheme walk hands the identity through unwrapped and the
+    // two-scheme walk names the scheme that answered
+    expect(resolved).toBeOkWith({
+      bare: { userId: "u-1" },
+      tagged: { scheme: "user", identity: { userId: "u-1" } },
+    });
+  });
+
   it("does not fall through to the next requirement on a defect", async ({ headers }) => {
     // GIVEN a first scheme whose authenticator is buggy and a second that accepts
     const boom = new Error("verifier exploded");

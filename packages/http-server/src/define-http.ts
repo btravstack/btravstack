@@ -107,16 +107,20 @@ export const defineHttp = <const A extends Authenticators = Record<never, never>
     bind(scheme, authenticator),
   );
   const routes = htmxRouteFor<SchemesFrom<A>, VocabFrom<A>>();
+  const principals = Object.fromEntries(
+    Object.keys(declared).map((scheme) => [scheme, principalPort(scheme)]),
+  );
   const http: Http<A> = {
     OrpcController: controllerFor<SchemesFrom<A>>(),
-    OrpcRouter: routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>>(providers as never),
-    HtmxFragments: htmxFragmentsFor<SchemeProviders<A>>(providers as never),
+    OrpcRouter: routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>>(
+      providers as never,
+      principals,
+    ),
+    HtmxFragments: htmxFragmentsFor<SchemeProviders<A>>(providers as never, principals),
     HtmxGet: routes.HtmxGet,
     HtmxPost: routes.HtmxPost,
     authenticators: declared as A,
-    principals: Object.fromEntries(
-      Object.keys(declared).map((scheme) => [scheme, principalPort(scheme)]),
-    ) as Principals<A>,
+    principals: principals as Principals<A>,
     units: () => http as never,
   };
   return http;

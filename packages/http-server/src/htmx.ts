@@ -1,15 +1,16 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { UnitHost } from "@btravstack/core";
-import { Provider } from "@btravstack/di";
+import { Provider, type AnyPort } from "@btravstack/di";
 import { Err, Ok, P, fromExecutor, type AsyncResult } from "unthrown";
 
-import { resolvePrincipal, type AuthenticatorService } from "./auth.js";
+import { principalOf, resolveScheme, type AuthenticatorService, type Resolved } from "./auth.js";
 import { matchPath } from "./fragments.js";
 import { HttpHandler } from "./handler.js";
 import { HtmxFragmentsPort, type FragmentAnswer } from "./htmx-route.js";
 import { HttpConfig } from "./http-config.js";
 import { HttpUnit, type AnyUnitModule } from "./http-runtime.js";
+import { seedOf } from "./unit-scope.js";
 
 export type HtmxOptions = {
   /** Where fragments are mounted. Default `/`. */
@@ -47,7 +48,8 @@ export const htmx = (options: HtmxOptions = {}) => {
           request,
           response,
           host,
-          unit.anonymous,
+          unit,
+          fragments.principals,
         ),
     }),
   });
@@ -139,7 +141,8 @@ const respond = async (
   request: IncomingMessage,
   response: ServerResponse,
   host: UnitHost<never>,
-  anonymous: AnyUnitModule | undefined,
+  units: Readonly<Record<string, AnyUnitModule>>,
+  principals: Readonly<Record<string, AnyPort>>,
 ): Promise<void> => {
   const matched = matchRoute(routes, request.method, relativePath(request.url, prefix));
   // No route claims this request: resolve unwritten so the runtime's own 404
@@ -148,10 +151,11 @@ const respond = async (
   const { route, params } = matched;
 
   let principal: unknown;
+  let authenticated: Resolved | undefined;
   if (route.requirements !== undefined) {
-    // Exhaustive on `resolvePrincipal`'s Err union: a third case added there
+    // Exhaustive on `resolveScheme`'s Err union: a third case added there
     // fails this compile rather than silently falling through to 401.
-    const resolved = await resolvePrincipal(
+    const resolved = await resolveScheme(
       route.requirements,
       authenticators,
       request.headers,
@@ -168,7 +172,8 @@ const respond = async (
       refuse(response, resolved.error);
       return;
     }
-    principal = resolved.value;
+    authenticated = resolved.value;
+    principal = principalOf(route.requirements, resolved.value);
   }
 
   let input: unknown = {};
@@ -200,12 +205,13 @@ const respond = async (
   // request never opens a scope: the same point in the request's life oRPC's
   // own `unitScope` forks at, since `principalMiddleware` short-circuits
   // without calling `next()` on a refusal, and `unitScope` sits inside it.
-  if (anonymous !== undefined) {
+  const module = units[authenticated?.scheme ?? "anonymous"];
+  if (module !== undefined) {
     // `as never`: see `unit-scope.ts`'s own comment on the identical cast —
     // `AnyUnitModule` erases the module's Needs to `unknown`, which `fork`'s
     // `DependencyGate` can never clear on its own; the check already ran once,
-    // at the `Unit`-generic call site that bound this module.
-    const scope = await host.fork(anonymous as never, []);
+    // at the `Units`-generic call site that bound this module.
+    const scope = await host.fork(module as never, seedOf(principals, authenticated));
     if (scope.isDefect()) {
       refuse(response, 500);
       return;

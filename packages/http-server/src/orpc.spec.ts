@@ -1,5 +1,5 @@
 import { CORSHandlerPlugin } from "@orpc/server/plugins";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
 
@@ -228,5 +228,56 @@ describe("http, over a router", () => {
     // THEN the fork's defect reaches the caller as the runtime's own 500,
     // never a hung request
     expect(response.status).toBe(500);
+  });
+});
+
+describe("unit kinds", () => {
+  it("forks the user module, seeded with the principal, for a marked leaf", async ({
+    kindedRpc,
+  }) => {
+    // GIVEN a router binding both kinds
+    const { clientWith, counts, seen } = await kindedRpc.serve(["anonymous", "user"]);
+
+    // WHEN a MARKED procedure is called with a credential the scheme accepts
+    await clientWith("good").orders.whoami({ id: "o-1" });
+    await vi.waitUntil(() => counts().user.stops === 1);
+
+    // THEN only the user kind was opened, seeded with what its scheme resolved
+    expect({ user: counts().user, anonymous: counts().anonymous, seen: seen() }).toEqual({
+      user: { builds: 1, stops: 1 },
+      anonymous: { builds: 0, stops: 0 },
+      seen: [{ tenantId: "t-good", userId: "u-good" }],
+    });
+  });
+
+  it("forks anonymous, with no seed, for an unmarked leaf", async ({ kindedRpc }) => {
+    // GIVEN the same router binding both kinds
+    const { clientWith, counts, seen } = await kindedRpc.serve(["anonymous", "user"]);
+
+    // WHEN an UNMARKED procedure is called, credential or not
+    await clientWith("good").health.ping();
+    await vi.waitUntil(() => counts().anonymous.stops === 1);
+
+    // THEN the anonymous kind was opened and nothing was seeded
+    expect({ anonymous: counts().anonymous, user: counts().user, seen: seen() }).toEqual({
+      anonymous: { builds: 1, stops: 1 },
+      user: { builds: 0, stops: 0 },
+      seen: [],
+    });
+  });
+
+  it("forks nothing for a kind with no module bound", async ({ kindedRpc }) => {
+    // GIVEN a router binding `anonymous` alone
+    const { clientWith, counts } = await kindedRpc.serve(["anonymous"]);
+
+    // WHEN a marked procedure resolves the `user` scheme, which binds nothing
+    const answer = await clientWith("good").orders.whoami({ id: "o-1" });
+
+    // THEN neither kind was opened — there is no fallback to anonymous — and
+    // the request was still answered
+    expect({ answer, counts: counts() }).toEqual({
+      answer: { userId: "u-good" },
+      counts: { anonymous: { builds: 0, stops: 0 }, user: { builds: 0, stops: 0 } },
+    });
   });
 });

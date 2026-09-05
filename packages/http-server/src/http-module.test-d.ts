@@ -8,6 +8,7 @@ import { Module, Port, Provider } from "@btravstack/di";
 import { oc } from "@orpc/contract";
 import { OkAsync } from "unthrown";
 
+import { HttpAuthenticator } from "./auth.js";
 import { defineHttp } from "./define-http.js";
 import { html } from "./html.js";
 import { HttpModule } from "./http-module.js";
@@ -70,3 +71,67 @@ const _unloggedUnit = HttpModule("WithUnitUnmet")({
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides `UnitDep`, which `UnitModule` needs
 const _withUnitUnmet = start(_unloggedUnit, startOptions);
 void _withUnitUnmet;
+
+// The same gate over a SCHEME's kind, and the subtraction that makes it usable:
+// a kind's module may name its own scheme's principal port, which the fork
+// seeds — so it must NOT surface as an unmet need, while everything else the
+// module owes still must.
+const withUser = defineHttp({
+  authenticators: {
+    user: HttpAuthenticator<{ readonly userId: string }>()({
+      inject: {},
+      sync: () => () => OkAsync({ userId: "u-1" }),
+    }),
+  },
+});
+
+const UserUnitModule = Module("UserUnitTypeD")({
+  needs: [withUser.principals.user, UnitDep],
+  provides: [
+    Provider(UnitSpan)({
+      inject: { principal: withUser.principals.user, dep: UnitDep },
+      sync: ({ principal, dep }) => ({ at: principal.userId.length + dep.value }),
+    }),
+  ],
+  exports: [UnitSpan],
+});
+
+const _withKindSatisfied = start(
+  HttpModule("WithKindSatisfied")({
+    router,
+    port: 0,
+    unit: { anonymous: UnitModule, user: UserUnitModule },
+    provides: [Provider(UnitDep)({ inject: {}, value: { value: 1 } })],
+  }),
+  startOptions,
+);
+void _withKindSatisfied;
+
+const _unloggedKind = HttpModule("WithKindUnmet")({
+  router,
+  port: 0,
+  unit: { user: UserUnitModule },
+});
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: `UnitDep` still surfaces, where the seeded principal does not
+const _withKindUnmet = start(_unloggedKind, startOptions);
+void _withKindUnmet;
+
+// The subtraction on its own: a kind's module owing NOTHING but its scheme's
+// principal starts with no provider at all. Without `Exclude<…,
+// PrincipalInstance>` this line is an `UNSATISFIED DEPENDENCIES` error.
+const PrincipalOnlyUnit = Module("PrincipalOnlyUnitTypeD")({
+  needs: [withUser.principals.user],
+  provides: [
+    Provider(UnitSpan)({
+      inject: { principal: withUser.principals.user },
+      sync: ({ principal }) => ({ at: principal.userId.length }),
+    }),
+  ],
+  exports: [UnitSpan],
+});
+
+const _principalOnly = start(
+  HttpModule("PrincipalOnly")({ router, port: 0, unit: { user: PrincipalOnlyUnit } }),
+  startOptions,
+);
+void _principalOnly;

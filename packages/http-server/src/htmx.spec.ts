@@ -390,3 +390,57 @@ describe("htmx", () => {
     expect(response.status).toBe(500);
   });
 });
+
+describe("htmx unit kinds", () => {
+  it("forks the user module, seeded with the principal, for a route that requires one", async ({
+    kindedHtmx,
+  }) => {
+    // GIVEN fragments binding both kinds
+    const { origin, counts, seen } = await kindedHtmx.serve(["anonymous", "user"]);
+
+    // WHEN the route requiring `user` is fetched with a credential it accepts
+    await fetch(`${origin}/kinded/private`, { headers: { authorization: "Bearer good" } });
+    await vi.waitUntil(() => counts().user.stops === 1);
+
+    // THEN only the user kind was opened, seeded with what its scheme resolved
+    expect({ user: counts().user, anonymous: counts().anonymous, seen: seen() }).toEqual({
+      user: { builds: 1, stops: 1 },
+      anonymous: { builds: 0, stops: 0 },
+      seen: [{ userId: "u-1" }],
+    });
+  });
+
+  it("forks anonymous, with no seed, for a route requiring nothing", async ({ kindedHtmx }) => {
+    // GIVEN the same fragments binding both kinds
+    const { origin, counts, seen } = await kindedHtmx.serve(["anonymous", "user"]);
+
+    // WHEN the public route is fetched, credential or not
+    await fetch(`${origin}/kinded/public`, { headers: { authorization: "Bearer good" } });
+    await vi.waitUntil(() => counts().anonymous.stops === 1);
+
+    // THEN the anonymous kind was opened and nothing was seeded
+    expect({ anonymous: counts().anonymous, user: counts().user, seen: seen() }).toEqual({
+      anonymous: { builds: 1, stops: 1 },
+      user: { builds: 0, stops: 0 },
+      seen: [],
+    });
+  });
+
+  it("forks nothing for a kind with no module bound", async ({ kindedHtmx }) => {
+    // GIVEN fragments binding `anonymous` alone
+    const { origin, counts } = await kindedHtmx.serve(["anonymous"]);
+
+    // WHEN the route requiring `user` resolves that scheme, which binds nothing
+    const response = await fetch(`${origin}/kinded/private`, {
+      headers: { authorization: "Bearer good" },
+    });
+
+    // THEN neither kind was opened — there is no fallback to anonymous — and
+    // the fragment was still rendered
+    expect({ status: response.status, body: await response.text(), counts: counts() }).toEqual({
+      status: 200,
+      body: "<p>private</p>",
+      counts: { anonymous: { builds: 0, stops: 0 }, user: { builds: 0, stops: 0 } },
+    });
+  });
+});

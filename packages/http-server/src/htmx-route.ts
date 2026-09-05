@@ -195,6 +195,8 @@ export type FragmentAnswer = {
 export class HtmxFragmentsPort extends Port("HtmxFragments")<{
   readonly routes: readonly FragmentAnswer[];
   readonly authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>;
+  /** One port per scheme, so `htmx()` can seed the fork it opens for the caller. */
+  readonly principals: Readonly<Record<string, AnyPort>>;
 }> {}
 
 // Namespaced so a scheme's key cannot collide with a route name the caller wrote.
@@ -221,7 +223,10 @@ const schemesInRoutes = (routes: readonly AnyRoutePiece[]): readonly string[] =>
  * collision di's duplicate-provider defect exists to catch.
  */
 export const htmxFragmentsFor =
-  <Auth extends AnyProvider = never>(authenticators: readonly Auth[]) =>
+  <Auth extends AnyProvider = never>(
+    authenticators: readonly Auth[],
+    principals: Readonly<Record<string, AnyPort>> = {},
+  ) =>
   <const T extends readonly AnyRoutePiece[]>(
     routes: T,
   ): Provider<
@@ -252,6 +257,7 @@ export const htmxFragmentsFor =
       authenticators: Object.fromEntries(
         schemes.map((scheme) => [scheme, services[`${AUTHENTICATOR}${scheme}`]]),
       ) as Readonly<Record<string, AuthenticatorService<unknown>>>,
+      principals,
     });
     return Object.assign(Provider(HtmxFragmentsPort)({ inject: deps, sync } as never), {
       authenticators,

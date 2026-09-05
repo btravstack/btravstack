@@ -594,14 +594,24 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   minted per request (a non-blank inbound `x-request-id` becomes `traceId`),
   so the two contracts a runtime owes are structural here rather than left to
   a caller's care.
-- **The fork is the answerer's, for a request it handles — not the kernel's.**
-  `http()`/`httpServer()`/`HttpModule` all take `unit?: { anonymous?: Module }`,
-  provided on `HttpUnit` (`Port("HttpUnit")<{ anonymous?: AnyUnitModule }>`,
+- **The fork is the answerer's, for a request it handles — not the kernel's,
+  and it is the KIND that decides which module.**
+  `http()`/`httpServer()`/`HttpModule` all take
+  `unit?: Readonly<Record<string, AnyUnitModule>>` — kind → module — provided
+  on `HttpUnit` (`Port("HttpUnit")<Readonly<Record<string, AnyUnitModule>>>`,
   not exported from the package — reached the same way `OrpcRouterPort` is,
-  never by name) and injected by both answerers. `orpc.ts`'s `unitScope`
-  middleware forks it on **every leaf**, installed in `routerOf` after
-  `principalMiddleware` where a leaf carries one — so a later phase can seed
-  the fork with what the principal resolved to. It runs only when oRPC's own
+  never by name) and injected by both answerers. The kind is `anonymous` for a
+  leaf that asked for no credential, else the SCHEME that resolved one:
+  `resolveScheme` reports `{ scheme, identity }` on every success, and each
+  answerer looks the module up by it. **A kind with no bound module forks
+  nothing**, and does not fall back to `anonymous` — a caller's request opening
+  the anonymous scope is the confusion the kinds exist to prevent. A scheme's
+  fork is SEEDED with `[[auth.principals[scheme], identity]]`, which is what
+  discharges a unit module's `needs: [auth.principals.user]`; the anonymous
+  fork is seeded with nothing, since there is no caller to name. `orpc.ts`'s
+  `unitScope` middleware forks on **every leaf**, installed in `routerOf` after
+  `principalMiddleware` where a leaf carries one — which is how the resolved
+  scheme reaches it, on oRPC's own context as `resolved`. It runs only when oRPC's own
   dispatch reaches the leaf: an input oRPC's own schema refuses before any
   leaf middleware runs never forks either — proved by
   `examples/order-api/src/api.spec.ts`'s "never enters the handler for a
@@ -616,19 +626,26 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   sees only a bare answerer's own synchronous throw (above). **The runtime's own
   `404` never forks** — the
   behaviour change from the kernel forking a `StartOptions.unit` module around
-  every unit, which is gone. A bound `unit.anonymous` module's own unmet needs
-  join `httpServer`'s own Needs channel, structurally, through a single
-  `Unit extends AnyUnitModule | undefined` type parameter (`AnyUnitModule =
-Module<never, never, unknown>` — `Module`'s `_exports` channel is
-  contravariant, so the bound had to be `never`, not `unknown`, for a concrete
-  module to infer against it at all; `@btravstack/testing`'s
-  `TestRuntimeOptions.unit` carries the same bound for the same reason). An
-  import's own unmet needs are not `HttpModule`'s OWN call to re-declare (di's
-  `NeedsGate` TSDoc), so they surface where any unmet need does — at
-  `start`'s own `UNSATISFIED DEPENDENCIES`, never a marker of the kernel's:
-  the module is forked over the application context, so its needs are exactly
-  what the composition root must supply.
-  `http-module.test-d.ts` pins both directions.
+  every unit, which is gone. Every bound kind's module's own unmet needs join
+  `httpServer`'s own Needs channel, structurally, through a single
+  `Units extends Readonly<Record<string, AnyUnitModule>> | undefined` type
+  parameter — **less the principal the fork seeds**, which `UnitsNeedsOf<Units>`
+  subtracts with `Exclude<…, PrincipalInstance>`, a `PortInstance` over the
+  template-literal id every principal port carries. Measured: removing that
+  `Exclude` makes `start` report
+  `UNSATISFIED DEPENDENCIES — nothing provides: "HttpPrincipal:user"`, which is
+  the whole point of the seed. (`AnyUnitModule = Module<never, never, unknown>`
+  — `Module`'s `_exports` channel is contravariant, so the bound had to be
+  `never`, not `unknown`, for a concrete module to infer against it at all;
+  `@btravstack/testing`'s `TestRuntimeOptions.unit` carries the same bound for
+  the same reason.) An import's own unmet needs are not `HttpModule`'s OWN call
+  to re-declare (di's `NeedsGate` TSDoc), so they surface where any unmet need
+  does — at `start`'s own `UNSATISFIED DEPENDENCIES`, never a marker of the
+  kernel's: the module is forked over the application context, so its needs are
+  exactly what the composition root must supply.
+  `http-module.test-d.ts` pins all three directions — a kind whose module owes
+  a port and gets it, one that does not, and one owing nothing but its scheme's
+  principal, which starts with no provider at all.
 - **Drain**: `stopAccepting` retires every open response — an unsent header
   gets `Connection: close`, a sent `text/event-stream` response is
   **destroyed** on the spot, any other sent one ends its socket on
@@ -736,12 +753,21 @@ URLSearchParams(...))`, which keeps only the LAST value for a repeated key.**
   own `404`/`500` fallback carries `application/json` — `refuse` owes the
   caller nothing beyond the status.
 
+- **`resolveScheme(requirements, authenticators, headers)`
+  → `AsyncResult<{ scheme, identity }, Unauthenticated | UnderScoped>`** — the
+  authentication walk, protocol-neutral, shared by every answerer so a scope
+  check cannot drift between protocols. It reports the SCHEME as well as the
+  identity, because the scheme is the unit kind a request opens under.
+  `UnderScoped` is the `403` case, distinct from `Unauthenticated`'s `401`.
+- **`principalOf(requirements, resolved)`** folds that to what a handler is
+  injected: the identity bare, or `{ scheme, identity }` when the endpoint
+  named more than one scheme. One decision site, so the two answerers cannot
+  drift.
 - **`resolvePrincipal(requirements, authenticators, headers)`
-  → `AsyncResult<unknown, Unauthenticated | UnderScoped>`** — the authentication
-  walk, protocol-neutral, shared by every answerer so a scope check cannot drift
-  between protocols. `principalMiddleware` is oRPC's adapter over it and keeps
-  the throw at the boundary that demands one. `UnderScoped` is the `403` case,
-  distinct from `Unauthenticated`'s `401`.
+  → `AsyncResult<unknown, Unauthenticated | UnderScoped>`** — the two composed,
+  and the shape `index.ts` exports. `principalMiddleware` is oRPC's adapter
+  over the pair and keeps the throw at the boundary that demands one; it puts
+  both `principal` and `resolved` on the context, the second for `unitScope`.
 
 ### Unit kinds: `auth.principals` and `auth.units<…>()`
 
@@ -792,9 +818,10 @@ export const api = auth.units<{ anonymous: typeof Anonymous; user: typeof User }
   piece factories' leaf typing and never at runtime. Without the field
   TypeScript erases the parameter and `Http<A, U>` collapses back to `Http<A>`.
 
-`unit.ts` is where `AnyUnitModule`, `UnitNeedsOf`, `Kinds` and `UnitsOf` live;
-`http-runtime.ts` re-exports the first two, so the sibling starters that
-declare their own copies and `http-module.ts`'s import path are untouched.
+`unit.ts` is where `AnyUnitModule`, `UnitNeedsOf`, `UnitsNeedsOf`,
+`PrincipalInstance`, `Kinds` and `UnitsOf` live; `http-runtime.ts` re-exports
+the two `http-module.ts` imports through it — knip refuses a re-export nothing
+consumes, so the rest stay reached at their own path.
 
 ## The two authenticators that ship
 

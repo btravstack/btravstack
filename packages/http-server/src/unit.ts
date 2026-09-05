@@ -1,4 +1,4 @@
-import type { Module, Scope } from "@btravstack/di";
+import type { Module, PortInstance, Scope } from "@btravstack/di";
 
 /**
  * A module a unit kind may bind, as the upper bound `httpServer`/`http`
@@ -19,6 +19,22 @@ export type AnyUnitModule = Module<never, never, unknown>;
  */
 export type UnitNeedsOf<Unit> =
   Unit extends Module<never, never, infer N> ? Exclude<N, Scope> : never;
+
+/**
+ * Any scheme's principal port, as it appears in a needs union. The seed is what
+ * discharges it — a unit module naming one owes the composition root nothing —
+ * so it is subtracted from what a bound kind's module still needs.
+ */
+export type PrincipalInstance = PortInstance<`HttpPrincipal:${string}`, unknown>;
+
+/**
+ * What a record of bound kinds still owes the composition root: every bound
+ * module's own unmet needs, less the principal the fork seeds.
+ */
+export type UnitsNeedsOf<Units> =
+  Units extends Readonly<Record<string, unknown>>
+    ? Exclude<UnitNeedsOf<Units[keyof Units]>, PrincipalInstance>
+    : never;
 
 /** Every kind a unit may be opened under: no credential, or the scheme that resolved one. */
 export type Kinds<A> = "anonymous" | (keyof A & string);

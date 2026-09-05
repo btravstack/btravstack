@@ -36,7 +36,7 @@ import {
   type RunningApp,
   type Settle,
 } from "@btravstack/core";
-import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { Module, Port, Provider, type AnyPort, type ServiceOf } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
@@ -603,6 +603,55 @@ const rpcSubstitutedAppOf = () =>
     exports: [HttpRuntime, HttpHandler],
   });
 
+class KindedAnonSpan extends Port("KindedAnonSpan")<{ readonly at: number }> {}
+class KindedUserSpan extends Port("KindedUserSpan")<{ readonly at: number }> {}
+
+/**
+ * The two kinds' modules, counting builds and stops, the `user` one recording
+ * the principal the fork seeded it with — the observable that tells "forked the
+ * right kind" from "forked at all". Fresh per call, so counts start at zero.
+ */
+const kindedUnitsOf = <P extends AnyPort>(principal: P) => {
+  const counts = {
+    anonymous: { builds: 0, stops: 0 },
+    user: { builds: 0, stops: 0 },
+  };
+  const seen: unknown[] = [];
+  const anonymous = Module("KindedAnonUnit")({
+    provides: [
+      Provider(KindedAnonSpan)({
+        inject: {},
+        sync: () => {
+          counts.anonymous.builds += 1;
+          return { at: counts.anonymous.builds };
+        },
+        onStop: () => {
+          counts.anonymous.stops += 1;
+        },
+      }),
+    ],
+    exports: [KindedAnonSpan],
+  });
+  const user = Module("KindedUserUnit")({
+    needs: [principal],
+    provides: [
+      Provider(KindedUserSpan)({
+        inject: { principal },
+        sync: ({ principal: injected }) => {
+          counts.user.builds += 1;
+          seen.push(injected);
+          return { at: counts.user.builds };
+        },
+        onStop: () => {
+          counts.user.stops += 1;
+        },
+      }),
+    ],
+    exports: [KindedUserSpan],
+  });
+  return { anonymous, user, counts: () => counts, seen: () => seen };
+};
+
 /** `Bearer ${token}`, or no credentials at all when `token` is `undefined`. */
 const linkOf = (origin: string, token: string | undefined) =>
   new RPCLink({
@@ -616,6 +665,9 @@ type AuthedClient = RouterContractClient<{
   readonly orders: { readonly whoami: typeof whoami };
   readonly health: { readonly ping: typeof ping };
 }>;
+
+/** Builds and stops, per kind. */
+type KindCounts = ReturnType<ReturnType<typeof kindedUnitsOf>["counts"]>;
 
 type RootMarkedClient = RouterContractClient<{
   readonly orders: { readonly whoami: typeof whoami };
@@ -1022,6 +1074,25 @@ const htmxRuntimeFragmentsProvider = htmxRuntimeApi.HtmxFragments([
   htmxSecureFragment,
 ]);
 
+/**
+ * One public route and one requiring `user`, both under `htmxRuntimeApi` — the
+ * pair the unit-kind tests need: an unmarked leaf opens `anonymous`, a marked
+ * one opens the scheme that resolved.
+ */
+const htmxKindedPublicFragment = htmxRuntimeApi.HtmxGet("/kinded/public")({
+  inject: {},
+  sync: () => () => OkAsync(html`<p>public</p>`),
+});
+
+const htmxKindedPrivateFragment = htmxRuntimeApi.HtmxGet("/kinded/private", {
+  requires: [{ user: [] }],
+})({ inject: {}, sync: () => () => OkAsync(html`<p>private</p>`) });
+
+const htmxKindedFragmentsProvider = htmxRuntimeApi.HtmxFragments([
+  htmxKindedPublicFragment,
+  htmxKindedPrivateFragment,
+]);
+
 const htmxRuntimeAppOf = (bodyLimit?: number) =>
   Module("HtmxRuntimeApp")({
     imports: [
@@ -1139,6 +1210,26 @@ export type HttpFixtures = {
       readonly app: App;
       readonly origin: string;
       readonly counts: () => { builds: number; stops: number };
+    }>;
+  };
+  /**
+   * The starter over a router with one MARKED and one unmarked leaf, bound to
+   * whichever kinds `serve` names — the unit-kind selection, end to end. Shut
+   * down by the fixture.
+   */
+  readonly kindedRpc: {
+    readonly serve: (kinds: readonly ("anonymous" | "user")[]) => Promise<{
+      readonly clientWith: (token: string | undefined) => AuthedClient;
+      readonly counts: () => KindCounts;
+      readonly seen: () => readonly unknown[];
+    }>;
+  };
+  /** The same over htmx fragments — one public route, one requiring `user`. */
+  readonly kindedHtmx: {
+    readonly serve: (kinds: readonly ("anonymous" | "user")[]) => Promise<{
+      readonly origin: string;
+      readonly counts: () => KindCounts;
+      readonly seen: () => readonly unknown[];
     }>;
   };
   /**
@@ -1510,6 +1601,55 @@ export const it = test.extend<HttpFixtures>({
         const info = (await app.runtimeInfo()).get();
         assert.ok(info !== undefined, "the runtime published no Serving.info");
         return { app, origin: `http://127.0.0.1:${info.port}`, counts: () => counts };
+      },
+    });
+  },
+
+  kindedRpc: async ({ boot }, use) => {
+    await use({
+      serve: async (kinds) => {
+        const units = kindedUnitsOf(api.principals.user);
+        const app = boot(
+          HttpModule("KindedRpcApp")({
+            router: authedRouter,
+            port: 0,
+            hostname: "127.0.0.1",
+            unit: Object.fromEntries(kinds.map((kind) => [kind, units[kind]])),
+            provides: [authedOrdersController, authedHealthController],
+          }),
+        );
+        const info = (await app.runtimeInfo()).get();
+        assert.ok(info !== undefined, "the runtime published no Serving.info");
+        const origin = `http://127.0.0.1:${info.port}`;
+        return {
+          clientWith: (token) => createORPCClient(linkOf(origin, token)),
+          counts: units.counts,
+          seen: units.seen,
+        };
+      },
+    });
+  },
+
+  kindedHtmx: async ({ boot }, use) => {
+    await use({
+      serve: async (kinds) => {
+        const units = kindedUnitsOf(htmxRuntimeApi.principals.user);
+        const app = boot(
+          HttpModule("KindedHtmxApp")({
+            fragments: htmxKindedFragmentsProvider,
+            port: 0,
+            hostname: "127.0.0.1",
+            unit: Object.fromEntries(kinds.map((kind) => [kind, units[kind]])),
+            provides: [htmxKindedPublicFragment, htmxKindedPrivateFragment],
+          }),
+        );
+        const info = (await app.runtimeInfo()).get();
+        assert.ok(info !== undefined, "the runtime published no Serving.info");
+        return {
+          origin: `http://127.0.0.1:${info.port}`,
+          counts: units.counts,
+          seen: units.seen,
+        };
       },
     });
   },

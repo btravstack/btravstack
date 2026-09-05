@@ -19,19 +19,19 @@ import {
   type AnyUnitModule,
   type HttpOptions,
   type HttpUnit,
-  type UnitNeedsOf,
+  type UnitsNeedsOf,
 } from "./http-runtime.js";
 import { orpc, type OrpcRouterPort } from "./orpc.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
-type HttpStarter<Unit> = Module<
+type HttpStarter<Units> = Module<
   HttpRuntime | HttpConfig | HttpHandler | HttpUnit,
   ConfigInvalid,
-  Env | UnitNeedsOf<Unit>
+  Env | UnitsNeedsOf<Units>
 >;
 
 /** The application's imports plus the starter — the tuple `Module(name)` is handed. */
-type Imports<I extends readonly AnyModule[], Unit> = readonly [...I, HttpStarter<Unit>];
+type Imports<I extends readonly AnyModule[], Units> = readonly [...I, HttpStarter<Units>];
 
 /** Whatever `api.OrpcRouter(contract)(…)` returns. */
 type AnyRouterProvider = Provider<OrpcRouterPort, unknown, unknown> & {
@@ -85,18 +85,20 @@ type ServesNothingGate<Router, Fragments> = [Router] extends [undefined]
 export type HttpModuleOptions<
   Router extends AnyRouterProvider | undefined,
   Fragments extends AnyFragmentsProvider | undefined,
-  Unit extends AnyUnitModule | undefined,
+  Units extends Readonly<Record<string, AnyUnitModule>> | undefined,
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
-  X extends readonly Exportable<Imports<I, Unit>, Provides<P, Router, Fragments>>[],
+  X extends readonly Exportable<Imports<I, Units>, Provides<P, Router, Fragments>>[],
   N extends readonly AnyPort[],
 > = Omit<HttpOptions, "unit"> & {
   /**
-   * The unit module the answerers fork around every request they handle, with
-   * no seed. Its own unmet needs join this root's — a composition that binds
-   * one owes the composition root the same way any other `needs` does.
+   * The unit module each KIND binds — `anonymous` for a request no leaf asked
+   * to authenticate, else the scheme that resolved the caller. Every bound
+   * module's own unmet needs join this root's, less the principal the fork
+   * seeds: a composition that binds one owes the composition root the same way
+   * any other `needs` does.
    */
-  readonly unit?: { readonly anonymous?: Unit };
+  readonly unit?: Units;
   /**
    * The application's oRPC router — what `api.OrpcRouter(contract)(…)` returns.
    * It carries the scheme authenticators `defineHttp` bound, which is how they
@@ -130,7 +132,7 @@ export type HttpModuleOptions<
    * over the augmented tuples below, so forgetting one is an error at THIS call.
    */
   readonly needs?: N;
-} & NeedsGate<Imports<I, Unit>, Provides<P, Router, Fragments>, N> &
+} & NeedsGate<Imports<I, Units>, Provides<P, Router, Fragments>, N> &
   ServesNothingGate<Router, Fragments>;
 
 /**
@@ -158,13 +160,13 @@ export const HttpModule =
   <
     Router extends AnyRouterProvider | undefined = undefined,
     Fragments extends AnyFragmentsProvider | undefined = undefined,
-    Unit extends AnyUnitModule | undefined = undefined,
+    Units extends Readonly<Record<string, AnyUnitModule>> | undefined = undefined,
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
-    const X extends readonly Exportable<Imports<I, Unit>, Provides<P, Router, Fragments>>[] = [],
+    const X extends readonly Exportable<Imports<I, Units>, Provides<P, Router, Fragments>>[] = [],
     const N extends readonly AnyPort[] = [],
   >(
-    options: HttpModuleOptions<Router, Fragments, Unit, I, P, X, N>,
+    options: HttpModuleOptions<Router, Fragments, Units, I, P, X, N>,
   ) => {
     const { router, fragments } = options;
     const imports = (options.imports ?? []) as I;
@@ -190,7 +192,7 @@ export const HttpModule =
     // because `HttpModuleOptions` re-declares it. Spelled out rather than
     // `as never`, which collapses the return to `Module<never, never, never>`.
     return Module(name)({
-      imports: [...imports, starter] as Imports<I, Unit>,
+      imports: [...imports, starter] as Imports<I, Units>,
       provides: [
         ...(router === undefined ? [] : [router, orpc(options)]),
         ...(fragments === undefined
@@ -214,9 +216,9 @@ export const HttpModule =
       ],
       needs: (options.needs ?? []) as N,
     } as {
-      readonly imports: Imports<I, Unit>;
+      readonly imports: Imports<I, Units>;
       readonly provides: Provides<P, Router, Fragments>;
       readonly exports: readonly [typeof HttpRuntime, typeof HttpHandler, ...X];
       readonly needs: N;
-    } & NeedsGate<Imports<I, Unit>, Provides<P, Router, Fragments>, N>);
+    } & NeedsGate<Imports<I, Units>, Provides<P, Router, Fragments>, N>);
   };

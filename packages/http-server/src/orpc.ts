@@ -242,6 +242,7 @@ type Built<Auth, N> = Provider<
 export const routerFor =
   <Schemes, Auth extends AnyProvider = never, Vocab = Record<never, never>>(
     authenticators: readonly Auth[],
+    principals: Readonly<Record<string, AnyPort>> = {},
   ) =>
   <C extends Record<string, RouterContract>>(contract: C & ScopeGate<C, Vocab>) => {
     // Walked untyped: `Implementation<C>` is the whole check, and
@@ -317,7 +318,8 @@ export const routerFor =
                 services[`${AUTHENTICATOR}${scheme}`] as AuthenticatorService<unknown>,
               ]),
             ),
-            (services[UNIT] as ServiceOf<HttpUnit> | undefined)?.anonymous,
+            (services[UNIT] as ServiceOf<HttpUnit> | undefined) ?? {},
+            principals,
           ),
         );
 
@@ -677,7 +679,8 @@ const routerOf = (
   contract: Record<string, unknown>,
   inherited: Requirements | undefined,
   authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
-  unit: AnyUnitModule | undefined,
+  units: Readonly<Record<string, AnyUnitModule>>,
+  principals: Readonly<Record<string, AnyPort>>,
 ): Record<string, unknown> =>
   Object.fromEntries(
     Object.entries(implementation).flatMap(([key, value]) => {
@@ -690,7 +693,7 @@ const routerOf = (
       if (typeof value === "function") {
         const guarded =
           effective === undefined ? node : node.use(principalMiddleware(effective, authenticators));
-        const target = guarded.use(unitScope(unit));
+        const target = guarded.use(unitScope(units, principals));
         return [[key, target.result(value)]];
       }
       return [
@@ -702,7 +705,8 @@ const routerOf = (
             (child ?? {}) as Record<string, unknown>,
             effective,
             authenticators,
-            unit,
+            units,
+            principals,
           ),
         ],
       ];
