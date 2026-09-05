@@ -78,8 +78,8 @@ one-property object, ending on the missing ports:
 to its `EventSink`; `stderrSink` writes one JSON line each. See
 [Kernel events](/reference/core/events).
 
-**kind** — Which unit module a runtime forks for one unit, and the key `unit` is a record
-of. `@btravstack/http-server` has one kind per authentication scheme plus
+**kind** — The name under which a runtime forks one unit's module: the key a
+`unit: { … }` record is indexed by. `@btravstack/http-server` has one kind per authentication scheme plus
 `anonymous`, and forks the kind that authenticated the request — a scheme
 binding no module of its own falls back to `anonymous`; the two workers have
 exactly one each (`message`, `activity`). A kind's fork is **seeded** with what
