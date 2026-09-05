@@ -475,9 +475,8 @@ const listen = (
     );
 
 // `closed` is checked first because a response that has already emitted
-// `'close'` never emits it again: any caller reached after an `await` — a fork
-// built before the subscription, the way `htmx`'s `readBody` is — would wait on
-// an event that has fired and hold the unit open for the process lifetime.
+// `'close'` never emits it again: a caller reached after an `await` would wait
+// on an event that has fired and hold the unit open for the process lifetime.
 const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
   response.closed
     ? OkAsync()
