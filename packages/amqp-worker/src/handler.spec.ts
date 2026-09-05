@@ -36,3 +36,41 @@ describe("amqp handler slices", () => {
     expect(slices.greeting()).toBe("hello");
   });
 });
+
+describe("amqp handler units", () => {
+  it("hands a piece the ports it declared, built from the seeded delivery", async ({
+    serveScoped,
+    scoped,
+    publishMessage,
+  }) => {
+    // GIVEN a worker whose `message` module derives a tenant from the delivery,
+    // and a piece declaring that port on its own `unit:` record
+    await serveScoped(scoped);
+
+    // WHEN one message is published
+    publishMessage({ exchange: "amqp-test", routingKey: "echo.requested" }, { value: "acme" });
+    await vi.waitUntil(() => scoped.seen().length === 1);
+
+    // THEN what the handler read off `context.unit.tenant` came through the
+    // seed: nothing else in the graph knows the payload
+    expect(scoped.seen()).toEqual(["acme"]);
+  });
+
+  it("hands a piece that declared nothing an empty record", async ({
+    serveSliced,
+    slices,
+    publishMessage,
+  }) => {
+    // GIVEN a worker with no `unit.message` bound, whose pieces declare no
+    // `unit:` either
+    await serveSliced(slices);
+
+    // WHEN a delivery reaches them
+    publishMessage({ exchange: "amqp-test", routingKey: "echo.requested" }, { value: "hello" });
+    await vi.waitUntil(() => slices.ran().length === 2);
+
+    // THEN `context.unit` is the empty record rather than absent, so a handler
+    // reads it without asking whether a fork happened
+    expect(slices.units()).toEqual([[]]);
+  });
+});

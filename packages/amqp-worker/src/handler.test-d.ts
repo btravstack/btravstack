@@ -12,6 +12,7 @@ import {
   defineQueue,
 } from "@amqp-contract/contract";
 import { Env } from "@btravstack/config";
+import { Port } from "@btravstack/di";
 import { OkAsync } from "unthrown";
 import { z } from "zod";
 
@@ -33,8 +34,16 @@ const pinContract = defineContract({
   },
 });
 
-const left = AmqpHandler(pinContract, "left")({ inject: {}, value: () => OkAsync(undefined) });
-const right = AmqpHandler(pinContract, "right")({ inject: {}, value: () => OkAsync(undefined) });
+class Tenant extends Port("PinSliceTenant")<{ readonly id: string }> {}
+
+const left = AmqpHandler(pinContract, "left")({ inject: {}, sync: () => () => OkAsync(undefined) });
+const right = AmqpHandler(
+  pinContract,
+  "right",
+)({
+  inject: {},
+  sync: () => () => OkAsync(undefined),
+});
 
 // Positive: the piece carries the port it was minted under, typed for its key.
 const _leftPort: HandlerPortOf<typeof pinContract, "left"> = left.port;
@@ -78,7 +87,7 @@ const otherContract = defineContract({
 const otherLeft = AmqpHandler(
   otherContract,
   "left",
-)({ inject: {}, value: () => OkAsync(undefined) });
+)({ inject: {}, sync: () => () => OkAsync(undefined) });
 // @ts-expect-error -- built for `otherContract`, whose `left` message differs
 AmqpHandlers(pinContract)([otherLeft, right]);
 
@@ -86,4 +95,38 @@ AmqpHandlers(pinContract)([otherLeft, right]);
 AmqpHandlers(pinContract)({
   inject: {},
   value: { left: () => OkAsync(undefined), right: () => OkAsync(undefined) },
+});
+
+// Positive: a piece declaring `unit:` reads those ports off `context.unit`,
+// typed by the record it declared — one kind, so no narrowing to apply; what a
+// name resolves to is the port's own service.
+const scoped = AmqpHandler(
+  pinContract,
+  "left",
+)({
+  inject: {},
+  unit: { tenant: Tenant },
+  sync:
+    () =>
+    ({ context }) => {
+      const id: string = context.unit.tenant.id;
+      void id;
+      return OkAsync(undefined);
+    },
+});
+void scoped.unit.tenant;
+
+// Negative: a name the piece did not declare is not on the record at all, so
+// reading it is TypeScript's own "property does not exist".
+AmqpHandler(
+  pinContract,
+  "right",
+)({
+  inject: {},
+  unit: { tenant: Tenant },
+  sync: () => (helpers) => {
+    // @ts-expect-error -- `user` is no name this piece declared on `unit`
+    void helpers.context.unit.user;
+    return OkAsync(undefined);
+  },
 });

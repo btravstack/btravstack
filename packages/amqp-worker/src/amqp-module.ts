@@ -19,6 +19,7 @@ import {
   type HandlersInstanceOf,
   type UnitNeedsOf,
 } from "./amqp-runtime.js";
+import type { UnitGate } from "./unit.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
 type AmqpStarter<
@@ -49,6 +50,7 @@ export type AmqpModuleOptions<
   TContract extends AnyAmqpContract,
   HandlersError,
   HandlersNeeds,
+  Declared,
   Unit extends AnyUnitModule | undefined,
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
@@ -59,8 +61,15 @@ export type AmqpModuleOptions<
   N extends readonly AnyPort[],
 > = AmqpTuning<Unit> & {
   readonly contract: TContract;
-  /** The application's handlers — what `AmqpHandlers(contract)(…)` returns for THIS contract. */
-  readonly handlers: Provider<HandlersInstanceOf<TContract>, HandlersError, HandlersNeeds>;
+  /**
+   * The application's handlers — what `AmqpHandlers(contract)(…)` returns for
+   * THIS contract. Its `_declaredUnit` phantom carries every port its pieces
+   * read off `context.unit`, which is what {@link UnitGate} checks `unit.message`
+   * against.
+   */
+  readonly handlers: Provider<HandlersInstanceOf<TContract>, HandlersError, HandlersNeeds> & {
+    readonly _declaredUnit?: Declared;
+  };
   readonly imports?: I;
   readonly provides?: P;
   /** The application's own exports; `AmqpRuntime` is added, since `start` resolves it. */
@@ -70,7 +79,16 @@ export type AmqpModuleOptions<
    * over the augmented tuples below, so forgetting one is an error at THIS call.
    */
   readonly needs?: N;
-} & NeedsGate<Imports<I, TContract, Unit>, Provides<P, TContract, HandlersError, HandlersNeeds>, N>;
+} & NeedsGate<
+    Imports<I, TContract, Unit>,
+    Provides<P, TContract, HandlersError, HandlersNeeds>,
+    N
+  > &
+  // Riding the whole options record rather than `unit.message`: a root that
+  // declares a piece's `unit:` and then binds NO module at all is the case
+  // worth catching, and a gate on the property is not read when the property
+  // is absent.
+  UnitGate<Unit, Declared>;
 
 /**
  * `Module(name)({...})` for an AMQP deployment: everything a di module takes,
@@ -94,6 +112,7 @@ export const AmqpModule =
     TContract extends AnyAmqpContract,
     HandlersError,
     HandlersNeeds,
+    Declared = never,
     Unit extends AnyUnitModule | undefined = undefined,
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
@@ -103,7 +122,7 @@ export const AmqpModule =
     >[] = [],
     const N extends readonly AnyPort[] = [],
   >(
-    options: AmqpModuleOptions<TContract, HandlersError, HandlersNeeds, Unit, I, P, X, N>,
+    options: AmqpModuleOptions<TContract, HandlersError, HandlersNeeds, Declared, Unit, I, P, X, N>,
   ) => {
     const { handlers } = options;
     const imports = (options.imports ?? []) as I;

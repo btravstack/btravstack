@@ -32,7 +32,7 @@ import {
   type AnyUnitModule,
   type HandlersPortOf,
 } from "../amqp-runtime.js";
-import { AmqpHandler } from "../handler.js";
+import { AmqpHandler, AmqpMessage } from "../handler.js";
 
 const echoExchange = defineExchange("amqp-test");
 const echoDlx = defineExchange("amqp-test-dlx", { type: "direct" });
@@ -307,6 +307,52 @@ const rightQueue = defineQueue("amqp-sliced-right", {
 });
 
 /** Two consumers of ONE publisher, on two queues — a broadcast with two subscribers, which is what a sliced worker is. Not exported: only this module's own fixtures build on it, and knip flags an export nothing imports. */
+export class Tenant extends Port("Tenant")<{ readonly id: string }> {}
+
+/** The delivery's own port, as a unit module reads it: one seed, typed by the contract. */
+const EchoMessage = AmqpMessage(echoContract);
+
+/**
+ * The seeded fork, end to end: a `message` module deriving a tenant from the
+ * delivery, and a piece declaring it — so what the handler reads off
+ * `context.unit.tenant` can only have come through the seed.
+ */
+const scopedOf = () => {
+  const seen: string[] = [];
+
+  const module = Module("TenantUnit")({
+    needs: [EchoMessage],
+    provides: [
+      Provider(Tenant)({
+        inject: { message: EchoMessage },
+        sync: ({ message }) => ({ id: message.payload.value }),
+      }),
+    ],
+    exports: [Tenant],
+  });
+
+  const piece = AmqpHandler(
+    echoContract,
+    "echo",
+  )({
+    inject: {},
+    unit: { tenant: Tenant },
+    sync:
+      () =>
+      ({ context }) => {
+        seen.push(context.unit.tenant.id);
+        return OkAsync(undefined);
+      },
+  });
+
+  return {
+    module,
+    piece,
+    handlers: AmqpHandlers(echoContract)([piece]),
+    seen: (): readonly string[] => seen,
+  };
+};
+
 const slicedContract = defineContract({
   publishers: { echo: echoPublished },
   consumers: {
@@ -325,6 +371,7 @@ const slicedContract = defineContract({
  */
 const slicesOf = () => {
   const ran: string[] = [];
+  const units: (readonly string[])[] = [];
   let greeting = "";
 
   const left = AmqpHandler(
@@ -345,16 +392,21 @@ const slicesOf = () => {
     "right",
   )({
     inject: {},
-    value: () => {
-      ran.push("right");
-      return OkAsync(undefined);
-    },
+    sync:
+      () =>
+      ({ context }) => {
+        ran.push("right");
+        units.push(Object.keys(context.unit));
+        return OkAsync(undefined);
+      },
   });
 
   return {
     handlers: AmqpHandlers(slicedContract)([left, right]),
     pieces: [left, right] as const,
     ran: (): readonly string[] => ran,
+    /** What `right` found on `context.unit` — nothing declared, no module bound. */
+    units: (): readonly (readonly string[])[] => units,
     greeting: (): string => greeting,
   };
 };
@@ -373,6 +425,9 @@ export type AmqpFixtures = {
   readonly deadline: ReturnType<typeof deadlineHandler>;
   readonly slices: ReturnType<typeof slicesOf>;
   readonly serveSliced: (slices: ReturnType<typeof slicesOf>) => Promise<App>;
+  /** A piece reading `context.unit.tenant` out of a `message` module built from the seed. */
+  readonly scoped: ReturnType<typeof scopedOf>;
+  readonly serveScoped: (scoped: ReturnType<typeof scopedOf>) => Promise<App>;
   /** The starter served over an observer that records what it was handed. */
   readonly serveObserved: (
     handlers?: EchoProvider,
@@ -449,6 +504,25 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
   // oxlint-disable-next-line no-empty-pattern -- see above
   slices: async ({}, use) => {
     await use(slicesOf());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  scoped: async ({}, use) => {
+    await use(scopedOf());
+  },
+  serveScoped: async ({ amqpConnectionUrl, boot }, use) => {
+    await use(async (scoped) => {
+      const app = boot(
+        AmqpModule("Scoped")({
+          contract: echoContract,
+          handlers: scoped.handlers,
+          url: amqpConnectionUrl,
+          provides: [scoped.piece],
+          unit: { message: scoped.module },
+        }),
+      );
+      await app.runtimeInfo();
+      return app;
+    });
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   counting: async ({}, use) => {

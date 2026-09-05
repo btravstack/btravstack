@@ -27,6 +27,7 @@ import { z } from "zod";
 
 import { AmqpModule } from "./amqp-module.js";
 import { AmqpHandlers, AmqpRuntime, amqp, type HandlersPortOf } from "./amqp-runtime.js";
+import { AmqpHandler, AmqpMessage } from "./handler.js";
 
 const pinExchange = defineExchange("pin-exchange");
 const pinQueue = defineQueue("pin-queue");
@@ -119,4 +120,89 @@ amqp({
   contract: pinContract,
   // @ts-expect-error -- `prefetchCount` is not a `ConsumerOptions` key
   defaultConsumerOptions: { prefetchCount: 16 },
+});
+
+// The root's `unit` gate. A piece's `unit:` record is a promise the ROOT has to
+// keep: `context.unit.tenant` resolves out of the fork, so the bound
+// `unit.message` module must export `Tenant` or the read defects at the first
+// delivery. Nothing else checks it — the piece and the root are typed
+// independently — so this is the gate, and each negative below is the assertion
+// that it still fires.
+const Message = AmqpMessage(pinContract);
+class Tenant extends Port("PinTenant")<{ readonly id: string }> {}
+class Elsewhere extends Port("PinElsewhere")<{ readonly n: number }> {}
+
+const TenantUnit = Module("PinTenantUnit")({
+  needs: [Message],
+  provides: [
+    Provider(Tenant)({
+      inject: { message: Message },
+      sync: ({ message }) => ({ id: message.payload.value }),
+    }),
+  ],
+  exports: [Tenant],
+});
+
+const ElsewhereUnit = Module("PinElsewhereUnit")({
+  provides: [Provider(Elsewhere)({ inject: {}, value: { n: 1 } })],
+  exports: [Elsewhere],
+});
+
+const scopedPiece = AmqpHandler(
+  pinContract,
+  "echo",
+)({
+  inject: {},
+  unit: { tenant: Tenant },
+  sync:
+    () =>
+    ({ context }) =>
+      OkAsync(void context.unit.tenant.id),
+});
+const scopedHandlers = AmqpHandlers(pinContract)([scopedPiece]);
+
+// Positive, and two assertions in one: the bound module exports what the piece
+// injects, so the gate clears — and `start` accepts the root, so the module's
+// own `needs: [AmqpMessage(contract)]` never surfaced as an unmet need. The
+// fork's seed is what discharges it, and `UnitNeedsOf` subtracts it for that
+// reason; without the subtraction this line would be the failure.
+const _seedIsNotANeed = start(
+  AmqpModule("PinUnitSatisfied")({
+    contract: pinContract,
+    handlers: scopedHandlers,
+    provides: [scopedPiece],
+    unit: { message: TenantUnit },
+  }),
+  { signals: false, probes: false },
+);
+void _seedIsNotANeed;
+
+const _wrongUnit = {
+  contract: pinContract,
+  handlers: scopedHandlers,
+  provides: [scopedPiece],
+  unit: { message: ElsewhereUnit },
+} as const;
+// @ts-expect-error -- UNIT DOES NOT PROVIDE: `ElsewhereUnit` exports no `Tenant`
+AmqpModule("PinUnitWrong")(_wrongUnit);
+
+const _noUnit = {
+  contract: pinContract,
+  handlers: scopedHandlers,
+  provides: [scopedPiece],
+} as const;
+// @ts-expect-error -- UNIT DOES NOT PROVIDE: nothing is bound, so `Tenant` is nowhere
+AmqpModule("PinUnitUnbound")(_noUnit);
+
+// Positive: a root whose pieces declare no `unit:` is gated on nothing, bound
+// module or not — which is what keeps `examples/order-amqp-worker` compiling.
+const plainPiece = AmqpHandler(
+  pinContract,
+  "echo",
+)({ inject: {}, sync: () => () => OkAsync(undefined) });
+AmqpModule("PinUnitUndeclared")({
+  contract: pinContract,
+  handlers: AmqpHandlers(pinContract)([plainPiece]),
+  provides: [plainPiece],
+  unit: { message: ElsewhereUnit },
 });

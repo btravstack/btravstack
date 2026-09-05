@@ -156,7 +156,7 @@ call, not on the first delivery. `runtimeInfo()` reads `{ queues }` back once
 consuming.
 
 A worker with several consumers can be several slices instead of one record:
-`AmqpHandler(contract, key)({ inject: { name: Dep }, ...arm })` mints a provider for ONE consumer or
+`AmqpHandler(contract, key)({ inject: { name: Dep }, unit, sync })` mints a provider for ONE consumer or
 rpc, typed by the key alone, and `AmqpHandlers(contract)([...])` composes an
 array of them into the same handlers provider `AmqpModule` takes — the array
 must cover every key the contract declares, and each piece's own port must
@@ -166,6 +166,13 @@ compiler holds only half of that: coverage is checked, injectivity is not, so
 two slices claiming one key type-check together. It is di's duplicate-provider
 defect at build once **both** pieces are discharged as providers in one graph
 — wire in only one and the other's handler is silently never registered.
+
+A piece's `unit` names the ports its handler reads off `context.unit`, resolved
+out of the per-delivery fork of the module bound on `unit.message` — which is
+seeded with the validated message on `AmqpMessage(contract)`, so a unit module
+derives a tenant from the delivery rather than from an ambient record. The root
+is checked against what the pieces declared: bind a module that does not export
+one of them and `AmqpModule` refuses it, naming the port.
 
 Its own test suite needs a **Docker daemon**: the specs run against the shared
 `rabbitmq` container `internal/test-infra` starts once per machine and every
@@ -186,7 +193,7 @@ provider on its own port, which is how the composition root supplies it:
 | `connectionOptions`      | `AmqpConnectionOptions`, the library's own connection tuning: heartbeat, reconnect interval, `findServers`, TLS                 |
 | `defaultConsumerOptions` | the library's `ConsumerOptions`, applied to every handler: `prefetch` (the throughput knob), `priority`, …                      |
 | `connectTimeoutMs`       | pins `AMQP_CONNECT_TIMEOUT_MS` — how long startup waits before an unreachable broker is a `RuntimeStartFailed` (default `5000`) |
-| `unit`                   | `{ message }` — the module the worker forks around every message it dispatches                                                  |
+| `unit`                   | `{ message }` — the module the worker forks per delivery, seeded with the message on `AmqpMessage(contract)`                    |
 
 The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/amqp-worker),

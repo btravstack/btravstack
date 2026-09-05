@@ -27,7 +27,12 @@ import {
 } from "@btravstack/di";
 import { P, type AsyncResult } from "unthrown";
 
-import { HANDLER_PREFIX, type HandlerKeyOf, type HandlerPortOf } from "./handler.js";
+import {
+  HANDLER_PREFIX,
+  type AmqpMessageInstance,
+  type HandlerKeyOf,
+  type HandlerPortOf,
+} from "./handler.js";
 import { messageUnits } from "./message-units.js";
 
 /** What the worker publishes once it is consuming, read back through `RunningApp.runtimeInfo()`. */
@@ -68,10 +73,11 @@ export type AnyUnitModule = Module<never, never, unknown>;
 /**
  * The needs a bound `unit.message` module still owes, or `never` when none is
  * bound. `Scope` is excluded, since nothing can ever provide it — the same
- * exemption `NeedsGate` itself carries.
+ * exemption `NeedsGate` itself carries — and so is the delivery, which the
+ * fork's own seed discharges.
  */
 export type UnitNeedsOf<Unit> =
-  Unit extends Module<never, never, infer N> ? Exclude<N, Scope> : never;
+  Unit extends Module<never, never, infer N> ? Exclude<N, Scope | AmqpMessageInstance> : never;
 
 /**
  * The contract type `TypedAmqpWorker.create` accepts, extracted rather than
@@ -144,10 +150,10 @@ export type AmqpTuning<Unit extends AnyUnitModule | undefined = undefined> = {
    */
   readonly connectTimeoutMs?: number;
   /**
-   * The unit module the worker forks around every delivery it dispatches, with
-   * no seed. Built after the message is validated, torn down when the unit
-   * closes — the point where a later phase seeds it with the delivery's
-   * tenant.
+   * The unit module the worker forks around every delivery it dispatches,
+   * seeded with the validated message on `AmqpMessage(contract)`. Built after
+   * the message is validated, torn down when the unit closes; what it exports
+   * is what a piece may declare on its own `unit:` record.
    */
   readonly unit?: { readonly message?: Unit };
 };
@@ -217,8 +223,17 @@ export const amqp = <
 
 /** One piece of the handlers record — what `AmqpHandler(contract, key)(…)` returns, as the composing form consumes it. */
 type PieceOf<C extends AnyAmqpContract> = {
-  readonly [K in HandlerKeyOf<C>]: { readonly port: HandlerPortOf<C, K> };
+  readonly [K in HandlerKeyOf<C>]: {
+    readonly port: HandlerPortOf<C, K>;
+    /** Phantom, carrying the ports the piece injects off `context.unit`. */
+    readonly _declared?: unknown;
+  };
 }[HandlerKeyOf<C>];
+
+/** Every port the pieces in `T` inject off `context.unit` — what the root's `unit.message` must export. */
+type DeclaredOf<T extends readonly { readonly _declared?: unknown }[]> = NonNullable<
+  T[number]["_declared"]
+>;
 
 /** The key a piece carries, read back off its port id. */
 type KeyOfPiece<P> = P extends {
@@ -271,6 +286,8 @@ type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]
       >,
 ) => Provider<HandlersInstanceOf<C>, never, InstanceType<T[number]["port"]>> & {
   readonly port: HandlersPortOf<C>;
+  /** Phantom: the union of every piece's declared ports, which `AmqpModule` gates `unit.message` against. */
+  readonly _declaredUnit?: DeclaredOf<T>;
 };
 
 /**

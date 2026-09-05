@@ -8,5 +8,5 @@ export type {
   HandlersInstanceOf,
   HandlersPortOf,
 } from "./amqp-runtime.js";
-export { AmqpHandler } from "./handler.js";
-export type { HandlerPortOf } from "./handler.js";
+export { AmqpHandler, AmqpMessage } from "./handler.js";
+export type { AmqpMessageOf, AmqpMessagePortOf, HandlerPortOf } from "./handler.js";
