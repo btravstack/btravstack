@@ -73,4 +73,22 @@ describe("amqp handler units", () => {
     // reads it without asking whether a fork happened
     expect(slices.units()).toEqual([[]]);
   });
+
+  it("wraps a piece that hands back [handler, options] too", async ({
+    serveScoped,
+    tupled,
+    publishMessage,
+  }) => {
+    // GIVEN the same declaring piece, returning the tuple entry form the
+    // contract's own handler type allows beside the bare function
+    await serveScoped(tupled);
+
+    // WHEN one message is published
+    publishMessage({ exchange: "amqp-test", routingKey: "echo.requested" }, { value: "globex" });
+    await vi.waitUntil(() => tupled.seen().length === 1);
+
+    // THEN the handler inside the tuple was wrapped as well, so it reads the
+    // same record — the arm is not a hole where `context.unit` goes missing
+    expect(tupled.seen()).toEqual(["globex"]);
+  });
 });

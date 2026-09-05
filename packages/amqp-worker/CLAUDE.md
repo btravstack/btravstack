@@ -150,16 +150,23 @@ K]`, which always names the marker — printed as the **bare string**, the
   declaration-emit reason `HandlersPortOf<C>` is — a slice module that
   exports its own piece by name needs it printable) as `provider.port`.
 
-  **It is `{ inject, unit?, sync }`, not di's whole arm set, and the loss of
-  `value` is the price of `unit`.** `sync`'s return type is
-  `WorkerInferHandlers<C, { unit: UnitRecordOf<U> }>[K]` — the handler typed
-  by the record THIS piece declared — while the port it lands on stays
+  **It is `{ inject, unit?, sync }`, not di's whole arm set.** `sync`'s return
+  type is `WorkerInferHandlers<C, { unit: UnitRecordOf<U> }>[K]` — the handler
+  typed by the record THIS piece declared — while the port it lands on stays
   `WorkerInferHandlers<C>[K]`, the context-free shape the composed record
-  hands `create`. Only a callback's return can be typed independently of the
-  port, so `value` has no place to carry `U`; the move is
-  `@btravstack/http-server`'s `api.OrpcController(contract, path)`, made for
-  the same reason. `inject: {}, sync: () => handler` is what a piece with no
-  services now writes.
+  hands `create`. That split is what carries `U` at all, and it is not what
+  costs `value`: the options record here is this package's OWN, not di's
+  `Provider` overload set, so `value?: WorkerInferHandlers<C, { unit:
+UnitRecordOf<U> }>[K]` would have typed exactly as well — `U` infers from
+  `unit`, never from the arm — and `withUnit(record, options.value)` would
+  have wrapped it the same way. **`value` was dropped for consistency, not
+  because it could not have worked**: `@btravstack/http-server`'s
+  `api.OrpcController(contract, path)` is `{ inject, unit?, sync }` and this
+  is the same piece under another transport, so one arm across both is one
+  surface to learn and one to keep. It cost a breaking change on a package
+  whose major was already going out with a changeset; after that release the
+  trade would have been the other way. `inject: {}, sync: () => handler` is
+  what a piece with no services now writes.
 
   **`unit` declares the ports the handler reads off `context.unit`**, resolved
   out of the fork the delivery opened, and the piece keeps the record on
@@ -308,6 +315,15 @@ Module<never, never, unknown>`, the same contravariant-exports bound
   NEED, never as a value, so there is nothing to read a `_declaredUnit` off.
   A hand-composed root that wants the gate goes through `AmqpModule`.
 
+  What that costs is worth stating, because it is the one path where a
+  declared port is not checked: a piece declaring `unit: { tenant: Tenant }`
+  under an `amqp()` root with no module bound reads `undefined` off
+  `context.unit.tenant`, and the property access after it throws. That is a
+  **Defect**, so the delivery is nacked once and goes straight to the
+  dead-letter queue with the `TypeError` in the report — loud and on the first
+  message, never a silent wrong answer. The gate turns that into a compile
+  error; without it the failure is still unmissable.
+
 - **The handlers port's service is `WorkerInferHandlers<TContract>`** —
   the record `TypedAmqpWorker.create` takes, with **no injected context**.
   Inside, `Provider(AmqpRuntime)({ inject: { config: AmqpConfig, handlers:
@@ -450,7 +466,11 @@ right])`, pinning that both slices run (_"serves a record composed from one
   delivery"_) — and, on the sliced worker, that a piece declaring nothing
   reads `{}` rather than a missing property (_"hands a piece that declared
   nothing an empty record"_), which is the no-module-bound branch of
-  `unitRecordOf`. `handler.test-d.ts` pins the
+  `unitRecordOf`. The third of that group is `withUnit`'s OTHER path: a
+  contract's handler entry is `handler | [handler, ConsumerOptions]`, so the
+  wrapper has to reach inside the tuple, and the `tupled` fixture is the same
+  declaring piece handing back that form (_"wraps a piece that hands back
+  [handler, options] too"_). `handler.test-d.ts` pins the
   composing form's compile-time gates on a contract of its own — a piece typed
   by its own key, an array covering every declared key, an uncovered array
   refused as `@ts-expect-error` (its own single-element case reports only the

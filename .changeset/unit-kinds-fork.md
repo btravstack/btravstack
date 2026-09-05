@@ -48,10 +48,13 @@ composition root nothing for it; everything else it needs still surfaces at
 
 `AmqpHandler(contract, key)` now takes `{ inject, unit?, sync }` rather than
 di's whole arm set. `unit` names the ports the handler reads off
-`context.unit`, and `sync` is the only arm that can carry their types: its
-return is typed by the record the piece declared, where the port it lands on
-stays the context-free handler shape. A piece with no services is
-`{ inject: {}, sync: () => handler }`; `value` is gone.
+`context.unit`; `sync`'s return is typed by the record the piece declared,
+where the port it lands on stays the context-free handler shape. `value` could
+have carried the same record — the options here are this package's own, not
+di's overload set, and the declared record is what types it — and was dropped
+for consistency with `@btravstack/http-server`'s `OrpcController`, which is
+`{ inject, unit?, sync }` too. A piece with no services is
+`{ inject: {}, sync: () => handler }`.
 
 `AmqpModule` gates `unit.message` against what the pieces declared. Binding a
 module that does not export a port some piece injects is refused against

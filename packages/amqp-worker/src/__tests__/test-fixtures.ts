@@ -8,6 +8,7 @@ import {
 } from "@amqp-contract/contract";
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
+import type { WorkerInferConsumerHandler } from "@amqp-contract/worker";
 import type { ConfigInvalid, Environment } from "@btravstack/config";
 import {
   Observers,
@@ -306,7 +307,6 @@ const rightQueue = defineQueue("amqp-sliced-right", {
   retry: { mode: "immediate-requeue", maxRetries: 1 },
 });
 
-/** Two consumers of ONE publisher, on two queues — a broadcast with two subscribers, which is what a sliced worker is. Not exported: only this module's own fixtures build on it, and knip flags an export nothing imports. */
 export class Tenant extends Port("Tenant")<{ readonly id: string }> {}
 
 /** The delivery's own port, as a unit module reads it: one seed, typed by the contract. */
@@ -316,8 +316,13 @@ const EchoMessage = AmqpMessage(echoContract);
  * The seeded fork, end to end: a `message` module deriving a tenant from the
  * delivery, and a piece declaring it — so what the handler reads off
  * `context.unit.tenant` can only have come through the seed.
+ *
+ * `entry` picks which shape the piece hands back. A contract's handler entry is
+ * `handler | [handler, ConsumerOptions]`, and `withUnit` has to reach inside the
+ * tuple to wrap the function — so the two forms are two code paths, and both
+ * are served here rather than only the one every other fixture happens to use.
  */
-const scopedOf = () => {
+const scopedOf = (entry: "bare" | "tupled" = "bare") => {
   const seen: string[] = [];
 
   const module = Module("TenantUnit")({
@@ -337,12 +342,17 @@ const scopedOf = () => {
   )({
     inject: {},
     unit: { tenant: Tenant },
-    sync:
-      () =>
-      ({ context }) => {
+    sync: () => {
+      const handler: WorkerInferConsumerHandler<
+        typeof echoContract,
+        "echo",
+        { readonly unit: { readonly tenant: ServiceOf<Tenant> } }
+      > = ({ context }) => {
         seen.push(context.unit.tenant.id);
         return OkAsync(undefined);
-      },
+      };
+      return entry === "bare" ? handler : [handler, { prefetch: 1 }];
+    },
   });
 
   return {
@@ -353,6 +363,7 @@ const scopedOf = () => {
   };
 };
 
+/** Two consumers of ONE publisher, on two queues — a broadcast with two subscribers, which is what a sliced worker is. Not exported: only this module's own fixtures build on it, and knip flags an export nothing imports. */
 const slicedContract = defineContract({
   publishers: { echo: echoPublished },
   consumers: {
@@ -427,6 +438,8 @@ export type AmqpFixtures = {
   readonly serveSliced: (slices: ReturnType<typeof slicesOf>) => Promise<App>;
   /** A piece reading `context.unit.tenant` out of a `message` module built from the seed. */
   readonly scoped: ReturnType<typeof scopedOf>;
+  /** The same piece handing back `[handler, ConsumerOptions]` — `withUnit`'s other path. */
+  readonly tupled: ReturnType<typeof scopedOf>;
   readonly serveScoped: (scoped: ReturnType<typeof scopedOf>) => Promise<App>;
   /** The starter served over an observer that records what it was handed. */
   readonly serveObserved: (
@@ -508,6 +521,10 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
   // oxlint-disable-next-line no-empty-pattern -- see above
   scoped: async ({}, use) => {
     await use(scopedOf());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  tupled: async ({}, use) => {
+    await use(scopedOf("tupled"));
   },
   serveScoped: async ({ amqpConnectionUrl, boot }, use) => {
     await use(async (scoped) => {
