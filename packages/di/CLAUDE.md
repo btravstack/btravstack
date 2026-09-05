@@ -116,6 +116,15 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   marker an object ending on the ports where `start`'s is a fixed sentence.
   The covariant `_needs` refusal is unchanged beside it — the gate is a
   message, not the check.
+
+  **A fork may be seeded.** `forkScope(parent, module, use, { seed: [[Port, value]] })`
+  supplies per-scope values from outside the module tree; the planner treats a
+  seeded port as provided, the way it treats the parent's services, so a module
+  that `needs` a seeded port is accepted at the call and refused without the
+  seed. The seeded value's type is the port's service, checked at the entry.
+  `DependencyGate` is exported for the one consumer that wraps `forkScope`, the
+  kernel, so it can state the same gate without re-declaring it.
+
   `needs` is the fourth tuple and the subject of **Module visibility** below:
   what this module expects a composition root to supply, named. Anything it
   owes and did not name is refused at the `Module(name)({...})` call by
@@ -126,6 +135,7 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   identical `Exports` channel either way), or an imported module. The provider
   arm is what the port-minting helpers need — `Config.provider(name)(schema)`,
   `OrpcController(contract, path)` — where there is no class to name.
+
 - **`build.ts`** — `flatten` (dedupe by provider reference), `plan` (levels
   providers for concurrent construction; detects cycles, duplicate providers,
   ordinary/set-port conflicts, providers for `Scope`, missing providers — all

@@ -35,7 +35,6 @@ import { inject, test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "../client.js";
 import { OrderApi } from "../module.js";
-import { RequestModule } from "../request-scope.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
 
@@ -225,8 +224,9 @@ export type ApiFixtures = {
    */
   readonly tenant: string;
   /**
-   * Starts an app on an ephemeral loopback port with `RequestModule` forked
-   * around every request, through `boot` — so its shutdown is the fixture's.
+   * Starts an app on an ephemeral loopback port, through `boot` — so its
+   * shutdown is the fixture's. `RequestModule` is forked by the answerers
+   * themselves, per `OrderApi`'s own `unit` option — nothing here supplies it.
    *
    * The module's `X` is pinned rather than left generic: `start`'s gate is
    * proven at the call site, and no proof is available inside a helper generic
@@ -312,7 +312,7 @@ export const it = test.extend<ApiFixtures>({
   },
 
   serve: async ({ boot }, use) => {
-    await use((module, options) => boot(module, { unit: RequestModule, ...options }));
+    await use((module, options) => boot(module, options));
   },
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture

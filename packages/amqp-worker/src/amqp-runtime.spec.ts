@@ -68,6 +68,29 @@ describe("amqp", () => {
     expect(seam.seen()).toEqual([expect.objectContaining({ traceId: "m-1" })]);
   });
 
+  it("forks its unit module once per delivery, and tears it down", async ({
+    serve,
+    seam,
+    publishMessage,
+    counting,
+  }) => {
+    // GIVEN a worker bound to a unit module that counts its builds and teardowns
+    await serve(seam.handlers, { drainTimeoutMs: 1_000, unit: counting.module });
+
+    // WHEN one message is delivered — waited out WHILE the worker is still
+    // running, so a scope only closed by the application's own shutdown
+    // cannot pass this test
+    publishMessage(
+      { exchange: "amqp-test", routingKey: "echo.requested" },
+      { value: "x" },
+      { messageId: "m-unit" },
+    );
+    await vi.waitUntil(() => counting.counts().stops === 1);
+
+    // THEN the module was built and torn down once, at dispatch, for that delivery
+    expect(counting.counts()).toEqual({ builds: 1, stops: 1 });
+  });
+
   it("adopts a traceparent header's trace id over the message id", async ({
     serve,
     seam,

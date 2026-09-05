@@ -91,4 +91,47 @@ describe("the unit module", () => {
       expect.objectContaining({ drain: { inFlightAtStart: 1, completed: 1, abandoned: 0 } }),
     );
   });
+
+  it("reports a second fork in one unit as a defect", async ({ unitApp }) => {
+    // GIVEN a runtime whose unit work forks the module twice
+    const { runtime, forkTwice } = unitApp;
+    const unit = runtime.submit<string>();
+    unit.settle(Ok("x"));
+    await unit.result;
+    const twice = forkTwice();
+
+    // WHEN the second fork is attempted inside one unit
+    // THEN it lands on the defect path rather than opening a second scope
+    await expect(twice).toBeDefectWith(
+      expect.objectContaining({ message: "a unit forks its scope once" }),
+    );
+  });
+
+  it("reports a fork issued after the unit has already settled as a defect", async ({
+    unitApp,
+  }) => {
+    // GIVEN a runtime whose unit work returns before ever forking, the shape
+    // a fork racing a client's abort against its own answerer produces
+    const { forkAfterSettled } = unitApp;
+
+    // WHEN the fork is attempted once the unit that would have supervised it
+    // has already closed
+    // THEN it lands on the defect path rather than opening a scope nothing
+    // awaits, whose teardown could run after the registry reports idle
+    await expect(forkAfterSettled()).toBeDefectWith(
+      expect.objectContaining({ message: "a unit forks after it has already settled" }),
+    );
+  });
+
+  it("recovers a fork's construction failure onto the caller's defect path", async ({
+    unitApp,
+  }) => {
+    // GIVEN a runtime whose unit work forks a module that fails to construct
+    const { forkBroken } = unitApp;
+    const broken = forkBroken();
+
+    // WHEN the fork is attempted
+    // THEN the caller lands on the defect path instead of waiting forever
+    await expect(broken).toBeDefectWith(expect.objectContaining({ message: "construction-boom" }));
+  });
 });

@@ -1,5 +1,4 @@
 import { runMain } from "@btravstack/core";
-import { UnitSpanModule } from "@btravstack/observability/otel";
 
 import { OrderTemporalWorker } from "./module.js";
 
@@ -15,6 +14,4 @@ import { OrderTemporalWorker } from "./module.js";
  * Typechecked by the gate, not executed by it — the example packages are
  * source-only, and every spec drives `start` directly.
  */
-// `UnitSpanModule` opens an OTel span per activity attempt, carrying the
-// same unit ids the logger stamps.
-await runMain(OrderTemporalWorker, { unit: UnitSpanModule });
+await runMain(OrderTemporalWorker);

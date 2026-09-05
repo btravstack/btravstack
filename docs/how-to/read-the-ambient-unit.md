@@ -146,8 +146,8 @@ makes a broken destination survivable. Outside a unit — a package's own specs,
 a startup line — `currentUnit()` is `undefined`, and the fields are simply
 absent.
 
-A unit-scoped finaliser runs **while the unit is still open**, so a
-`StartOptions.unit` module's `onStop` logging "request finished" carries the
+A unit-scoped finaliser runs **while the unit is still open**, so a bound
+`unit` module's `onStop` logging "request finished" carries the
 request's own trace id — `examples/order-api/src/request-scope.ts` relies on
 exactly that.
 
@@ -261,8 +261,8 @@ an id they already hold. A runtime of your own follows the same rule — see
 
 - [Ambient data, injected capabilities](/explanation/ambient-vs-context) — the
   reasoning, and where the line would be crossed.
-- [Open a per-request scope](/how-to/open-a-per-request-scope) — the
-  `StartOptions.unit` module whose teardown logs under the unit's trace id.
+- [Open a per-request scope](/how-to/open-a-per-request-scope) — a bound
+  `unit` module whose teardown logs under the unit's trace id.
 - [Write a runtime](/how-to/write-a-runtime) — the `UnitMeta` a runtime
   submits, and why `id` must be unique.
 - [Log and correlate](/how-to/log-and-correlate) — the shipped reader of this

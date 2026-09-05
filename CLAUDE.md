@@ -512,8 +512,9 @@ Both surfaced from building the first real runtime against this kernel, and
 both are silent when broken. They live in the `RunUnit` / `RuntimeHost` /
 `UnitMeta` TSDoc, in the documentation site's
 `docs/how-to/write-a-runtime.md` and `docs/reference/core/runtime.md` — four
-places that must stay in sync. A third, smaller one arrived with
-`StartOptions.unit` and lives in the same four places.
+places that must stay in sync. A third, smaller one arrived once a per-unit
+scope became something a runtime opens itself, through `UnitHost.fork`, and
+lives in the same four places.
 
 **1. The response must be flushed INSIDE the unit.** A unit is closed the
 instant its `Result` settles; `registry.awaitIdle()` is what beat 3 of the
@@ -542,16 +543,23 @@ so telling two units apart never needs `traceId`; `traceId` is the
 carries an id from outside the process so a line logged here joins a trace that
 started elsewhere.
 
-**3. `RuntimeHost.ctx` is the application context, and unit work is not
-synchronous with `host.run`.** Two consequences of `StartOptions.unit`. A port
-the unit module provides exists only while a unit is open and reaches the
-runtime through `run`'s work callback alone — `start`'s gate lets a runtime's
-`needs` name such a port, because unit work is what receives it, so
-`host.ctx.get(...)` of one **type-checks** and is a defect at startup; resolve
-at `start` only what the application module itself exports. And with a unit
-module the work runs only once the fork is built — after an `await` when a
-unit provider is async — so a runtime that subscribes to an event from inside
-its work (a response's `'close'`) must first check whether it already fired:
+**3. `RuntimeHost.ctx` is the application context, and a fork's own scope is
+not synchronous with `host.run`.** A per-unit scope is the runtime's own to
+open now, not the kernel's: call `unit.fork(module, seed)` from inside
+`host.run`'s work callback, at the moment you hold the unit's own input (a
+request, a delivery). `fork` builds `module` over `host.ctx` plus `seed` and
+hands back the forked `Context`, so a port `module` provides exists only
+inside that fork's own `Context` — never in `host.ctx` itself — and
+`host.ctx.get(...)` of one at runtime startup type-checks against nothing and
+is a defect; resolve at `start` only what the application module itself
+exports. A bound module's own unmet needs join the starter's own `Needs`
+channel instead — the same channel an import's needs travel — so there is no
+separate gate arm for them any more. The kernel still closes the fork's scope
+once the unit settles, after the runtime's own work returns. And the fork is
+not synchronous with dispatch: the work runs only once `fork` has resolved —
+after an `await` when the module's own provider is async — so a runtime that
+subscribes to an event from inside its work (a response's `'close'`) must
+first check whether it already fired:
 `@btravstack/http-server`'s `closedOf` checks `response.closed` for exactly this,
 found by a client hanging up during a slow per-request acquire and leaving a
 unit open for the process lifetime.
@@ -1490,7 +1498,8 @@ And a seventh, about the infrastructure a suite runs against:
   shipping the shape as written** (issue #64): `Tracer`/`Meter` ports and the
   OTel `NodeSDK` as a resourceful provider whose `release` flushes, behind
   the `@btravstack/observability/otel` subpath on the `pino` optional-peer
-  protocol; `UnitSpanModule` as a span per unit through `StartOptions.unit`;
+  protocol; `UnitSpanModule` as a span per unit through a starter's own bound
+  `unit` option;
   W3C `traceparent` honoured inbound by `@btravstack/http-server` and
   `@btravstack/amqp-worker` (trace-id field only — the parent span id is dropped,
   never half-carried), with `@btravstack/temporal-worker` deliberately keeping the

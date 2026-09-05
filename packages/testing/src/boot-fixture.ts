@@ -13,13 +13,13 @@ import type { Module, Scope } from "@btravstack/di";
  * gate, minus `signals` (always off) — every application it starts is stopped
  * when the test ends.
  */
-export type Boot = <X, E, N, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, N> & StartGate<X, UnitNeeds, N>,
-  options?: Omit<StartOptions<UnitX, UnitNeeds>, "signals">,
+export type Boot = <X, E, N>(
+  module: Module<X, E, N> & StartGate<X, N>,
+  options?: Omit<StartOptions, "signals">,
 ) => RunningApp<E, RuntimeInfoOf<X>>;
 
 /** What every `boot` in the fixture starts with; a call's own options win. */
-export type BootDefaults = Omit<StartOptions, "signals" | "unit">;
+export type BootDefaults = Omit<StartOptions, "signals">;
 
 /**
  * A `test.extend` fixture that hands the test a {@link Boot} and stops every
@@ -32,7 +32,7 @@ export type BootDefaults = Omit<StartOptions, "signals" | "unit">;
  * });
  *
  * it("answers", async ({ boot }) => {
- *   const app = boot(OrderApi, { unit: RequestModule });
+ *   const app = boot(OrderApi);
  *   …
  * });
  * ```
@@ -52,12 +52,12 @@ export const bootFixture =
     const started: RunningApp<unknown, unknown>[] = [];
 
     // The gate is proven at each `boot` call site and invisible in this body,
-    // where `X` and `UnitNeeds` are unresolved.
+    // where `X` is unresolved.
     const boot = ((module: Module<never, unknown, Scope | Env>, options = {}) => {
       const app = (
         start as unknown as (
           module: Module<never, unknown, Scope | Env>,
-          options: StartOptions<unknown, unknown>,
+          options: StartOptions,
         ) => RunningApp<unknown, unknown>
       )(module, {
         preDrainDelayMs: 0,

@@ -18,14 +18,20 @@ import {
   type Settle,
   type UnitRecord,
 } from "@btravstack/core";
-import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { OkAsync, fromSafePromise } from "unthrown";
 import type { TestAPI } from "vitest";
 import { z } from "zod";
 
 import { AmqpModule } from "../amqp-module.js";
-import { AmqpConfig, AmqpHandlers, type AmqpInfo, type HandlersPortOf } from "../amqp-runtime.js";
+import {
+  AmqpConfig,
+  AmqpHandlers,
+  type AmqpInfo,
+  type AnyUnitModule,
+  type HandlersPortOf,
+} from "../amqp-runtime.js";
 import { AmqpHandler } from "../handler.js";
 
 const echoExchange = defineExchange("amqp-test");
@@ -65,12 +71,22 @@ type EchoProvider = Provider<InstanceType<EchoHandlers>, never, Greeting>;
  * the `AmqpModule` sugar so the suite covers it. `url` is pinned to the test's
  * own broker, so the module reads no environment.
  */
-const consuming = (url: string, handlers: EchoProvider, connectTimeoutMs?: number) =>
+const consuming = (
+  url: string,
+  handlers: EchoProvider,
+  connectTimeoutMs?: number,
+  unit?: AnyUnitModule,
+) =>
   AmqpModule("Consuming")({
     contract: echoContract,
     handlers,
     url,
     ...(connectTimeoutMs === undefined ? {} : { connectTimeoutMs }),
+    // `as never`: `unit` is `AnyUnitModule`, whose own needs are erased to
+    // `unknown` — passed through untyped it would poison `AmqpModule`'s
+    // inferred `Unit` into an unsatisfiable `unknown` need for every caller
+    // of this fixture, unit-bound test or not.
+    unit: { message: unit as never },
     imports: [AppModule],
   });
 
@@ -146,7 +162,33 @@ const failingHandlers: EchoProvider = echoHandlers({
 
 type App = RunningApp<ConfigInvalid, AmqpInfo>;
 
-type ServeOptions = { readonly drainTimeoutMs: number };
+type ServeOptions = { readonly drainTimeoutMs: number; readonly unit?: AnyUnitModule };
+
+class CountingMark extends Port("CountingMark")<{ readonly at: number }> {}
+
+/** A unit module that counts its builds and teardowns, for the fork's own tests. */
+const countingUnit = (): {
+  readonly module: Module<CountingMark, never, Scope>;
+  readonly counts: () => { readonly builds: number; readonly stops: number };
+} => {
+  const counts = { builds: 0, stops: 0 };
+  const module = Module("CountingUnit")({
+    provides: [
+      Provider(CountingMark)({
+        inject: {},
+        sync: () => {
+          counts.builds += 1;
+          return { at: counts.builds };
+        },
+        onStop: () => {
+          counts.stops += 1;
+        },
+      }),
+    ],
+    exports: [CountingMark],
+  });
+  return { module, counts: () => counts };
+};
 
 /**
  * Handlers declared the way a consumer declares them, recording what each
@@ -337,6 +379,8 @@ export type AmqpFixtures = {
   ) => Promise<{ readonly app: App; readonly taken: () => readonly Observation[] }>;
   /** The handlers whose one consumer fails in a way nobody modelled. */
   readonly failing: EchoProvider;
+  /** A unit module counting its builds and teardowns, to bind on `serve`'s `unit`. */
+  readonly counting: ReturnType<typeof countingUnit>;
 };
 
 // Annotated explicitly: TS2883 otherwise refuses to name the inferred type,
@@ -346,7 +390,7 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
   boot: bootFixture(),
   serve: async ({ amqpConnectionUrl, boot }, use) => {
     await use(async (handlers = plainHandlers, options) => {
-      const app = boot(consuming(amqpConnectionUrl, handlers), options);
+      const app = boot(consuming(amqpConnectionUrl, handlers, undefined, options?.unit), options);
       // `runtimeInfo()` resolves once the worker is consuming — await it here
       // so the caller's test body never races the worker's own startup.
       await app.runtimeInfo();
@@ -405,6 +449,10 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
   // oxlint-disable-next-line no-empty-pattern -- see above
   slices: async ({}, use) => {
     await use(slicesOf());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  counting: async ({}, use) => {
+    await use(countingUnit());
   },
   serveSliced: async ({ amqpConnectionUrl, boot }, use) => {
     await use(async (slices) => {

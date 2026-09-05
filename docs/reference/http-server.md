@@ -4,7 +4,7 @@ description: The HTTP starter — defineHttp, HttpModule, OrpcRouter, OrpcContro
 ---
 
 <!-- doctest: prelude
-import { Logger } from "@btravstack/core";
+import { Logger, type UnitHost } from "@btravstack/core";
 import type { ConfigInvalid, Env } from "@btravstack/config";
 import type { Provider } from "@btravstack/di";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -52,7 +52,7 @@ declare const view: (order: Order) => OrderView;
 | `Http`                 | type  | `Http<A>` — what `defineHttp` returns, held as one binding and never destructured                                                                                                                                                                                                                            |
 | `Authenticators`       | type  | `Readonly<Record<string, Authenticator<…>>>` — the registry `defineHttp` takes, keyed by scheme name                                                                                                                                                                                                         |
 | `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                                                                                                 |
-| `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                                   |
+| `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                            |
 | `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                                                                                                  |
 | `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })`, or `({ inject: {}, sync })` with no deps — how one scheme is implemented; the scheme's **name** is the key it sits under in `defineHttp`                                                                                                   |
 | `Authenticator`        | type  | what `HttpAuthenticator` hands back — a description carrying its deps, principal, scopes and needs, which `defineHttp` binds to a port                                                                                                                                                                       |
@@ -67,8 +67,8 @@ declare const view: (order: Order) => OrderView;
 | `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                                                                                     |
 | `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                                                                                   |
 | `apiKeyAuthenticator`  | value | `apiKeyAuthenticator<P>()({ header?, keys })` — an API-key scheme with a constant-time compare over SHA-256 digests, no early return, and a missing header on the same path as a wrong key                                                                                                                   |
-| `http`                 | value | `http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                                           |
-| `httpServer`           | value | `httpServer(options?)` — the socket half: runtime, config, and the empty answerer set. `http()` is this plus oRPC                                                                                                                                                                                            |
+| `http`                 | value | `http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, unit? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                                    |
+| `httpServer`           | value | `httpServer(options?)` — the socket half: runtime, config, `HttpUnit`, and the empty answerer set. `http()` is this plus oRPC                                                                                                                                                                                |
 | `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                                                                           |
 | `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export. It **resolves `HttpHandler`**, so the root must export that too                                                                     |
 | `HttpHandler`          | value | `class HttpHandler extends Port.many("HttpHandler")<HttpAnswerer> {}` — the set port every protocol served in this process contributes one member to                                                                                                                                                         |
@@ -133,6 +133,7 @@ gates see a plain module.
 | `compression`     | no       | read from `HTTP_COMPRESSION` | pins response compression — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                     |
 | `plugins`         | no       | `[]`                         | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                                                                                |
 | `securityHeaders` | no       | `true`                       | response headers set on the raw listener, before dispatch — covers both answerers                                                                                                       |
+| `unit`            | no       | none                         | `{ anonymous?: Module }` — the module each answerer forks around a request it handles; see [The unit](#the-unit)                                                                        |
 | `imports`         | no       | `[]`                         | the application's modules                                                                                                                                                               |
 | `provides`        | no       | `[]`                         | the application's own providers                                                                                                                                                         |
 | `exports`         | no       | `[]`                         | the application's own exports; `HttpRuntime` and `HttpHandler` are added                                                                                                                |
@@ -149,6 +150,7 @@ import { HttpModule } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { orderRouter, orderFragments } from "../../module.js";
+import { RequestModule } from "../../request-scope.js";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";
 -->
@@ -157,6 +159,7 @@ import { OrdersSlice } from "../../slices/orders/module.js";
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
   fragments: orderFragments,
+  unit: { anonymous: RequestModule },
   imports: [
     OrdersSlice,
     CustomersSlice,
@@ -930,10 +933,14 @@ hand. `HttpOptions`:
 | `compression`     | no       | `HTTP_COMPRESSION` | `boolean \| ResponseCompressionHandlerPluginOptions`            |
 | `plugins`         | no       | `[]`               | `NodeHttpHandlerPlugin[]`, forwarded to oRPC's own `RPCHandler` |
 | `securityHeaders` | no       | `true`             | `boolean \| Record<string, string>`, applied on the listener    |
+| `unit`            | no       | none               | `{ anonymous?: Module }` — see [The unit](#the-unit)            |
 
-The module **provides** `HttpRuntime` and `HttpConfig`, exports both, and
-**needs** `Env` (the kernel discharges it) and the starter's router port
-(`OrpcRouterPort`, the port `api.OrpcRouter(contract)({ inject, ...arm })` provides on) —
+The module **provides** `HttpRuntime`, `HttpConfig` and `HttpUnit`, exports
+`HttpRuntime` and `HttpConfig`, and **needs** `Env` (the kernel discharges it),
+the starter's router port
+(`OrpcRouterPort`, the port `api.OrpcRouter(contract)({ inject, ...arm })` provides on) and,
+when `unit.anonymous` is bound, that module's own unmet needs (`Scope`
+excluded, since nothing can provide it) —
 the runtime provider depends on the router through di, which is why a
 composition that imports `http()` without providing the router carries an
 unmet need `start` refuses (di's gate, not the kernel's). The router is not an
@@ -1062,12 +1069,12 @@ own decision — pass a record when you have made those.
 
 ## `htmx(options)`
 
-<!-- doctest: signature=@btravstack/http-server -->
+<!-- doctest: skip — the quoted needs channel names `HttpUnit`, which this package deliberately does not export, so there is nothing a signature check could name it by -->
 
 ```ts
 const htmx: (
   options?: HtmxOptions,
-) => Provider<HttpHandler, never, HtmxFragmentsPort | HttpConfig> & {
+) => Provider<HttpHandler, never, HtmxFragmentsPort | HttpConfig | HttpUnit> & {
   readonly port: typeof HttpHandler;
 };
 ```
@@ -1076,10 +1083,12 @@ The second answerer: fragments, mounted under `prefix` (default `/`). It
 matches a request against the composed fragments' routes by method and path,
 resolves the principal through [`resolvePrincipal`](#authentication) when the
 route carries a requirement, reads and validates a `POST` body against the
-route's own schema, and writes the handler's `Html` with
+route's own schema, forks `unit.anonymous` once all of that has succeeded and
+immediately before the handler runs, and writes the handler's `Html` with
 `content-type: text/html; charset=utf-8`. A request no route claims resolves
 unwritten, exactly like oRPC's answerer, so the runtime's own `404` answers
-it.
+it — and never forks, since the fork is the answerer's, for a request it
+handles and is about to hand to its own route.
 
 | Option   | Required | Default | What it is                  |
 | -------- | -------- | ------- | --------------------------- |
@@ -1164,6 +1173,7 @@ type HttpAnswerer = {
     request: IncomingMessage,
     response: ServerResponse,
     signal: AbortSignal,
+    host: UnitHost<never>,
   ) => PromiseLike<unknown>;
 };
 ```
@@ -1213,27 +1223,30 @@ that is the only way to learn the port that was actually bound.
 
 ## What it decides about a request
 
-| Request                                                      | Answer                                                                    | Decided by       |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------- | ---------------- |
-| a procedure under `prefix`                                   | the procedure's output, or the `ORPCError` its `Result` was mapped to     | oRPC, the router |
-| a `GET` for a procedure whose output is an event iterator    | the stream, as `text/event-stream` — the one `GET` the RPC handler admits | this package     |
-| a defect thrown inside a procedure                           | oRPC's own `INTERNAL_SERVER_ERROR` collapse                               | oRPC             |
-| a protected procedure no requirement accepted the caller for | `401 UNAUTHORIZED`, the handler never entered                             | this package     |
-| a protected procedure whose caller lacked a required scope   | `403 FORBIDDEN`, the handler never entered                                | this package     |
-| a protected procedure whose authenticator defected           | oRPC's `INTERNAL_SERVER_ERROR` collapse — a bug, not a rejected caller    | oRPC             |
-| a path under `prefix` naming no procedure                    | `404 {"error":"NotFound"}` — oRPC declines it unwritten                   | this package     |
-| any path outside `prefix`                                    | `404 {"error":"NotFound"}` — likewise                                     | this package     |
-| the listener resolved without writing                        | `404 {"error":"NotFound"}`                                                | this package     |
-| the listener failed before headers were out                  | `500 {"error":"InternalError"}`                                           | this package     |
-| a failure with headers already on the wire                   | the socket is destroyed — a reset, not a hang                             | this package     |
+| Request                                                          | Answer                                                                    | Decided by       |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------- |
+| a procedure under `prefix`                                       | the procedure's output, or the `ORPCError` its `Result` was mapped to     | oRPC, the router |
+| a `GET` for a procedure whose output is an event iterator        | the stream, as `text/event-stream` — the one `GET` the RPC handler admits | this package     |
+| a defect thrown inside a procedure, or in `unitScope`'s own fork | oRPC's own `INTERNAL_SERVER_ERROR` collapse                               | oRPC             |
+| a protected procedure no requirement accepted the caller for     | `401 UNAUTHORIZED`, the handler never entered                             | this package     |
+| a protected procedure whose caller lacked a required scope       | `403 FORBIDDEN`, the handler never entered                                | this package     |
+| a protected procedure whose authenticator defected               | oRPC's `INTERNAL_SERVER_ERROR` collapse — a bug, not a rejected caller    | oRPC             |
+| a path under `prefix` naming no procedure                        | `404 {"error":"NotFound"}` — oRPC declines it unwritten                   | this package     |
+| any path outside `prefix`                                        | `404 {"error":"NotFound"}` — likewise                                     | this package     |
+| the listener resolved without writing                            | `404 {"error":"NotFound"}`                                                | this package     |
+| the listener failed before headers were out                      | `500 {"error":"InternalError"}`                                           | this package     |
+| a failure with headers already on the wire                       | the socket is destroyed — a reset, not a hang                             | this package     |
 
 The last three are the package's own fallbacks, guaranteeing that every
 request produces exactly one completed response. The two `500` shapes are
-unreachable over the oRPC surface, which collapses every defect itself; they
-exist because the transport is proven against a bare listener. "Failed"
-covers a rejected promise, a synchronous throw, and a `StartOptions.unit`
-provider that failed to build — the last two never reach the listener's
-promise, so that `500` is written from the unit's own defect path.
+unreachable over the oRPC surface, which collapses every defect itself —
+`unitScope`'s own fork failure included, since a throw out of it is a
+middleware throw exactly like a throw out of the procedure it wraps — and
+they exist because the transport is proven against a bare listener.
+"Failed" covers only a rejected promise or a synchronous throw out of a
+hand-written `HttpAnswerer.handle`, never a promise this package's own
+answerers hand back: `htmx()`'s own fork failure writes its `500` directly,
+through the same `refuse` every other htmx refusal uses.
 
 `Result` → HTTP status is deliberately **not** in the table: it is the
 router's `.result()` triage, at the one place that decides what a client sees.
@@ -1242,8 +1255,8 @@ router's `.result()` triage, at the one place that decides what a client sees.
 
 One unit per request, `kind: "http"`. Its lifetime **is** the response's: the
 unit's work resolves on the response's `'close'` event (or at once if that
-already fired before the work ran — a client hanging up during a slow
-`StartOptions.unit` build), so there is no seam for a late write to land in.
+already fired before the work ran), so there is no seam for a late write to
+land in.
 
 | `UnitMeta` field | Value                                                                                             |
 | ---------------- | ------------------------------------------------------------------------------------------------- |
@@ -1252,6 +1265,40 @@ already fired before the work ran — a client hanging up during a slow
 
 A blank header is ignored rather than adopted, because `""` is not nullish
 and would otherwise win over the minted id.
+
+### `unit`, and who forks it
+
+<!-- doctest: skip — a bare property signature, not a program -->
+
+```ts
+readonly unit?: { readonly anonymous?: AnyUnitModule };
+```
+
+`http()`, `httpServer()` and `HttpModule` all take a `unit` option: the module
+the **answerers** fork around every request they handle, with no seed. Built
+as the answerer takes the request, torn down when the unit closes, after the
+response is flushed — the module's own unmet needs join the composition
+root's, exactly as any other `needs` does, since it is forked over the
+application context.
+
+`AnyUnitModule` is `Module<never, never, unknown>` — not exported from the
+package, reached the same way `OrpcRouterPort` is, never by name. `never`,
+not `unknown`, in the **first** position: `Module`'s `_exports` channel is
+contravariant, so `Module<unknown, …>` is a bound no real module can ever
+satisfy, and `unknown` in the **third** (Needs) position is what lets a
+module with real needs infer against the bound at all — the same shape
+`@btravstack/testing`'s `TestRuntimeOptions.unit` uses.
+
+`orpc()` installs the fork as a middleware — `unitScope` — on every leaf, after
+the principal middleware where a leaf carries one, so a later phase can seed it
+with what the principal resolved to — `principalMiddleware` refuses without
+calling `next()`, so `unitScope`, nested inside it, never runs for a refused
+caller. `htmx()` forks at the same point in the request's life: after
+authentication succeeds and the body validates, immediately before the
+handler — never for a request either answerer refuses. **The runtime's own
+`404` never forks**: only an answerer that claims a request does, which is the
+behaviour change from the kernel forking a `StartOptions.unit` module around
+every unit — that option is gone, and the fork is now each answerer's own.
 
 ## The drain
 

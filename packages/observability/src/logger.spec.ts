@@ -171,11 +171,11 @@ describe("the logger", () => {
     recorder,
     unitLogging,
   }) => {
-    // GIVEN a booted application whose per-unit module logs as it is built —
-    // the shape a request-scoped span has, and the only code that genuinely
-    // runs inside the kernel's ambient record
-    const { module, runtime } = app({ sink: recorder.sink });
-    boot(module, { unit: unitLogging });
+    // GIVEN a booted application whose test runtime forks a unit module that
+    // logs as it is built — the shape a request-scoped span has, and the only
+    // code that genuinely runs inside the kernel's ambient record
+    const { module, runtime } = app({ sink: recorder.sink }, unitLogging);
+    boot(module);
     await runtime.untilStarted();
 
     // WHEN one unit opens and settles

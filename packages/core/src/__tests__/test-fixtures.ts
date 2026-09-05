@@ -8,7 +8,7 @@ import {
   type TestRuntimeInfo,
   TestRuntimePort,
 } from "@btravstack/testing";
-import { OkAsync } from "unthrown";
+import { OkAsync, type AsyncResult } from "unthrown";
 import { expect, test } from "vitest";
 
 import type { KernelEvent } from "../events.js";
@@ -81,7 +81,7 @@ const settingsApp = () =>
   });
 
 export type UnitApp = {
-  readonly runtime: TestRuntime;
+  readonly runtime: TestRuntime<Module<never, never, Parent>>;
   readonly app: RunningApp<never, TestRuntimeInfo>;
   /** Mutated live by the providers; a test reads it after its units settle. */
   readonly counts: { parentBuilds: number; spanBuilds: number; spanStops: number };
@@ -93,10 +93,20 @@ export type UnitApp = {
   readonly holdTeardown: () => { readonly release: () => void };
   /** Makes every subsequent unit teardown fail with `cause`. */
   readonly failTeardown: (cause: unknown) => void;
+  /** Forks the unit module a second time inside one unit, over the running app's host. */
+  readonly forkTwice: () => AsyncResult<unknown, never>;
+  /** Forks a module whose provider fails to construct, over the running app's host. */
+  readonly forkBroken: () => AsyncResult<unknown, never>;
+  /**
+   * Forks the unit module only once the unit's own work has already
+   * returned — the shape an answerer racing a client's abort against its own
+   * fork produces.
+   */
+  readonly forkAfterSettled: () => AsyncResult<unknown, never>;
 };
 
 /**
- * A serving application whose `StartOptions` carry a `unit` module: `Span` is
+ * A serving application whose runtime binds a `unit` module: `Span` is
  * constructed as each unit opens — reading `Parent` out of the application
  * scope — and torn down as it closes, with both moments recording what the
  * ambient `currentUnit()` saw. The ports are module-level (a `Port` id warns
@@ -191,21 +201,6 @@ export const it = test.extend<{ boot: Boot; unitApp: UnitApp; configured: Config
       teardown = () => Promise.reject(cause);
     };
 
-    const runtime = testRuntime();
-    const AppModule = Module("UnitFixtureApp")({
-      imports: [runtime.module],
-      provides: [
-        Provider(Parent)({
-          inject: {},
-          sync: () => {
-            counts.parentBuilds += 1;
-            return { mark: () => {} };
-          },
-        }),
-      ],
-      exports: [Parent, TestRuntimePort],
-    });
-
     const UnitModule = Module("UnitFixtureUnit")({
       // The fork seam: `Parent` comes from the application scope this unit
       // module is forked from, never from inside it.
@@ -228,8 +223,35 @@ export const it = test.extend<{ boot: Boot; unitApp: UnitApp; configured: Config
       exports: [Span],
     });
 
+    const BrokenModule = Module("UnitFixtureBroken")({
+      provides: [
+        Provider(Span)({
+          inject: {},
+          sync: () => {
+            // oxlint-disable-next-line unthrown/no-throw -- the subject under test: a fork's construction failure must reach the caller's defect path
+            throw new Error("construction-boom");
+          },
+        }),
+      ],
+      exports: [Span],
+    });
+
+    const runtime = testRuntime("unit", { unit: UnitModule });
+    const AppModule = Module("UnitFixtureApp")({
+      imports: [runtime.module],
+      provides: [
+        Provider(Parent)({
+          inject: {},
+          sync: () => {
+            counts.parentBuilds += 1;
+            return { mark: () => {} };
+          },
+        }),
+      ],
+      exports: [Parent, TestRuntimePort],
+    });
+
     const app = start(AppModule, {
-      unit: UnitModule,
       signals: false,
       probes: false,
       preDrainDelayMs: 0,
@@ -239,7 +261,43 @@ export const it = test.extend<{ boot: Boot; unitApp: UnitApp; configured: Config
     });
     await runtime.untilStarted();
 
-    await use({ runtime, app, counts, seen, events, holdTeardown, failTeardown });
+    const forkTwice = (): AsyncResult<unknown, never> =>
+      runtime
+        .host()
+        .run({ kind: "test", id: "twice" }, (unit) =>
+          unit.fork(UnitModule as never, []).flatMap(() => unit.fork(UnitModule as never, [])),
+        );
+
+    const forkBroken = (): AsyncResult<unknown, never> =>
+      runtime
+        .host()
+        .run({ kind: "test", id: "broken" }, (unit) => unit.fork(BrokenModule as never, []));
+
+    // The work callback returns before ever forking — captured for the
+    // caller to invoke once the unit this `.run()` call settles, which is
+    // exactly the shape a fork racing a client's abort against its own
+    // answerer produces.
+    const forkAfterSettled = (): AsyncResult<unknown, never> => {
+      let lateFork: (() => AsyncResult<unknown, never>) | undefined;
+      const settled = runtime.host().run({ kind: "test", id: "after-settled" }, (unit) => {
+        lateFork = () => unit.fork(UnitModule as never, []);
+        return OkAsync("done");
+      });
+      return settled.flatMap(() => (lateFork as () => AsyncResult<unknown, never>)());
+    };
+
+    await use({
+      runtime,
+      app,
+      counts,
+      seen,
+      events,
+      holdTeardown,
+      failTeardown,
+      forkTwice,
+      forkBroken,
+      forkAfterSettled,
+    });
 
     app.stop();
     await expect(app.exited).toBeOk();

@@ -1,6 +1,6 @@
 ---
 title: The Runtime contract
-description: Runtime, RuntimeHost, RunUnit, Serving, RuntimePort and RuntimeStartFailed, the unit-of-work types, currentUnit, Clock — and the three contracts a runtime owes that the kernel cannot check.
+description: Runtime, RuntimeHost, UnitHost, RunUnit, Serving, RuntimePort and RuntimeStartFailed, the unit-of-work types, currentUnit, Clock — and the three contracts a runtime owes that the kernel cannot check.
 ---
 
 <!-- doctest: prelude
@@ -40,6 +40,13 @@ type Runtime<Resolves extends AnyPort = never, Info = never> = {
 port **instance** types. `InstanceType<never>` is `never`, so a runtime that
 resolves nothing gets a context it can read nothing from.
 
+A `UnitHost.fork` module's own needs are not part of this contract: a `fork`
+module is forked over the application context, so its needs are exactly what
+a starter's own `needs` channel already asks the composition root to supply,
+and di's ordinary `UNSATISFIED DEPENDENCIES` gate is what refuses a root that
+does not — the same gate a starter's own `needs: [Logger]` triggers, not a
+`Runtime` type parameter.
+
 ## `RuntimeHost<Resolves>`
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
@@ -51,9 +58,42 @@ type RuntimeHost<Resolves extends AnyPort> = {
 };
 ```
 
-`ctx` is the **application** context — the module's exports, never a
-`StartOptions.unit` module's. `run` is the kernel's unit registry, closed over
-that context.
+`ctx` is the **application** context — the module's exports, never a port a
+`fork` module provides, which exists only in the `Context` `fork` hands back.
+`run` is the kernel's unit registry, closed over that context.
+
+## `UnitHost<Resolves>`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
+```ts
+type UnitHost<Resolves extends AnyPort> = {
+  readonly ctx: Context<InstanceType<Resolves>>;
+  readonly fork: <UnitX, N, Seeded extends AnyPort = never>(
+    module: Module<UnitX, never, N> &
+      DependencyGate<Exclude<N, InstanceType<Resolves> | InstanceType<Seeded> | Scope>>,
+    seed: readonly SeedEntry<Seeded>[],
+  ) => AsyncResult<Context<InstanceType<Resolves> | UnitX | InstanceType<Seeded>>, never>;
+};
+```
+
+What a unit's work callback is handed instead of a bare `Context`: `ctx` is
+the same application context `RuntimeHost.ctx` is, and `fork(module, seed)` is
+the one way to open the unit's own scope — building `module` over `ctx` plus
+`seed` and handing the forked `Context` back. The kernel closes that scope
+when the unit settles: inside the registry's unit, so the unit is not counted
+closed until the fork's finalisers have run, and inside the unit's ambient
+record, so a teardown log line carries the unit's ids. A construction failure
+rides the unit's defect path — the caller's `fork(...)` call settles as a
+`Defect` rather than hanging. A unit forks once; a second `fork` call is a
+defect too, and so is one made after the unit has settled — nothing awaits
+that scope's teardown.
+
+The `DependencyGate` intersection is how a seed **subtracts** a need: what the
+module still owes (`N`) is checked after the ports the application context
+already resolves, the ports `seed` supplies, and `Scope` have been excluded, so
+a module needing only a seeded port compiles and one needing a port neither
+side supplies is refused at the `fork` call.
 
 ## `RunUnit<Resolves>`
 
@@ -62,10 +102,7 @@ that context.
 ```ts
 type RunUnit<Resolves extends AnyPort> = <T, E>(
   meta: UnitMeta,
-  work: (
-    ctx: Context<InstanceType<Resolves>>,
-    signal: AbortSignal,
-  ) => ReturnType<UnitWork<T, E>>,
+  work: (unit: UnitHost<Resolves>, signal: AbortSignal) => ReturnType<UnitWork<T, E>>,
 ) => AsyncResult<T, E>;
 ```
 
@@ -75,9 +112,8 @@ deadline, or at once when the drain is skipped — the same object is on the
 record as `signal`, for a runtime whose work callback is a library's `next()`)
 and gives the work's own
 `Result` **straight back** — mapping that outcome to a transport is the
-runtime's job. With a `unit` module, `ctx` is the forked context
-(`Context<X | UnitX>`), built before `work` runs and torn down after it
-settles.
+runtime's job. A runtime that wants a per-unit scope calls `unit.fork(...)`
+itself, from inside `work`, at the moment it holds the unit's own input.
 
 ## `Serving<Info>`
 
@@ -279,12 +315,12 @@ None of these is checkable by the kernel, and each is silent when broken.
    `traceId` defaults to `id`, so passing a category (a route template) as the
    id gives every request the same trace id. A broker message id or job id is
    already unique; a route template is a `kind`.
-3. **`RuntimeHost.ctx` is the application context, and unit work is not
-   synchronous with `host.run`.** A unit-provided port reaches the runtime only
-   through `run`'s work callback, and with a `unit` module the callback runs
-   after an `await` — a runtime subscribing to an event from inside it must
-   check whether it already fired (`@btravstack/http-server` checks `response.closed`
-   for exactly this).
+3. **`RuntimeHost.ctx` is the application context, and a fork's own scope is
+   not synchronous with `host.run`.** A port a `fork` module provides reaches
+   the runtime only through the `Context` `fork` hands back, and the work
+   runs after an `await` once that module's own provider is async — a runtime
+   subscribing to an event from inside it must check whether it already fired
+   (`@btravstack/http-server` checks `response.closed` for exactly this).
 
 ## A minimal runtime
 
@@ -308,8 +344,8 @@ const ticker: Runtime<typeof Greeter> = {
       // Every piece of work goes through `host.run`: that is what makes it
       // count towards the drain, and what gives it an `AbortSignal`.
       void host
-        .run({ kind: "tick", id: `${Date.now()}` }, (ctx, signal) =>
-          signal.aborted ? Ok("") : Ok(ctx.get(Greeter).greet("world")),
+        .run({ kind: "tick", id: `${Date.now()}` }, (unit, signal) =>
+          signal.aborted ? Ok("") : Ok(unit.ctx.get(Greeter).greet("world")),
         )
         .tapFailure((failure) => {
           process.stderr.write(`${JSON.stringify({ tick: failure.tag })}\n`);

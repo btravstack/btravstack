@@ -8,9 +8,13 @@ import {
 import type { ActivityMiddleware } from "@temporal-contract/worker/activity";
 import { activityInfo } from "@temporalio/activity";
 
+import type { AnyUnitModule } from "./temporal-runtime.js";
+
 /**
- * Open one kernel unit per activity attempt. It injects nothing — `next()`
- * unchanged — so the ambient `currentUnit()` record is what an adapter reads.
+ * Open one kernel unit per activity attempt, forking `unit` — when one is
+ * bound — after the activity is invoked, before it runs; the fork is torn down
+ * when the unit closes. With no `unit` bound, `next()` runs unchanged, so the
+ * ambient `currentUnit()` record is what an adapter reads.
  *
  * **That includes the kernel's per-unit `AbortSignal`**, and it is the only
  * route to it: an activity has no parameter to receive one through. Temporal's
@@ -24,6 +28,7 @@ export const activityUnits =
   (
     host: RuntimeHost<never>,
     observers: readonly ((operation: Operation) => Settle)[],
+    unit: AnyUnitModule | undefined,
   ): ActivityMiddleware =>
   (_invocation, next) => {
     const settle = observe(observers, {
@@ -36,7 +41,20 @@ export const activityUnits =
       attributes: { activity: activityInfo().activityType },
     });
     return host
-      .run(metaFor(), () => next())
+      .run(metaFor(), (scope) =>
+        unit === undefined
+          ? next()
+          : // `as never`: `AnyUnitModule` erases a module's Needs to `unknown` —
+            // the only bound a module with real needs can infer against — so
+            // `fork`'s own `DependencyGate` sees `Exclude<unknown, Scope>`,
+            // still `unknown`, and never clears on its own. The needs were
+            // already checked once, at the `Unit`-generic call site that bound
+            // this module (`temporal()`'s own type parameter, proven by
+            // `examples/order-temporal-worker/src/needs-gate.test-d.ts`'s
+            // positive/negative pair) — this reasserts that proof rather than
+            // bypassing it.
+            scope.fork(unit as never, []).flatMap(() => next()),
+      )
       .tap(() => settle({ outcome: "ok" }))
       .tapFailure((failure) =>
         settle({

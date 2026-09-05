@@ -7,6 +7,7 @@ import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 
 import { api } from "./auth.js";
+import { RequestModule } from "./request-scope.js";
 import { customersController } from "./slices/customers/controller.js";
 import { CustomersSlice } from "./slices/customers/module.js";
 import { ordersController } from "./slices/orders/controller.js";
@@ -37,12 +38,18 @@ export const orderFragments = api.HtmxFragments([orderRowFragment]);
  * nothing about observability. The two authenticators are **not** listed — they
  * ride the router, and `HttpModule` puts them in `provides` itself.
  *
+ * `unit.anonymous` is `RequestModule`: both answerers fork it around every
+ * request they handle, so its own `Logger` need joins this root's — satisfied
+ * by `observability()`, one of this very root's imports — rather than the
+ * kernel's, which no longer forks a unit-scoped module of its own.
+ *
  * A constant, not a function: configuration is read inside the graph, so a spec
  * boots this very module with `env: { PORT: "0" }`.
  */
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
   fragments: orderFragments,
+  unit: { anonymous: RequestModule },
   imports: [OrdersSlice, CustomersSlice, cache({ adapter: redisCache() }), observability(), otel()],
   // All three are exported because `RequestModule`, the per-request fork, reads
   // them out of the application scope.

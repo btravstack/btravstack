@@ -73,8 +73,8 @@ const tenantRuntimeModule = (tenantId: string) =>
           name: "tenant",
           resolves: [Logger],
           start: (host) => {
-            void host.run({ kind: "tenanted", id: "unit-1", tenantId }, (ctx) => {
-              ctx.get(Logger).info("inside a tenant's unit");
+            void host.run({ kind: "tenanted", id: "unit-1", tenantId }, (unit) => {
+              unit.ctx.get(Logger).info("inside a tenant's unit");
               return Ok(undefined);
             });
             return OkAsync({ drain: () => OkAsync(), stop: () => OkAsync() });
@@ -95,14 +95,18 @@ export type ObservabilityFixtures = {
    * The starter as an application composes it, next to an in-memory runtime,
    * plus the runtime itself so a spec can hold a unit open and log inside it.
    */
-  /** A `StartOptions.unit` module that logs as it is built — inside the unit, through the application's own `Logger`. */
+  /** A module that logs as it is built — bound through `testRuntime`'s own `unit` option — inside the unit, through the application's own `Logger`. */
   readonly unitLogging: Module<UnitSpan, never, Logger>;
   /** An application whose runtime opens one unit carrying a tenant, and logs inside it. */
   readonly tenantApp: (
     tenantId: string,
     options?: ObservabilityOptions,
   ) => Module<Logger | TenantRuntime, never, never>;
-  readonly app: (options?: ObservabilityOptions) => {
+  readonly app: (
+    options?: ObservabilityOptions,
+    /** A module every unit `runtime.submit()` opens forks, with no seed — `testRuntime`'s own `unit` option. */
+    unit?: Module<never, never, unknown>,
+  ) => {
     readonly module: Module<Logger | LoggerConfig | Greeting | TestRuntimePort, never, never>;
     readonly runtime: ReturnType<typeof testRuntime>;
   };
@@ -157,8 +161,8 @@ export const it = test.extend<ObservabilityFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- see above
   app: async ({}, use) => {
-    await use((options = {}) => {
-      const runtime = testRuntime();
+    await use((options = {}, unit) => {
+      const runtime = testRuntime("test", unit === undefined ? {} : { unit });
       return {
         runtime,
         module: Module("ObservabilityApp")({

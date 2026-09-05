@@ -77,4 +77,38 @@ describe("forkScope", () => {
     // @ts-expect-error unsatisfied dependency: Missing
     Module.forkScope(parent, NeedsMissing, (ctx) => OkAsync(ctx.get(RequestId)));
   });
+
+  test("a seeded port satisfies a need the parent does not cover", () => {
+    class Principal extends Port("FPrincipal")<{ readonly userId: string }> {}
+    const NeedsPrincipal = Module("NeedsPrincipal")({
+      needs: [Principal],
+      provides: [
+        Provider(RequestId)({
+          inject: { principal: Principal },
+          sync: ({ principal }) => ({ value: principal.userId }),
+        }),
+      ],
+      exports: [RequestId],
+    });
+    const parent = null as unknown as Context<Db>;
+
+    // Accepted: `Principal` is seeded, so it is supplied from outside the tree.
+    const forked = Module.forkScope(parent, NeedsPrincipal, (ctx) => OkAsync(ctx.get(Principal)), {
+      seed: [[Principal, { userId: "u" }]],
+    });
+    type Channels = ForkChannels<typeof forked>;
+    const seededIsReadable: Equal<Channels[0], { readonly userId: string }> = true;
+    void forked;
+    void seededIsReadable;
+
+    // Refused: the same module with no seed still owes `Principal`.
+    // @ts-expect-error -- UNSATISFIED DEPENDENCIES: `Principal` is neither in the parent nor seeded
+    Module.forkScope(parent, NeedsPrincipal, (ctx) => OkAsync(ctx.get(RequestId)));
+
+    // Refused: a seed value of the wrong shape.
+    Module.forkScope(parent, NeedsPrincipal, (ctx) => OkAsync(ctx.get(RequestId)), {
+      // @ts-expect-error -- the seeded value must be the port's service
+      seed: [[Principal, { nope: true }]],
+    });
+  });
 });

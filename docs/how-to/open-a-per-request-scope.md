@@ -1,6 +1,6 @@
 ---
 title: Open a per-request scope
-description: Pass a module as StartOptions.unit and let the kernel fork it around every unit — built as the request opens, torn down as it closes, with no handler code managing the fork.
+description: Bind a module on the runtime's own unit option and let it fork the module around every unit it opens — built as the request opens, torn down as it closes, with no handler code managing the fork.
 ---
 
 <!-- doctest: prelude
@@ -19,16 +19,22 @@ The application scope is opened once, by the kernel, and holds the database.
 Reopening it per request would give every request its own empty database. What
 you want is a **short-lived scope forked over the one already built** — a
 per-request span, transaction or tenant context that reads what the parent
-constructed and is torn down when the unit closes. `StartOptions.unit` is
-that, and no handler ever calls `Module.forkScope` itself.
+constructed and is torn down when the unit closes. A starter's own `unit`
+option is that: the runtime forks the bound module itself, through
+`UnitHost.fork`, at the moment it holds the unit's own input — and no handler
+code ever calls `Module.forkScope` itself.
 
 ## Recipe
 
 1. Write a `Module` whose providers are the per-unit services. Anything
    application-scoped they need arrives through their `inject` record.
-2. Pass it as `unit` to `start`, `runMain`, or `@btravstack/testing`'s `boot`.
+2. Bind it on the starter's own `unit` option — `HttpModule`'s
+   `unit: { anonymous }`, `AmqpModule`'s `unit: { message }`,
+   `TemporalModule`'s `unit: { activity }` — or `@btravstack/testing`'s
+   `testRuntime(name, { unit })`.
 3. Export from the composition root whatever the unit module reads — the
-   gate checks it at the call site.
+   gate checks it at the call site, the same `UNSATISFIED DEPENDENCIES` one
+   any other unmet need is refused on.
 
 ## Step 1 — the unit module
 
@@ -36,6 +42,7 @@ From `examples/order-api/src/request-scope.ts`, a span that logs how long the
 request took:
 
 ```ts
+import { Logger } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 
 export class RequestSpan extends Port("RequestSpan")<{
@@ -72,10 +79,27 @@ the fork **reads** it from the parent, it does not rebuild it. `onStop` puts `Sc
 (or `Module.scoped`) opens one — so the teardown cannot be forgotten. Its type
 is `Module<RequestSpan, never, Logger | Scope>`.
 
-## Step 2 — hand it to the kernel
+## Step 2 — bind it on the composition root
+
+`RequestModule` is not passed to `start` or `runMain` any more — it rides
+`HttpModule`'s own `unit` option, in `examples/order-api/src/module.ts`:
+
+<!-- doctest: skip — quotes examples/order-api/src/module.ts, which the gate compiles in full -->
 
 ```ts
-import { runMain, Logger } from "@btravstack/core";
+export const OrderApi = HttpModule("OrderApi")({
+  router: orderRouter,
+  fragments: orderFragments,
+  unit: { anonymous: RequestModule },
+  imports: [OrdersSlice, CustomersSlice, observability(), otel()],
+  exports: [Logger, Tracer, Meter],
+});
+```
+
+`main.ts` does not change at all:
+
+```ts
+import { runMain } from "@btravstack/core";
 import {
   createLogger,
   jsonSink,
@@ -83,20 +107,20 @@ import {
 } from "@btravstack/observability";
 
 import { OrderApi } from "./module.js";
-import { RequestModule } from "./request-scope.js";
 
 await runMain(OrderApi, {
-  unit: RequestModule,
   onEvent: kernelEvents(createLogger(jsonSink())),
 });
 ```
 
 That is the whole of `examples/order-api/src/main.ts` — `onEvent` being the
 separate matter of putting the kernel's own events in the same stream, covered
-in [Log and correlate](/how-to/log-and-correlate). From here the kernel
-forks `RequestModule` around **every unit**: built as the unit opens, torn down
-as it closes, inside `registry.run` — so the unit is not counted closed until
-the fork is, and a drain waits for the teardown too.
+in [Log and correlate](/how-to/log-and-correlate). From here each **answerer**
+forks `RequestModule` around **every unit it handles**: built as the request
+opens, torn down as it closes, through `UnitHost.fork` inside its own
+dispatch — not `host.run`, which stays the kernel's alone, counting the unit
+towards the drain and closing the fork's scope once the unit's `Result`
+settles.
 
 ## What the fork gives you
 
@@ -114,60 +138,65 @@ the fork is, and a drain waits for the teardown too.
 
 ## The error channel is `never`
 
-`unit` is `Module<UnitX, never, UnitNeeds>`. A unit is already inside the
-running application, so a construction failure has no modeled startup channel
-to land in — **it rides the unit's defect path**, which every runtime already
-answers: `@btravstack/http-server` writes its `500` from the unit's `recoverDefect`,
-before any procedure is reached; a queue consumer dead-letters. Keep the unit
+`AnyUnitModule = Module<never, never, unknown>` is the bound every starter's
+`unit` option constrains its own type parameter to — the middle, error,
+channel is `never`. A unit is already inside the running application, so a
+construction failure has no modeled startup channel to land in — **it rides
+the unit's defect path**, which every runtime already answers:
+`@btravstack/http-server` writes its `500` through the path each answerer
+already had for any other defect — oRPC's own `INTERNAL_SERVER_ERROR` collapse,
+`refuse(response, 500)` for htmx — before any procedure or fragment handler is
+reached; a queue consumer dead-letters. Keep the unit
 module's providers infallible — `sync`, `value`, `class`, or a `make`/`acquire`
 whose `E` is `never`.
 
-## The gate has an arm for it
+## The gate is the ordinary one
 
-`start`'s phantom marker checks the fork's direction at the call site: the
-unit module's needs must be covered by the module's **exports**, `Scope` or
-`Env`. A root that has its runtime and router but does not export `Logger` is
-refused against
-`"UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"`,
-the last line of the error:
+There is no separate marker for this any more — a bound `unit.anonymous`
+module's own unmet needs simply **join `HttpModule`'s own `Needs` channel**,
+so the gate that refuses them is `start`'s ordinary
+`UNSATISFIED DEPENDENCIES`, never a fourth arm of the kernel's own marker (an
+import's needs travel published in its type, and a bound `unit` module is no
+different). A root that has its runtime and router but whose bound unit module
+needs a port nothing in the graph provides is refused the same way any other
+unmet need is, ending on that port — `HttpUnitDep` below, which
+`HttpUnitModule` declares in its own `needs`:
 
-<!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the UNSATISFIED UNIT NEEDS arm -->
+<!-- doctest: skip — quotes examples/order-api/src/needs-gate.test-d.ts, the real gate for the unit needs-propagation arm -->
 
 ```ts
-const UnloggedApi = Module("UnloggedApi")({
-  imports: [
-    OrderApplicationModule,
-    OrderPersistenceModule,
-    observability(),
-    http(),
-  ],
-  provides: [orderRouter, ...orderRouter.authenticators],
-  exports: [HttpRuntime],
+const _unloggedUnit = HttpModule("WithUnitUnmet")({
+  router: orderRouter,
+  unit: { anonymous: HttpUnitModule },
+  imports: [OrdersSlice, CustomersSlice, observability(), cache({ adapter: memoryCache() })],
+  exports: [Logger],
 });
-
-// @ts-expect-error — UNSATISFIED UNIT NEEDS: the module does not export Logger for RequestModule to read.
-const unitUnmet = start(UnloggedApi, { ...options, unit: RequestModule });
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides `HttpUnitDep`, which `HttpUnitModule` needs
+const _withUnitUnmet = start(_unloggedUnit, options);
 ```
 
-The port exists in that graph — `observability()` provides it — but exporting
-is what the gate reads, and `UnloggedApi` does not. That is why `OrderApi`
-exports `Logger` next to `HttpRuntime`:
-`HttpModule("OrderApi")({ router: orderRouter, imports: [OrderApplicationModule,
-OrderPersistenceModule, observability()], exports: [Logger] })`.
+`observability()` provides `Logger`, so exporting it clears nothing here: what
+the gate reads is `HttpUnitDep`, which the bound unit module needs and no
+provider in this graph supplies. Adding
+`provides: [Provider(HttpUnitDep)({ inject: {}, value: { value: 1 } })]` is
+what satisfies it. It is the same rule that makes `OrderApi` export `Logger`,
+`Tracer` and `Meter` next to `HttpRuntime` — `RequestModule`, the module it
+forks per request, reads all three out of the application scope.
 
 ::: warning `RuntimeHost.ctx` is the application context
 A unit-provided port exists only while a unit is open, and reaches a runtime
 through `host.run`'s work callback alone. `host.ctx.get(RequestSpan)` at
 runtime startup type-checks against nothing and would be a defect, so the
 gate rejects a runtime whose `resolves` names a unit-only port: `UNSATISFIED
-RUNTIME PORTS` is checked against the module's exports **only**, never the
-unit's. Resolve at start what the application module itself exports.
+RUNTIME PORTS` is checked against the module's exports **only**, never a
+fork's. Resolve at start what the application module itself exports.
 :::
 
 Two more consequences for anyone [writing a runtime](/how-to/write-a-runtime):
-with a unit module the work runs only once the fork is built — after an
-`await` when a unit provider is async — so a runtime that subscribes to an
-event from inside its work must first check whether it already fired
+with a unit module the work runs only once `unit.fork(module, seed)` has
+resolved — after an `await` when a unit provider is async — so a runtime that
+subscribes to an event from inside its work must first check whether it
+already fired
 (`@btravstack/http-server` checks `response.closed` for exactly this). And a shipped
 runtime does not read `ctx` at all: what a handler needs, its provider
 declared.
@@ -192,13 +221,16 @@ const handled = Module.forkScope(parent, RequestModule, (ctx) => {
 ```
 
 It carries di's own `UNSATISFIED DEPENDENCIES` gate on the parent's exports.
-`StartOptions.unit` is this call made by the kernel per unit, with the parent
-being the application context — see [Modules](/reference/di/modules) and
-[Entry points](/reference/di/entry-points).
+`unit.fork(module, seed)` is this call made by the runtime per unit, with the
+parent being `host.ctx`, the application context — see
+[Modules](/reference/di/modules) and [Entry points](/reference/di/entry-points).
 
 ## See also
 
-- [start and StartOptions](/reference/core/start) — the `unit` option and the three gate arms.
+- [The Runtime contract](/reference/core/runtime) — `UnitHost.fork` and the
+  seam a runtime opens a per-unit scope through.
+- [start and StartOptions](/reference/core/start) — the module gate, now that
+  a per-unit scope is no longer one of its options.
 - [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit) — what `currentUnit()` gives a teardown log line.
 - [Log and correlate](/how-to/log-and-correlate) — the `Logger` this fork reads, and the trace id it stamps.
 - [Serve an oRPC contract over HTTP](/how-to/serve-orpc-over-http) — the composition root this scope rides on.

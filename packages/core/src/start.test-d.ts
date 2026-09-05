@@ -93,57 +93,30 @@ start(Unprovided);
 // The port is named by its ID, not by its type: a starter's own generic port
 // expands to hundreds of characters of the caller's schema and truncates
 // before the name is reached, where `"Greeting"` never does.
-expectTypeOf<StartGate<NeedsGreeting, never, Greeting>>().toEqualTypeOf<{
+expectTypeOf<StartGate<NeedsGreeting, Greeting>>().toEqualTypeOf<{
   readonly "UNSATISFIED DEPENDENCIES — nothing provides": "Greeting";
 }>();
 
 // `Scope` and `Env` are the two the kernel itself discharges, so a module
 // needing them is satisfied rather than reported.
-expectTypeOf<StartGate<Greeting | NeedsGreeting, never, Scope | Env>>().toEqualTypeOf<unknown>();
+expectTypeOf<StartGate<Greeting | NeedsGreeting, Scope | Env>>().toEqualTypeOf<unknown>();
 
 // A runtime that resolves nothing works against any module: `InstanceType<never>` is
 // `never`, and `[never] extends [X]` holds for every `X`. `testRuntime` ships
 // its own module, so nothing else needs composing.
 expectTypeOf(start(testRuntime().module)).toEqualTypeOf<RunningApp<never, TestRuntimeInfo>>();
 
-// The unit half of the gate, isolated: what the runtime resolves is satisfied, so
-// only the unit module's unmet `Clock` can be what rejects the call.
+// A per-unit fork's needs are no longer this gate's concern at all: a `fork`
+// module is forked over the application context, so its needs are exactly
+// what a starter's own `needs` channel already asks the composition root
+// to supply — di's ordinary `UNSATISFIED DEPENDENCIES` gate covers that,
+// with no arm of `StartGate` involved.
 class Span extends Port("GateSpan")<{ readonly note: string }> {}
 
-const ClockyUnit = Module("ClockyUnit")({
-  needs: [Clock],
-  provides: [
-    Provider(Span)({
-      inject: { clock: Clock },
-      sync: ({ clock }) => ({ note: `${clock.now()}` }),
-      onStop: () => {},
-    }),
-  ],
-  exports: [Span],
-});
-
-// @ts-expect-error -- UNSATISFIED UNIT NEEDS: the unit module reads `Clock`, which the module does not export
-start(Satisfied, { unit: ClockyUnit });
-expectTypeOf<
-  StartGate<Greeting | NeedsGreeting, Clock>
->().toEqualTypeOf<"UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export">();
-
-// A runtime may NOT resolve a port from the unit module's exports: `Span` exists
-// only while a unit is open, and `RuntimeHost.ctx` is the application context
-// — so a runtime that names it is rejected here rather than left to `ctx.get`
-// throwing at startup.
-const GreetingSpanUnit = Module("GreetingSpanUnit")({
-  needs: [Greeting],
-  provides: [
-    Provider(Span)({
-      inject: { greeting: Greeting },
-      sync: ({ greeting }) => ({ note: greeting.text }),
-      onStop: () => {},
-    }),
-  ],
-  exports: [Span],
-});
-
+// A runtime's `resolves` is checked against the module's own exports only —
+// `Span` here is never exported by `SpanApp`, so the runtime naming it is
+// rejected the same way `NeedsClock` was above, whether or not `Span` also
+// happens to be a port only a unit's own fork would ever build.
 class NeedsSpan extends RuntimePort<Runtime<typeof Span>> {}
 
 const needsSpan: Runtime<typeof Span> = {
@@ -157,5 +130,5 @@ const SpanApp = Module("SpanApp")({
   provides: [Provider(NeedsSpan)({ inject: {}, value: needsSpan })],
   exports: [Greeting, NeedsSpan],
 });
-// @ts-expect-error -- UNSATISFIED RUNTIME PORTS: `Span` is a unit-only port, not among `SpanApp`'s exports
-start(SpanApp, { unit: GreetingSpanUnit });
+// @ts-expect-error -- UNSATISFIED RUNTIME PORTS: `Span` is not among `SpanApp`'s exports
+start(SpanApp);

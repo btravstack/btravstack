@@ -184,6 +184,7 @@ supplies it:
 | `namespace`   | pins the namespace instead of reading `TEMPORAL_NAMESPACE`                                                              |
 | `gracePeriod` | pins `TEMPORAL_GRACE_PERIOD_MS` — Temporal's `shutdownGraceTime`, a `Duration` (default `10_000` ms)                    |
 | `forceAfter`  | pins `TEMPORAL_FORCE_AFTER_MS` — Temporal's `shutdownForceTime` (default `15_000` ms); keep it under `DRAIN_TIMEOUT_MS` |
+| `unit`        | `{ activity }` — the module the worker forks around every activity it dispatches                                        |
 
 The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/temporal-worker),

@@ -22,6 +22,7 @@ import {
   Provider,
   type PortClassOf,
   type PortInstance,
+  type Scope,
   type ServiceOf,
 } from "@btravstack/di";
 import { P, type AsyncResult } from "unthrown";
@@ -53,6 +54,24 @@ const DEFAULT_CONNECT_TIMEOUT_MS = 5_000;
 
 /** The runtime's port: what `amqp()` provides, and what the module `start` boots must export. */
 export class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}
+
+/**
+ * A module `unit.message` may bind, as the upper bound `amqp()` constrains its
+ * own `Unit` type parameter to. `Module`'s `_exports` channel is contravariant,
+ * so `Exports = never` — never `unknown` — is what makes a REAL module's own
+ * (necessarily narrower) export type assignable to this bound: `(x: Concrete)
+ * => void` is assignable to `(x: never) => void`, not to `(x: unknown) =>
+ * void`.
+ */
+export type AnyUnitModule = Module<never, never, unknown>;
+
+/**
+ * The needs a bound `unit.message` module still owes, or `never` when none is
+ * bound. `Scope` is excluded, since nothing can ever provide it — the same
+ * exemption `NeedsGate` itself carries.
+ */
+export type UnitNeedsOf<Unit> =
+  Unit extends Module<never, never, infer N> ? Exclude<N, Scope> : never;
 
 /**
  * The contract type `TypedAmqpWorker.create` accepts, extracted rather than
@@ -92,21 +111,24 @@ export type HandlersInstanceOf<C extends AnyAmqpContract> = PortInstance<
   WorkerInferHandlers<C>
 >;
 
-export type AmqpOptions<TContract extends AnyAmqpContract> = {
+export type AmqpOptions<
+  TContract extends AnyAmqpContract,
+  Unit extends AnyUnitModule | undefined = undefined,
+> = {
   /**
    * The contract; the handlers port is typed by it — one handler per
    * `consumers` / `rpcs` key, with no injected context, since a handler is
    * built by di from the services it declares.
    */
   readonly contract: TContract;
-} & AmqpTuning;
+} & AmqpTuning<Unit>;
 
 /**
  * What an AMQP deployment tunes, shared verbatim by `amqp()` and `AmqpModule` —
  * spelled once so the two cannot drift, which is what a second copy of an
  * option list always eventually does.
  */
-export type AmqpTuning = {
+export type AmqpTuning<Unit extends AnyUnitModule | undefined = undefined> = {
   /** Pins `AmqpConfig.url` instead of reading `AMQP_URL` — a test's container. */
   readonly url?: string;
   /** Connection tuning, `@amqp-contract/worker`'s own type: heartbeat, reconnect interval, `findServers`, TLS/socket options. */
@@ -121,6 +143,13 @@ export type AmqpTuning = {
    * `connectionOptions`, where setting it is silently inert.
    */
   readonly connectTimeoutMs?: number;
+  /**
+   * The unit module the worker forks around every delivery it dispatches, with
+   * no seed. Built after the message is validated, torn down when the unit
+   * closes — the point where a later phase seeds it with the delivery's
+   * tenant.
+   */
+  readonly unit?: { readonly message?: Unit };
 };
 
 /**
@@ -131,9 +160,16 @@ export type AmqpTuning = {
  *
  * With `url` pinned the module reads nothing from the environment.
  */
-export const amqp = <TContract extends AnyAmqpContract>(
-  options: AmqpOptions<TContract>,
-): Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>> => {
+export const amqp = <
+  TContract extends AnyAmqpContract,
+  Unit extends AnyUnitModule | undefined = undefined,
+>(
+  options: AmqpOptions<TContract, Unit>,
+): Module<
+  AmqpRuntime | AmqpConfig,
+  ConfigInvalid,
+  Env | HandlersInstanceOf<TContract> | UnitNeedsOf<Unit>
+> => {
   const config = Config.provider(AmqpConfig)(
     Config.object({
       url: Config.pinned(
@@ -167,10 +203,15 @@ export const amqp = <TContract extends AnyAmqpContract>(
       }),
     ],
     exports: [AmqpRuntime, AmqpConfig],
+    // `as never`/`as unknown as Module<…>`, below: the Needs channel carries a
+    // bound `unit.message` module's own unmet needs, though nothing HERE reads
+    // them — it is forked over the application context at dispatch, so what it
+    // needs is exactly what the composition root must supply, and this is what
+    // makes di's own `UNSATISFIED DEPENDENCIES` gate say so.
   } as never) as unknown as Module<
     AmqpRuntime | AmqpConfig,
     ConfigInvalid,
-    Env | HandlersInstanceOf<TContract>
+    Env | HandlersInstanceOf<TContract> | UnitNeedsOf<Unit>
   >;
 };
 
@@ -282,17 +323,17 @@ const queuesOf = (contract: AnyAmqpContract): readonly string[] =>
     ),
   ].sort();
 
-const createWorker = <TContract extends AnyAmqpContract>(
+const createWorker = <TContract extends AnyAmqpContract, Unit extends AnyUnitModule | undefined>(
   host: RuntimeHost<never>,
   config: ServiceOf<AmqpConfig>,
-  options: AmqpOptions<TContract>,
+  options: AmqpOptions<TContract, Unit>,
   handlers: WorkerInferHandlers<TContract>,
   observers: readonly ((operation: Operation) => Settle)[],
 ): AsyncResult<Serving<AmqpInfo>, RuntimeStartFailed> =>
   TypedAmqpWorker.create({
     contract: options.contract,
     handlers,
-    middleware: messageUnits(host, observers),
+    middleware: messageUnits(host, observers, options.unit?.message),
     urls: [config.url],
     ...(options.connectionOptions === undefined
       ? {}

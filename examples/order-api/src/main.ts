@@ -2,7 +2,6 @@ import { runMain } from "@btravstack/core";
 import { createLogger, jsonSink, kernelEvents } from "@btravstack/observability";
 
 import { OrderApi } from "./module.js";
-import { RequestModule } from "./request-scope.js";
 
 /**
  * The whole process, in one call: build the graph, serve it, and turn the exit
@@ -10,8 +9,9 @@ import { RequestModule } from "./request-scope.js";
  * are read from the environment inside the graph, not here, and a malformed one
  * is the kernel's to report — a `startFailed` event and exit code `78`.
  *
- * `RequestModule` is forked around every request by the kernel; the handler
- * never sees the fork happen.
+ * `RequestModule` is forked by each answerer, per request it handles — the
+ * `unit: { anonymous: RequestModule }` option `OrderApi` itself declares; the
+ * handler never sees the fork happen.
  *
  * `onEvent` puts the kernel's own lifecycle events in the application's stream
  * rather than the kernel's default JSON on stderr. The logger is built by hand
@@ -24,6 +24,5 @@ import { RequestModule } from "./request-scope.js";
  * Typechecked by the gate, not executed by it.
  */
 await runMain(OrderApi, {
-  unit: RequestModule,
   onEvent: kernelEvents(createLogger(jsonSink())),
 });

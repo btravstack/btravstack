@@ -5,7 +5,7 @@ description: The @btravstack/testing surface — bootFixture and Boot, tapped, t
 
 <!-- doctest: prelude
 import type { Env } from "@btravstack/config";
-import type { AnyPort, Module, Scope } from "@btravstack/di";
+import type { AnyPort, Module } from "@btravstack/di";
 import type { RunningApp, RuntimeInfoOf, StartGate, StartOptions } from "@btravstack/core";
 import type {
   Boot,
@@ -14,9 +14,10 @@ import type {
   SubmittedUnit,
   TestRuntime,
   TestRuntimeInfo,
+  TestRuntimeOptions,
 } from "@btravstack/testing";
 import { TestRuntimePort } from "@btravstack/testing";
-import type { Clock, Runtime, Serving } from "@btravstack/core";
+import type { Clock, Runtime, RuntimeHost, Serving } from "@btravstack/core";
 import type { AsyncResult } from "unthrown";
 -->
 
@@ -55,17 +56,17 @@ const bootFixture: (
   defaults?: BootDefaults,
 ) => (ctx: object, use: (boot: Boot) => Promise<void>) => Promise<void>;
 
-type Boot = <X, E, N, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, N> & StartGate<X, UnitNeeds, N>,
-  options?: Omit<StartOptions<UnitX, UnitNeeds>, "signals">,
+type Boot = <X, E, N>(
+  module: Module<X, E, N> & StartGate<X, N>,
+  options?: Omit<StartOptions, "signals">,
 ) => RunningApp<E, RuntimeInfoOf<X>>;
 
-type BootDefaults = Omit<StartOptions, "signals" | "unit">;
+type BootDefaults = Omit<StartOptions, "signals">;
 ```
 
 A `test.extend` fixture that hands the test a `Boot` — `start`, with the
 same signature and the same
-[phantom marker on `module`](/reference/core/start#the-gate-startgate-x-unitneeds-n),
+[phantom marker on `module`](/reference/core/start#the-gate-startgate-x-n),
 minus `signals` — and **stops every
 application it started once the test is over**, on every exit path, a
 failing assertion included. Wire it once, in the fixture module every spec
@@ -90,12 +91,12 @@ both.
 | `probes`          | `false`              | A probe port would collide between tests. A call passing `{ port: 0 }` gets an ephemeral one.            |
 | `preDrainDelayMs` | `0`                  | A test has no Kubernetes endpoint to wait for.                                                           |
 | `onEvent`         | `() => {}`           | Silent; a call or `defaults` may pass a sink to hear the lifecycle.                                      |
-| everything else   | `start`'s own        | `env`, `unit`, `clock`, `drainTimeoutMs` — as `StartOptions` states them.                                |
+| everything else   | `start`'s own        | `env`, `clock`, `drainTimeoutMs` — as `StartOptions` states them.                                        |
 
-`unit` is excluded from `BootDefaults` on purpose: a unit module is a
-composition's choice, not a fixture's, so it goes on the call
-(`boot(OrderApi, { unit: RequestModule })`) — or on a fixture of your own
-that wraps `boot`, which is what `examples/order-api`'s `serve` is.
+A per-unit scope is not a `boot`/`StartOptions` concern any more: a runtime
+opens one itself, through `UnitHost.fork`, so there is nothing here for a
+fixture or a call to bind — see
+[The Runtime contract](/reference/core/runtime#unithost-resolves).
 
 **Teardown** runs per started application, in order: `stop()`,
 then `exited` is awaited and examined. A **`Defect`** is rethrown, so a
@@ -249,20 +250,36 @@ place, as `examples/order-temporal-worker`'s fixture shows.
 export in `@btravstack/di`'s own surface; a production root that reaches for
 either is recomposing the lazy way.
 
-## `testRuntime(name?)`
+## `testRuntime(name?, options?)`
 
 <!-- doctest: signature=@btravstack/testing -->
 
 ```ts
-const testRuntime: (name?: string) => TestRuntime; // name defaults to "test"
+const testRuntime: <Unit extends Module<never, never, unknown> | undefined = undefined>(
+  name?: string,
+  options?: TestRuntimeOptions<Unit>,
+) => TestRuntime<Unit>; // name defaults to "test"
 
-type TestRuntime = Runtime<never, TestRuntimeInfo> & {
-  readonly module: Module<TestRuntimePort, never, never>;
+type TestRuntime<Unit extends Module<never, never, unknown> | undefined = undefined> = Runtime<
+  never,
+  TestRuntimeInfo
+> & {
+  // `UnitNeedsOf<Unit>`: what the bound unit module still owes.
+  readonly module: Module<
+    TestRuntimePort,
+    never,
+    Unit extends Module<never, never, infer N> ? Exclude<N, Scope> : never
+  >;
   readonly started: () => boolean;
   readonly untilStarted: () => AsyncResult<void, never>;
   readonly accepting: () => boolean;
   readonly serving: () => Serving<TestRuntimeInfo>;
+  readonly host: () => RuntimeHost<never>;
   readonly submit: <T = string, E = never>() => SubmittedUnit<T, E>;
+};
+
+type TestRuntimeOptions<Unit extends Module<never, never, unknown> | undefined = undefined> = {
+  readonly unit?: Unit;
 };
 
 type TestRuntimeInfo = { readonly name: string };
@@ -277,18 +294,31 @@ type SubmittedUnit<T, E> = {
 
 | Member                      | Semantics                                                                                                                                                                                                                                                                                                                                           |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`, `resolves`, `start` | The `Runtime` half: `resolves` is `[]`; `start` records `host.run`, starts accepting, publishes `{ name }` on `Serving.info` and answers `Ok(serving)`.                                                                                                                                                                                             |
+| `name`, `resolves`, `start` | The `Runtime` half: `resolves` is `[]`; `start` records the `RuntimeHost` it was called with, starts accepting, publishes `{ name }` on `Serving.info` and answers `Ok(serving)`.                                                                                                                                                                   |
 | `module`                    | A `Module` providing **this** runtime on `TestRuntimePort` — the shape a runtime package ships, sized for a test. Import it next to the module under test and export `TestRuntimePort`, and `start` finds it. It provides this very object: a wrapper built by spreading (`{ ...runtime, start }`) still carries a module that boots the inner one. |
 | `started()`                 | `true` once the kernel has called `start`.                                                                                                                                                                                                                                                                                                          |
 | `untilStarted()`            | Resolves the first time the kernel calls `start`. What a test awaits before `submit()`, since `start` itself is only called once the graph is built.                                                                                                                                                                                                |
 | `accepting()`               | `true` between `start` and the first of `drain` / `stop`. Lets a test observe **when** the kernel told the runtime to stop accepting, which the drain's ordering turns on.                                                                                                                                                                          |
 | `serving()`                 | The `Serving` handed to the kernel. **Throws** if the runtime was never started — a loud fixture misuse, not a modeled outcome.                                                                                                                                                                                                                     |
+| `host()`                    | The `RuntimeHost` the kernel last called `start` with. **Throws** if the runtime was never started — same rationale as `serving()`.                                                                                                                                                                                                                 |
 | `submit()`                  | Opens a unit through the kernel's `run` with `{ kind: "test", id: "<n>" }` (`n` counts up from `1`, so ids stay unique). Returns a `SubmittedUnit`. **Throws** when not accepting.                                                                                                                                                                  |
 
-`SubmittedUnit` is how a test holds a unit open across a drain: `settle` is
-the unit's own outcome, `result` is what the kernel hands back for it, and
-`signal` is the unit's `AbortSignal` — forwarded, so it is valid immediately
-after `submit()` even when a `unit` module defers the work by an `await`.
+`options.unit` is a module every submitted unit forks through `UnitHost.fork`,
+with no seed, before its work runs — the same mechanism a real runtime drives,
+exercised without booting one. What that module still **needs** rides
+`TestRuntime.module`'s own Needs channel, so a test composition that does not
+provide it is refused by `start`'s `UNSATISFIED DEPENDENCIES` gate at boot
+rather than by a `WiringDefect` on the first `submit()`. The bound is
+`Module<never, never, unknown>` — `never` in the **first** position because
+`Module`'s `_exports` channel is contravariant, `unknown` in the **third** so a
+module with real needs infers against the bound at all, the same shape
+[`@btravstack/http-server`](/reference/http-server#unit-and-who-forks-it) uses.
+Neither the bound nor the conditional above it is exported from the package.
+`SubmittedUnit` is how a test holds a unit open
+across a drain: `settle` is the unit's own outcome, `result` is what the
+kernel hands back for it, and `signal` is the unit's `AbortSignal` —
+forwarded, so it is valid immediately after `submit()` even when a bound
+`unit` module defers the work by an `await`.
 
 `testRuntime` deliberately **ignores** the `Serving.drain(signal)` deadline:
 its `drain` flips `accepting` and returns at once. That is what makes the
@@ -381,20 +411,21 @@ it("drains in-flight work", async ({ boot }) => {
 
 ## Summary of exports
 
-| Export            | Kind                                             |
-| ----------------- | ------------------------------------------------ |
-| `bootFixture`     | function — a `test.extend` fixture body          |
-| `Boot`            | type — what the fixture hands the test           |
-| `BootDefaults`    | type — `Omit<StartOptions, "signals" \| "unit">` |
-| `tapped`          | function                                         |
-| `ServicesOf`      | type                                             |
-| `overridden`      | function                                         |
-| `testRuntime`     | function                                         |
-| `TestRuntimePort` | port class, declared over `RuntimePort`          |
-| `TestRuntime`     | type                                             |
-| `TestRuntimeInfo` | type                                             |
-| `SubmittedUnit`   | type                                             |
-| `createFakeClock` | function                                         |
-| `FakeClock`       | type                                             |
+| Export               | Kind                                    |
+| -------------------- | --------------------------------------- |
+| `bootFixture`        | function — a `test.extend` fixture body |
+| `Boot`               | type — what the fixture hands the test  |
+| `BootDefaults`       | type — `Omit<StartOptions, "signals">`  |
+| `tapped`             | function                                |
+| `ServicesOf`         | type                                    |
+| `overridden`         | function                                |
+| `testRuntime`        | function                                |
+| `TestRuntimePort`    | port class, declared over `RuntimePort` |
+| `TestRuntime`        | type                                    |
+| `TestRuntimeInfo`    | type                                    |
+| `TestRuntimeOptions` | type — `testRuntime`'s second parameter |
+| `SubmittedUnit`      | type                                    |
+| `createFakeClock`    | function                                |
+| `FakeClock`          | type                                    |
 
 The generated signatures are at [`/api/testing/`](/api/testing/).

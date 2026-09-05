@@ -282,8 +282,8 @@ type ObservabilityOptions = {
 
 The starter: a module providing the application's `Logger` and the
 `LoggerConfig` it was built from, both exported. Import it next to the
-application and export `Logger` if anything outside the root reads it —
-`StartOptions.unit`'s module, a test:
+application and export `Logger` if anything outside the root reads it — a
+bound `unit` module, a test:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
@@ -402,7 +402,6 @@ anybody to construct.
 
 ```ts
 await runMain(OrderApi, {
-  unit: RequestModule,
   onEvent: kernelEvents(createLogger(jsonSink())),
 });
 ```
@@ -455,8 +454,11 @@ platform's own standard. Programmatic overrides go through `options`, which
 is the SDK's own configuration type. And **one `otel()` per process**: the
 OTel api's globals register once, which is the SDK's own contract.
 
-`UnitSpanModule` rides `StartOptions.unit`: a span opens when the kernel's
-unit does and `onStop` ends it on every path out, with the ambient record's
+`UnitSpanModule` is a module a starter's own `unit` option binds — `unit: {
+anonymous: UnitSpanModule }`, `unit: { message: UnitSpanModule }`, `unit: {
+activity: UnitSpanModule }` — and the runtime forks around every unit it
+opens: a span opens when the fork is built and `onStop` ends it on every path
+out, with the ambient record's
 `unitId`, `traceId` and `tenantId` as attributes — a span joins the same
 query the logger's lines answer. The remote W3C **parent is deliberately not
 reconstructed**: `UnitMeta.traceId` carries the inbound trace id alone, so

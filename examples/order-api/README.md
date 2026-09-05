@@ -14,11 +14,11 @@ src/slices/orders/controller.ts       api.OrpcController(contract, "orders")({ i
 src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only it
 src/slices/customers/controller.ts    api.OrpcController(contract, "customers")({ inject: { find: FindCustomer }, sync }) — same shape, for the customers slice's own domain error
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
-src/request-scope.ts                  RequestModule — passed as StartOptions.unit; the kernel forks it per request
+src/request-scope.ts                  RequestModule — bound on HttpModule's own unit option; the answerers fork it per request
 src/client.ts                         an AsyncResult client for the same contract
 src/module.ts                         OrderApi — the composition root: orderRouter = api.OrpcRouter(contract)([ordersController, customersController]), then HttpModule("OrderApi")({
   needs: [Env], router: orderRouter, … })
-src/main.ts                           the process: runMain(OrderApi, { unit: RequestModule, onEvent: kernelEvents(…) })
+src/main.ts                           the process: runMain(OrderApi, { onEvent: kernelEvents(…) })
 src/__tests__/test-fixtures.ts                  boot / serve / clientFor / gate / recording, as Vitest fixtures — boot from @btravstack/testing
 ```
 
@@ -208,16 +208,17 @@ until the response completes, so there is no seam for a late write to land in.
 An unmatched path is the starter's 404; a defect inside a procedure is oRPC's own
 `INTERNAL_SERVER_ERROR` collapse — nothing left to dispatch or end by hand.
 The router itself needs nothing per request, so it lives at application scope;
-what does is forked by the kernel, below.
+what does is forked by each answerer, below.
 
 ### A request scope over the application scope
 
 The application scope is opened once, by the kernel, and holds the database.
 Opening another per request would give every request its own empty in-memory
-database — so the **kernel forks**: `RequestModule`, passed as
-`StartOptions.unit`, is layered as a short-lived scope over the one already
-built, per request, and a request-scoped provider reads what the parent
-constructed instead of rebuilding it. `RequestSpan`'s `onStop` runs while the
+database — so the **answerer forks**: `RequestModule`, bound on `HttpModule`'s
+own `unit: { anonymous }` option, is layered as a short-lived scope over the
+one already built, per request it handles, through `UnitHost.fork`, and a
+request-scoped provider reads what the parent constructed instead of
+rebuilding it. `RequestSpan`'s `onStop` runs while the
 unit is still open, which is what gives its line the request's own trace id —
 and no handler code manages any of it.
 
@@ -288,16 +289,17 @@ it("lets an in-flight call finish while draining", async ({ serve, clientFor, ga
 });
 ```
 
-`serve` boots whatever composition it is handed with `RequestModule` as the
-unit and that `env` — the real `OrderApi` included, since `http()` reads its
-port from the environment the kernel provides — and `clientFor` reads the port
+`serve` boots whatever composition it is handed with that `env` — the real
+`OrderApi` included, since `http()` reads its
+port from the environment the kernel provides — `RequestModule` is forked by
+the answerers themselves, per `OrderApi`'s own `unit` option, not by anything
+`serve` supplies — and `clientFor` reads the port
 it got back from `runtimeInfo()`.
 
 `src/main.ts` is the process itself, and it is one call:
 
 ```ts
 await runMain(OrderApi, {
-  unit: RequestModule,
   onEvent: kernelEvents(createLogger(jsonSink())),
 });
 ```

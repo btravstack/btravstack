@@ -57,8 +57,8 @@ const ticker: Runtime<typeof Greeter> = {
       // the runtime's to map, and a timer has nowhere to return one — so it
       // observes it rather than dropping the work's `Err` and any `Defect`.
       void host
-        .run({ kind: "tick", id: `${Date.now()}` }, (ctx, signal) =>
-          signal.aborted ? Ok("") : Ok(ctx.get(Greeter).greet("world")),
+        .run({ kind: "tick", id: `${Date.now()}` }, (unit, signal) =>
+          signal.aborted ? Ok("") : Ok(unit.ctx.get(Greeter).greet("world")),
         )
         .tapFailure((failure) => {
           process.stderr.write(`${JSON.stringify({ tick: failure.tag })}\n`);
@@ -92,8 +92,9 @@ const TickerApp = Module("TickerApp")({
 await runMain(TickerApp);
 
 // "Per-unit ports" — docs/how-to/open-a-per-request-scope.md.
-// `StartOptions.unit` is forked around every unit, and its needs must be covered
-// by the module's exports or by `Scope`, which the fork discharges.
+// A runtime forks its own bound module through `UnitHost.fork`, at the moment
+// it holds the unit's input; the fork's needs must be covered by the module's
+// exports or by `Scope`, which the fork discharges.
 
 class TickSpan extends Port("TickSpan")<{ readonly finish: () => void }> {}
 
@@ -111,7 +112,31 @@ const TickModule = Module("Tick")({
   exports: [TickSpan],
 });
 
-await runMain(TickerApp, { unit: TickModule });
+const tickerWithSpan: Runtime<typeof Greeter> = {
+  name: "ticker-with-span",
+  resolves: [Greeter],
+  start: (host) => {
+    void host
+      .run({ kind: "tick", id: `${Date.now()}` }, (unit, signal) =>
+        unit.fork(TickModule, []).flatMap(() => (signal.aborted ? Ok("") : Ok("ticked"))),
+      )
+      .tapFailure((failure) => {
+        process.stderr.write(`${JSON.stringify({ tick: failure.tag })}\n`);
+      });
+
+    return OkAsync({ drain: () => OkAsync(), stop: () => OkAsync() });
+  },
+};
+
+class TickerWithSpan extends RuntimePort<Runtime<typeof Greeter>> {}
+
+const TickerSpanApp = Module("TickerSpanApp")({
+  imports: [AppModule],
+  provides: [Provider(TickerWithSpan)({ inject: {}, value: tickerWithSpan })],
+  exports: [Greeter, TickerWithSpan],
+});
+
+await runMain(TickerSpanApp);
 
 // "Configuration" — docs/how-to/configure-from-the-environment.md,
 // docs/reference/config.md. A port bound inside the graph: the module's error
@@ -214,7 +239,7 @@ expectTypeOf(info).toEqualTypeOf<Result<HttpInfo | undefined, never>>();
 // "The unit of work" — docs/reference/core/runtime.md (`UnitMeta`).
 
 const submitOne = (run: RunUnit<typeof Greeter>, meta: UnitMeta): AsyncResult<string, never> =>
-  run(meta, (ctx, signal) => (signal.aborted ? Ok("") : Ok(ctx.get(Greeter).greet("world"))));
+  run(meta, (unit, signal) => (signal.aborted ? Ok("") : Ok(unit.ctx.get(Greeter).greet("world"))));
 
 // "Two contracts a runtime owes" — docs/how-to/write-a-runtime.md.
 
@@ -225,8 +250,8 @@ const serveOne = (
 ): AsyncResult<string, never> =>
   // Flushed inside the work callback. Sending after `await host.run(...)`
   // returns is the race: the unit is already closed by then.
-  host.run(meta, async (ctx, signal) => {
-    const body = signal.aborted ? "" : ctx.get(Greeter).greet("world");
+  host.run(meta, async (unit, signal) => {
+    const body = signal.aborted ? "" : unit.ctx.get(Greeter).greet("world");
     await send(body);
     return Ok(body);
   });

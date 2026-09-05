@@ -6,10 +6,11 @@ import { UnitSpanModule } from "@btravstack/observability/otel";
  * A service that exists for the length of one request and is torn down with it.
  *
  * The application scope is opened once, by the kernel, and holds the database.
- * Passing this module as `StartOptions.unit` makes the kernel fork a short-lived
- * scope over the one already built, per request — so a request-scoped provider
- * reads what the parent constructed without rebuilding it, and no handler code
- * manages the fork.
+ * Passing this module as `unit: { anonymous: RequestModule }` on `HttpModule`
+ * makes each answerer fork a short-lived scope over the one already built,
+ * for a request it handles — so a request-scoped provider reads what the
+ * parent constructed without rebuilding it, and no handler code manages the
+ * fork.
  */
 export class RequestSpan extends Port("RequestSpan")<{ readonly finish: () => void }> {}
 

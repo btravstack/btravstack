@@ -186,6 +186,7 @@ provider on its own port, which is how the composition root supplies it:
 | `connectionOptions`      | `AmqpConnectionOptions`, the library's own connection tuning: heartbeat, reconnect interval, `findServers`, TLS                 |
 | `defaultConsumerOptions` | the library's `ConsumerOptions`, applied to every handler: `prefetch` (the throughput knob), `priority`, …                      |
 | `connectTimeoutMs`       | pins `AMQP_CONNECT_TIMEOUT_MS` — how long startup waits before an unreachable broker is a `RuntimeStartFailed` (default `5000`) |
+| `unit`                   | `{ message }` — the module the worker forks around every message it dispatches                                                  |
 
 The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/amqp-worker),

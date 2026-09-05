@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import type { UnitHost } from "@btravstack/core";
 import { Provider } from "@btravstack/di";
 import { Err, Ok, P, fromExecutor, type AsyncResult } from "unthrown";
 
@@ -8,6 +9,7 @@ import { matchPath } from "./fragments.js";
 import { HttpHandler } from "./handler.js";
 import { HtmxFragmentsPort, type FragmentAnswer } from "./htmx-route.js";
 import { HttpConfig } from "./http-config.js";
+import { HttpUnit, type AnyUnitModule } from "./http-runtime.js";
 
 export type HtmxOptions = {
   /** Where fragments are mounted. Default `/`. */
@@ -33,10 +35,10 @@ export type HtmxOptions = {
 export const htmx = (options: HtmxOptions = {}) => {
   const prefix = options.prefix ?? "/";
   return Provider.member(HttpHandler)({
-    inject: { fragments: HtmxFragmentsPort, config: HttpConfig },
-    sync: ({ fragments, config }) => ({
+    inject: { fragments: HtmxFragmentsPort, config: HttpConfig, unit: HttpUnit },
+    sync: ({ fragments, config, unit }) => ({
       prefix,
-      handle: (request, response, _signal) =>
+      handle: (request, response, _signal, host) =>
         respond(
           fragments.routes,
           fragments.authenticators,
@@ -44,6 +46,8 @@ export const htmx = (options: HtmxOptions = {}) => {
           prefix,
           request,
           response,
+          host,
+          unit.anonymous,
         ),
     }),
   });
@@ -134,6 +138,8 @@ const respond = async (
   prefix: `/${string}`,
   request: IncomingMessage,
   response: ServerResponse,
+  host: UnitHost<never>,
+  anonymous: AnyUnitModule | undefined,
 ): Promise<void> => {
   const matched = matchRoute(routes, request.method, relativePath(request.url, prefix));
   // No route claims this request: resolve unwritten so the runtime's own 404
@@ -186,6 +192,23 @@ const respond = async (
         return;
       }
       input = validated.value;
+    }
+  }
+
+  // Forked here — after authentication has succeeded and the body has
+  // validated, immediately before the handler — so a refused or malformed
+  // request never opens a scope: the same point in the request's life oRPC's
+  // own `unitScope` forks at, since `principalMiddleware` short-circuits
+  // without calling `next()` on a refusal, and `unitScope` sits inside it.
+  if (anonymous !== undefined) {
+    // `as never`: see `unit-scope.ts`'s own comment on the identical cast —
+    // `AnyUnitModule` erases the module's Needs to `unknown`, which `fork`'s
+    // `DependencyGate` can never clear on its own; the check already ran once,
+    // at the `Unit`-generic call site that bound this module.
+    const scope = await host.fork(anonymous as never, []);
+    if (scope.isDefect()) {
+      refuse(response, 500);
+      return;
     }
   }
 

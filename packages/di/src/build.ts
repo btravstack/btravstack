@@ -1,8 +1,8 @@
 import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
-import { Context, unsafeAddAll, unsafeKeys } from "./context.js";
+import { Context, unsafeAdd, unsafeAddAll, unsafeKeys } from "./context.js";
 import { constructLevel, runStartHooks, type AnyProvider } from "./lifecycle.js";
-import { Scope } from "./port.js";
+import { Scope, type AnyPort, type ServiceOf } from "./port.js";
 import { isOverride } from "./provider.js";
 import { createScope, type ClosableFinalisers, type TeardownReporter } from "./scope.js";
 
@@ -225,8 +225,16 @@ export const run = (
         .flatMap(({ ctx, started }) => runStartHooks(started).map(() => ctx)),
     );
 
+export type SeedEntry<P extends AnyPort> = readonly [port: P, value: ServiceOf<InstanceType<P>>];
+
 export type ScopedOptions = {
   readonly onTeardownError?: TeardownReporter;
+  /**
+   * Values supplied to the scope from OUTSIDE its module tree, keyed by port.
+   * The planner treats a seeded port as provided, exactly as it treats the
+   * parent's services — a seed is more keys on the same context.
+   */
+  readonly seed?: readonly SeedEntry<AnyPort>[];
 };
 
 /**
@@ -246,9 +254,13 @@ export const runScoped = <A, E2>(
   // oxlint-disable-next-line unthrown/no-ambiguous-error-type -- same rationale as `run`'s return type above
 ): AsyncResult<A, unknown> => {
   const scope = createScope(options.onTeardownError);
+  const seeded = (options.seed ?? []).reduce<Context<never>>(
+    (ctx, [port, value]) => unsafeAdd(ctx, port, value) as Context<never>,
+    seed,
+  );
   const settle = async () => {
     // oxlint-disable-next-line unicorn/no-array-callback-reference -- `use` is this function's own parameter, not an array method's element callback
-    const result = await run(module, scope, seed).flatMap(use);
+    const result = await run(module, scope, seeded).flatMap(use);
     // Never conditioned on `result`: teardown happens whether construction
     // failed, `use` failed or `use` succeeded, and never changes what this
     // function returns.

@@ -502,6 +502,7 @@ renders the slice's own not-found row rather than the owner's order.
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
   fragments: orderFragments,
+  unit: { anonymous: RequestModule },
   imports: [
     OrdersSlice,
     CustomersSlice,
@@ -509,7 +510,7 @@ export const OrderApi = HttpModule("OrderApi")({
     observability(),
     otel(),
   ],
-  // `RequestModule` reads all three out of the application scope.
+  // `RequestModule` reads all three out of the application scope once forked.
   exports: [Logger, Tracer, Meter],
 });
 ```
@@ -582,7 +583,6 @@ so nothing is passed in from `main.ts`, and a spec boots this very module with
 
 ```ts
 await runMain(OrderApi, {
-  unit: RequestModule,
   onEvent: kernelEvents(createLogger(jsonSink())),
 });
 ```
@@ -601,8 +601,8 @@ have nothing to write the two events that matter most with. See
 
 The application scope is opened once, by the kernel, and holds the database;
 opening another per request would give every request its own empty in-memory
-database. So `request-scope.ts` declares what lives for one request, and the
-kernel forks it:
+database. So `request-scope.ts` declares what lives for one request, and each
+answerer forks it around the request it is handling:
 
 ```ts
 export class RequestSpan extends Port("RequestSpan")<{
@@ -635,8 +635,9 @@ export const RequestModule = Module("Request")({
 });
 ```
 
-Passed as `StartOptions.unit`, it is built as the request opens and torn down
-as it closes, reading `Logger` out of the parent without rebuilding it.
+Bound as `HttpModule`'s own `unit: { anonymous: RequestModule }`, it is built
+as the request opens and torn down as it closes, reading `Logger` out of the
+parent without rebuilding it.
 `onStop` runs while the unit is still open, which is what gives its line the
 request's own trace id — and no handler code manages the fork. See
 [Open a per-request scope](/how-to/open-a-per-request-scope).
@@ -655,9 +656,7 @@ export const it = test.extend<ApiFixtures>({
   }),
 
   serve: async ({ boot }, use) => {
-    await use((module, options) =>
-      boot(module, { unit: RequestModule, ...options }),
-    );
+    await use((module, options) => boot(module, options));
   },
   // …
 });
@@ -665,7 +664,9 @@ export const it = test.extend<ApiFixtures>({
 
 `boot` brings a test's defaults (`signals: false`, `probes: false`,
 `preDrainDelayMs: 0`, a silent sink) and stops every app it started when the
-test ends; `serve` adds the per-request `RequestModule`, and `LOG_LEVEL:
+test ends; `serve` has nothing more to add — `RequestModule` is forked by the
+answerers themselves, per `OrderApi`'s own `unit` option, not by anything a
+fixture supplies — and `LOG_LEVEL:
 "fatal"` keeps the real root — whose sink is the production `jsonSink()` on
 stdout — out of the runner's own output. The port comes back
 from `Serving.info` through `app.runtimeInfo()` — the kernel's own channel
@@ -709,8 +710,9 @@ router actually mounted both controllers rather than one.
 
 ## Three gates, pinned at compile time
 
-`needs-gate.test-d.ts` is type-checked, never executed. It pins the two
-directions of `start`'s own gate and di's, side by side:
+`needs-gate.test-d.ts` is type-checked, never executed. It pins `start`'s own
+marker gate, the `Needs`-channel refusal that is neither the marker nor di's
+declaration gate, and the unit needs-propagation gate, side by side:
 
 <!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the NO RUNTIME arm -->
 
@@ -753,18 +755,28 @@ and the diagnostic names the port:
 having both pinned here. There is no `UNSATISFIED RUNTIME PORTS` arm, because
 the shipped runtime resolves nothing.
 
-<!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the UNSATISFIED UNIT NEEDS arm -->
+<!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the unit needs-propagation arm -->
 
 ```ts
-// @ts-expect-error — UNSATISFIED UNIT NEEDS: the module does not export Logger for RequestModule to read.
-const _unitUnmet = start(UnloggedApi, { ...options, unit: RequestModule });
+const _unloggedUnit = HttpModule("WithUnitUnmet")({
+  router: orderRouter,
+  unit: { anonymous: HttpUnitModule },
+  imports: [OrdersSlice, CustomersSlice, observability(), cache({ adapter: memoryCache() })],
+  exports: [Logger],
+});
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides `HttpUnitDep`, which `HttpUnitModule` needs
+const _withUnitUnmet = start(_unloggedUnit, options);
 ```
 
-The `unit` half, in both directions: `start(OrderApi, { unit: RequestModule })`
-is an ordinary call because `OrderApi` exports the `Logger` the fork reads,
-and `UnloggedApi` — runtime and router present, `observability()` imported so
-the port exists in the graph, `Logger` simply not exported — is
-rejected by the unit arm alone.
+The third gate is `HttpModule`'s own **needs-propagation** one, the same
+shape the two workers' `needs-gate.test-d.ts` files pin: a bound
+`unit.anonymous` module's own unmet needs join `HttpModule`'s own `Needs`
+channel, so the gate that refuses them is `start`'s ordinary
+`UNSATISFIED DEPENDENCIES`, never a marker of the kernel's — there is no
+`StartOptions.unit` any more for the kernel to gate. `WithUnitSatisfied`
+provides the trivial `HttpUnitDep` the bound `HttpUnitModule` needs and
+compiles as an ordinary call; `WithUnitUnmet` leaves it out and is rejected on
+that need alone.
 
 **What is no longer here, and why.** This file used to carry two more arms
 about the authenticator — a root that forgot to pass one, and a root that

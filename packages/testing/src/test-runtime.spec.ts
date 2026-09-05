@@ -1,22 +1,32 @@
-import type { RunUnit, RuntimeHost } from "@btravstack/core";
-import { Context } from "@btravstack/di";
-import { Ok, fromSafePromise } from "unthrown";
+import type { RunUnit, RuntimeHost, UnitHost } from "@btravstack/core";
+import { Context, Module, Port, Provider } from "@btravstack/di";
+import { Ok, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, it } from "vitest";
 
 import { testRuntime } from "./test-runtime.js";
 
+// What "forks the bound unit module before the work runs" builds, to prove
+// the fork actually ran rather than the work simply resolving on its own.
+class SpecMarker extends Port("SpecMarker")<{ readonly note: string }> {}
+
 // A `RuntimeHost` sized for the double: the kernel's registry counts open
 // units and hands each an `AbortSignal`; this stub does the same in a dozen
 // lines, so the runtime can be started without booting a kernel around it.
+// `fork` is a real (if minimal) `Module.forkScope` over the empty context, so
+// a runtime bound to a unit module can actually be exercised against it.
 const hostFor = (
   signal = new AbortController().signal,
 ): RuntimeHost<never> & { readonly inFlight: () => number } => {
   const ctx = Context.empty();
+  const fork: UnitHost<never>["fork"] = (module, seed) =>
+    Module.forkScope(ctx, module as never, (forked) => OkAsync(forked), {
+      seed: seed as never,
+    }) as never;
   let inFlight = 0;
   const run: RunUnit<never> = (_meta, work) => {
     inFlight += 1;
     return fromSafePromise(
-      Promise.resolve(work(ctx, signal)).finally(() => {
+      Promise.resolve(work({ ctx, fork }, signal)).finally(() => {
         inFlight -= 1;
       }),
     ).flatMap((result) => result);
@@ -110,5 +120,52 @@ describe("testRuntime", () => {
     void runtime.serving().drain(new AbortController().signal);
 
     expect({ before, after: runtime.accepting() }).toEqual({ before: true, after: false });
+  });
+
+  it("is loud when asked for a host it has not started with", () => {
+    // GIVEN a runtime that has not been started
+    const runtime = testRuntime();
+
+    // WHEN / THEN asking for its host is loud, not silently `undefined`
+    expect(() => runtime.host()).toThrow("not started");
+  });
+
+  it("hands back the RuntimeHost it was last started with", async () => {
+    // GIVEN a runtime started with a given host
+    const host = hostFor();
+    const runtime = testRuntime();
+
+    // WHEN it is started
+    await runtime.start(host);
+
+    // THEN `host()` returns that very host
+    expect(runtime.host()).toBe(host);
+  });
+
+  it("forks the bound unit module before the work runs", async () => {
+    // GIVEN a runtime bound to a unit module whose provider records it was built
+    let built = false;
+    const UnitModule = Module("SpecUnit")({
+      provides: [
+        Provider(SpecMarker)({
+          inject: {},
+          sync: () => {
+            built = true;
+            return { note: "built" };
+          },
+        }),
+      ],
+      exports: [SpecMarker],
+    });
+    const runtime = testRuntime("with-unit", { unit: UnitModule });
+    await runtime.start(hostFor());
+    const unit = runtime.submit<string>();
+    unit.settle(Ok("done"));
+
+    // WHEN the unit settles
+    const value = (await unit.result).get();
+
+    // THEN the module was forked and built before the work's own result came back
+    expect({ built, value }).toEqual({ built: true, value: "done" });
   });
 });

@@ -167,8 +167,13 @@ describe("a router over a marked contract", () => {
     // THEN the scheme's port joins both, named for the scheme and alongside —
     // never in place of — the caller's own
     expect(authedRouterDeps).toEqual({
-      composed: ["OrpcController:orders", "OrpcController:health", "HttpAuthenticator:user"],
-      fromDeps: ["Greeter", "HttpAuthenticator:user"],
+      composed: [
+        "OrpcController:orders",
+        "OrpcController:health",
+        "HttpAuthenticator:user",
+        "HttpUnit",
+      ],
+      fromDeps: ["Greeter", "HttpAuthenticator:user", "HttpUnit"],
     });
   });
 
@@ -179,6 +184,7 @@ describe("a router over a marked contract", () => {
     expect(controllers.unmarkedRouterDeps).toEqual([
       "OrpcController:greetings",
       "OrpcController:echoes.ping",
+      "HttpUnit",
     ]);
   });
 });

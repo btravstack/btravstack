@@ -10,10 +10,14 @@ import {
   type UnitMeta,
 } from "@btravstack/core";
 
+import type { AnyUnitModule } from "./amqp-runtime.js";
+
 /**
- * Open one kernel unit per delivery. It injects nothing — `next()` unchanged is
- * the whole of the chain — so the ambient `currentUnit()` record is what the
- * unit leaves for the adapters that read it.
+ * Open one kernel unit per delivery, forking `unit` — when one is bound — after
+ * the message is validated, before the handler runs; the fork is torn down
+ * when the unit closes. With no `unit` bound, `next()` runs unchanged, so the
+ * ambient `currentUnit()` record is what the unit leaves for the adapters that
+ * read it.
  *
  * **The kernel's per-unit `AbortSignal` rides that record too**, and it is the
  * only route to it here: a handler has no parameter to receive one through. A
@@ -24,6 +28,7 @@ export const messageUnits =
   (
     host: RuntimeHost<never>,
     observers: readonly ((operation: Operation) => Settle)[],
+    unit: AnyUnitModule | undefined,
   ): WorkerMiddleware =>
   (args, next) => {
     const settle = observe(observers, {
@@ -39,7 +44,20 @@ export const messageUnits =
     // package nacks a defect straight to the dead-letter queue, so a healthy
     // rate beside a filling DLQ is exactly the lie to avoid.
     return host
-      .run(metaFor(args.rawMessage), () => next())
+      .run(metaFor(args.rawMessage), (scope) =>
+        unit === undefined
+          ? next()
+          : // `as never`: `AnyUnitModule` erases a module's Needs to `unknown` —
+            // the only bound a module with real needs can infer against — so
+            // `fork`'s own `DependencyGate` sees `Exclude<unknown, Scope>`,
+            // still `unknown`, and never clears on its own. The needs were
+            // already checked once, at the `Unit`-generic call site that bound
+            // this module (`amqp()`'s own type parameter, proven by
+            // `examples/order-amqp-worker/src/needs-gate.test-d.ts`'s
+            // positive/negative pair) — this reasserts that proof rather than
+            // bypassing it.
+            scope.fork(unit as never, []).flatMap(() => next()),
+      )
       .tap(() => settle({ outcome: "ok" }))
       .tapFailure((failure) =>
         settle({

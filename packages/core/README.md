@@ -68,8 +68,8 @@ const ticker: Runtime<typeof Greeter> = {
       // and stays out of it. A timer has nowhere to return one, so it observes
       // it instead; dropping it would hide the work's `Err` *and* a `Defect`.
       void host
-        .run({ kind: "tick", id: `${Date.now()}` }, (ctx, signal) =>
-          signal.aborted ? Ok("") : Ok(ctx.get(Greeter).greet("world")),
+        .run({ kind: "tick", id: `${Date.now()}` }, (unit, signal) =>
+          signal.aborted ? Ok("") : Ok(unit.ctx.get(Greeter).greet("world")),
         )
         .tapFailure((failure) => {
           process.stderr.write(`${JSON.stringify({ tick: failure.tag })}\n`);
@@ -145,8 +145,9 @@ them and none should own a private copy:
   bad value is a `ConfigInvalid` naming every fault at once, and exit `78`.
 - **Teardown on every path**, with failing finalisers in
   `ExitReport.teardownErrors`, never masking the exit reason.
-- **A per-unit scope no handler manages** — pass a module as
-  `StartOptions.unit` and the kernel forks it around every unit.
+- **A per-unit scope no handler manages** — the runtime calls
+  `unit.fork(module, seed)` from inside `host.run`'s work callback, and the
+  kernel closes the scope when the unit settles.
 - **An ambient record, not an ambient container** — `currentUnit()` reads
   `{ unitId, traceId, tenantId, signal }`; services never travel
   there. `signal` is the very `AbortSignal` the unit's work callback is handed,

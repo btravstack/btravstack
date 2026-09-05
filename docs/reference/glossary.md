@@ -58,15 +58,16 @@ slice's own piece unchanged. See
 [Split a router into controllers](/how-to/split-a-router-into-controllers).
 
 **fork** — `Module.forkScope` — a scope opened over an existing context for a module's
-providers, then closed. `StartOptions.unit` is a fork the kernel opens around
-every unit. See [Open a per-request scope](/how-to/open-a-per-request-scope).
+providers, then closed. A starter's own `unit` option is a fork the runtime
+opens itself, through `UnitHost.fork`, around every unit it handles. See
+[Open a per-request scope](/how-to/open-a-per-request-scope).
 
 **gate** — A phantom type that is inert when a composition is sound and refuses the
 call otherwise. Both shipped gates are the same shape: a marker **intersected
 onto a parameter**, `unknown` when sound. `start`'s is `StartGate` — one of
-three sentences (`NO RUNTIME — …`, `UNSATISFIED RUNTIME PORTS — …`,
-`UNSATISFIED UNIT NEEDS — …`), plus di's own `UNSATISFIED DEPENDENCIES —
-nothing provides` for an unmet need, checked first and ending on the port's id.
+two sentences (`NO RUNTIME — …`, `UNSATISFIED RUNTIME PORTS — …`), plus di's
+own `UNSATISFIED DEPENDENCIES — nothing provides` for an unmet need — a bound
+`unit` module's own included — checked first and ending on the port's id.
 di's own is `DependencyGate` on `Module.build`/`scoped`/`forkScope` — the same
 one-property object, ending on the missing ports:
 `"UNSATISFIED DEPENDENCIES — nothing provides": Pool`. See

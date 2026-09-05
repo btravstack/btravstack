@@ -91,8 +91,9 @@ during `building`, closed on every exit path (`stop()`, a signal, an uncaught
 exception, a runtime that stopped on its own). What a finaliser reports on the
 way down lands in `ExitReport.teardownErrors` and a `teardownError` event, and
 `runMain` exits `2` over a non-empty list rather than `0`. A resource that
-must live per _unit_ rather than per process goes in the `unit` module
-instead — the kernel forks a scope around every unit for you (see
+must live per _unit_ rather than per process goes in a module a starter's
+own `unit` option binds instead — the runtime forks that scope around every
+unit it opens, through `UnitHost.fork` (see
 [Open a per-request scope](/how-to/open-a-per-request-scope)).
 
 ## Release order and failing finalisers
@@ -145,7 +146,7 @@ consumer built with `class`.
 ## See also
 
 - [Open a per-request scope](/how-to/open-a-per-request-scope) — a
-  short-lived resource over a long-lived parent, forked by the kernel.
+  short-lived resource over a long-lived parent, forked by the runtime.
 - [Scopes and resource safety](/explanation/scopes-and-resources) — the
   guarantees behind the scope, and why there is no scope object in your code.
 - [Providers](/reference/di/providers) — the full construction family and

@@ -4,10 +4,9 @@ description: Implement an oRPC contract as a di-provided router, compose it with
 ---
 
 <!-- doctest: prelude
-import { start, Meter, Tracer, Logger } from "@btravstack/core";
+import { start } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { HttpRuntime, http } from "@btravstack/http-server";
-import { otel } from "@btravstack/observability/otel";
 import { api } from "../../auth.js";
 import { RequestModule } from "../../request-scope.js";
 -->
@@ -185,23 +184,26 @@ a compile error: the signal to use the factory, not a fallback. See
 ## Step 3 — the composition root
 
 ```ts
+import { Logger, Meter, Tracer } from "@btravstack/core";
 import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpModule } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 
+import { RequestModule } from "../../request-scope.js";
 import { ordersRouter } from "./router.js";
 
 export const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
+  unit: { anonymous: RequestModule },
   imports: [
     OrderApplicationModule,
     OrderPersistenceModule,
     observability(),
     otel(),
   ],
-  // `RequestModule` (passed as `StartOptions.unit` below) reads all three
-  // out of the application scope.
+  // `RequestModule` reads all three out of the application scope once forked.
   exports: [Logger, Tracer, Meter],
 });
 ```
@@ -259,10 +261,8 @@ import {
 } from "@btravstack/observability";
 
 import { OrdersApi } from "./module.js";
-import { RequestModule } from "./request-scope.js";
 
 await runMain(OrdersApi, {
-  unit: RequestModule,
   onEvent: kernelEvents(createLogger(jsonSink())),
 });
 ```
@@ -271,9 +271,9 @@ That is the whole process. `PORT` (default `3000`), `HOST` (default
 `0.0.0.0`), `LOG_LEVEL` (default `info`) and the kernel's `PROBE_PORT` are
 read inside the graph from the
 `Env` port; a malformed one is a `ConfigInvalid`, reported as `startFailed`
-and exit `78`. `RequestModule` is optional — see
-[Open a per-request scope](/how-to/open-a-per-request-scope) — and so is
-`onEvent`, which puts the kernel's own lifecycle events in the application's
+and exit `78`. Binding `RequestModule` on `unit: { anonymous }` is optional
+— see [Open a per-request scope](/how-to/open-a-per-request-scope) — and so
+is `onEvent`, which puts the kernel's own lifecycle events in the application's
 stream rather than the default JSON on stderr; see
 [Log and correlate](/how-to/log-and-correlate).
 
@@ -312,8 +312,8 @@ triage above. What the package itself answers:
 
 The last three are fallbacks the transport proves against a bare listener; the
 two `500` shapes are unreachable over oRPC, which collapses every defect
-itself. A `StartOptions.unit` provider that fails to build gets its `500` from
-the unit's defect path, before any procedure runs.
+itself. A bound `unit.anonymous` provider that fails to build gets its `500`
+from the unit's defect path, before any procedure runs.
 
 ## Read the bound port back
 
@@ -351,6 +351,6 @@ under the request already carries it — see
   split.
 - [Order API (HTTP)](/examples/order-api) — the real deployment this recipe
   scales into, two slices composed through controllers, client half included.
-- [Open a per-request scope](/how-to/open-a-per-request-scope) — the `RequestModule` in `main.ts`.
+- [Open a per-request scope](/how-to/open-a-per-request-scope) — binding `RequestModule` on `HttpModule`'s own `unit` option.
 - [Configure from the environment](/how-to/configure-from-the-environment) — how `PORT`/`HOST` are bound.
 - [Use with oRPC](https://btravstack.github.io/unthrown/how-to/use-with-orpc) — the `@unthrown/orpc` bridge itself.

@@ -1,7 +1,7 @@
 import { Tracer } from "@btravstack/core";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
-import { otel } from "@btravstack/observability/otel";
+import { UnitSpanModule, otel } from "@btravstack/observability/otel";
 import { storage } from "@btravstack/storage";
 import { s3Storage } from "@btravstack/storage/s3";
 import { TemporalActivities, TemporalModule } from "@btravstack/temporal-worker";
@@ -50,7 +50,10 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
     observability(),
     otel(),
   ],
-  // `UnitSpanModule`, passed as `StartOptions.unit` in `main.ts`, reads
-  // `Tracer` out of the application scope.
+  // Forked once dispatch accepts the attempt and before the activity body
+  // runs, which is what lets the span wrap the whole attempt.
+  unit: { activity: UnitSpanModule },
+  // Exported because `UnitSpanModule` reads `Tracer` out of the application
+  // scope once forked; `otel()` above is what provides it.
   exports: [Tracer],
 });

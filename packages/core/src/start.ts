@@ -6,9 +6,8 @@ import {
   type Context,
   type PortInstance,
   type Scope,
-  type ScopedOptions,
 } from "@btravstack/di";
-import { Err, fromSafePromise, Ok, OkAsync, type AsyncResult, type Result } from "unthrown";
+import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 import { systemClock, type Clock } from "./clock.js";
 import { drainApp, type DrainReport } from "./drain.js";
@@ -26,6 +25,7 @@ import {
   type RuntimeInstance,
   type RuntimeResolvesOf,
   type Serving,
+  type UnitHost,
 } from "./runtime.js";
 import { createUnitRegistry } from "./units.js";
 
@@ -56,7 +56,7 @@ const KERNEL_DEFAULTS = {
 type KernelConfig = { readonly [K in keyof typeof KERNEL_DEFAULTS]: number };
 
 const readKernelConfig = (
-  options: Pick<StartOptions<never, never>, "probes" | "preDrainDelayMs" | "drainTimeoutMs">,
+  options: Pick<StartOptions, "probes" | "preDrainDelayMs" | "drainTimeoutMs">,
   env: Environment,
 ): Result<KernelConfig, RuntimeStartFailed> => {
   // `probes: false` pins the default and so reads nothing: a deployment that
@@ -96,26 +96,13 @@ const readKernelConfig = (
       );
 };
 
-export type StartOptions<UnitX = never, UnitNeeds = never> = {
+export type StartOptions = {
   /**
    * The environment the graph is configured from, provided to it as the `Env`
    * port and read for the kernel's own `PROBE_PORT`. Defaults to
    * `process.env`.
    */
   readonly env?: Environment;
-  /**
-   * A module forked around **every unit** — a unit being one bounded piece of
-   * work, whatever the transport calls it: an HTTP request, a Temporal
-   * activity, an AMQP delivery. Built as the unit opens, torn down as it
-   * closes — while the unit's ambient record is still open — reading anything
-   * the application context carries.
-   *
-   * A failing unit finaliser is reported as a `teardownError` event and never
-   * in `ExitReport.teardownErrors`. With this option the unit's work runs only
-   * once the fork is built, so a runtime that subscribes to an event from
-   * inside its work must be ready for it to have already fired.
-   */
-  readonly unit?: Module<UnitX, never, UnitNeeds>;
   readonly clock?: Clock;
   readonly signals?: boolean;
   /**
@@ -168,15 +155,18 @@ export type RunningApp<E, Info = never> = {
 /**
  * The phantom marker `start`, `runMain` and `Boot` all intersect onto their
  * `module` parameter: `unknown` — and invisible — when nothing the module
- * needs is unprovided, it exports a runtime, its exports cover what that
- * runtime resolves and they cover the unit module's needs; a diagnostic
- * otherwise, printed at the call site as the parameter type the argument did
- * not match.
+ * needs is unprovided, it exports a runtime and its exports cover what that
+ * runtime resolves; a diagnostic otherwise, printed at the call site as the
+ * parameter type the argument did not match.
  *
  * `unknown` is the satisfied arm because intersecting it leaves the module
  * type untouched. A runtime's `resolves` is checked against the module's
- * exports only, never the unit module's: `RuntimeHost.ctx` is the application
- * context, so a unit-only port would resolve to nothing there.
+ * exports only: `RuntimeHost.ctx` is the application context, so a port only
+ * a `fork` provides would resolve to nothing there. A `fork`'s own needs are
+ * not this marker's business at all — a `fork` module is forked over the
+ * application context, so its needs are exactly what a starter's own `needs`
+ * channel already asks the composition root to supply, and di's ordinary
+ * `UNSATISFIED DEPENDENCIES` gate is what refuses a root that does not.
  *
  * **Unmet needs are checked FIRST, and answered in di's own words rather than
  * a sentence of the kernel's.** A root that forgot `provides: [router]` used
@@ -196,19 +186,17 @@ export type RunningApp<E, Info = never> = {
  */
 type PortIdOf<P> = P extends PortInstance<infer Id, infer _Service> ? Id : P;
 
-export type StartGate<X, UnitNeeds = never, N = never> = [Exclude<N, Scope | Env>] extends [never]
+export type StartGate<X, N = never> = [Exclude<N, Scope | Env>] extends [never]
   ? [Extract<X, RuntimeInstance>] extends [never]
     ? "NO RUNTIME — the module exports no port declared over RuntimePort"
     : [InstanceType<RuntimeResolvesOf<X>>] extends [X]
-      ? [Exclude<UnitNeeds, X | Scope | Env>] extends [never]
-        ? unknown
-        : "UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"
+      ? unknown
       : "UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export"
   : { readonly "UNSATISFIED DEPENDENCIES — nothing provides": PortIdOf<Exclude<N, Scope | Env>> };
 
-export const start = <X, E, N, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, N> & StartGate<X, UnitNeeds, N>,
-  options: StartOptions<UnitX, UnitNeeds> = {},
+export const start = <X, E, N>(
+  module: Module<X, E, N> & StartGate<X, N>,
+  options: StartOptions = {},
 ): RunningApp<E, RuntimeInfoOf<X>> => {
   type Info = RuntimeInfoOf<X>;
   type Resolves = RuntimeResolvesOf<X>;
@@ -410,27 +398,71 @@ export const start = <X, E, N, UnitX = never, UnitNeeds = never>(
 
         // The fork sits INSIDE `registry.run` so unit teardown still sees the
         // ambient record and the unit is not counted closed until the scope is.
-        const unit = options.unit;
         const run: RunUnit<Resolves> = (meta, work) =>
           registry.run(meta, (signal) => {
-            if (unit === undefined) return work(runtimeCtx, signal);
+            const settled = Promise.withResolvers<void>();
+            let closing: Promise<unknown> | undefined;
+            // Set in the SAME `finally` that resolves `settled`, not derived
+            // from it: a fork arriving after `work` has returned is not
+            // awaited by anything, so nothing supervises its scope or its
+            // `onStop` — unsupervised is unsupervised whether or not this
+            // unit ever forked at all, which is why this guard is separate
+            // from `closing`'s own "once" one below.
+            let hasSettled = false;
 
-            const fork = Module.forkScope as <T, Err>(
-              parent: Context<X>,
-              module: Module<UnitX, never, UnitNeeds>,
-              use: (forked: Context<X | UnitX>) => AsyncResult<T, Err>,
-              options: ScopedOptions,
-            ) => AsyncResult<T, Err>;
+            const fork: UnitHost<Resolves>["fork"] = (module, seed) => {
+              if (hasSettled) {
+                return fromSafePromise(
+                  Promise.reject(new Error("a unit forks after it has already settled")),
+                ) as never;
+              }
+              if (closing !== undefined) {
+                return fromSafePromise(
+                  Promise.reject(new Error("a unit forks its scope once")),
+                ) as never;
+              }
+              const ready = Promise.withResolvers<Context<never>>();
+              // `use` resolves the context to the caller and then holds the
+              // scope open until the unit settles; that is what keeps the
+              // teardown inside the unit rather than at the handler's return.
+              // Cast to `AsyncResult<void, never>`: `module as never` erases
+              // the modeled error channel from `forkScope`'s own inference,
+              // but the `fork` signature already proves it is `never`.
+              const scope = Module.forkScope(
+                ctx as Context<never>,
+                module as never,
+                (forked) => {
+                  ready.resolve(forked);
+                  return fromSafePromise(settled.promise);
+                },
+                {
+                  seed: seed as never,
+                  onTeardownError: (port, cause) => emit({ type: "teardownError", port, cause }),
+                },
+              ) as unknown as AsyncResult<void, never>;
+              // Construction failed before `use` ran: release the caller
+              // onto the defect path instead of leaving it waiting. The
+              // module's error channel is `never`, so a defect is the only
+              // failure a fork can have.
+              closing = scope
+                .recoverDefect((cause) => {
+                  ready.reject(cause);
+                  return Ok();
+                })
+                .get();
+              return fromSafePromise(ready.promise) as never;
+            };
 
-            return fork(
-              ctx,
-              unit,
-              (forked) =>
-                fromSafePromise(
-                  (async () => await work(forked as Context<InstanceType<Resolves>>, signal))(),
-                ).flatMap((result) => result),
-              { onTeardownError: (port, cause) => emit({ type: "teardownError", port, cause }) },
-            ) as ReturnType<typeof work>;
+            const outcome = (async () => {
+              try {
+                return await work({ ctx: runtimeCtx, fork }, signal);
+              } finally {
+                hasSettled = true;
+                settled.resolve();
+                if (closing !== undefined) await closing;
+              }
+            })();
+            return fromSafePromise(outcome).flatMap((result) => result) as ReturnType<typeof work>;
           });
 
         const host = { ctx: runtimeCtx, run };

@@ -42,7 +42,7 @@ import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { eventIterator, oc, type as ocType, type RouterContractClient } from "@orpc/contract";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
-import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
+import { ErrAsync, OkAsync, type AsyncResult } from "unthrown";
 import { test } from "vitest";
 import { z } from "zod";
 
@@ -65,6 +65,7 @@ import { HttpConfig } from "../http-config.js";
 import { HttpModule } from "../http-module.js";
 import {
   HttpRuntime,
+  HttpUnit,
   _internal_httpRuntime,
   http,
   httpServer,
@@ -297,6 +298,13 @@ const greetingRouter = publicApi.OrpcRouter(greetingContract)({
   inject: { greeter: Greeter },
   sync: ({ greeter }) => greetingImplementation(greeter),
 });
+
+/** A one-route fragment answerer, so `scoped` can prove htmx forks the same way oRPC does. */
+const scopedFragment = publicApi.HtmxGet("/frag")({
+  inject: {},
+  sync: () => () => OkAsync(html`ok`),
+});
+const scopedFragmentsProvider = publicApi.HtmxFragments([scopedFragment]);
 
 /** The composing form's own contract, so the two arms are exercised side by side. */
 const slicedContract = oc.router({ greetings: helloFragment, echoes: nestedFragment });
@@ -850,44 +858,6 @@ const configuredAppOf = (options: { readonly port?: number; readonly hostname?: 
   };
 };
 
-/** A unit-scoped port whose construction is held open, so a unit's work can be delayed past its client's patience. */
-class Slow extends Port("Slow")<{ readonly built: true }> {}
-
-type SlowUnit = {
-  readonly module: Module<Slow, never, never>;
-  /** Resolves once a unit has started building the module. */
-  readonly arrived: Promise<void>;
-  /** Lets every held construction finish. */
-  readonly release: () => void;
-};
-
-const slowUnitOf = (): SlowUnit => {
-  let entered!: () => void;
-  const arrived = new Promise<void>((resolve) => {
-    entered = resolve;
-  });
-  let release!: () => void;
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  return {
-    module: Module("SlowUnit")({
-      provides: [
-        Provider(Slow)({
-          inject: {},
-          make: () => {
-            entered();
-            return fromSafePromise(held.then(() => ({ built: true }) as const));
-          },
-        }),
-      ],
-      exports: [Slow],
-    }),
-    arrived,
-    release: () => release(),
-  };
-};
-
 type App = RunningApp<ConfigInvalid, HttpInfo>;
 
 /**
@@ -1098,6 +1068,7 @@ const htmxAnswererOf = (): AsyncResult<HttpAnswerer, never> =>
             compression: false,
           },
         }),
+        Provider(HttpUnit)({ inject: {}, value: {} }),
         htmx(),
         Provider(RowGetCounter)({ inject: {}, value: { increment: () => (htmxRowGetRuns += 1) } }),
         htmxRowFragment,
@@ -1127,7 +1098,6 @@ export type HttpFixtures = {
    */
   readonly serve: (
     handler?: Handler,
-    unit?: SlowUnit["module"],
     securityHeaders?: HttpOptions["securityHeaders"],
   ) => Promise<{ readonly app: App; readonly origin: string }>;
   /**
@@ -1155,8 +1125,27 @@ export type HttpFixtures = {
     readonly origin: string;
     readonly client: RouterContractClient<typeof greetingContract>;
   }>;
-  /** A `StartOptions.unit` module whose provider builds only once `release()` is called. */
-  readonly slowUnit: SlowUnit;
+  /** An app bound to an `anonymous` unit module that counts its builds and teardowns. */
+  readonly scoped: {
+    readonly serve: () => Promise<{
+      readonly app: App;
+      readonly origin: string;
+      readonly counts: () => { builds: number; stops: number };
+    }>;
+  };
+  /** Like `scoped`, but for a fragment route — proves htmx forks the same way oRPC does. */
+  readonly scopedFragment: {
+    readonly serve: () => Promise<{
+      readonly app: App;
+      readonly origin: string;
+      readonly counts: () => { builds: number; stops: number };
+    }>;
+  };
+  /**
+   * An app, serving both protocols, whose bound `anonymous` unit module fails
+   * to build — the fork's own defect path, for each answerer to answer 500.
+   */
+  readonly brokenScoped: () => Promise<{ readonly app: App; readonly origin: string }>;
   /** An app started on an explicit port, for the failure paths. Shut down by the fixture. */
   readonly appOnPort: (port: number) => App;
   /** The same, over a hand-provided `HttpConfig` — no `Config` rule in the way. */
@@ -1423,11 +1412,8 @@ export const it = test.extend<HttpFixtures>({
   },
 
   serve: async ({ boot }, use) => {
-    await use(async (handler = noop, unit, securityHeaders) => {
-      const app = boot(
-        appOf(handler, undefined, securityHeaders),
-        unit === undefined ? {} : { unit },
-      );
+    await use(async (handler = noop, securityHeaders) => {
+      const app = boot(appOf(handler, undefined, securityHeaders));
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return { app, origin: `http://127.0.0.1:${info.port}` };
@@ -1454,9 +1440,112 @@ export const it = test.extend<HttpFixtures>({
     });
   },
 
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  slowUnit: async ({}, use) => {
-    await use(slowUnitOf());
+  scoped: async ({ boot }, use) => {
+    await use({
+      serve: async () => {
+        const counts = { builds: 0, stops: 0 };
+        class Span extends Port("ScopedSpan")<{ readonly at: number }> {}
+        const Unit = Module("ScopedUnit")({
+          provides: [
+            Provider(Span)({
+              inject: {},
+              sync: () => {
+                counts.builds += 1;
+                return { at: counts.builds };
+              },
+              onStop: () => {
+                counts.stops += 1;
+              },
+            }),
+          ],
+          exports: [Span],
+        });
+        const app = boot(
+          HttpModule("ScopedApp")({
+            router: greetingRouter,
+            port: 0,
+            hostname: "127.0.0.1",
+            unit: { anonymous: Unit },
+            provides: [
+              Provider(Greeter)({ inject: {}, value: { greet: (name) => `hello ${name}` } }),
+            ],
+          }),
+        );
+        const info = (await app.runtimeInfo()).get();
+        assert.ok(info !== undefined, "the runtime published no Serving.info");
+        return { app, origin: `http://127.0.0.1:${info.port}`, counts: () => counts };
+      },
+    });
+  },
+
+  scopedFragment: async ({ boot }, use) => {
+    await use({
+      serve: async () => {
+        const counts = { builds: 0, stops: 0 };
+        class Span extends Port("ScopedFragmentSpan")<{ readonly at: number }> {}
+        const Unit = Module("ScopedFragmentUnit")({
+          provides: [
+            Provider(Span)({
+              inject: {},
+              sync: () => {
+                counts.builds += 1;
+                return { at: counts.builds };
+              },
+              onStop: () => {
+                counts.stops += 1;
+              },
+            }),
+          ],
+          exports: [Span],
+        });
+        const app = boot(
+          HttpModule("ScopedFragmentApp")({
+            fragments: scopedFragmentsProvider,
+            port: 0,
+            hostname: "127.0.0.1",
+            unit: { anonymous: Unit },
+            provides: [scopedFragment],
+          }),
+        );
+        const info = (await app.runtimeInfo()).get();
+        assert.ok(info !== undefined, "the runtime published no Serving.info");
+        return { app, origin: `http://127.0.0.1:${info.port}`, counts: () => counts };
+      },
+    });
+  },
+
+  brokenScoped: async ({ boot }, use) => {
+    await use(async () => {
+      class BrokenSpan extends Port("BrokenScopedSpan")<{ readonly at: number }> {}
+      const Broken = Module("BrokenScopedUnit")({
+        provides: [
+          Provider(BrokenSpan)({
+            inject: {},
+            sync: () => {
+              // oxlint-disable-next-line unthrown/no-throw -- the subject under test: a fork's construction failure must reach the answerer's own defect path
+              throw new Error("construction-boom");
+            },
+          }),
+        ],
+        exports: [BrokenSpan],
+      });
+      const app = boot(
+        HttpModule("BrokenScopedApp")({
+          router: greetingRouter,
+          fragments: scopedFragmentsProvider,
+          port: 0,
+          hostname: "127.0.0.1",
+          unit: { anonymous: Broken },
+          provides: [
+            scopedFragment,
+            Provider(Greeter)({ inject: {}, value: { greet: (name) => `hello ${name}` } }),
+          ],
+        }),
+      );
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return { app, origin: `http://127.0.0.1:${info.port}` };
+    });
   },
 
   appOnPort: async ({ boot }, use) => {

@@ -17,7 +17,7 @@ import {
   type Settle,
   type UnitMeta,
 } from "@btravstack/core";
-import { Module, Provider, type ServiceOf } from "@btravstack/di";
+import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 import { HttpHandler, type HttpAnswerer } from "./handler.js";
@@ -52,13 +52,40 @@ export type HttpOptions = OrpcOptions & {
    * `x-frame-options` off is a footgun the other policies are not.
    */
   readonly securityHeaders?: boolean | Readonly<Record<string, string>>;
+  /**
+   * The unit module the answerers fork around every request they handle,
+   * with no seed. Built as the answerer takes the request, torn down when
+   * the unit closes, after the response is flushed.
+   */
+  readonly unit?: { readonly anonymous?: AnyUnitModule };
 };
 
 /** What `httpServer` pins on the config it binds — everything but the router's own. */
 type SocketOptions = Pick<
   HttpOptions,
-  "port" | "hostname" | "cors" | "bodyLimit" | "compression" | "securityHeaders"
+  "port" | "hostname" | "cors" | "bodyLimit" | "compression" | "securityHeaders" | "unit"
 >;
+
+/**
+ * A module `unit.anonymous` may bind, as the upper bound `httpServer`/`http`
+ * constrain their own `Unit` type parameter to. `Module`'s `_exports` channel
+ * is contravariant, so `Exports = never` — never `unknown` — is what makes a
+ * REAL module's own (necessarily narrower) export type assignable to this
+ * bound: `(x: Concrete) => void` is assignable to `(x: never) => void`, not
+ * to `(x: unknown) => void`. `@btravstack/testing`'s `TestRuntimeOptions.unit`
+ * carries the same bound for the same reason.
+ */
+export type AnyUnitModule = Module<never, never, unknown>;
+
+/**
+ * The needs a bound `unit.anonymous` module still owes, or `never` when none
+ * is bound. `Scope` is excluded, since nothing can ever provide it — the same
+ * exemption `NeedsGate` itself carries. Exported for `http-module.ts`, which
+ * types `HttpModule`'s own starter independently of `httpServer`'s return
+ * type.
+ */
+export type UnitNeedsOf<Unit> =
+  Unit extends Module<never, never, infer N> ? Exclude<N, Scope> : never;
 
 /**
  * Set before dispatch, so they also cover the runtime's own `404` and `500` —
@@ -81,6 +108,16 @@ const DEFAULT_SECURITY_HEADERS: Readonly<Record<string, string>> = {
  * inside this module and have to be read out of the application context.
  */
 export class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}
+
+/**
+ * What `httpServer(options)` provides from `options.unit`, and what `orpc()`
+ * and `htmx()` inject to find the module they fork around a request they
+ * handle. `anonymous` is `undefined` when the composition root bound none —
+ * every answerer's own fork is then a no-op.
+ */
+export class HttpUnit extends Port("HttpUnit")<{
+  readonly anonymous?: AnyUnitModule;
+}> {}
 
 /**
  * Rate, errors and duration, per request — the three a framework that owns the
@@ -123,9 +160,13 @@ export const _internal_httpRuntime = (
  * `http()`, `htmx()` from a fragment graph — which is what lets an application
  * serve one protocol, the other, or both.
  */
-export const httpServer = (
-  options: SocketOptions = {},
-): Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env> => {
+export const httpServer = <Unit extends AnyUnitModule | undefined = undefined>(
+  options: Omit<SocketOptions, "unit"> & { readonly unit?: { readonly anonymous?: Unit } } = {},
+): Module<
+  HttpRuntime | HttpConfig | HttpHandler | HttpUnit,
+  ConfigInvalid,
+  Env | UnitNeedsOf<Unit>
+> => {
   const { port, hostname, cors, bodyLimit, compression, securityHeaders } = options;
   const config = Config.provider(HttpConfig)(
     Config.object({
@@ -160,12 +201,27 @@ export const httpServer = (
         sync: ({ config: bound, observers }) =>
           _internal_httpRuntime(bound, securityHeaders, observers),
       }),
+      Provider(HttpUnit)({
+        inject: {},
+        // `exactOptionalPropertyTypes` refuses `{ anonymous: undefined }` where
+        // `HttpUnit`'s own shape declares `anonymous` optional rather than
+        // nullable — an unbound `unit.anonymous` is left OFF the value instead.
+        value: options.unit?.anonymous === undefined ? {} : { anonymous: options.unit.anonymous },
+      }),
     ],
-    exports: [HttpRuntime, HttpConfig, HttpHandler],
+    exports: [HttpRuntime, HttpConfig, HttpHandler, HttpUnit],
     // `as never`/`as unknown as Module<…>`, below: `exports` includes
     // `HttpHandler`, a set port, though this module provides no member of it
-    // itself — a sibling module's answerer does.
-  } as never) as unknown as Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env>;
+    // itself — a sibling module's answerer does. The Needs channel carries a
+    // bound `unit.anonymous` module's own unmet needs, though nothing HERE
+    // reads them: it is forked over the application context at request time,
+    // so what it needs is exactly what the composition root must supply, and
+    // this is what makes di's own `UNSATISFIED DEPENDENCIES` gate say so.
+  } as never) as unknown as Module<
+    HttpRuntime | HttpConfig | HttpHandler | HttpUnit,
+    ConfigInvalid,
+    Env | UnitNeedsOf<Unit>
+  >;
 };
 
 /**
@@ -179,9 +235,13 @@ export const httpServer = (
  * Pin `port`/`hostname` and the module reads nothing from the environment; pin
  * only some and the rest still comes from it.
  */
-export const http = (
-  options: HttpOptions = {},
-): Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | OrpcRouterPort> =>
+export const http = <Unit extends AnyUnitModule | undefined = undefined>(
+  options: Omit<HttpOptions, "unit"> & { readonly unit?: { readonly anonymous?: Unit } } = {},
+): Module<
+  HttpRuntime | HttpConfig | HttpHandler,
+  ConfigInvalid,
+  Env | OrpcRouterPort | UnitNeedsOf<Unit>
+> =>
   Module("Http")({
     imports: [httpServer(options)],
     provides: [orpc(options)],
@@ -189,7 +249,7 @@ export const http = (
   } as never) as unknown as Module<
     HttpRuntime | HttpConfig | HttpHandler,
     ConfigInvalid,
-    Env | OrpcRouterPort
+    Env | OrpcRouterPort | UnitNeedsOf<Unit>
   >;
 
 /**
@@ -310,21 +370,28 @@ const listen = (
             // `recoverDefect`, not `match`: `E` is statically `never` here, so an
             // `errCases` arm would be a dead branch with no case to name.
             void host
-              .run(metaFor(request), (_ctx, signal) => {
+              .run(metaFor(request), (unit, signal) => {
                 // No answerer owns this path: the runtime's own `404`, written
                 // here rather than after an await, so nothing is in flight.
+                // Deliberately no fork here — the fork is the answerer's, for
+                // a request it handles.
                 if (answerer === undefined) {
                   end(response, 404, "NotFound");
                   return closedOf(response);
                 }
-                void answer(answerer.handle(request, response, signal), response);
+                void answer(answerer.handle(request, response, signal, unit), response);
                 // The unit's lifetime IS the response's, which is what makes the
                 // kernel's "flush inside the unit" contract structural here.
                 return closedOf(response);
               })
               .recoverDefect((cause) => {
-                // The unit failed outside `answer`'s reach — a synchronous throw, or
-                // a `StartOptions.unit` provider failing to build. Guarded, because
+                // The unit failed outside `answer`'s reach — a synchronous throw
+                // from a bare `HttpAnswerer.handle` before it ever returns a
+                // promise. Neither an oRPC fork failure nor a synchronous throw
+                // inside it lands here: oRPC catches a middleware throw itself
+                // and collapses it to its own `INTERNAL_SERVER_ERROR`, the same
+                // path a procedure's own defect takes, before `answer` or this
+                // callback ever sees it. Guarded, because
                 // `recoverDefect` would wrap a throw here into a fresh defect that
                 // the `void` below drops.
                 try {
@@ -407,10 +474,9 @@ const listen = (
       ).flatMap((result) => result),
     );
 
-// `closed` is checked first because unit work is not always synchronous with the
-// request: under a `StartOptions.unit` module it runs once the fork is built, and
-// a client that hung up meanwhile has already emitted `'close'` — subscribing
-// then would hold the unit open for the process lifetime.
+// `closed` is checked first because a response that has already emitted
+// `'close'` never emits it again: a caller reached after an `await` would wait
+// on an event that has fired and hold the unit open for the process lifetime.
 const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
   response.closed
     ? OkAsync()

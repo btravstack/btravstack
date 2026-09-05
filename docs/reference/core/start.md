@@ -22,9 +22,9 @@ import type { RunningApp, RuntimeInfoOf, StartGate, StartOptions } from "@btravs
 <!-- doctest: signature=@btravstack/core -->
 
 ```ts
-const start: <X, E, N, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, N> & StartGate<X, UnitNeeds, N>,
-  options?: StartOptions<UnitX, UnitNeeds>,
+const start: <X, E, N>(
+  module: Module<X, E, N> & StartGate<X, N>,
+  options?: StartOptions,
 ) => RunningApp<E, RuntimeInfoOf<X>>;
 ```
 
@@ -62,28 +62,23 @@ two providers for one port.
 typed. `RuntimeStartFailed` is the only error the kernel adds — the runtime
 refused to start, or the probe server could not bind.
 
-## `StartOptions<UnitX, UnitNeeds>`
+## `StartOptions`
 
-| Option            | Type                              | Default                            | Semantics                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ----------------- | --------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `env`             | `Environment`                     | `process.env`                      | The environment the graph is configured from, provided as the `Env` port; also where the kernel reads its own `PROBE_PORT`, `PRE_DRAIN_DELAY_MS` and `DRAIN_TIMEOUT_MS`. A test hands in a record.                                                                                                                                                                                                                                                                            |
-| `unit`            | `Module<UnitX, never, UnitNeeds>` | none                               | A module **forked around every unit**: built as the unit opens, torn down as it closes, while the unit's ambient record is still open. Its providers may read anything the application context exports. Its error channel is pinned to `never` — a construction failure becomes the unit's defect. A failing unit finaliser is a `teardownError` event only, never an entry in `ExitReport.teardownErrors`. See [Open a per-request scope](/how-to/open-a-per-request-scope). |
-| `clock`           | `Clock`                           | `systemClock`                      | What the drain sleeps against. A test passes `createFakeClock()`.                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `signals`         | `boolean`                         | `true`                             | Installs the SIGTERM/SIGINT handlers **and** the `uncaughtException`/`unhandledRejection` ones. `false` disables both together.                                                                                                                                                                                                                                                                                                                                               |
-| `probes`          | `{ port: number } \| false`       | unset                              | Unset, the probe port is bound from `PROBE_PORT` in `env` (default `9000`); `false` disables the probe server; `{ port: 0 }` lets the OS choose. See [Probes](/reference/core/probes).                                                                                                                                                                                                                                                                                        |
-| `preDrainDelayMs` | `number`                          | `PRE_DRAIN_DELAY_MS`, else `5_000` | Beat 2 of the drain: how long the kernel waits after readiness flips false before telling the runtime to stop accepting. Measured from the first signal, so a signal that lands mid-build is not paid twice.                                                                                                                                                                                                                                                                  |
-| `drainTimeoutMs`  | `number`                          | `DRAIN_TIMEOUT_MS`, else `20_000`  | Beat 3: how long in-flight units get to finish once the runtime has been told to stop accepting. Whatever is still open is aborted and reported `abandoned`. Set it beside `terminationGracePeriodSeconds`, in the manifest — see [Tune the drain for Kubernetes](/how-to/tune-the-drain-for-kubernetes).                                                                                                                                                                     |
-| `onEvent`         | `EventSink`                       | `stderrSink`                       | Where the nine kernel events go. A throwing sink is swallowed. See [Kernel events](/reference/core/events).                                                                                                                                                                                                                                                                                                                                                                   |
+| Option            | Type                        | Default                            | Semantics                                                                                                                                                                                                                                                                                                 |
+| ----------------- | --------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `env`             | `Environment`               | `process.env`                      | The environment the graph is configured from, provided as the `Env` port; also where the kernel reads its own `PROBE_PORT`, `PRE_DRAIN_DELAY_MS` and `DRAIN_TIMEOUT_MS`. A test hands in a record.                                                                                                        |
+| `clock`           | `Clock`                     | `systemClock`                      | What the drain sleeps against. A test passes `createFakeClock()`.                                                                                                                                                                                                                                         |
+| `signals`         | `boolean`                   | `true`                             | Installs the SIGTERM/SIGINT handlers **and** the `uncaughtException`/`unhandledRejection` ones. `false` disables both together.                                                                                                                                                                           |
+| `probes`          | `{ port: number } \| false` | unset                              | Unset, the probe port is bound from `PROBE_PORT` in `env` (default `9000`); `false` disables the probe server; `{ port: 0 }` lets the OS choose. See [Probes](/reference/core/probes).                                                                                                                    |
+| `preDrainDelayMs` | `number`                    | `PRE_DRAIN_DELAY_MS`, else `5_000` | Beat 2 of the drain: how long the kernel waits after readiness flips false before telling the runtime to stop accepting. Measured from the first signal, so a signal that lands mid-build is not paid twice.                                                                                              |
+| `drainTimeoutMs`  | `number`                    | `DRAIN_TIMEOUT_MS`, else `20_000`  | Beat 3: how long in-flight units get to finish once the runtime has been told to stop accepting. Whatever is still open is aborted and reported `abandoned`. Set it beside `terminationGracePeriodSeconds`, in the manifest — see [Tune the drain for Kubernetes](/how-to/tune-the-drain-for-kubernetes). |
+| `onEvent`         | `EventSink`                 | `stderrSink`                       | Where the nine kernel events go. A throwing sink is swallowed. See [Kernel events](/reference/core/events).                                                                                                                                                                                               |
 
-Two consequences of `unit` worth stating here, since both are silent when
-missed. `RuntimeHost.ctx` is the **application** context: a port the unit
-module provides exists only inside unit work, and resolving one at runtime
-startup is a defect. And with a unit module the work runs only once the fork is
-built — after an `await` when a unit provider is async — so a runtime that
-subscribes to an event from inside its work must first check whether it has
-already fired.
+A per-unit scope is no longer a `start` option: a runtime opens one itself,
+through `UnitHost.fork`, from inside its `host.run` work callback — see
+[The Runtime contract](/reference/core/runtime#unithost-resolves).
 
-## The gate: `StartGate<X, UnitNeeds, N>`
+## The gate: `StartGate<X, N>`
 
 `StartGate` is a **phantom marker intersected onto the `module` parameter**: no
 argument ever carries it. It is `unknown` — and therefore invisible — when the
@@ -93,15 +88,11 @@ match the parameter type at the call site.
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-type StartGate<X, UnitNeeds = never, N = never> = [
-  Exclude<N, Scope | Env>,
-] extends [never]
+type StartGate<X, N = never> = [Exclude<N, Scope | Env>] extends [never]
   ? [Extract<X, RuntimeInstance>] extends [never]
     ? "NO RUNTIME — the module exports no port declared over RuntimePort"
     : [InstanceType<RuntimeResolvesOf<X>>] extends [X]
-      ? [Exclude<UnitNeeds, X | Scope | Env>] extends [never]
-        ? unknown
-        : "UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"
+      ? unknown
       : "UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export"
   : { readonly "UNSATISFIED DEPENDENCIES — nothing provides": PortIdOf<Exclude<N, Scope | Env>> };
 ```
@@ -110,10 +101,14 @@ type StartGate<X, UnitNeeds = never, N = never> = [
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `UNSATISFIED DEPENDENCIES`  | Something in the graph needs a port nothing provides — checked **first**, and answered in di's own words, ending on the port's id (`"OrpcRouter"`). `Scope` and `Env` are the two the kernel itself discharges. |
 | `NO RUNTIME`                | `X` contains no port declared over `RuntimePort`. Every starter's module sugar exports one; a hand-rolled root must export its runtime port.                                                                    |
-| `UNSATISFIED RUNTIME PORTS` | The runtime's declared `resolves` are not all among the module's exports — the **module's alone**, never the unit module's, because `RuntimeHost.ctx` is the application context.                               |
-| `UNSATISFIED UNIT NEEDS`    | The `unit` module's needs are not covered by the module's exports, `Scope` or `Env` — `Module.forkScope`'s gate, stated where the parent is actually known.                                                     |
+| `UNSATISFIED RUNTIME PORTS` | The runtime's declared `resolves` are not all among the module's exports — the **module's alone**, never a `fork`'s, because `RuntimeHost.ctx` is the application context.                                      |
 
-`runMain`, and `@btravstack/testing`'s `Boot`, carry the same marker.
+`runMain`, and `@btravstack/testing`'s `Boot`, carry the same marker. There is
+no arm for a `UnitHost.fork` module's own needs: a `fork` module is forked
+over the application context, so its needs are exactly what a starter's own
+`needs` channel already asks the composition root to supply, and
+`UNSATISFIED DEPENDENCIES` — di's own gate above, not a fourth arm here — is
+what refuses a root that does not.
 
 **What a failing arm prints, measured** — a root exporting a `Greeter` and no
 runtime port:

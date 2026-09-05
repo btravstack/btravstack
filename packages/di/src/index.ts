@@ -33,5 +33,5 @@ export { Module } from "./module.js";
 // Exported so a package offering a SHAPED module (a starter's sugar) can
 // constrain its own tuples the way `Module(name)` does and hand them to
 // `Module(name)` itself — whose return type is then the sugar's, spelled once.
-export type { AnyModule, AnyProvider, Exportable, NeedsGate } from "./module.js";
-export type { ScopedOptions } from "./build.js";
+export type { AnyModule, AnyProvider, DependencyGate, Exportable, NeedsGate } from "./module.js";
+export type { ScopedOptions, SeedEntry } from "./build.js";

@@ -591,11 +591,12 @@ describe("order-api", () => {
     // WHEN a malformed input is sent, past the client's own types
     await client.orders.place({ id: "o-rejected", quantity: "abc" } as never);
 
-    // THEN neither the controller nor the interactor wrote a line, and the
-    // request-scope one still lands because the unit opened. Asserted on those
-    // two absences rather than on the stored row, because the DOMAIN would
-    // refuse `"abc"` too and such a test would pin nothing.
-    expect(recording.lines().map((line) => line.message)).toEqual(["request finished"]);
+    // THEN nothing wrote a line at all: oRPC's own schema validation refuses
+    // the input before dispatch ever reaches the leaf's own middleware, so
+    // `RequestModule` — forked by that same middleware — never opens either.
+    // The fork is the leaf's own, not the kernel's, and a request oRPC never
+    // dispatches never reaches it.
+    expect(recording.lines().map((line) => line.message)).toEqual([]);
   });
 
   it("serves the unmarked fragment to a caller presenting nothing", async ({

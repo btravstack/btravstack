@@ -124,11 +124,12 @@ parent's services; `use` receives a `Context<PParent | X>` carrying both.
   stays up for sibling forks and for whatever follows.
 - Forks nest: a fork's `use` may fork again over the context it received.
 
-Under the kernel you rarely call this yourself: `StartOptions.unit` names a
-module the kernel forks around **every unit**, and the same gate is checked at
-`start`'s call site as
-`"UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"`. See
-[Open a per-request scope](/how-to/open-a-per-request-scope).
+Under the kernel you rarely call this yourself: a starter's own `unit` option
+names a module the runtime forks around **every unit** it opens, through
+`UnitHost.fork`, and the same gate reaches `start`'s call site through the
+ordinary `"UNSATISFIED DEPENDENCIES — nothing provides"` — the bound module's
+own unmet needs join the starter's `Needs` channel exactly like an import's.
+See [Open a per-request scope](/how-to/open-a-per-request-scope).
 
 ## `ScopedOptions`
 
@@ -175,7 +176,7 @@ same instance.
 `Module.scoped` — so the application scope is opened as the process boots and
 closed on every exit path, with what its finalisers report surfacing as
 `ExitReport.teardownErrors`. It adds a gate of its own on top of di's
-(`NO RUNTIME`, `UNSATISFIED RUNTIME PORTS`, `UNSATISFIED UNIT NEEDS`), and
+(`NO RUNTIME`, `UNSATISFIED RUNTIME PORTS`), and
 `RunningApp` rather than a `Context` is what it hands back: the runtime, not
 the caller, is what reads the built context.
 

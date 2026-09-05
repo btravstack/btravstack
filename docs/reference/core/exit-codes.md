@@ -8,7 +8,6 @@ import { TestRuntimePort } from "@btravstack/testing";
 import { Env } from "@btravstack/config";
 import type { Module, Scope } from "@btravstack/di";
 declare const OrderApi: Module<InstanceType<typeof TestRuntimePort>, never, Env | Scope>;
-declare const RequestModule: Module<never, never, never>;
 import { runMain } from "@btravstack/core";
 import type { StartGate, StartOptions } from "@btravstack/core";
 -->
@@ -26,9 +25,9 @@ import type { StartGate, StartOptions } from "@btravstack/core";
 <!-- doctest: signature=@btravstack/core -->
 
 ```ts
-const runMain: <X, E, N, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, N> & StartGate<X, UnitNeeds, N>,
-  options?: StartOptions<UnitX, UnitNeeds>,
+const runMain: <X, E, N>(
+  module: Module<X, E, N> & StartGate<X, N>,
+  options?: StartOptions,
   exit?: (code: number) => void,
 ) => Promise<void>;
 ```
@@ -36,9 +35,9 @@ const runMain: <X, E, N, UnitX = never, UnitNeeds = never>(
 `runMain` is `start` composed with the wait for `exited`, then a fold of the
 `Result` into a code. It carries the same phantom marker as `start`, intersected
 onto `module` (see
-[The gate](/reference/core/start#the-gate-startgate-x-unitneeds-n)), so
-`NO RUNTIME — …`, `UNSATISFIED RUNTIME PORTS — …` and
-`UNSATISFIED UNIT NEEDS — …` are printed at this call site too.
+[The gate](/reference/core/start#the-gate-startgate-x-n)), so
+`NO RUNTIME — …` and `UNSATISFIED RUNTIME PORTS — …` are printed at this call
+site too.
 
 | Parameter | Default                                  | Semantics                                                                                                                                                                                                                                                           |
 | --------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -55,9 +54,8 @@ top of a `main.ts` is the intended shape:
 import { runMain } from "@btravstack/core";
 
 import { OrderApi } from "./order-api.js";
-import { RequestModule } from "./request-module.js";
 
-await runMain(OrderApi, { unit: RequestModule });
+await runMain(OrderApi);
 ```
 
 That is the whole of `examples/order-api/src/main.ts`.

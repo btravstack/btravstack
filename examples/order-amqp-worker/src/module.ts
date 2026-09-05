@@ -12,7 +12,7 @@ import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure
 import { mailer } from "@btravstack/mailer";
 import { smtpMailer } from "@btravstack/mailer/smtp";
 import { observability } from "@btravstack/observability";
-import { otel } from "@btravstack/observability/otel";
+import { UnitSpanModule, otel } from "@btravstack/observability/otel";
 
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
 import { orderAudit } from "./slices/audit/handler.js";
@@ -65,7 +65,10 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     otel(),
   ],
   provides: [relayConfig, outboxRelay],
-  // `Tracer` beside `Logger` for the same reason: `UnitSpanModule`, passed
-  // as `StartOptions.unit` in `main.ts`, reads it out of the application scope.
+  // The worker forks `UnitSpanModule` once per delivery, after the message is
+  // validated; its own need, `Tracer`, is satisfied by `otel()` above.
+  unit: { message: UnitSpanModule },
+  // `Tracer` beside `Logger` for the same reason: `UnitSpanModule` reads it
+  // out of the application scope once forked.
   exports: [PlaceOrder, OrderRepository, Outbox, Logger, Tracer],
 });
