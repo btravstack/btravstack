@@ -10,11 +10,11 @@ its own package, because a client needs it and needs none of this.
 
 ```text
 src/auth.ts                           the two schemes (user, service), their authenticators, and the one api = defineHttp({ authenticators }) call
-src/slices/orders/controller.ts       api.OrpcController(contract, "orders")({ inject: { place: PlaceOrder, find: FindOrder, logger: Logger }, sync }) — where the orders slice's own domain error becomes an ORPCError
+src/slices/orders/controller.ts       api.OrpcController(contract, "orders")({ inject: { logger: Logger }, unit: { place: PlaceOrder, find: FindOrder, list: ListOrders }, sync }) — where the orders slice's own domain error becomes an ORPCError
 src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only it
 src/slices/customers/controller.ts    api.OrpcController(contract, "customers")({ inject: { find: FindCustomer }, sync }) — same shape, for the customers slice's own domain error
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
-src/request-scope.ts                  RequestModule — bound on HttpModule's own unit option; the answerers fork it per request
+src/request-scope.ts                  RequestModule, UserModule, ServiceModule — the three unit kinds HttpModule binds; the answerers fork one per request
 src/client.ts                         an AsyncResult client for the same contract
 src/module.ts                         OrderApi — the composition root: orderRouter = api.OrpcRouter(contract)([ordersController, customersController]), then HttpModule("OrderApi")({
   needs: [Env], router: orderRouter, … })
@@ -54,7 +54,7 @@ slice's controller — and that is what performs the elimination; the
 application's vocabulary stops:
 
 ```ts
-place
+context.unit.place
   .execute(input.id, input.quantity)
   .map(view)
   .mapErrCases((matcher) =>
@@ -154,33 +154,29 @@ once per application rather than per slice — a handler's parameter types are
 fixed where the arrow is written, so the composition root cannot re-type a
 `sync` callback living in a slice's module.
 
-The root is a list of **slices**. Each one imports the vertical it needs —
-`OrderApplicationModule`, whose repository is an unmet need, and
-`OrderPersistenceModule`, which provides it — and exports only its controller:
+The root is a list of **slices**. The orders one owns its piece of the surface
+and its triage, and no vertical at all — the use cases its leaves read are
+built per request, in the `user` kind's module:
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
   // The controller writes a line itself, so `Logger` is this slice's own
-  // provider's need. The environment its persistence reads `DATABASE_URL` from
-  // is not: that one is `DatabaseModule`'s, declared there and inherited
-  // through the imports below.
+  // provider's need. The use cases are not: a leaf reaches them off
+  // `context.unit`, never through `inject`.
   needs: [Logger],
-  imports: [OrderApplicationModule, OrderPersistenceModule],
-  provides: [ordersController],
-  exports: [ordersController],
+  provides: [ordersController, orderRowFragment],
+  exports: [ordersController, orderRowFragment],
 });
 ```
 
-So the root names what the process serves, not everything every slice happens
-to depend on. The customers slice imports `CustomerApplicationModule` and
-`CustomerPersistenceModule` — its own pair — so `FindCustomer` and the
-customer repository are not in the orders graph, and `PlaceOrder` is not in
-the customers one. The two meet on the internal database module both
-persistence halves import, which is a diamond rather than duplication: di
-flattens the module tree into a `Set` keyed by provider **reference**, so the
-graph builds one database (measured on this composition — a naive walk visits
-16 provider slots and di keeps 15, where the same walk over the pre-split
-modules visited 22 for the same 15).
+The customers slice still imports its own pair — `CustomerApplicationModule`
+and `CustomerPersistenceModule` — because its procedures are unmarked: they
+open an anonymous unit, which has no principal to take a tenant from, so the
+tenant arrives on the input and the repository stays in the application scope.
+That asymmetry is the tenancy showing through the composition, and it is why
+the root also imports `OrderPersistenceModule`: the outbox and the one Prisma
+client live there, and the per-request repository is built over that client
+rather than a client of its own.
 `exports` takes the provider itself, not `ordersController.port`:
 `api.OrpcController` minted that port, so there is no class to spell back off it.
 
@@ -192,8 +188,8 @@ http()], provides: [orderRouter], exports: [HttpRuntime, Logger] })` would
 have. `observability()` is the starter that provides the
 `Logger` the use cases and the request scope write to — `LOG_LEVEL` bound from
 the environment, one JSON object per line on stdout, and every line stamped
-with the unit the runtime opened around it. It is exported because the
-per-request `RequestModule` reads it. The runtime provider depends on the router port
+with the unit the runtime opened around it. It is exported because every unit
+kind reads it once forked, as `OrderDatabase` is. The runtime provider depends on the router port
 through di, so even the transport wiring exists because the composition root
 said so — a composition that imports the starter without providing
 `orderRouter` carries an unmet need
@@ -213,14 +209,27 @@ what does is forked by each answerer, below.
 ### A request scope over the application scope
 
 The application scope is opened once, by the kernel, and holds the database.
-Opening another per request would give every request its own empty in-memory
-database — so the **answerer forks**: `RequestModule`, bound on `HttpModule`'s
-own `unit: { anonymous }` option, is layered as a short-lived scope over the
-one already built, per request it handles, through `UnitHost.fork`, and a
-request-scoped provider reads what the parent constructed instead of
-rebuilding it. `RequestSpan`'s `onStop` runs while the
+Opening another per request would give every request its own connection pool —
+so the **answerer forks**: the module bound for the KIND that authenticated the
+request is layered as a short-lived scope over the one already built, through
+`UnitHost.fork`, and a request-scoped provider reads what the parent
+constructed instead of rebuilding it. `RequestSpan`'s `onStop` runs while the
 unit is still open, which is what gives its line the request's own trace id —
 and no handler code manages any of it.
+
+There are three kinds here, bound on `HttpModule`'s own `unit` option:
+
+```ts
+unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule }
+```
+
+`RequestModule` is the base every request gets. `UserModule` is where the
+tenant enters the graph — `Tenant` provided from the principal the `user`
+scheme resolved, and the orders vertical composed over it, so `PlaceOrder`,
+`FindOrder` and `ListOrders` are bound to that tenant before any handler runs.
+`ServiceModule` adds nothing: a machine caller has no tenant, which is what
+makes `context.unit.place` unreadable from `export`, the one leaf both schemes
+serve.
 
 ## The client half
 
@@ -291,7 +300,7 @@ it("lets an in-flight call finish while draining", async ({ serve, clientFor, ga
 
 `serve` boots whatever composition it is handed with that `env` — the real
 `OrderApi` included, since `http()` reads its
-port from the environment the kernel provides — `RequestModule` is forked by
+port from the environment the kernel provides — the unit kinds are forked by
 the answerers themselves, per `OrderApi`'s own `unit` option, not by anything
 `serve` supplies — and `clientFor` reads the port
 it got back from `runtimeInfo()`.
@@ -355,9 +364,11 @@ const ordersContract = authenticated({ user: [] })({
 
 The `customers` controller hands `input.tenantId` straight to the use case,
 which hands it to the repository, which puts it in the `WHERE`. The `orders`
-fragment is marked `authenticated({ user: [] })`, so its controller takes the tenant from
-`context.principal.tenantId` — this deployment's `Identity`, which the
-contract never names — and its inputs name none: a required field the
+fragment is marked `authenticated({ user: [] })`, so a request under it opens
+the `user` unit, whose `Tenant` comes from `context.principal.tenantId` — this
+deployment's `Identity`, which the contract never names — and the use cases
+the controller reads off `context.unit` were built over it. Its inputs name no
+tenant: a required field the
 handler ignores is a field that lies, and a caller that could name a tenant it
 is not served is a confused deputy waiting to happen. Either way
 `@btravstack/http-server` knows
@@ -371,8 +382,8 @@ forget it (the contract refuses), the router cannot invent one, and the path
 from wire to `WHERE` is visible in three files. Where the caller is
 authenticated, the tenant is **who is asking**, and it comes off the principal
 — which is a contract change, exactly the kind of change that should be one.
-`orders` has made it and `customers` has not, which is why the two controllers
-read the tenant from different places and why only one of the two inputs
+`orders` has made it and `customers` has not, which is why one controller reads
+its use cases off the unit and the other injects one, and why only one of the two inputs
 mentions it.
 
 It is typechecked by the gate rather than executed by it: the example packages

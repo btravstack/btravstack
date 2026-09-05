@@ -25,7 +25,6 @@ import {
   FindCustomer,
   FindOrder,
   ListOrders,
-  OrderApplicationModule,
   PlaceOrder,
 } from "@btravstack/example-order-application";
 import { TenantId, type Customer, type Order } from "@btravstack/example-order-domain";
@@ -44,6 +43,13 @@ import { observability } from "@btravstack/observability";
 import { ErrAsync, OkAsync, P } from "unthrown";
 
 import { api } from "./auth.js";
+import { RequestModule, ServiceModule, UserModule } from "./request-scope.js";
+
+const docsUnits = {
+  anonymous: RequestModule,
+  user: UserModule,
+  service: ServiceModule,
+} as const;
 
 const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quantity });
 
@@ -60,18 +66,21 @@ const customerViewOf = (customer: Customer): CustomerView => ({
 // application makes: reached through anything else, a marked fragment types
 // `principal: never` and every read below is a compile error. `place` and `find`
 // read the identity bare — one scheme — while `export` narrows a tagged union,
-// which is the contrast every page draws.
+// which is the contrast every page draws. The use cases come off
+// `context.unit`, which the `user` kind's module built over that identity's
+// tenant.
 
 const ordersController = api.OrpcController(
   contract,
   "orders",
 )({
-  inject: { place: PlaceOrder, find: FindOrder, list: ListOrders, logger: Logger },
-  sync: ({ place, find, list, logger }) => ({
+  inject: { logger: Logger },
+  unit: { place: PlaceOrder, find: FindOrder, list: ListOrders },
+  sync: ({ logger }) => ({
     place: ({ errors, context }, input) => {
       logger.info("order placement requested", { userId: context.principal.userId });
-      return place
-        .execute(context.principal.tenantId, input.id, input.quantity)
+      return context.unit.place
+        .execute(input.id, input.quantity)
         .map(view)
         .mapErrCases((matcher) =>
           matcher
@@ -87,8 +96,8 @@ const ordersController = api.OrpcController(
         );
     },
     find: ({ errors, context }, input) =>
-      find
-        .execute(context.principal.tenantId, input.id)
+      context.unit.find
+        .execute(input.id)
         .map(view)
         .mapErrCases((matcher) =>
           matcher.with(P.tag("OrderNotFound"), (error) =>
@@ -96,9 +105,8 @@ const ordersController = api.OrpcController(
           ),
         ),
     list: ({ errors, context }, { after, before, ...page }) =>
-      list
+      context.unit.list
         .execute(
-          context.principal.tenantId,
           before === undefined
             ? { ...page, ...(after === undefined ? {} : { after }) }
             : { ...page, before },
@@ -151,7 +159,6 @@ const customersController = api.OrpcController(
 
 const DocsOrdersSlice = Module("DocsOrdersSlice")({
   needs: [Env, Logger],
-  imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [ordersController],
   exports: [ordersController],
 });
@@ -171,7 +178,8 @@ const docsRouter = api.OrpcRouter(contract)([ordersController, customersControll
 const _DocsOrderApi = HttpModule("DocsOrderApi")({
   needs: [Env],
   router: docsRouter,
-  imports: [DocsOrdersSlice, DocsCustomersSlice, observability()],
+  unit: docsUnits,
+  imports: [DocsOrdersSlice, DocsCustomersSlice, OrderPersistenceModule, observability()],
   exports: [Logger],
 });
 
@@ -192,7 +200,8 @@ const liftedOrdersRouter = api.OrpcRouter(contract.orders)({
 const _DocsOrdersApi = HttpModule("DocsOrdersApi")({
   needs: [Env],
   router: liftedOrdersRouter,
-  imports: [DocsOrdersSlice, observability()],
+  unit: docsUnits,
+  imports: [DocsOrdersSlice, OrderPersistenceModule, observability()],
 });
 
 // "Step 2 — the router, as a provider" — docs/how-to/serve-orpc-over-http.md;
@@ -202,11 +211,12 @@ const _DocsOrdersApi = HttpModule("DocsOrdersApi")({
 // controller all reduce to this call.
 
 const depsOrdersRouter = api.OrpcRouter(contract.orders)({
-  inject: { place: PlaceOrder, find: FindOrder, list: ListOrders },
-  sync: ({ place, find, list }) => ({
+  inject: {},
+  unit: { place: PlaceOrder, find: FindOrder, list: ListOrders },
+  sync: () => ({
     place: ({ errors, context }, input) =>
-      place
-        .execute(context.principal.tenantId, input.id, input.quantity)
+      context.unit.place
+        .execute(input.id, input.quantity)
         .map(view)
         .mapErrCases((matcher) =>
           matcher
@@ -221,8 +231,8 @@ const depsOrdersRouter = api.OrpcRouter(contract.orders)({
             ),
         ),
     find: ({ errors, context }, input) =>
-      find
-        .execute(context.principal.tenantId, input.id)
+      context.unit.find
+        .execute(input.id)
         .map(view)
         .mapErrCases((matcher) =>
           matcher.with(P.tag("OrderNotFound"), (error) =>
@@ -230,9 +240,8 @@ const depsOrdersRouter = api.OrpcRouter(contract.orders)({
           ),
         ),
     list: ({ errors, context }, { after, before, ...page }) =>
-      list
+      context.unit.list
         .execute(
-          context.principal.tenantId,
           before === undefined
             ? { ...page, ...(after === undefined ? {} : { after }) }
             : { ...page, before },
@@ -260,7 +269,8 @@ const depsOrdersRouter = api.OrpcRouter(contract.orders)({
 const _DocsDepsApi = HttpModule("DocsDepsApi")({
   needs: [Env],
   router: depsOrdersRouter,
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  unit: docsUnits,
+  imports: [OrderPersistenceModule, observability()],
   exports: [Logger],
 });
 
@@ -303,16 +313,15 @@ const _docsUserAuth = HttpAuthenticator<
 // breaks this file rather than only the how-to page's own inline copy.
 
 const _docsOrderRowFragment = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
-  inject: { find: FindOrder },
-  sync:
-    ({ find }) =>
-    (context, params) =>
-      find
-        .execute(context.principal.tenantId, params.id)
-        .map((order) => html`<tr id="order-${order.id}"><td>${order.quantity}</td></tr>`)
-        .recoverErrCases((matcher) =>
-          matcher.with(P.tag("OrderNotFound"), () => html`<tr><td>not found</td></tr>`),
-        ),
+  inject: {},
+  unit: { find: FindOrder },
+  sync: () => (context, params) =>
+    context.unit.find
+      .execute(params.id)
+      .map((order) => html`<tr id="order-${order.id}"><td>${order.quantity}</td></tr>`)
+      .recoverErrCases((matcher) =>
+        matcher.with(P.tag("OrderNotFound"), () => html`<tr><td>not found</td></tr>`),
+      ),
 });
 
 const _docsOrderFragments = api.HtmxFragments([_docsOrderRowFragment]);
@@ -320,7 +329,8 @@ const _docsOrderFragments = api.HtmxFragments([_docsOrderRowFragment]);
 const _DocsFragmentsApi = HttpModule("DocsFragmentsApi")({
   needs: [Env],
   fragments: _docsOrderFragments,
+  unit: docsUnits,
   provides: [_docsOrderRowFragment],
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  imports: [OrderPersistenceModule, observability()],
   exports: [Logger],
 });

@@ -8,6 +8,8 @@ import {
 } from "@btravstack/http-server";
 import { ErrAsync, OkAsync } from "unthrown";
 
+import type { RequestModule, ServiceModule, UserModule } from "./request-scope.js";
+
 /**
  * What this deployment knows about a caller under the `user` scheme — and the
  * one place it is stated.
@@ -79,4 +81,16 @@ export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({
  * type mentioning `@btravstack/contract`'s inaccessible `unique symbol`, which
  * this file could not emit (TS2527).
  */
-export const api = defineHttp({ authenticators: { user: userAuth, service: serviceAuth } });
+export const auth = defineHttp({ authenticators: { user: userAuth, service: serviceAuth } });
+
+/**
+ * The same object, retyped with the module each unit kind binds — a second
+ * step, and it has to be: `UserModule` names `auth.principals.user` in its own
+ * `needs`, so folding the kinds into `defineHttp` would make the two mutually
+ * recursive (TS7022). `import type` is what keeps that a type-level cycle only.
+ */
+export const api = auth.units<{
+  anonymous: typeof RequestModule;
+  user: typeof UserModule;
+  service: typeof ServiceModule;
+}>();
