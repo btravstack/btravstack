@@ -89,9 +89,19 @@ const _sameFactories: typeof kinded.OrpcController extends typeof withUser.OrpcC
   ? true
   : never = true;
 
-// A kind the authenticators do not declare is refused.
+// A record naming ONLY undeclared kinds is refused — every member of `UnitsOf`
+// is optional, so this one shares no property with it at all.
 // @ts-expect-error — "service" is not a scheme of these authenticators
 withUser.units<{ service: typeof User }>();
+
+// Every declared kind is accepted together.
+withUser.units<{ anonymous: typeof Anonymous; user: typeof User }>();
+
+// And an undeclared kind is still refused when a declared one sits beside it —
+// the case the shared property makes structurally assignable, which only the
+// exactness arm catches.
+// @ts-expect-error — "service" is not a scheme of these authenticators
+withUser.units<{ anonymous: typeof Anonymous; service: typeof User }>();
 
 // A non-module under a kind is refused.
 // @ts-expect-error — a kind binds a Module, not a port

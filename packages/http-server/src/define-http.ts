@@ -9,7 +9,7 @@ import {
 import { controllerFor } from "./controller.js";
 import { htmxFragmentsFor, htmxRouteFor } from "./htmx-route.js";
 import { routerFor } from "./orpc.js";
-import type { UnitsOf } from "./unit.js";
+import type { Kinds, UnitsOf } from "./unit.js";
 
 /** The authenticators an application declares, keyed by scheme name. */
 export type Authenticators = Readonly<Record<string, Authenticator<unknown, string, unknown>>>;
@@ -66,9 +66,13 @@ export type Http<A extends Authenticators, Units extends UnitsOf<A> = Record<nev
   readonly principals: Principals<A>;
   /**
    * The second step: the SAME object, retyped by the module each kind binds.
-   * A kind the authenticators never declared is refused here.
+   * A kind the authenticators never declared is refused here — the mapped arm
+   * demands `never` for every key outside `Kinds<A>`, which a real module can
+   * never satisfy, and it names that key in the diagnostic.
    */
-  readonly units: <U extends UnitsOf<A>>() => Http<A, U>;
+  readonly units: <
+    U extends UnitsOf<A> & { readonly [K in Exclude<keyof U, Kinds<A>>]: never },
+  >() => Http<A, U>;
   /** Phantom: `Units` is read by the piece factories' leaf typing, never at runtime. */
   readonly _units?: Units;
 };

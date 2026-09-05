@@ -771,12 +771,23 @@ export const api = auth.units<{ anonymous: typeof Anonymous; user: typeof User }
   (`define-http.spec.ts` pins the identity), so the factories on it are the
   ones the first step built. Do not fold `Units` into `defineHttp`'s own type
   parameters.
-- **`UnitsOf<A>` is `Partial<Record<Kinds<A>, AnyUnitModule>>` — deliberately a
-  WEAK type.** A type argument gets no excess-property check, so a kind the
-  authenticators never declared would pass a plain structural test; every
-  member being optional is what makes TypeScript refuse it for having no
-  property in common instead. `Kinds<A>` is `"anonymous" | (keyof A & string)`,
-  so `defineHttp()` with no authenticators has exactly one kind.
+- **`UnitsOf<A>` alone does NOT refuse an undeclared kind — the exactness arm
+  on `units` does.** `UnitsOf<A>` is
+  `Partial<Record<Kinds<A>, AnyUnitModule>>`, and a type argument gets no
+  excess-property check, so `{ anonymous, service }` is structurally assignable
+  to it and `service` would be silently ignored — a kind whose module is never
+  forked and whose seed never lands, with no diagnostic. What closes it is the
+  second half of `units`' constraint,
+  `{ readonly [K in Exclude<keyof U, Kinds<A>>]: never }`: every key outside
+  `Kinds<A>` is required to be `never`, which no real module is, and the error
+  names that key. (A record of _only_ undeclared kinds is refused a second way,
+  by weak-type detection — every member of `UnitsOf` is optional, so it shares
+  no property at all — but that rule fires on zero overlap and is why the
+  mixed record needed the exactness arm.) `Kinds<A>` is
+  `"anonymous" | (keyof A & string)`, so `defineHttp()` with no authenticators
+  has exactly one kind. `define-http.test-d.ts` pins both refusals and the
+  positive between them; removing the exactness arm leaves the mixed record's
+  `@ts-expect-error` unused, which is a `TS2578` (measured).
 - **`Units` is a phantom on `Http<A, Units>`** (`_units?: Units`), read by the
   piece factories' leaf typing and never at runtime. Without the field
   TypeScript erases the parameter and `Http<A, U>` collapses back to `Http<A>`.
