@@ -1524,12 +1524,18 @@ export const it = test.extend<HttpFixtures>({
     });
   },
 
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  issuer: async ({}, use) => {
-    const local = await issuerOf();
-    await use(local);
-    await local.close();
-  },
+  // Per FILE: two RSA key pairs per test made this the slowest spec here, slow
+  // enough that turbo's concurrency pushed it past the default timeout and
+  // cancelled its siblings. Nothing mutates the issuer, so a file shares one.
+  issuer: [
+    // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+    async ({}, use) => {
+      const local = await issuerOf();
+      await use(local);
+      await local.close();
+    },
+    { scope: "file" },
+  ],
 
   // oxlint-disable-next-line no-empty-pattern -- see above
   apiKeyService: async ({}, use) => {

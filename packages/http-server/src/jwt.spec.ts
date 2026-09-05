@@ -1,6 +1,13 @@
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
+
+// The `issuer` fixture generates two RSA key pairs, once for this file, and
+// the test that first names it waits for them. That is a few hundred
+// milliseconds alone and well past the 5 s default under turbo's concurrency,
+// where a dozen workspaces are competing for the same cores — contention, not
+// a slow test, and cancelling the sibling workspaces is what it cost.
+vi.setConfig({ testTimeout: 30_000 });
 
 describe("jwtAuthenticator", () => {
   it("names the caller its claims describe, over a real JWKS fetch", async ({
