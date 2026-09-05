@@ -833,9 +833,9 @@ setting, or its rendered output drifts the moment a formatter runs.
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-type RouteHandler<Path extends string, Input, Principal, Units, U> = (
-  context: ([Principal] extends [never] ? object : { readonly principal: Principal }) & {
-    readonly unit: UnitFor<U, Units, KindOf<R>>;
+type RouteHandler<Path extends string, Input, Requires, Principal, Units, U> = (
+  context: ([Requires] extends [never] ? object : { readonly principal: Principal }) & {
+    readonly unit: UnitFor<U, Units, KindOf<Requires>>;
   },
   params: ParamsOf<Path>,
   input: Input, // GET: Readonly<Record<string, string>>, `{}` at runtime; POST: the schema's output, or the raw decoded form when `options.input` is omitted

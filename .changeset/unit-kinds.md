@@ -23,8 +23,8 @@ application that never calls `units<…>()` is unchanged. `principalPort`,
 `HttpModule` — `anonymous` for a leaf that asked for no credential, else the
 scheme that resolved one. A scheme that binds no module **falls back to
 `anonymous`**, so `unit: { anonymous: RequestModule }` keeps its meaning and a
-graph binding only that needs no change; nothing is forked only when neither
-binds one. The fallback is deliberate: an unbound kind forking nothing would
+graph binding only that needs no change. A request forks nothing only when the
+scheme and `anonymous` both bind no module. The fallback is deliberate: an unbound kind forking nothing would
 make every existing application silently lose its request scope on precisely
 its authenticated procedures.
 

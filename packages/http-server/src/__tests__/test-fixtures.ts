@@ -1505,7 +1505,7 @@ export type HttpFixtures = {
   readonly apiKeyService: AuthenticatorService<ServiceIdentity, "reports:read">;
   /** The API-key scheme with no scope vocabulary, resolved. */
   readonly bareApiKeyService: AuthenticatorService<ServiceIdentity>;
-  /** The JWT scheme with no scope vocabulary, over this test's own issuer. */
+  /** The JWT scheme with no scope vocabulary, over this file's own issuer. */
   readonly jwtService: AuthenticatorService<JwtIdentity>;
   /** The JWT scheme declaring `orders:export`, where `scopes` is required. */
   readonly scopedJwtService: AuthenticatorService<JwtIdentity, "orders:export">;
@@ -1524,9 +1524,6 @@ export const it = test.extend<HttpFixtures>({
     });
   },
 
-  // Per FILE: two RSA key pairs per test made this the slowest spec here, slow
-  // enough that turbo's concurrency pushed it past the default timeout and
-  // cancelled its siblings. Nothing mutates the issuer, so a file shares one.
   issuer: [
     // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
     async ({}, use) => {
@@ -1534,6 +1531,8 @@ export const it = test.extend<HttpFixtures>({
       await use(local);
       await local.close();
     },
+    // Per FILE, not per test: generating the key pairs is the cost, and nothing
+    // mutates the issuer, so a file's tests share one.
     { scope: "file" },
   ],
 
