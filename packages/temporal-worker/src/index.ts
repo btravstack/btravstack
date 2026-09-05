@@ -14,5 +14,9 @@ export type {
   TemporalOptions,
   WorkflowSource,
 } from "./temporal-runtime.js";
-export { TemporalWorkflowActivities } from "./workflow-activities.js";
-export type { WorkflowActivitiesPortOf } from "./workflow-activities.js";
+export { ActivityInput, TemporalWorkflowActivities } from "./workflow-activities.js";
+export type {
+  ActivityInputOf,
+  ActivityInputPortOf,
+  WorkflowActivitiesPortOf,
+} from "./workflow-activities.js";

@@ -82,7 +82,7 @@ ActivitiesPortOf<C>`, so the next call is di's `{ inject, ...arm }` unchanged an
 
   A third call composes **pieces** instead of a record:
   `TemporalActivities(contract)([piece, piece, ...])`, one piece per
-  `TemporalWorkflowActivities(contract, key)({ inject, ...arm })`. Its type is an
+  `TemporalWorkflowActivities(contract, key)({ inject, unit?, sync })`. Its type is an
   intersection with `Compose<C>`, declared **last**: `ReturnType<typeof
 Provider<ActivitiesPortOf<C>>> & Compose<C>` — di's builder first, the
   composer last. Reversed, TypeScript reports the FIRST arm's failure on a
@@ -114,8 +114,8 @@ ACTIVITIES — …", K]`, which always names the marker. The refusal is a tuple 
   activities belong to exactly one slice" holds only for the slice actually
   composed in.
 
-- **`TemporalWorkflowActivities(contract, key)` → `ReturnType<typeof
-Provider<WorkflowActivitiesPortOf<C, K>>>`** (`workflow-activities.ts`,
+- **`TemporalWorkflowActivities(contract, key)({ inject, unit?, sync })`**
+  (`workflow-activities.ts`,
   exported from `index.ts`) — one workflow's activities, or a
   **contract-global** activity, as a provider of its own. `key` is any
   top-level key of the activities record `ActivitiesOf<C>` declares — which
@@ -136,15 +136,56 @@ Provider<WorkflowActivitiesPortOf<C, K>>>`** (`workflow-activities.ts`,
   `ActivitiesOf<C>` is a `NoInfer`-wrapped conditional/mapped intersection
   that TypeScript refuses to index by a generic key directly — the standard
   workaround); a key the contract does not declare is refused at the call —
-  there is nothing to type it by. The return is di's own `Provider(port)`, so
-  every arm is available exactly as it is on `TemporalActivities(contract)`,
-  and the provider carries its port (`WorkflowActivitiesPortOf<C, K>`, a
+  there is nothing to type it by. The piece
+  carries its port (`WorkflowActivitiesPortOf<C, K>`, a
   **type**, exported from `index.ts` for the same declaration-emit reason
   `ActivitiesPortOf<C>` is — a slice module that exports its own piece by
   name needs it printable) as `provider.port`. `WORKFLOW_ACTIVITIES_PREFIX` —
   the **value** — stays unexported from `index.ts`: an application never
   constructs a port id by hand, so nothing outside this package legitimately
   needs the string.
+
+  **It is `{ inject, unit?, sync }`, not di's whole arm set.** `sync`'s return
+  type is `ActivitiesRecordOf<C, { unit: UnitRecordOf<U> }>[K]` — the entry
+  typed by the record THIS piece declared — while the port it lands on stays
+  `ActivitiesRecordOf<C>[K]`, the context-free shape the composed record hands
+  `declareActivitiesHandler`. That split is what carries `U` at all, and it is
+  what makes `context.unit` contextually typed inside the `sync` literal.
+  **The arm set was narrowed for consistency**: `@btravstack/http-server`'s
+  `api.OrpcController(contract, path)` and `@btravstack/amqp-worker`'s
+  `AmqpHandler(contract, key)` are both `{ inject, unit?, sync }`, and this is
+  the same piece under a third transport — one arm across all three is one
+  surface to learn and one to keep. `inject: {}, sync: () => activities` is
+  what a piece with no services now writes.
+
+  **`unit` declares the ports the activities read off `context.unit`**,
+  resolved out of the fork the attempt opened, and the piece keeps the record
+  on `piece.unit` plus a phantom `_declared` carrying their instances. The
+  phantom is what the root's gate reads (below); `piece.unit` is what the
+  wrapper resolves against. A piece that declares none is typed `{}` and pays
+  nothing.
+
+  **The record is built by a wrapper on the piece, not by the middleware**, and
+  that is the decision. `activityUnits` leaves the forked `Context` on the
+  invocation's context under a symbol; each piece's `sync` return is wrapped
+  once, as di constructs it, so an attempt costs one `unitRecordOf` and one
+  context object. Two things fall out of it. A `key → record` map threaded from
+  the composing call into `createWorker` could not reach a hand-composed
+  `temporal({ contract })`, which takes its activities as a NEED and never sees
+  the provider — the record travelling WITH the piece that declared it has no
+  such hole. And the middleware sees Temporal's **flat** activity name
+  (`invocation.activityName`) while a piece is keyed by the top-level record
+  key, which would have made that map a name translation as well; wrapping the
+  implementation itself makes the question moot, since the wrapper is already
+  where the name resolves.
+
+  **The wrapper reaches inside two entry shapes**, which is where Temporal
+  differs from `@btravstack/amqp-worker`'s `handler | [handler, options]`: a
+  workflow key's entry is a **record** of implementations and a
+  contract-global key's entry is the implementation itself, so `withUnit`
+  wraps a function directly and maps a record's values. Both are covered by
+  the `scoped` fixture's pair of pieces, driven by one workflow.
+
 - **`temporal(options)` → `Module<TemporalRuntime | TemporalConfig |
 TemporalConnection, ConfigInvalid | TemporalUnreachable, Env | Scope |
 ActivitiesInstanceOf<C> | UnitNeedsOf<Unit>>`** — the starter, the same shape as `@btravstack/http-server`'s
@@ -186,9 +227,13 @@ close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
   forwards to.
 
   **`unit?: { activity?: Unit }`** — the module that `activityUnits`, the
-  worker's dispatch middleware, forks around every activity attempt, with no
-  seed. Built after the activity is invoked, before it runs; torn down when
-  the unit closes — the point a later phase seeds with the workflow's tenant.
+  worker's dispatch middleware, forks around every activity attempt, **seeded
+  with the validated input on `ActivityInput(contract)`**.
+  Built after the activity is invoked, before it runs; torn down when
+  the unit closes. There is exactly ONE kind, `activity`: an attempt is an
+  attempt, where `@btravstack/http-server` has a kind per authentication
+  scheme, so no fallback question arises and an unbound `unit` simply forks
+  nothing.
   `Unit extends AnyUnitModule | undefined = undefined` bounds both
   `temporal()`'s and `TemporalModule`'s own type parameter, the same
   contravariant-exports bound `@btravstack/amqp-worker`'s `unit.message` and
@@ -196,7 +241,69 @@ close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
   unmet needs join the starter's `Needs` channel as `UnitNeedsOf<Unit>` — a
   composition root that binds a `unit` owing a port it does not supply is
   refused the same way an unmet activities port is. With no `unit` bound,
-  dispatch is unchanged: `activityUnits` calls `next()` directly.
+  dispatch is unchanged: `activityUnits` calls `next()` directly, and every
+  piece's `context.unit` is `{}`.
+
+- **`ActivityInput(contract)` → `ActivityInputPortOf<C>`**
+  (`workflow-activities.ts`, exported from `index.ts` with `ActivityInputOf<C>`
+  and `ActivityInputPortOf<C>`) — the validated activity input as a port, and
+  **the one thing the fork is seeded with**. A `unit.activity` module names it
+  in `needs` and derives whatever the application scopes by — a tenant, a
+  correlation id — from the invocation itself rather than from an ambient
+  record, which is thesis #2's line about what ambient carries.
+
+  One `Port("ActivityInput")` call, cast per contract at the type level — the
+  move `TemporalActivitiesPort` makes, so no contract instantiating it warns
+  about a duplicate id while a module built for one contract still cannot read
+  another's input. `ActivityInputOf<C>` is the union of every activity's own
+  input, workflow-local and contract-global alike, reached through each
+  implementation's **second parameter**: `WorkerInferInput` is declared by
+  `@temporal-contract/worker` and exported from none of its subpaths, so the
+  by-index route is the only one open.
+
+  **The seed is subtracted from what the unit module owes.** `UnitNeedsOf`
+  excludes `ActivityInputInstance` beside `Scope`, so a module whose `needs`
+  name the input port does not surface it at `start` — the fork discharges it
+  — while everything else it needs still does.
+
+- **`TemporalModule` GATES `unit.activity` against what the pieces declared.**
+  A piece's `unit: { tenant: Tenant }` is a promise the ROOT has to keep —
+  `context.unit.tenant` resolves out of the fork, so a bound module that does
+  not export `Tenant` defects at the first attempt, and no other check catches
+  it: the piece and the root are typed independently.
+  `UnitGate<Unit, Declared>` (`unit.ts`, a local copy of
+  `@btravstack/amqp-worker`'s rather than a cross-package import) is `unknown`
+  when `Exclude<Declared, UnitExportsOf<Unit>>` is `never`, and otherwise the
+  repo's required-property marker,
+  `"UNIT DOES NOT PROVIDE — a piece injects a port the bound unit module does not export"`,
+  carrying the offending port — which is what TypeScript prints (measured:
+  `… : Tenant`).
+
+  `Declared` is inferred from the activities provider's own `_declaredUnit`
+  phantom, the union of every piece's `_declared` collected by
+  `TemporalActivities(contract)([...])` — the composing arm is the only place
+  the pieces are known. The gate is intersected onto the **whole options
+  record**, the way `NeedsGate` is, rather than onto `unit.activity`: a gate on
+  a property is not read when the property is absent, and a root that declares
+  a piece's `unit:` and then binds no module AT ALL is exactly the case worth
+  catching. `temporal-runtime.test-d.ts` pins both negatives — wrong module,
+  and none — beside the positive.
+
+  **`temporal()` is not gated, and that is structural** — the same reason
+  `@btravstack/amqp-worker`'s `amqp()` and `@btravstack/http-server`'s
+  `http()` are not. It takes its activities as a NEED, never as a value, so
+  there is nothing to read a `_declaredUnit` off. A hand-composed root that
+  wants the gate goes through `TemporalModule`.
+
+  What that costs is worth stating, because it is the one path where a
+  declared port is not checked: a piece declaring `unit: { tenant: Tenant }`
+  under a `temporal()` root with no module bound reads `undefined` off
+  `context.unit.tenant`, and the property access after it throws. That is a
+  **Defect**, which `declareActivitiesHandler` re-throws at the activity edge
+  with its original cause — so Temporal fails that attempt with the raw
+  `TypeError` rather than a modeled `ApplicationFailure`, and the contract's
+  own retry policy decides whether it comes back. Loud, on the first attempt,
+  never a silent wrong answer. The gate turns it into a compile error.
 
 - **The activities port is the starter's, provided by the application, and
   the module's one need.** Its service is `ActivitiesOf<C>` =
@@ -227,8 +334,12 @@ ActivitiesPortOf<C> }, sync })` —
   `Err(RuntimeStartFailed)`, exit `1`, not a `Defect` and exit `70`.
 - **`activityUnits(host)` is internal** (`activity-units.ts`, not exported).
   It opens one kernel unit per activity **attempt** (`id` is the base64 task
-  token, `traceId` the workflow id) and injects nothing — `next()` — since an
-  activity is a closure over its provider's services; the ambient
+  token, `traceId` the workflow id). With a `unit.activity` bound it forks that
+  module, seeded `[[ActivityInputPort, invocation.input]]`, and passes the
+  forked `Context` down under `UNIT_SCOPE` — a symbol, so a piece written
+  against the `{ inject, sync }` arm destructures `context` without an internal
+  key sitting in it. It injects nothing else: an activity is a closure over its
+  provider's services, and the ambient
   `currentUnit()` record is what an adapter reads the trace id from. Its type
   is `temporal-contract`'s own `ActivityMiddleware`, imported: with the
   library a peer there is no structural copy, no cast and no
@@ -275,7 +386,8 @@ ActivitiesPortOf<C> }, sync })` —
   `@btravstack/contract` is dependency-free, so its marker combinator _would_
   work over a Temporal contract; it is deliberately not wired, because there is
   nothing here to authenticate **from**.
-- **`temporal-runtime.spec.ts` carries 13 specs, and `workflow-activities.spec.ts` 2 more — 15 in the package.** One is the published
+- **`temporal-runtime.spec.ts` carries the starter's specs, and
+  `workflow-activities.spec.ts` the slicing ones.** One is the published
   info (_"publishes the task queue and namespace it polls"_), four the starter's
   configuration (_"binds TEMPORAL_ADDRESS and TEMPORAL_NAMESPACE from the
   environment when nothing is pinned"_, _"pins what it is given and reads the
@@ -290,7 +402,15 @@ ActivitiesPortOf<C> }, sync })` —
   `currentUnit()?.traceId` from inside the attempt — the meta itself is no
   longer observable from outside the starter, and once a `traceId` is supplied
   the kernel never reads `meta.id` again; _"builds the activities from the
-  graph, closing over the services their provider declared"_), three the drain
+  graph, closing over the services their provider declared"_), two the seeded
+  fork (_"hands a piece the ports it declared, built from the seeded input"_,
+  over the `scoped` fixture: an `activity` module deriving a `Tenant` from
+  `ActivityInput(scopedContract)` and two pieces declaring it — one a
+  workflow's record, one a contract-global implementation, so ONE workflow run
+  drives both of `withUnit`'s entry shapes and the value each reads off
+  `context.unit.tenant` could only have come through the seed; and, on the
+  sliced worker, _"hands a piece that declared nothing an empty record"_,
+  which is `unitRecordOf`'s no-module-bound branch), three the drain
   (_"lets an in-flight activity finish while draining"_; _"hands the activity
   the unit's own AbortSignal, through the ambient record"_, the `deadline`
   fixture's activity waiting on `currentUnit()?.signal` and reporting
@@ -330,17 +450,26 @@ Provider(Greeting)(...)] })` through `boot` — the pieces are passed to
   and `activities` together instead of two conflicting candidates once
   `activities` is the composing arm's own, more specific, type.
 - **`workflow-activities.test-d.ts` pins the composing form's compile-time
-  gates**, on a `pinContract` of its own — **six labelled properties, three of
-  them negatives**, which is exactly what `@btravstack/amqp-worker`'s
-  `handler.test-d.ts` carries: the two are deliberate mirrors and drifted
+  gates**, on a `pinContract` of its own, mirroring
+  `@btravstack/amqp-worker`'s `handler.test-d.ts` property for property: the
+  two are deliberate mirrors and drifted
   apart once (issue #51). A piece typed by its own key
   (`_echoPort`, against `WorkflowActivitiesPortOf`), an array covering every
   declared key composing into what `TemporalModule` takes, a key the contract
   does not declare refused at `TemporalWorkflowActivities`'s own call, an
   array that misses a key refused at `TemporalActivities`'s composing call,
-  and a piece built for **another contract** refused there too — and the two
-  existing arms (`value`, and a hand-written record) still resolving
-  unchanged.
+  and a piece built for **another contract** refused there too — plus the
+  declaring pair: a piece whose `unit: { tenant: Tenant }` types
+  `context.unit.tenant` inside its own `sync` literal, and a name it did not
+  declare refused as TypeScript's own "property does not exist". The record
+  arm on `TemporalActivities(contract)` still resolves unchanged.
+
+  **`temporal-runtime.test-d.ts` pins the ROOT's gate**, on a contract of its
+  own: `start(TemporalModule(...))` over a bound module that exports what the
+  piece injects — one line asserting both that the gate clears and that the
+  module's own `needs: [ActivityInput(contract)]` never surfaced as an unmet
+  need — beside two negatives, a module exporting something else and no module
+  bound at all, and a positive for a root whose pieces declare nothing.
 
   The wrong-contract negative needs care, and amqp's needed a fix before it
   bit: the port id carries only the KEY, so what separates two pieces for the

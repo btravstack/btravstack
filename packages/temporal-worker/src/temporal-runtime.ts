@@ -24,6 +24,7 @@ import type { ContractDefinition } from "@temporal-contract/contract";
 import {
   declareActivitiesHandler,
   type DeclareActivitiesHandlerOptions,
+  type EmptyContext,
 } from "@temporal-contract/worker/activity";
 import { msToNumber, type Duration } from "@temporalio/common";
 import { NativeConnection, Worker, type WorkflowBundleWithSourceMap } from "@temporalio/worker";
@@ -36,6 +37,7 @@ import {
 } from "unthrown";
 
 import { activityUnits } from "./activity-units.js";
+import type { ActivityInputInstance } from "./workflow-activities.js";
 
 /** What the worker publishes once it is polling, read back through `RunningApp.runtimeInfo()`. */
 export type TemporalInfo = {
@@ -103,14 +105,22 @@ export type AnyUnitModule = Module<never, never, unknown>;
 /**
  * The needs a bound `unit.activity` module still owes, or `never` when none is
  * bound. `Scope` is excluded, since nothing can ever provide it — the same
- * exemption `NeedsGate` itself carries.
+ * exemption `NeedsGate` itself carries — and so is the activity input, which
+ * the fork's own seed discharges.
  */
 export type UnitNeedsOf<Unit> =
-  Unit extends Module<never, never, infer N> ? Exclude<N, Scope> : never;
+  Unit extends Module<never, never, infer N> ? Exclude<N, Scope | ActivityInputInstance> : never;
 
-/** The activity implementations `declareActivitiesHandler` takes for `C`, with no injected context. */
-export type ActivitiesOf<C extends ContractDefinition> =
-  DeclareActivitiesHandlerOptions<C>["activities"];
+/**
+ * The activity implementations `declareActivitiesHandler` takes for `C`.
+ * `TContext` is what an implementation reads off `helpers.context` — left
+ * empty for the port the composed record lands on, and the declared
+ * `{ unit }` record for the piece that declared it.
+ */
+export type ActivitiesOf<
+  C extends ContractDefinition,
+  TContext extends Record<string, unknown> | EmptyContext = EmptyContext,
+> = DeclareActivitiesHandlerOptions<C, TContext>["activities"];
 
 /**
  * The activities' port — one id, the starter's own, which an application never

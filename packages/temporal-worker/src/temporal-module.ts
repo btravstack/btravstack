@@ -25,6 +25,7 @@ import {
   type UnitNeedsOf,
   type WorkflowSource,
 } from "./temporal-runtime.js";
+import type { UnitGate } from "./unit.js";
 import {
   WORKFLOW_ACTIVITIES_PREFIX,
   type ActivitiesKeyOf,
@@ -57,6 +58,7 @@ export type TemporalModuleOptions<
   C extends ContractDefinition,
   ActivitiesError,
   ActivitiesNeeds,
+  Declared,
   Unit extends AnyUnitModule | undefined,
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
@@ -69,8 +71,15 @@ export type TemporalModuleOptions<
   /** The `temporal-contract` contract; the task queue this worker polls is read off it. */
   readonly contract: C;
   readonly workflows: WorkflowSource;
-  /** The application's activity implementations — what `TemporalActivities(contract)(…)` returns. */
-  readonly activities: Provider<ActivitiesInstanceOf<C>, ActivitiesError, ActivitiesNeeds>;
+  /**
+   * The application's activity implementations — what
+   * `TemporalActivities(contract)(…)` returns. Its `_declaredUnit` phantom
+   * carries every port its pieces read off `context.unit`, which is what
+   * {@link UnitGate} checks `unit.activity` against.
+   */
+  readonly activities: Provider<ActivitiesInstanceOf<C>, ActivitiesError, ActivitiesNeeds> & {
+    readonly _declaredUnit?: Declared;
+  };
   readonly imports?: I;
   readonly provides?: P;
   /** The application's own exports; `TemporalRuntime` is added, since `start` resolves it. */
@@ -80,7 +89,12 @@ export type TemporalModuleOptions<
    * over the augmented tuples below, so forgetting one is an error at THIS call.
    */
   readonly needs?: N;
-} & NeedsGate<Imports<I, C, Unit>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N>;
+} & NeedsGate<Imports<I, C, Unit>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N> &
+  // Riding the whole options record rather than `unit.activity`: a root that
+  // declares a piece's `unit:` and then binds NO module at all is the case
+  // worth catching, and a gate on the property is not read when the property
+  // is absent.
+  UnitGate<Unit, Declared>;
 
 /**
  * `Module(name)({...})` for a Temporal worker deployment: everything a di module
@@ -105,6 +119,7 @@ export const TemporalModule =
     C extends ContractDefinition,
     ActivitiesError,
     ActivitiesNeeds,
+    Declared = never,
     Unit extends AnyUnitModule | undefined = undefined,
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
@@ -114,7 +129,7 @@ export const TemporalModule =
     >[] = [],
     const N extends readonly AnyPort[] = [],
   >(
-    options: TemporalModuleOptions<C, ActivitiesError, ActivitiesNeeds, Unit, I, P, X, N>,
+    options: TemporalModuleOptions<C, ActivitiesError, ActivitiesNeeds, Declared, Unit, I, P, X, N>,
   ) => {
     const { activities } = options;
     const imports = (options.imports ?? []) as I;
@@ -145,8 +160,17 @@ export const TemporalModule =
 
 /** One piece of the activities record — what `TemporalWorkflowActivities(contract, key)(…)` returns. */
 type PieceOf<C extends ContractDefinition> = {
-  readonly [K in ActivitiesKeyOf<C>]: { readonly port: WorkflowActivitiesPortOf<C, K> };
+  readonly [K in ActivitiesKeyOf<C>]: {
+    readonly port: WorkflowActivitiesPortOf<C, K>;
+    /** Phantom, carrying the ports the piece injects off `context.unit`. */
+    readonly _declared?: unknown;
+  };
 }[ActivitiesKeyOf<C>];
+
+/** Every port the pieces in `T` inject off `context.unit` — what the root's `unit.activity` must export. */
+type DeclaredOf<T extends readonly { readonly _declared?: unknown }[]> = NonNullable<
+  T[number]["_declared"]
+>;
 
 /** The key a piece carries, read back off its port id. */
 type KeyOfPiece<P> = P extends {
@@ -199,6 +223,8 @@ type Compose<C extends ContractDefinition> = <const T extends readonly PieceOf<C
       >,
 ) => Provider<ActivitiesInstanceOf<C>, never, InstanceType<T[number]["port"]>> & {
   readonly port: ActivitiesPortOf<C>;
+  /** Phantom: the union of every piece's declared ports, which `TemporalModule` gates `unit.activity` against. */
+  readonly _declaredUnit?: DeclaredOf<T>;
 };
 
 /**

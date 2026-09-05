@@ -1,6 +1,7 @@
 ---
 "@btravstack/http-server": major
 "@btravstack/amqp-worker": major
+"@btravstack/temporal-worker": major
 ---
 
 An HTTP request forks the unit module of the KIND that authenticated it, seeded
@@ -61,3 +62,33 @@ module that does not export a port some piece injects is refused against
 `UNIT DOES NOT PROVIDE — …`, naming the port — including the case where no
 module is bound at all. `amqp()` takes its handlers as a need rather than a
 value, so it has nothing to gate against and is unchanged.
+
+An activity attempt seeds the unit fork, and a piece injects from it through
+`context.unit`.
+
+`unit.activity`'s module is now forked with the validated input seeded on
+`ActivityInput(contract)` — the one port the worker seeds — so a unit module
+derives a tenant, or anything else it scopes by, from the invocation rather
+than from an ambient record. A module naming that port in `needs` owes the
+composition root nothing for it; everything else it needs still surfaces at
+`start`.
+
+`TemporalWorkflowActivities(contract, key)` now takes `{ inject, unit?, sync }`
+rather than di's whole arm set. `unit` names the ports the activities read off
+`context.unit`; `sync`'s return is typed by the record the piece declared,
+where the port it lands on stays the context-free shape
+`declareActivitiesHandler` takes. The narrowing is for consistency with
+`@btravstack/http-server`'s `OrpcController` and `@btravstack/amqp-worker`'s
+`AmqpHandler`, both already `{ inject, unit?, sync }` — one arm across the
+three transports. A piece with no services is `{ inject: {}, sync: () =>
+activities }`.
+
+The record is built by a wrapper on the piece rather than by the middleware, so
+it reaches inside both entry shapes: a workflow key carries a record of
+implementations, a contract-global key the implementation itself.
+
+`TemporalModule` gates `unit.activity` against what the pieces declared.
+Binding a module that does not export a port some piece injects is refused
+against `UNIT DOES NOT PROVIDE — …`, naming the port — including the case where
+no module is bound at all. `temporal()` takes its activities as a need rather
+than a value, so it has nothing to gate against and is unchanged.
