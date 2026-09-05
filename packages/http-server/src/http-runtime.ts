@@ -60,7 +60,8 @@ export type HttpOptions = OrpcOptions & {
    * authenticate, else the scheme that resolved the caller. The answerers fork
    * the one that matches — seeded, for a scheme, with that scheme's principal —
    * as the request is taken, and tear it down when the unit closes, after the
-   * response is flushed. A kind with no module bound forks nothing.
+   * response is flushed. A kind that binds no module of its own falls back to
+   * `anonymous`, so binding that one alone keeps forking on every leaf.
    */
   readonly unit?: Readonly<Record<string, AnyUnitModule>>;
 };
@@ -96,8 +97,9 @@ export class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInf
 /**
  * What `httpServer(options)` provides from `options.unit`, and what `orpc()`
  * and `htmx()` inject to find the module they fork around a request they
- * handle: kind → module. A kind absent from the record forks nothing, so an
- * empty record makes every answerer's own fork a no-op.
+ * handle: kind → module. A kind absent from the record falls back to
+ * `anonymous`; an empty record binds neither, which is what makes every
+ * answerer's own fork a no-op.
  */
 export class HttpUnit extends Port("HttpUnit")<Readonly<Record<string, AnyUnitModule>>> {}
 

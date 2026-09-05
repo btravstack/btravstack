@@ -1,8 +1,8 @@
 import type { Module, PortInstance, Scope } from "@btravstack/di";
 
 /**
- * A module a unit kind may bind, as the upper bound `httpServer`/`http`
- * constrain their own `Unit` type parameter to. `Module`'s `_exports` channel
+ * A module a unit kind may bind: the value type of the record `httpServer`/
+ * `http` bound their own `Units` type parameter by. `Module`'s `_exports` channel
  * is contravariant, so `Exports = never` — never `unknown` — is what makes a
  * REAL module's own (necessarily narrower) export type assignable to this
  * bound: `(x: Concrete) => void` is assignable to `(x: never) => void`, not

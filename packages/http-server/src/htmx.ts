@@ -207,11 +207,12 @@ const respond = async (
   // without calling `next()` on a refusal, and `unitScope` sits inside it.
   const module = units[authenticated?.scheme ?? "anonymous"] ?? units["anonymous"];
   if (module !== undefined) {
-    // `as never`: see `unit-scope.ts`'s own comment on the identical cast —
-    // `AnyUnitModule` erases the module's Needs to `unknown`, which `fork`'s
-    // `DependencyGate` can never clear on its own; the check already ran once,
-    // at the `Units`-generic call site that bound this module.
-    const scope = await host.fork(module as never, seedOf(principals, authenticated));
+    // `as never` on both: see `unit-scope.ts`'s own comment on the identical
+    // pair of casts — `AnyUnitModule` erases the module's Needs to `unknown`,
+    // which `fork`'s `DependencyGate` can never clear on its own, and the seed
+    // is keyed by a runtime scheme name. The check already ran once, at the
+    // `Units`-generic call site that bound this module.
+    const scope = await host.fork(module as never, seedOf(principals, authenticated) as never);
     if (scope.isDefect()) {
       refuse(response, 500);
       return;

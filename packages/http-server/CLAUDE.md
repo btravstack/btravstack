@@ -769,13 +769,13 @@ URLSearchParams(...))`, which keeps only the LAST value for a repeated key.**
   caller nothing beyond the status.
 
 - **`resolveScheme(requirements, authenticators, headers)`
-  → `AsyncResult<{ scheme, identity }, Unauthenticated | UnderScoped>`** — the
-  authentication walk, protocol-neutral, shared by every answerer so a scope
+  → `AsyncResult<{ scheme, identity }, Unauthenticated | UnderScoped>`**
+  (internal — not exported from `index.ts`) — the authentication walk, protocol-neutral, shared by every answerer so a scope
   check cannot drift between protocols. It reports the SCHEME as well as the
   identity, because the scheme is the unit kind a request opens under.
   `UnderScoped` is the `403` case, distinct from `Unauthenticated`'s `401`.
-- **`principalOf(requirements, resolved)`** folds that to what a handler is
-  injected: the identity bare, or `{ scheme, identity }` when the endpoint
+- **`principalOf(requirements, resolved)`** (internal — not exported from
+  `index.ts`) folds that to what a handler is injected: the identity bare, or `{ scheme, identity }` when the endpoint
   named more than one scheme. One decision site, so the two answerers cannot
   drift.
 - **`resolvePrincipal(requirements, authenticators, headers)`

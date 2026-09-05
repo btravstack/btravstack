@@ -10,16 +10,20 @@ import type { AnyUnitModule } from "./http-runtime.js";
  * without the composition root providing one. Keyed on whether a scheme
  * RESOLVED, never on which module ends up forked: a seed the forked module
  * never names costs one unread entry. A request no leaf authenticated is
- * seeded with nothing, since there is no caller to name.
- *
- * `as never`: `fork` infers its `Seeded` port from the entry, and this record
- * is keyed by a runtime scheme name rather than by a literal type.
+ * seeded with nothing, since there is no caller to name. Shared by both
+ * answerers: `unitScope` below is oRPC's fork, `htmx.ts`'s `respond` is the
+ * fragments' one, and this is the seed they agree on.
  */
 export const seedOf = (
   principals: Readonly<Record<string, AnyPort>>,
   resolved: Resolved | undefined,
-): never =>
-  (resolved === undefined ? [] : [[principals[resolved.scheme], resolved.identity]]) as never;
+): readonly (readonly [AnyPort, unknown])[] =>
+  resolved === undefined
+    ? []
+    : // Asserted, not guarded, on the same grounds `auth.ts`'s authenticator
+      // lookup is: `defineHttp` mints one principal port per declared scheme,
+      // and only a declared scheme can have resolved.
+      [[principals[resolved.scheme] as AnyPort, resolved.identity]];
 
 /**
  * Forks the unit's scope for the request oRPC is about to handle, and puts the
@@ -30,7 +34,8 @@ export const seedOf = (
  * A scheme that binds no module of its own falls back to `anonymous`, so
  * binding only `anonymous` keeps forking on every leaf; a scheme's module is
  * how one KIND is specialised, not how the others are switched off. Nothing is
- * forked only when neither the scheme nor `anonymous` binds one.
+ * forked only when neither the scheme nor `anonymous` binds one. `htmx.ts`
+ * applies the same rule at its own fork site, over the same {@link seedOf}.
  */
 export const unitScope =
   (units: Readonly<Record<string, AnyUnitModule>>, principals: Readonly<Record<string, AnyPort>>) =>
@@ -47,15 +52,17 @@ export const unitScope =
     // which is how it reaches oRPC — the middleware protocol has no returned-
     // error arm of its own.
     //
-    // `as never`: `AnyUnitModule` erases a module's Needs to `unknown` — the
-    // only bound a module with real needs can infer against — so `fork`'s own
-    // `DependencyGate` sees `Exclude<unknown, Scope>`, still `unknown`, and
-    // never clears on its own. The needs were already checked once, at the
+    // `as never` on both arguments: `AnyUnitModule` erases a module's Needs to
+    // `unknown` — the only bound a module with real needs can infer against —
+    // so `fork`'s own `DependencyGate` sees `Exclude<unknown, Scope>`, still
+    // `unknown`, and never clears on its own; and `fork` infers its `Seeded`
+    // port from the seed, which is keyed by a runtime scheme name rather than
+    // by a literal type. The needs were already checked once, at the
     // `Units`-generic call site that bound this module (`httpServer`'s own
     // type parameter, proven by `http-module.test-d.ts`'s positive/negative
     // pair) — this reasserts that proof rather than bypassing it.
     const unit = await options.context.host
-      .fork(module as never, seedOf(principals, resolved))
+      .fork(module as never, seedOf(principals, resolved) as never)
       .get();
     return await options.next({ context: { unit: unit as Context<never> } });
   };
