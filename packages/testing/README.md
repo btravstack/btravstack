@@ -88,7 +88,8 @@ answers the very instances the running graph holds once it is built — after
   `Runtime` with `submit()` to hold a unit open across a drain, `host()` to
   reach the `RuntimeHost` it was last started with, and a `module` that
   provides it where a starter would; `unit` is a module every submitted unit
-  forks, with no seed, before its work runs.
+  forks, with no seed, before its work runs — and what that module needs joins
+  `module`'s own, so `start` names it instead of the first `submit()` failing.
 - **`createFakeClock(start?)`** — a `Clock` for `StartOptions.clock` whose
   time moves only on `advance(ms)`.
 

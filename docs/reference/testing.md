@@ -255,10 +255,21 @@ either is recomposing the lazy way.
 <!-- doctest: signature=@btravstack/testing -->
 
 ```ts
-const testRuntime: (name?: string, options?: TestRuntimeOptions) => TestRuntime; // name defaults to "test"
+const testRuntime: <Unit extends Module<never, never, unknown> | undefined = undefined>(
+  name?: string,
+  options?: TestRuntimeOptions<Unit>,
+) => TestRuntime<Unit>; // name defaults to "test"
 
-type TestRuntime = Runtime<never, TestRuntimeInfo> & {
-  readonly module: Module<TestRuntimePort, never, never>;
+type TestRuntime<Unit extends Module<never, never, unknown> | undefined = undefined> = Runtime<
+  never,
+  TestRuntimeInfo
+> & {
+  // `UnitNeedsOf<Unit>`: what the bound unit module still owes.
+  readonly module: Module<
+    TestRuntimePort,
+    never,
+    Unit extends Module<never, never, infer N> ? Exclude<N, Scope> : never
+  >;
   readonly started: () => boolean;
   readonly untilStarted: () => AsyncResult<void, never>;
   readonly accepting: () => boolean;
@@ -267,8 +278,8 @@ type TestRuntime = Runtime<never, TestRuntimeInfo> & {
   readonly submit: <T = string, E = never>() => SubmittedUnit<T, E>;
 };
 
-type TestRuntimeOptions = {
-  readonly unit?: Module<never, never, unknown>;
+type TestRuntimeOptions<Unit extends Module<never, never, unknown> | undefined = undefined> = {
+  readonly unit?: Unit;
 };
 
 type TestRuntimeInfo = { readonly name: string };
@@ -294,7 +305,16 @@ type SubmittedUnit<T, E> = {
 
 `options.unit` is a module every submitted unit forks through `UnitHost.fork`,
 with no seed, before its work runs — the same mechanism a real runtime drives,
-exercised without booting one. `SubmittedUnit` is how a test holds a unit open
+exercised without booting one. What that module still **needs** rides
+`TestRuntime.module`'s own Needs channel, so a test composition that does not
+provide it is refused by `start`'s `UNSATISFIED DEPENDENCIES` gate at boot
+rather than by a `WiringDefect` on the first `submit()`. The bound is
+`Module<never, never, unknown>` — `never` in the **first** position because
+`Module`'s `_exports` channel is contravariant, `unknown` in the **third** so a
+module with real needs infers against the bound at all, the same shape
+[`@btravstack/http-server`](/reference/http-server#unit-and-who-forks-it) uses.
+Neither the bound nor the conditional above it is exported from the package.
+`SubmittedUnit` is how a test holds a unit open
 across a drain: `settle` is the unit's own outcome, `result` is what the
 kernel hands back for it, and `signal` is the unit's `AbortSignal` —
 forwarded, so it is valid immediately after `submit()` even when a bound

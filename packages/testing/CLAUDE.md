@@ -82,7 +82,7 @@ readonly "NOT EXPORTED — tap only what the module exports": Missing }`
   in-memory `Runtime<never, TestRuntimeInfo>` plus `started()`, `untilStarted()`
   (an `AsyncResult<void, never>`), `accepting()`, `serving()`, `host()`,
   `submit<T, E>()`, and **`module`** — a `Module<TestRuntimePort, never,
-never>` providing **this** object on `TestRuntimePort` (declared over
+UnitNeedsOf<Unit>>` providing **this** object on `TestRuntimePort` (declared over
   `RuntimePort`), which is how a test composition gets a runtime: import
   `runtime.module`, export `TestRuntimePort`. A wrapper built by spreading
   (`{ ...runtime, start }`) copies the module too, so its module still boots
@@ -98,7 +98,17 @@ never>` providing **this** object on `TestRuntimePort` (declared over
   before its work runs — `submit`'s work callback is `unit === undefined ?
 held : unitHost.fork(unit, []).flatMap(() => …)`, so `testRuntime` is what a
   spec composes to exercise the same `UnitHost.fork` path a real runtime
-  drives, without booting one. `submit` returns a `SubmittedUnit` (`settle`,
+  drives, without booting one. **The bound module's needs are propagated**:
+  `testRuntime<Unit extends AnyUnitModule | undefined = undefined>` threads
+  `Unit` into `TestRuntime.module`'s Needs, so a composition that does not
+  supply what the unit module owes is refused by `start`'s `UNSATISFIED
+DEPENDENCIES` gate rather than by a `WiringDefect` on the first `submit()` —
+  the same shape the three shipped starters carry, `| undefined = undefined`
+  included (without that default `Needs` degrades to `unknown`).
+  `AnyUnitModule`/`UnitNeedsOf` are not exported from `index.ts`, reached the
+  same way `@btravstack/http-server`'s namesakes are. The fork call still
+  carries `as never`: `AnyUnitModule` erases Needs to `unknown`, which
+  `fork`'s own `DependencyGate` can never clear from inside a generic. `submit` returns a `SubmittedUnit` (`settle`,
   `result`, `signal`) so a test can hold a unit open across a drain; `signal`
   is **forwarded** through an `AbortController` rather than captured, because
   the work runs only once the fork is built (with a `unit` module bound), and
