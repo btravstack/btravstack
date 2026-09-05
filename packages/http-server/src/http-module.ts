@@ -80,14 +80,11 @@ type Provides<P extends readonly AnyProvider[], Router, Fragments> = readonly (
 type UnitsOfAnswerer<T> = T extends { readonly _units?: infer U } ? U : Record<never, never>;
 
 /**
- * The kinds this root's answerers declare: whichever of the two carries them.
- * A root supplying both got them from ONE `api`, so the two phantoms are the
- * same type and the preference is not a choice between rivals — it is what
- * lets a fragments-only root reach the same gate a router-only one does.
+ * The kinds this root's answerers declare. An intersection, not a preference:
+ * an answerer that declared none contributes no keys, and a router and a
+ * fragments provider from two different apis must satisfy BOTH declarations.
  */
-type DeclaredUnits<Router, Fragments> = [keyof UnitsOfAnswerer<Router>] extends [never]
-  ? UnitsOfAnswerer<Fragments>
-  : UnitsOfAnswerer<Router>;
+type DeclaredUnits<Router, Fragments> = UnitsOfAnswerer<Router> & UnitsOfAnswerer<Fragments>;
 
 /**
  * Every scheme a supplied answerer serves. Recovered from its needs channel

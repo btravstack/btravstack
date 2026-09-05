@@ -1452,8 +1452,9 @@ fragments provider one per scheme its routes require — so no second phantom is
 needed. The **first** case reads the kinds off whichever answerer carries the
 `units<…>()` phantom, and the router and the fragments both carry it: a
 **fragments-only** root under a kinded api is gated against the declared
-modules exactly as a router-only one is. Supplying both answerers is no
-special case — they came from one `api`, so their phantoms are the same type.
+modules exactly as a router-only one is. Supplying both answerers is an
+intersection of the two declarations — one `api` declares them once, and a
+router and fragments taken from two different apis must satisfy both.
 
 **`http()` and `httpServer()` are un-gated**, and structurally so: they take
 the router as a **need**, never as a value, so there is nothing to check
