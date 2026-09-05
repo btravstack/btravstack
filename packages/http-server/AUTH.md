@@ -327,7 +327,11 @@ The two rules this half exists to state, before the detail:
   `{ context: { principal, resolved } }` through `next` — `principal` for the
   handler, `resolved` for `unitScope`, which reads `resolved.scheme` as the
   unit KIND and seeds the fork with `resolved.identity` on that scheme's
-  principal port.
+  principal port. The kind selects `units[scheme] ?? units.anonymous` — a
+  scheme that binds no module of its own falls back, so binding `{ anonymous }`
+  alone keeps forking on every leaf, and a scheme's module is how one kind is
+  specialised rather than how the others are switched off. The seed lands
+  whichever module is forked; an unread entry is the whole cost.
 
 - **A contract may name a scope only if the scheme's authenticator can grant
   it — for an oRPC contract.** `routerFor` intersects `ScopeGate<C, Vocab>`

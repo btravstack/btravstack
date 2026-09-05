@@ -15,8 +15,10 @@ A scheme's fork is seeded with `[[auth.principals[scheme], identity]]`, which
 is what discharges a unit module's `needs: [auth.principals.user]` — the
 principal is subtracted from what the composition root owes, while everything
 else the module needs still surfaces at `start`'s
-`UNSATISFIED DEPENDENCIES`. A kind with **no** bound module forks nothing, and
-does not fall back to `anonymous`.
+`UNSATISFIED DEPENDENCIES`. A scheme that binds no module of its own falls back
+to `anonymous`, so binding `{ anonymous }` alone keeps forking on every leaf
+exactly as it did before; nothing is forked only when neither binds one. The
+seed lands whenever a scheme resolved, whichever module is forked.
 
 The walk behind it is now `resolveScheme(requirements, authenticators,
 headers)`, answering `{ scheme, identity }`, with `principalOf(requirements,

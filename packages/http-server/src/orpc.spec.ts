@@ -266,15 +266,31 @@ describe("unit kinds", () => {
     });
   });
 
-  it("forks nothing for a kind with no module bound", async ({ kindedRpc }) => {
-    // GIVEN a router binding `anonymous` alone
+  it("falls back to anonymous when the scheme binds no module", async ({ kindedRpc }) => {
+    // GIVEN a router binding `anonymous` alone — what an application that never
+    // specialised a kind has
     const { clientWith, counts } = await kindedRpc.serve(["anonymous"]);
 
-    // WHEN a marked procedure resolves the `user` scheme, which binds nothing
+    // WHEN a MARKED procedure resolves the `user` scheme, which binds nothing
+    await clientWith("good").orders.whoami({ id: "o-1" });
+    await vi.waitUntil(() => counts().anonymous.stops === 1);
+
+    // THEN the anonymous module was forked all the same, so binding it alone
+    // keeps forking on every leaf
+    expect(counts()).toEqual({
+      anonymous: { builds: 1, stops: 1 },
+      user: { builds: 0, stops: 0 },
+    });
+  });
+
+  it("forks nothing when neither the scheme nor anonymous is bound", async ({ kindedRpc }) => {
+    // GIVEN a router binding no kind at all
+    const { clientWith, counts } = await kindedRpc.serve([]);
+
+    // WHEN a marked procedure is called
     const answer = await clientWith("good").orders.whoami({ id: "o-1" });
 
-    // THEN neither kind was opened — there is no fallback to anonymous — and
-    // the request was still answered
+    // THEN nothing was forked, and the request was still answered
     expect({ answer, counts: counts() }).toEqual({
       answer: { userId: "u-good" },
       counts: { anonymous: { builds: 0, stops: 0 }, user: { builds: 0, stops: 0 } },

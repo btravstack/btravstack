@@ -603,12 +603,26 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   never by name) and injected by both answerers. The kind is `anonymous` for a
   leaf that asked for no credential, else the SCHEME that resolved one:
   `resolveScheme` reports `{ scheme, identity }` on every success, and each
-  answerer looks the module up by it. **A kind with no bound module forks
-  nothing**, and does not fall back to `anonymous` — a caller's request opening
-  the anonymous scope is the confusion the kinds exist to prevent. A scheme's
-  fork is SEEDED with `[[auth.principals[scheme], identity]]`, which is what
-  discharges a unit module's `needs: [auth.principals.user]`; the anonymous
-  fork is seeded with nothing, since there is no caller to name. `orpc.ts`'s
+  answerer looks the module up by it — `units[kind] ?? units.anonymous`.
+
+  **A scheme that binds no module of its own FALLS BACK to `anonymous`**, and
+  nothing is forked only when neither binds one. A scheme's module is how one
+  kind is SPECIALISED, not how the others are switched off: binding
+  `{ anonymous }` alone has to keep forking on every leaf, exactly as it did
+  before kinds existed. The alternative — an unbound kind forks nothing — was
+  written first and reverted, because it made every existing
+  `unit: { anonymous }` application silently lose its request scope on
+  precisely its AUTHENTICATED procedures at upgrade, with no diagnostic
+  anywhere; `examples/order-api` is the worked case, and its
+  `"runs each call in its own unit"` spec is what caught it. A silent
+  regression loses to a name reading slightly oddly.
+
+  The fork is SEEDED with `[[auth.principals[scheme], identity]]` whenever a
+  scheme resolved — **regardless of which module ends up forked**, so the
+  anonymous fallback carries the seed too and an unread entry is the whole
+  cost. That is what discharges a unit module's
+  `needs: [auth.principals.user]`. A request no leaf authenticated is seeded
+  with nothing, since there is no caller to name. `orpc.ts`'s
   `unitScope` middleware forks on **every leaf**, installed in `routerOf` after
   `principalMiddleware` where a leaf carries one — which is how the resolved
   scheme reaches it, on oRPC's own context as `resolved`. It runs only when oRPC's own
@@ -646,6 +660,7 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `http-module.test-d.ts` pins all three directions — a kind whose module owes
   a port and gets it, one that does not, and one owing nothing but its scheme's
   principal, which starts with no provider at all.
+
 - **Drain**: `stopAccepting` retires every open response — an unsent header
   gets `Connection: close`, a sent `text/event-stream` response is
   **destroyed** on the spot, any other sent one ends its socket on

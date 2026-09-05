@@ -205,7 +205,7 @@ const respond = async (
   // request never opens a scope: the same point in the request's life oRPC's
   // own `unitScope` forks at, since `principalMiddleware` short-circuits
   // without calling `next()` on a refusal, and `unitScope` sits inside it.
-  const module = units[authenticated?.scheme ?? "anonymous"];
+  const module = units[authenticated?.scheme ?? "anonymous"] ?? units["anonymous"];
   if (module !== undefined) {
     // `as never`: see `unit-scope.ts`'s own comment on the identical cast —
     // `AnyUnitModule` erases the module's Needs to `unknown`, which `fork`'s

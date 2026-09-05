@@ -7,8 +7,10 @@ import type { AnyUnitModule } from "./http-runtime.js";
 /**
  * The principal the fork is seeded with, on the port its own scheme minted —
  * which is what discharges a unit module's `needs: [auth.principals.user]`
- * without the composition root providing one. An anonymous unit is seeded with
- * nothing: there is no caller to name.
+ * without the composition root providing one. Keyed on whether a scheme
+ * RESOLVED, never on which module ends up forked: a seed the forked module
+ * never names costs one unread entry. A request no leaf authenticated is
+ * seeded with nothing, since there is no caller to name.
  *
  * `as never`: `fork` infers its `Seeded` port from the entry, and this record
  * is keyed by a runtime scheme name rather than by a literal type.
@@ -25,9 +27,10 @@ export const seedOf = (
  * after `principalMiddleware` where there is one, so the scheme that
  * authenticated the caller is what decides the kind.
  *
- * A kind with no bound module forks nothing, and does not fall back to
- * `anonymous`: a caller's request opening the anonymous scope is the confusion
- * the kinds exist to prevent.
+ * A scheme that binds no module of its own falls back to `anonymous`, so
+ * binding only `anonymous` keeps forking on every leaf; a scheme's module is
+ * how one KIND is specialised, not how the others are switched off. Nothing is
+ * forked only when neither the scheme nor `anonymous` binds one.
  */
 export const unitScope =
   (units: Readonly<Record<string, AnyUnitModule>>, principals: Readonly<Record<string, AnyPort>>) =>
@@ -38,7 +41,7 @@ export const unitScope =
     }) => Promise<unknown>;
   }): Promise<unknown> => {
     const { resolved } = options.context;
-    const module = units[resolved?.scheme ?? "anonymous"];
+    const module = units[resolved?.scheme ?? "anonymous"] ?? units["anonymous"];
     if (module === undefined) return await options.next({ context: { unit: undefined } });
     // `.get()` on an `AsyncResult<T, never>` rethrows a defect's own cause,
     // which is how it reaches oRPC — the middleware protocol has no returned-
