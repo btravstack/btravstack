@@ -73,7 +73,7 @@ import { describe, expect } from "vitest";
 import { it } from "./__tests__/test-fixtures.js";
 
 describe("order-api", () => {
-  it("answers a real oRPC call on an ephemeral port", async ({ boot }) => {
+  it("answers a real oRPC call on an ephemeral port", async ({ boot, tokenFor }) => {
     // GIVEN the real composition root, bound to a loopback port the OS picks
     const app = boot(OrderApi);
     const info = (await app.runtimeInfo()).get();

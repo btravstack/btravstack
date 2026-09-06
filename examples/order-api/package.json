@@ -34,6 +34,7 @@
     "@orpc/json-schema": "catalog:",
     "@orpc/openapi": "catalog:",
     "@unthrown/orpc": "catalog:",
+    "jose": "catalog:",
     "unthrown": "catalog:"
   },
   "devDependencies": {

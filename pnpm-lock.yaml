@@ -497,6 +497,9 @@ importers:
       '@unthrown/orpc':
         specifier: 'catalog:'
         version: 0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.7.0)
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.10
       unthrown:
         specifier: 'catalog:'
         version: 5.7.0
