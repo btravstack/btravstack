@@ -117,6 +117,12 @@ import { tenantScoped } from "@btravstack/prisma/rls";
 const db = new PrismaClient({ adapter }).$extends(unthrownPrisma).$extends(tenantScoped(tenant));
 ```
 
+That fence compiles `tenantScoped`'s call shape and its place in the chain over
+a client declared for the sample; the fence on the
+[reference page](https://btravstack.github.io/btravstack/reference/prisma) is
+the one compiled over a real generated client, which is what proves the
+extension is assignable to its `$extends`.
+
 It goes last because a transaction callback's `tx` comes from the client as it
 stood when this extension was applied, so anything added after it is invisible
 inside a transaction. `$transaction([...])` is refused rather than silently pinned: the
