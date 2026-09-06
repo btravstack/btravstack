@@ -1,18 +1,33 @@
+import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { ErrAsync, OkAsync, fromPromise } from "unthrown";
 
-import { HttpAuthenticator, Unauthenticated, granted, type Authenticator } from "./auth.js";
+import {
+  HttpAuthenticator,
+  Unauthenticated,
+  granted,
+  type Authenticator,
+  type AuthenticatorService,
+} from "./auth.js";
 
 /** The verified claims, as `jose` reports them. */
 export type Claims = JWTPayload;
 
 export type JwtOptions<P, Scopes extends readonly string[]> = {
-  /** The issuer's JWKS endpoint. Keys are fetched on demand and cached; a `kid` the cache does not know triggers one refetch, rate-limited by `jose`. */
-  readonly jwks: string | URL;
-  /** Required `iss`. A token from another issuer is refused. */
-  readonly issuer: string | readonly string[];
-  /** Required `aud`. A token minted for another audience is refused — this is the check that stops a token from a sibling service being replayed here. */
-  readonly audience: string | readonly string[];
+  /**
+   * The issuer's JWKS endpoint — pins `HTTP_JWT_JWKS_URI` when set, and is read
+   * from it when not. Keys are fetched on demand and cached; a `kid` the cache
+   * does not know triggers one refetch, rate-limited by `jose`.
+   */
+  readonly jwks?: string;
+  /** Required `iss` — pins `HTTP_JWT_ISSUER`. A token from another issuer is refused. */
+  readonly issuer?: string;
+  /**
+   * Required `aud` — pins `HTTP_JWT_AUDIENCE`. A token minted for another
+   * audience is refused: this is the check that stops a token from a sibling
+   * service being replayed here.
+   */
+  readonly audience?: string;
   /**
    * The signature algorithms this endpoint accepts. Default
    * {@link DEFAULT_ALGORITHMS} — asymmetric only, and `none` is not
@@ -91,10 +106,7 @@ const bearer = (value: string | readonly string[] | undefined): string | undefin
  * what the claims mean, since no standard claim carries a tenant.
  *
  * ```ts
- * export const userAuth = jwtAuthenticator<Identity, "orders:export">({
- *   jwks: "https://issuer.example/.well-known/jwks.json",
- *   issuer: "https://issuer.example",
- *   audience: "orders-api",
+ * export const userAuth = jwtAuthenticator<Identity>()({
  *   scopes: ["orders:export"],
  *   principal: (claims) =>
  *     typeof claims["tenant"] === "string" && typeof claims.sub === "string"
@@ -103,6 +115,11 @@ const bearer = (value: string | readonly string[] | undefined): string | undefin
  * });
  * ```
  *
+ * `jwks`, `issuer` and `audience` are bound from `HTTP_JWT_JWKS_URI`,
+ * `HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE`; an option PINS its variable, the
+ * shape `http({ port })` has against `PORT`. A variable nobody pinned and
+ * nobody set is a `ConfigInvalid` naming it, at startup.
+ *
  * A refusal carries no reason, which is `Unauthenticated`'s own rule: an
  * authenticator that wants to record why logs it before returning.
  */
@@ -110,56 +127,67 @@ export const jwtAuthenticator =
   <P>() =>
   <const Scopes extends readonly string[] = readonly []>(
     options: JwtOptions<P, Scopes>,
-  ): Authenticator<P, Scopes[number], never> => {
-    // Built once, at composition: the key set IS the cache, so one per request
-    // would refetch the issuer's keys on every call.
-    const keys = createRemoteJWKSet(new URL(options.jwks));
+  ): Authenticator<P, Scopes[number], Env, ConfigInvalid> => {
     const header = (options.header ?? "authorization").toLowerCase();
     const vocabulary = options.scopes;
+    const schema = Config.object({
+      jwks: Config.pinned(options.jwks, Config.string("HTTP_JWT_JWKS_URI")),
+      issuer: Config.pinned(options.issuer, Config.string("HTTP_JWT_ISSUER")),
+      audience: Config.pinned(options.audience, Config.string("HTTP_JWT_AUDIENCE")),
+    });
 
     return HttpAuthenticator<P, Scopes[number]>()({
-      inject: {},
-      sync: () => (headers) => {
-        const token = bearer(headers[header]);
-        if (token === undefined) return ErrAsync(new Unauthenticated());
-        return (
-          fromPromise(
-            jwtVerify(token, keys, {
-              issuer: typeof options.issuer === "string" ? options.issuer : [...options.issuer],
-              audience:
-                typeof options.audience === "string" ? options.audience : [...options.audience],
-              algorithms: [...(options.algorithms ?? DEFAULT_ALGORITHMS)],
-              clockTolerance: options.clockToleranceSec ?? 0,
-              // `jose` validates `exp` only when it is PRESENT, so without this a
-              // signed token that omits it authenticates and never expires.
-              // `nbf` is deliberately not required: real issuers often omit it,
-              // and it is honoured when present either way.
-              requiredClaims: ["iss", "aud", "exp"],
-            }),
-            // Every failure is the same refusal: a signature that does not
-            // verify, an expired token and an audience mismatch must not be
-            // distinguishable from outside, or the endpoint becomes an oracle
-            // for which of them the attacker got wrong.
-            () => new Unauthenticated(),
-          )
-            .map(({ payload }) => payload)
-            // `flatMap`, not `map`: `principal` answering `undefined` is a
-            // REFUSAL, and mapping it would hand the handler `undefined` as a
-            // principal — an unauthenticated caller with a context that
-            // type-checks.
-            .flatMap((claims) => {
-              const principal = options.principal(claims);
-              if (principal === undefined) return ErrAsync(new Unauthenticated());
-              if (vocabulary === undefined) return OkAsync(principal as never);
-              const held = new Set(claimedScopes(claims));
-              return OkAsync(
-                granted(
-                  principal,
-                  vocabulary.filter((scope) => held.has(scope)),
-                ) as never,
-              );
-            })
-        );
-      },
+      inject: { env: Env },
+      make: ({ env }) =>
+        Config.parse(
+          "HttpJwt",
+          schema,
+        )(env).map((bound): AuthenticatorService<P, Scopes[number]> => {
+          // Built once, once the graph knows where the JWKS is: the key set IS
+          // the cache, so one per request would refetch the issuer's keys on
+          // every call.
+          const keys = createRemoteJWKSet(new URL(bound.jwks));
+          return (headers) => {
+            const token = bearer(headers[header]);
+            if (token === undefined) return ErrAsync(new Unauthenticated());
+            return (
+              fromPromise(
+                jwtVerify(token, keys, {
+                  issuer: bound.issuer,
+                  audience: bound.audience,
+                  algorithms: [...(options.algorithms ?? DEFAULT_ALGORITHMS)],
+                  clockTolerance: options.clockToleranceSec ?? 0,
+                  // `jose` validates `exp` only when it is PRESENT, so without
+                  // this a signed token that omits it authenticates and never
+                  // expires. `nbf` is deliberately not required: real issuers
+                  // often omit it, and it is honoured when present either way.
+                  requiredClaims: ["iss", "aud", "exp"],
+                }),
+                // Every failure is the same refusal: a signature that does not
+                // verify, an expired token and an audience mismatch must not be
+                // distinguishable from outside, or the endpoint becomes an
+                // oracle for which of them the attacker got wrong.
+                () => new Unauthenticated(),
+              )
+                .map(({ payload }) => payload)
+                // `flatMap`, not `map`: `principal` answering `undefined` is a
+                // REFUSAL, and mapping it would hand the handler `undefined` as
+                // a principal — an unauthenticated caller with a context that
+                // type-checks.
+                .flatMap((claims) => {
+                  const principal = options.principal(claims);
+                  if (principal === undefined) return ErrAsync(new Unauthenticated());
+                  if (vocabulary === undefined) return OkAsync(principal as never);
+                  const held = new Set(claimedScopes(claims));
+                  return OkAsync(
+                    granted(
+                      principal,
+                      vocabulary.filter((scope) => held.has(scope)),
+                    ) as never,
+                  );
+                })
+            );
+          };
+        }),
     });
   };

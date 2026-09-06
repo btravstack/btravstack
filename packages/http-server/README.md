@@ -222,12 +222,13 @@ CVEs happen — both are ordinary `Authenticator` values bound by name in
 - **`apiKeyAuthenticator<P>()({ keys, header? })`**, on the main entry point. Constant-time
   compare over SHA-256 digests, every key checked with no early return, and a
   missing header on the same path as a wrong one.
-- **`jwtAuthenticator<P>()({ jwks, issuer, audience, principal, scopes?, algorithms?, clockToleranceSec?, header? })`**, from
+- **`jwtAuthenticator<P>()({ principal, jwks?, issuer?, audience?, scopes?, algorithms?, clockToleranceSec?, header? })`**, from
   `@btravstack/http-server/jwt`, with `jose` as an optional peer. JWKS fetch,
   cache and rotation; an asymmetric-only algorithm allowlist, because a JWKS
   publishes public keys and accepting `HS256` beside them is the
   algorithm-confusion attack; `iss`, `aud` and `exp` required to be present,
-  `nbf` honoured when present.
+  `nbf` honoured when present. `jwks`, `issuer` and `audience` are bound from
+  `HTTP_JWT_*` when they are not pinned — see **Options** below.
 
 The `/jwt` subpath needs Node ≥22.12 under CommonJS: `jose` is ESM-only, so the
 CJS build's `require` depends on `require(esm)`. ESM consumers are unaffected.
@@ -268,6 +269,19 @@ stay composition-time: `prefix` because a client's `baseURL` has to agree with
 it, `securityHeaders` because a deployment that can silently turn
 `x-frame-options` off is a footgun, and `plugins` (or a `CORSHandlerPluginOptions`
 record) because an environment carries no records.
+
+`jwtAuthenticator`'s three transport options pin the same way, from
+`@btravstack/http-server/jwt` — a root composing that scheme declares
+`needs: [Env]`, since the scheme's own provider reads the environment:
+
+| Option     | What it is                                                                |
+| ---------- | ------------------------------------------------------------------------- |
+| `jwks`     | pins `HTTP_JWT_JWKS_URI` — the issuer's JWKS endpoint                     |
+| `issuer`   | pins `HTTP_JWT_ISSUER` — the required `iss`                               |
+| `audience` | pins `HTTP_JWT_AUDIENCE` — the required `aud`, this deployment's own name |
+
+A variable nobody pinned and nobody set fails the boot with a `ConfigInvalid`
+naming it, rather than a scheme that refuses every caller.
 
 The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/http-server),

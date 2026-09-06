@@ -43,12 +43,21 @@ Result<T, ConfigFieldInvalid> }`. All go through one `present()` helper that
   each failure as an issue with `path: [variable]`, and never throws: a field
   whose `parse` defects (a bug in the field) is folded into an issue against
   its variable.
+- **`Config.parse(port, schema)(env)`** — `AsyncResult<Output, ConfigInvalid>`:
+  awaits `schema["~standard"].validate(env)` inside `fromSafePromise` over an
+  `async` wrapper (a third-party schema may be async and may throw — the throw
+  becomes the defect it is) and answers `Ok(value)` or
+  `Err(new ConfigInvalid({ port, issues }))`, where `port` is the name the
+  error reports rather than a port class. It exists because that step has a
+  second caller: a piece that is ALREADY its own provider has no second port
+  to hang a `Config.provider` on, and
+  `@btravstack/http-server/jwt`'s `jwtAuthenticator` is the first — it binds
+  `HTTP_JWT_*` inside the `make` arm of the authenticator it is. Lifting the
+  body rather than copying it is what keeps one home for validate-then-
+  `ConfigInvalid`: `Config.provider` is now a caller of this.
 - **`Config.provider(port)(schema)` / `Config.provider(name)(schema)`** — two
-  overloads over one body: `Provider(port)({ inject: { env: Env }, make })`, `make` awaiting
-  `schema["~standard"].validate(env)` inside `fromSafePromise` over an `async`
-  wrapper (a third-party schema may be async and may throw — the throw
-  becomes the defect it is) and answering `Ok(value)` or
-  `Err(new ConfigInvalid({ port: port.portId, issues }))`. The **name** form
+  overloads over one body: `Provider(port)({ inject: { env: Env }, make })`,
+  `make` being `Config.parse(port.portId, schema)(env)`. The **name** form
   mints the port (`class extends Port(name)<Output> {}`, service = the
   schema's output) and returns `Provider<PortInstance<Name, Output>,
 ConfigInvalid, Env> & { readonly port: PortClassOf<Name, Output> }` — di's
@@ -80,7 +89,10 @@ ConfigInvalid, Env> & { readonly port: P }` (di's own `Provider(port)`
 `config.spec.ts`: `Config.object`'s semantics (defaults, parsed
 values, `PORT=0`, empty, blank ×2 + malformed named in one validation, `3.5`,
 bounds, a required field, a defecting field), `Config.pinned` (the pin over
-the environment, the field otherwise), `ConfigInvalid.message`, and `Config.provider` end to end through a real
+the environment, the field otherwise), `ConfigInvalid.message`,
+`Config.parse` on its own — outside any graph, on a valid environment and on
+one whose two bad fields both land in one `ConfigInvalid` (the `parsed`
+fixture) — and `Config.provider` end to end through a real
 `Module.scoped` graph with `Env` provided as a value (`bound`, `boundThrough`
 fixtures in `src/__tests__/test-fixtures.ts`) — including an async third-party
 Standard Schema. Coverage 100% lines/functions. The kernel-facing half — the

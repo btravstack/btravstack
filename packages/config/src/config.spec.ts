@@ -340,4 +340,38 @@ describe("Config.provider", () => {
     // THEN the awaited value is what the graph holds
     await expect(named).toBeOkWith({ name: "async" });
   });
+
+  it("validates an environment on its own, for a piece that is its own provider", async ({
+    parsed,
+  }) => {
+    // GIVEN an environment the schema accepts, and no port to bind
+    const env = { PORT: "8080", HOST: "::1" };
+
+    // WHEN `Config.parse` runs the step `Config.provider` performs
+    const settings = parsed(env);
+
+    // THEN it answers the same value, defaults filled in
+    await expect(settings).toBeOkWith({ port: 8080, host: "::1", retries: 3 });
+  });
+
+  it("names the port it was given and every offending variable", async ({ parsed }) => {
+    // GIVEN an environment the schema rejects on two counts
+    const env = { PORT: "abc", HOST: "" };
+
+    // WHEN it is parsed
+    const settings = parsed(env);
+
+    // THEN one `ConfigInvalid` carries the port name the caller passed and both
+    // issues — an operator fixes the deployment in one round trip
+    await expect(settings).toBeErrWith(
+      expect.objectContaining({
+        constructor: ConfigInvalid,
+        port: "ConfigFixtureParsed",
+        issues: [
+          { message: 'is not a whole number: "abc"', path: ["PORT"] },
+          { message: "is set but empty", path: ["HOST"] },
+        ],
+      }),
+    );
+  });
 });

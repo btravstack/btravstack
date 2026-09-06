@@ -1022,6 +1022,46 @@ not an oracle for which check the attacker got wrong. There is a test that
 mints the confusion token and a test that mints one signed by a key the JWKS
 does not publish.
 
+**`jwks`, `issuer` and `audience` are bound from `HTTP_JWT_JWKS_URI`,
+`HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE`, and the option PINS its variable** —
+`http({ port })` against `PORT`, one layer down. Rule 6's test decides it: all
+three vary by DEPLOYMENT and none of them varies by code. Staging and
+production authenticate against different issuers, an issuer's JWKS moves, and
+a token's audience is the deployment's own name — none of that is a decision
+the image gets to carry, and every one of them was a rebuild before this.
+`algorithms`, `clockToleranceSec`, `header`, `principal` and `scopes` stay
+options: the first two are a security posture whose silent change is a
+regression, and the last three are a shape or a function, which an environment
+cannot carry.
+
+**One JWT scheme per process is the default, and a second one pins all three.**
+The prefix is `HTTP_JWT_`, singular, because a process serves one issuer in
+every deployment this stack has met — the `PORT` case, not the
+`HTTP_`-versus-`AMQP_` one. Two schemes reading the same three variables would
+be two schemes with identical configuration, which is one scheme; a genuine
+second issuer therefore pins `jwks`/`issuer`/`audience` explicitly, which is
+already how a test states one. What is deliberately NOT here is a
+per-scheme prefix (`HTTP_JWT_USER_ISSUER`), which would buy the rare case a
+naming convention nothing enforces and make the common one longer.
+
+**The piece is a `make` arm, not a `sync` one, and that is what the arm is
+for.** Reading the environment can FAIL, and a scheme whose configuration is
+wrong must not boot: `make` puts `ConfigInvalid` on the description's error
+channel, `SchemeProviders` carries it, and the graph refuses to build —
+`runMain` reports it and exits `78`, naming every variable at once. The
+alternative was an authenticator that constructs happily and refuses every
+caller at runtime with a 401 carrying no reason, which is the worst diagnostic
+this package could produce. `Config.parse` is the step it runs, lifted out of
+`Config.provider` so both callers share one home; the piece is already its own
+provider, so there is no second port for `Config.provider` to bind.
+
+**It needs `Env`, which is the one thing a composition root now says out loud.**
+`Env` is kernel-provided, but the scheme's provider sits in the ROOT's
+`provides` (it rides in on the router or the fragments), so di's `NeedsGate`
+asks the root to declare it: `HttpModule("OrderApi")({ needs: [Env], … })`.
+That is di's own rule — a module declares what its own providers expect from
+outside — not a special case, and `start` satisfies it.
+
 **`jose` is ESM-only, and that lands on ONE subpath under ONE module format.**
 The CJS build's `require("jose")` needs `require(esm)`, on by default from Node
 22.12; ESM is fine on any Node 22, and a consumer that never imports

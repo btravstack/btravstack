@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 
-import { it } from "./__tests__/test-fixtures.js";
+import { hmacToken, it } from "./__tests__/test-fixtures.js";
 
 describe("jwtAuthenticator", () => {
   it("names the caller its claims describe, over a real JWKS fetch", async ({
@@ -8,7 +8,7 @@ describe("jwtAuthenticator", () => {
     jwtService,
   }) => {
     // GIVEN a token this issuer signed, and its JWKS served over HTTP
-    const token = await issuer.sign({ sub: "u-1", tenant: "acme" });
+    const token = await issuer.sign({ sub: "u-1", tenant: "acme" }).get();
 
     // WHEN it is presented
     const resolved = await jwtService({
@@ -25,11 +25,13 @@ describe("jwtAuthenticator", () => {
     scopedJwtService,
   }) => {
     // GIVEN a token claiming a scope the scheme knows and one it does not
-    const token = await issuer.sign({
-      sub: "u-1",
-      tenant: "acme",
-      scope: "orders:export billing:write",
-    });
+    const token = await issuer
+      .sign({
+        sub: "u-1",
+        tenant: "acme",
+        scope: "orders:export billing:write",
+      })
+      .get();
 
     // WHEN it is presented to a scheme whose vocabulary is the first alone
     const resolved = await scopedJwtService({
@@ -52,7 +54,7 @@ describe("jwtAuthenticator", () => {
     scopedJwtService,
   }) => {
     // GIVEN a token in the shape Entra and Okta mint
-    const token = await issuer.sign({ sub: "u-1", tenant: "acme", scp: ["orders:export"] });
+    const token = await issuer.sign({ sub: "u-1", tenant: "acme", scp: ["orders:export"] }).get();
 
     // WHEN it is presented
     const resolved = await scopedJwtService({
@@ -66,7 +68,9 @@ describe("jwtAuthenticator", () => {
 
   it("refuses a token minted for another audience", async ({ issuer, jwtService }) => {
     // GIVEN a token this issuer signed for a sibling service
-    const token = await issuer.sign({ sub: "u-1", tenant: "acme" }, { audience: "billing-api" });
+    const token = await issuer
+      .sign({ sub: "u-1", tenant: "acme" }, { audience: "billing-api" })
+      .get();
 
     // WHEN it is presented here
     const resolved = await jwtService({
@@ -81,7 +85,7 @@ describe("jwtAuthenticator", () => {
   it("refuses a token carrying no `exp` at all", async ({ issuer, jwtService }) => {
     // GIVEN a properly signed token from the right issuer for the right
     // audience, with no expiry claim
-    const token = await issuer.signWithoutExpiry();
+    const token = await issuer.sign({ sub: "u-1", tenant: "acme" }, { expiresIn: false }).get();
 
     // WHEN it is presented
     const resolved = await jwtService({ authorization: `Bearer ${token}` });
@@ -95,10 +99,9 @@ describe("jwtAuthenticator", () => {
 
   it("refuses a token from another issuer", async ({ issuer, jwtService }) => {
     // GIVEN a token whose `iss` is not the one configured
-    const token = await issuer.sign(
-      { sub: "u-1", tenant: "acme" },
-      { issuer: "https://evil.test" },
-    );
+    const token = await issuer
+      .sign({ sub: "u-1", tenant: "acme" }, { issuer: "https://evil.test" })
+      .get();
 
     // WHEN it is presented
     const resolved = await jwtService({
@@ -111,7 +114,7 @@ describe("jwtAuthenticator", () => {
 
   it("refuses an expired token", async ({ issuer, jwtService }) => {
     // GIVEN a token whose `exp` is in the past
-    const token = await issuer.sign({ sub: "u-1", tenant: "acme" }, { expiresIn: "-1s" });
+    const token = await issuer.sign({ sub: "u-1", tenant: "acme" }, { expiresIn: "-1s" }).get();
 
     // WHEN it is presented
     const resolved = await jwtService({
@@ -124,12 +127,12 @@ describe("jwtAuthenticator", () => {
   });
 
   it("refuses a token signed by a key the JWKS does not publish", async ({
-    issuer,
+    stranger,
     jwtService,
   }) => {
     // GIVEN a token signed with a private key whose public half is not served,
     // presented with a `kid` the JWKS does publish
-    const token = await issuer.signWithStranger({ sub: "u-1", tenant: "acme" });
+    const token = await stranger.sign({ sub: "u-1", tenant: "acme" }).get();
 
     // WHEN it is presented
     const resolved = await jwtService({
@@ -144,7 +147,7 @@ describe("jwtAuthenticator", () => {
     // GIVEN the algorithm-confusion attack: a JWKS publishes PUBLIC keys, so an
     // attacker signs `HS256` using the very JWK this issuer serves as the
     // shared secret — no key they do not already have
-    const token = await issuer.signHmacWithPublicKey();
+    const token = await hmacToken(issuer);
 
     // WHEN it is presented
     const resolved = await jwtService({
@@ -162,7 +165,7 @@ describe("jwtAuthenticator", () => {
     jwtService,
   }) => {
     // GIVEN a properly signed token with no `tenant` claim
-    const token = await issuer.sign({ sub: "u-1" });
+    const token = await issuer.sign({ sub: "u-1" }).get();
 
     // WHEN it is presented
     const resolved = await jwtService({
@@ -190,7 +193,7 @@ describe("jwtAuthenticator", () => {
   }) => {
     // GIVEN a scoped scheme and a token claiming neither `scope` nor `scp` —
     // the ordinary shape of a token from an issuer that does not do scopes
-    const token = await issuer.sign({ sub: "u-1", tenant: "acme" });
+    const token = await issuer.sign({ sub: "u-1", tenant: "acme" }).get();
 
     // WHEN it is presented
     const resolved = await scopedJwtService({
@@ -202,5 +205,75 @@ describe("jwtAuthenticator", () => {
     expect(resolved).toBeOkWith(
       expect.objectContaining({ identity: { tenantId: "acme", userId: "u-1" }, scopes: [] }),
     );
+  });
+
+  it("binds jwks, issuer and audience from HTTP_JWT_* when nothing is pinned", async ({
+    issuer,
+    jwtApp,
+  }) => {
+    // GIVEN a scheme that pins none of the three, and a deployment naming them
+    const app = jwtApp({
+      HTTP_JWT_JWKS_URI: issuer.jwks,
+      HTTP_JWT_ISSUER: issuer.issuer,
+      HTTP_JWT_AUDIENCE: issuer.audience,
+    });
+    const info = (await app.runtimeInfo()).get();
+    const token = await issuer.sign({ sub: "u-1", tenant: "acme" }).get();
+
+    // WHEN a token that issuer signed is presented to a protected route
+    const response = await fetch(`http://127.0.0.1:${info?.port ?? 0}/whoami`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    // THEN the caller is named — the environment configured the scheme, and no
+    // code change was needed to point this deployment at that issuer
+    expect({ status: response.status, body: await response.text() }).toEqual({
+      status: 200,
+      body: "u-1",
+    });
+  });
+
+  it("fails startup with ConfigInvalid naming a variable nobody set", async ({
+    issuer,
+    jwtApp,
+  }) => {
+    // GIVEN a deployment that configured the JWKS and the audience and forgot
+    // the issuer
+    const app = jwtApp({
+      HTTP_JWT_JWKS_URI: issuer.jwks,
+      HTTP_JWT_AUDIENCE: issuer.audience,
+    });
+
+    // WHEN the application boots
+    // THEN it does not serve: an unset variable nobody pinned is a modeled
+    // startup Err naming it, not a scheme that refuses every caller forever
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        port: "HttpJwt",
+        issues: [{ message: "is required", path: ["HTTP_JWT_ISSUER"] }],
+      }),
+    );
+  });
+
+  it("takes a pinned option over the variable that would otherwise bind it", async ({
+    issuer,
+    pinnedAudienceJwt,
+  }) => {
+    // GIVEN `audience` pinned, and an environment naming a different one
+    const authenticate = (await pinnedAudienceJwt({ HTTP_JWT_AUDIENCE: "ignored" })).getOrThrow();
+    const forPin = await issuer.sign({ sub: "u-1", tenant: "acme" }, { audience: "pinned" }).get();
+    const forVariable = await issuer
+      .sign({ sub: "u-1", tenant: "acme" }, { audience: "ignored" })
+      .get();
+
+    // WHEN a token for each audience is presented
+    const pinned = await authenticate({ authorization: `Bearer ${forPin}` });
+    const variable = await authenticate({ authorization: `Bearer ${forVariable}` });
+
+    // THEN the pin decided both answers: explicit beats environment, per field
+    expect({ pinned: pinned.isOk(), variable: variable.isOk() }).toEqual({
+      pinned: true,
+      variable: false,
+    });
   });
 });
