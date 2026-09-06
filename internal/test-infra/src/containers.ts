@@ -98,6 +98,8 @@ export const postgresUrl = (
  * nothing outside this repository connects with is not configuration.
  */
 export const ORDERS_APP_USER = "orders_app";
+
+/** That role's password, on the same gate-only terms. */
 export const ORDERS_APP_PASSWORD = "orders_app";
 
 /**

@@ -115,8 +115,8 @@ const rootWith = (fulfillment: typeof FulfillmentModule, sink: Sink) =>
  * builds the adapter over it for a tenant, exactly as the activity fork does,
  * which is the only way to read a row back now that the repository is bound
  * per attempt. `scopedTo` is not optional: `Order` carries a row-security
- * policy, so an unpinned reader sees nothing at all. The log lines need no tap — `observability({ sink })` hands them
- * over as values.
+ * policy, so an unpinned reader sees nothing at all. The log lines need no tap
+ * — `observability({ sink })` hands them over as values.
  */
 const deployment = (fulfillment: typeof FulfillmentModule) => {
   const lines: Line[] = [];

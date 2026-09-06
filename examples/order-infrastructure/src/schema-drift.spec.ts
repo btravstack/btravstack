@@ -38,20 +38,31 @@ describe("the committed migrations", () => {
     expect(tables.map((table) => table.name)).toEqual(expect.arrayContaining([...models]));
   });
 
-  it("keeps the hand-written row-security policy on Order", async ({ db }) => {
+  it("keeps row security enabled, forced, and policed on Order", async ({ db }) => {
     // GIVEN the same database, carrying one migration `prisma migrate dev`
     // would never generate
 
-    // WHEN it is asked which policies it has
-    const policies = await db.$queryRawUnsafe<
-      readonly { readonly table: string; readonly name: string }[]
-    >("SELECT tablename AS table, policyname AS name FROM pg_policies WHERE schemaname = 'public'");
-
-    // THEN `tenant_isolation` is still on `Order`. Regenerating the migration
-    // set drops the file that creates it, and nothing else in the gate would
-    // notice until one tenant read another's rows.
-    expect(policies).toEqual(
-      expect.arrayContaining([{ table: "Order", name: "tenant_isolation" }]),
+    // WHEN it is asked what row security `Order` carries
+    const security = await db.$queryRawUnsafe<
+      readonly {
+        readonly enabled: boolean;
+        readonly forced: boolean;
+        readonly policy: string | null;
+      }[]
+    >(
+      `SELECT c.relrowsecurity AS enabled, c.relforcerowsecurity AS forced, p.policyname AS policy
+         FROM pg_class c
+         LEFT JOIN pg_policies p ON p.schemaname = 'public' AND p.tablename = c.relname
+        WHERE c.relnamespace = 'public'::regnamespace AND c.relname = 'Order'`,
     );
+
+    // THEN all three of the migration's statements are still in force.
+    // Regenerating the migration set drops the file that creates them, and
+    // nothing else in the gate would notice until one tenant read another's
+    // rows. `forced` is here because no other spec can see it: every fixture
+    // connects as `orders_app`, a non-owner, for whom the policy applies with
+    // or without `FORCE` — while the migrations and `pnpm dev` connect as the
+    // owner, who is exempt from it without.
+    expect(security).toEqual([{ enabled: true, forced: true, policy: "tenant_isolation" }]);
   });
 });
