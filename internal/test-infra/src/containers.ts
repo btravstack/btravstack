@@ -89,7 +89,7 @@ export const postgresUrl = (
     password: POSTGRES_PASSWORD,
   },
 ): string =>
-  `postgresql://${credentials.user}:${credentials.password}@${postgres.getHost()}:${postgres.getMappedPort(5432)}/${database}`;
+  `postgresql://${encodeURIComponent(credentials.user)}:${encodeURIComponent(credentials.password)}@${postgres.getHost()}:${postgres.getMappedPort(5432)}/${database}`;
 
 /**
  * The role the example application connects to {@link ORDERS_DATABASE} as.
