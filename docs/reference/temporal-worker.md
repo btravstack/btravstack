@@ -21,14 +21,17 @@ import type { Module, Scope } from "@btravstack/di";
 import { P } from "unthrown";
 import { TenantId } from "@btravstack/example-order-domain";
 import {
-  OrderApplicationModule,
   OrderRepository,
   PaymentService,
   PlaceOrder,
   ShippingService,
   StockService,
 } from "@btravstack/example-order-application";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { Logger, Tracer } from "@btravstack/core";
+import { observability } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
+import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { ActivityUnitModule } from "../../activity-unit.js";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 import { BillingModule } from "../../billing.js";
@@ -128,11 +131,14 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
     workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
   },
   imports: [
-    OrderApplicationModule,
     OrderPersistenceModule,
     FulfillmentModule,
     BillingModule,
+    observability(),
+    otel(),
   ],
+  unit: { activity: ActivityUnitModule },
+  exports: [Tracer, Logger, OrderDatabase],
 });
 ```
 
@@ -195,17 +201,16 @@ carries `chargeOrder` too, not `fulfillOrder` alone:
 ```ts
 export const orderActivities = TemporalActivities(orderContract)({
   inject: {
-    place: PlaceOrder,
-    repository: OrderRepository,
     stock: StockService,
     shipping: ShippingService,
     payments: PaymentService,
   },
-  sync: ({ place, repository, stock, shipping, payments }) => ({
+  unit: { place: PlaceOrder, repository: OrderRepository },
+  sync: ({ stock, shipping, payments }) => ({
     fulfillOrder: {
-      place: ({ errors, input }) =>
-        place
-          .execute(TenantId(input.tenantId), input.orderId, input.quantity)
+      place: ({ errors, context, input }) =>
+        context.unit.place
+          .execute(input.orderId, input.quantity)
           .map((order) => ({ id: order.id, quantity: order.quantity }))
           .mapErrCases((matcher) =>
             matcher
@@ -236,9 +241,9 @@ export const orderActivities = TemporalActivities(orderContract)({
             ),
           ),
       releaseStock: ({ input }) => stock.release(input.orderId),
-      cancelPlacement: ({ input }) =>
-        repository
-          .remove(TenantId(input.tenantId), input.orderId)
+      cancelPlacement: ({ context, input }) =>
+        context.unit.repository
+          .remove(input.orderId)
           .recoverErrCases((matcher) =>
             matcher.with(P.tag("OrderNotFound"), () => undefined),
           ),
@@ -343,16 +348,12 @@ const orderFulfillment = TemporalWorkflowActivities(
   orderContract,
   "fulfillOrder",
 )({
-  inject: {
-    place: PlaceOrder,
-    repository: OrderRepository,
-    stock: StockService,
-    shipping: ShippingService,
-  },
-  sync: ({ place, repository, stock, shipping }) => ({
-    place: ({ errors, input }) =>
-      place
-        .execute(TenantId(input.tenantId), input.orderId, input.quantity)
+  inject: { stock: StockService, shipping: ShippingService },
+  unit: { place: PlaceOrder, repository: OrderRepository },
+  sync: ({ stock, shipping }) => ({
+    place: ({ errors, context, input }) =>
+      context.unit.place
+        .execute(input.orderId, input.quantity)
         .map((order) => ({ id: order.id, quantity: order.quantity }))
         .mapErrCases((matcher) =>
           matcher

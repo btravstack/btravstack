@@ -130,11 +130,16 @@ export const TenantId = (raw: string): TenantId => raw as TenantId;
 
 `src/tenant.ts` is a brand with no entity behind it, and it is here rather than
 in the application layer because it is vocabulary the whole system speaks. This
-deployment is multi-tenant, so every port names its tenant positionally, next
-to an id — `find(tenantId, id)`, `execute(tenantId, id, quantity)` — and two
-`string`s in a fixed order are what the compiler has nothing to say about:
-swapping them compiled, and read another tenant's rows. Branding **one** of the
-pair is enough to make it unswappable, which is why the ids stay `string` here.
+deployment is multi-tenant, and where a port still names its tenant it names it
+positionally, next to an id — `find(tenantId, id)` and `execute(tenantId, id)`
+on the customers half — where two `string`s in a fixed order are what the
+compiler has nothing to say about: swapping them compiled, and read another
+tenant's rows. Branding **one** of the pair is enough to make it unswappable,
+which is why the ids stay `string` here, and `order-application`'s
+`tenant.test-d.ts` pins both swaps as `@ts-expect-error`. The orders half has no
+pair left to swap: its tenant is a `Tenant` port the unit provides, so a call
+has no slot to name another one in. The brand still travels there — it is what
+a unit module hands the repository it builds.
 
 The constructor is a **cast, not a parse**. Every value that becomes a
 `TenantId` arrives through a contract that has already validated it as a

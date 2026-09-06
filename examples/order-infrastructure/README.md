@@ -10,7 +10,7 @@ src/database.ts                    the client, the OrderDatabase port, the acqui
 src/prisma-order-repository.ts     the adapter — where Prisma's errors become the domain's
 src/prisma-customer-repository.ts  the customers vertical's adapter — read-only, because its port is
 src/prisma-outbox.ts               the outbox's read side, for whichever deployment relays it
-src/module.ts                      DatabaseModule (internal), OrderPersistenceModule, CustomerPersistenceModule
+src/module.ts                      OrderTenantPersistence, OrderPersistenceModule, CustomerPersistenceModule
 src/__tests__/test-fixtures.ts               the in-memory database and the repositories, as Vitest fixtures
 ```
 
@@ -129,27 +129,29 @@ makes a shared database cost one migration for the whole gate rather than one
 per test — the reason this stopped being SQLite in memory, where every test
 built its own schema.
 
-The tenancy is **explicit**: every port names its tenant, so an adapter is
-handed one rather than finding one.
+The tenancy is **explicit**, and it is the ADAPTER that is handed the tenant
+rather than every call:
 
 ```ts
-readonly find: (tenantId: TenantId, id: string) => AsyncResult<Order, OrderNotFound>;
+export const prismaOrderRepository = (
+  db: OrderDatabaseClient,
+  tenantId: TenantId,
+): ServiceOf<OrderRepository> => ({ ... });
 ```
 
-And it is **branded**: `TenantId` is the domain's own string, the id beside it
-is not, so the pair cannot be swapped — `find(id, tenantId)` used to compile
-and read another tenant's rows. Nothing in this layer casts: the adapters take
-inferred parameters and inherit the brand from the port. The one exception is
-`prisma-outbox.ts`, where a row becomes an `OrderEvent` — the only read-back in
-the system, and so the only place the brand is re-applied.
+`OrderTenantPersistence` is that binding as a module, and it is composed inside
+a **unit** — a request's, an activity attempt's, a delivery's — where `Tenant`
+has already been provided from whatever opened it. Every statement closes over
+the tenant, so the port has no parameter a caller could name another one in.
+`TenantId` is still the domain's own branded string, which is what keeps the
+one place a tenant is claimed — `prisma-outbox.ts`, where a row becomes an
+`OrderEvent` — honest.
 
 That is the application's design, not the framework's — no starter has a
 tenancy concept, and none should, because what establishes a tenant is a
-decision about a specific system. Two things fall out of it. A caller that
-forgot its tenant does not compile, where an ambient one would have failed at
-runtime or read the wrong rows in silence. And a spec needs no machinery:
-`repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001")` says what it is scoped to at the call, so the
-only fixture is the tenant string itself.
+decision about a specific system. And a spec needs no machinery either: the
+fixture builds `prismaOrderRepository(db, tenant)`, a second one over another
+tenant is what a cross-tenant spec asserts across, and nothing cleans up.
 
 The generated client is gitignored and minted by turbo's own `generate` task —
 which `test`, `typecheck` and `test:types` all depend on, so one generator runs,
@@ -162,30 +164,39 @@ Nothing to install, nothing to start.
 ## One persistence module per vertical, over one shared connection
 
 ```ts
-const DatabaseModule = Module("Database")({
-  provides: [orderDatabaseProvider],
-  exports: [OrderDatabase],
+export const OrderTenantPersistence = Module("OrderTenantPersistence")({
+  needs: [Tenant, OrderDatabase],
+  provides: [
+    Provider(OrderRepository)({
+      inject: { db: OrderDatabase, tenant: Tenant },
+      sync: ({ db, tenant }) => prismaOrderRepository(db, tenant),
+    }),
+  ],
+  exports: [OrderRepository],
 });
 
 export const OrderPersistenceModule = Module("OrderPersistence")({
-  imports: [DatabaseModule],
-  provides: [orderRepositoryProvider, outboxProvider],
-  exports: [OrderRepository, Outbox],
+  imports: [OrderDatabaseModule],
+  provides: [outboxProvider],
+  exports: [Outbox, OrderDatabaseModule],
 });
 
 export const CustomerPersistenceModule = Module("CustomerPersistence")({
-  imports: [DatabaseModule],
+  imports: [OrderDatabaseModule],
   provides: [customerRepositoryProvider],
   exports: [CustomerRepository],
 });
 ```
 
-Each exports the ports its own vertical declared and nothing else.
-`DatabaseModule` is not exported from `src/index.ts` at all, and neither
-persistence module re-exports `OrderDatabase` — di's `exports` are declared,
-never inherited — so the Prisma client stays behind the boundary and no outer
-module can reach it and start speaking SQL. Sharing the connection between the
-two verticals did not spend that privacy.
+`OrderTenantPersistence` **needs** the database rather than importing it: a
+unit module's imports are built in the fork, so an import would open and close
+a Prisma client per request. `OrderPersistenceModule` re-exports
+`OrderDatabaseModule` for exactly that — the application scope holds the one
+client, and the fork reads it.
+
+The outbox stays in the application scope, because the relay that sweeps it
+runs outside any unit and across tenants; `CustomerPersistenceModule` stays
+there too, because its port names its tenant.
 
 One database, not two: di flattens the module tree into a `Set` keyed by
 provider **reference**, so a graph holding both persistence modules holds the
@@ -193,21 +204,22 @@ one `orderDatabaseProvider` they both import. A composition root takes the
 vertical it serves and the graph is closed:
 
 ```ts
-const AppModule = Module("App")({
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+const UnitModule = Module("Unit")({
+  needs: [OrderDatabase, Logger],
+  imports: [tenantOf(tenant), OrderTenantPersistence, OrderApplicationModule],
   exports: [PlaceOrder, FindOrder],
 });
 ```
 
-`observability()` closes `OrderApplicationModule`'s remaining need, the `Logger`
-the interactor writes to — `OrderPersistenceModule` fills the repository and
-outbox holes, the observability starter fills the logging one, and neither
-layer knows the other exists. A root that also serves customers imports
+`OrderTenantPersistence` fills the repository hole, the tenant fills the
+`Tenant` one, and `Logger` and the database come from the application scope the
+unit is forked over — where `observability()` and `OrderPersistenceModule` are.
+Neither layer knows the other exists. A root that also serves customers imports
 `CustomerApplicationModule` and `CustomerPersistenceModule` next to them; one
 that never does — both workers — carries neither.
 
 The database provider takes di's `acquire`/`release` arm, so every module that
-imports `DatabaseModule` carries a `Scope` need that only `Module.scoped` discharges — forgetting the scope is a
+imports `OrderDatabaseModule` carries a `Scope` need that only `Module.scoped` discharges — forgetting the scope is a
 compile error, and closing it disconnects a real client. The spec proves that by
 holding on to the repository past the end of the scope and watching the next
 query come back as a defect.

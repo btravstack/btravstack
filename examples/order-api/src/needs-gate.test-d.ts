@@ -14,11 +14,12 @@
 import { cache, memoryCache } from "@btravstack/cache";
 import { Env } from "@btravstack/config";
 import { start, Logger } from "@btravstack/core";
-import { Module, Port, Provider } from "@btravstack/di";
+import { Module } from "@btravstack/di";
 import { HttpModule, HttpRuntime, http } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 
 import { OrderApi, orderRouter } from "./module.js";
+import { RequestModule, ServiceModule, UserModule } from "./request-scope.js";
 import { CustomersSlice } from "./slices/customers/module.js";
 import { OrdersSlice } from "./slices/orders/module.js";
 
@@ -61,45 +62,24 @@ const RouterlessApi = Module("RouterlessApi")({
 // @ts-expect-error — the composition needs the router port and nothing provides it.
 const _missingRouter = start(RouterlessApi, options);
 
-// The `unit` needs-propagation gate: a bound `unit.anonymous` module's own
-// unmet needs join `HttpModule`'s own Needs channel (an import's own unmet
-// needs are not `HttpModule`'s OWN call to re-declare — di's `NeedsGate`
-// TSDoc), so the gate that refuses them is `start`'s ordinary
-// `UNSATISFIED DEPENDENCIES`, never a marker of the kernel's.
+// The `unit` needs-propagation gate: a bound kind's own unmet needs join
+// `HttpModule`'s own Needs channel (an import's own unmet needs are not
+// `HttpModule`'s OWN call to re-declare — di's `NeedsGate` TSDoc), so the gate
+// that refuses them is `start`'s ordinary `UNSATISFIED DEPENDENCIES`, never a
+// marker of the kernel's.
 //
-// A trivial dep/mark pair, deliberately unrelated to `RequestModule`: the
-// only need either call below can leak is this module's own.
-class HttpUnitDep extends Port("HttpUnitDep")<{ readonly value: number }> {}
-class HttpUnitMark extends Port("HttpUnitMark")<{ readonly at: number }> {}
-const HttpUnitModule = Module("HttpUnitModule")({
-  needs: [HttpUnitDep],
-  provides: [
-    Provider(HttpUnitMark)({
-      inject: { dep: HttpUnitDep },
-      sync: ({ dep }) => ({ at: dep.value }),
-    }),
-  ],
-  exports: [HttpUnitMark],
-});
-
-const _withUnitSatisfied = start(
-  HttpModule("WithUnitSatisfied")({
-    router: orderRouter,
-    unit: { anonymous: HttpUnitModule },
-    imports: [OrdersSlice, CustomersSlice, observability(), cache({ adapter: memoryCache() })],
-    provides: [Provider(HttpUnitDep)({ inject: {}, value: { value: 1 } })],
-    exports: [Logger],
-  }),
-  options,
-);
-void _withUnitSatisfied;
-
-const _unloggedUnit = HttpModule("WithUnitUnmet")({
+// `UserModule` reads `OrderDatabase` out of the application scope rather than
+// importing the database module — one Prisma client per process, not one per
+// request — so a root that binds it and composes no persistence owes the port.
+// `OrderApi` above is the positive: it imports `OrderPersistenceModule`, which
+// re-exports the database module, and exports the port the fork reads.
+const _databaselessApi = HttpModule("DatabaselessApi")({
   router: orderRouter,
-  unit: { anonymous: HttpUnitModule },
+  unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule },
   imports: [OrdersSlice, CustomersSlice, observability(), cache({ adapter: memoryCache() })],
   exports: [Logger],
 });
-// @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides `HttpUnitDep`, which `HttpUnitModule` needs
-const _withUnitUnmet = start(_unloggedUnit, options);
+
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: `OrderDatabase` | `Tracer`, which the bound kinds need
+const _withUnitUnmet = start(_databaselessApi, options);
 void _withUnitUnmet;

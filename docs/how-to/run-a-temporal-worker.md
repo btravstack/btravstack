@@ -64,17 +64,18 @@ import { P } from "unthrown";
 
 export const orderActivities = TemporalActivities(orderContract)({
   inject: {
-    place: PlaceOrder,
-    repository: OrderRepository,
     stock: StockService,
     shipping: ShippingService,
     payments: PaymentService,
   },
-  sync: ({ place, repository, stock, shipping, payments }) => ({
+  // The tenant-bound use cases, read off the fork the worker opens per
+  // attempt — see the unit module in Step 2.
+  unit: { place: PlaceOrder, repository: OrderRepository },
+  sync: ({ stock, shipping, payments }) => ({
     fulfillOrder: {
-      place: ({ errors, input }) =>
-        place
-          .execute(TenantId(input.tenantId), input.orderId, input.quantity)
+      place: ({ errors, context, input }) =>
+        context.unit.place
+          .execute(input.orderId, input.quantity)
           .map((order) => ({ id: order.id, quantity: order.quantity }))
           .mapErrCases((matcher) =>
             matcher
@@ -105,9 +106,9 @@ export const orderActivities = TemporalActivities(orderContract)({
             ),
           ),
       releaseStock: ({ input }) => stock.release(input.orderId),
-      cancelPlacement: ({ input }) =>
-        repository
-          .remove(TenantId(input.tenantId), input.orderId)
+      cancelPlacement: ({ context, input }) =>
+        context.unit.repository
+          .remove(input.orderId)
           .recoverErrCases((matcher) =>
             matcher.with(P.tag("OrderNotFound"), () => undefined),
           ),
@@ -139,27 +140,55 @@ a failure here is also what tells Temporal to stop retrying it.
 `input.tenantId` is the application's own, declared on every workflow and
 activity input by the **contract** — so Temporal persists it in the event
 history and a replay reconstructs it, and the package reads nothing about
-tenancy. `TenantId(…)` claims `examples/order-domain`'s brand at each activity
-that needs one, an activity being its own entry point; it casts rather than
-parses, because the contract already validated the field as a UUIDv7. The
-brand is what stops `execute(input.orderId, input.tenantId)` from compiling.
+tenancy. The worker seeds the per-attempt fork with that very input on
+`ActivityInput(contract)`, and the unit module in Step 2 turns it into a
+`Tenant` **once**, claiming `examples/order-domain`'s brand there rather than
+at each activity. So `PlaceOrder` and `OrderRepository` arrive on
+`context.unit` already bound, and no activity passes a tenant.
 `cancelPlacement` absorbs `OrderNotFound` on purpose — a compensation Temporal
 may re-run has to answer the same both times.
 
 ## Step 2 — the composition root
 
 ```ts
-import { OrderApplicationModule } from "@btravstack/example-order-application";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { Logger } from "@btravstack/core";
+import { Module, Provider } from "@btravstack/di";
+import {
+  OrderApplicationModule,
+  Tenant,
+} from "@btravstack/example-order-application";
+import { TenantId } from "@btravstack/example-order-domain";
+import {
+  OrderDatabase,
+  OrderPersistenceModule,
+  OrderTenantPersistence,
+} from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
-import { TemporalModule } from "@btravstack/temporal-worker";
+import { ActivityInput, TemporalModule } from "@btravstack/temporal-worker";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
 import { orderActivities } from "./activities.js";
 import { BillingModule } from "./billing.js";
 import { FulfillmentModule } from "./fulfillment.js";
+
+// Forked per attempt and seeded with the validated input, so the tenant the
+// contract carries is claimed once and the orders vertical is composed over
+// it. `OrderTenantPersistence` reads `OrderDatabase` out of the application
+// scope rather than importing the database module: one client per process,
+// not one per attempt.
+export const ActivityUnitModule = Module("ActivityUnit")({
+  needs: [ActivityInput(orderContract), OrderDatabase, Logger],
+  imports: [OrderTenantPersistence, OrderApplicationModule],
+  provides: [
+    Provider(Tenant)({
+      inject: { input: ActivityInput(orderContract) },
+      sync: ({ input }) => TenantId(input.tenantId),
+    }),
+  ],
+  exports: [Tenant, PlaceOrder, OrderRepository],
+});
 
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   contract: orderContract,
@@ -168,7 +197,6 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
     workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
   },
   imports: [
-    OrderApplicationModule,
     OrderPersistenceModule,
     FulfillmentModule,
     BillingModule,
@@ -177,6 +205,8 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
     // is what supplies it, beside the `Logger` observability() does.
     otel(),
   ],
+  unit: { activity: ActivityUnitModule },
+  exports: [Logger, OrderDatabase],
 });
 ```
 
@@ -238,7 +268,6 @@ export const Pinned = TemporalModule("OrderTemporalWorkerLocal")({
   gracePeriod: "5 seconds",
   forceAfter: "15 seconds",
   imports: [
-    OrderApplicationModule,
     OrderPersistenceModule,
     FulfillmentModule,
     BillingModule,
@@ -247,6 +276,8 @@ export const Pinned = TemporalModule("OrderTemporalWorkerLocal")({
     // is what supplies it, beside the `Logger` observability() does.
     otel(),
   ],
+  unit: { activity: ActivityUnitModule },
+  exports: [Logger, OrderDatabase],
 });
 ```
 

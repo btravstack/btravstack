@@ -51,14 +51,15 @@ oRPC router and declines to map anything itself. The router's procedures are
 `Result`-returning functions typed by the contract, and the one place a domain
 error becomes a status is the `mapErrCases` in each procedure. From
 [`examples/order-api`](/examples/order-api), whose `orders` fragment is
-`authenticated`, so the tenant comes off the principal rather than the input:
+`authenticated`, so the use case comes off the unit that request opened —
+already bound to the principal's tenant, rather than the input's:
 
 <!-- doctest: skip — a mapErrCases excerpt of the router shown in full in docs/reference/http-server.md -->
 
 ```ts
       place: ({ errors, context }, input) =>
-        place
-          .execute(context.principal.tenantId, input.id, input.quantity)
+        context.unit.place
+          .execute(input.id, input.quantity)
           .map(view)
           .mapErrCases((matcher) =>
             matcher

@@ -1,15 +1,16 @@
 import { page } from "@btravstack/contract";
-import { Provider, type ServiceOf } from "@btravstack/di";
-import { MalformedCursor, OrderRepository } from "@btravstack/example-order-application";
+import { type ServiceOf } from "@btravstack/di";
+import { MalformedCursor, type OrderRepository } from "@btravstack/example-order-application";
 import {
   DuplicateOrder,
   Order,
   OrderNotFound,
   type OrderId,
+  type TenantId,
 } from "@btravstack/example-order-domain";
 import { all, Err, P, type Result } from "unthrown";
 
-import { OrderDatabase, type OrderDatabaseClient } from "./database.js";
+import { type OrderDatabaseClient } from "./database.js";
 
 type OrderRow = { readonly orderId: string; readonly quantity: number };
 
@@ -34,13 +35,19 @@ const hydrate = (row: OrderRow): Result<Order, never> =>
  *
  * Adding a fourth P-code upstream breaks this file and nothing downstream, which
  * is the point: infrastructure vocabulary stops here.
+ *
+ * The tenant is bound once, at construction, and every statement below closes
+ * over it — so the port has no parameter a caller could name another tenant in.
  */
-export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderRepository> => ({
+export const prismaOrderRepository = (
+  db: OrderDatabaseClient,
+  tenantId: TenantId,
+): ServiceOf<OrderRepository> => ({
   // The transactional-outbox write: the row and the fact of the row commit
   // together or not at all, so there is no second bookkeeping path for the
   // event to miss. The payload is what makes it a create-or-replace; its
   // tombstone twin is in `remove`.
-  save: (tenantId, order) =>
+  save: (order) =>
     db
       .$tryTransaction((tx) =>
         tx.order
@@ -64,7 +71,7 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
       )
       .map(() => order),
 
-  find: (tenantId, id) =>
+  find: (id) =>
     db.order
       .tryFindUnique({ where: { tenantId_orderId: { tenantId, orderId: id } } })
       .flatMap((row) =>
@@ -96,7 +103,7 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
    * exclusive in the port's type, which is the library's rule as well: a page
    * runs in one direction.
    */
-  list: (tenantId, { limit, after, before, minQuantity }) =>
+  list: ({ limit, after, before, minQuantity }) =>
     db.order
       .tryPaginate({
         where: {
@@ -135,7 +142,7 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
   // outbox exists to make impossible. Nothing is written when there was nothing
   // to delete: the transaction rolls back before the insert, so a re-run of
   // `cancelPlacement` cannot append a second tombstone.
-  remove: (tenantId, id) =>
+  remove: (id) =>
     db
       .$tryTransaction((tx) =>
         tx.order.tryDelete({ where: { tenantId_orderId: { tenantId, orderId: id } } }).flatMap(() =>
@@ -152,9 +159,4 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
           .with(P.tag("ForeignKeyViolation"), (violation) => defect(violation))
           .with(P.tag("UniqueConstraintViolation"), (clash) => defect(clash)),
       ),
-});
-
-export const orderRepositoryProvider = Provider(OrderRepository)({
-  inject: { db: OrderDatabase },
-  sync: ({ db }) => prismaOrderRepository(db),
 });

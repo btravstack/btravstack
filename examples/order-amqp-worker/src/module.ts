@@ -2,18 +2,14 @@ import { AmqpHandlers, AmqpModule } from "@btravstack/amqp-worker";
 import { Env } from "@btravstack/config";
 import { Logger, Tracer } from "@btravstack/core";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
-import {
-  OrderApplicationModule,
-  OrderRepository,
-  Outbox,
-  PlaceOrder,
-} from "@btravstack/example-order-application";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { Outbox } from "@btravstack/example-order-application";
+import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { mailer } from "@btravstack/mailer";
 import { smtpMailer } from "@btravstack/mailer/smtp";
 import { observability } from "@btravstack/observability";
-import { UnitSpanModule, otel } from "@btravstack/observability/otel";
+import { otel } from "@btravstack/observability/otel";
 
+import { MessageUnitModule } from "./message-unit.js";
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
 import { orderAudit } from "./slices/audit/handler.js";
 import { AuditSlice } from "./slices/audit/module.js";
@@ -40,14 +36,16 @@ export const orderHandlers = AmqpHandlers(orderContract)([orderNotifications, or
  * of ITS OWN `deps`, so a dropped import is an undeclared need at THIS call,
  * refused by di's `NeedsGate` naming the exact port, not a runtime surprise.
  *
- * The exports are the writer's surface: what a writer in the same process
- * places and cancels orders through, and what the specs tap. Both write paths
- * leave the outbox an event, which is what this deployment demonstrates.
+ * The exports are what the relay and the message fork read out of the
+ * application scope. `PlaceOrder` and `OrderRepository` are not among them:
+ * nothing at the root can build a tenant-bound repository, so a writer in the
+ * same process composes its own scope over `OrderDatabase`.
  *
  * Tenancy is the CONTRACT's, not the transport's: the envelope carries
- * `tenantId`, and the relay's own side is `OUTBOX_TENANTS`. Everything else is
- * read from the environment inside the graph, so `main.ts` boots this value as
- * is and the specs boot it with `env` pointing at each test's own vhost.
+ * `tenantId`, which `MessageUnitModule` turns into the fork's `Tenant`, and
+ * the relay's own side is `OUTBOX_TENANTS`. Everything else is read from the
+ * environment inside the graph, so `main.ts` boots this value as is and the
+ * specs boot it with `env` pointing at each test's own vhost.
  */
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   // This root provides `relayConfig` itself, so `Env` is its OWN provider's
@@ -56,7 +54,6 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
   imports: [
-    OrderApplicationModule,
     OrderPersistenceModule,
     NotificationsSlice,
     AuditSlice,
@@ -65,10 +62,9 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     otel(),
   ],
   provides: [relayConfig, outboxRelay],
-  // The worker forks `UnitSpanModule` once per delivery, after the message is
-  // validated; its own need, `Tracer`, is satisfied by `otel()` above.
-  unit: { message: UnitSpanModule },
-  // `Tracer` beside `Logger` for the same reason: `UnitSpanModule` reads it
-  // out of the application scope once forked.
-  exports: [PlaceOrder, OrderRepository, Outbox, Logger, Tracer],
+  // The worker forks this once per delivery, after the message is validated —
+  // which is where the envelope's `tenantId` becomes the fork's `Tenant`.
+  unit: { message: MessageUnitModule },
+  // Everything the fork and the relay read out of the application scope.
+  exports: [Outbox, OrderDatabase, Logger, Tracer],
 });

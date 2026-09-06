@@ -10,8 +10,9 @@ import { Env } from "@btravstack/config";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { OkAsync } from "unthrown";
-import { OrderApplicationModule, OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { Outbox } from "@btravstack/example-order-application";
+import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { MessageUnitModule } from "../../message-unit.js";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { outboxRelay, relayConfig } from "../../outbox-relay.js";
 import { AuditSlice } from "../../slices/audit/module.js";
@@ -106,7 +107,6 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
   imports: [
-    OrderApplicationModule,
     OrderPersistenceModule,
     NotificationsSlice,
     AuditSlice,
@@ -114,7 +114,11 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     otel(),
   ],
   provides: [relayConfig, outboxRelay],
-  exports: [PlaceOrder, OrderRepository, Outbox, Logger, Tracer],
+  // Forked per delivery, after the message is validated: where the envelope's
+  // `tenantId` becomes the fork's `Tenant`.
+  unit: { message: MessageUnitModule },
+  // Everything the fork and the relay read out of the application scope.
+  exports: [Outbox, OrderDatabase, Logger, Tracer],
 });
 ```
 

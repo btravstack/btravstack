@@ -10,9 +10,10 @@ import { HttpModule } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 import { P } from "unthrown";
 import type { Order } from "@btravstack/example-order-domain";
-import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
+import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { api } from "../../auth.js";
+import { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
 import { customersController } from "../../slices/customers/controller.js";
 import { CustomersSlice } from "../../slices/customers/module.js";
 declare const view: (order: Order) => { id: string; quantity: number };
@@ -127,11 +128,14 @@ export const ordersController = api.OrpcController(
   contract,
   "orders",
 )({
-  inject: { place: PlaceOrder, find: FindOrder },
-  sync: ({ place, find }) => ({
+  inject: {},
+  // The tenant-bound use cases, read off the fork the answerer opened for
+  // this request — see Step 3.
+  unit: { place: PlaceOrder, find: FindOrder },
+  sync: () => ({
     place: ({ errors, context }, input) =>
-      place
-        .execute(context.principal.tenantId, input.id, input.quantity)
+      context.unit.place
+        .execute(input.id, input.quantity)
         .map(view)
         .mapErrCases((matcher) =>
           matcher
@@ -157,8 +161,8 @@ export const ordersController = api.OrpcController(
             ),
         ),
     find: ({ errors, context }, input) =>
-      find
-        .execute(context.principal.tenantId, input.id)
+      context.unit.find
+        .execute(input.id)
         .map(view)
         .mapErrCases((matcher) =>
           matcher.with(P.tag("OrderNotFound"), (error) =>
@@ -188,17 +192,15 @@ The controller does no oRPC work of its own — it stores a plain record, and
 on `.port`, which the composing form reads — stripping the port id's own
 prefix back off — to recover each piece's path and order its construction
 before the router's — there is nothing to name by hand. A slice ships its controller as a module
-that **imports the vertical it needs** and exports only that controller, the
-same privacy di already gives any provider:
+that **imports whatever its own providers close over** and exports only that
+controller, the same privacy di already gives any provider:
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
   // The controller writes a line itself, so `Logger` is this slice's own
-  // provider's need. The environment its persistence reads `DATABASE_URL` from
-  // is not: that one is `DatabaseModule`'s, declared there and inherited
-  // through the imports below.
+  // provider's need. The use cases are not: a leaf reaches them off
+  // `context.unit`, never through `inject`.
   needs: [Logger],
-  imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [ordersController],
   exports: [ordersController],
 });
@@ -206,15 +208,14 @@ export const OrdersSlice = Module("OrdersSlice")({
 
 `exports` takes the provider itself, not `ordersController.port`: the port was
 minted inside `OrpcController`, so there is no class to spell back off it.
-Importing the vertical here rather than leaving `PlaceOrder` and `FindOrder`
-as needs for the root is what makes the slice a unit — the reason to open this
-directory is the whole reason it exists. A vertical is a pair of modules of
-its own — the customers slice imports `CustomerApplicationModule` and
-`CustomerPersistenceModule` — so importing one slice's vertical brings none of
-another's. Where slices do converge, on the internal database module both
-persistence modules import, it is a diamond and not duplication: di flattens
-the module tree into a `Set` keyed by provider **reference**, so one database
-is built.
+
+What a slice imports is whatever its OWN providers close over. This one
+imports nothing, because the use cases its controller reads are built per
+request in the `user` kind's module rather than at the root — the tenancy
+showing through the composition. A slice whose controller reads a port the
+application scope owns imports that vertical here instead: the customers slice
+imports `CustomerApplicationModule` and `CustomerPersistenceModule`, since its
+procedures are unmarked and its repository takes its tenant as an argument.
 
 ## Step 3 — the composed root
 
@@ -236,14 +237,20 @@ owns:
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
-  exports: [Logger],
+  unit: {
+    anonymous: RequestModule,
+    user: UserModule,
+    service: ServiceModule,
+  },
+  imports: [OrdersSlice, CustomersSlice, OrderPersistenceModule, observability()],
+  exports: [Logger, OrderDatabase],
 });
 ```
 
 `observability()` is here because every slice's layers write to its `Logger`
-and none of them owns it; `Logger` is exported because the per-request module
-reads it. The **authenticators are not** here, and that is the point: who a
+and none of them owns it; `OrderPersistenceModule` because the one Prisma
+client belongs to the process rather than to a request. Both are exported
+because the unit kinds read them once forked. The **authenticators are not** here, and that is the point: who a
 caller is is one answer per process, so they were declared once in `auth.ts`
 and they ride the router, which is what needs them — `HttpModule` puts them in
 `provides` itself. A marked fragment makes each scheme it names a dependency of

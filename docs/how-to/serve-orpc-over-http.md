@@ -8,7 +8,7 @@ import { start } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { HttpRuntime, http } from "@btravstack/http-server";
 import { api } from "../../auth.js";
-import { RequestModule } from "../../request-scope.js";
+import { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
 -->
 
 # Serve an oRPC contract over HTTP
@@ -118,11 +118,14 @@ const view = (order: Order): OrderView => ({
 });
 
 export const ordersRouter = api.OrpcRouter(ordersContract)({
-  inject: { place: PlaceOrder, find: FindOrder },
-  sync: ({ place, find }) => ({
+  inject: {},
+  // The tenant-bound use cases, read off the fork the answerer opened for
+  // this request — see Step 3.
+  unit: { place: PlaceOrder, find: FindOrder },
+  sync: () => ({
     place: ({ errors, context }, input) =>
-      place
-        .execute(context.principal.tenantId, input.id, input.quantity)
+      context.unit.place
+        .execute(input.id, input.quantity)
         .map(view)
         .mapErrCases((matcher) =>
           matcher
@@ -148,8 +151,8 @@ export const ordersRouter = api.OrpcRouter(ordersContract)({
             ),
         ),
     find: ({ errors, context }, input) =>
-      find
-        .execute(context.principal.tenantId, input.id)
+      context.unit.find
+        .execute(input.id)
         .map(view)
         .mapErrCases((matcher) =>
           matcher.with(P.tag("OrderNotFound"), (error) =>
@@ -168,9 +171,11 @@ Each leaf is the `.result()` handler `@unthrown/orpc` gives an implementer:
 (the client sees `code: "CONFLICT"` as a value), and a `Defect` rethrows onto
 oRPC's own path, where it collapses to `INTERNAL_SERVER_ERROR`. `implement`,
 `os.…`, `.result(...)` and `os.router(...)` are what the call does for you.
-oRPC's context carries **one** thing, and only under a protected procedure: the
-`principal` the scheme's authenticator resolved. Everything else a procedure
-needs, the provider declared. These two procedures name **one** scheme, so the
+oRPC's context carries **two** things under a protected procedure: the
+`principal` the scheme's authenticator resolved, and `unit`, the ports this
+piece declared — resolved out of the fork the answerer opened for the kind
+that authenticated the request. Everything else a procedure needs, the
+provider declared. These two procedures name **one** scheme, so the
 principal is that scheme's identity bare; a procedure naming several would get
 a discriminated union its handler has to narrow.
 
@@ -185,26 +190,35 @@ a compile error: the signal to use the factory, not a fallback. See
 
 ```ts
 import { Logger, Meter, Tracer } from "@btravstack/core";
-import { OrderApplicationModule } from "@btravstack/example-order-application";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import {
+  OrderDatabase,
+  OrderPersistenceModule,
+} from "@btravstack/example-order-infrastructure";
 import { HttpModule } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 
-import { RequestModule } from "../../request-scope.js";
+import {
+  RequestModule,
+  ServiceModule,
+  UserModule,
+} from "../../request-scope.js";
 import { ordersRouter } from "./router.js";
 
 export const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
-  unit: { anonymous: RequestModule },
-  imports: [
-    OrderApplicationModule,
-    OrderPersistenceModule,
-    observability(),
-    otel(),
-  ],
-  // `RequestModule` reads all three out of the application scope once forked.
-  exports: [Logger, Tracer, Meter],
+  // One module per kind a request can open under. `UserModule` is where the
+  // principal's tenant becomes a `Tenant` and the use cases above are
+  // composed over it — see [Open a per-request
+  // scope](/how-to/open-a-per-request-scope).
+  unit: {
+    anonymous: RequestModule,
+    user: UserModule,
+    service: ServiceModule,
+  },
+  imports: [OrderPersistenceModule, observability(), otel()],
+  // Everything a forked kind reads out of the application scope.
+  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 
@@ -216,15 +230,19 @@ carries**, and exports
 ```ts
 Module("OrdersApi")({
   imports: [
-    OrderApplicationModule,
     OrderPersistenceModule,
     observability(),
-    http(),
+    otel(),
+    http({ unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule } }),
   ],
   provides: [ordersRouter, ...ordersRouter.authenticators],
-  exports: [HttpRuntime, Logger],
+  exports: [HttpRuntime, Logger, Tracer, Meter, OrderDatabase],
 });
 ```
+
+The one thing the hand-written form does NOT get is the gate on `unit`:
+`http()` takes the router as a need rather than a value, so it cannot check the
+kinds against what the api declared, where `HttpModule` can.
 
 There is **no authenticator to list**: it rides the router, which is what needs
 it, so a scheme cannot be forgotten and cannot be wired to the wrong router.
@@ -237,7 +255,7 @@ an unmet need `start` refuses, naming the port
 brings the `Logger` the use cases and the request scope write to, bound from
 `LOG_LEVEL`, one JSON object per line on stdout, every line carrying the
 trace id of the unit `http()` opened around the request. It is exported
-because the per-request `RequestModule` reads it.
+because every unit kind reads it once forked, as `OrderDatabase` is.
 
 Three gates hold at compile time, now that the contract is marked. A root that
 forgets the starter exports no runtime port and `start` refuses it against
@@ -351,6 +369,6 @@ under the request already carries it — see
   split.
 - [Order API (HTTP)](/examples/order-api) — the real deployment this recipe
   scales into, two slices composed through controllers, client half included.
-- [Open a per-request scope](/how-to/open-a-per-request-scope) — binding `RequestModule` on `HttpModule`'s own `unit` option.
+- [Open a per-request scope](/how-to/open-a-per-request-scope) — binding a module per unit kind on `HttpModule`'s own `unit` option.
 - [Configure from the environment](/how-to/configure-from-the-environment) — how `PORT`/`HOST` are bound.
 - [Use with oRPC](https://btravstack.github.io/unthrown/how-to/use-with-orpc) — the `@unthrown/orpc` bridge itself.

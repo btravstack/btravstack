@@ -25,6 +25,7 @@ import {
   type CustomerId,
   type OrderId,
 } from "@btravstack/example-order-domain";
+import type { OrderDatabase } from "@btravstack/example-order-infrastructure";
 import type { HttpHandler, HttpInfo, HttpRuntime } from "@btravstack/http-server";
 import { LoggerConfig, createLogger, type Line, type Sink } from "@btravstack/observability";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
@@ -34,7 +35,8 @@ import { uuidv7 } from "uuidv7";
 import { inject, test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "../client.js";
-import { OrderApi } from "../module.js";
+import { OrderApi, orderApiOver } from "../module.js";
+import { RequestModule, ServiceModule, UserModule } from "../request-scope.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
 
@@ -43,22 +45,28 @@ const FIRST_ID = "0199a1e0-0000-7000-8000-00000000000a";
 const SECOND_ID = "0199a1e0-0000-7000-8000-00000000000b";
 
 /**
- * Both repositories as overrides, so one call closes both verticals. Only the
- * orders half varies per spec; the customers one holds a single registered
- * customer.
+ * The customers repository as an override on the ROOT: its port is in the
+ * application scope, because the procedures it serves are unmarked.
  */
-const persistenceOf = (repository: ServiceOf<OrderRepository>) => [
-  Provider(OrderRepository)({ inject: {}, value: repository }),
-  Provider(CustomerRepository)({
-    inject: {},
-    value: {
-      find: (_tenantId: TenantId, id: string) =>
-        id === "0199a1e0-0000-7000-8000-0000000000c1"
-          ? OkAsync(Customer.make({ id, name: "Ada" }).getOrThrow())
-          : ErrAsync(new CustomerNotFound({ id: id as CustomerId })),
-    },
-  }),
-];
+const stubCustomers = Provider(CustomerRepository)({
+  inject: {},
+  value: {
+    find: (_tenantId: TenantId, id: string) =>
+      id === "0199a1e0-0000-7000-8000-0000000000c1"
+        ? OkAsync(Customer.make({ id, name: "Ada" }).getOrThrow())
+        : ErrAsync(new CustomerNotFound({ id: id as CustomerId })),
+  },
+});
+
+/**
+ * The orders repository is overridden INSIDE the `user` kind, because that is
+ * where it is built: `overridden(UserModule, …)` replaces the provider
+ * `OrderTenantPersistence` contributes, so the stub answers and no Prisma
+ * repository is constructed. The real database still opens — an override
+ * replaces one provider, never a subsystem.
+ */
+const userKindOver = (repository: ServiceOf<OrderRepository>) =>
+  overridden(UserModule, [Provider(OrderRepository)({ inject: {}, value: repository })]);
 
 /** A sink that keeps what it was given, so a spec asserts on the line's fields rather than on a string. */
 const recorderOf = () => {
@@ -67,22 +75,29 @@ const recorderOf = () => {
 };
 
 /**
- * `OrderApi` ITSELF with persistence and the logger overridden, not a parallel
- * root: `overridden` REPLACES those providers by port, so the stub answers and
- * the real adapter is never constructed. The database client behind it still
- * opens — an override replaces one provider, never a subsystem.
+ * The real root's own composition — `orderApiOver` is what `OrderApi` itself
+ * calls — with the stub kind in place of the `user` one and the customers
+ * repository and logger overridden at the root. Not a parallel root: one
+ * definition, and an override the graph stops backing is a loud `WiringDefect`.
  *
  * The sink defaults to a no-op, since the real `jsonSink()` would put the
  * application's lines in the runner's own output.
  */
 const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) =>
-  overridden(OrderApi, [
-    ...persistenceOf(repository),
-    Provider(Logger)({
-      inject: { config: LoggerConfig },
-      sync: ({ config }) => createLogger(sink, config.level),
+  overridden(
+    orderApiOver({
+      anonymous: RequestModule,
+      user: userKindOver(repository),
+      service: ServiceModule,
     }),
-  ]);
+    [
+      stubCustomers,
+      Provider(Logger)({
+        inject: { config: LoggerConfig },
+        sync: ({ config }) => createLogger(sink, config.level),
+      }),
+    ],
+  );
 
 /**
  * The real root's composition with a recording sink in place of stdout. A sink
@@ -133,8 +148,8 @@ const countingCustomers = () => {
  */
 const stubbedApi = () =>
   apiWith({
-    save: (_tenantId, order) => OkAsync(order),
-    find: (_tenantId, id) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
+    save: (order) => OkAsync(order),
+    find: (id) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
     // One page with more behind it, and a cursor nobody but the stub can read —
     // which is the point: `after` is opaque above the adapter, so the specs
     // assert the round trip rather than the string.
@@ -144,7 +159,7 @@ const stubbedApi = () =>
     // round-trip test pass on an altered cursor, which is the one thing that
     // test exists to rule out. Two pages, so `before` has somewhere to go back
     // to — the direction a "previous" link exercises.
-    list: (_tenantId, { after, before }) => {
+    list: ({ after, before }) => {
       const first = page([anOrder(FIRST_ID, 1)], { previous: null, next: "page-1-end" });
       if (before !== undefined)
         return before === "page-2-start"
@@ -165,7 +180,7 @@ const stubbedApi = () =>
  */
 const unmodelledApi = () =>
   apiWith({
-    save: (_tenantId, order) => OkAsync(order),
+    save: (order) => OkAsync(order),
     find: () => fromSafePromise(Promise.reject(new Error("the database is on fire"))),
     list: () => OkAsync(page([], { previous: null, next: null })),
     remove: () => OkAsync(),
@@ -188,8 +203,8 @@ const gatedApi = () => {
 
   return {
     api: apiWith({
-      save: (_tenantId, order) => OkAsync(order),
-      find: (_tenantId, id) => {
+      save: (order) => OkAsync(order),
+      find: (id) => {
         entered();
         return fromSafePromise(held.then(() => anOrder(id, 1)));
       },
@@ -225,15 +240,19 @@ export type ApiFixtures = {
   readonly tenant: string;
   /**
    * Starts an app on an ephemeral loopback port, through `boot` — so its
-   * shutdown is the fixture's. `RequestModule` is forked by the answerers
-   * themselves, per `OrderApi`'s own `unit` option — nothing here supplies it.
+   * shutdown is the fixture's. The three unit kinds are forked by the answerers
+   * themselves, per `OrderApi`'s own `unit` option — nothing here supplies them.
    *
    * The module's `X` is pinned rather than left generic: `start`'s gate is
    * proven at the call site, and no proof is available inside a helper generic
    * in the module's own exports.
    */
   readonly serve: <E>(
-    module: Module<HttpRuntime | HttpHandler | Logger | Tracer | Meter, E, Scope | Env>,
+    module: Module<
+      HttpRuntime | HttpHandler | Logger | Tracer | Meter | InstanceType<typeof OrderDatabase>,
+      E,
+      Scope | Env
+    >,
     options?: Pick<StartOptions, "drainTimeoutMs" | "probes">,
   ) => RunningApp<E, HttpInfo>;
   /**

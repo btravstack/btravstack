@@ -8,9 +8,12 @@ import { Tracer } from "@btravstack/core";
 import { TemporalActivities, TemporalModule, TemporalWorkflowActivities } from "@btravstack/temporal-worker";
 import { P } from "unthrown";
 import { observability } from "@btravstack/observability";
-import { otel, UnitSpanModule } from "@btravstack/observability/otel";
+import { otel } from "@btravstack/observability/otel";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { PaymentService } from "@btravstack/example-order-application";
+import { Logger } from "@btravstack/core";
+import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { ActivityUnitModule } from "../../activity-unit.js";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 import { fulfillOrder } from "../../slices/fulfillment/activities.js";
 import { FulfillmentSlice } from "../../slices/fulfillment/module.js";
@@ -51,13 +54,18 @@ is not part of placing, reserving or shipping the order. This worker is a
 modulith of two slices, `src/slices/fulfillment/` and `src/slices/billing/`,
 one per workflow — the same shape [`order-api`](/examples/order-api)'s HTTP
 controllers use, but with a property `order-amqp-worker`'s two subscriber
-slices deliberately do **not** have: each slice here owns a genuinely
-different vertical. `FulfillmentSlice` imports the orders vertical
-(`OrderApplicationModule` + `OrderPersistenceModule`) plus `FulfillmentModule`;
-`BillingSlice` imports `BillingModule` alone. `PlaceOrder` is as invisible
-inside `BillingSlice` as `PaymentService` is inside `FulfillmentSlice` — the
-two verticals meet only at the root, in the list of slices, never inside
-either slice's own graph.
+slices deliberately do **not** have: each slice here orchestrates a genuinely
+different thing. `FulfillmentSlice` imports `FulfillmentModule`;
+`BillingSlice` imports `BillingModule`. `PaymentService` is as invisible
+inside the first as the two fulfillment services are inside the second — they
+meet only at the root, in the list of slices, never inside either slice's own
+graph.
+
+Neither imports the orders vertical, and that is the tenancy showing through:
+`PlaceOrder` and `OrderRepository` are built per ATTEMPT, in
+`ActivityUnitModule`, over the tenant the attempt's own input names — so
+`fulfillOrder` declares them beside `inject` and reads them off
+`context.unit`.
 
 `TemporalWorkflowActivities(contract, key)` mints one piece per workflow — no
 port class, no name, since the contract key IS the port's name — and the piece
@@ -141,11 +149,18 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   workflows: {
     workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
   },
-  imports: [FulfillmentSlice, BillingSlice, observability(), otel()],
-  // The worker forks `UnitSpanModule` once per activity attempt, after it is
-  // invoked; its own need, `Tracer`, is satisfied by `otel()` above.
-  unit: { activity: UnitSpanModule },
-  exports: [Tracer],
+  imports: [
+    FulfillmentSlice,
+    BillingSlice,
+    OrderPersistenceModule,
+    observability(),
+    otel(),
+  ],
+  // Forked once per activity attempt, after it is invoked and before the body
+  // runs — which is where the input's `tenantId` becomes the fork's `Tenant`.
+  unit: { activity: ActivityUnitModule },
+  // Everything the fork reads out of the application scope.
+  exports: [Tracer, Logger, OrderDatabase],
 });
 ```
 

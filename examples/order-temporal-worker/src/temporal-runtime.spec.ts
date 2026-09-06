@@ -45,9 +45,7 @@ describe("the fulfillment saga", () => {
     ]);
 
     // AND the placement is durably there
-    await expect(
-      fulfilling.services().repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001"),
-    ).toBeOkWith(
+    await expect(fulfilling.reader(tenant).find("0199a1e0-0000-7000-8000-000000000001")).toBeOkWith(
       expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 }),
     );
   });
@@ -133,7 +131,7 @@ describe("the fulfillment saga", () => {
     // AND the placement the saga made before the refusal is gone — the
     // compensation ran, and the database agrees with the answer
     await expect(
-      outOfStock.services().repository.find(tenant, "0199a1e0-0000-7000-8000-000000000002"),
+      outOfStock.reader(tenant).find("0199a1e0-0000-7000-8000-000000000002"),
     ).toBeErrTagged("OrderNotFound", {
       id: "0199a1e0-0000-7000-8000-000000000002",
     });
@@ -193,7 +191,7 @@ describe("the fulfillment saga", () => {
 
     // AND the placement is gone too
     await expect(
-      noShipping.services().repository.find(tenant, "0199a1e0-0000-7000-8000-000000000003"),
+      noShipping.reader(tenant).find("0199a1e0-0000-7000-8000-000000000003"),
     ).toBeErrTagged("OrderNotFound", {
       id: "0199a1e0-0000-7000-8000-000000000003",
     });

@@ -29,10 +29,10 @@ export const relayConfig = Config.provider("RelayConfig")(
  * `"acme, globex"` → `["acme", "globex"]`; blank entries dropped, so a trailing
  * comma is not a tenant named `""`.
  *
- * The one place this deployment claims the `TenantId` brand: the relay's
- * tenants come from configuration rather than from a contract, so this parse
- * IS the boundary, and every sweep below carries the brand from here without
- * casting again.
+ * The relay's own brand boundary, and the only one in this deployment that is
+ * not a unit's: its tenants come from configuration rather than from a
+ * contract, so this parse IS the boundary, and every sweep below carries the
+ * brand from here without casting again.
  */
 const tenantsOf = (value: string): readonly TenantId[] =>
   value

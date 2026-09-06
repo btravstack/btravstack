@@ -1,4 +1,4 @@
-export { CustomerApplicationModule, OrderApplicationModule } from "./module.js";
+export { CustomerApplicationModule, OrderApplicationModule, tenantOf } from "./module.js";
 export { MalformedCursor } from "./pagination.js";
 export {
   CustomerRepository,
@@ -11,6 +11,7 @@ export {
   PlaceOrder,
   ShippingService,
   StockService,
+  Tenant,
   type OrderEvent,
   type OrderQuery,
 } from "./ports.js";

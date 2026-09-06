@@ -1,7 +1,7 @@
 /**
  * The compile-time half of the layering, once per vertical:
- * `OrderApplicationModule` declares `OrderRepository` and `Logger` as unmet
- * needs and `CustomerApplicationModule` declares `CustomerRepository`, so di's
+ * `OrderApplicationModule` declares `OrderRepository`, `Logger` and `Tenant` as
+ * unmet needs and `CustomerApplicationModule` declares `CustomerRepository`, so di's
  * `DependencyGate` refuses scoping either one at the call site — with the
  * missing port in the message —
  * until an outer module provides them — and, since the `needs` gate, an outer
@@ -33,18 +33,21 @@ import {
   OrderApplicationModule,
   OrderRepository,
   PlaceOrder,
+  tenantOf,
 } from "./index.js";
 import { findOrderProvider, placeOrderProvider } from "./use-cases.js";
 
 const orderRepository = Provider(OrderRepository)({
   inject: {},
   value: {
-    save: (_tenantId: TenantId, order: Order) => ErrAsync(new DuplicateOrder({ id: order.id })),
-    find: (_tenantId: TenantId, id: string) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
+    save: (order: Order) => ErrAsync(new DuplicateOrder({ id: order.id })),
+    find: (id: string) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
     list: () => OkAsync(page([], { previous: null, next: null })),
-    remove: (_tenantId: TenantId, id: string) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
+    remove: (id: string) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
   },
 });
+
+const tenant = tenantOf(TenantId("acme"));
 
 const customerRepository = Provider(CustomerRepository)({
   inject: {},
@@ -59,12 +62,12 @@ const logger = Provider(Logger)({ inject: {}, value: createLogger(() => {}) });
 // Negative: nothing provides `OrderRepository`, so `DependencyGate`'s marker
 // object rides `Module.scoped`'s parameter and the call fails assignability —
 // the message ends on `required in type '{ readonly "UNSATISFIED DEPENDENCIES
-// — nothing provides": Logger | OrderRepository; }'` (measured), the label and
-// the ports both printed. The rest-tuple arity error this replaced printed
-// `Expected 5 arguments, but got 2` and nothing else.
+// — nothing provides": Logger | OrderRepository | Tenant; }'` (measured), the
+// label and the ports both printed. The rest-tuple arity error this replaced
+// printed `Expected 5 arguments, but got 2` and nothing else.
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no OrderRepository is provided.
 const _unwiredOrders = Module.scoped(OrderApplicationModule, (ctx) =>
-  ctx.get(PlaceOrder).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001", 1),
+  ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-000000000001", 1),
 );
 
 // Negative, the same gate on the sibling module and a different port: the
@@ -95,21 +98,37 @@ const _miswired = Module.scoped(MiswiredCustomers, (ctx) =>
 // Negative, the other port of the orders pair: the repository alone does not
 // close the module, because `PlaceOrder` writes a line.
 const LoglessOrders = Module("LoglessOrders")({
-  imports: [OrderApplicationModule],
+  imports: [OrderApplicationModule, tenant],
   provides: [orderRepository],
   exports: [PlaceOrder, FindOrder],
 });
 
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no Logger is provided.
 const _logless = Module.scoped(LoglessOrders, (ctx) =>
-  ctx.get(FindOrder).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001"),
+  ctx.get(FindOrder).execute("0199a1e0-0000-7000-8000-000000000001"),
+);
+
+// Negative, and the property the move into the unit bought: a root that
+// composes the orders vertical without saying which tenant it is scoped to
+// cannot be scoped at all. Before the move there was nothing to leave out —
+// every call carried its own tenant, so a graph with no tenant in it was a
+// graph that compiled.
+const TenantlessOrders = Module("TenantlessOrders")({
+  imports: [OrderApplicationModule],
+  provides: [orderRepository, logger],
+  exports: [PlaceOrder, FindOrder],
+});
+
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: no Tenant is provided.
+const _tenantless = Module.scoped(TenantlessOrders, (ctx) =>
+  ctx.get(FindOrder).execute("0199a1e0-0000-7000-8000-000000000001"),
 );
 
 // Negative, and the OTHER gate — the distinction the two draw. Here the
 // interactors are this module's OWN providers rather than an import's, so
 // `OrderRepository` and `Logger` are its to name, and leaving `needs` out is
 // refused at the declaration instead of at `Module.scoped`.
-// @ts-expect-error — UNDECLARED NEEDS: Logger | OrderRepository.
+// @ts-expect-error — UNDECLARED NEEDS: Logger | OrderRepository | Tenant.
 const UndeclaredOrders = Module("UndeclaredOrders")({
   provides: [placeOrderProvider, findOrderProvider],
   exports: [PlaceOrder, FindOrder],
@@ -118,7 +137,7 @@ const UndeclaredOrders = Module("UndeclaredOrders")({
 void UndeclaredOrders;
 
 const WiredOrders = Module("WiredOrders")({
-  imports: [OrderApplicationModule],
+  imports: [OrderApplicationModule, tenant],
   provides: [
     orderRepository,
     // The logger without the starter: `observability()` is the default, not
@@ -129,10 +148,10 @@ const WiredOrders = Module("WiredOrders")({
   exports: [PlaceOrder, FindOrder],
 });
 
-// Positive: the repository and a logger discharge every need the orders
-// vertical has, and this is an ordinary two-argument call.
+// Positive: the repository, a logger and a tenant discharge every need the
+// orders vertical has, and this is an ordinary two-argument call.
 const _wiredOrders = Module.scoped(WiredOrders, (ctx) =>
-  ctx.get(FindOrder).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001"),
+  ctx.get(FindOrder).execute("0199a1e0-0000-7000-8000-000000000001"),
 );
 
 const WiredCustomers = Module("WiredCustomers")({

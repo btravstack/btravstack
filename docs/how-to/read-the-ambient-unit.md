@@ -50,11 +50,12 @@ on a message — is a decision about a specific system, and so is what happens
 when it is missing. The field is there for a hand-rolled runtime whose author
 has answered both.
 
-So the practical rule for reading one: **do not**. Take it as a parameter the
-way `repository.find(tenantId, id)` does, and a use case that forgot it will
-not compile. `currentUnit()?.tenantId` is for the adapter that has no parameter
-to receive it through — an exporter tagging a span, a database adapter choosing
-a schema — and only once a runtime you wrote put it there.
+So the practical rule for reading one: **do not**. Declare it, the way
+`examples/order-application` declares a `Tenant` port that the unit module
+each transport binds provides — a graph that never said which tenant it is
+scoped to then does not compile. `currentUnit()?.tenantId` is for the adapter
+that has no way to be given one — an exporter tagging a span, a database
+adapter choosing a schema — and only once a runtime you wrote put it there.
 
 The reasoning, and what a framework tenancy model would have had to answer, is
 [Ambient data, injected capabilities](/explanation/ambient-vs-context#multi-tenancy-is-the-application-s-not-the-framework-s).

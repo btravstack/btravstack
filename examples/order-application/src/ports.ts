@@ -18,13 +18,19 @@ import type { AsyncResult } from "unthrown";
 import type { MalformedCursor } from "./pagination.js";
 
 /**
+ * The tenant one unit of work is scoped to. A port rather than a parameter:
+ * whoever opens the unit — an authenticated request, an activity attempt, a
+ * delivery — provides it once, and everything built inside that unit is bound
+ * to it.
+ */
+export class Tenant extends Port("Tenant")<TenantId> {}
+
+/**
  * The port the infrastructure layer fills, declared here rather than in the
  * adapter because the use cases own the shape they need.
  *
- * **Every method names its tenant, and that is the application's design rather
- * than the framework's.** Making it a parameter is what keeps it visible: a use
- * case that forgot to pass one does not compile, and a test needs no machinery
- * to set one.
+ * No method names a tenant: the adapter is built inside a unit that already
+ * has one, so a call cannot name somebody else's.
  *
  * Both write paths promise more than a row: `save` also leaves an event in the
  * outbox and `remove` leaves a **tombstone**, each atomically, so a subscriber
@@ -32,13 +38,10 @@ import type { MalformedCursor } from "./pagination.js";
  * value, so a duplicate compensation is inert.
  */
 export class OrderRepository extends Port("OrderRepository")<{
-  readonly save: (tenantId: TenantId, order: Order) => AsyncResult<Order, DuplicateOrder>;
-  readonly find: (tenantId: TenantId, id: string) => AsyncResult<Order, OrderNotFound>;
-  readonly list: (
-    tenantId: TenantId,
-    query: OrderQuery,
-  ) => AsyncResult<Page<Order>, MalformedCursor>;
-  readonly remove: (tenantId: TenantId, id: string) => AsyncResult<void, OrderNotFound>;
+  readonly save: (order: Order) => AsyncResult<Order, DuplicateOrder>;
+  readonly find: (id: string) => AsyncResult<Order, OrderNotFound>;
+  readonly list: (query: OrderQuery) => AsyncResult<Page<Order>, MalformedCursor>;
+  readonly remove: (id: string) => AsyncResult<void, OrderNotFound>;
 }> {}
 
 /**
@@ -51,7 +54,9 @@ export class OrderRepository extends Port("OrderRepository")<{
 export type OrderQuery = PageRequest & { readonly minQuantity?: number | undefined };
 
 /**
- * The customers slice's own port. It needs the **entity** — never
+ * The customers slice's own port. Its tenant stays a parameter: the unmarked
+ * `customers` procedures open an anonymous unit, which has no principal to
+ * take one from, so the caller names it on the input. It needs the **entity** — never
  * `CustomerView`, which is the transport's shape and would point the dependency
  * arrow outwards. Read-only, because nothing here registers a customer yet.
  */
@@ -127,21 +132,17 @@ export class PaymentService extends Port("PaymentService")<{
 
 export class PlaceOrder extends Port("PlaceOrder")<{
   readonly execute: (
-    tenantId: TenantId,
     id: string,
     quantity: number,
   ) => AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder>;
 }> {}
 
 export class FindOrder extends Port("FindOrder")<{
-  readonly execute: (tenantId: TenantId, id: string) => AsyncResult<Order, OrderNotFound>;
+  readonly execute: (id: string) => AsyncResult<Order, OrderNotFound>;
 }> {}
 
 export class ListOrders extends Port("ListOrders")<{
-  readonly execute: (
-    tenantId: TenantId,
-    query: OrderQuery,
-  ) => AsyncResult<Page<Order>, MalformedCursor>;
+  readonly execute: (query: OrderQuery) => AsyncResult<Page<Order>, MalformedCursor>;
 }> {}
 
 export class FindCustomer extends Port("FindCustomer")<{

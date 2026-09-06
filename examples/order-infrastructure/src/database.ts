@@ -26,10 +26,10 @@ export type OrderDatabaseClient = ReturnType<typeof createClient>;
  * the same, once per run, so a test exercises the statements a deployment runs
  * rather than a copy that can drift.
  *
- * Internal to this layer: `module.ts` imports it and does not re-export
- * `OrderDatabase`, so no outer module can reach the client and start speaking
- * SQL. The only things that cross the boundary are the repositories and the
- * outbox.
+ * `OrderPersistenceModule` re-exports it, so a unit forked over the
+ * application scope can read the client — which is what
+ * `OrderTenantPersistence` binds a tenant to. Nothing else in an application
+ * has reason to, and nothing else does.
  */
 export const OrderDatabaseModule = prismaDatabase("OrderDatabase")({ client: createClient });
 

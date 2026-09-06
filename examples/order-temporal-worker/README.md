@@ -15,8 +15,11 @@ starts these workflows needs it and needs none of this.
 ```text
 src/workflows.ts                    fulfillOrder and chargeOrder — both sagas, in Temporal's deterministic sandbox
 src/slices/fulfillment/activities.ts  fulfillOrder's five activities, one piece on the "fulfillOrder" key, built by
-                                     TemporalWorkflowActivities from PlaceOrder, OrderRepository, StockService, ShippingService
-src/slices/fulfillment/module.ts    FulfillmentSlice — imports the orders vertical plus FulfillmentModule, exports the piece
+                                     TemporalWorkflowActivities from StockService and ShippingService, with PlaceOrder
+                                     and OrderRepository declared as unit-scoped ports and read off context.unit
+src/slices/fulfillment/module.ts    FulfillmentSlice — imports FulfillmentModule, exports the piece
+src/activity-unit.ts                ActivityUnitModule — forked per attempt, seeded with the activity's own input;
+                                     Tenant from input.tenantId, and the orders vertical composed over it
 src/slices/billing/activities.ts    chargeOrder's three activities, one piece on the "chargeOrder" key, built from PaymentService
 src/slices/billing/module.ts        BillingSlice — imports BillingModule alone, exports the piece
 src/fulfillment.ts                  FulfillmentModule — the two external fulfillment services, as stand-ins
@@ -33,14 +36,16 @@ src/__tests__/test-fixtures.ts                boot / serve / server / tenant / f
 queue — `fulfillOrder` and `chargeOrder` — and this worker is a modulith of
 two slices, one per workflow, the same shape
 [`order-api`](/examples/order-api)'s HTTP controllers use. Unlike
-`order-amqp-worker`'s two subscriber slices, which deliberately own **no**
-vertical (a subscriber reacts to a fact somebody else already committed),
-these two own genuinely different ones: `FulfillmentSlice` imports the orders
-vertical (`OrderApplicationModule` + `OrderPersistenceModule`) plus
-`FulfillmentModule`, and `BillingSlice` imports `BillingModule` alone.
-`PlaceOrder` is as invisible inside `BillingSlice` as `PaymentService` is
-inside `FulfillmentSlice` — the two verticals meet only at the root, in the
-list of slices, never inside either slice's own graph.
+`order-amqp-worker`'s two subscriber slices, these two orchestrate genuinely
+different things: `FulfillmentSlice` imports `FulfillmentModule` and
+`BillingSlice` imports `BillingModule`, and `PaymentService` is as invisible
+inside the first as the two fulfillment services are inside the second.
+
+Neither imports the orders vertical, and that is the tenancy showing through:
+`PlaceOrder` and `OrderRepository` are built per ATTEMPT, in
+`ActivityUnitModule`, over the tenant that attempt's own input names — so
+`fulfillOrder` declares them beside `inject` and reads them off
+`context.unit`.
 
 `TemporalWorkflowActivities(orderContract, key)` mints one piece per workflow
 — no port class, no name, since the contract key IS the port's name, and the
@@ -185,8 +190,10 @@ same PostgreSQL the Temporal server uses.
 
 `tenantId` rides every workflow's arguments and every activity's input, because
 the **contract** declares it — `@btravstack/temporal-worker` knows nothing about
-tenants. An activity hands `input.tenantId` to the use case, which hands it to
-the repository. On the input rather than a Temporal header because an input is
+tenants. The worker seeds the fork with that input on
+`ActivityInput(orderContract)`, and `ActivityUnitModule` turns it into `Tenant`
+once per attempt, so no activity claims the brand and no use case takes a
+tenant argument. On the input rather than a Temporal header because an input is
 persisted in the event history: a replay a year later reconstructs the tenant
 along with everything else.
 

@@ -36,9 +36,9 @@ class DuplicateOrder extends TaggedError("DuplicateOrder")<{ readonly id: string
 class InvalidOrderId extends TaggedError("InvalidOrderId")<{ readonly id: string }> {}
 class InvalidQuantity extends TaggedError("InvalidQuantity")<{ readonly id: string }> {}
 declare const TenantId: (value: string) => string;
+class Tenant extends Port("Tenant")<string> {}
 class PlaceOrder extends Port("PlaceOrder")<{
   readonly execute: (
-    tenantId: string,
     id: string,
     quantity: number,
   ) => AsyncResult<
@@ -46,7 +46,9 @@ class PlaceOrder extends Port("PlaceOrder")<{
     DuplicateOrder | InvalidOrderId | InvalidQuantity
   >;
 }> {}
-declare const OrderApplicationModule: Module<PlaceOrder, never, never>;
+// The application's own vertical, composed INSIDE the unit: its use case is
+// bound to whichever tenant the attempt named.
+declare const OrderApplicationModule: Module<PlaceOrder, never, Tenant>;
 declare const OrderPersistenceModule: AnyModule;
 
 // The contract this README's worker serves — one workflow, one activity, one
@@ -75,30 +77,49 @@ const contract = defineContract({
 });
 
 const AppModule = Module("App")({
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability(), otel()],
-  exports: [PlaceOrder, Logger],
+  imports: [OrderPersistenceModule, observability(), otel()],
+  exports: [Logger],
 });
 -->
 
 ```ts
 import { runMain, Logger } from "@btravstack/core";
+import { Provider } from "@btravstack/di";
 import {
+  ActivityInput,
   TemporalActivities,
   TemporalModule,
 } from "@btravstack/temporal-worker";
 import { P } from "unthrown";
 
-// The application's half: its activities, as a service built from the use
-// cases it declares — closures over them, no context read at call time — on
-// the starter's own activities port, typed by the contract (a worker serves
-// one activities record, so there is nothing to name).
+// The module forked around every activity attempt, SEEDED with the validated
+// input on `ActivityInput(contract)`. The tenant the contract carries is
+// claimed here once — not at each activity — and the application's vertical
+// is composed over it, so `PlaceOrder` is bound before any activity runs.
+const ActivityUnit = Module("ActivityUnit")({
+  needs: [ActivityInput(contract)],
+  imports: [OrderApplicationModule],
+  provides: [
+    Provider(Tenant)({
+      inject: { input: ActivityInput(contract) },
+      sync: ({ input }) => TenantId(input.tenantId),
+    }),
+  ],
+  exports: [Tenant, PlaceOrder],
+});
+
+// The application's half: its activities, on the starter's own activities
+// port, typed by the contract (a worker serves one activities record, so
+// there is nothing to name). What the leaves read off `context.unit` is
+// declared once, beside `inject`.
 const orderActivities = TemporalActivities(contract)({
-  inject: { place: PlaceOrder },
-  sync: ({ place }) => ({
+  inject: {},
+  unit: { place: PlaceOrder },
+  sync: () => ({
     placeOrder: {
-      place: ({ errors, input }) =>
-        place
-          .execute(TenantId(input.tenantId), input.orderId, input.quantity)
+      place: ({ errors, context, input }) =>
+        context.unit.place
+          .execute(input.orderId, input.quantity)
           .mapErrCases((matcher) =>
             matcher
               .with(P.tag("DuplicateOrder"), (error) =>
@@ -124,6 +145,7 @@ const OrderWorker = TemporalModule("OrderWorker")({
     workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
   },
   imports: [AppModule],
+  unit: { activity: ActivityUnit },
 });
 
 await runMain(OrderWorker);

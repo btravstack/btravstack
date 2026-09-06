@@ -1,12 +1,10 @@
 import type { ConfigInvalid, Env } from "@btravstack/config";
-import { type RunningApp, Logger, Meter } from "@btravstack/core";
+import { type RunningApp, Logger, Meter, Tracer } from "@btravstack/core";
 import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import {
-  OrderApplicationModule,
-  OrderRepository,
-  PlaceOrder,
   ShippingService,
   StockService,
+  type OrderRepository,
 } from "@btravstack/example-order-application";
 import {
   OutOfStock,
@@ -14,7 +12,11 @@ import {
   TenantId,
   type OrderId,
 } from "@btravstack/example-order-domain";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import {
+  OrderDatabase,
+  OrderPersistenceModule,
+  prismaOrderRepository,
+} from "@btravstack/example-order-infrastructure";
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
 import { observability, type Line, type Sink } from "@btravstack/observability";
@@ -43,6 +45,7 @@ import { ErrAsync, OkAsync } from "unthrown";
 import { uuidv7 } from "uuidv7";
 import { inject, test } from "vitest";
 
+import { ActivityUnitModule } from "../activity-unit.js";
 import { BillingModule } from "../billing.js";
 import { FulfillmentModule } from "../fulfillment.js";
 import { orderActivities } from "../module.js";
@@ -76,11 +79,12 @@ type Deployment<E> = {
  * `X` is pinned rather than left generic: `start`'s gate is proven at the call
  * site, and no proof is available inside a helper generic in the module's own
  * exports. `Logger` is in the union because `serve` composes `BillingModule`
- * beside `module`, and its need for one is invisible past this type otherwise.
+ * beside `module`, and its need for one is invisible past this type otherwise;
+ * `OrderDatabase` and `Tracer` are what `ActivityUnitModule` reads once forked.
  */
 type Serve = <E>(
   module: Module<
-    PlaceOrder | OrderRepository | StockService | ShippingService | Logger | Meter,
+    StockService | ShippingService | Logger | Meter | Tracer | InstanceType<typeof OrderDatabase>,
     E,
     Scope | Env
   >,
@@ -95,37 +99,35 @@ type Serve = <E>(
  * The application half of that per-test root, with this test's fulfillment
  * module swapped in, so only the external services' answers differ and the lines
  * the saga writes land in `sink`. `Logger` and `Meter` are exported because
- * `serve` composes `BillingModule` as a sibling rather than nesting it.
+ * `serve` composes `BillingModule` as a sibling rather than nesting it;
+ * `OrderDatabase` and `Tracer` because the activity fork reads them.
  */
 const rootWith = (fulfillment: typeof FulfillmentModule, sink: Sink) =>
   Module("StubTemporal")({
-    imports: [
-      OrderApplicationModule,
-      OrderPersistenceModule,
-      fulfillment,
-      observability({ sink }),
-      otel(),
-    ],
-    exports: [PlaceOrder, OrderRepository, StockService, ShippingService, Logger, Meter],
+    imports: [OrderPersistenceModule, fulfillment, observability({ sink }), otel()],
+    exports: [OrderDatabase, StockService, ShippingService, Logger, Meter, Tracer],
   });
 
 /**
  * `start` hands the application context to the runtime alone, so `tapped` is
- * what captures the very repository instance the running app uses. The log lines
- * need no tap — `observability({ sink })` hands them over as values.
+ * what captures the very Prisma client the running app uses — and `reader`
+ * builds the adapter over it for a tenant, exactly as the activity fork does,
+ * which is the only way to read a row back now that the repository is bound
+ * per attempt. The log lines need no tap — `observability({ sink })` hands them
+ * over as values.
  */
 const deployment = (fulfillment: typeof FulfillmentModule) => {
   const lines: Line[] = [];
   const tap = tapped(
     rootWith(fulfillment, (line) => lines.push(line)),
-    [OrderRepository],
+    [OrderDatabase],
   );
   return {
     module: tap.module,
     lines: (): readonly Line[] => lines,
-    services: (): { readonly repository: ServiceOf<OrderRepository> } => {
-      const [repository] = tap.services();
-      return { repository };
+    reader: (tenant: TenantId): ServiceOf<OrderRepository> => {
+      const [db] = tap.services();
+      return prismaOrderRepository(db, tenant);
     },
   };
 };
@@ -260,6 +262,7 @@ export const it = test.extend<TemporalFixtures>({
       const worker = TemporalModule("StubTemporalWorker")({
         contract,
         activities: orderActivities,
+        unit: { activity: ActivityUnitModule },
         workflows: { workflowBundle },
         imports: [
           module,

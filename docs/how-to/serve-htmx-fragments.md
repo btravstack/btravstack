@@ -48,27 +48,28 @@ import { P } from "unthrown";
 export const orderRowFragment = api.HtmxGet("/orders/:id/row", {
   requires: [{ user: [] }],
 })({
-  inject: { find: FindOrder },
-  sync:
-    ({ find }) =>
-    (context, params) =>
-      find
-        .execute(context.principal.tenantId, params.id)
-        .map(
-          (order) =>
-            html`<tr id="order-${order.id}">
-              <td>${order.quantity}</td>
+  inject: {},
+  // `FindOrder` is bound to a tenant, so it comes off the `user` fork this
+  // route's `requires` opened.
+  unit: { find: FindOrder },
+  sync: () => (context, params) =>
+    context.unit.find
+      .execute(params.id)
+      .map(
+        (order) =>
+          html`<tr id="order-${order.id}">
+            <td>${order.quantity}</td>
+          </tr>`,
+      )
+      .recoverErrCases((matcher) =>
+        matcher.with(
+          P.tag("OrderNotFound"),
+          () =>
+            html`<tr>
+              <td>not found</td>
             </tr>`,
-        )
-        .recoverErrCases((matcher) =>
-          matcher.with(
-            P.tag("OrderNotFound"),
-            () =>
-              html`<tr>
-                <td>not found</td>
-              </tr>`,
-          ),
         ),
+      ),
 });
 ```
 
@@ -77,10 +78,12 @@ export const orderRowFragment = api.HtmxGet("/orders/:id/row", {
 `requires: [{ user: [] }]` marks the route exactly as `authenticated(...)`
 would mark an oRPC procedure: the same `resolvePrincipal` walk runs, so a
 fragment route gets the same `401`/`403` path a procedure does, and
-`context` carries the same `principal` a marked procedure's does — here the
-tenant comes off the caller's own credential, never off `params`, exactly the
-contrast [Protect a procedure](/how-to/protect-a-procedure) draws for the
-unmarked case. Drop `requires` and the route is public, with no `principal`
+`context` carries the same `principal` a marked procedure's does, and the same
+`unit` — here the tenant comes off the caller's own credential, never off
+`params`: the `user` kind's module built `FindOrder` over it before this
+handler ran, which is exactly the contrast
+[Protect a procedure](/how-to/protect-a-procedure) draws for the unmarked
+case. Drop `requires` and the route is public, with no `principal`
 on `context` at all — reading one is a compile error. An ungrantable scope —
 one the scheme's own authenticator never grants — fails the compile ending on
 `"UNGRANTABLE SCOPE — its scheme's authenticator cannot grant it"`, naming the

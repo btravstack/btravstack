@@ -38,6 +38,7 @@ class OrderDatabase extends Port("OrderDatabase")<OrderDatabaseClient> {}
 declare const PlaceOrderInteractor: new (deps: {
   readonly repository: ServiceOf<OrderRepository>;
   readonly logger: ServiceOf<Logger>;
+  readonly tenant: ServiceOf<Tenant>;
 }) => ServiceOf<PlaceOrder>;
 declare const findOrderProvider: Provider<FindOrder, never, OrderRepository | Logger>;
 declare const findCustomerProvider: Provider<FindCustomer, never, CustomerRepository>;
@@ -145,30 +146,33 @@ outside world — spelled in the domain's vocabulary, so no adapter can widen
 what the use cases have to handle:
 
 ```ts
+export class Tenant extends Port("Tenant")<TenantId> {}
+
 export class OrderRepository extends Port("OrderRepository")<{
-  readonly save: (
-    tenantId: TenantId,
-    order: Order,
-  ) => AsyncResult<Order, DuplicateOrder>;
-  readonly find: (
-    tenantId: TenantId,
-    id: string,
-  ) => AsyncResult<Order, OrderNotFound>;
-  readonly remove: (
-    tenantId: TenantId,
-    id: string,
-  ) => AsyncResult<void, OrderNotFound>;
+  readonly save: (order: Order) => AsyncResult<Order, DuplicateOrder>;
+  readonly find: (id: string) => AsyncResult<Order, OrderNotFound>;
+  readonly remove: (id: string) => AsyncResult<void, OrderNotFound>;
 }> {}
 ```
 
-**Every method names its tenant, and the tenant is branded while the id beside
-it is not.** This deployment serves several tenants from one database, so
-"which tenant" is part of what a repository is being asked — an argument, not
-something read from an ambient store, and nothing the kernel or a starter
-knows about. `TenantId` is `order-domain`'s `z.uuidv7().brand("TenantId")`:
-two `string`s in a fixed order are what the compiler has nothing to say about,
-so `find(id, tenantId)` compiled and read the wrong tenant's rows, and
-branding **one** of the pair is enough to refuse it. The ids stay `string`
+**No method names a tenant, because the tenant is the UNIT's.** This
+deployment serves several tenants from one database, and `Tenant` is a port
+like any other: whoever opened the unit — an authenticated request, an
+activity attempt, a delivery — provides it once, and
+`order-infrastructure`'s `OrderTenantPersistence` builds the repository over
+it inside that fork. So a call has no slot to name another tenant in, and a
+graph that never said which tenant it is scoped to does not compile at all —
+`OrderApplicationModule` names `Tenant` in `needs`. Nothing is read from an
+ambient store, and neither the kernel nor a starter knows a tenant exists.
+
+`CustomerRepository` still takes one, and that is where the brand earns its
+keep. The `customers` procedures are unmarked, so a request under them opens
+an anonymous unit with no principal to take a tenant from and the caller names
+it on the input: `find(tenantId, id)`. `TenantId` is `order-domain`'s
+`z.uuidv7().brand("TenantId")`, because two `string`s in a fixed order are
+what the compiler has nothing to say about — `find(id, tenantId)` compiled and
+read the wrong tenant's rows — and branding **one** of the pair is enough to
+refuse it. The ids stay `string`
 here — they are `OrderId`/`CustomerId` on the entity, and a pair need differ
 in one position.
 
@@ -187,17 +191,17 @@ arm:
 
 ```ts
 export const placeOrderProvider = Provider(PlaceOrder)({
-  inject: { repository: OrderRepository, logger: Logger },
+  inject: { repository: OrderRepository, logger: Logger, tenant: Tenant },
   class: PlaceOrderInteractor,
 });
 ```
 
-The module — one per vertical, not one for the layer — provides neither
-`OrderRepository` nor `Logger`:
+The module — one per vertical, not one for the layer — provides none of
+`OrderRepository`, `Logger` or `Tenant`:
 
 ```ts
 export const OrderApplicationModule = Module("OrderApplication")({
-  needs: [OrderRepository, Logger],
+  needs: [OrderRepository, Logger, Tenant],
   provides: [placeOrderProvider, findOrderProvider],
   exports: [PlaceOrder, FindOrder],
 });
@@ -209,12 +213,14 @@ export const CustomerApplicationModule = Module("CustomerApplication")({
 });
 ```
 
-`PlaceOrderInteractor` depends on both and nothing here satisfies either, so di
-propagates both as unmet needs — the repository because the layer below fills
-it, the logger because the framework does, and there is nothing to re-export in
-either direction. That is what makes this layer testable with no database at
-all — its specs provide a stub repository from a `TestModule` that imports
-`observability({ sink, level: "trace" })` — and it is what makes the layering a
+`PlaceOrderInteractor` depends on all three and nothing here satisfies any, so
+di propagates all three as unmet needs — the repository because the layer below
+fills it, the logger because the framework does, the tenant because whoever
+opens a unit does, and there is nothing to re-export in any direction. That is
+what makes this layer testable with no database at all — its specs compose
+`tenantOf(tenant)`, a stub repository and
+`observability({ sink, level: "trace" })` into one scope, which is the shape a
+deployment's unit module has — and it is what makes the layering a
 compile error rather than a convention (see the type tests below).
 
 One module per vertical is what makes that gate exact. `CustomerApplication`
@@ -225,8 +231,9 @@ lets `order-temporal-worker` and `order-amqp-worker` import the orders
 vertical without carrying the customers one.
 
 There is no kernel touchpoint left here. The log calls are structured —
-`this.#logger.info("placing an order", { tenantId, orderId: id, quantity })`,
-a constant message with the ids as fields — and correlation is not this
+`this.#logger.info("placing an order", { tenantId: this.#tenant, orderId: id, quantity })`,
+a constant message with the ids as fields, the tenant among them because the
+interactor holds it as an injected capability — and correlation is not this
 layer's job:
 `@btravstack/observability`'s implementation reads `currentUnit()` fresh on
 every call, so each line carries the trace id of the unit that wrote it —
@@ -252,12 +259,16 @@ The one thing that stays here is `createClient`, because the client is generated
 from **this** application's schema and `@unthrown/prisma`'s extension is applied
 to it — so the port carries exactly the client the repositories will hold.
 
-`OrderDatabase` is `OrderDatabaseModule.port`, imported by the two persistence
-modules and re-exported by neither — di's `exports` are declared, never
-inherited — so no outer module can reach the client and start speaking SQL.
-What crosses the boundary of `OrderPersistenceModule` is `OrderRepository` and
-`Outbox`, and of `CustomerPersistenceModule`, `CustomerRepository`. One
-provider reference behind both, so the two verticals share one connection. The repository's `save` is the
+`OrderDatabase` is `OrderDatabaseModule.port`, imported by every persistence
+module, and one provider reference behind all of them — so the verticals share
+one connection whatever the tree looks like. What crosses the boundary of
+`CustomerPersistenceModule` is `CustomerRepository`, and of
+`OrderPersistenceModule`, `Outbox` and `OrderDatabaseModule` itself: the
+client is re-exported deliberately, because `OrderTenantPersistence` is
+composed inside a **unit** and reads it from the application scope through
+`needs` rather than importing the database module — a fork constructs every
+provider in its own tree, so an import there would open a Prisma client per
+request. `OrderRepository` crosses that module's boundary, not this one's. The repository's `save` is the
 transactional outbox's write side — the row and the fact of the row commit
 together or not at all — and its `mapErrCases` is where Prisma's vocabulary
 becomes the domain's:
@@ -265,7 +276,9 @@ becomes the domain's:
 <!-- doctest: skip — an object-property excerpt of prisma-order-repository.ts, which the gate compiles in full -->
 
 ```ts
-save: (tenantId, order) =>
+// `tenantId` is closed over: `prismaOrderRepository(db, tenantId)` is built
+// inside the unit, so no method takes one.
+save: (order) =>
   db
     .$tryTransaction((tx) =>
       tx.order
@@ -394,14 +407,13 @@ activities or handlers that implement it.
 // rides `Module.scoped`'s parameter and the call fails assignability.
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no OrderRepository is provided.
 const _unwiredOrders = Module.scoped(OrderApplicationModule, (ctx) =>
-  ctx
-    .get(PlaceOrder)
-    .execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001", 1),
+  ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-000000000001", 1),
 );
 ```
 
 What that prints ends on the ports: `required in type '{ readonly
-"UNSATISFIED DEPENDENCIES — nothing provides": Logger | OrderRepository; }'`
+"UNSATISFIED DEPENDENCIES — nothing provides": Logger | OrderRepository |
+Tenant; }'`
 (measured) — the label and the missing ports in one message, where the
 rest-tuple arity error this gate replaced printed `Expected 5 arguments, but
 got 2.` and nothing else.
@@ -410,10 +422,13 @@ Each vertical's gate is pinned separately, which is the split showing up in
 the type tests: a graph that provides `OrderRepository` still cannot scope
 `CustomerApplicationModule`, and one that provides the customer repository
 alone cannot scope the orders half — nor can the orders repository alone,
-which leaves `Logger` open. The positive halves compose each module with its
+which leaves `Logger` and `Tenant` open, nor the repository and the logger
+together, which is `TenantlessOrders` and the property moving the tenant into
+the unit bought. The positive halves compose each module with its
 own stub — plus, for orders, a
 `Provider(Logger)({ inject: {}, value: createLogger(() => {}) })`, since the starter is
-the default and not the only way — and call `Module.scoped` as an ordinary
+the default and not the only way, and a `tenantOf(TenantId("acme"))` beside it
+— and call `Module.scoped` as an ordinary
 two-argument call. The three deployment
 pages carry the other kind — `start`'s gate.
 

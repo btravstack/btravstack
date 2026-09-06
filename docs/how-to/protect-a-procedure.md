@@ -295,16 +295,21 @@ export const ordersController = api.OrpcController(
   contract,
   "orders",
 )({
-  inject: { place: PlaceOrder, find: FindOrder, logger: Logger },
-  sync: ({ place, find, logger }) => ({
+  inject: { logger: Logger },
+  // The use cases the `user` kind's fork built over that principal's tenant.
+  // `export` names a second scheme, so its kinds are `user | service` and
+  // none of these is readable there — which is why it answers from the
+  // principal alone.
+  unit: { place: PlaceOrder, find: FindOrder },
+  sync: ({ logger }) => ({
     // One scheme, so the identity arrives bare — byte-for-byte what a
     // handler wrote before named schemes existed.
     place: ({ errors, context }, input) => {
       logger.info("order placement requested", {
         userId: context.principal.userId,
       });
-      return place
-        .execute(context.principal.tenantId, input.id, input.quantity)
+      return context.unit.place
+        .execute(input.id, input.quantity)
         .map(view)
         .mapErrCases((matcher) =>
           matcher
@@ -331,8 +336,8 @@ export const ordersController = api.OrpcController(
         );
     },
     find: ({ errors, context }, input) =>
-      find
-        .execute(context.principal.tenantId, input.id)
+      context.unit.find
+        .execute(input.id)
         .map(view)
         .mapErrCases((matcher) =>
           matcher.with(P.tag("OrderNotFound"), (error) =>

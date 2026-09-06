@@ -1,7 +1,5 @@
 import { Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
-import { OrderApplicationModule } from "@btravstack/example-order-application";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 
 import { ordersController } from "./controller.js";
 import { orderRowFragment } from "./fragment.js";
@@ -10,17 +8,11 @@ import { orderRowFragment } from "./fragment.js";
  * The orders slice: everything it takes to serve `contract.orders`, and
  * nothing else the rest of the app can see.
  *
- * It imports its own vertical rather than leaving `PlaceOrder` and `FindOrder`
- * as needs for the root to discharge. That is what makes it a slice: the
- * reason to open this directory is the whole reason the slice exists, and the
- * root below is a list of slices instead of a list of everything every slice
- * happens to need. The two modules it imports are the orders vertical's own
- * halves — `FindCustomer` and the customer repository are not in this graph at
- * all, which is what the split bought over importing the layer whole.
- *
- * The two slices still meet, one level down: both persistence modules import
- * the same database module, and di flattens the tree with a `Set` keyed by
- * provider **reference**, so the diamond yields one connection, not two.
+ * It imports no vertical, and that is the tenancy showing through: the use
+ * cases its controller and fragment read are built per REQUEST, in the `user`
+ * kind's module, over the tenant that request authenticated as. What a slice
+ * owns is its piece of the surface and its triage; what a unit owns is the
+ * graph a request runs against.
  *
  * `exports: [ordersController, orderRowFragment]` are the providers, not their
  * `.port`s: `OrpcController` and `HtmxGet` each mint the port for you,
@@ -28,10 +20,9 @@ import { orderRowFragment } from "./fragment.js";
  */
 export const OrdersSlice = Module("OrdersSlice")({
   // The controller writes a line itself, so `Logger` is this slice's own
-  // provider's need. The environment its persistence reads is not: that is
-  // `DatabaseModule`'s, declared there and inherited here.
+  // provider's need. The use cases are not: they reach a leaf off
+  // `context.unit`, never through `inject`.
   needs: [Logger],
-  imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [ordersController, orderRowFragment],
   exports: [ordersController, orderRowFragment],
 });

@@ -6,10 +6,10 @@ import { it } from "./__tests__/test-fixtures.js";
 import { FindCustomer } from "./index.js";
 
 describe("FindCustomer", () => {
-  it("returns the entity the repository holds, never a wire shape", async ({ testModule }) => {
+  it("returns the entity the repository holds, never a wire shape", async ({ scopeFor }) => {
     // GIVEN the application wired over an in-memory repository
     // WHEN a customer it holds is looked up
-    const result = await Module.scoped(testModule, (ctx) =>
+    const result = await Module.scoped(scopeFor(TenantId("acme")), (ctx) =>
       ctx.get(FindCustomer).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-0000000000c1"),
     );
 
@@ -18,10 +18,10 @@ describe("FindCustomer", () => {
     expect(result).toBeOkWith({ id: "0199a1e0-0000-7000-8000-0000000000c1", name: "Ada" });
   });
 
-  it("returns CustomerNotFound for an unknown id", async ({ testModule }) => {
+  it("returns CustomerNotFound for an unknown id", async ({ scopeFor }) => {
     // GIVEN the same repository
     // WHEN an id nobody registered is looked up
-    const result = await Module.scoped(testModule, (ctx) =>
+    const result = await Module.scoped(scopeFor(TenantId("acme")), (ctx) =>
       ctx.get(FindCustomer).execute(TenantId("acme"), "missing"),
     );
 

@@ -1,40 +1,46 @@
-import { Module } from "@btravstack/di";
-import { CustomerRepository, OrderRepository, Outbox } from "@btravstack/example-order-application";
+import { Module, Provider } from "@btravstack/di";
+import {
+  CustomerRepository,
+  OrderRepository,
+  Outbox,
+  Tenant,
+} from "@btravstack/example-order-application";
 
-import { OrderDatabaseModule } from "./database.js";
+import { OrderDatabase, OrderDatabaseModule } from "./database.js";
 import { customerRepositoryProvider } from "./prisma-customer-repository.js";
-import { orderRepositoryProvider } from "./prisma-order-repository.js";
+import { prismaOrderRepository } from "./prisma-order-repository.js";
 import { outboxProvider } from "./prisma-outbox.js";
 
 /**
- * The one connection, shared by the two persistence modules without either
- * owning it. **Not** re-exported from this package's `index.ts`:
- * `OrderDatabase` crosses this file's boundary and no further.
+ * The orders repository, bound to the tenant of the unit it is built in.
  *
- * `@btravstack/prisma` supplies the whole module — the config provider, the
- * resourceful provider whose `release` closes the pool, and the per-query count
- * and error line — so there is nothing to declare here. It also turns on
- * Prisma's OWN OpenTelemetry instrumentation, because `@prisma/instrumentation`
- * is installed: that traces at the engine level, the real SQL and the
- * connection acquisition, which is why the starter emits no span of its own —
- * it would be a shallower duplicate. Every importer still carries the
- * `Scope` need only `Module.scoped` discharges, and the `Env`, `Logger`,
- * `Meter` and `Tracer` the starter reads.
+ * It is composed INSIDE a unit module — a request's, an activity attempt's, a
+ * delivery's — and reads the one client the application scope holds through
+ * `needs` rather than importing `OrderDatabaseModule`: an import would put the
+ * database's providers in the fork's own tree, and a Prisma client would be
+ * opened and closed per unit.
  */
+export const OrderTenantPersistence = Module("OrderTenantPersistence")({
+  needs: [Tenant, OrderDatabase],
+  provides: [
+    Provider(OrderRepository)({
+      inject: { db: OrderDatabase, tenant: Tenant },
+      sync: ({ db, tenant }) => prismaOrderRepository(db, tenant),
+    }),
+  ],
+  exports: [OrderRepository],
+});
 
 /**
- * The other half of `OrderApplicationModule`'s gate: this module provides the
- * ports the orders vertical leaves open, so importing both is what makes
- * `Module.scoped` compile.
- *
- * `OrderDatabaseModule` is imported and **not re-exported** — di's `exports` are
- * declared, never inherited — so a consumer gets `OrderRepository` and `Outbox`
- * and no way to reach the Prisma client behind them.
+ * What the application scope holds: the outbox, whose relay sweeps across
+ * tenants from outside any unit, and the database module itself — re-exported
+ * so a unit forked over this scope can read the client that
+ * `OrderTenantPersistence` binds a tenant to.
  */
 export const OrderPersistenceModule = Module("OrderPersistence")({
   imports: [OrderDatabaseModule],
-  provides: [orderRepositoryProvider, outboxProvider],
-  exports: [OrderRepository, Outbox],
+  provides: [outboxProvider],
+  exports: [Outbox, OrderDatabaseModule],
 });
 
 /**
@@ -42,6 +48,9 @@ export const OrderPersistenceModule = Module("OrderPersistence")({
  * value. di flattens the module tree into a `Set` keyed by provider
  * **reference**, so a graph holding both persistence modules opens one
  * database, not two — the diamond that makes splitting the layer free.
+ *
+ * It stays in the application scope rather than moving into a unit: its port
+ * names its tenant, because the procedures it serves are unmarked.
  */
 export const CustomerPersistenceModule = Module("CustomerPersistence")({
   imports: [OrderDatabaseModule],

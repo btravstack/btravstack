@@ -18,24 +18,20 @@ import { start, Logger } from "@btravstack/core";
  * the REAL ports named in its `sync` call
  * (`packages/temporal-worker/src/workflow-activities.ts`), not the piece's port —
  * that shielding is the composed provider's, one level up, and does NOT
- * apply inside a single slice. So a slice that forgets its own vertical
+ * apply inside a single slice. So a slice that forgets its own services
  * still surfaces its real ports as unmet needs the moment it is composed
  * into a root, exactly as the pre-slice, single-record `orderActivities`
  * used to: `FulfillmentlessSlice` below, reusing the real `fulfillOrder`
  * piece with `FulfillmentModule` left out of its imports, still leaks
  * `StockService | ShippingService` (and `Logger`, since neither
  * `FulfillmentlessSlice` nor `BillingSlice` here imports `observability()`)
- * out to `start`.
+ * out to `start`. The use cases are NOT among them any more: a piece reads
+ * those off `context.unit`, so they are the bound unit module's business.
  *
  * Type-checked by this package's `test:types` script, never executed.
  */
 import { Module, Port, Provider } from "@btravstack/di";
-import {
-  OrderApplicationModule,
-  ShippingService,
-  StockService,
-} from "@btravstack/example-order-application";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { ShippingService, StockService } from "@btravstack/example-order-application";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
 import { Storage } from "@btravstack/storage";
@@ -47,6 +43,7 @@ import {
 } from "@btravstack/temporal-worker";
 import { OkAsync } from "unthrown";
 
+import { ActivityUnitModule } from "./activity-unit.js";
 import { OrderTemporalWorker, orderActivities } from "./module.js";
 import { BillingSlice } from "./slices/billing/module.js";
 import { fulfillOrder } from "./slices/fulfillment/activities.js";
@@ -96,9 +93,8 @@ const ActivitylessTemporal = Module("ActivitylessTemporal")({
 const _missingActivities = start(ActivitylessTemporal, options);
 
 // The real `fulfillOrder` piece, composed into a slice that forgets
-// `FulfillmentModule`: the piece's own `deps` (`PlaceOrder`,
-// `OrderRepository`, `StockService`, `ShippingService`) are real ports, and
-// only the first two are met here.
+// `FulfillmentModule`: the piece's own `deps` (`StockService`,
+// `ShippingService`, `Storage`) are real ports, and none of them is met here.
 // The slice's OWN provider is what reads them, so this one IS di's declaration
 // gate — the distinction the two negatives above draw.
 // @ts-expect-error — UNDECLARED NEEDS: StockService | ShippingService (which
@@ -106,7 +102,6 @@ const _missingActivities = start(ActivitylessTemporal, options);
 // composes), all three read by the slice's own activities provider.
 const FulfillmentlessSlice = Module("FulfillmentlessSlice")({
   needs: [Logger],
-  imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [fulfillOrder],
   exports: [fulfillOrder],
 });
@@ -118,7 +113,6 @@ void FulfillmentlessSlice;
 // obligation to whoever composes it, it does not discharge it.
 const DeclaredFulfillmentless = Module("DeclaredFulfillmentless")({
   needs: [Env, Logger, StockService, ShippingService, Storage],
-  imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [fulfillOrder],
   exports: [fulfillOrder],
 });
@@ -128,16 +122,34 @@ const FulfillmentlessTemporal = TemporalModule("FulfillmentlessTemporal")({
   contract: orderContract,
   activities: orderActivities,
   workflows: { workflowsPath: "./workflows.js" },
+  unit: { activity: ActivityUnitModule },
   imports: [DeclaredFulfillmentless, BillingSlice],
 });
 
 // Negative: `start` accepts a module whose outstanding needs are `Scope` and
 // `Env` alone, and this one still owes `StockService | ShippingService` (and
-// `Logger`, since neither slice here imports `observability()`) — the same
-// shape of failure the pre-slice `orderActivities` used to surface directly,
-// now surfacing through a slice instead.
+// `Logger`, since neither slice here imports `observability()`, and what the
+// bound unit reads out of the application scope) — the same shape of failure
+// the pre-slice `orderActivities` used to surface directly, now surfacing
+// through a slice instead.
 // @ts-expect-error — UNMET NEED: `Logger | StockService | ShippingService` is not assignable to `Env | Scope`.
 const _missingFulfillment = start(FulfillmentlessTemporal, options);
+
+// The OTHER unit gate, and the one `fulfillOrder`'s own `unit: { place,
+// repository }` bought: a root binding no unit module at all is refused at
+// `TemporalModule` itself, against a marker naming the ports the pieces
+// declared — `context.unit.place` would otherwise resolve out of an empty
+// fork and defect on the first attempt.
+// @ts-expect-error — UNIT DOES NOT PROVIDE: a piece injects a port the bound unit module does not export.
+const _unboundUnit = TemporalModule("UnboundUnit")({
+  needs: [Env, Logger, StockService, ShippingService, Storage],
+  contract: orderContract,
+  activities: orderActivities,
+  workflows: { workflowsPath: "./workflows.js" },
+  imports: [DeclaredFulfillmentless, BillingSlice],
+});
+
+void _unboundUnit;
 
 // The `unit` needs-propagation gate: a bound `unit.activity` module's own
 // unmet needs join `TemporalModule`'s own Needs channel (an import's own

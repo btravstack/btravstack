@@ -1,12 +1,14 @@
-import { Tracer } from "@btravstack/core";
+import { Logger, Tracer } from "@btravstack/core";
+import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
-import { UnitSpanModule, otel } from "@btravstack/observability/otel";
+import { otel } from "@btravstack/observability/otel";
 import { storage } from "@btravstack/storage";
 import { s3Storage } from "@btravstack/storage/s3";
 import { TemporalActivities, TemporalModule } from "@btravstack/temporal-worker";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
+import { ActivityUnitModule } from "./activity-unit.js";
 import { chargeOrder } from "./slices/billing/activities.js";
 import { BillingSlice } from "./slices/billing/module.js";
 import { fulfillOrder } from "./slices/fulfillment/activities.js";
@@ -22,10 +24,9 @@ export const orderActivities = TemporalActivities(orderContract)([fulfillOrder, 
 
 /**
  * The composition root of the orchestration deployment: a list of slices plus
- * what no slice owns. `FulfillmentSlice` imports the orders vertical plus the
- * two fulfillment services, `BillingSlice` imports `BillingModule` alone, and
- * the two verticals meet only here — `PlaceOrder` is as invisible to billing as
- * `PaymentService` is to fulfillment.
+ * what no slice owns. `FulfillmentSlice` imports the two fulfillment services,
+ * `BillingSlice` imports `BillingModule` alone, and neither imports the orders
+ * vertical — that is built per attempt, in `ActivityUnitModule`.
  *
  * Both slices are imported even though the composing call above already names
  * their pieces: `orderActivities`'s `deps` are the pieces' PORTS, and `flatten`
@@ -46,14 +47,15 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   imports: [
     FulfillmentSlice,
     BillingSlice,
+    OrderPersistenceModule,
     storage({ adapter: s3Storage() }),
     observability(),
     otel(),
   ],
   // Forked once dispatch accepts the attempt and before the activity body
-  // runs, which is what lets the span wrap the whole attempt.
-  unit: { activity: UnitSpanModule },
-  // Exported because `UnitSpanModule` reads `Tracer` out of the application
-  // scope once forked; `otel()` above is what provides it.
-  exports: [Tracer],
+  // runs, which is what lets the span wrap the whole attempt — and what binds
+  // the orders vertical to the tenant the attempt's input names.
+  unit: { activity: ActivityUnitModule },
+  // Everything the fork reads out of the application scope.
+  exports: [Tracer, Logger, OrderDatabase],
 });

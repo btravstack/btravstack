@@ -22,33 +22,37 @@ import {
   ListOrders,
   OrderRepository,
   PlaceOrder,
+  Tenant,
   type OrderQuery,
 } from "./ports.js";
 
 class PlaceOrderInteractor {
   readonly #repository: ServiceOf<OrderRepository>;
   readonly #logger: ServiceOf<Logger>;
+  readonly #tenant: ServiceOf<Tenant>;
 
   constructor({
     repository,
     logger,
+    tenant,
   }: {
     readonly repository: ServiceOf<OrderRepository>;
     readonly logger: ServiceOf<Logger>;
+    readonly tenant: ServiceOf<Tenant>;
   }) {
     this.#repository = repository;
     this.#logger = logger;
+    this.#tenant = tenant;
   }
 
   execute(
-    tenantId: TenantId,
     id: string,
     quantity: number,
   ): AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder> {
-    this.#logger.info("placing an order", { tenantId, orderId: id, quantity });
+    this.#logger.info("placing an order", { tenantId: this.#tenant, orderId: id, quantity });
     return placeOrder(id, quantity)
       .toAsync()
-      .flatMap((order) => this.#repository.save(tenantId, order));
+      .flatMap((order) => this.#repository.save(order));
   }
 }
 
@@ -59,8 +63,8 @@ class FindOrderInteractor {
     this.#repository = repository;
   }
 
-  execute(tenantId: TenantId, id: string): AsyncResult<Order, OrderNotFound> {
-    return this.#repository.find(tenantId, id);
+  execute(id: string): AsyncResult<Order, OrderNotFound> {
+    return this.#repository.find(id);
   }
 }
 
@@ -71,8 +75,8 @@ class ListOrdersInteractor {
     this.#repository = repository;
   }
 
-  execute(tenantId: TenantId, query: OrderQuery): AsyncResult<Page<Order>, MalformedCursor> {
-    return this.#repository.list(tenantId, query);
+  execute(query: OrderQuery): AsyncResult<Page<Order>, MalformedCursor> {
+    return this.#repository.list(query);
   }
 }
 
@@ -89,7 +93,7 @@ class FindCustomerInteractor {
 }
 
 export const placeOrderProvider = Provider(PlaceOrder)({
-  inject: { repository: OrderRepository, logger: Logger },
+  inject: { repository: OrderRepository, logger: Logger, tenant: Tenant },
   class: PlaceOrderInteractor,
 });
 

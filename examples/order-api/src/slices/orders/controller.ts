@@ -19,11 +19,11 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * the matcher has no wildcard — so a new domain error is a compile error here,
  * at the one place that decides what the client sees.
  *
- * The tenant comes off `context.principal`, which this application's own
- * authenticator resolved: the contract says only which schemes protect the
- * route, and `defineHttp({ authenticators })` is what says what each resolves
- * to. `export` names a second scheme, so its principal is a discriminated union
- * the handler has to narrow; the other two read `tenantId` bare.
+ * The use cases are read off `context.unit`, not injected: a marked leaf opens
+ * its unit under the `user` kind, which built them over the tenant that
+ * scheme's principal named. `export` names a second scheme, so its kinds are
+ * `user | service` and `unit` offers it nothing — which is why it answers from
+ * `context.principal` alone.
  *
  * The fragment's inputs name **no** tenant: a caller does not get to name the
  * tenant it is served. The unmarked `customers` fragment still names one, which
@@ -33,12 +33,13 @@ export const ordersController = api.OrpcController(
   contract,
   "orders",
 )({
-  inject: { place: PlaceOrder, find: FindOrder, list: ListOrders, logger: Logger },
-  sync: ({ place, find, list, logger }) => ({
+  inject: { logger: Logger },
+  unit: { place: PlaceOrder, find: FindOrder, list: ListOrders },
+  sync: ({ logger }) => ({
     place: ({ errors, context }, input) => {
       logger.info("order placement requested", { userId: context.principal.userId });
-      return place
-        .execute(context.principal.tenantId, input.id, input.quantity)
+      return context.unit.place
+        .execute(input.id, input.quantity)
         .map(view)
         .mapErrCases((matcher) =>
           matcher
@@ -62,8 +63,8 @@ export const ordersController = api.OrpcController(
         );
     },
     find: ({ errors, context }, input) =>
-      find
-        .execute(context.principal.tenantId, input.id)
+      context.unit.find
+        .execute(input.id)
         .map(view)
         .mapErrCases((matcher) =>
           matcher.with(P.tag("OrderNotFound"), (error) =>
@@ -76,12 +77,11 @@ export const ordersController = api.OrpcController(
     // carrying this listing's own filters through untouched.
     //
     // The tenant is not among them. A page of somebody else's orders is not a
-    // request this controller can express, because the caller has no slot to
-    // name a tenant in and `principal.tenantId` is the only value that reaches
-    // the port.
+    // request this controller can express: the caller has no slot to name a
+    // tenant in, and the listing it reaches was built for the fork's own.
     list: ({ errors, context }, input) =>
-      list
-        .execute(context.principal.tenantId, pageRequest(input))
+      context.unit.list
+        .execute(pageRequest(input))
         .map((found) => ({ ...found, items: found.items.map(view) }))
         .mapErrCases((matcher) =>
           matcher.with(P.tag("MalformedCursor"), (error) =>

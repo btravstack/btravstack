@@ -2,12 +2,20 @@ import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import type { AmqpInfo, AmqpRuntime } from "@btravstack/amqp-worker";
 import type { Env } from "@btravstack/config";
-import { type RunningApp, Logger } from "@btravstack/core";
-import { Provider, type Module, type Scope } from "@btravstack/di";
-import { OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
+import { type RunningApp, Logger, type Tracer } from "@btravstack/core";
+import { Module, Provider, type Context, type Scope } from "@btravstack/di";
+import {
+  OrderApplicationModule,
+  OrderRepository,
+  Outbox,
+  PlaceOrder,
+  tenantOf,
+} from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
+import { OrderDatabase, OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
 import { LoggerConfig, createLogger, type Line } from "@btravstack/observability";
 import { bootFixture, overridden, tapped, type Boot } from "@btravstack/testing";
+import type { AsyncResult } from "unthrown";
 import { uuidv7 } from "uuidv7";
 import { inject, type TestAPI } from "vitest";
 
@@ -24,7 +32,11 @@ type ServeOptions = { readonly drainTimeoutMs: number };
  * domain concept and is not one — the list IS the meaning.
  */
 type Serve = <E>(
-  module: Module<AmqpRuntime | PlaceOrder | OrderRepository | Outbox, E, Scope | Env>,
+  module: Module<
+    AmqpRuntime | Outbox | Logger | Tracer | InstanceType<typeof OrderDatabase>,
+    E,
+    Scope | Env
+  >,
   options?: ServeOptions,
 ) => Promise<App<E>>;
 
@@ -45,13 +57,31 @@ const tappedAmqp = () => {
       sync: ({ config }) => createLogger((line) => lines.push(line), config.level),
     }),
   ]);
-  const tap = tapped(recording, [PlaceOrder, OrderRepository, Outbox]);
+  const tap = tapped(recording, [OrderDatabase, Logger, Outbox]);
   return {
     module: tap.module,
     lines: (): readonly Line[] => lines,
     services: () => {
-      const [placeOrder, repository, outbox] = tap.services();
-      return { placeOrder, repository, outbox };
+      const [, , outbox] = tap.services();
+      return { outbox };
+    },
+    /**
+     * A writer's scope over the running app's own client, for one tenant: the
+     * shape `order-api`'s `UserModule` and the temporal worker's
+     * `ActivityUnitModule` have, hand-composed because this deployment forks
+     * no unit that writes — a subscriber reacts to facts, it does not place
+     * orders.
+     */
+    writerFor: (tenant: TenantId) => {
+      const [db, logger] = tap.services();
+      return Module("Writer")({
+        imports: [tenantOf(tenant), OrderTenantPersistence, OrderApplicationModule],
+        provides: [
+          Provider(OrderDatabase)({ inject: {}, value: db }),
+          Provider(Logger)({ inject: {}, value: logger }),
+        ],
+        exports: [PlaceOrder, OrderRepository],
+      });
     },
   };
 };
@@ -80,6 +110,15 @@ export type AmqpFixtures = {
    * and every line its logger wrote, pointed at this test's own vhost.
    */
   readonly tapped: ReturnType<typeof tappedAmqp>;
+  /**
+   * Runs `use` in a scope holding this test's tenant, the repository bound to
+   * it and the use cases over both — built from the running app's own client,
+   * so what a writer commits is what the relay sweeps. Valid once `serve` has
+   * booted the tapped module.
+   */
+  readonly writer: <A, E>(
+    use: (ctx: Context<PlaceOrder | OrderRepository>) => AsyncResult<A, E>,
+  ) => AsyncResult<A, E>;
 };
 
 // Annotated explicitly: TS2883 otherwise refuses to name the inferred type,
@@ -131,5 +170,9 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   tapped: async ({}, use) => {
     await use(tappedAmqp());
+  },
+
+  writer: async ({ tenant, tapped }, use) => {
+    await use((run) => Module.scoped(tapped.writerFor(tenant), run));
   },
 });
