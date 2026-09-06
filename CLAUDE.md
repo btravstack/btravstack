@@ -305,7 +305,15 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    Temporal's `Context.current().cancellationSignal` — is a **different clock**,
    not this one. A repository pulled from an ambient store is the untestable
    coupling; a
-   tenant id read by the Postgres adapter is not. Legitimate readers are
+   tenant id read by the Postgres adapter is not. That is what makes
+   `tenantId` **permissible** on the record, and it is not what the examples
+   do: `examples/order-application` declares a `Tenant` **port**, each
+   deployment's unit module provides it from what the unit was opened for, and
+   `UnitRecord.tenantId` stays unset by every shipped starter. A tenant is a
+   capability — declared, injected, substitutable, and a missing one is a
+   compile error — so it belongs on the `Context` side of this very line; the
+   field is there for a hand-rolled runtime whose author has answered what
+   establishes a tenant and what happens when it is missing. Legitimate readers are
    infrastructure adapters only (logger, OTel exporter, database adapter), and
    the logger is no longer hypothetical: `@btravstack/observability`'s
    `createLogger` — the implementation of the kernel's own `Logger` port —
@@ -880,8 +888,11 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   a cold cache, and the CI cache gap that came with it.
 
 - **The example application is multi-tenant, and that is why one database
-  serves the whole gate.** The tenancy is the APPLICATION's — every port names
-  its tenant and no starter reads one off anything. The full rule, the id
+  serves the whole gate.** The tenancy is the APPLICATION's — a `Tenant` port
+  it declares, provided by each deployment's unit module from what the unit was
+  opened for, with the repository bound to it inside that fork; no starter
+  reads a tenant off anything and no orders port names one. The full rule, what
+  keeps a tenant parameter and why, the id
   branding and the Prisma generation step are in `examples/CLAUDE.md`.
 - **An integration test may boot its real dependency with Docker and
   testcontainers.** A suite that needs a broker, a database or a service starts
@@ -1478,11 +1489,14 @@ And a seventh, about the infrastructure a suite runs against:
    precisely so this holds across spec files and across the workspaces turbo
    runs at the same instant.
 
-   The tenant needs no machinery to reach a spec, because the application's
-   ports name it: `repository.find(tenant, id)` says what a call is scoped
-   to at the call. That is a consequence of the design choice below, not a
-   coincidence — an ambient tenant would have needed a fixture to establish
-   one, and the kernel exports no way to open a unit.
+   The tenant reaches a spec as **one module** — `tenantOf(tenant)`, composed
+   beside the vertical — because the application declares it as a `Tenant`
+   port rather than reading it off the ambient record. That is a consequence
+   of the design choice, not a coincidence, and it is what keeps the fixture
+   free of the kernel: an ambient tenant would have needed a fixture that
+   OPENED a unit to establish one, and the kernel exports no way to do that,
+   where composing a module needs nothing from it — and composes the same
+   thing a deployment's unit module does.
 
 ## Deferred, deliberately
 
