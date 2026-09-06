@@ -1,6 +1,3 @@
--- Hand-written, not generated: `prisma migrate dev` writes no row security, so
--- regenerating the migration set drops this file. `schema-drift.spec.ts` pins
--- that the policy is present, which is what makes that loss red.
 ALTER TABLE "Order" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Order" FORCE ROW LEVEL SECURITY;
 

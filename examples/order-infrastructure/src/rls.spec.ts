@@ -23,7 +23,7 @@ describe("the tenant_isolation policy on Order", () => {
   });
 
   it("shows a pinned connection its own tenant's rows only", async ({
-    db,
+    raw,
     tenant,
     repository,
     otherRepository,
@@ -34,7 +34,7 @@ describe("the tenant_isolation policy on Order", () => {
     const rows = await repository
       .save(anOrder("0199a1e0-0000-7000-8000-000000000602", 3))
       .flatMap(() => otherRepository.save(anOrder("0199a1e0-0000-7000-8000-000000000603", 4)))
-      .flatMap(() => fromSafePromise(scopedTo(db, tenant).order.findMany()));
+      .flatMap(() => fromSafePromise(scopedTo(raw, tenant).order.findMany()));
 
     // THEN the unfiltered query is already scoped — the database is what
     // narrowed it, not the query
@@ -46,10 +46,10 @@ describe("the tenant_isolation policy on Order", () => {
     ]);
   });
 
-  it("refuses an insert naming another tenant", async ({ db, tenant, otherTenant }) => {
+  it("refuses an insert naming another tenant", async ({ raw, tenant, otherTenant }) => {
     // GIVEN a client pinned to this tenant
     // WHEN it writes a row claiming another one
-    const refused = await scopedTo(db, tenant).order.tryCreate({
+    const refused = await scopedTo(raw, tenant).order.tryCreate({
       data: {
         tenantId: otherTenant,
         orderId: "0199a1e0-0000-7000-8000-000000000604",
@@ -66,7 +66,7 @@ describe("the tenant_isolation policy on Order", () => {
   });
 
   it("commits a pinned transaction across a policed and an unpoliced table", async ({
-    db,
+    raw,
     tenant,
     repository,
     outbox,
@@ -77,7 +77,7 @@ describe("the tenant_isolation policy on Order", () => {
     // policy, the outbox row beside it
     const written = await repository
       .save(anOrder("0199a1e0-0000-7000-8000-000000000605", 3))
-      .flatMap(() => fromSafePromise(scopedTo(db, tenant).order.findMany()))
+      .flatMap(() => fromSafePromise(scopedTo(raw, tenant).order.findMany()))
       .flatMap((orders) => outbox.pending(tenant, 10).map((events) => ({ orders, events })));
 
     // THEN both halves are there: the pin reached the whole transaction, and
@@ -91,26 +91,6 @@ describe("the tenant_isolation policy on Order", () => {
           payload: { quantity: 3 },
         }),
       ],
-    });
-  });
-
-  it("keeps list answering one tenant with no tenant in the query", async ({
-    repository,
-    otherRepository,
-    anOrder,
-  }) => {
-    // GIVEN one order under this tenant and one under another
-    // WHEN this tenant lists, through the `where` that no longer names it
-    const listed = await repository
-      .save(anOrder("0199a1e0-0000-7000-8000-000000000606", 1))
-      .flatMap(() => otherRepository.save(anOrder("0199a1e0-0000-7000-8000-000000000607", 1)))
-      .flatMap(() => repository.list({ limit: 10 }));
-
-    // THEN the page is this tenant's, held by the policy alone
-    expect(listed).toBeOkWith({
-      items: [expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000606" })],
-      hasPreviousPage: false,
-      hasNextPage: false,
     });
   });
 });

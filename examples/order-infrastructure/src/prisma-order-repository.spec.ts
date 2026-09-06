@@ -277,7 +277,8 @@ describe("OrderPersistenceModule", () => {
       .flatMap(() => otherRepository.save(anOrder("0199a1e0-0000-7000-8000-000000000122", 1)))
       .flatMap(() => repository.list({ limit: 10 }));
 
-    // THEN it sees its own row only, on a server every other spec is writing to
+    // THEN it sees its own row only, on a server every other spec is writing
+    // to — held by `Order`'s policy, since `list`'s `where` names no tenant
     expect(page).toBeOkWith({
       items: [expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000121" })],
       hasPreviousPage: false,
