@@ -65,6 +65,20 @@ describe("the tenant_isolation policy on Order", () => {
     );
   });
 
+  it("refuses a write from a connection nothing pinned", async ({ raw, tenant }) => {
+    // GIVEN the unpinned client, naming its own tenant on the row
+    // WHEN it writes
+    const refused = await raw.order.tryCreate({
+      data: { tenantId: tenant, orderId: "0199a1e0-0000-7000-8000-000000000605", quantity: 1 },
+    });
+
+    // THEN `WITH CHECK` is NULL with nothing pinned, and NULL is not true: the
+    // write is refused rather than silently inserting nothing
+    expect(refused).toBeDefectWith(
+      expect.objectContaining({ message: expect.stringContaining("42501") }),
+    );
+  });
+
   it("commits a pinned transaction across a policed and an unpoliced table", async ({
     raw,
     tenant,
