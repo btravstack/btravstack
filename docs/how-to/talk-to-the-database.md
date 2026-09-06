@@ -133,13 +133,15 @@ pods, three migrations, one of them losing.
 
 ## 6. Scope it to the tenant
 
-If the application is multi-tenant, the `where` above is a filter someone has to
-remember. `@btravstack/prisma/rls`'s `tenantScoped(tenant)` moves that guarantee
+If the application is multi-tenant, a `tenantId` in every `where` the adapter
+writes is a filter someone has to remember.
+`@btravstack/prisma/rls`'s `tenantScoped(tenant)` moves that guarantee
 into PostgreSQL: applied **last** on the client, it pins every statement to
 `tenant` through a transaction-local `set_config`, and a row-level-security
 policy on the table is what narrows the query — so the adapter stops naming the
 tenant at all, and forgetting to name it stops being a way to read someone
-else's rows.
+else's rows. `examples/order-infrastructure/src/prisma-order-repository.ts`'s
+`list` is the worked case.
 
 The extension is one line; the DDL is the deployment's, and forgetting a piece
 of it fails quietly rather than loudly. Both halves, with what each looks like

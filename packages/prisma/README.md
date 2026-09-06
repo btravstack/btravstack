@@ -93,10 +93,33 @@ port is typed by exactly what it returns.
 — raw SQL included — to `tenant` through a transaction-local
 `set_config('app.tenant_id', tenant, true)`, so a PostgreSQL row-level-security
 policy reading `current_setting('app.tenant_id', true)` sees it. Apply it
-**last** — `new PrismaClient({ adapter }).$extends(unthrownPrisma).$extends(tenantScoped(tenant))`
-— because a transaction callback's `tx` comes from the client as it stood when
-this extension was applied, so anything added after it is invisible inside a
-transaction. `$transaction([...])` is refused rather than silently pinned: the
+**last**:
+
+<!-- doctest: isolate
+// `PrismaClient` and `unthrownPrisma` are the reader's own, exactly as in the
+// worked example above — so what this fence holds is `tenantScoped`'s call
+// shape and its place in the chain, not the generated client's `$extends`.
+// That half is compiled on the reference page, over the real client.
+import { PrismaPg } from "@prisma/adapter-pg";
+
+declare class PrismaClient {
+  constructor(options: { readonly adapter: PrismaPg });
+  $extends(extension: unknown): this;
+}
+declare const adapter: PrismaPg;
+declare const unthrownPrisma: unknown;
+declare const tenant: string;
+-->
+
+```ts
+import { tenantScoped } from "@btravstack/prisma/rls";
+
+const db = new PrismaClient({ adapter }).$extends(unthrownPrisma).$extends(tenantScoped(tenant));
+```
+
+It goes last because a transaction callback's `tx` comes from the client as it
+stood when this extension was applied, so anything added after it is invisible
+inside a transaction. `$transaction([...])` is refused rather than silently pinned: the
 batch form stops being atomic under this design, and a rejected promise beats a
 transaction that quietly no longer rolls back. Use the callback form.
 

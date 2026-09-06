@@ -161,8 +161,10 @@ released client refuses to query.
 **every** statement — raw SQL included — to `tenant`, through a
 transaction-local `set_config('app.tenant_id', tenant, true)`. A PostgreSQL
 row-level-security policy reading `current_setting('app.tenant_id', true)` is
-then what narrows the query, and the adapter above stops naming a tenant in its
-`where` at all.
+then what narrows the query, so an adapter stops naming the tenant in its
+`where` at all —
+`examples/order-infrastructure/src/prisma-order-repository.ts`'s `list` is the
+worked case, and it names none.
 
 It is a **subpath** on the family's optional-peer protocol: `@prisma/client` is
 an optional peer, `packages/prisma/src/rls.ts` is the only file that imports it,
@@ -178,8 +180,27 @@ and the main entry point never does. A consumer that never writes
 
 ### Apply it last
 
-`new PrismaClient({ adapter }).$extends(unthrownPrisma).$extends(tenantScoped(tenant))`
-— `tenantScoped` **last**. Its `$transaction` override runs the callback on a
+<!-- doctest: isolate
+// The real chain, compiled. `OrderDatabaseClient` is what
+// `examples/order-infrastructure/src/database.ts` builds —
+// `new PrismaClient({ adapter }).$extends(unthrownPrisma)` over the client
+// THAT application's schema generates — so this fence pins the one thing
+// `rls.test-d.ts`'s stand-in cannot: that `tenantScoped` is assignable to a
+// generated client's own `$extends`, last in the chain.
+import type { OrderDatabaseClient } from "@btravstack/example-order-infrastructure";
+
+declare const unthrownExtendedClient: OrderDatabaseClient;
+declare const tenant: string;
+-->
+
+```ts
+import { tenantScoped } from "@btravstack/prisma/rls";
+
+// `new PrismaClient({ adapter }).$extends(unthrownPrisma)`, and then:
+const db = unthrownExtendedClient.$extends(tenantScoped(tenant));
+```
+
+`tenantScoped` **last**. Its `$transaction` override runs the callback on a
 `tx` taken from the client as it stood when the extension was applied, so
 anything added after it is invisible inside a transaction. Measured, with
 `tenantScoped` first: `TypeError: tx.order.tryFindMany is not a function`.
