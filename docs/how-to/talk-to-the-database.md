@@ -138,10 +138,13 @@ writes is a filter someone has to remember.
 `@btravstack/prisma/rls`'s `tenantScoped(tenant)` moves that guarantee
 into PostgreSQL: applied **last** on the client, it pins every statement to
 `tenant` through a transaction-local `set_config`, and a row-level-security
-policy on the table is what narrows the query — so the adapter stops naming the
-tenant at all, and forgetting to name it stops being a way to read someone
-else's rows. `examples/order-infrastructure/src/prisma-order-repository.ts`'s
-`list` is the worked case.
+policy on the table is what narrows the query — so the tenant **predicate**
+leaves that table's reads and writes, and forgetting to name it stops being a
+way to read someone else's rows.
+`examples/order-infrastructure/src/prisma-order-repository.ts`'s `list` is the
+worked case, and it names no tenant at all. The **column** and the **key** stay:
+`save` still writes `tenantId` in its `data`, and `find` and `remove` still
+address the composite `tenantId_orderId`.
 
 The extension is one line; the DDL is the deployment's, and forgetting a piece
 of it fails quietly rather than loudly. Both halves, with what each looks like

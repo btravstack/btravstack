@@ -161,10 +161,18 @@ released client refuses to query.
 **every** statement — raw SQL included — to `tenant`, through a
 transaction-local `set_config('app.tenant_id', tenant, true)`. A PostgreSQL
 row-level-security policy reading `current_setting('app.tenant_id', true)` is
-then what narrows the query, so an adapter stops naming the tenant in its
-`where` at all —
+then what narrows the query, so the tenant **predicate** leaves that table's
+reads and writes —
 `examples/order-infrastructure/src/prisma-order-repository.ts`'s `list` is the
-worked case, and it names none.
+worked case, and it names no tenant at all. The **column** and the **key** stay:
+`save` still writes `tenantId` in its `data`, and `find` and `remove` still
+address the composite `tenantId_orderId`. A policy narrows what a statement may
+touch; it does not fill a row in.
+
+The policy must read the **same** setting `tenantScoped` was given, and
+`app.tenant_id` is only the default: a `tenantScoped(tenant, { setting })` whose
+policy names a different one denies every row and every write, which looks
+exactly like row security working.
 
 It is a **subpath** on the family's optional-peer protocol: `@prisma/client` is
 an optional peer, `packages/prisma/src/rls.ts` is the only file that imports it,
@@ -243,9 +251,8 @@ from:
 ALTER TABLE "Order" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Order" FORCE ROW LEVEL SECURITY;
 
--- `current_setting(…, true)` returns NULL rather than erroring when nothing
--- pinned the connection, and `"tenantId" = NULL` is NULL — so an unpinned
--- statement matches no row and inserts nothing.
+-- `current_setting(…, true)` is NULL when nothing pinned the connection, so
+-- USING hides every row from a read and WITH CHECK refuses a write with 42501.
 CREATE POLICY tenant_isolation ON "Order"
   USING ("tenantId" = current_setting('app.tenant_id', true))
   WITH CHECK ("tenantId" = current_setting('app.tenant_id', true));

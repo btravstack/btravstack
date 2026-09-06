@@ -129,11 +129,15 @@ inside a transaction. `$transaction([...])` is refused rather than silently pinn
 batch form stops being atomic under this design, and a rejected promise beats a
 transaction that quietly no longer rolls back. Use the callback form.
 
-The database half stays the deployment's, and both halves of it fail quietly
+The database half stays the deployment's, and every part of it fails quietly
 when forgotten: a **superuser** role bypasses row security whatever the table
 says, and a policy without `FORCE ROW LEVEL SECURITY` is not applied to the
 table's **owner** — the role that ran the migrations. Either way the
-application works and no tenant is isolated. The
+application works and no tenant is isolated. The policy must also read the
+**same** setting `tenantScoped` was given — `app.tenant_id` is only the default
+— because a `tenantScoped(tenant, { setting })` and a policy naming a different
+one deny every row and every write, which looks exactly like row security
+working. The
 [reference page](https://btravstack.github.io/btravstack/reference/prisma)
 carries the DDL and the two smaller lines that fail the same way.
 

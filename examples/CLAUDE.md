@@ -170,8 +170,12 @@ is the index of the workspaces themselves.
   `tenant_isolation` policy under `FORCE ROW LEVEL SECURITY` reading that same
   setting (`prisma/migrations/20260906120000_order_rls/`), so `list` names no
   tenant in its `where` at all — the policy is what narrows it, and a forgotten
-  filter stops being a way to read another tenant's rows. `src/rls.spec.ts`
-  proves it against the real server: an unpinned query matches nothing, a
+  filter stops being a way to read another tenant's rows. What goes is the
+  **predicate**, not the column or the key: `save` still writes `tenantId` in its
+  `data`, and `find` and `remove` still address the composite `tenantId_orderId`,
+  because a policy narrows what a statement may touch and does not fill a row in.
+  `src/rls.spec.ts`
+  proves it against the real server: an unpinned read matches nothing, a
   cross-tenant insert is refused with `42501`, and the role the specs connect as
   is neither a superuser nor exempt from row security — that last one because a
   superuser bypasses every policy whatever `FORCE` says, and the container's own

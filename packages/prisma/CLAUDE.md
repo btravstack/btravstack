@@ -43,7 +43,10 @@ you are working under `packages/prisma/`.
   every statement to `tenant` through a transaction-local
   `set_config(setting, tenant, true)`, so a PostgreSQL row-level-security policy
   reading `current_setting('app.tenant_id', true)` sees it. `setting` defaults
-  to `app.tenant_id`. Also exported: `TenantScopedOptions`, and the two types
+  to `app.tenant_id`, and the policy must read the **same** name: a
+  `tenantScoped(tenant, { setting })` whose policy names a different one denies
+  every row and every write, which looks exactly like row security working.
+  Also exported: `TenantScopedOptions`, and the two types
   that make the override's `tx` nameable, `ScopedTransaction` and
   `ScopedTransactionClient<C>`.
 - It is a **subpath**, on the family's optional-peer protocol: `@prisma/client`
@@ -94,18 +97,36 @@ and the only place the client's type can come from when the starter cannot name
 a generated client. It drops the array overload too, so the refusal above is a
 compile error before it is a rejected promise.
 
-**Two hazards that ride that type, and neither is checked.** The deny list in
-`ScopedTransactionClient<C>` is copied by hand from Prisma's own
-`ITXClientDenyList`, which `@prisma/client/extension` does not export — reaching
-for it would be a deep import into an optional peer's internals. `Omit` of a key
-that does not exist is not an error, so if Prisma changes that list nothing here
-fails: `tx` silently keeps offering a member a transaction can no longer use, or
-hides one it can. `@unthrown/prisma` documents the same hazard on its own list,
-and its list is longer, which is why this one carries a different NAME rather
-than the same one. Second, `isolationLevel?: string` widens Prisma's own enum:
-the enum's values still pass, and so now does `"SERIALIZBLE"` — a typo that used
-to be a compile error reaches the database as a run-time failure. Narrowing it
-would mean naming a generated type, which this package cannot do.
+**The deny list is copied by hand, and `rls.test-d.ts` is what holds the copy
+honest.** `ScopedTransactionClient<C>` restates Prisma's own `ITXClientDenyList`
+rather than importing it, because a published `.d.ts` naming a type from
+`@prisma/client/runtime/client` would need an **optional** peer to resolve for
+every consumer, subpath or not. `Omit` of a key that does not exist is silent, so
+a copy nothing compares would drift without failing: `tx` would keep offering a
+member a transaction can no longer use, or hide one it can — `$transaction`
+itself among them. So gate 6 of `rls.test-d.ts` asserts
+`ScopedTransactionClient<C>` and `Omit<C, ITXClientDenyList>` are mutually
+assignable, importing that type — `import type`, erased at build — from the
+path Prisma publishes it on. Dropping one member from the hand-written list
+fails `pnpm typecheck` with `TS2322`. `@unthrown/prisma` documents the same
+hazard on its own list, and its list is longer, which is why this one carries a
+different NAME rather than the same one.
+
+**`isolationLevel?: string` is Prisma's own spelling here, not a widening this
+package chose.** `@prisma/client/extension`'s `PrismaClientExtends.$transaction`
+declares `options?: { maxWait?; timeout?; isolationLevel?: string }` verbatim;
+the enum lives on `Prisma.TransactionIsolationLevel`, which a **generated**
+client mints, and `Transaction.IsolationLevel` is declared but not exported from
+`@prisma/client/runtime/client` (both checked against 7.10.0). So a consumer
+holding a generated client does lose the enum through this override —
+`"SERIALIZBLE"` compiles and fails at run time — and there is nothing narrower
+to name from a package that cannot see a schema.
+
+**The `@prisma/client` peer is `^7.10.0`, the version everything above was
+measured against**, rather than the `^7.0.0` the other two Prisma peers carry:
+the deny list is copied from 7.10.0's, and the transaction semantics — a `tx`
+carrying the extensions applied before this one, and nothing after — were
+verified there and nowhere else.
 
 **The cost, measured: one extra round trip and one explicit transaction per
 statement outside a transaction.** `set_config(…, true)` is transaction-local

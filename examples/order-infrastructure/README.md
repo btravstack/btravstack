@@ -26,8 +26,8 @@ there, which is what makes that loss red.
 A deployment with a durable database runs them **before the process starts**:
 
 ```bash
-# the OWNER's credentials — this creates and alters, and the policy below is
-# not applied to the table's owner at all
+# the OWNER's credentials — this creates and alters. Owning the table is not a
+# way past the policy: `Order` is FORCEd, so it applies to its owner too.
 DATABASE_URL="postgres://owner:secret@localhost:5432/orders" \
   pnpm --filter @btravstack/example-order-infrastructure db:migrate
 # or, from the root, for every workspace that has migrations:
@@ -48,8 +48,10 @@ change.
 Migrating and running are two different roles. `migrate deploy` connects as the
 database **owner**, because it creates and alters; the application connects as
 `orders_app`, which owns nothing and is `NOSUPERUSER NOBYPASSRLS` — a superuser
-bypasses row security whatever the tables themselves say, so the role a spec
-runs under is what decides whether a policy can be tested at all.
+or a `BYPASSRLS` role bypasses row security whatever the tables themselves say,
+and a table's **owner** bypasses it too unless the table is `FORCE`d, which is
+the line the migration adds. So the role a spec runs under is what decides
+whether a policy can be tested at all.
 `internal/test-infra` provisions that role after every migration, and
 `DATABASE_URL` — still the one variable — is what carries it.
 
