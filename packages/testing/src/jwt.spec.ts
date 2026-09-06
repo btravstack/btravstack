@@ -8,11 +8,13 @@ describe("localIssuer", () => {
   it("serves the public key as a JWKS at the URL it answers", async ({ issuer }) => {
     // GIVEN a local issuer serving its JWKS over http
     // WHEN its JWKS endpoint is fetched
-    const body: unknown = await (await fetch(issuer.jwks)).json();
+    const response = await fetch(issuer.jwks);
+    const body: unknown = await response.json();
 
-    // THEN the published key carries this issuer's kid, algorithm and use
-    expect(body).toEqual({
-      keys: [expect.objectContaining({ kid: "k1", alg: "RS256", use: "sig" })],
+    // THEN it answers JSON, and the published key carries this issuer's kid, algorithm and use
+    expect({ contentType: response.headers.get("content-type"), body }).toEqual({
+      contentType: "application/json",
+      body: { keys: [expect.objectContaining({ kid: "k1", alg: "RS256", use: "sig" })] },
     });
   });
 

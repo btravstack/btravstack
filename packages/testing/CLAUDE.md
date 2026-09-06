@@ -229,10 +229,12 @@ and this package peers on `@btravstack/core`. Listing it as a devDependency of
 core would be a **package-graph cycle turbo refuses**, so it is not one:
 
 - `packages/core/tsconfig.json` maps `paths: { "@btravstack/testing":
-["../testing/dist/index.d.mts"] }` for the type checker (the built
-  declarations — the source would fall outside core's `rootDir`);
-  `tsconfig.build.json` (what `tsdown` compiles) empties `paths` and drops
-  the spec files, so the published `dist` never sees it.
+["../testing/dist/index.d.mts"], "@btravstack/testing/jwt":
+["../testing/dist/jwt.d.mts"] }` for the type checker (the built
+  declarations — the source would fall outside core's `rootDir`); a doc
+  sample naming a subpath needs its own entry here, which is how `/jwt`
+  joined the map. `tsconfig.build.json` (what `tsdown` compiles) empties
+  `paths` and drops the spec files, so the published `dist` never sees it.
 - `packages/core/vitest.config.ts` aliases `@btravstack/testing` to
   `../testing/src/index.ts` and `@btravstack/core` to `./src/index.ts` at run
   time — one kernel in play, and coverage measures what the specs run.

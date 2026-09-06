@@ -1082,9 +1082,11 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
 - **`packages/core`'s specs use `@btravstack/testing`, which peers on core —
   and it is NOT a devDependency of core**, because that would be a
   package-graph cycle turbo refuses. Instead: `packages/core/tsconfig.json`
-  maps `paths: { "@btravstack/testing": ["../testing/dist/index.d.mts"] }`
-  for the type checker (the built d.ts — the source would fall outside
-  `rootDir`), and `tsconfig.build.json`, what `tsdown` compiles, empties
+  maps `paths: { "@btravstack/testing": ["../testing/dist/index.d.mts"],
+"@btravstack/testing/jwt": ["../testing/dist/jwt.d.mts"] }` for the type
+  checker (the built d.ts — the source would fall outside `rootDir`; a
+  subpath a doc sample names gets its own entry, which is how `/jwt` joined
+  the map), and `tsconfig.build.json`, what `tsdown` compiles, empties
   `paths` and excludes the specs so the published `dist` never sees it;
   `packages/core/vitest.config.ts` aliases `@btravstack/testing` to
   `../testing/src/index.ts` and `@btravstack/core` to `./src/index.ts` (one

@@ -41,6 +41,7 @@ export const it = test.extend<{ boot: Boot; issuer: LocalIssuer }>({
   // only reads it, closed once the file is done. A test that closes an
   // issuer itself mints its own instead of reaching for this one.
   issuer: [
+    // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
     async ({}, use) => {
       const built = await localIssuer({
         issuer: "https://issuer.test",
