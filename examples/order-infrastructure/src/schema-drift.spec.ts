@@ -37,4 +37,21 @@ describe("the committed migrations", () => {
     // in the gate would notice until a query reached it.
     expect(tables.map((table) => table.name)).toEqual(expect.arrayContaining([...models]));
   });
+
+  it("keeps the hand-written row-security policy on Order", async ({ db }) => {
+    // GIVEN the same database, carrying one migration `prisma migrate dev`
+    // would never generate
+
+    // WHEN it is asked which policies it has
+    const policies = await db.$queryRawUnsafe<
+      readonly { readonly table: string; readonly name: string }[]
+    >("SELECT tablename AS table, policyname AS name FROM pg_policies WHERE schemaname = 'public'");
+
+    // THEN `tenant_isolation` is still on `Order`. Regenerating the migration
+    // set drops the file that creates it, and nothing else in the gate would
+    // notice until one tenant read another's rows.
+    expect(policies).toEqual(
+      expect.arrayContaining([{ table: "Order", name: "tenant_isolation" }]),
+    );
+  });
 });

@@ -10,7 +10,7 @@ import {
 } from "@btravstack/example-order-domain";
 import { all, Err, P, type Result } from "unthrown";
 
-import { type OrderDatabaseClient } from "./database.js";
+import { type TenantDatabase } from "./database.js";
 
 type OrderRow = { readonly orderId: string; readonly quantity: number };
 
@@ -38,9 +38,11 @@ const hydrate = (row: OrderRow): Result<Order, never> =>
  *
  * The tenant is bound once, at construction, and every statement below closes
  * over it — so the port has no parameter a caller could name another tenant in.
+ * `db` is already pinned to that same tenant, so the column below is what the
+ * row says and the policy is what the database enforces.
  */
 export const prismaOrderRepository = (
-  db: OrderDatabaseClient,
+  db: TenantDatabase,
   tenantId: TenantId,
 ): ServiceOf<OrderRepository> => ({
   // The transactional-outbox write: the row and the fact of the row commit
@@ -106,10 +108,9 @@ export const prismaOrderRepository = (
   list: ({ limit, after, before, minQuantity }) =>
     db.order
       .tryPaginate({
-        where: {
-          tenantId,
-          ...(minQuantity === undefined ? {} : { quantity: { gte: minQuantity } }),
-        },
+        // No `tenantId`: the policy on `Order` holds it, and a filter here
+        // would hide whether it does.
+        where: minQuantity === undefined ? {} : { quantity: { gte: minQuantity } },
         orderBy: { id: "asc" },
       })
       .withCursor(

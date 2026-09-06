@@ -8,7 +8,7 @@ import { fromSafePromise } from "unthrown";
 import { describe, expect, inject, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { OrderPersistenceModule, OrderTenantPersistence } from "./index.js";
+import { OrderPersistenceModule, OrderTenantPersistence, scopedTo } from "./index.js";
 
 /**
  * The two persistence modules a deployment composes — the application scope's
@@ -164,8 +164,9 @@ describe("tenancy", () => {
 describe("the read path's error channel", () => {
   it("surfaces a corrupt row as a defect, not as an error", async ({ db, tenant, repository }) => {
     // GIVEN a row written straight past Prisma into this test's tenant,
-    // carrying a quantity the entity's invariant rejects
-    await db.$executeRawUnsafe(
+    // carrying a quantity the entity's invariant rejects. Through the pinned
+    // client, because `Order`'s policy refuses an unpinned insert.
+    await scopedTo(db, tenant).$executeRawUnsafe(
       `INSERT INTO "Order" ("tenantId", "orderId", "quantity") VALUES ($1, 'o-corrupt', 0)`,
       tenant,
     );

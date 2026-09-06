@@ -25,6 +25,13 @@ declare module "vitest" {
   // oxlint-disable-next-line typescript/consistent-type-definitions -- a module augmentation must be an interface; a type alias cannot merge
   interface ProvidedContext {
     __ORDERS_DATABASE_URL__: string;
+    /**
+     * The owner's URL — the role that migrates. No spec connects with it: it is
+     * here so `rls.spec.ts` can be pointed at a superuser by hand and watched
+     * to go red, which is the only way to tell a policy that holds from a
+     * policy that was never reached.
+     */
+    __ORDERS_OWNER_DATABASE_URL__: string;
   }
 }
 
@@ -57,6 +64,8 @@ export default async ({ provide }: TestProject): Promise<() => void> => {
   );
 
   await provisionApplicationRole(postgres);
+
+  provide("__ORDERS_OWNER_DATABASE_URL__", ownerUrl);
 
   provide(
     "__ORDERS_DATABASE_URL__",

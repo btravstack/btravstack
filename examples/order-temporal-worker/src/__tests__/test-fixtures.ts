@@ -16,6 +16,7 @@ import {
   OrderDatabase,
   OrderPersistenceModule,
   prismaOrderRepository,
+  scopedTo,
 } from "@btravstack/example-order-infrastructure";
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
@@ -113,7 +114,8 @@ const rootWith = (fulfillment: typeof FulfillmentModule, sink: Sink) =>
  * what captures the very Prisma client the running app uses — and `reader`
  * builds the adapter over it for a tenant, exactly as the activity fork does,
  * which is the only way to read a row back now that the repository is bound
- * per attempt. The log lines need no tap — `observability({ sink })` hands them
+ * per attempt. `scopedTo` is not optional: `Order` carries a row-security
+ * policy, so an unpinned reader sees nothing at all. The log lines need no tap — `observability({ sink })` hands them
  * over as values.
  */
 const deployment = (fulfillment: typeof FulfillmentModule) => {
@@ -127,7 +129,7 @@ const deployment = (fulfillment: typeof FulfillmentModule) => {
     lines: (): readonly Line[] => lines,
     reader: (tenant: TenantId): ServiceOf<OrderRepository> => {
       const [db] = tap.services();
-      return prismaOrderRepository(db, tenant);
+      return prismaOrderRepository(scopedTo(db, tenant), tenant);
     },
   };
 };
