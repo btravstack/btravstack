@@ -242,9 +242,12 @@ the factory, not a fallback.
 what matters is the shape. This is also where a header becomes a **tenant**:
 `TenantId` is
 the domain's branded string, so the identity carries the brand from here and no
-handler on this path casts anything. The constructor is a cast rather than a
+handler on this path casts anything — `UserModule` hands the identity's
+`tenantId` straight to its `Tenant` provider. The constructor is a cast rather
+than a
 parse — a brand is a compile-time fiction, and what it buys is that
-`repository.find(tenantId, id)` can no longer be called with its two arguments
+`customers.find(tenantId, id)` — the one port left here that names a tenant —
+cannot be called with its two arguments
 the other way round. The scope **vocabulary** is declared at the call
 (`HttpAuthenticator<Identity, "orders:export">()`), so the granted list is
 checked against it here rather than compared as loose strings at the endpoint.

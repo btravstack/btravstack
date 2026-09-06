@@ -1,7 +1,7 @@
 /**
  * The compile-time half of the layering, once per vertical:
- * `OrderApplicationModule` declares `OrderRepository` and `Logger` as unmet
- * needs and `CustomerApplicationModule` declares `CustomerRepository`, so di's
+ * `OrderApplicationModule` declares `OrderRepository`, `Logger` and `Tenant` as
+ * unmet needs and `CustomerApplicationModule` declares `CustomerRepository`, so di's
  * `DependencyGate` refuses scoping either one at the call site — with the
  * missing port in the message —
  * until an outer module provides them — and, since the `needs` gate, an outer
@@ -62,9 +62,9 @@ const logger = Provider(Logger)({ inject: {}, value: createLogger(() => {}) });
 // Negative: nothing provides `OrderRepository`, so `DependencyGate`'s marker
 // object rides `Module.scoped`'s parameter and the call fails assignability —
 // the message ends on `required in type '{ readonly "UNSATISFIED DEPENDENCIES
-// — nothing provides": Logger | OrderRepository; }'` (measured), the label and
-// the ports both printed. The rest-tuple arity error this replaced printed
-// `Expected 5 arguments, but got 2` and nothing else.
+// — nothing provides": Logger | OrderRepository | Tenant; }'` (measured), the
+// label and the ports both printed. The rest-tuple arity error this replaced
+// printed `Expected 5 arguments, but got 2` and nothing else.
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no OrderRepository is provided.
 const _unwiredOrders = Module.scoped(OrderApplicationModule, (ctx) =>
   ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-000000000001", 1),

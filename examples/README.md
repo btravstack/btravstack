@@ -15,7 +15,7 @@ calls `start`.
 | Package                                                | Layer     | Shows                                                                                                                                                                                                        |
 | ------------------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                                                                          |
-| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and one module per vertical whose repository — and, for orders, `Logger` — is deliberately an **unmet need**.                                                     |
+| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and one module per vertical whose repository — and, for orders, `Logger` and the unit's `Tenant` — is deliberately an **unmet need**.                             |
 | [`order-infrastructure`](./order-infrastructure)       | adapters  | Prisma-backed repositories over a multi-tenant PostgreSQL schema, translating P-codes into the domain's vocabulary and closing the application's repository needs.                                           |
 | [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                                                                          |
 | [`order-api`](./order-api)                             | runtime   | The first deployment: a two-slice modulith — a controller per contract fragment, composed into one oRPC router — served by `http()`, and `Result` → `ORPCError`.                                             |
@@ -47,8 +47,11 @@ happens to satisfy it. `OrderApplicationModule` therefore leaves that need
 **unmet**, which is not documentation but a type:
 `Module.scoped(OrderApplicationModule, …)` does not compile until an outer
 module provides one. There is one such module per vertical, so each gate
-carries the repository that vertical actually uses — carries, not prints: di's
-gate is an arity error, and the port is in the parameter's type.
+carries the repository that vertical actually uses, and the message names the
+missing ports: `UNSATISFIED DEPENDENCIES — nothing provides` followed by them.
+For orders that list also carries `Tenant`, because the tenant is a capability
+of the unit rather than an argument — so a graph that never said which tenant
+it is scoped to cannot be scoped at all.
 
 ## What each one shows, in full
 

@@ -53,7 +53,10 @@ with a fact about where it is running.
 
 So the line is: **ambient carries data, the di `Context` carries
 capabilities**. A repository through the store is the untestable coupling. A
-tenant id read by the Postgres adapter is not.
+tenant id read by the Postgres adapter is not — which is what makes the field
+_permissible_, not what makes it right: the example application spells its
+tenant as a **port** on the other side of that line, and no shipped starter
+fills the field at all (see [below](#multi-tenancy-is-the-application-s-not-the-framework-s)).
 
 ## Why exactly these four
 

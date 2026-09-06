@@ -192,8 +192,8 @@ The controller does no oRPC work of its own — it stores a plain record, and
 on `.port`, which the composing form reads — stripping the port id's own
 prefix back off — to recover each piece's path and order its construction
 before the router's — there is nothing to name by hand. A slice ships its controller as a module
-that **imports the vertical it needs** and exports only that controller, the
-same privacy di already gives any provider:
+that **imports whatever its own providers close over** and exports only that
+controller, the same privacy di already gives any provider:
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
