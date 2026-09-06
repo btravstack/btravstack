@@ -36,7 +36,7 @@ type DevKeyPair = { readonly privateJwk: JWK; readonly publicJwk: JWK };
  * a `pnpm dev:env` between the two changes nothing.
  */
 export const devKeyPair = (cache: URL = DEFAULT_CACHE): Promise<DevKeyPair> =>
-  withLock("dev-issuer", async () => {
+  withLock("dev-issuer-key", async () => {
     const privateFile = new URL("private.jwk", cache);
     const publicFile = new URL("public.jwk", cache);
 
@@ -53,7 +53,7 @@ export const devKeyPair = (cache: URL = DEFAULT_CACHE): Promise<DevKeyPair> =>
     const privateJwk = { ...(await exportJWK(privateKey)), kid: KID, alg: ALGORITHM };
 
     await mkdir(cache, { recursive: true });
-    await writeFile(privateFile, JSON.stringify(privateJwk));
+    await writeFile(privateFile, JSON.stringify(privateJwk), { mode: 0o600 });
     await writeFile(publicFile, JSON.stringify(publicJwk));
 
     return { privateJwk, publicJwk };

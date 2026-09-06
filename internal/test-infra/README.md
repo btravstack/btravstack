@@ -151,12 +151,13 @@ so the dev loop needs an issuer of its own — the specs use
 - **`signDevToken`**, behind `pnpm dev:token`.
 
 ```sh
-# a tenant the dev loop already relays the outbox for
+# mint into a variable and check the status — never `$(…)` straight into the
+# header, see below. The tenant is one the dev loop already relays the outbox for
 TENANT=0199a1e0-0000-7000-8000-000000000001 # a UUIDv7
-pnpm dev:token -- --tenant "$TENANT"
+TOKEN=$(pnpm dev:token -- --tenant "$TENANT") || exit
 
-# and the whole call, composed — the port is the one the `serving` event logged
-curl -s -H "authorization: Bearer $(pnpm dev:token -- --tenant "$TENANT")" \
+# the port is the one the API's `serving` event logged, `PORT=0` in its dev script
+curl -s -H "authorization: Bearer $TOKEN" \
      -H 'content-type: application/json' -d '{"json":{}}' \
      http://localhost:57234/rpc/orders/list
 ```
@@ -166,10 +167,18 @@ curl -s -H "authorization: Bearer $(pnpm dev:token -- --tenant "$TENANT")" \
 comes back as a 401 rather than as an error naming the mistake. Mint one with
 `node -e 'import("uuidv7").then((m) => console.log(m.uuidv7()))'`, or reuse the
 `OUTBOX_TENANTS` value above. `--sub` defaults to `u-1` and `--scope` to
-`orders:export` (what `orders.export` requires; nothing else does). The token
-and nothing else goes to stdout, which is what makes the `$(…)` above work; a
-missing or malformed `--tenant` prints one line of usage on stderr and exits
-`64`.
+`orders:export` (what `orders.export` requires; nothing else does). A missing
+`--tenant`, one that is not a UUIDv7, and an unknown flag all print the same
+one-line usage on stderr and exit `64`.
+
+**Mint into a variable, and check the status.** The _script_ writes the token
+and nothing else to stdout — but `pnpm` writes its own
+`[ELIFECYCLE] Command failed with exit code 64.` **to stdout** when the script
+exits non-zero, and `--silent` does not suppress it. So a
+`curl -H "authorization: Bearer $(pnpm dev:token …)"` sends that line as the
+bearer token on the very mistake the UUIDv7 check exists to catch, and the real
+usage line is scrolled off in stderr. `TOKEN=$(…) || exit` is what makes the
+failure a failure.
 
 ## The two scripts
 
@@ -202,7 +211,8 @@ already loaded.
 ## Running the gate needs Docker
 
 Every workspace that boots the example application or a broker-backed runtime
-needs a daemon. A warm `pnpm test` attaches to what is already running, so the
+needs a daemon — **and so does this one**, since `dev-issuer.spec.ts` starts the
+JWKS container to fetch a real key set back off it. A warm `pnpm test` attaches to what is already running, so the
 image pulls are paid once per machine rather than once per run — which is the
 property worth knowing; the wall clock is whatever your machine and your
 concurrency make it.

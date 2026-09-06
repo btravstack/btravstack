@@ -96,9 +96,14 @@ its address into `.env.dev`; `pnpm dev:token` signs a token that endpoint's key
 verifies, and prints it and nothing else:
 
 ```sh
+# mint into a variable and check the status: on a bad tenant `pnpm` puts its own
+# `[ELIFECYCLE]` line on stdout, which a `$(…)` would send as the bearer token
+TENANT=0199a1e0-0000-7000-8000-000000000001 # a UUIDv7
+TOKEN=$(pnpm dev:token -- --tenant "$TENANT") || exit
+
 # the port is the one the API's `serving` event logged — `PORT=0` in the dev
 # script, because three deployments on one machine cannot share a fixed one
-curl -s -H "authorization: Bearer $(pnpm dev:token -- --tenant "$TENANT")" \
+curl -s -H "authorization: Bearer $TOKEN" \
      -H 'content-type: application/json' -d '{"json":{}}' \
      http://localhost:57234/rpc/orders/list
 ```
