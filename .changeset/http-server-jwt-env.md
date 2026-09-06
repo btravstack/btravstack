@@ -25,8 +25,8 @@ description's, which `Authenticator<P, Scope, N, E>` and the scheme's own di
 provider now carry: a scheme whose configuration is wrong fails the BOOT with a
 typed error instead of constructing happily and refusing every caller with a
 401 that carries no reason. `jwtAuthenticator`'s piece reads `Env`, and
-`HttpModule` now carries that for the schemes it composes — a root writes no
-`needs` line for one, the same way it never restated the starter's own `Env`.
+`HttpModule` now carries that for every provider in the root, its schemes
+included — a root writes no `needs` line for one, the same way it never restated the starter's own `Env`.
 A scheme owing any other unmet port is still refused at the `HttpModule` call.
 
 `@btravstack/config` gains `Config.url(variable, options?)`, a string field

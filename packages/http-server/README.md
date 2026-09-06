@@ -272,8 +272,8 @@ record) because an environment carries no records.
 
 `jwtAuthenticator`'s three transport options pin the same way, from
 `@btravstack/http-server/jwt`. A root composing that scheme writes no `needs`
-line for it: `HttpModule` carries `Env` for the schemes it composes, the same
-way it already carries the starter's own.
+line for it: `HttpModule` carries `Env` for every provider in the root, its
+schemes included, the same way it already carries the starter's own.
 
 | Option     | What it is                                                                |
 | ---------- | ------------------------------------------------------------------------- |

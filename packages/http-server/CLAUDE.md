@@ -1055,8 +1055,8 @@ this package could produce. `Config.parse` is the step it runs, lifted out of
 `Config.provider` so both callers share one home; the piece is already its own
 provider, so there is no second port for `Config.provider` to bind.
 
-**It needs `Env`, and `HttpModule` carries that for its schemes rather than
-making every root restate it.** The scheme's provider sits in the ROOT's
+**It needs `Env`, and `HttpModule` carries that for every provider in the root
+— its schemes included — rather than making every root restate it.** The scheme's provider sits in the ROOT's
 `provides` (it rides in on the router or the fragments), so di's `NeedsGate`
 would ask the root to declare `Env` — a line that lands on every deployment and
 every doc page mirroring one. `HttpModuleOptions` instantiates that gate as

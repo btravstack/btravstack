@@ -225,8 +225,8 @@ The two rules this half exists to state, before the detail:
   401 that carries no reason. `Config.parse` is what it runs, the step
   `Config.provider` performs, lifted so both have one home. Its `inject` is
   `{ env: Env }`, and a root composing this scheme writes no `needs` line for
-  it: `HttpModule` carries `Env` for the schemes it composes, the same way it
-  already carries the starter's own. A scheme owing any OTHER unmet port is
+  it: `HttpModule` carries `Env` for every provider in the root, its schemes
+  included, the same way it already carries the starter's own. A scheme owing any OTHER unmet port is
   still refused at the `HttpModule` call.
 
   **`jwks` is a `Config.url` field**, not a `Config.string` one:

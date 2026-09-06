@@ -171,6 +171,7 @@ describe("Config.url", () => {
     // bad value PINNED
     const field = Config.url("HTTP_JWT_JWKS_URI");
 
+    // WHEN each is read
     const read = {
       good: field.parse("https://issuer.example/.well-known/jwks.json"),
       malformed: field.parse("issuer.example/jwks.json"),
