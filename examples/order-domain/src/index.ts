@@ -10,4 +10,4 @@ export {
   Quantity,
   placeOrder,
 } from "./order.js";
-export { TenantId } from "./tenant.js";
+export { TenantId, TenantIdSchema } from "./tenant.js";

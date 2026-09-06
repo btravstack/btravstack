@@ -69,7 +69,18 @@ is the index of the workspaces themselves.
   its identities, and there is no identity comparison left to make: declaring a
   scheme and implementing it are the same act, so a scheme the contract names
   with no authenticator behind it is di's own unmet need on
-  `HttpAuthenticator:<scheme>`. The one call's result is held as **one
+  `HttpAuthenticator:<scheme>`. **Both schemes are the starter's own:** `user`
+  is `jwtAuthenticator` with nothing pinned, so `HTTP_JWT_JWKS_URI`,
+  `HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE` are a deployment's and an unset one
+  fails the boot with the variable named; `service` is `apiKeyAuthenticator`.
+  The `Bearer <tenantId>:<userId>:<scopes>` stand-in the file used to carry is
+  gone, and with it the only place in these examples that vouched for a value
+  instead of checking it. What stays the application's is `principal(claims)`:
+  the one place this deployment writes which claim carries a tenant — `tenant`
+  here, `tid` on Entra, `org_id` on Auth0 — and the one place the `TenantId`
+  brand is claimed on this path. The specs mint real tokens through
+  `@btravstack/testing/jwt`'s `localIssuer`, file-scoped, and `boot`'s
+  environment carries the three variables off it. The one call's result is held as **one
   binding and never destructured** — each destructured member expands to a type
   mentioning `@btravstack/contract`'s inaccessible `unique symbol` (TS2527),
   while held whole it collapses to the nameable `Http<A>`, which is why the
@@ -269,8 +280,11 @@ is the index of the workspaces themselves.
   already validated it — so each path claims the brand exactly once, where an
   outside value becomes the application's vocabulary. **Moving the tenant into
   the unit moved those boundaries too, and shrank them**: they are now the
-  three unit modules' `Tenant` providers — `order-api`'s `userAuth`, from
-  which the `Identity` carries the brand and `UserModule` hands it on uncast;
+  three unit modules' `Tenant` providers — `order-api`'s `userAuth`, whose
+  `principal` is the one boundary here that **parses before it casts**
+  (`TenantIdSchema.safeParse`), because a token claim is the issuer's string
+  and no contract validated it; from there the `Identity` carries the brand
+  and `UserModule` hands it on uncast;
   `ActivityUnitModule`'s `TenantId(input.tenantId)`;
   `MessageUnitModule`'s `TenantId(message.payload.tenantId)` — plus the
   customers controller's `TenantId(input.tenantId)` and the relay's

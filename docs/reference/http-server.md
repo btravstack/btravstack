@@ -656,39 +656,26 @@ JWT-claims shape, which a structural test read as the scoped answer and handed
 the handler `undefined`.
 
 ```ts
-import { TenantId } from "@btravstack/example-order-domain";
-import { granted } from "@btravstack/http-server";
+import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
+import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 
-export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
-  inject: {},
-  sync: () => (headers) => {
-    const header = headers.authorization ?? "";
-    const token = header.startsWith("Bearer ")
-      ? header.slice("Bearer ".length)
-      : "";
-    const [tenantId, userId, ...rest] = token.split(":");
-    // Rejoined rather than taken as one field: a scope name contains the
-    // delimiter itself, so `orders:export` cannot survive a plain third field.
-    const claimed = rest.join(":");
-    return tenantId === undefined ||
-      tenantId === "" ||
-      userId === undefined ||
-      userId === ""
-      ? ErrAsync(new Unauthenticated())
-      : OkAsync(
-          granted(
-            { tenantId: TenantId(tenantId), userId },
-            claimed
-              .split(",")
-              .filter(
-                (scope): scope is "orders:export" => scope === "orders:export",
-              ),
-          ),
-        );
+// A scheme WITH a vocabulary. `jwtAuthenticator` is this primitive underneath:
+// it calls `granted` with the intersection of `scopes` and the token's own
+// claim, so an application writes only what the claims mean.
+export const userAuth = jwtAuthenticator<Identity>()({
+  scopes: ["orders:export"],
+  principal: (claims: Claims) => {
+    const tenant = claims["tenant"];
+    return typeof claims.sub === "string" &&
+      typeof tenant === "string" &&
+      TenantIdSchema.safeParse(tenant).success
+      ? { tenantId: TenantId(tenant), userId: claims.sub }
+      : undefined;
   },
 });
 
-// A second scheme: an API key, no scopes, no tenant.
+// A second scheme, written against the primitive: an API key, no scopes, no
+// tenant, so it answers the identity bare.
 export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
   inject: {},
   sync: () => (headers) => {

@@ -36,8 +36,7 @@ const customersController = api.OrpcController(
   "customers",
 )({ inject: {}, sync: () => ({ find: () => OkAsync({ name: "Ada" }) }) });
 declare const view: (order: Order) => { id: string; quantity: number };
-declare const tenantId: string;
-declare const userId: string;
+declare const accessToken: string;
 -->
 
 # Protect a procedure
@@ -159,19 +158,20 @@ key the authenticator sits under in `defineHttp`, so it is written once.
 **`src/auth.ts`** — one file per application
 
 <!-- doctest: isolate
-import { TenantId } from "@btravstack/example-order-domain";
-import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http-server";
+import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
+import { HttpAuthenticator, Unauthenticated, defineHttp } from "@btravstack/http-server";
+import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 import { ErrAsync, OkAsync } from "unthrown";
 -->
 
 ```ts
-import { TenantId } from "@btravstack/example-order-domain";
+import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
 import {
   HttpAuthenticator,
   Unauthenticated,
   defineHttp,
-  granted,
 } from "@btravstack/http-server";
+import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 import { ErrAsync, OkAsync } from "unthrown";
 /** What the `user` scheme resolves to. The contract names none of this. */
 export type Identity = { readonly tenantId: TenantId; readonly userId: string };
@@ -179,33 +179,23 @@ export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 /** What the `service` scheme resolves to: a machine caller, no tenant. */
 export type ServiceIdentity = { readonly appId: string };
 
-export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
-  inject: {},
-  sync: () => (headers) => {
-    const header = headers.authorization ?? "";
-    const token = header.startsWith("Bearer ")
-      ? header.slice("Bearer ".length)
-      : "";
-    const [tenantId, userId, ...rest] = token.split(":");
-    // Rejoined rather than taken as one field: a scope name contains the
-    // delimiter itself, so `orders:export` cannot survive a plain third field.
-    const claimed = rest.join(":");
-    return tenantId === undefined ||
-      tenantId === "" ||
-      userId === undefined ||
-      userId === ""
-      ? ErrAsync(new Unauthenticated())
-      : OkAsync(
-          granted(
-            { tenantId: TenantId(tenantId), userId },
-            claimed
-              .split(",")
-              .filter(
-                (scope): scope is "orders:export" => scope === "orders:export",
-              ),
-          ),
-        );
-  },
+/**
+ * No standard claim carries a tenant, so the name is the issuer's — `tenant`
+ * here, `tid` on Entra, `org_id` on Auth0 — and this is the one place this
+ * deployment writes it. Answering `undefined` refuses the token.
+ */
+const principal = (claims: Claims): Identity | undefined => {
+  const tenant = claims["tenant"];
+  return typeof claims.sub === "string" &&
+    typeof tenant === "string" &&
+    TenantIdSchema.safeParse(tenant).success
+    ? { tenantId: TenantId(tenant), userId: claims.sub }
+    : undefined;
+};
+
+export const userAuth = jwtAuthenticator<Identity>()({
+  principal,
+  scopes: ["orders:export"],
 });
 
 export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
@@ -258,13 +248,17 @@ of it is a compile error — the signal to use the factory, not a fallback.
 Neither form invents one: an unmarked procedure's context still has no
 `principal` at all.
 
-`Bearer <tenantId>:<userId>:<scopes>` is a stand-in, not a recommendation —
-what matters is the shape. Neither authenticator here needs a service; a JWT
-verifier, a key set or a user directory is named in an `inject` record and
-injected the way any provider's dependencies are, so swapping the stand-in for
-real verification changes nothing else in the composition — and that
-dependency travels with the authenticator into the graph, so a root that
-satisfies none is refused at the `HttpModule(...)` call.
+The `user` scheme is a **real** verification: `jwtAuthenticator` fetches the
+issuer's JWKS, caches it across a key rotation, requires `iss`, `aud` and
+`exp`, and accepts asymmetric algorithms only. Its `jwks`, `issuer` and
+`audience` are unset above, so they bind from `HTTP_JWT_JWKS_URI`,
+`HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE` — a deployment that sets none is
+refused at startup with the variable named, rather than refusing every caller
+in production. A scheme that needs a service of its own — a user directory, a
+key store — names it in an `inject` record and gets it the way any provider's
+dependencies arrive, and that dependency travels with the authenticator into
+the graph, so a root that satisfies none is refused at the `HttpModule(...)`
+call.
 
 Both type arguments are **stated**, never inferred from `sync`: inference
 through a returned function's `AsyncResult` is exactly where a principal
@@ -436,7 +430,7 @@ On the client, `UNAUTHORIZED` and `FORBIDDEN` are errors the contract does
 
 ```ts
 const client = createOrderApiClient("http://127.0.0.1:3000", "/rpc", {
-  authorization: `Bearer ${tenantId}:${userId}:orders:export`,
+  authorization: `Bearer ${accessToken}`,
 });
 ```
 

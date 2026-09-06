@@ -81,7 +81,7 @@ describe("order-api", () => {
       `http://127.0.0.1:${info?.port}`,
       "/rpc",
       {
-        authorization: `Bearer ${tenantId}:u-1`,
+        authorization: `Bearer ${await tokenFor()}`,
       },
     );
 
@@ -376,9 +376,24 @@ the example's own fixtures on top of `boot`:
 
 ```ts
 export const it = test.extend<ApiFixtures>({
-  boot: bootFixture({
-    env: { PORT: "0", HOST: "127.0.0.1", LOG_LEVEL: "fatal" },
-  }),
+  // One issuer per spec file: a served JWKS and a matching signer, so the
+  // `user` scheme does a real fetch and a real verify.
+  issuer: [localIssuerFixture, { scope: "file" }],
+
+  env: async ({ issuer }, use) => {
+    await use({
+      PORT: "0",
+      HOST: "127.0.0.1",
+      LOG_LEVEL: "fatal",
+      HTTP_JWT_JWKS_URI: issuer.jwks,
+      HTTP_JWT_ISSUER: issuer.issuer,
+      HTTP_JWT_AUDIENCE: issuer.audience,
+    });
+  },
+
+  boot: async ({ env }, use) => {
+    await bootFixture({ env })({}, use);
+  },
 
   serve: async ({ boot }, use) => {
     await use((module, options) => boot(module, options));
@@ -390,8 +405,8 @@ export const it = test.extend<ApiFixtures>({
 `serve` has nothing to add over `boot` — `RequestModule` is forked by the
 answerers themselves, per `OrderApi`'s own `unit` option, not by anything a
 fixture supplies — so its shutdown is still the fixture's; `clientFor` builds the oRPC client from
-`runtimeInfo()` **and gives it credentials for this test's tenant**
-(`Bearer ${tenant}:u-1`), since the contract marks the `orders` fragment and an
+`runtimeInfo()` **and gives it a token the file's own issuer signed for this
+test's tenant**, since the contract marks the `orders` fragment and an
 anonymous call to it never reaches a use case; and `recording` is the real
 root's composition with a recording sink in place of stdout:
 

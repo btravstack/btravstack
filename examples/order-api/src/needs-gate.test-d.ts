@@ -27,6 +27,12 @@ const options = { signals: false, probes: false } as const;
 
 // Positive: the composition root exports the runtime, so the marker collapses
 // to `unknown` and this is an ordinary two-argument call.
+//
+// It is also where `HttpModule` hiding `Env` is pinned: `userAuth` is
+// `jwtAuthenticator`, which binds three variables off the `Env` port, and
+// `module.ts` still writes no `needs` line at all — the sugar carries it for
+// every provider in the root, so a root composing a configured scheme owes
+// nothing extra to say so.
 const _wired = start(OrderApi, options);
 
 // The same graph without `http(...)`: nothing declared over `RuntimePort` is
