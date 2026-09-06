@@ -3,11 +3,9 @@
 // methods survive, and the `$transaction` it installs hands the callback a `tx`
 // that is the extended client rather than an implicit `any`.
 //
-// The client is a structural stand-in rather than `PrismaClientExtends` from
-// `@prisma/client/extension`: that type carries no model delegates and its
-// `$extends` answers itself, so neither of the first two claims could be stated
-// against it. A generated client cannot be imported here — there is one per
-// application, which is the whole reason `prismaDatabase` takes a `client` arrow.
+// Its limit: the stand-in's `$extends` takes `never`, so this file pins `tx`'s
+// type GIVEN the extension applies, not that `tenantScoped` is assignable to a
+// generated client's own `$extends`. Task 3's real client is what pins that.
 import { tenantScoped } from "./rls.js";
 
 /** How Prisma resolves a `client` extension component onto the extended client. */

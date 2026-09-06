@@ -45,7 +45,7 @@ you are working under `packages/prisma/`.
   reading `current_setting('app.tenant_id', true)` sees it. `setting` defaults
   to `app.tenant_id`. Also exported: `TenantScopedOptions`, and the two types
   that make the override's `tx` nameable, `ScopedTransaction` and
-  `TransactionClient<C>`.
+  `ScopedTransactionClient<C>`.
 - It is a **subpath**, on the family's optional-peer protocol: `@prisma/client`
   is an optional peer, `rls.ts` is the only file importing it (from
   `@prisma/client/extension`, which is where `@unthrown/prisma` takes `Prisma`
@@ -88,11 +88,24 @@ the spike read `Prisma` off a generated client, where that indexed access
 carries the schema's own delegates, while this package must read it off
 `@prisma/client/extension`, where it resolves to
 `Omit<PrismaClientExtends<DefaultArgs>, …>` and `tx.order` stops existing. So the
-cast targets `ScopedTransaction`, `<C, R>(this: C, fn: (tx: TransactionClient<C>)
-=> Promise<R>)` — the same trick `@unthrown/prisma` uses for `$tryTransaction`,
+cast targets `ScopedTransaction`,
+`<C, R>(this: C, fn: (tx: ScopedTransactionClient<C>) => Promise<R>)` — the same trick `@unthrown/prisma` uses for `$tryTransaction`,
 and the only place the client's type can come from when the starter cannot name
 a generated client. It drops the array overload too, so the refusal above is a
 compile error before it is a rejected promise.
+
+**Two hazards that ride that type, and neither is checked.** The deny list in
+`ScopedTransactionClient<C>` is copied by hand from Prisma's own
+`ITXClientDenyList`, which `@prisma/client/extension` does not export — reaching
+for it would be a deep import into an optional peer's internals. `Omit` of a key
+that does not exist is not an error, so if Prisma changes that list nothing here
+fails: `tx` silently keeps offering a member a transaction can no longer use, or
+hides one it can. `@unthrown/prisma` documents the same hazard on its own list,
+and its list is longer, which is why this one carries a different NAME rather
+than the same one. Second, `isolationLevel?: string` widens Prisma's own enum:
+the enum's values still pass, and so now does `"SERIALIZBLE"` — a typo that used
+to be a compile error reaches the database as a run-time failure. Narrowing it
+would mean naming a generated type, which this package cannot do.
 
 **The cost, measured: one extra round trip and one explicit transaction per
 statement outside a transaction.** `set_config(…, true)` is transaction-local
@@ -101,7 +114,13 @@ so an unpinned statement is wrapped in a two-element batch. A statement already
 inside a `$transaction` callback pays nothing: the connection is pinned once for
 the whole transaction.
 
-**Its spec is stubbed, by this package's own rule** (below): `rls.spec.ts` pins
+**Its spec is stubbed, by this package's own rule** (below), and the stub is
+built so the pre-extension-client mechanism is FALSIFIABLE: `StubClient.$extends`
+answers a NEW client whose statements route through the captured
+`$allOperations`, exactly as Prisma's does, so an extension issuing its own
+`set_config` through the client it was handed back recurses. Measured by
+mutation: pinning through the extended client fails four of the seven tests with
+`RangeError: Maximum call stack size exceeded`. `rls.spec.ts` pins
 the MECHANICS — which statements are issued, through which client, in which
 order, what the hook hands back, and that the array form rejects — against the
 `StubClient`. What it cannot prove is that PostgreSQL then refuses the row, and

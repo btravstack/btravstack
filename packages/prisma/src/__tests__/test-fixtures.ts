@@ -27,24 +27,28 @@ export type StubClient = {
   readonly $transaction: (arg: unknown, options?: unknown) => Promise<unknown>;
   /** Makes the next `$queryRaw` reject, so the health check can be driven down. */
   readonly breakQueries: (reason: string) => void;
+  /**
+   * Answers a NEW client carrying the extension's hooks, as Prisma's own does.
+   * Statements on it route through the top-level hook; statements on the client
+   * it was called on do not — which is what makes an extension's choice of
+   * client observable.
+   */
   readonly $extends: (extension: unknown) => StubClient;
   readonly disconnected: () => number;
   readonly url: string;
-  /** Drives whatever `$allModels` extension was applied, as Prisma would on a real call. */
+  /** Drives this client's `$allModels` hook, as Prisma would on a model call. */
   readonly query: (model: string, operation: string, answer: Promise<unknown>) => Promise<unknown>;
-  /** Drives whatever top-level `$allOperations` extension was applied. */
+  /** Drives this client's top-level `$allOperations` hook. */
   readonly operation: (
     model: string | undefined,
     operation: string,
     answer: Promise<unknown>,
   ) => Promise<unknown>;
-  /** How many times that top-level hook has run. */
+  /** How many times a top-level hook has run, over every client of this family. */
   readonly operations: () => number;
-  /** Calls the `client.$transaction` an extension installed. */
-  readonly transaction: (arg: unknown) => Promise<unknown>;
   /** What the stub's batch `$transaction` resolves with. */
   readonly resolveBatchWith: (results: readonly unknown[]) => void;
-  /** Every `$transaction` the extension issued through this client. */
+  /** Every `$transaction` issued through this family of clients. */
   readonly issued: () => readonly Issued[];
 };
 
@@ -92,21 +96,42 @@ export const it = test.extend<{ stub: Stub; observed: Observed; logs: Logs }>({
     let last: StubClient | undefined;
     let count = 0;
     const make = (url: string): StubClient => {
-      let hook: AllOperations | undefined;
-      let everyOperation: AllOperations | undefined;
-      let override: ((arg: unknown, options?: unknown) => Promise<unknown>) | undefined;
       let queryFailure: string | undefined;
       let batch: readonly unknown[] = [1, undefined];
       let operations = 0;
       const issued: Issued[] = [];
-      const client: StubClient = {
-        $queryRaw: () =>
-          queryFailure === undefined
-            ? Promise.resolve([{ "?column?": 1 }])
-            : Promise.reject(new Error(queryFailure)),
-        $executeRaw: (query, ...values) =>
-          tag(Promise.resolve(1), { statement: { raw: query.join("?"), values } }),
-        $transaction: (arg) => {
+
+      const rawQuery = () =>
+        queryFailure === undefined
+          ? Promise.resolve([{ "?column?": 1 }])
+          : Promise.reject(new Error(queryFailure));
+
+      const rawExecute = (query: TemplateStringsArray, ...values: unknown[]) =>
+        tag(Promise.resolve(1), { statement: { raw: query.join("?"), values } });
+
+      const build = (hooks: {
+        readonly models?: AllOperations | undefined;
+        readonly all?: AllOperations | undefined;
+        readonly override?: ((arg: unknown, options?: unknown) => Promise<unknown>) | undefined;
+      }): StubClient => {
+        /** Every statement this client issues, through its own top-level hook if it has one. */
+        const drive = (
+          model: string | undefined,
+          operation: string,
+          run: () => Promise<unknown>,
+        ) => {
+          const all = hooks.all;
+          if (all === undefined) return run();
+          operations += 1;
+          return all({
+            model,
+            operation,
+            args: {},
+            query: () => tag(run(), { op: operation }),
+          });
+        };
+
+        const transact = (arg: unknown): Promise<unknown> => {
           if (Array.isArray(arg)) {
             issued.push({ kind: "batch", statements: arg.map(statementOf) });
             return Promise.resolve(batch);
@@ -116,63 +141,68 @@ export const it = test.extend<{ stub: Stub; observed: Observed; logs: Logs }>({
             pinned: undefined,
           };
           issued.push(entry);
-          const tx = {
-            $executeRaw: (query: TemplateStringsArray, ...values: unknown[]) => {
+          // The transaction's client predates every extension, exactly as
+          // Prisma's does when `$transaction` is called on the bare client.
+          const bare = build({});
+          const tx: StubClient = {
+            ...bare,
+            $executeRaw: (query, ...values) => {
               entry.pinned ??= { raw: query.join("?"), values };
-              return Promise.resolve(1);
+              return bare.$executeRaw(query, ...values);
             },
-            $queryRaw: () => Promise.resolve("raw-on-tx"),
           };
           return (arg as (tx: unknown) => Promise<unknown>)(tx);
-        },
-        breakQueries: (reason: string) => {
-          queryFailure = reason;
-        },
-        $disconnect: () => {
-          count += 1;
-          return Promise.resolve();
-        },
-        $extends: (extension) => {
-          const ext = extension as {
-            readonly query?: {
-              readonly $allModels?: { readonly $allOperations?: AllOperations };
-              readonly $allOperations?: AllOperations;
+        };
+
+        const client: StubClient = {
+          $queryRaw: (_query, ..._values) => drive(undefined, "$queryRaw", rawQuery),
+          $executeRaw: (query, ...values) =>
+            drive(undefined, "$executeRaw", () => rawExecute(query, ...values)) as Promise<number>,
+          $transaction: (arg, options) =>
+            hooks.override === undefined
+              ? transact(arg)
+              : hooks.override.call(client, arg, options),
+          breakQueries: (reason: string) => {
+            queryFailure = reason;
+          },
+          $disconnect: () => {
+            count += 1;
+            return Promise.resolve();
+          },
+          $extends: (extension) => {
+            const ext = extension as {
+              readonly query?: {
+                readonly $allModels?: { readonly $allOperations?: AllOperations };
+                readonly $allOperations?: AllOperations;
+              };
+              readonly client?: {
+                readonly $transaction?: (arg: unknown, options?: unknown) => Promise<unknown>;
+              };
             };
-            readonly client?: {
-              readonly $transaction?: (arg: unknown, options?: unknown) => Promise<unknown>;
-            };
-          };
-          hook = ext.query?.$allModels?.$allOperations;
-          everyOperation = ext.query?.$allOperations;
-          override = ext.client?.$transaction;
-          return client;
-        },
-        disconnected: () => count,
-        url,
-        query: (model, operation, answer) =>
-          hook === undefined ? answer : hook({ model, operation, args: {}, query: () => answer }),
-        operation: (model, operation, answer) => {
-          if (everyOperation === undefined) return answer;
-          operations += 1;
-          return everyOperation({
-            model,
-            operation,
-            args: {},
-            query: () => tag(Promise.resolve(answer), { op: operation }),
-          });
-        },
-        operations: () => operations,
-        transaction: (arg) =>
-          override === undefined
-            ? Promise.reject(new Error("no $transaction override was installed"))
-            : override.call(client, arg),
-        resolveBatchWith: (results) => {
-          batch = results;
-        },
-        issued: () => issued,
+            return build({
+              models: ext.query?.$allModels?.$allOperations,
+              all: ext.query?.$allOperations,
+              override: ext.client?.$transaction,
+            });
+          },
+          disconnected: () => count,
+          url,
+          query: (model, operation, answer) =>
+            hooks.models === undefined
+              ? answer
+              : hooks.models({ model, operation, args: {}, query: () => answer }),
+          operation: (model, operation, answer) => drive(model, operation, () => answer),
+          operations: () => operations,
+          resolveBatchWith: (results) => {
+            batch = results;
+          },
+          issued: () => issued,
+        };
+        return client;
       };
-      last = client;
-      return client;
+
+      last = build({});
+      return last;
     };
     await use({ client: make, last: () => last });
   },

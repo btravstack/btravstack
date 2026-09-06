@@ -12,8 +12,12 @@ export type TenantScopedOptions = {
 /**
  * The client a pinned `$transaction` callback receives — the extended client
  * minus what a transaction cannot do, exactly as Prisma's own deny list has it.
+ *
+ * @remarks
+ * Not `@unthrown/prisma`'s `TransactionClient`, which denies a longer list; an
+ * application applying both extensions imports both names.
  */
-export type TransactionClient<C> = Omit<
+export type ScopedTransactionClient<C> = Omit<
   C,
   "$connect" | "$disconnect" | "$extends" | "$on" | "$use"
 >;
@@ -29,7 +33,7 @@ export type TransactionClient<C> = Omit<
  */
 export type ScopedTransaction = <C, R>(
   this: C,
-  fn: (tx: TransactionClient<C>) => Promise<R>,
+  fn: (tx: ScopedTransactionClient<C>) => Promise<R>,
   options?: { maxWait?: number; timeout?: number; isolationLevel?: string },
 ) => Promise<R>;
 
@@ -63,11 +67,15 @@ export const tenantScoped = (tenant: string, options?: TenantScopedOptions) =>
       $executeRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<number>;
       $transaction: (arg: unknown, options?: unknown) => Promise<unknown>;
     };
-    const pin = () => bare.$executeRaw`SELECT set_config(${setting}, ${tenant}, true)`;
+    const pinOn = (on: typeof bare) =>
+      on.$executeRaw`SELECT set_config(${setting}, ${tenant}, true)`;
 
     return client.$extends({
       name: "tenantScoped",
       client: {
+        // The cast below is what keeps a caller's `tx` typed: without it the
+        // implementation's own signature is what the consumer sees, and every
+        // callback's `tx` degrades to an implicit `any`.
         $transaction: ((arg: unknown, txOptions?: unknown) => {
           if (Array.isArray(arg))
             return Promise.reject(
@@ -77,11 +85,9 @@ export const tenantScoped = (tenant: string, options?: TenantScopedOptions) =>
             );
           const fn = arg as (tx: unknown) => Promise<unknown>;
           return bare.$transaction(async (tx: unknown) => {
-            await (tx as typeof bare).$executeRaw`SELECT set_config(${setting}, ${tenant}, true)`;
+            await pinOn(tx as typeof bare);
             return fn(tx);
           }, txOptions);
-          // Without this cast the implementation's own signature is what the
-          // consumer sees, and every caller's `tx` degrades to an implicit `any`.
         }) as unknown as ScopedTransaction,
       },
       query: {
@@ -89,7 +95,7 @@ export const tenantScoped = (tenant: string, options?: TenantScopedOptions) =>
           // The cast restates the hook's own return type: it answers a plain
           // promise where Prisma's callback type wants the `query` result's.
           bare
-            .$transaction([pin(), query(args)])
+            .$transaction([pinOn(bare), query(args)])
             .then((results) => (results as readonly unknown[])[1]) as ReturnType<typeof query>,
       },
     });
