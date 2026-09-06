@@ -6,7 +6,7 @@ import {
   Tenant,
 } from "@btravstack/example-order-application";
 
-import { OrderDatabase, OrderDatabaseModule } from "./database.js";
+import { Db, OrderDatabase, OrderDatabaseModule, scopedTo } from "./database.js";
 import { customerRepositoryProvider } from "./prisma-customer-repository.js";
 import { prismaOrderRepository } from "./prisma-order-repository.js";
 import { outboxProvider } from "./prisma-outbox.js";
@@ -19,16 +19,23 @@ import { outboxProvider } from "./prisma-outbox.js";
  * `needs` rather than importing `OrderDatabaseModule`: an import would put the
  * database's providers in the fork's own tree, and a Prisma client would be
  * opened and closed per unit.
+ *
+ * `Db` is that client pinned to the unit's tenant — the wrapper is per tenant,
+ * the pool underneath is the one the application scope holds.
  */
 export const OrderTenantPersistence = Module("OrderTenantPersistence")({
   needs: [Tenant, OrderDatabase],
   provides: [
+    Provider(Db)({
+      inject: { database: OrderDatabase, tenant: Tenant },
+      sync: ({ database, tenant }) => scopedTo(database, tenant),
+    }),
     Provider(OrderRepository)({
-      inject: { db: OrderDatabase, tenant: Tenant },
+      inject: { db: Db, tenant: Tenant },
       sync: ({ db, tenant }) => prismaOrderRepository(db, tenant),
     }),
   ],
-  exports: [OrderRepository],
+  exports: [Db, OrderRepository],
 });
 
 /**

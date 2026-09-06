@@ -21,6 +21,11 @@ export const prismaOutbox = (db: OrderDatabaseClient): ServiceOf<Outbox> => ({
   pending: (tenantId, limit) =>
     db.outboxMessage
       .tryFindMany({
+        // `OutboxMessage` carries no policy — the relay reads it across tenants
+        // on an unpinned client — so this `tenantId` is what holds the tenant,
+        // not a leftover of the one `prisma-order-repository`'s `list` dropped.
+        // "does not hand one tenant another's pending events" is what catches
+        // its removal.
         where: { tenantId, publishedAt: null },
         orderBy: { id: "asc" },
         take: limit,

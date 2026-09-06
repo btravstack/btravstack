@@ -1,0 +1,70 @@
+// What `tenantScoped` promises at the type level: applying it costs a consumer
+// nothing. Model delegates keep their own types, an EARLIER extension's client
+// methods survive, and the `$transaction` it installs hands the callback a `tx`
+// that is the extended client rather than an implicit `any`.
+//
+// Its limit: the stand-in's `$extends` takes `never`, so this file pins `tx`'s
+// type GIVEN the extension applies, not that `tenantScoped` is assignable to a
+// generated client's own `$extends`. Task 3's real client is what pins that.
+import type { ITXClientDenyList } from "@prisma/client/runtime/client";
+
+import { tenantScoped, type ScopedTransactionClient } from "./rls.js";
+
+/** How Prisma resolves a `client` extension component onto the extended client. */
+type Unthunk<C> = { [K in keyof C]: C[K] extends () => infer V ? V : never };
+
+type Db = {
+  readonly order: {
+    readonly findMany: (args?: {
+      readonly where?: { readonly tenantId: string };
+    }) => Promise<readonly { readonly id: number }[]>;
+  };
+  /** An earlier extension's client method — `@unthrown/prisma`'s, in the example. */
+  readonly $tryTransaction: <R>(fn: (tx: Db) => Promise<R>) => Promise<R>;
+  readonly $extends: <A extends { client: Record<string, () => unknown> }>(
+    define: (client: never) => { $extends: { extArgs: A } },
+  ) => Db & Unthunk<A["client"]>;
+};
+
+declare const db: Db;
+
+const scoped = db.$extends(tenantScoped("t"));
+
+// 1. A model delegate keeps its own argument and result types.
+const _rows: Promise<readonly { readonly id: number }[]> = scoped.order.findMany({
+  where: { tenantId: "t" },
+});
+
+// 2. An earlier extension's client method survives.
+const _tried: Promise<number> = scoped.$tryTransaction(
+  async (tx) => (await tx.order.findMany()).length,
+);
+
+// 3. `$transaction`'s `tx` is the extended client. Without the cast in `rls.ts`
+//    the implementation's own signature is what a consumer sees, and this line
+//    fails with `TS7006: Parameter 'tx' implicitly has an 'any' type`.
+const _counted: Promise<number> = scoped.$transaction(
+  async (tx) => (await tx.order.findMany()).length,
+);
+
+// 4. …which is why an unknown member of `tx` is an error rather than free.
+// @ts-expect-error - `tx` is typed, so `nope` does not exist on it
+const _nope = scoped.$transaction(async (tx) => tx.nope());
+
+// 5. The array form is absent from the type as well as refused at run time.
+// @ts-expect-error - `$transaction([...])` is unsupported; use the callback form
+const _batch = scoped.$transaction([Promise.resolve(1)]);
+
+// 6. The deny list `ScopedTransactionClient` omits by hand is Prisma's own.
+//    `Omit` of a key that does not exist is silent, so without this a member
+//    Prisma adds to — or drops from — `ITXClientDenyList` would leave `tx`
+//    offering what a transaction cannot do, or hiding what it can. The type is
+//    reachable from `@prisma/client/runtime/client`; `rls.ts` still copies it,
+//    because a published `.d.ts` naming it would need an OPTIONAL peer to
+//    resolve.
+type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type AnyClient = Record<ITXClientDenyList | "$transaction" | "order", unknown>;
+const _denyList: Mutual<
+  ScopedTransactionClient<AnyClient>,
+  Omit<AnyClient, ITXClientDenyList>
+> = true;

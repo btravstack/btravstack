@@ -34,6 +34,11 @@ export const prismaCustomerRepository = (
 ): ServiceOf<CustomerRepository> => ({
   find: (tenantId, id) =>
     db.customer
+      // `Customer` carries no policy, and this client is unpinned — the
+      // customers procedures carry the tenant on the wire — so this `tenantId`
+      // is what holds it, not a leftover of the one `prisma-order-repository`'s
+      // `list` dropped. "does not read another tenant's customer" is what
+      // catches its removal.
       .tryFindUnique({ where: { tenantId_customerId: { tenantId, customerId: id } } })
       .flatMap((row) =>
         row === null ? Err(new CustomerNotFound({ id: id as CustomerId })) : hydrate(row),

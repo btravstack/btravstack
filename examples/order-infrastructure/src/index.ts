@@ -1,4 +1,11 @@
-export { OrderDatabase, openDatabase, type OrderDatabaseClient } from "./database.js";
+export {
+  Db,
+  OrderDatabase,
+  openDatabase,
+  scopedTo,
+  type OrderDatabaseClient,
+  type TenantDatabase,
+} from "./database.js";
 export {
   CustomerPersistenceModule,
   OrderPersistenceModule,

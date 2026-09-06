@@ -1,4 +1,7 @@
+import { Port } from "@btravstack/di";
+import { type TenantId } from "@btravstack/example-order-domain";
 import { prismaDatabase } from "@btravstack/prisma";
+import { tenantScoped } from "@btravstack/prisma/rls";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { unthrownPrisma } from "@unthrown/prisma";
 import { OkAsync, type AsyncResult } from "unthrown";
@@ -43,3 +46,21 @@ export const OrderDatabase = OrderDatabaseModule.port;
  */
 export const openDatabase = (url: string): AsyncResult<OrderDatabaseClient, never> =>
   OkAsync(createClient(new PrismaPg({ connectionString: url })));
+
+/**
+ * The one client bound to one tenant. `tenantScoped` goes on LAST, so
+ * `$tryTransaction` and the `try*` twins survive inside the transaction it
+ * pins.
+ */
+export const scopedTo = (db: OrderDatabaseClient, tenant: TenantId) =>
+  db.$extends(tenantScoped(tenant));
+
+/** What every statement the orders repository issues runs through. */
+export type TenantDatabase = ReturnType<typeof scopedTo>;
+
+/**
+ * The pinned client, as a port. It exists only inside a unit — the tenant it
+ * closes over is that unit's — which is why it is `OrderTenantPersistence`
+ * that provides it and not `OrderDatabaseModule`.
+ */
+export class Db extends Port("Db")<TenantDatabase> {}

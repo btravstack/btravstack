@@ -8,7 +8,7 @@ import { fromSafePromise } from "unthrown";
 import { describe, expect, inject, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { OrderPersistenceModule, OrderTenantPersistence } from "./index.js";
+import { OrderPersistenceModule, OrderTenantPersistence, scopedTo } from "./index.js";
 
 /**
  * The two persistence modules a deployment composes — the application scope's
@@ -164,8 +164,9 @@ describe("tenancy", () => {
 describe("the read path's error channel", () => {
   it("surfaces a corrupt row as a defect, not as an error", async ({ db, tenant, repository }) => {
     // GIVEN a row written straight past Prisma into this test's tenant,
-    // carrying a quantity the entity's invariant rejects
-    await db.$executeRawUnsafe(
+    // carrying a quantity the entity's invariant rejects. Through the pinned
+    // client, because `Order`'s policy refuses an unpinned insert.
+    await scopedTo(db, tenant).$executeRawUnsafe(
       `INSERT INTO "Order" ("tenantId", "orderId", "quantity") VALUES ($1, 'o-corrupt', 0)`,
       tenant,
     );
@@ -276,7 +277,8 @@ describe("OrderPersistenceModule", () => {
       .flatMap(() => otherRepository.save(anOrder("0199a1e0-0000-7000-8000-000000000122", 1)))
       .flatMap(() => repository.list({ limit: 10 }));
 
-    // THEN it sees its own row only, on a server every other spec is writing to
+    // THEN it sees its own row only, on a server every other spec is writing
+    // to — held by `Order`'s policy, since `list`'s `where` names no tenant
     expect(page).toBeOkWith({
       items: [expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000121" })],
       hasPreviousPage: false,

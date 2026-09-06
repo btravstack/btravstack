@@ -15,7 +15,9 @@ pnpm add @btravstack/prisma @btravstack/core @btravstack/config @btravstack/di u
 Five peer dependencies — install every one, so the application holds a single
 copy of each. Your own `@prisma/client`, `prisma` and (if you want the `try*`
 twins) `@unthrown/prisma` are yours, not this package's: the client is
-generated from your schema. Node `>=22`.
+generated from your schema. `@prisma/client` is also an **optional** peer here,
+used only by the `@btravstack/prisma/rls` subpath below — a consumer that never
+imports it installs nothing extra. Node `>=22`.
 
 ## A worked example
 
@@ -85,14 +87,71 @@ port is typed by exactly what it returns.
   the failures as lines and `otel()` mints the instruments — with no flag here
   and no port list to satisfy when you compose neither.
 
+## Row-level security, on the `@btravstack/prisma/rls` subpath
+
+`tenantScoped(tenant)` is a Prisma client extension that pins **every** statement
+— raw SQL included — to `tenant` through a transaction-local
+`set_config('app.tenant_id', tenant, true)`, so a PostgreSQL row-level-security
+policy reading `current_setting('app.tenant_id', true)` sees it. Apply it
+**last**:
+
+<!-- doctest: isolate
+// `PrismaClient` and `unthrownPrisma` are the reader's own, exactly as in the
+// worked example above — so what this fence holds is `tenantScoped`'s call
+// shape and its place in the chain, not the generated client's `$extends`.
+// That half is compiled on the reference page, over the real client.
+import { PrismaPg } from "@prisma/adapter-pg";
+
+declare class PrismaClient {
+  constructor(options: { readonly adapter: PrismaPg });
+  $extends(extension: unknown): this;
+}
+declare const adapter: PrismaPg;
+declare const unthrownPrisma: unknown;
+declare const tenant: string;
+-->
+
+```ts
+import { tenantScoped } from "@btravstack/prisma/rls";
+
+const db = new PrismaClient({ adapter }).$extends(unthrownPrisma).$extends(tenantScoped(tenant));
+```
+
+That fence compiles `tenantScoped`'s call shape and its place in the chain over
+a client declared for the sample; the fence on the
+[reference page](https://btravstack.github.io/btravstack/reference/prisma) is
+the one compiled over a real generated client, which is what proves the
+extension is assignable to its `$extends`.
+
+It goes last because a transaction callback's `tx` comes from the client as it
+stood when this extension was applied, so anything added after it is invisible
+inside a transaction. `$transaction([...])` is refused rather than silently pinned: the
+batch form stops being atomic under this design, and a rejected promise beats a
+transaction that quietly no longer rolls back. Use the callback form.
+
+The database half stays the deployment's, and every part of it fails quietly
+when forgotten: a **superuser** role bypasses row security whatever the table
+says, and a policy without `FORCE ROW LEVEL SECURITY` is not applied to the
+table's **owner** — the role that ran the migrations. Either way the
+application works and no tenant is isolated. The policy must also read the
+**same** setting `tenantScoped` was given — `app.tenant_id` is only the default
+— because a `tenantScoped(tenant, { setting })` and a policy naming a different
+one deny every row and every write, which looks exactly like row security
+working. The
+[reference page](https://btravstack.github.io/btravstack/reference/prisma)
+carries the DDL and the two smaller lines that fail the same way.
+
 ## What it does not
 
-**Migrations.** A deployment runs `prisma migrate deploy` against this same URL
-_before the process starts_. An application that migrates itself at boot races
-every other replica.
+**Migrations.** A deployment runs `prisma migrate deploy` against the same
+database _before the process starts_ — and, where row security is on, as its
+**owner** rather than the role `DATABASE_URL` carries. An application that
+migrates itself at boot races every other replica.
 
 **Transactions.** Commit boundaries belong to the adapter, spelled at the call —
-`@unthrown/prisma`'s `$tryTransaction` is the primitive. There is no unit-scoped
+`@unthrown/prisma`'s `$tryTransaction` is the primitive. The `rls` subpath
+overrides `$transaction` to pin the tenant on the connection and nothing more;
+it opens no boundary of its own. There is no unit-scoped
 transaction and there will not be one; see
 [the kernel maps nothing](https://btravstack.github.io/btravstack/explanation/the-kernel-maps-nothing).
 
@@ -106,6 +165,7 @@ package's.
 | `name`         | `prismaDatabase(name)`                      | the port's id and the health check's name — required                                     |
 | `client`       | `prismaDatabase(name)({ client })`          | builds your client from the driver adapter this package built from the URL — required    |
 | `DATABASE_URL` | environment, read by `prismaDatabase(name)` | the connection string — required, validated at graph build; blank is an error, exit `78` |
+| `setting`      | `tenantScoped(tenant, { setting })`         | the PostgreSQL run-time setting the policy reads — default `app.tenant_id`               |
 
 There is **no `instrumented` flag**: observation is a set port every call is
 handed to, so a graph composing no observability pays one inert call and no

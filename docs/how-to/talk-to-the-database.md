@@ -131,6 +131,29 @@ That is a deployment step — a Job or a release command that runs to completion
 startup. An application that migrates at boot races every other replica: three
 pods, three migrations, one of them losing.
 
+## 6. Scope it to the tenant
+
+If the application is multi-tenant, a `tenantId` in every `where` the adapter
+writes is a filter someone has to remember.
+`@btravstack/prisma/rls`'s `tenantScoped(tenant)` moves that guarantee
+into PostgreSQL: applied **last** on the client, it pins every statement to
+`tenant` through a transaction-local `set_config`, and a row-level-security
+policy on the table is what narrows the query — so the tenant **predicate**
+leaves that table's reads and writes, and forgetting to name it stops being a
+way to read someone else's rows.
+`examples/order-infrastructure/src/prisma-order-repository.ts`'s `list` is the
+worked case, and it names no tenant at all. The **column** and the **key** stay:
+`save` still writes `tenantId` in its `data`, and `find` and `remove` still
+address the composite `tenantId_orderId`.
+
+The extension is one line; the DDL is the deployment's, and forgetting a piece
+of it fails quietly rather than loudly. Both halves, with what each looks like
+when it is missing, are on
+[the reference page](/reference/prisma). The worked application is
+`examples/order-infrastructure` — the client in `src/database.ts`, the policy in
+`prisma/migrations/20260906120000_order_rls/`, and `src/rls.spec.ts` proving it
+against a real server.
+
 ## What you get for free
 
 - **`DATABASE_URL` validated once**, as the graph builds: unset or blank is a

@@ -3,8 +3,11 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import {
+  ORDERS_APP_PASSWORD,
+  ORDERS_APP_USER,
   ORDERS_DATABASE,
   postgresUrl,
+  provisionApplicationRole,
   sharedPostgres,
 } from "@btravstack/internal-test-infra/containers";
 import { withLock } from "@btravstack/internal-test-infra/lock";
@@ -37,18 +40,31 @@ const workspace = fileURLToPath(new URL("../", import.meta.url));
  *
  * Nothing here truncates or drops anything: each test works inside a **tenant of
  * its own**, so there is nothing to clean and no order they must run in.
+ *
+ * The owner is what migrates; what the specs are given is the application
+ * role's URL, because the owner is a superuser and a superuser bypasses row
+ * security.
  */
 export default async ({ provide }: TestProject): Promise<() => void> => {
-  const url = postgresUrl(await sharedPostgres(), ORDERS_DATABASE);
+  const postgres = await sharedPostgres();
+  const ownerUrl = postgresUrl(postgres, ORDERS_DATABASE);
 
   await withLock("orders-migrate", () =>
     run("pnpm", ["exec", "prisma", "migrate", "deploy"], {
       cwd: workspace,
-      env: { ...process.env, DATABASE_URL: url },
+      env: { ...process.env, DATABASE_URL: ownerUrl },
     }),
   );
 
-  provide("__ORDERS_DATABASE_URL__", url);
+  await provisionApplicationRole(postgres);
+
+  provide(
+    "__ORDERS_DATABASE_URL__",
+    postgresUrl(postgres, ORDERS_DATABASE, {
+      user: ORDERS_APP_USER,
+      password: ORDERS_APP_PASSWORD,
+    }),
+  );
 
   // The server is reused, so stopping it here would pull it out from under
   // whichever workspace's run is still going.

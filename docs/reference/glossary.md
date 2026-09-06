@@ -107,6 +107,13 @@ covered, or the call is refused. See
 [Split a router into controllers](/how-to/split-a-router-into-controllers) and
 [Split a worker into slices](/how-to/split-a-worker-into-slices).
 
+**pinned** — Of a statement: carrying the tenant setting inside its own transaction, so
+a row-level-security policy reading `current_setting('app.tenant_id', true)`
+can narrow it. `tenantScoped(tenant)` pins every statement; an **unpinned**
+read matches no row rather than erroring, and an unpinned write is refused with
+`42501`. See
+[`@btravstack/prisma`](/reference/prisma).
+
 **port** — `class Logger extends Port("Logger")<Service> {}` — a nominal name for a
 service, the vocabulary an application defines. `RuntimePort` is the one the
 kernel resolves its runtime from. See [Ports](/reference/di/ports).

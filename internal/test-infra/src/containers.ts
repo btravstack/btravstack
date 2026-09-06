@@ -76,9 +76,77 @@ export const sharedPostgres = async (): Promise<StartedTestContainer> => {
 /**
  * A libpq URL for one database on the shared server, as
  * `@prisma/adapter-pg` and `prisma migrate deploy` both take it.
+ *
+ * Defaults to the bootstrap superuser, which is what applies the migrations.
+ * The example application connects as {@link ORDERS_APP_USER} instead — pass
+ * its credentials here rather than reaching for a second helper.
  */
-export const postgresUrl = (postgres: StartedTestContainer, database: string): string =>
-  `postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${postgres.getHost()}:${postgres.getMappedPort(5432)}/${database}`;
+export const postgresUrl = (
+  postgres: StartedTestContainer,
+  database: string,
+  credentials: { readonly user: string; readonly password: string } = {
+    user: POSTGRES_USER,
+    password: POSTGRES_PASSWORD,
+  },
+): string =>
+  `postgresql://${encodeURIComponent(credentials.user)}:${encodeURIComponent(credentials.password)}@${postgres.getHost()}:${postgres.getMappedPort(5432)}/${database}`;
+
+/**
+ * The role the example application connects to {@link ORDERS_DATABASE} as.
+ *
+ * Gate-only credentials, on the same footing as {@link POSTGRES_USER}: a value
+ * nothing outside this repository connects with is not configuration.
+ */
+export const ORDERS_APP_USER = "orders_app";
+
+/** That role's password, on the same gate-only terms. */
+export const ORDERS_APP_PASSWORD = "orders_app";
+
+/**
+ * Creates {@link ORDERS_APP_USER} and grants it the whole `public` schema of
+ * {@link ORDERS_DATABASE}.
+ *
+ * `NOSUPERUSER NOBYPASSRLS` is the point: a superuser bypasses row security
+ * whatever `FORCE ROW LEVEL SECURITY` says, and the container's bootstrap user
+ * is one — so a policy tested through it would pass while proving nothing.
+ *
+ * Run as the owner AFTER `prisma migrate deploy`: `ON ALL TABLES` covers only
+ * what exists, and `ALTER DEFAULT PRIVILEGES` only what the owner creates from
+ * here on. Idempotent, because a reused container outlives the run.
+ */
+export const provisionApplicationRole = (postgres: StartedTestContainer): Promise<void> =>
+  withLock(`postgres-${ORDERS_APP_USER}`, async () => {
+    // `psql` inside the image rather than a `pg` dependency here, the same
+    // shape as the database creation above. `GRANT USAGE, SELECT ON ALL
+    // SEQUENCES` is load-bearing: `Order.id` is `autoincrement()`, and without
+    // it every insert fails with a permission error that reads nothing like an
+    // RLS refusal.
+    const ddl = `
+      DO $$ BEGIN
+        CREATE ROLE ${ORDERS_APP_USER} NOSUPERUSER NOBYPASSRLS LOGIN PASSWORD '${ORDERS_APP_PASSWORD}';
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+      GRANT CONNECT ON DATABASE ${ORDERS_DATABASE} TO ${ORDERS_APP_USER};
+      GRANT USAGE ON SCHEMA public TO ${ORDERS_APP_USER};
+      GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${ORDERS_APP_USER};
+      GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${ORDERS_APP_USER};
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${ORDERS_APP_USER};
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ${ORDERS_APP_USER};
+    `;
+    const { exitCode, output } = await postgres.exec([
+      "psql",
+      "-U",
+      POSTGRES_USER,
+      "-d",
+      ORDERS_DATABASE,
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-c",
+      ddl,
+    ]);
+    if (exitCode !== 0)
+      // oxlint-disable-next-line unthrown/no-throw -- a vitest `globalSetup` reports failure by rejecting; there is no Result channel here
+      throw new Error(`Could not provision the '${ORDERS_APP_USER}' role: ${output}`);
+  });
 
 /**
  * The broker both AMQP workspaces consume. Each TEST still mints its own vhost,

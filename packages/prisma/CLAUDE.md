@@ -37,13 +37,127 @@ you are working under `packages/prisma/`.
   `$disconnect` ends the driver adapter's pool without killing the client, which
   is why no spec asserts that a released client refuses to query.
 
+### `@btravstack/prisma/rls`
+
+- **`tenantScoped(tenant, { setting? })`** — a Prisma client extension pinning
+  every statement to `tenant` through a transaction-local
+  `set_config(setting, tenant, true)`, so a PostgreSQL row-level-security policy
+  reading `current_setting('app.tenant_id', true)` sees it. `setting` defaults
+  to `app.tenant_id`, and the policy must read the **same** name: a
+  `tenantScoped(tenant, { setting })` whose policy names a different one denies
+  every row and every write, which looks exactly like row security working.
+  Also exported: `TenantScopedOptions`, and the two types
+  that make the override's `tx` nameable, `ScopedTransaction` and
+  `ScopedTransactionClient<C>`.
+- It is a **subpath**, on the family's optional-peer protocol: `@prisma/client`
+  is an optional peer, `rls.ts` is the only file importing it (from
+  `@prisma/client/extension`, which is where `@unthrown/prisma` takes `Prisma`
+  from too), and the main entry point never does.
+
+**Applied LAST.** The `$transaction` override runs the callback on a `tx` from
+the client as it stood when this extension was applied, so **any extension added
+after `tenantScoped` is invisible inside a transaction** — measured:
+`tenantScoped` before `unthrownPrisma` reaches the override and then fails with
+`TypeError: tx.order.tryFindMany is not a function`.
+
+**No re-entry marker, and none is needed.** The `query` hook is the TOP-LEVEL
+`$allOperations` — that is what makes raw SQL pinned too — so it sees the
+extension's own `$executeRaw`. Issuing every `set_config` through the
+**pre-extension** client is what stops the recursion: that client carries none
+of these hooks. The `AsyncLocalStorage` flag the design first called for was
+measured to work and then deleted, because a statement inside the override's own
+transaction never reaches the hook either — `bare`'s `tx` predates the
+extension. The self-referential shape Prisma's own RLS documentation shows does
+recurse without bound here, because their example hooks `$allModels`, which
+never sees raw SQL.
+
+**`$transaction([...])` is refused**, with a rejected promise carrying
+`tenantScoped: $transaction([...]) is unsupported — use the callback form.` — a
+rejection rather than a `throw`, which `unthrown/no-throw` bans and which
+`$tryTransaction` turns into a `Defect` anyway. The array form cannot be pinned:
+the query hook answers a plain `Promise` rather than a `PrismaPromise`, so every
+element has already run — each in a wrapping transaction of its own — before
+`$transaction` sees the array. Measured, a failing second element left the first
+element's row committed where vanilla Prisma rolled it back. A batch that stops
+being atomic without saying so is worse than one that refuses.
+
+**The override's type is `this`-polymorphic, and that is what keeps `tx`
+typed.** Three casts live in `rls.ts` and each carries a one-line guard comment;
+the second is the one with a measurement behind it. Without it the
+implementation's own signature is what a consumer sees and every caller's `tx`
+becomes an implicit `any` (`TS7006`, reproduced by deleting the cast). The
+spike's target for it — `(typeof client)["$transaction"]` — is wrong **here**:
+the spike read `Prisma` off a generated client, where that indexed access
+carries the schema's own delegates, while this package must read it off
+`@prisma/client/extension`, where it resolves to
+`Omit<PrismaClientExtends<DefaultArgs>, …>` and `tx.order` stops existing. So the
+cast targets `ScopedTransaction`,
+`<C, R>(this: C, fn: (tx: ScopedTransactionClient<C>) => Promise<R>)` — the same trick `@unthrown/prisma` uses for `$tryTransaction`,
+and the only place the client's type can come from when the starter cannot name
+a generated client. It drops the array overload too, so the refusal above is a
+compile error before it is a rejected promise.
+
+**The deny list is copied by hand, and `rls.test-d.ts` is what holds the copy
+honest.** `ScopedTransactionClient<C>` restates Prisma's own `ITXClientDenyList`
+rather than importing it, because a published `.d.ts` naming a type from
+`@prisma/client/runtime/client` would need an **optional** peer to resolve for
+every consumer, subpath or not. `Omit` of a key that does not exist is silent, so
+a copy nothing compares would drift without failing: `tx` would keep offering a
+member a transaction can no longer use, or hide one it can — `$transaction`
+itself among them. So gate 6 of `rls.test-d.ts` asserts
+`ScopedTransactionClient<C>` and `Omit<C, ITXClientDenyList>` are mutually
+assignable, importing that type — `import type`, erased at build — from the
+path Prisma publishes it on. Dropping one member from the hand-written list
+fails `pnpm typecheck` with `TS2322`. `@unthrown/prisma` documents the same
+hazard on its own list, and its list is longer, which is why this one carries a
+different NAME rather than the same one.
+
+**`isolationLevel?: string` is Prisma's own spelling here, not a widening this
+package chose.** `@prisma/client/extension`'s `PrismaClientExtends.$transaction`
+declares `options?: { maxWait?; timeout?; isolationLevel?: string }` verbatim;
+the enum lives on `Prisma.TransactionIsolationLevel`, which a **generated**
+client mints, and `Transaction.IsolationLevel` is declared but not exported from
+`@prisma/client/runtime/client` (both checked against 7.10.0). So a consumer
+holding a generated client does lose the enum through this override —
+`"SERIALIZBLE"` compiles and fails at run time — and there is nothing narrower
+to name from a package that cannot see a schema.
+
+**The `@prisma/client` peer is `^7.10.0`, the version everything above was
+measured against**, rather than the `^7.0.0` the other two Prisma peers carry:
+the deny list is copied from 7.10.0's, and the transaction semantics — a `tx`
+carrying the extensions applied before this one, and nothing after — were
+verified there and nowhere else.
+
+**The cost, measured: one extra round trip and one explicit transaction per
+statement outside a transaction.** `set_config(…, true)` is transaction-local
+and has to be — the tenant varies per unit while a pooled connection does not —
+so an unpinned statement is wrapped in a two-element batch. A statement already
+inside a `$transaction` callback pays nothing: the connection is pinned once for
+the whole transaction.
+
+**Its spec is stubbed, by this package's own rule** (below), and the stub is
+built so the pre-extension-client mechanism is FALSIFIABLE: `StubClient.$extends`
+answers a NEW client whose statements route through the captured
+`$allOperations`, exactly as Prisma's does, so an extension issuing its own
+`set_config` through the client it was handed back recurses. Measured by
+mutation: pinning through the extended client fails four of the seven tests with
+`RangeError: Maximum call stack size exceeded`. `rls.spec.ts` pins
+the MECHANICS — which statements are issued, through which client, in which
+order, what the hook hands back, and that the array form rejects — against the
+`StubClient`. What it cannot prove is that PostgreSQL then refuses the row, and
+that proof is deliberately elsewhere: it needs a `NOSUPERUSER NOBYPASSRLS` role,
+`FORCE ROW LEVEL SECURITY` and a policy, all of which are the application's DDL.
+It lives in `examples/order-infrastructure`, against the shared container.
+
 ## Not included, deliberately
 
 **Migrations**, because a deployment runs `prisma migrate deploy` before the
 process starts and an application that migrates at boot races its own replicas.
 **Transactions**, because commit boundaries belong to the adapter and
-`@unthrown/prisma`'s `$tryTransaction` is already the primitive. **A readiness
-contribution** — the health member below reports on `/healthz`, and `/readyz`
+`@unthrown/prisma`'s `$tryTransaction` is already the primitive — the `rls`
+subpath's `$transaction` override is not a counter-example: it pins the tenant on
+the connection the callback runs over and opens no commit boundary of its own.
+**A readiness contribution** — the health member below reports on `/healthz`, and `/readyz`
 deliberately does not read it: failing readiness on a dependency every replica
 shares removes them all at once, turning a degraded system into an outage.
 

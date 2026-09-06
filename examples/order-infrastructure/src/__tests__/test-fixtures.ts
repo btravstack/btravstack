@@ -13,6 +13,7 @@ import {
   prismaCustomerRepository,
   prismaOrderRepository,
   prismaOutbox,
+  scopedTo,
   type OrderDatabaseClient,
 } from "../index.js";
 
@@ -24,6 +25,13 @@ export type PersistenceFixtures = {
    * because nothing needs to be: `tenant` is what separates them.
    */
   readonly db: OrderDatabaseClient;
+  /**
+   * The same client, named for what the row-security specs use it as: the
+   * application role connecting with nothing pinned. Every statement through
+   * it reaches `Order`'s policy with `current_setting('app.tenant_id', true)`
+   * unset.
+   */
+  readonly raw: OrderDatabaseClient;
   /**
    * This test's tenant, and nobody else's. A UUID, so it is unique across
    * spec files and across the workspaces running concurrently — which is the
@@ -63,6 +71,10 @@ export const it = test.extend<PersistenceFixtures>({
     await db.$disconnect();
   },
 
+  raw: async ({ db }, use) => {
+    await use(db);
+  },
+
   // oxlint-disable-next-line no-empty-pattern -- see above
   tenant: async ({}, use) => {
     await use(TenantId(uuidv7()));
@@ -74,11 +86,11 @@ export const it = test.extend<PersistenceFixtures>({
   },
 
   repository: async ({ db, tenant }, use) => {
-    await use(prismaOrderRepository(db, tenant));
+    await use(prismaOrderRepository(scopedTo(db, tenant), tenant));
   },
 
   otherRepository: async ({ db, otherTenant }, use) => {
-    await use(prismaOrderRepository(db, otherTenant));
+    await use(prismaOrderRepository(scopedTo(db, otherTenant), otherTenant));
   },
 
   customers: async ({ db }, use) => {
