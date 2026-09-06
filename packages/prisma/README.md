@@ -98,16 +98,22 @@ policy reading `current_setting('app.tenant_id', true)` sees it. Apply it
 this extension was applied, so anything added after it is invisible inside a
 transaction. `$transaction([...])` is refused rather than silently pinned: the
 batch form stops being atomic under this design, and a rejected promise beats a
-transaction that quietly no longer rolls back. Use the callback form. The
-database half stays the deployment's: the application's role must be
-`NOBYPASSRLS` and the table `FORCE ROW LEVEL SECURITY`, or a superuser
-connection makes every policy a no-op.
+transaction that quietly no longer rolls back. Use the callback form.
+
+The database half stays the deployment's, and both halves of it fail quietly
+when forgotten: a **superuser** role bypasses row security whatever the table
+says, and a policy without `FORCE ROW LEVEL SECURITY` is not applied to the
+table's **owner** — the role that ran the migrations. Either way the
+application works and no tenant is isolated. The
+[reference page](https://btravstack.github.io/btravstack/reference/prisma)
+carries the DDL and the two smaller lines that fail the same way.
 
 ## What it does not
 
-**Migrations.** A deployment runs `prisma migrate deploy` against this same URL
-_before the process starts_. An application that migrates itself at boot races
-every other replica.
+**Migrations.** A deployment runs `prisma migrate deploy` against the same
+database _before the process starts_ — and, where row security is on, as its
+**owner** rather than the role `DATABASE_URL` carries. An application that
+migrates itself at boot races every other replica.
 
 **Transactions.** Commit boundaries belong to the adapter, spelled at the call —
 `@unthrown/prisma`'s `$tryTransaction` is the primitive. The `rls` subpath

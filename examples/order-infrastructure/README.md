@@ -26,7 +26,10 @@ there, which is what makes that loss red.
 A deployment with a durable database runs them **before the process starts**:
 
 ```bash
-DATABASE_URL="file:./orders.db" pnpm --filter @btravstack/example-order-infrastructure db:migrate
+# the OWNER's credentials — this creates and alters, and the policy below is
+# not applied to the table's owner at all
+DATABASE_URL="postgres://owner:secret@localhost:5432/orders" \
+  pnpm --filter @btravstack/example-order-infrastructure db:migrate
 # or, from the root, for every workspace that has migrations:
 pnpm turbo run db:migrate
 ```
@@ -168,6 +171,18 @@ server rather than against a filter.
 one place a tenant is claimed — `prisma-outbox.ts`, where a row becomes an
 `OrderEvent` — honest.
 
+**Two tables are deliberately not policed, and specs are what guard them.**
+`Customer` stays on the raw client because the `customers` procedures are
+unmarked: a request under them forks `anonymous`, which has no principal to take
+a tenant from, so the caller names it on the input and the adapter filters by
+hand. `OutboxMessage` stays there because the relay reads it **across** tenants,
+from outside any unit, so there is no tenant to pin it to. What holds those two
+hand filters honest is
+`src/prisma-customer-repository.spec.ts`'s "does not read another tenant's
+customer" and `src/prisma-outbox.spec.ts`'s "does not hand one tenant another's
+pending events" — **two specs, not the database**. A bug in either filter is
+caught by a test run; on `Order` it is refused by PostgreSQL.
+
 That is the application's design, not the framework's — no starter has a
 tenancy concept, and none should, because what establishes a tenant is a
 decision about a specific system. And a spec needs no machinery either: the
@@ -189,12 +204,16 @@ Nothing to install, nothing to start.
 export const OrderTenantPersistence = Module("OrderTenantPersistence")({
   needs: [Tenant, OrderDatabase],
   provides: [
+    Provider(Db)({
+      inject: { database: OrderDatabase, tenant: Tenant },
+      sync: ({ database, tenant }) => scopedTo(database, tenant),
+    }),
     Provider(OrderRepository)({
-      inject: { db: OrderDatabase, tenant: Tenant },
+      inject: { db: Db, tenant: Tenant },
       sync: ({ db, tenant }) => prismaOrderRepository(db, tenant),
     }),
   ],
-  exports: [OrderRepository],
+  exports: [Db, OrderRepository],
 });
 
 export const OrderPersistenceModule = Module("OrderPersistence")({
@@ -215,6 +234,10 @@ unit module's imports are built in the fork, so an import would open and close
 a Prisma client per request. `OrderPersistenceModule` re-exports
 `OrderDatabaseModule` for exactly that — the application scope holds the one
 client, and the fork reads it.
+
+`Db` is the step between the two: the shared client wrapped in
+`tenantScoped(tenant)`, provided in the fork because the tenant it closes over
+is that unit's. The wrapper is per unit; the pool underneath is the process's.
 
 The outbox stays in the application scope, because the relay that sweeps it
 runs outside any unit and across tenants; `CustomerPersistenceModule` stays

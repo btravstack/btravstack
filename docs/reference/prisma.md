@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/prisma"
-description: The complete surface of @btravstack/prisma — prismaDatabase, the client arrow, PrismaLike, and what the starter deliberately does not own.
+description: The complete surface of @btravstack/prisma — prismaDatabase, the client arrow, PrismaLike, the row-level-security subpath, and what the starter deliberately does not own.
 ---
 
 <!-- doctest: group=order-api -->
@@ -64,9 +64,9 @@ whole passes the last two up to the kernel with no extra line.
 
 ## The environment
 
-| Variable       | Required | Default | Semantics                                                                                                               |
-| -------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL` | yes      | none    | The connection string, read through `Config.string`. Unset **or blank** is a `ConfigInvalid` naming it, at graph build. |
+| Variable       | Required | Default | Semantics                                                                                                                                                                                                                                                         |
+| -------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL` | yes      | none    | The connection string, read through `Config.string`. Unset **or blank** is a `ConfigInvalid` naming it, at graph build. Where row security is on, it carries the **application role's** credentials, not the owner's — `prisma migrate deploy` runs as the owner. |
 
 A blank value is a configuration error rather than an absent one — the rule
 [`Config`](/reference/config) fixes once for every field, because a deployment
@@ -155,6 +155,148 @@ statement, not here.
 dials again lazily on the next statement, which is why no test asserts that a
 released client refuses to query.
 
+## Row-level security, on the `@btravstack/prisma/rls` subpath
+
+`tenantScoped(tenant, { setting })` is a Prisma client extension that pins
+**every** statement — raw SQL included — to `tenant`, through a
+transaction-local `set_config('app.tenant_id', tenant, true)`. A PostgreSQL
+row-level-security policy reading `current_setting('app.tenant_id', true)` is
+then what narrows the query, and the adapter above stops naming a tenant in its
+`where` at all.
+
+It is a **subpath** on the family's optional-peer protocol: `@prisma/client` is
+an optional peer, `packages/prisma/src/rls.ts` is the only file that imports it,
+and the main entry point never does. A consumer that never writes
+`@btravstack/prisma/rls` installs nothing new.
+
+| Export                           | What it is                                                                                                |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `tenantScoped(tenant, options?)` | The extension. `options.setting` is the run-time setting the policy reads — default `app.tenant_id`.      |
+| `TenantScopedOptions`            | `{ setting?: string }`.                                                                                   |
+| `ScopedTransaction`              | The type of the `$transaction` it overrides: the callback form only, `this`-polymorphic so `tx` is typed. |
+| `ScopedTransactionClient<C>`     | What that callback's `tx` is — `C` minus Prisma's own transaction deny list.                              |
+
+### Apply it last
+
+`new PrismaClient({ adapter }).$extends(unthrownPrisma).$extends(tenantScoped(tenant))`
+— `tenantScoped` **last**. Its `$transaction` override runs the callback on a
+`tx` taken from the client as it stood when the extension was applied, so
+anything added after it is invisible inside a transaction. Measured, with
+`tenantScoped` first: `TypeError: tx.order.tryFindMany is not a function`.
+`examples/order-infrastructure/src/database.ts`'s `scopedTo` is that order,
+written down once.
+
+### `$transaction([...])` is refused
+
+The array form rejects with
+`tenantScoped: $transaction([...]) is unsupported — use the callback form.`, and
+the `ScopedTransaction` type drops the overload, so it is a compile error first.
+It cannot be pinned: the query hook answers a plain `Promise` rather than a
+`PrismaPromise`, so every element has already run — each in a wrapping
+transaction of its own — before `$transaction` sees the array. Measured, a
+failing second element left the first element's row committed where vanilla
+Prisma rolled it back. A batch that stops being atomic without saying so is
+worse than one that refuses.
+
+### The cost
+
+**One extra round trip and one explicit transaction per statement outside a
+transaction.** `set_config(…, true)` is transaction-local and has to be — the
+tenant varies per unit while a pooled connection does not — so an unpinned
+statement is wrapped in a two-element batch. A statement already inside a
+`$transaction` callback pays nothing: the connection is pinned once for the
+whole transaction, which is the argument for grouping writes into one rather
+than issuing them side by side.
+
+### The database half is the deployment's
+
+The extension pins a setting. Nothing enforces anything until the table has a
+policy, and a policy enforces nothing until the connecting role can be subject
+to one. Both halves are DDL a deployment writes and neither is checkable from
+here. The example's is
+`examples/order-infrastructure/prisma/migrations/20260906120000_order_rls/migration.sql`,
+hand-written because Prisma's schema language has no policy DDL to generate one
+from:
+
+```sql
+ALTER TABLE "Order" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Order" FORCE ROW LEVEL SECURITY;
+
+-- `current_setting(…, true)` returns NULL rather than erroring when nothing
+-- pinned the connection, and `"tenantId" = NULL` is NULL — so an unpinned
+-- statement matches no row and inserts nothing.
+CREATE POLICY tenant_isolation ON "Order"
+  USING ("tenantId" = current_setting('app.tenant_id', true))
+  WITH CHECK ("tenantId" = current_setting('app.tenant_id', true));
+```
+
+And the role the application connects as, which owns nothing:
+
+```sql
+CREATE ROLE orders_app NOSUPERUSER NOBYPASSRLS LOGIN PASSWORD '…';
+GRANT CONNECT ON DATABASE orders TO orders_app;
+GRANT USAGE ON SCHEMA public TO orders_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO orders_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO orders_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO orders_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO orders_app;
+REVOKE ALL ON "_prisma_migrations" FROM orders_app;
+```
+
+`internal/test-infra/src/containers.ts`'s `provisionApplicationRole` runs that
+DDL for this repository's own gate — bar the last line, because the gate's
+`GRANT … ON ALL TABLES` reaches `_prisma_migrations` like any other table and
+the specs have no reason to care. A deployment does: nothing the application
+does should be able to rewrite the record of which migrations ran.
+
+### What forgetting each looks like
+
+Both of these are **failures**, and both leave a green-looking system: the
+application works, the tests pass, and no tenant is isolated from any other.
+
+- **The role is a superuser.** A superuser bypasses row security whatever
+  `FORCE` says, so every policy in the database is a no-op and every query
+  answers every tenant's rows. This is not hypothetical: the gate's own
+  PostgreSQL container bootstraps as one, which is exactly why
+  `internal/test-infra` provisions `orders_app` and why
+  `examples/order-infrastructure/src/rls.spec.ts` carries "is neither a
+  superuser nor exempt from row security" as a standing test — a regression
+  handing the owner's URL back is red on its own, without waiting for a policy
+  test to notice.
+- **The policy has no `FORCE`.** `ENABLE ROW LEVEL SECURITY` does not apply to
+  the table's **owner**, and the owner is the role that ran the migrations. A
+  deployment that runs and migrates as one role therefore sees a policy that is
+  present, correct, and never consulted.
+
+Two more lines have the same shape, one level down:
+
+- **Without `GRANT USAGE, SELECT ON ALL SEQUENCES`**, an insert into a table
+  with an `autoincrement()` column fails on the sequence, with a permission
+  error that reads nothing like an RLS refusal — so the DDL gets debugged in
+  the wrong place.
+- **Without the second argument to `current_setting(…, true)`**, an unpinned
+  connection **errors** instead of matching nothing. The two-argument form
+  returns `NULL`, and `"tenantId" = NULL` is `NULL`, which is not `true`.
+
+### What a policy does not cover, it is your specs that do
+
+A policy is per table, and the example polices `Order` only. The other two are
+deliberate, and each has a reason the policy could not serve:
+
+- **`Customer`** — the `customers` procedures are unmarked, so a request under
+  them forks the `anonymous` kind and has no principal to take a tenant from.
+  The caller names the tenant on the input, and the adapter reaches it through
+  the raw client with `where: { tenantId_customerId: … }`.
+- **`OutboxMessage`** — the relay sweeps it **across** tenants, from outside any
+  unit, so there is no tenant to pin it to.
+
+Both are therefore **filtered by hand**, and what guards them is
+`examples/order-infrastructure/src/prisma-customer-repository.spec.ts`'s "does
+not read another tenant's customer" and `src/prisma-outbox.spec.ts`'s "does not
+hand one tenant another's pending events" — **two specs, not the database**. A
+hand-filter bug on those tables is caught by a test run, not refused by
+PostgreSQL, and that is the difference the policy buys on `Order`.
+
 ## Engine-level tracing, with no wiring
 
 When **`@prisma/instrumentation` is installed**, the
@@ -189,12 +331,15 @@ instrumentations that patch, and does not reach this one.
 
 ## Not included, deliberately
 
-**Migrations.** A deployment runs `prisma migrate deploy` against this same URL
-_before the process starts_. An application that migrates itself at boot races
-every other replica.
+**Migrations.** A deployment runs `prisma migrate deploy` against the same
+database _before the process starts_ — and, where row security is on, as its
+**owner** rather than the role `DATABASE_URL` carries. An application that
+migrates itself at boot races every other replica.
 
 **Transactions.** Commit boundaries belong to the adapter, spelled at the call;
-`@unthrown/prisma`'s `$tryTransaction` is the primitive. There is no
+`@unthrown/prisma`'s `$tryTransaction` is the primitive. The `rls` subpath's
+`$transaction` override is not a counter-example: it pins the tenant on the
+connection its callback runs over and opens no boundary of its own. There is no
 unit-scoped transaction and there will not be one — see
 [the kernel maps nothing](/explanation/the-kernel-maps-nothing) and
 [scopes and resources](/explanation/scopes-and-resources).

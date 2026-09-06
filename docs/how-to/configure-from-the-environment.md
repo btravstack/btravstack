@@ -201,26 +201,26 @@ beats default, per field — so a value that varies by deployment can move to th
 deployment without a code change, and a value that is a decision stays in the
 composition root.
 
-| Variable                   | Default                 | Bound by                                                    |
-| -------------------------- | ----------------------- | ----------------------------------------------------------- |
-| `PROBE_PORT`               | `9000`                  | the kernel ([probes](/reference/core/probes))               |
-| `PRE_DRAIN_DELAY_MS`       | `5000`                  | the kernel ([drain](/how-to/tune-the-drain-for-kubernetes)) |
-| `DRAIN_TIMEOUT_MS`         | `20000`                 | the kernel                                                  |
-| `PORT` / `HOST`            | `3000` / `0.0.0.0`      | [`http()`](/reference/http-server)                          |
-| `HTTP_BODY_LIMIT`          | `1048576`               | `http()` — `0` is unbounded                                 |
-| `HTTP_CORS_ORIGIN`         | unset (CORS off)        | `http()` — comma-separated origins, or `*`                  |
-| `HTTP_COMPRESSION`         | `false`                 | `http()` — response compression                             |
-| `TEMPORAL_ADDRESS`         | `127.0.0.1:7233`        | [`temporal()`](/reference/temporal-worker)                  |
-| `TEMPORAL_NAMESPACE`       | `default`               | `temporal()`                                                |
-| `TEMPORAL_GRACE_PERIOD_MS` | `10000`                 | `temporal()` — `shutdownGraceTime`                          |
-| `TEMPORAL_FORCE_AFTER_MS`  | `15000`                 | `temporal()` — `shutdownForceTime`                          |
-| `AMQP_URL`                 | `amqp://127.0.0.1:5672` | [`amqp()`](/reference/amqp-worker)                          |
-| `AMQP_CONNECT_TIMEOUT_MS`  | `5000`                  | `amqp()`                                                    |
-| `LOG_LEVEL`                | `info`                  | [`observability()`](/reference/observability)               |
-| `DATABASE_URL`             | required                | [`prismaDatabase()`](/reference/prisma)                     |
-| `REDIS_URL`                | required                | [`cache()` over Redis](/reference/cache)                    |
-| `SMTP_URL`                 | required                | [`mailer()` over SMTP](/reference/mailer)                   |
-| `STORAGE_S3_*`             | see the page            | [`storage()` over S3](/reference/storage)                   |
+| Variable                   | Default                 | Bound by                                                                                                                                                               |
+| -------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PROBE_PORT`               | `9000`                  | the kernel ([probes](/reference/core/probes))                                                                                                                          |
+| `PRE_DRAIN_DELAY_MS`       | `5000`                  | the kernel ([drain](/how-to/tune-the-drain-for-kubernetes))                                                                                                            |
+| `DRAIN_TIMEOUT_MS`         | `20000`                 | the kernel                                                                                                                                                             |
+| `PORT` / `HOST`            | `3000` / `0.0.0.0`      | [`http()`](/reference/http-server)                                                                                                                                     |
+| `HTTP_BODY_LIMIT`          | `1048576`               | `http()` — `0` is unbounded                                                                                                                                            |
+| `HTTP_CORS_ORIGIN`         | unset (CORS off)        | `http()` — comma-separated origins, or `*`                                                                                                                             |
+| `HTTP_COMPRESSION`         | `false`                 | `http()` — response compression                                                                                                                                        |
+| `TEMPORAL_ADDRESS`         | `127.0.0.1:7233`        | [`temporal()`](/reference/temporal-worker)                                                                                                                             |
+| `TEMPORAL_NAMESPACE`       | `default`               | `temporal()`                                                                                                                                                           |
+| `TEMPORAL_GRACE_PERIOD_MS` | `10000`                 | `temporal()` — `shutdownGraceTime`                                                                                                                                     |
+| `TEMPORAL_FORCE_AFTER_MS`  | `15000`                 | `temporal()` — `shutdownForceTime`                                                                                                                                     |
+| `AMQP_URL`                 | `amqp://127.0.0.1:5672` | [`amqp()`](/reference/amqp-worker)                                                                                                                                     |
+| `AMQP_CONNECT_TIMEOUT_MS`  | `5000`                  | `amqp()`                                                                                                                                                               |
+| `LOG_LEVEL`                | `info`                  | [`observability()`](/reference/observability)                                                                                                                          |
+| `DATABASE_URL`             | required                | [`prismaDatabase()`](/reference/prisma) — the **application role's** credentials, not the owner's, where row security is on: `prisma migrate deploy` runs as the owner |
+| `REDIS_URL`                | required                | [`cache()` over Redis](/reference/cache)                                                                                                                               |
+| `SMTP_URL`                 | required                | [`mailer()` over SMTP](/reference/mailer)                                                                                                                              |
+| `STORAGE_S3_*`             | see the page            | [`storage()` over S3](/reference/storage)                                                                                                                              |
 
 **A variable carries its starter's prefix**, so two starters in one process
 cannot collide — an HTTP deployment that also publishes to AMQP and reads a

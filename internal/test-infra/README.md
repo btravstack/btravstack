@@ -73,6 +73,15 @@ The DDL is idempotent — a `DO` block swallowing `duplicate_object`, and grants
 that restate — because a reused container outlives the run and the role is
 already there on the second one.
 
+**A deployment's version of this DDL wants one more line, and this one does
+not.** `GRANT … ON ALL TABLES` reaches `_prisma_migrations` like any other
+table, so `orders_app` can rewrite the record of which migrations ran. Here that
+is harmless — the setup migrates again on every run and the container is
+disposable — but in production nothing the application does should be able to
+touch it, so the DDL there ends with
+`REVOKE ALL ON "_prisma_migrations" FROM orders_app;`. The reference page's copy
+carries that line; see `docs/reference/prisma.md`.
+
 ## Reuse, and what it costs
 
 `withReuse()` is what makes the second, third and fourth workspace attach to a

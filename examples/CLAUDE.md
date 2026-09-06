@@ -89,7 +89,9 @@ is the index of the workspaces themselves.
     six shared containers the specs use** (`withReuse()` — a second set
     would be issue #52's duplication in another hat), runs
     `prisma migrate deploy` under the same lock as the example's own
-    `globalSetup`, and writes `DATABASE_URL` / `AMQP_URL` /
+    `globalSetup` — as the **owner**, then provisioning `orders_app` and
+    writing that role's URL, so `pnpm dev` runs under the same row security
+    the specs do — and writes `DATABASE_URL` / `AMQP_URL` /
     `TEMPORAL_ADDRESS` / `REDIS_URL` / `SMTP_URL` / the four `STORAGE_S3_*`. They are written to a file rather than defaulted
     because the ports are whatever Docker mapped, and an ephemeral mapped
     port cannot be a default. `--env-file` is Node's own; no `dotenv`.
@@ -158,6 +160,33 @@ is the index of the workspaces themselves.
   `PlaceOrder.execute(id, quantity)`, `FindOrder.execute(id)`,
   `OrderRepository.find(id)` — have no tenant slot at all. The framework still
   has no concept of one, and no starter reads a tenant off anything.
+
+  **And RLS is underneath it, so for `Order` the guarantee is the database's
+  rather than the adapter's.** `OrderTenantPersistence` provides a second port,
+  `Db` (`order-infrastructure/src/database.ts`): the application scope's client
+  wrapped in `@btravstack/prisma/rls`'s `tenantScoped(tenant)`, which pins every
+  statement through a transaction-local `set_config`, with the repository built
+  over `Db` rather than over the raw client. `Order` carries a
+  `tenant_isolation` policy under `FORCE ROW LEVEL SECURITY` reading that same
+  setting (`prisma/migrations/20260906120000_order_rls/`), so `list` names no
+  tenant in its `where` at all — the policy is what narrows it, and a forgotten
+  filter stops being a way to read another tenant's rows. `src/rls.spec.ts`
+  proves it against the real server: an unpinned query matches nothing, a
+  cross-tenant insert is refused with `42501`, and the role the specs connect as
+  is neither a superuser nor exempt from row security — that last one because a
+  superuser bypasses every policy whatever `FORCE` says, and the container's own
+  bootstrap user is one.
+
+  **`Customer` and `OutboxMessage` are deliberately not policed, and it is two
+  specs that guard them rather than the database.** The unmarked `customers`
+  procedures carry the tenant on the wire and fork `anonymous`, which has no
+  principal to take one from; the outbox relay reads across tenants from outside
+  any unit. So both stay on the raw client and are filtered by hand, and what
+  holds those filters honest is `prisma-customer-repository.spec.ts`'s "does not
+  read another tenant's customer" and `prisma-outbox.spec.ts`'s "does not hand
+  one tenant another's pending events". A hand-filter bug on those two tables is
+  caught by a test run, not refused by PostgreSQL — which is exactly the
+  difference the policy buys on `Order`.
 
   **That reverses an earlier revision of this file, which said every port
   names its tenant — and it keeps that revision's argument rather than
