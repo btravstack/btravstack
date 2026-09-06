@@ -6,7 +6,9 @@
 // Its limit: the stand-in's `$extends` takes `never`, so this file pins `tx`'s
 // type GIVEN the extension applies, not that `tenantScoped` is assignable to a
 // generated client's own `$extends`. Task 3's real client is what pins that.
-import { tenantScoped } from "./rls.js";
+import type { ITXClientDenyList } from "@prisma/client/runtime/client";
+
+import { tenantScoped, type ScopedTransactionClient } from "./rls.js";
 
 /** How Prisma resolves a `client` extension component onto the extended client. */
 type Unthunk<C> = { [K in keyof C]: C[K] extends () => infer V ? V : never };
@@ -52,3 +54,17 @@ const _nope = scoped.$transaction(async (tx) => tx.nope());
 // 5. The array form is absent from the type as well as refused at run time.
 // @ts-expect-error - `$transaction([...])` is unsupported; use the callback form
 const _batch = scoped.$transaction([Promise.resolve(1)]);
+
+// 6. The deny list `ScopedTransactionClient` omits by hand is Prisma's own.
+//    `Omit` of a key that does not exist is silent, so without this a member
+//    Prisma adds to — or drops from — `ITXClientDenyList` would leave `tx`
+//    offering what a transaction cannot do, or hiding what it can. The type is
+//    reachable from `@prisma/client/runtime/client`; `rls.ts` still copies it,
+//    because a published `.d.ts` naming it would need an OPTIONAL peer to
+//    resolve.
+type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type AnyClient = Record<ITXClientDenyList | "$transaction" | "order", unknown>;
+const _denyList: Mutual<
+  ScopedTransactionClient<AnyClient>,
+  Omit<AnyClient, ITXClientDenyList>
+> = true;
