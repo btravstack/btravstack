@@ -38,6 +38,14 @@ to be first. `_prisma_migrations` is what makes running it again a no-op.
 `schema-drift.spec.ts` pins that the migrations were regenerated after a schema
 change.
 
+Migrating and running are two different roles. `migrate deploy` connects as the
+database **owner**, because it creates and alters; the application connects as
+`orders_app`, which owns nothing and is `NOSUPERUSER NOBYPASSRLS` — a superuser
+bypasses row security whatever the tables themselves say, so the role a spec
+runs under is what decides whether a policy can be tested at all.
+`internal/test-infra` provisions that role after every migration, and
+`DATABASE_URL` — still the one variable — is what carries it.
+
 This used to be SQLite held _in memory_, born empty inside `openDatabase` with
 the committed SQL replayed statement by statement, because no external command
 could reach a database that dies with the process. A shared PostgreSQL both
@@ -120,7 +128,8 @@ returning a canned error. It is **one** server for the whole repository — the
 same one Temporal's own persistence lives on, a database each — started by
 [`internal/test-infra`](../../internal/test-infra/README.md) and migrated once
 per run by `src/global-setup.ts` with `prisma migrate deploy`, the command a
-deployment runs.
+deployment runs — as the owner, after which the specs connect as the
+non-superuser `orders_app` for the reason above.
 
 Nothing is truncated or dropped between tests, because nothing needs to be:
 **every table carries `tenantId`** as the leading column of its identity

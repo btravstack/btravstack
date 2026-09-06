@@ -136,7 +136,10 @@ is the index of the workspaces themselves.
   truncated or dropped between tests: each test declares a **tenant** of its
   own (a UUID), so a shared database costs one migration for the whole gate
   instead of one per test, and no test can see another's rows whatever order
-  they run in.
+  they run in. The migration runs as the database **owner**; everything else
+  connects as `orders_app`, the `NOSUPERUSER NOBYPASSRLS` role
+  `internal/test-infra` provisions after it — because a superuser bypasses row
+  security whatever the tables say, and the container's bootstrap user is one.
 
   It replaced SQLite **in memory**, which was the right call while every test
   built its own database and stopped being one the moment the gate needed a

@@ -4,8 +4,11 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import {
+  ORDERS_APP_PASSWORD,
+  ORDERS_APP_USER,
   ORDERS_DATABASE,
   postgresUrl,
+  provisionApplicationRole,
   sharedPostgres,
   sharedRabbitMq,
   RUSTFS_ACCESS_KEY,
@@ -49,7 +52,7 @@ const infrastructure = fileURLToPath(
  */
 const main = async (): Promise<void> => {
   const postgres = await sharedPostgres();
-  const databaseUrl = postgresUrl(postgres, ORDERS_DATABASE);
+  const ownerUrl = postgresUrl(postgres, ORDERS_DATABASE);
 
   const [rabbitmq, temporal, redis, mailpit, rustfs] = await Promise.all([
     sharedRabbitMq(),
@@ -62,9 +65,17 @@ const main = async (): Promise<void> => {
   await withLock("orders-migrate", () =>
     run("pnpm", ["exec", "prisma", "migrate", "deploy"], {
       cwd: infrastructure,
-      env: { ...process.env, DATABASE_URL: databaseUrl },
+      env: { ...process.env, DATABASE_URL: ownerUrl },
     }),
   );
+
+  // The owner migrates; the examples connect as the application role, which is
+  // a non-superuser so that row security applies to it.
+  await provisionApplicationRole(postgres);
+  const databaseUrl = postgresUrl(postgres, ORDERS_DATABASE, {
+    user: ORDERS_APP_USER,
+    password: ORDERS_APP_PASSWORD,
+  });
 
   const env = [
     "# Written by `pnpm dev` (internal/test-infra's dev:env). Not committed:",

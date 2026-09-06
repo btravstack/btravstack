@@ -49,6 +49,30 @@ finer than "a server of my own":
   per test would be a create-and-delete round trip bought for an isolation a
   UUID prefix already gives for nothing.
 
+## The `orders` database has two roles
+
+The container's bootstrap user owns the schema and applies the migrations. It is
+a **superuser**, and a superuser bypasses row security whatever
+`FORCE ROW LEVEL SECURITY` says — so a policy exercised through it would pass
+while proving nothing.
+
+`provisionApplicationRole` therefore creates `orders_app`,
+`NOSUPERUSER NOBYPASSRLS`, and grants it the whole `public` schema. That is the
+role every `order-infrastructure` spec, both worker examples' fixtures and
+`pnpm dev` connect as — `__ORDERS_DATABASE_URL__` and `.env.dev`'s
+`DATABASE_URL` carry its credentials, and `DATABASE_URL` stays the one variable:
+the owner's URL never leaves the setup that migrates with it.
+
+It runs **after** `prisma migrate deploy`, because `ON ALL TABLES` covers only
+what already exists; `ALTER DEFAULT PRIVILEGES` is what covers a table or
+sequence a later migration adds. The grant on **sequences** is the one that
+looks optional and is not: `Order.id` is `autoincrement()`, so without it every
+insert fails with a permission error that reads nothing like an RLS refusal.
+
+The DDL is idempotent — a `DO` block swallowing `duplicate_object`, and grants
+that restate — because a reused container outlives the run and the role is
+already there on the second one.
+
 ## Reuse, and what it costs
 
 `withReuse()` is what makes the second, third and fourth workspace attach to a
@@ -83,13 +107,13 @@ break.
 
 ## Entry points
 
-| Import                                       | What it is                                                                                                                                                                 |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@btravstack/internal-test-infra/rabbitmq`   | a vitest `globalSetup` providing `@amqp-contract/testing`'s inject keys                                                                                                    |
-| `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@temporal-contract/testing`'s                                                                                                            |
-| `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal` / `sharedRedis` / `sharedMailpit` / `sharedRustFs`, plus `postgresUrl` and the credentials each one is started with |
-| `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                                                                                                                         |
-| `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                                                                                                                      |
+| Import                                       | What it is                                                                                                                                                                                             |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@btravstack/internal-test-infra/rabbitmq`   | a vitest `globalSetup` providing `@amqp-contract/testing`'s inject keys                                                                                                                                |
+| `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@temporal-contract/testing`'s                                                                                                                                        |
+| `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal` / `sharedRedis` / `sharedMailpit` / `sharedRustFs`, plus `postgresUrl`, `provisionApplicationRole` and the credentials each one is started with |
+| `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                                                                                                                                                     |
+| `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                                                                                                                                                  |
 
 There is also one **script** rather than an entry point: `pnpm dev:env`
 (`src/dev-env.ts`), which the repository's `pnpm dev` runs first. It starts the
