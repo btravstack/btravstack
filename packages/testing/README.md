@@ -34,7 +34,9 @@ pnpm add -D @btravstack/testing @btravstack/core @btravstack/config @btravstack/
 peer dependencies; the package depends on nothing else — not even `vitest`:
 `bootFixture` is a plain `(ctx, use) => Promise<void>` function, which is
 vitest's fixture protocol, so no import is needed to hand it to `test.extend`.
-Node `>=22`.
+`jose` is an **optional** peer behind the `@btravstack/testing/jwt` subpath —
+see below — so a consumer that never imports it installs nothing extra. Node
+`>=22`.
 
 ## A booted application, as a fixture
 
@@ -95,6 +97,31 @@ answers the very instances the running graph holds once it is built — after
 
 The teardown rule: a `Defect` on `exited` fails the test, a modeled `Err` does
 not.
+
+## A local JWT issuer, on its own subpath
+
+```ts
+import { localIssuer } from "@btravstack/testing/jwt";
+
+const issuer = await localIssuer({
+  issuer: "https://issuer.test",
+  audience: "orders-api",
+}).get();
+
+const token = await issuer.sign({ sub: "u-1" }).get();
+// verify `token` against `issuer.jwks`, the same way a real JWKS would be
+await issuer.close();
+```
+
+`@btravstack/testing/jwt`'s `localIssuer(options)` mints a generated key
+pair, a `node:http` listener answering its public key as a JWKS, and a
+`sign(claims?, options?)` closing over the private key — a real fetch against
+a real JWKS document, for a test that wants the verifying library's own
+behaviour rather than a double's. `options.expiresIn: false` mints a token
+with no `exp` claim; `options.algorithm` picks the asymmetric algorithm
+(default `"RS256"`). The subpath needs Node ≥22.12 under CommonJS — `jose` is
+ESM-only, so the CJS build's `require("jose")` depends on `require(esm)`;
+ESM consumers, and anyone who never imports the subpath, are unaffected.
 
 ## License
 

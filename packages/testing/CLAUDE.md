@@ -128,15 +128,69 @@ DEPENDENCIES` gate rather than by a `WiringDefect` on the first `submit()` —
   abort cuts a pending sleep short and **forgets** it (advancing past its
   deadline must not resolve it twice) — the kernel's second-SIGTERM `skip`
   signal is what that path exists for.
+- **`localIssuer(options)`**, on the `@btravstack/testing/jwt` subpath —
+  `LocalIssuerOptions` / `SignOptions` / `LocalIssuer` are its types. It mints
+  one generated key pair, a `node:http` listener answering `{ keys: [jwk] }`
+  on **any** path (`jwks`), and a `sign(claims?, options?)` closing over the
+  private key — a real fetch against a real JWKS document, so rotation and
+  caching under test are the verifying library's own behaviour rather than a
+  double's. `kid` is fixed at `"k1"`; `algorithm` is asymmetric-only
+  (`"RS256" | "RS384" | "RS512" | "ES256" | "ES384"`, the same list
+  `@btravstack/http-server`'s `jwtVerifier` accepts) and defaults to `"RS256"`.
+  `sign`'s `options` override the issuer, the audience and the expiry per
+  call — `expiresIn: false` mints a token with no `exp` claim at all, for a
+  test that wants an unexpiring or malformed token. `close()` stops the
+  listener; nothing else needs tearing down.
+
+  **It was promoted from `@btravstack/http-server`'s own private test
+  fixture (`issuerOf` in that package's `__tests__/test-fixtures.ts`), not
+  written fresh.** `@btravstack/http-server`'s own JWT authenticator fixture,
+  `examples/order-api`'s specs and its dev-loop OIDC issuer all want the
+  identical key pair, JWKS listener and signer — three consumers of one
+  fixture is what makes it a package surface rather than a starter's private
+  test helper. A real Keycloak or Dex container was considered and declined:
+  either is another daemon on the shared `internal/test-infra` roster for a
+  behaviour four lines of `jose` already cover exactly, and neither buys back
+  anything this fixture's real fetch against a real JWKS does not already
+  prove.
+
+  **`sign` answers `AsyncResult<string, never>`, not a bare `Promise`** —
+  `fromSafePromise` over `jose`'s own `SignJWT.sign`, because every async
+  surface in this package does, and a `Promise` here would have been a fourth
+  exception to that rule with no reason the other three (`runMain`,
+  `UnitWork`'s caller-handler arm, `bootFixture`'s vitest fixture protocol)
+  have. `close()` is the same call for the same reason.
+
+  **A test that wants a shared issuer across a spec file uses a
+  `{ scope: "file" }` fixture, not a per-test one.** Each `localIssuer` call
+  generates a fresh key pair and binds a fresh listener, and a spec asserting
+  the JWKS several times over does not need a new one per test — a file-scope
+  fixture builds it once and tears it down once the file is done, which is
+  the shape `src/__tests__/test-fixtures.ts`'s own `issuer` fixture is. A test
+  that closes the issuer itself (or wants a different `algorithm`) mints its
+  own instance instead of reaching for the shared one.
+
+  **The subpath needs Node ≥22.12 under CommonJS.** `jose` is ESM-only, so
+  the CJS build's `require("jose")` depends on `require(esm)`, which Node
+  enables by default from 22.12. ESM consumers are unaffected on any Node 22,
+  and so is every consumer that never imports `@btravstack/testing/jwt` —
+  which is why this is stated here rather than paid for by raising the
+  package's own `engines` floor, a breaking change for the many to serve the
+  few.
+
 - Peer dependencies: `@btravstack/core`, `@btravstack/config` (`Env`, in
-  `Boot`'s `Module<X, E, Scope | Env>`), `@btravstack/di`,
-  `unthrown`. Nothing else, and no `vitest`.
+  `Boot`'s `Module<X, E, Scope | Env>`), `@btravstack/di`, `unthrown`. `jose`
+  is an **optional** peer behind the `/jwt` subpath, on the same protocol as
+  `@btravstack/observability`'s `pino` and `@btravstack/http-server`'s own
+  `jose` — a consumer that never imports the subpath installs nothing extra.
+  Nothing else, and no `vitest`.
 
 ## Tests
 
-Five spec files, 100% lines/functions (`test-fixtures.ts` excluded, per the
+Six spec files, 100% lines/functions (`test-fixtures.ts` excluded, per the
 Test conventions). `test-fixtures.ts` exports the extended `it` — the
-package's own `bootFixture`, dogfooded — plus
+package's own `bootFixture`, dogfooded, and a file-scoped `issuer`
+(`localIssuer`) — plus
 `greetingApp()` (an in-memory runtime next to a `Greeting`, both exported:
 what `tapped` and `boot` are exercised against) and `runtimeModule(runtime)`.
 
@@ -159,6 +213,10 @@ what `tapped` and `boot` are exercised against) and `runtimeModule(runtime)`.
 - `fake-clock.spec.ts` (6): starts at 0 / at the supplied instant, a sleep
   pending until its deadline, non-positive sleep, already-aborted signal, an
   abort cutting a sleep short and forgetting it.
+- `jwt.spec.ts` (6): the JWKS at the URL it answers, a signed token the JWKS
+  verifies, issuer/audience/expiry overridden on request, the algorithm it
+  was asked for, and closing split into two — `close()` answering `Ok`, and a
+  fetch after closing rejecting.
 
 The kernel invariants these hold — _"No `Result` is produced and left
 unexamined"_ and the abort-from-`registry.abortAll()` one — are listed in

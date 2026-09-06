@@ -41,13 +41,24 @@
         "default": "./dist/index.cjs"
       }
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./jwt": {
+      "import": {
+        "types": "./dist/jwt.d.mts",
+        "default": "./dist/jwt.mjs"
+      },
+      "require": {
+        "types": "./dist/jwt.d.cts",
+        "default": "./dist/jwt.cjs"
+      }
+    }
   },
   "scripts": {
-    "build": "tsdown src/index.ts --format cjs,esm --dts --clean",
-    "dev": "tsdown src/index.ts --format cjs,esm --dts --watch",
+    "build": "tsdown src/index.ts src/jwt.ts --format cjs,esm --dts --clean",
+    "dev": "tsdown src/index.ts src/jwt.ts --format cjs,esm --dts --watch",
     "test": "vitest run --coverage",
-    "typecheck": "tsc --noEmit"
+    "test:types": "tsc --noEmit -p tsconfig.test-d.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
   },
   "devDependencies": {
     "@btravstack/config": "workspace:*",
@@ -57,6 +68,7 @@
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "jose": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unthrown": "catalog:",
@@ -66,7 +78,13 @@
     "@btravstack/config": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",
+    "jose": "^6",
     "unthrown": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "jose": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=22"
