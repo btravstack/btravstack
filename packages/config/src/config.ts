@@ -164,6 +164,11 @@ const integerIn = (min: number, max: number) => {
   };
 };
 
+// `URL.canParse` rather than a regex or a try/catch around `new URL`: it is the
+// same parser every consumer eventually runs, and it does not throw.
+const absoluteUrl = (value: string): Result<string, ConfigFieldInvalid> =>
+  URL.canParse(value) ? Ok(value) : invalid(`is not a URL: ${JSON.stringify(value)}`);
+
 const TRUTHY = new Set(["true", "1", "yes", "on"]);
 const FALSY = new Set(["false", "0", "no", "off"]);
 
@@ -220,6 +225,15 @@ export const Config = {
           : undefined;
       return flag === undefined ? invalid(`is not a flag: ${JSON.stringify(value)}`) : Ok(flag);
     }),
+
+  /**
+   * A URL, kept as the string it was written as. The value is what a consumer
+   * hands to `new URL`, and this is what stops that construction from throwing:
+   * a malformed one is a `ConfigInvalid` naming the variable, at graph build,
+   * rather than a `Defect` from wherever the URL is finally needed.
+   */
+  url: (variable: string, options: WithDefault<string> = {}): ConfigField<string> =>
+    present(variable, options, absoluteUrl, absoluteUrl),
 
   /** A TCP port: a whole number the OS will accept, `0` (an ephemeral bind) included. */
   port: (variable: string, options: WithDefault<number> = {}): ConfigField<number> =>

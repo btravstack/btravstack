@@ -271,8 +271,9 @@ it, `securityHeaders` because a deployment that can silently turn
 record) because an environment carries no records.
 
 `jwtAuthenticator`'s three transport options pin the same way, from
-`@btravstack/http-server/jwt` — a root composing that scheme declares
-`needs: [Env]`, since the scheme's own provider reads the environment:
+`@btravstack/http-server/jwt`. A root composing that scheme writes no `needs`
+line for it: `HttpModule` carries `Env` for the schemes it composes, the same
+way it already carries the starter's own.
 
 | Option     | What it is                                                                |
 | ---------- | ------------------------------------------------------------------------- |
@@ -280,8 +281,9 @@ record) because an environment carries no records.
 | `issuer`   | pins `HTTP_JWT_ISSUER` — the required `iss`                               |
 | `audience` | pins `HTTP_JWT_AUDIENCE` — the required `aud`, this deployment's own name |
 
-A variable nobody pinned and nobody set fails the boot with a `ConfigInvalid`
-naming it, rather than a scheme that refuses every caller.
+A variable nobody pinned and nobody set — or a `HTTP_JWT_JWKS_URI` that is not
+a URL — fails the boot with a `ConfigInvalid` naming it, rather than a scheme
+that refuses every caller.
 
 The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/http-server),

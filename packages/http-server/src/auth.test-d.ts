@@ -186,9 +186,11 @@ const _verified = HttpModule("Verified")({
 });
 
 // 12. The same root with nothing supplying `Verifier` is refused: the
-//     authenticator's need is real, not erased by riding in on the router.
+//     authenticator's need is real, not erased by riding in on the router, and
+//     `HttpModule` carrying `Env` for its schemes does not widen that hole —
+//     no `needs` line here, and the diagnostic still names `Verifier`.
 // @ts-expect-error — UNDECLARED NEEDS: the authenticator's own `Verifier`
-void HttpModule("Unverified")({ needs: [Env], router: verifiedRouter });
+void HttpModule("Unverified")({ router: verifiedRouter });
 
 void _verified;
 
@@ -239,6 +241,13 @@ HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
 
 expectTypeOf(plain.principal).toEqualTypeOf<{ readonly userId: string }>();
 expectTypeOf(scoped.scope).toEqualTypeOf<"orders:export">();
+
+// The `sync` arm's WHOLE type, not only the two slots read above: `needs` and
+// `error` are both `never` for a scheme declaring no dependencies, which is
+// what "sync is unchanged" means now that the description carries four slots.
+expectTypeOf(plain).toEqualTypeOf<
+  Authenticator<{ readonly userId: string }, never, never, never>
+>();
 
 // The second arm: `make` is `sync`'s fallible twin, the pair di's `Provider`
 // has, and its `Err` becomes the description's — so a scheme whose

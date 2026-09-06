@@ -24,11 +24,18 @@ second issuer pins all three explicitly, exactly as a test does.
 description's, which `Authenticator<P, Scope, N, E>` and the scheme's own di
 provider now carry: a scheme whose configuration is wrong fails the BOOT with a
 typed error instead of constructing happily and refusing every caller with a
-401 that carries no reason. Because `jwtAuthenticator`'s piece reads `Env`, a
-root composing it declares `needs: [Env]` — di's ordinary rule for a provider
-the root itself supplies.
+401 that carries no reason. `jwtAuthenticator`'s piece reads `Env`, and
+`HttpModule` now carries that for the schemes it composes — a root writes no
+`needs` line for one, the same way it never restated the starter's own `Env`.
+A scheme owing any other unmet port is still refused at the `HttpModule` call.
 
-`@btravstack/config` gains `Config.parse(port, schema)(env)`, the
+`@btravstack/config` gains `Config.url(variable, options?)`, a string field
+validated with `URL.canParse` — the value a consumer hands to `new URL`,
+checked before it gets there, because a throw inside a provider's `make` is a
+`Defect` naming no variable. `HTTP_JWT_JWKS_URI` is bound through it, so a
+scheme-less URI is the same `ConfigInvalid` as an unset one.
+
+It also gains `Config.parse(port, schema)(env)`, the
 validate-then-`ConfigInvalid` step `Config.provider` performs, lifted so a piece
 that is already its own provider can run it — `Config.provider` is now a caller
 of it, so there is one home for that step rather than two copies.

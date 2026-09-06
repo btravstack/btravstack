@@ -4,9 +4,13 @@
 // misconfigured deployment fails the boot with a typed error rather than
 // refusing every caller. Each `@ts-expect-error` is an assertion.
 import type { ConfigInvalid, Env } from "@btravstack/config";
+import { OkAsync } from "unthrown";
 import { expectTypeOf } from "vitest";
 
 import type { Authenticator } from "./auth.js";
+import { defineHttp } from "./define-http.js";
+import { html } from "./html.js";
+import { HttpModule } from "./http-module.js";
 import { jwtAuthenticator, type Claims } from "./jwt.js";
 
 type Identity = { readonly tenantId: string; readonly userId: string };
@@ -44,4 +48,20 @@ jwtAuthenticator<Identity>()({
   // @ts-expect-error -- Type 'string[]' is not assignable to type 'string'
   audience: ["orders-api", "billing-api"],
   principal,
+});
+
+// A root composing a scheme that configures itself from the environment writes
+// no `needs` line: `HttpModule` carries `Env` for its schemes, the same way it
+// already carries the starter's own. The negative — a scheme needing some other
+// unmet port, still refused — is `auth.test-d.ts`'s case 12.
+const api = defineHttp({ authenticators: { user: fromEnvironment } });
+
+const profile = api.HtmxGet("/profile", { requires: [{ user: [] }] })({
+  inject: {},
+  sync: () => (context) => OkAsync(html`${context.principal.userId}`),
+});
+
+void HttpModule("EnvJwtRoot")({
+  fragments: api.HtmxFragments([profile]),
+  provides: [profile],
 });

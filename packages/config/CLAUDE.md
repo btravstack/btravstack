@@ -13,7 +13,7 @@ the code and `README.md` in the same commit — the package ships no
   duplicate-id warning never fires. Whoever boots a graph provides it — the
   kernel does for every `start`; a bare `Module.scoped` needs
   `Provider(Env)({ inject: {}, value })`, which is what this package's own fixtures do.
-- **`Config.string` / `integer` / `boolean` / `port`** — `ConfigField<T>`
+- **`Config.string` / `integer` / `boolean` / `port` / `url`** — `ConfigField<T>`
   factories over one variable: `{ variable, parse(raw: string | undefined) →
 Result<T, ConfigFieldInvalid> }`. All go through one `present()` helper that
   fixes the shared semantics (unset → default or `is required`; trimmed empty →
@@ -23,7 +23,14 @@ Result<T, ConfigFieldInvalid> }`. All go through one `present()` helper that
   `boolean` takes `true`/`false`, `1`/`0`, `yes`/`no` and `on`/`off` in either
   case, and **errors on anything else rather than reading it as falsy** — a
   deployment that wrote `HTTP_COMPRESSION=enabled` meant to turn it on, and a silent
-  `false` there is the kind of configuration bug nothing reports.
+  `false` there is the kind of configuration bug nothing reports. **`url` keeps
+  the STRING** and validates it with `URL.canParse`: the value a consumer hands
+  to `new URL`, checked before it gets there. It exists because `new URL` throws
+  and a throw inside a provider's `make` is a `Defect` with no variable named —
+  `@btravstack/http-server/jwt`'s `HTTP_JWT_JWKS_URI` was exactly that, and a
+  scheme-less URI is the ordinary operator slip. The rule is `check` as well as
+  `read`, so a bad PIN is refused with the same message; it validates shape, not
+  scheme, so a non-`http` URL is the caller's business.
 - **`Config.pinned(value, field)`** — `field` unless `value` is given, then a
   field answering `value` and reading nothing. What a starter's options do to
   its own fields — explicit beats environment beats default, **per field** —
@@ -88,7 +95,8 @@ ConfigInvalid, Env> & { readonly port: P }` (di's own `Provider(port)`
 
 `config.spec.ts`: `Config.object`'s semantics (defaults, parsed
 values, `PORT=0`, empty, blank ×2 + malformed named in one validation, `3.5`,
-bounds, a required field, a defecting field), `Config.pinned` (the pin over
+bounds, a required field, a defecting field), `Config.url` (a good value, a
+scheme-less one, and the same one pinned), `Config.pinned` (the pin over
 the environment, the field otherwise), `ConfigInvalid.message`,
 `Config.parse` on its own — outside any graph, on a valid environment and on
 one whose two bad fields both land in one `ConfigInvalid` (the `parsed`

@@ -1,3 +1,5 @@
+import assert from "node:assert/strict";
+
 import { describe, expect } from "vitest";
 
 import { hmacToken, it } from "./__tests__/test-fixtures.js";
@@ -218,10 +220,11 @@ describe("jwtAuthenticator", () => {
       HTTP_JWT_AUDIENCE: issuer.audience,
     });
     const info = (await app.runtimeInfo()).get();
+    assert.ok(info !== undefined, "the runtime published no Serving.info");
     const token = await issuer.sign({ sub: "u-1", tenant: "acme" }).get();
 
     // WHEN a token that issuer signed is presented to a protected route
-    const response = await fetch(`http://127.0.0.1:${info?.port ?? 0}/whoami`, {
+    const response = await fetch(`http://127.0.0.1:${info.port}/whoami`, {
       headers: { authorization: `Bearer ${token}` },
     });
 
@@ -251,6 +254,34 @@ describe("jwtAuthenticator", () => {
       expect.objectContaining({
         port: "HttpJwt",
         issues: [{ message: "is required", path: ["HTTP_JWT_ISSUER"] }],
+      }),
+    );
+  });
+
+  it("fails startup with ConfigInvalid when HTTP_JWT_JWKS_URI is not a URL", async ({
+    issuer,
+    jwtApp,
+  }) => {
+    // GIVEN a JWKS endpoint an operator wrote without its scheme
+    const app = jwtApp({
+      HTTP_JWT_JWKS_URI: "issuer.example/.well-known/jwks.json",
+      HTTP_JWT_ISSUER: issuer.issuer,
+      HTTP_JWT_AUDIENCE: issuer.audience,
+    });
+
+    // WHEN the application boots
+    // THEN it is the same modeled Err naming the variable — `Config.url` is
+    // what keeps `new URL` from throwing inside the piece's `make` and turning
+    // the likeliest operator typo into an unnamed Defect
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        port: "HttpJwt",
+        issues: [
+          {
+            message: 'is not a URL: "issuer.example/.well-known/jwks.json"',
+            path: ["HTTP_JWT_JWKS_URI"],
+          },
+        ],
       }),
     );
   });

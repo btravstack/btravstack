@@ -131,7 +131,7 @@ export const jwtAuthenticator =
     const header = (options.header ?? "authorization").toLowerCase();
     const vocabulary = options.scopes;
     const schema = Config.object({
-      jwks: Config.pinned(options.jwks, Config.string("HTTP_JWT_JWKS_URI")),
+      jwks: Config.pinned(options.jwks, Config.url("HTTP_JWT_JWKS_URI")),
       issuer: Config.pinned(options.issuer, Config.string("HTTP_JWT_ISSUER")),
       audience: Config.pinned(options.audience, Config.string("HTTP_JWT_AUDIENCE")),
     });

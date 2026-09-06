@@ -164,6 +164,34 @@ describe("Config.boolean", () => {
   });
 });
 
+describe("Config.url", () => {
+  it("keeps the string a deployment wrote, and names one `new URL` would refuse", () => {
+    // GIVEN a URL field, read three ways: a good value, a scheme-less one — the
+    // ordinary operator slip, and the shape that actually throws — and the same
+    // bad value PINNED
+    const field = Config.url("HTTP_JWT_JWKS_URI");
+
+    const read = {
+      good: field.parse("https://issuer.example/.well-known/jwks.json"),
+      malformed: field.parse("issuer.example/jwks.json"),
+      pinned: Config.pinned("issuer.example/jwks.json", field).parse(undefined),
+    };
+
+    // THEN the value survives as the string a consumer hands to `new URL`, and
+    // both routes into a bad one are named here — never a `Defect` from
+    // wherever the URL is finally constructed
+    expect(read).toEqual({
+      good: Ok("https://issuer.example/.well-known/jwks.json"),
+      malformed: expect.objectContaining({
+        error: expect.objectContaining({ reason: 'is not a URL: "issuer.example/jwks.json"' }),
+      }),
+      pinned: expect.objectContaining({
+        error: expect.objectContaining({ reason: 'is not a URL: "issuer.example/jwks.json"' }),
+      }),
+    });
+  });
+});
+
 describe("Config.pinned", () => {
   it("answers the pin over whatever the environment says, and reads the field otherwise", () => {
     // GIVEN a port field, once pinned and once left alone
@@ -340,7 +368,9 @@ describe("Config.provider", () => {
     // THEN the awaited value is what the graph holds
     await expect(named).toBeOkWith({ name: "async" });
   });
+});
 
+describe("Config.parse", () => {
   it("validates an environment on its own, for a piece that is its own provider", async ({
     parsed,
   }) => {

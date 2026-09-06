@@ -224,9 +224,16 @@ The two rules this half exists to state, before the detail:
   variables — instead of constructing happily and refusing every caller with a
   401 that carries no reason. `Config.parse` is what it runs, the step
   `Config.provider` performs, lifted so both have one home. Its `inject` is
-  `{ env: Env }`, so a root composing this scheme declares `needs: [Env]` —
-  di's ordinary rule, since the scheme's provider sits in the root's own
-  `provides`.
+  `{ env: Env }`, and a root composing this scheme writes no `needs` line for
+  it: `HttpModule` carries `Env` for the schemes it composes, the same way it
+  already carries the starter's own. A scheme owing any OTHER unmet port is
+  still refused at the `HttpModule` call.
+
+  **`jwks` is a `Config.url` field**, not a `Config.string` one:
+  `createRemoteJWKSet` takes a `URL`, `new URL` throws, and a throw inside the
+  piece's `make` is a `Defect` with no variable named. A scheme-less
+  `HTTP_JWT_JWKS_URI` is the likeliest of the three slips, so it is the one that
+  most needed to arrive as the `ConfigInvalid` this promises.
 
   **The `/jwt` subpath needs Node ≥22.12 under CommonJS.** `jose` is ESM-only,
   so the CJS build's `require("jose")` depends on `require(esm)`, which Node
@@ -450,10 +457,14 @@ authenticator cannot grant it": "order:export"`). `VocabFrom<A>` reads the
     than answered `401` once one has.
 
   It also takes **`needs`**, forwarded to di's own — what this root's OWN
-  providers expect from outside. The starter's `Env` is not among them: the
-  starter is an import, and an import's needs travel without being restated. A
-  root that provides a config provider of its own does declare it —
-  `examples/order-amqp-worker` says `needs: [Env]` for `relayConfig`. The sugar
+  providers expect from outside. `Env` is never among them: the starter is an
+  import, and an import's needs travel without being restated, while a scheme
+  that configures itself from the environment is a provider of this root's and
+  would otherwise have to be declared — so the sugar adds `Env` to what the gate
+  counts as declared (`EnvAnd<N>`), which is legal because di's `needs` array is
+  type-level only and over-declaring is free. Another starter's sugar makes no
+  such promise: `examples/order-amqp-worker` says `needs: [Env]` for
+  `relayConfig`. The sugar
   **re-declares di's `NeedsGate`** over its augmented tuples, so a root whose
   own provider owes a port it does not name is refused at THIS call rather than
   slipping past into `start`; see `packages/di/CLAUDE.md`'s **Module

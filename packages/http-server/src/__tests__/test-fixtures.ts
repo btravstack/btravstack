@@ -25,7 +25,7 @@ import { once } from "node:events";
 import { createServer, request as httpRequest } from "node:http";
 import { connect, type Socket } from "node:net";
 
-import { Env, type ConfigInvalid, type Environment } from "@btravstack/config";
+import type { ConfigInvalid, Env, Environment } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
 import {
   Observers,
@@ -206,19 +206,41 @@ const jwtServiceOf = <P, Scope extends string>(
   ).make({ env });
 
 /**
+ * One `localIssuer`, closed when the file is done. Both issuer fixtures are
+ * this: they differ only in the key pair `localIssuer` generates, which is
+ * exactly what the `stranger` case needs.
+ */
+const localIssuerFixture = async (
+  // Typed `object` so one function satisfies both fixtures' context types.
+  // oxlint-disable-next-line no-empty-pattern -- Vitest parses the source and requires a destructuring pattern; this fixture depends on no other
+  {}: object,
+  use: (value: LocalIssuer) => Promise<void>,
+): Promise<void> => {
+  const local = await localIssuer({
+    issuer: "https://issuer.test",
+    audience: "orders-api",
+  }).get();
+  await use(local);
+  await local.close();
+};
+
+/**
  * The algorithm-confusion attack's own payload: `HS256` signed with the
  * PUBLISHED public key as the shared secret — the very JWK the issuer serves,
  * which is what makes it an attack anyone can mount rather than one needing a
  * key they do not have. Minted here rather than by `localIssuer`, since it is
  * the attacker's half.
  */
-export const hmacToken = (issuer: LocalIssuer): Promise<string> =>
-  new SignJWT({ sub: "u-1", tenant: "acme" })
-    .setProtectedHeader({ alg: "HS256", kid: "k1" })
+export const hmacToken = (issuer: LocalIssuer): Promise<string> => {
+  const { kid } = issuer.jwk;
+  assert.ok(kid !== undefined, "localIssuer served a JWK with no kid");
+  return new SignJWT({ sub: "u-1", tenant: "acme" })
+    .setProtectedHeader({ alg: "HS256", kid })
     .setIssuer(issuer.issuer)
     .setAudience(issuer.audience)
     .setExpirationTime("5m")
     .sign(new TextEncoder().encode(JSON.stringify(issuer.jwk)));
+};
 
 /** What both shipped authenticators resolve to in these specs. */
 export type ServiceIdentity = { readonly appId: string };
@@ -259,13 +281,12 @@ const envJwtFragment = envJwtApi.HtmxGet("/whoami", { requires: [{ user: [] }] }
 
 const envJwtFragments = envJwtApi.HtmxFragments([envJwtFragment]);
 
-/** `Env` in `needs`: the scheme's own provider reads it, and this root is where it says so. */
+/** No `needs` line: `HttpModule` carries `Env` for the schemes it composes. */
 const envJwtAppOf = () =>
   HttpModule("EnvJwtApp")({
     fragments: envJwtFragments,
     port: 0,
     hostname: "127.0.0.1",
-    needs: [Env],
     provides: [envJwtFragment],
   });
 
@@ -1538,33 +1559,13 @@ export const it = test.extend<HttpFixtures>({
     });
   },
 
-  issuer: [
-    // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-    async ({}, use) => {
-      const local = await localIssuer({
-        issuer: "https://issuer.test",
-        audience: "orders-api",
-      }).get();
-      await use(local);
-      await local.close();
-    },
-    // Per FILE, not per test: generating the key pair is the cost, and nothing
-    // mutates the issuer, so a file's tests share one.
-    { scope: "file" },
-  ],
+  issuer: [localIssuerFixture, { scope: "file" }],
 
-  stranger: [
-    // oxlint-disable-next-line no-empty-pattern -- see above
-    async ({}, use) => {
-      const local = await localIssuer({
-        issuer: "https://issuer.test",
-        audience: "orders-api",
-      }).get();
-      await use(local);
-      await local.close();
-    },
-    { scope: "file" },
-  ],
+  // A SECOND key pair on the SAME strings — that difference is the whole
+  // fixture: a token it signs carries a `kid` the first issuer's JWKS
+  // publishes and a signature that JWKS cannot verify. Its own listener is
+  // never fetched from.
+  stranger: [localIssuerFixture, { scope: "file" }],
 
   // oxlint-disable-next-line no-empty-pattern -- see above
   apiKeyService: async ({}, use) => {

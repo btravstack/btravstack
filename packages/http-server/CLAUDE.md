@@ -1055,12 +1055,30 @@ this package could produce. `Config.parse` is the step it runs, lifted out of
 `Config.provider` so both callers share one home; the piece is already its own
 provider, so there is no second port for `Config.provider` to bind.
 
-**It needs `Env`, which is the one thing a composition root now says out loud.**
-`Env` is kernel-provided, but the scheme's provider sits in the ROOT's
+**It needs `Env`, and `HttpModule` carries that for its schemes rather than
+making every root restate it.** The scheme's provider sits in the ROOT's
 `provides` (it rides in on the router or the fragments), so di's `NeedsGate`
-asks the root to declare it: `HttpModule("OrderApi")({ needs: [Env], … })`.
-That is di's own rule — a module declares what its own providers expect from
-outside — not a special case, and `start` satisfies it.
+would ask the root to declare `Env` — a line that lands on every deployment and
+every doc page mirroring one. `HttpModuleOptions` instantiates that gate as
+`NeedsGate<…, EnvAnd<N>>` instead, `EnvAnd<N>` being `readonly [...N, typeof
+Env]`. It is legal and free: di's `needs` array is **type-level only** (`Module`
+drops it and computes the needs channel from the providers), and its gate asks
+only that the unmet set be a SUBSET of the declared one, so declaring a port
+nothing needs costs nothing. `Env` still leaves this root on the module's needs
+channel, so `start`'s own gate is what supplies it — unchanged. This hides
+exactly `Env` and nothing else: a scheme owing any OTHER unmet port is still
+refused at the `HttpModule` call, which `auth.test-d.ts`'s case 12 pins beside
+`jwt.test-d.ts`'s positive. The precedent is in the same file: the starter this
+sugar imports needs `Env` too, and no root has ever named that either.
+
+**The JWKS URI is `Config.url`, not `Config.string`.** `createRemoteJWKSet`
+takes a `URL`, so the piece constructs one inside `make` — and `new URL` throws,
+which inside a combinator is how this repo mints a `Defect`. A scheme-less
+`HTTP_JWT_JWKS_URI` is the likeliest of the three operator slips, and it was the
+one case that escaped the `ConfigInvalid` this feature promises: it died as an
+unnamed defect instead of `runMain`'s `78` naming the variable. `Config.url` is
+`URL.canParse` as a field rule, checked on the pin as well as on the variable,
+so the value the piece hands to `new URL` is one that has already parsed.
 
 **`jose` is ESM-only, and that lands on ONE subpath under ONE module format.**
 The CJS build's `require("jose")` needs `require(esm)`, on by default from Node
