@@ -873,6 +873,9 @@ importers:
       '@temporalio/common':
         specifier: 'catalog:'
         version: 1.23.0
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.10
       testcontainers:
         specifier: 'catalog:'
         version: 12.1.0

@@ -14,6 +14,7 @@ rather than one per workspace.
 | `redis:8.8.2-alpine`               | `packages/cache`, `examples/order-api`                                      |
 | `axllent/mailpit:v1.31.0`          | `packages/mailer`, `examples/order-amqp-worker`                             |
 | `rustfs/rustfs:1.0.0-rc.3`         | `packages/storage`                                                          |
+| `nginx:1.29-alpine`                | the dev loop's JWKS endpoint, and `src/dev-issuer.spec.ts`                  |
 
 One container per backing service — the table above is the list, and the
 workspaces reading each are in it. Before this existed, the broker and the
@@ -124,13 +125,64 @@ break.
 | `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                                                                                                                                                     |
 | `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                                                                                                                                                  |
 
-There is also one **script** rather than an entry point: `pnpm dev:env`
+## The dev issuer
+
+`order-api`'s `user` scheme verifies a **real** OIDC token against a real JWKS,
+so the dev loop needs an issuer of its own — the specs use
+`@btravstack/testing/jwt`'s in-process `localIssuer` and never come here.
+
+`src/dev-issuer.ts` is that issuer, in three parts:
+
+- **A key pair under `<repo>/.cache/dev-issuer/`** (`private.jwk` +
+  `public.jwk`, RS256, `kid: "dev"`), minted on first use and read back for
+  ever after. Persisted rather than minted per run for one reason: a token
+  pasted into a terminal yesterday still verifies today, and a `pnpm dev:env`
+  between the two changes nothing.
+- **A container serving it.** `nginx:1.29-alpine` with
+  `{ "keys": [publicJwk] }` copied in as `/jwks.json` — a real endpoint, so
+  `jose`'s `createRemoteJWKSet` does a real fetch over the network. `dev:env`
+  starts it beside the other six, and it carries the same
+  `com.btravstack.test-infra` label. The key's RFC 7638 **thumbprint is one of
+  its labels**, and labels are part of what testcontainers hashes for reuse: a
+  new key pair therefore gets a new container rather than one still serving the
+  old public half. The copied file could not express that on its own — content
+  is copied after create and is not hashed — and the container the old key left
+  behind goes with the `docker rm -f` above.
+- **`signDevToken`**, behind `pnpm dev:token`.
+
+```sh
+# a tenant the dev loop already relays the outbox for
+TENANT=0199a1e0-0000-7000-8000-000000000001 # a UUIDv7
+pnpm dev:token -- --tenant "$TENANT"
+
+# and the whole call, composed — the port is the one the `serving` event logged
+curl -s -H "authorization: Bearer $(pnpm dev:token -- --tenant "$TENANT")" \
+     -H 'content-type: application/json' -d '{"json":{}}' \
+     http://localhost:57234/rpc/orders/list
+```
+
+`--tenant` is required and must be a **UUIDv7**: `principal` parses it with
+`z.uuidv7()`, and `uuidgen` and `crypto.randomUUID()` both mint a v4, which
+comes back as a 401 rather than as an error naming the mistake. Mint one with
+`node -e 'import("uuidv7").then((m) => console.log(m.uuidv7()))'`, or reuse the
+`OUTBOX_TENANTS` value above. `--sub` defaults to `u-1` and `--scope` to
+`orders:export` (what `orders.export` requires; nothing else does). The token
+and nothing else goes to stdout, which is what makes the `$(…)` above work; a
+missing or malformed `--tenant` prints one line of usage on stderr and exits
+`64`.
+
+## The two scripts
+
+Neither is an entry point. The first is `pnpm dev:env`
 (`src/dev-env.ts`), which the repository's `pnpm dev` runs first. It starts the
 same containers, applies the example application's migrations with
 `prisma migrate deploy` under the same `withLock` its vitest `globalSetup`
 uses, and writes the repository root's `.env.dev` — the addresses each example
-process reads through Node's `--env-file`. Same containers, attached to rather
-than duplicated: a dev loop and a `pnpm test` can run side by side.
+process reads through Node's `--env-file`, the `HTTP_JWT_*` three the dev
+issuer above supplies included. Same containers, attached to rather than
+duplicated: a dev loop and a `pnpm test` can run side by side. `pnpm dev:token`
+is the second, and needs nothing running but the JWKS container `dev:env`
+started.
 
 The two setup modules are drop-in replacements for
 `@amqp-contract/testing/global-setup` and

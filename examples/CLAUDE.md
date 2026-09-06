@@ -97,15 +97,29 @@ is the index of the workspaces themselves.
     a devDependency of the three example workspaces, and no new dependency.
   - **`.env.dev` is generated, never committed.** The `dev` task depends on
     `@btravstack/internal-test-infra#dev:env`, which attaches to the **same
-    six shared containers the specs use** (`withReuse()` — a second set
+    shared containers the specs use** (`withReuse()` — a second set
     would be issue #52's duplication in another hat), runs
     `prisma migrate deploy` under the same lock as the example's own
     `globalSetup` — as the **owner**, then provisioning `orders_app` and
     writing that role's URL, so `pnpm dev` runs under the same row security
     the specs do — and writes `DATABASE_URL` / `AMQP_URL` /
-    `TEMPORAL_ADDRESS` / `REDIS_URL` / `SMTP_URL` / the four `STORAGE_S3_*`. They are written to a file rather than defaulted
+    `TEMPORAL_ADDRESS` / `REDIS_URL` / `SMTP_URL` / the four `STORAGE_S3_*` /
+    the three `HTTP_JWT_*`. They are written to a file rather than defaulted
     because the ports are whatever Docker mapped, and an ephemeral mapped
     port cannot be a default. `--env-file` is Node's own; no `dotenv`.
+  - **The dev loop's OIDC issuer is a CONTAINER, not a process, and its key is
+    persisted.** `order-api`'s `user` scheme verifies a real token against a
+    real JWKS, so `.env.dev` has to carry a `HTTP_JWT_JWKS_URI` that answers.
+    An in-process `localIssuer` — what the specs use — cannot be it: `dev:env`
+    is one-shot, it exits the moment the file is written, and a listener it
+    opened dies with it. So the JWKS is `nginx:1.29-alpine` with the public key
+    copied in, started beside the other six and reused like them. The key pair
+    itself lives in `<repo>/.cache/dev-issuer/` rather than being minted per
+    run, because a token minted before a `dev:env` would otherwise stop
+    verifying after it — and pasting a fresh token into every terminal is
+    exactly the friction this closes. `pnpm dev:token -- --tenant <uuidv7>`
+    prints one; the mechanics are in
+    `internal/test-infra/README.md`.
   - **`PROBE_PORT` is `0` in each `dev` script, and so is the API's `PORT`**:
     `PROBE_PORT` defaults to `9000` for every application, so on one machine
     two of the three would fail with `RuntimeStartFailed` for `"probes"` —
