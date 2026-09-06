@@ -725,7 +725,7 @@ export const auth = defineHttp({
 });
 
 // The second call binds the module each KIND forks — see
-// [Unit kinds](#unit-kinds-auth-principals-and-auth-units) for why it cannot
+// [The kinds, and what a kind binds](#the-kinds-and-what-a-kind-binds) for why it cannot
 // be one call.
 export const api = auth.units<{
   anonymous: typeof RequestModule;

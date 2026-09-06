@@ -229,11 +229,20 @@ carries**, and exports
 
 ```ts
 Module("OrdersApi")({
-  imports: [OrderPersistenceModule, observability(), http()],
+  imports: [
+    OrderPersistenceModule,
+    observability(),
+    otel(),
+    http({ unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule } }),
+  ],
   provides: [ordersRouter, ...ordersRouter.authenticators],
-  exports: [HttpRuntime, Logger],
+  exports: [HttpRuntime, Logger, Tracer, Meter, OrderDatabase],
 });
 ```
+
+The one thing the hand-written form does NOT get is the gate on `unit`:
+`http()` takes the router as a need rather than a value, so it cannot check the
+kinds against what the api declared, where `HttpModule` can.
 
 There is **no authenticator to list**: it rides the router, which is what needs
 it, so a scheme cannot be forgotten and cannot be wired to the wrong router.

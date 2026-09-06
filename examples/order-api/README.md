@@ -11,7 +11,7 @@ its own package, because a client needs it and needs none of this.
 ```text
 src/auth.ts                           the two schemes (user, service), their authenticators, and the one api = defineHttp({ authenticators }) call
 src/slices/orders/controller.ts       api.OrpcController(contract, "orders")({ inject: { logger: Logger }, unit: { place: PlaceOrder, find: FindOrder, list: ListOrders }, sync }) — where the orders slice's own domain error becomes an ORPCError
-src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only it
+src/slices/orders/module.ts           OrdersSlice — provides the controller and the orders fragment, exports both
 src/slices/customers/controller.ts    api.OrpcController(contract, "customers")({ inject: { find: FindCustomer }, sync }) — same shape, for the customers slice's own domain error
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 src/request-scope.ts                  RequestModule, UserModule, ServiceModule — the three unit kinds HttpModule binds; the answerers fork one per request
