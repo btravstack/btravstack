@@ -329,8 +329,9 @@ exports: [Tracer, Logger, OrderDatabase] })`, the sugar importing the starter. N
   from the starter, and `LOG_LEVEL` and the `Logger` the sagas' stand-in
   services write to come from `observability()`. `order-amqp-worker` is the
   same shape — `NotificationsSlice`'s `orderNotifications = AmqpHandler(orderContract,
-"orderNotifications")({ inject: { logger: Logger }, sync })` and `AuditSlice`'s `orderAudit =
-AmqpHandler(orderContract, "orderAudit")({ inject: { logger: Logger }, sync })`, composed as
+"orderNotifications")({ inject: { logger: Logger, mailer: Mailer }, unit: { tenant: Tenant }, sync })`
+  and `AuditSlice`'s `orderAudit = AmqpHandler(orderContract, "orderAudit")({ inject: { logger:
+Logger }, unit: { tenant: Tenant }, sync })`, composed as
   `orderHandlers = AmqpHandlers(orderContract)([orderNotifications,
 orderAudit])` — but **neither** slice imports a vertical, and neither does
   the root: a subscriber reacts to a fact somebody else already committed, so

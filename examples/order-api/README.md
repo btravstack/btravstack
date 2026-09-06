@@ -365,8 +365,8 @@ const ordersContract = authenticated({ user: [] })({
 The `customers` controller hands `input.tenantId` straight to the use case,
 which hands it to the repository, which puts it in the `WHERE`. The `orders`
 fragment is marked `authenticated({ user: [] })`, so a request under it opens
-the `user` unit, whose `Tenant` comes from `context.principal.tenantId` — this
-deployment's `Identity`, which the contract never names — and the use cases
+the `user` unit, whose `Tenant` is provided from the `user` scheme's principal —
+this deployment's `Identity`, which the contract never names — and the use cases
 the controller reads off `context.unit` were built over it. Its inputs name no
 tenant: a required field the
 handler ignores is a field that lies, and a caller that could name a tenant it

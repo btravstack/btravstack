@@ -40,8 +40,13 @@ export const orderFragments = api.HtmxFragments([orderRowFragment]);
  * API key, which has no tenant of its own. Each is forked over this scope, so
  * every need they carry is discharged from what is exported below.
  *
- * A constant, not a function: configuration is read inside the graph, so a spec
- * boots this very module with `env: { PORT: "0" }`.
+ * A factory over the three kind modules, not a constant, for one reason: a
+ * spec has to substitute a provider INSIDE `UserModule`, and
+ * `@btravstack/testing`'s `overridden` wraps the root while a unit module is
+ * forked later, so this parameter is the only seam that reaches it. `OrderApi`
+ * below is the real root — the factory applied to the real modules, with no
+ * override anywhere in it. Configuration is still read inside the graph, so a
+ * spec boots that module with `env: { PORT: "0" }`.
  */
 export const orderApiOver = (unit: {
   readonly anonymous: typeof RequestModule;
