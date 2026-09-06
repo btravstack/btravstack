@@ -2,7 +2,7 @@ import type { Attributes, LoggerService, Operation, Settle } from "@btravstack/c
 import { test } from "vitest";
 
 /** What a `query` extension hands `$allOperations`, as this package uses it. */
-type AllOperations = (args: {
+export type AllOperations = (args: {
   readonly model: string | undefined;
   readonly operation: string;
   readonly args: unknown;
@@ -28,10 +28,10 @@ export type StubClient = {
   /** Makes the next `$queryRaw` reject, so the health check can be driven down. */
   readonly breakQueries: (reason: string) => void;
   /**
-   * Answers a NEW client carrying the extension's hooks, as Prisma's own does.
-   * Statements on it route through the top-level hook; statements on the client
-   * it was called on do not — which is what makes an extension's choice of
-   * client observable.
+   * Answers a NEW client carrying the extension's hooks stacked over the ones
+   * already there, as Prisma's own does. Statements on it route through the
+   * top-level hook; statements on the client it was called on do not — which is
+   * what makes an extension's choice of client observable.
    */
   readonly $extends: (extension: unknown) => StubClient;
   readonly disconnected: () => number;
@@ -62,6 +62,20 @@ const statementOf = (element: unknown): Statement | { readonly op: string } => {
 
 const tag = <T>(promise: Promise<T>, marks: { statement?: Statement; op?: string }): Promise<T> =>
   Object.assign(promise, marks);
+
+/**
+ * Stacks a newly applied hook over the one already on the client, as Prisma
+ * does: the last extension applied is the OUTERMOST, and its `query` call is
+ * what lets the one under it run.
+ */
+const chain = (
+  outer: AllOperations | undefined,
+  inner: AllOperations | undefined,
+): AllOperations | undefined =>
+  outer === undefined || inner === undefined
+    ? (outer ?? inner)
+    : (params) =>
+        outer({ ...params, query: (args) => inner({ ...params, args, query: params.query }) });
 
 /** One observed operation, as an observer saw it settle. */
 export type Observation = {
@@ -141,14 +155,16 @@ export const it = test.extend<{ stub: Stub; observed: Observed; logs: Logs }>({
             pinned: undefined,
           };
           issued.push(entry);
-          // The transaction's client predates every extension, exactly as
-          // Prisma's does when `$transaction` is called on the bare client.
-          const bare = build({});
+          // `tx` carries the hooks of the client `$transaction` was called on
+          // and nothing added after it, exactly as Prisma's does — which is why
+          // `tenantScoped` must be applied last, and why its own hook never
+          // sees a statement inside its own transaction.
+          const inner = build(hooks);
           const tx: StubClient = {
-            ...bare,
+            ...inner,
             $executeRaw: (query, ...values) => {
               entry.pinned ??= { raw: query.join("?"), values };
-              return bare.$executeRaw(query, ...values);
+              return inner.$executeRaw(query, ...values);
             },
           };
           return (arg as (tx: unknown) => Promise<unknown>)(tx);
@@ -180,9 +196,9 @@ export const it = test.extend<{ stub: Stub; observed: Observed; logs: Logs }>({
               };
             };
             return build({
-              models: ext.query?.$allModels?.$allOperations,
-              all: ext.query?.$allOperations,
-              override: ext.client?.$transaction,
+              models: chain(ext.query?.$allModels?.$allOperations, hooks.models),
+              all: chain(ext.query?.$allOperations, hooks.all),
+              override: ext.client?.$transaction ?? hooks.override,
             });
           },
           disconnected: () => count,

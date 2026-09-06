@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 
-import { it, type StubClient } from "./__tests__/test-fixtures.js";
+import { it, type AllOperations, type StubClient } from "./__tests__/test-fixtures.js";
 import { tenantScoped } from "./rls.js";
 
 const pinned = (setting: string) => ({
@@ -106,21 +106,33 @@ describe("tenantScoped", () => {
     });
   });
 
-  it("does not re-enter the hook for a statement inside its own transaction, whose tx predates it", async ({
+  it("hands the callback a tx carrying the earlier extensions and not its own", async ({
     stub,
   }) => {
-    // GIVEN a client the extension has been applied over
+    // GIVEN a recording extension applied BEFORE this one, as `unthrownPrisma` is
     const client = stub.client("stub://orders");
-    const db = applied(client);
+    const seen: string[] = [];
+    const db = applied(
+      client.$extends({
+        query: {
+          $allOperations: (({ operation, args, query }) => {
+            seen.push(operation);
+            return query(args);
+          }) satisfies AllOperations,
+        },
+      }),
+    );
 
     // WHEN the callback runs a model operation on the `tx` it was handed
     await db.$transaction((tx: StubClient) =>
       tx.operation("Order", "findMany", Promise.resolve(["a"])),
     );
 
-    // THEN the hook never saw it, and only the pin was issued
-    expect({ operations: client.operations(), issued: client.issued() }).toEqual({
-      operations: 0,
+    // THEN the predecessor's hook fired on `tx` — for the pin and for the
+    // operation — while this extension's never did: it would have wrapped each
+    // in a batch of its own, and `issued` carries only the transaction
+    expect({ seen, issued: client.issued() }).toEqual({
+      seen: ["$executeRaw", "findMany"],
       issued: [{ kind: "interactive", pinned: pinned("app.tenant_id") }],
     });
   });
