@@ -284,6 +284,14 @@ other, and it goes in the same function. This example uses a quantity ceiling
 instead because its domain records no owner — a worker places orders with
 nobody behind them — not because ownership needs anything else.
 
+**A policy engine is the rule's body, not a fourth layer.** A deployment that
+keeps its rules in Cerbos, OPA or OpenFGA — editable without a release,
+audited in one place, a relationship graph for "shared with" — calls it from
+inside `exportable` and still mints the witness on the answer. The engine is
+what makes a rule editable; the witness is what makes asking it unskippable.
+Neither does the other's job, which is why the framework names the second and
+leaves the first to the deployment.
+
 ## Underneath: the database refuses what the layers missed
 
 [`@btravstack/prisma/rls`](/reference/prisma)'s `tenantScoped(tenant)` pins
