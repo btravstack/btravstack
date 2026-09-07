@@ -284,6 +284,15 @@ other, and it goes in the same function. This example uses a quantity ceiling
 instead because its domain records no owner — a worker places orders with
 nobody behind them — not because ownership needs anything else.
 
+**A policy engine is the rule's body, not a fourth layer.** A deployment that
+keeps its rules outside the code — OPA's Rego and decision logs, Cerbos's
+YAML policies with their audit trail, OpenFGA's relationship graph for
+"shared with" — calls the engine from inside `exportable` and still mints the
+witness on the answer. What each engine offers past that is its own; what the
+witness offers is the same for all of them: a forgotten call is a compile
+error. Neither does the other's job, which is why the framework names the
+second and leaves the first to the deployment.
+
 ## Underneath: the database refuses what the layers missed
 
 [`@btravstack/prisma/rls`](/reference/prisma)'s `tenantScoped(tenant)` pins

@@ -209,6 +209,21 @@ still construct, so swapping a whole adapter stack — or a graph whose shape
 varies per test — is still a different module composed in its place. See
 [`@btravstack/testing`](/reference/testing).
 
+## Authorization
+
+A guard is a runtime hook — global, per controller or per method — that
+decides whether a request proceeds, and the half of it that is about the
+credential maps to the contract: a procedure
+names the schemes that may reach it and the scopes each must grant, and a scope
+the scheme's authenticator cannot grant is a compile error rather than a
+permanent 403. CASL is the resource-level half, and the difference is where the
+decision's **absence** shows: `ability.can(action, subject)` is a call a
+handler can leave out, and the ability builder is an inventory that cannot tell
+which handler forgot to ask. Here a resource rule is a plain function whose
+result is a witness type the operation demands, so the forgotten call is the
+compile error. The three layers, and what the framework deliberately does not
+ship for the third, are on [Authorize a request](/how-to/authorize-a-request).
+
 ## What NestJS does better
 
 A comparison page that admits nothing is not read as one, and these are not

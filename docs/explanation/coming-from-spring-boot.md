@@ -108,6 +108,19 @@ The one hole this leaves honestly: a genuinely global behaviour that is not on
 the option list is an oRPC plugin (an escape hatch that exists and is
 documented), not a slot this framework invented.
 
+### No `@PreAuthorize`, and no `@PostAuthorize`
+
+`@PreAuthorize("hasAuthority('orders:export')")` is what a contract's scope
+says — `authenticated({ user: ["orders:export"] })` — with one difference: the
+SpEL expression is evaluated just before the method runs, and a scope the
+scheme cannot grant is refused when the contract compiles. `@PostAuthorize` on the returned
+object is the resource-level rule, and it is the case this stack answers with
+a **witness type** instead of an annotation: the rule is a plain function whose
+result the operation demands, so handing the operation a resource with no
+witness is a compile error — a forgotten rule cannot ship — where a method
+whose proxy was bypassed skips its annotation silently. The
+three layers are on [Authorize a request](/how-to/authorize-a-request).
+
 ### Exceptions are not the error channel
 
 Spring's `@ExceptionHandler` / `@ControllerAdvice` turns a thrown exception into

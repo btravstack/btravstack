@@ -88,9 +88,14 @@ Authentication is a starter concern — a contract marks which security schemes 
 procedure accepts, and the application binds an authenticator per scheme, so a
 **scope** on the credential is checked before dispatch. _Authorization_ — "may
 this caller read this order" — is a call in your handler against your own
-rules. There is no policy class, no ability registry and no template directive.
+rules, and its result is a **witness type** the operation demands, so handing
+the operation a resource with no witness is a compile error — the property a
+Bouncer policy cannot have, since `bouncer.authorize` is a call anyone can
+leave out. There
+is no policy class, no ability registry and no template directive.
 
-See [Protect a procedure](/how-to/protect-a-procedure).
+See [Authorize a request](/how-to/authorize-a-request) for the three layers,
+and [Protect a procedure](/how-to/protect-a-procedure) for the first.
 
 ### No Edge, no views, no i18n
 
