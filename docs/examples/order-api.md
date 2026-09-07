@@ -431,8 +431,9 @@ a brand only the rule mints, a `Forbidden` the application owns, and
 not compile and no other module can mint the witness by construction. What that
 buys is precise: a **forgotten** rule is a compile error. A caller determined to
 skip it can still write `order as Authorized<Order>`, because the type is
-exported — but that is a lie in one line, and one a reviewer greps for. There
-is no such cast in this repository outside the rule's own.
+exported — but that is a lie in one line, and one a reviewer greps for:
+`rg 'as Authorized'` is the review, and the rule's own line is the one it is
+allowed to find.
 `Forbidden` is the application's own tagged error, folded by the same
 exhaustive `mapErrCases` as every domain error — there is no framework
 `Policy` port, no registry, and nothing to register. `Caller` is exported from

@@ -763,6 +763,30 @@ describe("order-api", () => {
     });
   });
 
+  it("refuses a service key an order another tenant placed, as if it did not exist", async ({
+    serve,
+    clientFor,
+    serviceClientFor,
+    api,
+  }) => {
+    // GIVEN a user placing an order for the fixture's tenant, and the reporting
+    // key, cut for a tenant of its own
+    const app = serve(api);
+    const client = await clientFor(app);
+    const reporting = await serviceClientFor(app);
+
+    // WHEN the service asks for that order's export by id
+    const exported = await client.orders
+      .place({ id: "0199a1e0-0000-7000-8000-00000000000e", quantity: 2 })
+      .flatMap(() => reporting.orders.export({ id: "0199a1e0-0000-7000-8000-00000000000e" }));
+
+    // THEN the key's tenant has no such order: the unit looked under the key's
+    // tenant, and the floor beneath it would have answered the same
+    expect(exported).toBeErrWith(
+      expect.objectContaining({ constructor: ORPCError, code: "NOT_FOUND" }),
+    );
+  });
+
   it("serves each caller the tenant its own token names", async ({
     otherTenant,
     tokenFor,
