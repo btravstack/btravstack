@@ -2,7 +2,7 @@
 // principal on oRPC's own context channel from the requirements it names, and
 // an unmarked one does not. Each `@ts-expect-error` is an assertion: if one
 // stops erroring, the gate is gone.
-import { Env } from "@btravstack/config";
+import { ConfigInvalid, Env } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
 import { start } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
@@ -10,7 +10,7 @@ import { oc } from "@orpc/contract";
 import { ErrAsync, OkAsync } from "unthrown";
 import { expectTypeOf } from "vitest";
 
-import { HttpAuthenticator, Unauthenticated, granted } from "./auth.js";
+import { HttpAuthenticator, Unauthenticated, granted, type Authenticator } from "./auth.js";
 import { defineHttp } from "./define-http.js";
 import { HttpModule } from "./http-module.js";
 import type { Implementation } from "./orpc.js";
@@ -186,9 +186,11 @@ const _verified = HttpModule("Verified")({
 });
 
 // 12. The same root with nothing supplying `Verifier` is refused: the
-//     authenticator's need is real, not erased by riding in on the router.
+//     authenticator's need is real, not erased by riding in on the router, and
+//     `HttpModule` carrying `Env` for its schemes does not widen that hole —
+//     no `needs` line here, and the diagnostic still names `Verifier`.
 // @ts-expect-error — UNDECLARED NEEDS: the authenticator's own `Verifier`
-void HttpModule("Unverified")({ needs: [Env], router: verifiedRouter });
+void HttpModule("Unverified")({ router: verifiedRouter });
 
 void _verified;
 
@@ -239,6 +241,37 @@ HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
 
 expectTypeOf(plain.principal).toEqualTypeOf<{ readonly userId: string }>();
 expectTypeOf(scoped.scope).toEqualTypeOf<"orders:export">();
+
+// The `sync` arm's WHOLE type, not only the two slots read above: `needs` and
+// `error` are both `never` for a scheme declaring no dependencies, which is
+// what "sync is unchanged" means now that the description carries four slots.
+expectTypeOf(plain).toEqualTypeOf<
+  Authenticator<{ readonly userId: string }, never, never, never>
+>();
+
+// The second arm: `make` is `sync`'s fallible twin, the pair di's `Provider`
+// has, and its `Err` becomes the description's — so a scheme whose
+// configuration is wrong fails the boot with the error it modeled.
+const made = HttpAuthenticator<{ readonly userId: string }>()({
+  inject: { env: Env },
+  make: ({ env }) =>
+    env["TOKEN"] === undefined
+      ? ErrAsync(new ConfigInvalid({ port: "Scheme", issues: [] }))
+      : OkAsync(() => OkAsync({ userId: "u-1" })),
+});
+
+expectTypeOf(made).toEqualTypeOf<
+  Authenticator<{ readonly userId: string }, never, Env, ConfigInvalid>
+>();
+
+// Negative: the two arms are mutually exclusive, so naming both fails both
+// rather than matching one and silently ignoring the other.
+// @ts-expect-error -- Types of property 'make' are incompatible: the `sync` arm gives it `?: never`
+HttpAuthenticator<{ readonly userId: string }>()({
+  inject: {},
+  sync: () => () => OkAsync({ userId: "u-1" }),
+  make: () => OkAsync(() => OkAsync({ userId: "u-1" })),
+});
 
 // The scope-vocabulary gate. A contract may name a scope only if the scheme's
 // own authenticator can grant it — otherwise the route compiles, passes every

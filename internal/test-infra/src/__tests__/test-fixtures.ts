@@ -1,9 +1,15 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
+import type { JWK } from "jose";
 import { test } from "vitest";
+
+import { devKeyPair, jwksUri, sharedJwks } from "../dev-issuer.js";
 
 // Anchored the same way `lock.ts` anchors its own `LOCKS`, one directory
 // deeper. A spec that computed this from `process.cwd()` would silently point
@@ -17,7 +23,20 @@ type Lock = {
   readonly plant: (pid: number) => void;
 };
 
-export const it = test.extend<{ lock: Lock; deadPid: number }>({
+/** The dev issuer, minted into a throwaway cache so a spec never touches `<repo>/.cache/dev-issuer`. */
+type DevIssuer = {
+  readonly cache: URL;
+  readonly publicJwk: JWK;
+  /** The URL `.env.dev` would carry, on the container this fixture started. */
+  readonly jwks: string;
+};
+
+export const it = test.extend<{
+  lock: Lock;
+  deadPid: number;
+  keyCache: URL;
+  issuer: DevIssuer;
+}>({
   lock: async ({}, use) => {
     const name = `spec-${randomUUID()}`;
     const path = `${LOCKS}${name}.lock`;
@@ -37,4 +56,31 @@ export const it = test.extend<{ lock: Lock; deadPid: number }>({
   deadPid: async ({}, use) => {
     await use(spawnSync(process.execPath, ["-e", ""]).pid);
   },
+
+  // File-scoped, both of them: a throwaway key is a container nothing else
+  // shares — the thumbprint is part of the reuse hash — so a key per TEST
+  // would start an nginx per test and leave it behind.
+  keyCache: [
+    async ({}, use) => {
+      const directory = await mkdtemp(join(tmpdir(), "dev-issuer-"));
+      // A trailing slash, so `new URL("private.jwk", cache)` resolves inside it
+      // rather than beside it.
+      const cache = new URL(`${pathToFileURL(directory).href}/`);
+      await use(cache);
+      await rm(cache, { recursive: true, force: true });
+    },
+    { scope: "file" },
+  ],
+
+  // Stopped rather than left to outlive the run the way the six long-lived
+  // ones are, for the same reason: nothing else will ever match its hash.
+  issuer: [
+    async ({ keyCache }, use) => {
+      const { publicJwk } = await devKeyPair(keyCache);
+      const container = await sharedJwks(publicJwk);
+      await use({ cache: keyCache, publicJwk, jwks: jwksUri(container) });
+      await container.stop();
+    },
+    { scope: "file" },
+  ],
 });

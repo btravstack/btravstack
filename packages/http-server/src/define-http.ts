@@ -12,7 +12,9 @@ import { routerFor } from "./orpc.js";
 import type { Kinds, UnitsOf } from "./unit.js";
 
 /** The authenticators an application declares, keyed by scheme name. */
-export type Authenticators = Readonly<Record<string, Authenticator<unknown, string, unknown>>>;
+export type Authenticators = Readonly<
+  Record<string, Authenticator<unknown, string, unknown, unknown>>
+>;
 
 /** The scheme registry, read off the authenticators rather than declared twice. */
 export type SchemesFrom<A extends Authenticators> = { readonly [K in keyof A]: A[K]["principal"] };
@@ -28,12 +30,14 @@ export type VocabFrom<A extends Authenticators> = { readonly [K in keyof A]: A[K
  * One di provider per scheme, on the port whose id carries that scheme's name,
  * and carrying that authenticator's own dependencies in its needs channel — so
  * an authenticator that reads a `JwtVerifier` still owes it where `HttpModule`
- * puts it in `provides`.
+ * puts it in `provides`. Its error channel is the authenticator's own, so a
+ * scheme built through a `make` arm reports that arm's `Err` at startup rather
+ * than having it erased to `never` here.
  */
 type SchemeProviders<A extends Authenticators> = {
   readonly [K in keyof A]: Provider<
     PortInstance<`HttpAuthenticator:${K & string}`, AuthenticatorService<unknown>>,
-    never,
+    A[K]["error"],
     A[K]["needs"]
   >;
 }[keyof A];
@@ -131,5 +135,5 @@ export const defineHttp = <const A extends Authenticators = Record<never, never>
 /** The description `HttpAuthenticator` held, bound now that the scheme NAME exists to mint a port from. */
 const bind = (
   scheme: string,
-  authenticator: Authenticator<unknown, string, unknown>,
+  authenticator: Authenticator<unknown, string, unknown, unknown>,
 ): AnyProvider => Provider(authenticatorPort(scheme) as never)(authenticator.options as never);

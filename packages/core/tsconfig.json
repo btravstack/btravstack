@@ -19,7 +19,12 @@
     // package's `typecheck`; `vitest.config.ts` aliases the source at run
     // time. `tsconfig.build.json` — what `tsdown` compiles — drops the mapping
     // and the test files with it, so the published `dist` never sees it.
-    "paths": { "@btravstack/testing": ["../testing/dist/index.d.mts"] }
+    // `/jwt` joins the map for the same reason: a doc sample naming it lands
+    // in this workspace's `generate` output, classified here by its imports.
+    "paths": {
+      "@btravstack/testing": ["../testing/dist/index.d.mts"],
+      "@btravstack/testing/jwt": ["../testing/dist/jwt.d.mts"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "src/**/*.test-d.ts"]

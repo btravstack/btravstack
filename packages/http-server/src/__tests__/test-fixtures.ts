@@ -23,9 +23,9 @@ vi.mock("node:http", async (importOriginal) => {
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer, request as httpRequest } from "node:http";
-import { connect, type AddressInfo, type Socket } from "node:net";
+import { connect, type Socket } from "node:net";
 
-import type { ConfigInvalid, Environment } from "@btravstack/config";
+import type { ConfigInvalid, Env, Environment } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
 import {
   Observers,
@@ -38,11 +38,12 @@ import {
 } from "@btravstack/core";
 import { Module, Port, Provider, type PortClassOf, type ServiceOf } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
+import { localIssuer, type LocalIssuer } from "@btravstack/testing/jwt";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { eventIterator, oc, type as ocType, type RouterContractClient } from "@orpc/contract";
-import { exportJWK, generateKeyPair, SignJWT } from "jose";
-import { ErrAsync, OkAsync, type AsyncResult } from "unthrown";
+import { SignJWT } from "jose";
+import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
 import { z } from "zod";
 
@@ -176,8 +177,8 @@ const observedAppOf = (handler: Handler, member: (operation: Operation) => Settl
  *
  * `Authenticator` erases `options` to `unknown` on purpose — `defineHttp` is
  * what binds it to a port — so a unit test of an authenticator has to reach
- * through that erasure. It is the one cast here, and it is the shape
- * `defineHttp` itself reads.
+ * through that erasure, and the shape it reaches for is the one `defineHttp`
+ * itself reads.
  */
 const serviceOf = <P, Scope extends string>(
   authenticator: Authenticator<P, Scope, never>,
@@ -189,68 +190,58 @@ const serviceOf = <P, Scope extends string>(
   ).sync({});
 
 /**
- * A local issuer: one generated key pair, its JWKS on an ephemeral port, and a
- * signer. A real fetch against a real JWKS document is what makes the rotation
- * and caching under test the library's own rather than a double's.
+ * The `make` arm's counterpart to {@link serviceOf}: the scheme built from the
+ * environment the kernel would have provided, without a graph around it.
  */
-const issuerOf = async () => {
-  const { publicKey, privateKey } = await generateKeyPair("RS256", { extractable: true });
-  const { privateKey: otherPrivate } = await generateKeyPair("RS256", { extractable: true });
-  const jwk = { ...(await exportJWK(publicKey)), kid: "k1", alg: "RS256", use: "sig" };
-  const server = createServer((_request, response) => {
-    response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ keys: [jwk] }));
-  });
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", () => done()));
-  const { port } = server.address() as AddressInfo;
+const jwtServiceOf = <P, Scope extends string>(
+  authenticator: Authenticator<P, Scope, Env, ConfigInvalid>,
+  env: Environment,
+): AsyncResult<AuthenticatorService<P, Scope>, ConfigInvalid> =>
+  (
+    authenticator.options as {
+      readonly make: (services: {
+        readonly env: Environment;
+      }) => AsyncResult<AuthenticatorService<P, Scope>, ConfigInvalid>;
+    }
+  ).make({ env });
 
-  return {
-    jwks: `http://127.0.0.1:${port}/jwks.json`,
+/**
+ * One `localIssuer`, closed when the file is done. Both issuer fixtures are
+ * this: they differ only in the key pair `localIssuer` generates, which is
+ * exactly what the `stranger` case needs.
+ */
+const localIssuerFixture = async (
+  // Typed `object` so one function satisfies both fixtures' context types.
+  // oxlint-disable-next-line no-empty-pattern -- Vitest parses the source and requires a destructuring pattern; this fixture depends on no other
+  {}: object,
+  use: (value: LocalIssuer) => Promise<void>,
+): Promise<void> => {
+  const local = await localIssuer({
     issuer: "https://issuer.test",
     audience: "orders-api",
-    /** A token this issuer signed, with whatever claims and overrides a test needs. */
-    sign: (
-      claims: Record<string, unknown> = {},
-      overrides: { issuer?: string; audience?: string; expiresIn?: string } = {},
-    ) =>
-      new SignJWT(claims)
-        .setProtectedHeader({ alg: "RS256", kid: "k1" })
-        .setIssuer(overrides.issuer ?? "https://issuer.test")
-        .setAudience(overrides.audience ?? "orders-api")
-        .setIssuedAt()
-        .setExpirationTime(overrides.expiresIn ?? "5m")
-        .sign(privateKey),
-    /** A properly signed token carrying no `exp` — valid forever unless the verifier requires the claim. */
-    signWithoutExpiry: () =>
-      new SignJWT({ sub: "u-1", tenant: "acme" })
-        .setProtectedHeader({ alg: "RS256", kid: "k1" })
-        .setIssuer("https://issuer.test")
-        .setAudience("orders-api")
-        .setIssuedAt()
-        .sign(privateKey),
-    /** A token signed by a key this issuer's JWKS does not publish. */
-    signWithStranger: (claims: Record<string, unknown> = {}) =>
-      new SignJWT(claims)
-        .setProtectedHeader({ alg: "RS256", kid: "k1" })
-        .setIssuer("https://issuer.test")
-        .setAudience("orders-api")
-        .setExpirationTime("5m")
-        .sign(otherPrivate),
-    /**
-     * The algorithm-confusion attack's own payload: `HS256` signed with the
-     * PUBLISHED public key as the shared secret — the very JWK this issuer
-     * serves, which is what makes it an attack anyone can mount rather than one
-     * needing a key they do not have.
-     */
-    signHmacWithPublicKey: () =>
-      new SignJWT({ sub: "u-1", tenant: "acme" })
-        .setProtectedHeader({ alg: "HS256", kid: "k1" })
-        .setIssuer("https://issuer.test")
-        .setAudience("orders-api")
-        .setExpirationTime("5m")
-        .sign(new TextEncoder().encode(JSON.stringify(jwk))),
-    close: () => new Promise<void>((done) => server.close(() => done())),
-  };
+  }).get();
+  await use(local);
+  await local.close();
+};
+
+/**
+ * The algorithm-confusion attack's own payload: `HS256` signed with the
+ * PUBLISHED public key as the shared secret — the very JWK the issuer serves,
+ * which is what makes it an attack anyone can mount rather than one needing a
+ * key they do not have. Minted here rather than by `localIssuer`, since it is
+ * the attacker's half.
+ */
+const hmacToken = (issuer: LocalIssuer): AsyncResult<string, never> => {
+  const { kid } = issuer.jwk;
+  assert.ok(kid !== undefined, "localIssuer served a JWK with no kid");
+  return fromSafePromise(
+    new SignJWT({ sub: "u-1", tenant: "acme" })
+      .setProtectedHeader({ alg: "HS256", kid })
+      .setIssuer(issuer.issuer)
+      .setAudience(issuer.audience)
+      .setExpirationTime("5m")
+      .sign(new TextEncoder().encode(JSON.stringify(issuer.jwk))),
+  );
 };
 
 /** What both shipped authenticators resolve to in these specs. */
@@ -275,6 +266,31 @@ const jwtPrincipal = (claims: { sub?: string; [key: string]: unknown }): JwtIden
   typeof claims["tenant"] === "string" && typeof claims.sub === "string"
     ? { tenantId: claims["tenant"], userId: claims.sub }
     : undefined;
+
+/**
+ * The JWT scheme with NOTHING pinned, served behind one fragment. Declared at
+ * module scope though it trusts an issuer that does not exist yet: every option
+ * arrives from `HTTP_JWT_*` at boot, which is the property under test.
+ */
+const envJwtApi = defineHttp({
+  authenticators: { user: jwtAuthenticator<JwtIdentity>()({ principal: jwtPrincipal }) },
+});
+
+const envJwtFragment = envJwtApi.HtmxGet("/whoami", { requires: [{ user: [] }] })({
+  inject: {},
+  sync: () => (context) => OkAsync(html`${context.principal.userId}`),
+});
+
+const envJwtFragments = envJwtApi.HtmxFragments([envJwtFragment]);
+
+/** No `needs` line: `HttpModule` carries `Env` for every provider in the root. */
+const envJwtAppOf = () =>
+  HttpModule("EnvJwtApp")({
+    fragments: envJwtFragments,
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [envJwtFragment],
+  });
 
 /** A greeting service, so the router has a real dependency to declare. */
 class Greeter extends Port("Greeter")<{ readonly greet: (name: string) => string }> {}
@@ -1499,8 +1515,16 @@ export type HttpFixtures = {
     readonly taken: () => readonly Observation[];
   }>;
 
-  /** A local JWT issuer: a served JWKS, and signers for every token a spec needs. */
-  readonly issuer: Awaited<ReturnType<typeof issuerOf>>;
+  /** A local JWT issuer: a served JWKS, and a signer for every token a spec needs. */
+  readonly issuer: LocalIssuer;
+  /**
+   * A SECOND issuer, on the same `iss` and `aud` strings and its own key pair —
+   * a token it signs carries a `kid` the first issuer's JWKS publishes and a
+   * signature it cannot verify.
+   */
+  readonly stranger: LocalIssuer;
+  /** The algorithm-confusion attack's token: `HS256` over `issuer`'s published JWK. */
+  readonly hmacToken: AsyncResult<string, never>;
   /** The API-key scheme with two issued keys, resolved. */
   readonly apiKeyService: AuthenticatorService<ServiceIdentity, "reports:read">;
   /** The API-key scheme with no scope vocabulary, resolved. */
@@ -1509,6 +1533,21 @@ export type HttpFixtures = {
   readonly jwtService: AuthenticatorService<JwtIdentity>;
   /** The JWT scheme declaring `orders:export`, where `scopes` is required. */
   readonly scopedJwtService: AuthenticatorService<JwtIdentity, "orders:export">;
+  /**
+   * The starter over a fragment requiring a JWT scheme that pins NOTHING, on an
+   * ephemeral port. Every option arrives through `env`, which is what lets the
+   * scheme be declared before the issuer it trusts exists. Shut down by the
+   * fixture; a startup failure is the test's to assert on `app.exited`.
+   */
+  readonly jwtApp: (env: Environment) => App;
+  /**
+   * The same scheme with `audience` PINNED, built from whatever environment the
+   * test hands it — the pin-versus-variable question, which lives entirely
+   * inside the piece's `make`.
+   */
+  readonly pinnedAudienceJwt: (
+    env: Environment,
+  ) => AsyncResult<AuthenticatorService<JwtIdentity>, ConfigInvalid>;
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -1524,17 +1563,17 @@ export const it = test.extend<HttpFixtures>({
     });
   },
 
-  issuer: [
-    // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-    async ({}, use) => {
-      const local = await issuerOf();
-      await use(local);
-      await local.close();
-    },
-    // Per FILE, not per test: generating the key pairs is the cost, and nothing
-    // mutates the issuer, so a file's tests share one.
-    { scope: "file" },
-  ],
+  issuer: [localIssuerFixture, { scope: "file" }],
+
+  // A SECOND key pair on the SAME strings — that difference is the whole
+  // fixture: a token it signs carries a `kid` the first issuer's JWKS
+  // publishes and a signature that JWKS cannot verify. Its own listener is
+  // never fetched from.
+  stranger: [localIssuerFixture, { scope: "file" }],
+
+  hmacToken: async ({ issuer }, use) => {
+    await use(hmacToken(issuer));
+  },
 
   // oxlint-disable-next-line no-empty-pattern -- see above
   apiKeyService: async ({}, use) => {
@@ -1547,30 +1586,52 @@ export const it = test.extend<HttpFixtures>({
   },
 
   jwtService: async ({ issuer }, use) => {
+    // Every option pinned, so the environment this resolves against is empty:
+    // a pin is what a test states, a variable what a deployment sets.
     await use(
-      serviceOf(
-        jwtAuthenticator<JwtIdentity>()({
-          jwks: issuer.jwks,
-          issuer: "https://issuer.test",
-          audience: "orders-api",
-          principal: jwtPrincipal,
-        }),
-      ),
+      (
+        await jwtServiceOf(
+          jwtAuthenticator<JwtIdentity>()({
+            jwks: issuer.jwks,
+            issuer: issuer.issuer,
+            audience: issuer.audience,
+            principal: jwtPrincipal,
+          }),
+          {},
+        )
+      ).getOrThrow(),
     );
   },
 
   scopedJwtService: async ({ issuer }, use) => {
     await use(
-      serviceOf(
-        jwtAuthenticator<JwtIdentity>()({
-          jwks: issuer.jwks,
-          issuer: "https://issuer.test",
-          audience: "orders-api",
-          scopes: ["orders:export"],
-          principal: jwtPrincipal,
-        }),
-      ),
+      (
+        await jwtServiceOf(
+          jwtAuthenticator<JwtIdentity>()({
+            jwks: issuer.jwks,
+            issuer: issuer.issuer,
+            audience: issuer.audience,
+            scopes: ["orders:export"],
+            principal: jwtPrincipal,
+          }),
+          {},
+        )
+      ).getOrThrow(),
     );
+  },
+
+  jwtApp: async ({ boot }, use) => {
+    await use((env) => boot(envJwtAppOf(), { env }));
+  },
+
+  pinnedAudienceJwt: async ({ issuer }, use) => {
+    const authenticator = jwtAuthenticator<JwtIdentity>()({
+      jwks: issuer.jwks,
+      issuer: issuer.issuer,
+      audience: "pinned",
+      principal: jwtPrincipal,
+    });
+    await use((env) => jwtServiceOf(authenticator, env));
   },
 
   serve: async ({ boot }, use) => {

@@ -112,10 +112,11 @@ fragment, so the router declares one dependency per scheme that fragment names
 — `HttpAuthenticator:user` and `HttpAuthenticator:service` — and carries the
 providers that discharge them, which `HttpModule` puts in `provides` itself. A
 scheme with nobody behind it is an unmet dependency `start` refuses, naming the
-port. Both are ordinary providers, so swapping this example's
-`Bearer <tenantId>:<userId>:<scopes>` stand-in for JWT verification changes
-nothing else — and an authenticator that declared a `JwtVerifier` would carry
-that need into the graph, refused at this very call if nothing satisfied it.
+port. Both are ordinary providers, so an authenticator that declares a need of
+its own carries it into the graph, refused at this very call if nothing
+satisfies it. `Env` is the one need never yours to declare: `userAuth` binds
+its three `HTTP_JWT_*` variables from it, and `HttpModule` carries `Env` for
+every provider in the root.
 
 Where the schemes are **declared** is `src/auth.ts`:
 
@@ -123,9 +124,12 @@ Where the schemes are **declared** is `src/auth.ts`:
 export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 export type ServiceIdentity = { readonly appId: string };
 
-export const userAuth = HttpAuthenticator<Identity, "orders:export">()({ inject: {}, sync: () => (headers) => … });
+// `principal` is the one place a claim becomes a tenant, and the one place
+// this deployment names the claim it reads it from. Nothing is pinned, so
+// `jwks`, `issuer` and `audience` bind from the three `HTTP_JWT_*` variables.
+export const userAuth = jwtAuthenticator<Identity>()({ principal, scopes: ["orders:export"] });
 
-export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({ inject: {}, sync: () => (headers) => … });
+export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({ keys: [ … ] });
 
 export const api = defineHttp({
   authenticators: { user: userAuth, service: serviceAuth },
@@ -235,7 +239,7 @@ serve.
 
 ```ts
 const client = createOrderApiClient("http://127.0.0.1:3000", "/rpc", {
-  authorization: `Bearer ${tenantId}:${userId}:orders:export`,
+  authorization: `Bearer ${accessToken}`,
 });
 
 const named = (await client.orders.place({ id, quantity })).match({

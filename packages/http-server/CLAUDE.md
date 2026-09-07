@@ -1022,6 +1022,64 @@ not an oracle for which check the attacker got wrong. There is a test that
 mints the confusion token and a test that mints one signed by a key the JWKS
 does not publish.
 
+**`jwks`, `issuer` and `audience` are bound from `HTTP_JWT_JWKS_URI`,
+`HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE`, and the option PINS its variable** —
+`http({ port })` against `PORT`, one layer down. Rule 6's test decides it: all
+three vary by DEPLOYMENT and none of them varies by code. Staging and
+production authenticate against different issuers, an issuer's JWKS moves, and
+a token's audience is the deployment's own name — none of that is a decision
+the image gets to carry, and every one of them was a rebuild before this.
+`algorithms`, `clockToleranceSec`, `header`, `principal` and `scopes` stay
+options: the first two are a security posture whose silent change is a
+regression, and the last three are a shape or a function, which an environment
+cannot carry.
+
+**One JWT scheme per process is the default, and a second one pins all three.**
+The prefix is `HTTP_JWT_`, singular, because a process serves one issuer in
+every deployment this stack has met — the `PORT` case, not the
+`HTTP_`-versus-`AMQP_` one. Two schemes reading the same three variables would
+be two schemes with identical configuration, which is one scheme; a genuine
+second issuer therefore pins `jwks`/`issuer`/`audience` explicitly, which is
+already how a test states one. What is deliberately NOT here is a
+per-scheme prefix (`HTTP_JWT_USER_ISSUER`), which would buy the rare case a
+naming convention nothing enforces and make the common one longer.
+
+**The piece is a `make` arm, not a `sync` one, and that is what the arm is
+for.** Reading the environment can FAIL, and a scheme whose configuration is
+wrong must not boot: `make` puts `ConfigInvalid` on the description's error
+channel, `SchemeProviders` carries it, and the graph refuses to build —
+`runMain` reports it and exits `78`, naming every variable at once. The
+alternative was an authenticator that constructs happily and refuses every
+caller at runtime with a 401 carrying no reason, which is the worst diagnostic
+this package could produce. `Config.parse` is the step it runs, lifted out of
+`Config.provider` so both callers share one home; the piece is already its own
+provider, so there is no second port for `Config.provider` to bind.
+
+**It needs `Env`, and `HttpModule` carries that for every provider in the root
+— its schemes included — rather than making every root restate it.** The scheme's provider sits in the ROOT's
+`provides` (it rides in on the router or the fragments), so di's `NeedsGate`
+would ask the root to declare `Env` — a line that lands on every deployment and
+every doc page mirroring one. `HttpModuleOptions` instantiates that gate as
+`NeedsGate<…, EnvAnd<N>>` instead, `EnvAnd<N>` being `readonly [...N, typeof
+Env]`. It is legal and free: di's `needs` array is **type-level only** (`Module`
+drops it and computes the needs channel from the providers), and its gate asks
+only that the unmet set be a SUBSET of the declared one, so declaring a port
+nothing needs costs nothing. `Env` still leaves this root on the module's needs
+channel, so `start`'s own gate is what supplies it — unchanged. This hides
+exactly `Env` and nothing else: a scheme owing any OTHER unmet port is still
+refused at the `HttpModule` call, which `auth.test-d.ts`'s case 12 pins beside
+`jwt.test-d.ts`'s positive. The precedent is in the same file: the starter this
+sugar imports needs `Env` too, and no root has ever named that either.
+
+**The JWKS URI is `Config.url`, not `Config.string`.** `createRemoteJWKSet`
+takes a `URL`, so the piece constructs one inside `make` — and `new URL` throws,
+which inside a combinator is how this repo mints a `Defect`. A scheme-less
+`HTTP_JWT_JWKS_URI` is the likeliest of the three operator slips, and it was the
+one case that escaped the `ConfigInvalid` this feature promises: it died as an
+unnamed defect instead of `runMain`'s `78` naming the variable. `Config.url` is
+`URL.canParse` as a field rule, checked on the pin as well as on the variable,
+so the value the piece hands to `new URL` is one that has already parsed.
+
 **`jose` is ESM-only, and that lands on ONE subpath under ONE module format.**
 The CJS build's `require("jose")` needs `require(esm)`, on by default from Node
 22.12; ESM is fine on any Node 22, and a consumer that never imports

@@ -374,12 +374,15 @@ describe("order-api", () => {
 
   it("serves the export to a user token that carries the scope", async ({
     serve,
-    tenant,
+    tokenFor,
     clientWith,
     api,
   }) => {
     // GIVEN a caller whose token grants `orders:export`
-    const client = await clientWith(serve(api), `Bearer ${tenant}:u-1:orders:export`);
+    const client = await clientWith(
+      serve(api),
+      `Bearer ${await tokenFor({ scope: "orders:export" })}`,
+    );
 
     // WHEN the export is called
     // THEN the first requirement was satisfied outright — a granted scope is
@@ -402,6 +405,60 @@ describe("order-api", () => {
     // caller gets
     expect(refused).toBeDefectWith(
       expect.objectContaining({ constructor: ORPCError, code: "FORBIDDEN", inferable: false }),
+    );
+  });
+
+  it("refuses a token whose tenant claim the domain schema cannot parse", async ({
+    serve,
+    tokenFor,
+    clientWith,
+    api,
+  }) => {
+    // GIVEN a token this issuer really signed, whose `tenant` claim is a name
+    // rather than the UUIDv7 a tenant id is
+    const client = await clientWith(serve(api), `Bearer ${await tokenFor({ tenant: "acme" })}`);
+
+    // WHEN a marked procedure is called
+    const refused = await client.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" });
+
+    // THEN the signature verified and `principal` still answered nobody: the
+    // brand is claimed after a parse, never on the issuer's word alone
+    expect(refused).toBeDefectWith(
+      expect.objectContaining({ constructor: ORPCError, code: "UNAUTHORIZED", inferable: false }),
+    );
+  });
+
+  it("refuses a token whose sub claim is empty", async ({ serve, tokenFor, clientWith, api }) => {
+    // GIVEN a token this issuer really signed, carrying a tenant and an empty
+    // subject
+    const client = await clientWith(serve(api), `Bearer ${await tokenFor({ sub: "" })}`);
+
+    // WHEN a marked procedure is called
+    const refused = await client.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" });
+
+    // THEN nobody was named: a user id is a non-empty string, and `principal`
+    // is where that is decided
+    expect(refused).toBeDefectWith(
+      expect.objectContaining({ constructor: ORPCError, code: "UNAUTHORIZED", inferable: false }),
+    );
+  });
+
+  it("refuses to start when HTTP_JWT_ISSUER is unset, naming the variable", async ({
+    boot,
+    env,
+    api,
+  }) => {
+    // GIVEN a deployment that set the JWKS and the audience and forgot the issuer
+    const app = boot(api, { env: { ...env, HTTP_JWT_ISSUER: undefined } });
+
+    // WHEN it boots
+    // THEN startup is a modeled Err naming the variable — a scheme nobody
+    // configured fails the deploy, rather than refusing every caller in production
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        port: "HttpJwt",
+        issues: [{ message: "is required", path: ["HTTP_JWT_ISSUER"] }],
+      }),
     );
   });
 
@@ -434,7 +491,7 @@ describe("order-api", () => {
   });
 
   it("leaves the closed side's cursor off the wire entirely, rather than sending a null", async ({
-    tenant,
+    tokenFor,
     serve,
     originFor,
     stubbed,
@@ -446,7 +503,7 @@ describe("order-api", () => {
     // WHEN the last page is read as raw JSON
     const response = await request(origin)
       .post("/rpc/orders/list")
-      .set("authorization", `Bearer ${tenant}:u-1`)
+      .set("authorization", `Bearer ${await tokenFor()}`)
       .set("content-type", "application/json")
       .send({ json: { limit: 1, after: "page-1-end" } });
 
@@ -621,7 +678,8 @@ describe("order-api", () => {
   });
 
   it("serves each caller the tenant its own token names", async ({
-    tenant,
+    otherTenant,
+    tokenFor,
     serve,
     clientFor,
     clientWith,
@@ -629,9 +687,11 @@ describe("order-api", () => {
   }) => {
     // GIVEN two callers on one app, each holding a token for its own tenant
     const app = serve(api);
-    const other = `${tenant}-other`;
     const client = await clientFor(app);
-    const stranger = await clientWith(app, `Bearer ${other}:u-2`);
+    const stranger = await clientWith(
+      app,
+      `Bearer ${await tokenFor({ tenant: otherTenant, sub: "u-2" })}`,
+    );
 
     // WHEN the first places an order and the second looks that id up
     const found = await client.orders

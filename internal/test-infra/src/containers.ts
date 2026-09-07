@@ -28,7 +28,10 @@ export const ORDERS_DATABASE = "orders";
  * concurrently. One consequence is deliberate: a reused container is not
  * registered with Ryuk, so it outlives the run.
  */
-const shared = (name: string, define: () => GenericContainer): Promise<StartedTestContainer> =>
+export const shared = (
+  name: string,
+  define: () => GenericContainer,
+): Promise<StartedTestContainer> =>
   withLock(name, () =>
     define()
       .withReuse()

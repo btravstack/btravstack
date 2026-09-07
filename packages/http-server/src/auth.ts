@@ -129,12 +129,43 @@ export const principalPort = <const S extends string, P = unknown>(
  * port once the scheme name is known, carrying its principal and scope types
  * so the registry can be inferred rather than declared.
  */
-export type Authenticator<P, Scope extends string, N> = {
+export type Authenticator<P, Scope extends string, N, E = never> = {
   readonly options: unknown;
   readonly principal: P;
   readonly scope: Scope;
   readonly needs: N;
+  readonly error: E;
 };
+
+/** Internal: the services record an arm receives, keyed exactly as `inject` was. */
+type ServicesOf<D extends Readonly<Record<string, AnyPort>>> = {
+  readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
+};
+
+/**
+ * The two ways an authenticator is built — di's `Provider` construction family,
+ * narrowed to the one service this mints. Each arm gives the other its key as
+ * an optional `never`, so a literal naming both fails both arms rather than
+ * matching one and ignoring the other.
+ */
+type SyncArm<D extends Readonly<Record<string, AnyPort>>, P, Scope extends string> = {
+  readonly sync: (services: ServicesOf<D>) => AuthenticatorService<P, Scope>;
+  readonly make?: never;
+};
+
+type MakeArm<D extends Readonly<Record<string, AnyPort>>, P, Scope extends string> = {
+  readonly sync?: never;
+  // Bounded by `unknown`, not `never`: this arm is both the constraint and
+  // `ErrorOfArm`'s inference source, and a `never` bound rejects every function
+  // whose `Err` branch carries a real error.
+  // oxlint-disable-next-line unthrown/no-ambiguous-error-type
+  readonly make: (services: ServicesOf<D>) => AsyncResult<AuthenticatorService<P, Scope>, unknown>;
+};
+
+/** Recovers the error the supplied `make` reports, rather than the `unknown` its constraint checks against. */
+type ErrorOfArm<O> = O extends { readonly make: (...args: never) => AsyncResult<unknown, infer E> }
+  ? E
+  : never;
 
 /**
  * The authenticator for one scheme, with its principal type — and the scopes it
@@ -151,9 +182,20 @@ export type Authenticator<P, Scope extends string, N> = {
  *   inject: {},
  *   sync: () => (headers) => apiKey(headers["x-api-key"]),
  * });
+ *
+ * // `make` where building the scheme can FAIL, and the failure is startup's:
+ * export const jwtAuth = HttpAuthenticator<Identity>()({
+ *   inject: { env: Env },
+ *   make: ({ env }) => Config.parse("HttpJwt", schema)(env).map(verifier),
+ * });
  * ```
  *
- * The type arguments are explicit rather than inferred from `sync`: inference
+ * `sync` and `make` are the same pair di's `Provider` has, and naming both is
+ * refused. `make` answers an `AsyncResult`, so its `Err` is the graph's — a
+ * scheme whose configuration is wrong fails the boot, still typed, rather than
+ * refusing every caller at runtime.
+ *
+ * The type arguments are explicit rather than inferred from the arm: inference
  * through a returned function's `AsyncResult` is where a principal silently
  * widens to `unknown`. The scheme NAME is not stated here — it is the key this
  * authenticator sits under in `defineHttp({ authenticators })`.
@@ -161,12 +203,12 @@ export type Authenticator<P, Scope extends string, N> = {
 export const HttpAuthenticator = <P, Scope extends string = never>() => {
   // The port is minted by `defineHttp`, which is the only place the scheme
   // NAME exists; this description is bound onto it there.
-  return <const D extends Readonly<Record<string, AnyPort>>>(options: {
-    readonly inject: D;
-    readonly sync: (services: {
-      readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
-    }) => AuthenticatorService<P, Scope>;
-  }): Authenticator<P, Scope, InstanceType<D[keyof D]>> => ({ options }) as never;
+  return <
+    const D extends Readonly<Record<string, AnyPort>>,
+    O extends SyncArm<D, P, Scope> | MakeArm<D, P, Scope>,
+  >(
+    options: { readonly inject: D } & O,
+  ): Authenticator<P, Scope, InstanceType<D[keyof D]>, ErrorOfArm<O>> => ({ options }) as never;
 };
 
 /** Which scheme answered, and what it answered with — the unit kind a request opens under. */

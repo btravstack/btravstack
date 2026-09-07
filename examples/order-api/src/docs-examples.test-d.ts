@@ -27,20 +27,20 @@ import {
   ListOrders,
   PlaceOrder,
 } from "@btravstack/example-order-application";
-import { TenantId, type Customer, type Order } from "@btravstack/example-order-domain";
+import {
+  TenantId,
+  TenantIdSchema,
+  type Customer,
+  type Order,
+} from "@btravstack/example-order-domain";
 import {
   CustomerPersistenceModule,
   OrderPersistenceModule,
 } from "@btravstack/example-order-infrastructure";
-import {
-  HttpAuthenticator,
-  HttpModule,
-  Unauthenticated,
-  granted,
-  html,
-} from "@btravstack/http-server";
+import { HttpModule, html } from "@btravstack/http-server";
+import { jwtAuthenticator } from "@btravstack/http-server/jwt";
 import { observability } from "@btravstack/observability";
-import { ErrAsync, OkAsync, P } from "unthrown";
+import { OkAsync, P } from "unthrown";
 
 import { api } from "./auth.js";
 import { RequestModule, ServiceModule, UserModule } from "./request-scope.js";
@@ -280,28 +280,22 @@ const _DocsDepsApi = HttpModule("DocsDepsApi")({
 // The authenticator half of those pages drifted while ungated: both showed a
 // scoped scheme answering a hand-built `{ identity, scopes }`, which does not
 // type-check — and, cast past, is read as a BARE identity, refusing every caller
-// on a scoped route forever.
+// on a scoped route forever. What they show now is `jwtAuthenticator` with
+// nothing pinned, whose `principal` is the one place a claim becomes a tenant.
 
-const _docsUserAuth = HttpAuthenticator<
-  { readonly tenantId: TenantId; readonly userId: string },
-  "orders:export"
->()({
-  inject: {},
-  sync: () => (headers) => {
-    const header = headers.authorization ?? "";
-    const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
-    const [tenantId, userId, ...rest] = token.split(":");
-    const claimed = rest.join(":");
-    return tenantId === undefined || tenantId === "" || userId === undefined || userId === ""
-      ? ErrAsync(new Unauthenticated())
-      : OkAsync(
-          granted(
-            { tenantId: TenantId(tenantId), userId },
-            claimed
-              .split(",")
-              .filter((scope): scope is "orders:export" => scope === "orders:export"),
-          ),
-        );
+const _docsUserAuth = jwtAuthenticator<{
+  readonly tenantId: TenantId;
+  readonly userId: string;
+}>()({
+  scopes: ["orders:export"],
+  principal: (claims) => {
+    const tenant = claims["tenant"];
+    return typeof claims.sub === "string" &&
+      claims.sub !== "" &&
+      typeof tenant === "string" &&
+      TenantIdSchema.safeParse(tenant).success
+      ? { tenantId: TenantId(tenant), userId: claims.sub }
+      : undefined;
   },
 });
 

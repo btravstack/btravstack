@@ -1,12 +1,6 @@
-import { TenantId } from "@btravstack/example-order-domain";
-import {
-  HttpAuthenticator,
-  Unauthenticated,
-  apiKeyAuthenticator,
-  defineHttp,
-  granted,
-} from "@btravstack/http-server";
-import { ErrAsync, OkAsync } from "unthrown";
+import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
+import { apiKeyAuthenticator, defineHttp } from "@btravstack/http-server";
+import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 
 import type { RequestModule, ServiceModule, UserModule } from "./request-scope.js";
 
@@ -29,40 +23,45 @@ export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 export type ServiceIdentity = { readonly appId: string };
 
 /**
- * A stand-in, not a recommendation: `Bearer <tenantId>:<userId>:<scopes>`. It is
- * where a header becomes a **tenant**, and so the one place this path claims the
- * `TenantId` brand — from here on the identity carries it.
+ * What a verified token means here, and the one place this deployment's claim
+ * spelling is written: `sub` is the user, `tenant` is the tenant. No standard
+ * claim carries a tenant, so the name is the issuer's — `tid` on Entra,
+ * `org_id` on Auth0 — and it is named here rather than anywhere downstream.
  *
- * The scope vocabulary is declared at the call, so the granted list is checked
- * against it here rather than compared as strings at the endpoint.
+ * This is also where a claim becomes a **tenant**, so it is the one place this
+ * path claims the `TenantId` brand — and the one place it earns the cast, by
+ * parsing first: a claim is the issuer's string, not a contract-validated
+ * input. Answering `undefined` refuses the token, which is a 401.
  */
-export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
-  inject: {},
-  sync: () => (headers) => {
-    const header = headers.authorization ?? "";
-    const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
-    const [tenantId, userId, ...rest] = token.split(":");
-    // Rejoined rather than taken as one field: a scope name contains the
-    // delimiter itself, so `orders:export` cannot survive a plain third field.
-    const claimed = rest.join(":");
-    return tenantId === undefined || tenantId === "" || userId === undefined || userId === ""
-      ? ErrAsync(new Unauthenticated())
-      : OkAsync(
-          granted(
-            { tenantId: TenantId(tenantId), userId },
-            claimed
-              .split(",")
-              .filter((scope): scope is "orders:export" => scope === "orders:export"),
-          ),
-        );
-  },
+const principal = (claims: Claims): Identity | undefined => {
+  const tenant = claims["tenant"];
+  return typeof claims.sub === "string" &&
+    claims.sub !== "" &&
+    typeof tenant === "string" &&
+    TenantIdSchema.safeParse(tenant).success
+    ? { tenantId: TenantId(tenant), userId: claims.sub }
+    : undefined;
+};
+
+/**
+ * The `user` scheme: a real OIDC token, verified against the issuer's JWKS.
+ * Nothing is pinned, so `HTTP_JWT_JWKS_URI`, `HTTP_JWT_ISSUER` and
+ * `HTTP_JWT_AUDIENCE` are what a deployment sets — and an unset one is a
+ * `ConfigInvalid` naming it at startup, not a 401 in production.
+ *
+ * The scope vocabulary is declared at the call, so the granted list is the
+ * intersection of it with the token's own `scope` claim rather than a string
+ * compared at the endpoint.
+ */
+export const userAuth = jwtAuthenticator<Identity>()({
+  principal,
+  scopes: ["orders:export"],
 });
 
 /**
  * The second scheme: an API key, no scopes, no tenant — what a reporting job
- * presents. Unlike `userAuth` above, this one is NOT a stand-in: it is the
- * starter's own `apiKeyAuthenticator`, which compares digests rather than
- * strings and checks every issued key without an early return.
+ * presents — the starter's own `apiKeyAuthenticator`, which compares digests
+ * rather than strings and checks every issued key without an early return.
  *
  * The key list is inline here because an example has no secret store. A
  * deployment reads it from a config field bound off `Env`, since a key list in

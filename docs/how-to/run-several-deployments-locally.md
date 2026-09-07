@@ -96,21 +96,30 @@ In production each pod has the port to itself, so `9000` is the right default,
 and the local loop is what overrides it.
 
 **`.env.dev`, generated rather than committed.** `pnpm dev` first runs
-`internal/test-infra`'s `dev:env`, which starts the three shared containers —
-the very ones the test suites use, attached to rather than duplicated, via
+`internal/test-infra`'s `dev:env`, which starts the shared containers — the
+very ones the test suites use, attached to rather than duplicated, via
 testcontainers' `withReuse()` — applies the committed migrations with
 `prisma migrate deploy`, and writes the addresses out:
 
 ```sh
-DATABASE_URL=postgresql://btravstack:btravstack@localhost:55000/orders
+DATABASE_URL=postgresql://orders_app:orders_app@localhost:55000/orders
 AMQP_URL=amqp://guest:guest@localhost:55002
 TEMPORAL_ADDRESS=localhost:55001
+HTTP_JWT_JWKS_URI=http://localhost:55006/jwks.json
+HTTP_JWT_ISSUER=https://dev.btravstack.test
+HTTP_JWT_AUDIENCE=orders-api
 ```
 
 The ports are whatever Docker mapped, which is precisely why they are written
 to a file instead of defaulted in each application's config: an ephemeral
 mapped port cannot be a default. Everything else each deployment needs already
 has one.
+
+The last three are the API's `user` scheme, which verifies a **real** OIDC
+token — so the dev loop needs an issuer, and one of the containers is it: an
+`nginx` serving a JWKS document over a key pair kept under
+`<repo>/.cache/dev-issuer/`. The key is persisted rather than minted per run
+because a token pasted into a terminal yesterday has to still verify today.
 
 **A turbo task with the edges spelled out:**
 
@@ -133,9 +142,9 @@ the repository, and the `dev:env` edge is what guarantees `.env.dev` exists
 before a process tries to read it.
 
 ::: warning A dev loop needs Docker
-Six workspaces already need a Docker daemon for their tests; the dev loop
-needs the same three containers. They are started once per machine and
-reused, so the second `pnpm dev` costs nothing.
+The workspaces whose tests boot a broker, a database or a service already need
+a daemon; the dev loop needs the same containers. They are started once per
+machine and reused, so the second `pnpm dev` costs nothing.
 :::
 
 ## Per-app configuration
@@ -152,6 +161,34 @@ PORT=3001 pnpm --filter @btravstack/example-order-api dev
 
 There is no config file format for the runner, because there is no runner —
 the environment is the interface, exactly as it is in production.
+
+## Calling the API
+
+The `orders` fragment is marked, so an anonymous call is a `401` and never
+reaches a use case. `pnpm dev:token` mints one the dev issuer signed:
+
+```sh
+# mint into a variable and check the status — never `$(…)` straight into the
+# header, see below
+TENANT=0199a1e0-0000-7000-8000-000000000001 # a UUIDv7
+TOKEN=$(pnpm dev:token -- --tenant "$TENANT") || exit
+
+# the port is the one the API's `serving` event logged, PORT=0 in its dev script
+curl -s -H "authorization: Bearer $TOKEN" \
+     -H 'content-type: application/json' -d '{"json":{}}' \
+     http://localhost:57234/rpc/orders/list
+```
+
+`--tenant` is required and must be a **UUIDv7**, because the application parses
+the claim as one; `uuidgen` and `crypto.randomUUID()` both mint a v4, which
+comes back as a `401` rather than as an error naming the mistake. `--sub`
+defaults to `u-1` and `--scope` to `orders:export`.
+
+**Mint into a variable, and check the status.** The script writes the token and
+nothing else to stdout — but `pnpm` writes its own `[ELIFECYCLE]` line **to
+stdout** when a script exits non-zero, and `--silent` does not suppress it, so
+a `$(…)` composed straight into the header sends that line as the bearer token
+on the very mistake the UUIDv7 check exists to catch.
 
 ## Watching a full drain
 

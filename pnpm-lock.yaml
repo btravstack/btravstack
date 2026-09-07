@@ -497,6 +497,9 @@ importers:
       '@unthrown/orpc':
         specifier: 'catalog:'
         version: 0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.7.0)
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.10
       unthrown:
         specifier: 'catalog:'
         version: 5.7.0
@@ -870,6 +873,9 @@ importers:
       '@temporalio/common':
         specifier: 'catalog:'
         version: 1.23.0
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.10
       testcontainers:
         specifier: 'catalog:'
         version: 12.1.0
@@ -1498,6 +1504,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.11(vitest@4.1.11)
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.10
       tsdown:
         specifier: 'catalog:'
         version: 0.22.14(oxc-resolver@11.24.2)(tsx@4.23.12)(typescript@7.0.2)
@@ -3747,12 +3756,15 @@ packages:
 
   '@standardserver/aws-lambda@0.8.2':
     resolution: {integrity: sha512-7ALbEEgCKdywwwc0uLr1/ZcsqZ/rzCebhV2zZdXVkutfJzxOwwpXFysvA/Jbhnhi3HPBgRxApHuWxx3j5wgRhw==}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
   '@standardserver/core@0.8.2':
     resolution: {integrity: sha512-B5kGx4fm3PMaN0QNigeg5gul/bJM+fycuFK68SBwRMGKU55R4SGNv9ijtZbm/ZTbX1ZQ1r4xjOCheL6aO4HrHw==}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
   '@standardserver/fastify@0.8.2':
     resolution: {integrity: sha512-jio9nXhdD0k4aC6k9/9n5BL2UvrhLINWmO8Na/ZuhtbDTRkfES4h+rKP2w5CFtbfFw//TcWZNC2m01GMOFRsGQ==}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
     peerDependencies:
       fastify: '>=5.6.1'
     peerDependenciesMeta:
@@ -3761,12 +3773,15 @@ packages:
 
   '@standardserver/fetch@0.8.2':
     resolution: {integrity: sha512-FQjsGQNRtnX1eXPFTOjTUp3k0Rwt0r51DIy/YgLTbMoTCBWNROU41HEiqBjOBusa2PKKEo/9oKiAtdySgL708w==}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
   '@standardserver/node@0.8.2':
     resolution: {integrity: sha512-35lHa/Pdd+jOC7OhPHXKRp6199Iab0D+Am0BtqYfffByot1AYu0K5S8Ei5JvzoBKOgvLZ9BD73bkZxJugTShmg==}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
   '@standardserver/peer@0.8.2':
     resolution: {integrity: sha512-kshztxLxMAkx5952oy1l8jKC2Q1QKjd4GBCCrHb/0B69hCy+x1/j5wcyzZphFc7kRCH8gxHAkC8k19ZZTnuIaA==}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
   '@standardserver/shared@0.8.2':
     resolution: {integrity: sha512-6pe5pwnTwC6ALDxsRW4TJxuj8dS09sNj5dl1UkYf56kMSvTw7uRTS5c9iuFCy8e/M1aBP4uOntC8+OqAYMCa9g==}

@@ -164,6 +164,35 @@ describe("Config.boolean", () => {
   });
 });
 
+describe("Config.url", () => {
+  it("keeps the string a deployment wrote, and names one `new URL` would refuse", () => {
+    // GIVEN a URL field, read three ways: a good value, a scheme-less one — the
+    // ordinary operator slip, and the shape that actually throws — and the same
+    // bad value PINNED
+    const field = Config.url("HTTP_JWT_JWKS_URI");
+
+    // WHEN each is read
+    const read = {
+      good: field.parse("https://issuer.example/.well-known/jwks.json"),
+      malformed: field.parse("issuer.example/jwks.json"),
+      pinned: Config.pinned("issuer.example/jwks.json", field).parse(undefined),
+    };
+
+    // THEN the value survives as the string a consumer hands to `new URL`, and
+    // both routes into a bad one are named here — never a `Defect` from
+    // wherever the URL is finally constructed
+    expect(read).toEqual({
+      good: Ok("https://issuer.example/.well-known/jwks.json"),
+      malformed: expect.objectContaining({
+        error: expect.objectContaining({ reason: 'is not a URL: "issuer.example/jwks.json"' }),
+      }),
+      pinned: expect.objectContaining({
+        error: expect.objectContaining({ reason: 'is not a URL: "issuer.example/jwks.json"' }),
+      }),
+    });
+  });
+});
+
 describe("Config.pinned", () => {
   it("answers the pin over whatever the environment says, and reads the field otherwise", () => {
     // GIVEN a port field, once pinned and once left alone
@@ -339,5 +368,41 @@ describe("Config.provider", () => {
 
     // THEN the awaited value is what the graph holds
     await expect(named).toBeOkWith({ name: "async" });
+  });
+});
+
+describe("Config.parse", () => {
+  it("validates an environment on its own, for a piece that is its own provider", async ({
+    parsed,
+  }) => {
+    // GIVEN an environment the schema accepts, and no port to bind
+    const env = { PORT: "8080", HOST: "::1" };
+
+    // WHEN `Config.parse` runs the step `Config.provider` performs
+    const settings = parsed(env);
+
+    // THEN it answers the same value, defaults filled in
+    await expect(settings).toBeOkWith({ port: 8080, host: "::1", retries: 3 });
+  });
+
+  it("names the port it was given and every offending variable", async ({ parsed }) => {
+    // GIVEN an environment the schema rejects on two counts
+    const env = { PORT: "abc", HOST: "" };
+
+    // WHEN it is parsed
+    const settings = parsed(env);
+
+    // THEN one `ConfigInvalid` carries the port name the caller passed and both
+    // issues — an operator fixes the deployment in one round trip
+    await expect(settings).toBeErrWith(
+      expect.objectContaining({
+        constructor: ConfigInvalid,
+        port: "ConfigFixtureParsed",
+        issues: [
+          { message: 'is not a whole number: "abc"', path: ["PORT"] },
+          { message: "is set but empty", path: ["HOST"] },
+        ],
+      }),
+    );
   });
 });

@@ -164,6 +164,11 @@ const integerIn = (min: number, max: number) => {
   };
 };
 
+// `URL.canParse` rather than a regex or a try/catch around `new URL`: it is the
+// same parser every consumer eventually runs, and it does not throw.
+const absoluteUrl = (value: string): Result<string, ConfigFieldInvalid> =>
+  URL.canParse(value) ? Ok(value) : invalid(`is not a URL: ${JSON.stringify(value)}`);
+
 const TRUTHY = new Set(["true", "1", "yes", "on"]);
 const FALSY = new Set(["false", "0", "no", "off"]);
 
@@ -220,6 +225,15 @@ export const Config = {
           : undefined;
       return flag === undefined ? invalid(`is not a flag: ${JSON.stringify(value)}`) : Ok(flag);
     }),
+
+  /**
+   * A URL, kept as the string it was written as. The value is what a consumer
+   * hands to `new URL`, and this is what stops that construction from throwing:
+   * a malformed one is a `ConfigInvalid` naming the variable, at graph build,
+   * rather than a `Defect` from wherever the URL is finally needed.
+   */
+  url: (variable: string, options: WithDefault<string> = {}): ConfigField<string> =>
+    present(variable, options, absoluteUrl, absoluteUrl),
 
   /** A TCP port: a whole number the OS will accept, `0` (an ephemeral bind) included. */
   port: (variable: string, options: WithDefault<number> = {}): ConfigField<number> =>
@@ -291,6 +305,22 @@ export const Config = {
   }),
 
   /**
+   * Validates `env` against `schema`; the issues become one `ConfigInvalid`
+   * naming `port`. This is the step {@link Config.provider} performs, on its
+   * own — for a piece that is already its own provider and has no second port
+   * to hang a `Config.provider` on, such as a starter binding its options
+   * inside a `make` arm.
+   */
+  parse:
+    <Output>(port: string, schema: ConfigSchema<Environment, Output>) =>
+    (env: Environment): AsyncResult<Output, ConfigInvalid> =>
+      fromSafePromise((async () => await schema["~standard"].validate(env))()).flatMap((result) =>
+        result.issues === undefined
+          ? Ok(result.value)
+          : Err(new ConfigInvalid({ port, issues: result.issues })),
+      ),
+
+  /**
    * A provider binding a port from the environment through `schema`. Reads
    * {@link Env}, so the port is built with the rest of the graph and a bad
    * environment is a modeled startup `Err` rather than a silently wrong value.
@@ -329,11 +359,6 @@ function configProvider(portOrName: AnyPort | string): unknown {
     Provider(port)({
       inject: { env: Env },
       make: ({ env }): AsyncResult<unknown, ConfigInvalid> =>
-        fromSafePromise((async () => await schema["~standard"].validate(env))()).flatMap(
-          (result) =>
-            result.issues === undefined
-              ? Ok(result.value)
-              : Err(new ConfigInvalid({ port: port.portId, issues: result.issues })),
-        ),
+        Config.parse(port.portId, schema)(env),
     });
 }

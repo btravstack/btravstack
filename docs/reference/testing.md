@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/testing"
-description: The @btravstack/testing surface — bootFixture and Boot, tapped, testRuntime and TestRuntimePort, createFakeClock — with every member's signature and semantics.
+description: The @btravstack/testing surface — bootFixture and Boot, tapped, overridden, testRuntime and TestRuntimePort, createFakeClock, and localIssuer on its own subpath — with every member's signature and semantics.
 ---
 
 <!-- doctest: prelude
@@ -17,6 +17,7 @@ import type {
   TestRuntimeOptions,
 } from "@btravstack/testing";
 import { TestRuntimePort } from "@btravstack/testing";
+import type { LocalIssuer, LocalIssuerOptions, SignOptions } from "@btravstack/testing/jwt";
 import type { Clock, Runtime, RuntimeHost, Serving } from "@btravstack/core";
 import type { AsyncResult } from "unthrown";
 -->
@@ -25,8 +26,8 @@ import type { AsyncResult } from "unthrown";
 
 > **Reference.** Everything `@btravstack/testing` exports: a vitest fixture
 > that boots and stops applications, a tap into a booted graph, a harness that
-> starts and stops around a callback, an in-memory runtime and a clock that
-> moves on demand. For the recipes, see
+> starts and stops around a callback, an in-memory runtime, a clock that
+> moves on demand, and a local JWT issuer. For the recipes, see
 > [Test an application](/how-to/test-an-application); for the option each
 > plugs into, see [start and StartOptions](/reference/core/start); for why it
 > is a package, see [Design decisions](/explanation/design-decisions#the-test-harness-is-a-package).
@@ -41,6 +42,9 @@ pnpm add -D @btravstack/testing
 # peers, which an application already holds:
 #   @btravstack/core @btravstack/config @btravstack/di unthrown
 ```
+
+`jose` is an **optional** peer behind the `@btravstack/testing/jwt` subpath, so
+a consumer that never mints a token installs nothing extra.
 
 It has **no `vitest` peer**: `bootFixture` returns a plain
 `(ctx, use) => Promise<void>` function — vitest's fixture protocol, met
@@ -349,6 +353,65 @@ explicitly instead of waiting out the real `5_000`/`20_000` ms.
 Timing in the kernel's own suite is asserted through this clock, never a real
 `setTimeout`.
 
+## `localIssuer(options)`
+
+From **`@btravstack/testing/jwt`**, a subpath of its own because it is the one
+member with a peer: `jose`, declared optional, so a consumer that never imports
+the subpath installs nothing extra.
+
+<!-- doctest: signature=@btravstack/testing/jwt -->
+
+```ts
+type LocalIssuerOptions = {
+  readonly issuer: string;
+  readonly audience: string;
+  readonly algorithm?: "RS256" | "RS384" | "RS512" | "ES256" | "ES384";
+};
+
+type SignOptions = {
+  readonly issuer?: string;
+  readonly audience?: string;
+  readonly expiresIn?: string | false;
+};
+
+const localIssuer: (options: LocalIssuerOptions) => AsyncResult<LocalIssuer, never>;
+```
+
+One call mints all three parts: a generated key pair, a `node:http` listener
+answering `{ keys: [jwk] }`, and a signer closing over the private half — so a
+test of a JWT scheme does a **real** fetch against a **real** JWKS document and
+lets the verifying library decide, rather than a double that agrees with the
+code under test.
+
+| Member                    | What it is                                                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `jwks`                    | `http://127.0.0.1:<port>/jwks.json` — served on **any** path, so a caller need not match it exactly                 |
+| `jwk`                     | the public key as served, with `kid`, `alg` and `use` already set                                                   |
+| `issuer` / `audience`     | what was asked for, handed back so a fixture can write them into the environment without restating the strings      |
+| `sign(claims?, options?)` | `AsyncResult<string, never>` — `iss`, `aud` and `iat` are set for you, `exp` five minutes out unless `options` says |
+| `close()`                 | `AsyncResult<void, never>` — stops the listener; nothing else needs tearing down                                    |
+
+`sign`'s options override the issuer, the audience and the expiry **per call**,
+which is what makes the three refusals testable from one issuer:
+`{ issuer: "https://elsewhere.test" }`, `{ audience: "another-api" }`, and
+`{ expiresIn: "-1s" }` for a token already past its `exp`. `expiresIn: false`
+mints a token with **no `exp` claim at all** — the case a verifier must refuse
+because `jose` validates `exp` only when it is present.
+
+The algorithms are asymmetric-only, the same list `jwtAuthenticator` accepts,
+and `kid` is fixed at `"k1"`.
+
+**Use a `{ scope: "file" }` fixture.** Every call generates a key pair and
+binds a listener, and a spec file's tests do not each need their own — which is
+the shape [Protect a procedure](/how-to/protect-a-procedure#testing-it) shows,
+and `examples/order-api/src/__tests__/test-fixtures.ts` writes. A test that
+wants a different `algorithm`, or that closes the issuer itself, mints its own.
+
+**The subpath needs Node ≥22.12 under CommonJS.** `jose` is ESM-only, so the
+CJS build's `require("jose")` depends on `require(esm)`, which Node enables by
+default from 22.12. ESM consumers are unaffected on any Node 22, and so is
+anyone who never imports the subpath.
+
 ## Together
 
 The kernel-level pieces, composed as `packages/core`'s compiled README sample
@@ -427,5 +490,14 @@ it("drains in-flight work", async ({ boot }) => {
 | `SubmittedUnit`      | type                                    |
 | `createFakeClock`    | function                                |
 | `FakeClock`          | type                                    |
+
+And from `@btravstack/testing/jwt`, behind the optional `jose` peer:
+
+| Export               | Kind     |
+| -------------------- | -------- |
+| `localIssuer`        | function |
+| `LocalIssuer`        | type     |
+| `LocalIssuerOptions` | type     |
+| `SignOptions`        | type     |
 
 The generated signatures are at [`/api/testing/`](/api/testing/).

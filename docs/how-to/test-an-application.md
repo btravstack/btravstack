@@ -73,7 +73,7 @@ import { describe, expect } from "vitest";
 import { it } from "./__tests__/test-fixtures.js";
 
 describe("order-api", () => {
-  it("answers a real oRPC call on an ephemeral port", async ({ boot }) => {
+  it("answers a real oRPC call on an ephemeral port", async ({ boot, tokenFor }) => {
     // GIVEN the real composition root, bound to a loopback port the OS picks
     const app = boot(OrderApi);
     const info = (await app.runtimeInfo()).get();
@@ -81,7 +81,7 @@ describe("order-api", () => {
       `http://127.0.0.1:${info?.port}`,
       "/rpc",
       {
-        authorization: `Bearer ${tenantId}:u-1`,
+        authorization: `Bearer ${await tokenFor()}`,
       },
     );
 
@@ -376,9 +376,24 @@ the example's own fixtures on top of `boot`:
 
 ```ts
 export const it = test.extend<ApiFixtures>({
-  boot: bootFixture({
-    env: { PORT: "0", HOST: "127.0.0.1", LOG_LEVEL: "fatal" },
-  }),
+  // One issuer per spec file: a served JWKS and a matching signer, so the
+  // `user` scheme does a real fetch and a real verify.
+  issuer: [localIssuerFixture, { scope: "file" }],
+
+  env: async ({ issuer }, use) => {
+    await use({
+      PORT: "0",
+      HOST: "127.0.0.1",
+      LOG_LEVEL: "fatal",
+      HTTP_JWT_JWKS_URI: issuer.jwks,
+      HTTP_JWT_ISSUER: issuer.issuer,
+      HTTP_JWT_AUDIENCE: issuer.audience,
+    });
+  },
+
+  boot: async ({ env }, use) => {
+    await bootFixture({ env })({}, use);
+  },
 
   serve: async ({ boot }, use) => {
     await use((module, options) => boot(module, options));
@@ -387,11 +402,25 @@ export const it = test.extend<ApiFixtures>({
 });
 ```
 
+`issuer` is
+[`@btravstack/testing/jwt`](/reference/testing#localissuer-options)'s
+`localIssuer`: a generated key pair, a `node:http` listener answering its
+public half as a JWKS document, and a signer over the private half — so the
+`user` scheme fetches and verifies for real, and a token from another issuer or
+past its `exp` is refused by `jose` rather than by a double. It is **file-scoped**
+because a key pair and a listener are worth building once per spec file, and
+nothing in the application is substituted for any of it: `env` carries the
+issuer's own three values under `HTTP_JWT_JWKS_URI`, `HTTP_JWT_ISSUER` and
+`HTTP_JWT_AUDIENCE`, which is exactly what a deployment sets, and
+`localIssuerFixture` is the ordinary fixture body that closes it at the end of
+the file.
+
 `serve` has nothing to add over `boot` — `RequestModule` is forked by the
 answerers themselves, per `OrderApi`'s own `unit` option, not by anything a
 fixture supplies — so its shutdown is still the fixture's; `clientFor` builds the oRPC client from
-`runtimeInfo()` **and gives it credentials for this test's tenant**
-(`Bearer ${tenant}:u-1`), since the contract marks the `orders` fragment and an
+`runtimeInfo()` **and gives it a token that issuer signed for this
+test's tenant** (`tokenFor`, whose claims a spec overrides one at a time), since
+the contract marks the `orders` fragment and an
 anonymous call to it never reaches a use case; and `recording` is the real
 root's composition with a recording sink in place of stdout:
 

@@ -135,6 +135,11 @@ export const api = defineHttp({ authenticators: { user: userAuth } });
 Lesson one's `defineHttp()` moved here and grew an argument. Delete the old
 `const api = defineHttp()` from `router.ts` and import this one instead.
 
+The scheme trusts what the header says, which is this tutorial's
+simplification and nothing else's. The shipped schemes are `jwtAuthenticator`
+and `apiKeyAuthenticator`, and [Protect a procedure](/how-to/protect-a-procedure)
+is where a real one is written.
+
 ## Step 4 — Read the principal
 
 The router file changes in two ways: `api` now comes from `auth.ts`, and the

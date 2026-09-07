@@ -27,8 +27,10 @@ import {
 } from "@btravstack/example-order-domain";
 import type { OrderDatabase } from "@btravstack/example-order-infrastructure";
 import type { HttpHandler, HttpInfo, HttpRuntime } from "@btravstack/http-server";
+import type { Claims } from "@btravstack/http-server/jwt";
 import { LoggerConfig, createLogger, type Line, type Sink } from "@btravstack/observability";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
+import { localIssuer, type LocalIssuer } from "@btravstack/testing/jwt";
 import request from "supertest";
 import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
 import { uuidv7 } from "uuidv7";
@@ -233,11 +235,25 @@ export type ApiFixtures = {
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
   /**
+   * The environment every `boot` here starts with, handed out so a spec can
+   * omit one variable and assert what a deployment that forgot it gets.
+   */
+  readonly env: Record<string, string>;
+  /** The JWKS the `user` scheme fetches, and the key every token below is signed with. */
+  readonly issuer: LocalIssuer;
+  /**
+   * A token this test's issuer signed, for this test's tenant and `u-1` unless
+   * the claims say otherwise — the only way to reach a marked procedure here.
+   */
+  readonly tokenFor: (claims?: Claims) => Promise<string>;
+  /**
    * This test's tenant, and nobody else's: the database is shared by every
    * workspace's run, so a UUID here is what keeps one spec's order id from being
    * another's.
    */
   readonly tenant: string;
+  /** A second tenant, for a spec about a caller who is not the owner. */
+  readonly otherTenant: string;
   /**
    * Starts an app on an ephemeral loopback port, through `boot` — so its
    * shutdown is the fixture's. The three unit kinds are forked by the answerers
@@ -306,12 +322,28 @@ export type ApiFixtures = {
 const originOf = async <E>(app: RunningApp<E, HttpInfo>): Promise<string> =>
   `http://127.0.0.1:${await portOf(app)}`;
 
+/**
+ * One issuer per spec file: a served JWKS and a matching signer, so the `user`
+ * scheme does the real fetch and the real verify rather than trusting a header.
+ */
+const localIssuerFixture = async (
+  // oxlint-disable-next-line no-empty-pattern -- Vitest parses the source and requires a destructuring pattern; this fixture depends on no other
+  {}: object,
+  use: (value: LocalIssuer) => Promise<void>,
+): Promise<void> => {
+  const local = await localIssuer({ issuer: "https://issuer.test", audience: "orders-api" }).get();
+  await use(local);
+  await local.close();
+};
+
 export const it = test.extend<ApiFixtures>({
+  issuer: [localIssuerFixture, { scope: "file" }],
+
   // `LOG_LEVEL: "fatal"` keeps the real `OrderApi`, whose sink is the production
   // `jsonSink()` on stdout, out of the runner's own output. The roots a spec
   // reads back pin their level instead.
-  boot: bootFixture({
-    env: {
+  env: async ({ issuer }, use) => {
+    await use({
       PORT: "0",
       HOST: "127.0.0.1",
       LOG_LEVEL: "fatal",
@@ -322,12 +354,30 @@ export const it = test.extend<ApiFixtures>({
       // The shared Redis, reached under a tenant of its own, so the cache needs
       // no more cleanup than the database does.
       REDIS_URL: inject("__TESTCONTAINERS_REDIS_URL__"),
-    },
-  }),
+      // Nothing is pinned on `userAuth`, so these three are what the scheme
+      // binds itself from — the same three a deployment sets.
+      HTTP_JWT_JWKS_URI: issuer.jwks,
+      HTTP_JWT_ISSUER: issuer.issuer,
+      HTTP_JWT_AUDIENCE: issuer.audience,
+    });
+  },
+
+  boot: async ({ env }, use) => {
+    await bootFixture({ env })({}, use);
+  },
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   tenant: async ({}, use) => {
     await use(uuidv7());
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  otherTenant: async ({}, use) => {
+    await use(uuidv7());
+  },
+
+  tokenFor: async ({ issuer, tenant }, use) => {
+    await use((claims = {}) => issuer.sign({ sub: "u-1", tenant, ...claims }).get());
   },
 
   serve: async ({ boot }, use) => {
@@ -345,8 +395,8 @@ export const it = test.extend<ApiFixtures>({
     );
   },
 
-  clientFor: async ({ tenant, clientWith }, use) => {
-    await use(async (app) => clientWith(app, `Bearer ${tenant}:u-1`));
+  clientFor: async ({ tokenFor, clientWith }, use) => {
+    await use(async (app) => clientWith(app, `Bearer ${await tokenFor()}`));
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

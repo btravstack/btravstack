@@ -1,13 +1,13 @@
 ---
 title: "@btravstack/config"
-description: The complete surface of @btravstack/config — the Env port, the Config fields, Config.object, Config.provider and the two errors.
+description: The complete surface of @btravstack/config — the Env port, the Config fields, Config.object, Config.parse, Config.provider and the two errors.
 ---
 
 # @btravstack/config
 
 > **Reference.** A complete, structured description of `@btravstack/config`:
-> the `Env` port, the field constructors, `Config.object`, `Config.provider`
-> and the errors they answer. For the task, see
+> the `Env` port, the field constructors, `Config.object`, `Config.parse`,
+> `Config.provider` and the errors they answer. For the task, see
 > [Configure from the environment](/how-to/configure-from-the-environment); for
 > the generated signatures, see the [API reference](/api/config/).
 
@@ -52,6 +52,7 @@ type ConfigField<T> = {
 | `Config.integer(variable, options?)` | a whole number, bounds inclusive                                                                                      | `{ default?: number; min?: number; max?: number }` — unset bounds mean the safe-integer range, so an unbounded field still refuses `1e400` |
 | `Config.boolean(variable, options?)` | a flag: `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, case-insensitive                                           | `{ default?: boolean }`                                                                                                                    |
 | `Config.port(variable, options?)`    | a whole number in `0..65535`, `0` (an ephemeral bind) included                                                        | `{ default?: number }`                                                                                                                     |
+| `Config.url(variable, options?)`     | a URL, kept as the string it was written as                                                                           | `{ default?: string }`                                                                                                                     |
 | `Config.pinned(value, field)`        | `field` unless `value` is given, then a field answering `value` and reading nothing — checked by the field's own rule | —                                                                                                                                          |
 
 Semantics shared by every field, in one place:
@@ -64,6 +65,7 @@ Semantics shared by every field, in one place:
 | `3.5` (integer/port)        | `is not a whole number: "3.5"` — named, not truncated                    |
 | out of range (integer/port) | `must be between <min> and <max>, got <n>` — both bounds inclusive       |
 | `0` (port)                  | valid — a port's floor is `0` so an ephemeral bind stays expressible     |
+| `issuer.test/jwks` (url)    | `is not a URL: "issuer.test/jwks"` — a URL needs its scheme              |
 
 Values are **trimmed** before being read, `Config.string` included: `X=" abc "`
 binds `"abc"`. That is what makes a whitespace-only variable "set but empty"
@@ -82,6 +84,14 @@ Anything else is an **error rather than a falsy reading**: a deployment that
 wrote `HTTP_COMPRESSION=enabled` meant to turn it on, and silently reading that
 as `false` is a configuration bug nothing reports.
 
+`Config.url` keeps the string it was given rather than answering a `URL`: the
+value is what a consumer hands to `new URL`, and the field is what stops that
+construction from throwing — a malformed `HTTP_JWT_JWKS_URI` is a
+`ConfigInvalid` naming the variable at graph build, instead of a `Defect` from
+wherever the URL is finally needed. It checks **parseability, not the scheme**:
+`file:///keys.json` is a URL, so an endpoint that must be reachable over HTTP
+is the consumer's own check.
+
 `Config.pinned` is what a starter's options do to its own fields, so
 precedence is **explicit > environment > default, per field**:
 `http({ port: 0 })` pins `PORT` and still reads `HOST`.
@@ -92,7 +102,7 @@ message the deployment route would have produced for `HTTP_BODY_LIMIT=-1` — an
 `Config.pinned(NaN, …)` likewise, which is the case that used to disable a limit
 in silence (`size > NaN` is `false`). Defaults are checked on the same rule.
 
-`integer` and `port` carry a `check`; **`string` does not**, and that is
+`integer`, `port` and `url` carry a `check`; **`string` does not**, and that is
 deliberate: "set but empty" is a rule about the raw variable — a deployment
 mistake — where a pinned `""` is a decision, and `http({ cors: false })` pins
 exactly that as its off switch. A field written by hand without a `check`
@@ -146,6 +156,32 @@ Any Standard Schema — a `zod`, `valibot` or `arktype` object over the raw
 variables, synchronous or asynchronous — is accepted wherever a `ConfigSchema`
 is. The fields exist so a starter, and an application with ordinary needs,
 bring no schema library at all.
+
+## `Config.parse(port, schema)(env)`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
+```ts
+Config.parse<Output>(port: string, schema: ConfigSchema<Environment, Output>):
+  (env: Environment) => AsyncResult<Output, ConfigInvalid>;
+```
+
+The validation step on its own: it awaits `schema["~standard"].validate(env)`
+inside `fromSafePromise` and answers `Ok(value)` or one `ConfigInvalid` naming
+`port` and every offending variable. `port` is a **string** here because there
+may be no port — this is the form for a piece that is already its own provider
+and has no second port to hang a `Config.provider` on.
+
+[`jwtAuthenticator`](/reference/http-server#the-authenticators-that-ship) is the
+worked case, in `packages/http-server/src/jwt.ts`: an authenticator is not a
+`Provider`, so it takes `Env` in its `inject` record and calls
+`Config.parse("HttpJwt", schema)(env)` inside its `make` arm — and the
+`ConfigInvalid` that answers becomes the graph's own startup error, so a
+deployment missing `HTTP_JWT_ISSUER` fails the boot with the variable named
+rather than refusing every caller.
+
+`Config.provider` is this call plus a port: its `make` arm is
+`Config.parse(port.portId, schema)(env)`, and nothing else.
 
 ## `Config.provider`
 
@@ -232,13 +268,13 @@ leaves `Config.object`; a caller sees `ConfigInvalid`.
 
 ## Summary of exports
 
-| Export               | Kind                                                                |
-| -------------------- | ------------------------------------------------------------------- |
-| `Env`                | port                                                                |
-| `Environment`        | type                                                                |
-| `Config`             | value — `string`, `integer`, `port`, `pinned`, `object`, `provider` |
-| `ConfigField<T>`     | type                                                                |
-| `ConfigSchema<I, O>` | type                                                                |
-| `ConfigIssue`        | type                                                                |
-| `ConfigInvalid`      | error                                                               |
-| `ConfigFieldInvalid` | error                                                               |
+| Export               | Kind                                                                                           |
+| -------------------- | ---------------------------------------------------------------------------------------------- |
+| `Env`                | port                                                                                           |
+| `Environment`        | type                                                                                           |
+| `Config`             | value — `string`, `integer`, `boolean`, `port`, `url`, `pinned`, `object`, `parse`, `provider` |
+| `ConfigField<T>`     | type                                                                                           |
+| `ConfigSchema<I, O>` | type                                                                                           |
+| `ConfigIssue`        | type                                                                                           |
+| `ConfigInvalid`      | error                                                                                          |
+| `ConfigFieldInvalid` | error                                                                                          |

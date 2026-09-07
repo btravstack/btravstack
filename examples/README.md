@@ -83,12 +83,35 @@ pnpm typecheck   # includes the compile-time-only guarantees pinned with @ts-exp
 pnpm dev         # the three deployments, side by side, watching
 ```
 
-`pnpm dev` is the local loop: it brings up the same three shared containers
-the specs use, applies the migrations, and runs all three entry points at once
-with their output prefixed by workspace — one process per deployment, exactly
-as in production, because that is the only way the drain and the failure
-isolation mean anything. See
+`pnpm dev` is the local loop: it brings up the same shared containers the specs
+use, applies the migrations, and runs all three entry points at once with their
+output prefixed by workspace — one process per deployment, exactly as in
+production, because that is the only way the drain and the failure isolation
+mean anything. See
 [Run several deployments locally](../docs/how-to/run-several-deployments-locally.md).
+
+`order-api` verifies a **real** OIDC token, so calling it locally needs one.
+`pnpm dev:env` starts a JWKS endpoint beside the other containers and writes
+its address into `.env.dev`; `pnpm dev:token` signs a token that endpoint's key
+verifies, and prints it and nothing else:
+
+```sh
+# mint into a variable and check the status: on a bad tenant `pnpm` puts its own
+# `[ELIFECYCLE]` line on stdout, which a `$(…)` would send as the bearer token
+TENANT=0199a1e0-0000-7000-8000-000000000001 # a UUIDv7
+TOKEN=$(pnpm dev:token -- --tenant "$TENANT") || exit
+
+# the port is the one the API's `serving` event logged — `PORT=0` in the dev
+# script, because three deployments on one machine cannot share a fixed one
+curl -s -H "authorization: Bearer $TOKEN" \
+     -H 'content-type: application/json' -d '{"json":{}}' \
+     http://localhost:57234/rpc/orders/list
+```
+
+`--tenant` is required and must be a UUIDv7 — the tenant a token claims is the
+one every repository call is scoped to, and `uuidgen` mints a v4. The full
+surface is in
+[`internal/test-infra`'s README](../internal/test-infra/README.md#the-dev-issuer).
 
 Nothing is faked at the boundaries that matter. `order-infrastructure` runs
 against a real Prisma client over a real PostgreSQL, so a `DuplicateOrder`

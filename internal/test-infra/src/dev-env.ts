@@ -19,6 +19,7 @@ import {
   sharedRustFs,
   sharedTemporal,
 } from "./containers.js";
+import { DEV_AUDIENCE, DEV_ISSUER, devKeyPair, jwksUri, sharedJwks } from "./dev-issuer.js";
 import { withLock } from "./lock.js";
 
 const run = promisify(execFile);
@@ -39,7 +40,7 @@ const infrastructure = fileURLToPath(
 );
 
 /**
- * Brings up the six shared containers and writes the repository root's
+ * Brings up the seven shared containers and writes the repository root's
  * `.env.dev` — what `turbo run dev` loads into each example process.
  *
  * The **same** containers the test suites use, attached to rather than
@@ -54,12 +55,14 @@ const main = async (): Promise<void> => {
   const postgres = await sharedPostgres();
   const ownerUrl = postgresUrl(postgres, ORDERS_DATABASE);
 
-  const [rabbitmq, temporal, redis, mailpit, rustfs] = await Promise.all([
+  const { publicJwk } = await devKeyPair();
+  const [rabbitmq, temporal, redis, mailpit, rustfs, jwks] = await Promise.all([
     sharedRabbitMq(),
     sharedTemporal(postgres),
     sharedRedis(),
     sharedMailpit(),
     sharedRustFs(),
+    sharedJwks(publicJwk),
   ]);
 
   await withLock("orders-migrate", () =>
@@ -99,6 +102,12 @@ const main = async (): Promise<void> => {
     `STORAGE_S3_BUCKET=${RUSTFS_BUCKET}`,
     `STORAGE_S3_ACCESS_KEY_ID=${RUSTFS_ACCESS_KEY}`,
     `STORAGE_S3_SECRET_ACCESS_KEY=${RUSTFS_SECRET_KEY}`,
+    // `order-api`'s `user` scheme verifies a real OIDC token against a real
+    // JWKS, so a dev run without these would exit 78 on a `ConfigInvalid`
+    // naming the first one it reached. `pnpm dev:token` mints what they accept.
+    `HTTP_JWT_JWKS_URI=${jwksUri(jwks)}`,
+    `HTTP_JWT_ISSUER=${DEV_ISSUER}`,
+    `HTTP_JWT_AUDIENCE=${DEV_AUDIENCE}`,
     "OUTBOX_TENANTS=0199a1e0-0000-7000-8000-000000000001",
     "LOG_LEVEL=debug",
     "",

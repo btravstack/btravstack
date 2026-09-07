@@ -1,4 +1,4 @@
-import type { ConfigInvalid, Env } from "@btravstack/config";
+import { Env, type ConfigInvalid } from "@btravstack/config";
 import {
   Module,
   type AnyModule,
@@ -207,10 +207,23 @@ export type HttpModuleOptions<
   /**
    * What this root's OWN providers expect from outside. di's gate is re-stated
    * over the augmented tuples below, so forgetting one is an error at THIS call.
+   *
+   * `Env` is added to what this gate counts as declared, so a root composing a
+   * scheme that configures itself from the environment never restates it — the
+   * same hiding the starter this sugar imports already gets, since it needs
+   * `Env` too and no root has ever named that either.
    */
   readonly needs?: N;
-} & NeedsGate<Imports<I, Units>, Provides<P, Router, Fragments>, N> &
+} & NeedsGate<Imports<I, Units>, Provides<P, Router, Fragments>, EnvAnd<N>> &
   ServesNothingGate<Router, Fragments>;
+
+/**
+ * The declared needs plus `Env`. di's `needs` array is type-level only —
+ * `Module` drops it at runtime and computes the module's needs channel from the
+ * providers — and its gate only asks that the unmet set be a SUBSET of the
+ * declared one, so adding a port nothing needs costs nothing.
+ */
+type EnvAnd<N extends readonly AnyPort[]> = readonly [...N, typeof Env];
 
 /**
  * `Module(name)({...})` for an HTTP deployment: everything a di module takes,
@@ -291,11 +304,11 @@ export const HttpModule =
         typeof HttpHandler,
         ...X,
       ],
-      needs: (options.needs ?? []) as N,
+      needs: [...(options.needs ?? []), Env] as EnvAnd<N>,
     } as {
       readonly imports: Imports<I, Units>;
       readonly provides: Provides<P, Router, Fragments>;
       readonly exports: readonly [typeof HttpRuntime, typeof HttpHandler, ...X];
-      readonly needs: N;
-    } & NeedsGate<Imports<I, Units>, Provides<P, Router, Fragments>, N>);
+      readonly needs: EnvAnd<N>;
+    } & NeedsGate<Imports<I, Units>, Provides<P, Router, Fragments>, EnvAnd<N>>);
   };

@@ -13,7 +13,7 @@ the code and `README.md` in the same commit — the package ships no
   duplicate-id warning never fires. Whoever boots a graph provides it — the
   kernel does for every `start`; a bare `Module.scoped` needs
   `Provider(Env)({ inject: {}, value })`, which is what this package's own fixtures do.
-- **`Config.string` / `integer` / `boolean` / `port`** — `ConfigField<T>`
+- **`Config.string` / `integer` / `boolean` / `port` / `url`** — `ConfigField<T>`
   factories over one variable: `{ variable, parse(raw: string | undefined) →
 Result<T, ConfigFieldInvalid> }`. All go through one `present()` helper that
   fixes the shared semantics (unset → default or `is required`; trimmed empty →
@@ -23,7 +23,14 @@ Result<T, ConfigFieldInvalid> }`. All go through one `present()` helper that
   `boolean` takes `true`/`false`, `1`/`0`, `yes`/`no` and `on`/`off` in either
   case, and **errors on anything else rather than reading it as falsy** — a
   deployment that wrote `HTTP_COMPRESSION=enabled` meant to turn it on, and a silent
-  `false` there is the kind of configuration bug nothing reports.
+  `false` there is the kind of configuration bug nothing reports. **`url` keeps
+  the STRING** and validates it with `URL.canParse`: the value a consumer hands
+  to `new URL`, checked before it gets there. It exists because `new URL` throws
+  and a throw inside a provider's `make` is a `Defect` with no variable named —
+  `@btravstack/http-server/jwt`'s `HTTP_JWT_JWKS_URI` was exactly that, and a
+  scheme-less URI is the ordinary operator slip. The rule is `check` as well as
+  `read`, so a bad PIN is refused with the same message; it validates shape, not
+  scheme, so a non-`http` URL is the caller's business.
 - **`Config.pinned(value, field)`** — `field` unless `value` is given, then a
   field answering `value` and reading nothing. What a starter's options do to
   its own fields — explicit beats environment beats default, **per field** —
@@ -43,12 +50,21 @@ Result<T, ConfigFieldInvalid> }`. All go through one `present()` helper that
   each failure as an issue with `path: [variable]`, and never throws: a field
   whose `parse` defects (a bug in the field) is folded into an issue against
   its variable.
+- **`Config.parse(port, schema)(env)`** — `AsyncResult<Output, ConfigInvalid>`:
+  awaits `schema["~standard"].validate(env)` inside `fromSafePromise` over an
+  `async` wrapper (a third-party schema may be async and may throw — the throw
+  becomes the defect it is) and answers `Ok(value)` or
+  `Err(new ConfigInvalid({ port, issues }))`, where `port` is the name the
+  error reports rather than a port class. It exists because that step has a
+  second caller: a piece that is ALREADY its own provider has no second port
+  to hang a `Config.provider` on, and
+  `@btravstack/http-server/jwt`'s `jwtAuthenticator` is the first — it binds
+  `HTTP_JWT_*` inside the `make` arm of the authenticator it is. Lifting the
+  body rather than copying it is what keeps one home for validate-then-
+  `ConfigInvalid`: `Config.provider` is now a caller of this.
 - **`Config.provider(port)(schema)` / `Config.provider(name)(schema)`** — two
-  overloads over one body: `Provider(port)({ inject: { env: Env }, make })`, `make` awaiting
-  `schema["~standard"].validate(env)` inside `fromSafePromise` over an `async`
-  wrapper (a third-party schema may be async and may throw — the throw
-  becomes the defect it is) and answering `Ok(value)` or
-  `Err(new ConfigInvalid({ port: port.portId, issues }))`. The **name** form
+  overloads over one body: `Provider(port)({ inject: { env: Env }, make })`,
+  `make` being `Config.parse(port.portId, schema)(env)`. The **name** form
   mints the port (`class extends Port(name)<Output> {}`, service = the
   schema's output) and returns `Provider<PortInstance<Name, Output>,
 ConfigInvalid, Env> & { readonly port: PortClassOf<Name, Output> }` — di's
@@ -79,8 +95,12 @@ ConfigInvalid, Env> & { readonly port: P }` (di's own `Provider(port)`
 
 `config.spec.ts`: `Config.object`'s semantics (defaults, parsed
 values, `PORT=0`, empty, blank ×2 + malformed named in one validation, `3.5`,
-bounds, a required field, a defecting field), `Config.pinned` (the pin over
-the environment, the field otherwise), `ConfigInvalid.message`, and `Config.provider` end to end through a real
+bounds, a required field, a defecting field), `Config.url` (a good value, a
+scheme-less one, and the same one pinned), `Config.pinned` (the pin over
+the environment, the field otherwise), `ConfigInvalid.message`,
+`Config.parse` on its own — outside any graph, on a valid environment and on
+one whose two bad fields both land in one `ConfigInvalid` (the `parsed`
+fixture) — and `Config.provider` end to end through a real
 `Module.scoped` graph with `Env` provided as a value (`bound`, `boundThrough`
 fixtures in `src/__tests__/test-fixtures.ts`) — including an async third-party
 Standard Schema. Coverage 100% lines/functions. The kernel-facing half — the

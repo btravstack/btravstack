@@ -150,20 +150,15 @@ src/auth.ts             the two schemes, and the one defineHttp call that declar
 written, and where the one `defineHttp` call the application makes lives:
 
 <!-- doctest: isolate
-import { TenantId } from "@btravstack/example-order-domain";
-import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http-server";
-import { ErrAsync, OkAsync } from "unthrown";
+import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
+import { apiKeyAuthenticator, defineHttp } from "@btravstack/http-server";
+import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 -->
 
 ```ts
-import { TenantId } from "@btravstack/example-order-domain";
-import {
-  HttpAuthenticator,
-  Unauthenticated,
-  defineHttp,
-  granted,
-} from "@btravstack/http-server";
-import { ErrAsync, OkAsync } from "unthrown";
+import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
+import { apiKeyAuthenticator, defineHttp } from "@btravstack/http-server";
+import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 /** What this deployment knows about a caller under the `user` scheme. */
 export type Identity = {
   readonly tenantId: TenantId;
@@ -173,44 +168,30 @@ export type Identity = {
 /** What the `service` scheme resolves to: a machine caller, no tenant. */
 export type ServiceIdentity = { readonly appId: string };
 
-export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
-  inject: {},
-  sync: () => (headers) => {
-    const header = headers.authorization ?? "";
-    const token = header.startsWith("Bearer ")
-      ? header.slice("Bearer ".length)
-      : "";
-    const [tenantId, userId, ...rest] = token.split(":");
-    // Rejoined rather than taken as one field: a scope name contains the
-    // delimiter itself, so `orders:export` cannot survive a plain third field.
-    const claimed = rest.join(":");
-    return tenantId === undefined ||
-      tenantId === "" ||
-      userId === undefined ||
-      userId === ""
-      ? ErrAsync(new Unauthenticated())
-      : OkAsync(
-          granted(
-            { tenantId: TenantId(tenantId), userId },
-            claimed
-              .split(",")
-              .filter(
-                (scope): scope is "orders:export" => scope === "orders:export",
-              ),
-          ),
-        );
-  },
+/**
+ * What a verified token means here, and the one place this deployment's claim
+ * spelling is written: `sub` is the user, `tenant` is the tenant. Answering
+ * `undefined` refuses the token.
+ */
+const principal = (claims: Claims): Identity | undefined => {
+  const tenant = claims["tenant"];
+  return typeof claims.sub === "string" &&
+    claims.sub !== "" &&
+    typeof tenant === "string" &&
+    TenantIdSchema.safeParse(tenant).success
+    ? { tenantId: TenantId(tenant), userId: claims.sub }
+    : undefined;
+};
+
+/** Nothing pinned: the three `HTTP_JWT_*` variables are the deployment's. */
+export const userAuth = jwtAuthenticator<Identity>()({
+  principal,
+  scopes: ["orders:export"],
 });
 
 /** The second scheme: an API key, no scopes — what a reporting job presents. */
-export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
-  inject: {},
-  sync: () => (headers) => {
-    const key = headers["x-api-key"];
-    return typeof key === "string" && key !== ""
-      ? OkAsync({ appId: key })
-      : ErrAsync(new Unauthenticated());
-  },
+export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({
+  keys: [{ key: "reporting", principal: { appId: "reporting" } }],
 });
 
 export const api = defineHttp({
@@ -238,24 +219,24 @@ reached through any other `defineHttp` call types
 `principal: never`, so every read of it is a compile error — the signal to use
 the factory, not a fallback.
 
-`Bearer <tenantId>:<userId>:<scopes>` is a stand-in, not a recommendation —
-what matters is the shape. This is also where a header becomes a **tenant**:
-`TenantId` is
+`principal` is where a verified claim becomes a **tenant** — and the one place
+this deployment names the claim it reads it from, since no standard claim
+carries one. `TenantId` is
 the domain's branded string, so the identity carries the brand from here and no
 handler on this path casts anything — `UserModule` hands the identity's
-`tenantId` straight to its `Tenant` provider. The constructor is a cast rather
-than a
-parse — a brand is a compile-time fiction, and what it buys is that
-`customers.find(tenantId, id)` — the one port left here that names a tenant —
-cannot be called with its two arguments
+`tenantId` straight to its `Tenant` provider. The constructor is a cast, and
+`principal` is where it is earned: a claim is the issuer's string rather than a
+contract-validated input, so `TenantIdSchema.safeParse` runs first and a claim
+it cannot read authenticates as nobody. A brand is a compile-time fiction, and
+what it buys is that `customers.find(tenantId, id)` — the one port left here
+that names a tenant — cannot be called with its two arguments
 the other way round. The scope **vocabulary** is declared at the call
-(`HttpAuthenticator<Identity, "orders:export">()`), so the granted list is
-checked against it here rather than compared as loose strings at the endpoint.
-Neither authenticator needs a service; a JWT verifier, a key set
-or a user directory would be named in an `inject` record and injected the way any
-provider's
-dependencies are, and that need would travel with the authenticator into the
-graph — so a root satisfying none is refused at the `HttpModule(...)` call. See
+(`scopes: ["orders:export"]`), so the granted list is the intersection of it
+with the token's own `scope` claim rather than a string compared at the
+endpoint. A scheme that needs a service of its own — a user directory, a key
+store — names it in an `inject` record and gets it the way any provider's
+dependencies arrive, and that need travels with the authenticator into the
+graph, so a root satisfying none is refused at the `HttpModule(...)` call. See
 [Protect a procedure](/how-to/protect-a-procedure) for the recipe in full.
 
 ## The slices: a controller and a module each
@@ -671,9 +652,27 @@ wraps it in `serve`, where every spec starts, real composition root included:
 
 ```ts
 export const it = test.extend<ApiFixtures>({
-  boot: bootFixture({
-    env: { PORT: "0", HOST: "127.0.0.1", LOG_LEVEL: "fatal" },
-  }),
+  // One issuer per spec file: a served JWKS and a matching signer, so the
+  // `user` scheme does a real fetch and a real verify.
+  issuer: [localIssuerFixture, { scope: "file" }],
+
+  env: async ({ issuer }, use) => {
+    await use({
+      PORT: "0",
+      HOST: "127.0.0.1",
+      LOG_LEVEL: "fatal",
+      // Nothing is pinned on `userAuth`, so these three are what the scheme
+      // binds itself from — the same three a deployment sets.
+      HTTP_JWT_JWKS_URI: issuer.jwks,
+      HTTP_JWT_ISSUER: issuer.issuer,
+      HTTP_JWT_AUDIENCE: issuer.audience,
+      // …DATABASE_URL and REDIS_URL, from the shared containers
+    });
+  },
+
+  boot: async ({ env }, use) => {
+    await bootFixture({ env })({}, use);
+  },
 
   serve: async ({ boot }, use) => {
     await use((module, options) => boot(module, options));
@@ -692,9 +691,14 @@ stdout — out of the runner's own output. The port comes back
 from `Serving.info` through `app.runtimeInfo()` — the kernel's own channel
 for it — and the client is built from the contract alone. What it carries on
 top of that is one header: `clientFor` sends
-`authorization: Bearer <tenant>:u-1`, since the `orders` fragment is marked and
+`authorization: Bearer <token>` for a token the file's own
+[`localIssuer`](/reference/testing#localissuer-options) signed — a real key, a
+real JWKS fetch and `jose`'s own verify, not a header the scheme is told to
+trust — since the `orders` fragment is marked and
 an anonymous call to it never reaches a use case, while `clientWith` states the
-token verbatim — or omits it — for the specs about the refusal itself. The
+token verbatim — or omits it — for the specs about the refusal itself, and
+`tokenFor` overrides a claim at a time for the specs about a token from another
+issuer, for another audience, or without the scope. The
 `tenant` is a UUID per test, which is what lets every spec share one database. Where a spec needs
 the lines the running graph wrote, the seam is
 `observability({ sink })`: the `recording` fixture composes the root's shape

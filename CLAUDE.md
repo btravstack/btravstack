@@ -73,7 +73,7 @@ version of "green gate, no consumer can build" this repo has met. Do not
 judge the workspace by the example half; a reader who does concludes it is
 redundant with `order-api`, and takes the emit gate with it. `docs/` is the documentation site (see **Documentation
 site** below); it is a workspace but not a published package. `internal/`
-holds one more, `test-infra`, which is neither: it owns the six containers
+holds one more, `test-infra`, which is neither: it owns the seven containers
 the whole gate shares and is documented in its own README.
 
 ## Commands
@@ -827,14 +827,16 @@ in its place.
   workspaces run under the same six commands as the kernel, and an example that
   stops compiling fails CI exactly as `packages/core` would. The type-level gates
   they pin, and the `pnpm dev` local loop, are in `examples/CLAUDE.md`.
-- **The whole gate runs on SIX containers, shared, and `internal/test-infra`
+- **The whole gate runs on SEVEN containers, shared, and `internal/test-infra`
   owns them.** One `postgres:18.1`, one `rabbitmq:4.2.1-management-alpine`,
   one `temporalio/auto-setup:1.29.1`, one `redis:8.8.2-alpine`, one
-  `axllent/mailpit:v1.31.0` and one `rustfs/rustfs:1.0.0-rc.3`, started
+  `axllent/mailpit:v1.31.0`, one `rustfs/rustfs:1.0.0-rc.3` and one
+  `nginx:1.29-alpine` — the dev loop's JWKS endpoint, which is a container
+  rather than a listener because `dev:env` is one-shot and exits — started
   once per machine and reused by
-  every workspace's vitest run **and by `pnpm dev`**. Nine workspaces need a Docker daemon —
+  every workspace's vitest run **and by `pnpm dev`**. Ten workspaces need a Docker daemon —
   `packages/amqp-worker`, `packages/temporal-worker`, `packages/cache`, `packages/mailer`,
-  `packages/storage`, and the four
+  `packages/storage`, `internal/test-infra`, and the four
   `examples/` that boot the
   application or a broker-backed runtime — and that is a fact a contributor
   discovers the hard way unless a README says so, which is why each one's
@@ -1053,7 +1055,8 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   contract that only marks its procedures installs nothing;
   `config` peers on `di` and `unthrown`;
   `core` peers on all three; `testing` peers on all four (and not on
-  `vitest` — `bootFixture` is a plain function in vitest's fixture shape);
+  `vitest` — `bootFixture` is a plain function in vitest's fixture shape),
+  plus an optional `jose` behind `@btravstack/testing/jwt`;
   `observability` peers on all four too and has **no runtime dependency of its
   own** — the default sink is `JSON.stringify` and a `write`; its peer on
   `core` is not optional and cannot be, since the ports it implements are
@@ -1067,8 +1070,10 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   the package's own `tsdown` build emits `src/pino.ts` as a second entry
   point for exactly that. `@btravstack/observability/otel` follows it, `jose`
   behind `@btravstack/http-server/jwt` (issue #157's JWT/JWKS authenticator —
-  its API-key sibling needs no peer and is on the main entry point), and
-  each of the three application-service ports carries exactly one more:
+  its API-key sibling needs no peer and is on the main entry point), `jose`
+  again behind `@btravstack/testing/jwt` (the `localIssuer` a test signs
+  with), and each of the three application-service ports carries exactly one
+  more:
   `redis` behind `@btravstack/cache/redis`, `nodemailer` behind
   `@btravstack/mailer/smtp`, and the two `@aws-sdk` packages behind
   `@btravstack/storage/s3` — every one of them `optional: true` in
@@ -1082,9 +1087,11 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
 - **`packages/core`'s specs use `@btravstack/testing`, which peers on core —
   and it is NOT a devDependency of core**, because that would be a
   package-graph cycle turbo refuses. Instead: `packages/core/tsconfig.json`
-  maps `paths: { "@btravstack/testing": ["../testing/dist/index.d.mts"] }`
-  for the type checker (the built d.ts — the source would fall outside
-  `rootDir`), and `tsconfig.build.json`, what `tsdown` compiles, empties
+  maps `paths: { "@btravstack/testing": ["../testing/dist/index.d.mts"],
+"@btravstack/testing/jwt": ["../testing/dist/jwt.d.mts"] }` for the type
+  checker (the built d.ts — the source would fall outside `rootDir`; a
+  subpath a doc sample names gets its own entry, which is how `/jwt` joined
+  the map), and `tsconfig.build.json`, what `tsdown` compiles, empties
   `paths` and excludes the specs so the published `dist` never sees it;
   `packages/core/vitest.config.ts` aliases `@btravstack/testing` to
   `../testing/src/index.ts` and `@btravstack/core` to `./src/index.ts` (one

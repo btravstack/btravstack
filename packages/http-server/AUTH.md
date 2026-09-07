@@ -59,10 +59,16 @@ The two rules this half exists to state, before the detail:
   is how the first cut of that test missed a broken `SchemesOf` entirely.
 - **`HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })` — or
   `({ inject: {}, sync })`, the common shape, since an authenticator reading
-  only headers declares no dependencies — plus `authenticatorPort(scheme)`,
+  only headers declares no dependencies, or `({ inject, make })` where building
+  the scheme can FAIL — plus `authenticatorPort(scheme)`,
   `Unauthenticated`, `granted(identity, scopes)`, `Grant<P, Scope>`,
   `Granted<P, Scope>`, `AuthenticatorService<P, Scope>`**
   (`auth.ts`) — how one **security scheme** is implemented.
+  `sync` and `make` are the pair di's `Provider` has, and naming both is
+  refused: `make` answers `AsyncResult<AuthenticatorService<P, Scope>, E>` and
+  its `E` becomes the description's, so a scheme whose CONSTRUCTION can fail —
+  one reading its issuer from the environment — fails the boot with a typed
+  error rather than constructing happily and refusing every caller.
   `AuthenticatorService<P, Scope>` is
   `(headers: IncomingHttpHeaders) => AsyncResult<Granted<P, Scope>, Unauthenticated>` —
   **headers, not the request**: an authenticator has no business reading a
@@ -165,8 +171,8 @@ The two rules this half exists to state, before the detail:
   because a key list in the image is a key list in the repository.
   `examples/order-api`'s `serviceAuth` is this, not a stand-in.
 
-- **`jwtAuthenticator<P>()({ jwks, issuer, audience, algorithms?, clockToleranceSec?, header?, principal, scopes? })`
-  → `Authenticator<P, Scopes[number], never>`, and `DEFAULT_ALGORITHMS`** — from
+- **`jwtAuthenticator<P>()({ jwks?, issuer?, audience?, algorithms?, clockToleranceSec?, header?, principal, scopes? })`
+  → `Authenticator<P, Scopes[number], Env, ConfigInvalid>`, and `DEFAULT_ALGORITHMS`** — from
   **`@btravstack/http-server/jwt`**, with `jose` an OPTIONAL peer: a graph that
   never imports the subpath installs nothing. What it owns is the part where
   writing it per application is how CVEs happen:
@@ -189,6 +195,45 @@ The two rules this half exists to state, before the detail:
     audience mismatch are indistinguishable from outside — `Unauthenticated`
     carries no reason, so the endpoint is not an oracle for which of them the
     attacker got wrong.
+
+  **`jwks`, `issuer` and `audience` are OPTIONAL, and bound from
+  `HTTP_JWT_JWKS_URI`, `HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE` when they are
+  not supplied.** The option is what a test pins, the variable what a
+  deployment sets — `http({ port })` against `PORT`, one layer down — and the
+  rule that decides it is the repository's own: something belongs in the
+  environment when it varies by deployment, not when it is
+  "configuration-shaped". All three do. Staging and production authenticate
+  against different issuers, a JWKS endpoint moves, and the audience is the
+  deployment's own name; none of it belongs in the image. A variable nobody
+  pinned and nobody set is a `ConfigInvalid` naming it, at startup, with every
+  offending variable in one message. The rest stay options: `algorithms` and
+  `clockToleranceSec` because a value whose silent change is a security
+  regression is not an environment's to change, `header`/`principal`/`scopes`
+  because an environment carries no functions and no arrays.
+
+  **One JWT scheme per process**, which is why the prefix is `HTTP_JWT_` and
+  not `HTTP_JWT_<SCHEME>_`. Two schemes reading the same three variables are
+  one scheme; a genuinely second issuer pins all three explicitly, exactly as a
+  test does. The `string | readonly string[]` forms of `issuer` and `audience`
+  are gone with that decision: an environment carries one string, and a second
+  accepted issuer is a second authenticator.
+
+  **The piece is a `make` arm.** Reading the environment can fail, so the
+  scheme's provider carries `ConfigInvalid` on its error channel and a
+  misconfigured deployment fails the BOOT — `runMain`'s `78`, naming the
+  variables — instead of constructing happily and refusing every caller with a
+  401 that carries no reason. `Config.parse` is what it runs, the step
+  `Config.provider` performs, lifted so both have one home. Its `inject` is
+  `{ env: Env }`, and a root composing this scheme writes no `needs` line for
+  it: `HttpModule` carries `Env` for every provider in the root, its schemes
+  included, the same way it already carries the starter's own. A scheme owing any OTHER unmet port is
+  still refused at the `HttpModule` call.
+
+  **`jwks` is a `Config.url` field**, not a `Config.string` one:
+  `createRemoteJWKSet` takes a `URL`, `new URL` throws, and a throw inside the
+  piece's `make` is a `Defect` with no variable named. A scheme-less
+  `HTTP_JWT_JWKS_URI` is the likeliest of the three slips, so it is the one that
+  most needed to arrive as the `ConfigInvalid` this promises.
 
   **The `/jwt` subpath needs Node ≥22.12 under CommonJS.** `jose` is ESM-only,
   so the CJS build's `require("jose")` depends on `require(esm)`, which Node
@@ -412,10 +457,14 @@ authenticator cannot grant it": "order:export"`). `VocabFrom<A>` reads the
     than answered `401` once one has.
 
   It also takes **`needs`**, forwarded to di's own — what this root's OWN
-  providers expect from outside. The starter's `Env` is not among them: the
-  starter is an import, and an import's needs travel without being restated. A
-  root that provides a config provider of its own does declare it —
-  `examples/order-amqp-worker` says `needs: [Env]` for `relayConfig`. The sugar
+  providers expect from outside. `Env` is never among them: the starter is an
+  import, and an import's needs travel without being restated, while a scheme
+  that configures itself from the environment is a provider of this root's and
+  would otherwise have to be declared — so the sugar adds `Env` to what the gate
+  counts as declared (`EnvAnd<N>`), which is legal because di's `needs` array is
+  type-level only and over-declaring is free. Another starter's sugar makes no
+  such promise: `examples/order-amqp-worker` says `needs: [Env]` for
+  `relayConfig`. The sugar
   **re-declares di's `NeedsGate`** over its augmented tuples, so a root whose
   own provider owes a port it does not name is refused at THIS call rather than
   slipping past into `start`; see `packages/di/CLAUDE.md`'s **Module

@@ -228,7 +228,13 @@ carries**, and exports
 `HttpRuntime`, and returns exactly the module the hand-written form would:
 
 ```ts
+import { Env } from "@btravstack/config";
+
 Module("OrdersApi")({
+  // `HttpModule` carries this for every provider in the root — a scheme bound
+  // from the environment, a config field — so the sugar's form writes no
+  // `needs` line at all.
+  needs: [Env],
   imports: [
     OrderPersistenceModule,
     observability(),
@@ -240,9 +246,11 @@ Module("OrdersApi")({
 });
 ```
 
-The one thing the hand-written form does NOT get is the gate on `unit`:
-`http()` takes the router as a need rather than a value, so it cannot check the
-kinds against what the api declared, where `HttpModule` can.
+Two things the hand-written form does NOT get. The gate on `unit`: `http()`
+takes the router as a need rather than a value, so it cannot check the kinds
+against what the api declared, where `HttpModule` can. And `Env`, which it has
+to declare itself — the sugar adds it, which is why a root composing a scheme
+that binds `HTTP_JWT_ISSUER` still names no port of its own.
 
 There is **no authenticator to list**: it rides the router, which is what needs
 it, so a scheme cannot be forgotten and cannot be wired to the wrong router.

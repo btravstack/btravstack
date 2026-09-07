@@ -61,6 +61,8 @@ const mintedFrom = (env: Environment): AsyncResult<{ readonly retries: number },
     (ctx) => OkAsync(ctx.get(minted.port)),
   );
 
+const parsed = Config.parse("ConfigFixtureParsed", settingsSchema);
+
 export type ConfigFixtures = {
   /** `Settings` bound from `env` through `settingsSchema`, resolved out of a built graph. */
   readonly bound: (env: Environment) => AsyncResult<
@@ -75,6 +77,15 @@ export type ConfigFixtures = {
   readonly mintedFrom: (
     env: Environment,
   ) => AsyncResult<{ readonly retries: number }, ConfigInvalid>;
+  /** `settingsSchema` validated against `env` by `Config.parse`, outside any graph. */
+  readonly parsed: (env: Environment) => AsyncResult<
+    {
+      readonly port: number;
+      readonly host: string;
+      readonly retries: number;
+    },
+    ConfigInvalid
+  >;
   /** `Named` bound from `env` through any Standard Schema over the environment. */
   readonly boundThrough: (
     schema: ConfigSchema<Environment, { readonly name: string }>,
@@ -90,6 +101,10 @@ export const it = test.extend<ConfigFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   mintedFrom: async ({}, use) => {
     await use(mintedFrom);
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  parsed: async ({}, use) => {
+    await use(parsed);
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   boundThrough: async ({}, use) => {

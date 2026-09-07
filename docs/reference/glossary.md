@@ -74,6 +74,23 @@ one-property object, ending on the missing ports:
 [start and StartOptions](/reference/core/start) and
 [Compile errors, not surprises](/explanation/compile-time-wiring).
 
+**issuer** — Whoever mints the tokens a deployment accepts, named by the `iss` claim it
+signs them with — an identity provider, or `@btravstack/testing/jwt`'s
+`localIssuer` under test. `jwtAuthenticator` requires `iss` to match the
+configured issuer — the `issuer` option, or `HTTP_JWT_ISSUER` when it is not
+pinned — and it is the issuer that decides how a **tenant** is
+spelled: `tenant` in the example, `tid` on Entra, `org_id` on Auth0, which is
+why `principal(claims)` is the application's. See
+[Protect a procedure](/how-to/protect-a-procedure).
+
+**JWKS** — The JSON Web Key Set an issuer publishes its **public** keys at, and what
+`jwtAuthenticator` verifies a signature against: fetched on demand from the
+configured URL — the `jwks` option, or `HTTP_JWT_JWKS_URI` when it is not
+pinned — cached, and refetched when a token names a `kid` the cache
+has not seen. Because it publishes public keys, the accepted algorithms are
+asymmetric only — an HMAC one beside them is the algorithm-confusion attack.
+See [@btravstack/http-server](/reference/http-server#the-authenticators-that-ship).
+
 **kernel event** — One of the nine `KernelEvent`s (`building` … `uncaught`) the kernel emits
 to its `EventSink`; `stderrSink` writes one JSON line each. See
 [Kernel events](/reference/core/events).

@@ -69,7 +69,18 @@ is the index of the workspaces themselves.
   its identities, and there is no identity comparison left to make: declaring a
   scheme and implementing it are the same act, so a scheme the contract names
   with no authenticator behind it is di's own unmet need on
-  `HttpAuthenticator:<scheme>`. The one call's result is held as **one
+  `HttpAuthenticator:<scheme>`. **Both schemes are the starter's own:** `user`
+  is `jwtAuthenticator` with nothing pinned, so `HTTP_JWT_JWKS_URI`,
+  `HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE` are a deployment's and an unset one
+  fails the boot with the variable named; `service` is `apiKeyAuthenticator`.
+  The `Bearer <tenantId>:<userId>:<scopes>` stand-in the file used to carry is
+  gone, and with it the only place in these examples that vouched for a value
+  instead of checking it. What stays the application's is `principal(claims)`:
+  the one place this deployment writes which claim carries a tenant — `tenant`
+  here, `tid` on Entra, `org_id` on Auth0 — and the one place the `TenantId`
+  brand is claimed on this path. The specs mint real tokens through
+  `@btravstack/testing/jwt`'s `localIssuer`, file-scoped, and `boot`'s
+  environment carries the three variables off it. The one call's result is held as **one
   binding and never destructured** — each destructured member expands to a type
   mentioning `@btravstack/contract`'s inaccessible `unique symbol` (TS2527),
   while held whole it collapses to the nameable `Http<A>`, which is why the
@@ -86,15 +97,29 @@ is the index of the workspaces themselves.
     a devDependency of the three example workspaces, and no new dependency.
   - **`.env.dev` is generated, never committed.** The `dev` task depends on
     `@btravstack/internal-test-infra#dev:env`, which attaches to the **same
-    six shared containers the specs use** (`withReuse()` — a second set
+    shared containers the specs use** (`withReuse()` — a second set
     would be issue #52's duplication in another hat), runs
     `prisma migrate deploy` under the same lock as the example's own
     `globalSetup` — as the **owner**, then provisioning `orders_app` and
     writing that role's URL, so `pnpm dev` runs under the same row security
     the specs do — and writes `DATABASE_URL` / `AMQP_URL` /
-    `TEMPORAL_ADDRESS` / `REDIS_URL` / `SMTP_URL` / the four `STORAGE_S3_*`. They are written to a file rather than defaulted
+    `TEMPORAL_ADDRESS` / `REDIS_URL` / `SMTP_URL` / the four `STORAGE_S3_*` /
+    the three `HTTP_JWT_*`. They are written to a file rather than defaulted
     because the ports are whatever Docker mapped, and an ephemeral mapped
     port cannot be a default. `--env-file` is Node's own; no `dotenv`.
+  - **The dev loop's OIDC issuer is a CONTAINER, not a process, and its key is
+    persisted.** `order-api`'s `user` scheme verifies a real token against a
+    real JWKS, so `.env.dev` has to carry a `HTTP_JWT_JWKS_URI` that answers.
+    An in-process `localIssuer` — what the specs use — cannot be it: `dev:env`
+    is one-shot, it exits the moment the file is written, and a listener it
+    opened dies with it. So the JWKS is `nginx:1.29-alpine` with the public key
+    copied in, started beside the other six and reused like them. The key pair
+    itself lives in `<repo>/.cache/dev-issuer/` rather than being minted per
+    run, because a token minted before a `dev:env` would otherwise stop
+    verifying after it — and pasting a fresh token into every terminal is
+    exactly the friction this closes. `pnpm dev:token -- --tenant <uuidv7>`
+    prints one; the mechanics are in
+    `internal/test-infra/README.md`.
   - **`PROBE_PORT` is `0` in each `dev` script, and so is the API's `PORT`**:
     `PROBE_PORT` defaults to `9000` for every application, so on one machine
     two of the three would fail with `RuntimeStartFailed` for `"probes"` —
@@ -269,8 +294,11 @@ is the index of the workspaces themselves.
   already validated it — so each path claims the brand exactly once, where an
   outside value becomes the application's vocabulary. **Moving the tenant into
   the unit moved those boundaries too, and shrank them**: they are now the
-  three unit modules' `Tenant` providers — `order-api`'s `userAuth`, from
-  which the `Identity` carries the brand and `UserModule` hands it on uncast;
+  three unit modules' `Tenant` providers — `order-api`'s `userAuth`, whose
+  `principal` is the one boundary here that **parses before it casts**
+  (`TenantIdSchema.safeParse`), because a token claim is the issuer's string
+  and no contract validated it; from there the `Identity` carries the brand
+  and `UserModule` hands it on uncast;
   `ActivityUnitModule`'s `TenantId(input.tenantId)`;
   `MessageUnitModule`'s `TenantId(message.payload.tenantId)` — plus the
   customers controller's `TenantId(input.tenantId)` and the relay's
