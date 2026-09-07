@@ -1,5 +1,15 @@
 # @btravstack/storage
 
+## 0.13.0
+
+### Patch Changes
+
+- Updated dependencies [8afca14]
+- Updated dependencies [4808582]
+  - @btravstack/config@0.13.0
+  - @btravstack/core@0.13.0
+  - @btravstack/di@0.13.0
+
 ## 0.12.0
 
 ### Patch Changes
