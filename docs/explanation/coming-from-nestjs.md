@@ -211,7 +211,9 @@ varies per test — is still a different module composed in its place. See
 
 ## Authorization
 
-A guard is route-level authorization and maps to the contract: a procedure
+A guard is a runtime hook — global, per controller or per method — that
+decides whether a request proceeds, and the half of it that is about the
+credential maps to the contract: a procedure
 names the schemes that may reach it and the scopes each must grant, and a scope
 the scheme's authenticator cannot grant is a compile error rather than a
 permanent 403. CASL is the resource-level half, and the difference is where the

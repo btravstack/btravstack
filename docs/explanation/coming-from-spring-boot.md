@@ -112,12 +112,13 @@ documented), not a slot this framework invented.
 
 `@PreAuthorize("hasAuthority('orders:export')")` is what a contract's scope
 says — `authenticated({ user: ["orders:export"] })` — with one difference: the
-SpEL string is checked when the request arrives, and a scope the scheme cannot
-grant is checked when the contract compiles. `@PostAuthorize` on the returned
+SpEL expression is evaluated just before the method runs, and a scope the
+scheme cannot grant is refused when the contract compiles. `@PostAuthorize` on the returned
 object is the resource-level rule, and it is the case this stack answers with
 a **witness type** instead of an annotation: the rule is a plain function whose
-result the operation demands, so a handler that skipped it does not compile,
-where a method whose proxy was bypassed skips its annotation silently. The
+result the operation demands, so handing the operation a resource with no
+witness is a compile error — a forgotten rule cannot ship — where a method
+whose proxy was bypassed skips its annotation silently. The
 three layers are on [Authorize a request](/how-to/authorize-a-request).
 
 ### Exceptions are not the error channel
