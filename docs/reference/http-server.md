@@ -726,29 +726,31 @@ export const userAuth = jwtAuthenticator<Identity>()({
   },
 });
 
-// A hand-written scheme with a vocabulary of its own: the grant is `granted`'s,
-// and both type arguments are stated because nothing here infers them.
+// A hand-written scheme over a source nothing shipped covers — the subject of
+// the client certificate the ingress terminated, forwarded as a header — with
+// a vocabulary of its own: the grant is `granted`'s, and both type arguments
+// are stated because nothing here infers them.
 export const partnerAuth = HttpAuthenticator<
   ServiceIdentity,
   "orders:export"
 >()({
   inject: {},
   sync: () => (headers) => {
-    const key = headers["x-partner-key"];
-    return typeof key === "string" && key !== ""
-      ? OkAsync(granted({ appId: key }, ["orders:export"]))
+    const subject = headers["x-client-cert-subject"];
+    return typeof subject === "string" && subject !== ""
+      ? OkAsync(granted({ appId: subject }, ["orders:export"]))
       : ErrAsync(new Unauthenticated());
   },
 });
 
-// A scheme with no vocabulary answers the identity bare — no `granted`, and
-// the handler reads the identity itself.
+// The same source with no vocabulary answers the identity bare — no
+// `granted`, and the handler reads the identity itself.
 export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
   inject: {},
   sync: () => (headers) => {
-    const key = headers["x-api-key"];
-    return typeof key === "string" && key !== ""
-      ? OkAsync({ appId: key })
+    const subject = headers["x-client-cert-subject"];
+    return typeof subject === "string" && subject !== ""
+      ? OkAsync({ appId: subject })
       : ErrAsync(new Unauthenticated());
   },
 });

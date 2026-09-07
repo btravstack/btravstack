@@ -84,8 +84,9 @@ why `principal(claims)` is the application's. See
 [Protect a procedure](/how-to/protect-a-procedure).
 
 **JWKS** — The JSON Web Key Set an issuer publishes its **public** keys at, and what
-`jwtAuthenticator` verifies a signature against: fetched on demand from
-`HTTP_JWT_JWKS_URI`, cached, and refetched when a token names a `kid` the cache
+`jwtAuthenticator` verifies a signature against: fetched on demand from the
+configured URL — the `jwks` option, or `HTTP_JWT_JWKS_URI` when it is not
+pinned — cached, and refetched when a token names a `kid` the cache
 has not seen. Because it publishes public keys, the accepted algorithms are
 asymmetric only — an HMAC one beside them is the algorithm-confusion attack.
 See [@btravstack/http-server](/reference/http-server#the-authenticators-that-ship).

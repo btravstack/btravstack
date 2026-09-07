@@ -73,11 +73,13 @@ describe("localIssuer", () => {
       audience: "orders-api",
       algorithm: "ES256",
     }).get();
+
+    // WHEN the JWKS it serves is fetched
+    const served: unknown = await (await fetch(built.jwks)).json();
     await built.close();
 
-    // WHEN the published key is read
-    // THEN it is an EC key advertising ES256
-    expect(built.jwk).toEqual(expect.objectContaining({ alg: "ES256", kty: "EC" }));
+    // THEN the document carries one EC key advertising ES256
+    expect(served).toEqual({ keys: [expect.objectContaining({ alg: "ES256", kty: "EC" })] });
   });
 
   it("answers Ok when its listener closes", async () => {
