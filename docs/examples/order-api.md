@@ -432,7 +432,7 @@ not compile and no other module can mint the witness by construction. What that
 buys is precise: a **forgotten** rule is a compile error. A caller determined to
 skip it can still write `order as Authorized<Order>`, because the type is
 exported — but that is a lie in one line, and one a reviewer greps for:
-`rg 'as Authorized'` is the review, and the rule's own line is the one it is
+`rg 'as Authorized'` is the review, and the rule's own lines are the ones it is
 allowed to find.
 `Forbidden` is the application's own tagged error, folded by the same
 exhaustive `mapErrCases` as every domain error — there is no framework

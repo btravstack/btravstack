@@ -185,15 +185,21 @@ export const USER_EXPORT_CEILING = 1_000;
 export const exportable = (
   caller: Caller,
   order: Order,
-): Result<Authorized<Order>, Forbidden> =>
-  caller.scheme === "service" || order.quantity <= USER_EXPORT_CEILING
-    ? Ok(order as Authorized<Order>)
-    : Err(
-        new Forbidden({
-          id: order.id,
-          reason: "bulk export is a service operation",
-        }),
-      );
+): Result<Authorized<Order>, Forbidden> => {
+  switch (caller.scheme) {
+    case "service":
+      return Ok(order as Authorized<Order>);
+    case "user":
+      return order.quantity <= USER_EXPORT_CEILING
+        ? Ok(order as Authorized<Order>)
+        : Err(
+            new Forbidden({
+              id: order.id,
+              reason: "bulk export is a service operation",
+            }),
+          );
+  }
+};
 
 /** The operation the decision protects: there is no way to call it without one. */
 export const renderCsv = (order: Authorized<Order>): string =>

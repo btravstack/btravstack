@@ -783,7 +783,12 @@ describe("order-api", () => {
     // THEN the key's tenant has no such order: the unit looked under the key's
     // tenant, and the floor beneath it would have answered the same
     expect(exported).toBeErrWith(
-      expect.objectContaining({ constructor: ORPCError, code: "NOT_FOUND" }),
+      expect.objectContaining({
+        constructor: ORPCError,
+        code: "NOT_FOUND",
+        data: { id: "0199a1e0-0000-7000-8000-00000000000e" },
+        inferable: true,
+      }),
     );
   });
 
