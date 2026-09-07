@@ -206,10 +206,12 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
      configures no cookies". A session cookie now has a legitimate consumer —
      a browser navigating fragments — which is exactly what it lacked. The two
      move together, and CSRF cannot be reconsidered before cookies exist.
-   - **#158 (authorization) was never blocked by any of this.** It is
-     `(principal, resource) → decision` in the application layer, above the
-     transport; only its `principal` input is protocol-shaped, and nothing it
-     decides turns on the number of protocols.
+   - **#158 (authorization) was never blocked by any of this, and it
+     shipped.** Its third layer is `(principal, resource) → decision` in the
+     application layer, above the transport; only its `principal` input is
+     protocol-shaped, and nothing it decides turns on the number of
+     protocols. The position is thesis #2's closing paragraph and
+     `docs/how-to/authorize-a-request.md`.
 
    **The transport role map is a decision, not an inventory** (issues #61 and
    #60): answering is `@btravstack/http-server`; orchestration — and with it
@@ -345,6 +347,27 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    drawn around a unit spans stores the framework cannot see inside — a
    promise it has no way to keep. Nested and joined transactions follow from
    this: not supported, and not a framework concept.
+
+   **Authorization is three layers, and the record carries none of them**
+   (issue #158). Scope is in the contract and gated at compile time against
+   the scheme's vocabulary; the tenant is a typed dependency of the unit
+   scope, so a use case that never said which tenant it serves does not
+   compile and a tenant-bound port on a public leaf is not a property; a
+   resource rule is a plain function in the handler answering
+   `Result<Authorized<T>, Forbidden>`, where `Authorized<T>` is a witness only
+   the rule mints and the operation it protects takes nothing else —
+   `examples/order-api`'s `orders.export` is the worked case, and what the
+   witness buys is that a **forgotten** rule is a compile error (a cast
+   remains writable, and is a lie a reviewer can grep for). A service key is
+   cut for a tenant the way a login belongs to one, so a `service` unit is
+   tenant-scoped by its key exactly as a `user` unit is by its claim.
+   Underneath, `@btravstack/prisma/rls` pins every statement to the unit's
+   tenant and the policy refuses the rest. The kernel ships no `Policy` port,
+   no registry and no `Forbidden`: it cannot invoke a rule that runs after a
+   fetch, a registry does not make a missing rule visible where a witness
+   does, and a shared error would put one triage arm in three transports —
+   the trigger that would reopen it, and has not fired.
+   `docs/how-to/authorize-a-request.md` is the position.
 
 3. **The kernel never maps an outcome to a transport.** `Result` → HTTP status
    belongs to the router an application hands `@btravstack/http-server`
