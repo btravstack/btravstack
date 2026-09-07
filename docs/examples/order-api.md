@@ -651,9 +651,27 @@ wraps it in `serve`, where every spec starts, real composition root included:
 
 ```ts
 export const it = test.extend<ApiFixtures>({
-  boot: bootFixture({
-    env: { PORT: "0", HOST: "127.0.0.1", LOG_LEVEL: "fatal" },
-  }),
+  // One issuer per spec file: a served JWKS and a matching signer, so the
+  // `user` scheme does a real fetch and a real verify.
+  issuer: [localIssuerFixture, { scope: "file" }],
+
+  env: async ({ issuer }, use) => {
+    await use({
+      PORT: "0",
+      HOST: "127.0.0.1",
+      LOG_LEVEL: "fatal",
+      // Nothing is pinned on `userAuth`, so these three are what the scheme
+      // binds itself from — the same three a deployment sets.
+      HTTP_JWT_JWKS_URI: issuer.jwks,
+      HTTP_JWT_ISSUER: issuer.issuer,
+      HTTP_JWT_AUDIENCE: issuer.audience,
+      // …DATABASE_URL and REDIS_URL, from the shared containers
+    });
+  },
+
+  boot: async ({ env }, use) => {
+    await bootFixture({ env })({}, use);
+  },
 
   serve: async ({ boot }, use) => {
     await use((module, options) => boot(module, options));
@@ -672,10 +690,14 @@ stdout — out of the runner's own output. The port comes back
 from `Serving.info` through `app.runtimeInfo()` — the kernel's own channel
 for it — and the client is built from the contract alone. What it carries on
 top of that is one header: `clientFor` sends
-`authorization: Bearer <token>` for a token the file's own `localIssuer`
-signed, since the `orders` fragment is marked and
+`authorization: Bearer <token>` for a token the file's own
+[`localIssuer`](/reference/testing#localissuer-options) signed — a real key, a
+real JWKS fetch and `jose`'s own verify, not a header the scheme is told to
+trust — since the `orders` fragment is marked and
 an anonymous call to it never reaches a use case, while `clientWith` states the
-token verbatim — or omits it — for the specs about the refusal itself. The
+token verbatim — or omits it — for the specs about the refusal itself, and
+`tokenFor` overrides a claim at a time for the specs about a token from another
+issuer, for another audience, or without the scope. The
 `tenant` is a UUID per test, which is what lets every spec share one database. Where a spec needs
 the lines the running graph wrote, the seam is
 `observability({ sink })`: the `recording` fixture composes the root's shape

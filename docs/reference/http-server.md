@@ -55,8 +55,8 @@ declare const view: (order: Order) => OrderView;
 | `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                                                                                                 |
 | `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                            |
 | `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                                                                                                  |
-| `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })`, or `({ inject: {}, sync })` with no deps — how one scheme is implemented; the scheme's **name** is the key it sits under in `defineHttp`                                                                                                   |
-| `Authenticator`        | type  | what `HttpAuthenticator` hands back — a description carrying its deps, principal, scopes and needs, which `defineHttp` binds to a port                                                                                                                                                                       |
+| `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })` — or `make` where building the scheme can fail, or `({ inject: {}, sync })` with no deps; the scheme's **name** is the key it sits under in `defineHttp`                                                                                    |
+| `Authenticator`        | type  | `Authenticator<P, Scope, N, E>` — what `HttpAuthenticator` hands back: a description carrying its principal, its scope vocabulary, the ports it needs and the error its arm reports, which `defineHttp` binds to a port                                                                                      |
 | `granted`              | value | `granted(identity, scopes)` — mints the scoped answer, stamped with a module-private symbol so the starter can tell it from a bare identity that carries a `scopes` field                                                                                                                                    |
 | `Granted`              | type  | `Granted<P, Scope>` — the identity **bare** when the scheme has no scope vocabulary, a `Grant<P, Scope>` when it has one                                                                                                                                                                                     |
 | `Grant`                | type  | `Grant<P, Scope>` — the branded `{ identity, scopes }` `granted()` returns; unforgeable from outside the package                                                                                                                                                                                             |
@@ -105,8 +105,9 @@ to.
 
 **Two subpaths export more**, each behind an optional peer so a graph that never
 imports it installs nothing: `@btravstack/http-server/jwt` (`jwtAuthenticator`,
-`DEFAULT_ALGORITHMS` — `jose`) and `@btravstack/http-server/openapi`
-(`openApiDocument` — `@orpc/openapi`). Both have sections of their own below.
+`DEFAULT_ALGORITHMS`, and the `Claims` / `JwtOptions` types — `jose`) and
+`@btravstack/http-server/openapi` (`openApiDocument` — `@orpc/openapi`). Both
+have sections of their own below.
 
 ## `HttpModule(name)({...})`
 
@@ -255,6 +256,37 @@ token's `scope` or `scp` claim, so a token claiming a scope the scheme does not
 know grants nothing extra. Nothing
 new checks them: the grant goes through `granted()` and the existing walk
 produces the 403.
+
+Its other options:
+
+| Option              | Required | Default                       | What it is                                                                                |
+| ------------------- | -------- | ----------------------------- | ----------------------------------------------------------------------------------------- |
+| `principal`         | yes      | —                             | `(claims) => P \| undefined`; `undefined` refuses the token                               |
+| `scopes`            | no       | none (the scheme is unscoped) | the vocabulary, and the scheme's scope type; omit it entirely for a scheme with no scopes |
+| `jwks`              | no       | read from `HTTP_JWT_JWKS_URI` | pins the issuer's JWKS endpoint instead of reading it                                     |
+| `issuer`            | no       | read from `HTTP_JWT_ISSUER`   | pins the required `iss`                                                                   |
+| `audience`          | no       | read from `HTTP_JWT_AUDIENCE` | pins the required `aud`                                                                   |
+| `algorithms`        | no       | `DEFAULT_ALGORITHMS`          | the accepted signature algorithms; asymmetric only, and `none` is not expressible         |
+| `clockToleranceSec` | no       | `0`                           | leeway on `exp` and `nbf`, in seconds                                                     |
+| `header`            | no       | `authorization`               | which header carries the token, as `Bearer <token>`                                       |
+
+**The middle three are pins, the same rule `http({ port })` has against
+`PORT`**: explicit beats environment, per field. Left unset, they bind from
+`HTTP_JWT_JWKS_URI`, `HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE` through
+[`Config.parse`](/reference/config#config-parse-port-schema-env) inside the
+scheme's `make` arm, so a variable nobody pinned and nobody set is a
+`ConfigInvalid` naming it at **startup** — exit `78` under `runMain` — rather
+than a `401` for every caller. `jwks` is a
+[`Config.url`](/reference/config#fields) field: a malformed URI is refused with
+the variable named instead of defecting at the first request. The scheme's
+`Env` need travels with it into the graph like any other, and `HttpModule`
+declares `Env` for the whole root, so a composition root writes no `needs` line
+for it.
+
+**Those three variable names belong to the process, so one JWT scheme reads
+them.** A second `jwtAuthenticator` in the same graph — a partner issuer beside
+the first — pins its own `jwks`, `issuer` and `audience` at the call; two
+schemes both reading the environment would both get the first issuer's.
 
 **Password hashing and credential issuing are out of scope.** Both of these are
 on the verifying side; issuing needs somewhere to put a credential and a
@@ -609,10 +641,28 @@ export: ({ context }) => {
 
 ### `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })`
 
-How **one scheme** is implemented. It hands back a description `defineHttp`
+How **one scheme** is implemented, and the primitive both shipped
+authenticators are built on. It hands back a description `defineHttp`
 binds to that scheme's port; the scheme's **name** is not stated here, because
 it is the key the authenticator sits under in `defineHttp({ authenticators })`
 — written once.
+
+Two arms, di's own pair, and naming both is refused:
+
+| Arm    | Shape                                                          | When                                                                                                     |
+| ------ | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `sync` | `(services) => AuthenticatorService<P, Scope>`                 | the scheme is built, not acquired — the common case                                                      |
+| `make` | `(services) => AsyncResult<AuthenticatorService<P, Scope>, E>` | building it can **fail**, and that failure is startup's: the `Err` becomes the graph's own error channel |
+
+`jwtAuthenticator` is the worked `make`: `{ inject: { env: Env }, make }` over
+`Config.parse`, so a misconfigured scheme fails the boot with the variable
+named, still typed, instead of refusing every caller at run time.
+
+The description it answers is `Authenticator<P, Scope, N, E>` — four slots: the
+principal, the scope vocabulary, the ports it needs (`InstanceType<D[keyof D]>`
+over its `inject` record) and the error its arm reports. A `sync` scheme with
+an empty `inject` is `never` on the last two; `jwtAuthenticator` is
+`Authenticator<P, Scope, Env, ConfigInvalid>`.
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
@@ -657,11 +707,12 @@ the handler `undefined`.
 
 ```ts
 import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
+import { granted } from "@btravstack/http-server";
 import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 
-// A scheme WITH a vocabulary. `jwtAuthenticator` is this primitive underneath:
-// it calls `granted` with the intersection of `scopes` and the token's own
-// claim, so an application writes only what the claims mean.
+// A shipped scheme WITH a vocabulary. `jwtAuthenticator` is this primitive
+// underneath: it calls `granted` itself, with the intersection of `scopes` and
+// the token's own claim, so an application writes only what the claims mean.
 export const userAuth = jwtAuthenticator<Identity>()({
   scopes: ["orders:export"],
   principal: (claims: Claims) => {
@@ -674,8 +725,23 @@ export const userAuth = jwtAuthenticator<Identity>()({
   },
 });
 
-// A second scheme, written against the primitive: an API key, no scopes, no
-// tenant, so it answers the identity bare.
+// A hand-written scheme with a vocabulary of its own: the grant is `granted`'s,
+// and both type arguments are stated because nothing here infers them.
+export const partnerAuth = HttpAuthenticator<
+  ServiceIdentity,
+  "orders:export"
+>()({
+  inject: {},
+  sync: () => (headers) => {
+    const key = headers["x-partner-key"];
+    return typeof key === "string" && key !== ""
+      ? OkAsync(granted({ appId: key }, ["orders:export"]))
+      : ErrAsync(new Unauthenticated());
+  },
+});
+
+// A scheme with no vocabulary answers the identity bare — no `granted`, and
+// the handler reads the identity itself.
 export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
   inject: {},
   sync: () => (headers) => {
@@ -686,6 +752,12 @@ export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
   },
 });
 ```
+
+A hand-written scheme is the exception rather than the shape to copy: for a
+bearer token or an API key, reach for
+[the two that ship](#the-authenticators-that-ship) — this one is what a scheme
+against a user directory, a session store or an ingress's mTLS headers looks
+like.
 
 `Unauthenticated` is a `TaggedError` with an **empty payload**: the starter
 surfaces no reason, so a field would be write-only. An authenticator that wants
@@ -1174,6 +1246,12 @@ field, so `http({ port: 0 })` still reads `HOST` — and still reads
 An unset variable takes the default; a set-but-empty one, `PORT=abc` and
 `PORT=70000` are each a `ConfigInvalid` — a `startFailed` event and exit `78`
 under `runMain`. Anything in the graph may depend on `HttpConfig`.
+
+`jwtAuthenticator` binds three more — `HTTP_JWT_JWKS_URI`, `HTTP_JWT_ISSUER`
+and `HTTP_JWT_AUDIENCE`, each required unless the matching option pins it —
+but not through `HttpConfig`: a scheme is not a provider, so it parses its own
+[in its `make` arm](#the-authenticators-that-ship), and a graph composing no
+JWT scheme reads none of them.
 
 ## `HttpHandler`, and several answerers
 

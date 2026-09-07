@@ -9,7 +9,7 @@ const KID = "k1";
 export type LocalIssuerOptions = {
   readonly issuer: string;
   readonly audience: string;
-  /** Asymmetric only, the same list `jwtVerifier` accepts; default `"RS256"`. */
+  /** Asymmetric only, the same list `jwtAuthenticator` accepts; default `"RS256"`. */
   readonly algorithm?: "RS256" | "RS384" | "RS512" | "ES256" | "ES384";
 };
 

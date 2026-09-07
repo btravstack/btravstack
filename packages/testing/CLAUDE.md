@@ -136,7 +136,7 @@ DEPENDENCIES` gate rather than by a `WiringDefect` on the first `submit()` —
   caching under test are the verifying library's own behaviour rather than a
   double's. `kid` is fixed at `"k1"`; `algorithm` is asymmetric-only
   (`"RS256" | "RS384" | "RS512" | "ES256" | "ES384"`, the same list
-  `@btravstack/http-server`'s `jwtVerifier` accepts) and defaults to `"RS256"`.
+  `@btravstack/http-server`'s `jwtAuthenticator` accepts) and defaults to `"RS256"`.
   `sign`'s `options` override the issuer, the audience and the expiry per
   call — `expiresIn: false` mints a token with no `exp` claim at all, for a
   test that wants an unexpiring or malformed token. `close()` stops the

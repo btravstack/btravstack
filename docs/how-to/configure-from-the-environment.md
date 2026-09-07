@@ -26,7 +26,8 @@ touching `process.env`. The recipe is one provider.
 ## Recipe
 
 1. Describe the slice with `Config.object({...})` — one `Config.string`,
-   `Config.integer` or `Config.port` field per variable.
+   `Config.integer`, `Config.boolean`, `Config.port` or `Config.url` field per
+   variable.
 2. Bind it with `Config.provider("Name")(schema)`, which mints the port, or
    `Config.provider(Port)(schema)` for a port you declared.
 3. Put the provider in a module and list its port in the deps of whatever
@@ -129,9 +130,13 @@ is `0`, and `PORT=` would otherwise bind the ephemeral port.
 | `3.5` for an integer or port    | `is not a whole number: "3.5"`               |
 | outside `min`/`max` (inclusive) | `must be between 1 and 64, got 100`          |
 | a port                          | `0..65535` — `0` is legal, an ephemeral bind |
+| a URL with no scheme            | `is not a URL: "issuer.test/jwks"`           |
 
 `Config.port` has a floor of `0` deliberately: `PORT=0` is how a test asks the
-OS for a free port and reads it back from `runtimeInfo()`.
+OS for a free port and reads it back from `runtimeInfo()`. `Config.url` keeps
+the string it was given and checks only that `new URL` will accept it, which is
+what turns a mistyped `HTTP_JWT_JWKS_URI` into a named startup failure instead
+of a defect at the first request.
 
 ## Pin a field from code
 
@@ -210,7 +215,7 @@ composition root.
 | `HTTP_BODY_LIMIT`          | `1048576`               | `http()` — `0` is unbounded                                                                                                                                            |
 | `HTTP_CORS_ORIGIN`         | unset (CORS off)        | `http()` — comma-separated origins, or `*`                                                                                                                             |
 | `HTTP_COMPRESSION`         | `false`                 | `http()` — response compression                                                                                                                                        |
-| `HTTP_JWT_JWKS_URI`        | required                | [`jwtAuthenticator()`](/reference/http-server) — the issuer's JWKS endpoint, validated as a URL                                                                        |
+| `HTTP_JWT_JWKS_URI`        | required                | [`jwtAuthenticator()`](/reference/http-server#the-authenticators-that-ship) — the issuer's JWKS endpoint, a `Config.url` field                                         |
 | `HTTP_JWT_ISSUER`          | required                | `jwtAuthenticator()` — the required `iss`                                                                                                                              |
 | `HTTP_JWT_AUDIENCE`        | required                | `jwtAuthenticator()` — the required `aud`                                                                                                                              |
 | `TEMPORAL_ADDRESS`         | `127.0.0.1:7233`        | [`temporal()`](/reference/temporal-worker)                                                                                                                             |

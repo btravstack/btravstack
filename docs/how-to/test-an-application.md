@@ -402,11 +402,25 @@ export const it = test.extend<ApiFixtures>({
 });
 ```
 
+`issuer` is
+[`@btravstack/testing/jwt`](/reference/testing#localissuer-options)'s
+`localIssuer`: a generated key pair, a `node:http` listener answering its
+public half as a JWKS document, and a signer over the private half — so the
+`user` scheme fetches and verifies for real, and a token from another issuer or
+past its `exp` is refused by `jose` rather than by a double. It is **file-scoped**
+because a key pair and a listener are worth building once per spec file, and
+nothing in the application is substituted for any of it: `env` carries the
+issuer's own three values under `HTTP_JWT_JWKS_URI`, `HTTP_JWT_ISSUER` and
+`HTTP_JWT_AUDIENCE`, which is exactly what a deployment sets, and
+`localIssuerFixture` is the ordinary fixture body that closes it at the end of
+the file.
+
 `serve` has nothing to add over `boot` — `RequestModule` is forked by the
 answerers themselves, per `OrderApi`'s own `unit` option, not by anything a
 fixture supplies — so its shutdown is still the fixture's; `clientFor` builds the oRPC client from
-`runtimeInfo()` **and gives it a token the file's own issuer signed for this
-test's tenant**, since the contract marks the `orders` fragment and an
+`runtimeInfo()` **and gives it a token that issuer signed for this
+test's tenant** (`tokenFor`, whose claims a spec overrides one at a time), since
+the contract marks the `orders` fragment and an
 anonymous call to it never reaches a use case; and `recording` is the real
 root's composition with a recording sink in place of stdout:
 
