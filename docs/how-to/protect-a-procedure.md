@@ -104,11 +104,12 @@ const ordersContract = authenticated({ user: [] })({
     .errors({ NOT_FOUND: { data: orderRef } }),
 
   // Replaces the default for itself: a `user` token granting `orders:export`,
-  // OR a `service` key with no scopes at all.
+  // OR a `service` key with no scopes at all. It names the order it exports,
+  // and no tenant — the caller's own credential establishes that.
   export: authenticated(
     { user: ["orders:export"] },
     { service: [] },
-  )(oc.output(z.object({ csv: z.string() }))),
+  )(oc.input(orderRef).output(z.object({ csv: z.string() }))),
 });
 
 const customersContract = {
@@ -171,8 +172,15 @@ import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 /** What the `user` scheme resolves to. The contract names none of this. */
 export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 
-/** What the `service` scheme resolves to: a machine caller, no tenant. */
-export type ServiceIdentity = { readonly appId: string };
+/**
+ * What the `service` scheme resolves to: which machine is calling, and the
+ * tenant its key was cut FOR. A machine has no login to take one from, so the
+ * tenant is a property of the credential.
+ */
+export type ServiceIdentity = {
+  readonly appId: string;
+  readonly tenantId: TenantId;
+};
 
 /**
  * No standard claim carries a tenant, so the name is the issuer's — `tenant`
@@ -195,8 +203,19 @@ export const userAuth = jwtAuthenticator<Identity>()({
   scopes: ["orders:export"],
 });
 
+/** A key is cut for a tenant the way a login belongs to one, so it is stated here. */
+export const serviceKeys = [
+  {
+    key: "reporting",
+    principal: {
+      appId: "reporting",
+      tenantId: TenantId("0199a1e0-0000-7000-8000-0000000000f1"),
+    },
+  },
+] as const;
+
 export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({
-  keys: [{ key: "reporting", principal: { appId: "reporting" } }],
+  keys: serviceKeys,
 });
 
 /** The one door: declaring a scheme and implementing it are the same act. */
@@ -410,21 +429,12 @@ export const ordersController = api.OrpcController(
             }),
           ),
         ),
-    // Two schemes, so the principal is a discriminated union. A missing arm
-    // leaves a path returning nothing, which the handler's own return type
-    // refuses — the switch is exhaustive or the build fails.
-    export: ({ context }) => {
-      switch (context.principal.scheme) {
-        case "user":
-          return OkAsync({
-            csv: `user,${context.principal.identity.userId}`,
-          });
-        case "service":
-          return OkAsync({
-            csv: `service,${context.principal.identity.appId}`,
-          });
-      }
-    },
+    // Two schemes, so the principal is a discriminated union — `scheme`
+    // discriminates and each `identity` is that scheme's own. Whether THIS
+    // caller may export THIS order is a further question, and a credential
+    // cannot answer it: see Authorize a request.
+    export: ({ context }, input) =>
+      OkAsync({ csv: `${context.principal.scheme},${input.id}` }),
   }),
 });
 ```
@@ -638,7 +648,10 @@ Two further non-goals worth stating plainly: the marker does not
 yours), and it does not model **resource-dependent authorization**. A **scope**
 is the exception, and admitted on the same test authentication passes: it is a
 property of the credential, answerable before dispatch. "Is this caller the
-order's owner?" is not, and belongs in the handler, where the use case is.
+order's owner?" is not, and belongs in the handler, where the use case is —
+which is layer 3 of
+[Authorize a request](/how-to/authorize-a-request), the page that states where
+each of the three questions is answered and why.
 
 ## See also
 
@@ -652,6 +665,9 @@ order's owner?" is not, and belongs in the handler, where the use case is.
   `localIssuer`, the served JWKS and the signer a spec verifies against.
 - [Configure from the environment](/how-to/configure-from-the-environment) —
   the three `HTTP_JWT_*` variables beside everything else a deployment sets.
+- [Authorize a request](/how-to/authorize-a-request) — the other two layers:
+  the tenant in the unit, and the policy the handler decides once it holds the
+  resource.
 - [Split a router into controllers](/how-to/split-a-router-into-controllers) —
   where the handler in step 3 lives once an API has slices.
 - [Order API (HTTP)](/examples/order-api) — one marked fragment, one public

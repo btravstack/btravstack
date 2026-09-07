@@ -409,7 +409,8 @@ that has no business with it.
 ### Three layers of authorization, and only the third is written by hand
 
 `orders.export` is where all three meet, each checked by the layer that can
-check it:
+check it — the position itself, with the floor underneath it, is
+[Authorize a request](/how-to/authorize-a-request):
 
 | Layer      | Where it is stated               | What it can decide                          |
 | ---------- | -------------------------------- | ------------------------------------------- |

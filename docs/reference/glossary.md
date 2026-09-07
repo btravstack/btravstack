@@ -131,6 +131,13 @@ read matches no row rather than erroring, and an unpinned write is refused with
 `42501`. See
 [`@btravstack/prisma`](/reference/prisma).
 
+**policy** — The third layer of authorization: `(principal, resource) → decision`,
+decided in the handler because that is the only layer holding the resource. A
+plain function answering `Result<Authorized<T>, Forbidden>` — no port, no
+registry, no framework `Forbidden`, since a framework cannot invoke a rule that
+runs after a fetch. See
+[Authorize a request](/how-to/authorize-a-request).
+
 **port** — `class Logger extends Port("Logger")<Service> {}` — a nominal name for a
 service, the vocabulary an application defines. `RuntimePort` is the one the
 kernel resolves its runtime from. See [Ports](/reference/di/ports).
@@ -191,3 +198,11 @@ request, an activity attempt, a delivery. The kernel counts it towards the
 drain, hands it an `AbortSignal` and an ambient record carrying that same
 signal, and hands its `Result`
 straight back. See [The Runtime contract](/reference/core/runtime).
+
+**witness type** — A type only one function can mint — `Authorized<T>` is `T` intersected with
+a `unique symbol` the rule's module declares and never exports — used as the
+parameter type of the operation a decision protects, so the operation cannot be
+reached without the decision. What it buys is that a **forgotten** rule is a
+compile error; a deliberate `as Authorized<T>` stays writable, and is a lie in
+one line a reviewer greps for. See
+[Authorize a request](/how-to/authorize-a-request).

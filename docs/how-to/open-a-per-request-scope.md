@@ -238,6 +238,11 @@ Reading a name the leaf's kind cannot provide is TypeScript's own
 **several** schemes keeps only what every one of their modules exports, since
 the runtime forks exactly one of them and cannot know which in advance.
 
+The tenant a kind provides here is **layer 2** of
+[Authorize a request](/how-to/authorize-a-request): a handler is left with no
+tenant to thread and none to get wrong, so what remains for it to decide is a
+question about one resource.
+
 ## On a worker, the seed is the work itself
 
 The two workers have one kind each and seed it with what they were handed:

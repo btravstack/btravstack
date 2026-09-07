@@ -154,6 +154,10 @@ when it is missing, are on
 `prisma/migrations/20260906120000_order_rls/`, and `src/rls.spec.ts` proving it
 against a real server.
 
+It is the **floor** under the three layers that decide who a caller is and what
+they may do, not a replacement for any of them:
+[Authorize a request](/how-to/authorize-a-request) is where they are stated.
+
 ## What you get for free
 
 - **`DATABASE_URL` validated once**, as the graph builds: unset or blank is a
