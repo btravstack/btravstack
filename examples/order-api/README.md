@@ -132,7 +132,12 @@ export const userAuth = jwtAuthenticator<Identity>()({ principal, scopes: ["orde
 
 // A key is cut FOR a tenant, so the tenant is stated on the entry — a second
 // key states its own rather than inheriting the first's rows.
-export const serviceKeys = [{ key: "reporting", principal: { appId: "reporting", tenantId } }] as const;
+export const serviceKeys = [
+  {
+    key: "reporting",
+    principal: { appId: "reporting", tenantId: TenantId("0199a1e0-0000-7000-8000-0000000000f1") },
+  },
+] as const;
 export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({ keys: serviceKeys });
 
 export const api = defineHttp({
