@@ -47,7 +47,9 @@ that, so it is written by hand, once, as a plain function.
 | **the floor** | did this statement say which tenant it is for? | PostgreSQL, per statement, against the `tenant_isolation` policy | an unpinned read matches no row; an unpinned write is refused with `42501`                                      |
 
 `orders.export` in [`examples/order-api`](/examples/order-api) is where all
-four meet, and each fence below is one of the places it is decided.
+four meet, and each fence below is drawn from one of the places it is decided,
+trimmed to this leaf — so a binding such as `exportProcedure` is this page's,
+where the example spells the same procedure inside `contract.orders`.
 
 ## 1. Scope, in the contract
 
@@ -241,7 +243,10 @@ export const exportController = api.OrpcController(
 
 A **piece is one contract key**, so the fence above is a controller over
 `export` alone and nothing else — which is what makes it the handler and
-nothing more. In the example the same leaf sits in `ordersController` beside
+nothing more. A piece composes into a router before anything serves it —
+`api.OrpcRouter(contract.orders)([...])` with this piece in the array, or the
+example's full one — and an array missing a leaf is refused as `UNCOVERED
+CONTROLLERS`. In the example the same leaf sits in `ordersController` beside
 `place`, `find` and `list`.
 
 **Why a plain function and not a framework port.** The framework cannot invoke

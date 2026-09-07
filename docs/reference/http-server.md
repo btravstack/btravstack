@@ -644,9 +644,9 @@ fence above does:
 ({ context }) => {
   switch (context.principal.scheme) {
     case "user":
-      return OkAsync({ csv: `user,${context.principal.identity.userId}` });
+      return context.principal.identity.userId;
     case "service":
-      return OkAsync({ csv: `service,${context.principal.identity.appId}` });
+      return context.principal.identity.appId;
   }
 };
 ```

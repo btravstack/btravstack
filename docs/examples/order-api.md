@@ -423,36 +423,9 @@ under-scoped token is the starter's bare `403`, and `context.unit.find` cannot
 see another tenant's order however the handler is written. What is left is a
 decision about one order, and it lives in `slices/orders/authorize.ts`:
 
-<!-- doctest: skip — the module's own source, compiled as examples/order-api/src/slices/orders/authorize.ts and pinned by its spec and type test -->
-
-```ts
-declare const AUTHORIZED: unique symbol;
-
-export type Authorized<T> = T & { readonly [AUTHORIZED]: true };
-
-export class Forbidden extends TaggedError("Forbidden")<{
-  readonly id: OrderId;
-  readonly reason: string;
-}> {}
-
-export const USER_EXPORT_CEILING = 1_000;
-
-export const exportable = (
-  caller: Caller,
-  order: Order,
-): Result<Authorized<Order>, Forbidden> =>
-  caller.scheme === "service" || order.quantity <= USER_EXPORT_CEILING
-    ? Ok(order as Authorized<Order>)
-    : Err(
-        new Forbidden({
-          id: order.id,
-          reason: "bulk export is a service operation",
-        }),
-      );
-
-export const renderCsv = (order: Authorized<Order>): string =>
-  `id,quantity\n${order.id},${order.quantity}`;
-```
+The file is compiled whole on [Authorize a request](/how-to/authorize-a-request):
+a brand only the rule mints, a `Forbidden` the application owns, and
+`renderCsv` typed on the witness.
 
 `AUTHORIZED` is **not exported**, so `renderCsv(order)` on a plain order does
 not compile and no other module can mint the witness by construction. What that
