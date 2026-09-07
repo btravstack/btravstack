@@ -5,6 +5,11 @@ import type { Order } from "@btravstack/example-order-domain";
 
 import type { Caller } from "../../auth.js";
 import { exportable, renderCsv, type Authorized } from "./authorize.js";
+// Negative: the brand itself is not part of the surface, so nothing outside
+// the module can name it — which is what makes the two refusals below
+// unforgeable rather than merely inconvenient.
+// @ts-expect-error TS2305 -- AUTHORIZED is declared, never exported
+import type { AUTHORIZED } from "./authorize.js";
 
 declare const caller: Caller;
 declare const order: Order;

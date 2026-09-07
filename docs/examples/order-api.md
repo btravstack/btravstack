@@ -176,8 +176,11 @@ export type Identity = {
   readonly userId: string;
 };
 
-/** What the `service` scheme resolves to: a machine caller, no tenant. */
-export type ServiceIdentity = { readonly appId: string };
+/** What the `service` scheme resolves to: which machine, and the tenant its key was cut for. */
+export type ServiceIdentity = {
+  readonly appId: string;
+  readonly tenantId: TenantId;
+};
 
 /**
  * What a verified token means here, and the one place this deployment's claim
@@ -200,9 +203,20 @@ export const userAuth = jwtAuthenticator<Identity>()({
   scopes: ["orders:export"],
 });
 
+/** The issued keys, and the one place a key's tenant is written. */
+export const serviceKeys = [
+  {
+    key: "reporting",
+    principal: {
+      appId: "reporting",
+      tenantId: TenantId("0199a1e0-0000-7000-8000-0000000000f1"),
+    },
+  },
+] as const;
+
 /** The second scheme: an API key, no scopes — what a reporting job presents. */
 export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({
-  keys: [{ key: "reporting", principal: { appId: "reporting" } }],
+  keys: serviceKeys,
 });
 
 export const api = defineHttp({
@@ -439,9 +453,12 @@ export const renderCsv = (order: Authorized<Order>): string =>
   `id,quantity\n${order.id},${order.quantity}`;
 ```
 
-`AUTHORIZED` is **not exported**, so nothing outside this module can build an
-`Authorized<Order>` and `renderCsv(order)` on a plain order does not compile:
-the operation the decision protects cannot be reached without the decision.
+`AUTHORIZED` is **not exported**, so `renderCsv(order)` on a plain order does
+not compile and no other module can mint the witness by construction. What that
+buys is precise: a **forgotten** rule is a compile error. A caller determined to
+skip it can still write `order as Authorized<Order>`, because the type is
+exported — but that is a lie in one line, and one a reviewer greps for. There
+is no such cast in this repository outside the rule's own.
 `Forbidden` is the application's own tagged error, folded by the same
 exhaustive `mapErrCases` as every domain error — there is no framework
 `Policy` port, no registry, and nothing to register. `Caller` is exported from
@@ -719,9 +736,11 @@ the request's own trace id — and no handler code manages the fork.
 the fork is seeded with — and composes `OrderTenantPersistence` and
 `OrderApplicationModule` over it, so a marked leaf reads `PlaceOrder`,
 `FindOrder` and `ListOrders` already bound. `ServiceModule` does the same over
-the tenant its API key was **cut for** — a key covers a tenant the way a login
-belongs to one, and with no login to read it from, the key list is where that
-fact lives — but exports only `FindOrder`. That asymmetry is what makes
+the tenant the caller's API key was **cut for** — `Tenant` from
+`auth.principals.service`, and the tenant is a field of `ServiceIdentity`
+stated per key in `auth.ts`'s `serviceKeys`, so a second key states its own
+rather than inheriting the first's rows — but exports only `FindOrder`. That
+asymmetry is what makes
 `context.unit.place` and `context.unit.list` unreadable from `export`, the one
 leaf both schemes serve: the record a leaf is given is the intersection of what
 its kinds export. See

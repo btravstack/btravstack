@@ -29,6 +29,7 @@ import { ErrAsync, OkAsync, P } from "unthrown";
 import { customersController } from "../../slices/customers/controller.js";
 import { ordersController } from "../../slices/orders/controller.js";
 import type { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
+import { exportable, renderCsv } from "../../slices/orders/authorize.js";
 declare const view: (order: Order) => OrderView;
 -->
 
@@ -391,20 +392,29 @@ export const ordersRouter = api.OrpcRouter(contract.orders)({
             }),
           ),
         ),
-    // `export` names two schemes, so its principal is a tagged union the
-    // handler narrows — and the switch is exhaustive or the build fails.
-    export: ({ context }) => {
-      switch (context.principal.scheme) {
-        case "user":
-          return OkAsync({
-            csv: `user,${context.principal.identity.userId}`,
-          });
-        case "service":
-          return OkAsync({
-            csv: `service,${context.principal.identity.appId}`,
-          });
-      }
-    },
+    // `export` names two schemes, so its principal is a tagged union — which
+    // is what an authorization rule takes, since what a caller may export
+    // depends on which of them it is.
+    export: ({ errors, context }, input) =>
+      context.unit.find
+        .execute(input.id)
+        .flatMap((order) => exportable(context.principal, order).toAsync())
+        .map((authorized) => ({ csv: renderCsv(authorized) }))
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            .with(P.tag("Forbidden"), (error) =>
+              errors.FORBIDDEN({
+                message: error.message,
+                data: { id: error.id, reason: error.reason },
+              }),
+            ),
+        ),
   }),
 });
 ```
@@ -623,13 +633,15 @@ headers, until one is satisfied.
 
 The one-scheme case is byte-for-byte what a handler wrote before named schemes
 existed, so the common case pays nothing for the feature. The multi-scheme case
-is narrowed with a `switch` whose missing arm leaves a path returning nothing,
-which the handler's own return type refuses:
+is a union a handler narrows — with a `switch` whose missing arm leaves a path
+returning nothing, which the handler's own return type refuses, or by handing
+the whole union to something that decides about it, which is what the `export`
+fence above does:
 
-<!-- doctest: skip — an excerpt of the handler shown in full in the fence above -->
+<!-- doctest: skip — a narrowing illustration, not a leaf; the compiled handlers are in the fence above -->
 
 ```ts
-export: ({ context }) => {
+({ context }) => {
   switch (context.principal.scheme) {
     case "user":
       return OkAsync({ csv: `user,${context.principal.identity.userId}` });
@@ -737,8 +749,16 @@ export const partnerAuth = HttpAuthenticator<
   inject: {},
   sync: () => (headers) => {
     const subject = headers["x-client-cert-subject"];
-    return typeof subject === "string" && subject !== ""
-      ? OkAsync(granted({ appId: subject }, ["orders:export"]))
+    const org = headers["x-client-cert-org"];
+    return typeof subject === "string" &&
+      subject !== "" &&
+      typeof org === "string" &&
+      TenantIdSchema.safeParse(org).success
+      ? OkAsync(
+          granted({ appId: subject, tenantId: TenantId(org) }, [
+            "orders:export",
+          ]),
+        )
       : ErrAsync(new Unauthenticated());
   },
 });
@@ -749,8 +769,12 @@ export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
   inject: {},
   sync: () => (headers) => {
     const subject = headers["x-client-cert-subject"];
-    return typeof subject === "string" && subject !== ""
-      ? OkAsync({ appId: subject })
+    const org = headers["x-client-cert-org"];
+    return typeof subject === "string" &&
+      subject !== "" &&
+      typeof org === "string" &&
+      TenantIdSchema.safeParse(org).success
+      ? OkAsync({ appId: subject, tenantId: TenantId(org) })
       : ErrAsync(new Unauthenticated());
   },
 });
@@ -780,7 +804,10 @@ is not a state this can reach:
 
 ```ts
 export type Identity = { readonly tenantId: TenantId; readonly userId: string };
-export type ServiceIdentity = { readonly appId: string };
+export type ServiceIdentity = {
+  readonly appId: string;
+  readonly tenantId: TenantId;
+};
 
 export const auth = defineHttp({
   authenticators: { user: userAuth, service: serviceAuth },

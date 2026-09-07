@@ -10,7 +10,7 @@ import {
 import { OrderDatabase, OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
 import { UnitSpanModule } from "@btravstack/observability/otel";
 
-import { auth, REPORTING_TENANT } from "./auth.js";
+import { auth } from "./auth.js";
 
 /**
  * A service that exists for the length of one request and is torn down with it.
@@ -85,9 +85,10 @@ export const UserModule = Module("User")({
 });
 
 /**
- * The `service` kind: an API key names no tenant, so the tenant its key was CUT
- * for is what this kind binds — read from the key list rather than from a
- * credential, since that is where the fact lives.
+ * The `service` kind: the same shape as `UserModule`, over the tenant the
+ * caller's API key was cut for — `Tenant` from `auth.principals.service`
+ * exactly as the `user` kind takes it from its own principal. A credential
+ * names the tenant either way; only what carries it differs.
  *
  * It exports `FindOrder` and neither of the other two, which is what makes
  * `context.unit.place` and `context.unit.list` unreadable from `export`, the one
@@ -95,8 +96,13 @@ export const UserModule = Module("User")({
  * what its kinds export.
  */
 export const ServiceModule = Module("Service")({
-  needs: [OrderDatabase, Logger],
+  needs: [auth.principals.service, OrderDatabase, Logger],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
-  provides: [Provider(Tenant)({ inject: {}, value: REPORTING_TENANT })],
+  provides: [
+    Provider(Tenant)({
+      inject: { principal: auth.principals.service },
+      sync: ({ principal }) => principal.tenantId,
+    }),
+  ],
   exports: [RequestModule, FindOrder],
 });

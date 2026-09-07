@@ -4,7 +4,7 @@ import { Ok } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { REPORTING_TENANT } from "./auth.js";
+import { serviceKeys } from "./auth.js";
 import { USER_EXPORT_CEILING } from "./slices/orders/authorize.js";
 
 describe("order-api", () => {
@@ -370,7 +370,10 @@ describe("order-api", () => {
     // GIVEN an order too large for a user to export, placed in the tenant the
     // reporting key was cut for
     const app = serve(api);
-    const owner = await clientWith(app, `Bearer ${await tokenFor({ tenant: REPORTING_TENANT })}`);
+    const owner = await clientWith(
+      app,
+      `Bearer ${await tokenFor({ tenant: serviceKeys[0].principal.tenantId })}`,
+    );
     const reporting = await serviceClientFor(app);
 
     // WHEN the API key exports it — `user` is declared first, and this caller

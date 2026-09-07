@@ -123,14 +123,17 @@ Where the schemes are **declared** is `src/auth.ts`:
 
 ```ts
 export type Identity = { readonly tenantId: TenantId; readonly userId: string };
-export type ServiceIdentity = { readonly appId: string };
+export type ServiceIdentity = { readonly appId: string; readonly tenantId: TenantId };
 
 // `principal` is the one place a claim becomes a tenant, and the one place
 // this deployment names the claim it reads it from. Nothing is pinned, so
 // `jwks`, `issuer` and `audience` bind from the three `HTTP_JWT_*` variables.
 export const userAuth = jwtAuthenticator<Identity>()({ principal, scopes: ["orders:export"] });
 
-export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({ keys: [ … ] });
+// A key is cut FOR a tenant, so the tenant is stated on the entry — a second
+// key states its own rather than inheriting the first's rows.
+export const serviceKeys = [{ key: "reporting", principal: { appId: "reporting", tenantId } }] as const;
+export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({ keys: serviceKeys });
 
 export const api = defineHttp({
   authenticators: { user: userAuth, service: serviceAuth },
@@ -232,12 +235,15 @@ unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule }
 tenant enters the graph — `Tenant` provided from the principal the `user`
 scheme resolved, and the orders vertical composed over it, so `PlaceOrder`,
 `FindOrder` and `ListOrders` are bound to that tenant before any handler runs.
-`ServiceModule` binds the tenant its API key was **cut for** — a key covers a
-tenant the way a login belongs to one, and with no login to read it from, the
-key list is where that fact lives. It exports `FindOrder` and neither of the
-other two, which is what makes `context.unit.place` and `context.unit.list`
-unreadable from `export`, the one leaf both schemes serve: the record a leaf is
-given is the intersection of what its kinds export.
+`ServiceModule` is the same shape over the tenant the caller's API key was
+**cut for**: `Tenant` from `auth.principals.service`, exactly as the `user`
+kind takes it from its own principal. A key is cut for a tenant the way a login
+belongs to one, so the tenant is a field of `ServiceIdentity` stated per key in
+`auth.ts`'s `serviceKeys` — a second key states its own or does not compile. It
+exports `FindOrder` and neither of the other two, which is what makes
+`context.unit.place` and `context.unit.list` unreadable from `export`, the one
+leaf both schemes serve: the record a leaf is given is the intersection of what
+its kinds export.
 
 ### Three layers of authorization, and only the third is written by hand
 

@@ -5,12 +5,15 @@ import { it } from "../../__tests__/test-fixtures.js";
 import { exportable, USER_EXPORT_CEILING } from "./authorize.js";
 
 describe("exportable", () => {
-  it("admits a service caller whatever the order weighs", ({ anOrderOf }) => {
+  it("admits a service caller whatever the order weighs", ({ anOrderOf, tenant }) => {
     // GIVEN an order far over the ceiling a user is held to
     const order = anOrderOf(USER_EXPORT_CEILING * 10);
 
     // WHEN a machine caller asks for it
-    const decided = exportable({ scheme: "service", identity: { appId: "reporting" } }, order);
+    const decided = exportable(
+      { scheme: "service", identity: { appId: "reporting", tenantId: TenantId(tenant) } },
+      order,
+    );
 
     // THEN bulk is what a reporting job is for
     expect(decided).toBeOkWith(order);

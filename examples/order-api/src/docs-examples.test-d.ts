@@ -40,7 +40,7 @@ import {
 import { HttpModule, html } from "@btravstack/http-server";
 import { jwtAuthenticator } from "@btravstack/http-server/jwt";
 import { observability } from "@btravstack/observability";
-import { OkAsync, P } from "unthrown";
+import { P } from "unthrown";
 
 import { api } from "./auth.js";
 import { RequestModule, ServiceModule, UserModule } from "./request-scope.js";

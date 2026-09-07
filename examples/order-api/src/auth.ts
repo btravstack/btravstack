@@ -24,8 +24,13 @@ import type { RequestModule, ServiceModule, UserModule } from "./request-scope.j
  */
 export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 
-/** What the `service` scheme resolves to: a machine caller, with no tenant of its own. */
-export type ServiceIdentity = { readonly appId: string };
+/**
+ * What the `service` scheme resolves to: which machine is calling, and the
+ * tenant its key was cut FOR. A machine has no login to take one from, so the
+ * tenant is a property of the credential — stated per key, so a second key
+ * cannot inherit the first's rows by saying nothing.
+ */
+export type ServiceIdentity = { readonly appId: string; readonly tenantId: TenantId };
 
 /**
  * What a verified token means here, and the one place this deployment's claim
@@ -64,25 +69,30 @@ export const userAuth = jwtAuthenticator<Identity>()({
 });
 
 /**
- * The tenant the one issued key was cut for. A key covers a tenant the way a
- * login belongs to one; it is a fact about the key list, so it is written
- * beside it and read where the `service` kind is composed.
+ * The issued keys, and the one place a key's tenant is written: a key is cut
+ * for a tenant the way a login belongs to one, so it is stated on the entry
+ * rather than anywhere downstream.
+ *
+ * Inline here because an example has no secret store. A deployment reads it
+ * from a config field bound off `Env`, since a key list in the image is a key
+ * list in the repository.
  */
-export const REPORTING_TENANT = TenantId("0199a1e0-0000-7000-8000-0000000000f1");
+export const serviceKeys = [
+  {
+    key: "reporting",
+    principal: {
+      appId: "reporting",
+      tenantId: TenantId("0199a1e0-0000-7000-8000-0000000000f1"),
+    },
+  },
+] as const;
 
 /**
- * The second scheme: an API key, no scopes, no tenant on the principal — what a
- * reporting job presents — the starter's own `apiKeyAuthenticator`, which
- * compares digests rather than strings and checks every issued key without an
- * early return.
- *
- * The key list is inline here because an example has no secret store. A
- * deployment reads it from a config field bound off `Env`, since a key list in
- * the image is a key list in the repository.
+ * The second scheme: an API key, no scopes — what a reporting job presents —
+ * the starter's own `apiKeyAuthenticator`, which compares digests rather than
+ * strings and checks every issued key without an early return.
  */
-export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({
-  keys: [{ key: "reporting", principal: { appId: "reporting" } }],
-});
+export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({ keys: serviceKeys });
 
 /**
  * The one door: every HTTP entity this application mints comes from here, and
