@@ -7,7 +7,7 @@ description: The HTTP deployment — two slices, orders and customers, one marke
 import { runMain, Logger, Meter, Tracer } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { HttpModule } from "@btravstack/http-server";
-import { OkAsync, P } from "unthrown";
+import { P } from "unthrown";
 import { createLogger, jsonSink, kernelEvents, observability } from "@btravstack/observability";
 import { UnitSpanModule, otel } from "@btravstack/observability/otel";
 import type { Order } from "@btravstack/example-order-domain";

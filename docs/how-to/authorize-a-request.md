@@ -14,7 +14,7 @@ import {
   PlaceOrder,
   Tenant,
 } from "@btravstack/example-order-application";
-import { OrderDatabase, OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
+import { OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
 import { P } from "unthrown";
 import { api, auth } from "../../auth.js";
 import { RequestModule } from "../../request-scope.js";
@@ -101,7 +101,7 @@ scheme, and let the repositories and use cases be built over it:
 import { auth } from "./auth.js";
 
 export const UserModule = Module("User")({
-  needs: [auth.principals.user, OrderDatabase, Logger],
+  needs: [auth.principals.user],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({
@@ -113,7 +113,7 @@ export const UserModule = Module("User")({
 });
 
 export const ServiceModule = Module("Service")({
-  needs: [auth.principals.service, OrderDatabase, Logger],
+  needs: [auth.principals.service],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({
@@ -339,9 +339,9 @@ Three levels, and each one is a different test:
   neither a superuser nor exempt from row security.
 
 **Two refusals share the `403`, and the payload is what tells them apart.**
-Layer 1's is the starter's: an `ORPCError("FORBIDDEN")` the contract does not
-declare, so it is not inferable, carries no `data`, and reaches a client as a
-**defect**. Layer 3's is the rule's: `errors.FORBIDDEN({ data: { id, reason } })`,
+Layer 1's is the starter's: a bare `ORPCError("FORBIDDEN")` thrown before
+dispatch, never the contract's `errors.FORBIDDEN`, so it is not inferable,
+carries no `data`, and reaches a client as a **defect**. Layer 3's is the rule's: `errors.FORBIDDEN({ data: { id, reason } })`,
 declared on the contract, so it is inferable and arrives as a **value** on the
 `Err` channel. `api.spec.ts` asserts both, and the assertion that separates
 them is the `data` — which is why the contract declares one at all.

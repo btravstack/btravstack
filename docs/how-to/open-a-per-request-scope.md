@@ -159,7 +159,7 @@ export const auth = defineHttp({ authenticators: { user: userAuth } });
 // of the application scope this fork sits over, which is what keeps one
 // Prisma client per process rather than one per request.
 const UserUnit = Module("UserUnit")({
-  needs: [auth.principals.user, OrderDatabase, Logger],
+  needs: [auth.principals.user],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({

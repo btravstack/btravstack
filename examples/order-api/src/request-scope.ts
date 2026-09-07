@@ -7,7 +7,7 @@ import {
   PlaceOrder,
   Tenant,
 } from "@btravstack/example-order-application";
-import { OrderDatabase, OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
+import { OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
 import { UnitSpanModule } from "@btravstack/observability/otel";
 
 import { auth } from "./auth.js";
@@ -73,7 +73,7 @@ export const RequestModule = Module("Request")({
  * request.
  */
 export const UserModule = Module("User")({
-  needs: [auth.principals.user, OrderDatabase, Logger],
+  needs: [auth.principals.user],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({
@@ -96,7 +96,7 @@ export const UserModule = Module("User")({
  * what its kinds export.
  */
 export const ServiceModule = Module("Service")({
-  needs: [auth.principals.service, OrderDatabase, Logger],
+  needs: [auth.principals.service],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({
