@@ -64,8 +64,9 @@ server's view of a caller reaches a client.
 ## Recipe
 
 1. Mark the contract with `authenticated(...requirements)`.
-2. Implement each scheme with `HttpAuthenticator<P, Scope>()`, and declare them
-   all in one `defineHttp({ authenticators })` call.
+2. Compose each scheme — `jwtAuthenticator`, `apiKeyAuthenticator`, or a
+   hand-written `HttpAuthenticator<P, Scope>()` — and declare them all in one
+   `defineHttp({ authenticators })` call.
 3. Read `opts.context.principal` in the handlers of the protected procedures.
 4. Compose the root — there is no authenticator to pass.
 

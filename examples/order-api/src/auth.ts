@@ -36,6 +36,7 @@ export type ServiceIdentity = { readonly appId: string };
 const principal = (claims: Claims): Identity | undefined => {
   const tenant = claims["tenant"];
   return typeof claims.sub === "string" &&
+    claims.sub !== "" &&
     typeof tenant === "string" &&
     TenantIdSchema.safeParse(tenant).success
     ? { tenantId: TenantId(tenant), userId: claims.sub }

@@ -1055,7 +1055,8 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   contract that only marks its procedures installs nothing;
   `config` peers on `di` and `unthrown`;
   `core` peers on all three; `testing` peers on all four (and not on
-  `vitest` — `bootFixture` is a plain function in vitest's fixture shape);
+  `vitest` — `bootFixture` is a plain function in vitest's fixture shape),
+  plus an optional `jose` behind `@btravstack/testing/jwt`;
   `observability` peers on all four too and has **no runtime dependency of its
   own** — the default sink is `JSON.stringify` and a `write`; its peer on
   `core` is not optional and cannot be, since the ports it implements are
@@ -1069,8 +1070,10 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   the package's own `tsdown` build emits `src/pino.ts` as a second entry
   point for exactly that. `@btravstack/observability/otel` follows it, `jose`
   behind `@btravstack/http-server/jwt` (issue #157's JWT/JWKS authenticator —
-  its API-key sibling needs no peer and is on the main entry point), and
-  each of the three application-service ports carries exactly one more:
+  its API-key sibling needs no peer and is on the main entry point), `jose`
+  again behind `@btravstack/testing/jwt` (the `localIssuer` a test signs
+  with), and each of the three application-service ports carries exactly one
+  more:
   `redis` behind `@btravstack/cache/redis`, `nodemailer` behind
   `@btravstack/mailer/smtp`, and the two `@aws-sdk` packages behind
   `@btravstack/storage/s3` — every one of them `optional: true` in

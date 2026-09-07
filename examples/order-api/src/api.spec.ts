@@ -428,6 +428,21 @@ describe("order-api", () => {
     );
   });
 
+  it("refuses a token whose sub claim is empty", async ({ serve, tokenFor, clientWith, api }) => {
+    // GIVEN a token this issuer really signed, carrying a tenant and an empty
+    // subject
+    const client = await clientWith(serve(api), `Bearer ${await tokenFor({ sub: "" })}`);
+
+    // WHEN a marked procedure is called
+    const refused = await client.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" });
+
+    // THEN nobody was named: a user id is a non-empty string, and `principal`
+    // is where that is decided
+    expect(refused).toBeDefectWith(
+      expect.objectContaining({ constructor: ORPCError, code: "UNAUTHORIZED", inferable: false }),
+    );
+  });
+
   it("refuses to start when HTTP_JWT_ISSUER is unset, naming the variable", async ({
     boot,
     env,
