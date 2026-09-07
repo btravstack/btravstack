@@ -3,9 +3,10 @@ import { Logger } from "@btravstack/core";
 import { contract, type OrderView } from "@btravstack/example-order-api-contract";
 import { FindOrder, ListOrders, PlaceOrder } from "@btravstack/example-order-application";
 import type { Order } from "@btravstack/example-order-domain";
-import { OkAsync, P } from "unthrown";
+import { P } from "unthrown";
 
 import { api } from "../../auth.js";
+import { exportable, renderCsv } from "./authorize.js";
 
 const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quantity });
 
@@ -22,8 +23,8 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * The use cases are read off `context.unit`, not injected: a marked leaf opens
  * its unit under the `user` kind, which built them over the tenant that
  * scheme's principal named. `export` names a second scheme, so its kinds are
- * `user | service` and `unit` offers it nothing — which is why it answers from
- * `context.principal` alone.
+ * `user | service` and the record it gets is the intersection of the two —
+ * `find` and neither of the others.
  *
  * The fragment's inputs name **no** tenant: a caller does not get to name the
  * tenant it is served. The unmarked `customers` fragment still names one, which
@@ -92,18 +93,30 @@ export const ordersController = api.OrpcController(
           ),
         ),
 
-    // A stand-in body naming the arm that produced it, so a spec pins which
-    // scheme served the call. A missing arm leaves a path returning nothing,
-    // which the handler's return type refuses.
-    export: ({ context }) => {
-      switch (context.principal.scheme) {
-        case "user":
-          logger.info("order export requested", { userId: context.principal.identity.userId });
-          return OkAsync({ csv: `user,${context.principal.identity.userId}` });
-        case "service":
-          logger.info("order export requested", { appId: context.principal.identity.appId });
-          return OkAsync({ csv: `service,${context.principal.identity.appId}` });
-      }
+    // The third layer, and the only one written by hand: the unit already bound
+    // the tenant, so what is left is a decision about THIS order, and
+    // `renderCsv` cannot be reached without it.
+    export: ({ errors, context }, input) => {
+      logger.info("order export requested", {
+        id: input.id,
+        scheme: context.principal.scheme,
+      });
+      return context.unit.find
+        .execute(input.id)
+        .flatMap((order) => exportable(context.principal, order).toAsync())
+        .map((authorized) => ({ csv: renderCsv(authorized) }))
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
+            )
+            .with(P.tag("Forbidden"), (error) =>
+              errors.FORBIDDEN({
+                message: error.message,
+                data: { id: error.id, reason: error.reason },
+              }),
+            ),
+        );
     },
   }),
 });

@@ -11,6 +11,7 @@ its own package, because a client needs it and needs none of this.
 ```text
 src/auth.ts                           the two schemes (user, service), their authenticators, and the one api = defineHttp({ authenticators }) call
 src/slices/orders/controller.ts       api.OrpcController(contract, "orders")({ inject: { logger: Logger }, unit: { place: PlaceOrder, find: FindOrder, list: ListOrders }, sync }) — where the orders slice's own domain error becomes an ORPCError
+src/slices/orders/authorize.ts        exportable(caller, order) — the authorization rule, and renderCsv, which nothing but its answer reaches
 src/slices/orders/module.ts           OrdersSlice — provides the controller and the orders fragment, exports both
 src/slices/customers/controller.ts    api.OrpcController(contract, "customers")({ inject: { find: FindCustomer }, sync }) — same shape, for the customers slice's own domain error
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
@@ -231,9 +232,42 @@ unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule }
 tenant enters the graph — `Tenant` provided from the principal the `user`
 scheme resolved, and the orders vertical composed over it, so `PlaceOrder`,
 `FindOrder` and `ListOrders` are bound to that tenant before any handler runs.
-`ServiceModule` adds nothing: a machine caller has no tenant, which is what
-makes `context.unit.place` unreadable from `export`, the one leaf both schemes
-serve.
+`ServiceModule` binds the tenant its API key was **cut for** — a key covers a
+tenant the way a login belongs to one, and with no login to read it from, the
+key list is where that fact lives. It exports `FindOrder` and neither of the
+other two, which is what makes `context.unit.place` and `context.unit.list`
+unreadable from `export`, the one leaf both schemes serve: the record a leaf is
+given is the intersection of what its kinds export.
+
+### Three layers of authorization, and only the third is written by hand
+
+`orders.export` is where all three meet. The **contract** says a `user` needs
+`orders:export` (or a `service` key needs nothing), and the starter refuses an
+under-scoped caller before a handler runs. The **unit** binds the tenant, so
+`context.unit.find` cannot reach another tenant's order however the handler is
+written. What is left is a decision about **this** order for **this** caller,
+and that is `slices/orders/authorize.ts`:
+
+```ts
+export const exportable = (
+  caller: Caller,
+  order: Order,
+): Result<Authorized<Order>, Forbidden> => …;
+
+export const renderCsv = (order: Authorized<Order>): string => …;
+```
+
+`Authorized<T>` is branded with a symbol the module does not export, so
+`exportable` is the only thing that can mint one and `renderCsv(order)` on a
+plain order does not compile: the operation cannot be performed without the
+decision. `Forbidden` is this application's own tagged error, folded by the
+same exhaustive `mapErrCases` as every other — there is no framework `Policy`
+port, no registry, and nothing to register.
+
+The rule here is a quantity ceiling: a `service` caller exports anything, a
+`user` only an order under `USER_EXPORT_CEILING`. It is a ceiling rather than
+ownership because this domain records no owner — a worker places orders with
+nobody behind them — and the shape is the same either way once yours does.
 
 ## The client half
 
@@ -262,7 +296,10 @@ and lands in `defect` rather than `errCases`. A caller whose token is valid but
 lacks a scope the procedure named gets a `FORBIDDEN` instead, on the same
 channel — which is why the token above carries `orders:export`, the scope
 `orders.export` requires of a `user`; a caller presenting the `service` scheme
-(`x-api-key`) reaches that one procedure with no scope at all. `customers` is
+(`x-api-key`) reaches that one procedure with no scope at all. A caller that
+clears the scope and is refused by the rule below gets a `FORBIDDEN` too — but
+that one the contract declares, so it carries `data: { id, reason }` and lands
+in `errCases`. Same status, two channels. `customers` is
 unmarked and
 answers either way — and names its tenant on the input, which `orders` does
 not: the tenant a marked procedure serves is the token's, so there is nothing
@@ -275,12 +312,13 @@ the server's `mapErrCases`.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/example-order-api test  # 28 api specs
+pnpm --filter @btravstack/example-order-api test
 ```
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON
 serialization, which is where the defect collapse to `INTERNAL_SERVER_ERROR`
-actually happens. No Docker, nothing to install.
+actually happens. They need the Docker daemon, for the shared Postgres and
+Redis `internal/test-infra` starts.
 
 Every helper they need is a Vitest fixture in `src/__tests__/test-fixtures.ts`, so the spec
 opens on `describe` and each test names its dependencies in its own parameter

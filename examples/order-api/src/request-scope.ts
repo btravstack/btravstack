@@ -10,7 +10,7 @@ import {
 import { OrderDatabase, OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
 import { UnitSpanModule } from "@btravstack/observability/otel";
 
-import { auth } from "./auth.js";
+import { auth, REPORTING_TENANT } from "./auth.js";
 
 /**
  * A service that exists for the length of one request and is torn down with it.
@@ -85,11 +85,18 @@ export const UserModule = Module("User")({
 });
 
 /**
- * The `service` kind: a machine caller has no tenant of its own, so it gets the
- * base and nothing else — which is what makes `context.unit.place` unreadable
- * from `export`, the one leaf both schemes serve.
+ * The `service` kind: an API key names no tenant, so the tenant its key was CUT
+ * for is what this kind binds — read from the key list rather than from a
+ * credential, since that is where the fact lives.
+ *
+ * It exports `FindOrder` and neither of the other two, which is what makes
+ * `context.unit.place` and `context.unit.list` unreadable from `export`, the one
+ * leaf both schemes serve: the record a leaf is given is the INTERSECTION of
+ * what its kinds export.
  */
 export const ServiceModule = Module("Service")({
-  imports: [RequestModule],
-  exports: [RequestModule],
+  needs: [OrderDatabase, Logger],
+  imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
+  provides: [Provider(Tenant)({ inject: {}, value: REPORTING_TENANT })],
+  exports: [RequestModule, FindOrder],
 });

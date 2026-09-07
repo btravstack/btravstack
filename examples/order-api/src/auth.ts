@@ -1,5 +1,10 @@
 import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
-import { apiKeyAuthenticator, defineHttp } from "@btravstack/http-server";
+import {
+  apiKeyAuthenticator,
+  defineHttp,
+  type Principal,
+  type SchemesFrom,
+} from "@btravstack/http-server";
 import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 
 import type { RequestModule, ServiceModule, UserModule } from "./request-scope.js";
@@ -59,9 +64,17 @@ export const userAuth = jwtAuthenticator<Identity>()({
 });
 
 /**
- * The second scheme: an API key, no scopes, no tenant — what a reporting job
- * presents — the starter's own `apiKeyAuthenticator`, which compares digests
- * rather than strings and checks every issued key without an early return.
+ * The tenant the one issued key was cut for. A key covers a tenant the way a
+ * login belongs to one; it is a fact about the key list, so it is written
+ * beside it and read where the `service` kind is composed.
+ */
+export const REPORTING_TENANT = TenantId("0199a1e0-0000-7000-8000-0000000000f1");
+
+/**
+ * The second scheme: an API key, no scopes, no tenant on the principal — what a
+ * reporting job presents — the starter's own `apiKeyAuthenticator`, which
+ * compares digests rather than strings and checks every issued key without an
+ * early return.
  *
  * The key list is inline here because an example has no secret store. A
  * deployment reads it from a config field bound off `Env`, since a key list in
@@ -93,3 +106,15 @@ export const api = auth.units<{
   user: typeof UserModule;
   service: typeof ServiceModule;
 }>();
+
+/**
+ * Who is calling, under either scheme — the input an authorization rule takes.
+ *
+ * Derived from the schemes declared above rather than restated, so a third
+ * scheme is a compile error inside the rule that must decide about it, not a
+ * union that quietly stopped matching what the door lets through.
+ */
+export type Caller = Principal<
+  keyof typeof auth.authenticators & string,
+  SchemesFrom<typeof auth.authenticators>
+>;

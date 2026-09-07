@@ -4,6 +4,8 @@ import { Ok } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
+import { REPORTING_TENANT } from "./auth.js";
+import { USER_EXPORT_CEILING } from "./slices/orders/authorize.js";
 
 describe("order-api", () => {
   it("carries a real oRPC call through to the DI-wired use case", async ({
@@ -357,54 +359,135 @@ describe("order-api", () => {
     }).toEqual({ status: 401, nosniff: "nosniff" });
   });
 
-  it("serves the export to a service token, on the requirement the walk reaches second", async ({
-    serve,
-    serviceClientFor,
-    api,
-  }) => {
-    // GIVEN the real composition root and a caller holding only an API key
-    const client = await serviceClientFor(serve(api));
-
-    // WHEN the export is called — `user` is declared first, and this caller
-    // presents nothing it accepts
-    // THEN the walk fell through to the second requirement, and the service arm
-    // answered
-    await expect(client.orders.export()).toBeOkWith({ csv: "service,reporting" });
-  });
-
-  it("serves the export to a user token that carries the scope", async ({
+  it("serves a bulk order's export to a service token, on the requirement the walk reaches second", async ({
     serve,
     tokenFor,
     clientWith,
+    serviceClientFor,
+    orderId,
     api,
   }) => {
-    // GIVEN a caller whose token grants `orders:export`
+    // GIVEN an order too large for a user to export, placed in the tenant the
+    // reporting key was cut for
+    const app = serve(api);
+    const owner = await clientWith(app, `Bearer ${await tokenFor({ tenant: REPORTING_TENANT })}`);
+    const reporting = await serviceClientFor(app);
+
+    // WHEN the API key exports it — `user` is declared first, and this caller
+    // presents nothing it accepts
+    const exported = await owner.orders
+      .place({ id: orderId, quantity: USER_EXPORT_CEILING + 1 })
+      .flatMap(() => reporting.orders.export({ id: orderId }));
+
+    // THEN the walk fell through to the second requirement, and the rule admits
+    // a service caller whatever the order weighs
+    expect(exported).toBeOkWith({
+      csv: `id,quantity\n${orderId},${USER_EXPORT_CEILING + 1}`,
+    });
+  });
+
+  it("serves a small order's export to a user token carrying the scope", async ({
+    serve,
+    tokenFor,
+    clientWith,
+    orderId,
+    api,
+  }) => {
+    // GIVEN a caller whose token grants `orders:export`, and an order under the
+    // ceiling
+    const client = await clientWith(
+      serve(api),
+      `Bearer ${await tokenFor({ scope: "orders:export" })}`,
+    );
+
+    // WHEN it is exported
+    const exported = await client.orders
+      .place({ id: orderId, quantity: USER_EXPORT_CEILING })
+      .flatMap(() => client.orders.export({ id: orderId }));
+
+    // THEN the scope let it past layer 1 and the rule admitted it at layer 3
+    expect(exported).toBeOkWith({ csv: `id,quantity\n${orderId},${USER_EXPORT_CEILING}` });
+  });
+
+  it("refuses a bulk order's export to a user with a FORBIDDEN naming the reason", async ({
+    serve,
+    tokenFor,
+    clientWith,
+    orderId,
+    api,
+  }) => {
+    // GIVEN the same fully-scoped caller, and an order over the ceiling
+    const client = await clientWith(
+      serve(api),
+      `Bearer ${await tokenFor({ scope: "orders:export" })}`,
+    );
+
+    // WHEN it is exported
+    const refused = await client.orders
+      .place({ id: orderId, quantity: USER_EXPORT_CEILING + 1 })
+      .flatMap(() => client.orders.export({ id: orderId }));
+
+    // THEN layer 3 refused it as a VALUE the contract declared — the scope was
+    // never the question
+    expect(refused).toBeErrWith(
+      expect.objectContaining({
+        constructor: ORPCError,
+        code: "FORBIDDEN",
+        data: { id: orderId, reason: "bulk export is a service operation" },
+        inferable: true,
+      }),
+    );
+  });
+
+  it("answers NOT_FOUND when the export names an order this tenant does not have", async ({
+    serve,
+    tokenFor,
+    clientWith,
+    orderId,
+    api,
+  }) => {
+    // GIVEN a fully-scoped caller and an id nobody placed
     const client = await clientWith(
       serve(api),
       `Bearer ${await tokenFor({ scope: "orders:export" })}`,
     );
 
     // WHEN the export is called
-    // THEN the first requirement was satisfied outright — a granted scope is
-    // matched against what the endpoint declared, and the user arm answered
-    await expect(client.orders.export()).toBeOkWith({ csv: "user,u-1" });
+    const missing = await client.orders.export({ id: orderId });
+
+    // THEN the resource is missing before there is anything to decide about
+    expect(missing).toBeErrWith(
+      expect.objectContaining({
+        constructor: ORPCError,
+        code: "NOT_FOUND",
+        data: { id: orderId },
+        inferable: true,
+      }),
+    );
   });
 
   it("refuses a user token that grants no scope with FORBIDDEN, not UNAUTHORIZED", async ({
     serve,
     clientFor,
+    orderId,
     api,
   }) => {
     // GIVEN a caller whose token is valid but names no scope
     const client = await clientFor(serve(api));
 
     // WHEN the export, which asks a user token for `orders:export`, is called
-    const refused = await client.orders.export();
+    const refused = await client.orders.export({ id: orderId });
 
     // THEN authenticated-but-under-scoped is a 403, not the 401 an anonymous
-    // caller gets
+    // caller gets — and it is layer 1's, carrying no `data`, which is what tells
+    // it from the rule's own FORBIDDEN
     expect(refused).toBeDefectWith(
-      expect.objectContaining({ constructor: ORPCError, code: "FORBIDDEN", inferable: false }),
+      expect.objectContaining({
+        constructor: ORPCError,
+        code: "FORBIDDEN",
+        data: undefined,
+        inferable: false,
+      }),
     );
   });
 
