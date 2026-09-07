@@ -1,5 +1,173 @@
 # @btravstack/http-server
 
+## 0.13.0
+
+### Minor Changes
+
+- 8afca14: `jwtAuthenticator`'s `jwks`, `issuer` and `audience` are now OPTIONAL, and bound
+  from `HTTP_JWT_JWKS_URI`, `HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE` when they
+  are not supplied — the option PINS its variable, the shape `http({ port })`
+  already has against `PORT`. All three vary by deployment and none by code:
+  staging and production authenticate against different issuers, a JWKS endpoint
+  moves, and the audience is the deployment's own name. A variable nobody pinned
+  and nobody set is a `ConfigInvalid` naming it, at startup, with every offending
+  variable in one message.
+
+  The `string | readonly string[]` forms of `issuer` and `audience` are gone: an
+  environment carries one string, and a second accepted issuer is a second
+  authenticator. The prefix is `HTTP_JWT_` rather than `HTTP_JWT_<SCHEME>_`,
+  because two schemes reading the same three variables are one scheme; a genuine
+  second issuer pins all three explicitly, exactly as a test does.
+
+  `HttpAuthenticator<P, Scope>()` gains a `make` arm beside `sync` — the pair di's
+  `Provider` has, and naming both is refused. `make` answers
+  `AsyncResult<AuthenticatorService<P, Scope>, E>` and its `E` becomes the
+  description's, which `Authenticator<P, Scope, N, E>` and the scheme's own di
+  provider now carry: a scheme whose configuration is wrong fails the BOOT with a
+  typed error instead of constructing happily and refusing every caller with a
+  401 that carries no reason. `jwtAuthenticator`'s piece reads `Env`, and
+  `HttpModule` now carries that for every provider in the root, its schemes
+  included — a root writes no `needs` line for one, the same way it never restated the starter's own `Env`.
+  A scheme owing any other unmet port is still refused at the `HttpModule` call.
+
+  `@btravstack/config` gains `Config.url(variable, options?)`, a string field
+  validated with `URL.canParse` — the value a consumer hands to `new URL`,
+  checked before it gets there, because a throw inside a provider's `make` is a
+  `Defect` naming no variable. `HTTP_JWT_JWKS_URI` is bound through it, so a
+  scheme-less URI is the same `ConfigInvalid` as an unset one.
+
+  It also gains `Config.parse(port, schema)(env)`, the
+  validate-then-`ConfigInvalid` step `Config.provider` performs, lifted so a piece
+  that is already its own provider can run it — `Config.provider` is now a caller
+  of it, so there is one home for that step rather than two copies.
+
+- 8c03f9a: Server-sent events are supported through the HTTP starter. An open
+  `text/event-stream` response whose headers have flushed is reset when the
+  drain begins, at beat 3's start, so the client reconnects to a replica that
+  is staying and the unit is counted `completed` rather than `abandoned`. `GET`
+  is admitted on a procedure whose output is an event iterator, which is the
+  one request a browser's `EventSource` can send.
+- 4808582: **Breaking.** `StartOptions.unit` is removed. A runtime forks the unit scope
+  itself: a unit's work receives a `UnitHost` — `{ ctx, fork }` — and
+  `fork(module, seed)` builds `module` the runtime chose over the application
+  context plus a seed, torn down by the kernel when the unit settles, inside
+  the unit as before.
+
+  Each starter binds its own module instead, on its own options —
+  `http({ unit: { anonymous } })`, `amqp({ unit: { message } })`,
+  `temporal({ unit: { activity } })` — and forks it where it handles the
+  request, the delivery or the activity. There is no separate gate for a bound
+  module's own unmet needs: they join the starter's ordinary `Needs` channel,
+  exactly like an import's, and surface through `start`'s existing
+  `UNSATISFIED DEPENDENCIES` diagnostic.
+
+  `HttpAnswerer.handle` gains a fourth parameter, `host: UnitHost<never>` —
+  appended rather than inserted, so an answerer that does not fork is unchanged.
+  `testRuntime` is generic over the module bound on `unit`, and what that module
+  needs joins `TestRuntime.module`'s own `Needs`, so a test composition that
+  cannot satisfy it is refused at `start` rather than on the first `submit()`.
+
+  `Module.forkScope` accepts a typed `seed` — entries seeded from outside the
+  module tree are subtracted from the gate the same way the parent's own
+  exports are — though no starter seeds anything yet; each forks with `[]`.
+  `testRuntime(name, { unit })` forks per submitted unit; `bootFixture` no
+  longer takes `unit`.
+
+  `UnitSpanModule` moves with them: it is no longer composed as `start`'s
+  `unit`, but bound on a starter's own option — `unit: { anonymous:
+UnitSpanModule }` — and forked by the runtime around every unit it opens.
+
+  Behaviour change: both HTTP answerers now fork **exactly once dispatch has
+  cleared every guard**, so a request that never reaches a handler never opens
+  a unit scope — the runtime's own `404`, a request oRPC's schema refuses before
+  dispatch, one `principalMiddleware` refuses, and an htmx request refused by
+  auth or by body validation. For a consumer whose unit module provides a
+  request-scoped logger, those four now log nothing where they used to log a
+  request's worth of lines.
+
+- 79b07ec: **Breaking.** A unit is opened under a KIND, and the kind's own module is what
+  the runtime forks — seeded with what the unit was opened for, and read back by
+  a leaf through `context.unit`.
+
+  **`defineHttp` is two steps now.** `defineHttp({ authenticators })` mints one
+  principal port per declared scheme, on `auth.principals`, and a second call —
+  `auth.units<{ anonymous: typeof A; user: typeof U }>()` — retypes the **same
+  object** by the module each kind binds. The kinds arrive on a second call for a
+  reason a single call cannot have: a unit module names
+  `auth.principals.<scheme>`, so its type depends on `typeof auth`; if `auth` in
+  turn depended on the modules the kinds bind, the two would be mutually
+  recursive and TypeScript reports `TS7022`. Nothing is rebuilt, and an
+  application that never calls `units<…>()` is unchanged. `principalPort`,
+  `Principals`, `Kinds` and `UnitsOf` are exported.
+
+  **`unit` is a record of kind → module** on `http()`, `httpServer()` and
+  `HttpModule` — `anonymous` for a leaf that asked for no credential, else the
+  scheme that resolved one. A scheme that binds no module **falls back to
+  `anonymous`**, so `unit: { anonymous: RequestModule }` keeps its meaning and a
+  graph binding only that needs no change. A request forks nothing only when the
+  scheme and `anonymous` both bind no module. The fallback is deliberate: an unbound kind forking nothing would
+  make every existing application silently lose its request scope on precisely
+  its authenticated procedures.
+
+  **`context.unit`, on all three transports.** Every piece — and every
+  whole-record composer beside it: `OrpcController`, `OrpcRouter`,
+  `AmqpHandler`, `AmqpHandlers`, `HtmxGet`, `HtmxPost`,
+  `TemporalWorkflowActivities`, `TemporalActivities` — takes an optional
+  `unit: { name: Port }` beside `inject`, declared once, and every leaf reads it
+  as `context.unit.name`. On HTTP the record is filtered **per leaf** by the kind
+  that leaf's own requirements select, with the `anonymous` fallback applied per
+  scheme: a name the kind's module does not export is not a property, so reading
+  it is TypeScript's own "property does not exist", and a leaf accepting several
+  schemes keeps only what every one of their modules exports. Entries are lazy
+  getters over the fork. A piece that declares no record compiles unchanged, and
+  `context.unit` is `{}`.
+
+  **Two seed ports.** `AmqpMessage(contract)` carries the validated delivery and
+  `ActivityInput(contract)` the validated activity input; HTTP seeds
+  `auth.principals[scheme]` with the identity that scheme resolved, whichever
+  module ends up forked. A unit module naming a seeded port owes the composition
+  root nothing for it — it is subtracted from what the starter reports — while
+  everything else it needs still surfaces at `start`'s
+  `UNSATISFIED DEPENDENCIES`.
+
+  **Three gates.** `HttpModule` refuses a kind no request can open under, against
+  `UNDECLARED UNIT KIND — …`: the bindable set is the kinds `units<…>()` declared
+  when an answerer carries them — the router and the fragments both do, so a
+  fragments-only root is gated the same way — else `anonymous` plus every scheme
+  the answerers serve, read off their own authenticator ports. `AmqpModule` and
+  `TemporalModule` refuse a bound module that does not export a port some piece —
+  or the whole-record arm — injects, against `UNIT DOES NOT PROVIDE — …`, naming
+  the port, including the case where no module is bound at all.
+
+  **Signature changes beyond the added option.** `FragmentAnswer.handle` takes the
+  handler's whole `context` object rather than the bare principal: it was
+  `handle(principal, params, input)` and is now
+  `handle({ principal, unit }, params, input)`. `AmqpHandler(contract, key)`,
+  `TemporalWorkflowActivities(contract, key)` and the record arms of
+  `AmqpHandlers(contract)` and `TemporalActivities(contract)` take
+  `{ inject, unit?, sync }` rather than di's whole arm set — `value` **could**
+  have carried the same record, since the options are each package's own and the
+  declared record is what types it either way, and it was dropped so one arm reads
+  the same as `@btravstack/http-server`'s `OrpcController` and `OrpcRouter` on all
+  three transports.
+  The record arm gives up di's `value`, `async` and resourceful forms for the whole record on all three transports; nothing in the repository needs one there, and a hand-written `Provider(port)` over the composer's port still works.
+
+  **`http()`, `httpServer()`, `amqp()` and `temporal()` stay un-gated**, and
+  structurally so: each takes its router, handlers or activities as a **need**,
+  never as a value, so there is nothing to check a bound `unit` against. Their
+  option keeps the wide record. A hand-rolled composition that wants the gate
+  composes through `HttpModule`, `AmqpModule` or `TemporalModule`.
+
+### Patch Changes
+
+- Updated dependencies [3f48955]
+- Updated dependencies [8afca14]
+- Updated dependencies [4808582]
+  - @btravstack/contract@0.13.0
+  - @btravstack/config@0.13.0
+  - @btravstack/core@0.13.0
+  - @btravstack/di@0.13.0
+
 ## 0.12.0
 
 ### Patch Changes
