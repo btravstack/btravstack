@@ -114,8 +114,9 @@ providers that discharge them, which `HttpModule` puts in `provides` itself. A
 scheme with nobody behind it is an unmet dependency `start` refuses, naming the
 port. Both are ordinary providers, so an authenticator that declares a need of
 its own carries it into the graph, refused at this very call if nothing
-satisfies it — which is what `userAuth` does with the `Env` it binds its three
-`HTTP_JWT_*` variables from.
+satisfies it. `Env` is the one need never yours to declare: `userAuth` binds
+its three `HTTP_JWT_*` variables from it, and `HttpModule` carries `Env` for
+every provider in the root.
 
 Where the schemes are **declared** is `src/auth.ts`:
 

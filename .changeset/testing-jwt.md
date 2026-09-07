@@ -6,8 +6,8 @@ A new subpath, `@btravstack/testing/jwt`, exporting `localIssuer(options)` — a
 generated key pair, a `node:http` listener answering its public key as a JWKS
 on any path, and a `sign(claims?, options?)` closing over the private key,
 answering `AsyncResult<string, never>` like every other async surface here.
-`options.expiresIn: false` mints a token with no `exp` claim; `options.algorithm`
-picks the asymmetric algorithm (`"RS256" | "RS384" | "RS512" | "ES256" | "ES384"`,
+`sign`'s `expiresIn: false` mints a token with no `exp` claim; `localIssuer`'s
+`algorithm` picks the asymmetric algorithm (`"RS256" | "RS384" | "RS512" | "ES256" | "ES384"`,
 default `"RS256"`) — the same list `@btravstack/http-server`'s `jwtAuthenticator`
 accepts. `jose` joins the peers as an **optional** one, behind the subpath:
 nothing on the main entry point imports it, so a consumer that never imports

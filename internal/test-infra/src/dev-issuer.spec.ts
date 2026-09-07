@@ -1,3 +1,5 @@
+import { rm } from "node:fs/promises";
+
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { describe, expect } from "vitest";
 
@@ -22,6 +24,23 @@ describe("the dev issuer", () => {
         publicJwk: expect.objectContaining({ kid: "dev", alg: "RS256", use: "sig" }),
       },
       second: first,
+    });
+  });
+
+  it("regenerates the pair when the cache is missing its public half", async ({ keyCache }) => {
+    // GIVEN a cache whose `public.jwk` went missing after the pair was minted —
+    // an interrupted first run, or a hand-deleted file
+    const first = await devKeyPair(keyCache);
+    await rm(new URL("public.jwk", keyCache));
+
+    // WHEN the next run asks for the pair
+    const second = await devKeyPair(keyCache);
+
+    // THEN it is a new, complete pair rather than a private key with nothing to
+    // publish beside it
+    expect(second).toEqual({
+      privateJwk: expect.not.objectContaining({ n: first.privateJwk.n }),
+      publicJwk: expect.objectContaining({ kid: "dev", alg: "RS256", use: "sig" }),
     });
   });
 

@@ -291,6 +291,7 @@ const _docsUserAuth = jwtAuthenticator<{
   principal: (claims) => {
     const tenant = claims["tenant"];
     return typeof claims.sub === "string" &&
+      claims.sub !== "" &&
       typeof tenant === "string" &&
       TenantIdSchema.safeParse(tenant).success
       ? { tenantId: TenantId(tenant), userId: claims.sub }

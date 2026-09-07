@@ -76,8 +76,9 @@ one-property object, ending on the missing ports:
 
 **issuer** — Whoever mints the tokens a deployment accepts, named by the `iss` claim it
 signs them with — an identity provider, or `@btravstack/testing/jwt`'s
-`localIssuer` under test. `jwtAuthenticator` requires `iss` to match
-`HTTP_JWT_ISSUER`, and it is the issuer that decides how a **tenant** is
+`localIssuer` under test. `jwtAuthenticator` requires `iss` to match the
+configured issuer — the `issuer` option, or `HTTP_JWT_ISSUER` when it is not
+pinned — and it is the issuer that decides how a **tenant** is
 spelled: `tenant` in the example, `tid` on Entra, `org_id` on Auth0, which is
 why `principal(claims)` is the application's. See
 [Protect a procedure](/how-to/protect-a-procedure).

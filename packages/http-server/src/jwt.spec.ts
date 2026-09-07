@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import { describe, expect } from "vitest";
 
-import { hmacToken, it } from "./__tests__/test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("jwtAuthenticator", () => {
   it("names the caller its claims describe, over a real JWKS fetch", async ({
@@ -145,11 +145,14 @@ describe("jwtAuthenticator", () => {
     expect(resolved).toBeErrTagged("Unauthenticated");
   });
 
-  it("refuses an HMAC token signed with a published public key", async ({ issuer, jwtService }) => {
+  it("refuses an HMAC token signed with a published public key", async ({
+    hmacToken,
+    jwtService,
+  }) => {
     // GIVEN the algorithm-confusion attack: a JWKS publishes PUBLIC keys, so an
     // attacker signs `HS256` using the very JWK this issuer serves as the
     // shared secret — no key they do not already have
-    const token = await hmacToken(issuer);
+    const token = await hmacToken.get();
 
     // WHEN it is presented
     const resolved = await jwtService({

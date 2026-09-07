@@ -40,11 +40,12 @@ export const devKeyPair = (cache: URL = DEFAULT_CACHE): Promise<DevKeyPair> =>
     const privateFile = new URL("private.jwk", cache);
     const publicFile = new URL("public.jwk", cache);
 
-    const stored = await readFile(privateFile, "utf8").catch(() => undefined);
-    if (stored !== undefined) {
+    const read = (file: URL) => readFile(file, "utf8").catch(() => undefined);
+    const [storedPrivate, storedPublic] = await Promise.all([read(privateFile), read(publicFile)]);
+    if (storedPrivate !== undefined && storedPublic !== undefined) {
       return {
-        privateJwk: JSON.parse(stored) as JWK,
-        publicJwk: JSON.parse(await readFile(publicFile, "utf8")) as JWK,
+        privateJwk: JSON.parse(storedPrivate) as JWK,
+        publicJwk: JSON.parse(storedPublic) as JWK,
       };
     }
 

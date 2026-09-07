@@ -43,7 +43,7 @@ import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { eventIterator, oc, type as ocType, type RouterContractClient } from "@orpc/contract";
 import { SignJWT } from "jose";
-import { ErrAsync, OkAsync, type AsyncResult } from "unthrown";
+import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
 import { z } from "zod";
 
@@ -231,15 +231,17 @@ const localIssuerFixture = async (
  * key they do not have. Minted here rather than by `localIssuer`, since it is
  * the attacker's half.
  */
-export const hmacToken = (issuer: LocalIssuer): Promise<string> => {
+const hmacToken = (issuer: LocalIssuer): AsyncResult<string, never> => {
   const { kid } = issuer.jwk;
   assert.ok(kid !== undefined, "localIssuer served a JWK with no kid");
-  return new SignJWT({ sub: "u-1", tenant: "acme" })
-    .setProtectedHeader({ alg: "HS256", kid })
-    .setIssuer(issuer.issuer)
-    .setAudience(issuer.audience)
-    .setExpirationTime("5m")
-    .sign(new TextEncoder().encode(JSON.stringify(issuer.jwk)));
+  return fromSafePromise(
+    new SignJWT({ sub: "u-1", tenant: "acme" })
+      .setProtectedHeader({ alg: "HS256", kid })
+      .setIssuer(issuer.issuer)
+      .setAudience(issuer.audience)
+      .setExpirationTime("5m")
+      .sign(new TextEncoder().encode(JSON.stringify(issuer.jwk))),
+  );
 };
 
 /** What both shipped authenticators resolve to in these specs. */
@@ -1521,6 +1523,8 @@ export type HttpFixtures = {
    * signature it cannot verify.
    */
   readonly stranger: LocalIssuer;
+  /** The algorithm-confusion attack's token: `HS256` over `issuer`'s published JWK. */
+  readonly hmacToken: AsyncResult<string, never>;
   /** The API-key scheme with two issued keys, resolved. */
   readonly apiKeyService: AuthenticatorService<ServiceIdentity, "reports:read">;
   /** The API-key scheme with no scope vocabulary, resolved. */
@@ -1566,6 +1570,10 @@ export const it = test.extend<HttpFixtures>({
   // publishes and a signature that JWKS cannot verify. Its own listener is
   // never fetched from.
   stranger: [localIssuerFixture, { scope: "file" }],
+
+  hmacToken: async ({ issuer }, use) => {
+    await use(hmacToken(issuer));
+  },
 
   // oxlint-disable-next-line no-empty-pattern -- see above
   apiKeyService: async ({}, use) => {

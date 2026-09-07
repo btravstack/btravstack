@@ -61,7 +61,6 @@ const mintedFrom = (env: Environment): AsyncResult<{ readonly retries: number },
     (ctx) => OkAsync(ctx.get(minted.port)),
   );
 
-/** `Config.parse` on its own — no port, no graph: the step a provider runs, run by hand. */
 const parsed = Config.parse("ConfigFixtureParsed", settingsSchema);
 
 export type ConfigFixtures = {

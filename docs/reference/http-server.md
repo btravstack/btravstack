@@ -718,6 +718,7 @@ export const userAuth = jwtAuthenticator<Identity>()({
   principal: (claims: Claims) => {
     const tenant = claims["tenant"];
     return typeof claims.sub === "string" &&
+      claims.sub !== "" &&
       typeof tenant === "string" &&
       TenantIdSchema.safeParse(tenant).success
       ? { tenantId: TenantId(tenant), userId: claims.sub }

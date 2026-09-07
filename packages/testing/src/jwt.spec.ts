@@ -61,13 +61,23 @@ describe("localIssuer", () => {
     const token = await built.sign().get();
     await built.close();
 
-    // WHEN the published key and the token's own header are read
-    // THEN both name ES256/EC — the algorithm this issuer was asked for
-    expect({
-      jwkAlg: built.jwk.alg,
-      jwkKty: built.jwk.kty,
-      headerAlg: decodeProtectedHeader(token).alg,
-    }).toEqual({ jwkAlg: "ES256", jwkKty: "EC", headerAlg: "ES256" });
+    // WHEN the token's own header is read
+    // THEN it names the algorithm this issuer was asked for
+    expect(decodeProtectedHeader(token)).toEqual(expect.objectContaining({ alg: "ES256" }));
+  });
+
+  it("publishes the key of the algorithm it was asked for", async () => {
+    // GIVEN an issuer minted with the ES256 algorithm
+    const built = await localIssuer({
+      issuer: "https://issuer.test",
+      audience: "orders-api",
+      algorithm: "ES256",
+    }).get();
+    await built.close();
+
+    // WHEN the published key is read
+    // THEN it is an EC key advertising ES256
+    expect(built.jwk).toEqual(expect.objectContaining({ alg: "ES256", kty: "EC" }));
   });
 
   it("answers Ok when its listener closes", async () => {
