@@ -155,9 +155,10 @@ export const auth = defineHttp({ authenticators: { user: userAuth } });
 
 // The `user` kind. `auth.principals.user` carries `userAuth`'s own principal
 // type, and the fork seeds it — so this module owes the composition root
-// nothing for it. `OrderDatabase` and `Logger` it DOES owe: they are read out
-// of the application scope this fork sits over, which is what keeps one
-// Prisma client per process rather than one per request.
+// nothing for it, and names nothing else: `OrderDatabase` and `Logger` are
+// owed by the modules it imports, which say so themselves, and are read out
+// of the application scope this fork sits over — one Prisma client per
+// process rather than one per request.
 const UserUnit = Module("UserUnit")({
   needs: [auth.principals.user],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
