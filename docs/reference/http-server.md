@@ -270,7 +270,7 @@ Its other options:
 | `clockToleranceSec` | no       | `0`                           | leeway on `exp` and `nbf`, in seconds                                                     |
 | `header`            | no       | `authorization`               | which header carries the token, as `Bearer <token>`                                       |
 
-**The middle three are pins, the same rule `http({ port })` has against
+**`jwks`, `issuer` and `audience` are pins, the same rule `http({ port })` has against
 `PORT`**: explicit beats environment, per field. Left unset, they bind from
 `HTTP_JWT_JWKS_URI`, `HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE` through
 [`Config.parse`](/reference/config#config-parse-port-schema-env) inside the

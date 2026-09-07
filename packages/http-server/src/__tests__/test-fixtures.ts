@@ -281,7 +281,7 @@ const envJwtFragment = envJwtApi.HtmxGet("/whoami", { requires: [{ user: [] }] }
 
 const envJwtFragments = envJwtApi.HtmxFragments([envJwtFragment]);
 
-/** No `needs` line: `HttpModule` carries `Env` for the schemes it composes. */
+/** No `needs` line: `HttpModule` carries `Env` for every provider in the root. */
 const envJwtAppOf = () =>
   HttpModule("EnvJwtApp")({
     fragments: envJwtFragments,

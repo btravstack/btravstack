@@ -585,7 +585,9 @@ seam, exactly as in production.
 
 ## Running it locally
 
-`pnpm dev` needs a JWKS endpoint that answers, so `internal/test-infra`'s
+This is the repository's own loop; an application's local issuer is whatever
+its identity provider offers for development, or a `localIssuer` started by
+hand. Here, `pnpm dev` needs a JWKS endpoint that answers, so `internal/test-infra`'s
 `dev:env` starts one beside the other containers and writes the three
 `HTTP_JWT_*` variables into `.env.dev`. Its key pair lives under
 `<repo>/.cache/dev-issuer/` and is minted once, so a token pasted into a
