@@ -174,6 +174,11 @@ The policy must read the **same** setting `tenantScoped` was given, and
 policy names a different one denies every row and every write, which looks
 exactly like row security working.
 
+This is the **floor**, not the isolation itself: it answers only "did this
+statement say which tenant it is for", and the three layers that answer who the
+caller is and what they may do are
+[Authorize a request](/how-to/authorize-a-request).
+
 It is a **subpath** on the family's optional-peer protocol: `@prisma/client` is
 an optional peer, `packages/prisma/src/rls.ts` is the only file that imports it,
 and the main entry point never does. A consumer that never writes

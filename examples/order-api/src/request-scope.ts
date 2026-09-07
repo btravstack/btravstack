@@ -7,7 +7,7 @@ import {
   PlaceOrder,
   Tenant,
 } from "@btravstack/example-order-application";
-import { OrderDatabase, OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
+import { OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
 import { UnitSpanModule } from "@btravstack/observability/otel";
 
 import { auth } from "./auth.js";
@@ -73,7 +73,7 @@ export const RequestModule = Module("Request")({
  * request.
  */
 export const UserModule = Module("User")({
-  needs: [auth.principals.user, OrderDatabase, Logger],
+  needs: [auth.principals.user],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({
@@ -85,11 +85,24 @@ export const UserModule = Module("User")({
 });
 
 /**
- * The `service` kind: a machine caller has no tenant of its own, so it gets the
- * base and nothing else — which is what makes `context.unit.place` unreadable
- * from `export`, the one leaf both schemes serve.
+ * The `service` kind: the same shape as `UserModule`, over the tenant the
+ * caller's API key was cut for — `Tenant` from `auth.principals.service`
+ * exactly as the `user` kind takes it from its own principal. A credential
+ * names the tenant either way; only what carries it differs.
+ *
+ * It exports `FindOrder` and neither of the other two, which is what makes
+ * `context.unit.place` and `context.unit.list` unreadable from `export`, the one
+ * leaf both schemes serve: the record a leaf is given is the INTERSECTION of
+ * what its kinds export.
  */
 export const ServiceModule = Module("Service")({
-  imports: [RequestModule],
-  exports: [RequestModule],
+  needs: [auth.principals.service],
+  imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
+  provides: [
+    Provider(Tenant)({
+      inject: { principal: auth.principals.service },
+      sync: ({ principal }) => principal.tenantId,
+    }),
+  ],
+  exports: [RequestModule, FindOrder],
 });

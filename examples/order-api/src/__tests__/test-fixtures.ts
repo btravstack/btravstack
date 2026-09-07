@@ -255,6 +255,14 @@ export type ApiFixtures = {
   /** A second tenant, for a spec about a caller who is not the owner. */
   readonly otherTenant: string;
   /**
+   * A fresh order id per test. The reporting key's tenant is FIXED — it is the
+   * one a deployment cut the key for — so an id written into a spec would still
+   * be there on the next run, and the placement that seeds it would conflict.
+   */
+  readonly orderId: string;
+  /** An order of a given size, with an id of its own — what a rule about quantity is decided against. */
+  readonly anOrderOf: (quantity: number) => Order;
+  /**
    * Starts an app on an ephemeral loopback port, through `boot` — so its
    * shutdown is the fixture's. The three unit kinds are forked by the answerers
    * themselves, per `OrderApi`'s own `unit` option — nothing here supplies them.
@@ -374,6 +382,16 @@ export const it = test.extend<ApiFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   otherTenant: async ({}, use) => {
     await use(uuidv7());
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  orderId: async ({}, use) => {
+    await use(uuidv7());
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  anOrderOf: async ({}, use) => {
+    await use((quantity) => anOrder(uuidv7(), quantity));
   },
 
   tokenFor: async ({ issuer, tenant }, use) => {

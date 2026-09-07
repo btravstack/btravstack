@@ -7,7 +7,7 @@ description: The HTTP deployment — two slices, orders and customers, one marke
 import { runMain, Logger, Meter, Tracer } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { HttpModule } from "@btravstack/http-server";
-import { OkAsync, P } from "unthrown";
+import { P } from "unthrown";
 import { createLogger, jsonSink, kernelEvents, observability } from "@btravstack/observability";
 import { UnitSpanModule, otel } from "@btravstack/observability/otel";
 import type { Order } from "@btravstack/example-order-domain";
@@ -19,6 +19,7 @@ import { customersController } from "../../slices/customers/controller.js";
 import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
 import { CustomersSlice } from "../../slices/customers/module.js";
+import { exportable, renderCsv } from "../../slices/orders/authorize.js";
 declare const view: (order: Order) => { id: string; quantity: number };
 -->
 
@@ -84,11 +85,21 @@ const ordersContract = authenticated({ user: [] })({
     .errors({ NOT_FOUND: { data: orderRef } }),
 
   // Overrides the group default for itself: a service token may export too,
-  // and a user token needs the scope.
+  // and a user token needs the scope. `FORBIDDEN` is the one code here the
+  // STARTER also answers — an under-scoped caller gets a bare 403, where this
+  // one carries `data` and is inferable.
   export: authenticated(
     { user: ["orders:export"] },
     { service: [] },
-  )(oc.output(z.object({ csv: z.string() }))),
+  )(
+    oc
+      .input(z.object({ id: z.uuidv7() }))
+      .output(z.object({ csv: z.string() }))
+      .errors({
+        NOT_FOUND: { data: orderRef },
+        FORBIDDEN: { data: orderRef.extend({ reason: z.string() }) },
+      }),
+  ),
 });
 
 const customersContract = {
@@ -165,8 +176,11 @@ export type Identity = {
   readonly userId: string;
 };
 
-/** What the `service` scheme resolves to: a machine caller, no tenant. */
-export type ServiceIdentity = { readonly appId: string };
+/** What the `service` scheme resolves to: which machine, and the tenant its key was cut for. */
+export type ServiceIdentity = {
+  readonly appId: string;
+  readonly tenantId: TenantId;
+};
 
 /**
  * What a verified token means here, and the one place this deployment's claim
@@ -189,9 +203,20 @@ export const userAuth = jwtAuthenticator<Identity>()({
   scopes: ["orders:export"],
 });
 
+/** The issued keys, and the one place a key's tenant is written. */
+export const serviceKeys = [
+  {
+    key: "reporting",
+    principal: {
+      appId: "reporting",
+      tenantId: TenantId("0199a1e0-0000-7000-8000-0000000000f1"),
+    },
+  },
+] as const;
+
 /** The second scheme: an API key, no scopes — what a reporting job presents. */
 export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({
-  keys: [{ key: "reporting", principal: { appId: "reporting" } }],
+  keys: serviceKeys,
 });
 
 export const api = defineHttp({
@@ -252,6 +277,7 @@ the application scope** below.
 
 ```text
 src/slices/orders/controller.ts       api.OrpcController(contract, "orders")({ inject: { logger: Logger }, unit: { place: PlaceOrder, find: FindOrder, list: ListOrders }, sync })
+src/slices/orders/authorize.ts        exportable(caller, order) — the authorization rule, and renderCsv, which nothing but its answer reaches
 src/slices/orders/module.ts           OrdersSlice — provides the controller and the fragment, exports only them
 src/slices/customers/controller.ts    api.OrpcController(contract, "customers")({ inject: { find: FindCustomer }, sync })
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
@@ -314,26 +340,34 @@ export const ordersController = api.OrpcController(
             }),
           ),
         ),
-    // Two schemes, so the principal is a discriminated union — and the
-    // switch is exhaustive or the build fails. The body names the arm that
-    // produced it, so a spec can pin which scheme served the call.
-    export: ({ context }) => {
-      switch (context.principal.scheme) {
-        case "user":
-          logger.info("order export requested", {
-            userId: context.principal.identity.userId,
-          });
-          return OkAsync({
-            csv: `user,${context.principal.identity.userId}`,
-          });
-        case "service":
-          logger.info("order export requested", {
-            appId: context.principal.identity.appId,
-          });
-          return OkAsync({
-            csv: `service,${context.principal.identity.appId}`,
-          });
-      }
+    // Two schemes, so the principal is a discriminated union — and it is what
+    // the authorization rule takes, since what a caller may export depends on
+    // which of them it is. `renderCsv` cannot be called without the rule's
+    // answer.
+    export: ({ errors, context }, input) => {
+      logger.info("order export requested", {
+        id: input.id,
+        scheme: context.principal.scheme,
+      });
+      return context.unit.find
+        .execute(input.id)
+        .flatMap((order) => exportable(context.principal, order).toAsync())
+        .map((authorized) => ({ csv: renderCsv(authorized) }))
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            .with(P.tag("Forbidden"), (error) =>
+              errors.FORBIDDEN({
+                message: error.message,
+                data: { id: error.id, reason: error.reason },
+              }),
+            ),
+        );
     },
   }),
 });
@@ -371,6 +405,44 @@ application defined, and what the fields on it mean is the application's
 business. Who placed an order is a transport-boundary fact, so it is logged
 here, on the request's own trace id, rather than pushed through a use case
 that has no business with it.
+
+### Three layers of authorization, and only the third is written by hand
+
+`orders.export` is where all three meet, each checked by the layer that can
+check it — the position itself, with the floor underneath it, is
+[Authorize a request](/how-to/authorize-a-request):
+
+| Layer      | Where it is stated               | What it can decide                          |
+| ---------- | -------------------------------- | ------------------------------------------- |
+| **scope**  | the contract, `authenticated(…)` | may this KIND of caller reach the procedure |
+| **tenant** | the unit kind, `Tenant`          | which rows exist at all for this caller     |
+| **policy** | the handler, `exportable(…)`     | may THIS caller do this to THIS resource    |
+
+The first two are refusals the caller never reaches a handler for: an
+under-scoped token is the starter's bare `403`, and `context.unit.find` cannot
+see another tenant's order however the handler is written. What is left is a
+decision about one order, and it lives in `slices/orders/authorize.ts`:
+
+The file is compiled whole on [Authorize a request](/how-to/authorize-a-request):
+a brand only the rule mints, a `Forbidden` the application owns, and
+`renderCsv` typed on the witness.
+
+`AUTHORIZED` is **not exported**, so `renderCsv(order)` on a plain order does
+not compile and no other module can mint the witness by construction. What that
+buys is precise: a **forgotten** rule is a compile error. A caller determined to
+skip it can still write `order as Authorized<Order>`, because the type is
+exported — but that is a lie in one line, and one a reviewer greps for:
+`rg 'as Authorized'` is the review, and the rule's own lines are the ones it is
+allowed to find.
+`Forbidden` is the application's own tagged error, folded by the same
+exhaustive `mapErrCases` as every domain error — there is no framework
+`Policy` port, no registry, and nothing to register. `Caller` is exported from
+`auth.ts` as an alias of what the declared schemes resolve to, so a third
+scheme is a compile error inside the rule that must decide about it.
+
+The rule is a quantity **ceiling** rather than ownership because this domain
+records no owner — a worker places orders with nobody behind them — and the
+shape is the same either way once yours does.
 
 `slices/customers/controller.ts` is the same shape over one procedure, built
 from `FindCustomer` and mapping `CustomerNotFound` to the fragment's own
@@ -638,10 +710,16 @@ the request's own trace id — and no handler code manages the fork.
 `RequestModule`, provides `Tenant` from `auth.principals.user` — the principal
 the fork is seeded with — and composes `OrderTenantPersistence` and
 `OrderApplicationModule` over it, so a marked leaf reads `PlaceOrder`,
-`FindOrder` and `ListOrders` already bound. `ServiceModule` imports
-`RequestModule` and adds nothing: an API key names no tenant, which is what
-makes `context.unit.place` unreadable from `export`, the one leaf both schemes
-serve. See [Open a per-request scope](/how-to/open-a-per-request-scope).
+`FindOrder` and `ListOrders` already bound. `ServiceModule` does the same over
+the tenant the caller's API key was **cut for** — `Tenant` from
+`auth.principals.service`, and the tenant is a field of `ServiceIdentity`
+stated per key in `auth.ts`'s `serviceKeys`, so a second key states its own
+rather than inheriting the first's rows — but exports only `FindOrder`. That
+asymmetry is what makes
+`context.unit.place` and `context.unit.list` unreadable from `export`, the one
+leaf both schemes serve: the record a leaf is given is the intersection of what
+its kinds export. See
+[Open a per-request scope](/how-to/open-a-per-request-scope).
 
 ## The spec: booting the real module on `PORT=0`
 

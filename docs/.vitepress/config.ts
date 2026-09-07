@@ -57,6 +57,7 @@ const GUIDE_SIDEBAR = [
             link: "/how-to/split-a-router-into-controllers",
           },
           { text: "Protect a procedure", link: "/how-to/protect-a-procedure" },
+          { text: "Authorize a request", link: "/how-to/authorize-a-request" },
           { text: "Serve htmx fragments", link: "/how-to/serve-htmx-fragments" },
           {
             text: "Stream with server-sent events",

@@ -40,10 +40,11 @@ import {
 import { HttpModule, html } from "@btravstack/http-server";
 import { jwtAuthenticator } from "@btravstack/http-server/jwt";
 import { observability } from "@btravstack/observability";
-import { OkAsync, P } from "unthrown";
+import { P } from "unthrown";
 
 import { api } from "./auth.js";
 import { RequestModule, ServiceModule, UserModule } from "./request-scope.js";
+import { exportable, renderCsv } from "./slices/orders/authorize.js";
 
 const docsUnits = {
   anonymous: RequestModule,
@@ -120,19 +121,27 @@ const ordersController = api.OrpcController(
             }),
           ),
         ),
-    export: ({ context }) => {
-      switch (context.principal.scheme) {
-        case "user":
-          logger.info("order export requested", {
-            userId: context.principal.identity.userId,
-          });
-          return OkAsync({ csv: `user,${context.principal.identity.userId}` });
-        case "service":
-          logger.info("order export requested", {
-            appId: context.principal.identity.appId,
-          });
-          return OkAsync({ csv: `service,${context.principal.identity.appId}` });
-      }
+    export: ({ errors, context }, input) => {
+      logger.info("order export requested", {
+        id: input.id,
+        scheme: context.principal.scheme,
+      });
+      return context.unit.find
+        .execute(input.id)
+        .flatMap((order) => exportable(context.principal, order).toAsync())
+        .map((authorized) => ({ csv: renderCsv(authorized) }))
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
+            )
+            .with(P.tag("Forbidden"), (error) =>
+              errors.FORBIDDEN({
+                message: error.message,
+                data: { id: error.id, reason: error.reason },
+              }),
+            ),
+        );
     },
   }),
 });
@@ -255,14 +264,23 @@ const depsOrdersRouter = api.OrpcRouter(contract.orders)({
             }),
           ),
         ),
-    export: ({ context }) => {
-      switch (context.principal.scheme) {
-        case "user":
-          return OkAsync({ csv: `user,${context.principal.identity.userId}` });
-        case "service":
-          return OkAsync({ csv: `service,${context.principal.identity.appId}` });
-      }
-    },
+    export: ({ errors, context }, input) =>
+      context.unit.find
+        .execute(input.id)
+        .flatMap((order) => exportable(context.principal, order).toAsync())
+        .map((authorized) => ({ csv: renderCsv(authorized) }))
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
+            )
+            .with(P.tag("Forbidden"), (error) =>
+              errors.FORBIDDEN({
+                message: error.message,
+                data: { id: error.id, reason: error.reason },
+              }),
+            ),
+        ),
   }),
 });
 

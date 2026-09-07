@@ -454,8 +454,9 @@ const recordingApi = () => {
 The tenant a handler serves is **not** an input field: the `orders`
 handlers open a unit whose `Tenant` came from the principal, the value the authenticator
 resolved from the request's headers, and the marked fragment's inputs declare
-no tenant at all. So a spec's tenant reaches the server through the **token**
-`clientFor` mints and nowhere else. The unmarked `customers` fragment still
+no tenant at all. So a spec's tenant reaches the server through the
+**credential** — the token `clientFor` mints, or the key `serviceClientFor`
+presents, which is cut for one fixed tenant — and never through an input. The unmarked `customers` fragment still
 names its tenant on the input, which is why its calls still pass one.
 
 `api.spec.ts` then swaps the repository for a stub that holds a request open

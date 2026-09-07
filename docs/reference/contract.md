@@ -212,7 +212,8 @@ a bypass. No oRPC builder has to know the marker exists.
   `401` — is the starter's.
 - **It does not model resource-dependent authorization.** A scope is a property
   of the credential and is answerable before dispatch, which is why it is here.
-  "Is this caller the order's owner?" is not, and stays in the handler.
+  "Is this caller the order's owner?" is not, and stays in the handler — see
+  [Authorize a request](/how-to/authorize-a-request).
 - **It carries no OpenAPI document metadata.** A scheme's own definition —
   `type: http`, `bearerFormat`, an OAuth flow — belongs beside the contract,
   not in the marker.

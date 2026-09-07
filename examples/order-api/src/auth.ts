@@ -1,5 +1,10 @@
 import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
-import { apiKeyAuthenticator, defineHttp } from "@btravstack/http-server";
+import {
+  apiKeyAuthenticator,
+  defineHttp,
+  type Principal,
+  type SchemesFrom,
+} from "@btravstack/http-server";
 import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 
 import type { RequestModule, ServiceModule, UserModule } from "./request-scope.js";
@@ -19,8 +24,13 @@ import type { RequestModule, ServiceModule, UserModule } from "./request-scope.j
  */
 export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 
-/** What the `service` scheme resolves to: a machine caller, with no tenant of its own. */
-export type ServiceIdentity = { readonly appId: string };
+/**
+ * What the `service` scheme resolves to: which machine is calling, and the
+ * tenant its key was cut FOR. A machine has no login to take one from, so the
+ * tenant is a property of the credential — stated per key, so a second key
+ * cannot inherit the first's rows by saying nothing.
+ */
+export type ServiceIdentity = { readonly appId: string; readonly tenantId: TenantId };
 
 /**
  * What a verified token means here, and the one place this deployment's claim
@@ -59,17 +69,30 @@ export const userAuth = jwtAuthenticator<Identity>()({
 });
 
 /**
- * The second scheme: an API key, no scopes, no tenant — what a reporting job
- * presents — the starter's own `apiKeyAuthenticator`, which compares digests
- * rather than strings and checks every issued key without an early return.
+ * The issued keys, and the one place a key's tenant is written: a key is cut
+ * for a tenant the way a login belongs to one, so it is stated on the entry
+ * rather than anywhere downstream.
  *
- * The key list is inline here because an example has no secret store. A
- * deployment reads it from a config field bound off `Env`, since a key list in
- * the image is a key list in the repository.
+ * Inline here because an example has no secret store. A deployment reads it
+ * from a config field bound off `Env`, since a key list in the image is a key
+ * list in the repository.
  */
-export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({
-  keys: [{ key: "reporting", principal: { appId: "reporting" } }],
-});
+export const serviceKeys = [
+  {
+    key: "reporting",
+    principal: {
+      appId: "reporting",
+      tenantId: TenantId("0199a1e0-0000-7000-8000-0000000000f1"),
+    },
+  },
+] as const;
+
+/**
+ * The second scheme: an API key, no scopes — what a reporting job presents —
+ * the starter's own `apiKeyAuthenticator`, which compares digests rather than
+ * strings and checks every issued key without an early return.
+ */
+export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({ keys: serviceKeys });
 
 /**
  * The one door: every HTTP entity this application mints comes from here, and
@@ -93,3 +116,15 @@ export const api = auth.units<{
   user: typeof UserModule;
   service: typeof ServiceModule;
 }>();
+
+/**
+ * Who is calling, under either scheme — the input an authorization rule takes.
+ *
+ * Derived from the schemes declared above rather than restated, so a third
+ * scheme is a compile error inside the rule that must decide about it, not a
+ * union that quietly stopped matching what the door lets through.
+ */
+export type Caller = Principal<
+  keyof typeof auth.authenticators & string,
+  SchemesFrom<typeof auth.authenticators>
+>;

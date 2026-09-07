@@ -37,7 +37,8 @@ export const orderFragments = api.HtmxFragments([orderRowFragment]);
  * The three `unit` kinds are what a request is served under: `anonymous` for a
  * request nothing marked, `user` for one the bearer scheme resolved — which is
  * where the tenant and the orders vertical are built — and `service` for an
- * API key, which has no tenant of its own. Each is forked over this scope, so
+ * API key, whose tenant is the one the key was cut for. Each is forked over
+ * this scope, so
  * every need they carry is discharged from what is exported below.
  *
  * A factory over the three kind modules, not a constant, for one reason: a

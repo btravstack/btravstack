@@ -87,10 +87,23 @@ const ordersContract = authenticated({ user: [] })({
 
   // Overrides the group default for itself: a service token may export too,
   // and a user token needs the scope.
+  //
+  // `FORBIDDEN` is the one code this contract declares that the STARTER also
+  // answers: an under-scoped caller never reaches the handler and gets a bare
+  // 403, where this one carries `data` and is inferable. Two refusals, one
+  // status, told apart by the payload.
   export: authenticated(
     { user: ["orders:export"] },
     { service: [] },
-  )(oc.output(z.object({ csv: z.string() }))),
+  )(
+    oc
+      .input(z.object({ id: z.uuidv7() }))
+      .output(z.object({ csv: z.string() }))
+      .errors({
+        NOT_FOUND: { data: orderRef },
+        FORBIDDEN: { data: orderRef.extend({ reason: z.string() }) },
+      }),
+  ),
 });
 
 /** The customers slice's own fragment. Reached as `contract.customers`; a fragment is a contract in its own right, so the slice can be served alone. */

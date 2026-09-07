@@ -85,6 +85,45 @@ is the index of the workspaces themselves.
   mentioning `@btravstack/contract`'s inaccessible `unique symbol` (TS2527),
   while held whole it collapses to the nameable `Http<A>`, which is why the
   application writes no type annotation at all.
+- **Authorization is three layers, and `orders.export` is where all three
+  meet.** Scope is in the CONTRACT, checked by the starter before a handler
+  runs; the tenant is in the UNIT, so `context.unit.find` cannot reach another
+  tenant's row however the handler is written; and policy —
+  `(principal, resource) → decision` — is in the HANDLER, because it is the
+  only layer that has the resource. Only the third is written by hand, and it
+  is `examples/order-api/src/slices/orders/authorize.ts`: a plain function
+  answering `Result<Authorized<Order>, Forbidden>`.
+
+  Four things about its shape are the point, and none of them is a framework
+  feature:
+  - **The witness is a brand only the rule can mint.** `Authorized<T>` is
+    `T & { readonly [AUTHORIZED]: true }` over a declared-only unique symbol
+    the module does not export, and `renderCsv` takes an
+    `Authorized<Order>` — so the operation the decision protects cannot be
+    called without the decision, and forgetting the check is a compile error
+    rather than a code review. That is why it is a type and not a boolean.
+  - **`Forbidden` is the application's own tagged error**, folded by the same
+    exhaustive `mapErrCases` as every domain error. There is no framework
+    `Policy` port, no registry and nothing to register — a rule with one
+    consumer is a function, and making it a port would put an authorization
+    decision behind an override.
+  - **It lives in `order-api`, not in `order-application`**, because its
+    `principal` input is protocol-shaped: `Caller` is what the schemes
+    `defineHttp` declared resolve to, exported from `auth.ts` as an ALIAS of
+    that rather than a hand-written union — so a third scheme is a compile
+    error inside the rule that must decide about it. A rule over the domain's
+    own vocabulary would belong a layer down.
+  - **The rule is a quantity CEILING, not ownership**, and that is a fact about
+    this domain rather than a preference: nothing records an order's owner,
+    because a worker places orders with nobody behind them. Ownership is the
+    rule a reader writes on this same shape once their domain records one.
+
+  Two refusals share the `403`, and the specs tell them apart by the payload:
+  the starter's `UnderScoped` is thrown, carries no `data` and is not
+  inferable, so a client sees a defect; the rule's is `errors.FORBIDDEN({ data:
+{ id, reason } })`, declared on the contract, so it is a value on the `Err`
+  channel.
+
 - **The local loop is `pnpm dev`, and it is the production shape** (issue
   #67): `turbo run dev --filter=./examples/*`, one process per deployment,
   each `tsx watch --env-file=../../.env.dev src/main.ts`, output prefixed by

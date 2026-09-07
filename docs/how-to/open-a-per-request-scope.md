@@ -155,11 +155,12 @@ export const auth = defineHttp({ authenticators: { user: userAuth } });
 
 // The `user` kind. `auth.principals.user` carries `userAuth`'s own principal
 // type, and the fork seeds it — so this module owes the composition root
-// nothing for it. `OrderDatabase` and `Logger` it DOES owe: they are read out
-// of the application scope this fork sits over, which is what keeps one
-// Prisma client per process rather than one per request.
+// nothing for it, and names nothing else: `OrderDatabase` and `Logger` are
+// owed by the modules it imports, which say so themselves, and are read out
+// of the application scope this fork sits over — one Prisma client per
+// process rather than one per request.
 const UserUnit = Module("UserUnit")({
-  needs: [auth.principals.user, OrderDatabase, Logger],
+  needs: [auth.principals.user],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({
@@ -237,6 +238,11 @@ Reading a name the leaf's kind cannot provide is TypeScript's own
 `Property 'tenant' does not exist`, at the line that reads it. A leaf accepting
 **several** schemes keeps only what every one of their modules exports, since
 the runtime forks exactly one of them and cannot know which in advance.
+
+The tenant a kind provides here is **layer 2** of
+[Authorize a request](/how-to/authorize-a-request): a handler is left with no
+tenant to thread and none to get wrong, so what remains for it to decide is a
+question about one resource.
 
 ## On a worker, the seed is the work itself
 
