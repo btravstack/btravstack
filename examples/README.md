@@ -113,9 +113,10 @@ one every repository call is scoped to, and `uuidgen` mints a v4. The full
 surface is in
 [`internal/test-infra`'s README](../internal/test-infra/README.md#the-dev-issuer).
 
-`pnpm dev:env` also starts a real OpenID provider beside the rest and signs two
-users into it, `alice@btravstack.test` and `bob@btravstack.test` — the logins a
-browser will use once the backend-for-frontend has a route to send it to.
+`pnpm dev:env` also starts a real OpenID provider beside the rest and registers
+two users with it, `alice@btravstack.test` and `bob@btravstack.test`. Nobody is
+signed in: these are the credentials a browser will present once the
+backend-for-frontend has a route to send it to.
 
 Nothing is faked at the boundaries that matter. `order-infrastructure` runs
 against a real Prisma client over a real PostgreSQL, so a `DuplicateOrder`

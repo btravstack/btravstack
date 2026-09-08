@@ -88,7 +88,7 @@ export const it = test.extend<{
     { scope: "file" },
   ],
 
-  // Stopped rather than left to outlive the run the way the six long-lived
+  // Stopped rather than left to outlive the run the way the shared, long-lived
   // ones are, for the same reason: nothing else will ever match its hash.
   issuer: [
     async ({ keyCache }, use) => {

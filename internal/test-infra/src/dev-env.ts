@@ -74,9 +74,11 @@ const devSessionKeys = (): Promise<string> =>
  * duplicated, so a warm machine pays nothing here and a `pnpm test` running
  * alongside shares them.
  *
- * The ports are therefore whatever Docker mapped, which is why the addresses are
+ * Most of those ports are whatever Docker mapped, which is why the addresses are
  * written to a file rather than defaulted: an ephemeral mapped port cannot be a
- * default.
+ * default. The provider's are the exception and are fixed, because a redirect
+ * protocol needs URLs a client and a browser agree on before anything starts —
+ * so the `HTTP_OIDC_*` lines below are constants where the rest are readings.
  */
 const main = async (): Promise<void> => {
   const postgres = await sharedPostgres();
