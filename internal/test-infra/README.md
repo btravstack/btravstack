@@ -228,8 +228,13 @@ Kratos. Host bindings are not part of what testcontainers hashes for reuse, so
 this costs nothing there. The cost is a collision: anything else already
 listening on one of the five refuses the container with
 `Bind for 0.0.0.0:4444 failed: port is already allocated`, which names the port
-and not the reason — if a run fails that way, `lsof -nP -iTCP:4444 -sTCP:LISTEN`
-is the question to ask, and `docker ps` will show no Ory container at all.
+and not the reason. Two causes look the same: a host process on the port, which
+`lsof -nP -iTCP:4444 -sTCP:LISTEN` names; or a STALE sibling of the same
+container, which is what an edit to `ory-consent.mjs`, `kratos.yml` or
+`identity.schema.json` leaves behind — the edit mints a new reuse hash while
+the old container still holds the port. `docker ps` shows that one; the fix is
+`docker rm -f $(docker ps -aq --filter label=com.btravstack.test-infra)` and
+a fresh run.
 
 **One user-defined network, `btravstack-ory`, created by name rather than by
 testcontainers' `Network`.** That class mints a random name a second process
