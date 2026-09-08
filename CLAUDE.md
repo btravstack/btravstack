@@ -898,6 +898,11 @@ in its place.
   - **a key prefix per test** again for object storage, inside ONE bucket: a
     bucket per test would be a create-and-delete round trip bought for an
     isolation a UUID prefix already gives for nothing.
+  - **an identity per spec** on the OpenID Connect provider, minted through
+    `internal/test-infra`'s `createIdentity` when a spec needs state of its
+    own — never a client: one registered client is what the provider's
+    redirect URIs are cut for, and two fixed identities serve every spec that
+    only needs to log in.
 
   `withReuse()` is what makes the second, third and fourth workspace attach
   instead of start. Two consequences are deliberate and stated in
@@ -1509,7 +1514,8 @@ And a seventh, about the infrastructure a suite runs against:
 
 7. **A test file is isolated by the boundary its infrastructure already has,
    never by a server of its own.** A RabbitMQ suite gets a **vhost**, a
-   Temporal suite a **namespace**, a database suite a **tenant** — each minted
+   Temporal suite a **namespace**, a database suite a **tenant**, an OpenID
+   Connect suite an **identity** — each minted
    in setup, each free, each finer than the thing it replaces. What a suite
    must NOT do is start a copy of the server: that is what made `pnpm test`
    intermittently red at turbo's default concurrency (issue #52), and it buys

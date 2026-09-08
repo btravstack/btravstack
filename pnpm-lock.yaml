@@ -879,6 +879,9 @@ importers:
       jose:
         specifier: 'catalog:'
         version: 6.2.12
+      openid-client:
+        specifier: 'catalog:'
+        version: 6.8.8
       testcontainers:
         specifier: 'catalog:'
         version: 12.1.0
@@ -892,9 +895,6 @@ importers:
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
-      openid-client:
-        specifier: 'catalog:'
-        version: 6.8.8
       tsx:
         specifier: 'catalog:'
         version: 4.23.13

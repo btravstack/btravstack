@@ -11,17 +11,19 @@ import {
 
 import { TEST_INFRA_LABEL, shared } from "./containers.js";
 import { withLock } from "./lock.js";
-import { ORY_POST_LOGOUT_URI, provisionOry } from "./ory-provision.js";
+import { ORY_ISSUER, ORY_POST_LOGOUT_URI, provisionOry } from "./ory-provision.js";
 
 export {
   ORY_CLIENT_ID,
   ORY_CLIENT_SECRET,
+  ORY_ISSUER,
   ORY_POST_LOGOUT_URI,
   ORY_REDIRECT_URI,
   ORY_SCOPE,
   ORY_USERS,
   createIdentity,
   provisionOry,
+  registerRedirectUri,
   type OryIdentity,
   type OryProvisioned,
   type OryUser,
@@ -32,10 +34,7 @@ export {
  * one and registers it with Ryuk: a second process could neither find it nor
  * rely on it outliving the run that created it.
  */
-export const ORY_NETWORK = "btravstack-ory";
-
-/** What Hydra is started as, and therefore what a discovery document must answer. */
-export const ORY_ISSUER = "http://localhost:4444/";
+const ORY_NETWORK = "btravstack-ory";
 
 /**
  * Test infrastructure, not a deployment: a value nothing outside this

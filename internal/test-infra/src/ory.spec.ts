@@ -1,4 +1,10 @@
-import { buildEndSessionUrl } from "openid-client";
+import {
+  buildAuthorizationUrl,
+  buildEndSessionUrl,
+  calculatePKCECodeChallenge,
+  randomPKCECodeVerifier,
+  randomState,
+} from "openid-client";
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -7,9 +13,11 @@ import {
   ORY_CLIENT_ID,
   ORY_ISSUER,
   ORY_POST_LOGOUT_URI,
+  ORY_REDIRECT_URI,
   ORY_SCOPE,
   ORY_USERS,
   provisionOry,
+  registerRedirectUri,
 } from "./ory.js";
 
 const START_UP = 180_000;
@@ -100,6 +108,31 @@ describe("the ory containers", () => {
     },
     START_UP,
   );
+
+  it(
+    "registers a second redirect uri beside the one it was provisioned with",
+    async ({ ory: _ory }) => {
+      // GIVEN a spec whose own server binds a port the one client was never
+      // registered with, and a ruling that forbids it a client of its own
+      const uri = "http://localhost:3000/callback-for-a-spec-of-its-own";
+
+      // WHEN it registers that URI, twice, as a second run of the gate would
+      await registerRedirectUri(uri);
+      await registerRedirectUri(uri);
+
+      // THEN Hydra holds the union, once each — and the client is patched
+      // rather than replaced, so the secret every grant here authenticates
+      // with is still the one it was provisioned with
+      await expect(
+        fetch(`http://localhost:4445/admin/clients/${ORY_CLIENT_ID}`)
+          .then((response) => response.json())
+          .then(
+            (client) => (client as { readonly redirect_uris: readonly string[] }).redirect_uris,
+          ),
+      ).resolves.toEqual([ORY_REDIRECT_URI, uri]);
+    },
+    START_UP,
+  );
 });
 
 describe("the headless login", () => {
@@ -146,29 +179,44 @@ describe("the headless login", () => {
   );
 
   it(
-    "ends the provider session through the logout handler",
+    "ends the provider session with no parameters at all, and really ends it",
     async ({ login, oidc }) => {
       // GIVEN a browser Hydra has an OpenID session for
-      const { id_token } = await login(ORY_USERS.alice);
-      if (id_token === undefined)
-        // oxlint-disable-next-line unthrown/no-throw -- a fixture that handed back no ID token is a broken test, not a failing one; Hydra would report it as `invalid_request` and name the wrong cause
-        throw new Error("The grant answered no ID token, so there is no hint to log out with");
+      await login(ORY_USERS.alice);
 
-      // WHEN the advertised `end_session_endpoint` is followed with that jar —
-      // `id_token_hint` beside the redirect because Hydra refuses one without
-      // the other, `invalid_request` on its own error page
+      // WHEN the advertised `end_session_endpoint` is followed bare — no
+      // `id_token_hint` and no `post_logout_redirect_uri`, which is the only
+      // shape a session cookie holding nothing but a principal can make, and
+      // the reason `URLS_POST_LOGOUT_REDIRECT` is configured on Hydra at all
+      const landedOn = await followRedirects(
+        buildEndSessionUrl(oidc, {}),
+        ORY_POST_LOGOUT_URI,
+      ).then((landed) => landed.href);
+
+      // and a fresh authorization is then walked with the same jar
+      const pkceCodeVerifier = randomPKCECodeVerifier();
+      const reachedTheCallbackAgain = await followRedirects(
+        buildAuthorizationUrl(oidc, {
+          redirect_uri: ORY_REDIRECT_URI,
+          scope: ORY_SCOPE,
+          code_challenge: await calculatePKCECodeChallenge(pkceCodeVerifier),
+          code_challenge_method: "S256",
+          state: randomState(),
+        }),
+        ORY_REDIRECT_URI,
+      ).then(
+        () => true,
+        () => false,
+      );
+
       // THEN the chain — Hydra, our own `/logout`, Hydra again — lands on the
-      // registered post-logout URI rather than dead-ending at a connection
-      // refused, which is what `skip_logout_consent` alone leaves it doing
-      await expect(
-        followRedirects(
-          buildEndSessionUrl(oidc, {
-            id_token_hint: id_token,
-            post_logout_redirect_uri: ORY_POST_LOGOUT_URI,
-          }),
-          ORY_POST_LOGOUT_URI,
-        ).then((landed) => landed.href),
-      ).resolves.toBe(ORY_POST_LOGOUT_URI);
+      // configured post-logout URI, and the session is genuinely revoked
+      // rather than merely redirected away from: the same browser is sent back
+      // to Kratos to sign in instead of through to a second code
+      expect({ landedOn, reachedTheCallbackAgain }).toEqual({
+        landedOn: ORY_POST_LOGOUT_URI,
+        reachedTheCallbackAgain: false,
+      });
     },
     START_UP,
   );

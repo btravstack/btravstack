@@ -29,13 +29,13 @@
     "@temporalio/client": "catalog:",
     "@temporalio/common": "catalog:",
     "jose": "catalog:",
+    "openid-client": "catalog:",
     "testcontainers": "catalog:"
   },
   "devDependencies": {
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
-    "openid-client": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

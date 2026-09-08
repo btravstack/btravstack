@@ -8,6 +8,9 @@ import { withLock } from "./lock.js";
 const KRATOS_ADMIN = "http://localhost:4434/admin";
 const HYDRA_ADMIN = "http://localhost:4445/admin";
 
+/** What Hydra is started as, and therefore what a discovery document must answer. */
+export const ORY_ISSUER = "http://localhost:4444/";
+
 /** The confidential client the backend-for-frontend authenticates as. */
 export const ORY_CLIENT_ID = "orders-bff";
 
@@ -18,7 +21,7 @@ export const ORY_CLIENT_ID = "orders-bff";
 export const ORY_CLIENT_SECRET = "orders-bff-secret";
 
 /** Registered on the client, and what the authorization code comes back to. */
-export const ORY_REDIRECT_URI = "http://localhost:3000/callback";
+export const ORY_REDIRECT_URI = "http://localhost:3000/auth/callback";
 
 /** Registered on the client, and where `end_session_endpoint` lands. */
 export const ORY_POST_LOGOUT_URI = "http://localhost:3000/";
@@ -130,6 +133,36 @@ const client = async (): Promise<Outcome> => {
 };
 
 /**
+ * Add a redirect URI to the one client, idempotent by union.
+ *
+ * `ORY_REDIRECT_URI` is fixed at `:3000` because a redirect protocol needs its
+ * URLs registered before anything runs. A spec whose own server binds an
+ * ephemeral port has no such URL and the ruling forbids a client of its own, so
+ * it registers the URI it ended up listening on instead.
+ *
+ * A JSON Patch rather than a `PUT` of the whole client, and that is measured:
+ * `GET /admin/clients/{id}` does not answer the client secret, so putting back
+ * what it did answer would blank the very credential every grant here
+ * authenticates with.
+ */
+export const registerRedirectUri = async (uri: string): Promise<void> => {
+  const found = await send(`${HYDRA_ADMIN}/clients/${ORY_CLIENT_ID}`);
+  const registered = (found.body as { readonly redirect_uris?: readonly string[] })
+    .redirect_uris ?? [ORY_REDIRECT_URI];
+  if (registered.includes(uri)) return;
+
+  const patched = await send(`${HYDRA_ADMIN}/clients/${ORY_CLIENT_ID}`, {
+    method: "PATCH",
+    body: [{ op: "replace", path: "/redirect_uris", value: [...registered, uri] }],
+  });
+  if (patched.status !== 200)
+    // oxlint-disable-next-line unthrown/no-throw -- a vitest fixture reports failure by rejecting; there is no Result channel here
+    throw new Error(
+      `Could not register the redirect uri '${uri}': ${patched.status} ${JSON.stringify(patched.body)}`,
+    );
+};
+
+/**
  * The two identities and the one client, idempotent by lookup-then-create:
  * neither admin API has an upsert.
  *
@@ -143,8 +176,7 @@ export const provisionOry = (): Promise<OryProvisioned> =>
       createIdentity(ORY_USERS.alice),
       createIdentity(ORY_USERS.bob),
     ]);
-    return {
-      identities: { alice: alice.status, bob: bob.status },
-      client: await client(),
-    };
+    const status = await client();
+    await registerRedirectUri(ORY_REDIRECT_URI);
+    return { identities: { alice: alice.status, bob: bob.status }, client: status };
   });

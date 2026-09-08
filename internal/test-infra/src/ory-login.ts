@@ -1,17 +1,60 @@
-import { ORY_REDIRECT_URI, type OryUser } from "./ory-provision.js";
+import {
+  ClientSecretBasic,
+  allowInsecureRequests,
+  discovery,
+  enableNonRepudiationChecks,
+  type Configuration,
+} from "openid-client";
+
+import {
+  ORY_CLIENT_ID,
+  ORY_CLIENT_SECRET,
+  ORY_ISSUER,
+  ORY_REDIRECT_URI,
+  type OryUser,
+} from "./ory-provision.js";
 
 /** Kratos's public API, on the fixed host port `sharedOry` publishes it on. */
 const KRATOS_PUBLIC = "http://localhost:4433/";
 
 /**
- * Enough for the five redirects the flow has, and short enough that a loop
- * Hydra or Kratos never leaves is reported rather than waited on.
+ * Generous enough for every chain here, and short enough that a loop Hydra or
+ * Kratos never leaves is reported rather than waited on.
  */
 const MAX_HOPS = 10;
 
 const fail: (message: string) => never = (message) => {
   // oxlint-disable-next-line unthrown/no-throw -- a vitest fixture reports failure by rejecting; there is no Result channel here
   throw new Error(message);
+};
+
+/**
+ * A client configured against the Ory containers, and the one place the two
+ * non-obvious calls live so nobody re-derives them.
+ *
+ * `allowInsecureRequests` is needed **twice** — as a `discovery` option and
+ * again on the configuration it answers, which that option does not reach — and
+ * both are about this issuer being `http://` rather than about Hydra.
+ *
+ * `enableNonRepudiationChecks` is what makes the JWKS request happen at all.
+ * Without it nothing verifies the ID token's SIGNATURE: OIDC Core lets a client
+ * trust a token that came back over TLS from the token endpoint, and there is
+ * no TLS here. A Hydra serving a key set that cannot verify its own tokens
+ * would otherwise pass every spec and fail only in an application, which has
+ * the JWKS and no token endpoint to trust.
+ */
+export const oryClient = async (): Promise<Configuration> => {
+  const config = await discovery(
+    new URL(ORY_ISSUER),
+    ORY_CLIENT_ID,
+    undefined,
+    ClientSecretBasic(ORY_CLIENT_SECRET),
+    { execute: [allowInsecureRequests] },
+  );
+  allowInsecureRequests(config);
+  enableNonRepudiationChecks(config);
+
+  return config;
 };
 
 /**

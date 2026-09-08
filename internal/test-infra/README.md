@@ -235,7 +235,9 @@ container, which is what an edit to `ory-consent.mjs`, `kratos.yml` or
 `identity.schema.json` leaves behind — the edit mints a new reuse hash while
 the old container still holds the port. `docker ps` shows that one; the fix is
 `docker rm -f $(docker ps -aq --filter label=com.btravstack.test-infra)` and
-a fresh run.
+a fresh run. A bind that failed this way also leaves the NEW container created
+but unpublished, and the next run attaches to it and fails with
+`No host port found for host IP` — the same command clears that too.
 
 **One user-defined network, `btravstack-ory`, created by name rather than by
 testcontainers' `Network`.** That class mints a random name a second process
@@ -339,8 +341,21 @@ Two more things the flow needs that reading the OpenID spec does not suggest.
 and again applied to the returned configuration, which the option does not reach
 — and that too is about this issuer being `http://`, not about Hydra. And Hydra
 refuses `post_logout_redirect_uri` **without `id_token_hint`**, answering
-`invalid_request` on its own error page rather than a redirect, so the logout
-test passes the hint the grant just returned.
+`invalid_request` on its own error page rather than a redirect — which is why
+the logout the design ships, and the logout `ory.spec.ts` proves, is the
+**parameterless** end-session: Hydra ends its own session from its own cookie
+and lands on `URLS_POST_LOGOUT_REDIRECT`, the cookie the application seals
+stays principal-only, and a fresh authorization afterwards reaches Kratos's
+login again rather than the callback.
+
+**`oryClient()` is the configured `openid-client` the phases after this one
+reuse**: discovery against `ORY_ISSUER` with the client's secret, both
+`allowInsecureRequests` placements, and `enableNonRepudiationChecks`, in that
+order, so a caller gets a configuration whose grants verify signatures without
+rediscovering either subtlety. **`registerRedirectUri(uri)`** adds a redirect
+URI to the one client, idempotently, for a spec whose server binds an ephemeral
+port; `provisionOry` registers `ORY_REDIRECT_URI` the same way on every attach,
+so a container carrying an older registration converges.
 
 ## The two scripts
 

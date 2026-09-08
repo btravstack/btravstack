@@ -8,13 +8,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type { JWK } from "jose";
 import {
-  ClientSecretBasic,
-  allowInsecureRequests,
   authorizationCodeGrant,
-  enableNonRepudiationChecks,
   buildAuthorizationUrl,
   calculatePKCECodeChallenge,
-  discovery,
   randomPKCECodeVerifier,
   randomState,
   type Configuration,
@@ -22,17 +18,8 @@ import {
 import { test } from "vitest";
 
 import { devKeyPair, jwksUri, sharedJwks } from "../dev-issuer.js";
-import { headlessLogin } from "../ory-login.js";
-import {
-  ORY_CLIENT_ID,
-  ORY_CLIENT_SECRET,
-  ORY_ISSUER,
-  ORY_REDIRECT_URI,
-  ORY_SCOPE,
-  sharedOry,
-  type Ory,
-  type OryUser,
-} from "../ory.js";
+import { headlessLogin, oryClient } from "../ory-login.js";
+import { ORY_REDIRECT_URI, ORY_SCOPE, sharedOry, type Ory, type OryUser } from "../ory.js";
 
 // Anchored the same way `lock.ts` anchors its own `LOCKS`, one directory
 // deeper. A spec that computed this from `process.cwd()` would silently point
@@ -114,8 +101,8 @@ export const it = test.extend<{
   ],
 
   // File-scoped, and NOT stopped afterwards: these three are long-lived shared
-  // containers like the other seven, so a spec attaches to them rather than
-  // owning them.
+  // containers like the rest of the set, so a spec attaches to them rather
+  // than owning them.
   ory: [
     async ({}, use) => {
       await use(await sharedOry());
@@ -123,28 +110,11 @@ export const it = test.extend<{
     { scope: "file" },
   ],
 
-  // `allowInsecureRequests` twice, and both are about this issuer being
-  // `http://` rather than about Hydra: the discovery option does not carry over
-  // to the token and JWKS requests the returned configuration makes.
-  //
-  // `enableNonRepudiationChecks` is what makes the JWKS request happen at all.
-  // Without it nothing verifies the ID token's SIGNATURE — OIDC Core lets a
-  // client trust a token that came back over TLS from the token endpoint, and
-  // this issuer has no TLS. A Hydra serving a key set that cannot verify its
-  // own tokens would otherwise pass every test here and fail only in the
-  // application, whose `user` scheme has no token endpoint to trust.
+  // Every subtlety of building this lives in `oryClient`, exported so a spec in
+  // another workspace does not re-derive it and quietly drop one.
   oidc: [
     async ({ ory: _ory }, use) => {
-      const config = await discovery(
-        new URL(ORY_ISSUER),
-        ORY_CLIENT_ID,
-        undefined,
-        ClientSecretBasic(ORY_CLIENT_SECRET),
-        { execute: [allowInsecureRequests] },
-      );
-      allowInsecureRequests(config);
-      enableNonRepudiationChecks(config);
-      await use(config);
+      await use(await oryClient());
     },
     { scope: "file" },
   ],

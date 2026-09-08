@@ -50,6 +50,20 @@ const answer = (response, status, body) => {
 
 createServer((request, response) => {
   const url = new URL(request.url, `http://localhost:${PORT}`);
+
+  // Kratos's `ui_url`s point at this port and nothing serves them. A revoked or
+  // expired provider session sends a browser to `/login` here, and treating
+  // that as a consent request answered `missing consent_challenge` to a LOGIN
+  // redirect — naming the wrong flow entirely.
+  if (url.pathname !== "/consent" && url.pathname !== "/logout") {
+    answer(
+      response,
+      404,
+      `${url.pathname} is not served here: this endpoint answers /consent and /logout, and nothing else. There is no login UI in this gate — Kratos's ui_url is deliberately dead, and a headless driver reads the flow id out of the Location header rather than fetching it.`,
+    );
+    return;
+  }
+
   const parameter = url.pathname === "/logout" ? "logout_challenge" : "consent_challenge";
   const challenge = url.searchParams.get(parameter);
 
