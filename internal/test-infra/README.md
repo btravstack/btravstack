@@ -225,7 +225,11 @@ environment it starts with, and a client's `redirect_uris` are registered
 against them. Fixing them also makes the URLs identical from the host and from
 inside a container, which is what lets `URLS_LOGIN` point a browser straight at
 Kratos. Host bindings are not part of what testcontainers hashes for reuse, so
-this costs nothing there.
+this costs nothing there. The cost is a collision: anything else already
+listening on one of the five refuses the container with
+`Bind for 0.0.0.0:4444 failed: port is already allocated`, which names the port
+and not the reason — if a run fails that way, `lsof -nP -iTCP:4444 -sTCP:LISTEN`
+is the question to ask, and `docker ps` will show no Ory container at all.
 
 **One user-defined network, `btravstack-ory`, created by name rather than by
 testcontainers' `Network`.** That class mints a random name a second process

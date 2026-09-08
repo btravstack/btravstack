@@ -63,4 +63,32 @@ describe("the ory containers", () => {
     },
     START_UP,
   );
+
+  it(
+    "answers a challenge Hydra does not know without taking the process with it",
+    async ({ ory: _ory }) => {
+      // GIVEN a challenge Hydra has never issued — a stale one, a replayed one,
+      // or one minted before the memory DSN forgot it
+      const status = (path: string): Promise<number> =>
+        fetch(`http://localhost:4455/${path}`).then((response) => response.status);
+
+      // WHEN both endpoints are asked with one
+      const logoutStatus = await status("logout?logout_challenge=bogus");
+      const consentStatus = await status("consent?consent_challenge=bogus");
+      const stillUp = await status("consent").then(
+        (answered) => answered === 400,
+        () => false,
+      );
+
+      // THEN each answers, and the container the whole gate shares is still
+      // there to answer the next request: an accept with no `redirect_to` used
+      // to reach `writeHead` as `location: undefined` and exit the process
+      expect({ logoutStatus, consentStatus, stillUp }).toEqual({
+        logoutStatus: 400,
+        consentStatus: 400,
+        stillUp: true,
+      });
+    },
+    START_UP,
+  );
 });

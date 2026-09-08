@@ -147,7 +147,7 @@ const sharedConsent = async (): Promise<StartedTestContainer> => {
         KRATOS_ADMIN_URL: "http://kratos:4434",
         PORT: "4455",
       })
-      .withWaitStrategy(Wait.forLogMessage(/consent handler/)),
+      .withWaitStrategy(Wait.forHttp("/consent", 4455).forStatusCode(400)),
   );
 };
 

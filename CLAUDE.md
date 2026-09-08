@@ -870,9 +870,7 @@ in its place.
   `examples/` that boot the
   application or a broker-backed runtime — and that is a fact a contributor
   discovers the hard way unless a README says so, which is why each one's
-  does. Measured on this machine: `pnpm test` at turbo's default concurrency,
-  **27/27, ~32 s warm** (before `packages/cache` joined; the Redis container
-  is the cheapest of the four to start).
+  does.
 
   It used to be **five servers for those six workspaces** — a RabbitMQ
   container per AMQP vitest run and a Temporal time-skipping server per

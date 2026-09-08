@@ -72,13 +72,13 @@ const send = async (
 
 const create = async (what: string, url: string, body: unknown): Promise<Outcome> => {
   const created = await send(url, { method: "POST", body });
-  return created.status === 201
-    ? "created"
-    : Promise.reject(
-        new Error(
-          `Could not create the ${what}: ${created.status} ${JSON.stringify(created.body)}`,
-        ),
-      );
+  if (created.status !== 201)
+    // oxlint-disable-next-line unthrown/no-throw -- a vitest fixture reports failure by rejecting; there is no Result channel here
+    throw new Error(
+      `Could not create the ${what}: ${created.status} ${JSON.stringify(created.body)}`,
+    );
+
+  return "created";
 };
 
 const identity = async (user: OryUser): Promise<Outcome> => {
