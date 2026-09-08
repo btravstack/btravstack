@@ -7,10 +7,31 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type { JWK } from "jose";
+import {
+  ClientSecretBasic,
+  allowInsecureRequests,
+  authorizationCodeGrant,
+  buildAuthorizationUrl,
+  calculatePKCECodeChallenge,
+  discovery,
+  randomPKCECodeVerifier,
+  randomState,
+  type Configuration,
+} from "openid-client";
 import { test } from "vitest";
 
 import { devKeyPair, jwksUri, sharedJwks } from "../dev-issuer.js";
-import { sharedOry, type Ory } from "../ory.js";
+import { headlessLogin } from "../ory-login.js";
+import {
+  ORY_CLIENT_ID,
+  ORY_CLIENT_SECRET,
+  ORY_ISSUER,
+  ORY_REDIRECT_URI,
+  ORY_SCOPE,
+  sharedOry,
+  type Ory,
+  type OryUser,
+} from "../ory.js";
 
 // Anchored the same way `lock.ts` anchors its own `LOCKS`, one directory
 // deeper. A spec that computed this from `process.cwd()` would silently point
@@ -32,12 +53,17 @@ type DevIssuer = {
   readonly jwks: string;
 };
 
+/** Sign a user in and exchange the code, so a test names only the user. */
+type Login = (user: OryUser) => Promise<Awaited<ReturnType<typeof authorizationCodeGrant>>>;
+
 export const it = test.extend<{
   lock: Lock;
   deadPid: number;
   keyCache: URL;
   issuer: DevIssuer;
   ory: Ory;
+  oidc: Configuration;
+  login: Login;
 }>({
   lock: async ({}, use) => {
     const name = `spec-${randomUUID()}`;
@@ -95,4 +121,41 @@ export const it = test.extend<{
     },
     { scope: "file" },
   ],
+
+  // `allowInsecureRequests` twice, and both are about this issuer being
+  // `http://` rather than about Hydra: the discovery option does not carry over
+  // to the token and JWKS requests the returned configuration makes.
+  oidc: [
+    async ({ ory: _ory }, use) => {
+      const config = await discovery(
+        new URL(ORY_ISSUER),
+        ORY_CLIENT_ID,
+        undefined,
+        ClientSecretBasic(ORY_CLIENT_SECRET),
+        { execute: [allowInsecureRequests] },
+      );
+      allowInsecureRequests(config);
+      await use(config);
+    },
+    { scope: "file" },
+  ],
+
+  login: async ({ oidc }, use) => {
+    await use(async (user) => {
+      const pkceCodeVerifier = randomPKCECodeVerifier();
+      const state = randomState();
+      const authorizationUrl = buildAuthorizationUrl(oidc, {
+        redirect_uri: ORY_REDIRECT_URI,
+        scope: ORY_SCOPE,
+        code_challenge: await calculatePKCECodeChallenge(pkceCodeVerifier),
+        code_challenge_method: "S256",
+        state,
+      });
+
+      return authorizationCodeGrant(oidc, await headlessLogin({ authorizationUrl, user }), {
+        pkceCodeVerifier,
+        expectedState: state,
+      });
+    });
+  },
 });

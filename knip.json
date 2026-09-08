@@ -17,9 +17,6 @@
     "packages/core": {
       "ignoreDependencies": ["@btravstack/testing"]
     },
-    "internal/test-infra": {
-      "ignoreDependencies": ["openid-client"]
-    },
     "examples/di-hexagonal": {
       "entry": ["src/emit-guards.ts"],
       "project": ["src/**/*.ts"]

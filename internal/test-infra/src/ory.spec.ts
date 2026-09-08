@@ -1,7 +1,16 @@
+import { buildEndSessionUrl } from "openid-client";
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { ORY_ISSUER, provisionOry } from "./ory.js";
+import { followRedirects } from "./ory-login.js";
+import {
+  ORY_CLIENT_ID,
+  ORY_ISSUER,
+  ORY_POST_LOGOUT_URI,
+  ORY_SCOPE,
+  ORY_USERS,
+  provisionOry,
+} from "./ory.js";
 
 const START_UP = 180_000;
 
@@ -88,6 +97,73 @@ describe("the ory containers", () => {
         consentStatus: 400,
         stillUp: true,
       });
+    },
+    START_UP,
+  );
+});
+
+describe("the headless login", () => {
+  it(
+    "logs alice in and mints an ID token carrying her tenant and the scope",
+    async ({ login }) => {
+      // GIVEN a provisioned identity and the confidential client the
+      // backend-for-frontend authenticates as
+
+      // WHEN the authorization code flow is driven with no browser and no UI
+      // application, and the code exchanged
+      // THEN the ID token validates — signature, `iss`, `aud`, `exp`, `at_hash`
+      // — and carries what a principal is built from, `tenant` and `scope`
+      // included, neither of which Hydra puts there on its own
+      await expect(login(ORY_USERS.alice).then((tokens) => tokens.claims())).resolves.toEqual(
+        expect.objectContaining({
+          iss: ORY_ISSUER,
+          aud: [ORY_CLIENT_ID],
+          sub: expect.any(String),
+          tenant: ORY_USERS.alice.tenant,
+          scope: ORY_SCOPE,
+          sid: expect.any(String),
+        }),
+      );
+    },
+    START_UP,
+  );
+
+  it(
+    "logs bob in and mints his tenant, not alice's",
+    async ({ login }) => {
+      // GIVEN a second identity, provisioned into a second tenant
+
+      // WHEN he signs in through the same flow
+      // THEN the claim is read off his own identity: a jar left holding alice's
+      // Kratos session would have skipped the login and handed back hers
+      await expect(
+        login(ORY_USERS.bob).then((tokens) => tokens.claims()?.["tenant"]),
+      ).resolves.toBe(ORY_USERS.bob.tenant);
+    },
+    START_UP,
+  );
+
+  it(
+    "ends the provider session through the logout handler",
+    async ({ login, oidc }) => {
+      // GIVEN a browser Hydra has an OpenID session for
+      const { id_token } = await login(ORY_USERS.alice);
+
+      // WHEN the advertised `end_session_endpoint` is followed with that jar —
+      // `id_token_hint` beside the redirect because Hydra refuses one without
+      // the other, `invalid_request` on its own error page
+      // THEN the chain — Hydra, our own `/logout`, Hydra again — lands on the
+      // registered post-logout URI rather than dead-ending at a connection
+      // refused, which is what `skip_logout_consent` alone leaves it doing
+      await expect(
+        followRedirects(
+          buildEndSessionUrl(oidc, {
+            id_token_hint: id_token ?? "",
+            post_logout_redirect_uri: ORY_POST_LOGOUT_URI,
+          }),
+          ORY_POST_LOGOUT_URI,
+        ).then((landed) => landed.href),
+      ).resolves.toBe(ORY_POST_LOGOUT_URI);
     },
     START_UP,
   );

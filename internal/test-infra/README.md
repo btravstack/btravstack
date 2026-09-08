@@ -127,7 +127,8 @@ break.
 | `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@temporal-contract/testing`'s                                                                                                                                        |
 | `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal` / `sharedRedis` / `sharedMailpit` / `sharedRustFs`, plus `postgresUrl`, `provisionApplicationRole` and the credentials each one is started with |
 | `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                                                                                                                                                     |
-| `@btravstack/internal-test-infra/ory`        | `sharedOry` / `provisionOry`, the issuer and client constants, and `ORY_USERS`                                                                                                                         |
+| `@btravstack/internal-test-infra/ory`        | `sharedOry` / `provisionOry` / `createIdentity`, the issuer and client constants, and `ORY_USERS`                                                                                                      |
+| `@btravstack/internal-test-infra/ory-login`  | `headlessLogin({ authorizationUrl, user })` and `followRedirects(from, until)`                                                                                                                         |
 | `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                                                                                                                                                  |
 
 ## The dev issuer
@@ -269,6 +270,64 @@ the id out of the `Location` header without ever issuing the request.
 other. Their passwords, `ORY_CLIENT_SECRET` and Hydra's `SECRETS_SYSTEM` are
 constants in the source on the same footing as `POSTGRES_PASSWORD`: nothing
 outside this repository authenticates with them.
+
+**The per-test boundary here is an identity, never a client.** `createIdentity`
+is the same lookup-then-create `provisionOry` runs, exported on its own and
+answering the Kratos id — which is the `sub` the tokens carry — beside
+`"created"` or `"existing"`. A spec that needs state nobody else touches mints a
+user, exactly as a Redis spec mints a key prefix. A client per test would be a
+second registration against the one provider for an isolation an identity
+already gives.
+
+## Signing in without a browser
+
+`src/ory-login.ts` is `headlessLogin({ authorizationUrl, user })`, and it drives
+**eight requests** end to end. It takes an authorization URL the caller built —
+`openid-client`'s `buildAuthorizationUrl`, or by hand — and answers the callback
+URL Hydra redirected to, carrying `code` and `state`. It never fetches that URL:
+nothing serves `ORY_REDIRECT_URI`, and what a test wants is the code, not a
+response to it.
+
+1. `GET` Hydra's `/oauth2/auth` → 302 to Kratos's `/self-service/login/browser`
+2. `GET` that → 303 to `ui_url?flow=<id>`, **which is never fetched** — the id is
+   read out of the `Location` header, and the UI URL stays the dead one
+   `config/kratos.yml` names
+3. `GET` Kratos's `/self-service/login/flows?id=` with `Accept: application/json`
+   → the flow, whose `ui.action` is where to post and whose `csrf_token` node
+   carries the token to post with
+4. `POST` that action, JSON `{ method, identifier, password, csrf_token }` → a
+   **422**, which is Kratos's normal answer for a browser flow that must be
+   redirected; the body carries `redirect_browser_to`
+5. `GET` Hydra's `/oauth2/auth?login_verifier=…` → 302 to consent
+6. `GET` our own `/consent?consent_challenge=…` → 302 back
+7. `GET` Hydra's `/oauth2/auth?consent_verifier=…` → 303 to the callback
+8. the token exchange, which is the caller's — `authorizationCodeGrant`
+
+Every one of these is Kratos's or Hydra's own documented API. There is no
+scraping, no HTML parsing and no reference-UI route, which is what makes this
+the most stable of the headless logins the spike compared.
+
+**A step that answers something other than a redirect is reported, not waited
+on.** A stale consent challenge answers 400 from the handler and Hydra down
+answers 502; either way the walk rejects naming the status and the body, so a
+broken container reads as a failure rather than as a hang against the 180 s
+timeout.
+
+**The cookie jar is module-scoped and cleared by every login**, because a
+browser has one of these. That is what lets the logout walk carry the session
+the login left — `followRedirects` shares the jar, which is how
+`buildEndSessionUrl`'s three hops (Hydra, our `/logout`, Hydra again) reach the
+post-logout URI. It is also what stops a second login being silently skipped:
+Kratos would recognise the first user's session and Hydra would hand back her
+token for his sign-in. `ory.spec.ts` signs both `ORY_USERS` in for that reason.
+
+Two things the flow needs that reading the OpenID spec does not suggest.
+`allowInsecureRequests` is needed **twice** — in `discovery`'s `execute` option
+and again applied to the returned configuration, which the option does not reach
+— and that is about this issuer being `http://`, not about Hydra. And Hydra
+refuses `post_logout_redirect_uri` **without `id_token_hint`**, answering
+`invalid_request` on its own error page rather than a redirect, so the logout
+test passes the hint the grant just returned.
 
 ## The two scripts
 

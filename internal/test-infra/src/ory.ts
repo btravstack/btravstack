@@ -20,7 +20,9 @@ export {
   ORY_REDIRECT_URI,
   ORY_SCOPE,
   ORY_USERS,
+  createIdentity,
   provisionOry,
+  type OryIdentity,
   type OryProvisioned,
   type OryUser,
 } from "./ory-provision.js";

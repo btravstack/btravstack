@@ -50,6 +50,12 @@ export const ORY_USERS = {
 
 type Outcome = "existing" | "created";
 
+/** A provisioned Kratos identity: its id, which is the `sub` its tokens carry. */
+export type OryIdentity = {
+  readonly id: string;
+  readonly status: Outcome;
+};
+
 export type OryProvisioned = {
   readonly identities: Record<keyof typeof ORY_USERS, Outcome>;
   readonly client: Outcome;
@@ -70,7 +76,7 @@ const send = async (
   return { status: response.status, body: await response.json().catch(() => undefined) };
 };
 
-const create = async (what: string, url: string, body: unknown): Promise<Outcome> => {
+const create = async (what: string, url: string, body: unknown): Promise<unknown> => {
   const created = await send(url, { method: "POST", body });
   if (created.status !== 201)
     // oxlint-disable-next-line unthrown/no-throw -- a vitest fixture reports failure by rejecting; there is no Result channel here
@@ -78,27 +84,37 @@ const create = async (what: string, url: string, body: unknown): Promise<Outcome
       `Could not create the ${what}: ${created.status} ${JSON.stringify(created.body)}`,
     );
 
-  return "created";
+  return created.body;
 };
 
-const identity = async (user: OryUser): Promise<Outcome> => {
+/**
+ * One identity, idempotent by lookup-then-create, and the per-test boundary on
+ * Ory: a spec that needs state nobody else touches mints a user rather than a
+ * client of its own.
+ */
+export const createIdentity = async (user: OryUser): Promise<OryIdentity> => {
   const found = await send(
     `${KRATOS_ADMIN}/identities?credentials_identifier=${encodeURIComponent(user.email)}`,
   );
-  if (Array.isArray(found.body) && found.body.length > 0) return "existing";
+  const existing = Array.isArray(found.body)
+    ? (found.body[0] as { readonly id: string } | undefined)
+    : undefined;
+  if (existing !== undefined) return { id: existing.id, status: "existing" };
 
-  return create(`identity '${user.email}'`, `${KRATOS_ADMIN}/identities`, {
+  const made = (await create(`identity '${user.email}'`, `${KRATOS_ADMIN}/identities`, {
     schema_id: "user",
     traits: { email: user.email, tenant: user.tenant },
     credentials: { password: { config: { password: user.password } } },
-  });
+  })) as { readonly id: string };
+
+  return { id: made.id, status: "created" };
 };
 
 const client = async (): Promise<Outcome> => {
   const found = await send(`${HYDRA_ADMIN}/clients/${ORY_CLIENT_ID}`);
   if (found.status === 200) return "existing";
 
-  return create(`client '${ORY_CLIENT_ID}'`, `${HYDRA_ADMIN}/clients`, {
+  await create(`client '${ORY_CLIENT_ID}'`, `${HYDRA_ADMIN}/clients`, {
     client_id: ORY_CLIENT_ID,
     client_secret: ORY_CLIENT_SECRET,
     client_name: "Orders BFF",
@@ -109,6 +125,8 @@ const client = async (): Promise<Outcome> => {
     post_logout_redirect_uris: [ORY_POST_LOGOUT_URI],
     token_endpoint_auth_method: "client_secret_basic",
   });
+
+  return "created";
 };
 
 /**
@@ -121,6 +139,12 @@ const client = async (): Promise<Outcome> => {
  */
 export const provisionOry = (): Promise<OryProvisioned> =>
   withLock("ory-provision", async () => {
-    const [alice, bob] = await Promise.all([identity(ORY_USERS.alice), identity(ORY_USERS.bob)]);
-    return { identities: { alice, bob }, client: await client() };
+    const [alice, bob] = await Promise.all([
+      createIdentity(ORY_USERS.alice),
+      createIdentity(ORY_USERS.bob),
+    ]);
+    return {
+      identities: { alice: alice.status, bob: bob.status },
+      client: await client(),
+    };
   });
