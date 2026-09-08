@@ -1,0 +1,45 @@
+dsn: memory
+
+serve:
+  public:
+    base_url: http://localhost:4433/
+    cors:
+      enabled: true
+      allowed_origins: ["*"]
+  admin:
+    base_url: http://localhost:4434/
+
+selfservice:
+  default_browser_return_url: http://localhost:4455/
+  allowed_return_urls:
+    - http://localhost:4455
+    - http://localhost:4444
+  methods:
+    password:
+      enabled: true
+  flows:
+    login:
+      ui_url: http://localhost:4455/login
+    settings:
+      ui_url: http://localhost:4455/settings
+    error:
+      ui_url: http://localhost:4455/error
+
+oauth2_provider:
+  url: http://hydra:4445
+
+identity:
+  default_schema_id: user
+  schemas:
+    - id: user
+      url: file:///etc/config/identity.schema.json
+
+secrets:
+  cookie: [PLEASE-CHANGE-ME-I-AM-VERY-INSECURE]
+  cipher: [32-LONG-SECRET-NOT-SECURE-AT-ALL]
+
+cookies:
+  same_site: Lax
+
+log:
+  level: info

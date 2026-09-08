@@ -10,6 +10,7 @@ import type { JWK } from "jose";
 import { test } from "vitest";
 
 import { devKeyPair, jwksUri, sharedJwks } from "../dev-issuer.js";
+import { sharedOry, type Ory } from "../ory.js";
 
 // Anchored the same way `lock.ts` anchors its own `LOCKS`, one directory
 // deeper. A spec that computed this from `process.cwd()` would silently point
@@ -36,6 +37,7 @@ export const it = test.extend<{
   deadPid: number;
   keyCache: URL;
   issuer: DevIssuer;
+  ory: Ory;
 }>({
   lock: async ({}, use) => {
     const name = `spec-${randomUUID()}`;
@@ -80,6 +82,16 @@ export const it = test.extend<{
       const container = await sharedJwks(publicJwk);
       await use({ cache: keyCache, publicJwk, jwks: jwksUri(container) });
       await container.stop();
+    },
+    { scope: "file" },
+  ],
+
+  // File-scoped, and NOT stopped afterwards: these three are long-lived shared
+  // containers like the other seven, so a spec attaches to them rather than
+  // owning them.
+  ory: [
+    async ({}, use) => {
+      await use(await sharedOry());
     },
     { scope: "file" },
   ],

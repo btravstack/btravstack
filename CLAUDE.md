@@ -850,12 +850,19 @@ in its place.
   workspaces run under the same six commands as the kernel, and an example that
   stops compiling fails CI exactly as `packages/core` would. The type-level gates
   they pin, and the `pnpm dev` local loop, are in `examples/CLAUDE.md`.
-- **The whole gate runs on SEVEN containers, shared, and `internal/test-infra`
+- **The whole gate runs on TEN containers, shared, and `internal/test-infra`
   owns them.** One `postgres:18.1`, one `rabbitmq:4.2.1-management-alpine`,
   one `temporalio/auto-setup:1.29.1`, one `redis:8.8.2-alpine`, one
-  `axllent/mailpit:v1.31.0`, one `rustfs/rustfs:1.0.0-rc.3` and one
+  `axllent/mailpit:v1.31.0`, one `rustfs/rustfs:1.0.0-rc.3`, one
   `nginx:1.29-alpine` — the dev loop's JWKS endpoint, which is a container
-  rather than a listener because `dev:env` is one-shot and exits — started
+  rather than a listener because `dev:env` is one-shot and exits — and the
+  three the OpenID provider takes: `oryd/hydra:v2.3.0`, `oryd/kratos:v1.3.1`
+  and a `node:24-alpine` running the consent-and-logout handler this
+  repository owns, because Hydra has no mode in which that endpoint is
+  unreachable (`skip_consent` is advice to a consent application, never
+  permission to omit one). Those three take **fixed** host ports and share a
+  fixed-name network, which the others do not: a redirect protocol needs its
+  URLs before the container exists. Started
   once per machine and reused by
   every workspace's vitest run **and by `pnpm dev`**. Ten workspaces need a Docker daemon —
   `packages/amqp-worker`, `packages/temporal-worker`, `packages/cache`, `packages/mailer`,

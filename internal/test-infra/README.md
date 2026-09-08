@@ -15,6 +15,9 @@ rather than one per workspace.
 | `axllent/mailpit:v1.31.0`          | `packages/mailer`, `examples/order-amqp-worker`                             |
 | `rustfs/rustfs:1.0.0-rc.3`         | `packages/storage`                                                          |
 | `nginx:1.29-alpine`                | the dev loop's JWKS endpoint, and `src/dev-issuer.spec.ts`                  |
+| `oryd/hydra:v2.3.0`                | the OpenID provider the backend-for-frontend authorises against             |
+| `oryd/kratos:v1.3.1`               | the identity provider Hydra delegates login to                              |
+| `node:24-alpine`                   | `src/ory-consent.mjs`, the consent and logout endpoint                      |
 
 One container per backing service — the table above is the list, and the
 workspaces reading each are in it. Before this existed, the broker and the
@@ -95,6 +98,7 @@ costs the image pull the issue was about. To remove them:
 
 ```sh
 docker rm -f $(docker ps -aq --filter label=com.btravstack.test-infra)
+docker network rm btravstack-ory
 ```
 
 **testcontainers' own reuse lock is in-process**, which does nothing about the
@@ -123,6 +127,7 @@ break.
 | `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@temporal-contract/testing`'s                                                                                                                                        |
 | `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal` / `sharedRedis` / `sharedMailpit` / `sharedRustFs`, plus `postgresUrl`, `provisionApplicationRole` and the credentials each one is started with |
 | `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                                                                                                                                                     |
+| `@btravstack/internal-test-infra/ory`        | `sharedOry` / `provisionOry`, the issuer and client constants, and `ORY_USERS`                                                                                                                         |
 | `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                                                                                                                                                  |
 
 ## The dev issuer
@@ -179,6 +184,82 @@ exits non-zero, and `--silent` does not suppress it. So a
 bearer token on the very mistake the UUIDv7 check exists to catch, and the real
 usage line is scrolled off in stderr. `TOKEN=$(…) || exit` is what makes the
 failure a failure.
+
+## Ory: three containers, and why each one is there
+
+`src/ory.ts` starts the OpenID provider the stateless backend-for-frontend is
+built against, and provisions it. Measured in a spike before any of it was
+wired in; the shape below is what worked.
+
+- **`oryd/hydra:v2.3.0`**, `serve all --dev`, no config file and seven
+  environment variables. `URLS_LOGIN` points **straight at Kratos's own
+  browser-login endpoint**, which is what removes the login UI application: Hydra
+  appends `?login_challenge=…`, Kratos consumes it and calls Hydra's
+  accept-login itself.
+- **`oryd/kratos:v1.3.1`**, with `config/kratos.yml` and
+  `config/identity.schema.json` copied to `/etc/config/`. The identity schema is
+  what puts `tenant` on an identity, beside the `email` that is its login
+  identifier.
+- **`node:24-alpine` running `src/ory-consent.mjs`**, and it is not optional.
+  `skip_consent` and `skip_logout_consent` are advice **to a consent
+  application** — Hydra echoes them back and still redirects the user agent to
+  `URLS_CONSENT` and `URLS_LOGOUT`. There is no mode in which either endpoint is
+  unreachable, so without this container the code flow does not complete at all
+  and logout dead-ends at a connection refused. Kratos also passes no traits
+  through the login accept (`context: null`), so the handler reads the identity
+  itself — `request.subject` **is** the Kratos identity id, which makes it one
+  admin `GET` — and writes `tenant`, `email` and `scope` into `session.id_token`.
+  `scope` has to be written in by hand: Hydra never puts it in an ID token, and
+  its access token is opaque.
+
+  The reference image `oryd/kratos-selfservice-ui-node` was measured and
+  declined. It completes the flow, but its claim mapping is a hardcoded switch
+  over seven OIDC-standard names with no trait passthrough and no template, so
+  `tenant` cannot arrive; and it is 1.18 GB against Hydra and Kratos's 169 MB
+  combined.
+
+**Fixed host ports — 4444/4445, 4433/4434, 4455 — rather than the ephemeral
+ones every other container here takes.** A redirect protocol needs its URLs
+before the container exists: Hydra's issuer and `URLS_*` are baked into the
+environment it starts with, and a client's `redirect_uris` are registered
+against them. Fixing them also makes the URLs identical from the host and from
+inside a container, which is what lets `URLS_LOGIN` point a browser straight at
+Kratos. Host bindings are not part of what testcontainers hashes for reuse, so
+this costs nothing there.
+
+**One user-defined network, `btravstack-ory`, created by name rather than by
+testcontainers' `Network`.** That class mints a random name a second process
+cannot find and labels it with the reaper's session id, so it would be removed
+under a reused container. `sharedOry` looks the network up and creates it if
+absent, under a lock, with the same `com.btravstack.test-infra` label as the
+containers. Only one call ever crosses container to container — Kratos → Hydra
+admin — so aliases exist for `hydra`, `kratos` and `consent` and everything else
+is a browser redirect to `localhost`.
+
+**Copied content rides a label.** Content is copied into a container _after_
+create and is not part of the reuse hash, so an edited `kratos.yml` or
+`ory-consent.mjs` would be reused into a container still running the old copy.
+Each of the two carries a digest of what it copies under
+`com.btravstack.ory-content`, the same trick as the dev issuer's key thumbprint.
+
+**Provisioning runs on every attach, not once.** Both DSNs are `memory`: a
+container that is _attached_ to keeps its state, but one that was restarted has
+forgotten every identity, client and signing key. `provisionOry` is idempotent
+by lookup-then-create — neither admin API has an upsert — and costs about a
+third of a second, so running it unconditionally is the honest default. Moving
+to the shared `postgres:18.1` would buy durable state at the cost of two
+databases, two migration steps and a Postgres dependency in the wait strategy.
+
+Two gotchas worth not rediscovering: Kratos's admin API lives under an `/admin`
+prefix, so `/health/ready` on 4434 is a **307** and the wait strategy must ask
+for `/admin/health/ready`; and `config/kratos.yml`'s `ui_url`s are deliberately
+dead — Kratos 303s to them carrying `?flow=<id>`, and a headless driver reads
+the id out of the `Location` header without ever issuing the request.
+
+`ORY_USERS` is two identities in two tenants, so a spec can prove one is not the
+other. Their passwords, `ORY_CLIENT_SECRET` and Hydra's `SECRETS_SYSTEM` are
+constants in the source on the same footing as `POSTGRES_PASSWORD`: nothing
+outside this repository authenticates with them.
 
 ## The two scripts
 

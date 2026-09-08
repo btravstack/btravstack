@@ -11,6 +11,7 @@
     "./lock": "./src/lock.ts",
     "./mailpit": "./src/mailpit.ts",
     "./namespace": "./src/namespace.ts",
+    "./ory": "./src/ory.ts",
     "./rabbitmq": "./src/rabbitmq.ts",
     "./rustfs": "./src/rustfs.ts",
     "./redis": "./src/redis.ts",
@@ -33,6 +34,7 @@
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
+    "openid-client": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
