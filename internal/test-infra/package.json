@@ -11,6 +11,8 @@
     "./lock": "./src/lock.ts",
     "./mailpit": "./src/mailpit.ts",
     "./namespace": "./src/namespace.ts",
+    "./ory": "./src/ory.ts",
+    "./ory-login": "./src/ory-login.ts",
     "./rabbitmq": "./src/rabbitmq.ts",
     "./rustfs": "./src/rustfs.ts",
     "./redis": "./src/redis.ts",
@@ -27,6 +29,7 @@
     "@temporalio/client": "catalog:",
     "@temporalio/common": "catalog:",
     "jose": "catalog:",
+    "openid-client": "catalog:",
     "testcontainers": "catalog:"
   },
   "devDependencies": {

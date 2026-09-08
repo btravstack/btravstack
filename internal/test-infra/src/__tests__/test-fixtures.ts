@@ -7,9 +7,19 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type { JWK } from "jose";
+import {
+  authorizationCodeGrant,
+  buildAuthorizationUrl,
+  calculatePKCECodeChallenge,
+  randomPKCECodeVerifier,
+  randomState,
+  type Configuration,
+} from "openid-client";
 import { test } from "vitest";
 
 import { devKeyPair, jwksUri, sharedJwks } from "../dev-issuer.js";
+import { headlessLogin, oryClient } from "../ory-login.js";
+import { ORY_REDIRECT_URI, ORY_SCOPE, sharedOry, type Ory, type OryUser } from "../ory.js";
 
 // Anchored the same way `lock.ts` anchors its own `LOCKS`, one directory
 // deeper. A spec that computed this from `process.cwd()` would silently point
@@ -31,11 +41,17 @@ type DevIssuer = {
   readonly jwks: string;
 };
 
+/** Sign a user in and exchange the code, so a test names only the user. */
+type Login = (user: OryUser) => Promise<Awaited<ReturnType<typeof authorizationCodeGrant>>>;
+
 export const it = test.extend<{
   lock: Lock;
   deadPid: number;
   keyCache: URL;
   issuer: DevIssuer;
+  ory: Ory;
+  oidc: Configuration;
+  login: Login;
 }>({
   lock: async ({}, use) => {
     const name = `spec-${randomUUID()}`;
@@ -72,7 +88,7 @@ export const it = test.extend<{
     { scope: "file" },
   ],
 
-  // Stopped rather than left to outlive the run the way the six long-lived
+  // Stopped rather than left to outlive the run the way the shared, long-lived
   // ones are, for the same reason: nothing else will ever match its hash.
   issuer: [
     async ({ keyCache }, use) => {
@@ -83,4 +99,42 @@ export const it = test.extend<{
     },
     { scope: "file" },
   ],
+
+  // File-scoped, and NOT stopped afterwards: these three are long-lived shared
+  // containers like the rest of the set, so a spec attaches to them rather
+  // than owning them.
+  ory: [
+    async ({}, use) => {
+      await use(await sharedOry());
+    },
+    { scope: "file" },
+  ],
+
+  // Every subtlety of building this lives in `oryClient`, exported so a spec in
+  // another workspace does not re-derive it and quietly drop one.
+  oidc: [
+    async ({ ory: _ory }, use) => {
+      await use(await oryClient());
+    },
+    { scope: "file" },
+  ],
+
+  login: async ({ oidc }, use) => {
+    await use(async (user) => {
+      const pkceCodeVerifier = randomPKCECodeVerifier();
+      const state = randomState();
+      const authorizationUrl = buildAuthorizationUrl(oidc, {
+        redirect_uri: ORY_REDIRECT_URI,
+        scope: ORY_SCOPE,
+        code_challenge: await calculatePKCECodeChallenge(pkceCodeVerifier),
+        code_challenge_method: "S256",
+        state,
+      });
+
+      return authorizationCodeGrant(oidc, await headlessLogin({ authorizationUrl, user }), {
+        pkceCodeVerifier,
+        expectedState: state,
+      });
+    });
+  },
 });

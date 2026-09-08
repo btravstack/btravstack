@@ -73,7 +73,7 @@ version of "green gate, no consumer can build" this repo has met. Do not
 judge the workspace by the example half; a reader who does concludes it is
 redundant with `order-api`, and takes the emit gate with it. `docs/` is the documentation site (see **Documentation
 site** below); it is a workspace but not a published package. `internal/`
-holds one more, `test-infra`, which is neither: it owns the seven containers
+holds one more, `test-infra`, which is neither: it owns the containers
 the whole gate shares and is documented in its own README.
 
 ## Commands
@@ -850,12 +850,19 @@ in its place.
   workspaces run under the same six commands as the kernel, and an example that
   stops compiling fails CI exactly as `packages/core` would. The type-level gates
   they pin, and the `pnpm dev` local loop, are in `examples/CLAUDE.md`.
-- **The whole gate runs on SEVEN containers, shared, and `internal/test-infra`
+- **The whole gate runs on TEN containers, shared, and `internal/test-infra`
   owns them.** One `postgres:18.1`, one `rabbitmq:4.2.1-management-alpine`,
   one `temporalio/auto-setup:1.29.1`, one `redis:8.8.2-alpine`, one
-  `axllent/mailpit:v1.31.0`, one `rustfs/rustfs:1.0.0-rc.3` and one
+  `axllent/mailpit:v1.31.0`, one `rustfs/rustfs:1.0.0-rc.3`, one
   `nginx:1.29-alpine` — the dev loop's JWKS endpoint, which is a container
-  rather than a listener because `dev:env` is one-shot and exits — started
+  rather than a listener because `dev:env` is one-shot and exits — and the
+  three the OpenID provider takes: `oryd/hydra:v2.3.0`, `oryd/kratos:v1.3.1`
+  and a `node:24-alpine` running the consent-and-logout handler this
+  repository owns, because Hydra has no mode in which that endpoint is
+  unreachable (`skip_consent` is advice to a consent application, never
+  permission to omit one). Those three take **fixed** host ports and share a
+  fixed-name network, which the others do not: a redirect protocol needs its
+  URLs before the container exists. Started
   once per machine and reused by
   every workspace's vitest run **and by `pnpm dev`**. Ten workspaces need a Docker daemon —
   `packages/amqp-worker`, `packages/temporal-worker`, `packages/cache`, `packages/mailer`,
@@ -863,9 +870,7 @@ in its place.
   `examples/` that boot the
   application or a broker-backed runtime — and that is a fact a contributor
   discovers the hard way unless a README says so, which is why each one's
-  does. Measured on this machine: `pnpm test` at turbo's default concurrency,
-  **27/27, ~32 s warm** (before `packages/cache` joined; the Redis container
-  is the cheapest of the four to start).
+  does.
 
   It used to be **five servers for those six workspaces** — a RabbitMQ
   container per AMQP vitest run and a Temporal time-skipping server per
@@ -893,6 +898,11 @@ in its place.
   - **a key prefix per test** again for object storage, inside ONE bucket: a
     bucket per test would be a create-and-delete round trip bought for an
     isolation a UUID prefix already gives for nothing.
+  - **an identity per spec** on the OpenID Connect provider, minted through
+    `internal/test-infra`'s `createIdentity` when a spec needs state of its
+    own — never a client: one registered client is what the provider's
+    redirect URIs are cut for, and two fixed identities serve every spec that
+    only needs to log in.
 
   `withReuse()` is what makes the second, third and fourth workspace attach
   instead of start. Two consequences are deliberate and stated in
@@ -1504,7 +1514,8 @@ And a seventh, about the infrastructure a suite runs against:
 
 7. **A test file is isolated by the boundary its infrastructure already has,
    never by a server of its own.** A RabbitMQ suite gets a **vhost**, a
-   Temporal suite a **namespace**, a database suite a **tenant** — each minted
+   Temporal suite a **namespace**, a database suite a **tenant**, an OpenID
+   Connect suite an **identity** — each minted
    in setup, each free, each finer than the thing it replaces. What a suite
    must NOT do is start a copy of the server: that is what made `pnpm test`
    intermittently red at turbo's default concurrency (issue #52), and it buys

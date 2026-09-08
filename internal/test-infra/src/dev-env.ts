@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -21,6 +22,13 @@ import {
 } from "./containers.js";
 import { DEV_AUDIENCE, DEV_ISSUER, devKeyPair, jwksUri, sharedJwks } from "./dev-issuer.js";
 import { withLock } from "./lock.js";
+import {
+  ORY_CLIENT_ID,
+  ORY_CLIENT_SECRET,
+  ORY_ISSUER,
+  ORY_REDIRECT_URI,
+  sharedOry,
+} from "./ory.js";
 
 const run = promisify(execFile);
 /**
@@ -39,30 +47,53 @@ const infrastructure = fileURLToPath(
   new URL("../../../examples/order-infrastructure", import.meta.url),
 );
 
+const sessionKeysFile = new URL("../../../.cache/dev-session/keys", import.meta.url);
+
 /**
- * Brings up the seven shared containers and writes the repository root's
+ * The dev loop's session-sealing key, minted on first use and read back for
+ * ever after — the dev issuer's key pair for the same reason: a cookie sealed
+ * before a `pnpm dev:env` still opens after it.
+ */
+const devSessionKeys = (): Promise<string> =>
+  withLock("dev-session-keys", async () => {
+    const stored = await readFile(sessionKeysFile, "utf8").catch(() => undefined);
+    if (stored !== undefined) return stored.trim();
+
+    const key = randomBytes(32).toString("base64url");
+    await mkdir(new URL(".", sessionKeysFile), { recursive: true });
+    await writeFile(sessionKeysFile, key, { mode: 0o600 });
+
+    return key;
+  });
+
+/**
+ * Brings up the shared containers and writes the repository root's
  * `.env.dev` — what `turbo run dev` loads into each example process.
  *
  * The **same** containers the test suites use, attached to rather than
  * duplicated, so a warm machine pays nothing here and a `pnpm test` running
  * alongside shares them.
  *
- * The ports are therefore whatever Docker mapped, which is why the addresses are
+ * Most of those ports are whatever Docker mapped, which is why the addresses are
  * written to a file rather than defaulted: an ephemeral mapped port cannot be a
- * default.
+ * default. The provider's are the exception and are fixed, because a redirect
+ * protocol needs URLs a client and a browser agree on before anything starts —
+ * so the `HTTP_OIDC_*` lines below are constants where the rest are readings.
  */
 const main = async (): Promise<void> => {
   const postgres = await sharedPostgres();
   const ownerUrl = postgresUrl(postgres, ORDERS_DATABASE);
 
   const { publicJwk } = await devKeyPair();
-  const [rabbitmq, temporal, redis, mailpit, rustfs, jwks] = await Promise.all([
+  const [rabbitmq, temporal, redis, mailpit, rustfs, jwks, , sessionKeys] = await Promise.all([
     sharedRabbitMq(),
     sharedTemporal(postgres),
     sharedRedis(),
     sharedMailpit(),
     sharedRustFs(),
     sharedJwks(publicJwk),
+    sharedOry(),
+    devSessionKeys(),
   ]);
 
   await withLock("orders-migrate", () =>
@@ -108,6 +139,13 @@ const main = async (): Promise<void> => {
     `HTTP_JWT_JWKS_URI=${jwksUri(jwks)}`,
     `HTTP_JWT_ISSUER=${DEV_ISSUER}`,
     `HTTP_JWT_AUDIENCE=${DEV_AUDIENCE}`,
+    // The OpenID provider `sharedOry` started, and the key the browser session
+    // is sealed with. Nothing binds these yet — the later phases of #160 do.
+    `HTTP_OIDC_ISSUER=${ORY_ISSUER}`,
+    `HTTP_OIDC_CLIENT_ID=${ORY_CLIENT_ID}`,
+    `HTTP_OIDC_CLIENT_SECRET=${ORY_CLIENT_SECRET}`,
+    `HTTP_OIDC_REDIRECT_URI=${ORY_REDIRECT_URI}`,
+    `HTTP_SESSION_KEYS=${sessionKeys}`,
     "OUTBOX_TENANTS=0199a1e0-0000-7000-8000-000000000001",
     "LOG_LEVEL=debug",
     "",
@@ -115,7 +153,7 @@ const main = async (): Promise<void> => {
 
   await writeFile(envFile, env);
 
-  process.stderr.write(`[dev:env] containers up, .env.dev written\n`);
+  process.stderr.write(`[dev:env] containers up, ory provisioned, .env.dev written\n`);
 };
 
 await main();

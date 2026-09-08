@@ -6,7 +6,7 @@ import { withLock } from "./lock.js";
  * Every container this module starts carries it, so a contributor can find
  * and remove the whole set with one command — see this workspace's README.
  */
-const LABEL = "com.btravstack.test-infra";
+export const TEST_INFRA_LABEL = "com.btravstack.test-infra";
 
 /**
  * Constants rather than configuration: the server is a test fixture nothing
@@ -35,7 +35,7 @@ export const shared = (
   withLock(name, () =>
     define()
       .withReuse()
-      .withLabels({ [LABEL]: name })
+      .withLabels({ [TEST_INFRA_LABEL]: name })
       .start(),
   );
 
