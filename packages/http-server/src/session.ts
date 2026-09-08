@@ -3,6 +3,8 @@ import { Port, Provider } from "@btravstack/di";
 import { CompactEncrypt, compactDecrypt } from "jose";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
+import { HttpAuthenticator, Unauthenticated, granted, type Authenticator } from "./auth.js";
+
 /** What the cookie carries: the application's own principal, and when the session ends. */
 export type Session<P> = {
   readonly principal: P;
@@ -11,6 +13,12 @@ export type Session<P> = {
    * minted by an OIDC login.
    */
   readonly sid?: string;
+  /**
+   * What the login recorded the session as holding. A scheme grants the
+   * INTERSECTION of its own vocabulary with this, so a session naming a scope
+   * the scheme does not know grants nothing extra.
+   */
+  readonly scopes?: readonly string[];
   readonly iat: number;
   readonly exp: number;
 };
@@ -57,10 +65,14 @@ const decodeKey = (value: string): Uint8Array | undefined => {
     : undefined;
 };
 
+const scopesOf = (value: unknown): boolean =>
+  Array.isArray(value) && value.every((scope) => typeof scope === "string");
+
 // The plaintext is authenticated, not validated: a key this codec holds could
 // have sealed anything, so the payload's shape is checked before it is trusted
-// as a session — a `null` one used to defect on `.exp` and a string `exp`
-// used to coerce its way past the lifetime.
+// as a session — a `null` one used to defect on `.exp`, a string `exp` used to
+// coerce its way past the lifetime, and a string `scopes` would defect on the
+// `Set` a scheme builds from it.
 const sessionOf = (plaintext: Uint8Array): Session<unknown> | undefined => {
   const decoded: unknown = JSON.parse(new TextDecoder().decode(plaintext));
   return typeof decoded === "object" &&
@@ -69,7 +81,8 @@ const sessionOf = (plaintext: Uint8Array): Session<unknown> | undefined => {
     "iat" in decoded &&
     typeof decoded.iat === "number" &&
     "exp" in decoded &&
-    typeof decoded.exp === "number"
+    typeof decoded.exp === "number" &&
+    (!("scopes" in decoded) || scopesOf(decoded.scopes))
     ? (decoded as Session<unknown>)
     : undefined;
 };
@@ -80,10 +93,10 @@ const codec = (
 ): SessionCodecService => {
   const [sealing] = keys;
   return {
-    seal: ({ principal, sid }) => {
+    seal: ({ principal, sid, scopes }) => {
       const iat = Math.floor(Date.now() / 1000);
       // `JSON.stringify` drops an absent `sid`, so nothing spreads it in.
-      const payload = JSON.stringify({ principal, sid, iat, exp: iat + ttlSec });
+      const payload = JSON.stringify({ principal, sid, scopes, iat, exp: iat + ttlSec });
       return fromSafePromise(
         new CompactEncrypt(new TextEncoder().encode(payload))
           .setProtectedHeader(HEADER)
@@ -152,3 +165,98 @@ export const sessionCodec = (
           : OkAsync(codec([sealing, ...rotated], pins.ttlSec ?? DEFAULT_TTL_SEC));
       }),
   });
+
+const DEFAULT_COOKIE = "__Host-session";
+
+/**
+ * One cookie out of the `cookie` header, which `node:http` delivers as ONE
+ * string. The name is matched EXACTLY, so `__Host-session-x` is not
+ * `__Host-session`; only the first `=` splits, so a value carrying one arrives
+ * whole; and the FIRST of a repeated name wins, which is the order a browser
+ * sends them in — most specific first — so a later duplicate cannot shadow the
+ * session.
+ */
+const cookieValue = (header: string | undefined, name: string): string | undefined => {
+  for (const part of header?.split(";") ?? []) {
+    const at = part.indexOf("=");
+    if (at !== -1 && part.slice(0, at).trim() === name) return part.slice(at + 1).trim();
+  }
+  return undefined;
+};
+
+export type SessionOptions<P, Scopes extends readonly string[]> = {
+  /**
+   * The cookie the browser sends back. Default `__Host-session` — a
+   * browser-enforced prefix: `Secure`, `Path=/`, no `Domain`, so a sibling
+   * host cannot write it.
+   */
+  readonly cookie?: string;
+  /**
+   * The scopes this scheme can grant, and **the only place they are written**
+   * — `jwtAuthenticator`'s rule, for `jwtAuthenticator`'s reason. The grant is
+   * the INTERSECTION of this vocabulary with what the session carries. Omit it
+   * entirely for a scheme with no scopes.
+   */
+  readonly scopes?: Scopes;
+  /**
+   * What the session makes the caller. Answering `undefined` refuses it — the
+   * hook for a session this endpoint will not take, and the default's own
+   * answer to a session sealed with no principal at all.
+   */
+  readonly principal?: (session: Session<unknown>) => P | undefined;
+};
+
+/**
+ * The session-cookie scheme: a third one beside `jwtAuthenticator` and
+ * `apiKeyAuthenticator`, so `requires: [{ session: [] }]` on a fragment route
+ * and `authenticated({ session: [...] })` on a procedure need nothing new.
+ *
+ * ```ts
+ * export const browserAuth = sessionAuthenticator<Identity>()({ scopes: ["orders:export"] });
+ * ```
+ *
+ * It injects {@link SessionCodec} rather than holding keys of its own, so a
+ * root composing this scheme without `sessionCodec()` is di's own unmet need
+ * naming `HttpSessionCodec` — and the codec that reads a cookie is the very one
+ * that sealed it.
+ *
+ * No cookie, a cookie no key opens, a session past its `exp` and a principal
+ * the application declined are ONE answer: `Unauthenticated`, carrying no
+ * reason, which is the codec's own rule one layer up.
+ */
+export const sessionAuthenticator =
+  <P>() =>
+  <const Scopes extends readonly string[] = readonly []>(
+    options: SessionOptions<P, Scopes> = {},
+  ): Authenticator<P, Scopes[number], SessionCodec, never> => {
+    const name = options.cookie ?? DEFAULT_COOKIE;
+    // The vocabulary decides the answer's SHAPE, and it is read once here: a
+    // scoped scheme answers an empty grant for a session that holds nothing,
+    // never a bare identity.
+    const vocabulary = options.scopes;
+    const principalOf =
+      options.principal ??
+      // The codec cannot know `P`, so a payload sealed with `principal: null`
+      // unseals happily; refusing it is this scheme's job.
+      ((session: Session<unknown>) => (session.principal ?? undefined) as P | undefined);
+
+    return HttpAuthenticator<P, Scopes[number]>()({
+      inject: { codec: SessionCodec },
+      sync:
+        ({ codec }) =>
+        (headers) =>
+          codec.unseal(cookieValue(headers.cookie, name)).flatMap((session) => {
+            if (session === undefined) return ErrAsync(new Unauthenticated());
+            const principal = principalOf(session);
+            if (principal === undefined) return ErrAsync(new Unauthenticated());
+            if (vocabulary === undefined) return OkAsync(principal as never);
+            const held = new Set(session.scopes);
+            return OkAsync(
+              granted(
+                principal,
+                vocabulary.filter((scope) => held.has(scope)),
+              ) as never,
+            );
+          }),
+    });
+  };

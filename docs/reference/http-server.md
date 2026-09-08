@@ -104,11 +104,14 @@ the grounds that oRPC was the only way to answer HTTP here — and is exported
 now, since a second protocol's package has to name the set port it contributes
 to.
 
-**Two subpaths export more**, each behind an optional peer so a graph that never
-imports it installs nothing: `@btravstack/http-server/jwt` (`jwtAuthenticator`,
-`DEFAULT_ALGORITHMS`, and the `Claims` / `JwtOptions` types — `jose`) and
-`@btravstack/http-server/openapi` (`openApiDocument` — `@orpc/openapi`). Both
-have sections of their own below.
+**Three subpaths export more**, each behind an optional peer so a graph that
+never imports it installs nothing: `@btravstack/http-server/jwt`
+(`jwtAuthenticator`, `DEFAULT_ALGORITHMS`, and the `Claims` / `JwtOptions`
+types — `jose`), `@btravstack/http-server/session` (`sessionCodec`,
+`sessionAuthenticator`, `SessionCodec`, `DEFAULT_TTL_SEC`, and the `Session` /
+`SessionCodecService` / `SessionOptions` types — `jose` again), and
+`@btravstack/http-server/openapi` (`openApiDocument` — `@orpc/openapi`). All
+three have sections of their own below.
 
 ## `HttpModule(name)({...})`
 
@@ -217,8 +220,8 @@ than what is present.** The request **path** is not a dimension: `/orders/42` wo
 
 ### The authenticators that ship
 
-Two, because these are the ones where writing it per application is how CVEs
-happen. Both are `Authenticator` values an application binds by name in
+Three, because these are the ones where writing it per application is how CVEs
+happen. All three are `Authenticator` values an application binds by name in
 `defineHttp({ authenticators })`, exactly like one it wrote itself — the same
 `defineHttp` call shown above, with a shipped authenticator under a key instead
 of a hand-written one.
@@ -242,12 +245,19 @@ present and not required, since real issuers often omit it. Clock tolerance
 defaults to zero. Every failure is the same refusal, so the endpoint is not an
 oracle for which check the attacker got wrong.
 
-**The `/jwt` subpath needs Node ≥22.12 under CommonJS.** `jose` is ESM-only,
-so the CJS build's `require("jose")` depends on `require(esm)`, which Node
-enables by default from 22.12. ESM consumers are unaffected on any Node 22, and
-so is every consumer that never imports the subpath — which is why this is
-stated here rather than paid for by raising the package's own `engines` floor,
-a breaking change for the many to serve the few.
+**`sessionAuthenticator`**, from `@btravstack/http-server/session`, is the
+cookie a browser sends back — see [the session cookie](#the-session-cookie)
+below for the codec that seals it. It injects `SessionCodec` rather than
+holding keys, so the codec that reads a cookie is the one that sealed it, and a
+root composing the scheme without `sessionCodec()` is refused at the
+`HttpModule` call.
+
+**The `/jwt` and `/session` subpaths need Node ≥22.12 under CommonJS.** `jose`
+is ESM-only, so the CJS build's `require("jose")` depends on `require(esm)`,
+which Node enables by default from 22.12. ESM consumers are unaffected on any
+Node 22, and so is every consumer that never imports either subpath — which is
+why this is stated here rather than paid for by raising the package's own
+`engines` floor, a breaking change for the many to serve the few.
 
 `principal(claims)` is yours — no standard claim carries a tenant — and
 answering `undefined` refuses the token. `scopes` is the vocabulary and **the
@@ -289,10 +299,65 @@ them.** A second `jwtAuthenticator` in the same graph — a partner issuer besid
 the first — pins its own `jwks`, `issuer` and `audience` at the call; two
 schemes both reading the environment would both get the first issuer's.
 
-**Password hashing and credential issuing are out of scope.** Both of these are
-on the verifying side; issuing needs somewhere to put a credential and a
-session to carry it, and this package configures no cookies and has no
-sessions. Reach for `argon2` directly at whatever mints your tokens.
+### The session cookie
+
+`@btravstack/http-server/session` is the storage-free half of a session: the
+cookie **is** the session, encrypted, and nothing is kept server-side.
+
+**`sessionCodec({ keys?, ttlSec? })`** is the provider. `seal` turns a
+principal into a `dir` + `A256GCM` JWE stamped with its own lifetime; `unseal`
+turns a cookie back into a `Session<unknown>` — or into nothing.
+
+| Option   | Required | Default                       | What it is                                                                       |
+| -------- | -------- | ----------------------------- | -------------------------------------------------------------------------------- |
+| `keys`   | no       | read from `HTTP_SESSION_KEYS` | 32-byte base64url keys; the first seals, every one unseals                       |
+| `ttlSec` | no       | `43_200` (12 h)               | how long a session lasts, stamped by `seal` rather than accepted from its caller |
+
+`HTTP_SESSION_KEYS` is a comma-separated list of 32-byte **base64url** keys
+(`A-Z a-z 0-9 - _`, no padding — standard base64 is refused). Mint one with
+`node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'`.
+Rotation is **prepend, deploy, drop**: the first key seals and every key
+unseals, so a cookie sealed with a key that is gone is anonymous rather than an
+error — a browser holding a stale cookie logs in again, which is not a failed
+request. A key that is not 32 base64url bytes fails the boot with a
+`ConfigInvalid` naming the variable and the **position** it refused, never the
+value.
+
+**Every failure to unseal is the same `undefined`** — no cookie, a string that
+is not a JWE, a key that is gone, an edited ciphertext, another algorithm, a
+payload that is not a session, one past its `exp`. Nothing outside learns which
+of them it got wrong.
+
+**`sessionAuthenticator<P>()({ cookie?, scopes?, principal? })`** is the scheme
+over that codec, and it is an ordinary `Authenticator`: bind it in
+`defineHttp({ authenticators })` and `requires: [{ session: [] }]` or
+`authenticated({ session: [] })` work exactly as they do for the other two.
+
+| Option      | Required | Default                       | What it is                                                                                                    |
+| ----------- | -------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `cookie`    | no       | `__Host-session`              | which cookie carries the session                                                                              |
+| `scopes`    | no       | none (the scheme is unscoped) | the vocabulary; the grant is its intersection with the session's own `scopes`                                 |
+| `principal` | no       | `session.principal`           | what the session makes the caller; `undefined` refuses it, and the default refuses a session sealed with none |
+
+**`__Host-` is a browser-enforced prefix** — `Secure`, `Path=/`, no `Domain` —
+so a sibling host cannot write the cookie and plain HTTP cannot carry it. There
+is no `secure` option: it would be an option for shipping a session cookie
+insecurely.
+
+**The cookie header is parsed by name, exactly.** `__Host-session-theme` is not
+`__Host-session`, a value carrying an `=` arrives whole, and the first of a
+repeated name wins — the order a browser sends them in, so a duplicate cannot
+shadow the session.
+
+**The lifetime is fixed and there is no sliding re-seal.** A scheme is handed
+headers, not a response, so it has nowhere to put a `Set-Cookie`; `ttlSec` is
+the whole session, and logging in again is what issues the next one.
+
+**Password hashing and credential issuing are out of scope.** All three schemes
+are on the verifying side: the credential is minted by whoever owns the
+identity, and this package reads what arrives — the session cookie included,
+since `sessionCodec` seals a principal somebody else already authenticated.
+Reach for `argon2` directly at whatever mints your tokens.
 
 ## `api.OrpcRouter(contract)({ inject: deps, sync })`
 
@@ -1131,16 +1196,15 @@ should make in the open.
 
 **CSRF is deliberately not an option here**, though this package's own spec
 once claimed it: oRPC's protection is meaningful only once a request carries a
-`SameSite` cookie, and this package configures no cookies. It stays reachable
-through `plugins`, and becomes an option when cookies do. Admitting `GET` on
-an event-iterator procedure gives the oRPC answerer its own preflight-free
-surface now too, so the day a cookie authenticator lands both answerers need
-protecting — but only one of them can be protected by a plugin.
-`GetMethodCsrfProtectionHandlerPlugin` rides `plugins` into `RPCHandler` and
-so covers oRPC alone; `htmx()` takes a `prefix` and nothing else, so no oRPC
-plugin ever sees a fragment request, and the fragment half has to be
-protected inside this package. Today neither is a live gap, because nothing
-here configures a cookie for a browser to attach.
+`SameSite` cookie, and nothing here sets one — `sessionAuthenticator` reads a
+cookie a login wrote, and writing it is not this package's yet. It stays
+reachable through `plugins`. Admitting `GET` on an event-iterator procedure
+gives the oRPC answerer its own preflight-free surface too, so once a login
+route sets the cookie both answerers need protecting — but only one of them
+can be protected by a plugin. `GetMethodCsrfProtectionHandlerPlugin` rides
+`plugins` into `RPCHandler` and so covers oRPC alone; `htmx()` takes a
+`prefix` and nothing else, so no oRPC plugin ever sees a fragment request, and
+the fragment half has to be protected inside this package.
 
 ### `plugins`
 

@@ -249,11 +249,66 @@ The two rules this half exists to state, before the detail:
   does not know grants nothing extra. Nothing new checks them: the grant goes
   through `granted()` and the existing walk produces the 403.
 
+- **`sessionAuthenticator<P>()({ cookie?, scopes?, principal? })`
+  → `Authenticator<P, Scopes[number], SessionCodec, never>`** — from
+  **`@btravstack/http-server/session`**, beside `sessionCodec` and behind the
+  same optional `jose` peer. The third scheme, and the only one whose
+  credential this stack seals itself: it reads the `cookie` header, hands the
+  named cookie to `SessionCodec`'s `unseal`, and answers what the session
+  carries. `requires: [{ session: [] }]` on a fragment route and
+  `authenticated({ session: [] })` on a procedure need nothing new — a scheme
+  is a scheme.
+
+  **It injects the codec's PORT rather than holding keys.** Its needs channel
+  is `SessionCodec`, so a root composing the scheme without `sessionCodec()` is
+  di's own unmet need naming `HttpSessionCodec` — refused at the `HttpModule`
+  call rather than at the first request — and the codec that reads a cookie is
+  by construction the one that sealed it, key rotation included.
+
+  **The cookie header is parsed here, by hand, and by name.** `node:http`
+  delivers every cookie as ONE string, so the scheme splits on `;` and matches
+  the name EXACTLY — `__Host-session-theme` is not `__Host-session` — splits
+  the value on the FIRST `=` only, and takes the FIRST of a repeated name,
+  which is the order a browser sends them in (most specific first), so a
+  duplicate cannot shadow the session. Six lines and no dependency.
+
+  **`__Host-session` is the default and there is no `secure` knob.**
+  `__Host-` is a prefix the BROWSER enforces — `Secure`, `Path=/`, no
+  `Domain` — so a sibling host cannot write the cookie and a downgrade to
+  plain HTTP cannot carry it. An option that turned that off would be an
+  option for shipping a session cookie insecurely; `cookie` renames it, and
+  renaming it away from the prefix is a visible act.
+
+  **The lifetime is the codec's, not the scheme's**, and there is no sliding
+  re-seal: a scheme has HEADERS, not a response, so it has nowhere to put a
+  `Set-Cookie`. The session ends when `sessionCodec`'s `ttlSec` says it does,
+  and the browser logs in again. Rotation is the codec's too — prepend,
+  deploy, drop.
+
+  **The vocabulary is decided once at composition**, `apiKeyAuthenticator`'s
+  own rule: `scopes` present makes the scheme scoped, so a session holding
+  nothing answers an empty grant rather than a bare identity, and the grant is
+  the INTERSECTION of the vocabulary with the session's own `scopes` — a
+  session naming a scope the scheme does not know grants nothing extra.
+  `Session.scopes` is what phase 3's login writes from the token's `scope`
+  claim; a session sealed without it grants nothing.
+
+  **`principal(session)` defaults to the session's own, and refuses a `null`
+  one.** The codec cannot know `P`, so `{ principal: null }` unseals happily —
+  refusing it is the scheme's job, exactly as `jwtAuthenticator`'s
+  `principal(claims)` may answer `undefined`. Override it for a session this
+  endpoint will not take (one no OIDC login minted, one missing a tenant).
+
+  No cookie, a cookie no key opens, an expired session and a declined
+  principal are ONE answer: `Unauthenticated`, carrying no reason.
+
 - **Password hashing and credential ISSUING are out of scope, deliberately.**
-  Both authenticators above are on the **verifying** side. Issuing needs a
-  place to put a credential and a session to carry it, and this package
-  configures no cookies and has no sessions (#160) — so a password hasher here
-  would be a primitive with no surface calling it. Reach for `argon2` or
+  All three authenticators above are on the **verifying** side, and that is
+  the line: the credential is minted by whoever owns the identity — an OIDC
+  provider, a partner's key vault — and this package reads what arrives.
+  A session cookie does not change it: `sessionCodec` seals a principal
+  somebody else already authenticated. So a password hasher here would be a
+  primitive with no surface calling it. Reach for `argon2` or
   `@node-rs/argon2` directly at whatever mints your tokens; that is one
   dependency and no framework opinion, which is the right size for it.
 

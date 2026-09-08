@@ -3,7 +3,7 @@ import { decodeProtectedHeader } from "jose";
 import type { Result } from "unthrown";
 import { describe, expect } from "vitest";
 
-import { it, sessionKeys } from "./__tests__/test-fixtures.js";
+import { cookieHeader, it, sessionKeys } from "./__tests__/test-fixtures.js";
 
 describe("sessionCodec", () => {
   it("seals a principal and unseals it back, on the default lifetime", async ({
@@ -84,12 +84,20 @@ describe("sessionCodec", () => {
       nothing: (await forged(null)).get(),
       stringExp: (await forged({ principal: {}, iat: 0, exp: "9999999999" })).get(),
       noPrincipal: (await forged({ iat: 0, exp: 4_102_444_800 })).get(),
+      stringScopes: (
+        await forged({ principal: {}, iat: 0, exp: 4_102_444_800, scopes: "admin" })
+      ).get(),
     };
 
-    // THEN all three are anonymous rather than a defect or a session that
+    // THEN all four are anonymous rather than a defect or a session that
     // coerced its way past the lifetime: the plaintext is authenticated, not
     // validated, so its shape is checked before it is trusted
-    expect(read).toEqual({ nothing: undefined, stringExp: undefined, noPrincipal: undefined });
+    expect(read).toEqual({
+      nothing: undefined,
+      stringExp: undefined,
+      noPrincipal: undefined,
+      stringScopes: undefined,
+    });
   });
 
   it("answers undefined for a cookie sealed with a key that is gone", async ({
@@ -182,5 +190,134 @@ describe("sessionCodec", () => {
       oneBad: named("2", 2),
       typo: named("1", 1),
     });
+  });
+});
+
+describe("sessionAuthenticator", () => {
+  it("resolves the principal a sealed cookie carries", async ({ session }) => {
+    // GIVEN a session sealed by the codec the scheme reads with
+    // WHEN the browser sends it back under the default cookie name
+    const resolved = session
+      .seal({ principal: { userId: "u-1" } })
+      .flatMap((sealed) => session.resolve(cookieHeader(`__Host-session=${sealed}`)));
+
+    // THEN the identity arrives BARE — a scheme with no vocabulary answers what
+    // the application put in, with nothing wrapped around it
+    await expect(resolved).toBeOkWith({ userId: "u-1" });
+  });
+
+  it("reads its own cookie past a lookalike name and a valueless one", async ({ session }) => {
+    // GIVEN a header carrying three cookies: one whose name merely STARTS with
+    // the scheme's, one with no value at all, and the session itself last
+    const resolved = session
+      .seal({ principal: { userId: "u-1" } })
+      .flatMap((sealed) =>
+        session.resolve(
+          cookieHeader("__Host-session-theme=dark", "consented", `__Host-session=${sealed}`),
+        ),
+      );
+
+    // THEN the name is matched exactly and the rest is skipped rather than
+    // taken for the session — a prefix match would have unsealed "dark"
+    await expect(resolved).toBeOkWith({ userId: "u-1" });
+  });
+
+  it("takes the first cookie when the header repeats the name", async ({ session }) => {
+    // GIVEN two sessions under one name, which is what a cookie set on a wider
+    // path looks like by the time it reaches here
+    const resolved = session
+      .seal({ principal: { userId: "first" } })
+      .flatMap((first) =>
+        session
+          .seal({ principal: { userId: "second" } })
+          .flatMap((second) =>
+            session.resolve(cookieHeader(`__Host-session=${first}`, `__Host-session=${second}`)),
+          ),
+      );
+
+    // THEN the first wins — the order a browser sends them in is most specific
+    // first, so a later duplicate cannot shadow the session
+    await expect(resolved).toBeOkWith({ userId: "first" });
+  });
+
+  it("refuses a request with no cookie", async ({ session }) => {
+    // GIVEN a request carrying no `cookie` header at all
+    // WHEN it is resolved
+    const resolved = await session.resolve({});
+
+    // THEN it is refused, carrying no reason: the starter answers 401
+    expect(resolved).toBeErrTagged("Unauthenticated");
+  });
+
+  it("refuses a request whose cookies do not include this one", async ({ session }) => {
+    // GIVEN a header carrying other cookies only — a browser that never logged
+    // in still sends the ones it has
+    // WHEN it is resolved
+    const resolved = await session.resolve(cookieHeader("theme=dark", "consented=1"));
+
+    // THEN it takes the same path as no header at all
+    expect(resolved).toBeErrTagged("Unauthenticated");
+  });
+
+  it("refuses a cookie the codec cannot open", async ({ session }) => {
+    // GIVEN a cookie under the right name whose value is not a JWE this codec
+    // sealed
+    // WHEN it is resolved
+    const resolved = await session.resolve(cookieHeader("__Host-session=nonsense"));
+
+    // THEN it is `Unauthenticated`, indistinguishable from no cookie at all:
+    // the codec answers one `undefined` for every way of failing to open
+    expect(resolved).toBeErrTagged("Unauthenticated");
+  });
+
+  it("grants the intersection of its vocabulary and the session's scopes", async ({ session }) => {
+    // GIVEN a session carrying one scope the scheme knows and one it does not
+    const resolved = session
+      .seal({ principal: { userId: "u-1" }, scopes: ["orders:export", "orders:destroy"] })
+      .flatMap((sealed) => session.scoped(cookieHeader(`__Host-session=${sealed}`)));
+
+    // THEN the grant is the intersection: a session naming a scope this scheme
+    // cannot grant gets nothing extra for it
+    await expect(resolved).toBeOkWith(
+      expect.objectContaining({ identity: { userId: "u-1" }, scopes: ["orders:export"] }),
+    );
+  });
+
+  it("answers an empty grant for a session holding no scopes", async ({ session }) => {
+    // GIVEN the same scoped scheme and a session that records nothing
+    const resolved = session
+      .seal({ principal: { userId: "u-1" } })
+      .flatMap((sealed) => session.scoped(cookieHeader(`__Host-session=${sealed}`)));
+
+    // THEN the answer is still the SCOPED shape — decided once at composition,
+    // so a route requiring a scope refuses this caller rather than reading an
+    // identity that arrived bare
+    await expect(resolved).toBeOkWith(
+      expect.objectContaining({ identity: { userId: "u-1" }, scopes: [] }),
+    );
+  });
+
+  it("refuses a session whose principal the application declines", async ({ session }) => {
+    // GIVEN a scheme that trusts only a session an OIDC login minted, and a
+    // session carrying no `sid`
+    const resolved = session
+      .seal({ principal: { userId: "u-1" } })
+      .flatMap((sealed) => session.sid(cookieHeader(`__Host-session=${sealed}`)));
+
+    // THEN it is refused: `principal` answering `undefined` is a REFUSAL, never
+    // a principal of `undefined` handed to a handler
+    await expect(resolved).toBeErrTagged("Unauthenticated");
+  });
+
+  it("refuses a session sealed with no principal at all", async ({ session }) => {
+    // GIVEN a cookie the codec opens happily — it cannot know the application's
+    // `P`, so a `null` principal seals and unseals
+    const resolved = session
+      .seal({ principal: null })
+      .flatMap((sealed) => session.resolve(cookieHeader(`__Host-session=${sealed}`)));
+
+    // THEN the default `principal` refuses it, which is where that check
+    // belongs: a handler is never handed `null` as its caller
+    await expect(resolved).toBeErrTagged("Unauthenticated");
   });
 });

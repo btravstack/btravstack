@@ -285,6 +285,20 @@ A variable nobody pinned and nobody set — or a `HTTP_JWT_JWKS_URI` that is not
 a URL — fails the boot with a `ConfigInvalid` naming it, rather than a scheme
 that refuses every caller.
 
+`sessionCodec({ keys?, ttlSec? })`, from `@btravstack/http-server/session`,
+pins one variable the same way — and `sessionAuthenticator` is the scheme that
+reads what it seals.
+
+| Option   | What it is                                                                                                                                                                               |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `keys`   | pins `HTTP_SESSION_KEYS` — a comma-separated list of 32-byte base64url keys (`A-Z a-z 0-9 - _`, no padding); the first seals and every one unseals, so rotation is prepend, deploy, drop |
+| `ttlSec` | how long a session lasts (default 12 h). Fixed: there is no sliding re-seal                                                                                                              |
+
+Mint one with
+`node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'`.
+A key that is not 32 base64url bytes fails the boot with a `ConfigInvalid`
+naming `HTTP_SESSION_KEYS` and the POSITION it refused — never the value.
+
 The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/http-server),
 which is this list's one detailed home.

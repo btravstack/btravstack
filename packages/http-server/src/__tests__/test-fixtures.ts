@@ -74,7 +74,12 @@ import {
   type HttpOptions,
 } from "../http-runtime.js";
 import { jwtAuthenticator } from "../jwt.js";
-import { SessionCodec, sessionCodec, type SessionCodecService } from "../session.js";
+import {
+  SessionCodec,
+  sessionAuthenticator,
+  sessionCodec,
+  type SessionCodecService,
+} from "../session.js";
 
 /** What a bare answerer's `handle` is, without the mount point around it. */
 type Handler = HttpAnswerer["handle"];
@@ -182,13 +187,14 @@ const observedAppOf = (handler: Handler, member: (operation: Operation) => Settl
  * itself reads.
  */
 const serviceOf = <P, Scope extends string>(
-  authenticator: Authenticator<P, Scope, never>,
+  authenticator: Authenticator<P, Scope, unknown>,
+  services: object = {},
 ): AuthenticatorService<P, Scope> =>
   (
     authenticator.options as {
-      readonly sync: (services: Record<never, never>) => AuthenticatorService<P, Scope>;
+      readonly sync: (services: object) => AuthenticatorService<P, Scope>;
     }
-  ).sync({});
+  ).sync(services);
 
 /**
  * The `make` arm's counterpart to {@link serviceOf}: the scheme built from the
@@ -282,7 +288,56 @@ const forgeSession = (
       .encrypt(new Uint8Array(Buffer.from(key, "base64url"))),
   );
 
-/** What both shipped authenticators resolve to in these specs. */
+/** What the session scheme resolves to in these specs. */
+export type SessionIdentity = { readonly userId: string };
+
+/** The `cookie` header as `node:http` delivers it: every cookie in ONE string. */
+export const cookieHeader = (...cookies: readonly string[]): IncomingHttpHeaders => ({
+  cookie: cookies.join("; "),
+});
+
+/**
+ * The three session schemes a spec resolves through — the default one, the same
+ * over a vocabulary, and one whose application declines a session no OIDC login
+ * minted. All three unseal with the codec the fixture hands them, which is the
+ * codec that sealed the cookie.
+ */
+const defaultSession = sessionAuthenticator<SessionIdentity>()();
+
+const scopedSession = sessionAuthenticator<SessionIdentity>()({ scopes: ["orders:export"] });
+
+const sidSession = sessionAuthenticator<SessionIdentity>()({
+  principal: (session) =>
+    session.sid === undefined ? undefined : (session.principal as SessionIdentity),
+});
+
+/** What a spec seals with, and the three schemes that read it back. */
+type SessionScheme = {
+  readonly seal: SessionCodecService["seal"];
+  readonly resolve: AuthenticatorService<SessionIdentity>;
+  readonly scoped: AuthenticatorService<SessionIdentity, "orders:export">;
+  readonly sid: AuthenticatorService<SessionIdentity>;
+};
+
+/**
+ * One codec on a fixed key, and the schemes resolved over it — the same codec
+ * on both sides, which is the composition `sessionCodec()` gives a graph.
+ */
+const sessionFixture = async (
+  // oxlint-disable-next-line no-empty-pattern -- Vitest parses the source and requires a destructuring pattern; this fixture depends on no other
+  {}: object,
+  use: (value: SessionScheme) => Promise<void>,
+): Promise<void> => {
+  const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
+  await use({
+    seal: codec.seal,
+    resolve: serviceOf(defaultSession, { codec }),
+    scoped: serviceOf(scopedSession, { codec }),
+    sid: serviceOf(sidSession, { codec }),
+  });
+};
+
+/** What both shipped header-borne authenticators resolve to in these specs. */
 export type ServiceIdentity = { readonly appId: string };
 export type JwtIdentity = { readonly tenantId: string; readonly userId: string };
 
@@ -1565,6 +1620,9 @@ export type HttpFixtures = {
     pins: Parameters<typeof sessionCodec>[0],
   ) => AsyncResult<SessionCodecService, ConfigInvalid>;
 
+  /** One codec on a fixed key, and the three session schemes resolved over it. */
+  readonly session: SessionScheme;
+
   /** A local JWT issuer: a served JWKS, and a signer for every token a spec needs. */
   readonly issuer: LocalIssuer;
   /**
@@ -1622,6 +1680,8 @@ export const it = test.extend<HttpFixtures>({
   forgeSession: async ({}, use) => {
     await use(forgeSession);
   },
+
+  session: sessionFixture,
 
   issuer: [localIssuerFixture, { scope: "file" }],
 
