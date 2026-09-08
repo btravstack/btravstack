@@ -75,7 +75,7 @@ catalog:
   "@types/nodemailer": 8.0.1
   "@types/supertest": 7.2.1
   "@types/node": 26.4.0
-  "@unthrown/oxlint": 5.7.0
+  "@unthrown/oxlint": 5.8.0
   "@unthrown/orpc": 0.2.0
   "@unthrown/prisma": 0.4.0
   "@unthrown/standard-schema": 5.7.0
@@ -106,7 +106,7 @@ catalog:
   # everything. Aliased because one `package.json` cannot name `typescript`
   # twice.
   typescript-consumer: "npm:typescript@5.9.3"
-  unthrown: 5.7.0
+  unthrown: 5.8.0
   "@vitest/coverage-v8": 4.1.11
   vitepress: 1.6.4
   supertest: 7.2.2
