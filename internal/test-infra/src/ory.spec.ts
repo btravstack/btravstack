@@ -120,16 +120,20 @@ describe("the ory containers", () => {
       await registerRedirectUri(uri);
       await registerRedirectUri(uri);
 
-      // THEN Hydra holds the union, once each — and the client is patched
+      // THEN Hydra holds it beside whatever else this shared client carries, once
+      // each — and the client is patched
       // rather than replaced, so the secret every grant here authenticates
       // with is still the one it was provisioned with
       await expect(
         fetch(`http://localhost:4445/admin/clients/${ORY_CLIENT_ID}`)
           .then((response) => response.json())
-          .then(
-            (client) => (client as { readonly redirect_uris: readonly string[] }).redirect_uris,
-          ),
-      ).resolves.toEqual([ORY_REDIRECT_URI, uri]);
+          .then((client) => (client as { readonly redirect_uris: readonly string[] }).redirect_uris)
+          .then((uris) => ({
+            registered: uris.includes(uri),
+            provisioned: uris.includes(ORY_REDIRECT_URI),
+            duplicates: uris.length - new Set(uris).size,
+          })),
+      ).resolves.toEqual({ registered: true, provisioned: true, duplicates: 0 });
     },
     START_UP,
   );
@@ -193,9 +197,10 @@ describe("the headless login", () => {
         ORY_POST_LOGOUT_URI,
       ).then((landed) => landed.href);
 
-      // and a fresh authorization is then walked with the same jar
+      // and a fresh authorization is then walked with the same jar, until it
+      // reaches the login UI Kratos sends a browser with no session to
       const pkceCodeVerifier = randomPKCECodeVerifier();
-      const reachedTheCallbackAgain = await followRedirects(
+      const reLoginStoppedAt = await followRedirects(
         buildAuthorizationUrl(oidc, {
           redirect_uri: ORY_REDIRECT_URI,
           scope: ORY_SCOPE,
@@ -203,19 +208,17 @@ describe("the headless login", () => {
           code_challenge_method: "S256",
           state: randomState(),
         }),
-        ORY_REDIRECT_URI,
-      ).then(
-        () => true,
-        () => false,
-      );
+        "http://localhost:4455/login",
+      ).then((stopped) => stopped.href);
 
       // THEN the chain — Hydra, our own `/logout`, Hydra again — lands on the
       // configured post-logout URI, and the session is genuinely revoked
       // rather than merely redirected away from: the same browser is sent back
-      // to Kratos to sign in instead of through to a second code
-      expect({ landedOn, reachedTheCallbackAgain }).toEqual({
+      // to Kratos's login page (a walk that still held a session would go
+      // through consent to the callback and never reach it)
+      expect({ landedOn, reLoginStoppedAt }).toEqual({
         landedOn: ORY_POST_LOGOUT_URI,
-        reachedTheCallbackAgain: false,
+        reLoginStoppedAt: expect.stringMatching(/^http:\/\/localhost:4455\/login\?flow=/),
       });
     },
     START_UP,

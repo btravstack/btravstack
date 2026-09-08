@@ -145,22 +145,23 @@ const client = async (): Promise<Outcome> => {
  * what it did answer would blank the very credential every grant here
  * authenticates with.
  */
-export const registerRedirectUri = async (uri: string): Promise<void> => {
-  const found = await send(`${HYDRA_ADMIN}/clients/${ORY_CLIENT_ID}`);
-  const registered = (found.body as { readonly redirect_uris?: readonly string[] })
-    .redirect_uris ?? [ORY_REDIRECT_URI];
-  if (registered.includes(uri)) return;
+export const registerRedirectUri = (uri: string): Promise<void> =>
+  withLock("ory-redirect-uris", async () => {
+    const found = await send(`${HYDRA_ADMIN}/clients/${ORY_CLIENT_ID}`);
+    const registered = (found.body as { readonly redirect_uris?: readonly string[] })
+      .redirect_uris ?? [ORY_REDIRECT_URI];
+    if (registered.includes(uri)) return;
 
-  const patched = await send(`${HYDRA_ADMIN}/clients/${ORY_CLIENT_ID}`, {
-    method: "PATCH",
-    body: [{ op: "replace", path: "/redirect_uris", value: [...registered, uri] }],
+    const patched = await send(`${HYDRA_ADMIN}/clients/${ORY_CLIENT_ID}`, {
+      method: "PATCH",
+      body: [{ op: "replace", path: "/redirect_uris", value: [...registered, uri] }],
+    });
+    if (patched.status !== 200)
+      // oxlint-disable-next-line unthrown/no-throw -- a vitest fixture reports failure by rejecting; there is no Result channel here
+      throw new Error(
+        `Could not register the redirect uri '${uri}': ${patched.status} ${JSON.stringify(patched.body)}`,
+      );
   });
-  if (patched.status !== 200)
-    // oxlint-disable-next-line unthrown/no-throw -- a vitest fixture reports failure by rejecting; there is no Result channel here
-    throw new Error(
-      `Could not register the redirect uri '${uri}': ${patched.status} ${JSON.stringify(patched.body)}`,
-    );
-};
 
 /**
  * The two identities and the one client, idempotent by lookup-then-create:

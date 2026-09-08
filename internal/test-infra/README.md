@@ -127,8 +127,8 @@ break.
 | `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@temporal-contract/testing`'s                                                                                                                                        |
 | `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal` / `sharedRedis` / `sharedMailpit` / `sharedRustFs`, plus `postgresUrl`, `provisionApplicationRole` and the credentials each one is started with |
 | `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                                                                                                                                                     |
-| `@btravstack/internal-test-infra/ory`        | `sharedOry` / `provisionOry` / `createIdentity`, the issuer and client constants, and `ORY_USERS`                                                                                                      |
-| `@btravstack/internal-test-infra/ory-login`  | `headlessLogin({ authorizationUrl, user })` and `followRedirects(from, until)`                                                                                                                         |
+| `@btravstack/internal-test-infra/ory`        | `sharedOry` / `provisionOry` / `createIdentity` / `registerRedirectUri`, the issuer and client constants, and `ORY_USERS`                                                                              |
+| `@btravstack/internal-test-infra/ory-login`  | `oryClient()`, `headlessLogin({ authorizationUrl, user })` and `followRedirects(from, until)`                                                                                                          |
 | `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                                                                                                                                                  |
 
 ## The dev issuer
