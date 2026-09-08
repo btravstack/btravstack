@@ -129,15 +129,21 @@ export const sessionCodec = (
           keys: Config.pinned(pins.keys, Config.list("HTTP_SESSION_KEYS")),
         }),
       )(env).flatMap(({ keys }) => {
-        const decoded = keys.map(decodeKey).filter((key) => key !== undefined);
-        const [sealing, ...rotated] = decoded;
-        return sealing === undefined || decoded.length !== keys.length
+        const decoded = keys.map(decodeKey);
+        // The POSITION, never the value: a key list is a secret, and "the
+        // second one" is what an operator needs to fix it.
+        const rejected = decoded.flatMap((key, at) => (key === undefined ? [at + 1] : []));
+        const [sealing, ...rotated] = decoded.filter((key) => key !== undefined);
+        return sealing === undefined || rejected.length > 0
           ? ErrAsync(
               new ConfigInvalid({
                 port: "HttpSession",
                 issues: [
                   {
-                    message: `must list base64url keys of ${KEY_BYTES} bytes`,
+                    message:
+                      rejected.length > 0
+                        ? `key ${rejected.join(", ")} of ${decoded.length} is not ${KEY_BYTES} base64url bytes (A-Z a-z 0-9 - _, no padding) — mint one with \`node -e 'console.log(require("node:crypto").randomBytes(${KEY_BYTES}).toString("base64url"))'\``
+                        : `must list at least one ${KEY_BYTES}-byte base64url key`,
                     path: ["HTTP_SESSION_KEYS"],
                   },
                 ],

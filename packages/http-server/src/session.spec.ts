@@ -171,10 +171,16 @@ describe("sessionCodec", () => {
       typo: messageOf(await sessionCodecOf({ keys: [typo] })),
     };
 
-    // THEN both are a configuration error naming the variable, at boot — never
-    // a failure at the first request
-    const named =
-      "HttpSession could not be configured:\n  HTTP_SESSION_KEYS: must list base64url keys of 32 bytes";
-    expect(built).toEqual({ allBad: named, oneBad: named, typo: named });
+    // THEN each is a configuration error at boot — never a failure at the first
+    // request — naming the variable and WHICH key of the list it refused, so an
+    // operator holding three secrets knows which to re-mint, without the value
+    // reaching a log
+    const named = (position: string, of: number): string =>
+      `HttpSession could not be configured:\n  HTTP_SESSION_KEYS: key ${position} of ${of} is not 32 base64url bytes (A-Z a-z 0-9 - _, no padding) — mint one with \`node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'\``;
+    expect(built).toEqual({
+      allBad: named("1", 1),
+      oneBad: named("2", 2),
+      typo: named("1", 1),
+    });
   });
 });
