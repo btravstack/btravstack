@@ -80,7 +80,7 @@ catalog:
   "@unthrown/prisma": 0.4.0
   "@unthrown/standard-schema": 5.8.0
   "@unthrown/vitest": 5.8.0
-  jose: 6.2.10
+  jose: 6.2.12
   knip: 6.34.0
   markdownlint-cli2: 0.23.2
   lefthook: 2.1.12
