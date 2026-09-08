@@ -42,7 +42,7 @@ catalog:
   # this installed. Not a `devDependency` alone: a real consumer of
   # `@btravstack/amqp-worker` hits the same load failure.
   "@opentelemetry/api": 1.9.1
-  "@opentelemetry/sdk-node": 0.221.0
+  "@opentelemetry/sdk-node": 0.222.0
   "@opentelemetry/sdk-metrics": 2.11.0
   "@opentelemetry/sdk-trace": 2.11.0
   # oRPC v2 is still in beta and its `latest` dist-tag is the 1.x line, while
