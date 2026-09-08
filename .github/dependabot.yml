@@ -70,6 +70,9 @@ updates:
       temporal-contract:
         patterns:
           - "@temporal-contract/*"
+      opentelemetry:
+        patterns:
+          - "@opentelemetry/*"
     ignore:
       # Three families are pinned to an exact beta because their `latest`
       # dist-tag is an older major that fails `strictPeerDependencies`. The
