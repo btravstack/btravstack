@@ -25,7 +25,7 @@ import { once } from "node:events";
 import { createServer, request as httpRequest } from "node:http";
 import { connect, type Socket } from "node:net";
 
-import type { ConfigInvalid, Env, Environment } from "@btravstack/config";
+import { Env, type ConfigInvalid, type Environment } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
 import {
   Observers,
@@ -74,6 +74,7 @@ import {
   type HttpOptions,
 } from "../http-runtime.js";
 import { jwtAuthenticator } from "../jwt.js";
+import { SessionCodec, sessionCodec, type SessionCodecService } from "../session.js";
 
 /** What a bare answerer's `handle` is, without the mount point around it. */
 type Handler = HttpAnswerer["handle"];
@@ -243,6 +244,27 @@ const hmacToken = (issuer: LocalIssuer): AsyncResult<string, never> => {
       .sign(new TextEncoder().encode(JSON.stringify(issuer.jwk))),
   );
 };
+
+/**
+ * Two 32-byte keys, spelled as `HTTP_SESSION_KEYS` carries them. Fixed bytes
+ * rather than random ones: a rotation test says which key sealed a cookie.
+ */
+export const sessionKeys = {
+  alpha: Buffer.alloc(32, 0xa1).toString("base64url"),
+  beta: Buffer.alloc(32, 0xb2).toString("base64url"),
+};
+
+/** The codec out of a real graph, which is the only way `SessionCodec` is built. */
+const sessionCodecOf = (
+  pins: Parameters<typeof sessionCodec>[0],
+): AsyncResult<SessionCodecService, ConfigInvalid> =>
+  Module.scoped(
+    Module("SessionFixture")({
+      provides: [Provider(Env)({ inject: {}, value: {} }), sessionCodec(pins)],
+      exports: [SessionCodec],
+    }),
+    (ctx) => OkAsync(ctx.get(SessionCodec)),
+  );
 
 /** What both shipped authenticators resolve to in these specs. */
 export type ServiceIdentity = { readonly appId: string };
@@ -1515,6 +1537,11 @@ export type HttpFixtures = {
     readonly taken: () => readonly Observation[];
   }>;
 
+  /** The session codec built through a graph, from whatever keys a test pins. */
+  readonly sessionCodecOf: (
+    pins: Parameters<typeof sessionCodec>[0],
+  ) => AsyncResult<SessionCodecService, ConfigInvalid>;
+
   /** A local JWT issuer: a served JWKS, and a signer for every token a spec needs. */
   readonly issuer: LocalIssuer;
   /**
@@ -1561,6 +1588,11 @@ export const it = test.extend<HttpFixtures>({
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return { origin: `http://127.0.0.1:${info.port}`, taken: observer.taken };
     });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  sessionCodecOf: async ({}, use) => {
+    await use(sessionCodecOf);
   },
 
   issuer: [localIssuerFixture, { scope: "file" }],

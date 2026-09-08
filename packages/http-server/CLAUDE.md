@@ -1114,6 +1114,48 @@ sessions (#160) — so a hasher here would be a primitive with nothing calling
 it. `argon2` directly, at whatever mints your tokens, is one dependency and no
 framework opinion, which is the right size for it.
 
+## The session codec — from `@btravstack/http-server/session`
+
+**`sessionCodec({ keys?, ttlSec? })`** — a `Provider(SessionCodec)` binding the
+storage-free half of the session: `seal` turns a principal into a JWE, `unseal`
+turns a cookie back into a `Session<unknown>` or into nothing. `jose` is the
+optional peer, on the `/jwt` protocol; the subpath is what keeps a consumer that
+never logs a browser in from installing it.
+
+**The cookie is the session, so the key list is the one operational object.**
+`HTTP_SESSION_KEYS` is a `Config.list` of base64url 32-byte keys. The FIRST
+seals and EVERY one unseals, which is what makes rotation prepend, deploy, drop:
+a cookie sealed with a key the deploy dropped is **anonymous**, never an error,
+because a browser holding a stale cookie is a browser that logs in again and not
+a failed request.
+
+**`dir` + `A256GCM`, and `iat`/`exp` in the PAYLOAD rather than in the JWE
+header.** A JWE header is authenticated but not encrypted, so a lifetime there
+is readable by anyone holding the cookie; and the expiry is then checked on the
+plaintext, by the same code that decrypted it — after the AEAD tag has already
+said the bytes are ours.
+
+**`seal` stamps the lifetime; it does not accept one.** Its argument is
+`Omit<Session<unknown>, "iat" | "exp">`, so whatever mints a session cannot mint
+one that outlives the policy — a caller passing `exp` is a compile error, which
+`session.test-d.ts` pins. `ttlSec` is an OPTION and not a variable, on rule 6's
+own test: it is the posture `securityHeaders` is, and its silent change is a
+regression rather than a deployment detail.
+
+**Key LENGTH is checked here, not by `Config.list`.** The field knows nothing
+about keys, so a key that does not decode to 32 bytes is folded into a
+`ConfigInvalid` naming `HTTP_SESSION_KEYS` inside `make` — at boot, with
+`runMain`'s `78`, rather than as the first request's unexplained failure. It is
+the `Config.url` argument one variable over: the check belongs where the value
+is finally handed to the library that would otherwise reject.
+
+**Every failure to unseal is the same `undefined`.** No cookie, a string that is
+not a JWE, a key that is gone, an edited ciphertext, a session past its `exp` —
+one answer, so nothing outside learns which of them it got wrong. That is
+`Unauthenticated`'s rule (a refusal carries no reason) applied one layer lower,
+and it is why `unseal` is `AsyncResult<Session<unknown> | undefined, never>`
+rather than an error channel with five arms.
+
 ## `openApiDocument` — from `@btravstack/http-server/openapi`
 
 **`openApiDocument(contract, { base?, securitySchemes? })` →
