@@ -73,7 +73,7 @@ version of "green gate, no consumer can build" this repo has met. Do not
 judge the workspace by the example half; a reader who does concludes it is
 redundant with `order-api`, and takes the emit gate with it. `docs/` is the documentation site (see **Documentation
 site** below); it is a workspace but not a published package. `internal/`
-holds one more, `test-infra`, which is neither: it owns the seven containers
+holds one more, `test-infra`, which is neither: it owns the containers
 the whole gate shares and is documented in its own README.
 
 ## Commands

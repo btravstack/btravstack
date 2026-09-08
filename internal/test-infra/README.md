@@ -355,6 +355,25 @@ duplicated: a dev loop and a `pnpm test` can run side by side. `pnpm dev:token`
 is the second, and needs nothing running but the JWKS container `dev:env`
 started.
 
+**`dev:env` starts and provisions Ory too, so the dev loop's logins are
+`ORY_USERS`** — `alice@btravstack.test` and `bob@btravstack.test`, both
+`correct-horse-battery-staple`, which are gate constants and not secrets. The
+five variables that go with them — `HTTP_OIDC_ISSUER`, `HTTP_OIDC_CLIENT_ID`,
+`HTTP_OIDC_CLIENT_SECRET`, `HTTP_OIDC_REDIRECT_URI` and `HTTP_SESSION_KEYS` —
+are written for the later phases of
+[#160](https://github.com/btravstack/btravstack/issues/160); nothing reads them
+yet, and the login route a browser would use arrives with them. `HTTP_SESSION_KEYS`
+is a comma-separated **list** where the first key seals and every one unseals,
+which is what a rotation needs; the dev loop writes one — 32 random bytes,
+base64url, minted on the first `dev:env` and read back from
+`<repo>/.cache/dev-session/keys` (mode `0600`) ever after. Persisted for the dev
+issuer key pair's reason: a cookie sealed before a `dev:env` still opens after
+it. The Ory containers are the exception to that, and the provisioning paragraph
+above is why — both DSNs are `memory`, so a **restart** (as against an attach)
+loses every identity, client and signing key, and any session cookie the loop
+was holding stops resolving. `dev:env` re-provisions on every run; signing in
+again is what recovers the rest.
+
 The two setup modules are drop-in replacements for
 `@amqp-contract/testing/global-setup` and
 `@temporal-contract/testing/global-setup`: they provide the **same** inject
