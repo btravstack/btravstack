@@ -42,7 +42,7 @@ import { localIssuer, type LocalIssuer } from "@btravstack/testing/jwt";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { eventIterator, oc, type as ocType, type RouterContractClient } from "@orpc/contract";
-import { SignJWT } from "jose";
+import { CompactEncrypt, SignJWT } from "jose";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
 import { z } from "zod";
@@ -264,6 +264,22 @@ const sessionCodecOf = (
       exports: [SessionCodec],
     }),
     (ctx) => OkAsync(ctx.get(SessionCodec)),
+  );
+
+/**
+ * A JWE under whatever header and payload a spec names, sealed with a key the
+ * codec HOLDS — the confusion half: forging one needs the key, so what it
+ * proves is that holding the key is not enough.
+ */
+const forgeSession = (
+  key: string,
+  header: { readonly alg: string; readonly enc: string },
+  payload: unknown,
+): AsyncResult<string, never> =>
+  fromSafePromise(
+    new CompactEncrypt(new TextEncoder().encode(JSON.stringify(payload)))
+      .setProtectedHeader(header)
+      .encrypt(new Uint8Array(Buffer.from(key, "base64url"))),
   );
 
 /** What both shipped authenticators resolve to in these specs. */
@@ -1537,6 +1553,13 @@ export type HttpFixtures = {
     readonly taken: () => readonly Observation[];
   }>;
 
+  /** A JWE under a header and payload of the test's choosing, sealed with a held key. */
+  readonly forgeSession: (
+    key: string,
+    header: { readonly alg: string; readonly enc: string },
+    payload: unknown,
+  ) => AsyncResult<string, never>;
+
   /** The session codec built through a graph, from whatever keys a test pins. */
   readonly sessionCodecOf: (
     pins: Parameters<typeof sessionCodec>[0],
@@ -1593,6 +1616,11 @@ export const it = test.extend<HttpFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   sessionCodecOf: async ({}, use) => {
     await use(sessionCodecOf);
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  forgeSession: async ({}, use) => {
+    await use(forgeSession);
   },
 
   issuer: [localIssuerFixture, { scope: "file" }],

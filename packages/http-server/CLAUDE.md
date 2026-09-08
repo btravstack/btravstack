@@ -1142,19 +1142,45 @@ one that outlives the policy — a caller passing `exp` is a compile error, whic
 own test: it is the posture `securityHeaders` is, and its silent change is a
 regression rather than a deployment detail.
 
-**Key LENGTH is checked here, not by `Config.list`.** The field knows nothing
-about keys, so a key that does not decode to 32 bytes is folded into a
-`ConfigInvalid` naming `HTTP_SESSION_KEYS` inside `make` — at boot, with
-`runMain`'s `78`, rather than as the first request's unexplained failure. It is
-the `Config.url` argument one variable over: the check belongs where the value
-is finally handed to the library that would otherwise reject.
+**`unseal` decrypts only what `seal` issues.** `compactDecrypt` is handed
+`keyManagementAlgorithms: ["dir"]` and `contentEncryptionAlgorithms:
+["A256GCM"]`, derived from the same `HEADER` constant the seal writes so the two
+directions cannot drift. Without the pin, a token this key sealed under
+`A256KW`, `A256GCMKW` or `dir` + `A128CBC-HS256` OPENS — none of it forgeable
+without the key, which is exactly why it matters: the key is about to be
+reachable by something else that seals. `oidc()`'s five-minute transient
+`__Host-oidc` cookie is that something, and a transient accepted as a full
+session is a session carrying whatever `principal` and `exp` it names.
+
+**The plaintext is authenticated, not validated.** The AEAD tag says the bytes
+are ours; it says nothing about their shape, and a key this codec holds could
+have sealed anything. So `sessionOf` checks `principal`, a numeric `iat` and a
+numeric `exp` before the payload is trusted — a `null` one used to defect on
+`.exp` through a channel typed `never`, and a string `exp` used to coerce its way
+past `exp > now` and open.
+
+**Key SHAPE and length are checked here, not by `Config.list`.** The field knows
+nothing about keys, so `make` decodes each one and folds a bad key into a
+`ConfigInvalid` naming `HTTP_SESSION_KEYS` — at boot, with `runMain`'s `78`,
+rather than as the first request's unexplained failure. It is the `Config.url`
+argument one variable over: the check belongs where the value is finally handed
+to the library. The check is a **round trip**, not a length: `Buffer.from` drops
+what base64url cannot spell, so a stray character decodes to 32 bytes anyway —
+and if it shifts the alignment, 32 DIFFERENT bytes. A typo would otherwise boot
+green and log every session out, against a message promising base64url.
 
 **Every failure to unseal is the same `undefined`.** No cookie, a string that is
-not a JWE, a key that is gone, an edited ciphertext, a session past its `exp` —
-one answer, so nothing outside learns which of them it got wrong. That is
-`Unauthenticated`'s rule (a refusal carries no reason) applied one layer lower,
-and it is why `unseal` is `AsyncResult<Session<unknown> | undefined, never>`
-rather than an error channel with five arms.
+not a JWE, a key that is gone, an edited ciphertext, another algorithm, a payload
+that is not a session, one past its `exp` — one answer, so nothing outside learns
+which of them it got wrong. That is `Unauthenticated`'s rule (a refusal carries
+no reason) applied one layer lower, and it is why `unseal` is
+`AsyncResult<Session<unknown> | undefined, never>` rather than an error channel
+with seven arms.
+
+**The clock is `Date.now()`, not a `Clock` port.** There is none on this seam —
+the codec is a provider, not a unit — so the expiry spec pins the boundary with
+`ttlSec: 0` (`exp === iat`, and `>` refuses it) rather than by aging a cookie.
+A `Clock` here would be machinery bought for one test.
 
 ## `openApiDocument` — from `@btravstack/http-server/openapi`
 

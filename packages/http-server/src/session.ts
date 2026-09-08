@@ -39,11 +39,39 @@ const KEY_BYTES = 32;
 
 const HEADER = { alg: "dir", enc: "A256GCM" } as const;
 
-// `Buffer.from` ignores what base64url cannot spell rather than refusing it, so
-// the length of what came back is the only check worth making.
+// Decrypt only what this codec issues. Derived from `HEADER` so the two
+// directions cannot drift apart.
+const ALGORITHMS = {
+  keyManagementAlgorithms: [HEADER.alg],
+  contentEncryptionAlgorithms: [HEADER.enc],
+};
+
+// `Buffer.from` drops what base64url cannot spell rather than refusing it, so a
+// typo that still decodes to 32 bytes is 32 DIFFERENT bytes — a boot that stays
+// green and logs every session out. Re-encoding is what catches that, and the
+// alphabet, and the padding.
 const decodeKey = (value: string): Uint8Array | undefined => {
   const bytes = Buffer.from(value, "base64url");
-  return bytes.length === KEY_BYTES ? new Uint8Array(bytes) : undefined;
+  return bytes.length === KEY_BYTES && bytes.toString("base64url") === value
+    ? new Uint8Array(bytes)
+    : undefined;
+};
+
+// The plaintext is authenticated, not validated: a key this codec holds could
+// have sealed anything, so the payload's shape is checked before it is trusted
+// as a session — a `null` one used to defect on `.exp` and a string `exp`
+// used to coerce its way past the lifetime.
+const sessionOf = (plaintext: Uint8Array): Session<unknown> | undefined => {
+  const decoded: unknown = JSON.parse(new TextDecoder().decode(plaintext));
+  return typeof decoded === "object" &&
+    decoded !== null &&
+    "principal" in decoded &&
+    "iat" in decoded &&
+    typeof decoded.iat === "number" &&
+    "exp" in decoded &&
+    typeof decoded.exp === "number"
+    ? (decoded as Session<unknown>)
+    : undefined;
 };
 
 const codec = (
@@ -69,11 +97,8 @@ const codec = (
             (async () => {
               const now = Math.floor(Date.now() / 1000);
               for (const key of keys) {
-                const session = await compactDecrypt(cookie, key)
-                  .then(
-                    ({ plaintext }) =>
-                      JSON.parse(new TextDecoder().decode(plaintext)) as Session<unknown>,
-                  )
+                const session = await compactDecrypt(cookie, key, ALGORITHMS)
+                  .then(({ plaintext }) => sessionOf(plaintext))
                   .catch(() => undefined);
                 if (session !== undefined) return session.exp > now ? session : undefined;
               }
