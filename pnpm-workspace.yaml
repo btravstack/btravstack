@@ -78,8 +78,8 @@ catalog:
   "@unthrown/oxlint": 5.8.0
   "@unthrown/orpc": 0.2.0
   "@unthrown/prisma": 0.4.0
-  "@unthrown/standard-schema": 5.7.0
-  "@unthrown/vitest": 5.7.0
+  "@unthrown/standard-schema": 5.8.0
+  "@unthrown/vitest": 5.8.0
   jose: 6.2.10
   knip: 6.34.0
   markdownlint-cli2: 0.23.2
