@@ -281,12 +281,14 @@ already gives.
 
 ## Signing in without a browser
 
-`src/ory-login.ts` is `headlessLogin({ authorizationUrl, user })`, and it drives
-**eight requests** end to end. It takes an authorization URL the caller built —
-`openid-client`'s `buildAuthorizationUrl`, or by hand — and answers the callback
-URL Hydra redirected to, carrying `code` and `state`. It never fetches that URL:
-nothing serves `ORY_REDIRECT_URI`, and what a test wants is the code, not a
-response to it.
+`src/ory-login.ts` is `headlessLogin({ authorizationUrl, user })`. It takes an
+authorization URL the caller built — `openid-client`'s `buildAuthorizationUrl`,
+or by hand — walks the authorization redirect out to Kratos, submits the
+password through Kratos's own self-service API, and walks the verifier back
+through Hydra and the consent handler. What it answers is the callback URL Hydra
+redirected to, carrying `code` and `state`. It never fetches that URL: nothing
+serves `ORY_REDIRECT_URI`, and what a test wants is the code, not a response to
+it — which is why the last hop below is the **caller's** and not the driver's:
 
 1. `GET` Hydra's `/oauth2/auth` → 302 to Kratos's `/self-service/login/browser`
 2. `GET` that → 303 to `ui_url?flow=<id>`, **which is never fetched** — the id is
@@ -321,10 +323,21 @@ post-logout URI. It is also what stops a second login being silently skipped:
 Kratos would recognise the first user's session and Hydra would hand back her
 token for his sign-in. `ory.spec.ts` signs both `ORY_USERS` in for that reason.
 
-Two things the flow needs that reading the OpenID spec does not suggest.
+**A code grant does not verify the ID token's signature, and that is what
+`enableNonRepudiationChecks` is for.** `authorizationCodeGrant` checks `iss`,
+`aud`, `exp`, `iat`, `sub`, the signing algorithm and the clock skew, and never
+touches the JWKS: OIDC Core §3.1.3.7 lets a client trust a token that came back
+over TLS from the token endpoint it authenticated to. This issuer is `http://`,
+so nothing backs that. Without the call, a Hydra serving a key set that cannot
+verify its own tokens — a rotated `SECRETS_SYSTEM`, a stale sibling container on
+`:4444` — passes every test here and fails only in the application, whose `user`
+scheme has the JWKS and no token endpoint to trust. `at_hash` is not checked in
+this flow either, whatever the spike report said.
+
+Two more things the flow needs that reading the OpenID spec does not suggest.
 `allowInsecureRequests` is needed **twice** — in `discovery`'s `execute` option
 and again applied to the returned configuration, which the option does not reach
-— and that is about this issuer being `http://`, not about Hydra. And Hydra
+— and that too is about this issuer being `http://`, not about Hydra. And Hydra
 refuses `post_logout_redirect_uri` **without `id_token_hint`**, answering
 `invalid_request` on its own error page rather than a redirect, so the logout
 test passes the hint the grant just returned.

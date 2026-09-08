@@ -11,6 +11,7 @@ import {
   ClientSecretBasic,
   allowInsecureRequests,
   authorizationCodeGrant,
+  enableNonRepudiationChecks,
   buildAuthorizationUrl,
   calculatePKCECodeChallenge,
   discovery,
@@ -125,6 +126,13 @@ export const it = test.extend<{
   // `allowInsecureRequests` twice, and both are about this issuer being
   // `http://` rather than about Hydra: the discovery option does not carry over
   // to the token and JWKS requests the returned configuration makes.
+  //
+  // `enableNonRepudiationChecks` is what makes the JWKS request happen at all.
+  // Without it nothing verifies the ID token's SIGNATURE — OIDC Core lets a
+  // client trust a token that came back over TLS from the token endpoint, and
+  // this issuer has no TLS. A Hydra serving a key set that cannot verify its
+  // own tokens would otherwise pass every test here and fail only in the
+  // application, whose `user` scheme has no token endpoint to trust.
   oidc: [
     async ({ ory: _ory }, use) => {
       const config = await discovery(
@@ -135,6 +143,7 @@ export const it = test.extend<{
         { execute: [allowInsecureRequests] },
       );
       allowInsecureRequests(config);
+      enableNonRepudiationChecks(config);
       await use(config);
     },
     { scope: "file" },

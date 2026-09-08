@@ -111,9 +111,11 @@ describe("the headless login", () => {
 
       // WHEN the authorization code flow is driven with no browser and no UI
       // application, and the code exchanged
-      // THEN the ID token validates — signature, `iss`, `aud`, `exp`, `at_hash`
-      // — and carries what a principal is built from, `tenant` and `scope`
-      // included, neither of which Hydra puts there on its own
+      // THEN the ID token validates against Hydra's JWKS — its RS256 signature,
+      // because the configuration enables the non-repudiation check, plus the
+      // `iss`, `aud`, `exp`, `iat` and `sub` claims and the state and PKCE
+      // verifier — and carries what a principal is built from, `tenant` and
+      // `scope` included, neither of which Hydra puts there on its own
       await expect(login(ORY_USERS.alice).then((tokens) => tokens.claims())).resolves.toEqual(
         expect.objectContaining({
           iss: ORY_ISSUER,
@@ -148,6 +150,9 @@ describe("the headless login", () => {
     async ({ login, oidc }) => {
       // GIVEN a browser Hydra has an OpenID session for
       const { id_token } = await login(ORY_USERS.alice);
+      if (id_token === undefined)
+        // oxlint-disable-next-line unthrown/no-throw -- a fixture that handed back no ID token is a broken test, not a failing one; Hydra would report it as `invalid_request` and name the wrong cause
+        throw new Error("The grant answered no ID token, so there is no hint to log out with");
 
       // WHEN the advertised `end_session_endpoint` is followed with that jar —
       // `id_token_hint` beside the redirect because Hydra refuses one without
@@ -158,7 +163,7 @@ describe("the headless login", () => {
       await expect(
         followRedirects(
           buildEndSessionUrl(oidc, {
-            id_token_hint: id_token ?? "",
+            id_token_hint: id_token,
             post_logout_redirect_uri: ORY_POST_LOGOUT_URI,
           }),
           ORY_POST_LOGOUT_URI,

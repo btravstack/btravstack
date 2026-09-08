@@ -72,6 +72,25 @@ const redirect = async (from: URL, init?: Init): Promise<URL> => {
 };
 
 /**
+ * The two hops that read a body rather than a `Location`, held to the same
+ * standard: an unexpected status names itself and the body, where an unguarded
+ * `json()` would reject with a bare `SyntaxError` naming neither.
+ *
+ * The expected status is the caller's because Kratos's is not always 200 — a
+ * browser flow submitted as JSON answers **422**, which is how it says where to
+ * go next rather than that anything went wrong.
+ */
+const readJson = async <T>(from: URL, expected: number, init?: Init): Promise<T> => {
+  const response = await go(from, init);
+  if (response.status !== expected)
+    return fail(
+      `${from.origin}${from.pathname} answered ${response.status} rather than ${expected}: ${await response.text()}`,
+    );
+
+  return response.json() as Promise<T>;
+};
+
+/**
  * Follow redirects from `from` until one lands on `until`, which is answered
  * rather than fetched — nothing serves either the callback or the post-logout
  * URI, and a test asserts on the URL the provider chose.
@@ -100,8 +119,8 @@ type LoginFlow = {
 type Submitted = { readonly redirect_browser_to?: string };
 
 /**
- * The eight requests the spike measured, through Kratos's own self-service
- * login API and Hydra's redirects, with a cookie jar and no browser.
+ * The flow the spike measured, through Kratos's own self-service login API and
+ * Hydra's redirects, with a cookie jar and no browser.
  *
  * Answers the callback URL Hydra redirected to, carrying `code` and `state`;
  * it never contacts the redirect URI, which nothing serves.
@@ -116,14 +135,16 @@ export const headlessLogin = async (options: {
   const ui = await redirect(login);
   const flowId = ui.searchParams.get("flow") ?? fail(`Kratos did not answer a login flow: ${ui}`);
 
-  const flow = await go(new URL(`self-service/login/flows?id=${flowId}`, KRATOS_PUBLIC), {
-    headers: { accept: "application/json" },
-  }).then((response) => response.json() as Promise<LoginFlow>);
+  const flow = await readJson<LoginFlow>(
+    new URL(`self-service/login/flows?id=${encodeURIComponent(flowId)}`, KRATOS_PUBLIC),
+    200,
+    { headers: { accept: "application/json" } },
+  );
   const csrf =
     flow.ui.nodes.find((node) => node.attributes.name === "csrf_token")?.attributes.value ??
     fail(`Kratos flow ${flowId} carries no csrf_token node`);
 
-  const submitted = await go(new URL(flow.ui.action), {
+  const submitted = await readJson<Submitted>(new URL(flow.ui.action), 422, {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json" },
     body: JSON.stringify({
@@ -132,7 +153,7 @@ export const headlessLogin = async (options: {
       password: options.user.password,
       csrf_token: csrf,
     }),
-  }).then((response) => response.json() as Promise<Submitted>);
+  });
 
   const verifier =
     submitted.redirect_browser_to ??
