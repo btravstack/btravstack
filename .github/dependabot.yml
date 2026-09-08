@@ -73,6 +73,9 @@ updates:
       opentelemetry:
         patterns:
           - "@opentelemetry/*"
+      aws-sdk:
+        patterns:
+          - "@aws-sdk/*"
     ignore:
       # Three families are pinned to an exact beta because their `latest`
       # dist-tag is an older major that fails `strictPeerDependencies`. The
