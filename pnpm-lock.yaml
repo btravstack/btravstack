@@ -142,11 +142,11 @@ catalogs:
       specifier: 0.4.0
       version: 0.4.0
     '@unthrown/standard-schema':
-      specifier: 5.7.0
-      version: 5.7.0
+      specifier: 5.8.0
+      version: 5.8.0
     '@unthrown/vitest':
-      specifier: 5.7.0
-      version: 5.7.0
+      specifier: 5.8.0
+      version: 5.8.0
     '@vitest/coverage-v8':
       specifier: 4.1.11
       version: 4.1.11
@@ -317,7 +317,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -345,10 +345,10 @@ importers:
         version: 26.4.1
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)
+        version: 5.8.0(unthrown@5.8.0)
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -427,7 +427,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       tsx:
         specifier: 'catalog:'
         version: 4.23.13
@@ -509,7 +509,7 @@ importers:
         version: link:../../packages/contract
       '@btravstack/entity':
         specifier: 'catalog:'
-        version: 0.7.0(@unthrown/standard-schema@5.7.0(unthrown@5.8.0))(unthrown@5.8.0)(zod@4.5.4)
+        version: 0.7.0(@unthrown/standard-schema@5.8.0(unthrown@5.8.0))(unthrown@5.8.0)(zod@4.5.4)
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
@@ -539,7 +539,7 @@ importers:
         version: 7.2.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       supertest:
         specifier: 'catalog:'
         version: 7.2.2
@@ -585,7 +585,7 @@ importers:
         version: 0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.8.0)
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -628,7 +628,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -640,7 +640,7 @@ importers:
     dependencies:
       '@btravstack/entity':
         specifier: 'catalog:'
-        version: 0.7.0(@unthrown/standard-schema@5.7.0(unthrown@5.8.0))(unthrown@5.8.0)(zod@4.5.4)
+        version: 0.7.0(@unthrown/standard-schema@5.8.0(unthrown@5.8.0))(unthrown@5.8.0)(zod@4.5.4)
       unthrown:
         specifier: 'catalog:'
         version: 5.8.0
@@ -656,10 +656,10 @@ importers:
         version: 26.4.1
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)
+        version: 5.8.0(unthrown@5.8.0)
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -720,7 +720,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       prisma:
         specifier: 'catalog:'
         version: 7.10.0(@types/node@26.4.1)(@types/react@19.2.18)(magicast@0.5.4)(typescript@7.0.2)
@@ -751,10 +751,10 @@ importers:
         version: 26.4.1
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)
+        version: 5.8.0(unthrown@5.8.0)
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -845,7 +845,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       tsx:
         specifier: 'catalog:'
         version: 4.23.13
@@ -888,7 +888,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       tsx:
         specifier: 'catalog:'
         version: 4.23.13
@@ -936,7 +936,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.11(vitest@4.1.11)
@@ -996,7 +996,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.11(vitest@4.1.11)
@@ -1029,7 +1029,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.11(vitest@4.1.11)
@@ -1086,7 +1086,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.11(vitest@4.1.11)
@@ -1113,7 +1113,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.11(vitest@4.1.11)
@@ -1173,7 +1173,7 @@ importers:
         version: 0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.8.0)
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.11(vitest@4.1.11)
@@ -1236,7 +1236,7 @@ importers:
         version: 8.0.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.11(vitest@4.1.11)
@@ -1287,7 +1287,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.11(vitest@4.1.11)
@@ -1335,7 +1335,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.11(vitest@4.1.11)
@@ -1395,7 +1395,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.11(vitest@4.1.11)
@@ -1461,7 +1461,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.11(vitest@4.1.11)
@@ -1500,7 +1500,7 @@ importers:
         version: 26.4.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.8.0)(vitest@4.1.11)
+        version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.11(vitest@4.1.11)
@@ -4300,11 +4300,17 @@ packages:
     peerDependencies:
       unthrown: ^5.7.0
 
-  '@unthrown/vitest@5.7.0':
-    resolution: {integrity: sha512-3ZftxPnpgVB5qWB9QxrbXWOIQmlDz7gsDub9iwoy0PlEUaywS+hOX0Lref1zKJKSLgw7rIaUnzCvnRyQc25slw==}
+  '@unthrown/standard-schema@5.8.0':
+    resolution: {integrity: sha512-QD36+AUY74ivWHDtBY6jOlp+93rPJZMbUNXToF0lFw8n/novgCYXb7uPJytTXrE0txJE5bAJ+ZRM7HvsWyqI/w==}
     engines: {node: '>=20'}
     peerDependencies:
-      unthrown: ^5.7.0
+      unthrown: ^5.8.0
+
+  '@unthrown/vitest@5.8.0':
+    resolution: {integrity: sha512-bBYK+Hu7pygZzPVqm4abRw4kLjZhpgQxr1Ie2bgABQ3iFmGIKp383O6rJL/NZyIQVvwtSR8v7dlu4WCq8Ke71g==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      unthrown: ^5.8.0
       vitest: ^4
 
   '@visx/curve@4.0.1-alpha.0':
@@ -7423,9 +7429,9 @@ snapshots:
       '@commitlint/cli': 21.2.2(@types/node@26.4.1)(conventional-commits-parser@7.1.2)(typescript@7.0.2)
       '@commitlint/config-conventional': 21.2.0
 
-  '@btravstack/entity@0.7.0(@unthrown/standard-schema@5.7.0(unthrown@5.8.0))(unthrown@5.8.0)(zod@4.5.4)':
+  '@btravstack/entity@0.7.0(@unthrown/standard-schema@5.8.0(unthrown@5.8.0))(unthrown@5.8.0)(zod@4.5.4)':
     dependencies:
-      '@unthrown/standard-schema': 5.7.0(unthrown@5.8.0)
+      '@unthrown/standard-schema': 5.8.0(unthrown@5.8.0)
       unthrown: 5.8.0
       zod: 4.5.4
 
@@ -9636,7 +9642,12 @@ snapshots:
       '@standard-schema/spec': 1.1.0
       unthrown: 5.8.0
 
-  '@unthrown/vitest@5.7.0(unthrown@5.8.0)(vitest@4.1.11)':
+  '@unthrown/standard-schema@5.8.0(unthrown@5.8.0)':
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+      unthrown: 5.8.0
+
+  '@unthrown/vitest@5.8.0(unthrown@5.8.0)(vitest@4.1.11)':
     dependencies:
       unthrown: 5.8.0
       vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.4.1)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
