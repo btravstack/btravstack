@@ -261,7 +261,7 @@ The two rules this half exists to state, before the detail:
 
   **It injects the codec's PORT rather than holding keys.** Its needs channel
   is `SessionCodec`, so a root composing the scheme without `sessionCodec()` is
-  di's own unmet need naming `HttpSessionCodec` — refused at the `HttpModule`
+  di's own unmet need naming `SessionCodec` — refused at the `HttpModule`
   call rather than at the first request — and the codec that reads a cookie is
   by construction the one that sealed it, key rotation included.
 

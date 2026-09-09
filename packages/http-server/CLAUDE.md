@@ -1201,7 +1201,7 @@ and this contributes one `AuthenticatorService` to them.
 
 **It injects the PORT, not keys.** `inject: { codec: SessionCodec }`, so the
 description's needs channel is `SessionCodec` and a root composing the scheme
-without `sessionCodec()` is di's own unmet need naming `HttpSessionCodec`,
+without `sessionCodec()` is di's own unmet need naming `SessionCodec`,
 refused at the `HttpModule` call. It also means the codec that reads a cookie
 is by construction the one that sealed it — one key list, one rotation.
 

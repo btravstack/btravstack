@@ -75,7 +75,7 @@ void HttpModule("SessionRoot")({
   provides: [exports, sessionCodec()],
 });
 
-// @ts-expect-error -- UNDECLARED NEEDS: nothing discharges `HttpSessionCodec`
+// @ts-expect-error -- UNDECLARED NEEDS: nothing discharges `SessionCodec`
 void HttpModule("SessionRootWithoutCodec")({
   fragments: api.HtmxFragments([exports]),
   provides: [exports],

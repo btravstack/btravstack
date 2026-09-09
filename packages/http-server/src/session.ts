@@ -217,7 +217,7 @@ export type SessionOptions<P, Scopes extends readonly string[]> = {
  *
  * It injects {@link SessionCodec} rather than holding keys of its own, so a
  * root composing this scheme without `sessionCodec()` is di's own unmet need
- * naming `HttpSessionCodec` — and the codec that reads a cookie is the very one
+ * naming `SessionCodec` — and the codec that reads a cookie is the very one
  * that sealed it.
  *
  * No cookie, a cookie no key opens, a session past its `exp` and a principal

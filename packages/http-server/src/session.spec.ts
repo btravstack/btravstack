@@ -87,16 +87,22 @@ describe("sessionCodec", () => {
       stringScopes: (
         await forged({ principal: {}, iat: 0, exp: 4_102_444_800, scopes: "admin" })
       ).get(),
+      numberScopes: (
+        await forged({ principal: {}, iat: 0, exp: 4_102_444_800, scopes: [1] })
+      ).get(),
     };
 
-    // THEN all four are anonymous rather than a defect or a session that
+    // THEN all five are anonymous rather than a defect or a session that
     // coerced its way past the lifetime: the plaintext is authenticated, not
-    // validated, so its shape is checked before it is trusted
+    // validated, so its shape is checked before it is trusted — and an ARRAY is
+    // not enough for `scopes`, since a scheme intersects its own vocabulary
+    // with whatever is inside it
     expect(read).toEqual({
       nothing: undefined,
       stringExp: undefined,
       noPrincipal: undefined,
       stringScopes: undefined,
+      numberScopes: undefined,
     });
   });
 
@@ -211,6 +217,7 @@ describe("sessionAuthenticator", () => {
     // the scheme's, one with no value at all, and the session itself last
     const resolved = session
       .seal({ principal: { userId: "u-1" } })
+      // WHEN the browser sends all three back in one header
       .flatMap((sealed) =>
         session.resolve(
           cookieHeader("__Host-session-theme=dark", "consented", `__Host-session=${sealed}`),
@@ -225,15 +232,14 @@ describe("sessionAuthenticator", () => {
   it("takes the first cookie when the header repeats the name", async ({ session }) => {
     // GIVEN two sessions under one name, which is what a cookie set on a wider
     // path looks like by the time it reaches here
-    const resolved = session
-      .seal({ principal: { userId: "first" } })
-      .flatMap((first) =>
-        session
-          .seal({ principal: { userId: "second" } })
-          .flatMap((second) =>
-            session.resolve(cookieHeader(`__Host-session=${first}`, `__Host-session=${second}`)),
-          ),
-      );
+    const resolved = session.seal({ principal: { userId: "first" } }).flatMap((first) =>
+      session
+        .seal({ principal: { userId: "second" } })
+        // WHEN both arrive under the same name
+        .flatMap((second) =>
+          session.resolve(cookieHeader(`__Host-session=${first}`, `__Host-session=${second}`)),
+        ),
+    );
 
     // THEN the first wins — the order a browser sends them in is most specific
     // first, so a later duplicate cannot shadow the session
@@ -274,6 +280,7 @@ describe("sessionAuthenticator", () => {
     // GIVEN a session carrying one scope the scheme knows and one it does not
     const resolved = session
       .seal({ principal: { userId: "u-1" }, scopes: ["orders:export", "orders:destroy"] })
+      // WHEN the scoped scheme reads it back
       .flatMap((sealed) => session.scoped(cookieHeader(`__Host-session=${sealed}`)));
 
     // THEN the grant is the intersection: a session naming a scope this scheme
@@ -287,6 +294,7 @@ describe("sessionAuthenticator", () => {
     // GIVEN the same scoped scheme and a session that records nothing
     const resolved = session
       .seal({ principal: { userId: "u-1" } })
+      // WHEN the scoped scheme reads it back
       .flatMap((sealed) => session.scoped(cookieHeader(`__Host-session=${sealed}`)));
 
     // THEN the answer is still the SCOPED shape — decided once at composition,
@@ -302,6 +310,7 @@ describe("sessionAuthenticator", () => {
     // session carrying no `sid`
     const resolved = session
       .seal({ principal: { userId: "u-1" } })
+      // WHEN that scheme reads it back
       .flatMap((sealed) => session.sid(cookieHeader(`__Host-session=${sealed}`)));
 
     // THEN it is refused: `principal` answering `undefined` is a REFUSAL, never
@@ -314,6 +323,7 @@ describe("sessionAuthenticator", () => {
     // `P`, so a `null` principal seals and unseals
     const resolved = session
       .seal({ principal: null })
+      // WHEN the default scheme reads it back
       .flatMap((sealed) => session.resolve(cookieHeader(`__Host-session=${sealed}`)));
 
     // THEN the default `principal` refuses it, which is where that check
