@@ -737,13 +737,17 @@ observer to settle.
 
 ## Cross-cutting concerns: configuration, not a middleware slot
 
-CORS, body limits, compression, security headers and authentication are
+CORS, body limits, compression, security headers, authentication and CSRF are
 **handler configuration, not a middleware slot** — thesis #3's refusal, narrowed
 to what it was always about, and named options on `http()` / `HttpModule` for
-all five. CSRF is the stated exception: oRPC's protection only bites on a
-request carrying a `SameSite` cookie, and this package configures no cookies,
-so it stays a `plugins` line until they arrive. Rate limiting is a stated
-non-goal. The full reasoning is in `packages/http-server/CLAUDE.md`.
+all six. CSRF was the stated exception while nothing here read a cookie; a
+session scheme does, so `csrf` is an option like the rest, **on by default
+exactly when a composed scheme reads one** — a set port each cookie-reading
+scheme contributes to, so the default is a fact about the graph rather than a
+line somebody remembered to write. The check itself is stateless: a
+state-changing request carrying cookies must be same-site by fetch metadata,
+or carry an `Origin` matching the request's own host, and is refused with
+`403` before dispatch. Rate limiting is a stated non-goal. The full reasoning is in `packages/http-server/CLAUDE.md`.
 
 ## Public surface
 

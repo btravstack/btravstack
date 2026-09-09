@@ -337,6 +337,101 @@ const sessionFixture = async (
   });
 };
 
+/**
+ * The CSRF deployments: the same two routes — a public POST and a GET behind
+ * the scheme — served once under a scheme that reads a COOKIE and once under
+ * one that reads a header, which is the difference the computed default keys
+ * off.
+ */
+const csrfApi = defineHttp({
+  authenticators: { session: sessionAuthenticator<SessionIdentity>()() },
+});
+
+const csrfNoteFragment = csrfApi.HtmxPost("/note")({
+  inject: {},
+  sync: () => () => OkAsync(html`<p>saved</p>`),
+});
+
+const csrfWhoamiFragment = csrfApi.HtmxGet("/whoami", { requires: [{ session: [] }] })({
+  inject: {},
+  sync: () => (context) => OkAsync(html`<p>${context.principal.userId}</p>`),
+});
+
+const csrfFragments = csrfApi.HtmxFragments([csrfNoteFragment, csrfWhoamiFragment]);
+
+const csrfAppOf = (csrf: boolean | undefined) =>
+  HttpModule("CsrfApp")({
+    fragments: csrfFragments,
+    port: 0,
+    hostname: "127.0.0.1",
+    ...(csrf === undefined ? {} : { csrf }),
+    provides: [csrfNoteFragment, csrfWhoamiFragment, sessionCodec({ keys: [sessionKeys.alpha] })],
+  });
+
+const csrfHeaderApi = defineHttp({
+  authenticators: {
+    service: apiKeyAuthenticator<ServiceIdentity>()({
+      keys: [{ key: "header-secret", principal: { appId: "reporting" } }],
+    }),
+  },
+});
+
+const csrfHeaderNoteFragment = csrfHeaderApi.HtmxPost("/note")({
+  inject: {},
+  sync: () => () => OkAsync(html`<p>saved</p>`),
+});
+
+const csrfHeaderWhoamiFragment = csrfHeaderApi.HtmxGet("/whoami", {
+  requires: [{ service: [] }],
+})({ inject: {}, sync: () => (context) => OkAsync(html`<p>${context.principal.appId}</p>`) });
+
+const csrfHeaderFragments = csrfHeaderApi.HtmxFragments([
+  csrfHeaderNoteFragment,
+  csrfHeaderWhoamiFragment,
+]);
+
+const csrfHeaderAppOf = (csrf: boolean | undefined) =>
+  HttpModule("CsrfHeaderApp")({
+    fragments: csrfHeaderFragments,
+    port: 0,
+    hostname: "127.0.0.1",
+    ...(csrf === undefined ? {} : { csrf }),
+    provides: [csrfHeaderNoteFragment, csrfHeaderWhoamiFragment],
+  });
+
+/** The two calls a CSRF test makes, and the cookie a browser would carry into them. */
+export type CsrfCalls = {
+  /** Where the app is listening — the `Origin` a same-origin browser would send. */
+  readonly origin: string;
+  /** The `cookie` header the app's own codec sealed — a real session, not a placeholder. */
+  readonly cookie: string;
+  readonly post: (
+    headers?: Readonly<Record<string, string>>,
+  ) => Promise<{ readonly status: number; readonly text: string }>;
+  readonly get: (
+    headers?: Readonly<Record<string, string>>,
+  ) => Promise<{ readonly status: number; readonly text: string }>;
+};
+
+const csrfCallsOf = async (origin: string): Promise<CsrfCalls> => {
+  const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
+  const sealed = (await codec.seal({ principal: { userId: "u-1" } })).get();
+  const call = async (
+    method: string,
+    path: string,
+    headers: Readonly<Record<string, string>>,
+  ): Promise<{ status: number; text: string }> => {
+    const response = await fetch(`${origin}${path}`, { method, headers });
+    return { status: response.status, text: await response.text() };
+  };
+  return {
+    origin,
+    cookie: `__Host-session=${sealed}`,
+    post: (headers = {}) => call("POST", "/note", headers),
+    get: (headers = {}) => call("GET", "/whoami", headers),
+  };
+};
+
 /** What both shipped header-borne authenticators resolve to in these specs. */
 export type ServiceIdentity = { readonly appId: string };
 export type JwtIdentity = { readonly tenantId: string; readonly userId: string };
@@ -990,6 +1085,8 @@ type PolicyCalls = {
   readonly url: string;
   /** `POST /rpc/greet` with `name` as its input, plus whatever headers the test adds. */
   readonly greet: (name: string, headers?: Readonly<Record<string, string>>) => Promise<Response>;
+  /** `GET /rpc/greet` — the method oRPC's own CSRF plugin judges, which this package never sends. */
+  readonly read: (headers: Readonly<Record<string, string>>) => Promise<Response>;
   /**
    * The same call over `node:http` with `accept-encoding` set, answering the
    * response's `content-encoding` — fetch decodes and would hide it.
@@ -1005,6 +1102,7 @@ const callsOf = (url: string): PolicyCalls => ({
       headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify({ json: { name } }),
     }),
+  read: (headers) => fetch(`${url}/rpc/greet`, { method: "GET", headers }),
   encodingOf: (name) =>
     new Promise((resolve) => {
       const request = httpRequest(
@@ -1026,7 +1124,7 @@ const callsOf = (url: string): PolicyCalls => ({
 });
 
 /** The transport policy a `rpcPolicy` test configures — `http()`'s own fields. */
-type PolicyOptions = Pick<HttpOptions, "cors" | "bodyLimit" | "compression" | "plugins">;
+type PolicyOptions = Pick<HttpOptions, "cors" | "bodyLimit" | "compression" | "plugins" | "csrf">;
 
 /** The same starter shape as `rpcAppOf`, over whatever transport policy a test configures. */
 const rpcPolicyAppOf = (options: PolicyOptions) =>
@@ -1656,6 +1754,15 @@ export type HttpFixtures = {
   readonly pinnedAudienceJwt: (
     env: Environment,
   ) => AsyncResult<AuthenticatorService<JwtIdentity>, ConfigInvalid>;
+  /**
+   * The CSRF deployments on an ephemeral port, over whatever `csrf` a test
+   * pins: `cookies` composes a session scheme, `headers` an API-key one. Shut
+   * down by the fixture.
+   */
+  readonly csrf: {
+    readonly cookies: (csrf?: boolean) => Promise<CsrfCalls>;
+    readonly headers: (csrf?: boolean) => Promise<CsrfCalls>;
+  };
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -1742,6 +1849,18 @@ export const it = test.extend<HttpFixtures>({
 
   jwtApp: async ({ boot }, use) => {
     await use((env) => boot(envJwtAppOf(), { env }));
+  },
+
+  csrf: async ({ boot }, use) => {
+    const serve = async (app: RunningApp<ConfigInvalid, HttpInfo>): Promise<CsrfCalls> => {
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return await csrfCallsOf(`http://127.0.0.1:${info.port}`);
+    };
+    await use({
+      cookies: (csrf) => serve(boot(csrfAppOf(csrf))),
+      headers: (csrf) => serve(boot(csrfHeaderAppOf(csrf))),
+    });
   },
 
   pinnedAudienceJwt: async ({ issuer }, use) => {

@@ -13,6 +13,7 @@ import { HttpAuthenticator } from "./auth.js";
 import { defineHttp } from "./define-http.js";
 import { html } from "./html.js";
 import { HttpModule } from "./http-module.js";
+import { http } from "./http-runtime.js";
 
 const api = defineHttp();
 
@@ -248,3 +249,19 @@ const _typoedKind = {
 } as const;
 // @ts-expect-error — UNDECLARED UNIT KIND: `usre` is no scheme the contract names
 void HttpModule("PlainTypoedKind")(_typoedKind);
+
+// `csrf` is one option on both surfaces — the same field `HttpOptions` carries
+// to `http()` — and it is a boolean or nothing, never a policy record somebody
+// half-remembers from `cors`.
+void HttpModule("CsrfPinnedOn")({ router, port: 0, csrf: true });
+void HttpModule("CsrfPinnedOff")({ router, port: 0, csrf: false });
+void http({ csrf: true });
+void http({ csrf: false });
+void http({});
+
+const _csrfNotABoolean = { router, port: 0, csrf: "same-origin" } as const;
+// @ts-expect-error — `csrf` is a boolean; the policy is not configurable per origin
+void HttpModule("CsrfNotABoolean")(_csrfNotABoolean);
+
+// @ts-expect-error — the same on `http()`, which takes the identical option type
+void http({ csrf: "same-origin" });

@@ -30,6 +30,7 @@ import {
 import { RPCHandler, type NodeHttpHandlerPlugin } from "@orpc/server/node";
 import {
   CORSHandlerPlugin,
+  GetMethodCsrfProtectionHandlerPlugin,
   RequestLimitHandlerPlugin,
   ResponseCompressionHandlerPlugin,
   type CORSHandlerPluginOptions,
@@ -44,6 +45,7 @@ import { HttpHandler } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
 import { HttpUnit, type AnyUnitModule } from "./http-runtime.js";
 import type { Principal, SchemesOf } from "./principal.js";
+import { CookieSchemes, csrfOn } from "./session.js";
 import { unitScope } from "./unit-scope.js";
 import type { KindOf, UnitFor } from "./unit.js";
 
@@ -77,6 +79,17 @@ export type OrpcOptions = {
    * through `plugins`.
    */
   readonly compression?: boolean | ResponseCompressionHandlerPluginOptions<DefaultInitialContext>;
+  /**
+   * Cross-site state change, refused before dispatch. Defaults to on when any
+   * composed scheme reads a cookie — `sessionAuthenticator` is the one that
+   * ships — and off otherwise, since a caller presenting a header credential is
+   * not a CSRF target. `false` turns it off whatever is composed; `true` turns
+   * it on whatever is composed.
+   *
+   * Not a config field: a deployment that can silently turn it off is the
+   * footgun `securityHeaders` is not allowed to be either.
+   */
+  readonly csrf?: boolean;
   /**
    * Any other oRPC handler plugin. Transport policy configuring the transport;
    * not a middleware slot for application logic, which the package still
@@ -115,6 +128,7 @@ const corsOf = (
 const pluginsOf = (
   options: OrpcOptions,
   config: ServiceOf<HttpConfig>,
+  csrf: boolean,
 ): readonly NodeHttpHandlerPlugin<DefaultInitialContext>[] => {
   const cors = corsOf(options.cors, config.corsOrigin);
   const compression =
@@ -122,6 +136,10 @@ const pluginsOf = (
       ? {}
       : options.compression;
   return [
+    // The runtime's own check covers the state-changing methods and never sees
+    // a GET; this plugin covers the GET oRPC allows for a streaming procedure,
+    // which a browser can be navigated to. Disjoint, so nothing is refused twice.
+    ...(csrf ? [new GetMethodCsrfProtectionHandlerPlugin()] : []),
     ...(cors === undefined ? [] : [new CORSHandlerPlugin(cors)]),
     ...(config.bodyLimit === 0
       ? []
@@ -160,10 +178,10 @@ const streamsOutput = (procedure: AnyProcedure): boolean =>
 export const orpc = (options: OrpcOptions = {}) => {
   const prefix = options.prefix ?? "/rpc";
   return Provider.member(HttpHandler)({
-    inject: { router: OrpcRouterPort, config: HttpConfig },
-    sync: ({ router, config }) => {
+    inject: { router: OrpcRouterPort, config: HttpConfig, cookieSchemes: CookieSchemes },
+    sync: ({ router, config, cookieSchemes }) => {
       const rpc = new RPCHandler(router, {
-        plugins: [...pluginsOf(options, config)],
+        plugins: [...pluginsOf(options, config, csrfOn(options.csrf, cookieSchemes))],
         allowMethods: (method, procedure) =>
           method === "GET" ? streamsOutput(procedure) : RPC_METHODS.has(method),
       });

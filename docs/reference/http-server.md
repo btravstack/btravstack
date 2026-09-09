@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/http-server"
-description: The HTTP starter — defineHttp, HttpModule, OrpcRouter, OrpcController, HtmxGet, HtmxPost, HtmxFragments, html and raw, HttpAuthenticator, http(), htmx(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, cors, bodyLimit, compression, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
+description: The HTTP starter — defineHttp, HttpModule, OrpcRouter, OrpcController, HtmxGet, HtmxPost, HtmxFragments, html and raw, HttpAuthenticator, http(), htmx(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, cors, bodyLimit, compression, plugins, securityHeaders and csrf, what each request is answered with, and how the drain retires a keep-alive connection.
 ---
 
 <!-- doctest: prelude
@@ -54,7 +54,7 @@ declare const view: (order: Order) => OrderView;
 | `Http`                 | type  | `Http<A, Units>` — what `defineHttp` returns, held as one binding and never destructured; `Units` is the record `auth.units<…>()` binds, empty until that second call                                                                                                                                        |
 | `Authenticators`       | type  | `Readonly<Record<string, Authenticator<…>>>` — the registry `defineHttp` takes, keyed by scheme name                                                                                                                                                                                                         |
 | `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                                                                                                 |
-| `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                            |
+| `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, csrf?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                     |
 | `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                                                                                                  |
 | `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })` — or `make` where building the scheme can fail, or `({ inject: {}, sync })` with no deps; the scheme's **name** is the key it sits under in `defineHttp`                                                                                    |
 | `Authenticator`        | type  | `Authenticator<P, Scope, N, E>` — what `HttpAuthenticator` hands back: a description carrying its principal, its scope vocabulary, the ports it needs and the error its arm reports, which `defineHttp` binds to a port                                                                                      |
@@ -73,7 +73,7 @@ declare const view: (order: Order) => OrderView;
 | `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                                                                                     |
 | `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                                                                                   |
 | `apiKeyAuthenticator`  | value | `apiKeyAuthenticator<P>()({ header?, keys })` — an API-key scheme with a constant-time compare over SHA-256 digests, no early return, and a missing header on the same path as a wrong key                                                                                                                   |
-| `http`                 | value | `http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, unit? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                                    |
+| `http`                 | value | `http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, csrf?, unit? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                             |
 | `httpServer`           | value | `httpServer(options?)` — the socket half: runtime, config, `HttpUnit`, and the empty answerer set. `http()` is this plus oRPC                                                                                                                                                                                |
 | `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                                                                           |
 | `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export. It **resolves `HttpHandler`**, so the root must export that too                                                                     |
@@ -130,23 +130,24 @@ provide is deduplicated by reference before it reaches `provides`. It prepends
 di's own `Module(name)`, whose return type is the sugar's. The kernel and both
 gates see a plain module.
 
-| Option            | Required | Default                      | What it is                                                                                                                                                                                      |
-| ----------------- | -------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `router`          | no\*     | —                            | the application's router **provider** — a `Provider<OrpcRouterPort, E, N>`, what `api.OrpcRouter(contract)({ inject, unit?, sync })` returns; a provider on any other port fails at the call    |
-| `fragments`       | no\*     | —                            | the application's fragments **provider** — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces; likewise typed to its own port                                 |
-| `prefix`          | no       | `/rpc`                       | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                                     |
-| `fragmentsPrefix` | no       | `/`                          | where htmx fragments are mounted — `htmx()`'s own default, a separate field because one cannot carry two mount points with two different defaults                                               |
-| `port`            | no       | read from `PORT`             | pins the port instead of reading it                                                                                                                                                             |
-| `hostname`        | no       | read from `HOST`             | pins the host instead of reading it                                                                                                                                                             |
-| `cors`            | no       | read from `HTTP_CORS_ORIGIN` | pins the CORS policy — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                                  |
-| `bodyLimit`       | no       | read from `HTTP_BODY_LIMIT`  | pins the largest request body a procedure or a fragment POST reads, in bytes; `false` is unbounded                                                                                              |
-| `compression`     | no       | read from `HTTP_COMPRESSION` | pins response compression — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                             |
-| `plugins`         | no       | `[]`                         | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                                                                                        |
-| `securityHeaders` | no       | `true`                       | response headers set on the raw listener, before dispatch — covers both answerers                                                                                                               |
-| `unit`            | no       | none                         | kind → module — the module each answerer forks around a request it handles, chosen by the kind that authenticated it; **gated** against the kinds this root can open. See [The unit](#the-unit) |
-| `imports`         | no       | `[]`                         | the application's modules                                                                                                                                                                       |
-| `provides`        | no       | `[]`                         | the application's own providers                                                                                                                                                                 |
-| `exports`         | no       | `[]`                         | the application's own exports; `HttpRuntime` and `HttpHandler` are added                                                                                                                        |
+| Option            | Required | Default                         | What it is                                                                                                                                                                                      |
+| ----------------- | -------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `router`          | no\*     | —                               | the application's router **provider** — a `Provider<OrpcRouterPort, E, N>`, what `api.OrpcRouter(contract)({ inject, unit?, sync })` returns; a provider on any other port fails at the call    |
+| `fragments`       | no\*     | —                               | the application's fragments **provider** — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces; likewise typed to its own port                                 |
+| `prefix`          | no       | `/rpc`                          | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                                     |
+| `fragmentsPrefix` | no       | `/`                             | where htmx fragments are mounted — `htmx()`'s own default, a separate field because one cannot carry two mount points with two different defaults                                               |
+| `port`            | no       | read from `PORT`                | pins the port instead of reading it                                                                                                                                                             |
+| `hostname`        | no       | read from `HOST`                | pins the host instead of reading it                                                                                                                                                             |
+| `cors`            | no       | read from `HTTP_CORS_ORIGIN`    | pins the CORS policy — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                                  |
+| `bodyLimit`       | no       | read from `HTTP_BODY_LIMIT`     | pins the largest request body a procedure or a fragment POST reads, in bytes; `false` is unbounded                                                                                              |
+| `compression`     | no       | read from `HTTP_COMPRESSION`    | pins response compression — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                             |
+| `plugins`         | no       | `[]`                            | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                                                                                        |
+| `securityHeaders` | no       | `true`                          | response headers set on the raw listener, before dispatch — covers both answerers                                                                                                               |
+| `csrf`            | no       | on when a scheme reads a cookie | refuses a cross-site state change carrying cookies, before dispatch. See [`csrf`](#csrf)                                                                                                        |
+| `unit`            | no       | none                            | kind → module — the module each answerer forks around a request it handles, chosen by the kind that authenticated it; **gated** against the kinds this root can open. See [The unit](#the-unit) |
+| `imports`         | no       | `[]`                            | the application's modules                                                                                                                                                                       |
+| `provides`        | no       | `[]`                            | the application's own providers                                                                                                                                                                 |
+| `exports`         | no       | `[]`                            | the application's own exports; `HttpRuntime` and `HttpHandler` are added                                                                                                                        |
 
 \* at least one of `router`/`fragments` is required.
 
@@ -1104,17 +1105,18 @@ const http: (
 The primitive `HttpModule` delegates to, for a composition root written by
 hand. `HttpOptions`:
 
-| Option            | Required | Default            | What it is                                                      |
-| ----------------- | -------- | ------------------ | --------------------------------------------------------------- |
-| `prefix`          | no       | `/rpc`             | where the RPC endpoint is mounted                               |
-| `port`            | no       | read from `PORT`   | pins the port                                                   |
-| `hostname`        | no       | read from `HOST`   | pins the host                                                   |
-| `cors`            | no       | `HTTP_CORS_ORIGIN` | `boolean \| CORSHandlerPluginOptions`, oRPC's CORS plugin       |
-| `bodyLimit`       | no       | `HTTP_BODY_LIMIT`  | `number \| false`, the largest body a procedure reads, in bytes |
-| `compression`     | no       | `HTTP_COMPRESSION` | `boolean \| ResponseCompressionHandlerPluginOptions`            |
-| `plugins`         | no       | `[]`               | `NodeHttpHandlerPlugin[]`, forwarded to oRPC's own `RPCHandler` |
-| `securityHeaders` | no       | `true`             | `boolean \| Record<string, string>`, applied on the listener    |
-| `unit`            | no       | none               | kind → module, **un-gated** here — see [The unit](#the-unit)    |
+| Option            | Required | Default            | What it is                                                           |
+| ----------------- | -------- | ------------------ | -------------------------------------------------------------------- |
+| `prefix`          | no       | `/rpc`             | where the RPC endpoint is mounted                                    |
+| `port`            | no       | read from `PORT`   | pins the port                                                        |
+| `hostname`        | no       | read from `HOST`   | pins the host                                                        |
+| `cors`            | no       | `HTTP_CORS_ORIGIN` | `boolean \| CORSHandlerPluginOptions`, oRPC's CORS plugin            |
+| `bodyLimit`       | no       | `HTTP_BODY_LIMIT`  | `number \| false`, the largest body a procedure reads, in bytes      |
+| `compression`     | no       | `HTTP_COMPRESSION` | `boolean \| ResponseCompressionHandlerPluginOptions`                 |
+| `plugins`         | no       | `[]`               | `NodeHttpHandlerPlugin[]`, forwarded to oRPC's own `RPCHandler`      |
+| `securityHeaders` | no       | `true`             | `boolean \| Record<string, string>`, applied on the listener         |
+| `csrf`            | no       | computed           | `boolean`; unset is on exactly when a composed scheme reads a cookie |
+| `unit`            | no       | none               | kind → module, **un-gated** here — see [The unit](#the-unit)         |
 
 The module **provides** `HttpRuntime`, `HttpConfig` and `HttpUnit`, exports
 `HttpRuntime` and `HttpConfig`, and **needs** `Env` (the kernel discharges it),
@@ -1247,6 +1249,35 @@ The set is resolved once per `listen`, not per request. It is deliberately
 small: a default that has to be right for every deployment cannot include a
 CSP, an HSTS max-age or a permissions policy, all of which are a deployment's
 own decision — pass a record when you have made those.
+
+### `csrf`
+
+`boolean`, and **unset is not a default value but a question about the graph**:
+it is on exactly when a composed scheme reads a cookie. Each cookie-reading
+scheme contributes to a set port as it is declared, so composing
+`sessionAuthenticator` turns the check on and a root of bearer schemes alone
+never pays for it. `csrf: true` forces it on, `csrf: false` off.
+
+The check is stateless — no token, no hidden field, nothing to store — and runs
+on the raw listener beside `securityHeaders`, before any answerer:
+
+| Request                                                          | Answer                                                                    |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `GET`, `HEAD`, `OPTIONS` — anything not state-changing           | served, whatever the site                                                 |
+| a state change carrying **no** cookie                            | served: a bearer caller is not a CSRF target, and a page cannot forge one |
+| a state change with `Sec-Fetch-Site: same-origin` or `same-site` | served                                                                    |
+| a state change with `Sec-Fetch-Site: cross-site` or `none`       | `403`, no body                                                            |
+| no fetch metadata, `Origin` host equal to the request's own      | served                                                                    |
+| no fetch metadata, `Origin` absent, unparseable, or another host | `403`, no body                                                            |
+
+The last row is the one worth stating plainly: a state-changing request that
+presents cookies while saying nothing at all about where it came from is
+refused rather than waved through. Every browser a session cookie can reach
+sends `Sec-Fetch-Site`; a client that sends neither that nor an `Origin` is not
+a browser, and is holding a credential it did not have to name.
+
+oRPC's `GetMethodCsrfProtectionHandlerPlugin` rides the same flag, so the oRPC
+and htmx answerers are protected by one decision rather than two.
 
 ## `htmx(options)`
 

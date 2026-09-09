@@ -1,5 +1,5 @@
 import { Config, ConfigInvalid, Env } from "@btravstack/config";
-import { Port, Provider } from "@btravstack/di";
+import { Port, Provider, type AnyProvider } from "@btravstack/di";
 import { CompactEncrypt, compactDecrypt } from "jose";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
@@ -39,6 +39,27 @@ export type SessionCodecService = {
 };
 
 export class SessionCodec extends Port("HttpSessionCodec")<SessionCodecService> {}
+
+/**
+ * One member per composed scheme, `true` when that scheme reads a cookie — the
+ * graph fact `csrf`'s default is computed from. `httpServer` contributes the
+ * `false` member that keeps the set from being the empty dependency di refuses,
+ * so a graph composing no scheme at all still starts.
+ *
+ * A set port rather than a marker `HttpModule` folds: `http()` never sees an
+ * application's authenticators — the root composes them itself — so a signal
+ * read off the options record would leave that surface silently unprotected.
+ * A `ctx.get` at start could not answer it either: di's `Context` has no `has`.
+ */
+export class CookieSchemes extends Port.many("HttpCookieSchemes")<boolean> {}
+
+/** What `defineHttp` contributes for a scheme whose description says it reads a cookie. */
+export const cookieScheme = (): AnyProvider =>
+  Provider.member(CookieSchemes)({ inject: {}, value: true });
+
+/** `csrf` unset is on exactly when a composed scheme reads a cookie. */
+export const csrfOn = (option: boolean | undefined, schemes: readonly boolean[]): boolean =>
+  option ?? schemes.some(Boolean);
 
 /** Twelve hours, fixed: there is no sliding re-seal, so this is the whole session. */
 export const DEFAULT_TTL_SEC = 43_200;
@@ -240,23 +261,26 @@ export const sessionAuthenticator =
       // unseals happily; refusing it is this scheme's job.
       ((session: Session<unknown>) => (session.principal ?? undefined) as P | undefined);
 
-    return HttpAuthenticator<P, Scopes[number]>()({
-      inject: { codec: SessionCodec },
-      sync:
-        ({ codec }) =>
-        (headers) =>
-          codec.unseal(cookieValue(headers.cookie, name)).flatMap((session) => {
-            if (session === undefined) return ErrAsync(new Unauthenticated());
-            const principal = principalOf(session);
-            if (principal === undefined) return ErrAsync(new Unauthenticated());
-            if (vocabulary === undefined) return OkAsync(principal as never);
-            const held = new Set(session.scopes);
-            return OkAsync(
-              granted(
-                principal,
-                vocabulary.filter((scope) => held.has(scope)),
-              ) as never,
-            );
-          }),
-    });
+    return {
+      ...HttpAuthenticator<P, Scopes[number]>()({
+        inject: { codec: SessionCodec },
+        sync:
+          ({ codec }) =>
+          (headers) =>
+            codec.unseal(cookieValue(headers.cookie, name)).flatMap((session) => {
+              if (session === undefined) return ErrAsync(new Unauthenticated());
+              const principal = principalOf(session);
+              if (principal === undefined) return ErrAsync(new Unauthenticated());
+              if (vocabulary === undefined) return OkAsync(principal as never);
+              const held = new Set(session.scopes);
+              return OkAsync(
+                granted(
+                  principal,
+                  vocabulary.filter((scope) => held.has(scope)),
+                ) as never,
+              );
+            }),
+      }),
+      cookie: true as const,
+    };
   };

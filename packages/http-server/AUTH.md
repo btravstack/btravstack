@@ -302,6 +302,17 @@ The two rules this half exists to state, before the detail:
   No cookie, a cookie no key opens, an expired session and a declined
   principal are ONE answer: `Unauthenticated`, carrying no reason.
 
+  **Composing it turns CSRF on**, which is the one thing this scheme does that
+  no header-borne one does. Its description carries `cookie: true`;
+  `defineHttp` turns that into a `CookieSchemes` member beside the scheme's
+  own provider, and the HTTP listener refuses a cross-site state change
+  carrying cookies with a bodyless `403` before any answerer sees it. Nothing
+  is written at the composition root, and `csrf: false` on `http()` /
+  `HttpModule` is what turns it back off — see `csrf` in
+  `packages/http-server/CLAUDE.md`. The other two shipped schemes read a
+  header, and a caller presenting a header credential is not a CSRF target, so
+  neither sets the marker.
+
 - **Password hashing and credential ISSUING are out of scope, deliberately.**
   All three authenticators above are on the **verifying** side, and that is
   the line: the credential is minted by whoever owns the identity — an OIDC

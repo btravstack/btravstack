@@ -259,6 +259,7 @@ supplies it:
 | `compression`     | pins `HTTP_COMPRESSION` — response compression, `true` for oRPC's defaults or its options record; oRPC-only            |
 | `plugins`         | any other oRPC handler plugin, forwarded to `RPCHandler`                                                               |
 | `securityHeaders` | response headers set on the raw listener, before dispatch (default on)                                                 |
+| `csrf`            | refuse a cross-site state change carrying cookies, before dispatch (default: on once a scheme reads a cookie)          |
 | `unit`            | kind → module: `anonymous`, or a scheme — both answerers fork the kind that authenticated the request                  |
 
 `cors`, `bodyLimit` and `compression` **pin** a field of `HttpConfig` that is
@@ -266,9 +267,9 @@ otherwise bound from the environment — explicit beats environment beats
 default, per field — so a deployment sets `HTTP_CORS_ORIGIN` or
 `HTTP_BODY_LIMIT` without a code change, and a test pins them instead. The rest
 stay composition-time: `prefix` because a client's `baseURL` has to agree with
-it, `securityHeaders` because a deployment that can silently turn
-`x-frame-options` off is a footgun, and `plugins` (or a `CORSHandlerPluginOptions`
-record) because an environment carries no records.
+it, `securityHeaders` and `csrf` because a deployment that can silently turn
+`x-frame-options` — or the CSRF check — off is a footgun, and `plugins` (or a
+`CORSHandlerPluginOptions` record) because an environment carries no records.
 
 `jwtAuthenticator`'s three transport options pin the same way, from
 `@btravstack/http-server/jwt`. A root composing that scheme writes no `needs`

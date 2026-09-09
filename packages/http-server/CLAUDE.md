@@ -480,7 +480,7 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `ResponseCompressionHandlerPluginOptions`'s `encodings`/`threshold`,
   `plugins` — stay composition-time and reach the handler through `orpc()`'s
   closure, because a record is not something an environment can carry.
-  `orpc.ts`'s `pluginsOf(options, config)` is where the two meet, and the oRPC
+  `orpc.ts`'s `pluginsOf(options, config, csrf)` is where the two meet, and the oRPC
   handler provider therefore declares `HttpConfig` as a dependency — which is
   why `orpc()`'s `HttpConfig` dependency is discharged by `httpServer()`
   rather than owed by `http()`'s own needs channel.
@@ -503,35 +503,61 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   stays in `plugins`: inflating a body before the limit measures it is an
   application's decision to make in the open.
 
-  **CSRF is deliberately NOT here**, and that is the one narrowing of the
-  claim below rather than a shipment of it: oRPC's
-  `GetMethodCsrfProtectionHandlerPlugin` is meaningful only once a request
-  carries a `SameSite` cookie, and this package sets none — `sessionCodec`
-  seals a cookie's value and `sessionAuthenticator` reads one back, but no
-  `Set-Cookie` is written here yet. **That is the last thing standing between
-  this paragraph and its own deadline**: a cookie authenticator has landed, so
-  the moment a login route sets the cookie, CSRF stops being inert. It is
-  #160's third phase, not a permanent narrowing. The
-  same reasoning is what keeps `htmx()` (below) carrying no CSRF protection of
-  its own **today** — but it is the answerer where the gap will bite first: a
-  fragment's `POST` is form-urlencoded, exactly the request shape that skips a
-  browser's CORS preflight. Admitting `GET` on an event-iterator
-  procedure gives the oRPC answerer its own preflight-free surface now too, so
-  both halves will need protecting — and only one of them can be protected by a
-  plugin. `GetMethodCsrfProtectionHandlerPlugin` rides `plugins` into
-  `RPCHandler`, so it covers oRPC alone; `HtmxOptions` is `{ prefix }` and
-  nothing else, so no oRPC plugin ever reaches a fragment and that half has to
-  be protected inside this package. Do not write that one plugins line covers
-  both — it cannot.
+- **`csrf`** — a state-changing request that carries cookies must be
+  same-site, refused with a bodyless `403` **before dispatch**, in the
+  listener beside `securityHeaders` so it covers every answerer rather than
+  only what oRPC matched. `POST`/`PUT`/`PATCH`/`DELETE` carrying a `cookie`
+  header must present `Sec-Fetch-Site: same-origin` or `same-site`; where the
+  browser sent no fetch metadata, an `Origin` naming the request's own `Host`.
+  Nothing else — no token, no form field, no session state: this is the
+  stateless check a stateless BFF can make.
 
-  **`securityHeaders` stays composition-time on purpose** — a deployment that
-  can silently turn `x-frame-options` off is a footgun the other three are not.
+  **The rule is "carries COOKIES", not "carries OUR cookie".** The listener
+  does not know the scheme's cookie name — `sessionAuthenticator`'s `cookie`
+  option is the scheme's to choose — and a check independent of that
+  configuration is both the standard fetch-metadata recommendation and one a
+  second cookie-reading scheme cannot silently widen. A request with no cookie
+  at all is not checked: a caller presenting a bearer token or an API key
+  rides no ambient authority, so it is not a CSRF target.
+
+  **The `Origin` fallback compares HOST, deliberately not scheme.** Behind a
+  TLS-terminating proxy the connection this process accepted is `http` while
+  the browser's `Origin` says `https`, so a scheme comparison would refuse
+  every real deployment. `__Host-session` is `Secure`, which is what keeps the
+  cookie off the plaintext scheme instead. An `Origin` no `URL` can parse —
+  `null`, from a sandboxed frame or a cross-origin redirect — is not the
+  request's own host, and neither is an absent one: a cookie arriving with
+  nothing at all saying where from is refused.
+
+  **The default is a GRAPH fact, not an option default**: on when any composed
+  scheme reads a cookie, off otherwise. `sessionAuthenticator`'s description
+  carries `cookie: true`, `defineHttp` turns that into a member of the
+  `CookieSchemes` set port beside the scheme's own provider, and both the
+  listener and `orpc()` read the set. A set port rather than a marker
+  `HttpModule` folds off `router.authenticators`, because `http()` never sees
+  an application's authenticators — the root composes them itself — so an
+  options-only signal would leave that surface silently unprotected; a
+  `ctx.get` at start could not answer it either, di's `Context` having no
+  `has`. `httpServer` contributes the `false` member that keeps the set from
+  being the empty dependency di refuses.
+
+  **oRPC's `GetMethodCsrfProtectionHandlerPlugin` rides the same flag**, and
+  the two halves are disjoint: the listener judges the state-changing methods
+  and never sees a `GET`, the plugin judges the `GET` oRPC admits for an
+  event-iterator procedure — the one preflight-free surface the listener's
+  method set deliberately leaves alone. Nothing is refused twice. A fragment
+  answerer needs no plugin: its `POST` is form-urlencoded, exactly the
+  preflight-free shape, and the listener check is upstream of every answerer.
+
+  **`csrf` stays composition-time, and so does `securityHeaders`** — a
+  deployment that can silently turn `x-frame-options`, or this check, off is a
+  footgun the transport-policy options are not.
 
 - **`plugins`** —
   `readonly NodeHttpHandlerPlugin<DefaultInitialContext>[]`, from
-  `@orpc/server/node` — any oRPC plugin the three named options do not cover,
+  `@orpc/server/node` — any oRPC plugin the named options do not cover,
   appended to them and forwarded to `new RPCHandler(service, { plugins })`.
-  Each of the four threads through all three surfaces on the same
+  Each option threads through all three surfaces on the same
   `...(x === undefined ? {} : { x })` spread every other option here uses —
   `OrpcOptions` (`orpc.ts`) → `HttpOptions` (`http-runtime.ts`)
   → `HttpModuleOptions` (`http-module.ts`) — and needs no generic
@@ -1564,18 +1590,17 @@ arrive at the same door, and the answer is the same for all of them: **they are
 handler configuration, not a middleware slot.** Thesis #3's refusal survives
 intact, narrowed to what it was always about.
 
-**Five of the six are configuration; CSRF is the exception, and it is stated
-rather than glossed.** `cors`, `bodyLimit` and `compression` are options that
-pin `HttpConfig` fields a deployment can set instead; `securityHeaders` is an
-option on the listener; authentication is bound through `defineHttp`'s
-authenticators, which ride the router rather than being an option on `http()`.
-CSRF is reached through `plugins` because oRPC's protection only bites on a
-request carrying a `SameSite` cookie and nothing here sets one yet — the
-session subpath seals a cookie's value and reads one back, but no `Set-Cookie`
-is written by this package. The claim used to cover all six while the code
-shipped two, which is the drift the root `CLAUDE.md` names as the failure
-mode it fears most; the exception goes the moment a login route sets the
-cookie, which is #160's third phase. An oRPC plugin and the starter's
+**All six are configuration, and CSRF was the last exception.** `cors`,
+`bodyLimit` and `compression` are options that pin `HttpConfig` fields a
+deployment can set instead; `securityHeaders` and `csrf` are options on the
+listener; authentication is bound through `defineHttp`'s authenticators, which
+ride the router rather than being an option on `http()`. CSRF was reached
+through `plugins` for as long as this package read no cookie; a session scheme
+reads one, so it is the named option it was always promised as — on by default
+exactly when a cookie-reading scheme is composed. The claim used to cover all
+six while the code shipped two, which is the drift the root `CLAUDE.md` names
+as the failure mode it fears most; it now covers six and ships six. An oRPC
+plugin and the starter's
 own `principalMiddleware` act on the **request/response envelope** — bytes,
 headers, a principal resolved before dispatch. An application middleware would
 act on the handler's **`Result`**, and that is the only one `@btravstack/http-server`
