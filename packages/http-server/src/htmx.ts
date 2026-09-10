@@ -10,7 +10,7 @@ import { HttpHandler } from "./handler.js";
 import { HtmxFragmentsPort, type FragmentAnswer } from "./htmx-route.js";
 import { HttpConfig } from "./http-config.js";
 import { HttpUnit, type AnyUnitModule } from "./http-runtime.js";
-import { returnTo } from "./redirect.js";
+import { forLocation, returnTo } from "./redirect.js";
 import { seedOf } from "./unit-scope.js";
 import { unitRecordOf } from "./unit.js";
 
@@ -156,7 +156,7 @@ const refusalOf = (login: `/${string}` | undefined, url: string | undefined): Re
       // application whose login route is not Latin-1 would `ERR_INVALID_CHAR`
       // its own refusal. `encodeURI` leaves `?` and `=` alone, which is why the
       // query is built after it rather than run through it.
-      { login: `${encodeURI(login)}?return=${encodeURIComponent(returnTo(url))}` };
+      { login: `${forLocation(login)}?return=${encodeURIComponent(returnTo(url))}` };
 
 const refuseAuth = (request: IncomingMessage, response: ServerResponse, refusal: Refusal): void => {
   if ("status" in refusal) {

@@ -20,15 +20,30 @@
  * very seam — passing the guard and then `ERR_INVALID_CHAR`ing the response
  * with the caller's authorization code already spent. So every caller runs
  * `encodeURI` where the value becomes a `Location`, which closes both classes
- * at once and is shorter than the clause it replaced (measured: `/订单/1` →
- * `/%E8%AE%A2%E5%8D%95/1`; `/\nX` → `/%0AX`, unsplittable).
+ * at once (measured: `/订单/1` → `/%E8%AE%A2%E5%8D%95/1`; `/\nX` → `/%0AX`,
+ * unsplittable) — through {@link forLocation}, NOT `encodeURI`. The value a
+ * browser sent is already percent-encoded (`/orders/a%20b/row`), the seam
+ * decodes it exactly once on the way back, and `encodeURI` re-encodes the `%`
+ * it finds: `/orders/a%2520b/row`, a real user landing on a route whose
+ * parameter binds to the literal `a%20b`. So the encoder leaves `%` alone and
+ * touches only what a URI cannot carry.
  *
  * The value must arrive DECODED ONCE — a query parser's own decode is that
  * one — and must never be decoded again: a second pass turns `%255C` back into
- * `\`, which is this guard walked past using its own output. `encodeURI`
- * re-encodes `%`, so a once-decoded value round-trips to exactly what it was.
+ * `\`, which is this guard walked past using its own output.
  */
 export const returnTo = (value: string | null | undefined): string =>
   typeof value === "string" && value.startsWith("/") && value[1] !== "/" && value[1] !== "\\"
     ? value
     : "/";
+
+/**
+ * A once-decoded path made fit for a `Location` header: every character a URI
+ * cannot carry — a control character, a space, anything above ASCII — is
+ * percent-encoded, and `%` is left exactly as it arrived, so a value the
+ * browser already encoded is not encoded twice.
+ */
+export const forLocation = (path: string): string =>
+  path.replace(/[^A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]/gu, (character) =>
+    encodeURIComponent(character),
+  );

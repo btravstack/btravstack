@@ -22,7 +22,7 @@ import { TaggedError, fromPromise, type AsyncResult } from "unthrown";
 
 import { clearCookie, cookieValue, setCookie } from "./cookie.js";
 import { HttpHandler, type HttpAnswerer } from "./handler.js";
-import { returnTo } from "./redirect.js";
+import { forLocation, returnTo } from "./redirect.js";
 import {
   SESSION_COOKIE,
   SessionCodec,
@@ -296,7 +296,7 @@ const callback = async <P>(
     // `encodeURI`, because Node's header validator refuses every code point
     // above U+00FF: `/订单/1` is an ordinary path and an `ERR_INVALID_CHAR`
     // otherwise — a 500 with the authorization code already spent.
-    location: encodeURI(returnTo(held["return"])),
+    location: forLocation(returnTo(held["return"])),
     "set-cookie": [setCookie(SESSION_COOKIE, sealed, codec.ttlSec), clearCookie(TRANSIENT_COOKIE)],
   });
 };

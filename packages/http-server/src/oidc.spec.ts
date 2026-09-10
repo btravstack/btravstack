@@ -310,6 +310,25 @@ describe("oidc(), the login answerer", () => {
     START_UP,
   );
 
+  it("lands a browser on the path it was sent from, encoded exactly as it sent it", async ({
+    bff,
+  }) => {
+    // GIVEN the value the htmx seam mints for a browser target of
+    // `/orders/a%20b/row`: the target the browser already percent-encoded,
+    // encoded once more as a query component
+    const browser = await bff();
+
+    // WHEN the flow is walked with it
+    const back = await browser.login(ORY_USERS.alice, "?return=%2Forders%2Fa%2520b%2Frow");
+
+    // THEN the `Location` is the browser's own target, not a second encoding
+    // of it — a `%20` stays `%20`, never `%2520`
+    expect({ status: back.status, location: back.location }).toEqual({
+      status: 303,
+      location: "/orders/a%20b/row",
+    });
+  });
+
   it(
     "encodes a return path a header cannot carry, rather than 500ing on it",
     async ({ bff }) => {
