@@ -49,6 +49,11 @@ export type SessionCodecService = {
    * return to — sealed with the SAME keys under its own purpose marker and a
    * five-minute lifetime. A transient read as a session, or a session read as
    * one, is `undefined`: the marker is what separates them.
+   *
+   * `typ`, `iat` and `exp` are the CODEC's: `seal` writes them over whatever
+   * the state carries and `unseal` strips them off again, so a caller's own
+   * value under one of those three names never survives the round trip — which
+   * is what stops state built from a request deciding what the payload is.
    */
   readonly transient: {
     readonly seal: (state: Readonly<Record<string, string>>) => AsyncResult<string, never>;

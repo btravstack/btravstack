@@ -270,6 +270,26 @@ describe("sessionCodec", () => {
     await expect(opened).toBeOkWith(undefined);
   });
 
+  it("stamps its own markers over state that spells them", async ({ sessionCodecOf }) => {
+    // GIVEN login state a caller did not fully author — task 3 builds one from
+    // the request — spelling all three names the codec stamps, with a session's
+    // own payload inside it
+    const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
+    const smuggled = { typ: "session", principal: "u-1", exp: "4102444800" };
+
+    // WHEN it is sealed, then read back as BOTH a session and login state
+    const cookie = (await codec.transient.seal(smuggled)).get();
+
+    // THEN the markers the codec wrote won: the cookie is not a session, and
+    // the state comes back without the caller's `typ` or `exp` — `seal` writes
+    // those three names last, so nothing it is handed decides what the payload
+    // is or how long it lives
+    expect({
+      asSession: (await codec.unseal(cookie)).get(),
+      asState: (await codec.transient.unseal(cookie)).get(),
+    }).toEqual({ asSession: undefined, asState: { principal: "u-1" } });
+  });
+
   it("answers undefined for login state past its lifetime", async ({
     sessionCodecOf,
     forgeSession,
@@ -295,7 +315,7 @@ describe("sessionCodec", () => {
     await expect(opened).toBeOkWith(undefined);
   });
 
-  it("refuses login state whose payload is not a record of strings", async ({
+  it("refuses login state whose stamps are not numbers or whose values are not strings", async ({
     sessionCodecOf,
     forgeSession,
   }) => {
