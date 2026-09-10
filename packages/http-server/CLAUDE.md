@@ -1174,22 +1174,35 @@ one that outlives the policy — a caller passing `exp` is a compile error, whic
 own test: it is the posture `securityHeaders` is, and its silent change is a
 regression rather than a deployment detail.
 
-**`unseal` decrypts only what `seal` issues.** `compactDecrypt` is handed
-`keyManagementAlgorithms: ["dir"]` and `contentEncryptionAlgorithms:
-["A256GCM"]`, derived from the same `HEADER` constant the seal writes so the two
-directions cannot drift. Without the pin, a token this key sealed under
-`A256KW`, `A256GCMKW` or `dir` + `A128CBC-HS256` OPENS — none of it forgeable
-without the key, which is exactly why it matters: the key is about to be
-reachable by something else that seals. `oidc()`'s five-minute transient
-`__Host-oidc` cookie is that something, and a transient accepted as a full
-session is a session carrying whatever `principal` and `exp` it names.
+**`unseal` decrypts only what `seal` issues — the ALGORITHM half.**
+`compactDecrypt` is handed `keyManagementAlgorithms: ["dir"]` and
+`contentEncryptionAlgorithms: ["A256GCM"]`, derived from the same `HEADER`
+constant the seal writes so the two directions cannot drift. Without the pin, a
+token this key sealed under `A256KW`, `A256GCMKW` or `dir` + `A128CBC-HS256`
+OPENS. None of that is forgeable without the key, which is what the pin is
+about: it refuses **another algorithm under our key**, so a sibling holder of
+`HTTP_SESSION_KEYS` cannot reach this codec with a JWE shaped its own way.
+
+**`typ: "session"` is the PURPOSE half, and it is the one that matters for what
+ships next.** The algorithm pin buys nothing against something sealed the way we
+seal: `oidc()`'s five-minute transient `__Host-oidc` cookie will be `dir` +
+`A256GCM` under these very keys, which is precisely what the allow-list admits —
+and a cookie NAME is not a boundary, since `__Host-` is enforced by the browser
+on `Set-Cookie` and never on a request, so a client is free to replay its own
+transient as `Cookie: __Host-session=…`. So `seal` writes `typ` into the
+plaintext and `sessionOf` requires it back: what the payload IS, checked before
+what shape it has. The alternative on the table was leaving the presence of
+`principal` to separate them, which held only by an accident of field naming
+nothing stated — and the cost of adding a REQUIRED field to a cookie format
+already in the wild is a global logout at deploy, the same failure `decodeKey`'s
+round trip worries about. Two lines now beats a deprecation window on a cookie.
 
 **The plaintext is authenticated, not validated.** The AEAD tag says the bytes
-are ours; it says nothing about their shape, and a key this codec holds could
-have sealed anything. So `sessionOf` checks `principal`, a numeric `iat` and a
-numeric `exp` before the payload is trusted — a `null` one used to defect on
-`.exp` through a channel typed `never`, and a string `exp` used to coerce its way
-past `exp > now` and open.
+are ours; it says nothing about what they are or what shape they have, and a key
+this codec holds could have sealed anything. So `sessionOf` checks `typ`, then
+`principal`, a numeric `iat` and a numeric `exp` before the payload is trusted —
+a `null` one used to defect on `.exp` through a channel typed `never`, and a
+string `exp` used to coerce its way past `exp > now` and open.
 
 **Key SHAPE and length are checked here, not by `Config.list`.** The field knows
 nothing about keys, so `make` decodes each one and folds a bad key into a
@@ -1201,13 +1214,25 @@ what base64url cannot spell, so a stray character decodes to 32 bytes anyway —
 and if it shifts the alignment, 32 DIFFERENT bytes. A typo would otherwise boot
 green and log every session out, against a message promising base64url.
 
+**A key list is PER DEPLOYMENT, and there is no `iss`/`aud` binding — declined,
+not missing.** Two deployments handed the same `HTTP_SESSION_KEYS` accept each
+other's sessions: a cookie minted by staging opens in production. An audience
+field would refuse that, and it is not here because the thing it would protect
+against is an operator copying a secret between environments, which the same
+operator can undo by copying it back — the check would be advice, not a boundary,
+and every real boundary it names (a different key) is one the key list already
+draws. `typ` is a different case and IS here: it separates two purposes that
+legitimately share one key list inside one deployment, which nothing else can
+separate. Mint a list per deployment; the codec's rotation story is what makes
+that cheap.
+
 **Every failure to unseal is the same `undefined`.** No cookie, a string that is
-not a JWE, a key that is gone, an edited ciphertext, another algorithm, a payload
-that is not a session, one past its `exp` — one answer, so nothing outside learns
+not a JWE, a key that is gone, an edited ciphertext, another algorithm, another
+purpose, a payload that is not a session, one past its `exp` — one answer, so nothing outside learns
 which of them it got wrong. That is `Unauthenticated`'s rule (a refusal carries
 no reason) applied one layer lower, and it is why `unseal` is
 `AsyncResult<Session<unknown> | undefined, never>` rather than an error channel
-with seven arms.
+with eight arms.
 
 **The clock is `Date.now()`, not a `Clock` port.** There is none on this seam —
 the codec is a provider, not a unit — so the expiry spec pins the boundary with

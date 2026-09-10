@@ -68,6 +68,12 @@ const KEY_BYTES = 32;
 
 const HEADER = { alg: "dir", enc: "A256GCM" } as const;
 
+// What this payload IS, written into the plaintext and required back. The
+// algorithm pin refuses another algorithm under our key; this refuses another
+// PURPOSE under our algorithm — the transient an OIDC login seals with these
+// very keys, which a client is free to replay under the session cookie's name.
+const TYP = "session";
+
 // Decrypt only what this codec issues. Derived from `HEADER` so the two
 // directions cannot drift apart.
 const ALGORITHMS = {
@@ -90,14 +96,16 @@ const scopesOf = (value: unknown): boolean =>
   Array.isArray(value) && value.every((scope) => typeof scope === "string");
 
 // The plaintext is authenticated, not validated: a key this codec holds could
-// have sealed anything, so the payload's shape is checked before it is trusted
-// as a session — a `null` one used to defect on `.exp`, a string `exp` used to
-// coerce its way past the lifetime, and a string `scopes` would defect on the
-// `Set` a scheme builds from it.
+// have sealed anything, so what it is and what shape it has are both checked
+// before it is trusted as a session — a `null` one used to defect on `.exp`, a
+// string `exp` used to coerce its way past the lifetime, and a string `scopes`
+// would defect on the `Set` a scheme builds from it.
 const sessionOf = (plaintext: Uint8Array): Session<unknown> | undefined => {
   const decoded: unknown = JSON.parse(new TextDecoder().decode(plaintext));
   return typeof decoded === "object" &&
     decoded !== null &&
+    "typ" in decoded &&
+    decoded.typ === TYP &&
     "principal" in decoded &&
     "iat" in decoded &&
     typeof decoded.iat === "number" &&
@@ -117,7 +125,7 @@ const codec = (
     seal: ({ principal, sid, scopes }) => {
       const iat = Math.floor(Date.now() / 1000);
       // `JSON.stringify` drops an absent `sid`, so nothing spreads it in.
-      const payload = JSON.stringify({ principal, sid, scopes, iat, exp: iat + ttlSec });
+      const payload = JSON.stringify({ typ: TYP, principal, sid, scopes, iat, exp: iat + ttlSec });
       return fromSafePromise(
         new CompactEncrypt(new TextEncoder().encode(payload))
           .setProtectedHeader(HEADER)

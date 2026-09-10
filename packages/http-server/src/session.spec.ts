@@ -69,6 +69,31 @@ describe("sessionCodec", () => {
     expect(read).toEqual({ weakEnc: undefined, wrappedKey: undefined });
   });
 
+  it("refuses a cookie sealed for another purpose under the very same algorithm", async ({
+    sessionCodecOf,
+    forgeSession,
+  }) => {
+    // GIVEN two payloads a sibling holder of these keys seals — an OIDC login's
+    // transient is the one this repository is about to ship — each otherwise a
+    // perfectly good session, and each replayed under the session cookie's
+    // name, which a client is free to do: `__Host-` binds `Set-Cookie`, never a
+    // request
+    const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
+    const forged = (payload: unknown) =>
+      forgeSession(sessionKeys.alpha, { alg: "dir", enc: "A256GCM" }, payload).flatMap(
+        codec.unseal,
+      );
+    const session = { principal: { userId: "u-1" }, iat: 0, exp: 4_102_444_800 };
+    const read = {
+      noTyp: (await forged(session)).get(),
+      otherTyp: (await forged({ ...session, typ: "oidc" })).get(),
+    };
+
+    // THEN neither opens: the algorithm pin refuses another ALGORITHM under our
+    // key, and only `typ` refuses another PURPOSE under our algorithm
+    expect(read).toEqual({ noTyp: undefined, otherTyp: undefined });
+  });
+
   it("refuses a cookie its own key opens whose payload is not a session", async ({
     sessionCodecOf,
     forgeSession,
@@ -82,13 +107,13 @@ describe("sessionCodec", () => {
       );
     const read = {
       nothing: (await forged(null)).get(),
-      stringExp: (await forged({ principal: {}, iat: 0, exp: "9999999999" })).get(),
-      noPrincipal: (await forged({ iat: 0, exp: 4_102_444_800 })).get(),
+      stringExp: (await forged({ typ: "session", principal: {}, iat: 0, exp: "9999999999" })).get(),
+      noPrincipal: (await forged({ typ: "session", iat: 0, exp: 4_102_444_800 })).get(),
       stringScopes: (
-        await forged({ principal: {}, iat: 0, exp: 4_102_444_800, scopes: "admin" })
+        await forged({ typ: "session", principal: {}, iat: 0, exp: 4_102_444_800, scopes: "admin" })
       ).get(),
       numberScopes: (
-        await forged({ principal: {}, iat: 0, exp: 4_102_444_800, scopes: [1] })
+        await forged({ typ: "session", principal: {}, iat: 0, exp: 4_102_444_800, scopes: [1] })
       ).get(),
     };
 

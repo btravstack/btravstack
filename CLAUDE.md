@@ -201,11 +201,17 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
      fetch and cache, `iss`/`aud`/`exp`, key rotation, constant-time API-key
      compare — never was, and its binding half stopped being blocked when
      `requires`-as-data shipped.
-   - **#160 (cookies and sessions) unblocked when `htmx()` landed**, and so did
-     the CSRF deferral #164 made on the stated grounds that "this package
-     configures no cookies". A session cookie now has a legitimate consumer —
-     a browser navigating fragments — which is exactly what it lacked. The two
-     move together, and CSRF cannot be reconsidered before cookies exist.
+   - **#160 (cookies and sessions) unblocked when `htmx()` landed, and both
+     halves shipped.** The deferral was that a session cookie had no
+     legitimate consumer; a browser navigating fragments is one. So
+     `@btravstack/http-server/session` seals a principal into a cookie and
+     `sessionAuthenticator` reads it back as the third shipped scheme. The
+     CSRF deferral #164 made — on the stated grounds that "this package
+     configures no cookies" — went with it, exactly as predicted: the two
+     moved together, and `csrf` is now a named option beside the other five
+     (see **Cross-cutting concerns** below), on by default when a composed
+     scheme reads a cookie. Surfaces in `packages/http-server/CLAUDE.md` and
+     `packages/http-server/AUTH.md`.
    - **#158 (authorization) was never blocked by any of this, and it
      shipped.** Its third layer is `(principal, resource) → decision` in the
      application layer, above the transport; only its `principal` input is

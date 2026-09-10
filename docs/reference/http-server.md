@@ -324,10 +324,26 @@ request. A key that is not 32 base64url bytes fails the boot with a
 `ConfigInvalid` naming the variable and the **position** it refused, never the
 value.
 
+**Mint a key list per deployment.** There is no `iss` or `aud` in the sealed
+payload, so two deployments handed the same `HTTP_SESSION_KEYS` accept each
+other's sessions — a cookie minted by staging opens in production. That binding
+is deliberately not here: what it would guard against is an operator copying a
+secret between environments, which the same operator can undo by copying it
+back, so it would be advice rather than a boundary — where a key list per
+deployment IS one. Rotation being prepend, deploy, drop is what makes minting a
+separate list cheap.
+
+**The sealed payload names what it is.** `seal` writes a type marker into the
+plaintext and `unseal` requires it back, so something else sealed with these
+keys under this same algorithm — a login's short-lived transient, say — is not a
+session here. A cookie NAME could not do that job: `__Host-` is enforced by the
+browser on `Set-Cookie` and never on a request, so a client is free to replay
+any value it holds under any name.
+
 **Every failure to unseal is the same `undefined`** — no cookie, a string that
-is not a JWE, a key that is gone, an edited ciphertext, another algorithm, a
-payload that is not a session, one past its `exp`. Nothing outside learns which
-of them it got wrong.
+is not a JWE, a key that is gone, an edited ciphertext, another algorithm,
+another purpose, a payload that is not a session, one past its `exp`. Nothing
+outside learns which of them it got wrong.
 
 **`sessionAuthenticator<P>()({ cookie?, scopes?, principal? })`** is the scheme
 over that codec, and it is an ordinary `Authenticator`: bind it in
@@ -353,6 +369,13 @@ shadow the session.
 **The lifetime is fixed and there is no sliding re-seal.** A scheme is handed
 headers, not a response, so it has nowhere to put a `Set-Cookie`; `ttlSec` is
 the whole session, and logging in again is what issues the next one.
+
+**The trade that decision makes, stated plainly: a form submitted after the
+lifetime expires loses what was typed.** A browser that sat on a page past
+`ttlSec` sends its `POST` with a cookie that is no longer a session, is refused,
+and is sent to log in — with nothing to re-seal and nothing holding the body.
+Twelve hours is the default because it is long enough that a working day does
+not cross it; shorten it deliberately, knowing that is what shortening it costs.
 
 **Password hashing and credential issuing are out of scope.** All three schemes
 are on the verifying side: the credential is minted by whoever owns the
@@ -1263,7 +1286,7 @@ on the raw listener beside `securityHeaders`, before any answerer:
 
 | Request                                                          | Answer                                                                    |
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `GET`, `HEAD`, `OPTIONS` — anything not state-changing           | served, whatever the site                                                 |
+| `GET`, `HEAD`, `OPTIONS` — anything not state-changing           | served by **this** check — but see the oRPC plugin below                  |
 | a state change carrying **no** cookie                            | served: a bearer caller is not a CSRF target, and a page cannot forge one |
 | a state change with `Sec-Fetch-Site: same-origin` or `same-site` | served                                                                    |
 | a state change with `Sec-Fetch-Site: cross-site` or `none`       | `403`, no body                                                            |
@@ -1277,7 +1300,23 @@ sends `Sec-Fetch-Site`; a client that sends neither that nor an `Origin` is not
 a browser, and is holding a credential it did not have to name.
 
 oRPC's `GetMethodCsrfProtectionHandlerPlugin` rides the same flag, so the oRPC
-and htmx answerers are protected by one decision rather than two.
+and htmx answerers are protected by one decision rather than two. It is what
+qualifies the table's first row: the listener check serves every `GET`, and the
+plugin then refuses a cross-site one that reaches an **RPC mount**, because an
+RPC `GET` is a procedure call and a `<script src>` or an `<img>` can make one.
+A `GET` at an htmx route is served, as the table says.
+
+**What the fallback assumes about your ingress.** With no fetch metadata the
+check compares the `Origin` host against `request.headers.host` — the `Host`
+the process was given. `X-Forwarded-Host` is deliberately **not** consulted: it
+is a header any client can write, so trusting it would hand the attacker the
+comparison. The assumption is therefore that your ingress passes `Host`
+through unchanged. An ingress that rewrites it to an internal service name will
+`403` a cookie-bearing state change from any client that sends no fetch
+metadata — every current browser sends `Sec-Fetch-Site`, so the blast radius is
+old clients and hand-written ones, which is exactly the kind of intermittent
+failure nobody attributes to a CSRF check. Configure the ingress to preserve
+`Host`, or turn the check off and put it at the edge.
 
 ## `htmx(options)`
 
@@ -1702,6 +1741,13 @@ so a transient accept fault cannot become an `uncaughtException` teardown.
 `@btravstack/contract` most of all, since its marker is a `unique symbol` and
 two copies are two different symbols, so a contract marked against one would
 read as unmarked here. Node `>=22`.
+
+**Optional peers, each behind the subpath that needs it**: `jose` (`^6`) for
+both `/jwt` and `/session`, `@orpc/openapi` and `@orpc/json-schema` for
+`/openapi`. A graph that imports none of those subpaths installs none of them —
+which is the whole reason they are subpaths. `jose` is ESM-only, so a CJS
+consumer of `/jwt` or `/session` needs Node `>=22.12` for `require(esm)`; ESM is
+fine on any Node 22.
 
 ## Deliberately not included
 
