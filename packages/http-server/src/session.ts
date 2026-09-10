@@ -5,7 +5,15 @@ import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 import { HttpAuthenticator, Unauthenticated, granted, type Authenticator } from "./auth.js";
 
-/** What the cookie carries: the application's own principal, and when the session ends. */
+/**
+ * What the cookie carries: the application's own principal, and when the
+ * session ends.
+ *
+ * The sealed payload also holds a `typ` marker this type does not declare —
+ * `seal` writes it and `unseal` requires it, so nothing outside this module
+ * sets or reads one. A session put back on the wire whole would carry it;
+ * send the principal, not the session.
+ */
 export type Session<P> = {
   readonly principal: P;
   /**
