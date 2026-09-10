@@ -1242,6 +1242,14 @@ one that outlives the policy — a caller passing `exp` is a compile error, whic
 own test: it is the posture `securityHeaders` is, and its silent change is a
 regression rather than a deployment detail.
 
+**The service publishes `ttlSec`, and `cookieValue` is exported beside it.**
+Both exist for `oidc()`, one subpath over: a login writes the cookie, so it
+needs the number `seal` stamps to put in `Max-Age` — the two are one fact and
+only the codec holds it — and it reads `__Host-oidc` off a request, which is
+the same by-name parse the scheme already does. Neither is a second way to do
+anything: `ttlSec` is read-only, and duplicating six lines of cookie parsing in
+a second file is how the two would drift on the next edge case.
+
 **`unseal` decrypts only what `seal` issues — the ALGORITHM half.**
 `compactDecrypt` is handed `keyManagementAlgorithms: ["dir"]` and
 `contentEncryptionAlgorithms: ["A256GCM"]`, derived from the same `HEADER`
@@ -1394,6 +1402,97 @@ happily — so the refusal belongs here, exactly where `jwtAuthenticator`'s
 cookie, an unopenable one, an expired one and a declined principal are one
 `Unauthenticated` carrying no reason.
 
+## `oidc()` — the login answerer, from `@btravstack/http-server/oidc`
+
+**`oidc({ principal, issuer?, clientId?, clientSecret?, redirectUri?, prefix?,
+scope?, postLogout? })` → a `Provider.member(HttpHandler)` needing
+`Env | SessionCodec` and reporting `ConfigInvalid | OidcUnreachable`.**
+`openid-client` is its optional peer, behind this subpath, on the protocol
+`pino` and `jose` already use.
+
+**It is an ANSWERER, not a scheme, and that is the design.** A login is a
+redirect protocol — three requests, a cookie written on two of them, a browser
+away at somebody else's site in between — where an `AuthenticatorService` is
+handed headers and answers a principal. There is nowhere in that shape to put
+a `Set-Cookie`, a `Location` or a callback route, so this is one more member of
+the same set port `orpc()` and `htmx()` contribute to, mounted at `prefix`
+(default `/auth`). It owns every path under its mount and answers its own `404`
+for one it serves no route for, rather than resolving unwritten the way
+`htmx()` does — `htmx()` is mounted at `/` by default and shares that space
+with everything, where this owns a prefix nobody else claims.
+
+**The two halves meet at exactly one place, and it is the cookie.** `oidc()`
+seals `__Host-session`, `sessionAuthenticator` reads it, both through the same
+`SessionCodec` port — so the codec that opens a cookie is by construction the
+one that sealed it, key rotation included. That is also why the answerer
+injects the port rather than the keys: a root composing `oidc()` without
+`sessionCodec()` is di's own unmet need naming `SessionCodec`, refused at the
+`HttpModule` call.
+
+**`SessionCodecService.ttlSec` was published for this.** The cookie's
+`Max-Age` and the payload's `exp` are the same fact told twice, and only the
+codec knows the number: a wrapper that guessed it would either drop the cookie
+while the session was still live or keep sending one that unseals to nothing.
+The alternative was unsealing what had just been sealed to read `exp` back —
+one AEAD open per login, to recover a value the codec already had.
+
+**Discovery runs ONCE, in `make`.** Three consequences, and each is why it is
+there rather than per request: a provider that is not there fails the BOOT with
+`OidcUnreachable` naming the issuer — a modeled startup error beside
+`ConfigInvalid`, which `runMain` turns into an exit code — instead of a `500`
+on the first login; the JWKS cache and the server metadata are one per process;
+and `allowInsecureRequests` is applied in the right two places once rather than
+in a hot path. It is applied TWICE for an `http:` issuer, as a `discovery`
+option and again to the configuration that call answers, because the option
+does not carry over (measured against a real Hydra); and
+`enableNonRepudiationChecks` is what makes the ID token's SIGNATURE checked at
+all — OIDC Core lets a client trust a token that arrived over TLS from the
+token endpoint, which is a trust this package does not extend.
+
+**`return` is decoded exactly once, and the guard runs on both legs.** The
+query parser IS that decode; a second `decodeURIComponent` would turn `%255C`
+back into `\`, and `new URL("/\\evil.com", base)` resolves to
+`https://evil.com/` — the WHATWG parser reads `\` as `/` in relative-slash
+state — so a value that already passed the guard could be walked past it again.
+The rule is the one `htmx.ts`'s `returnTo` states: starts with `/`, and its
+second character is neither `/` nor `\`. It is checked at `/login`, where the
+value is sealed, AND at the callback, where it is followed: `htmx()` guarding
+where it mints the value does not make the query at `/login` any less the
+caller's.
+
+**The grant's `currentUrl` is the REGISTERED redirect URI plus this request's
+query.** Never rebuilt from `Host`, which the caller writes — and the same
+choice is what lets a deployment sit behind a proxy, or a spec bind an
+ephemeral port while the provider only ever knew about `:3000`.
+
+**A refusal is `400` unless the PROVIDER refused, which is `401`.** No
+transient cookie, one no key opens, one past its five minutes, a `state` that
+does not match and a `principal(claims)` answering `undefined` are all `400`:
+this end could not make sense of the callback. A code the provider would not
+exchange is `401`. None of them sets or clears a cookie.
+
+**Logout is parameterless, and a `POST`.** No `id_token_hint`, because the
+cookie holds a principal and no token — so no `post_logout_redirect_uri`
+either, which a provider is entitled to refuse without a hint (Hydra does;
+measured). It is a `POST` because it is a state change, which also puts it
+under the CSRF check a composed session scheme turns on, exactly like any other
+cookie-bearing state change. Every redirect this answerer writes is a `303`,
+`htmx()`'s own ruling and for its reason.
+
+**`principal(claims)` is `jwtAuthenticator`'s hook, on `openid-client`'s
+`IDToken`.** One function serves both schemes, and it is the only place the
+application's own claims — a tenant, above all — are read. `Session.scopes`
+comes from the space-delimited `scope` claim and `Session.sid` from `sid`, each
+only when the provider wrote a string there: neither is a claim the standard
+puts in an ID token, so a provider that omits one leaves the field absent and a
+scoped `sessionAuthenticator` grants nothing.
+
+**Nothing here is a `cookie` option.** `sessionAuthenticator` can be renamed
+off `__Host-session` and this answerer cannot follow it — an application that
+renames the cookie has to seal it itself. That is a real gap and a deliberate
+one for now: the pair a rename would need is two options that must agree, and
+the shape worth having is one place that says the name once.
+
 ## `openApiDocument` — from `@btravstack/http-server/openapi`
 
 **`openApiDocument(contract, { base?, securitySchemes? })` →
@@ -1467,7 +1566,7 @@ response, { prefix, context: { request, host } })`, unmatched → resolves
   `{ matched }`, never the unit's result — and the runtime reads "did you
   answer?" off the response rather than off that, which is what lets an
   answerer be written against `node:http` alone.
-- **112 specs, 100% lines/functions, across ten spec files.** Every app boots through the `boot`
+- **100% lines and functions, on every spec file.** Every app boots through the `boot`
   fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
   `configured` and `appOnPort` depend on — so it is stopped when the test
   ends, on every exit path, and the teardown is Defect-only: a startup
@@ -1651,6 +1750,22 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   `@btravstack/contract` refuses the multi-scheme requirement OpenAPI would
   read as AND), and a procedure's own mark shadowing its record's for itself
   while a sibling still inherits the record's.
+
+- **`oidc.spec.ts` runs the whole flow against a real provider**, the shared
+  Ory containers `internal/test-infra` owns — a file-scoped `ory` fixture, a
+  `bff` fixture booting `oidc()` + `sessionCodec()` + the session scheme + one
+  fragment behind a scope, and a `browser` with a cookie jar following nothing.
+  It pins the redirect out (PKCE `S256`, `state`, `nonce`, the registered
+  redirect URI, and the five-minute `__Host-oidc` cookie), the walk end to end
+  (alice signed in headlessly, the callback sealing a session and clearing the
+  transient, and the fragment she was going to answering with her own tenant
+  behind a scope only the ID token's `scope` claim carries), the four refusals
+  (a mismatched `state`, no transient at all, a code the provider rejects, and
+  a `principal` the application declines — each with no cookie set), both
+  open-redirect shapes (`//evil.example`, and `%252F%255Cevil.com`, which is
+  the doubly-decoded one), `login_hint`, the logout, the `404` under the mount,
+  and both boots that fail — `OidcUnreachable` on an issuer at a closed port
+  and `ConfigInvalid` naming a variable nobody set.
 
 ## Several answerers, one runtime
 

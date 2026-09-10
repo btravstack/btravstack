@@ -33,6 +33,15 @@ export type Session<P> = {
 
 export type SessionCodecService = {
   /**
+   * What {@link SessionCodecService.seal | seal} stamps, in seconds — the whole
+   * session, since there is no sliding re-seal. It is published because a login
+   * has to write the same number into the cookie's `Max-Age`: a browser holding
+   * the cookie longer than the payload lives is a caller who looks anonymous
+   * with a cookie still attached, and one holding it for less is a session cut
+   * short by the wrapper rather than by the policy.
+   */
+  readonly ttlSec: number;
+  /**
    * Seals a session into a JWE. `iat` and `exp` are stamped here rather than
    * accepted, so a caller cannot mint a session that outlives the policy.
    */
@@ -222,6 +231,7 @@ const codec = (
 ): SessionCodecService => {
   const [sealing] = keys;
   return {
+    ttlSec,
     seal: ({ principal, sid, scopes }) =>
       // `JSON.stringify` drops an absent `sid`, so nothing spreads it in.
       sealed(sealing, ttlSec, (iat, exp) => ({ typ: TYP, principal, sid, scopes, iat, exp })),
@@ -299,7 +309,7 @@ const DEFAULT_COOKIE = "__Host-session";
  * sends them in — most specific first — so a later duplicate cannot shadow the
  * session.
  */
-const cookieValue = (header: string | undefined, name: string): string | undefined => {
+export const cookieValue = (header: string | undefined, name: string): string | undefined => {
   for (const part of header?.split(";") ?? []) {
     const at = part.indexOf("=");
     if (at !== -1 && part.slice(0, at).trim() === name) return part.slice(at + 1).trim();

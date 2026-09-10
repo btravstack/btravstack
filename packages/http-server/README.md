@@ -300,6 +300,26 @@ Mint one with
 A key that is not 32 base64url bytes fails the boot with a `ConfigInvalid`
 naming `HTTP_SESSION_KEYS` and the POSITION it refused — never the value.
 
+`oidc({ principal, ... })`, from `@btravstack/http-server/oidc`, is what
+authenticates the principal that codec seals: an answerer serving
+`<prefix>/login`, `<prefix>/callback` and `<prefix>/logout` over the
+authorization-code flow with PKCE. It needs `openid-client`, an optional peer
+behind that subpath.
+
+| Option         | What it is                                                                                                      |
+| -------------- | --------------------------------------------------------------------------------------------------------------- |
+| `principal`    | **required** — what the ID token's claims make the caller; `undefined` refuses the login                        |
+| `issuer`       | pins `HTTP_OIDC_ISSUER` — the provider, as its discovery document names itself                                  |
+| `clientId`     | pins `HTTP_OIDC_CLIENT_ID` — this deployment's client                                                           |
+| `clientSecret` | pins `HTTP_OIDC_CLIENT_SECRET` — its secret; the flow is a confidential client's                                |
+| `redirectUri`  | pins `HTTP_OIDC_REDIRECT_URI` — the URI **registered** with the provider, and what the grant is checked against |
+| `prefix`       | where the three routes are mounted (default `/auth`)                                                            |
+| `scope`        | what the authorization request asks for (default `openid`)                                                      |
+| `postLogout`   | where a logout lands when the provider advertises no end-session endpoint (default `/`)                         |
+
+Discovery runs once, at boot: a provider that is not there is an
+`OidcUnreachable` naming the issuer, rather than a `500` on the first login.
+
 The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/http-server),
 which is this list's one detailed home.

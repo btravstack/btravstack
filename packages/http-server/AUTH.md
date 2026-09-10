@@ -322,6 +322,76 @@ The two rules this half exists to state, before the detail:
   header, and a caller presenting a header credential is not a CSRF target, so
   neither sets the marker.
 
+- **`oidc({ principal, issuer?, clientId?, clientSecret?, redirectUri?, prefix?, scope?, postLogout? })`
+  and `OidcUnreachable`** (`oidc.ts`, from `@btravstack/http-server/oidc`) —
+  **the one thing in this package on the ISSUING side of the line above, and
+  the exception that proves it.** It mints no credential: it walks a browser
+  through somebody else's authorization-code flow and hands what comes back to
+  `sessionCodec` to seal. Everything it verifies — the ID token's signature,
+  `state`, `nonce`, PKCE — is verification, and the identity is still the
+  provider's.
+
+  It is an **answerer**, not a scheme: `Provider.member(HttpHandler)` beside
+  `orpc()` and `htmx()`, mounted at `prefix` (default `/auth`), serving
+  `GET /login`, `GET /callback` and `POST /logout` and answering `404` for
+  anything else below its mount. A login is a REDIRECT protocol — three
+  requests, a cookie written on two of them — and an `AuthenticatorService` is
+  handed headers and answers a principal, so there is nowhere in that shape to
+  put any of it. The two halves meet at exactly one place, the cookie:
+  `oidc()` seals it and `sessionAuthenticator` reads it, both through the same
+  `SessionCodec` port.
+
+  **`principal(claims)` is the same hook `jwtAuthenticator` takes**, on
+  `openid-client`'s `IDToken` — so an application writes ONE function and
+  passes it to both, and the answer is what goes into `Session.principal`.
+  Answering `undefined` refuses the login with a `400`: the claim this
+  application requires and the standard does not, a tenant being the usual one.
+
+  **`Session.scopes` comes from the ID token's `scope` claim** — space
+  delimited, and a claim the standard does not put in an ID token at all, so
+  a provider that does not write one leaves the field absent and a scoped
+  `sessionAuthenticator` grants nothing. `Session.sid` comes from `sid`, when
+  there is one. Neither is invented here.
+
+  **The transient cookie is the flow's whole memory.** `__Host-oidc` holds the
+  PKCE verifier, `state`, `nonce` and where to return to, sealed by
+  `codec.transient` under its own purpose marker with a five-minute lifetime —
+  so the login is stateless like the session is, and a replay of it under the
+  session cookie's name is anonymous. The callback checks the returned `state`
+  against it before anything is exchanged; no cookie, an unopenable one, an
+  expired one and a mismatch are one `400` that sets and clears nothing.
+
+  **`return` is decoded exactly ONCE and must stay on this site.** The query
+  parser is that decode; the value survives only if it starts with `/` and its
+  second character is neither `/` nor `\`. A second `decodeURIComponent` would
+  turn `%255C` back into `\`, and `new URL("/\\evil.com", base)` resolves to
+  `https://evil.com/` — the WHATWG parser reads `\` as `/` in relative-slash
+  state — so a value that already passed the guard could be walked past it
+  again. `htmx({ login })` guards the same thing where it MINTS the value; this
+  guards it again where it is sealed and once more where it is followed,
+  because the query is the caller's either way.
+
+  **The code grant is checked against the REGISTERED redirect URI, never
+  `Host`.** `currentUrl` is `redirectUri` carrying this request's query, so a
+  forged `Host` cannot move the check — and a deployment behind a proxy needs
+  no trust in that header for this to be right.
+
+  **Discovery runs once, in `make`.** A provider that is not there is
+  `OidcUnreachable` naming the issuer — a modeled startup failure beside
+  `ConfigInvalid`, which `runMain` turns into an exit code — rather than a
+  `500` on the first login, and the JWKS cache is one per process. The
+  configuration enables the ID token **signature** check explicitly: OIDC Core
+  permits a client to trust a token that came over TLS from the token endpoint,
+  and that is not a trust this package extends.
+
+  **Logout is parameterless and is a `POST`.** No `id_token_hint`, because the
+  cookie carries a principal and no token — and therefore no
+  `post_logout_redirect_uri`, which a provider is entitled to refuse without a
+  hint. `POST` because it is a state change, which also means the CSRF check a
+  composed session scheme turns on covers it, exactly as it covers any other
+  cookie-bearing state change. Every redirect it writes is a `303`, `htmx()`'s
+  own ruling.
+
 - **Password hashing and credential ISSUING are out of scope, deliberately.**
   All three authenticators above are on the **verifying** side, and that is
   the line: the credential is minted by whoever owns the identity — an OIDC

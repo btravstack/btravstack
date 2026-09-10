@@ -72,11 +72,21 @@
         "types": "./dist/session.d.cts",
         "default": "./dist/session.cjs"
       }
+    },
+    "./oidc": {
+      "import": {
+        "types": "./dist/oidc.d.mts",
+        "default": "./dist/oidc.mjs"
+      },
+      "require": {
+        "types": "./dist/oidc.d.cts",
+        "default": "./dist/oidc.cjs"
+      }
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts src/jwt.ts src/openapi.ts src/session.ts --format cjs,esm --dts --clean",
-    "dev": "tsdown src/index.ts src/jwt.ts src/openapi.ts src/session.ts --format cjs,esm --dts --watch",
+    "build": "tsdown src/index.ts src/jwt.ts src/oidc.ts src/openapi.ts src/session.ts --format cjs,esm --dts --clean",
+    "dev": "tsdown src/index.ts src/jwt.ts src/oidc.ts src/openapi.ts src/session.ts --format cjs,esm --dts --watch",
     "test": "vitest run --coverage",
     "test:types": "tsc --noEmit -p tsconfig.test-d.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
@@ -86,6 +96,7 @@
     "@btravstack/contract": "workspace:*",
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
+    "@btravstack/internal-test-infra": "workspace:*",
     "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@orpc/client": "catalog:",
@@ -98,6 +109,7 @@
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "jose": "catalog:",
+    "openid-client": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unthrown": "catalog:",
@@ -115,6 +127,7 @@
     "@orpc/server": "^2.0.0-beta",
     "@unthrown/orpc": "^0.1.0",
     "jose": "^6",
+    "openid-client": "^6",
     "unthrown": "^5.0.0"
   },
   "peerDependenciesMeta": {
@@ -125,6 +138,9 @@
       "optional": true
     },
     "jose": {
+      "optional": true
+    },
+    "openid-client": {
       "optional": true
     }
   },

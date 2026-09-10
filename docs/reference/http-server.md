@@ -326,6 +326,13 @@ request. A key that is not 32 base64url bytes fails the boot with a
 `ConfigInvalid` naming the variable and the **position** it refused, never the
 value.
 
+The service also publishes `ttlSec` — the number `seal` stamps — because a
+login has to write the same one into the cookie's `Max-Age`: a browser holding
+the cookie longer than the payload lives looks anonymous with a cookie still
+attached, and one holding it for less is a session cut short by the wrapper
+rather than by the policy. `cookieValue(header, name)` is exported for the same
+consumer: one cookie out of the single string `node:http` delivers.
+
 **Mint a key list per deployment.** There is no `iss` or `aud` in the sealed
 payload, so two deployments handed the same `HTTP_SESSION_KEYS` accept each
 other's sessions — a cookie minted by staging opens in production. That binding
@@ -412,6 +419,122 @@ are on the verifying side: the credential is minted by whoever owns the
 identity, and this package reads what arrives — the session cookie included,
 since `sessionCodec` seals a principal somebody else already authenticated.
 Reach for `argon2` directly at whatever mints your tokens.
+
+### The login answerer
+
+`@btravstack/http-server/oidc` is the other half of the session: the codec
+seals a principal, and `oidc()` is what authenticates one. It is an
+**answerer** — one `HttpHandler` member beside `orpc()` and `htmx()`, mounted
+under a prefix of its own — serving three routes, and it needs
+`openid-client` (an optional peer, behind this subpath).
+
+<!-- doctest: isolate
+import { defineHttp, html, HttpModule } from "@btravstack/http-server";
+import { oidc } from "@btravstack/http-server/oidc";
+import { sessionAuthenticator, sessionCodec } from "@btravstack/http-server/session";
+import { OkAsync } from "unthrown";
+
+type Identity = { readonly tenantId: string; readonly userId: string };
+-->
+
+```ts
+const api = defineHttp({
+  authenticators: { session: sessionAuthenticator<Identity>()({ scopes: ["orders:export"] }) },
+});
+
+const row = api.HtmxGet("/orders/:id/row", { requires: [{ session: [] }] })({
+  inject: {},
+  sync: () => (context) => OkAsync(html`<p>${context.principal.tenantId}</p>`),
+});
+
+export const BrowserApi = HttpModule("BrowserApi")({
+  fragments: api.HtmxFragments([row]),
+  fragmentsLogin: "/auth/login",
+  provides: [
+    row,
+    sessionCodec(),
+    oidc({
+      scope: "openid orders:export",
+      principal: (claims) =>
+        typeof claims["tenant"] === "string" && typeof claims.sub === "string"
+          ? { tenantId: claims["tenant"], userId: claims.sub }
+          : undefined,
+    }),
+  ],
+});
+```
+
+| Option         | Required | Default                             | What it is                                                                |
+| -------------- | -------- | ----------------------------------- | ------------------------------------------------------------------------- |
+| `principal`    | **yes**  | —                                   | what the ID token's claims make the caller; `undefined` refuses the login |
+| `issuer`       | no       | read from `HTTP_OIDC_ISSUER`        | the provider, as its discovery document names itself                      |
+| `clientId`     | no       | read from `HTTP_OIDC_CLIENT_ID`     | this deployment's client                                                  |
+| `clientSecret` | no       | read from `HTTP_OIDC_CLIENT_SECRET` | its secret — this is a confidential client                                |
+| `redirectUri`  | no       | read from `HTTP_OIDC_REDIRECT_URI`  | the URI **registered** with the provider                                  |
+| `prefix`       | no       | `/auth`                             | where the three routes are mounted                                        |
+| `scope`        | no       | `openid`                            | what the authorization request asks for                                   |
+| `postLogout`   | no       | `/`                                 | where a logout lands when the provider advertises no end-session endpoint |
+
+**`GET <prefix>/login?return=<path>&as=<hint>`** mints a PKCE verifier, a
+`state` and a `nonce`, seals them and `return` into the five-minute
+`__Host-oidc` cookie, and answers `303` to the provider's authorization
+endpoint. `return` is the seam `htmx({ login })` writes when it sends an
+unauthenticated caller here; `as` rides through as `login_hint`, so a provider
+can prefill its own form.
+
+**`GET <prefix>/callback`** checks the `state` that came back against that
+cookie, exchanges the code, and seals `principal(claims)` into
+`__Host-session` — clearing the transient in the same answer — then `303`s to
+where the login was going. `Session.scopes` is written from the ID token's
+space-delimited `scope` claim and `Session.sid` from `sid`, each only when the
+provider sent one, which is what makes a scoped `sessionAuthenticator` grant
+anything at all.
+
+**`POST <prefix>/logout`** clears the session cookie and `303`s to the
+provider's `end_session_endpoint`, or to `postLogout` when it advertises none.
+It is a `POST` because it is a state change, and the CSRF check a composed
+session scheme turns on applies to it like any other cookie-bearing one.
+
+Anything else under the mount is a `404` from this answerer: it owns every path
+below its prefix.
+
+**Every redirect is a `303`**, `htmx()`'s own ruling and for its reason: RFC
+9110 §15.4.3 leaves a `302`'s POST-to-GET change a MAY, and §15.4.4's `303`
+specifies the retrieval request instead.
+
+**`return` is decoded exactly once, and kept only when it stays here.** The
+query parser is that one decode; the value is then kept only if it starts with
+`/` and its second character is neither `/` nor `\`. A second
+`decodeURIComponent` would turn `%255C` back into `\`, and
+`new URL("/\\evil.com", base)` resolves to `https://evil.com/` — the WHATWG
+parser reads `\` as `/` in relative-slash state, so a protocol-relative URL is
+manufacturable out of a value that already passed the guard. Anything else
+lands on `/`. The check runs at `/login`, where the value is sealed, **and**
+again at the callback, where it is followed.
+
+**The code grant is checked against the REGISTERED redirect URI, never
+`Host`.** `currentUrl` is `redirectUri` carrying this request's query string,
+so a forged `Host` header cannot move the check — and a deployment behind a
+proxy, or a test on an ephemeral port, needs no trust in that header either.
+
+**Discovery runs ONCE, at boot.** A provider that is not there is
+`OidcUnreachable` naming the issuer — a modeled startup failure `runMain` turns
+into an exit code — rather than a `500` on the first login; and the JWKS cache
+and the metadata are one per process rather than one per request. The
+configuration also has the ID token's **signature** check enabled explicitly:
+OIDC Core lets a client trust a token that arrived over TLS from the token
+endpoint, which is not a trust this package extends.
+
+**Logout sends no `id_token_hint`.** The cookie holds a principal and no token,
+so there is none to send — which also means no `post_logout_redirect_uri`,
+since a provider is entitled to refuse that parameter without a hint (Ory Hydra
+does). Configure the provider's own post-logout URI instead.
+
+**It injects `SessionCodec` rather than holding keys**, so the codec that seals
+a session here is by construction the one `sessionAuthenticator` reads it back
+with, key rotation included — and a root composing `oidc()` without
+`sessionCodec()` is di's own unmet need naming the port, refused at the
+`HttpModule` call.
 
 ## `api.OrpcRouter(contract)({ inject: deps, sync })`
 
