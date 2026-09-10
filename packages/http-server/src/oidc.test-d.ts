@@ -3,7 +3,7 @@
 // it without `sessionCodec()` is di's own unmet need — and `principal` is the
 // one option it cannot be built without. Each `@ts-expect-error` is an assertion.
 import type { ConfigInvalid, Env } from "@btravstack/config";
-import type { Logger } from "@btravstack/core";
+import type { Observers } from "@btravstack/core";
 import type { Provider } from "@btravstack/di";
 import type { IDToken } from "openid-client";
 import { OkAsync } from "unthrown";
@@ -24,11 +24,12 @@ const identityOf = (claims: IDToken): Identity | undefined =>
     : undefined;
 
 // Nothing pinned: the four values arrive from `HTTP_OIDC_*`, so the provider
-// needs `Env` beside `SessionCodec` — and `Logger`, which no other answerer
-// here needs, because a refused login is the one refusal that destroys
-// information. Both ways a boot can refuse are on the error channel.
+// needs `Env` beside `SessionCodec` — and `Observers`, the set port every
+// per-operation starter here reports to, which costs a root nothing because
+// `httpServer` already contributes the no-op member and exports the port.
+// Both ways a boot can refuse are on the error channel.
 expectTypeOf(oidc({ principal: identityOf })).toEqualTypeOf<
-  Provider<HttpHandler, ConfigInvalid | OidcUnreachable, Env | SessionCodec | Logger> & {
+  Provider<HttpHandler, ConfigInvalid | OidcUnreachable, Env | SessionCodec | Observers> & {
     readonly port: typeof HttpHandler;
   }
 >();
@@ -47,7 +48,7 @@ expectTypeOf(
     principal: identityOf,
   }),
 ).toEqualTypeOf<
-  Provider<HttpHandler, ConfigInvalid | OidcUnreachable, Env | SessionCodec | Logger> & {
+  Provider<HttpHandler, ConfigInvalid | OidcUnreachable, Env | SessionCodec | Observers> & {
     readonly port: typeof HttpHandler;
   }
 >();
@@ -66,13 +67,13 @@ const row = api.HtmxGet("/orders/:id/row", { requires: [{ session: ["orders:expo
   sync: () => (context) => OkAsync(html`${context.principal.tenantId}`),
 });
 
-declare const logger: Provider<Logger, never, never>;
-
 // Positive: the codec composed beside the answerer discharges what it needs.
+// Nothing is written here for `Observers` — the starter this sugar imports
+// exports it, which is what keeps the set port free to a root.
 void HttpModule("BrowserApi")({
   fragments: api.HtmxFragments([row]),
   fragmentsLogin: "/auth/login",
-  provides: [row, sessionCodec(), oidc({ principal: identityOf }), logger],
+  provides: [row, sessionCodec(), oidc({ principal: identityOf })],
 });
 
 // The negative below is built over fragments with NO session scheme, and that
@@ -91,17 +92,11 @@ const status = publicApi.HtmxGet("/status")({
 // codec beside it discharges that.
 void HttpModule("PublicWithLogin")({
   fragments: publicApi.HtmxFragments([status]),
-  provides: [status, sessionCodec(), oidc({ principal: identityOf }), logger],
+  provides: [status, sessionCodec(), oidc({ principal: identityOf })],
 });
 
 // @ts-expect-error -- UNSATISFIED DEPENDENCIES: nothing discharges `SessionCodec`, which only `oidc()` needs here
 void HttpModule("PublicWithLoginNoCodec")({
   fragments: publicApi.HtmxFragments([status]),
-  provides: [status, oidc({ principal: identityOf }), logger],
-});
-
-// @ts-expect-error -- UNSATISFIED DEPENDENCIES: nothing discharges `Logger`, which only `oidc()` needs here
-void HttpModule("PublicWithLoginNoLogger")({
-  fragments: publicApi.HtmxFragments([status]),
-  provides: [status, sessionCodec(), oidc({ principal: identityOf })],
+  provides: [status, oidc({ principal: identityOf })],
 });

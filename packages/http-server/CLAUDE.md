@@ -823,9 +823,14 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   with two dependencies fewer — and no `overrideGlobalObjects` footgun to
   disarm.
 - **`httpServer({ port?, hostname?, cors?, bodyLimit?, compression?, securityHeaders?, unit? })`
-  → `Module<HttpRuntime | HttpConfig | HttpHandler | HttpUnit, ConfigInvalid, Env | UnitsNeedsOf<Units>>`** —
+  → `Module<HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers, ConfigInvalid, Env | UnitsNeedsOf<Units>>`** —
   the socket half: the runtime, its config, the kind → module record on
-  `HttpUnit`, and no answerer. `http()` is
+  `HttpUnit`, and no answerer. It EXPORTS `Observers` as well as providing the
+  no-op member: a sibling answerer that reports its own operations —
+  `oidc()` is the first — is one `Provider.member(HttpHandler)` with nowhere
+  to put a no-op member of its own, so without the export the set port every
+  other starter here gets for free would have been the one thing a login
+  answerer charged a root for. `http()` is
   `Module("Http")({ imports: [httpServer(options)], provides: [orpc(options)],
 exports: [HttpRuntime, HttpConfig, HttpHandler] })` — this plus `orpc()`. The
   package's own transport specs, and a fragments-only graph, compose
@@ -1464,11 +1469,24 @@ query parser IS that decode; a second `decodeURIComponent` would turn `%255C`
 back into `\`, and `new URL("/\\evil.com", base)` resolves to
 `https://evil.com/` — the WHATWG parser reads `\` as `/` in relative-slash
 state — so a value that already passed the guard could be walked past it again.
-The rule is the one `htmx.ts`'s `returnTo` states: starts with `/`, and its
-second character is neither `/` nor `\`. It is checked at `/login`, where the
-value is sealed, AND at the callback, where it is followed: `htmx()` guarding
-where it mints the value does not make the query at `/login` any less the
-caller's.
+The rule is `redirect.ts`'s one `returnTo`, shared with `htmx()`: starts with
+`/`, and its second character is neither `/` nor `\`. It is checked at
+`/login`, where the value is sealed, AND at the callback, where it is followed:
+`htmx()` guarding where it mints the value does not make the query at `/login`
+any less the caller's.
+
+**What a HEADER accepts is a separate question, and it is the header's.** Node's
+validator is `/[^\t\x20-\x7e\x80-\xff]/` — control characters AND every code
+point above U+00FF — so `/订单/1`, an ordinary path arriving through the very
+`htmx({ login })` seam, passed every same-site clause and then
+`ERR_INVALID_CHAR`ed the response with the caller's code already spent. The
+answer is `encodeURI` where the value becomes a `Location`, in both packages,
+which closes the non-Latin-1 class and the CR/LF one together and is shorter
+than the control-character clause it replaced. A guard clause that existed only
+to satisfy a header was the header's job written in the wrong file; the guard
+now says one thing, "this stays on my site", and says it about a value
+`encodeURI` round-trips exactly (it re-encodes `%`, and the value was decoded
+exactly once).
 
 **The grant's `currentUrl` is the REGISTERED redirect URI plus this request's
 query.** Never rebuilt from `Host`, which the caller writes — and the same
@@ -1504,18 +1522,30 @@ failure is invisible — every login succeeds, nothing reads the cookie, and the
 browser loops between the fragment and `/auth/login` with no error anywhere.
 Nothing had ever renamed it, and the `__Host-` prefix is the design.
 
-**It holds a `Logger`, and it is the only answerer here that does.** `orpc()`
-and `htmx()` lose no information when they refuse: a `401` is what the caller
-gets and what the RED metrics count, and the reason is the contract's own. A
-refused login destroys one — the provider's reason must not cross the wire, and
-`grant_failed` is what a rotated client secret, an unreachable token endpoint
-and a genuinely bad code all look like from outside. So the reason leaves the
-process exactly once, on a `warn` line, with the library's own error NAME and
-the cause attached, and never the code and never a token. It is the shape
-`@btravstack/prisma` already has — `needs: [Env, Logger]` on a shipped starter
-— rather than a new one, and it is a `Logger` rather than `Observers` because
-what is being recorded is a REASON, which is what the `details`/`attributes`
-split keeps off an instrument anyway.
+**Each route is an OPERATION on `Observers`, and it holds no `Logger` of its
+own.** That is the root spec's rule — a starter reports what it did and holds
+no `Logger`, `Meter` or `Tracer` — and the one exception it names,
+`@btravstack/prisma`'s, is explicitly a STARTUP fact rather than an operation,
+so it does not cover this. A refused login is the one refusal in this package
+that DESTROYS information: the provider's reason must not cross the wire, a
+`401` is not an error the runtime's RED metrics count, and `grant_failed` looks
+identical whether the client secret rotated, the token endpoint died, or the
+code was genuinely bad. So each refusal settles `outcome: "error"` with
+`attributes: { reason }` — five literal values, safe on an instrument — and the
+unbounded half, the provider's `error_description` and the library error's
+message, rides the `cause`, which an observer puts on a line or a span and
+never on a metric. That split is why this could not be a `Logger`: a `warn`
+line's attributes are one channel, and the port draws the line the thesis
+draws.
+
+**It costs a root nothing, and `httpServer` now exports `Observers` so that
+stays true.** A reader of a set port must contribute a no-op member of its own,
+and `oidc()` is a single `Provider.member`, not a module — it has nowhere to
+put one. The starter already provides that member; adding the port to its
+`exports` is what makes it visible to a SIBLING provider in the root, so a
+graph composing `oidc()` writes no observability line and gets an inert call
+per route. The alternative was making `oidc()` a module, which would have
+changed `provides: [oidc(...)]` into an import for one no-op provider.
 
 **The transient is cleared on EVERY exit of the callback, not on success
 alone.** The flow state is spent the moment a callback has been seen, and one
@@ -1804,15 +1834,19 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   open-redirect shapes (`//evil.example`, and `%252F%255Cevil.com`, which is
   the doubly-decoded one), `login_hint`, the logout, the `404` under the mount,
   and both boots that fail — `OidcUnreachable` on an issuer at a closed port
-  and `ConfigInvalid` naming a variable nobody set. Three more came out of
+  and `ConfigInvalid` naming a variable nobody set. Five more came out of
   review: a transient re-sealed with the WRONG nonce, presented with an
   otherwise valid code, refused `401` — the pin on `expectedNonce`, which is
   also what forces an ID token to be present at all; a `return` carrying a
   control character, which `writeHead` would refuse as `ERR_INVALID_CHAR`
-  after the code was already spent; and a provider-side `error=access_denied`
-  arriving with a matching `state`, told apart from a bad code on the line
-  rather than on the wire. Each refusal asserts the reason it logged and the
-  cleared transient in the same projection.
+  after the code was already spent, now encoded rather than dropped; and a provider-side `error=access_denied`
+  arriving with a matching `state`, told apart from a bad code on the
+  observation rather than on the wire; and the two a header cannot carry —
+  `/订单/1` and a CR/LF path — each arriving at the browser percent-encoded
+  rather than as a 500. Each refusal asserts, in one projection, the status,
+  the cleared transient and the operation the observer saw settle: its
+  `component`, its `name`, its bounded `reason` and — where there is one — the
+  cause the unbounded text rides.
 
 ## Several answerers, one runtime
 

@@ -115,12 +115,19 @@ describe("oidc(), the login answerer", () => {
       expect({
         status: refused.status,
         cookies: refused.setCookie,
-        warned: browser.lines().map((line) => line.attributes?.["reason"]),
+        observed: browser
+          .observations()
+          .find((seen) => seen.component === "oidc" && seen.name === "callback"),
         fragment: fragment.status,
       }).toEqual({
         status: 400,
         cookies: [CLEARED],
-        warned: ["state_mismatch"],
+        observed: {
+          component: "oidc",
+          name: "callback",
+          attributes: { reason: "state_mismatch" },
+          outcome: "error",
+        },
         fragment: 303,
       });
     },
@@ -145,8 +152,19 @@ describe("oidc(), the login answerer", () => {
       expect({
         status: refused.status,
         cookies: refused.setCookie,
-        warned: browser.lines().map((line) => line.attributes?.["reason"]),
-      }).toEqual({ status: 400, cookies: [CLEARED], warned: ["transient_missing"] });
+        observed: browser
+          .observations()
+          .find((seen) => seen.component === "oidc" && seen.name === "callback"),
+      }).toEqual({
+        status: 400,
+        cookies: [CLEARED],
+        observed: {
+          component: "oidc",
+          name: "callback",
+          attributes: { reason: "transient_missing" },
+          outcome: "error",
+        },
+      });
     },
     START_UP,
   );
@@ -170,11 +188,21 @@ describe("oidc(), the login answerer", () => {
       expect({
         status: refused.status,
         cookies: refused.setCookie,
-        warned: browser.lines().map((line) => line.attributes),
+        observed: browser
+          .observations()
+          .find((seen) => seen.component === "oidc" && seen.name === "callback"),
       }).toEqual({
         status: 401,
         cookies: [CLEARED],
-        warned: [{ reason: "grant_failed", error: expect.any(String) }],
+        observed: {
+          component: "oidc",
+          name: "callback",
+          attributes: { reason: "grant_failed" },
+          outcome: "error",
+          // The library's own error, on the unbounded channel: this is the
+          // difference between "bad logins" and "the client secret rotated".
+          cause: expect.any(Error),
+        },
       });
     },
     START_UP,
@@ -206,12 +234,17 @@ describe("oidc(), the login answerer", () => {
       expect({
         status: refused.status,
         cookies: refused.setCookie,
-        warned: browser.lines().map((line) => line.attributes?.["reason"]),
+        observed: browser
+          .observations()
+          .find((seen) => seen.component === "oidc" && seen.name === "callback"),
         fragment: fragment.status,
       }).toEqual({
         status: 401,
         cookies: [CLEARED],
-        warned: ["grant_failed"],
+        observed: expect.objectContaining({
+          attributes: { reason: "grant_failed" },
+          outcome: "error",
+        }),
         fragment: 303,
       });
     },
@@ -258,20 +291,41 @@ describe("oidc(), the login answerer", () => {
   );
 
   it(
-    "refuses a return path carrying a control character",
+    "encodes a return path carrying a control character rather than splitting a header",
     async ({ bff }) => {
       // GIVEN `/%0aSet-Cookie:%20pwn=1` — one decode short of a `Location`
       // holding a CR/LF, which `writeHead` refuses as `ERR_INVALID_CHAR`
       const browser = await bff();
 
       // WHEN the flow is walked with it
-      const back = await browser.login(ORY_USERS.alice, "?return=%0aSet-Cookie:%20pwn=1");
+      const back = await browser.login(ORY_USERS.alice, "?return=/%0aSet-Cookie:%20pwn=1");
 
-      // THEN the guard drops it to `/` rather than letting Node turn a crafted
-      // login link into a 500 that has already spent the user's code
+      // THEN the `Location` carries it percent-encoded: there is no second
+      // header, and no 500 on a request that has already spent the user's code
       expect({ status: back.status, location: back.location }).toEqual({
         status: 303,
-        location: "/",
+        location: "/%0ASet-Cookie:%20pwn=1",
+      });
+    },
+    START_UP,
+  );
+
+  it(
+    "encodes a return path a header cannot carry, rather than 500ing on it",
+    async ({ bff }) => {
+      // GIVEN `/订单/1` — an ordinary non-Latin-1 path, and Node's header
+      // validator refuses every code point above U+00FF
+      const browser = await bff();
+
+      // WHEN the flow is walked with it
+      const back = await browser.login(ORY_USERS.alice, "?return=%2F%E8%AE%A2%E5%8D%95%2F1");
+
+      // THEN the browser is sent where it was going, percent-encoded — a guard
+      // that only refused control characters would have kept this whole and
+      // then `ERR_INVALID_CHAR`ed the callback with the code already spent
+      expect({ status: back.status, location: back.location }).toEqual({
+        status: 303,
+        location: "/%E8%AE%A2%E5%8D%95/1",
       });
     },
     START_UP,
@@ -297,17 +351,22 @@ describe("oidc(), the login answerer", () => {
       expect({
         status: refused.status,
         cookies: refused.setCookie,
-        warned: browser.lines().map((line) => line.attributes),
+        observed: browser
+          .observations()
+          .find((seen) => seen.component === "oidc" && seen.name === "callback"),
       }).toEqual({
         status: 401,
         cookies: [CLEARED],
-        warned: [
-          {
-            reason: "provider_refused",
-            error: "access_denied",
-            description: "user said no",
-          },
-        ],
+        observed: {
+          component: "oidc",
+          name: "callback",
+          // The reason is a DIMENSION and is bounded; the provider's own text
+          // is caller-controlled, so it rides the cause and never an
+          // instrument.
+          attributes: { reason: "provider_refused" },
+          outcome: "error",
+          cause: expect.objectContaining({ message: "access_denied: user said no" }),
+        },
       });
     },
     START_UP,
@@ -397,8 +456,19 @@ describe("oidc(), the login answerer", () => {
       expect({
         status: back.status,
         cookies: back.setCookie,
-        warned: browser.lines().map((line) => line.attributes?.["reason"]),
-      }).toEqual({ status: 400, cookies: [CLEARED], warned: ["principal_refused"] });
+        observed: browser
+          .observations()
+          .find((seen) => seen.component === "oidc" && seen.name === "callback"),
+      }).toEqual({
+        status: 400,
+        cookies: [CLEARED],
+        observed: {
+          component: "oidc",
+          name: "callback",
+          attributes: { reason: "principal_refused" },
+          outcome: "error",
+        },
+      });
     },
     START_UP,
   );

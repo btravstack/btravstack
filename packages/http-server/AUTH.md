@@ -371,9 +371,17 @@ The two rules this half exists to state, before the detail:
   turn `%255C` back into `\`, and `new URL("/\\evil.com", base)` resolves to
   `https://evil.com/` — the WHATWG parser reads `\` as `/` in relative-slash
   state — so a value that already passed the guard could be walked past it
-  again. `htmx({ login })` guards the same thing where it MINTS the value; this
-  guards it again where it is sealed and once more where it is followed,
-  because the query is the caller's either way.
+  again. `htmx({ login })` guards the same thing where it MINTS the value —
+  one `returnTo` in `redirect.ts` that both call — and this guards it again
+  where it is sealed and once more where it is followed, because the query is
+  the caller's either way.
+
+  **What a header accepts is the header's business.** Node refuses control
+  characters and every code point above U+00FF alike, so `/订单/1` — an
+  ordinary path — passed the same-site guard and then `ERR_INVALID_CHAR`ed the
+  callback with the code already spent. The value is `encodeURI`d where it
+  becomes a `Location`, which closes that class and the CR/LF one together and
+  keeps the guard about the one thing it is for.
 
   **The code grant is checked against the REGISTERED redirect URI, never
   `Host`.** `currentUrl` is `redirectUri` carrying this request's query, so a
@@ -388,21 +396,21 @@ The two rules this half exists to state, before the detail:
   permits a client to trust a token that came over TLS from the token endpoint,
   and that is not a trust this package extends.
 
-  **It injects a `Logger`, and it is the only answerer in this package that
-  does.** `orpc()` and `htmx()` lose no information when they refuse — the
-  status IS the answer, and the reason is the contract's own. A refused login
-  destroys one: the provider's reason must not cross the wire, a `401` is not
-  an error the runtime's RED metrics count, and `grant_failed` looks identical
-  whether the client secret was rotated at the provider, the token endpoint is
-  dead, or the code was genuinely bad. So the reason leaves the process exactly
-  once, as a `warn` line naming the refusal class — `transient_missing`,
-  `state_mismatch`, `provider_refused` (with the provider's own `error` and
-  `error_description`), `grant_failed` (with the library's error name and the
-  cause) or `principal_refused` — and never the code, never a token. It is the
-  shape `@btravstack/prisma` already carries, `needs: [Env, Logger]` on a
-  shipped starter, and a `Logger` rather than `Observers` because what is
-  recorded is a REASON, which is exactly what the dimensions/details split
-  keeps off an instrument.
+  **A refused login is an OPERATION, reported to `Observers` like a cache
+  miss.** Each of the three routes is one, `component: "oidc"`, and a refusal
+  settles `error` carrying its own `reason` — `transient_missing`,
+  `state_mismatch`, `provider_refused`, `grant_failed`, `principal_refused`.
+  That matters because a refused login is the one refusal in this package that
+  DESTROYS information: the provider's reason must not cross the wire, a `401`
+  is not an error the runtime's RED metrics count, and a rotated client secret,
+  a dead token endpoint and a genuinely bad code all look identical from
+  outside. `reason` is a dimension and is bounded — five literals — while the
+  provider's own `error_description` and the library error's message are
+  caller-controlled and unbounded, so they ride the `cause`, which an observer
+  puts on a line or a span and never on an instrument. It costs a root nothing:
+  `httpServer` already contributes the no-op member and exports the port, so
+  composing `observability()` is what turns the line on and composing none
+  leaves an inert call per route.
 
   **The transient is cleared on EVERY exit of the callback**, not on success
   alone: it is spent the moment a callback has been seen, and one left for five

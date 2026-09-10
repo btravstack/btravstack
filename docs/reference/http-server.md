@@ -434,7 +434,6 @@ under a prefix of its own — serving three routes, and it needs
 import { defineHttp, html, HttpModule } from "@btravstack/http-server";
 import { oidc } from "@btravstack/http-server/oidc";
 import { sessionAuthenticator, sessionCodec } from "@btravstack/http-server/session";
-import { observability } from "@btravstack/observability";
 import { OkAsync } from "unthrown";
 
 type Identity = { readonly tenantId: string; readonly userId: string };
@@ -453,8 +452,6 @@ const row = api.HtmxGet("/orders/:id/row", { requires: [{ session: [] }] })({
 export const BrowserApi = HttpModule("BrowserApi")({
   fragments: api.HtmxFragments([row]),
   fragmentsLogin: "/auth/login",
-  // `oidc()` needs a `Logger`: a refused login is where the reason lives.
-  imports: [observability()],
   provides: [
     row,
     sessionCodec(),
@@ -517,6 +514,13 @@ manufacturable out of a value that already passed the guard. Anything else
 lands on `/`. The check runs at `/login`, where the value is sealed, **and**
 again at the callback, where it is followed.
 
+**What a header accepts is the header's job**, so the value is `encodeURI`d
+where it becomes a `Location` rather than filtered by the guard. Node's header
+validator refuses control characters and every code point above U+00FF alike,
+so `/订单/1` — an ordinary path — would otherwise pass every guard and then
+`ERR_INVALID_CHAR` the callback with the authorization code already spent. It
+goes out as `/%E8%AE%A2%E5%8D%95/1`, and a CR/LF one as `/%0A…`, unsplittable.
+
 **The code grant is checked against the REGISTERED redirect URI, never
 `Host`.** `currentUrl` is `redirectUri` carrying this request's query string,
 so a forged `Host` header cannot move the check — and a deployment behind a
@@ -542,17 +546,20 @@ with, key rotation included — and a root composing `oidc()` without
 `HttpModule` call. The cookie it seals is `SESSION_COOKIE`, the same constant
 the scheme reads.
 
-**It also injects `Logger`, which no other answerer here does.** A refused
-login is the one refusal in this package that destroys information: the
-provider's reason must not reach the caller, and a `401` is not an error the
-runtime's RED metrics count — so a rotated client secret, a dead token endpoint
-and a genuinely bad code are one indistinguishable spike. Each refusal writes
-one `warn` line naming its class — `transient_missing`, `state_mismatch`,
-`provider_refused` (carrying the provider's own `error` and
-`error_description`), `grant_failed` (carrying the library's error name and the
-cause) or `principal_refused` — and never the authorization code and never a
-token. A root composing `oidc()` therefore provides a `Logger`, the way one
-composing `@btravstack/prisma` already does.
+**Each route is an operation reported to `Observers`**, the way a cache read
+is. A refused login is the one refusal in this package that destroys
+information — the provider's reason must not reach the caller, and a `401` is
+not an error the runtime's RED metrics count, so a rotated client secret, a
+dead token endpoint and a genuinely bad code are otherwise one indistinguishable
+spike. So every refusal settles `error` carrying its own `reason`:
+`transient_missing`, `state_mismatch`, `provider_refused`, `grant_failed` or
+`principal_refused`. Those five are dimensions and are bounded; the provider's
+own `error_description` and the library error's message are caller-controlled,
+so they ride the `cause` — a line or a span, never an instrument — and the
+authorization code and the tokens ride nothing. **It costs a root nothing**:
+`http()` already contributes the no-op observer and exports the port, so
+composing [`observability()`](/reference/observability) is what turns the line
+on, and composing none leaves an inert call per route.
 
 **Every refusal clears the transient**, not only the success: the flow state is
 spent the moment a callback has been seen. The consequence is worth knowing —

@@ -28,10 +28,16 @@ token's signature is checked rather than trusted for having come over TLS.
 `issuer`, `clientId`, `clientSecret` and `redirectUri` pin `HTTP_OIDC_ISSUER`,
 `HTTP_OIDC_CLIENT_ID`, `HTTP_OIDC_CLIENT_SECRET` and `HTTP_OIDC_REDIRECT_URI`.
 
-Every refusal writes one `warn` line naming its class and clears the spent
-transient, so a rotated client secret does not read as a spike of bad logins —
-which is why the answerer injects `Logger` beside `SessionCodec`, and why a
-root composing it provides one.
+Each route is an operation reported to `Observers`: a refusal settles `error`
+carrying its own `reason` and clears the spent transient, so a rotated client
+secret does not read as a spike of bad logins. It costs a root nothing —
+`http()` already contributes the no-op observer, and now exports the port so a
+sibling provider can report to the same set.
+
+A `return` path is `encodeURI`d where it becomes a `Location`: Node's header
+validator refuses every code point above U+00FF, so `/订单/1` would otherwise
+pass the same-site guard and then fail the response with the authorization
+code already spent.
 
 `SessionCodecService` now publishes `ttlSec`: a login has to write the lifetime
 the codec stamps into the cookie's `Max-Age`.

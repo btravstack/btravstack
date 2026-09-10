@@ -1,4 +1,5 @@
 import { Env, type ConfigInvalid } from "@btravstack/config";
+import type { Observers } from "@btravstack/core";
 import {
   Module,
   type AnyModule,
@@ -27,7 +28,7 @@ import type { CookieSchemes } from "./session.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
 type HttpStarter<Units> = Module<
-  HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes,
+  HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers,
   ConfigInvalid,
   Env | UnitsNeedsOf<Units>
 >;

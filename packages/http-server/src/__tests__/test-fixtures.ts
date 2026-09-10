@@ -28,13 +28,10 @@ import { connect, type Socket } from "node:net";
 import { Env, type ConfigInvalid, type Environment } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
 import {
-  Logger,
   Observers,
   currentUnit,
   noObserver,
   type Attributes,
-  type Level,
-  type LoggerService,
   type Operation,
   type RunningApp,
   type Settle,
@@ -155,6 +152,8 @@ export type Observation = {
   readonly name: string;
   readonly attributes: Attributes;
   readonly outcome: "ok" | "error";
+  /** Only when the operation settled with one — the UNBOUNDED half, off the dimensions. */
+  readonly cause?: unknown;
 };
 
 /**
@@ -170,8 +169,14 @@ const recordingObserver = (): {
   return {
     member:
       ({ component, name, attributes }) =>
-      ({ outcome, attributes: settled }) => {
-        taken.push({ component, name, attributes: { ...attributes, ...settled }, outcome });
+      ({ outcome, attributes: settled, cause }) => {
+        taken.push({
+          component,
+          name,
+          attributes: { ...attributes, ...settled },
+          outcome,
+          ...(cause === undefined ? {} : { cause }),
+        });
       },
     taken: () => taken,
   };
@@ -583,40 +588,15 @@ const bffRowFragment = bffApi.HtmxGet("/orders/:id/row", {
 
 const bffFragments = bffApi.HtmxFragments([bffRowFragment]);
 
-/** One line a refusal wrote, as the spec asserting on it needs to read it. */
-export type LoggedLine = {
-  readonly level: Level;
-  readonly message: string;
-  readonly attributes: Attributes | undefined;
-};
-
 /**
- * A `Logger` that keeps what it was handed. `oidc()` needs one — a refused
- * login tells the caller a bare status and the provider's reason never crosses
- * the wire, so the line IS the record — and a spec that cannot read the line
- * cannot assert the record exists.
+ * `oidc()` reports each route to `Observers` and holds no logger of its own,
+ * so this root composes the same recording observer the transport specs use —
+ * which is what a deployment gets by composing any observability at all, since
+ * the starter already contributes the no-op member and asks a root for nothing.
  */
-const recordingLogger = () => {
-  const lines: LoggedLine[] = [];
-  const service: LoggerService = {
-    log: (level, message, attributes) => {
-      lines.push({ level, message, attributes });
-    },
-    trace: (message, attributes) => service.log("trace", message, attributes),
-    debug: (message, attributes) => service.log("debug", message, attributes),
-    info: (message, attributes) => service.log("info", message, attributes),
-    warn: (message, attributes) => service.log("warn", message, attributes),
-    error: (message, attributes) => service.log("error", message, attributes),
-    fatal: (message, attributes) => service.log("fatal", message, attributes),
-    with: () => service,
-    isEnabled: () => true,
-  };
-  return { provider: Provider(Logger)({ inject: {}, value: service }), taken: () => lines };
-};
-
 const bffAppOf = (
   principal: (claims: IDToken) => OidcIdentity | undefined,
-  logger: ReturnType<typeof recordingLogger>["provider"],
+  member: (operation: Operation) => Settle,
 ) =>
   HttpModule("OidcBff")({
     fragments: bffFragments,
@@ -627,8 +607,8 @@ const bffAppOf = (
       bffRowFragment,
       sessionCodec(),
       oidc({ principal, scope: ORY_SCOPE }),
-      logger,
-    ] as const,
+      Provider.member(Observers)({ inject: {}, value: member }),
+    ],
   });
 
 /**
@@ -670,11 +650,11 @@ export type Bff = {
   readonly held: (name: string) => string | undefined;
   /** Put a cookie in the jar the browser never received — a tampered transient. */
   readonly plant: (name: string, value: string) => void;
-  /** Every line this deployment's logger was handed. */
-  readonly lines: () => readonly LoggedLine[];
+  /** Every operation this deployment's observers saw settle. */
+  readonly observations: () => readonly Observation[];
 };
 
-const bffOf = (origin: string, lines: () => readonly LoggedLine[]): Bff => {
+const bffOf = (origin: string, observations: () => readonly Observation[]): Bff => {
   const jar = new Map<string, string>();
 
   const go = async (
@@ -717,7 +697,7 @@ const bffOf = (origin: string, lines: () => readonly LoggedLine[]): Bff => {
     plant: (name, value) => {
       jar.set(name, value);
     },
-    lines,
+    observations,
     login: async (user, query = "") => {
       const started = await go(`/auth/login${query}`);
       const back = await authorize(started.location, user);
@@ -2779,18 +2759,18 @@ export const it = test.extend<HttpFixtures>({
 
   bff: async ({ boot, ory: _ory }, use) => {
     await use(async (principal = oidcPrincipal) => {
-      const logger = recordingLogger();
-      const app = boot(bffAppOf(principal, logger.provider), { env: oidcEnv });
+      const observer = recordingObserver();
+      const app = boot(bffAppOf(principal, observer.member), { env: oidcEnv });
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
-      return bffOf(`http://127.0.0.1:${info.port}`, logger.taken);
+      return bffOf(`http://127.0.0.1:${info.port}`, observer.taken);
     });
   },
 
   // No `ory` dependency: both boots this serves fail before anything is
   // fetched, and a fixture is only built by a test that names it.
   oidcApp: async ({ boot }, use) => {
-    await use((env) => boot(bffAppOf(oidcPrincipal, recordingLogger().provider), { env }));
+    await use((env) => boot(bffAppOf(oidcPrincipal, recordingObserver().member), { env }));
   },
 
   bothProtocols: async ({ boot }, use) => {

@@ -7,6 +7,10 @@
     "docs/api/**",
     "docs/.vitepress/cache/**",
     "**/CHANGELOG.md",
+    // Gitignored agent scratch, so it reaches no reader and no CI run — but it
+    // is markdown in the tree, so `pnpm lint` linted it and a stray `<img>` in
+    // a working note failed the gate for everyone on that machine.
+    ".superpowers/**",
   ],
   "config": {
     "default": true,

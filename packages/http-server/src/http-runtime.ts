@@ -198,7 +198,7 @@ export const httpServer = <
 >(
   options: Omit<SocketOptions, "unit"> & { readonly unit?: Units } = {},
 ): Module<
-  HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes,
+  HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers,
   ConfigInvalid,
   Env | UnitsNeedsOf<Units>
 > => {
@@ -246,7 +246,11 @@ export const httpServer = <
       }),
       Provider(HttpUnit)({ inject: {}, value: options.unit ?? {} }),
     ],
-    exports: [HttpRuntime, HttpConfig, HttpHandler, HttpUnit, CookieSchemes],
+    // `Observers` is exported so a SIBLING provider in the root can report to
+    // the same set — `oidc()` is the first — without every such provider
+    // having to contribute a no-op member of its own to a port this module
+    // already keeps non-empty.
+    exports: [HttpRuntime, HttpConfig, HttpHandler, HttpUnit, CookieSchemes, Observers],
     // `as never`/`as unknown as Module<…>`, below: `exports` includes
     // `HttpHandler`, a set port, though this module provides no member of it
     // itself — a sibling module's answerer does. The Needs channel carries every
@@ -256,7 +260,7 @@ export const httpServer = <
     // composition root must supply, and this is what makes di's own
     // `UNSATISFIED DEPENDENCIES` gate say so.
   } as never) as unknown as Module<
-    HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes,
+    HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers,
     ConfigInvalid,
     Env | UnitsNeedsOf<Units>
   >;
