@@ -201,6 +201,14 @@ export type HttpModuleOptions<
    * differently-named option instead of overloading the first.
    */
   readonly fragmentsPrefix?: `/${string}`;
+  /**
+   * `htmx()`'s `login` — the login route an unauthenticated fragment caller is
+   * sent to. Named for the fragment half like `fragmentsPrefix` is, and for the
+   * same reason: it is the htmx answerer's alone, and a bare `login` here would
+   * read as covering the oRPC half, which refuses a caller with `UNAUTHORIZED`
+   * and redirects nothing.
+   */
+  readonly fragmentsLogin?: `/${string}`;
   readonly imports?: I;
   readonly provides?: P;
   /** The application's own exports; `HttpRuntime` is added, since `start` resolves it. */
@@ -290,9 +298,12 @@ export const HttpModule =
           ? []
           : [
               fragments,
-              htmx(
-                options.fragmentsPrefix === undefined ? {} : { prefix: options.fragmentsPrefix },
-              ),
+              htmx({
+                ...(options.fragmentsPrefix === undefined
+                  ? {}
+                  : { prefix: options.fragmentsPrefix }),
+                ...(options.fragmentsLogin === undefined ? {} : { login: options.fragmentsLogin }),
+              }),
             ]),
         ...authenticators,
         ...provides,

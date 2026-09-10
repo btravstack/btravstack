@@ -17,11 +17,12 @@ export type HtmxOptions = {
   /** Where fragments are mounted. Default `/`. */
   readonly prefix?: `/${string}`;
   /**
-   * Where the login answerer is mounted. Set it and a route whose `requires`
-   * resolves `Unauthenticated` sends the caller there carrying `?return=` —
-   * `302 Location` for a navigating browser, `401 HX-Redirect` for a request
-   * htmx made. Unset, that route answers a bare `401`, and an under-scoped
-   * caller answers `403` either way.
+   * The login ROUTE — the path the login answerer serves, `/auth/login` for an
+   * `oidc({ prefix: "/auth" })`, not the prefix it is mounted under. Set it and
+   * a route whose `requires` resolves `Unauthenticated` sends the caller there
+   * carrying `?return=` — `303 Location` for a navigating browser, `401
+   * HX-Redirect` for a request htmx made. Unset, that route answers a bare
+   * `401`, and an under-scoped caller answers `403` either way.
    */
   readonly login?: `/${string}`;
 };
@@ -146,26 +147,43 @@ const refuse = (response: ServerResponse, status: number): void => {
 /** A refused caller's answer: a bare status, or where to send one with no session. */
 type Refusal = { readonly status: 401 | 403 } | { readonly login: string };
 
+/**
+ * The request's own target, or `/` when it is one nothing here should hand on.
+ * A route whose FIRST segment is a parameter matches the crafted target
+ * `/\evil.com`, and `new URL("/\\evil.com", base)` resolves to
+ * `https://evil.com/` — the WHATWG parser reads `\` as `/` in relative-slash
+ * state, so a protocol-relative URL is manufacturable through a route that
+ * looks nothing like one. Refused here, where the value is MINTED, rather than
+ * left to whatever consumes it.
+ */
+const returnTo = (url: string | undefined): string =>
+  url !== undefined && url.startsWith("/") && url[1] !== "/" && url[1] !== "\\" ? url : "/";
+
 const refusalOf = (login: `/${string}` | undefined, url: string | undefined): Refusal =>
   login === undefined
     ? { status: 401 }
-    : { login: `${login}?return=${encodeURIComponent(url ?? "/")}` };
+    : { login: `${login}?return=${encodeURIComponent(returnTo(url))}` };
 
 const refuseAuth = (request: IncomingMessage, response: ServerResponse, refusal: Refusal): void => {
   if ("status" in refusal) {
     refuse(response, refusal.status);
     return;
   }
-  // htmx follows a 302 inside the XHR and swaps the login page into whatever
-  // target the fragment named; `HX-Redirect` is how it is told to navigate the
-  // window instead. The status stays 401 there — the request was refused, and
-  // only the browser's own navigation is a redirect.
+  // htmx follows a redirect inside the XHR and swaps the login page into
+  // whatever target the fragment named; `HX-Redirect` is how it is told to
+  // navigate the window instead. The status stays 401 there — the request was
+  // refused, and only the browser's own navigation is a redirect. `"true"`
+  // exactly: htmx sends that literal on every request it makes.
   if (request.headers["hx-request"] === "true") {
     response.writeHead(401, { "hx-redirect": refusal.login });
     response.end();
     return;
   }
-  response.writeHead(302, { location: refusal.login });
+  // 303, not 302: `requires` is an option on `HtmxPost` too, and RFC 9110
+  // §15.4.3 leaves a 302's POST-to-GET change a MAY — a strict client would
+  // re-POST a form body at the login route. §15.4.4's 303 specifies the
+  // retrieval request instead.
+  response.writeHead(303, { location: refusal.login });
   response.end();
 };
 

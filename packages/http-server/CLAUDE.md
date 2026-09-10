@@ -8,16 +8,25 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`HttpModule(name)({ router?, fragments?, fragmentsPrefix?, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })`**
+- **`HttpModule(name)({ router?, fragments?, fragmentsPrefix?, fragmentsLogin?, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })`**
   (`http-module.ts`) — THE way an application declares an HTTP deployment:
   `Module(name)({...})` plus a router, fragments, or both. It appends
   `httpServer(options)` to `imports`; when `router` is supplied it prepends
   the router **and** `orpc(options)` to `provides`, mounted under `prefix`
   (default `/rpc`); when `fragments` is supplied it prepends the fragments
-  provider **and** `htmx({ prefix: fragmentsPrefix })` — `fragmentsPrefix`
+  provider **and** `htmx({ prefix: fragmentsPrefix, login: fragmentsLogin })` —
+  `fragmentsPrefix`
   (default `/`, `htmx()`'s own default) is the second, independently-named
   mount point, since one field cannot carry two mounts with two different
-  defaults. Either or both, plus each answerer's own scheme authenticators —
+  defaults, and `fragmentsLogin` carries `htmx()`'s `login` under the same
+  naming rule: it is the fragment answerer's alone, where a bare `login` would
+  read as covering the oRPC half, which redirects nothing.
+  **Both are forwarded field by field, and that is the one place this sugar's
+  "an option it forgets to forward cannot exist" is not structurally true** —
+  `httpServer`/`orpc` take the whole options record, `htmx()` cannot, because
+  its two fields are named differently here than there. Adding an `HtmxOptions`
+  field means adding a line to this call.
+  Either or both, plus each answerer's own scheme authenticators —
   read off `router.authenticators` and `fragments.authenticators`,
   deduplicated by **reference** before they reach `provides`, so a scheme the
   two share (one `defineHttp` call, named by both) lands once. `HttpRuntime`
@@ -839,19 +848,29 @@ exports: [HttpRuntime, HttpConfig, HttpHandler] })` — this plus `orpc()`. The
   `HttpConfig` `orpc()` reads, applies here.
 
   **`login` is where this answerer and the login answerer touch, and it is the
-  ONLY place the two know about each other.** Set it — `/auth`, whatever
-  `oidc()` is mounted at — and a route whose `requires` resolves
+  ONLY place the two know about each other.** It is the login ROUTE, not the
+  prefix the login answerer is mounted under — `/auth/login` for an
+  `oidc({ prefix: "/auth" })`, since `/auth` itself serves nothing and a
+  redirect there is a `404`. Set it and a route whose `requires` resolves
   `Unauthenticated` sends the caller there carrying
   `?return=<encodeURIComponent(request.url)>` instead of answering a bare
-  `401`: `302 Location` for a navigating browser, and `401` with `HX-Redirect`
+  `401`: `303 Location` for a navigating browser, and `401` with `HX-Redirect`
   for a request carrying `HX-Request: true`. **The htmx half is not a
-  cosmetic difference**: htmx follows a `302` inside the XHR and swaps the
+  cosmetic difference**: htmx follows a redirect inside the XHR and swaps the
   login page into whatever target the fragment named, so the browser has to
   be told to navigate the window rather than shown a redirect — and the
   status stays `401`, since the request was refused and only the navigation
   is a redirect. `HX-Request` is the discriminator because htmx sets it on
   every request it makes; nothing here reads `Sec-Fetch-Mode`, and no
   dependency was added for either.
+
+  **`303`, not `302`, and it is reachable rather than pedantic.** `requires`
+  is an option on `HtmxPost` too, and the CSRF gate refuses only a
+  cross-site request — so a same-origin no-JS `<form method="post">` behind
+  `requires`, from a logged-out browser, reaches this branch today. RFC 9110
+  §15.4.3 leaves a `302`'s POST-to-GET change a **MAY**, so a strict client
+  would re-POST the form body at the login route; §15.4.4's `303` specifies
+  the retrieval request instead.
 
   **`UnderScoped` stays `403` whether or not `login` is set.** A caller who IS
   logged in and lacks the scope would come straight back to the same `403`;
@@ -862,10 +881,21 @@ exports: [HttpRuntime, HttpConfig, HttpHandler] })` — this plus `orpc()`. The
   `resolveScheme`'s `Err` union, so a third case added there still fails this
   compile.
 
-  The `return` value is the request's own path and query, `request.url` as it
-  arrived, percent-encoded ONCE. Nothing here validates it: an open-redirect
-  check is the login answerer's, at the only point where what it points at is
-  about to be followed.
+  **The `return` value is GUARDED where it is minted, and that guard is not
+  belt-and-braces.** It is the request's own path and query, `request.url` as
+  it arrived, percent-encoded ONCE — but only when it starts with `/` and its
+  second character is neither `/` nor `\`; anything else is reported as `/`.
+  A protocol-relative target is manufacturable through a route that looks
+  nothing like one: a route whose FIRST segment is a parameter
+  (`api.HtmxGet("/:slug", { requires })`) matches the crafted target
+  `/\evil.com` — one non-empty segment, so `matchPath` is satisfied and the
+  runtime's mount gate is too — and `new URL("/\\evil.com", base)` resolves
+  to `https://evil.com/`, the WHATWG parser reading `\` as `/` in
+  relative-slash state. Minting it and trusting the login answerer to reject
+  it would put the check one package away from the fact that produced it, and
+  a login answerer is not the only thing that will ever read a `return`. What
+  stays the consumer's is the rest of the open-redirect question, at the point
+  the value is about to be followed.
 
   **Routes are matched in the composition root's own array order, first match
   wins — and that ordering is a SECURITY property, not only a routing one.**

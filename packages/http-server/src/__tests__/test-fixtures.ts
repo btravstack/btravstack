@@ -453,21 +453,39 @@ const loginExportsFragment = loginApi.HtmxGet("/exports", {
   requires: [{ session: ["orders:export"] }],
 })({ inject: {}, sync: () => () => OkAsync(html`<p>exports</p>`) });
 
-const loginFragments = loginApi.HtmxFragments([loginPrivateFragment, loginExportsFragment]);
+/**
+ * A route whose FIRST segment is a parameter, declared LAST so the two named
+ * routes above still win. It is what lets a crafted request-target reach the
+ * refusal: `/\evil.com` is one non-empty segment, so this route matches it.
+ */
+const loginSlugFragment = loginApi.HtmxGet("/:slug", { requires: [{ session: [] }] })({
+  inject: {},
+  sync: () => (_context, params) => OkAsync(html`<p>${params.slug}</p>`),
+});
 
+const loginFragments = loginApi.HtmxFragments([
+  loginPrivateFragment,
+  loginExportsFragment,
+  loginSlugFragment,
+]);
+
+/**
+ * Composed through `HttpModule` rather than a hand-rolled root, so every login
+ * test also pins that `fragmentsLogin` reaches `htmx()` — a forwarded field
+ * that is dropped fails these outright, where a type test would still compile.
+ */
 const loginAppOf = (login: `/${string}` | undefined) =>
-  Module("HtmxLoginApp")({
-    imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+  HttpModule("HtmxLoginApp")({
+    fragments: loginFragments,
+    port: 0,
+    hostname: "127.0.0.1",
+    ...(login === undefined ? {} : { fragmentsLogin: login }),
     provides: [
-      htmx(login === undefined ? {} : { login }),
       loginPrivateFragment,
       loginExportsFragment,
-      loginFragments,
+      loginSlugFragment,
       sessionCodec({ keys: [sessionKeys.alpha] }),
-      ...loginFragments.authenticators,
     ],
-    exports: [HttpRuntime, HttpHandler],
-    needs: [Env],
   });
 
 /** One call against the login deployment, and what a refusal put on the wire. */
@@ -484,21 +502,34 @@ export type LoginCalls = {
   }>;
 };
 
-const loginCallsOf = async (origin: string): Promise<LoginCalls> => {
+const loginCallsOf = async (port: number): Promise<LoginCalls> => {
   const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
   const sealed = (await codec.seal({ principal: { userId: "u-1" } })).get();
   return {
     cookie: `__Host-session=${sealed}`,
-    get: async (path, headers = {}) => {
-      // Manual, or fetch follows the 302 to a login answerer this deployment
-      // does not serve and reports that hop's own 404 instead.
-      const response = await fetch(`${origin}${path}`, { headers, redirect: "manual" });
-      return {
-        status: response.status,
-        location: response.headers.get("location"),
-        hxRedirect: response.headers.get("hx-redirect"),
-      };
-    },
+    // `http.request`, not `fetch`: the request-target goes out VERBATIM, so a
+    // path carrying a backslash reaches the answerer as the crafted target
+    // rather than WHATWG-normalised on the way out — and nothing follows the
+    // redirect to a login route this deployment does not serve.
+    get: (path, headers = {}) =>
+      new Promise((resolve, reject) => {
+        const request = httpRequest(
+          { host: "127.0.0.1", port, path, method: "GET", headers },
+          (response) => {
+            response.resume();
+            response.once("end", () => {
+              const hxRedirect = response.headers["hx-redirect"];
+              resolve({
+                status: response.statusCode ?? 0,
+                location: response.headers.location ?? null,
+                hxRedirect: typeof hxRedirect === "string" ? hxRedirect : null,
+              });
+            });
+          },
+        );
+        request.on("error", reject);
+        request.end();
+      }),
   };
 };
 
@@ -2520,7 +2551,7 @@ export const it = test.extend<HttpFixtures>({
       const app = boot(loginAppOf(login));
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
-      return await loginCallsOf(`http://127.0.0.1:${info.port}`);
+      return await loginCallsOf(info.port);
     });
   },
 
