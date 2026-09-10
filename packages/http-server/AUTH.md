@@ -363,7 +363,8 @@ The two rules this half exists to state, before the detail:
   so the login is stateless like the session is, and a replay of it under the
   session cookie's name is anonymous. The callback checks the returned `state`
   against it before anything is exchanged; no cookie, an unopenable one, an
-  expired one and a mismatch are one `400` that sets and clears nothing.
+  expired one and a mismatch are one `400` that seals no session — and, like
+  every other refusal here, clears the transient on its way out.
 
   **`return` is decoded exactly ONCE and must stay on this site.** The query
   parser is that decode; the value survives only if it starts with `/` and its
@@ -392,9 +393,23 @@ The two rules this half exists to state, before the detail:
   `OidcUnreachable` naming the issuer — a modeled startup failure beside
   `ConfigInvalid`, which `runMain` turns into an exit code — rather than a
   `500` on the first login, and the JWKS cache is one per process. The
-  configuration enables the ID token **signature** check explicitly: OIDC Core
-  permits a client to trust a token that came over TLS from the token endpoint,
-  and that is not a trust this package extends.
+  configuration enables the ID token **signature** check explicitly
+  (`enableNonRepudiationChecks`): OIDC Core permits a client to trust a token
+  that came over TLS from the token endpoint, and that is not a trust this
+  package extends.
+
+  **That call is knowingly UNPINNED here, and it is the one line in this file
+  no spec on this branch would notice going missing.** Deleting it keeps every
+  `oidc.spec.ts` case green, because Hydra signs correctly and the flow
+  succeeds either way; what it would remove is the check that the signature was
+  verified at all. Pinning it needs a provider that answers a JWKS which cannot
+  verify its own tokens, and a fake-issuer harness bought for one assertion is
+  more machinery than the line it guards. What it rests on instead is phase 1's
+  measurement, which is real and is written down in
+  `internal/test-infra/src/ory-login.ts`: `oryClient()` makes the same call for
+  the same reason, and the note there records that without it nothing requests
+  the JWKS. A future change that reaches for a fake issuer for some other
+  reason should pin this on the way past.
 
   **A refused login is an OPERATION, reported to `Observers` like a cache
   miss.** Each of the three routes is one, `component: "oidc"`, and a refusal
@@ -408,9 +423,13 @@ The two rules this half exists to state, before the detail:
   provider's own `error_description` and the library error's message are
   caller-controlled and unbounded, so they ride the `cause`, which an observer
   puts on a line or a span and never on an instrument. It costs a root nothing:
-  `httpServer` already contributes the no-op member and exports the port, so
-  composing `observability()` is what turns the line on and composing none
-  leaves an inert call per route.
+  `httpServer` contributes the no-op member every reader of a set port owes,
+  and now EXPORTS the port as well — because `oidc()` is one
+  `Provider.member(HttpHandler)` rather than a module, so it has nowhere to put
+  a no-op member of its own, and without the export the set port every other
+  starter here gets for free would have been the one thing a login answerer
+  charged a root for. Composing `observability()` is what turns the line on;
+  composing none leaves an inert call per route.
 
   **The transient is cleared on EVERY exit of the callback**, not on success
   alone: it is spent the moment a callback has been seen, and one left for five
@@ -530,7 +549,8 @@ The two rules this half exists to state, before the detail:
     typed, not messaged, so what a caller is told is each answerer's own
     decision. **The distinction is what makes `htmx({ login })` possible**:
     only `Unauthenticated` is a caller a login can help, so that is the one
-    case sent to `/auth`, and an `UnderScoped` caller — logged in, and still
+    case sent to the login ROUTE — `/auth/login`, not the `/auth` mount
+    `oidc()` sits on — and an `UnderScoped` caller — logged in, and still
     not allowed — keeps its `403` rather than being taught a loop through a
     login it already completed.
   - **A defect short-circuits rather than falling through.** A defect is a bug

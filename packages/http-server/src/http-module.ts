@@ -272,13 +272,18 @@ export const HttpModule =
     const imports = (options.imports ?? []) as I;
     const provides = (options.provides ?? []) as P;
     const exports = (options.exports ?? []) as X;
-    // The whole options record, not a field-by-field spread: `HttpModuleOptions`
-    // IS `HttpOptions` plus the module lists, so an option this sugar forgets
-    // to forward cannot exist — which is the drift this file shipped once. The
-    // lists `httpServer`/`orpc`/`htmx` do not know are ignored rather than
-    // rejected, a rest destructuring being what `exactOptionalPropertyTypes`
-    // cannot type here (`Omit` over the deferred `NeedsGate` intersection drops
-    // the modifiers).
+    // The whole options record, not a field-by-field spread: every option
+    // `httpServer` reads is forwarded by construction, since `HttpModuleOptions`
+    // IS `HttpOptions` plus the module lists — the drift this file shipped
+    // once. It guarantees nothing about the RENAMED options below, which are
+    // spelled field by field into `htmx()` and are exactly where
+    // `fragmentsLogin` was forgotten: a field this sugar names differently from
+    // the answerer it feeds has to be written down twice, and the second
+    // writing is the one that can be missed. The lists
+    // `httpServer`/`orpc`/`htmx` do not know are ignored rather than rejected,
+    // a rest destructuring being what `exactOptionalPropertyTypes` cannot type
+    // here (`Omit` over the deferred `NeedsGate` intersection drops the
+    // modifiers).
     const starter = httpServer(options);
     // Keyed by reference, the same technique di's own module-tree flattening
     // uses: the SAME authenticator provider named by both `router` and

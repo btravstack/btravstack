@@ -2,9 +2,10 @@
 
 > The **serving half** of HTTP for [`@btravstack/core`](../core): one runtime,
 > and a `HttpHandler` set port every protocol contributes one answerer to,
-> routed by longest matching mount prefix. Two ship — oRPC over `node:http`
+> routed by longest matching mount prefix. Three ship — oRPC over `node:http`
 > (a caller reaches it with `@orpc/client` and the contract package, not this
-> one) and htmx fragments, server-rendered `Html` escaped by default — each
+> one), htmx fragments, server-rendered `Html` escaped by default, and the
+> OpenID Connect login that seals the session cookie — each
 > with one unit per request and a drain that actually stops accepting. This
 > README works the oRPC half end to end; for fragments, see
 > [Serve htmx fragments](https://btravstack.github.io/btravstack/how-to/serve-htmx-fragments).

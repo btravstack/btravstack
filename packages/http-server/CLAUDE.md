@@ -890,6 +890,11 @@ exports: [HttpRuntime, HttpConfig, HttpHandler] })` — this plus `orpc()`. The
   belt-and-braces.** It is the request's own path and query, `request.url` as
   it arrived, percent-encoded ONCE — but only when it starts with `/` and its
   second character is neither `/` nor `\`; anything else is reported as `/`.
+  Those two clauses are the whole of `src/redirect.ts`'s `returnTo`, which
+  `oidc()` calls as well — sealing the value at `/login` and following it at
+  the callback, where it is decoded exactly once. They are what the guard is
+  FOR: whether a HEADER can carry the result is a separate question, answered
+  by `encodeURI` at the `Location` rather than by a third clause here.
   A protocol-relative target is manufacturable through a route that looks
   nothing like one: a route whose FIRST segment is a parameter
   (`api.HtmxGet("/:slug", { requires })`) matches the crafted target
@@ -1497,7 +1502,8 @@ ephemeral port while the provider only ever knew about `:3000`.
 transient cookie, one no key opens, one past its five minutes, a `state` that
 does not match and a `principal(claims)` answering `undefined` are all `400`:
 this end could not make sense of the callback. A code the provider would not
-exchange is `401`. None of them sets or clears a cookie.
+exchange is `401`. None of them seals a session; every one of them CLEARS the
+transient, which is the point of routing them all through one `refuse`.
 
 **Logout is parameterless, and a `POST`.** No `id_token_hint`, because the
 cookie holds a principal and no token — so no `post_logout_redirect_uri`
@@ -1851,8 +1857,9 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
 ## Several answerers, one runtime
 
 **`HttpHandler` is a SET port of `{ prefix, handle }`, and each protocol served
-in this process contributes one member.** Two ship: oRPC (`orpc()`, from
-`http()`) and htmx fragments (`htmx()`, serving `Html`). GraphQL is what the
+in this process contributes one member.** Three ship: oRPC (`orpc()`, from
+`http()`), htmx fragments (`htmx()`, serving `Html`) and the login (`oidc()`,
+from the `/oidc` subpath, mounted at `/auth` by default). GraphQL is what the
 family is being extended for next (#179). The shape was chosen in #174, and
 the reason is a constraint rather
 than a preference: **a graph holds exactly one runtime** (thesis #1 — every

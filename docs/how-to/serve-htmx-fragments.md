@@ -159,6 +159,8 @@ import { observability } from "@btravstack/observability";
 
 export const OrderFragmentsApi = HttpModule("OrderFragmentsApi")({
   fragments: orderFragments,
+  // The login ROUTE a refused caller is sent to — see "Behind a scheme" below.
+  fragmentsLogin: "/auth/login",
   provides: [orderRowFragment],
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],
@@ -209,14 +211,13 @@ package to key the header on.
 ## Send an unauthenticated caller to log in
 
 A marked route answers `401` on its own, which is the right answer to a
-machine and the wrong one to a person: a browser shows nothing. Add
-`fragmentsLogin` to the root above — it carries
+machine and the wrong one to a person: a browser shows nothing.
+`fragmentsLogin` in the root above is what changes that — it carries
 [`htmx()`'s `login`](/reference/http-server#login-—-where-an-unauthenticated-caller-is-sent),
 named for the fragment half exactly as `fragmentsPrefix` is — and a route
 whose `requires` resolves `Unauthenticated` sends the caller there instead,
-carrying `?return=` set to the path and query they asked for —
-`fragmentsLogin: "/auth/login"` beside `fragments` in Step 3's root is the
-whole wiring.
+carrying `?return=` set to the path and query they asked for. One line beside
+`fragments` is the whole wiring; drop it and that route answers a bare `401`.
 
 It is the login **route**, not the prefix its answerer is mounted under: an
 `oidc({ prefix: "/auth" })` serves `GET /auth/login`, and `/auth` on its own
@@ -237,11 +238,15 @@ A caller who is **logged in and lacks the scope** still gets `403`, `login` or
 not: sending them back through a login they already completed lands them on
 the same `403`.
 
-`return` is percent-encoded once, and kept only when it starts with `/` and
-its second character is neither `/` nor `\` — otherwise it is reported as `/`.
-A route with a leading parameter would otherwise let a crafted `/\evil.com`
-mint a return the browser resolves off-site. The rest of the open-redirect
-question is the login answerer's, at the point the value is followed.
+`return` is percent-encoded once — and decoded exactly once at the other end —
+and kept only when it starts with `/` and its second character is neither `/`
+nor `\`; otherwise it is reported as `/`. A route with a leading parameter
+would otherwise let a crafted `/\evil.com` mint a return the browser resolves
+off-site. Those two clauses are the whole guard: whether a header can carry
+the result is answered by `encodeURI` where the value becomes a `Location`,
+which is what keeps a perfectly ordinary `/订单/1` from failing the response.
+The rest of the open-redirect question is the login answerer's, at the point
+the value is followed.
 
 ## CSRF, and why this answerer needed it first
 

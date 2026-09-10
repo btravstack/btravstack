@@ -39,6 +39,14 @@ validator refuses every code point above U+00FF, so `/订单/1` would otherwise
 pass the same-site guard and then fail the response with the authorization
 code already spent.
 
+`htmx({ login })` — and `HttpModule({ fragmentsLogin })`, which forwards it —
+are the other half of the seam and are new here too: set one and a fragment
+route whose `requires` resolves `Unauthenticated` sends the caller to that
+login ROUTE carrying `?return=` (a `303` for a navigating browser, a `401`
+with `HX-Redirect` for a request htmx made) instead of answering a bare `401`.
+An under-scoped caller still gets `403` either way. A consumer has to set one
+of them to reach `oidc()` at all.
+
 `SessionCodecService` now publishes `ttlSec`: a login has to write the lifetime
 the codec stamps into the cookie's `Max-Age`.
 

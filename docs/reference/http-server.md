@@ -104,15 +104,17 @@ the grounds that oRPC was the only way to answer HTTP here — and is exported
 now, since a second protocol's package has to name the set port it contributes
 to.
 
-**Three subpaths export more**, each behind an optional peer so a graph that
+**Four subpaths export more**, each behind an optional peer so a graph that
 never imports it installs nothing: `@btravstack/http-server/jwt`
 (`jwtAuthenticator`, `DEFAULT_ALGORITHMS`, and the `Claims` / `JwtOptions`
 types — `jose`), `@btravstack/http-server/session` (`sessionCodec`,
-`sessionAuthenticator`, `SessionCodec`, `DEFAULT_TTL_SEC`, `TRANSIENT_TTL_SEC`,
-and the `Session` /
-`SessionCodecService` / `SessionOptions` types — `jose` again), and
+`sessionAuthenticator`, `SessionCodec`, `SESSION_COOKIE`, `DEFAULT_TTL_SEC`,
+`TRANSIENT_TTL_SEC`, and the `Session` /
+`SessionCodecService` / `SessionOptions` types — `jose` again),
+`@btravstack/http-server/oidc` (`oidc`, `OidcUnreachable`, and the
+`OidcOptions` type — `openid-client`), and
 `@btravstack/http-server/openapi` (`openApiDocument` — `@orpc/openapi`). All
-three have sections of their own below.
+four have sections of their own below.
 
 ## `HttpModule(name)({...})`
 
@@ -557,9 +559,12 @@ spike. So every refusal settles `error` carrying its own `reason`:
 own `error_description` and the library error's message are caller-controlled,
 so they ride the `cause` — a line or a span, never an instrument — and the
 authorization code and the tokens ride nothing. **It costs a root nothing**:
-`http()` already contributes the no-op observer and exports the port, so
-composing [`observability()`](/reference/observability) is what turns the line
-on, and composing none leaves an inert call per route.
+the starter contributes the no-op observer every reader of that set port owes,
+and exports the port too — `oidc()` is a single member provider rather than a
+module, so it has nowhere to put a no-op of its own, and the export is what
+keeps the set free to a root instead of making this one answerer charge for it.
+Composing [`observability()`](/reference/observability) is what turns the line
+on; composing none leaves an inert call per route.
 
 **Every refusal clears the transient**, not only the success: the flow state is
 spent the moment a callback has been seen. The consequence is worth knowing —
@@ -1574,12 +1579,19 @@ scope would come straight back to the same `403`; only
 `return` is the request's own path and query — `request.url` as it arrived —
 percent-encoded once with `encodeURIComponent`, **and only when it starts with
 `/` and its second character is neither `/` nor `\`**; anything else is
-reported as `/`. That guard is not belt-and-braces: a route whose first segment
-is a parameter (`api.HtmxGet("/:slug", { requires })`) matches the crafted
-target `/\evil.com`, and `new URL("/\\evil.com", base)` resolves to
+reported as `/`. Those two clauses are one shared `returnTo`, the same function
+[`oidc()`](#the-login-answerer) applies when it seals the value and again when
+it follows it, and the value is DECODED EXACTLY ONCE on the way through — a
+second `decodeURIComponent` would turn `%255C` back into `\`. That guard is not
+belt-and-braces: a route whose first segment is a parameter
+(`api.HtmxGet("/:slug", { requires })`) matches the crafted target
+`/\evil.com`, and `new URL("/\\evil.com", base)` resolves to
 `https://evil.com/` — the WHATWG parser reads `\` as `/` in relative-slash
-state. What stays the consumer's is the rest of the open-redirect question, at
-the point the value is about to be followed.
+state. Whether a header can CARRY the result is a separate question and not the
+guard's: the mount is `encodeURI`d where it becomes a `Location`, because
+Node's header validator refuses every code point above U+00FF as well as every
+control character. What stays the consumer's is the rest of the open-redirect
+question, at the point the value is about to be followed.
 
 ::: warning
 **Routes are matched in the composition root's own array order, first match
@@ -1973,7 +1985,8 @@ two copies are two different symbols, so a contract marked against one would
 read as unmarked here. Node `>=22`.
 
 **Optional peers, each behind the subpath that needs it**: `jose` (`^6`) for
-both `/jwt` and `/session`, `@orpc/openapi` and `@orpc/json-schema` for
+both `/jwt` and `/session`, `openid-client` (`^6`) for `/oidc`,
+`@orpc/openapi` and `@orpc/json-schema` for
 `/openapi`. A graph that imports none of those subpaths installs none of them —
 which is the whole reason they are subpaths. `jose` is ESM-only, so a CJS
 consumer of `/jwt` or `/session` needs Node `>=22.12` for `require(esm)`; ESM is
