@@ -1544,6 +1544,17 @@ never on a metric. That split is why this could not be a `Logger`: a `warn`
 line's attributes are one channel, and the port draws the line the thesis
 draws.
 
+**Each observation is ended by the RESPONSE, not only by the code path that
+wrote it.** `observe`'s finisher is once-only, so a refusal's own `settle` wins
+and the `'close'` listener is a no-op — it is there for the paths that reach no
+`settle` at all. A codec defect rethrown by `.get()`, or a rejected PKCE
+digest, would otherwise leave the span open and the request out of the counters
+entirely, which is worse than the defect it came from; `'close'` always fires,
+and by then the runtime's own `500` is on the wire, which is what the outcome
+reads. It is `http-runtime.ts`'s own rule for the request, applied one level
+down — `response.closed` checked first, because subscribing to a stream that
+already fired is this package's documented footgun.
+
 **It costs a root nothing, and `httpServer` now exports `Observers` so that
 stays true.** A reader of a set port must contribute a no-op member of its own,
 and `oidc()` is a single `Provider.member`, not a module — it has nowhere to

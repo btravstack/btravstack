@@ -111,12 +111,38 @@ type Bound<P> = {
   readonly observers: readonly ((operation: Operation) => Settle)[];
 };
 
-/** One route of this answerer, named for every observer the graph composed. */
-const operation = (name: string): Operation => ({
-  component: "oidc",
-  name,
-  attributes: {},
-});
+/**
+ * One route of this answerer, observed — and ended by the RESPONSE rather than
+ * only by the code path that wrote it.
+ *
+ * `observe`'s finisher is once-only, so an explicit `settle` below wins and the
+ * `'close'` one is a no-op. It exists for the paths that reach no `settle` at
+ * all: a `.get()` rethrowing a codec defect, or `calculatePKCECodeChallenge`
+ * rejecting, leave an unended span and a request missing from the counters
+ * entirely, which is worse than the defect. `'close'` is the one event that
+ * always fires, and by then the runtime's own `500` is on the wire — which is
+ * what `outcome` reads, exactly as `http-runtime.ts` reads it for the request.
+ *
+ * The `closed` check first, because subscribing to a stream that already fired
+ * is this package's own documented footgun (`closedOf` in `http-runtime.ts`):
+ * a client that hung up while the kernel was opening the unit is closed before
+ * this route's first line.
+ */
+const observed = (
+  observers: readonly ((operation: Operation) => Settle)[],
+  name: string,
+  response: ServerResponse,
+): Settle => {
+  const settle = observe(observers, { component: "oidc", name, attributes: {} });
+  const end = (): void =>
+    settle({
+      outcome: response.statusCode >= 500 ? "error" : "ok",
+      attributes: { status: response.statusCode },
+    });
+  if (response.closed) end();
+  response.once("close", end);
+  return settle;
+};
 
 /**
  * Every callback refusal: the status, the reason, and the transient with it.
@@ -130,11 +156,14 @@ const operation = (name: string): Operation => ({
  *
  * **The transient is cleared on every exit rather than on success alone**: the
  * flow state is spent the moment a callback has been seen, and one left for
- * five minutes is what a second tab's login collides with. That clearing
- * header is not a cross-site handle on somebody's login: `__Host-oidc` is
- * `SameSite=Lax`, which a browser does not send on a cross-site SUBRESOURCE
- * request, so a third-party `<img src="/auth/callback">` reaches here with no
- * cookie at all and the `Set-Cookie` it gets back deletes nothing.
+ * five minutes is what a second tab's login collides with. That unconditional
+ * header is still not a cross-site handle on somebody's login in flight, and
+ * the reason is the BROWSER's, not this code's: `SameSite` gates `Set-Cookie`
+ * in a cross-site context exactly as it gates `Cookie`, so the clearing header
+ * a third-party `<img src="/auth/callback">` provokes is rejected before it
+ * reaches the jar. `Max-Age=0` deletes a stored cookie whether or not the
+ * request carried one — "there was nothing to delete" would be the wrong
+ * argument for the right conclusion.
  */
 const refuse = (
   response: ServerResponse,
@@ -153,7 +182,7 @@ const login = async <P>(
   bound: Bound<P>,
   codec: SessionCodecService,
 ): Promise<void> => {
-  const settle = observe(bound.observers, operation("login"));
+  observed(bound.observers, "login", response);
   const verifier = randomPKCECodeVerifier();
   const state = randomState();
   const nonce = randomNonce();
@@ -175,7 +204,6 @@ const login = async <P>(
     }).href,
     "set-cookie": setCookie(TRANSIENT_COOKIE, sealed, TRANSIENT_TTL_SEC),
   });
-  settle({ outcome: "ok" });
 };
 
 const callback = async <P>(
@@ -185,7 +213,7 @@ const callback = async <P>(
   bound: Bound<P>,
   codec: SessionCodecService,
 ): Promise<void> => {
-  const settle = observe(bound.observers, operation("callback"));
+  const settle = observed(bound.observers, "callback", response);
   const held = await codec.transient
     .unseal(cookieValue(request.headers.cookie, TRANSIENT_COOKIE))
     .get();
@@ -271,11 +299,10 @@ const callback = async <P>(
     location: encodeURI(returnTo(held["return"])),
     "set-cookie": [setCookie(SESSION_COOKIE, sealed, codec.ttlSec), clearCookie(TRANSIENT_COOKIE)],
   });
-  settle({ outcome: "ok" });
 };
 
 const logout = <P>(response: ServerResponse, bound: Bound<P>): void => {
-  const settle = observe(bound.observers, operation("logout"));
+  observed(bound.observers, "logout", response);
   const advertised = bound.config.serverMetadata().end_session_endpoint;
   send(response, 303, {
     // Parameterless: no `id_token_hint`, because the cookie holds a principal
@@ -285,7 +312,6 @@ const logout = <P>(response: ServerResponse, bound: Bound<P>): void => {
       advertised === undefined ? bound.postLogout : buildEndSessionUrl(bound.config, {}).href,
     "set-cookie": clearCookie(SESSION_COOKIE),
   });
-  settle({ outcome: "ok" });
 };
 
 /**
