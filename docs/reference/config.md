@@ -53,6 +53,7 @@ type ConfigField<T> = {
 | `Config.boolean(variable, options?)` | a flag: `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, case-insensitive                                           | `{ default?: boolean }`                                                                                                                    |
 | `Config.port(variable, options?)`    | a whole number in `0..65535`, `0` (an ephemeral bind) included                                                        | `{ default?: number }`                                                                                                                     |
 | `Config.url(variable, options?)`     | a URL, kept as the string it was written as                                                                           | `{ default?: string }`                                                                                                                     |
+| `Config.list(variable, options?)`    | a comma-separated list, entries trimmed and the empty ones dropped                                                    | `{ default?: readonly string[]; min?: number }` — `min` defaults to `1`                                                                    |
 | `Config.pinned(value, field)`        | `field` unless `value` is given, then a field answering `value` and reading nothing — checked by the field's own rule | —                                                                                                                                          |
 
 Semantics shared by every field, in one place:
@@ -66,6 +67,8 @@ Semantics shared by every field, in one place:
 | out of range (integer/port) | `must be between <min> and <max>, got <n>` — both bounds inclusive       |
 | `0` (port)                  | valid — a port's floor is `0` so an ephemeral bind stays expressible     |
 | `issuer.test/jwks` (url)    | `is not a URL: "issuer.test/jwks"` — a URL needs its scheme              |
+| `a, b,` (list)              | `["a", "b"]` — trimmed, and a trailing separator is not an entry         |
+| `,` (list)                  | `must list at least 1, got 0` — the `min` floor, named                   |
 
 Values are **trimmed** before being read, `Config.string` included: `X=" abc "`
 binds `"abc"`. That is what makes a whitespace-only variable "set but empty"
@@ -91,6 +94,14 @@ construction from throwing — a malformed `HTTP_JWT_JWKS_URI` is a
 wherever the URL is finally needed. It checks **parseability, not the scheme**:
 `file:///keys.json` is a URL, so an endpoint that must be reachable over HTTP
 is the consumer's own check.
+
+`Config.list` splits on commas and nothing else: an entry containing one is not
+expressible, which is the trade for a variable an operator can read. `min`
+defaults to `1`, so a variable set to separators alone is a deployment mistake
+rather than an empty list. It says nothing about what the entries mean —
+`HTTP_SESSION_KEYS` is a list of base64url keys, and that each is 32 bytes is
+`@btravstack/http-server/session`'s own check, reported against the same
+variable at boot.
 
 `Config.pinned` is what a starter's options do to its own fields, so
 precedence is **explicit > environment > default, per field**:

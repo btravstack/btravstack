@@ -9,6 +9,7 @@ import {
 import { controllerFor } from "./controller.js";
 import { htmxFragmentsFor, htmxRouteFor } from "./htmx-route.js";
 import { routerFor } from "./orpc.js";
+import { cookieScheme } from "./session.js";
 import type { Kinds, UnitsOf } from "./unit.js";
 
 /** The authenticators an application declares, keyed by scheme name. */
@@ -109,9 +110,13 @@ export const defineHttp = <const A extends Authenticators = Record<never, never>
   readonly authenticators: A;
 }): Http<A> => {
   const declared: Authenticators = options?.authenticators ?? {};
-  const providers = Object.entries(declared).map(([scheme, authenticator]) =>
+  // A cookie-reading scheme rides in with a `CookieSchemes` member beside its
+  // own provider, so the runtime's `csrf` default is a graph fact both
+  // `HttpModule` and a hand-rolled `http()` root carry without restating it.
+  const providers = Object.entries(declared).flatMap(([scheme, authenticator]) => [
     bind(scheme, authenticator),
-  );
+    ...(authenticator.cookie === true ? [cookieScheme()] : []),
+  ]);
   const routes = htmxRouteFor<SchemesFrom<A>, VocabFrom<A>>();
   const principals = Object.fromEntries(
     Object.keys(declared).map((scheme) => [scheme, principalPort(scheme)]),

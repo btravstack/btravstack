@@ -138,6 +138,61 @@ describe("Config.object", () => {
   });
 });
 
+describe("Config.list", () => {
+  it("splits on commas, trims every entry and drops the empty ones", () => {
+    // GIVEN a list field with a default
+    const field = Config.list("HTTP_SESSION_KEYS", { default: ["fallback"] });
+
+    // WHEN a single value, three values, a padded list and a trailing comma are
+    // read, plus the variable nobody set
+    const read = {
+      one: field.parse("alpha").getOrThrow(),
+      three: field.parse("alpha,beta,gamma").getOrThrow(),
+      padded: field.parse("  alpha ,\tbeta\n").getOrThrow(),
+      trailing: field.parse("alpha,beta,").getOrThrow(),
+      absent: field.parse(undefined).getOrThrow(),
+    };
+
+    // THEN a list is what the entries say, whitespace around an entry is not
+    // part of it, and a trailing separator is not an entry
+    expect(read).toEqual({
+      one: ["alpha"],
+      three: ["alpha", "beta", "gamma"],
+      padded: ["alpha", "beta"],
+      trailing: ["alpha", "beta"],
+      absent: ["fallback"],
+    });
+  });
+
+  it("names a variable that lists nothing, however it was written", () => {
+    // GIVEN a list field with no default, and one wanting two entries
+    const field = Config.list("HTTP_SESSION_KEYS");
+    const pair = Config.list("HTTP_SESSION_KEYS", { min: 2 });
+    const reasonOf = (result: Result<readonly string[], ConfigFieldInvalid>): string =>
+      result.isErr() ? result.error.reason : "WRONGLY ACCEPTED";
+
+    // WHEN the blank, separator-only, absent and one-short spellings are read
+    const read = {
+      blank: reasonOf(field.parse("")),
+      separators: reasonOf(field.parse(" , ")),
+      absent: reasonOf(field.parse(undefined)),
+      short: reasonOf(pair.parse("alpha")),
+      shortDefault: reasonOf(Config.list("X", { min: 2, default: ["alpha"] }).parse(undefined)),
+    };
+
+    // THEN a blank variable is the shared "set but empty" — blank is not absent
+    // — and every other way of listing too little is named against the floor,
+    // by both routes into a value
+    expect(read).toEqual({
+      blank: "is set but empty",
+      separators: "must list at least 1, got 0",
+      absent: "is required",
+      short: "must list at least 2, got 1",
+      shortDefault: "must list at least 2, got 1",
+    });
+  });
+});
+
 describe("Config.boolean", () => {
   it("reads every spelling of a flag, in either case, and refuses anything else", () => {
     // GIVEN a flag field

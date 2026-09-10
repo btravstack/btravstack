@@ -62,11 +62,21 @@
         "types": "./dist/jwt.d.cts",
         "default": "./dist/jwt.cjs"
       }
+    },
+    "./session": {
+      "import": {
+        "types": "./dist/session.d.mts",
+        "default": "./dist/session.mjs"
+      },
+      "require": {
+        "types": "./dist/session.d.cts",
+        "default": "./dist/session.cjs"
+      }
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts src/jwt.ts src/openapi.ts --format cjs,esm --dts --clean",
-    "dev": "tsdown src/index.ts src/jwt.ts src/openapi.ts --format cjs,esm --dts --watch",
+    "build": "tsdown src/index.ts src/jwt.ts src/openapi.ts src/session.ts --format cjs,esm --dts --clean",
+    "dev": "tsdown src/index.ts src/jwt.ts src/openapi.ts src/session.ts --format cjs,esm --dts --watch",
     "test": "vitest run --coverage",
     "test:types": "tsc --noEmit -p tsconfig.test-d.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"

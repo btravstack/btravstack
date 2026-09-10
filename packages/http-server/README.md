@@ -259,6 +259,7 @@ supplies it:
 | `compression`     | pins `HTTP_COMPRESSION` — response compression, `true` for oRPC's defaults or its options record; oRPC-only            |
 | `plugins`         | any other oRPC handler plugin, forwarded to `RPCHandler`                                                               |
 | `securityHeaders` | response headers set on the raw listener, before dispatch (default on)                                                 |
+| `csrf`            | refuse a cross-site state change carrying cookies, before dispatch (default: on once a scheme reads a cookie)          |
 | `unit`            | kind → module: `anonymous`, or a scheme — both answerers fork the kind that authenticated the request                  |
 
 `cors`, `bodyLimit` and `compression` **pin** a field of `HttpConfig` that is
@@ -266,9 +267,9 @@ otherwise bound from the environment — explicit beats environment beats
 default, per field — so a deployment sets `HTTP_CORS_ORIGIN` or
 `HTTP_BODY_LIMIT` without a code change, and a test pins them instead. The rest
 stay composition-time: `prefix` because a client's `baseURL` has to agree with
-it, `securityHeaders` because a deployment that can silently turn
-`x-frame-options` off is a footgun, and `plugins` (or a `CORSHandlerPluginOptions`
-record) because an environment carries no records.
+it, `securityHeaders` and `csrf` because a deployment that can silently turn
+`x-frame-options` — or the CSRF check — off is a footgun, and `plugins` (or a
+`CORSHandlerPluginOptions` record) because an environment carries no records.
 
 `jwtAuthenticator`'s three transport options pin the same way, from
 `@btravstack/http-server/jwt`. A root composing that scheme writes no `needs`
@@ -284,6 +285,20 @@ schemes included, the same way it already carries the starter's own.
 A variable nobody pinned and nobody set — or a `HTTP_JWT_JWKS_URI` that is not
 a URL — fails the boot with a `ConfigInvalid` naming it, rather than a scheme
 that refuses every caller.
+
+`sessionCodec({ keys?, ttlSec? })`, from `@btravstack/http-server/session`,
+pins one variable the same way — and `sessionAuthenticator` is the scheme that
+reads what it seals.
+
+| Option   | What it is                                                                                                                                                                               |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `keys`   | pins `HTTP_SESSION_KEYS` — a comma-separated list of 32-byte base64url keys (`A-Z a-z 0-9 - _`, no padding); the first seals and every one unseals, so rotation is prepend, deploy, drop |
+| `ttlSec` | how long a session lasts (default 12 h). Fixed: there is no sliding re-seal                                                                                                              |
+
+Mint one with
+`node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'`.
+A key that is not 32 base64url bytes fails the boot with a `ConfigInvalid`
+naming `HTTP_SESSION_KEYS` and the POSITION it refused — never the value.
 
 The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/http-server),

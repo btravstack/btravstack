@@ -135,6 +135,14 @@ export type Authenticator<P, Scope extends string, N, E = never> = {
   readonly scope: Scope;
   readonly needs: N;
   readonly error: E;
+  /**
+   * Set by a scheme that resolves a caller from a **cookie**, which is what
+   * makes a deployment a CSRF target: `defineHttp` turns it into a
+   * `CookieSchemes` member, and the HTTP runtime's `csrf` default is "any
+   * member". Absent on a scheme reading a header, where ambient authority is
+   * not in play.
+   */
+  readonly cookie?: true;
 };
 
 /** Internal: the services record an arm receives, keyed exactly as `inject` was. */
