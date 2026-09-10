@@ -72,4 +72,32 @@ describe("the runtime's observations", () => {
       outcome: "error",
     });
   });
+
+  it("observes a request the CSRF check refused, which no answerer ever sees", async ({
+    observed,
+  }) => {
+    // GIVEN a graph whose check is on, over a handler that would answer 200
+    const { origin, taken } = await observed((_request, response) => {
+      response.writeHead(200);
+      response.end("ok");
+      return OkAsync();
+    }, true);
+
+    // WHEN a cross-site state change arrives carrying a cookie, so it is
+    // refused before dispatch
+    await fetch(`${origin}/rpc/anything`, {
+      method: "POST",
+      headers: { cookie: "__Host-session=whatever", "sec-fetch-site": "cross-site" },
+    });
+    await vi.waitUntil(() => taken().length === 1);
+
+    // THEN the refusal is an answer like any other: a `403` an operator cannot
+    // see the rate of is the one status they most want the rate of
+    expect(taken()[0]).toEqual({
+      component: "http",
+      name: "request",
+      attributes: { method: "POST", answerer: "/rpc", status: 403 },
+      outcome: "ok",
+    });
+  });
 });

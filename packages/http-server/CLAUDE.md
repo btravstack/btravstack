@@ -549,6 +549,14 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   answerer needs no plugin: its `POST` is form-urlencoded, exactly the
   preflight-free shape, and the listener check is upstream of every answerer.
 
+  **A refusal is an ANSWER, so it is tracked like one.** The `403` is written
+  after `open.add(response)` and after `observe(...)` has started the request's
+  operation, and only then — still before `host.run`, so no answerer and no unit
+  ever sees it. Registering the tracking first is what keeps a refused request
+  visible to the RED observers and to response tracking; writing it before
+  meant a `403` that no metric counted and no span recorded, which is the one
+  status an operator most wants to see a rate for.
+
   **`csrf` stays composition-time, and so does `securityHeaders`** — a
   deployment that can silently turn `x-frame-options`, or this check, off is a
   footgun the transport-policy options are not.
@@ -1151,8 +1159,9 @@ for it.
 **`sessionCodec({ keys?, ttlSec? })`** — a `Provider(SessionCodec)` binding the
 storage-free half of the session: `seal` turns a principal into a JWE, `unseal`
 turns a cookie back into a `Session<unknown>` or into nothing. `jose` is the
-optional peer, on the `/jwt` protocol; the subpath is what keeps a consumer that
-never logs a browser in from installing it.
+optional peer for BOTH `/jwt` and `/session` — one peer, two subpaths, declared
+`optional: true` once — and the subpath is what keeps a consumer that never
+verifies a token or logs a browser in from installing it.
 
 **The cookie is the session, so the key list is the one operational object.**
 `HTTP_SESSION_KEYS` is a `Config.list` of base64url 32-byte keys. The FIRST

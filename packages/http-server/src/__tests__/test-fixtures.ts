@@ -166,9 +166,9 @@ const recordingObserver = (): {
  * gets by composing any observability at all, since the runtime asks for no
  * ports to be observable.
  */
-const observedAppOf = (handler: Handler, member: (operation: Operation) => Settle) =>
+const observedAppOf = (handler: Handler, member: (operation: Operation) => Settle, csrf = false) =>
   Module("ObservedApp")({
-    imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+    imports: [httpServer({ port: 0, hostname: "127.0.0.1", csrf })],
     // Mounted at `/rpc`, not `/`: a path OUTSIDE it is what reaches the
     // runtime's own 404, which is the half of RED an answerer never sees.
     provides: [
@@ -1701,7 +1701,10 @@ export type HttpFixtures = {
     }>;
   }>;
   /** The transport served over an observer that records what it was handed. */
-  readonly observed: (handler: Handler) => Promise<{
+  readonly observed: (
+    handler: Handler,
+    csrf?: boolean,
+  ) => Promise<{
     readonly origin: string;
     readonly taken: () => readonly Observation[];
   }>;
@@ -1769,9 +1772,9 @@ export const it = test.extend<HttpFixtures>({
   boot: bootFixture(),
 
   observed: async ({ boot }, use) => {
-    await use(async (handler) => {
+    await use(async (handler, csrf) => {
       const observer = recordingObserver();
-      const app = boot(observedAppOf(handler, observer.member));
+      const app = boot(observedAppOf(handler, observer.member, csrf));
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return { origin: `http://127.0.0.1:${info.port}`, taken: observer.taken };

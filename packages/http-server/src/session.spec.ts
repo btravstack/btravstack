@@ -94,6 +94,24 @@ describe("sessionCodec", () => {
     expect(read).toEqual({ noTyp: undefined, otherTyp: undefined });
   });
 
+  it("answers a defect on the channel when a principal cannot be serialised", async ({
+    sessionCodecOf,
+  }) => {
+    // GIVEN a principal the application built with a cycle in it — `principal`
+    // is `unknown`, so nothing stopped it arriving here
+    const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
+    const cyclic: Record<string, unknown> = {};
+    cyclic["self"] = cyclic;
+
+    // WHEN it is sealed. The call itself must return, which is the assertion's
+    // other half: a throw here would never reach `expect`
+    const sealed = codec.seal({ principal: cyclic });
+
+    // THEN the failure arrives on the channel the signature promised, because
+    // the serialisation runs inside the guard rather than before it
+    await expect(sealed).toBeDefectWith(expect.objectContaining({ constructor: TypeError }));
+  });
+
   it("refuses a cookie its own key opens whose payload is not a session", async ({
     sessionCodecOf,
     forgeSession,
@@ -115,19 +133,24 @@ describe("sessionCodec", () => {
       numberScopes: (
         await forged({ typ: "session", principal: {}, iat: 0, exp: 4_102_444_800, scopes: [1] })
       ).get(),
+      numberSid: (
+        await forged({ typ: "session", principal: {}, iat: 0, exp: 4_102_444_800, sid: 123 })
+      ).get(),
     };
 
-    // THEN all five are anonymous rather than a defect or a session that
+    // THEN all six are anonymous rather than a defect or a session that
     // coerced its way past the lifetime: the plaintext is authenticated, not
     // validated, so its shape is checked before it is trusted — and an ARRAY is
     // not enough for `scopes`, since a scheme intersects its own vocabulary
-    // with whatever is inside it
+    // with whatever is inside it, nor a present `sid` for a `string`, which is
+    // what `Session` declares and what a `principal` callback is handed
     expect(read).toEqual({
       nothing: undefined,
       stringExp: undefined,
       noPrincipal: undefined,
       stringScopes: undefined,
       numberScopes: undefined,
+      numberSid: undefined,
     });
   });
 

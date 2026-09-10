@@ -388,20 +388,14 @@ const listen = (
             // FIRST, before dispatch: covers the runtime's own 404/500 and a
             // drained response alike, not only what oRPC matched.
             for (const [name, value] of headers) response.setHeader(name, value);
-            // Before dispatch, so no answerer — and no unit — ever sees it. No
-            // body: a refusal tells a cross-site caller nothing it is entitled to.
-            if (csrf && crossSite(request)) {
-              response.writeHead(403);
-              response.end();
-              return;
-            }
             open.add(response);
             response.once("close", () => open.delete(response));
             const answerer = answererFor(routes, request.url);
             // Settled on `'close'`, not when the unit settles: the unit's own
             // contract is that the response is flushed inside it, so `'close'`
             // is the one event that has seen the final status — a 500 written
-            // by the `recoverDefect` arm below included.
+            // by the `recoverDefect` arm below included, and a `403` written
+            // by the refusal below it.
             const settle = observe(
               observers,
               requestOperation(request.method ?? "", answerer?.prefix ?? ""),
@@ -412,6 +406,15 @@ const listen = (
                 attributes: { status: response.statusCode },
               }),
             );
+            // Before dispatch, so no answerer — and no unit — ever sees it. No
+            // body: a refusal tells a cross-site caller nothing it is entitled
+            // to. AFTER the tracking above, so a refusal is an answer the RED
+            // observers count and the drain knows about, like every other.
+            if (csrf && crossSite(request)) {
+              response.writeHead(403);
+              response.end();
+              return;
+            }
             if (draining) retire(response);
             // `recoverDefect`, not `match`: `E` is statically `never` here, so an
             // `errCases` arm would be a dead branch with no case to name.

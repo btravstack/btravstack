@@ -1219,17 +1219,17 @@ oRPC plugin (`RequestCompressionHandlerPlugin`), left to `plugins` because
 inflating a body before the limit measures it is a decision an application
 should make in the open.
 
-**CSRF is deliberately not an option here**, though this package's own spec
-once claimed it: oRPC's protection is meaningful only once a request carries a
-`SameSite` cookie, and nothing here sets one — `sessionAuthenticator` reads a
-cookie a login wrote, and writing it is not this package's yet. It stays
-reachable through `plugins`. Admitting `GET` on an event-iterator procedure
-gives the oRPC answerer its own preflight-free surface too, so once a login
-route sets the cookie both answerers need protecting — but only one of them
-can be protected by a plugin. `GetMethodCsrfProtectionHandlerPlugin` rides
-`plugins` into `RPCHandler` and so covers oRPC alone; `htmx()` takes a
-`prefix` and nothing else, so no oRPC plugin ever sees a fragment request, and
-the fragment half has to be protected inside this package.
+**CSRF is an option, [`csrf`](#csrf)**, and not a `plugins` line. It was a
+`plugins` line while nothing here read a cookie; `sessionAuthenticator` does, so
+the deferral closed. The reason it could not stay a plugin is that a plugin only
+sees what `RPCHandler` handles: `htmx()` takes a `prefix` and nothing else, so
+no oRPC plugin ever sees a fragment request, and the fragment half is exactly
+the half a form `POST` reaches. So the check lives on the raw listener, upstream
+of both answerers, and oRPC's `GetMethodCsrfProtectionHandlerPlugin` — which
+covers the preflight-free `GET` an event-iterator procedure admits, a surface
+the listener's method set deliberately leaves alone — is composed from the same
+flag rather than by hand. `plugins` stays what it always was: every oRPC plugin
+the named options do not cover.
 
 ### `plugins`
 

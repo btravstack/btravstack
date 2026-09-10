@@ -119,6 +119,7 @@ const sessionOf = (plaintext: Uint8Array): Session<unknown> | undefined => {
     typeof decoded.iat === "number" &&
     "exp" in decoded &&
     typeof decoded.exp === "number" &&
+    (!("sid" in decoded) || typeof decoded.sid === "string") &&
     (!("scopes" in decoded) || scopesOf(decoded.scopes))
     ? (decoded as Session<unknown>)
     : undefined;
@@ -130,16 +131,27 @@ const codec = (
 ): SessionCodecService => {
   const [sealing] = keys;
   return {
-    seal: ({ principal, sid, scopes }) => {
-      const iat = Math.floor(Date.now() / 1000);
-      // `JSON.stringify` drops an absent `sid`, so nothing spreads it in.
-      const payload = JSON.stringify({ typ: TYP, principal, sid, scopes, iat, exp: iat + ttlSec });
-      return fromSafePromise(
-        new CompactEncrypt(new TextEncoder().encode(payload))
-          .setProtectedHeader(HEADER)
-          .encrypt(sealing),
-      );
-    },
+    seal: ({ principal, sid, scopes }) =>
+      // Serialised INSIDE the guard: `principal` is the application's own value,
+      // so a cycle in it or a throwing `toJSON` is a Defect on the channel
+      // rather than a throw at a call site whose type says it cannot.
+      fromSafePromise(
+        (async () => {
+          const iat = Math.floor(Date.now() / 1000);
+          // `JSON.stringify` drops an absent `sid`, so nothing spreads it in.
+          const payload = JSON.stringify({
+            typ: TYP,
+            principal,
+            sid,
+            scopes,
+            iat,
+            exp: iat + ttlSec,
+          });
+          return await new CompactEncrypt(new TextEncoder().encode(payload))
+            .setProtectedHeader(HEADER)
+            .encrypt(sealing);
+        })(),
+      ),
     unseal: (cookie) =>
       cookie === undefined
         ? OkAsync(undefined)
