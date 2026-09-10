@@ -44,6 +44,18 @@ export type SessionCodecService = {
    * error and never a hint about which of those it was.
    */
   readonly unseal: (cookie: string | undefined) => AsyncResult<Session<unknown> | undefined, never>;
+  /**
+   * The login flow's own state — a PKCE verifier, `state`, `nonce`, where to
+   * return to — sealed with the SAME keys under its own purpose marker and a
+   * five-minute lifetime. A transient read as a session, or a session read as
+   * one, is `undefined`: the marker is what separates them.
+   */
+  readonly transient: {
+    readonly seal: (state: Readonly<Record<string, string>>) => AsyncResult<string, never>;
+    readonly unseal: (
+      cookie: string | undefined,
+    ) => AsyncResult<Readonly<Record<string, string>> | undefined, never>;
+  };
 };
 
 export class SessionCodec extends Port("HttpSessionCodec")<SessionCodecService> {}
@@ -72,6 +84,9 @@ export const csrfOn = (option: boolean | undefined, schemes: readonly boolean[])
 /** Twelve hours, fixed: there is no sliding re-seal, so this is the whole session. */
 export const DEFAULT_TTL_SEC = 43_200;
 
+/** Five minutes, and not an option: a login that takes longer is a login to start again. */
+export const TRANSIENT_TTL_SEC = 300;
+
 const KEY_BYTES = 32;
 
 const HEADER = { alg: "dir", enc: "A256GCM" } as const;
@@ -81,6 +96,12 @@ const HEADER = { alg: "dir", enc: "A256GCM" } as const;
 // PURPOSE under our algorithm — the transient an OIDC login seals with these
 // very keys, which a client is free to replay under the session cookie's name.
 const TYP = "session";
+
+// The login flow's own marker, on the same keys and the same algorithm.
+const TRANSIENT_TYP = "oidc";
+
+// What `seal` stamps, and what a transient's state is read WITHOUT.
+const STAMPED = new Set(["typ", "iat", "exp"]);
 
 // Decrypt only what this codec issues. Derived from `HEADER` so the two
 // directions cannot drift apart.
@@ -125,6 +146,71 @@ const sessionOf = (plaintext: Uint8Array): Session<unknown> | undefined => {
     : undefined;
 };
 
+// The transient's own shape guard: the login's marker, a numeric lifetime, and
+// every other property a string — it is flow state, not a principal.
+const transientOf = (
+  plaintext: Uint8Array,
+  now: number,
+): Readonly<Record<string, string>> | undefined => {
+  const decoded: unknown = JSON.parse(new TextDecoder().decode(plaintext));
+  if (
+    typeof decoded !== "object" ||
+    decoded === null ||
+    !("typ" in decoded) ||
+    decoded.typ !== TRANSIENT_TYP ||
+    !("iat" in decoded) ||
+    typeof decoded.iat !== "number" ||
+    !("exp" in decoded) ||
+    typeof decoded.exp !== "number" ||
+    decoded.exp <= now
+  )
+    return undefined;
+  const state = Object.entries(decoded).filter(([key]) => !STAMPED.has(key));
+  return state.every(([, value]) => typeof value === "string")
+    ? (Object.fromEntries(state) as Readonly<Record<string, string>>)
+    : undefined;
+};
+
+// One decrypt loop for both purposes: every key is tried, the guard says what a
+// plaintext IS and whether it is still live, and every failure is `undefined`.
+const open = <T>(
+  keys: readonly Uint8Array[],
+  cookie: string | undefined,
+  live: (plaintext: Uint8Array, now: number) => T | undefined,
+): AsyncResult<T | undefined, never> =>
+  cookie === undefined
+    ? OkAsync(undefined)
+    : fromSafePromise(
+        (async () => {
+          const now = Math.floor(Date.now() / 1000);
+          for (const key of keys) {
+            const value = await compactDecrypt(cookie, key, ALGORITHMS)
+              .then(({ plaintext }) => live(plaintext, now))
+              .catch(() => undefined);
+            if (value !== undefined) return value;
+          }
+          return undefined;
+        })(),
+      );
+
+// Serialised INSIDE the guard: a payload carries the application's own values,
+// so a cycle in one is a Defect on the channel rather than a throw at a call
+// site whose type says it cannot.
+const sealed = (
+  key: Uint8Array,
+  ttlSec: number,
+  body: (iat: number, exp: number) => object,
+): AsyncResult<string, never> =>
+  fromSafePromise(
+    (async () => {
+      const iat = Math.floor(Date.now() / 1000);
+      const payload = JSON.stringify(body(iat, iat + ttlSec));
+      return await new CompactEncrypt(new TextEncoder().encode(payload))
+        .setProtectedHeader(HEADER)
+        .encrypt(key);
+    })(),
+  );
+
 const codec = (
   keys: readonly [Uint8Array, ...(readonly Uint8Array[])],
   ttlSec: number,
@@ -132,41 +218,24 @@ const codec = (
   const [sealing] = keys;
   return {
     seal: ({ principal, sid, scopes }) =>
-      // Serialised INSIDE the guard: `principal` is the application's own value,
-      // so a cycle in it or a throwing `toJSON` is a Defect on the channel
-      // rather than a throw at a call site whose type says it cannot.
-      fromSafePromise(
-        (async () => {
-          const iat = Math.floor(Date.now() / 1000);
-          // `JSON.stringify` drops an absent `sid`, so nothing spreads it in.
-          const payload = JSON.stringify({
-            typ: TYP,
-            principal,
-            sid,
-            scopes,
-            iat,
-            exp: iat + ttlSec,
-          });
-          return await new CompactEncrypt(new TextEncoder().encode(payload))
-            .setProtectedHeader(HEADER)
-            .encrypt(sealing);
-        })(),
-      ),
+      // `JSON.stringify` drops an absent `sid`, so nothing spreads it in.
+      sealed(sealing, ttlSec, (iat, exp) => ({ typ: TYP, principal, sid, scopes, iat, exp })),
     unseal: (cookie) =>
-      cookie === undefined
-        ? OkAsync(undefined)
-        : fromSafePromise(
-            (async () => {
-              const now = Math.floor(Date.now() / 1000);
-              for (const key of keys) {
-                const session = await compactDecrypt(cookie, key, ALGORITHMS)
-                  .then(({ plaintext }) => sessionOf(plaintext))
-                  .catch(() => undefined);
-                if (session !== undefined) return session.exp > now ? session : undefined;
-              }
-              return undefined;
-            })(),
-          ),
+      open(keys, cookie, (plaintext, now) => {
+        const session = sessionOf(plaintext);
+        return session !== undefined && session.exp > now ? session : undefined;
+      }),
+    transient: {
+      // The markers last, so state a caller spelled `typ` cannot become one.
+      seal: (state) =>
+        sealed(sealing, TRANSIENT_TTL_SEC, (iat, exp) => ({
+          ...state,
+          typ: TRANSIENT_TYP,
+          iat,
+          exp,
+        })),
+      unseal: (cookie) => open(keys, cookie, transientOf),
+    },
   };
 };
 

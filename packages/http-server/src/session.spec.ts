@@ -1,5 +1,5 @@
 import type { ConfigInvalid } from "@btravstack/config";
-import { decodeProtectedHeader } from "jose";
+import { compactDecrypt, decodeProtectedHeader } from "jose";
 import type { Result } from "unthrown";
 import { describe, expect } from "vitest";
 
@@ -214,6 +214,120 @@ describe("sessionCodec", () => {
     // THEN all three are the same anonymous answer, so nothing outside learns
     // which of them it got wrong
     expect(read).toEqual({ absent: undefined, nonsense: undefined, tampered: undefined });
+  });
+
+  it("seals login state and unseals it back, on its own five-minute lifetime", async ({
+    sessionCodecOf,
+  }) => {
+    // GIVEN a codec and the state a login flow carries across the provider
+    const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
+    const state = { verifier: "v-1", state: "s-1", nonce: "n-1", returnTo: "/orders" };
+
+    // WHEN it is sealed, read back, and the cookie also opened by hand for what
+    // the codec stamped on it
+    const cookie = (await codec.transient.seal(state)).get();
+    const { plaintext } = await compactDecrypt(
+      cookie,
+      new Uint8Array(Buffer.from(sessionKeys.alpha, "base64url")),
+    );
+    const stamped = JSON.parse(new TextDecoder().decode(plaintext)) as {
+      readonly iat: number;
+      readonly exp: number;
+    };
+
+    // THEN the state is what went in, carrying none of the markers the codec
+    // stamped — and the five minutes are the codec's rather than a caller's
+    expect({
+      read: (await codec.transient.unseal(cookie)).get(),
+      lifetime: stamped.exp - stamped.iat,
+    }).toEqual({ read: state, lifetime: 300 });
+  });
+
+  it("refuses login state presented as a session", async ({ sessionCodecOf }) => {
+    // GIVEN a transient whose state is a perfectly good session but for its
+    // marker — `principal`, a string, and the codec's own numeric stamps
+    const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
+
+    // WHEN the cookie is replayed under the session's name, which a client is
+    // free to do: `__Host-` binds `Set-Cookie`, never a request
+    const opened = codec.transient.seal({ principal: "u-1" }).flatMap(codec.unseal);
+
+    // THEN it is anonymous: nothing but the marker separates two purposes
+    // sharing one key list and one algorithm
+    await expect(opened).toBeOkWith(undefined);
+  });
+
+  it("refuses a session presented as login state", async ({ sessionCodecOf }) => {
+    // GIVEN a session whose principal is a string, so its payload is a
+    // perfectly good record of flow state but for its marker
+    const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
+
+    // WHEN it arrives where the login flow's own cookie is read
+    const opened = codec.seal({ principal: "u-1" }).flatMap(codec.transient.unseal);
+
+    // THEN it is nothing either: the two markers refuse each other in both
+    // directions, by construction
+    await expect(opened).toBeOkWith(undefined);
+  });
+
+  it("answers undefined for login state past its lifetime", async ({
+    sessionCodecOf,
+    forgeSession,
+  }) => {
+    // GIVEN a transient forged under the codec's own header and key, stamped
+    // with a lifetime that ended in 1970 — the flow abandoned at the provider
+    const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
+
+    // WHEN it comes back
+    const opened = forgeSession(
+      sessionKeys.alpha,
+      { alg: "dir", enc: "A256GCM" },
+      {
+        typ: "oidc",
+        verifier: "v-1",
+        iat: 0,
+        exp: 1,
+      },
+    ).flatMap(codec.transient.unseal);
+
+    // THEN it is nothing: five minutes is the whole flow, and an expired
+    // transient is simply not one
+    await expect(opened).toBeOkWith(undefined);
+  });
+
+  it("refuses login state whose payload is not a record of strings", async ({
+    sessionCodecOf,
+    forgeSession,
+  }) => {
+    // GIVEN transients forged under the codec's own header and key, carrying
+    // the payloads a real `transient.seal` never writes
+    const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
+    const forged = (payload: unknown) =>
+      forgeSession(sessionKeys.alpha, { alg: "dir", enc: "A256GCM" }, payload).flatMap(
+        codec.transient.unseal,
+      );
+    const read = {
+      nothing: (await forged(null)).get(),
+      numberValue: (await forged({ typ: "oidc", verifier: 1, iat: 0, exp: 4_102_444_800 })).get(),
+      nestedValue: (
+        await forged({ typ: "oidc", verifier: { v: "x" }, iat: 0, exp: 4_102_444_800 })
+      ).get(),
+      stringExp: (await forged({ typ: "oidc", verifier: "v-1", iat: 0, exp: "4102444800" })).get(),
+      stringIat: (
+        await forged({ typ: "oidc", verifier: "v-1", iat: "0", exp: 4_102_444_800 })
+      ).get(),
+    };
+
+    // THEN all five are nothing rather than a defect or a transient that
+    // coerced its way past the lifetime: the plaintext is authenticated, not
+    // validated, and flow state is strings all the way down
+    expect(read).toEqual({
+      nothing: undefined,
+      numberValue: undefined,
+      nestedValue: undefined,
+      stringExp: undefined,
+      stringIat: undefined,
+    });
   });
 
   it("names HTTP_SESSION_KEYS when a key is not base64url of 32 bytes", async ({

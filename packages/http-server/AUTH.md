@@ -302,6 +302,15 @@ The two rules this half exists to state, before the detail:
   No cookie, a cookie no key opens, an expired session and a declined
   principal are ONE answer: `Unauthenticated`, carrying no reason.
 
+  **The codec seals a second thing, and this scheme never reads it.**
+  `SessionCodec`'s `transient` pair seals the login flow's own state — a PKCE
+  verifier, `state`, `nonce`, where to return to — with the same keys under
+  `typ: "oidc"` and a fixed `TRANSIENT_TTL_SEC` of five minutes. A scheme reads
+  `typ: "session"` only, so a client replaying its transient under the session
+  cookie's name is anonymous, and the mirror holds too — which is what lets one
+  key list serve both purposes. See `packages/http-server/CLAUDE.md` for why
+  the pair is on the codec rather than a provider of its own.
+
   **Composing it turns CSRF on**, which is the one thing this scheme does that
   no header-borne one does. Its description carries `cookie: true`;
   `defineHttp` turns that into a `CookieSchemes` member beside the scheme's

@@ -1206,6 +1206,36 @@ nothing stated — and the cost of adding a REQUIRED field to a cookie format
 already in the wild is a global logout at deploy, the same failure `decodeKey`'s
 round trip worries about. Two lines now beats a deprecation window on a cookie.
 
+**`codec.transient` is the login flow's own cookie, on the SAME codec.** `seal`
+takes a `Record<string, string>` — a PKCE verifier, `state`, `nonce`, where to
+return to — and writes `typ: "oidc"`, `iat` and `exp` over it; `unseal` requires
+that marker back and answers the state with the markers stripped. The two
+markers therefore refuse each other in BOTH directions, which is what makes a
+replayed transient anonymous under the session's name and a replayed session
+nothing under the login's.
+
+**It is a pair on the codec rather than a second provider, because the KEYS
+live inside the codec.** `make` decodes `HTTP_SESSION_KEYS` once and closes over
+the decoded bytes; nothing hands them out. So a second provider is either a
+second `sessionCodec()` — di's duplicate-provider defect, refused at build — or
+a second port re-reading the variable, with its own decode, its own
+`ConfigInvalid` message and its own rotation story for one list an operator
+rotates once. One codec, two purposes, one key list is the shape the `typ`
+marker was already paying for.
+
+**`TRANSIENT_TTL_SEC` is 300 and is NOT an option.** `ttlSec` is a posture a
+deployment argues about; five minutes between the redirect out and the callback
+back is not — a login that takes longer is a login to start again, and a knob
+there would only ever be turned up. With no `ttlSec: 0` route into it, the
+expiry spec forges a payload with a past `exp` under the codec's own key, which
+is the same fixture the purpose and shape cases already use.
+
+**The state is strings, and the guard says so.** `transientOf` requires the
+marker, a numeric `iat`/`exp`, and every OTHER property a string — flow state is
+what goes in a query string, not a principal — so a forged nested object or
+number is `undefined` like everything else. `seal` writes the markers LAST, so a
+caller whose state spells `typ` cannot decide what the payload is.
+
 **The plaintext is authenticated, not validated.** The AEAD tag says the bytes
 are ours; it says nothing about what they are or what shape they have, and a key
 this codec holds could have sealed anything. So `sessionOf` checks `typ`, then

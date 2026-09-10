@@ -108,7 +108,8 @@ to.
 never imports it installs nothing: `@btravstack/http-server/jwt`
 (`jwtAuthenticator`, `DEFAULT_ALGORITHMS`, and the `Claims` / `JwtOptions`
 types — `jose`), `@btravstack/http-server/session` (`sessionCodec`,
-`sessionAuthenticator`, `SessionCodec`, `DEFAULT_TTL_SEC`, and the `Session` /
+`sessionAuthenticator`, `SessionCodec`, `DEFAULT_TTL_SEC`, `TRANSIENT_TTL_SEC`,
+and the `Session` /
 `SessionCodecService` / `SessionOptions` types — `jose` again), and
 `@btravstack/http-server/openapi` (`openApiDocument` — `@orpc/openapi`). All
 three have sections of their own below.
@@ -344,6 +345,34 @@ any value it holds under any name.
 is not a JWE, a key that is gone, an edited ciphertext, another algorithm,
 another purpose, a payload that is not a session, one past its `exp`. Nothing
 outside learns which of them it got wrong.
+
+**`codec.transient` seals the login flow's own state**, on the same service:
+
+<!-- doctest: isolate
+import type { SessionCodecService } from "@btravstack/http-server/session";
+declare const codec: SessionCodecService;
+declare const cookie: string | undefined;
+-->
+
+```ts
+void codec.transient.seal({ verifier: "v", state: "s", nonce: "n", returnTo: "/orders" });
+void codec.transient.unseal(cookie); // the state back, or nothing
+```
+
+It takes a `Record<string, string>` — everything an OIDC redirect has to
+remember — and seals it with the SAME keys under its own purpose marker and a
+fixed lifetime of `TRANSIENT_TTL_SEC`, five minutes. `unseal` requires that
+marker back and answers the state with the codec's own stamps stripped, so the
+two refuse each other in both directions: a transient replayed under the
+session cookie's name is anonymous, and a session presented as login state is
+nothing. Five minutes is a constant rather than an option — a login that takes
+longer is a login to start again.
+
+It is a pair on the codec rather than a provider of its own because the decoded
+keys live inside the codec: a second provider would be either a second
+`sessionCodec()` — a duplicate provider di refuses at build — or a second port
+re-reading `HTTP_SESSION_KEYS`, with its own rotation story for a list an
+operator rotates once.
 
 **`sessionAuthenticator<P>()({ cookie?, scopes?, principal? })`** is the scheme
 over that codec, and it is an ordinary `Authenticator`: bind it in
