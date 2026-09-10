@@ -825,7 +825,7 @@ exports: [HttpRuntime, HttpConfig, HttpHandler] })` — this plus `orpc()`. The
   application would otherwise have to compose `http()` and declare an oRPC
   router it does not have. `httpRuntime`, the runtime value's factory, stays
   internal.
-- **`htmx({ prefix? })` → a `Provider.member(HttpHandler)` over
+- **`htmx({ prefix?, login? })` → a `Provider.member(HttpHandler)` over
   `{ fragments: HtmxFragmentsPort, config: HttpConfig }`** (`htmx.ts`) — the
   second answerer: fragments, mounted under `prefix` (default `/`). It
   matches a request against `fragments.routes` by method and path, resolves
@@ -837,6 +837,35 @@ exports: [HttpRuntime, HttpConfig, HttpHandler] })` — this plus `orpc()`. The
   `404` answers it. `cors` and `compression` are oRPC plugins with no
   fragment-answerer equivalent — only `bodyLimit`, read off the same
   `HttpConfig` `orpc()` reads, applies here.
+
+  **`login` is where this answerer and the login answerer touch, and it is the
+  ONLY place the two know about each other.** Set it — `/auth`, whatever
+  `oidc()` is mounted at — and a route whose `requires` resolves
+  `Unauthenticated` sends the caller there carrying
+  `?return=<encodeURIComponent(request.url)>` instead of answering a bare
+  `401`: `302 Location` for a navigating browser, and `401` with `HX-Redirect`
+  for a request carrying `HX-Request: true`. **The htmx half is not a
+  cosmetic difference**: htmx follows a `302` inside the XHR and swaps the
+  login page into whatever target the fragment named, so the browser has to
+  be told to navigate the window rather than shown a redirect — and the
+  status stays `401`, since the request was refused and only the navigation
+  is a redirect. `HX-Request` is the discriminator because htmx sets it on
+  every request it makes; nothing here reads `Sec-Fetch-Mode`, and no
+  dependency was added for either.
+
+  **`UnderScoped` stays `403` whether or not `login` is set.** A caller who IS
+  logged in and lacks the scope would come straight back to the same `403`;
+  sending them to log in again teaches a loop. That split is why the
+  `mapErrCases` fold answers a small `Refusal` — `{ status }` or
+  `{ login }` — rather than the bare number it used to: the redirect decision
+  is one branch beside the status one, and the fold stays exhaustive on
+  `resolveScheme`'s `Err` union, so a third case added there still fails this
+  compile.
+
+  The `return` value is the request's own path and query, `request.url` as it
+  arrived, percent-encoded ONCE. Nothing here validates it: an open-redirect
+  check is the login answerer's, at the only point where what it points at is
+  about to be followed.
 
   **Routes are matched in the composition root's own array order, first match
   wins — and that ordering is a SECURITY property, not only a routing one.**

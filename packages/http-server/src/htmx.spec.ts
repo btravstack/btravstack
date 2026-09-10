@@ -391,6 +391,67 @@ describe("htmx", () => {
   });
 });
 
+describe("htmx login", () => {
+  it("sends a navigating browser with no session to login, carrying where it was going", async ({
+    loginServer,
+  }) => {
+    // GIVEN a deployment pinning `login`, and a session-protected route
+    const { get } = await loginServer("/auth");
+
+    // WHEN a browser navigates to it — query and all — with no session
+    const answer = await get("/private?tab=open");
+
+    // THEN it is redirected to login, its whole path and query encoded once
+    expect({ status: answer.status, location: answer.location }).toEqual({
+      status: 302,
+      location: "/auth?return=%2Fprivate%3Ftab%3Dopen",
+    });
+  });
+
+  it("tells an htmx request to redirect rather than redirecting it", async ({ loginServer }) => {
+    // GIVEN the same deployment
+    const { get } = await loginServer("/auth");
+
+    // WHEN htmx itself asks for the fragment with no session
+    const answer = await get("/private", { "hx-request": "true" });
+
+    // THEN it is refused, with the navigation htmx performs itself — a 302
+    // would be followed inside the XHR and swapped in as the fragment
+    expect({ status: answer.status, hxRedirect: answer.hxRedirect }).toEqual({
+      status: 401,
+      hxRedirect: "/auth?return=%2Fprivate",
+    });
+  });
+
+  it("keeps 403 for a session lacking the scope", async ({ loginServer }) => {
+    // GIVEN the same deployment and a real session holding no scopes
+    const { get, cookie } = await loginServer("/auth");
+
+    // WHEN it asks for a route requiring one
+    const answer = await get("/exports", { cookie });
+
+    // THEN it is refused outright: logging in again would change nothing
+    expect({ status: answer.status, location: answer.location }).toEqual({
+      status: 403,
+      location: null,
+    });
+  });
+
+  it("answers 401 as before when no login is configured", async ({ loginServer }) => {
+    // GIVEN a deployment that pins no `login`
+    const { get } = await loginServer();
+
+    // WHEN a browser navigates to the session-protected route with no session
+    const answer = await get("/private");
+
+    // THEN nothing changed: a bare 401, pointing nowhere
+    expect({ status: answer.status, location: answer.location }).toEqual({
+      status: 401,
+      location: null,
+    });
+  });
+});
+
 describe("htmx unit kinds", () => {
   it("forks the user module, seeded with the principal, for a route that requires one", async ({
     kindedHtmx,

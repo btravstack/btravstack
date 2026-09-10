@@ -194,12 +194,39 @@ itself: `HX-Redirect`, `HX-Trigger`, `HX-Retarget` and `HX-Reswap` — htmx's
 own response mechanics — are unreachable, and a route cannot answer its own
 `404` or `422`. "Not found" is rendered markup — `orderRowFragment`'s own
 `.recoverErrCases` above — never a status. A defensible scope decision, not
-an oversight.
+an oversight. The answerer itself sets exactly one of those headers, on a
+refusal rather than on a route: `HX-Redirect`, when
+[`login`](#send-an-unauthenticated-caller-to-log-in) is pinned.
 
 Every `200` also carries `Cache-Control: no-store`, unconditional: a public
 route can still render a caller- or resource-scoped fragment off a path
 parameter alone, and there is no cheaper signal than "never store" for this
 package to key the header on.
+
+## Send an unauthenticated caller to log in
+
+A marked route answers `401` on its own, which is the right answer to a
+machine and the wrong one to a person: a browser shows nothing. Pin
+[`login`](/reference/http-server#login-—-where-an-unauthenticated-caller-is-sent)
+on `htmx()` — the path the login answerer is mounted at — and a route whose
+`requires` resolves `Unauthenticated` sends the caller there instead,
+carrying `?return=` set to the path and query they asked for:
+
+- **a browser navigating** gets `302 Location: /auth?return=%2Forders%2F42%2Frow`;
+- **htmx's own request** — the one carrying `HX-Request: true` — gets `401`
+  with `HX-Redirect` naming the same URL. htmx follows a `302` inside the XHR
+  and would swap the login page into whatever target the fragment named, so
+  the browser has to be told to navigate the window instead. That is the one
+  place this answerer sets an htmx response header, and it does it for a
+  refusal, not for a route.
+
+A caller who is **logged in and lacks the scope** still gets `403`, `login` or
+not: sending them back through a login they already completed lands them on
+the same `403`.
+
+`return` is percent-encoded once and validated nowhere here. Checking that it
+points back inside this deployment is the login answerer's job, at the point
+it is about to be followed.
 
 ## CSRF, and why this answerer needed it first
 

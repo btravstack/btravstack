@@ -432,6 +432,76 @@ const csrfCallsOf = async (origin: string): Promise<CsrfCalls> => {
   };
 };
 
+/**
+ * The login deployment: the session scheme over a vocabulary, one route
+ * requiring the scheme alone and one requiring a scope no session it seals
+ * holds — the pair that separates "send them to log in" from "they are logged
+ * in and still may not".
+ */
+const loginApi = defineHttp({
+  authenticators: {
+    session: sessionAuthenticator<SessionIdentity>()({ scopes: ["orders:export"] }),
+  },
+});
+
+const loginPrivateFragment = loginApi.HtmxGet("/private", { requires: [{ session: [] }] })({
+  inject: {},
+  sync: () => (context) => OkAsync(html`<p>${context.principal.userId}</p>`),
+});
+
+const loginExportsFragment = loginApi.HtmxGet("/exports", {
+  requires: [{ session: ["orders:export"] }],
+})({ inject: {}, sync: () => () => OkAsync(html`<p>exports</p>`) });
+
+const loginFragments = loginApi.HtmxFragments([loginPrivateFragment, loginExportsFragment]);
+
+const loginAppOf = (login: `/${string}` | undefined) =>
+  Module("HtmxLoginApp")({
+    imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+    provides: [
+      htmx(login === undefined ? {} : { login }),
+      loginPrivateFragment,
+      loginExportsFragment,
+      loginFragments,
+      sessionCodec({ keys: [sessionKeys.alpha] }),
+      ...loginFragments.authenticators,
+    ],
+    exports: [HttpRuntime, HttpHandler],
+    needs: [Env],
+  });
+
+/** One call against the login deployment, and what a refusal put on the wire. */
+export type LoginCalls = {
+  /** The `cookie` header the app's own codec sealed — a session holding no scopes. */
+  readonly cookie: string;
+  readonly get: (
+    path: string,
+    headers?: Readonly<Record<string, string>>,
+  ) => Promise<{
+    readonly status: number;
+    readonly location: string | null;
+    readonly hxRedirect: string | null;
+  }>;
+};
+
+const loginCallsOf = async (origin: string): Promise<LoginCalls> => {
+  const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
+  const sealed = (await codec.seal({ principal: { userId: "u-1" } })).get();
+  return {
+    cookie: `__Host-session=${sealed}`,
+    get: async (path, headers = {}) => {
+      // Manual, or fetch follows the 302 to a login answerer this deployment
+      // does not serve and reports that hop's own 404 instead.
+      const response = await fetch(`${origin}${path}`, { headers, redirect: "manual" });
+      return {
+        status: response.status,
+        location: response.headers.get("location"),
+        hxRedirect: response.headers.get("hx-redirect"),
+      };
+    },
+  };
+};
+
 /** What both shipped header-borne authenticators resolve to in these specs. */
 export type ServiceIdentity = { readonly appId: string };
 export type JwtIdentity = { readonly tenantId: string; readonly userId: string };
@@ -1675,6 +1745,11 @@ export type HttpFixtures = {
   /** The built `htmx()` answerer itself — see `htmxAnswererOf` for why. */
   readonly htmxAnswerer: () => AsyncResult<HttpAnswerer, never>;
   /**
+   * `htmx()` over the session scheme, with `login` pinned or left off — the
+   * two deployments the refusal differs between. Shut down by the fixture.
+   */
+  readonly loginServer: (login?: `/${string}`) => Promise<LoginCalls>;
+  /**
    * The starter over `HttpModule({ router, fragments })` — both protocols from
    * one runtime on one port. Shut down by the fixture.
    */
@@ -2438,6 +2513,15 @@ export const it = test.extend<HttpFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   htmxAnswerer: async ({}, use) => {
     await use(htmxAnswererOf);
+  },
+
+  loginServer: async ({ boot }, use) => {
+    await use(async (login) => {
+      const app = boot(loginAppOf(login));
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return await loginCallsOf(`http://127.0.0.1:${info.port}`);
+    });
   },
 
   bothProtocols: async ({ boot }, use) => {

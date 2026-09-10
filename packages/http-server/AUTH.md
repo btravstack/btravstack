@@ -417,7 +417,11 @@ The two rules this half exists to state, before the detail:
     under-scoped answers `UnderScoped`; only a caller no requirement accepted
     at all answers `Unauthenticated`. Neither carries a reason: the refusal is
     typed, not messaged, so what a caller is told is each answerer's own
-    decision.
+    decision. **The distinction is what makes `htmx({ login })` possible**:
+    only `Unauthenticated` is a caller a login can help, so that is the one
+    case sent to `/auth`, and an `UnderScoped` caller — logged in, and still
+    not allowed — keeps its `403` rather than being taught a loop through a
+    login it already completed.
   - **A defect short-circuits rather than falling through.** A defect is a bug
     in the authenticator, not a refusal; falling through would let a broken
     verifier silently promote every caller to the next scheme. It stays on the

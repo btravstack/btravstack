@@ -87,7 +87,7 @@ declare const view: (order: Order) => OrderView;
 | `ParamsOf`             | type  | `ParamsOf<Path>` — the `:name` segments a path template names, e.g. `ParamsOf<"/orders/:id/row">` is `{ readonly id: string }`                                                                                                                                                                               |
 | `HtmxFragmentsPort`    | value | `class HtmxFragmentsPort extends Port("HtmxFragments")<{ routes; authenticators }> {}` — every route composed into one port; what `htmx()` answers from                                                                                                                                                      |
 | `FragmentAnswer`       | type  | what the composed port carries for one route — its declared `unit` record, and a `handle` taking the whole `{ principal, unit }` context, both erased to `unknown`                                                                                                                                           |
-| `htmx`                 | value | `htmx({ prefix? })` — the second answerer, one `HttpHandler` member serving fragments, mounted under `prefix` (default `/`)                                                                                                                                                                                  |
+| `htmx`                 | value | `htmx({ prefix?, login? })` — the second answerer, one `HttpHandler` member serving fragments, mounted under `prefix` (default `/`), sending an unauthenticated caller to `login` when one is pinned                                                                                                         |
 | `HtmxOptions`          | type  | `htmx()`'s options                                                                                                                                                                                                                                                                                           |
 
 `OrpcController`/`OrpcRouter` and `HtmxGet`/`HtmxPost`/`HtmxFragments` are
@@ -1251,8 +1251,8 @@ should make in the open.
 **CSRF is an option, [`csrf`](#csrf)**, and not a `plugins` line. It was a
 `plugins` line while nothing here read a cookie; `sessionAuthenticator` does, so
 the deferral closed. The reason it could not stay a plugin is that a plugin only
-sees what `RPCHandler` handles: `htmx()` takes a `prefix` and nothing else, so
-no oRPC plugin ever sees a fragment request, and the fragment half is exactly
+sees what `RPCHandler` handles: `htmx()` takes no plugins and runs no oRPC
+handler, so no oRPC plugin ever sees a fragment request, and the fragment half is exactly
 the half a form `POST` reaches. So the check lives on the raw listener, upstream
 of both answerers, and oRPC's `GetMethodCsrfProtectionHandlerPlugin` — which
 covers the preflight-free `GET` an event-iterator procedure admits, a surface
@@ -1372,13 +1372,42 @@ unwritten, exactly like oRPC's answerer, so the runtime's own `404` answers
 it — and never forks, since the fork is the answerer's, for a request it
 handles and is about to hand to its own route.
 
-| Option   | Required | Default | What it is                  |
-| -------- | -------- | ------- | --------------------------- |
-| `prefix` | no       | `/`     | where fragments are mounted |
+| Option   | Required | Default | What it is                                                                                        |
+| -------- | -------- | ------- | ------------------------------------------------------------------------------------------------- |
+| `prefix` | no       | `/`     | where fragments are mounted                                                                       |
+| `login`  | no       | —       | where the login answerer is mounted; unset, an unauthenticated caller gets a bare `401` as before |
 
 Only `bodyLimit`, off the same `HttpConfig` `orpc()` reads, applies to this
 answerer — `cors` and `compression` are oRPC plugins with no fragment
 equivalent.
+
+### `login` — where an unauthenticated caller is sent
+
+Pin `login` and a route whose `requires` resolves `Unauthenticated` sends the
+caller there instead of answering a bare `401`, carrying where they were
+going:
+
+| The request                       | Answer | Header                                 |
+| --------------------------------- | ------ | -------------------------------------- |
+| a browser navigating              | `302`  | `Location: /auth?return=%2Fprivate`    |
+| htmx's own (`HX-Request: true`)   | `401`  | `HX-Redirect: /auth?return=%2Fprivate` |
+| under-scoped, whatever the sender | `403`  | none                                   |
+
+**The htmx row is not a cosmetic difference.** htmx follows a `302` inside the
+XHR and swaps the login page into whatever target the fragment named, so a
+request htmx made has to be told to navigate the window — which is what
+`HX-Redirect` does. The status stays `401`: the request was refused, and only
+the browser's navigation is a redirect. `HX-Request` is the discriminator
+because htmx sets it on every request it makes.
+
+**`UnderScoped` is never redirected.** A caller who is logged in and lacks the
+scope would come straight back to the same `403`; only
+[`Unauthenticated`](#authentication) is a caller a login can help.
+
+`return` is the request's own path and query — `request.url` as it arrived —
+percent-encoded once with `encodeURIComponent`. This answerer does not
+validate it: the check that it points back inside this deployment belongs
+where it is about to be followed, in the login answerer.
 
 ::: warning
 **Routes are matched in the composition root's own array order, first match

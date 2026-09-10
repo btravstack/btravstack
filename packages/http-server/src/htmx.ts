@@ -16,6 +16,14 @@ import { unitRecordOf } from "./unit.js";
 export type HtmxOptions = {
   /** Where fragments are mounted. Default `/`. */
   readonly prefix?: `/${string}`;
+  /**
+   * Where the login answerer is mounted. Set it and a route whose `requires`
+   * resolves `Unauthenticated` sends the caller there carrying `?return=` —
+   * `302 Location` for a navigating browser, `401 HX-Redirect` for a request
+   * htmx made. Unset, that route answers a bare `401`, and an under-scoped
+   * caller answers `403` either way.
+   */
+  readonly login?: `/${string}`;
 };
 
 /**
@@ -46,6 +54,7 @@ export const htmx = (options: HtmxOptions = {}) => {
           fragments.authenticators,
           config.bodyLimit,
           prefix,
+          options.login,
           request,
           response,
           host,
@@ -134,11 +143,38 @@ const refuse = (response: ServerResponse, status: number): void => {
   response.end();
 };
 
+/** A refused caller's answer: a bare status, or where to send one with no session. */
+type Refusal = { readonly status: 401 | 403 } | { readonly login: string };
+
+const refusalOf = (login: `/${string}` | undefined, url: string | undefined): Refusal =>
+  login === undefined
+    ? { status: 401 }
+    : { login: `${login}?return=${encodeURIComponent(url ?? "/")}` };
+
+const refuseAuth = (request: IncomingMessage, response: ServerResponse, refusal: Refusal): void => {
+  if ("status" in refusal) {
+    refuse(response, refusal.status);
+    return;
+  }
+  // htmx follows a 302 inside the XHR and swaps the login page into whatever
+  // target the fragment named; `HX-Redirect` is how it is told to navigate the
+  // window instead. The status stays 401 there — the request was refused, and
+  // only the browser's own navigation is a redirect.
+  if (request.headers["hx-request"] === "true") {
+    response.writeHead(401, { "hx-redirect": refusal.login });
+    response.end();
+    return;
+  }
+  response.writeHead(302, { location: refusal.login });
+  response.end();
+};
+
 const respond = async (
   routes: readonly FragmentAnswer[],
   authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
   bodyLimit: number,
   prefix: `/${string}`,
+  login: `/${string}` | undefined,
   request: IncomingMessage,
   response: ServerResponse,
   host: UnitHost<never>,
@@ -162,15 +198,17 @@ const respond = async (
       request.headers,
     ).mapErrCases((matcher) =>
       matcher
-        .with(P.tag("Unauthenticated"), () => 401 as const)
-        .with(P.tag("UnderScoped"), () => 403 as const),
+        .with(P.tag("Unauthenticated"), (): Refusal => refusalOf(login, request.url))
+        // Never sent to log in: a caller who IS logged in and lacks the scope
+        // would come straight back to the same 403.
+        .with(P.tag("UnderScoped"), (): Refusal => ({ status: 403 })),
     );
     if (resolved.isDefect()) {
       // oxlint-disable-next-line unthrown/no-throw -- the only way to hand a defect back to the runtime's own 500 fallback; `handle` has no returned-error channel to carry it
       throw resolved.cause;
     }
     if (resolved.isErr()) {
-      refuse(response, resolved.error);
+      refuseAuth(request, response, resolved.error);
       return;
     }
     authenticated = resolved.value;
