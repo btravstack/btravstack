@@ -132,6 +132,15 @@ overrides:
   # fixed version), as unthrown does — `vitepress build` is verified against it.
   # This also drags esbuild up past GHSA-67mh-4wv8-2f99.
   "vite@<6.4.3": "6.4.3"
+  # GHSA-7w5x-hrqm-74c2: smol-toml denial of service on a malformed TOML
+  # document. Reaches us via markdownlint-cli2 > smol-toml, which reads a
+  # `.markdownlint-cli2.toml` this repository does not have — the config here is
+  # `.markdownlint-cli2.jsonc`, so the parser is never handed a document at all,
+  # and nothing published depends on it. markdownlint-cli2@0.23.2 is latest and
+  # pins smol-toml at 1.7.0, one below the advisory's first patched 1.7.1, so
+  # there is nothing upstream to take; lift the line to 1.8.0. Drop this when
+  # markdownlint-cli2 ships a release that takes 1.7.1 or later.
+  "smol-toml@<1.7.1": "1.8.0"
   # GHSA-ggr8-5vv4-36mx: deepmerge-ts stack exhaustion when merging recursive
   # object graphs. Reaches us via examples/order-infrastructure > prisma >
   # @prisma/config > deepmerge-ts — the CLI at `generate` time, never a
