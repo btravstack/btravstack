@@ -169,6 +169,13 @@ const integerIn = (min: number, max: number) => {
 const absoluteUrl = (value: string): Result<string, ConfigFieldInvalid> =>
   URL.canParse(value) ? Ok(value) : invalid(`is not a URL: ${JSON.stringify(value)}`);
 
+const atLeast =
+  (min: number) =>
+  (entries: readonly string[]): Result<readonly string[], ConfigFieldInvalid> =>
+    entries.length < min
+      ? invalid(`must list at least ${min}, got ${entries.length}`)
+      : Ok(entries);
+
 const TRUTHY = new Set(["true", "1", "yes", "on"]);
 const FALSY = new Set(["false", "0", "no", "off"]);
 
@@ -234,6 +241,31 @@ export const Config = {
    */
   url: (variable: string, options: WithDefault<string> = {}): ConfigField<string> =>
     present(variable, options, absoluteUrl, absoluteUrl),
+
+  /**
+   * A comma-separated list, each entry trimmed and empty entries dropped, so
+   * `"a, b,"` is `["a", "b"]`. `min` (default `1`) is the floor a shorter list
+   * is named against — a variable that lists nothing is a deployment mistake,
+   * not an empty list.
+   */
+  list: (
+    variable: string,
+    options: WithDefault<readonly string[]> & { readonly min?: number } = {},
+  ): ConfigField<readonly string[]> => {
+    const rule = atLeast(options.min ?? 1);
+    return present(
+      variable,
+      options,
+      (value) =>
+        rule(
+          value
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter((entry) => entry !== ""),
+        ),
+      rule,
+    );
+  },
 
   /** A TCP port: a whole number the OS will accept, `0` (an ephemeral bind) included. */
   port: (variable: string, options: WithDefault<number> = {}): ConfigField<number> =>

@@ -201,14 +201,26 @@ route can still render a caller- or resource-scoped fragment off a path
 parameter alone, and there is no cheaper signal than "never store" for this
 package to key the header on.
 
-## CSRF, one release away
+## CSRF, and why this answerer needed it first
 
-This answerer carries no CSRF protection today, for the same reason oRPC's
-`GetMethodCsrfProtectionHandlerPlugin` sits unused: it is meaningful only
-once a request carries a `SameSite` cookie, and this package configures no
-cookies. A fragment's `POST` is form-urlencoded — exactly the request shape
-that skips a browser's CORS preflight — so the day a cookie authenticator
-lands, CSRF stops being inert for this answerer first.
+A fragment's `POST` is form-urlencoded — exactly the request shape that skips a
+browser's CORS preflight — so a session cookie riding it is the one case CSRF
+is about. That is why the protection was inert until
+[`sessionAuthenticator`](/reference/http-server#the-session-cookie) shipped: it bites only
+on a request carrying a cookie, and nothing here read one.
+
+It is now the `csrf` option on `http()` and `HttpModule`, **on by default when
+a composed scheme reads a cookie**. A state-changing request that carries
+cookies must say it is same-site — `Sec-Fetch-Site: same-origin` or
+`same-site`, or, for a client sending no fetch metadata, an `Origin` whose host
+is the request's own — and is refused with a bare `403` before any answerer
+sees it. A request with no cookie is not checked: a caller holding a bearer
+token is not a CSRF target, and a browser cannot forge one. oRPC's
+`GetMethodCsrfProtectionHandlerPlugin` rides the same flag, so the two
+answerers are protected by one decision.
+
+Nothing here is a token or a hidden form field: the check reads headers a
+browser sets and a page cannot.
 
 ## See also
 

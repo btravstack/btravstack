@@ -23,10 +23,11 @@ import {
   type UnitsNeedsOf,
 } from "./http-runtime.js";
 import { orpc, type OrpcRouterPort } from "./orpc.js";
+import type { CookieSchemes } from "./session.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
 type HttpStarter<Units> = Module<
-  HttpRuntime | HttpConfig | HttpHandler | HttpUnit,
+  HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes,
   ConfigInvalid,
   Env | UnitsNeedsOf<Units>
 >;

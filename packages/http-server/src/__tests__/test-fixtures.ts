@@ -25,7 +25,7 @@ import { once } from "node:events";
 import { createServer, request as httpRequest } from "node:http";
 import { connect, type Socket } from "node:net";
 
-import type { ConfigInvalid, Env, Environment } from "@btravstack/config";
+import { Env, type ConfigInvalid, type Environment } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
 import {
   Observers,
@@ -42,7 +42,7 @@ import { localIssuer, type LocalIssuer } from "@btravstack/testing/jwt";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { eventIterator, oc, type as ocType, type RouterContractClient } from "@orpc/contract";
-import { SignJWT } from "jose";
+import { CompactEncrypt, SignJWT } from "jose";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
 import { z } from "zod";
@@ -74,6 +74,12 @@ import {
   type HttpOptions,
 } from "../http-runtime.js";
 import { jwtAuthenticator } from "../jwt.js";
+import {
+  SessionCodec,
+  sessionAuthenticator,
+  sessionCodec,
+  type SessionCodecService,
+} from "../session.js";
 
 /** What a bare answerer's `handle` is, without the mount point around it. */
 type Handler = HttpAnswerer["handle"];
@@ -160,9 +166,9 @@ const recordingObserver = (): {
  * gets by composing any observability at all, since the runtime asks for no
  * ports to be observable.
  */
-const observedAppOf = (handler: Handler, member: (operation: Operation) => Settle) =>
+const observedAppOf = (handler: Handler, member: (operation: Operation) => Settle, csrf = false) =>
   Module("ObservedApp")({
-    imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+    imports: [httpServer({ port: 0, hostname: "127.0.0.1", csrf })],
     // Mounted at `/rpc`, not `/`: a path OUTSIDE it is what reaches the
     // runtime's own 404, which is the half of RED an answerer never sees.
     provides: [
@@ -181,13 +187,14 @@ const observedAppOf = (handler: Handler, member: (operation: Operation) => Settl
  * itself reads.
  */
 const serviceOf = <P, Scope extends string>(
-  authenticator: Authenticator<P, Scope, never>,
+  authenticator: Authenticator<P, Scope, unknown>,
+  services: object = {},
 ): AuthenticatorService<P, Scope> =>
   (
     authenticator.options as {
-      readonly sync: (services: Record<never, never>) => AuthenticatorService<P, Scope>;
+      readonly sync: (services: object) => AuthenticatorService<P, Scope>;
     }
-  ).sync({});
+  ).sync(services);
 
 /**
  * The `make` arm's counterpart to {@link serviceOf}: the scheme built from the
@@ -244,7 +251,188 @@ const hmacToken = (issuer: LocalIssuer): AsyncResult<string, never> => {
   );
 };
 
-/** What both shipped authenticators resolve to in these specs. */
+/**
+ * Two 32-byte keys, spelled as `HTTP_SESSION_KEYS` carries them. Fixed bytes
+ * rather than random ones: a rotation test says which key sealed a cookie.
+ */
+export const sessionKeys = {
+  alpha: Buffer.alloc(32, 0xa1).toString("base64url"),
+  beta: Buffer.alloc(32, 0xb2).toString("base64url"),
+};
+
+/** The codec out of a real graph, which is the only way `SessionCodec` is built. */
+const sessionCodecOf = (
+  pins: Parameters<typeof sessionCodec>[0],
+): AsyncResult<SessionCodecService, ConfigInvalid> =>
+  Module.scoped(
+    Module("SessionFixture")({
+      provides: [Provider(Env)({ inject: {}, value: {} }), sessionCodec(pins)],
+      exports: [SessionCodec],
+    }),
+    (ctx) => OkAsync(ctx.get(SessionCodec)),
+  );
+
+/**
+ * A JWE under whatever header and payload a spec names, sealed with a key the
+ * codec HOLDS — the confusion half: forging one needs the key, so what it
+ * proves is that holding the key is not enough.
+ */
+const forgeSession = (
+  key: string,
+  header: { readonly alg: string; readonly enc: string },
+  payload: unknown,
+): AsyncResult<string, never> =>
+  fromSafePromise(
+    new CompactEncrypt(new TextEncoder().encode(JSON.stringify(payload)))
+      .setProtectedHeader(header)
+      .encrypt(new Uint8Array(Buffer.from(key, "base64url"))),
+  );
+
+/** What the session scheme resolves to in these specs. */
+export type SessionIdentity = { readonly userId: string };
+
+/** The `cookie` header as `node:http` delivers it: every cookie in ONE string. */
+export const cookieHeader = (...cookies: readonly string[]): IncomingHttpHeaders => ({
+  cookie: cookies.join("; "),
+});
+
+/**
+ * The three session schemes a spec resolves through — the default one, the same
+ * over a vocabulary, and one whose application declines a session no OIDC login
+ * minted. All three unseal with the codec the fixture hands them, which is the
+ * codec that sealed the cookie.
+ */
+const defaultSession = sessionAuthenticator<SessionIdentity>()();
+
+const scopedSession = sessionAuthenticator<SessionIdentity>()({ scopes: ["orders:export"] });
+
+const sidSession = sessionAuthenticator<SessionIdentity>()({
+  principal: (session) =>
+    session.sid === undefined ? undefined : (session.principal as SessionIdentity),
+});
+
+/** What a spec seals with, and the three schemes that read it back. */
+type SessionScheme = {
+  readonly seal: SessionCodecService["seal"];
+  readonly resolve: AuthenticatorService<SessionIdentity>;
+  readonly scoped: AuthenticatorService<SessionIdentity, "orders:export">;
+  readonly sid: AuthenticatorService<SessionIdentity>;
+};
+
+/**
+ * One codec on a fixed key, and the schemes resolved over it — the same codec
+ * on both sides, which is the composition `sessionCodec()` gives a graph.
+ */
+const sessionFixture = async (
+  // oxlint-disable-next-line no-empty-pattern -- Vitest parses the source and requires a destructuring pattern; this fixture depends on no other
+  {}: object,
+  use: (value: SessionScheme) => Promise<void>,
+): Promise<void> => {
+  const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
+  await use({
+    seal: codec.seal,
+    resolve: serviceOf(defaultSession, { codec }),
+    scoped: serviceOf(scopedSession, { codec }),
+    sid: serviceOf(sidSession, { codec }),
+  });
+};
+
+/**
+ * The CSRF deployments: the same two routes — a public POST and a GET behind
+ * the scheme — served once under a scheme that reads a COOKIE and once under
+ * one that reads a header, which is the difference the computed default keys
+ * off.
+ */
+const csrfApi = defineHttp({
+  authenticators: { session: sessionAuthenticator<SessionIdentity>()() },
+});
+
+const csrfNoteFragment = csrfApi.HtmxPost("/note")({
+  inject: {},
+  sync: () => () => OkAsync(html`<p>saved</p>`),
+});
+
+const csrfWhoamiFragment = csrfApi.HtmxGet("/whoami", { requires: [{ session: [] }] })({
+  inject: {},
+  sync: () => (context) => OkAsync(html`<p>${context.principal.userId}</p>`),
+});
+
+const csrfFragments = csrfApi.HtmxFragments([csrfNoteFragment, csrfWhoamiFragment]);
+
+const csrfAppOf = (csrf: boolean | undefined) =>
+  HttpModule("CsrfApp")({
+    fragments: csrfFragments,
+    port: 0,
+    hostname: "127.0.0.1",
+    ...(csrf === undefined ? {} : { csrf }),
+    provides: [csrfNoteFragment, csrfWhoamiFragment, sessionCodec({ keys: [sessionKeys.alpha] })],
+  });
+
+const csrfHeaderApi = defineHttp({
+  authenticators: {
+    service: apiKeyAuthenticator<ServiceIdentity>()({
+      keys: [{ key: "header-secret", principal: { appId: "reporting" } }],
+    }),
+  },
+});
+
+const csrfHeaderNoteFragment = csrfHeaderApi.HtmxPost("/note")({
+  inject: {},
+  sync: () => () => OkAsync(html`<p>saved</p>`),
+});
+
+const csrfHeaderWhoamiFragment = csrfHeaderApi.HtmxGet("/whoami", {
+  requires: [{ service: [] }],
+})({ inject: {}, sync: () => (context) => OkAsync(html`<p>${context.principal.appId}</p>`) });
+
+const csrfHeaderFragments = csrfHeaderApi.HtmxFragments([
+  csrfHeaderNoteFragment,
+  csrfHeaderWhoamiFragment,
+]);
+
+const csrfHeaderAppOf = (csrf: boolean | undefined) =>
+  HttpModule("CsrfHeaderApp")({
+    fragments: csrfHeaderFragments,
+    port: 0,
+    hostname: "127.0.0.1",
+    ...(csrf === undefined ? {} : { csrf }),
+    provides: [csrfHeaderNoteFragment, csrfHeaderWhoamiFragment],
+  });
+
+/** The two calls a CSRF test makes, and the cookie a browser would carry into them. */
+export type CsrfCalls = {
+  /** Where the app is listening — the `Origin` a same-origin browser would send. */
+  readonly origin: string;
+  /** The `cookie` header the app's own codec sealed — a real session, not a placeholder. */
+  readonly cookie: string;
+  readonly post: (
+    headers?: Readonly<Record<string, string>>,
+  ) => Promise<{ readonly status: number; readonly text: string }>;
+  readonly get: (
+    headers?: Readonly<Record<string, string>>,
+  ) => Promise<{ readonly status: number; readonly text: string }>;
+};
+
+const csrfCallsOf = async (origin: string): Promise<CsrfCalls> => {
+  const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
+  const sealed = (await codec.seal({ principal: { userId: "u-1" } })).get();
+  const call = async (
+    method: string,
+    path: string,
+    headers: Readonly<Record<string, string>>,
+  ): Promise<{ status: number; text: string }> => {
+    const response = await fetch(`${origin}${path}`, { method, headers });
+    return { status: response.status, text: await response.text() };
+  };
+  return {
+    origin,
+    cookie: `__Host-session=${sealed}`,
+    post: (headers = {}) => call("POST", "/note", headers),
+    get: (headers = {}) => call("GET", "/whoami", headers),
+  };
+};
+
+/** What both shipped header-borne authenticators resolve to in these specs. */
 export type ServiceIdentity = { readonly appId: string };
 export type JwtIdentity = { readonly tenantId: string; readonly userId: string };
 
@@ -897,6 +1085,8 @@ type PolicyCalls = {
   readonly url: string;
   /** `POST /rpc/greet` with `name` as its input, plus whatever headers the test adds. */
   readonly greet: (name: string, headers?: Readonly<Record<string, string>>) => Promise<Response>;
+  /** `GET /rpc/greet` — the method oRPC's own CSRF plugin judges, which this package never sends. */
+  readonly read: (headers: Readonly<Record<string, string>>) => Promise<Response>;
   /**
    * The same call over `node:http` with `accept-encoding` set, answering the
    * response's `content-encoding` — fetch decodes and would hide it.
@@ -912,6 +1102,7 @@ const callsOf = (url: string): PolicyCalls => ({
       headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify({ json: { name } }),
     }),
+  read: (headers) => fetch(`${url}/rpc/greet`, { method: "GET", headers }),
   encodingOf: (name) =>
     new Promise((resolve) => {
       const request = httpRequest(
@@ -933,7 +1124,7 @@ const callsOf = (url: string): PolicyCalls => ({
 });
 
 /** The transport policy a `rpcPolicy` test configures — `http()`'s own fields. */
-type PolicyOptions = Pick<HttpOptions, "cors" | "bodyLimit" | "compression" | "plugins">;
+type PolicyOptions = Pick<HttpOptions, "cors" | "bodyLimit" | "compression" | "plugins" | "csrf">;
 
 /** The same starter shape as `rpcAppOf`, over whatever transport policy a test configures. */
 const rpcPolicyAppOf = (options: PolicyOptions) =>
@@ -1510,10 +1701,28 @@ export type HttpFixtures = {
     }>;
   }>;
   /** The transport served over an observer that records what it was handed. */
-  readonly observed: (handler: Handler) => Promise<{
+  readonly observed: (
+    handler: Handler,
+    csrf?: boolean,
+  ) => Promise<{
     readonly origin: string;
     readonly taken: () => readonly Observation[];
   }>;
+
+  /** A JWE under a header and payload of the test's choosing, sealed with a held key. */
+  readonly forgeSession: (
+    key: string,
+    header: { readonly alg: string; readonly enc: string },
+    payload: unknown,
+  ) => AsyncResult<string, never>;
+
+  /** The session codec built through a graph, from whatever keys a test pins. */
+  readonly sessionCodecOf: (
+    pins: Parameters<typeof sessionCodec>[0],
+  ) => AsyncResult<SessionCodecService, ConfigInvalid>;
+
+  /** One codec on a fixed key, and the three session schemes resolved over it. */
+  readonly session: SessionScheme;
 
   /** A local JWT issuer: a served JWKS, and a signer for every token a spec needs. */
   readonly issuer: LocalIssuer;
@@ -1548,20 +1757,41 @@ export type HttpFixtures = {
   readonly pinnedAudienceJwt: (
     env: Environment,
   ) => AsyncResult<AuthenticatorService<JwtIdentity>, ConfigInvalid>;
+  /**
+   * The CSRF deployments on an ephemeral port, over whatever `csrf` a test
+   * pins: `cookies` composes a session scheme, `headers` an API-key one. Shut
+   * down by the fixture.
+   */
+  readonly csrf: {
+    readonly cookies: (csrf?: boolean) => Promise<CsrfCalls>;
+    readonly headers: (csrf?: boolean) => Promise<CsrfCalls>;
+  };
 };
 
 export const it = test.extend<HttpFixtures>({
   boot: bootFixture(),
 
   observed: async ({ boot }, use) => {
-    await use(async (handler) => {
+    await use(async (handler, csrf) => {
       const observer = recordingObserver();
-      const app = boot(observedAppOf(handler, observer.member));
+      const app = boot(observedAppOf(handler, observer.member, csrf));
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return { origin: `http://127.0.0.1:${info.port}`, taken: observer.taken };
     });
   },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  sessionCodecOf: async ({}, use) => {
+    await use(sessionCodecOf);
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  forgeSession: async ({}, use) => {
+    await use(forgeSession);
+  },
+
+  session: sessionFixture,
 
   issuer: [localIssuerFixture, { scope: "file" }],
 
@@ -1622,6 +1852,18 @@ export const it = test.extend<HttpFixtures>({
 
   jwtApp: async ({ boot }, use) => {
     await use((env) => boot(envJwtAppOf(), { env }));
+  },
+
+  csrf: async ({ boot }, use) => {
+    const serve = async (app: RunningApp<ConfigInvalid, HttpInfo>): Promise<CsrfCalls> => {
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return await csrfCallsOf(`http://127.0.0.1:${info.port}`);
+    };
+    await use({
+      cookies: (csrf) => serve(boot(csrfAppOf(csrf))),
+      headers: (csrf) => serve(boot(csrfHeaderAppOf(csrf))),
+    });
   },
 
   pinnedAudienceJwt: async ({ issuer }, use) => {

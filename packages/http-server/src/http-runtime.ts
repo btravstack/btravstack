@@ -23,6 +23,7 @@ import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from
 import { HttpHandler, type HttpAnswerer } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
 import { DEFAULT_BODY_LIMIT, orpc, type OrpcRouterPort, type OrpcOptions } from "./orpc.js";
+import { CookieSchemes, csrfOn } from "./session.js";
 import type { AnyUnitModule, UnitsNeedsOf } from "./unit.js";
 
 export type { AnyUnitModule, UnitsNeedsOf } from "./unit.js";
@@ -69,7 +70,7 @@ export type HttpOptions = OrpcOptions & {
 /** What `httpServer` pins on the config it binds — everything but the router's own. */
 type SocketOptions = Pick<
   HttpOptions,
-  "port" | "hostname" | "cors" | "bodyLimit" | "compression" | "securityHeaders" | "unit"
+  "port" | "hostname" | "cors" | "bodyLimit" | "compression" | "securityHeaders" | "csrf" | "unit"
 >;
 
 /**
@@ -81,6 +82,52 @@ const DEFAULT_SECURITY_HEADERS: Readonly<Record<string, string>> = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
   "referrer-policy": "no-referrer",
+};
+
+/** The methods a browser can be made to send cross-site carrying ambient credentials. */
+const STATE_CHANGING: ReadonlySet<string> = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * Whether a state-changing request carrying cookies came from another site.
+ *
+ * The rule is "a request that carries COOKIES must be same-site", not "a
+ * request carrying our session cookie": the runtime does not know the scheme's
+ * cookie name, and a check independent of that configuration is both the
+ * standard fetch-metadata recommendation and the one a second cookie-reading
+ * scheme cannot silently widen. A request with no cookie is left alone — a
+ * caller presenting a header credential rides no ambient authority.
+ *
+ * Fetch metadata first, `Origin` only when the browser sent none. The `Origin`
+ * comparison is HOST against the request's own `Host`, deliberately not scheme:
+ * behind a TLS-terminating proxy the connection this process accepted is
+ * `http` while the browser's `Origin` says `https`, so a scheme comparison
+ * would refuse every real deployment. `__Host-session` is `Secure`, which is
+ * what keeps the cookie off the plaintext scheme instead.
+ */
+const crossSite = (request: IncomingMessage): boolean => {
+  if (!STATE_CHANGING.has(request.method ?? "")) return false;
+  if (request.headers.cookie === undefined) return false;
+  const site = request.headers["sec-fetch-site"];
+  if (typeof site === "string") {
+    const value = site.toLowerCase();
+    return value !== "same-origin" && value !== "same-site";
+  }
+  // No metadata and no `Origin` is refused rather than waved through: the
+  // request carries a cookie, so something is presenting ambient authority
+  // with nothing at all saying where from.
+  const origin = hostOf(request.headers.origin);
+  return origin === undefined || origin !== request.headers.host;
+};
+
+// `Origin: null` — a sandboxed frame, a cross-origin redirect — and a malformed
+// value both throw here, and neither is the request's own host.
+const hostOf = (origin: string | undefined): string | undefined => {
+  if (origin === undefined) return undefined;
+  try {
+    return new URL(origin).host;
+  } catch {
+    return undefined;
+  }
 };
 
 /**
@@ -132,10 +179,12 @@ export const _internal_httpRuntime = (
   config: ServiceOf<HttpConfig>,
   securityHeaders: HttpOptions["securityHeaders"],
   observers: readonly ((operation: Operation) => Settle)[],
+  csrf = false,
 ): Runtime<typeof HttpHandler, HttpInfo> => ({
   name: "http",
   resolves: [HttpHandler],
-  start: (host) => listen(host, config, host.ctx.get(HttpHandler), securityHeaders, observers),
+  start: (host) =>
+    listen(host, config, host.ctx.get(HttpHandler), securityHeaders, observers, csrf),
 });
 
 /**
@@ -149,7 +198,7 @@ export const httpServer = <
 >(
   options: Omit<SocketOptions, "unit"> & { readonly unit?: Units } = {},
 ): Module<
-  HttpRuntime | HttpConfig | HttpHandler | HttpUnit,
+  HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes,
   ConfigInvalid,
   Env | UnitsNeedsOf<Units>
 > => {
@@ -182,14 +231,22 @@ export const httpServer = <
       // The no-op member, so the set this module reads is never the empty
       // dependency di refuses: a graph composing no observability still starts.
       Provider.member(Observers)({ inject: {}, value: noObserver }),
+      // The same no-op-member move, for the same reason: a root composing no
+      // cookie scheme leaves this set with only this `false` in it.
+      Provider.member(CookieSchemes)({ inject: {}, value: false }),
       Provider(HttpRuntime)({
-        inject: { config: HttpConfig, observers: Observers },
-        sync: ({ config: bound, observers }) =>
-          _internal_httpRuntime(bound, securityHeaders, observers),
+        inject: { config: HttpConfig, observers: Observers, cookieSchemes: CookieSchemes },
+        sync: ({ config: bound, observers, cookieSchemes }) =>
+          _internal_httpRuntime(
+            bound,
+            securityHeaders,
+            observers,
+            csrfOn(options.csrf, cookieSchemes),
+          ),
       }),
       Provider(HttpUnit)({ inject: {}, value: options.unit ?? {} }),
     ],
-    exports: [HttpRuntime, HttpConfig, HttpHandler, HttpUnit],
+    exports: [HttpRuntime, HttpConfig, HttpHandler, HttpUnit, CookieSchemes],
     // `as never`/`as unknown as Module<…>`, below: `exports` includes
     // `HttpHandler`, a set port, though this module provides no member of it
     // itself — a sibling module's answerer does. The Needs channel carries every
@@ -199,7 +256,7 @@ export const httpServer = <
     // composition root must supply, and this is what makes di's own
     // `UNSATISFIED DEPENDENCIES` gate say so.
   } as never) as unknown as Module<
-    HttpRuntime | HttpConfig | HttpHandler | HttpUnit,
+    HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes,
     ConfigInvalid,
     Env | UnitsNeedsOf<Units>
   >;
@@ -282,6 +339,7 @@ const listen = (
   answerers: readonly HttpAnswerer[],
   securityHeaders: HttpOptions["securityHeaders"],
   observers: readonly ((operation: Operation) => Settle)[],
+  csrf: boolean,
 ): AsyncResult<Serving<HttpInfo>, RuntimeStartFailed> =>
   routesOf(answerers)
     .toAsync()
@@ -336,7 +394,8 @@ const listen = (
             // Settled on `'close'`, not when the unit settles: the unit's own
             // contract is that the response is flushed inside it, so `'close'`
             // is the one event that has seen the final status — a 500 written
-            // by the `recoverDefect` arm below included.
+            // by the `recoverDefect` arm below included, and a `403` written
+            // by the refusal below it.
             const settle = observe(
               observers,
               requestOperation(request.method ?? "", answerer?.prefix ?? ""),
@@ -347,6 +406,15 @@ const listen = (
                 attributes: { status: response.statusCode },
               }),
             );
+            // Before dispatch, so no answerer — and no unit — ever sees it. No
+            // body: a refusal tells a cross-site caller nothing it is entitled
+            // to. AFTER the tracking above, so a refusal is an answer the RED
+            // observers count and the drain knows about, like every other.
+            if (csrf && crossSite(request)) {
+              response.writeHead(403);
+              response.end();
+              return;
+            }
             if (draining) retire(response);
             // `recoverDefect`, not `match`: `E` is statically `never` here, so an
             // `errCases` arm would be a dead branch with no case to name.

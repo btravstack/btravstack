@@ -480,7 +480,7 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `ResponseCompressionHandlerPluginOptions`'s `encodings`/`threshold`,
   `plugins` — stay composition-time and reach the handler through `orpc()`'s
   closure, because a record is not something an environment can carry.
-  `orpc.ts`'s `pluginsOf(options, config)` is where the two meet, and the oRPC
+  `orpc.ts`'s `pluginsOf(options, config, csrf)` is where the two meet, and the oRPC
   handler provider therefore declares `HttpConfig` as a dependency — which is
   why `orpc()`'s `HttpConfig` dependency is discharged by `httpServer()`
   rather than owed by `http()`'s own needs channel.
@@ -503,32 +503,69 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   stays in `plugins`: inflating a body before the limit measures it is an
   application's decision to make in the open.
 
-  **CSRF is deliberately NOT here**, and that is the one narrowing of the
-  claim below rather than a shipment of it: oRPC's
-  `GetMethodCsrfProtectionHandlerPlugin` is meaningful only once a request
-  carries a `SameSite` cookie, and this package configures no cookies. It
-  becomes an option when cookies do; until then it is a `plugins` line. The
-  same reasoning is what keeps `htmx()` (below) carrying no CSRF protection of
-  its own **today** — but it is the answerer where the gap will bite first: a
-  fragment's `POST` is form-urlencoded, exactly the request shape that skips a
-  browser's CORS preflight, so the day a cookie authenticator lands, CSRF stops
-  being inert for both answerers at once. Admitting `GET` on an event-iterator
-  procedure gives the oRPC answerer its own preflight-free surface now too, so
-  both halves will need protecting — and only one of them can be protected by a
-  plugin. `GetMethodCsrfProtectionHandlerPlugin` rides `plugins` into
-  `RPCHandler`, so it covers oRPC alone; `HtmxOptions` is `{ prefix }` and
-  nothing else, so no oRPC plugin ever reaches a fragment and that half has to
-  be protected inside this package. Do not write that one plugins line covers
-  both — it cannot.
+- **`csrf`** — a state-changing request that carries cookies must be
+  same-site, refused with a bodyless `403` **before dispatch**, in the
+  listener beside `securityHeaders` so it covers every answerer rather than
+  only what oRPC matched. `POST`/`PUT`/`PATCH`/`DELETE` carrying a `cookie`
+  header must present `Sec-Fetch-Site: same-origin` or `same-site`; where the
+  browser sent no fetch metadata, an `Origin` naming the request's own `Host`.
+  Nothing else — no token, no form field, no session state: this is the
+  stateless check a stateless BFF can make.
 
-  **`securityHeaders` stays composition-time on purpose** — a deployment that
-  can silently turn `x-frame-options` off is a footgun the other three are not.
+  **The rule is "carries COOKIES", not "carries OUR cookie".** The listener
+  does not know the scheme's cookie name — `sessionAuthenticator`'s `cookie`
+  option is the scheme's to choose — and a check independent of that
+  configuration is both the standard fetch-metadata recommendation and one a
+  second cookie-reading scheme cannot silently widen. A request with no cookie
+  at all is not checked: a caller presenting a bearer token or an API key
+  rides no ambient authority, so it is not a CSRF target.
+
+  **The `Origin` fallback compares HOST, deliberately not scheme.** Behind a
+  TLS-terminating proxy the connection this process accepted is `http` while
+  the browser's `Origin` says `https`, so a scheme comparison would refuse
+  every real deployment. `__Host-session` is `Secure`, which is what keeps the
+  cookie off the plaintext scheme instead. An `Origin` no `URL` can parse —
+  `null`, from a sandboxed frame or a cross-origin redirect — is not the
+  request's own host, and neither is an absent one: a cookie arriving with
+  nothing at all saying where from is refused.
+
+  **The default is a GRAPH fact, not an option default**: on when any composed
+  scheme reads a cookie, off otherwise. `sessionAuthenticator`'s description
+  carries `cookie: true`, `defineHttp` turns that into a member of the
+  `CookieSchemes` set port beside the scheme's own provider, and both the
+  listener and `orpc()` read the set. A set port rather than a marker
+  `HttpModule` folds off `router.authenticators`, because `http()` never sees
+  an application's authenticators — the root composes them itself — so an
+  options-only signal would leave that surface silently unprotected; a
+  `ctx.get` at start could not answer it either, di's `Context` having no
+  `has`. `httpServer` contributes the `false` member that keeps the set from
+  being the empty dependency di refuses.
+
+  **oRPC's `GetMethodCsrfProtectionHandlerPlugin` rides the same flag**, and
+  the two halves are disjoint: the listener judges the state-changing methods
+  and never sees a `GET`, the plugin judges the `GET` oRPC admits for an
+  event-iterator procedure — the one preflight-free surface the listener's
+  method set deliberately leaves alone. Nothing is refused twice. A fragment
+  answerer needs no plugin: its `POST` is form-urlencoded, exactly the
+  preflight-free shape, and the listener check is upstream of every answerer.
+
+  **A refusal is an ANSWER, so it is tracked like one.** The `403` is written
+  after `open.add(response)` and after `observe(...)` has started the request's
+  operation, and only then — still before `host.run`, so no answerer and no unit
+  ever sees it. Registering the tracking first is what keeps a refused request
+  visible to the RED observers and to response tracking; writing it before
+  meant a `403` that no metric counted and no span recorded, which is the one
+  status an operator most wants to see a rate for.
+
+  **`csrf` stays composition-time, and so does `securityHeaders`** — a
+  deployment that can silently turn `x-frame-options`, or this check, off is a
+  footgun the transport-policy options are not.
 
 - **`plugins`** —
   `readonly NodeHttpHandlerPlugin<DefaultInitialContext>[]`, from
-  `@orpc/server/node` — any oRPC plugin the three named options do not cover,
+  `@orpc/server/node` — any oRPC plugin the named options do not cover,
   appended to them and forwarded to `new RPCHandler(service, { plugins })`.
-  Each of the four threads through all three surfaces on the same
+  Each option threads through all three surfaces on the same
   `...(x === undefined ? {} : { x })` spread every other option here uses —
   `OrpcOptions` (`orpc.ts`) → `HttpOptions` (`http-runtime.ts`)
   → `HttpModuleOptions` (`http-module.ts`) — and needs no generic
@@ -1107,12 +1144,166 @@ its INTERSECTION with the token's claim: a token claiming a scope the scheme
 does not know grants nothing extra, and nothing had to learn a second way to
 compare.
 
-**Password hashing and credential ISSUING are declined, not deferred.** Both of
-these are on the verifying side. Issuing needs somewhere to put a credential
-and a session to carry it, and this package configures no cookies and has no
-sessions (#160) — so a hasher here would be a primitive with nothing calling
-it. `argon2` directly, at whatever mints your tokens, is one dependency and no
-framework opinion, which is the right size for it.
+**Password hashing and credential ISSUING are declined, not deferred.** Every
+scheme here is on the verifying side, and that is the line rather than an
+accident of what shipped: the credential is minted by whoever owns the
+identity — an OIDC provider, a partner's key vault — and this package reads
+what arrives. The session cookie does not move it, since `sessionCodec` seals
+a principal somebody else already authenticated. So a hasher here would be a
+primitive with nothing calling it. `argon2` directly, at whatever mints your
+tokens, is one dependency and no framework opinion, which is the right size
+for it.
+
+## The session codec — from `@btravstack/http-server/session`
+
+**`sessionCodec({ keys?, ttlSec? })`** — a `Provider(SessionCodec)` binding the
+storage-free half of the session: `seal` turns a principal into a JWE, `unseal`
+turns a cookie back into a `Session<unknown>` or into nothing. `jose` is the
+optional peer for BOTH `/jwt` and `/session` — one peer, two subpaths, declared
+`optional: true` once — and the subpath is what keeps a consumer that never
+verifies a token or logs a browser in from installing it.
+
+**The cookie is the session, so the key list is the one operational object.**
+`HTTP_SESSION_KEYS` is a `Config.list` of base64url 32-byte keys. The FIRST
+seals and EVERY one unseals, which is what makes rotation prepend, deploy, drop:
+a cookie sealed with a key the deploy dropped is **anonymous**, never an error,
+because a browser holding a stale cookie is a browser that logs in again and not
+a failed request.
+
+**`dir` + `A256GCM`, and `iat`/`exp` in the PAYLOAD rather than in the JWE
+header.** A JWE header is authenticated but not encrypted, so a lifetime there
+is readable by anyone holding the cookie; and the expiry is then checked on the
+plaintext, by the same code that decrypted it — after the AEAD tag has already
+said the bytes are ours.
+
+**`seal` stamps the lifetime; it does not accept one.** Its argument is
+`Omit<Session<unknown>, "iat" | "exp">`, so whatever mints a session cannot mint
+one that outlives the policy — a caller passing `exp` is a compile error, which
+`session.test-d.ts` pins. `ttlSec` is an OPTION and not a variable, on rule 6's
+own test: it is the posture `securityHeaders` is, and its silent change is a
+regression rather than a deployment detail.
+
+**`unseal` decrypts only what `seal` issues — the ALGORITHM half.**
+`compactDecrypt` is handed `keyManagementAlgorithms: ["dir"]` and
+`contentEncryptionAlgorithms: ["A256GCM"]`, derived from the same `HEADER`
+constant the seal writes so the two directions cannot drift. Without the pin, a
+token this key sealed under `A256KW`, `A256GCMKW` or `dir` + `A128CBC-HS256`
+OPENS. None of that is forgeable without the key, which is what the pin is
+about: it refuses **another algorithm under our key**, so a sibling holder of
+`HTTP_SESSION_KEYS` cannot reach this codec with a JWE shaped its own way.
+
+**`typ: "session"` is the PURPOSE half, and it is the one that matters for what
+ships next.** The algorithm pin buys nothing against something sealed the way we
+seal: `oidc()`'s five-minute transient `__Host-oidc` cookie will be `dir` +
+`A256GCM` under these very keys, which is precisely what the allow-list admits —
+and a cookie NAME is not a boundary, since `__Host-` is enforced by the browser
+on `Set-Cookie` and never on a request, so a client is free to replay its own
+transient as `Cookie: __Host-session=…`. So `seal` writes `typ` into the
+plaintext and `sessionOf` requires it back: what the payload IS, checked before
+what shape it has. The alternative on the table was leaving the presence of
+`principal` to separate them, which held only by an accident of field naming
+nothing stated — and the cost of adding a REQUIRED field to a cookie format
+already in the wild is a global logout at deploy, the same failure `decodeKey`'s
+round trip worries about. Two lines now beats a deprecation window on a cookie.
+
+**The plaintext is authenticated, not validated.** The AEAD tag says the bytes
+are ours; it says nothing about what they are or what shape they have, and a key
+this codec holds could have sealed anything. So `sessionOf` checks `typ`, then
+`principal`, a numeric `iat` and a numeric `exp` before the payload is trusted —
+a `null` one used to defect on `.exp` through a channel typed `never`, and a
+string `exp` used to coerce its way past `exp > now` and open.
+
+**Key SHAPE and length are checked here, not by `Config.list`.** The field knows
+nothing about keys, so `make` decodes each one and folds a bad key into a
+`ConfigInvalid` naming `HTTP_SESSION_KEYS` — at boot, with `runMain`'s `78`,
+rather than as the first request's unexplained failure. It is the `Config.url`
+argument one variable over: the check belongs where the value is finally handed
+to the library. The check is a **round trip**, not a length: `Buffer.from` drops
+what base64url cannot spell, so a stray character decodes to 32 bytes anyway —
+and if it shifts the alignment, 32 DIFFERENT bytes. A typo would otherwise boot
+green and log every session out, against a message promising base64url.
+
+**A key list is PER DEPLOYMENT, and there is no `iss`/`aud` binding — declined,
+not missing.** Two deployments handed the same `HTTP_SESSION_KEYS` accept each
+other's sessions: a cookie minted by staging opens in production. An audience
+field would refuse that, and it is not here because the thing it would protect
+against is an operator copying a secret between environments, which the same
+operator can undo by copying it back — the check would be advice, not a boundary,
+and every real boundary it names (a different key) is one the key list already
+draws. `typ` is a different case and IS here: it separates two purposes that
+legitimately share one key list inside one deployment, which nothing else can
+separate. Mint a list per deployment; the codec's rotation story is what makes
+that cheap.
+
+**Every failure to unseal is the same `undefined`.** No cookie, a string that is
+not a JWE, a key that is gone, an edited ciphertext, another algorithm, another
+purpose, a payload that is not a session, one past its `exp` — one answer, so nothing outside learns
+which of them it got wrong. That is `Unauthenticated`'s rule (a refusal carries
+no reason) applied one layer lower, and it is why `unseal` is
+`AsyncResult<Session<unknown> | undefined, never>` rather than an error channel
+with eight arms.
+
+**The clock is `Date.now()`, not a `Clock` port.** There is none on this seam —
+the codec is a provider, not a unit — so the expiry spec pins the boundary with
+`ttlSec: 0` (`exp === iat`, and `>` refuses it) rather than by aging a cookie.
+A `Clock` here would be machinery bought for one test.
+
+## `sessionAuthenticator` — the cookie as a SCHEME
+
+**`sessionAuthenticator<P>()({ cookie?, scopes?, principal? })` →
+`Authenticator<P, Scopes[number], SessionCodec, never>`**, from the same
+`/session` subpath. A third scheme beside JWT and API key, so
+`requires: [{ session: [] }]` on a fragment route and
+`authenticated({ session: [] })` on a procedure need **nothing new** — which is
+the point of it being a scheme rather than a middleware: the walk, the scope
+check, the 401/403 split, the unit kind and the principal port already exist,
+and this contributes one `AuthenticatorService` to them.
+
+**It injects the PORT, not keys.** `inject: { codec: SessionCodec }`, so the
+description's needs channel is `SessionCodec` and a root composing the scheme
+without `sessionCodec()` is di's own unmet need naming `SessionCodec`,
+refused at the `HttpModule` call. It also means the codec that reads a cookie
+is by construction the one that sealed it — one key list, one rotation.
+
+**The `cookie` header is parsed here, by hand.** `node:http` hands over one
+string, so `cookieValue` splits on `;` and takes the first part whose name
+matches EXACTLY. Three things it gets right that a `split("=")` does not:
+`__Host-session-theme` is not `__Host-session` (a prefix match unseals the
+wrong cookie); only the FIRST `=` splits, so a value carrying one arrives
+whole; and the FIRST of a repeated name wins, which is the order a browser
+sends them in — most specific first — so a duplicate cannot shadow the session.
+Six lines and no dependency.
+
+**`__Host-session` by default, and no `secure` option.** `__Host-` is enforced
+by the BROWSER — `Secure`, `Path=/`, no `Domain` — so the guarantee costs this
+package no code and cannot be misconfigured from here. A `secure: false` knob
+would be an option for shipping a session cookie insecurely; renaming the
+cookie away from the prefix is possible and is a visible act at the call.
+
+**The lifetime is FIXED, and it is the codec's.** A scheme is handed headers,
+not a response, so it has nowhere to put a `Set-Cookie` — there is no sliding
+re-seal to be had here even in principle, which is why `ttlSec` is the whole
+session and a login is what issues the next one. Rotation is the codec's for
+the same reason: prepend, deploy, drop.
+
+**The vocabulary is decided ONCE at composition**, `apiKeyAuthenticator`'s own
+rule and for its reason: `scopes` present makes the scheme scoped, so a session
+holding none answers an empty grant rather than a bare identity, and the
+answer's SHAPE cannot vary per request. The grant is the INTERSECTION of the
+vocabulary with `Session.scopes`.
+
+**`Session.scopes` was ADDED for this, rather than a second shape invented
+beside it.** It is `readonly string[] | undefined`, `seal` carries it, and an
+OIDC login writes it from the token's `scope` claim. It is also why `sessionOf`
+now checks it: the plaintext is authenticated, not validated, and a string
+`scopes` would defect on the `Set` the scheme builds from it.
+
+**`principal(session)` defaults to `session.principal`, refusing a `null`
+one.** The codec cannot know `P` — `{ principal: null }` seals and unseals
+happily — so the refusal belongs here, exactly where `jwtAuthenticator`'s
+`principal(claims)` puts it. Everything refused is refused the same way: no
+cookie, an unopenable one, an expired one and a declined principal are one
+`Unauthenticated` carrying no reason.
 
 ## `openApiDocument` — from `@btravstack/http-server/openapi`
 
@@ -1433,17 +1624,17 @@ arrive at the same door, and the answer is the same for all of them: **they are
 handler configuration, not a middleware slot.** Thesis #3's refusal survives
 intact, narrowed to what it was always about.
 
-**Five of the six are configuration; CSRF is the exception, and it is stated
-rather than glossed.** `cors`, `bodyLimit` and `compression` are options that
-pin `HttpConfig` fields a deployment can set instead; `securityHeaders` is an
-option on the listener; authentication is bound through `defineHttp`'s
-authenticators, which ride the router rather than being an option on `http()`.
-CSRF is reached through `plugins` because oRPC's protection only bites on a
-request carrying a `SameSite` cookie and this package configures no cookies —
-an option over a cookie surface that does not exist would be configuration
-with nothing to configure. The claim used to cover all six while the code
-shipped two, which is the drift the root `CLAUDE.md` names as the failure
-mode it fears most; if cookies arrive, the exception goes with them. An oRPC plugin and the starter's
+**All six are configuration, and CSRF was the last exception.** `cors`,
+`bodyLimit` and `compression` are options that pin `HttpConfig` fields a
+deployment can set instead; `securityHeaders` and `csrf` are options on the
+listener; authentication is bound through `defineHttp`'s authenticators, which
+ride the router rather than being an option on `http()`. CSRF was reached
+through `plugins` for as long as this package read no cookie; a session scheme
+reads one, so it is the named option it was always promised as — on by default
+exactly when a cookie-reading scheme is composed. The claim used to cover all
+six while the code shipped two, which is the drift the root `CLAUDE.md` names
+as the failure mode it fears most; it now covers six and ships six. An oRPC
+plugin and the starter's
 own `principalMiddleware` act on the **request/response envelope** — bytes,
 headers, a principal resolved before dispatch. An application middleware would
 act on the handler's **`Result`**, and that is the only one `@btravstack/http-server`
