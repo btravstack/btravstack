@@ -28,7 +28,16 @@ token's signature is checked rather than trusted for having come over TLS.
 `issuer`, `clientId`, `clientSecret` and `redirectUri` pin `HTTP_OIDC_ISSUER`,
 `HTTP_OIDC_CLIENT_ID`, `HTTP_OIDC_CLIENT_SECRET` and `HTTP_OIDC_REDIRECT_URI`.
 
-`SessionCodecService` now publishes `ttlSec`, and `cookieValue(header, name)`
-is exported from `@btravstack/http-server/session`: a login has to write the
-lifetime the codec stamps into the cookie's `Max-Age`, and it reads its own
-cookie off a request with the parse the scheme already had.
+Every refusal writes one `warn` line naming its class and clears the spent
+transient, so a rotated client secret does not read as a spike of bad logins —
+which is why the answerer injects `Logger` beside `SessionCodec`, and why a
+root composing it provides one.
+
+`SessionCodecService` now publishes `ttlSec`: a login has to write the lifetime
+the codec stamps into the cookie's `Max-Age`.
+
+**Breaking:** `sessionAuthenticator`'s `cookie` option is gone, and the name it
+defaulted to is exported as `SESSION_COOKIE`. `oidc()` seals that cookie, so a
+scheme able to read a different one is a deployment where every login succeeds
+into a cookie nothing reads — a redirect loop with no compile error and no
+runtime error. Both sides name one constant instead.

@@ -522,10 +522,10 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   stateless check a stateless BFF can make.
 
   **The rule is "carries COOKIES", not "carries OUR cookie".** The listener
-  does not know the scheme's cookie name — `sessionAuthenticator`'s `cookie`
-  option is the scheme's to choose — and a check independent of that
-  configuration is both the standard fetch-metadata recommendation and one a
-  second cookie-reading scheme cannot silently widen. A request with no cookie
+  does not know any scheme's cookie name — a second cookie-reading scheme is
+  free to bring its own — and a check independent of that configuration is
+  both the standard fetch-metadata recommendation and one such a scheme
+  cannot silently widen. A request with no cookie
   at all is not checked: a caller presenting a bearer token or an API key
   rides no ambient authority, so it is not a CSRF target.
 
@@ -1242,13 +1242,13 @@ one that outlives the policy — a caller passing `exp` is a compile error, whic
 own test: it is the posture `securityHeaders` is, and its silent change is a
 regression rather than a deployment detail.
 
-**The service publishes `ttlSec`, and `cookieValue` is exported beside it.**
-Both exist for `oidc()`, one subpath over: a login writes the cookie, so it
-needs the number `seal` stamps to put in `Max-Age` — the two are one fact and
-only the codec holds it — and it reads `__Host-oidc` off a request, which is
-the same by-name parse the scheme already does. Neither is a second way to do
-anything: `ttlSec` is read-only, and duplicating six lines of cookie parsing in
-a second file is how the two would drift on the next edge case.
+**The service publishes `ttlSec`**, for `oidc()` one subpath over: a login
+writes the cookie, so it needs the number `seal` stamps to put in `Max-Age`.
+The two are one fact and only the codec holds it, so a wrapper that guessed
+would either drop the cookie while the session was live or keep sending one
+that unseals to nothing. It is read-only, and it is the whole of what the codec
+publishes for the login — the cookie helpers live in `cookie.ts`, which is not
+an entry point.
 
 **`unseal` decrypts only what `seal` issues — the ALGORITHM half.**
 `compactDecrypt` is handed `keyManagementAlgorithms: ["dir"]` and
@@ -1362,20 +1362,30 @@ without `sessionCodec()` is di's own unmet need naming `SessionCodec`,
 refused at the `HttpModule` call. It also means the codec that reads a cookie
 is by construction the one that sealed it — one key list, one rotation.
 
-**The `cookie` header is parsed here, by hand.** `node:http` hands over one
-string, so `cookieValue` splits on `;` and takes the first part whose name
-matches EXACTLY. Three things it gets right that a `split("=")` does not:
+**The `cookie` header is parsed by hand, in `cookie.ts`.** `node:http` hands
+over one string, so `cookieValue` splits on `;` and takes the first part whose
+name matches EXACTLY. Three things it gets right that a `split("=")` does not:
 `__Host-session-theme` is not `__Host-session` (a prefix match unseals the
 wrong cookie); only the FIRST `=` splits, so a value carrying one arrives
 whole; and the FIRST of a repeated name wins, which is the order a browser
 sends them in — most specific first — so a duplicate cannot shadow the session.
-Six lines and no dependency.
+Six lines and no dependency — and they are shared with `oidc()`, which reads
+its own transient with them and writes both cookies with `setCookie` /
+`clearCookie` beside them. `cookie.ts` is deliberately NOT a tsdown entry: it
+is an intra-package need, and satisfying it through `session.ts` would have
+widened a published surface for it.
 
-**`__Host-session` by default, and no `secure` option.** `__Host-` is enforced
-by the BROWSER — `Secure`, `Path=/`, no `Domain` — so the guarantee costs this
-package no code and cannot be misconfigured from here. A `secure: false` knob
-would be an option for shipping a session cookie insecurely; renaming the
-cookie away from the prefix is possible and is a visible act at the call.
+**`SESSION_COOKIE` is `__Host-session`, and there is no `cookie` option any
+more.** `__Host-` is enforced by the BROWSER — `Secure`, `Path=/`, no `Domain`
+— so the guarantee costs this package no code and cannot be misconfigured from
+here. The knob is gone because `oidc()` SEALS that name: a scheme that could
+read `sid` while the answerer wrote `__Host-session` is a deployment where
+every login succeeds into a cookie nothing reads — an infinite redirect between
+the fragment and `/auth/login`, with no compile error and no runtime error. Two
+options that must agree is the shape where they silently do not, so both sides
+name one exported constant. It had exactly one consumer in the repository, a
+type test asserting it accepted a string, and nothing said why a deployment
+would rename it.
 
 **The lifetime is FIXED, and it is the codec's.** A scheme is handed headers,
 not a response, so it has nowhere to put a `Set-Cookie` — there is no sliding
@@ -1487,11 +1497,40 @@ only when the provider wrote a string there: neither is a claim the standard
 puts in an ID token, so a provider that omits one leaves the field absent and a
 scoped `sessionAuthenticator` grants nothing.
 
-**Nothing here is a `cookie` option.** `sessionAuthenticator` can be renamed
-off `__Host-session` and this answerer cannot follow it — an application that
-renames the cookie has to seal it itself. That is a real gap and a deliberate
-one for now: the pair a rename would need is two options that must agree, and
-the shape worth having is one place that says the name once.
+**The cookie NAME is one constant, `session.ts`'s `SESSION_COOKIE`.** The
+scheme's `cookie` option was deleted rather than mirrored here: a pair of
+options that must agree is the shape where they silently do not, and the
+failure is invisible — every login succeeds, nothing reads the cookie, and the
+browser loops between the fragment and `/auth/login` with no error anywhere.
+Nothing had ever renamed it, and the `__Host-` prefix is the design.
+
+**It holds a `Logger`, and it is the only answerer here that does.** `orpc()`
+and `htmx()` lose no information when they refuse: a `401` is what the caller
+gets and what the RED metrics count, and the reason is the contract's own. A
+refused login destroys one — the provider's reason must not cross the wire, and
+`grant_failed` is what a rotated client secret, an unreachable token endpoint
+and a genuinely bad code all look like from outside. So the reason leaves the
+process exactly once, on a `warn` line, with the library's own error NAME and
+the cause attached, and never the code and never a token. It is the shape
+`@btravstack/prisma` already has — `needs: [Env, Logger]` on a shipped starter
+— rather than a new one, and it is a `Logger` rather than `Observers` because
+what is being recorded is a REASON, which is what the `details`/`attributes`
+split keeps off an instrument anyway.
+
+**The transient is cleared on EVERY exit of the callback, not on success
+alone.** The flow state is spent the moment a callback has been seen, and one
+left behind for five minutes is what the next tab's login collides with. Two
+concurrent logins in one browser therefore share one transient and the last
+`/login` wins: the other tab's callback finds a `state` that does not match and
+is refused. That is a browser-level fact rather than a bug — the cookie is the
+whole memory, and there is one of it — and the recovery is the refused tab
+logging in again.
+
+**`oidc()` contributes no `cookieScheme()` member.** CSRF on
+`POST <prefix>/logout` rides the session scheme being composed, which is not a
+gap worth closing: an `oidc()` with no session scheme in the same root logs a
+browser into a cookie nothing reads, so the composition that would need this
+answerer's own CSRF marker is one that does not work at all.
 
 ## `openApiDocument` — from `@btravstack/http-server/openapi`
 
@@ -1765,7 +1804,15 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   open-redirect shapes (`//evil.example`, and `%252F%255Cevil.com`, which is
   the doubly-decoded one), `login_hint`, the logout, the `404` under the mount,
   and both boots that fail — `OidcUnreachable` on an issuer at a closed port
-  and `ConfigInvalid` naming a variable nobody set.
+  and `ConfigInvalid` naming a variable nobody set. Three more came out of
+  review: a transient re-sealed with the WRONG nonce, presented with an
+  otherwise valid code, refused `401` — the pin on `expectedNonce`, which is
+  also what forces an ID token to be present at all; a `return` carrying a
+  control character, which `writeHead` would refuse as `ERR_INVALID_CHAR`
+  after the code was already spent; and a provider-side `error=access_denied`
+  arriving with a matching `state`, told apart from a bad code on the line
+  rather than on the wire. Each refusal asserts the reason it logged and the
+  cleared transient in the same projection.
 
 ## Several answerers, one runtime
 

@@ -10,6 +10,7 @@ import { HttpHandler } from "./handler.js";
 import { HtmxFragmentsPort, type FragmentAnswer } from "./htmx-route.js";
 import { HttpConfig } from "./http-config.js";
 import { HttpUnit, type AnyUnitModule } from "./http-runtime.js";
+import { returnTo } from "./redirect.js";
 import { seedOf } from "./unit-scope.js";
 import { unitRecordOf } from "./unit.js";
 
@@ -146,18 +147,6 @@ const refuse = (response: ServerResponse, status: number): void => {
 
 /** A refused caller's answer: a bare status, or where to send one with no session. */
 type Refusal = { readonly status: 401 | 403 } | { readonly login: string };
-
-/**
- * The request's own target, or `/` when it is one nothing here should hand on.
- * A route whose FIRST segment is a parameter matches the crafted target
- * `/\evil.com`, and `new URL("/\\evil.com", base)` resolves to
- * `https://evil.com/` — the WHATWG parser reads `\` as `/` in relative-slash
- * state, so a protocol-relative URL is manufacturable through a route that
- * looks nothing like one. Refused here, where the value is MINTED, rather than
- * left to whatever consumes it.
- */
-const returnTo = (url: string | undefined): string =>
-  url !== undefined && url.startsWith("/") && url[1] !== "/" && url[1] !== "\\" ? url : "/";
 
 const refusalOf = (login: `/${string}` | undefined, url: string | undefined): Refusal =>
   login === undefined

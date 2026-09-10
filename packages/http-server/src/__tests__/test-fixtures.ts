@@ -28,10 +28,13 @@ import { connect, type Socket } from "node:net";
 import { Env, type ConfigInvalid, type Environment } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
 import {
+  Logger,
   Observers,
   currentUnit,
   noObserver,
   type Attributes,
+  type Level,
+  type LoggerService,
   type Operation,
   type RunningApp,
   type Settle,
@@ -580,13 +583,52 @@ const bffRowFragment = bffApi.HtmxGet("/orders/:id/row", {
 
 const bffFragments = bffApi.HtmxFragments([bffRowFragment]);
 
-const bffAppOf = (principal: (claims: IDToken) => OidcIdentity | undefined) =>
+/** One line a refusal wrote, as the spec asserting on it needs to read it. */
+export type LoggedLine = {
+  readonly level: Level;
+  readonly message: string;
+  readonly attributes: Attributes | undefined;
+};
+
+/**
+ * A `Logger` that keeps what it was handed. `oidc()` needs one — a refused
+ * login tells the caller a bare status and the provider's reason never crosses
+ * the wire, so the line IS the record — and a spec that cannot read the line
+ * cannot assert the record exists.
+ */
+const recordingLogger = () => {
+  const lines: LoggedLine[] = [];
+  const service: LoggerService = {
+    log: (level, message, attributes) => {
+      lines.push({ level, message, attributes });
+    },
+    trace: (message, attributes) => service.log("trace", message, attributes),
+    debug: (message, attributes) => service.log("debug", message, attributes),
+    info: (message, attributes) => service.log("info", message, attributes),
+    warn: (message, attributes) => service.log("warn", message, attributes),
+    error: (message, attributes) => service.log("error", message, attributes),
+    fatal: (message, attributes) => service.log("fatal", message, attributes),
+    with: () => service,
+    isEnabled: () => true,
+  };
+  return { provider: Provider(Logger)({ inject: {}, value: service }), taken: () => lines };
+};
+
+const bffAppOf = (
+  principal: (claims: IDToken) => OidcIdentity | undefined,
+  logger: ReturnType<typeof recordingLogger>["provider"],
+) =>
   HttpModule("OidcBff")({
     fragments: bffFragments,
     port: 0,
     hostname: "127.0.0.1",
     fragmentsLogin: "/auth/login",
-    provides: [bffRowFragment, sessionCodec(), oidc({ principal, scope: ORY_SCOPE })],
+    provides: [
+      bffRowFragment,
+      sessionCodec(),
+      oidc({ principal, scope: ORY_SCOPE }),
+      logger,
+    ] as const,
   });
 
 /**
@@ -624,9 +666,15 @@ export type Bff = {
   readonly login: (user: OryUser, query?: string) => Promise<Visit>;
   /** Drop every cookie — which is what a different browser is. */
   readonly forget: () => void;
+  /** What the jar holds under `name`, so a spec can re-seal a transient it was given. */
+  readonly held: (name: string) => string | undefined;
+  /** Put a cookie in the jar the browser never received — a tampered transient. */
+  readonly plant: (name: string, value: string) => void;
+  /** Every line this deployment's logger was handed. */
+  readonly lines: () => readonly LoggedLine[];
 };
 
-const bffOf = (origin: string): Bff => {
+const bffOf = (origin: string, lines: () => readonly LoggedLine[]): Bff => {
   const jar = new Map<string, string>();
 
   const go = async (
@@ -665,6 +713,11 @@ const bffOf = (origin: string): Bff => {
     go,
     authorize,
     forget: () => jar.clear(),
+    held: (name) => jar.get(name),
+    plant: (name, value) => {
+      jar.set(name, value);
+    },
+    lines,
     login: async (user, query = "") => {
       const started = await go(`/auth/login${query}`);
       const back = await authorize(started.location, user);
@@ -2726,17 +2779,18 @@ export const it = test.extend<HttpFixtures>({
 
   bff: async ({ boot, ory: _ory }, use) => {
     await use(async (principal = oidcPrincipal) => {
-      const app = boot(bffAppOf(principal), { env: oidcEnv });
+      const logger = recordingLogger();
+      const app = boot(bffAppOf(principal, logger.provider), { env: oidcEnv });
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
-      return bffOf(`http://127.0.0.1:${info.port}`);
+      return bffOf(`http://127.0.0.1:${info.port}`, logger.taken);
     });
   },
 
   // No `ory` dependency: both boots this serves fail before anything is
   // fetched, and a fixture is only built by a test that names it.
   oidcApp: async ({ boot }, use) => {
-    await use((env) => boot(bffAppOf(oidcPrincipal), { env }));
+    await use((env) => boot(bffAppOf(oidcPrincipal, recordingLogger().provider), { env }));
   },
 
   bothProtocols: async ({ boot }, use) => {

@@ -272,12 +272,16 @@ The two rules this half exists to state, before the detail:
   which is the order a browser sends them in (most specific first), so a
   duplicate cannot shadow the session. Six lines and no dependency.
 
-  **`__Host-session` is the default and there is no `secure` knob.**
-  `__Host-` is a prefix the BROWSER enforces — `Secure`, `Path=/`, no
-  `Domain` — so a sibling host cannot write the cookie and a downgrade to
-  plain HTTP cannot carry it. An option that turned that off would be an
-  option for shipping a session cookie insecurely; `cookie` renames it, and
-  renaming it away from the prefix is a visible act.
+  **`SESSION_COOKIE` is `__Host-session`, and there is no knob at all — not
+  `secure`, and not the NAME.** `__Host-` is a prefix the BROWSER enforces —
+  `Secure`, `Path=/`, no `Domain` — so a sibling host cannot write the cookie
+  and a downgrade to plain HTTP cannot carry it. An option that turned that off
+  would be an option for shipping a session cookie insecurely. The name is
+  fixed for a second reason: `oidc()` SEALS it. A scheme reading `sid` while
+  the answerer wrote `__Host-session` is a deployment where every login
+  succeeds into a cookie nothing reads — a loop between the fragment and
+  `/auth/login`, with no compile error and no runtime error — so both sides
+  name one exported constant instead of two options that must agree.
 
   **The lifetime is the codec's, not the scheme's**, and there is no sliding
   re-seal: a scheme has HEADERS, not a response, so it has nowhere to put a
@@ -383,6 +387,35 @@ The two rules this half exists to state, before the detail:
   configuration enables the ID token **signature** check explicitly: OIDC Core
   permits a client to trust a token that came over TLS from the token endpoint,
   and that is not a trust this package extends.
+
+  **It injects a `Logger`, and it is the only answerer in this package that
+  does.** `orpc()` and `htmx()` lose no information when they refuse — the
+  status IS the answer, and the reason is the contract's own. A refused login
+  destroys one: the provider's reason must not cross the wire, a `401` is not
+  an error the runtime's RED metrics count, and `grant_failed` looks identical
+  whether the client secret was rotated at the provider, the token endpoint is
+  dead, or the code was genuinely bad. So the reason leaves the process exactly
+  once, as a `warn` line naming the refusal class — `transient_missing`,
+  `state_mismatch`, `provider_refused` (with the provider's own `error` and
+  `error_description`), `grant_failed` (with the library's error name and the
+  cause) or `principal_refused` — and never the code, never a token. It is the
+  shape `@btravstack/prisma` already carries, `needs: [Env, Logger]` on a
+  shipped starter, and a `Logger` rather than `Observers` because what is
+  recorded is a REASON, which is exactly what the dimensions/details split
+  keeps off an instrument.
+
+  **The transient is cleared on EVERY exit of the callback**, not on success
+  alone: it is spent the moment a callback has been seen, and one left for five
+  minutes is what the next tab's login collides with. The consequence, stated
+  because nothing else states it: **two concurrent logins in one browser share
+  one transient and the last `/login` wins** — the other tab's callback finds a
+  `state` that does not match and is refused. The cookie is the whole memory of
+  the flow and there is one of it; the refused tab logs in again.
+
+  **It contributes no `cookieScheme()` member**, so CSRF on the logout route
+  rides a session scheme being composed in the same root — which is not a gap:
+  an `oidc()` with no session scheme seals a cookie nothing reads, so the
+  composition that would need this answerer's own marker does not work at all.
 
   **Logout is parameterless and is a `POST`.** No `id_token_hint`, because the
   cookie carries a principal and no token — and therefore no

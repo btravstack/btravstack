@@ -319,6 +319,14 @@ behind that subpath.
 
 Discovery runs once, at boot: a provider that is not there is an
 `OidcUnreachable` naming the issuer, rather than a `500` on the first login.
+It needs a `Logger` as well as the codec — a refused login is the one refusal
+in this package whose reason must not reach the caller, so it is written down
+once instead — and the cookie it seals is `SESSION_COOKIE`, which the scheme
+reads and neither side can rename.
+It needs a `Logger` as well as the codec — a refused login is the one refusal
+in this package whose reason must not reach the caller, so it is written down
+once instead — and the cookie it seals is `SESSION_COOKIE`, which the scheme
+reads and neither side can rename.
 
 The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/http-server),

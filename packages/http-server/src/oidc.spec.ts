@@ -7,7 +7,7 @@ import {
 } from "@btravstack/internal-test-infra/ory";
 import { describe, expect } from "vitest";
 
-import { oidcEnv, it } from "./__tests__/test-fixtures.js";
+import { oidcEnv, it, sessionKeys } from "./__tests__/test-fixtures.js";
 import { OidcUnreachable } from "./oidc.js";
 
 /**
@@ -18,6 +18,9 @@ const START_UP = 180_000;
 
 /** A `Location` that is absent fails the assertion below rather than the parse. */
 const ABSENT = "http://absent.invalid/";
+
+/** What the callback writes on EVERY exit: the flow state is spent either way. */
+const CLEARED = "__Host-oidc=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0";
 
 describe("oidc(), the login answerer", () => {
   it(
@@ -85,7 +88,7 @@ describe("oidc(), the login answerer", () => {
           expect.stringMatching(
             /^__Host-session=[^;]+; Path=\/; Secure; HttpOnly; SameSite=Lax; Max-Age=43200$/,
           ),
-          "__Host-oidc=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0",
+          CLEARED,
         ],
         fragment: { status: 200, text: `<p>1 ${ORY_USERS.alice.tenant}</p>` },
       });
@@ -106,13 +109,20 @@ describe("oidc(), the login answerer", () => {
       const refused = await browser.go(`/auth/callback${back.search}`);
       const fragment = await browser.go("/orders/1/row");
 
-      // THEN nothing is exchanged, nothing is set, and the caller is still
+      // THEN nothing is exchanged, no session is set, the spent transient is
+      // cleared, the reason is written down once, and the caller is still
       // anonymous — the fragment sends them back to log in
       expect({
         status: refused.status,
         cookies: refused.setCookie,
+        warned: browser.lines().map((line) => line.attributes?.["reason"]),
         fragment: fragment.status,
-      }).toEqual({ status: 400, cookies: [], fragment: 303 });
+      }).toEqual({
+        status: 400,
+        cookies: [CLEARED],
+        warned: ["state_mismatch"],
+        fragment: 303,
+      });
     },
     START_UP,
   );
@@ -130,12 +140,13 @@ describe("oidc(), the login answerer", () => {
       // WHEN the callback is replayed from there
       const refused = await browser.go(`/auth/callback${back.search}`);
 
-      // THEN it is the same refusal: a callback with nothing to check against
-      // is somebody else's flow
-      expect({ status: refused.status, cookies: refused.setCookie }).toEqual({
-        status: 400,
-        cookies: [],
-      });
+      // THEN it is the same refusal, told apart in the log rather than on the
+      // wire: a callback with nothing to check against is somebody else's flow
+      expect({
+        status: refused.status,
+        cookies: refused.setCookie,
+        warned: browser.lines().map((line) => line.attributes?.["reason"]),
+      }).toEqual({ status: 400, cookies: [CLEARED], warned: ["transient_missing"] });
     },
     START_UP,
   );
@@ -153,10 +164,55 @@ describe("oidc(), the login answerer", () => {
       const refused = await browser.go(`/auth/callback${back.search}`);
 
       // THEN the exchange failing is a 401 rather than a 400: the flow state
-      // was ours, and it is the credential the provider would not take
-      expect({ status: refused.status, cookies: refused.setCookie }).toEqual({
+      // was ours, and it is the credential the provider would not take — and
+      // the library's own error NAME is on the line, which is the difference
+      // between "bad logins" and "the client secret was rotated"
+      expect({
+        status: refused.status,
+        cookies: refused.setCookie,
+        warned: browser.lines().map((line) => line.attributes),
+      }).toEqual({
         status: 401,
-        cookies: [],
+        cookies: [CLEARED],
+        warned: [{ reason: "grant_failed", error: expect.any(String) }],
+      });
+    },
+    START_UP,
+  );
+
+  it(
+    "refuses a callback whose transient names a nonce the ID token does not carry",
+    async ({ bff, sessionCodecOf }) => {
+      // GIVEN a genuine authorization response, and the flow state re-sealed
+      // with a nonce that is not the one the authorization request asked for —
+      // the codec's own keys, so it is a transient this deployment will open
+      const browser = await bff();
+      const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
+      const started = await browser.go("/auth/login");
+      const back = await browser.authorize(started.location, ORY_USERS.alice);
+      const held = (await codec.transient.unseal(browser.held("__Host-oidc")).get()) ?? {};
+      browser.plant(
+        "__Host-oidc",
+        await codec.transient.seal({ ...held, nonce: "not-the-nonce-that-was-asked-for" }).get(),
+      );
+
+      // WHEN the callback is presented with a code that is otherwise valid
+      const refused = await browser.go(`/auth/callback${back.search}`);
+      const fragment = await browser.go("/orders/1/row");
+
+      // THEN `expectedNonce` is what refuses it: the state matched and the code
+      // was real, and the ID token is still bound to a nonce this end did not
+      // ask for — which is also what forces an ID token to be present at all
+      expect({
+        status: refused.status,
+        cookies: refused.setCookie,
+        warned: browser.lines().map((line) => line.attributes?.["reason"]),
+        fragment: fragment.status,
+      }).toEqual({
+        status: 401,
+        cookies: [CLEARED],
+        warned: ["grant_failed"],
+        fragment: 303,
       });
     },
     START_UP,
@@ -196,6 +252,62 @@ describe("oidc(), the login answerer", () => {
       expect({ status: back.status, location: back.location }).toEqual({
         status: 303,
         location: "/",
+      });
+    },
+    START_UP,
+  );
+
+  it(
+    "refuses a return path carrying a control character",
+    async ({ bff }) => {
+      // GIVEN `/%0aSet-Cookie:%20pwn=1` — one decode short of a `Location`
+      // holding a CR/LF, which `writeHead` refuses as `ERR_INVALID_CHAR`
+      const browser = await bff();
+
+      // WHEN the flow is walked with it
+      const back = await browser.login(ORY_USERS.alice, "?return=%0aSet-Cookie:%20pwn=1");
+
+      // THEN the guard drops it to `/` rather than letting Node turn a crafted
+      // login link into a 500 that has already spent the user's code
+      expect({ status: back.status, location: back.location }).toEqual({
+        status: 303,
+        location: "/",
+      });
+    },
+    START_UP,
+  );
+
+  it(
+    "names a provider that refused, rather than reporting it as a bad code",
+    async ({ bff }) => {
+      // GIVEN a callback the provider sent with `error=access_denied` — the
+      // user clicked Deny — carrying the `state` this end asked with
+      const browser = await bff();
+      const started = await browser.go("/auth/login");
+      const state = new URL(started.location ?? ABSENT).searchParams.get("state") ?? "";
+
+      // WHEN it arrives
+      const refused = await browser.go(
+        `/auth/callback?state=${encodeURIComponent(state)}&error=access_denied&error_description=user+said+no`,
+      );
+
+      // THEN it is a 401 like any refused credential, and the provider's own
+      // reason is written down — where the grant below would have reported it
+      // as an indistinguishable exchange failure
+      expect({
+        status: refused.status,
+        cookies: refused.setCookie,
+        warned: browser.lines().map((line) => line.attributes),
+      }).toEqual({
+        status: 401,
+        cookies: [CLEARED],
+        warned: [
+          {
+            reason: "provider_refused",
+            error: "access_denied",
+            description: "user said no",
+          },
+        ],
       });
     },
     START_UP,
@@ -282,10 +394,11 @@ describe("oidc(), the login answerer", () => {
 
       // THEN the login is refused with no session sealed: the provider said
       // who they are, and this application still does not know them
-      expect({ status: back.status, cookies: back.setCookie }).toEqual({
-        status: 400,
-        cookies: [],
-      });
+      expect({
+        status: back.status,
+        cookies: back.setCookie,
+        warned: browser.lines().map((line) => line.attributes?.["reason"]),
+      }).toEqual({ status: 400, cookies: [CLEARED], warned: ["principal_refused"] });
     },
     START_UP,
   );

@@ -330,8 +330,7 @@ The service also publishes `ttlSec` — the number `seal` stamps — because a
 login has to write the same one into the cookie's `Max-Age`: a browser holding
 the cookie longer than the payload lives looks anonymous with a cookie still
 attached, and one holding it for less is a session cut short by the wrapper
-rather than by the policy. `cookieValue(header, name)` is exported for the same
-consumer: one cookie out of the single string `node:http` delivers.
+rather than by the policy.
 
 **Mint a key list per deployment.** There is no `iss` or `aud` in the sealed
 payload, so two deployments handed the same `HTTP_SESSION_KEYS` accept each
@@ -389,14 +388,17 @@ over that codec, and it is an ordinary `Authenticator`: bind it in
 
 | Option      | Required | Default                       | What it is                                                                                                    |
 | ----------- | -------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `cookie`    | no       | `__Host-session`              | which cookie carries the session                                                                              |
 | `scopes`    | no       | none (the scheme is unscoped) | the vocabulary; the grant is its intersection with the session's own `scopes`                                 |
 | `principal` | no       | `session.principal`           | what the session makes the caller; `undefined` refuses it, and the default refuses a session sealed with none |
 
-**`__Host-` is a browser-enforced prefix** — `Secure`, `Path=/`, no `Domain` —
-so a sibling host cannot write the cookie and plain HTTP cannot carry it. There
-is no `secure` option: it would be an option for shipping a session cookie
-insecurely.
+**The cookie is `SESSION_COOKIE`, `__Host-session`, and cannot be renamed.**
+`__Host-` is a browser-enforced prefix — `Secure`, `Path=/`, no `Domain` — so a
+sibling host cannot write the cookie and plain HTTP cannot carry it, and there
+is no `secure` option because it would be an option for shipping a session
+cookie insecurely. There is no `cookie` option either: `oidc()` seals that
+name, and a scheme reading a different one is a deployment where every login
+succeeds into a cookie nothing reads — a redirect loop with no error anywhere.
+Both sides name the one exported constant.
 
 **The cookie header is parsed by name, exactly.** `__Host-session-theme` is not
 `__Host-session`, a value carrying an `=` arrives whole, and the first of a
@@ -432,6 +434,7 @@ under a prefix of its own — serving three routes, and it needs
 import { defineHttp, html, HttpModule } from "@btravstack/http-server";
 import { oidc } from "@btravstack/http-server/oidc";
 import { sessionAuthenticator, sessionCodec } from "@btravstack/http-server/session";
+import { observability } from "@btravstack/observability";
 import { OkAsync } from "unthrown";
 
 type Identity = { readonly tenantId: string; readonly userId: string };
@@ -450,6 +453,8 @@ const row = api.HtmxGet("/orders/:id/row", { requires: [{ session: [] }] })({
 export const BrowserApi = HttpModule("BrowserApi")({
   fragments: api.HtmxFragments([row]),
   fragmentsLogin: "/auth/login",
+  // `oidc()` needs a `Logger`: a refused login is where the reason lives.
+  imports: [observability()],
   provides: [
     row,
     sessionCodec(),
@@ -534,7 +539,27 @@ does). Configure the provider's own post-logout URI instead.
 a session here is by construction the one `sessionAuthenticator` reads it back
 with, key rotation included — and a root composing `oidc()` without
 `sessionCodec()` is di's own unmet need naming the port, refused at the
-`HttpModule` call.
+`HttpModule` call. The cookie it seals is `SESSION_COOKIE`, the same constant
+the scheme reads.
+
+**It also injects `Logger`, which no other answerer here does.** A refused
+login is the one refusal in this package that destroys information: the
+provider's reason must not reach the caller, and a `401` is not an error the
+runtime's RED metrics count — so a rotated client secret, a dead token endpoint
+and a genuinely bad code are one indistinguishable spike. Each refusal writes
+one `warn` line naming its class — `transient_missing`, `state_mismatch`,
+`provider_refused` (carrying the provider's own `error` and
+`error_description`), `grant_failed` (carrying the library's error name and the
+cause) or `principal_refused` — and never the authorization code and never a
+token. A root composing `oidc()` therefore provides a `Logger`, the way one
+composing `@btravstack/prisma` already does.
+
+**Every refusal clears the transient**, not only the success: the flow state is
+spent the moment a callback has been seen. The consequence is worth knowing —
+**two logins running at once in one browser share one transient, and the last
+`/login` wins**; the other tab's callback finds a `state` that does not match
+and is refused. The cookie is the whole memory of the flow, and a browser has
+one of it.
 
 ## `api.OrpcRouter(contract)({ inject: deps, sync })`
 

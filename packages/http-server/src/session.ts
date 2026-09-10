@@ -4,6 +4,7 @@ import { CompactEncrypt, compactDecrypt } from "jose";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 import { HttpAuthenticator, Unauthenticated, granted, type Authenticator } from "./auth.js";
+import { cookieValue } from "./cookie.js";
 
 /**
  * What the cookie carries: the application's own principal, and when the
@@ -299,31 +300,18 @@ export const sessionCodec = (
       }),
   });
 
-const DEFAULT_COOKIE = "__Host-session";
-
 /**
- * One cookie out of the `cookie` header, which `node:http` delivers as ONE
- * string. The name is matched EXACTLY, so `__Host-session-x` is not
- * `__Host-session`; only the first `=` splits, so a value carrying one arrives
- * whole; and the FIRST of a repeated name wins, which is the order a browser
- * sends them in — most specific first — so a later duplicate cannot shadow the
- * session.
+ * The cookie the session travels on, and there is no option to rename it.
+ *
+ * `__Host-` is a prefix the BROWSER enforces — `Secure`, `Path=/`, no `Domain`
+ * — which is the guarantee, and it is the name `oidc()` writes as well: the
+ * scheme that READS the cookie and the answerer that SEALS it must agree, and
+ * two options that must agree is the shape where they silently do not. One
+ * constant both name.
  */
-export const cookieValue = (header: string | undefined, name: string): string | undefined => {
-  for (const part of header?.split(";") ?? []) {
-    const at = part.indexOf("=");
-    if (at !== -1 && part.slice(0, at).trim() === name) return part.slice(at + 1).trim();
-  }
-  return undefined;
-};
+export const SESSION_COOKIE = "__Host-session";
 
 export type SessionOptions<P, Scopes extends readonly string[]> = {
-  /**
-   * The cookie the browser sends back. Default `__Host-session` — a
-   * browser-enforced prefix: `Secure`, `Path=/`, no `Domain`, so a sibling
-   * host cannot write it.
-   */
-  readonly cookie?: string;
   /**
    * The scopes this scheme can grant, and **the only place they are written**
    * — `jwtAuthenticator`'s rule, for `jwtAuthenticator`'s reason. The grant is
@@ -348,6 +336,9 @@ export type SessionOptions<P, Scopes extends readonly string[]> = {
  * export const browserAuth = sessionAuthenticator<Identity>()({ scopes: ["orders:export"] });
  * ```
  *
+ * The cookie is {@link SESSION_COOKIE} and cannot be renamed: `oidc()` seals
+ * that name, so a knob here would be one half of a pair that must agree.
+ *
  * It injects {@link SessionCodec} rather than holding keys of its own, so a
  * root composing this scheme without `sessionCodec()` is di's own unmet need
  * naming `SessionCodec` — and the codec that reads a cookie is the very one
@@ -362,7 +353,6 @@ export const sessionAuthenticator =
   <const Scopes extends readonly string[] = readonly []>(
     options: SessionOptions<P, Scopes> = {},
   ): Authenticator<P, Scopes[number], SessionCodec, never> => {
-    const name = options.cookie ?? DEFAULT_COOKIE;
     // The vocabulary decides the answer's SHAPE, and it is read once here: a
     // scoped scheme answers an empty grant for a session that holds nothing,
     // never a bare identity.
@@ -379,7 +369,7 @@ export const sessionAuthenticator =
         sync:
           ({ codec }) =>
           (headers) =>
-            codec.unseal(cookieValue(headers.cookie, name)).flatMap((session) => {
+            codec.unseal(cookieValue(headers.cookie, SESSION_COOKIE)).flatMap((session) => {
               if (session === undefined) return ErrAsync(new Unauthenticated());
               const principal = principalOf(session);
               if (principal === undefined) return ErrAsync(new Unauthenticated());

@@ -1,6 +1,7 @@
 import type { IncomingMessage, OutgoingHttpHeaders, ServerResponse } from "node:http";
 
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
+import { Logger, type Attributes, type LoggerService } from "@btravstack/core";
 import { Provider } from "@btravstack/di";
 import {
   ClientSecretBasic,
@@ -19,11 +20,13 @@ import {
 } from "openid-client";
 import { TaggedError, fromPromise, type AsyncResult } from "unthrown";
 
+import { clearCookie, cookieValue, setCookie } from "./cookie.js";
 import { HttpHandler, type HttpAnswerer } from "./handler.js";
+import { returnTo } from "./redirect.js";
 import {
+  SESSION_COOKIE,
   SessionCodec,
   TRANSIENT_TTL_SEC,
-  cookieValue,
   type SessionCodecService,
 } from "./session.js";
 
@@ -76,18 +79,10 @@ const DEFAULT_POST_LOGOUT = "/";
 /** The login flow's own state, while the browser is away at the provider. */
 const TRANSIENT_COOKIE = "__Host-oidc";
 
-/** What `sessionAuthenticator` reads back. */
-const SESSION_COOKIE = "__Host-session";
-
 // `request.url` is a path, so it needs an origin to parse against. Nothing
 // reads this one: every URL built from the request is used for its path and
 // query alone, and the grant's own is built from the REGISTERED redirect URI.
 const RELATIVE = "http://request.invalid";
-
-const cookieFor = (name: string, value: string, maxAgeSec: number): string =>
-  `${name}=${value}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}`;
-
-const cleared = (name: string): string => cookieFor(name, "", 0);
 
 // No body on any of these: a refusal owes the caller nothing beyond the status,
 // and a redirect's body is never read.
@@ -99,20 +94,6 @@ const send = (
   response.writeHead(status, headers);
   response.end();
 };
-
-/**
- * Where a login may send the browser afterwards: a path on this site, or `/`.
- *
- * The value arrives DECODED ONCE — `searchParams.get` is that decode — and is
- * never decoded again. A second pass would turn `%255C` back into `\`, and
- * `new URL("/\\evil.com", base)` resolves to `https://evil.com/`: the WHATWG
- * parser reads `\` as `/` in relative-slash state, so a protocol-relative URL
- * is manufacturable out of a value that passed the guard.
- */
-const returnTo = (value: string | null | undefined): string =>
-  typeof value === "string" && value.startsWith("/") && value[1] !== "/" && value[1] !== "\\"
-    ? value
-    : "/";
 
 /** The request's path relative to the mount. */
 const pathOf = (target: URL, prefix: string): string => {
@@ -127,6 +108,27 @@ type Bound<P> = {
   readonly scope: string;
   readonly postLogout: string;
   readonly principal: (claims: IDToken) => P | undefined;
+  readonly logger: LoggerService;
+};
+
+/**
+ * Every callback refusal, and the transient goes with it.
+ *
+ * Cleared on every exit rather than on success alone: the flow state is spent
+ * the moment a callback has been seen, and a stale one left for five minutes
+ * is what a second tab's login would collide with. It also means the reason
+ * leaves the process exactly once — on the `warn` line above the call — and
+ * never on the wire: a refusal carries a status and nothing else.
+ */
+const refuse = (
+  response: ServerResponse,
+  status: number,
+  logger: LoggerService,
+  attributes: Attributes,
+  cause?: unknown,
+): void => {
+  logger.warn("oidc login refused", attributes, cause);
+  send(response, status, { "set-cookie": clearCookie(TRANSIENT_COOKIE) });
 };
 
 const login = async <P>(
@@ -154,7 +156,7 @@ const login = async <P>(
       nonce,
       ...(hint === null ? {} : { login_hint: hint }),
     }).href,
-    "set-cookie": cookieFor(TRANSIENT_COOKIE, sealed, TRANSIENT_TTL_SEC),
+    "set-cookie": setCookie(TRANSIENT_COOKIE, sealed, TRANSIENT_TTL_SEC),
   });
 };
 
@@ -169,10 +171,27 @@ const callback = async <P>(
     .unseal(cookieValue(request.headers.cookie, TRANSIENT_COOKIE))
     .get();
   // No transient, one no key opens, one past its five minutes, or one naming a
-  // different `state`: this callback belongs to somebody else's flow, so
-  // nothing is set and nothing is cleared.
-  if (held === undefined || held["state"] !== target.searchParams.get("state")) {
-    send(response, 400);
+  // different `state`: this callback belongs to somebody else's flow.
+  if (held === undefined) {
+    refuse(response, 400, bound.logger, { reason: "transient_missing" });
+    return;
+  }
+  if (held["state"] !== target.searchParams.get("state")) {
+    refuse(response, 400, bound.logger, { reason: "state_mismatch" });
+    return;
+  }
+
+  // The provider refusing is not this end failing to understand: a user who
+  // clicked Deny, a consent that expired. It arrives with a matching `state`,
+  // so it would otherwise come out of the grant below as an indistinguishable
+  // 401 with the reason discarded.
+  const denied = target.searchParams.get("error");
+  if (denied !== null) {
+    refuse(response, 401, bound.logger, {
+      reason: "provider_refused",
+      error: denied,
+      description: target.searchParams.get("error_description") ?? undefined,
+    });
     return;
   }
 
@@ -188,17 +207,29 @@ const callback = async <P>(
       expectedState: held["state"],
       expectedNonce: held["nonce"] ?? "",
     }),
-    () => "refused" as const,
+    // The cause is KEPT rather than collapsed: a rotated client secret and a
+    // dead token endpoint are both "every login 401s", and without a line
+    // naming which, the only evidence either leaves is a spike of refusals.
+    (cause) => cause,
   );
   if (!granted.isOk()) {
-    send(response, 401);
+    // `fromPromise`'s mapper is the identity here, so the only route to this
+    // branch is a rejected grant; a Defect would have to come from the mapper.
+    const cause = granted.isErr() ? granted.error : undefined;
+    refuse(
+      response,
+      401,
+      bound.logger,
+      { reason: "grant_failed", error: cause instanceof Error ? cause.name : "unknown" },
+      cause,
+    );
     return;
   }
 
   const claims = granted.value.claims();
   const principal = claims === undefined ? undefined : bound.principal(claims);
   if (claims === undefined || principal === undefined) {
-    send(response, 400);
+    refuse(response, 400, bound.logger, { reason: "principal_refused" });
     return;
   }
 
@@ -217,7 +248,7 @@ const callback = async <P>(
 
   send(response, 303, {
     location: returnTo(held["return"]),
-    "set-cookie": [cookieFor(SESSION_COOKIE, sealed, codec.ttlSec), cleared(TRANSIENT_COOKIE)],
+    "set-cookie": [setCookie(SESSION_COOKIE, sealed, codec.ttlSec), clearCookie(TRANSIENT_COOKIE)],
   });
 };
 
@@ -229,7 +260,7 @@ const logout = <P>(response: ServerResponse, bound: Bound<P>): void => {
     // entitled to refuse without one.
     location:
       advertised === undefined ? bound.postLogout : buildEndSessionUrl(bound.config, {}).href,
-    "set-cookie": cleared(SESSION_COOKIE),
+    "set-cookie": clearCookie(SESSION_COOKIE),
   });
 };
 
@@ -297,6 +328,13 @@ const handlerFor =
  *   provider's `end_session_endpoint`, or to `postLogout` when it advertises
  *   none.
  *
+ * It also injects {@link Logger}, which `orpc()` and `htmx()` do not: a
+ * refused login is the one refusal in this package that DESTROYS information.
+ * The caller is told a bare status on purpose, the provider's reason never
+ * crosses the wire, and a 401 is not an error the runtime's RED metrics count
+ * — so a rotated client secret would read as a spike of bad logins with no
+ * line anywhere naming it.
+ *
  * It injects {@link SessionCodec} rather than holding keys, so the codec that
  * seals a session here is the one `sessionAuthenticator` reads it back with —
  * and a root composing this without `sessionCodec()` is di's own unmet need
@@ -312,8 +350,8 @@ export const oidc = <P>(options: OidcOptions<P>) => {
   });
 
   return Provider.member(HttpHandler)({
-    inject: { env: Env, codec: SessionCodec },
-    make: ({ env, codec }): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> =>
+    inject: { env: Env, codec: SessionCodec, logger: Logger },
+    make: ({ env, codec, logger }): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> =>
       Config.parse(
         "HttpOidc",
         schema,
@@ -327,6 +365,7 @@ export const oidc = <P>(options: OidcOptions<P>) => {
               scope: options.scope ?? DEFAULT_SCOPE,
               postLogout: options.postLogout ?? DEFAULT_POST_LOGOUT,
               principal: options.principal,
+              logger,
             },
             prefix,
             codec,

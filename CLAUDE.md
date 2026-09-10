@@ -1115,8 +1115,10 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   behind `@btravstack/http-server/jwt` (issue #157's JWT/JWKS authenticator —
   its API-key sibling needs no peer and is on the main entry point), `jose`
   again behind `@btravstack/testing/jwt` (the `localIssuer` a test signs
-  with), and each of the three application-service ports carries exactly one
-  more:
+  with), `openid-client` behind `@btravstack/http-server/oidc` (the login
+  answerer — a graph that only SEALS sessions somebody else authenticated
+  composes the codec and installs none of it), and each of the three
+  application-service ports carries exactly one more:
   `redis` behind `@btravstack/cache/redis`, `nodemailer` behind
   `@btravstack/mailer/smtp`, and the two `@aws-sdk` packages behind
   `@btravstack/storage/s3` — every one of them `optional: true` in
