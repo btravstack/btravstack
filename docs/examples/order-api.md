@@ -592,7 +592,7 @@ export const OrderApi = HttpModule("OrderApi")({
 
 `fragments` rides alongside `router` — supplying one, the other, or both is
 the same call; `HttpModule` mounts each under its own default and
-deduplicates a scheme the two share by reference. The two authenticators are
+deduplicates a scheme the two share by reference. The authenticators are
 **not** listed, and that is the point: who a caller is is one answer per
 process rather than a slice's question, so they were declared once in
 `auth.ts`, and they ride the router and the fragments provider — which are

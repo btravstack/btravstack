@@ -403,8 +403,9 @@ export const it = test.extend<ApiFixtures>({
       assert.ok(location !== null, "the login route answered no Location");
       const transient = started.headers.getSetCookie().map((set) => set.split(";")[0] ?? "");
 
-      // The provider answers a callback on the port it has registered, `:3000`;
-      // the app listens on an ephemeral one, so only the path and query travel.
+      // Only the QUERY travels: the path is written out to match
+      // `ORY_REDIRECT_URI`'s own, because the provider answers a callback on
+      // the port it has registered, `:3000`, and the app binds an ephemeral one.
       const back = await headlessLogin({ authorizationUrl: new URL(location), user });
       const finished = await fetch(`${origin}/auth/callback${back.search}`, {
         redirect: "manual",
