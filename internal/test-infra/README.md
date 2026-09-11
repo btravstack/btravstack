@@ -380,7 +380,7 @@ so a container carrying an older registration converges.
 
 ## The dev scripts
 
-None is an entry point. `pnpm dev:env`
+None of them is an entry point. `pnpm dev:env`
 (`src/dev-env.ts`) is the one the repository's `pnpm dev` runs first. It starts
 the same containers, applies the example application's migrations with
 `prisma migrate deploy` under the same `withLock` its vitest `globalSetup`
@@ -392,8 +392,9 @@ and `pnpm dev:login` need nothing running but the containers `dev:env`
 started.
 
 **`pnpm dev:login`** (`src/dev-login.ts`) is `dev:token`'s browser sibling: it
-drives the same headless walk `headlessLogin` performs in the specs — login,
-`headlessLogin`, the callback — against the running `order-api`, and prints
+drives the same walk the specs do — the login route, the provider's own
+flow (which `headlessLogin` drives), the callback — against the running
+`order-api`, and prints
 the `__Host-session` cookie header on stdout. It exists because the gate's
 Kratos has no login UI, on purpose (`config/kratos.yml`'s `ui_url`s are
 deliberately dead, above), so a real browser cannot complete the round trip on

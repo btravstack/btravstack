@@ -294,7 +294,7 @@ The two rules this half exists to state, before the detail:
   nothing answers an empty grant rather than a bare identity, and the grant is
   the INTERSECTION of the vocabulary with the session's own `scopes` — a
   session naming a scope the scheme does not know grants nothing extra.
-  `Session.scopes` is what phase 3's login writes from the token's `scope`
+  `Session.scopes` is what the login answerer (`oidc()`) writes from the token's `scope`
   claim; a session sealed without it grants nothing.
 
   **`principal(session)` defaults to the session's own, and refuses a `null`
@@ -420,8 +420,9 @@ The two rules this half exists to state, before the detail:
   succeeds either way; what it would remove is the check that the signature was
   verified at all. Pinning it needs a provider that answers a JWKS which cannot
   verify its own tokens, and a fake-issuer harness bought for one assertion is
-  more machinery than the line it guards. What it rests on instead is phase 1's
-  measurement, which is real and is written down in
+  more machinery than the line it guards. What it rests on instead is the
+  measurement taken against the Ory containers, which is real and is written
+  down in
   `internal/test-infra/src/ory-login.ts`: `oryClient()` makes the same call for
   the same reason, and the note there records that without it nothing requests
   the JWKS. A future change that reaches for a fake issuer for some other

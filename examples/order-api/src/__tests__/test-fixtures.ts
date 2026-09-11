@@ -424,7 +424,10 @@ export const it = test.extend<ApiFixtures>({
   // `LOG_LEVEL: "fatal"` keeps the real `OrderApi`, whose sink is the production
   // `jsonSink()` on stdout, out of the runner's own output. The roots a spec
   // reads back pin their level instead.
-  env: async ({ issuer }, use) => {
+  // `ory` is named here rather than only by `browser`: the root composes
+  // `oidc()`, which discovers its provider at BOOT, so every spec that boots
+  // waits for the containers instead of racing their cold start.
+  env: async ({ issuer, ory: _ory }, use) => {
     await use({
       PORT: "0",
       HOST: "127.0.0.1",

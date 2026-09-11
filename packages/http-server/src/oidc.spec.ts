@@ -511,6 +511,22 @@ describe("oidc(), the login answerer", () => {
     );
   });
 
+  it("takes an IPv6 loopback issuer as this machine's own too", async ({ oidcApp }) => {
+    // GIVEN an `http:` issuer on `[::1]`, a port nothing is listening on —
+    // `url.hostname` keeps the brackets, which is what the allowance must match
+    const app = oidcApp({ ...oidcEnv, HTTP_OIDC_ISSUER: "http://[::1]:1/" });
+
+    // WHEN the application boots
+    // THEN the posture check lets it through and discovery is what fails,
+    // naming the issuer — the same shape as the IPv4 loopback above
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        constructor: OidcUnreachable,
+        issuer: "http://[::1]:1/",
+      }),
+    );
+  });
+
   it("refuses a cleartext issuer that is not on this machine", async ({ oidcApp }) => {
     // GIVEN an `http:` issuer on a host that is not loopback — a deployment
     // that would send the client secret and every token over the open wire,

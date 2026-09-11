@@ -217,7 +217,7 @@ The full surface, arm by arm:
 ## Authenticators
 
 The shipped ones — JWT, API key and the session cookie — are the ones where
-writing it per application is how CVEs happen — each is an ordinary
+writing it per application is how CVEs happen. Each is an ordinary
 `Authenticator` value bound by name in `defineHttp({ authenticators })`:
 
 - **`apiKeyAuthenticator<P>()({ keys, header? })`**, on the main entry point. Constant-time
