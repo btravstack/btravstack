@@ -48,47 +48,47 @@ declare const view: (order: Order) => OrderView;
 
 `packages/http-server/src/index.ts` exports exactly this:
 
-| Export                 | Kind  | What it is                                                                                                                                                                                                                                                                                                   |
-| ---------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `defineHttp`           | value | `defineHttp({ authenticators })`, or `defineHttp()` for a public API — **the one door**: it declares this deployment's security schemes and hands back `OrpcController`, `OrpcRouter` and `authenticators` typed by them                                                                                     |
-| `Http`                 | type  | `Http<A, Units>` — what `defineHttp` returns, held as one binding and never destructured; `Units` is the record `auth.units<…>()` binds, empty until that second call                                                                                                                                        |
-| `Authenticators`       | type  | `Readonly<Record<string, Authenticator<…>>>` — the registry `defineHttp` takes, keyed by scheme name                                                                                                                                                                                                         |
-| `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                                                                                                 |
-| `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, csrf?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                     |
-| `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                                                                                                  |
-| `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })` — or `make` where building the scheme can fail, or `({ inject: {}, sync })` with no deps; the scheme's **name** is the key it sits under in `defineHttp`                                                                                    |
-| `Authenticator`        | type  | `Authenticator<P, Scope, N, E>` — what `HttpAuthenticator` hands back: a description carrying its principal, its scope vocabulary, the ports it needs and the error its arm reports, which `defineHttp` binds to a port                                                                                      |
-| `granted`              | value | `granted(identity, scopes)` — mints the scoped answer, stamped with a module-private symbol so the starter can tell it from a bare identity that carries a `scopes` field                                                                                                                                    |
-| `Granted`              | type  | `Granted<P, Scope>` — the identity **bare** when the scheme has no scope vocabulary, a `Grant<P, Scope>` when it has one                                                                                                                                                                                     |
-| `Grant`                | type  | `Grant<P, Scope>` — the branded `{ identity, scopes }` `granted()` returns; unforgeable from outside the package                                                                                                                                                                                             |
-| `AuthenticatorService` | type  | `(headers: IncomingHttpHeaders) => AsyncResult<Granted<P, Scope>, Unauthenticated>` — headers in, credential out                                                                                                                                                                                             |
-| `authenticatorPort`    | value | `authenticatorPort(scheme)` — the di port whose id is `` `HttpAuthenticator:${scheme}` ``; a router declares one per scheme its contract names                                                                                                                                                               |
-| `principalPort`        | value | `principalPort(scheme)` — the di port whose id is `` `HttpPrincipal:${scheme}` ``, carrying that scheme's principal; a unit module names it in `needs` and the fork seeds it                                                                                                                                 |
-| `Principals`           | type  | `Principals<A>` — the scheme → principal-port map, what `auth.principals` is                                                                                                                                                                                                                                 |
-| `Kinds`                | type  | `Kinds<A>` — `"anonymous"` plus every declared scheme: every kind a unit may be opened under                                                                                                                                                                                                                 |
-| `UnitsOf`              | type  | `UnitsOf<A>` — `Partial<Record<Kinds<A>, Module>>`, the record `auth.units<…>()` takes                                                                                                                                                                                                                       |
-| `Unauthenticated`      | value | a `TaggedError` with an empty payload — the refusal itself; the starter surfaces no reason to the client                                                                                                                                                                                                     |
-| `UnderScoped`          | value | `TaggedError("UnderScoped")` — a valid credential missing a declared scope, answered `403`                                                                                                                                                                                                                   |
-| `resolvePrincipal`     | value | the protocol-neutral authentication walk, shared by every answerer                                                                                                                                                                                                                                           |
-| `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                                                                                     |
-| `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                                                                                   |
-| `apiKeyAuthenticator`  | value | `apiKeyAuthenticator<P>()({ header?, keys })` — an API-key scheme with a constant-time compare over SHA-256 digests, no early return, and a missing header on the same path as a wrong key                                                                                                                   |
-| `http`                 | value | `http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, csrf?, unit? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                             |
-| `httpServer`           | value | `httpServer(options?)` — the socket half: runtime, config, `HttpUnit`, and the empty answerer set. `http()` is this plus oRPC                                                                                                                                                                                |
-| `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                                                                           |
-| `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export. It **resolves `HttpHandler`**, so the root must export that too                                                                     |
-| `HttpHandler`          | value | `class HttpHandler extends Port.many("HttpHandler")<HttpAnswerer> {}` — the set port every protocol served in this process contributes one member to                                                                                                                                                         |
-| `HttpAnswerer`         | type  | one protocol's answer to HTTP — a mount `prefix` and the `handle` the runtime routes to; see [several answerers](#httphandler-and-several-answerers)                                                                                                                                                         |
-| `HttpConfig`           | value | `class HttpConfig extends Port("HttpConfig")<{ port: number; hostname: string; bodyLimit: number; corsOrigin: string; compression: boolean }> {}` — what the transport is bound and configured with, provided by `http()` from `PORT` / `HOST` / `HTTP_BODY_LIMIT` / `HTTP_CORS_ORIGIN` / `HTTP_COMPRESSION` |
-| `HttpInfo`             | type  | `{ readonly port: number }` — what the runtime publishes on `Serving.info` once listening, read back through `RunningApp.runtimeInfo()`                                                                                                                                                                      |
-| `html`                 | value | `` html`<tr>${value}</tr>` `` — a tagged template returning `Html`, escaping every interpolation by default                                                                                                                                                                                                  |
-| `raw`                  | value | `raw(markup)` — the one way past `html`'s escaping, a visible act at the call site                                                                                                                                                                                                                           |
-| `Html`                 | type  | `{ readonly [HTML]: true; readonly value: string }` — the output of `html`/`raw`, and nothing else                                                                                                                                                                                                           |
-| `ParamsOf`             | type  | `ParamsOf<Path>` — the `:name` segments a path template names, e.g. `ParamsOf<"/orders/:id/row">` is `{ readonly id: string }`                                                                                                                                                                               |
-| `HtmxFragmentsPort`    | value | `class HtmxFragmentsPort extends Port("HtmxFragments")<{ routes; authenticators }> {}` — every route composed into one port; what `htmx()` answers from                                                                                                                                                      |
-| `FragmentAnswer`       | type  | what the composed port carries for one route — its declared `unit` record, and a `handle` taking the whole `{ principal, unit }` context, both erased to `unknown`                                                                                                                                           |
-| `htmx`                 | value | `htmx({ prefix? })` — the second answerer, one `HttpHandler` member serving fragments, mounted under `prefix` (default `/`)                                                                                                                                                                                  |
-| `HtmxOptions`          | type  | `htmx()`'s options                                                                                                                                                                                                                                                                                           |
+| Export                 | Kind  | What it is                                                                                                                                                                                                                                                                                                                              |
+| ---------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `defineHttp`           | value | `defineHttp({ authenticators })`, or `defineHttp()` for a public API — **the one door**: it declares this deployment's security schemes and hands back `OrpcController`, `OrpcRouter` and `authenticators` typed by them                                                                                                                |
+| `Http`                 | type  | `Http<A, Units>` — what `defineHttp` returns, held as one binding and never destructured; `Units` is the record `auth.units<…>()` binds, empty until that second call                                                                                                                                                                   |
+| `Authenticators`       | type  | `Readonly<Record<string, Authenticator<…>>>` — the registry `defineHttp` takes, keyed by scheme name                                                                                                                                                                                                                                    |
+| `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                                                                                                                            |
+| `HttpModule`           | value | `HttpModule(name)({ router, fragments?, fragmentsPrefix?, fragmentsLogin?, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, csrf?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment |
+| `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                                                                                                                             |
+| `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })` — or `make` where building the scheme can fail, or `({ inject: {}, sync })` with no deps; the scheme's **name** is the key it sits under in `defineHttp`                                                                                                               |
+| `Authenticator`        | type  | `Authenticator<P, Scope, N, E>` — what `HttpAuthenticator` hands back: a description carrying its principal, its scope vocabulary, the ports it needs and the error its arm reports, which `defineHttp` binds to a port                                                                                                                 |
+| `granted`              | value | `granted(identity, scopes)` — mints the scoped answer, stamped with a module-private symbol so the starter can tell it from a bare identity that carries a `scopes` field                                                                                                                                                               |
+| `Granted`              | type  | `Granted<P, Scope>` — the identity **bare** when the scheme has no scope vocabulary, a `Grant<P, Scope>` when it has one                                                                                                                                                                                                                |
+| `Grant`                | type  | `Grant<P, Scope>` — the branded `{ identity, scopes }` `granted()` returns; unforgeable from outside the package                                                                                                                                                                                                                        |
+| `AuthenticatorService` | type  | `(headers: IncomingHttpHeaders) => AsyncResult<Granted<P, Scope>, Unauthenticated>` — headers in, credential out                                                                                                                                                                                                                        |
+| `authenticatorPort`    | value | `authenticatorPort(scheme)` — the di port whose id is `` `HttpAuthenticator:${scheme}` ``; a router declares one per scheme its contract names                                                                                                                                                                                          |
+| `principalPort`        | value | `principalPort(scheme)` — the di port whose id is `` `HttpPrincipal:${scheme}` ``, carrying that scheme's principal; a unit module names it in `needs` and the fork seeds it                                                                                                                                                            |
+| `Principals`           | type  | `Principals<A>` — the scheme → principal-port map, what `auth.principals` is                                                                                                                                                                                                                                                            |
+| `Kinds`                | type  | `Kinds<A>` — `"anonymous"` plus every declared scheme: every kind a unit may be opened under                                                                                                                                                                                                                                            |
+| `UnitsOf`              | type  | `UnitsOf<A>` — `Partial<Record<Kinds<A>, Module>>`, the record `auth.units<…>()` takes                                                                                                                                                                                                                                                  |
+| `Unauthenticated`      | value | a `TaggedError` with an empty payload — the refusal itself; the starter surfaces no reason to the client                                                                                                                                                                                                                                |
+| `UnderScoped`          | value | `TaggedError("UnderScoped")` — a valid credential missing a declared scope, answered `403`                                                                                                                                                                                                                                              |
+| `resolvePrincipal`     | value | the protocol-neutral authentication walk, shared by every answerer                                                                                                                                                                                                                                                                      |
+| `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                                                                                                                |
+| `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                                                                                                              |
+| `apiKeyAuthenticator`  | value | `apiKeyAuthenticator<P>()({ header?, keys })` — an API-key scheme with a constant-time compare over SHA-256 digests, no early return, and a missing header on the same path as a wrong key                                                                                                                                              |
+| `http`                 | value | `http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, csrf?, unit? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                                                        |
+| `httpServer`           | value | `httpServer(options?)` — the socket half: runtime, config, `HttpUnit`, and the empty answerer set. `http()` is this plus oRPC                                                                                                                                                                                                           |
+| `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                                                                                                      |
+| `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export. It **resolves `HttpHandler`**, so the root must export that too                                                                                                |
+| `HttpHandler`          | value | `class HttpHandler extends Port.many("HttpHandler")<HttpAnswerer> {}` — the set port every protocol served in this process contributes one member to                                                                                                                                                                                    |
+| `HttpAnswerer`         | type  | one protocol's answer to HTTP — a mount `prefix` and the `handle` the runtime routes to; see [several answerers](#httphandler-and-several-answerers)                                                                                                                                                                                    |
+| `HttpConfig`           | value | `class HttpConfig extends Port("HttpConfig")<{ port: number; hostname: string; bodyLimit: number; corsOrigin: string; compression: boolean }> {}` — what the transport is bound and configured with, provided by `http()` from `PORT` / `HOST` / `HTTP_BODY_LIMIT` / `HTTP_CORS_ORIGIN` / `HTTP_COMPRESSION`                            |
+| `HttpInfo`             | type  | `{ readonly port: number }` — what the runtime publishes on `Serving.info` once listening, read back through `RunningApp.runtimeInfo()`                                                                                                                                                                                                 |
+| `html`                 | value | `` html`<tr>${value}</tr>` `` — a tagged template returning `Html`, escaping every interpolation by default                                                                                                                                                                                                                             |
+| `raw`                  | value | `raw(markup)` — the one way past `html`'s escaping, a visible act at the call site                                                                                                                                                                                                                                                      |
+| `Html`                 | type  | `{ readonly [HTML]: true; readonly value: string }` — the output of `html`/`raw`, and nothing else                                                                                                                                                                                                                                      |
+| `ParamsOf`             | type  | `ParamsOf<Path>` — the `:name` segments a path template names, e.g. `ParamsOf<"/orders/:id/row">` is `{ readonly id: string }`                                                                                                                                                                                                          |
+| `HtmxFragmentsPort`    | value | `class HtmxFragmentsPort extends Port("HtmxFragments")<{ routes; authenticators }> {}` — every route composed into one port; what `htmx()` answers from                                                                                                                                                                                 |
+| `FragmentAnswer`       | type  | what the composed port carries for one route — its declared `unit` record, and a `handle` taking the whole `{ principal, unit }` context, both erased to `unknown`                                                                                                                                                                      |
+| `htmx`                 | value | `htmx({ prefix?, login? })` — the second answerer, one `HttpHandler` member serving fragments, mounted under `prefix` (default `/`), sending an unauthenticated caller to `login` when one is pinned                                                                                                                                    |
+| `HtmxOptions`          | type  | `htmx()`'s options                                                                                                                                                                                                                                                                                                                      |
 
 `OrpcController`/`OrpcRouter` and `HtmxGet`/`HtmxPost`/`HtmxFragments` are
 **not** top-level exports: all five come off `defineHttp`, because that is
@@ -104,14 +104,17 @@ the grounds that oRPC was the only way to answer HTTP here — and is exported
 now, since a second protocol's package has to name the set port it contributes
 to.
 
-**Three subpaths export more**, each behind an optional peer so a graph that
+**Four subpaths export more**, each behind an optional peer so a graph that
 never imports it installs nothing: `@btravstack/http-server/jwt`
 (`jwtAuthenticator`, `DEFAULT_ALGORITHMS`, and the `Claims` / `JwtOptions`
 types — `jose`), `@btravstack/http-server/session` (`sessionCodec`,
-`sessionAuthenticator`, `SessionCodec`, `DEFAULT_TTL_SEC`, and the `Session` /
-`SessionCodecService` / `SessionOptions` types — `jose` again), and
+`sessionAuthenticator`, `SessionCodec`, `SESSION_COOKIE`, `DEFAULT_TTL_SEC`,
+`TRANSIENT_TTL_SEC`, and the `Session` /
+`SessionCodecService` / `SessionOptions` types — `jose` again),
+`@btravstack/http-server/oidc` (`oidc`, `OidcUnreachable`, and the
+`OidcOptions` type — `openid-client`), and
 `@btravstack/http-server/openapi` (`openApiDocument` — `@orpc/openapi`). All
-three have sections of their own below.
+four have sections of their own below.
 
 ## `HttpModule(name)({...})`
 
@@ -124,7 +127,7 @@ booting a listener with nothing behind it. It appends
 to `imports`; when `router` is given it prepends `router` **and the scheme
 authenticators it carries**, plus `orpc({ prefix, plugins, … })`, to
 `provides`; when `fragments` is given it prepends `fragments` and its own
-authenticators, plus `htmx({ prefix: fragmentsPrefix })`. A scheme both
+authenticators, plus `htmx({ prefix: fragmentsPrefix, login: fragmentsLogin })`. A scheme both
 provide is deduplicated by reference before it reaches `provides`. It prepends
 `HttpRuntime` and `HttpHandler` to `exports`, and hands the augmented tuples to
 di's own `Module(name)`, whose return type is the sugar's. The kernel and both
@@ -136,6 +139,7 @@ gates see a plain module.
 | `fragments`       | no\*     | —                               | the application's fragments **provider** — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces; likewise typed to its own port                                 |
 | `prefix`          | no       | `/rpc`                          | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                                     |
 | `fragmentsPrefix` | no       | `/`                             | where htmx fragments are mounted — `htmx()`'s own default, a separate field because one cannot carry two mount points with two different defaults                                               |
+| `fragmentsLogin`  | no       | —                               | `htmx()`'s [`login`](#login-—-where-an-unauthenticated-caller-is-sent) — the login route an unauthenticated fragment caller is sent to; fragment-only, like `fragmentsPrefix`                   |
 | `port`            | no       | read from `PORT`                | pins the port instead of reading it                                                                                                                                                             |
 | `hostname`        | no       | read from `HOST`                | pins the host instead of reading it                                                                                                                                                             |
 | `cors`            | no       | read from `HTTP_CORS_ORIGIN`    | pins the CORS policy — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                                  |
@@ -324,6 +328,12 @@ request. A key that is not 32 base64url bytes fails the boot with a
 `ConfigInvalid` naming the variable and the **position** it refused, never the
 value.
 
+The service also publishes `ttlSec` — the number `seal` stamps — because a
+login has to write the same one into the cookie's `Max-Age`: a browser holding
+the cookie longer than the payload lives looks anonymous with a cookie still
+attached, and one holding it for less is a session cut short by the wrapper
+rather than by the policy.
+
 **Mint a key list per deployment.** There is no `iss` or `aud` in the sealed
 payload, so two deployments handed the same `HTTP_SESSION_KEYS` accept each
 other's sessions — a cookie minted by staging opens in production. That binding
@@ -345,21 +355,52 @@ is not a JWE, a key that is gone, an edited ciphertext, another algorithm,
 another purpose, a payload that is not a session, one past its `exp`. Nothing
 outside learns which of them it got wrong.
 
-**`sessionAuthenticator<P>()({ cookie?, scopes?, principal? })`** is the scheme
+**`codec.transient` seals the login flow's own state**, on the same service:
+
+<!-- doctest: isolate
+import type { SessionCodecService } from "@btravstack/http-server/session";
+declare const codec: SessionCodecService;
+declare const cookie: string | undefined;
+-->
+
+```ts
+void codec.transient.seal({ verifier: "v", state: "s", nonce: "n", returnTo: "/orders" });
+void codec.transient.unseal(cookie); // the state back, or nothing
+```
+
+It takes a `Record<string, string>` — everything an OIDC redirect has to
+remember — and seals it with the SAME keys under its own purpose marker and a
+fixed lifetime of `TRANSIENT_TTL_SEC`, five minutes. `unseal` requires that
+marker back and answers the state with the codec's own stamps stripped, so the
+two refuse each other in both directions: a transient replayed under the
+session cookie's name is anonymous, and a session presented as login state is
+nothing. Five minutes is a constant rather than an option — a login that takes
+longer is a login to start again.
+
+It is a pair on the codec rather than a provider of its own because the decoded
+keys live inside the codec: a second provider would be either a second
+`sessionCodec()` — a duplicate provider di refuses at build — or a second port
+re-reading `HTTP_SESSION_KEYS`, with its own rotation story for a list an
+operator rotates once.
+
+**`sessionAuthenticator<P>()({ scopes?, principal? })`** is the scheme
 over that codec, and it is an ordinary `Authenticator`: bind it in
 `defineHttp({ authenticators })` and `requires: [{ session: [] }]` or
 `authenticated({ session: [] })` work exactly as they do for the other two.
 
 | Option      | Required | Default                       | What it is                                                                                                    |
 | ----------- | -------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `cookie`    | no       | `__Host-session`              | which cookie carries the session                                                                              |
 | `scopes`    | no       | none (the scheme is unscoped) | the vocabulary; the grant is its intersection with the session's own `scopes`                                 |
 | `principal` | no       | `session.principal`           | what the session makes the caller; `undefined` refuses it, and the default refuses a session sealed with none |
 
-**`__Host-` is a browser-enforced prefix** — `Secure`, `Path=/`, no `Domain` —
-so a sibling host cannot write the cookie and plain HTTP cannot carry it. There
-is no `secure` option: it would be an option for shipping a session cookie
-insecurely.
+**The cookie is `SESSION_COOKIE`, `__Host-session`, and cannot be renamed.**
+`__Host-` is a browser-enforced prefix — `Secure`, `Path=/`, no `Domain` — so a
+sibling host cannot write the cookie and plain HTTP cannot carry it, and there
+is no `secure` option because it would be an option for shipping a session
+cookie insecurely. There is no `cookie` option either: `oidc()` seals that
+name, and a scheme reading a different one is a deployment where every login
+succeeds into a cookie nothing reads — a redirect loop with no error anywhere.
+Both sides name the one exported constant.
 
 **The cookie header is parsed by name, exactly.** `__Host-session-theme` is not
 `__Host-session`, a value carrying an `=` arrives whole, and the first of a
@@ -382,6 +423,169 @@ are on the verifying side: the credential is minted by whoever owns the
 identity, and this package reads what arrives — the session cookie included,
 since `sessionCodec` seals a principal somebody else already authenticated.
 Reach for `argon2` directly at whatever mints your tokens.
+
+### The login answerer
+
+`@btravstack/http-server/oidc` is the other half of the session: the codec
+seals a principal, and `oidc()` is what authenticates one. It is an
+**answerer** — one `HttpHandler` member beside `orpc()` and `htmx()`, mounted
+under a prefix of its own — serving three routes, and it needs
+`openid-client` (an optional peer, behind this subpath).
+
+<!-- doctest: isolate
+import { defineHttp, html, HttpModule } from "@btravstack/http-server";
+import { oidc } from "@btravstack/http-server/oidc";
+import { sessionAuthenticator, sessionCodec } from "@btravstack/http-server/session";
+import { OkAsync } from "unthrown";
+
+type Identity = { readonly tenantId: string; readonly userId: string };
+-->
+
+```ts
+const api = defineHttp({
+  authenticators: { session: sessionAuthenticator<Identity>()({ scopes: ["orders:export"] }) },
+});
+
+const row = api.HtmxGet("/orders/:id/row", { requires: [{ session: [] }] })({
+  inject: {},
+  sync: () => (context) => OkAsync(html`<p>${context.principal.tenantId}</p>`),
+});
+
+export const BrowserApi = HttpModule("BrowserApi")({
+  fragments: api.HtmxFragments([row]),
+  fragmentsLogin: "/auth/login",
+  provides: [
+    row,
+    sessionCodec(),
+    oidc({
+      scope: "openid orders:export",
+      principal: (claims) =>
+        typeof claims["tenant"] === "string" && typeof claims.sub === "string"
+          ? { tenantId: claims["tenant"], userId: claims.sub }
+          : undefined,
+    }),
+  ],
+});
+```
+
+| Option                | Required | Default                             | What it is                                                                |
+| --------------------- | -------- | ----------------------------------- | ------------------------------------------------------------------------- |
+| `principal`           | **yes**  | —                                   | what the ID token's claims make the caller; `undefined` refuses the login |
+| `issuer`              | no       | read from `HTTP_OIDC_ISSUER`        | the provider, as its discovery document names itself                      |
+| `clientId`            | no       | read from `HTTP_OIDC_CLIENT_ID`     | this deployment's client                                                  |
+| `clientSecret`        | no       | read from `HTTP_OIDC_CLIENT_SECRET` | its secret — this is a confidential client                                |
+| `redirectUri`         | no       | read from `HTTP_OIDC_REDIRECT_URI`  | the URI **registered** with the provider                                  |
+| `prefix`              | no       | `/auth`                             | where the three routes are mounted                                        |
+| `scope`               | no       | `openid`                            | what the authorization request asks for                                   |
+| `postLogout`          | no       | `/`                                 | where a logout lands when the provider advertises no end-session endpoint |
+| `allowInsecureIssuer` | no       | `false`                             | talk to an `http:` issuer that is not on a loopback host                  |
+
+**`GET <prefix>/login?return=<path>&as=<hint>`** mints a PKCE verifier, a
+`state` and a `nonce`, seals them and `return` into the five-minute
+`__Host-oidc` cookie, and answers `303` to the provider's authorization
+endpoint. `return` is the seam `htmx({ login })` writes when it sends an
+unauthenticated caller here; `as` rides through as `login_hint`, so a provider
+can prefill its own form.
+
+**`GET <prefix>/callback`** checks the `state` that came back against that
+cookie, exchanges the code, and seals `principal(claims)` into
+`__Host-session` — clearing the transient in the same answer — then `303`s to
+where the login was going. `Session.scopes` is written from the ID token's
+space-delimited `scope` claim and `Session.sid` from `sid`, each only when the
+provider sent one, which is what makes a scoped `sessionAuthenticator` grant
+anything at all.
+
+**`POST <prefix>/logout`** clears the session cookie and `303`s to the
+provider's `end_session_endpoint`, or to `postLogout` when it advertises none.
+It is a `POST` because it is a state change, and the CSRF check a composed
+session scheme turns on applies to it like any other cookie-bearing one.
+
+Anything else under the mount is a `404` from this answerer: it owns every path
+below its prefix.
+
+**Every redirect is a `303`**, `htmx()`'s own ruling and for its reason: RFC
+9110 §15.4.3 leaves a `302`'s POST-to-GET change a MAY, and §15.4.4's `303`
+specifies the retrieval request instead.
+
+**`return` is decoded exactly once, and kept only when it stays here.** The
+query parser is that one decode; the value is then kept only if it starts with
+`/` and its second character is neither `/` nor `\`. A second
+`decodeURIComponent` would turn `%255C` back into `\`, and
+`new URL("/\\evil.com", base)` resolves to `https://evil.com/` — the WHATWG
+parser reads `\` as `/` in relative-slash state, so a protocol-relative URL is
+manufacturable out of a value that already passed the guard. Anything else
+lands on `/`. The check runs at `/login`, where the value is sealed, **and**
+again at the callback, where it is followed.
+
+**What a header accepts is the header's job**, so the value goes through
+`forLocation` where it becomes a `Location` rather than being filtered by the
+guard. Node's header
+validator refuses control characters and every code point above U+00FF alike,
+so `/订单/1` — an ordinary path — would otherwise pass every guard and then
+`ERR_INVALID_CHAR` the callback with the authorization code already spent. It
+goes out as `/%E8%AE%A2%E5%8D%95/1`, and a CR/LF one as `/%0A…`, unsplittable.
+
+**The code grant is checked against the REGISTERED redirect URI, never
+`Host`.** `currentUrl` is `redirectUri` carrying this request's query string,
+so a forged `Host` header cannot move the check — and a deployment behind a
+proxy, or a test on an ephemeral port, needs no trust in that header either.
+
+**A cleartext issuer is refused at boot, unless it never leaves the machine.**
+`Config.url` says a value parses, not that it is safe: an `http:` issuer sends
+the client secret, the authorization code and every token in the open, and the
+`allowInsecureRequests` this package then applies is the one check that would
+have refused to. An `http:` issuer on a **loopback** host — `localhost`,
+`127.0.0.1`, `[::1]` — is accepted as it stands, because plaintext that never
+leaves the machine is the development loop. Any other is a `ConfigInvalid`
+naming `HTTP_OIDC_ISSUER`, unless `allowInsecureIssuer: true` is pinned on
+`oidc()`. It is an **option and not a variable**, for `securityHeaders`'
+reason: a posture whose silent change is a security regression belongs in the
+composition root, where changing it is a visible act.
+
+**Discovery runs ONCE, at boot.** A provider that is not there is
+`OidcUnreachable` naming the issuer — a modeled startup failure `runMain` turns
+into an exit code — rather than a `500` on the first login; and the JWKS cache
+and the metadata are one per process rather than one per request. The
+configuration also has the ID token's **signature** check enabled explicitly:
+OIDC Core lets a client trust a token that arrived over TLS from the token
+endpoint, which is not a trust this package extends.
+
+**Logout sends no `id_token_hint`.** The cookie holds a principal and no token,
+so there is none to send — which also means no `post_logout_redirect_uri`,
+since a provider is entitled to refuse that parameter without a hint (Ory Hydra
+does). Configure the provider's own post-logout URI instead.
+
+**It injects `SessionCodec` rather than holding keys**, so the codec that seals
+a session here is by construction the one `sessionAuthenticator` reads it back
+with, key rotation included — and a root composing `oidc()` without
+`sessionCodec()` is di's own unmet need naming the port, refused at the
+`HttpModule` call. The cookie it seals is `SESSION_COOKIE`, the same constant
+the scheme reads.
+
+**Each route is an operation reported to `Observers`**, the way a cache read
+is. A refused login is the one refusal in this package that destroys
+information — the provider's reason must not reach the caller, and a `401` is
+not an error the runtime's RED metrics count, so a rotated client secret, a
+dead token endpoint and a genuinely bad code are otherwise one indistinguishable
+spike. So every refusal settles `error` carrying its own `reason`:
+`transient_missing`, `state_mismatch`, `provider_refused`, `grant_failed` or
+`principal_refused`. Those five are dimensions and are bounded; the provider's
+own `error_description` and the library error's message are caller-controlled,
+so they ride the `cause` — a line or a span, never an instrument — and the
+authorization code and the tokens ride nothing. **It costs a root nothing**:
+the starter contributes the no-op observer every reader of that set port owes,
+and exports the port too — `oidc()` is a single member provider rather than a
+module, so it has nowhere to put a no-op of its own, and the export is what
+keeps the set free to a root instead of making this one answerer charge for it.
+Composing [`observability()`](/reference/observability) is what turns the line
+on; composing none leaves an inert call per route.
+
+**Every refusal clears the transient**, not only the success: the flow state is
+spent the moment a callback has been seen. The consequence is worth knowing —
+**two logins running at once in one browser share one transient, and the last
+`/login` wins**; the other tab's callback finds a `state` that does not match
+and is refused. The cookie is the whole memory of the flow, and a browser has
+one of it.
 
 ## `api.OrpcRouter(contract)({ inject: deps, sync })`
 
@@ -1222,8 +1426,8 @@ should make in the open.
 **CSRF is an option, [`csrf`](#csrf)**, and not a `plugins` line. It was a
 `plugins` line while nothing here read a cookie; `sessionAuthenticator` does, so
 the deferral closed. The reason it could not stay a plugin is that a plugin only
-sees what `RPCHandler` handles: `htmx()` takes a `prefix` and nothing else, so
-no oRPC plugin ever sees a fragment request, and the fragment half is exactly
+sees what `RPCHandler` handles: `htmx()` takes no plugins and runs no oRPC
+handler, so no oRPC plugin ever sees a fragment request, and the fragment half is exactly
 the half a form `POST` reaches. So the check lives on the raw listener, upstream
 of both answerers, and oRPC's `GetMethodCsrfProtectionHandlerPlugin` — which
 covers the preflight-free `GET` an event-iterator procedure admits, a surface
@@ -1343,13 +1547,66 @@ unwritten, exactly like oRPC's answerer, so the runtime's own `404` answers
 it — and never forks, since the fork is the answerer's, for a request it
 handles and is about to hand to its own route.
 
-| Option   | Required | Default | What it is                  |
-| -------- | -------- | ------- | --------------------------- |
-| `prefix` | no       | `/`     | where fragments are mounted |
+| Option   | Required | Default | What it is                                                                                               |
+| -------- | -------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `prefix` | no       | `/`     | where fragments are mounted                                                                              |
+| `login`  | no       | —       | the login **route** an unauthenticated caller is sent to; unset, that caller gets a bare `401` as before |
 
 Only `bodyLimit`, off the same `HttpConfig` `orpc()` reads, applies to this
 answerer — `cors` and `compression` are oRPC plugins with no fragment
 equivalent.
+
+### `login` — where an unauthenticated caller is sent
+
+Pin `login` and a route whose `requires` resolves `Unauthenticated` sends the
+caller there instead of answering a bare `401`, carrying where they were
+going:
+
+| The request                       | Answer | Header                                       |
+| --------------------------------- | ------ | -------------------------------------------- |
+| a browser navigating              | `303`  | `Location: /auth/login?return=%2Fprivate`    |
+| htmx's own (`HX-Request: true`)   | `401`  | `HX-Redirect: /auth/login?return=%2Fprivate` |
+| under-scoped, whatever the sender | `403`  | none                                         |
+
+**It is the login route, not the prefix its answerer is mounted under.** An
+`oidc({ prefix: "/auth" })` serves `GET /auth/login`; `/auth` itself answers
+nothing, so `login: "/auth"` would send every logged-out caller to a `404`.
+
+**The htmx row is not a cosmetic difference.** htmx follows a redirect inside
+the XHR and swaps the login page into whatever target the fragment named, so a
+request htmx made has to be told to navigate the window — which is what
+`HX-Redirect` does. The status stays `401`: the request was refused, and only
+the browser's navigation is a redirect. `HX-Request` is the discriminator
+because htmx sets it on every request it makes.
+
+**`303`, not `302`.** `requires` is an option on `HtmxPost` as well as
+`HtmxGet`, and the [`csrf`](#csrf) gate refuses only a cross-site request — so
+a same-origin, no-JS `<form method="post">` behind `requires`, from a
+logged-out browser, reaches this branch. RFC 9110 §15.4.3 makes a `302`'s
+POST-to-GET change a **MAY**, which lets a strict client re-POST the form body
+at the login route; §15.4.4's `303` specifies the retrieval request instead.
+
+**`UnderScoped` is never redirected.** A caller who is logged in and lacks the
+scope would come straight back to the same `403`; only
+[`Unauthenticated`](#authentication) is a caller a login can help.
+
+`return` is the request's own path and query — `request.url` as it arrived —
+percent-encoded once with `encodeURIComponent`, **and only when it starts with
+`/` and its second character is neither `/` nor `\`**; anything else is
+reported as `/`. Those two clauses are one shared `returnTo`, the same function
+[`oidc()`](#the-login-answerer) applies when it seals the value and again when
+it follows it, and the value is DECODED EXACTLY ONCE on the way through — a
+second `decodeURIComponent` would turn `%255C` back into `\`. That guard is not
+belt-and-braces: a route whose first segment is a parameter
+(`api.HtmxGet("/:slug", { requires })`) matches the crafted target
+`/\evil.com`, and `new URL("/\\evil.com", base)` resolves to
+`https://evil.com/` — the WHATWG parser reads `\` as `/` in relative-slash
+state. Whether a header can CARRY the result is a separate question and not the
+guard's: the mount goes through `forLocation` where it becomes a `Location`,
+which leaves an already-encoded `%` alone, because
+Node's header validator refuses every code point above U+00FF as well as every
+control character. What stays the consumer's is the rest of the open-redirect
+question, at the point the value is about to be followed.
 
 ::: warning
 **Routes are matched in the composition root's own array order, first match
@@ -1743,7 +2000,8 @@ two copies are two different symbols, so a contract marked against one would
 read as unmarked here. Node `>=22`.
 
 **Optional peers, each behind the subpath that needs it**: `jose` (`^6`) for
-both `/jwt` and `/session`, `@orpc/openapi` and `@orpc/json-schema` for
+both `/jwt` and `/session`, `openid-client` (`^6`) for `/oidc`,
+`@orpc/openapi` and `@orpc/json-schema` for
 `/openapi`. A graph that imports none of those subpaths installs none of them —
 which is the whole reason they are subpaths. `jose` is ESM-only, so a CJS
 consumer of `/jwt` or `/session` needs Node `>=22.12` for `require(esm)`; ESM is

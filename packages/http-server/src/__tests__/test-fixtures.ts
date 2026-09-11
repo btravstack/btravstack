@@ -37,12 +37,24 @@ import {
   type Settle,
 } from "@btravstack/core";
 import { Module, Port, Provider, type PortClassOf, type ServiceOf } from "@btravstack/di";
+import {
+  ORY_CLIENT_ID,
+  ORY_CLIENT_SECRET,
+  ORY_ISSUER,
+  ORY_REDIRECT_URI,
+  ORY_SCOPE,
+  sharedOry,
+  type Ory,
+  type OryUser,
+} from "@btravstack/internal-test-infra/ory";
+import { headlessLogin } from "@btravstack/internal-test-infra/ory-login";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { localIssuer, type LocalIssuer } from "@btravstack/testing/jwt";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { eventIterator, oc, type as ocType, type RouterContractClient } from "@orpc/contract";
 import { CompactEncrypt, SignJWT } from "jose";
+import type { IDToken } from "openid-client";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
 import { z } from "zod";
@@ -74,6 +86,7 @@ import {
   type HttpOptions,
 } from "../http-runtime.js";
 import { jwtAuthenticator } from "../jwt.js";
+import { oidc, type OidcUnreachable } from "../oidc.js";
 import {
   SessionCodec,
   sessionAuthenticator,
@@ -139,6 +152,8 @@ export type Observation = {
   readonly name: string;
   readonly attributes: Attributes;
   readonly outcome: "ok" | "error";
+  /** Only when the operation settled with one — the UNBOUNDED half, off the dimensions. */
+  readonly cause?: unknown;
 };
 
 /**
@@ -154,8 +169,14 @@ const recordingObserver = (): {
   return {
     member:
       ({ component, name, attributes }) =>
-      ({ outcome, attributes: settled }) => {
-        taken.push({ component, name, attributes: { ...attributes, ...settled }, outcome });
+      ({ outcome, attributes: settled, cause }) => {
+        taken.push({
+          component,
+          name,
+          attributes: { ...attributes, ...settled },
+          outcome,
+          ...(cause === undefined ? {} : { cause }),
+        });
       },
     taken: () => taken,
   };
@@ -429,6 +450,262 @@ const csrfCallsOf = async (origin: string): Promise<CsrfCalls> => {
     cookie: `__Host-session=${sealed}`,
     post: (headers = {}) => call("POST", "/note", headers),
     get: (headers = {}) => call("GET", "/whoami", headers),
+  };
+};
+
+/**
+ * The login deployment: the session scheme over a vocabulary, one route
+ * requiring the scheme alone and one requiring a scope no session it seals
+ * holds — the pair that separates "send them to log in" from "they are logged
+ * in and still may not".
+ */
+const loginApi = defineHttp({
+  authenticators: {
+    session: sessionAuthenticator<SessionIdentity>()({ scopes: ["orders:export"] }),
+  },
+});
+
+const loginPrivateFragment = loginApi.HtmxGet("/private", { requires: [{ session: [] }] })({
+  inject: {},
+  sync: () => (context) => OkAsync(html`<p>${context.principal.userId}</p>`),
+});
+
+const loginExportsFragment = loginApi.HtmxGet("/exports", {
+  requires: [{ session: ["orders:export"] }],
+})({ inject: {}, sync: () => () => OkAsync(html`<p>exports</p>`) });
+
+/**
+ * A route whose FIRST segment is a parameter, declared LAST so the two named
+ * routes above still win. It is what lets a crafted request-target reach the
+ * refusal: `/\evil.com` is one non-empty segment, so this route matches it.
+ */
+const loginSlugFragment = loginApi.HtmxGet("/:slug", { requires: [{ session: [] }] })({
+  inject: {},
+  sync: () => (_context, params) => OkAsync(html`<p>${params.slug}</p>`),
+});
+
+const loginFragments = loginApi.HtmxFragments([
+  loginPrivateFragment,
+  loginExportsFragment,
+  loginSlugFragment,
+]);
+
+/**
+ * Composed through `HttpModule` rather than a hand-rolled root, so every login
+ * test also pins that `fragmentsLogin` reaches `htmx()` — a forwarded field
+ * that is dropped fails these outright, where a type test would still compile.
+ */
+const loginAppOf = (login: `/${string}` | undefined) =>
+  HttpModule("HtmxLoginApp")({
+    fragments: loginFragments,
+    port: 0,
+    hostname: "127.0.0.1",
+    ...(login === undefined ? {} : { fragmentsLogin: login }),
+    provides: [
+      loginPrivateFragment,
+      loginExportsFragment,
+      loginSlugFragment,
+      sessionCodec({ keys: [sessionKeys.alpha] }),
+    ],
+  });
+
+/** One call against the login deployment, and what a refusal put on the wire. */
+export type LoginCalls = {
+  /** The `cookie` header the app's own codec sealed — a session holding no scopes. */
+  readonly cookie: string;
+  readonly get: (
+    path: string,
+    headers?: Readonly<Record<string, string>>,
+  ) => Promise<{
+    readonly status: number;
+    readonly location: string | null;
+    readonly hxRedirect: string | null;
+  }>;
+};
+
+const loginCallsOf = async (port: number): Promise<LoginCalls> => {
+  const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
+  const sealed = (await codec.seal({ principal: { userId: "u-1" } })).get();
+  return {
+    cookie: `__Host-session=${sealed}`,
+    // `http.request`, not `fetch`: the request-target goes out VERBATIM, so a
+    // path carrying a backslash reaches the answerer as the crafted target
+    // rather than WHATWG-normalised on the way out — and nothing follows the
+    // redirect to a login route this deployment does not serve.
+    get: (path, headers = {}) =>
+      new Promise((resolve, reject) => {
+        const request = httpRequest(
+          { host: "127.0.0.1", port, path, method: "GET", headers },
+          (response) => {
+            response.resume();
+            response.once("end", () => {
+              const hxRedirect = response.headers["hx-redirect"];
+              resolve({
+                status: response.statusCode ?? 0,
+                location: response.headers.location ?? null,
+                hxRedirect: typeof hxRedirect === "string" ? hxRedirect : null,
+              });
+            });
+          },
+        );
+        request.on("error", reject);
+        request.end();
+      }),
+  };
+};
+
+/** What the OIDC login resolves a browser to, in these specs. */
+export type OidcIdentity = { readonly tenantId: string; readonly userId: string };
+
+/**
+ * What a Kratos identity arrives as through Hydra's consent handler: `sub` is
+ * the identity id, `tenant` its own trait. Refusing either is what `principal`
+ * answering `undefined` is for; the example application's UUIDv7 check is a
+ * stricter version of the same hook.
+ */
+const oidcPrincipal = (claims: IDToken): OidcIdentity | undefined =>
+  typeof claims["tenant"] === "string" && typeof claims.sub === "string"
+    ? { tenantId: claims["tenant"], userId: claims.sub }
+    : undefined;
+
+const bffApi = defineHttp({
+  authenticators: {
+    session: sessionAuthenticator<OidcIdentity>()({ scopes: ["orders:export"] }),
+  },
+});
+
+/**
+ * The one fragment behind the session, requiring a scope nothing but the ID
+ * token's own `scope` claim can have put there — so a 200 here says the tenant
+ * arrived AND that the login carried the grant into the cookie.
+ */
+const bffRowFragment = bffApi.HtmxGet("/orders/:id/row", {
+  requires: [{ session: ["orders:export"] }],
+})({
+  inject: {},
+  sync: () => (context, params) => OkAsync(html`<p>${params.id} ${context.principal.tenantId}</p>`),
+});
+
+const bffFragments = bffApi.HtmxFragments([bffRowFragment]);
+
+/**
+ * `oidc()` reports each route to `Observers` and holds no logger of its own,
+ * so this root composes the same recording observer the transport specs use —
+ * which is what a deployment gets by composing any observability at all, since
+ * the starter already contributes the no-op member and asks a root for nothing.
+ */
+const bffAppOf = (
+  principal: (claims: IDToken) => OidcIdentity | undefined,
+  member: (operation: Operation) => Settle,
+  allowInsecureIssuer = false,
+) =>
+  HttpModule("OidcBff")({
+    fragments: bffFragments,
+    port: 0,
+    hostname: "127.0.0.1",
+    fragmentsLogin: "/auth/login",
+    provides: [
+      bffRowFragment,
+      sessionCodec(),
+      oidc({ principal, scope: ORY_SCOPE, allowInsecureIssuer }),
+      Provider.member(Observers)({ inject: {}, value: member }),
+    ],
+  });
+
+/**
+ * What a deployment of that root sets. `HTTP_OIDC_REDIRECT_URI` is the URI
+ * REGISTERED with Hydra, on its fixed port — the app itself listens on an
+ * ephemeral one, and the answerer building the grant's `currentUrl` from the
+ * configured value rather than from `Host` is exactly what lets the two differ.
+ */
+export const oidcEnv: Environment = {
+  HTTP_SESSION_KEYS: sessionKeys.alpha,
+  HTTP_OIDC_ISSUER: ORY_ISSUER,
+  HTTP_OIDC_CLIENT_ID: ORY_CLIENT_ID,
+  HTTP_OIDC_CLIENT_SECRET: ORY_CLIENT_SECRET,
+  HTTP_OIDC_REDIRECT_URI: ORY_REDIRECT_URI,
+};
+
+/** One request a browser made, and everything a spec reads off the answer. */
+export type Visit = {
+  readonly status: number;
+  readonly location: string | null;
+  readonly setCookie: readonly string[];
+  readonly text: string;
+};
+
+/** A browser against one deployment: a cookie jar, and nothing followed. */
+export type Bff = {
+  readonly origin: string;
+  readonly go: (
+    path: string,
+    init?: { readonly method?: string; readonly headers?: Readonly<Record<string, string>> },
+  ) => Promise<Visit>;
+  /** Sign `user` in at Ory, from the authorization URL a `/auth/login` answer named. */
+  readonly authorize: (location: string | null, user: OryUser) => Promise<URL>;
+  /** The whole walk: `/auth/login<query>`, Ory, and back to this app's own callback. */
+  readonly login: (user: OryUser, query?: string) => Promise<Visit>;
+  /** Drop every cookie — which is what a different browser is. */
+  readonly forget: () => void;
+  /** What the jar holds under `name`, so a spec can re-seal a transient it was given. */
+  readonly held: (name: string) => string | undefined;
+  /** Put a cookie in the jar the browser never received — a tampered transient. */
+  readonly plant: (name: string, value: string) => void;
+  /** Every operation this deployment's observers saw settle. */
+  readonly observations: () => readonly Observation[];
+};
+
+const bffOf = (origin: string, observations: () => readonly Observation[]): Bff => {
+  const jar = new Map<string, string>();
+
+  const go = async (
+    path: string,
+    init: { readonly method?: string; readonly headers?: Readonly<Record<string, string>> } = {},
+  ): Promise<Visit> => {
+    const held = [...jar].map(([name, value]) => `${name}=${value}`).join("; ");
+    const response = await fetch(`${origin}${path}`, {
+      redirect: "manual",
+      method: init.method ?? "GET",
+      headers: { ...(held === "" ? {} : { cookie: held }), ...init.headers },
+    });
+    const setCookie = response.headers.getSetCookie();
+    for (const set of setCookie) {
+      const pair = set.split(";")[0] ?? "";
+      const at = pair.indexOf("=");
+      const value = pair.slice(at + 1);
+      if (value === "") jar.delete(pair.slice(0, at).trim());
+      else jar.set(pair.slice(0, at).trim(), value);
+    }
+    return {
+      status: response.status,
+      location: response.headers.get("location"),
+      setCookie,
+      text: await response.text(),
+    };
+  };
+
+  const authorize = async (location: string | null, user: OryUser): Promise<URL> => {
+    assert.ok(location !== null, "the login route answered no Location");
+    return await headlessLogin({ authorizationUrl: new URL(location), user });
+  };
+
+  return {
+    origin,
+    go,
+    authorize,
+    forget: () => jar.clear(),
+    held: (name) => jar.get(name),
+    plant: (name, value) => {
+      jar.set(name, value);
+    },
+    observations,
+    login: async (user, query = "") => {
+      const started = await go(`/auth/login${query}`);
+      const back = await authorize(started.location, user);
+      // The path and query only: Hydra answered a callback on the port it has
+      // registered, and this deployment listens on an ephemeral one.
+      return await go(`/auth/callback${back.search}`);
+    },
   };
 };
 
@@ -1675,6 +1952,11 @@ export type HttpFixtures = {
   /** The built `htmx()` answerer itself — see `htmxAnswererOf` for why. */
   readonly htmxAnswerer: () => AsyncResult<HttpAnswerer, never>;
   /**
+   * `htmx()` over the session scheme, with `login` pinned or left off — the
+   * two deployments the refusal differs between. Shut down by the fixture.
+   */
+  readonly loginServer: (login?: `/${string}`) => Promise<LoginCalls>;
+  /**
    * The starter over `HttpModule({ router, fragments })` — both protocols from
    * one runtime on one port. Shut down by the fixture.
    */
@@ -1708,6 +1990,28 @@ export type HttpFixtures = {
     readonly origin: string;
     readonly taken: () => readonly Observation[];
   }>;
+
+  /**
+   * The three Ory containers of the shared set, attached once per spec FILE —
+   * they are long-lived like the rest of the set, so nothing here stops them.
+   */
+  readonly ory: Ory;
+  /**
+   * The backend-for-frontend on an ephemeral port: `oidc()` over that provider,
+   * the session codec, the session scheme and one fragment behind it. The
+   * argument is the `principal` under test — the default reads Ory's own
+   * claims. Shut down by the fixture.
+   */
+  readonly bff: (principal?: (claims: IDToken) => OidcIdentity | undefined) => Promise<Bff>;
+  /**
+   * The same root over whatever environment a test hands it, for the two boots
+   * that are meant to fail. A startup failure is the test's to assert on
+   * `app.exited`.
+   */
+  readonly oidcApp: (
+    env: Environment,
+    allowInsecureIssuer?: boolean,
+  ) => RunningApp<ConfigInvalid | OidcUnreachable, HttpInfo>;
 
   /** A JWE under a header and payload of the test's choosing, sealed with a held key. */
   readonly forgeSession: (
@@ -2438,6 +2742,41 @@ export const it = test.extend<HttpFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   htmxAnswerer: async ({}, use) => {
     await use(htmxAnswererOf);
+  },
+
+  loginServer: async ({ boot }, use) => {
+    await use(async (login) => {
+      const app = boot(loginAppOf(login));
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return await loginCallsOf(info.port);
+    });
+  },
+
+  ory: [
+    // oxlint-disable-next-line no-empty-pattern -- see above
+    async ({}, use) => {
+      await use(await sharedOry());
+    },
+    { scope: "file" },
+  ],
+
+  bff: async ({ boot, ory: _ory }, use) => {
+    await use(async (principal = oidcPrincipal) => {
+      const observer = recordingObserver();
+      const app = boot(bffAppOf(principal, observer.member), { env: oidcEnv });
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return bffOf(`http://127.0.0.1:${info.port}`, observer.taken);
+    });
+  },
+
+  // No `ory` dependency: both boots this serves fail before anything is
+  // fetched, and a fixture is only built by a test that names it.
+  oidcApp: async ({ boot }, use) => {
+    await use((env, allowInsecureIssuer) =>
+      boot(bffAppOf(oidcPrincipal, recordingObserver().member, allowInsecureIssuer), { env }),
+    );
   },
 
   bothProtocols: async ({ boot }, use) => {

@@ -164,9 +164,12 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    **One runtime does not mean one protocol.** A graph holds exactly one
    runtime, and that is what bounds the process — not what bounds HTTP itself.
    `@btravstack/http-server`'s `HttpHandler` is a **set port** of
-   `{ prefix, handle }`, and two answerers ship: oRPC (`orpc()`, from `http()`)
-   and htmx fragments (`htmx()`, serving `Html` — an object escaped by
-   default). GraphQL is what the package is being extended for next (#179).
+   `{ prefix, handle }`, and three answerers ship: oRPC (`orpc()`, from
+   `http()`), htmx fragments (`htmx()`, serving `Html` — an object escaped by
+   default) and the login (`oidc()`, from `@btravstack/http-server/oidc`,
+   which walks a browser through the authorization-code flow and seals the
+   session cookie). GraphQL is what the package is being extended for next
+   (#179).
    Every member is an answerer under one runtime, routed by longest matching
    prefix, because three runtimes is the one thing this thesis forbids. The
    package's own spec used to say "there is one way to answer HTTP here,
@@ -872,7 +875,9 @@ in its place.
   unreachable (`skip_consent` is advice to a consent application, never
   permission to omit one). Those three take **fixed** host ports and share a
   fixed-name network, which the others do not: a redirect protocol needs its
-  URLs before the container exists. Started
+  URLs before the container exists. Their state is in the shared Postgres,
+  joined to that network at runtime — a `memory` DSN refuses the concurrent
+  logins the gate makes, measured in `internal/test-infra/README.md`. Started
   once per machine and reused by
   every workspace's vitest run **and by `pnpm dev`**. Ten workspaces need a Docker daemon —
   `packages/amqp-worker`, `packages/temporal-worker`, `packages/cache`, `packages/mailer`,
@@ -1115,8 +1120,10 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   behind `@btravstack/http-server/jwt` (issue #157's JWT/JWKS authenticator —
   its API-key sibling needs no peer and is on the main entry point), `jose`
   again behind `@btravstack/testing/jwt` (the `localIssuer` a test signs
-  with), and each of the three application-service ports carries exactly one
-  more:
+  with), `openid-client` behind `@btravstack/http-server/oidc` (the login
+  answerer — a graph that only SEALS sessions somebody else authenticated
+  composes the codec and installs none of it), and each of the three
+  application-service ports carries exactly one more:
   `redis` behind `@btravstack/cache/redis`, `nodemailer` behind
   `@btravstack/mailer/smtp`, and the two `@aws-sdk` packages behind
   `@btravstack/storage/s3` — every one of them `optional: true` in

@@ -4,6 +4,7 @@ import { CompactEncrypt, compactDecrypt } from "jose";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 import { HttpAuthenticator, Unauthenticated, granted, type Authenticator } from "./auth.js";
+import { cookieValue } from "./cookie.js";
 
 /**
  * What the cookie carries: the application's own principal, and when the
@@ -33,6 +34,15 @@ export type Session<P> = {
 
 export type SessionCodecService = {
   /**
+   * What {@link SessionCodecService.seal | seal} stamps, in seconds — the whole
+   * session, since there is no sliding re-seal. It is published because a login
+   * has to write the same number into the cookie's `Max-Age`: a browser holding
+   * the cookie longer than the payload lives is a caller who looks anonymous
+   * with a cookie still attached, and one holding it for less is a session cut
+   * short by the wrapper rather than by the policy.
+   */
+  readonly ttlSec: number;
+  /**
    * Seals a session into a JWE. `iat` and `exp` are stamped here rather than
    * accepted, so a caller cannot mint a session that outlives the policy.
    */
@@ -44,6 +54,23 @@ export type SessionCodecService = {
    * error and never a hint about which of those it was.
    */
   readonly unseal: (cookie: string | undefined) => AsyncResult<Session<unknown> | undefined, never>;
+  /**
+   * The login flow's own state — a PKCE verifier, `state`, `nonce`, where to
+   * return to — sealed with the SAME keys under its own purpose marker and a
+   * five-minute lifetime. A transient read as a session, or a session read as
+   * one, is `undefined`: the marker is what separates them.
+   *
+   * `typ`, `iat` and `exp` are the CODEC's: `seal` writes them over whatever
+   * the state carries and `unseal` strips them off again, so a caller's own
+   * value under one of those three names never survives the round trip — which
+   * is what stops state built from a request deciding what the payload is.
+   */
+  readonly transient: {
+    readonly seal: (state: Readonly<Record<string, string>>) => AsyncResult<string, never>;
+    readonly unseal: (
+      cookie: string | undefined,
+    ) => AsyncResult<Readonly<Record<string, string>> | undefined, never>;
+  };
 };
 
 export class SessionCodec extends Port("HttpSessionCodec")<SessionCodecService> {}
@@ -72,6 +99,9 @@ export const csrfOn = (option: boolean | undefined, schemes: readonly boolean[])
 /** Twelve hours, fixed: there is no sliding re-seal, so this is the whole session. */
 export const DEFAULT_TTL_SEC = 43_200;
 
+/** Five minutes, and not an option: a login that takes longer is a login to start again. */
+export const TRANSIENT_TTL_SEC = 300;
+
 const KEY_BYTES = 32;
 
 const HEADER = { alg: "dir", enc: "A256GCM" } as const;
@@ -81,6 +111,12 @@ const HEADER = { alg: "dir", enc: "A256GCM" } as const;
 // PURPOSE under our algorithm — the transient an OIDC login seals with these
 // very keys, which a client is free to replay under the session cookie's name.
 const TYP = "session";
+
+// The login flow's own marker, on the same keys and the same algorithm.
+const TRANSIENT_TYP = "oidc";
+
+// What `seal` stamps, and what a transient's state is read WITHOUT.
+const STAMPED = new Set(["typ", "iat", "exp"]);
 
 // Decrypt only what this codec issues. Derived from `HEADER` so the two
 // directions cannot drift apart.
@@ -125,48 +161,97 @@ const sessionOf = (plaintext: Uint8Array): Session<unknown> | undefined => {
     : undefined;
 };
 
+// The transient's own shape guard: the login's marker, a numeric lifetime, and
+// every other property a string — it is flow state, not a principal.
+const transientOf = (
+  plaintext: Uint8Array,
+  now: number,
+): Readonly<Record<string, string>> | undefined => {
+  const decoded: unknown = JSON.parse(new TextDecoder().decode(plaintext));
+  if (
+    typeof decoded !== "object" ||
+    decoded === null ||
+    !("typ" in decoded) ||
+    decoded.typ !== TRANSIENT_TYP ||
+    !("iat" in decoded) ||
+    typeof decoded.iat !== "number" ||
+    !("exp" in decoded) ||
+    typeof decoded.exp !== "number" ||
+    decoded.exp <= now
+  )
+    return undefined;
+  const state = Object.entries(decoded).filter(([key]) => !STAMPED.has(key));
+  return state.every(([, value]) => typeof value === "string")
+    ? (Object.fromEntries(state) as Readonly<Record<string, string>>)
+    : undefined;
+};
+
+// One decrypt loop for both purposes: every key is tried, the guard says what a
+// plaintext IS and whether it is still live, and every failure is `undefined`.
+const open = <T>(
+  keys: readonly Uint8Array[],
+  cookie: string | undefined,
+  live: (plaintext: Uint8Array, now: number) => T | undefined,
+): AsyncResult<T | undefined, never> =>
+  cookie === undefined
+    ? OkAsync(undefined)
+    : fromSafePromise(
+        (async () => {
+          const now = Math.floor(Date.now() / 1000);
+          for (const key of keys) {
+            const value = await compactDecrypt(cookie, key, ALGORITHMS)
+              .then(({ plaintext }) => live(plaintext, now))
+              .catch(() => undefined);
+            if (value !== undefined) return value;
+          }
+          return undefined;
+        })(),
+      );
+
+// Serialised INSIDE the guard: a payload carries the application's own values,
+// so a cycle in one is a Defect on the channel rather than a throw at a call
+// site whose type says it cannot.
+const sealed = (
+  key: Uint8Array,
+  ttlSec: number,
+  body: (iat: number, exp: number) => object,
+): AsyncResult<string, never> =>
+  fromSafePromise(
+    (async () => {
+      const iat = Math.floor(Date.now() / 1000);
+      const payload = JSON.stringify(body(iat, iat + ttlSec));
+      return await new CompactEncrypt(new TextEncoder().encode(payload))
+        .setProtectedHeader(HEADER)
+        .encrypt(key);
+    })(),
+  );
+
 const codec = (
   keys: readonly [Uint8Array, ...(readonly Uint8Array[])],
   ttlSec: number,
 ): SessionCodecService => {
   const [sealing] = keys;
   return {
+    ttlSec,
     seal: ({ principal, sid, scopes }) =>
-      // Serialised INSIDE the guard: `principal` is the application's own value,
-      // so a cycle in it or a throwing `toJSON` is a Defect on the channel
-      // rather than a throw at a call site whose type says it cannot.
-      fromSafePromise(
-        (async () => {
-          const iat = Math.floor(Date.now() / 1000);
-          // `JSON.stringify` drops an absent `sid`, so nothing spreads it in.
-          const payload = JSON.stringify({
-            typ: TYP,
-            principal,
-            sid,
-            scopes,
-            iat,
-            exp: iat + ttlSec,
-          });
-          return await new CompactEncrypt(new TextEncoder().encode(payload))
-            .setProtectedHeader(HEADER)
-            .encrypt(sealing);
-        })(),
-      ),
+      // `JSON.stringify` drops an absent `sid`, so nothing spreads it in.
+      sealed(sealing, ttlSec, (iat, exp) => ({ typ: TYP, principal, sid, scopes, iat, exp })),
     unseal: (cookie) =>
-      cookie === undefined
-        ? OkAsync(undefined)
-        : fromSafePromise(
-            (async () => {
-              const now = Math.floor(Date.now() / 1000);
-              for (const key of keys) {
-                const session = await compactDecrypt(cookie, key, ALGORITHMS)
-                  .then(({ plaintext }) => sessionOf(plaintext))
-                  .catch(() => undefined);
-                if (session !== undefined) return session.exp > now ? session : undefined;
-              }
-              return undefined;
-            })(),
-          ),
+      open(keys, cookie, (plaintext, now) => {
+        const session = sessionOf(plaintext);
+        return session !== undefined && session.exp > now ? session : undefined;
+      }),
+    transient: {
+      // The markers last, so state a caller spelled `typ` cannot become one.
+      seal: (state) =>
+        sealed(sealing, TRANSIENT_TTL_SEC, (iat, exp) => ({
+          ...state,
+          typ: TRANSIENT_TYP,
+          iat,
+          exp,
+        })),
+      unseal: (cookie) => open(keys, cookie, transientOf),
+    },
   };
 };
 
@@ -215,31 +300,18 @@ export const sessionCodec = (
       }),
   });
 
-const DEFAULT_COOKIE = "__Host-session";
-
 /**
- * One cookie out of the `cookie` header, which `node:http` delivers as ONE
- * string. The name is matched EXACTLY, so `__Host-session-x` is not
- * `__Host-session`; only the first `=` splits, so a value carrying one arrives
- * whole; and the FIRST of a repeated name wins, which is the order a browser
- * sends them in — most specific first — so a later duplicate cannot shadow the
- * session.
+ * The cookie the session travels on, and there is no option to rename it.
+ *
+ * `__Host-` is a prefix the BROWSER enforces — `Secure`, `Path=/`, no `Domain`
+ * — which is the guarantee, and it is the name `oidc()` writes as well: the
+ * scheme that READS the cookie and the answerer that SEALS it must agree, and
+ * two options that must agree is the shape where they silently do not. One
+ * constant both name.
  */
-const cookieValue = (header: string | undefined, name: string): string | undefined => {
-  for (const part of header?.split(";") ?? []) {
-    const at = part.indexOf("=");
-    if (at !== -1 && part.slice(0, at).trim() === name) return part.slice(at + 1).trim();
-  }
-  return undefined;
-};
+export const SESSION_COOKIE = "__Host-session";
 
 export type SessionOptions<P, Scopes extends readonly string[]> = {
-  /**
-   * The cookie the browser sends back. Default `__Host-session` — a
-   * browser-enforced prefix: `Secure`, `Path=/`, no `Domain`, so a sibling
-   * host cannot write it.
-   */
-  readonly cookie?: string;
   /**
    * The scopes this scheme can grant, and **the only place they are written**
    * — `jwtAuthenticator`'s rule, for `jwtAuthenticator`'s reason. The grant is
@@ -264,6 +336,9 @@ export type SessionOptions<P, Scopes extends readonly string[]> = {
  * export const browserAuth = sessionAuthenticator<Identity>()({ scopes: ["orders:export"] });
  * ```
  *
+ * The cookie is {@link SESSION_COOKIE} and cannot be renamed: `oidc()` seals
+ * that name, so a knob here would be one half of a pair that must agree.
+ *
  * It injects {@link SessionCodec} rather than holding keys of its own, so a
  * root composing this scheme without `sessionCodec()` is di's own unmet need
  * naming `SessionCodec` — and the codec that reads a cookie is the very one
@@ -278,7 +353,6 @@ export const sessionAuthenticator =
   <const Scopes extends readonly string[] = readonly []>(
     options: SessionOptions<P, Scopes> = {},
   ): Authenticator<P, Scopes[number], SessionCodec, never> => {
-    const name = options.cookie ?? DEFAULT_COOKIE;
     // The vocabulary decides the answer's SHAPE, and it is read once here: a
     // scoped scheme answers an empty grant for a session that holds nothing,
     // never a bare identity.
@@ -295,7 +369,7 @@ export const sessionAuthenticator =
         sync:
           ({ codec }) =>
           (headers) =>
-            codec.unseal(cookieValue(headers.cookie, name)).flatMap((session) => {
+            codec.unseal(cookieValue(headers.cookie, SESSION_COOKIE)).flatMap((session) => {
               if (session === undefined) return ErrAsync(new Unauthenticated());
               const principal = principalOf(session);
               if (principal === undefined) return ErrAsync(new Unauthenticated());

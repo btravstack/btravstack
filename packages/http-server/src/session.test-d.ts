@@ -4,7 +4,7 @@
 // that outlives the policy. Each `@ts-expect-error` is an assertion.
 import type { ConfigInvalid, Env } from "@btravstack/config";
 import type { Provider } from "@btravstack/di";
-import { OkAsync } from "unthrown";
+import { OkAsync, type AsyncResult } from "unthrown";
 import { expectTypeOf } from "vitest";
 
 import type { Authenticator } from "./auth.js";
@@ -45,6 +45,27 @@ void codec.seal({
   exp: 1,
 });
 
+// The transient: flow state is strings, and its lifetime is the codec's — there
+// is no `iat`/`exp` to pass and nothing but a string to put in it.
+void codec.transient.seal({ verifier: "v-1", returnTo: "/orders" });
+
+void codec.transient.seal({
+  verifier: "v-1",
+  // @ts-expect-error -- Type 'number' is not assignable to type 'string'
+  attempt: 1,
+});
+
+expectTypeOf(codec.transient.unseal).returns.toEqualTypeOf<
+  AsyncResult<Readonly<Record<string, string>> | undefined, never>
+>();
+
+// There is no `cookie` knob: the scheme reads `SESSION_COOKIE` and `oidc()`
+// seals it, and two options that must agree is the shape where they do not.
+sessionAuthenticator<Identity>()({
+  // @ts-expect-error -- Object literal may only specify known properties, and 'cookie' does not exist
+  cookie: "sid",
+});
+
 // The scheme: its needs channel is the CODEC's port, so a root composing it
 // without `sessionCodec()` is di's own unmet need — and its vocabulary is
 // inferred from `scopes`, exactly as `jwtAuthenticator`'s is.
@@ -53,7 +74,6 @@ const browserAuth = sessionAuthenticator<Identity>()();
 expectTypeOf(browserAuth).toEqualTypeOf<Authenticator<Identity, never, SessionCodec, never>>();
 
 const scopedAuth = sessionAuthenticator<Identity>()({
-  cookie: "session",
   scopes: ["orders:export"],
   principal: (session) => session.principal as Identity,
 });

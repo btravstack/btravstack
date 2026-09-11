@@ -2,9 +2,10 @@
 
 > The **serving half** of HTTP for [`@btravstack/core`](../core): one runtime,
 > and a `HttpHandler` set port every protocol contributes one answerer to,
-> routed by longest matching mount prefix. Two ship — oRPC over `node:http`
+> routed by longest matching mount prefix. Three ship — oRPC over `node:http`
 > (a caller reaches it with `@orpc/client` and the contract package, not this
-> one) and htmx fragments, server-rendered `Html` escaped by default — each
+> one), htmx fragments, server-rendered `Html` escaped by default, and the
+> OpenID Connect login that seals the session cookie — each
 > with one unit per request and a drain that actually stops accepting. This
 > README works the oRPC half end to end; for fragments, see
 > [Serve htmx fragments](https://btravstack.github.io/btravstack/how-to/serve-htmx-fragments).
@@ -299,6 +300,37 @@ Mint one with
 `node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'`.
 A key that is not 32 base64url bytes fails the boot with a `ConfigInvalid`
 naming `HTTP_SESSION_KEYS` and the POSITION it refused — never the value.
+
+`oidc({ principal, ... })`, from `@btravstack/http-server/oidc`, is what
+authenticates the principal that codec seals: an answerer serving
+`<prefix>/login`, `<prefix>/callback` and `<prefix>/logout` over the
+authorization-code flow with PKCE. It needs `openid-client`, an optional peer
+behind that subpath.
+
+| Option                | What it is                                                                                                      |
+| --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `principal`           | **required** — what the ID token's claims make the caller; `undefined` refuses the login                        |
+| `issuer`              | pins `HTTP_OIDC_ISSUER` — the provider, as its discovery document names itself                                  |
+| `clientId`            | pins `HTTP_OIDC_CLIENT_ID` — this deployment's client                                                           |
+| `clientSecret`        | pins `HTTP_OIDC_CLIENT_SECRET` — its secret; the flow is a confidential client's                                |
+| `redirectUri`         | pins `HTTP_OIDC_REDIRECT_URI` — the URI **registered** with the provider, and what the grant is checked against |
+| `prefix`              | where the three routes are mounted (default `/auth`)                                                            |
+| `scope`               | what the authorization request asks for (default `openid`)                                                      |
+| `postLogout`          | where a logout lands when the provider advertises no end-session endpoint (default `/`)                         |
+| `allowInsecureIssuer` | talk to an `http:` issuer that is not on a loopback host (default `false`, and a boot failure without it)       |
+
+An `http:` issuer is refused at boot unless its host is loopback —
+`localhost`, `127.0.0.1`, `[::1]` — or `allowInsecureIssuer: true` is pinned at
+the call: cleartext sends the client secret, the authorization code and every
+token in the open. An option rather than a variable, because its silent change
+is a security regression.
+
+Discovery runs once, at boot: a provider that is not there is an
+`OidcUnreachable` naming the issuer, rather than a `500` on the first login.
+Each route is an operation reported to `Observers`, so a refusal carries its
+own `reason` — compose any observability and the line is there, compose none
+and it costs nothing. The cookie it seals is `SESSION_COOKIE`, which the
+scheme reads and neither side can rename.
 
 The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/http-server),

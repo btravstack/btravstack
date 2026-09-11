@@ -8,16 +8,25 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`HttpModule(name)({ router?, fragments?, fragmentsPrefix?, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })`**
+- **`HttpModule(name)({ router?, fragments?, fragmentsPrefix?, fragmentsLogin?, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })`**
   (`http-module.ts`) — THE way an application declares an HTTP deployment:
   `Module(name)({...})` plus a router, fragments, or both. It appends
   `httpServer(options)` to `imports`; when `router` is supplied it prepends
   the router **and** `orpc(options)` to `provides`, mounted under `prefix`
   (default `/rpc`); when `fragments` is supplied it prepends the fragments
-  provider **and** `htmx({ prefix: fragmentsPrefix })` — `fragmentsPrefix`
+  provider **and** `htmx({ prefix: fragmentsPrefix, login: fragmentsLogin })` —
+  `fragmentsPrefix`
   (default `/`, `htmx()`'s own default) is the second, independently-named
   mount point, since one field cannot carry two mounts with two different
-  defaults. Either or both, plus each answerer's own scheme authenticators —
+  defaults, and `fragmentsLogin` carries `htmx()`'s `login` under the same
+  naming rule: it is the fragment answerer's alone, where a bare `login` would
+  read as covering the oRPC half, which redirects nothing.
+  **Both are forwarded field by field, and that is the one place this sugar's
+  "an option it forgets to forward cannot exist" is not structurally true** —
+  `httpServer`/`orpc` take the whole options record, `htmx()` cannot, because
+  its two fields are named differently here than there. Adding an `HtmxOptions`
+  field means adding a line to this call.
+  Either or both, plus each answerer's own scheme authenticators —
   read off `router.authenticators` and `fragments.authenticators`,
   deduplicated by **reference** before they reach `provides`, so a scheme the
   two share (one `defineHttp` call, named by both) lands once. `HttpRuntime`
@@ -513,10 +522,10 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   stateless check a stateless BFF can make.
 
   **The rule is "carries COOKIES", not "carries OUR cookie".** The listener
-  does not know the scheme's cookie name — `sessionAuthenticator`'s `cookie`
-  option is the scheme's to choose — and a check independent of that
-  configuration is both the standard fetch-metadata recommendation and one a
-  second cookie-reading scheme cannot silently widen. A request with no cookie
+  does not know any scheme's cookie name — a second cookie-reading scheme is
+  free to bring its own — and a check independent of that configuration is
+  both the standard fetch-metadata recommendation and one such a scheme
+  cannot silently widen. A request with no cookie
   at all is not checked: a caller presenting a bearer token or an API key
   rides no ambient authority, so it is not a CSRF target.
 
@@ -814,9 +823,16 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   with two dependencies fewer — and no `overrideGlobalObjects` footgun to
   disarm.
 - **`httpServer({ port?, hostname?, cors?, bodyLimit?, compression?, securityHeaders?, unit? })`
-  → `Module<HttpRuntime | HttpConfig | HttpHandler | HttpUnit, ConfigInvalid, Env | UnitsNeedsOf<Units>>`** —
+  → `Module<HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers, ConfigInvalid, Env | UnitsNeedsOf<Units>>`** —
   the socket half: the runtime, its config, the kind → module record on
-  `HttpUnit`, and no answerer. `http()` is
+  `HttpUnit`, and no answerer. `http()` re-exports the same set, `Observers`
+  included — it wraps this module and re-declares its own `exports`, so the
+  two must be kept in step by hand. It EXPORTS `Observers` as well as providing the
+  no-op member: a sibling answerer that reports its own operations —
+  `oidc()` is the first — is one `Provider.member(HttpHandler)` with nowhere
+  to put a no-op member of its own, so without the export the set port every
+  other starter here gets for free would have been the one thing a login
+  answerer charged a root for. `http()` is
   `Module("Http")({ imports: [httpServer(options)], provides: [orpc(options)],
 exports: [HttpRuntime, HttpConfig, HttpHandler] })` — this plus `orpc()`. The
   package's own transport specs, and a fragments-only graph, compose
@@ -825,7 +841,7 @@ exports: [HttpRuntime, HttpConfig, HttpHandler] })` — this plus `orpc()`. The
   application would otherwise have to compose `http()` and declare an oRPC
   router it does not have. `httpRuntime`, the runtime value's factory, stays
   internal.
-- **`htmx({ prefix? })` → a `Provider.member(HttpHandler)` over
+- **`htmx({ prefix?, login? })` → a `Provider.member(HttpHandler)` over
   `{ fragments: HtmxFragmentsPort, config: HttpConfig }`** (`htmx.ts`) — the
   second answerer: fragments, mounted under `prefix` (default `/`). It
   matches a request against `fragments.routes` by method and path, resolves
@@ -837,6 +853,61 @@ exports: [HttpRuntime, HttpConfig, HttpHandler] })` — this plus `orpc()`. The
   `404` answers it. `cors` and `compression` are oRPC plugins with no
   fragment-answerer equivalent — only `bodyLimit`, read off the same
   `HttpConfig` `orpc()` reads, applies here.
+
+  **`login` is where this answerer and the login answerer touch, and it is the
+  ONLY place the two know about each other.** It is the login ROUTE, not the
+  prefix the login answerer is mounted under — `/auth/login` for an
+  `oidc({ prefix: "/auth" })`, since `/auth` itself serves nothing and a
+  redirect there is a `404`. Set it and a route whose `requires` resolves
+  `Unauthenticated` sends the caller there carrying
+  `?return=<encodeURIComponent(request.url)>` instead of answering a bare
+  `401`: `303 Location` for a navigating browser, and `401` with `HX-Redirect`
+  for a request carrying `HX-Request: true`. **The htmx half is not a
+  cosmetic difference**: htmx follows a redirect inside the XHR and swaps the
+  login page into whatever target the fragment named, so the browser has to
+  be told to navigate the window rather than shown a redirect — and the
+  status stays `401`, since the request was refused and only the navigation
+  is a redirect. `HX-Request` is the discriminator because htmx sets it on
+  every request it makes; nothing here reads `Sec-Fetch-Mode`, and no
+  dependency was added for either.
+
+  **`303`, not `302`, and it is reachable rather than pedantic.** `requires`
+  is an option on `HtmxPost` too, and the CSRF gate refuses only a
+  cross-site request — so a same-origin no-JS `<form method="post">` behind
+  `requires`, from a logged-out browser, reaches this branch today. RFC 9110
+  §15.4.3 leaves a `302`'s POST-to-GET change a **MAY**, so a strict client
+  would re-POST the form body at the login route; §15.4.4's `303` specifies
+  the retrieval request instead.
+
+  **`UnderScoped` stays `403` whether or not `login` is set.** A caller who IS
+  logged in and lacks the scope would come straight back to the same `403`;
+  sending them to log in again teaches a loop. That split is why the
+  `mapErrCases` fold answers a small `Refusal` — `{ status }` or
+  `{ login }` — rather than the bare number it used to: the redirect decision
+  is one branch beside the status one, and the fold stays exhaustive on
+  `resolveScheme`'s `Err` union, so a third case added there still fails this
+  compile.
+
+  **The `return` value is GUARDED where it is minted, and that guard is not
+  belt-and-braces.** It is the request's own path and query, `request.url` as
+  it arrived, percent-encoded ONCE — but only when it starts with `/` and its
+  second character is neither `/` nor `\`; anything else is reported as `/`.
+  Those two clauses are the whole of `src/redirect.ts`'s `returnTo`, which
+  `oidc()` calls as well — sealing the value at `/login` and following it at
+  the callback, where it is decoded exactly once. They are what the guard is
+  FOR: whether a HEADER can carry the result is a separate question, answered
+  by `forLocation` at the `Location` rather than by a third clause here.
+  A protocol-relative target is manufacturable through a route that looks
+  nothing like one: a route whose FIRST segment is a parameter
+  (`api.HtmxGet("/:slug", { requires })`) matches the crafted target
+  `/\evil.com` — one non-empty segment, so `matchPath` is satisfied and the
+  runtime's mount gate is too — and `new URL("/\\evil.com", base)` resolves
+  to `https://evil.com/`, the WHATWG parser reading `\` as `/` in
+  relative-slash state. Minting it and trusting the login answerer to reject
+  it would put the check one package away from the fact that produced it, and
+  a login answerer is not the only thing that will ever read a `return`. What
+  stays the consumer's is the rest of the open-redirect question, at the point
+  the value is about to be followed.
 
   **Routes are matched in the composition root's own array order, first match
   wins — and that ordering is a SECURITY property, not only a routing one.**
@@ -1183,6 +1254,14 @@ one that outlives the policy — a caller passing `exp` is a compile error, whic
 own test: it is the posture `securityHeaders` is, and its silent change is a
 regression rather than a deployment detail.
 
+**The service publishes `ttlSec`**, for `oidc()` one subpath over: a login
+writes the cookie, so it needs the number `seal` stamps to put in `Max-Age`.
+The two are one fact and only the codec holds it, so a wrapper that guessed
+would either drop the cookie while the session was live or keep sending one
+that unseals to nothing. It is read-only, and it is the whole of what the codec
+publishes for the login — the cookie helpers live in `cookie.ts`, which is not
+an entry point.
+
 **`unseal` decrypts only what `seal` issues — the ALGORITHM half.**
 `compactDecrypt` is handed `keyManagementAlgorithms: ["dir"]` and
 `contentEncryptionAlgorithms: ["A256GCM"]`, derived from the same `HEADER`
@@ -1205,6 +1284,36 @@ what shape it has. The alternative on the table was leaving the presence of
 nothing stated — and the cost of adding a REQUIRED field to a cookie format
 already in the wild is a global logout at deploy, the same failure `decodeKey`'s
 round trip worries about. Two lines now beats a deprecation window on a cookie.
+
+**`codec.transient` is the login flow's own cookie, on the SAME codec.** `seal`
+takes a `Record<string, string>` — a PKCE verifier, `state`, `nonce`, where to
+return to — and writes `typ: "oidc"`, `iat` and `exp` over it; `unseal` requires
+that marker back and answers the state with the markers stripped. The two
+markers therefore refuse each other in BOTH directions, which is what makes a
+replayed transient anonymous under the session's name and a replayed session
+nothing under the login's.
+
+**It is a pair on the codec rather than a second provider, because the KEYS
+live inside the codec.** `make` decodes `HTTP_SESSION_KEYS` once and closes over
+the decoded bytes; nothing hands them out. So a second provider is either a
+second `sessionCodec()` — di's duplicate-provider defect, refused at build — or
+a second port re-reading the variable, with its own decode, its own
+`ConfigInvalid` message and its own rotation story for one list an operator
+rotates once. One codec, two purposes, one key list is the shape the `typ`
+marker was already paying for.
+
+**`TRANSIENT_TTL_SEC` is 300 and is NOT an option.** `ttlSec` is a posture a
+deployment argues about; five minutes between the redirect out and the callback
+back is not — a login that takes longer is a login to start again, and a knob
+there would only ever be turned up. With no `ttlSec: 0` route into it, the
+expiry spec forges a payload with a past `exp` under the codec's own key, which
+is the same fixture the purpose and shape cases already use.
+
+**The state is strings, and the guard says so.** `transientOf` requires the
+marker, a numeric `iat`/`exp`, and every OTHER property a string — flow state is
+what goes in a query string, not a principal — so a forged nested object or
+number is `undefined` like everything else. `seal` writes the markers LAST, so a
+caller whose state spells `typ` cannot decide what the payload is.
 
 **The plaintext is authenticated, not validated.** The AEAD tag says the bytes
 are ours; it says nothing about what they are or what shape they have, and a key
@@ -1250,7 +1359,7 @@ A `Clock` here would be machinery bought for one test.
 
 ## `sessionAuthenticator` — the cookie as a SCHEME
 
-**`sessionAuthenticator<P>()({ cookie?, scopes?, principal? })` →
+**`sessionAuthenticator<P>()({ scopes?, principal? })` →
 `Authenticator<P, Scopes[number], SessionCodec, never>`**, from the same
 `/session` subpath. A third scheme beside JWT and API key, so
 `requires: [{ session: [] }]` on a fragment route and
@@ -1265,20 +1374,30 @@ without `sessionCodec()` is di's own unmet need naming `SessionCodec`,
 refused at the `HttpModule` call. It also means the codec that reads a cookie
 is by construction the one that sealed it — one key list, one rotation.
 
-**The `cookie` header is parsed here, by hand.** `node:http` hands over one
-string, so `cookieValue` splits on `;` and takes the first part whose name
-matches EXACTLY. Three things it gets right that a `split("=")` does not:
+**The `cookie` header is parsed by hand, in `cookie.ts`.** `node:http` hands
+over one string, so `cookieValue` splits on `;` and takes the first part whose
+name matches EXACTLY. Three things it gets right that a `split("=")` does not:
 `__Host-session-theme` is not `__Host-session` (a prefix match unseals the
 wrong cookie); only the FIRST `=` splits, so a value carrying one arrives
 whole; and the FIRST of a repeated name wins, which is the order a browser
 sends them in — most specific first — so a duplicate cannot shadow the session.
-Six lines and no dependency.
+Six lines and no dependency — and they are shared with `oidc()`, which reads
+its own transient with them and writes both cookies with `setCookie` /
+`clearCookie` beside them. `cookie.ts` is deliberately NOT a tsdown entry: it
+is an intra-package need, and satisfying it through `session.ts` would have
+widened a published surface for it.
 
-**`__Host-session` by default, and no `secure` option.** `__Host-` is enforced
-by the BROWSER — `Secure`, `Path=/`, no `Domain` — so the guarantee costs this
-package no code and cannot be misconfigured from here. A `secure: false` knob
-would be an option for shipping a session cookie insecurely; renaming the
-cookie away from the prefix is possible and is a visible act at the call.
+**`SESSION_COOKIE` is `__Host-session`, and there is no `cookie` option any
+more.** `__Host-` is enforced by the BROWSER — `Secure`, `Path=/`, no `Domain`
+— so the guarantee costs this package no code and cannot be misconfigured from
+here. The knob is gone because `oidc()` SEALS that name: a scheme that could
+read `sid` while the answerer wrote `__Host-session` is a deployment where
+every login succeeds into a cookie nothing reads — an infinite redirect between
+the fragment and `/auth/login`, with no compile error and no runtime error. Two
+options that must agree is the shape where they silently do not, so both sides
+name one exported constant. It had exactly one consumer in the repository, a
+type test asserting it accepted a string, and nothing said why a deployment
+would rename it.
 
 **The lifetime is FIXED, and it is the codec's.** A scheme is handed headers,
 not a response, so it has nowhere to put a `Set-Cookie` — there is no sliding
@@ -1304,6 +1423,182 @@ happily — so the refusal belongs here, exactly where `jwtAuthenticator`'s
 `principal(claims)` puts it. Everything refused is refused the same way: no
 cookie, an unopenable one, an expired one and a declined principal are one
 `Unauthenticated` carrying no reason.
+
+## `oidc()` — the login answerer, from `@btravstack/http-server/oidc`
+
+**`oidc({ principal, issuer?, clientId?, clientSecret?, redirectUri?, prefix?,
+scope?, postLogout?, allowInsecureIssuer? })` → a `Provider.member(HttpHandler)` needing
+`Env | SessionCodec` and reporting `ConfigInvalid | OidcUnreachable`.**
+`openid-client` is its optional peer, behind this subpath, on the protocol
+`pino` and `jose` already use.
+
+**It is an ANSWERER, not a scheme, and that is the design.** A login is a
+redirect protocol — three requests, a cookie written on two of them, a browser
+away at somebody else's site in between — where an `AuthenticatorService` is
+handed headers and answers a principal. There is nowhere in that shape to put
+a `Set-Cookie`, a `Location` or a callback route, so this is one more member of
+the same set port `orpc()` and `htmx()` contribute to, mounted at `prefix`
+(default `/auth`). It owns every path under its mount and answers its own `404`
+for one it serves no route for, rather than resolving unwritten the way
+`htmx()` does — `htmx()` is mounted at `/` by default and shares that space
+with everything, where this owns a prefix nobody else claims.
+
+**The two halves meet at exactly one place, and it is the cookie.** `oidc()`
+seals `__Host-session`, `sessionAuthenticator` reads it, both through the same
+`SessionCodec` port — so the codec that opens a cookie is by construction the
+one that sealed it, key rotation included. That is also why the answerer
+injects the port rather than the keys: a root composing `oidc()` without
+`sessionCodec()` is di's own unmet need naming `SessionCodec`, refused at the
+`HttpModule` call.
+
+**`SessionCodecService.ttlSec` was published for this.** The cookie's
+`Max-Age` and the payload's `exp` are the same fact told twice, and only the
+codec knows the number: a wrapper that guessed it would either drop the cookie
+while the session was still live or keep sending one that unseals to nothing.
+The alternative was unsealing what had just been sealed to read `exp` back —
+one AEAD open per login, to recover a value the codec already had.
+
+**An `http:` issuer is REFUSED at boot unless it is loopback or opted in.**
+`Config.url` validates that a value parses; nothing validated what it meant.
+An `http:` issuer sends the client secret, the code and every token in the
+open — and `discover` then applies `allowInsecureRequests`, which is precisely
+the check that would otherwise have refused, so the downgrade was silent in
+both directions. `localhost`, `127.0.0.1` and `[::1]` are taken as they stand
+(the dev loop's own Ory is `http://localhost:4444/`, which is why the whole
+suite exercises that arm); anything else is a `ConfigInvalid` naming the
+variable unless `allowInsecureIssuer: true` is pinned. It is an **option**, not
+a variable, on rule 6's test — `securityHeaders`' own argument — and the flag
+`discover` takes is COMPUTED once by `insecureIssuer` and handed in rather than
+re-derived there, so the check that refuses and the switch that permits cannot
+drift apart.
+
+**Discovery runs ONCE, in `make`.** Three consequences, and each is why it is
+there rather than per request: a provider that is not there fails the BOOT with
+`OidcUnreachable` naming the issuer — a modeled startup error beside
+`ConfigInvalid`, which `runMain` turns into an exit code — instead of a `500`
+on the first login; the JWKS cache and the server metadata are one per process;
+and `allowInsecureRequests` is applied in the right two places once rather than
+in a hot path. It is applied TWICE for an `http:` issuer, as a `discovery`
+option and again to the configuration that call answers, because the option
+does not carry over (measured against a real Hydra); and
+`enableNonRepudiationChecks` is what makes the ID token's SIGNATURE checked at
+all — OIDC Core lets a client trust a token that arrived over TLS from the
+token endpoint, which is a trust this package does not extend.
+
+**`return` is decoded exactly once, and the guard runs on both legs.** The
+query parser IS that decode; a second `decodeURIComponent` would turn `%255C`
+back into `\`, and `new URL("/\\evil.com", base)` resolves to
+`https://evil.com/` — the WHATWG parser reads `\` as `/` in relative-slash
+state — so a value that already passed the guard could be walked past it again.
+The rule is `redirect.ts`'s one `returnTo`, shared with `htmx()`: starts with
+`/`, and its second character is neither `/` nor `\`. It is checked at
+`/login`, where the value is sealed, AND at the callback, where it is followed:
+`htmx()` guarding where it mints the value does not make the query at `/login`
+any less the caller's.
+
+**What a HEADER accepts is a separate question, and it is the header's.** Node's
+validator is `/[^\t\x20-\x7e\x80-\xff]/` — control characters AND every code
+point above U+00FF — so `/订单/1`, an ordinary path arriving through the very
+`htmx({ login })` seam, passed every same-site clause and then
+`ERR_INVALID_CHAR`ed the response with the caller's code already spent. The
+answer is `forLocation` where the value becomes a `Location`, in both packages,
+which closes the non-Latin-1 class and the CR/LF one together and is shorter
+than the control-character clause it replaced. It is `forLocation` and not
+`encodeURI`: a browser's target arrives already percent-encoded and the seam
+decodes it exactly once, so re-encoding that `%` puts a real user on
+`/orders/a%2520b/row`. A guard clause that existed only
+to satisfy a header was the header's job written in the wrong file; the guard
+now says one thing, "this stays on my site", and says it about a value
+`forLocation` round-trips exactly, `%` included.
+
+**The grant's `currentUrl` is the REGISTERED redirect URI plus this request's
+query.** Never rebuilt from `Host`, which the caller writes — and the same
+choice is what lets a deployment sit behind a proxy, or a spec bind an
+ephemeral port while the provider only ever knew about `:3000`.
+
+**A refusal is `400` unless the PROVIDER refused, which is `401`.** No
+transient cookie, one no key opens, one past its five minutes, a `state` that
+does not match and a `principal(claims)` answering `undefined` are all `400`:
+this end could not make sense of the callback. A code the provider would not
+exchange is `401`. None of them seals a session; every one of them CLEARS the
+transient, which is the point of routing them all through one `refuse`.
+
+**Logout is parameterless, and a `POST`.** No `id_token_hint`, because the
+cookie holds a principal and no token — so no `post_logout_redirect_uri`
+either, which a provider is entitled to refuse without a hint (Hydra does;
+measured). It is a `POST` because it is a state change, which also puts it
+under the CSRF check a composed session scheme turns on, exactly like any other
+cookie-bearing state change. Every redirect this answerer writes is a `303`,
+`htmx()`'s own ruling and for its reason.
+
+**`principal(claims)` is `jwtAuthenticator`'s hook, on `openid-client`'s
+`IDToken`.** One function serves both schemes, and it is the only place the
+application's own claims — a tenant, above all — are read. `Session.scopes`
+comes from the space-delimited `scope` claim and `Session.sid` from `sid`, each
+only when the provider wrote a string there: neither is a claim the standard
+puts in an ID token, so a provider that omits one leaves the field absent and a
+scoped `sessionAuthenticator` grants nothing.
+
+**The cookie NAME is one constant, `session.ts`'s `SESSION_COOKIE`.** The
+scheme's `cookie` option was deleted rather than mirrored here: a pair of
+options that must agree is the shape where they silently do not, and the
+failure is invisible — every login succeeds, nothing reads the cookie, and the
+browser loops between the fragment and `/auth/login` with no error anywhere.
+Nothing had ever renamed it, and the `__Host-` prefix is the design.
+
+**Each route is an OPERATION on `Observers`, and it holds no `Logger` of its
+own.** That is the root spec's rule — a starter reports what it did and holds
+no `Logger`, `Meter` or `Tracer` — and the one exception it names,
+`@btravstack/prisma`'s, is explicitly a STARTUP fact rather than an operation,
+so it does not cover this. A refused login is the one refusal in this package
+that DESTROYS information: the provider's reason must not cross the wire, a
+`401` is not an error the runtime's RED metrics count, and `grant_failed` looks
+identical whether the client secret rotated, the token endpoint died, or the
+code was genuinely bad. So each refusal settles `outcome: "error"` with
+`attributes: { reason }` — five literal values, safe on an instrument — and the
+unbounded half, the provider's `error_description` and the library error's
+message, rides the `cause`, which an observer puts on a line or a span and
+never on a metric. That split is why this could not be a `Logger`: a `warn`
+line's attributes are one channel, and the port draws the line the thesis
+draws.
+
+**Each observation is ended by the RESPONSE, not only by the code path that
+wrote it.** `observe`'s finisher is once-only, so a refusal's own `settle` wins
+and the `'close'` listener is a no-op — it is there for the paths that reach no
+`settle` at all. A codec defect rethrown by `.get()`, or a rejected PKCE
+digest, would otherwise leave the span open and the request out of the counters
+entirely, which is worse than the defect it came from; `'close'` always fires,
+and by then the runtime's own `500` is on the wire, which is what the outcome
+reads. It is `http-runtime.ts`'s own rule for the request, applied one level
+down — `response.closed` checked first, because subscribing to a stream that
+already fired is this package's documented footgun.
+
+**It costs a root nothing, and `httpServer` — and `http()` — now export
+`Observers` so that stays true.** A reader of a set port must contribute a no-op member of its own,
+and `oidc()` is a single `Provider.member`, not a module — it has nowhere to
+put one. The starter already provides that member; adding the port to its
+`exports` is what makes it visible to a SIBLING provider in the root, so a
+graph composing `oidc()` writes no observability line and gets an inert call
+per route. The alternative was making `oidc()` a module, which would have
+changed `provides: [oidc(...)]` into an import for one no-op provider. `http()`
+re-exports it for the same reason and was missed on the first pass: it wraps
+`httpServer` and re-declares its own `exports`, so a root importing the sugar
+rather than the socket half failed the gate on a port it never named.
+
+**The transient is cleared on EVERY exit of the callback, not on success
+alone.** The flow state is spent the moment a callback has been seen, and one
+left behind for five minutes is what the next tab's login collides with. Two
+concurrent logins in one browser therefore share one transient and the last
+`/login` wins: the other tab's callback finds a `state` that does not match and
+is refused. That is a browser-level fact rather than a bug — the cookie is the
+whole memory, and there is one of it — and the recovery is the refused tab
+logging in again.
+
+**`oidc()` contributes no `cookieScheme()` member.** CSRF on
+`POST <prefix>/logout` rides the session scheme being composed, which is not a
+gap worth closing: an `oidc()` with no session scheme in the same root logs a
+browser into a cookie nothing reads, so the composition that would need this
+answerer's own CSRF marker is one that does not work at all.
 
 ## `openApiDocument` — from `@btravstack/http-server/openapi`
 
@@ -1378,7 +1673,7 @@ response, { prefix, context: { request, host } })`, unmatched → resolves
   `{ matched }`, never the unit's result — and the runtime reads "did you
   answer?" off the response rather than off that, which is what lets an
   answerer be written against `node:http` alone.
-- **112 specs, 100% lines/functions, across ten spec files.** Every app boots through the `boot`
+- **100% lines and functions, on every spec file.** Every app boots through the `boot`
   fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
   `configured` and `appOnPort` depend on — so it is stopped when the test
   ends, on every exit path, and the teardown is Defect-only: a startup
@@ -1563,11 +1858,40 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   read as AND), and a procedure's own mark shadowing its record's for itself
   while a sibling still inherits the record's.
 
+- **`oidc.spec.ts` runs the whole flow against a real provider**, the shared
+  Ory containers `internal/test-infra` owns — a file-scoped `ory` fixture, a
+  `bff` fixture booting `oidc()` + `sessionCodec()` + the session scheme + one
+  fragment behind a scope, and a `browser` with a cookie jar following nothing.
+  It pins the redirect out (PKCE `S256`, `state`, `nonce`, the registered
+  redirect URI, and the five-minute `__Host-oidc` cookie), the walk end to end
+  (alice signed in headlessly, the callback sealing a session and clearing the
+  transient, and the fragment she was going to answering with her own tenant
+  behind a scope only the ID token's `scope` claim carries), the four refusals
+  (a mismatched `state`, no transient at all, a code the provider rejects, and
+  a `principal` the application declines — each with no cookie set), both
+  open-redirect shapes (`//evil.example`, and `%252F%255Cevil.com`, which is
+  the doubly-decoded one), `login_hint`, the logout, the `404` under the mount,
+  and both boots that fail — `OidcUnreachable` on an issuer at a closed port
+  and `ConfigInvalid` naming a variable nobody set. Five more came out of
+  review: a transient re-sealed with the WRONG nonce, presented with an
+  otherwise valid code, refused `401` — the pin on `expectedNonce`, which is
+  also what forces an ID token to be present at all; a `return` carrying a
+  control character, which `writeHead` would refuse as `ERR_INVALID_CHAR`
+  after the code was already spent, now encoded rather than dropped; and a provider-side `error=access_denied`
+  arriving with a matching `state`, told apart from a bad code on the
+  observation rather than on the wire; and the two a header cannot carry —
+  `/订单/1` and a CR/LF path — each arriving at the browser percent-encoded
+  rather than as a 500. Each refusal asserts, in one projection, the status,
+  the cleared transient and the operation the observer saw settle: its
+  `component`, its `name`, its bounded `reason` and — where there is one — the
+  cause the unbounded text rides.
+
 ## Several answerers, one runtime
 
 **`HttpHandler` is a SET port of `{ prefix, handle }`, and each protocol served
-in this process contributes one member.** Two ship: oRPC (`orpc()`, from
-`http()`) and htmx fragments (`htmx()`, serving `Html`). GraphQL is what the
+in this process contributes one member.** Three ship: oRPC (`orpc()`, from
+`http()`), htmx fragments (`htmx()`, serving `Html`) and the login (`oidc()`,
+from the `/oidc` subpath, mounted at `/auth` by default). GraphQL is what the
 family is being extended for next (#179). The shape was chosen in #174, and
 the reason is a constraint rather
 than a preference: **a graph holds exactly one runtime** (thesis #1 — every

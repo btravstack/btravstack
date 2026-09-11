@@ -8,6 +8,12 @@
     "docs/.vitepress/cache/**",
     "**/CHANGELOG.md",
   ],
+  // Nothing git ignores is on the gate: an agent scratch directory is markdown
+  // in the tree that reaches no reader and no CI run, and a stray `<img>` in a
+  // working note failed `pnpm lint` for everyone on that machine. The option
+  // rather than one more `ignores` entry, so the next scratch directory is
+  // covered by the file that already decides what is not part of the repo.
+  "gitignore": true,
   "config": {
     "default": true,
 

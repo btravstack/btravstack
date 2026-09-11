@@ -50,6 +50,7 @@
     "@types/node": "catalog:",
     "@types/supertest": "catalog:",
     "@unthrown/vitest": "catalog:",
+    "openid-client": "catalog:",
     "supertest": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",

@@ -249,7 +249,7 @@ The two rules this half exists to state, before the detail:
   does not know grants nothing extra. Nothing new checks them: the grant goes
   through `granted()` and the existing walk produces the 403.
 
-- **`sessionAuthenticator<P>()({ cookie?, scopes?, principal? })`
+- **`sessionAuthenticator<P>()({ scopes?, principal? })`
   → `Authenticator<P, Scopes[number], SessionCodec, never>`** — from
   **`@btravstack/http-server/session`**, beside `sessionCodec` and behind the
   same optional `jose` peer. The third scheme, and the only one whose
@@ -272,12 +272,16 @@ The two rules this half exists to state, before the detail:
   which is the order a browser sends them in (most specific first), so a
   duplicate cannot shadow the session. Six lines and no dependency.
 
-  **`__Host-session` is the default and there is no `secure` knob.**
-  `__Host-` is a prefix the BROWSER enforces — `Secure`, `Path=/`, no
-  `Domain` — so a sibling host cannot write the cookie and a downgrade to
-  plain HTTP cannot carry it. An option that turned that off would be an
-  option for shipping a session cookie insecurely; `cookie` renames it, and
-  renaming it away from the prefix is a visible act.
+  **`SESSION_COOKIE` is `__Host-session`, and there is no knob at all — not
+  `secure`, and not the NAME.** `__Host-` is a prefix the BROWSER enforces —
+  `Secure`, `Path=/`, no `Domain` — so a sibling host cannot write the cookie
+  and a downgrade to plain HTTP cannot carry it. An option that turned that off
+  would be an option for shipping a session cookie insecurely. The name is
+  fixed for a second reason: `oidc()` SEALS it. A scheme reading `sid` while
+  the answerer wrote `__Host-session` is a deployment where every login
+  succeeds into a cookie nothing reads — a loop between the fragment and
+  `/auth/login`, with no compile error and no runtime error — so both sides
+  name one exported constant instead of two options that must agree.
 
   **The lifetime is the codec's, not the scheme's**, and there is no sliding
   re-seal: a scheme has HEADERS, not a response, so it has nowhere to put a
@@ -302,6 +306,15 @@ The two rules this half exists to state, before the detail:
   No cookie, a cookie no key opens, an expired session and a declined
   principal are ONE answer: `Unauthenticated`, carrying no reason.
 
+  **The codec seals a second thing, and this scheme never reads it.**
+  `SessionCodec`'s `transient` pair seals the login flow's own state — a PKCE
+  verifier, `state`, `nonce`, where to return to — with the same keys under
+  `typ: "oidc"` and a fixed `TRANSIENT_TTL_SEC` of five minutes. A scheme reads
+  `typ: "session"` only, so a client replaying its transient under the session
+  cookie's name is anonymous, and the mirror holds too — which is what lets one
+  key list serve both purposes. See `packages/http-server/CLAUDE.md` for why
+  the pair is on the codec rather than a provider of its own.
+
   **Composing it turns CSRF on**, which is the one thing this scheme does that
   no header-borne one does. Its description carries `cookie: true`;
   `defineHttp` turns that into a `CookieSchemes` member beside the scheme's
@@ -312,6 +325,148 @@ The two rules this half exists to state, before the detail:
   `packages/http-server/CLAUDE.md`. The other two shipped schemes read a
   header, and a caller presenting a header credential is not a CSRF target, so
   neither sets the marker.
+
+- **`oidc({ principal, issuer?, clientId?, clientSecret?, redirectUri?, prefix?, scope?, postLogout?, allowInsecureIssuer? })`
+  and `OidcUnreachable`** (`oidc.ts`, from `@btravstack/http-server/oidc`) —
+  **the one thing in this package on the ISSUING side of the line above, and
+  the exception that proves it.** It mints no credential: it walks a browser
+  through somebody else's authorization-code flow and hands what comes back to
+  `sessionCodec` to seal. Everything it verifies — the ID token's signature,
+  `state`, `nonce`, PKCE — is verification, and the identity is still the
+  provider's.
+
+  It is an **answerer**, not a scheme: `Provider.member(HttpHandler)` beside
+  `orpc()` and `htmx()`, mounted at `prefix` (default `/auth`), serving
+  `GET /login`, `GET /callback` and `POST /logout` and answering `404` for
+  anything else below its mount. A login is a REDIRECT protocol — three
+  requests, a cookie written on two of them — and an `AuthenticatorService` is
+  handed headers and answers a principal, so there is nowhere in that shape to
+  put any of it. The two halves meet at exactly one place, the cookie:
+  `oidc()` seals it and `sessionAuthenticator` reads it, both through the same
+  `SessionCodec` port.
+
+  **`principal(claims)` is the same hook `jwtAuthenticator` takes**, on
+  `openid-client`'s `IDToken` — so an application writes ONE function and
+  passes it to both, and the answer is what goes into `Session.principal`.
+  Answering `undefined` refuses the login with a `400`: the claim this
+  application requires and the standard does not, a tenant being the usual one.
+
+  **`Session.scopes` comes from the ID token's `scope` claim** — space
+  delimited, and a claim the standard does not put in an ID token at all, so
+  a provider that does not write one leaves the field absent and a scoped
+  `sessionAuthenticator` grants nothing. `Session.sid` comes from `sid`, when
+  there is one. Neither is invented here.
+
+  **The transient cookie is the flow's whole memory.** `__Host-oidc` holds the
+  PKCE verifier, `state`, `nonce` and where to return to, sealed by
+  `codec.transient` under its own purpose marker with a five-minute lifetime —
+  so the login is stateless like the session is, and a replay of it under the
+  session cookie's name is anonymous. The callback checks the returned `state`
+  against it before anything is exchanged; no cookie, an unopenable one, an
+  expired one and a mismatch are one `400` that seals no session — and, like
+  every other refusal here, clears the transient on its way out.
+
+  **`return` is decoded exactly ONCE and must stay on this site.** The query
+  parser is that decode; the value survives only if it starts with `/` and its
+  second character is neither `/` nor `\`. A second `decodeURIComponent` would
+  turn `%255C` back into `\`, and `new URL("/\\evil.com", base)` resolves to
+  `https://evil.com/` — the WHATWG parser reads `\` as `/` in relative-slash
+  state — so a value that already passed the guard could be walked past it
+  again. `htmx({ login })` guards the same thing where it MINTS the value —
+  one `returnTo` in `redirect.ts` that both call — and this guards it again
+  where it is sealed and once more where it is followed, because the query is
+  the caller's either way.
+
+  **What a header accepts is the header's business.** Node refuses control
+  characters and every code point above U+00FF alike, so `/订单/1` — an
+  ordinary path — passed the same-site guard and then `ERR_INVALID_CHAR`ed the
+  callback with the code already spent. The value goes through `forLocation`
+  where it becomes a `Location`, which closes that class and the CR/LF one
+  together and keeps the guard about the one thing it is for — and it is
+  `forLocation` rather than `encodeURI` because the browser's own target is
+  already percent-encoded and the seam decodes it exactly once, so re-encoding
+  that `%` would land a real user on `/orders/a%2520b/row`.
+
+  **The code grant is checked against the REGISTERED redirect URI, never
+  `Host`.** `currentUrl` is `redirectUri` carrying this request's query, so a
+  forged `Host` cannot move the check — and a deployment behind a proxy needs
+  no trust in that header for this to be right.
+
+  **A cleartext issuer is refused at boot unless it never leaves the machine.**
+  `Config.url` says a value parses, not that it is safe, and `http:` here is
+  not a cosmetic difference: the client secret, the authorization code and
+  every token cross the wire in the open, and `allowInsecureRequests` — which
+  this package applies for exactly such an issuer — is the one check that would
+  have refused. So an `http:` issuer on a **loopback** host (`localhost`,
+  `127.0.0.1`, `[::1]`) is taken as it stands, because plaintext that never
+  leaves the machine is the dev loop's own Ory; any other is a `ConfigInvalid`
+  naming `HTTP_OIDC_ISSUER` unless `allowInsecureIssuer: true` is pinned at the
+  call. An OPTION rather than a variable, on rule 6's own test and
+  `securityHeaders`' argument: a deployment that can silently turn this off is
+  a deployment that can silently downgrade every login.
+
+  **Discovery runs once, in `make`.** A provider that is not there is
+  `OidcUnreachable` naming the issuer — a modeled startup failure beside
+  `ConfigInvalid`, which `runMain` turns into an exit code — rather than a
+  `500` on the first login, and the JWKS cache is one per process. The
+  configuration enables the ID token **signature** check explicitly
+  (`enableNonRepudiationChecks`): OIDC Core permits a client to trust a token
+  that came over TLS from the token endpoint, and that is not a trust this
+  package extends.
+
+  **That call is knowingly UNPINNED here, and it is the one line in this file
+  no spec on this branch would notice going missing.** Deleting it keeps every
+  `oidc.spec.ts` case green, because Hydra signs correctly and the flow
+  succeeds either way; what it would remove is the check that the signature was
+  verified at all. Pinning it needs a provider that answers a JWKS which cannot
+  verify its own tokens, and a fake-issuer harness bought for one assertion is
+  more machinery than the line it guards. What it rests on instead is phase 1's
+  measurement, which is real and is written down in
+  `internal/test-infra/src/ory-login.ts`: `oryClient()` makes the same call for
+  the same reason, and the note there records that without it nothing requests
+  the JWKS. A future change that reaches for a fake issuer for some other
+  reason should pin this on the way past.
+
+  **A refused login is an OPERATION, reported to `Observers` like a cache
+  miss.** Each of the three routes is one, `component: "oidc"`, and a refusal
+  settles `error` carrying its own `reason` — `transient_missing`,
+  `state_mismatch`, `provider_refused`, `grant_failed`, `principal_refused`.
+  That matters because a refused login is the one refusal in this package that
+  DESTROYS information: the provider's reason must not cross the wire, a `401`
+  is not an error the runtime's RED metrics count, and a rotated client secret,
+  a dead token endpoint and a genuinely bad code all look identical from
+  outside. `reason` is a dimension and is bounded — five literals — while the
+  provider's own `error_description` and the library error's message are
+  caller-controlled and unbounded, so they ride the `cause`, which an observer
+  puts on a line or a span and never on an instrument. It costs a root nothing:
+  `httpServer` contributes the no-op member every reader of a set port owes,
+  and now EXPORTS the port as well — because `oidc()` is one
+  `Provider.member(HttpHandler)` rather than a module, so it has nowhere to put
+  a no-op member of its own, and without the export the set port every other
+  starter here gets for free would have been the one thing a login answerer
+  charged a root for. Composing `observability()` is what turns the line on;
+  composing none leaves an inert call per route.
+
+  **The transient is cleared on EVERY exit of the callback**, not on success
+  alone: it is spent the moment a callback has been seen, and one left for five
+  minutes is what the next tab's login collides with. The consequence, stated
+  because nothing else states it: **two concurrent logins in one browser share
+  one transient and the last `/login` wins** — the other tab's callback finds a
+  `state` that does not match and is refused. The cookie is the whole memory of
+  the flow and there is one of it; the refused tab logs in again.
+
+  **It contributes no `cookieScheme()` member**, so CSRF on the logout route
+  rides a session scheme being composed in the same root — which is not a gap:
+  an `oidc()` with no session scheme seals a cookie nothing reads, so the
+  composition that would need this answerer's own marker does not work at all.
+
+  **Logout is parameterless and is a `POST`.** No `id_token_hint`, because the
+  cookie carries a principal and no token — and therefore no
+  `post_logout_redirect_uri`, which a provider is entitled to refuse without a
+  hint. `POST` because it is a state change, which also means the CSRF check a
+  composed session scheme turns on covers it, exactly as it covers any other
+  cookie-bearing state change. Every redirect it writes is a `303`, `htmx()`'s
+  own ruling.
 
 - **Password hashing and credential ISSUING are out of scope, deliberately.**
   All three authenticators above are on the **verifying** side, and that is
@@ -408,7 +563,12 @@ The two rules this half exists to state, before the detail:
     under-scoped answers `UnderScoped`; only a caller no requirement accepted
     at all answers `Unauthenticated`. Neither carries a reason: the refusal is
     typed, not messaged, so what a caller is told is each answerer's own
-    decision.
+    decision. **The distinction is what makes `htmx({ login })` possible**:
+    only `Unauthenticated` is a caller a login can help, so that is the one
+    case sent to the login ROUTE — `/auth/login`, not the `/auth` mount
+    `oidc()` sits on — and an `UnderScoped` caller — logged in, and still
+    not allowed — keeps its `403` rather than being taught a loop through a
+    login it already completed.
   - **A defect short-circuits rather than falling through.** A defect is a bug
     in the authenticator, not a refusal; falling through would let a broken
     verifier silently promote every caller to the next scheme. It stays on the

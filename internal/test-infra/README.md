@@ -6,18 +6,18 @@ rather than one per workspace.
 
 ## What it starts
 
-| Container                          | Who uses it                                                                 |
-| ---------------------------------- | --------------------------------------------------------------------------- |
-| `postgres:18.1`                    | Temporal's own persistence, and the example application's `orders` database |
-| `rabbitmq:4.2.1-management-alpine` | `packages/amqp-worker`, `examples/order-amqp-worker`                        |
-| `temporalio/auto-setup:1.29.1`     | `packages/temporal-worker`, `examples/order-temporal-worker`                |
-| `redis:8.8.2-alpine`               | `packages/cache`, `examples/order-api`                                      |
-| `axllent/mailpit:v1.31.0`          | `packages/mailer`, `examples/order-amqp-worker`                             |
-| `rustfs/rustfs:1.0.0-rc.3`         | `packages/storage`                                                          |
-| `nginx:1.29-alpine`                | the dev loop's JWKS endpoint, and `src/dev-issuer.spec.ts`                  |
-| `oryd/hydra:v2.3.0`                | the OpenID provider the backend-for-frontend authorises against             |
-| `oryd/kratos:v1.3.1`               | the identity provider Hydra delegates login to                              |
-| `node:24-alpine`                   | `src/ory-consent.mjs`, the consent and logout endpoint                      |
+| Container                          | Who uses it                                                             |
+| ---------------------------------- | ----------------------------------------------------------------------- |
+| `postgres:18.1`                    | Temporal, the example application's `orders` database, Hydra and Kratos |
+| `rabbitmq:4.2.1-management-alpine` | `packages/amqp-worker`, `examples/order-amqp-worker`                    |
+| `temporalio/auto-setup:1.29.1`     | `packages/temporal-worker`, `examples/order-temporal-worker`            |
+| `redis:8.8.2-alpine`               | `packages/cache`, `examples/order-api`                                  |
+| `axllent/mailpit:v1.31.0`          | `packages/mailer`, `examples/order-amqp-worker`                         |
+| `rustfs/rustfs:1.0.0-rc.3`         | `packages/storage`                                                      |
+| `nginx:1.29-alpine`                | the dev loop's JWKS endpoint, and `src/dev-issuer.spec.ts`              |
+| `oryd/hydra:v2.3.0`                | the OpenID provider the backend-for-frontend authorises against         |
+| `oryd/kratos:v1.3.1`               | the identity provider Hydra delegates login to                          |
+| `node:24-alpine`                   | `src/ory-consent.mjs`, the consent and logout endpoint                  |
 
 One container per backing service — the table above is the list, and the
 workspaces reading each are in it. Before this existed, the broker and the
@@ -244,9 +244,14 @@ testcontainers' `Network`.** That class mints a random name a second process
 cannot find and labels it with the reaper's session id, so it would be removed
 under a reused container. `sharedOry` looks the network up and creates it if
 absent, under a lock, with the same `com.btravstack.test-infra` label as the
-containers. Only one call ever crosses container to container — Kratos → Hydra
-admin — so aliases exist for `hydra`, `kratos` and `consent` and everything else
-is a browser redirect to `localhost`.
+containers. What crosses container to container is the admin traffic — Kratos
+→ Hydra, the consent handler → Hydra and → Kratos, and each of the pair →
+Postgres — so aliases exist for `hydra`, `kratos`, `consent` and `postgres`,
+and everything else is a browser redirect to `localhost`. The shared Postgres is started on the default bridge by every
+other workspace, so `sharedOry` **joins** it to this network at runtime under
+the `postgres` alias rather than defining it there: a network on its definition
+would change the hash `withReuse()` finds it by, and restart the one database
+server the whole gate shares.
 
 **Copied content rides a label.** Content is copied into a container _after_
 create and is not part of the reuse hash, so an edited `kratos.yml` or
@@ -254,13 +259,29 @@ create and is not part of the reuse hash, so an edited `kratos.yml` or
 Each of the two carries a digest of what it copies under
 `com.btravstack.ory-content`, the same trick as the dev issuer's key thumbprint.
 
-**Provisioning runs on every attach, not once.** Both DSNs are `memory`: a
-container that is _attached_ to keeps its state, but one that was restarted has
-forgotten every identity, client and signing key. `provisionOry` is idempotent
-by lookup-then-create — neither admin API has an upsert — and costs about a
-third of a second, so running it unconditionally is the honest default. Moving
-to the shared `postgres:18.1` would buy durable state at the cost of two
-databases, two migration steps and a Postgres dependency in the wait strategy.
+**Both DSNs are the shared Postgres, and that was measured rather than
+preferred.** They were `memory` — one container, no migration — until CI went
+red on a login that Hydra answered with `The error is unrecognizable`, fosite's
+spelling of a Go error it has no RFC 6749 name for. Six login processes against
+that `memory` DSN fail about half their logins with `Unable to serialize access
+due to a concurrent update in another session`, and Kratos's own flow updates
+fail beside them: SQLite's shared-cache memory database refuses a second writer
+outright, and the gate's workspaces log in concurrently. Ory's own recipe for a
+SQLite that goroutines share — a file in WAL mode with a busy timeout — piles
+Hydra's connection pool up behind `database is locked` for the length of that
+timeout instead, and pinning the pool to one connection deadlocks it: six
+processes completed one login between them in four minutes. Postgres took the
+same six processes for a hundred and fifty logins with no failure and no error
+line. Each of the pair gets a database of its own, created by the same
+existence-guarded `psql` as `orders` (they both own a `schema_migration` table),
+and migrates it itself on start: the container's command is
+`migrate sql -e --yes && exec serve …`, one line, so there is no migration
+container and nothing to sequence.
+
+**Provisioning still runs on every attach, not once.** `provisionOry` is
+idempotent by lookup-then-create — neither admin API has an upsert — and costs
+about a third of a second, so running it unconditionally is the honest default:
+a fresh CI runner's database is empty, and a wiped local one is too.
 
 Two gotchas worth not rediscovering: Kratos's admin API lives under an `/admin`
 prefix, so `/health/ready` on 4434 is a **307** and the wait strategy must ask
@@ -383,11 +404,9 @@ which is what a rotation needs; the dev loop writes one — 32 random bytes,
 base64url, minted on the first `dev:env` and read back from
 `<repo>/.cache/dev-session/keys` (mode `0600`) ever after. Persisted for the dev
 issuer key pair's reason: a cookie sealed before a `dev:env` still opens after
-it. The Ory containers are the exception to that, and the provisioning paragraph
-above is why — both DSNs are `memory`, so a **restart** (as against an attach)
-loses every identity, client and signing key, and any session cookie the loop
-was holding stops resolving. `dev:env` re-provisions on every run; signing in
-again is what recovers the rest.
+it. Hydra's signing keys are in the shared Postgres for the same reason, so a
+restarted Ory container still verifies what the loop is holding; `dev:env`
+re-provisions on every run regardless, since a wiped database is empty.
 
 The two setup modules are drop-in replacements for
 `@amqp-contract/testing/global-setup` and

@@ -159,6 +159,8 @@ import { observability } from "@btravstack/observability";
 
 export const OrderFragmentsApi = HttpModule("OrderFragmentsApi")({
   fragments: orderFragments,
+  // The login ROUTE a refused caller is sent to — see "Behind a scheme" below.
+  fragmentsLogin: "/auth/login",
   provides: [orderRowFragment],
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],
@@ -178,7 +180,10 @@ both; supplying **neither** is refused at this call, against a
 `"SERVES NOTHING — supply a router, fragments, or both"` marker. Fragments
 mount at `fragmentsPrefix`, default `/` — a separate field from `prefix`
 (the oRPC mount, default `/rpc`), since one option cannot carry two mount
-points with two different defaults. A root serving both deduplicates a
+points with two different defaults. `fragmentsLogin` is named the same way,
+for the same reason — see
+[Send an unauthenticated caller to log in](#send-an-unauthenticated-caller-to-log-in).
+A root serving both deduplicates a
 scheme shared between `router` and `fragments` by reference before it
 reaches `provides`, so an authenticator named by both still resolves once.
 
@@ -194,12 +199,55 @@ itself: `HX-Redirect`, `HX-Trigger`, `HX-Retarget` and `HX-Reswap` — htmx's
 own response mechanics — are unreachable, and a route cannot answer its own
 `404` or `422`. "Not found" is rendered markup — `orderRowFragment`'s own
 `.recoverErrCases` above — never a status. A defensible scope decision, not
-an oversight.
+an oversight. The answerer itself sets exactly one of those headers, on a
+refusal rather than on a route: `HX-Redirect`, when
+[`login`](#send-an-unauthenticated-caller-to-log-in) is pinned.
 
 Every `200` also carries `Cache-Control: no-store`, unconditional: a public
 route can still render a caller- or resource-scoped fragment off a path
 parameter alone, and there is no cheaper signal than "never store" for this
 package to key the header on.
+
+## Send an unauthenticated caller to log in
+
+A marked route answers `401` on its own, which is the right answer to a
+machine and the wrong one to a person: a browser shows nothing.
+`fragmentsLogin` in the root above is what changes that — it carries
+[`htmx()`'s `login`](/reference/http-server#login-—-where-an-unauthenticated-caller-is-sent),
+named for the fragment half exactly as `fragmentsPrefix` is — and a route
+whose `requires` resolves `Unauthenticated` sends the caller there instead,
+carrying `?return=` set to the path and query they asked for. One line beside
+`fragments` is the whole wiring; drop it and that route answers a bare `401`.
+
+It is the login **route**, not the prefix its answerer is mounted under: an
+`oidc({ prefix: "/auth" })` serves `GET /auth/login`, and `/auth` on its own
+answers nothing. Then:
+
+- **a browser navigating** gets `303 Location: /auth/login?return=%2Forders%2F42%2Frow`.
+  `303` rather than `302` because `requires` is an option on `HtmxPost` too:
+  RFC 9110 §15.4.3 leaves a `302`'s POST-to-GET change a MAY, so a strict
+  client would re-POST a form body at the login route.
+- **htmx's own request** — the one carrying `HX-Request: true` — gets `401`
+  with `HX-Redirect` naming the same URL. htmx follows a redirect inside the
+  XHR and would swap the login page into whatever target the fragment named,
+  so the browser has to be told to navigate the window instead. That is the
+  one place this answerer sets an htmx response header, and it does it for a
+  refusal, not for a route.
+
+A caller who is **logged in and lacks the scope** still gets `403`, `login` or
+not: sending them back through a login they already completed lands them on
+the same `403`.
+
+`return` is percent-encoded once — and decoded exactly once at the other end —
+and kept only when it starts with `/` and its second character is neither `/`
+nor `\`; otherwise it is reported as `/`. A route with a leading parameter
+would otherwise let a crafted `/\evil.com` mint a return the browser resolves
+off-site. Those two clauses are the whole guard: whether a header can carry
+the result is answered by `forLocation` where the value becomes a `Location` —
+which leaves an already-encoded `%` exactly as the browser sent it —
+which is what keeps a perfectly ordinary `/订单/1` from failing the response.
+The rest of the open-redirect question is the login answerer's, at the point
+the value is followed.
 
 ## CSRF, and why this answerer needed it first
 

@@ -198,7 +198,7 @@ export const httpServer = <
 >(
   options: Omit<SocketOptions, "unit"> & { readonly unit?: Units } = {},
 ): Module<
-  HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes,
+  HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers,
   ConfigInvalid,
   Env | UnitsNeedsOf<Units>
 > => {
@@ -246,7 +246,11 @@ export const httpServer = <
       }),
       Provider(HttpUnit)({ inject: {}, value: options.unit ?? {} }),
     ],
-    exports: [HttpRuntime, HttpConfig, HttpHandler, HttpUnit, CookieSchemes],
+    // `Observers` is exported so a SIBLING provider in the root can report to
+    // the same set — `oidc()` is the first — without every such provider
+    // having to contribute a no-op member of its own to a port this module
+    // already keeps non-empty.
+    exports: [HttpRuntime, HttpConfig, HttpHandler, HttpUnit, CookieSchemes, Observers],
     // `as never`/`as unknown as Module<…>`, below: `exports` includes
     // `HttpHandler`, a set port, though this module provides no member of it
     // itself — a sibling module's answerer does. The Needs channel carries every
@@ -256,7 +260,7 @@ export const httpServer = <
     // composition root must supply, and this is what makes di's own
     // `UNSATISFIED DEPENDENCIES` gate say so.
   } as never) as unknown as Module<
-    HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes,
+    HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers,
     ConfigInvalid,
     Env | UnitsNeedsOf<Units>
   >;
@@ -276,16 +280,21 @@ export const httpServer = <
 export const http = <Units extends Readonly<Record<string, AnyUnitModule>> | undefined = undefined>(
   options: Omit<HttpOptions, "unit"> & { readonly unit?: Units } = {},
 ): Module<
-  HttpRuntime | HttpConfig | HttpHandler,
+  HttpRuntime | HttpConfig | HttpHandler | Observers,
   ConfigInvalid,
   Env | OrpcRouterPort | UnitsNeedsOf<Units>
 > =>
   Module("Http")({
     imports: [httpServer(options)],
     provides: [orpc(options)],
-    exports: [HttpRuntime, HttpConfig, HttpHandler],
+    // `Observers` travels through, for the reason `httpServer` exports it: a
+    // sibling answerer in the root — `oidc()` — reports its own operations and
+    // is a single member provider with nowhere to put a no-op member of its
+    // own. Without this, `http()` and `httpServer()` disagree about what a
+    // root gets, and only the sugar's callers pay.
+    exports: [HttpRuntime, HttpConfig, HttpHandler, Observers],
   } as never) as unknown as Module<
-    HttpRuntime | HttpConfig | HttpHandler,
+    HttpRuntime | HttpConfig | HttpHandler | Observers,
     ConfigInvalid,
     Env | OrpcRouterPort | UnitsNeedsOf<Units>
   >;

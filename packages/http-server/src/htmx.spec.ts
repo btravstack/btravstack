@@ -391,6 +391,82 @@ describe("htmx", () => {
   });
 });
 
+describe("htmx login", () => {
+  it("sends a navigating browser with no session to login, carrying where it was going", async ({
+    loginServer,
+  }) => {
+    // GIVEN a deployment pinning `fragmentsLogin`, and a session-protected route
+    const { get } = await loginServer("/auth/login");
+
+    // WHEN a browser navigates to it — query and all — with no session
+    const answer = await get("/private?tab=open");
+
+    // THEN it is sent to the login route by a 303 — the status that SPECIFIES
+    // a retrieval request, where a 302 leaves re-POSTing a form body a MAY —
+    // carrying its whole path and query, encoded once
+    expect({ status: answer.status, location: answer.location }).toEqual({
+      status: 303,
+      location: "/auth/login?return=%2Fprivate%3Ftab%3Dopen",
+    });
+  });
+
+  it("tells an htmx request to redirect rather than redirecting it", async ({ loginServer }) => {
+    // GIVEN the same deployment
+    const { get } = await loginServer("/auth/login");
+
+    // WHEN htmx itself asks for the fragment with no session
+    const answer = await get("/private", { "hx-request": "true" });
+
+    // THEN it is refused, with the navigation htmx performs itself — a redirect
+    // would be followed inside the XHR and swapped in as the fragment
+    expect({ status: answer.status, hxRedirect: answer.hxRedirect }).toEqual({
+      status: 401,
+      hxRedirect: "/auth/login?return=%2Fprivate",
+    });
+  });
+
+  it("declines to carry a return a crafted target manufactured", async ({ loginServer }) => {
+    // GIVEN a deployment whose fragments include a route with a LEADING
+    // parameter, which matches a target that is one crafted segment
+    const { get } = await loginServer("/auth/login");
+
+    // WHEN the target is `/\evil.com` — sent verbatim, since `new URL` would
+    // resolve that very string against the site's own origin to `https://evil.com/`
+    const answer = await get("/\\evil.com");
+
+    // THEN the caller still reaches login, pointed back at the root rather than
+    // off-site: the return is refused where it is minted
+    expect({ status: answer.status, location: answer.location }).toEqual({
+      status: 303,
+      location: "/auth/login?return=%2F",
+    });
+  });
+
+  it("keeps 403 for a session lacking the scope", async ({ loginServer }) => {
+    // GIVEN the same deployment and a real session holding no scopes
+    const { get, cookie } = await loginServer("/auth/login");
+
+    // WHEN it asks for a route requiring one, as htmx — the sender that WOULD
+    // have been given a redirect had it merely been logged out
+    const answer = await get("/exports", { cookie, "hx-request": "true" });
+
+    // THEN it is refused outright, pointed nowhere by either mechanism:
+    // logging in again would change nothing
+    expect(answer).toEqual({ status: 403, location: null, hxRedirect: null });
+  });
+
+  it("answers 401 as before when no login is configured", async ({ loginServer }) => {
+    // GIVEN a deployment that pins no login route
+    const { get } = await loginServer();
+
+    // WHEN a browser navigates to the session-protected route with no session
+    const answer = await get("/private");
+
+    // THEN nothing changed: a bare 401, pointing nowhere
+    expect(answer).toEqual({ status: 401, location: null, hxRedirect: null });
+  });
+});
+
 describe("htmx unit kinds", () => {
   it("forks the user module, seeded with the principal, for a route that requires one", async ({
     kindedHtmx,
