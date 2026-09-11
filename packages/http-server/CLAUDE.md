@@ -1103,7 +1103,7 @@ api.OrpcController(contract, "orders")({
   record and a piece that declared `unit:` receives `{}` at runtime once
   lifted. A lifted root must restate `unit:` on the router arm.
 
-## The two authenticators that ship
+## The authenticators that ship
 
 The seam was here and none of the implementations were, so every application
 wrote the same four things by hand — and this is the one area of the framework

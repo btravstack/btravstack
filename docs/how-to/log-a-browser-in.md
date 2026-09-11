@@ -141,7 +141,10 @@ export const api = auth.units<{ session: typeof SessionModule }>();
 
 The composition root supplies the codec that seals and unseals the cookie,
 and the login answerer that walks the OpenID Connect flow — both in
-`provides`, beside the fragment they ride:
+`provides`, beside the fragment they ride. `orderRowFragment` is in there
+too: this single-file root has no slice import to discharge the route's own
+port, so it provides it directly — in `examples/order-api` that job belongs
+to the `OrdersSlice` module instead.
 
 <!-- doctest: defer -->
 
