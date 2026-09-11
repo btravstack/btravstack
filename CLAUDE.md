@@ -875,7 +875,9 @@ in its place.
   unreachable (`skip_consent` is advice to a consent application, never
   permission to omit one). Those three take **fixed** host ports and share a
   fixed-name network, which the others do not: a redirect protocol needs its
-  URLs before the container exists. Started
+  URLs before the container exists. Their state is in the shared Postgres,
+  joined to that network at runtime — a `memory` DSN refuses the concurrent
+  logins the gate makes, measured in `internal/test-infra/README.md`. Started
   once per machine and reused by
   every workspace's vitest run **and by `pnpm dev`**. Ten workspaces need a Docker daemon —
   `packages/amqp-worker`, `packages/temporal-worker`, `packages/cache`, `packages/mailer`,

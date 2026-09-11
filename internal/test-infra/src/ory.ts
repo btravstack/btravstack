@@ -9,7 +9,14 @@ import {
   type StartedTestContainer,
 } from "testcontainers";
 
-import { TEST_INFRA_LABEL, shared } from "./containers.js";
+import {
+  POSTGRES_PASSWORD,
+  POSTGRES_USER,
+  TEST_INFRA_LABEL,
+  ensureDatabase,
+  shared,
+  sharedPostgres,
+} from "./containers.js";
 import { withLock } from "./lock.js";
 import { ORY_ISSUER, ORY_POST_LOGOUT_URI, provisionOry } from "./ory-provision.js";
 
@@ -42,6 +49,34 @@ const ORY_NETWORK = "btravstack-ory";
  * Hydra requires 32 characters.
  */
 const SECRETS_SYSTEM = "youReallyNeedToChangeThis32Chars";
+
+/**
+ * The shared Postgres, by the alias {@link joinNetwork} gives it on the Ory
+ * network. Not `memory`: SQLite in any mode refuses or deadlocks a second
+ * writer, and the whole gate logs in concurrently.
+ */
+const oryDsn = (database: string): string =>
+  `postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${database}?sslmode=disable`;
+
+/**
+ * Attach the shared Postgres to the Ory network under the alias the DSNs
+ * name, without restarting it: a network is joined at runtime, where an
+ * option on its definition would change the hash `withReuse()` finds it by.
+ */
+const joinNetwork = (postgres: StartedTestContainer): Promise<void> =>
+  withLock("ory-postgres", async () => {
+    const client = await getContainerRuntimeClient();
+    const network = client.network.getById(ORY_NETWORK);
+    const { Containers } = (await network.inspect()) as {
+      readonly Containers?: Record<string, unknown>;
+    };
+    if (Containers?.[postgres.getId()] !== undefined) return;
+
+    await network.connect({
+      Container: postgres.getId(),
+      EndpointConfig: { Aliases: ["postgres"] },
+    });
+  });
 
 /**
  * Content copied into a container is copied AFTER create and is not part of
@@ -84,12 +119,13 @@ const ensureNetwork = (): Promise<void> =>
 const sharedHydra = (): Promise<StartedTestContainer> =>
   shared("ory-hydra", () =>
     new GenericContainer("oryd/hydra:v2.3.0")
-      .withCommand(["serve", "all", "--dev"])
+      .withEntrypoint(["sh", "-c"])
+      .withCommand(["hydra migrate sql -e --yes && exec hydra serve all --dev"])
       .withNetworkMode(ORY_NETWORK)
       .withNetworkAliases("hydra")
       .withExposedPorts({ container: 4444, host: 4444 }, { container: 4445, host: 4445 })
       .withEnvironment({
-        DSN: "memory",
+        DSN: oryDsn("hydra"),
         URLS_SELF_ISSUER: ORY_ISSUER,
         URLS_LOGIN: "http://localhost:4433/self-service/login/browser",
         URLS_CONSENT: "http://localhost:4455/consent",
@@ -113,7 +149,11 @@ const sharedKratos = async (): Promise<StartedTestContainer> => {
 
   return shared("ory-kratos", () =>
     new GenericContainer("oryd/kratos:v1.3.1")
-      .withCommand(["serve", "--config", "/etc/config/kratos.yml", "--dev"])
+      .withEntrypoint(["sh", "-c"])
+      .withCommand([
+        "kratos migrate sql -e --yes -c /etc/config/kratos.yml && exec kratos serve -c /etc/config/kratos.yml --dev",
+      ])
+      .withEnvironment({ DSN: oryDsn("kratos") })
       .withNetworkMode(ORY_NETWORK)
       .withNetworkAliases("kratos")
       .withExposedPorts({ container: 4433, host: 4433 }, { container: 4434, host: 4434 })
@@ -159,14 +199,21 @@ export type Ory = {
 };
 
 /**
- * The three containers, then {@link provisionOry} — every attach, because both
- * DSNs are `memory` and a restarted container has forgotten everything.
+ * The three containers over the shared Postgres, then {@link provisionOry} —
+ * every attach, because it is idempotent and the database may be new.
  *
- * Kratos reaches Hydra by network alias, so the network comes first; the
+ * Kratos reaches Hydra by network alias, so the network comes first, and the
+ * pair migrate their databases on start, so Postgres precedes them; the
  * consent handler follows the pair it calls.
  */
 export const sharedOry = async (): Promise<Ory> => {
   await ensureNetwork();
+  const postgres = await sharedPostgres();
+  await Promise.all([
+    joinNetwork(postgres),
+    ensureDatabase(postgres, "hydra"),
+    ensureDatabase(postgres, "kratos"),
+  ]);
   const [hydra, kratos] = await Promise.all([sharedHydra(), sharedKratos()]);
   const consent = await sharedConsent();
   await provisionOry();

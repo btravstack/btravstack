@@ -62,19 +62,24 @@ export const sharedPostgres = async (): Promise<StartedTestContainer> => {
       .withWaitStrategy(Wait.forHealthCheck()),
   );
 
-  // PostgreSQL has no `CREATE DATABASE IF NOT EXISTS`, and a reused server
-  // already has this one — so the existence check is the guard, and `psql`
-  // inside the image is what runs it rather than a `pg` dependency here.
-  await withLock(`postgres-${ORDERS_DATABASE}`, async () => {
-    const create = `psql -U ${POSTGRES_USER} -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${ORDERS_DATABASE}'" | grep -q 1 || psql -U ${POSTGRES_USER} -d postgres -c 'CREATE DATABASE ${ORDERS_DATABASE}'`;
-    const { exitCode, output } = await postgres.exec(["sh", "-c", create]);
-    if (exitCode !== 0)
-      // oxlint-disable-next-line unthrown/no-throw -- a vitest `globalSetup` reports failure by rejecting; there is no Result channel here
-      throw new Error(`Could not create the '${ORDERS_DATABASE}' database: ${output}`);
-  });
+  await ensureDatabase(postgres, ORDERS_DATABASE);
 
   return postgres;
 };
+
+/**
+ * PostgreSQL has no `CREATE DATABASE IF NOT EXISTS`, and a reused server
+ * already has the database — so the existence check is the guard, and `psql`
+ * inside the image is what runs it rather than a `pg` dependency here.
+ */
+export const ensureDatabase = (postgres: StartedTestContainer, database: string): Promise<void> =>
+  withLock(`postgres-${database}`, async () => {
+    const create = `psql -U ${POSTGRES_USER} -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${database}'" | grep -q 1 || psql -U ${POSTGRES_USER} -d postgres -c 'CREATE DATABASE ${database}'`;
+    const { exitCode, output } = await postgres.exec(["sh", "-c", create]);
+    if (exitCode !== 0)
+      // oxlint-disable-next-line unthrown/no-throw -- a vitest `globalSetup` reports failure by rejecting; there is no Result channel here
+      throw new Error(`Could not create the '${database}' database: ${output}`);
+  });
 
 /**
  * A libpq URL for one database on the shared server, as
