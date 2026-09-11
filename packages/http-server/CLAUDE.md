@@ -1427,7 +1427,7 @@ cookie, an unopenable one, an expired one and a declined principal are one
 ## `oidc()` — the login answerer, from `@btravstack/http-server/oidc`
 
 **`oidc({ principal, issuer?, clientId?, clientSecret?, redirectUri?, prefix?,
-scope?, postLogout? })` → a `Provider.member(HttpHandler)` needing
+scope?, postLogout?, allowInsecureIssuer? })` → a `Provider.member(HttpHandler)` needing
 `Env | SessionCodec` and reporting `ConfigInvalid | OidcUnreachable`.**
 `openid-client` is its optional peer, behind this subpath, on the protocol
 `pino` and `jose` already use.

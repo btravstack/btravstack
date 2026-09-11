@@ -351,12 +351,14 @@ const LOOPBACK = new Set(["localhost", "127.0.0.1", "::1"]);
  * boot unless `allowInsecureIssuer` is pinned at the call, which is where a
  * security posture belongs.
  */
-const insecureIssuer = (issuer: string, allowed: boolean): boolean | "refused" =>
-  !issuer.startsWith("http:")
+const insecureIssuer = (issuer: string, allowed: boolean): boolean | "refused" => {
+  const url = new URL(issuer);
+  return url.protocol !== "http:"
     ? false
-    : allowed || LOOPBACK.has(new URL(issuer).hostname)
+    : allowed || LOOPBACK.has(url.hostname)
       ? true
       : "refused";
+};
 
 /**
  * The discovery document, once, at boot — so a provider that is not there is a

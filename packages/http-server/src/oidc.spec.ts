@@ -533,6 +533,22 @@ describe("oidc(), the login answerer", () => {
     );
   });
 
+  it("refuses that issuer spelled with an upper-case scheme too", async ({ oidcApp }) => {
+    // GIVEN the same issuer as `Config.url` accepts it — parsed, not normalised,
+    // so the scheme arrives as the deployment typed it
+    const app = oidcApp({ ...oidcEnv, HTTP_OIDC_ISSUER: "HTTP://issuer.example/" });
+
+    // WHEN the application boots
+    // THEN the posture is decided on the parsed scheme, and a spelling is not
+    // a way around it
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        port: "HttpOidc",
+        issues: [expect.objectContaining({ path: ["HTTP_OIDC_ISSUER"] })],
+      }),
+    );
+  });
+
   it(
     "takes the same cleartext issuer once the deployment opted in at the call",
     async ({ oidcApp }) => {

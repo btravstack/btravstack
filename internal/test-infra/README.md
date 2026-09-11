@@ -244,10 +244,10 @@ testcontainers' `Network`.** That class mints a random name a second process
 cannot find and labels it with the reaper's session id, so it would be removed
 under a reused container. `sharedOry` looks the network up and creates it if
 absent, under a lock, with the same `com.btravstack.test-infra` label as the
-containers. Three calls cross container to container — Kratos → Hydra admin,
-and each of the pair → Postgres — so aliases exist for `hydra`, `kratos`,
-`consent` and `postgres`, and everything else is a browser redirect to
-`localhost`. The shared Postgres is started on the default bridge by every
+containers. What crosses container to container is the admin traffic — Kratos
+→ Hydra, the consent handler → Hydra and → Kratos, and each of the pair →
+Postgres — so aliases exist for `hydra`, `kratos`, `consent` and `postgres`,
+and everything else is a browser redirect to `localhost`. The shared Postgres is started on the default bridge by every
 other workspace, so `sharedOry` **joins** it to this network at runtime under
 the `postgres` alias rather than defining it there: a network on its definition
 would change the hash `withReuse()` finds it by, and restart the one database
