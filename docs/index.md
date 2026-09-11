@@ -127,6 +127,7 @@ it. That is the whole idea.
 
 ```ts
 import { HttpModule } from "@btravstack/http-server";
+import { sessionCodec } from "@btravstack/http-server/session";
 
 export const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
@@ -138,6 +139,9 @@ export const OrdersApi = HttpModule("OrdersApi")({
     user: UserModule,
     service: ServiceModule,
   },
+  // The session cookie's codec, which the `session` scheme this application's
+  // door declares reads a cookie with.
+  provides: [sessionCodec()],
   imports: [OrderPersistenceModule, observability(), otel()],
 });
 ```

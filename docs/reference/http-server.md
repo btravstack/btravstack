@@ -164,6 +164,7 @@ import { redisCache } from "@btravstack/cache/redis";
 import { HttpModule } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
+import { sessionCodec } from "@btravstack/http-server/session";
 import { orderRouter, orderFragments } from "../../module.js";
 import { RequestModule } from "../../request-scope.js";
 import { CustomersSlice } from "../../slices/customers/module.js";
@@ -182,6 +183,7 @@ export const OrderApi = HttpModule("OrderApi")({
     observability(),
     otel(),
   ],
+  provides: [sessionCodec()],
   exports: [Logger, Tracer, Meter],
 });
 ```
@@ -1369,6 +1371,7 @@ sees at the composition root:
 
 <!-- doctest: isolate
 import { HttpModule } from "@btravstack/http-server";
+import { sessionCodec } from "@btravstack/http-server/session";
 import { orderRouter } from "../../module.js";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";
@@ -1377,6 +1380,7 @@ import { OrdersSlice } from "../../slices/orders/module.js";
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
+  provides: [sessionCodec()],
   imports: [OrdersSlice, CustomersSlice],
   cors: { origin: "https://orders.example", credentials: true },
   bodyLimit: 5_000_000,

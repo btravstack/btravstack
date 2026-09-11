@@ -6,8 +6,10 @@ import {
   type SchemesFrom,
 } from "@btravstack/http-server";
 import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
+import { sessionAuthenticator } from "@btravstack/http-server/session";
+import type { IDToken } from "openid-client";
 
-import type { RequestModule, ServiceModule, UserModule } from "./request-scope.js";
+import type { RequestModule, ServiceModule, SessionModule, UserModule } from "./request-scope.js";
 
 /**
  * What this deployment knows about a caller under the `user` scheme — and the
@@ -42,8 +44,13 @@ export type ServiceIdentity = { readonly appId: string; readonly tenantId: Tenan
  * path claims the `TenantId` brand — and the one place it earns the cast, by
  * parsing first: a claim is the issuer's string, not a contract-validated
  * input. Answering `undefined` refuses the token, which is a 401.
+ *
+ * Two doors read it — the bearer scheme's verified token and the ID token the
+ * login answerer hands back — which is why it takes either claim set. The
+ * tenant claim is named once for both, so a browser and a machine cannot end
+ * up disagreeing about where the tenant is written.
  */
-const principal = (claims: Claims): Identity | undefined => {
+export const principal = (claims: Claims | IDToken): Identity | undefined => {
   const tenant = claims["tenant"];
   return typeof claims.sub === "string" &&
     claims.sub !== "" &&
@@ -67,6 +74,14 @@ export const userAuth = jwtAuthenticator<Identity>()({
   principal,
   scopes: ["orders:export"],
 });
+
+/**
+ * The third scheme: the session cookie the login answerer seals. The same
+ * `Identity` as `user`, because a browser that logged in IS a user — what
+ * differs is the credential, a cookie in place of a bearer token — and the
+ * same scope vocabulary, intersected with what the login recorded.
+ */
+export const browserAuth = sessionAuthenticator<Identity>()({ scopes: ["orders:export"] });
 
 /**
  * The issued keys, and the one place a key's tenant is written: a key is cut
@@ -103,7 +118,9 @@ export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({ keys: servic
  * type mentioning `@btravstack/contract`'s inaccessible `unique symbol`, which
  * this file could not emit (TS2527).
  */
-export const auth = defineHttp({ authenticators: { user: userAuth, service: serviceAuth } });
+export const auth = defineHttp({
+  authenticators: { user: userAuth, service: serviceAuth, session: browserAuth },
+});
 
 /**
  * The same object, retyped with the module each unit kind binds — a second
@@ -115,14 +132,18 @@ export const api = auth.units<{
   anonymous: typeof RequestModule;
   user: typeof UserModule;
   service: typeof ServiceModule;
+  session: typeof SessionModule;
 }>();
 
 /**
- * Who is calling, under either scheme — the input an authorization rule takes.
+ * Who is calling, under any of the schemes — the input an authorization rule
+ * takes.
  *
- * Derived from the schemes declared above rather than restated, so a third
+ * Derived from the schemes declared above rather than restated, so a further
  * scheme is a compile error inside the rule that must decide about it, not a
- * union that quietly stopped matching what the door lets through.
+ * union that quietly stopped matching what the door lets through — which is
+ * what `session` was: adding it failed `exportable` until that rule said
+ * whether a browser exports like a user or like a machine.
  */
 export type Caller = Principal<
   keyof typeof auth.authenticators & string,

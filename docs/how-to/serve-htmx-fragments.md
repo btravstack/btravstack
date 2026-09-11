@@ -152,6 +152,7 @@ unmarked route whose path could also match its requests.
 
 ```ts
 import { HttpModule } from "@btravstack/http-server";
+import { sessionCodec } from "@btravstack/http-server/session";
 import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { Logger } from "@btravstack/core";
@@ -161,7 +162,7 @@ export const OrderFragmentsApi = HttpModule("OrderFragmentsApi")({
   fragments: orderFragments,
   // The login ROUTE a refused caller is sent to — see "Behind a scheme" below.
   fragmentsLogin: "/auth/login",
-  provides: [orderRowFragment],
+  provides: [orderRowFragment, sessionCodec()],
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],
 });

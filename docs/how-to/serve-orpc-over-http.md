@@ -195,6 +195,7 @@ import {
   OrderPersistenceModule,
 } from "@btravstack/example-order-infrastructure";
 import { HttpModule } from "@btravstack/http-server";
+import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 
@@ -217,6 +218,7 @@ export const OrdersApi = HttpModule("OrdersApi")({
     service: ServiceModule,
   },
   imports: [OrderPersistenceModule, observability(), otel()],
+  provides: [sessionCodec()],
   // Everything a forked kind reads out of the application scope.
   exports: [Logger, Tracer, Meter, OrderDatabase],
 });
@@ -241,7 +243,7 @@ Module("OrdersApi")({
     otel(),
     http({ unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule } }),
   ],
-  provides: [ordersRouter, ...ordersRouter.authenticators],
+  provides: [ordersRouter, ...ordersRouter.authenticators, sessionCodec()],
   exports: [HttpRuntime, Logger, Tracer, Meter, OrderDatabase],
 });
 ```

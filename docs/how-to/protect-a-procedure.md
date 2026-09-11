@@ -6,6 +6,7 @@ description: Mark a contract fragment or a procedure with authenticated(), decla
 <!-- doctest: prelude
 import { Logger } from "@btravstack/core";
 import { HttpModule } from "@btravstack/http-server";
+import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
 import { OkAsync, P } from "unthrown";
 import type { Order } from "@btravstack/example-order-domain";
@@ -458,6 +459,7 @@ export const orderRouter = api.OrpcRouter(contract)([
 
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
+  provides: [sessionCodec()],
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });

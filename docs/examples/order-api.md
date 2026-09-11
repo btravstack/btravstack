@@ -13,8 +13,10 @@ import { UnitSpanModule, otel } from "@btravstack/observability/otel";
 import type { Order } from "@btravstack/example-order-domain";
 import { FindOrder, ListOrders, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
-import { ServiceModule, UserModule } from "../../request-scope.js";
-import { api } from "../../auth.js";
+import { oidc } from "@btravstack/http-server/oidc";
+import { sessionCodec } from "@btravstack/http-server/session";
+import { ServiceModule, SessionModule, UserModule } from "../../request-scope.js";
+import { api, principal } from "../../auth.js";
 import { customersController } from "../../slices/customers/controller.js";
 import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
@@ -562,13 +564,16 @@ renders the slice's own not-found row rather than the owner's order.
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
   fragments: orderFragments,
+  fragmentsLogin: "/auth/login",
   // One module per kind a request can open under. `UserModule` is where the
   // principal's tenant becomes a `Tenant` and the orders vertical is composed
-  // over it; `ServiceModule` adds nothing, because a machine caller has none.
+  // over it; `ServiceModule` adds nothing, because a machine caller has none;
+  // `SessionModule` is `UserModule`'s shape over the browser's principal.
   unit: {
     anonymous: RequestModule,
     user: UserModule,
     service: ServiceModule,
+    session: SessionModule,
   },
   imports: [
     OrdersSlice,
@@ -578,6 +583,8 @@ export const OrderApi = HttpModule("OrderApi")({
     observability(),
     otel(),
   ],
+  // The session cookie's codec and the login answerer that seals it.
+  provides: [sessionCodec(), oidc({ principal, scope: "openid orders:export" })],
   // Everything a forked kind reads out of the application scope.
   exports: [Logger, Tracer, Meter, OrderDatabase],
 });
