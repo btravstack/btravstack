@@ -378,27 +378,40 @@ URI to the one client, idempotently, for a spec whose server binds an ephemeral
 port; `provisionOry` registers `ORY_REDIRECT_URI` the same way on every attach,
 so a container carrying an older registration converges.
 
-## The two scripts
+## The dev scripts
 
-Neither is an entry point. The first is `pnpm dev:env`
-(`src/dev-env.ts`), which the repository's `pnpm dev` runs first. It starts the
-same containers, applies the example application's migrations with
+None is an entry point. `pnpm dev:env`
+(`src/dev-env.ts`) is the one the repository's `pnpm dev` runs first. It starts
+the same containers, applies the example application's migrations with
 `prisma migrate deploy` under the same `withLock` its vitest `globalSetup`
 uses, and writes the repository root's `.env.dev` — the addresses each example
 process reads through Node's `--env-file`, the `HTTP_JWT_*` three the dev
 issuer above supplies included. Same containers, attached to rather than
 duplicated: a dev loop and a `pnpm test` can run side by side. `pnpm dev:token`
-is the second, and needs nothing running but the JWKS container `dev:env`
+and `pnpm dev:login` need nothing running but the containers `dev:env`
 started.
+
+**`pnpm dev:login`** (`src/dev-login.ts`) is `dev:token`'s browser sibling: it
+drives the same headless walk `headlessLogin` performs in the specs — login,
+`headlessLogin`, the callback — against the running `order-api`, and prints
+the `__Host-session` cookie header on stdout. It exists because the gate's
+Kratos has no login UI, on purpose (`config/kratos.yml`'s `ui_url`s are
+deliberately dead, above), so a real browser cannot complete the round trip on
+its own — a login page is the provider's, not this stack's.
+
+```sh
+COOKIE=$(pnpm dev:login -- --as alice@btravstack.test) && \
+  curl -s -b "$COOKIE" http://localhost:3000/orders/0199a1e0-0000-7000-8000-000000000001/row
+```
 
 **`dev:env` starts and provisions Ory too, so the dev loop's logins are
 `ORY_USERS`** — `alice@btravstack.test` and `bob@btravstack.test`, both
 `correct-horse-battery-staple`, which are gate constants and not secrets. The
 five variables that go with them — `HTTP_OIDC_ISSUER`, `HTTP_OIDC_CLIENT_ID`,
 `HTTP_OIDC_CLIENT_SECRET`, `HTTP_OIDC_REDIRECT_URI` and `HTTP_SESSION_KEYS` —
-are written for the later phases of
-[#160](https://github.com/btravstack/btravstack/issues/160); nothing reads them
-yet, and the login route a browser would use arrives with them. `HTTP_SESSION_KEYS`
+are read by `order-api`'s `session` scheme and its `/auth/login` /
+`/auth/callback` login answerer, and `pnpm dev:login` mints the cookie they
+accept. `HTTP_SESSION_KEYS`
 is a comma-separated **list** where the first key seals and every one unseals,
 which is what a rotation needs; the dev loop writes one — 32 random bytes,
 base64url, minted on the first `dev:env` and read back from

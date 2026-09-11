@@ -9,6 +9,7 @@
     "build": "turbo run build",
     "changeset": "changeset",
     "dev": "turbo run dev --filter=./examples/*",
+    "dev:login": "pnpm --silent --filter @btravstack/internal-test-infra run dev:login",
     "dev:token": "pnpm --silent --filter @btravstack/internal-test-infra run dev:token",
     "format": "oxfmt .",
     "knip": "knip",
