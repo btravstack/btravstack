@@ -1,6 +1,6 @@
 ---
 title: Order API example
-description: The HTTP deployment — two slices, orders and customers, one marked with a named security scheme and one public, each its own contract fragment, OrpcController and full vertical down to Prisma, an auth.ts declaring two schemes and a scope through defineHttp, composed by the array OrpcRouter form into one HttpModule root, RequestModule forked per request, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the three compile-time gates pinned by needs-gate.test-d.ts.
+description: The HTTP deployment — two slices, orders and customers, one marked with a named security scheme and one public, each its own contract fragment, OrpcController and full vertical down to Prisma, an auth.ts declaring the bearer, API-key and session schemes and a scope through defineHttp, composed by the array OrpcRouter form into one HttpModule root, RequestModule forked per request, a session cookie unlocking one htmx fragment through an OpenID Connect login answerer, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the three compile-time gates pinned by needs-gate.test-d.ts.
 ---
 
 <!-- doctest: prelude
@@ -156,7 +156,7 @@ enriching it is never a contract change.
 One file, at the root of `src/`, belonging to no slice:
 
 ```text
-src/auth.ts             the two schemes, and the one defineHttp call that declares them
+src/auth.ts             the bearer, API-key and session schemes, and the one defineHttp call that declares them
 ```
 
 `auth.ts` is where each scheme's identity is stated and its authenticator
@@ -166,13 +166,17 @@ written, and where the one `defineHttp` call the application makes lives:
 import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
 import { apiKeyAuthenticator, defineHttp } from "@btravstack/http-server";
 import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
+import { sessionAuthenticator } from "@btravstack/http-server/session";
+import type { IDToken } from "openid-client";
 -->
 
 ```ts
 import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
 import { apiKeyAuthenticator, defineHttp } from "@btravstack/http-server";
 import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
-/** What this deployment knows about a caller under the `user` scheme. */
+import { sessionAuthenticator } from "@btravstack/http-server/session";
+import type { IDToken } from "openid-client";
+/** What this deployment knows about a caller under the `user` and `session` schemes. */
 export type Identity = {
   readonly tenantId: TenantId;
   readonly userId: string;
@@ -185,11 +189,13 @@ export type ServiceIdentity = {
 };
 
 /**
- * What a verified token means here, and the one place this deployment's claim
- * spelling is written: `sub` is the user, `tenant` is the tenant. Answering
- * `undefined` refuses the token.
+ * What a verified token or a sealed session means here, and the one place
+ * this deployment's claim spelling is written: `sub` is the user, `tenant`
+ * is the tenant. Answering `undefined` refuses the token or the login. Two
+ * doors read it — the bearer scheme's token and the login answerer's ID
+ * token — which is why it takes either claim set.
  */
-const principal = (claims: Claims): Identity | undefined => {
+const principal = (claims: Claims | IDToken): Identity | undefined => {
   const tenant = claims["tenant"];
   return typeof claims.sub === "string" &&
     claims.sub !== "" &&
@@ -202,6 +208,14 @@ const principal = (claims: Claims): Identity | undefined => {
 /** Nothing pinned: the three `HTTP_JWT_*` variables are the deployment's. */
 export const userAuth = jwtAuthenticator<Identity>()({
   principal,
+  scopes: ["orders:export"],
+});
+
+/**
+ * The third scheme: the session cookie the login answerer seals. The same
+ * `Identity` as `user`, since a browser that logged in IS a user.
+ */
+export const browserAuth = sessionAuthenticator<Identity>()({
   scopes: ["orders:export"],
 });
 
@@ -222,7 +236,7 @@ export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({
 });
 
 export const api = defineHttp({
-  authenticators: { user: userAuth, service: serviceAuth },
+  authenticators: { user: userAuth, service: serviceAuth, session: browserAuth },
 });
 ```
 
@@ -507,7 +521,7 @@ from its method and path, with `api.HtmxGet` — no contract in between:
 import { html } from "@btravstack/http-server";
 
 export const orderRowFragment = api.HtmxGet("/orders/:id/row", {
-  requires: [{ user: [] }],
+  requires: [{ session: [] }],
 })({
   inject: {},
   unit: { find: FindOrder },
@@ -532,13 +546,16 @@ export const orderRowFragment = api.HtmxGet("/orders/:id/row", {
 });
 ```
 
-`requires: [{ user: [] }]` marks the route exactly as `contract.orders` marks
-`ordersController` — so it opens the same `user` unit, and its `FindOrder` is
-the one that unit built over the caller's own tenant. The route's path names
-only `id`, so a caller's credential is what scopes the row, never the path.
-`.recoverErrCases` is this piece's own triage, at the place `mapErrCases`
-sits for the router: there is no declared error union for a client to branch
-on, so `OrderNotFound` becomes a rendered row here or not at all.
+`requires: [{ session: [] }]` marks the route exactly as `contract.orders`
+marks `ordersController` — so it opens the `session` unit rather than
+`user`, and its `FindOrder` is the one `SessionModule`'s fork built over the
+browser's own tenant, off the cookie the login answerer sealed. The route's
+path names only `id`, so a caller's credential is what scopes the row, never
+the path. `.recoverErrCases` is this piece's own triage, at the place
+`mapErrCases` sits for the router: there is no declared error union for a
+client to branch on, so `OrderNotFound` becomes a rendered row here or not at
+all. See [Log a browser in](/how-to/log-a-browser-in) for the scheme, the
+kind and the login answerer end to end.
 
 `module.ts` composes it the same way it composes the router, over an array of
 its own routes, and the composition root below passes the result alongside
@@ -717,8 +734,10 @@ the request's own trace id — and no handler code manages the fork.
 `RequestModule`, provides `Tenant` from `auth.principals.user` — the principal
 the fork is seeded with — and composes `OrderTenantPersistence` and
 `OrderApplicationModule` over it, so a marked leaf reads `PlaceOrder`,
-`FindOrder` and `ListOrders` already bound. `ServiceModule` does the same over
-the tenant the caller's API key was **cut for** — `Tenant` from
+`FindOrder` and `ListOrders` already bound. `SessionModule` is the identical
+shape over `auth.principals.session` instead — a browser that logged in is a
+user, so it exports the same three use cases. `ServiceModule` does the same
+over the tenant the caller's API key was **cut for** — `Tenant` from
 `auth.principals.service`, and the tenant is a field of `ServiceIdentity`
 stated per key in `auth.ts`'s `serviceKeys`, so a second key states its own
 rather than inheriting the first's rows — but exports only `FindOrder`. That
@@ -726,7 +745,8 @@ asymmetry is what makes
 `context.unit.place` and `context.unit.list` unreadable from `export`, the one
 leaf both schemes serve: the record a leaf is given is the intersection of what
 its kinds export. See
-[Open a per-request scope](/how-to/open-a-per-request-scope).
+[Open a per-request scope](/how-to/open-a-per-request-scope) and
+[Log a browser in](/how-to/log-a-browser-in) for `SessionModule` in full.
 
 ## The spec: booting the real module on `PORT=0`
 

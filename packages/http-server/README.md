@@ -216,9 +216,9 @@ The full surface, arm by arm:
 
 ## Authenticators
 
-Two ship, because these are the ones where writing it per application is how
-CVEs happen — both are ordinary `Authenticator` values bound by name in
-`defineHttp({ authenticators })`:
+The shipped ones — JWT, API key and the session cookie — are the ones where
+writing it per application is how CVEs happen — each is an ordinary
+`Authenticator` value bound by name in `defineHttp({ authenticators })`:
 
 - **`apiKeyAuthenticator<P>()({ keys, header? })`**, on the main entry point. Constant-time
   compare over SHA-256 digests, every key checked with no early return, and a
@@ -230,11 +230,16 @@ CVEs happen — both are ordinary `Authenticator` values bound by name in
   algorithm-confusion attack; `iss`, `aud` and `exp` required to be present,
   `nbf` honoured when present. `jwks`, `issuer` and `audience` are bound from
   `HTTP_JWT_*` when they are not pinned — see **Options** below.
+- **`sessionAuthenticator<P>()({ scopes?, principal? })`**, from
+  `@btravstack/http-server/session`, over the codec `sessionCodec()` provides.
+  Reads `__Host-session`, the cookie the OIDC login answerer (`oidc()`) seals;
+  a root composing it without `sessionCodec()` is an unmet dependency naming
+  the port.
 
 The `/jwt` subpath needs Node ≥22.12 under CommonJS: `jose` is ESM-only, so the
 CJS build's `require` depends on `require(esm)`. ESM consumers are unaffected.
 
-Password hashing and credential issuing are out of scope — both of the above
+Password hashing and credential issuing are out of scope — all three above
 are on the verifying side. Details:
 [the reference page](https://btravstack.github.io/btravstack/reference/http-server).
 

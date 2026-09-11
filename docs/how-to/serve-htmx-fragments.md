@@ -222,7 +222,8 @@ carrying `?return=` set to the path and query they asked for. One line beside
 
 It is the login **route**, not the prefix its answerer is mounted under: an
 `oidc({ prefix: "/auth" })` serves `GET /auth/login`, and `/auth` on its own
-answers nothing. Then:
+answers nothing — see [Log a browser in](/how-to/log-a-browser-in) for the
+scheme it authenticates and the cookie it seals. Then:
 
 - **a browser navigating** gets `303 Location: /auth/login?return=%2Forders%2F42%2Frow`.
   `303` rather than `302` because `requires` is an option on `HtmxPost` too:
@@ -280,6 +281,9 @@ browser sets and a page cannot.
   other answerer, `main.ts` in full, and the options both share.
 - [Protect a procedure](/how-to/protect-a-procedure) — the marker, `auth.ts`
   and the scopes this page's authenticator resolves.
+- [Log a browser in](/how-to/log-a-browser-in) — the session scheme
+  `fragmentsLogin` sends a refused caller to log into, and the cookie it
+  comes back holding.
 - [Order API (HTTP)](/examples/order-api) — the real deployment `orderRow`
   ships in, alongside the router, with a cross-tenant test against real
   Postgres.

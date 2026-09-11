@@ -158,6 +158,10 @@ has no business reading a body, and the narrower argument is what keeps it
 testable without a socket. The scheme's **name** is not stated here; it is the
 key the authenticator sits under in `defineHttp`, so it is written once.
 
+The two below are for a bearer token and an API key; the third shipped scheme,
+`sessionAuthenticator`, is for a browser holding the cookie an OpenID Connect
+login answerer sealed — see [Log a browser in](/how-to/log-a-browser-in).
+
 **`src/auth.ts`** — one file per application
 
 <!-- doctest: isolate
@@ -670,6 +674,8 @@ each of the three questions is answered and why.
 - [Authorize a request](/how-to/authorize-a-request) — the other two layers:
   the tenant in the unit, and the policy the handler decides once it holds the
   resource.
+- [Log a browser in](/how-to/log-a-browser-in) — the third scheme, the login
+  answerer that seals it, and the provider table.
 - [Split a router into controllers](/how-to/split-a-router-into-controllers) —
   where the handler in step 3 lives once an API has slices.
 - [Order API (HTTP)](/examples/order-api) — one marked fragment, one public

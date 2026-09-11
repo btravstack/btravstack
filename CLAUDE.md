@@ -215,6 +215,19 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
      (see **Cross-cutting concerns** below), on by default when a composed
      scheme reads a cookie. Surfaces in `packages/http-server/CLAUDE.md` and
      `packages/http-server/AUTH.md`.
+
+     **`examples/order-api` is the worked consumer, and it serves its
+     fragments on the session.** `SessionModule` is the `session` kind —
+     `UserModule`'s own shape over `auth.principals.session` instead of
+     `.user`, since a browser that logged in is a user — and
+     `oidc({ principal })` rides in `provides` beside the router and the
+     fragments, with `fragmentsLogin` naming the route a caller with no
+     session is sent to. `pnpm dev:login` is the local loop's browser sibling
+     to `dev:token`, for a provider whose own login page is deliberately
+     dead. `docs/how-to/log-a-browser-in.md` is the page, with the provider
+     table naming where the tenant claim comes from on five identity
+     providers.
+
    - **#158 (authorization) was never blocked by any of this, and it
      shipped.** Its third layer is `(principal, resource) → decision` in the
      application layer, above the transport; only its `principal` input is
