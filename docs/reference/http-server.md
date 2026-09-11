@@ -383,7 +383,7 @@ keys live inside the codec: a second provider would be either a second
 re-reading `HTTP_SESSION_KEYS`, with its own rotation story for a list an
 operator rotates once.
 
-**`sessionAuthenticator<P>()({ cookie?, scopes?, principal? })`** is the scheme
+**`sessionAuthenticator<P>()({ scopes?, principal? })`** is the scheme
 over that codec, and it is an ordinary `Authenticator`: bind it in
 `defineHttp({ authenticators })` and `requires: [{ session: [] }]` or
 `authenticated({ session: [] })` work exactly as they do for the other two.
@@ -468,16 +468,17 @@ export const BrowserApi = HttpModule("BrowserApi")({
 });
 ```
 
-| Option         | Required | Default                             | What it is                                                                |
-| -------------- | -------- | ----------------------------------- | ------------------------------------------------------------------------- |
-| `principal`    | **yes**  | —                                   | what the ID token's claims make the caller; `undefined` refuses the login |
-| `issuer`       | no       | read from `HTTP_OIDC_ISSUER`        | the provider, as its discovery document names itself                      |
-| `clientId`     | no       | read from `HTTP_OIDC_CLIENT_ID`     | this deployment's client                                                  |
-| `clientSecret` | no       | read from `HTTP_OIDC_CLIENT_SECRET` | its secret — this is a confidential client                                |
-| `redirectUri`  | no       | read from `HTTP_OIDC_REDIRECT_URI`  | the URI **registered** with the provider                                  |
-| `prefix`       | no       | `/auth`                             | where the three routes are mounted                                        |
-| `scope`        | no       | `openid`                            | what the authorization request asks for                                   |
-| `postLogout`   | no       | `/`                                 | where a logout lands when the provider advertises no end-session endpoint |
+| Option                | Required | Default                             | What it is                                                                |
+| --------------------- | -------- | ----------------------------------- | ------------------------------------------------------------------------- |
+| `principal`           | **yes**  | —                                   | what the ID token's claims make the caller; `undefined` refuses the login |
+| `issuer`              | no       | read from `HTTP_OIDC_ISSUER`        | the provider, as its discovery document names itself                      |
+| `clientId`            | no       | read from `HTTP_OIDC_CLIENT_ID`     | this deployment's client                                                  |
+| `clientSecret`        | no       | read from `HTTP_OIDC_CLIENT_SECRET` | its secret — this is a confidential client                                |
+| `redirectUri`         | no       | read from `HTTP_OIDC_REDIRECT_URI`  | the URI **registered** with the provider                                  |
+| `prefix`              | no       | `/auth`                             | where the three routes are mounted                                        |
+| `scope`               | no       | `openid`                            | what the authorization request asks for                                   |
+| `postLogout`          | no       | `/`                                 | where a logout lands when the provider advertises no end-session endpoint |
+| `allowInsecureIssuer` | no       | `false`                             | talk to an `http:` issuer that is not on a loopback host                  |
 
 **`GET <prefix>/login?return=<path>&as=<hint>`** mints a PKCE verifier, a
 `state` and a `nonce`, seals them and `return` into the five-minute
@@ -516,8 +517,9 @@ manufacturable out of a value that already passed the guard. Anything else
 lands on `/`. The check runs at `/login`, where the value is sealed, **and**
 again at the callback, where it is followed.
 
-**What a header accepts is the header's job**, so the value is `encodeURI`d
-where it becomes a `Location` rather than filtered by the guard. Node's header
+**What a header accepts is the header's job**, so the value goes through
+`forLocation` where it becomes a `Location` rather than being filtered by the
+guard. Node's header
 validator refuses control characters and every code point above U+00FF alike,
 so `/订单/1` — an ordinary path — would otherwise pass every guard and then
 `ERR_INVALID_CHAR` the callback with the authorization code already spent. It
@@ -527,6 +529,18 @@ goes out as `/%E8%AE%A2%E5%8D%95/1`, and a CR/LF one as `/%0A…`, unsplittable.
 `Host`.** `currentUrl` is `redirectUri` carrying this request's query string,
 so a forged `Host` header cannot move the check — and a deployment behind a
 proxy, or a test on an ephemeral port, needs no trust in that header either.
+
+**A cleartext issuer is refused at boot, unless it never leaves the machine.**
+`Config.url` says a value parses, not that it is safe: an `http:` issuer sends
+the client secret, the authorization code and every token in the open, and the
+`allowInsecureRequests` this package then applies is the one check that would
+have refused to. An `http:` issuer on a **loopback** host — `localhost`,
+`127.0.0.1`, `[::1]` — is accepted as it stands, because plaintext that never
+leaves the machine is the development loop. Any other is a `ConfigInvalid`
+naming `HTTP_OIDC_ISSUER`, unless `allowInsecureIssuer: true` is pinned on
+`oidc()`. It is an **option and not a variable**, for `securityHeaders`'
+reason: a posture whose silent change is a security regression belongs in the
+composition root, where changing it is a visible act.
 
 **Discovery runs ONCE, at boot.** A provider that is not there is
 `OidcUnreachable` naming the issuer — a modeled startup failure `runMain` turns
@@ -1588,7 +1602,8 @@ belt-and-braces: a route whose first segment is a parameter
 `/\evil.com`, and `new URL("/\\evil.com", base)` resolves to
 `https://evil.com/` — the WHATWG parser reads `\` as `/` in relative-slash
 state. Whether a header can CARRY the result is a separate question and not the
-guard's: the mount is `encodeURI`d where it becomes a `Location`, because
+guard's: the mount goes through `forLocation` where it becomes a `Location`,
+which leaves an already-encoded `%` alone, because
 Node's header validator refuses every code point above U+00FF as well as every
 control character. What stays the consumer's is the rest of the open-redirect
 question, at the point the value is about to be followed.

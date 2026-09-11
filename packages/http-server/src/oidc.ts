@@ -1,6 +1,6 @@
 import type { IncomingMessage, OutgoingHttpHeaders, ServerResponse } from "node:http";
 
-import { Config, Env, type ConfigInvalid } from "@btravstack/config";
+import { Config, ConfigInvalid, Env } from "@btravstack/config";
 import { Observers, observe, type Operation, type Settle } from "@btravstack/core";
 import { Provider } from "@btravstack/di";
 import {
@@ -18,7 +18,7 @@ import {
   type Configuration,
   type IDToken,
 } from "openid-client";
-import { TaggedError, fromPromise, type AsyncResult } from "unthrown";
+import { ErrAsync, TaggedError, fromPromise, type AsyncResult } from "unthrown";
 
 import { clearCookie, cookieValue, setCookie } from "./cookie.js";
 import { HttpHandler, type HttpAnswerer } from "./handler.js";
@@ -38,6 +38,19 @@ import {
  */
 export class OidcUnreachable extends TaggedError("OidcUnreachable")<{
   readonly issuer: string;
+  readonly cause: unknown;
+}> {}
+
+/**
+ * The provider would not exchange the code. Never a returned error — the
+ * caller gets a bare `401` — but the CAUSE the observer is handed, so a
+ * rotated client secret and a dead token endpoint are told apart on the line
+ * rather than guessed at. Module-private: it rides `Settled.cause`, which is
+ * `unknown`, and nothing outside constructs one.
+ */
+class GrantFailed extends TaggedError("GrantFailed")<{
+  /** `openid-client`'s own error name — `ResponseBodyError`, `TypeError`, … */
+  readonly error: string;
   readonly cause: unknown;
 }> {}
 
@@ -70,6 +83,19 @@ export type OidcOptions<P> = {
    * Default `/`.
    */
   readonly postLogout?: `/${string}`;
+  /**
+   * Talk to an `http:` issuer that is NOT on a loopback host. Default `false`,
+   * and a `ConfigInvalid` at boot without it: the client secret, the code and
+   * every token cross the wire in cleartext, and `allowInsecureRequests` turns
+   * off the check that would have said so.
+   *
+   * An OPTION rather than a variable, on rule 6's own test: its silent change
+   * is a security regression, which is the argument `securityHeaders` is an
+   * option for. A loopback issuer — `localhost`, `127.0.0.1`, `[::1]` — needs
+   * nothing, because plaintext that never leaves the machine is the dev loop's
+   * own Ory.
+   */
+  readonly allowInsecureIssuer?: boolean;
 };
 
 const DEFAULT_PREFIX = "/auth";
@@ -140,7 +166,7 @@ const observed = (
       attributes: { status: response.statusCode },
     });
   if (response.closed) end();
-  response.once("close", end);
+  else response.once("close", end);
   return settle;
 };
 
@@ -262,13 +288,10 @@ const callback = async <P>(
     // The cause is KEPT rather than collapsed: a rotated client secret and a
     // dead token endpoint are both "every login 401s", and without a line
     // naming which, the only evidence either leaves is a spike of refusals.
-    (cause) => cause,
+    (cause) => new GrantFailed({ error: cause instanceof Error ? cause.name : "unknown", cause }),
   );
   if (!granted.isOk()) {
-    // `fromPromise`'s mapper is the identity here, so the only route to this
-    // branch is a rejected grant; a Defect would have to come from the mapper.
-    const cause = granted.isErr() ? granted.error : undefined;
-    refuse(response, 401, settle, "grant_failed", cause);
+    refuse(response, 401, settle, "grant_failed", granted.isErr() ? granted.error : granted.cause);
     return;
   }
 
@@ -293,7 +316,7 @@ const callback = async <P>(
     .get();
 
   send(response, 303, {
-    // `encodeURI`, because Node's header validator refuses every code point
+    // `forLocation`, because Node's header validator refuses every code point
     // above U+00FF: `/订单/1` is an ordinary path and an `ERR_INVALID_CHAR`
     // otherwise — a 500 with the authorization code already spent.
     location: forLocation(returnTo(held["return"])),
@@ -314,6 +337,27 @@ const logout = <P>(response: ServerResponse, bound: Bound<P>): void => {
   });
 };
 
+/** A plaintext issuer that never leaves the machine: the dev loop's own Ory. */
+const LOOPBACK = new Set(["localhost", "127.0.0.1", "::1"]);
+
+/**
+ * Whether this issuer may be talked to in cleartext, decided once at boot.
+ *
+ * `Config.url` says a value parses, not that it is safe: an `https:` issuer is
+ * always fine, an `http:` one on a loopback host is the dev loop, and any
+ * other `http:` issuer sends the client secret, the authorization code and
+ * every token across the wire — with `allowInsecureRequests` turning off the
+ * one check that would have refused to. That last case is a `ConfigInvalid` at
+ * boot unless `allowInsecureIssuer` is pinned at the call, which is where a
+ * security posture belongs.
+ */
+const insecureIssuer = (issuer: string, allowed: boolean): boolean | "refused" =>
+  !issuer.startsWith("http:")
+    ? false
+    : allowed || LOOPBACK.has(new URL(issuer).hostname)
+      ? true
+      : "refused";
+
 /**
  * The discovery document, once, at boot — so a provider that is not there is a
  * typed startup failure rather than a 500 on the first login, and so the JWKS
@@ -323,23 +367,26 @@ const discover = (
   issuer: string,
   clientId: string,
   clientSecret: string,
-): AsyncResult<Configuration, OidcUnreachable> => {
-  // A plaintext issuer is a development one, and the option does NOT carry over
-  // to the configuration discovery answers — both are needed, and only then.
-  const insecure = issuer.startsWith("http:");
-  return fromPromise(
+  // `http:` AND (loopback or the opt-in) — decided at boot by `insecureIssuer`
+  // below, never re-derived here, so the check that refuses a cleartext issuer
+  // and the switch that permits one cannot drift apart.
+  insecure: boolean,
+): AsyncResult<Configuration, OidcUnreachable> =>
+  fromPromise(
     discovery(new URL(issuer), clientId, undefined, ClientSecretBasic(clientSecret), {
       execute: insecure ? [allowInsecureRequests] : [],
     }),
     (cause) => new OidcUnreachable({ issuer, cause }),
   ).map((config) => {
+    // Applied TWICE for a permitted plaintext issuer: as a `discovery` option
+    // and again on the configuration it answers, which that option does not
+    // reach.
     if (insecure) allowInsecureRequests(config);
     // Without this nothing verifies the ID token's SIGNATURE: OIDC Core lets a
     // client trust a token that arrived over TLS from the token endpoint.
     enableNonRepudiationChecks(config);
     return config;
   });
-};
 
 const handlerFor =
   <P>(bound: Bound<P>, prefix: `/${string}`, codec: SessionCodecService): HttpAnswerer["handle"] =>
@@ -405,22 +452,38 @@ export const oidc = <P>(options: OidcOptions<P>) => {
       Config.parse(
         "HttpOidc",
         schema,
-      )(env).flatMap((bound) =>
-        discover(bound.issuer, bound.clientId, bound.clientSecret).map((config) => ({
-          prefix,
-          handle: handlerFor(
-            {
-              config,
-              redirectUri: bound.redirectUri,
-              scope: options.scope ?? DEFAULT_SCOPE,
-              postLogout: options.postLogout ?? DEFAULT_POST_LOGOUT,
-              principal: options.principal,
-              observers,
-            },
+      )(env).flatMap((bound): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> => {
+        const insecure = insecureIssuer(bound.issuer, options.allowInsecureIssuer ?? false);
+        if (insecure === "refused")
+          return ErrAsync(
+            new ConfigInvalid({
+              port: "HttpOidc",
+              issues: [
+                {
+                  message:
+                    "must be an https: issuer — a cleartext one sends the client secret, the authorization code and every token in the open. Only a loopback host (localhost, 127.0.0.1, [::1]) is accepted without `allowInsecureIssuer: true` on `oidc()`",
+                  path: ["HTTP_OIDC_ISSUER"],
+                },
+              ],
+            }),
+          );
+        return discover(bound.issuer, bound.clientId, bound.clientSecret, insecure).map(
+          (config) => ({
             prefix,
-            codec,
-          ),
-        })),
-      ),
+            handle: handlerFor(
+              {
+                config,
+                redirectUri: bound.redirectUri,
+                scope: options.scope ?? DEFAULT_SCOPE,
+                postLogout: options.postLogout ?? DEFAULT_POST_LOGOUT,
+                principal: options.principal,
+                observers,
+              },
+              prefix,
+              codec,
+            ),
+          }),
+        );
+      }),
   });
 };

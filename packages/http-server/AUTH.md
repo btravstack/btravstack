@@ -249,7 +249,7 @@ The two rules this half exists to state, before the detail:
   does not know grants nothing extra. Nothing new checks them: the grant goes
   through `granted()` and the existing walk produces the 403.
 
-- **`sessionAuthenticator<P>()({ cookie?, scopes?, principal? })`
+- **`sessionAuthenticator<P>()({ scopes?, principal? })`
   → `Authenticator<P, Scopes[number], SessionCodec, never>`** — from
   **`@btravstack/http-server/session`**, beside `sessionCodec` and behind the
   same optional `jose` peer. The third scheme, and the only one whose
@@ -380,14 +380,30 @@ The two rules this half exists to state, before the detail:
   **What a header accepts is the header's business.** Node refuses control
   characters and every code point above U+00FF alike, so `/订单/1` — an
   ordinary path — passed the same-site guard and then `ERR_INVALID_CHAR`ed the
-  callback with the code already spent. The value is `encodeURI`d where it
-  becomes a `Location`, which closes that class and the CR/LF one together and
-  keeps the guard about the one thing it is for.
+  callback with the code already spent. The value goes through `forLocation`
+  where it becomes a `Location`, which closes that class and the CR/LF one
+  together and keeps the guard about the one thing it is for — and it is
+  `forLocation` rather than `encodeURI` because the browser's own target is
+  already percent-encoded and the seam decodes it exactly once, so re-encoding
+  that `%` would land a real user on `/orders/a%2520b/row`.
 
   **The code grant is checked against the REGISTERED redirect URI, never
   `Host`.** `currentUrl` is `redirectUri` carrying this request's query, so a
   forged `Host` cannot move the check — and a deployment behind a proxy needs
   no trust in that header for this to be right.
+
+  **A cleartext issuer is refused at boot unless it never leaves the machine.**
+  `Config.url` says a value parses, not that it is safe, and `http:` here is
+  not a cosmetic difference: the client secret, the authorization code and
+  every token cross the wire in the open, and `allowInsecureRequests` — which
+  this package applies for exactly such an issuer — is the one check that would
+  have refused. So an `http:` issuer on a **loopback** host (`localhost`,
+  `127.0.0.1`, `[::1]`) is taken as it stands, because plaintext that never
+  leaves the machine is the dev loop's own Ory; any other is a `ConfigInvalid`
+  naming `HTTP_OIDC_ISSUER` unless `allowInsecureIssuer: true` is pinned at the
+  call. An OPTION rather than a variable, on rule 6's own test and
+  `securityHeaders`' argument: a deployment that can silently turn this off is
+  a deployment that can silently downgrade every login.
 
   **Discovery runs once, in `make`.** A provider that is not there is
   `OidcUnreachable` naming the issuer — a modeled startup failure beside

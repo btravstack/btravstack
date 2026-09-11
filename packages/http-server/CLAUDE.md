@@ -825,7 +825,9 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
 - **`httpServer({ port?, hostname?, cors?, bodyLimit?, compression?, securityHeaders?, unit? })`
   → `Module<HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers, ConfigInvalid, Env | UnitsNeedsOf<Units>>`** —
   the socket half: the runtime, its config, the kind → module record on
-  `HttpUnit`, and no answerer. It EXPORTS `Observers` as well as providing the
+  `HttpUnit`, and no answerer. `http()` re-exports the same set, `Observers`
+  included — it wraps this module and re-declares its own `exports`, so the
+  two must be kept in step by hand. It EXPORTS `Observers` as well as providing the
   no-op member: a sibling answerer that reports its own operations —
   `oidc()` is the first — is one `Provider.member(HttpHandler)` with nowhere
   to put a no-op member of its own, so without the export the set port every
@@ -894,7 +896,7 @@ exports: [HttpRuntime, HttpConfig, HttpHandler] })` — this plus `orpc()`. The
   `oidc()` calls as well — sealing the value at `/login` and following it at
   the callback, where it is decoded exactly once. They are what the guard is
   FOR: whether a HEADER can carry the result is a separate question, answered
-  by `encodeURI` at the `Location` rather than by a third clause here.
+  by `forLocation` at the `Location` rather than by a third clause here.
   A protocol-relative target is manufacturable through a route that looks
   nothing like one: a route whose FIRST segment is a parameter
   (`api.HtmxGet("/:slug", { requires })`) matches the crafted target
@@ -1357,7 +1359,7 @@ A `Clock` here would be machinery bought for one test.
 
 ## `sessionAuthenticator` — the cookie as a SCHEME
 
-**`sessionAuthenticator<P>()({ cookie?, scopes?, principal? })` →
+**`sessionAuthenticator<P>()({ scopes?, principal? })` →
 `Authenticator<P, Scopes[number], SessionCodec, never>`**, from the same
 `/session` subpath. A third scheme beside JWT and API key, so
 `requires: [{ session: [] }]` on a fragment route and
@@ -1456,6 +1458,20 @@ while the session was still live or keep sending one that unseals to nothing.
 The alternative was unsealing what had just been sealed to read `exp` back —
 one AEAD open per login, to recover a value the codec already had.
 
+**An `http:` issuer is REFUSED at boot unless it is loopback or opted in.**
+`Config.url` validates that a value parses; nothing validated what it meant.
+An `http:` issuer sends the client secret, the code and every token in the
+open — and `discover` then applies `allowInsecureRequests`, which is precisely
+the check that would otherwise have refused, so the downgrade was silent in
+both directions. `localhost`, `127.0.0.1` and `[::1]` are taken as they stand
+(the dev loop's own Ory is `http://localhost:4444/`, which is why the whole
+suite exercises that arm); anything else is a `ConfigInvalid` naming the
+variable unless `allowInsecureIssuer: true` is pinned. It is an **option**, not
+a variable, on rule 6's test — `securityHeaders`' own argument — and the flag
+`discover` takes is COMPUTED once by `insecureIssuer` and handed in rather than
+re-derived there, so the check that refuses and the switch that permits cannot
+drift apart.
+
 **Discovery runs ONCE, in `make`.** Three consequences, and each is why it is
 there rather than per request: a provider that is not there fails the BOOT with
 `OidcUnreachable` naming the issuer — a modeled startup error beside
@@ -1485,13 +1501,15 @@ validator is `/[^\t\x20-\x7e\x80-\xff]/` — control characters AND every code
 point above U+00FF — so `/订单/1`, an ordinary path arriving through the very
 `htmx({ login })` seam, passed every same-site clause and then
 `ERR_INVALID_CHAR`ed the response with the caller's code already spent. The
-answer is `encodeURI` where the value becomes a `Location`, in both packages,
+answer is `forLocation` where the value becomes a `Location`, in both packages,
 which closes the non-Latin-1 class and the CR/LF one together and is shorter
-than the control-character clause it replaced. A guard clause that existed only
+than the control-character clause it replaced. It is `forLocation` and not
+`encodeURI`: a browser's target arrives already percent-encoded and the seam
+decodes it exactly once, so re-encoding that `%` puts a real user on
+`/orders/a%2520b/row`. A guard clause that existed only
 to satisfy a header was the header's job written in the wrong file; the guard
 now says one thing, "this stays on my site", and says it about a value
-`encodeURI` round-trips exactly (it re-encodes `%`, and the value was decoded
-exactly once).
+`forLocation` round-trips exactly, `%` included.
 
 **The grant's `currentUrl` is the REGISTERED redirect URI plus this request's
 query.** Never rebuilt from `Host`, which the caller writes — and the same
@@ -1555,14 +1573,17 @@ reads. It is `http-runtime.ts`'s own rule for the request, applied one level
 down — `response.closed` checked first, because subscribing to a stream that
 already fired is this package's documented footgun.
 
-**It costs a root nothing, and `httpServer` now exports `Observers` so that
-stays true.** A reader of a set port must contribute a no-op member of its own,
+**It costs a root nothing, and `httpServer` — and `http()` — now export
+`Observers` so that stays true.** A reader of a set port must contribute a no-op member of its own,
 and `oidc()` is a single `Provider.member`, not a module — it has nowhere to
 put one. The starter already provides that member; adding the port to its
 `exports` is what makes it visible to a SIBLING provider in the root, so a
 graph composing `oidc()` writes no observability line and gets an inert call
 per route. The alternative was making `oidc()` a module, which would have
-changed `provides: [oidc(...)]` into an import for one no-op provider.
+changed `provides: [oidc(...)]` into an import for one no-op provider. `http()`
+re-exports it for the same reason and was missed on the first pass: it wraps
+`httpServer` and re-declares its own `exports`, so a root importing the sugar
+rather than the socket half failed the gate on a port it never named.
 
 **The transient is cleared on EVERY exit of the callback, not on success
 alone.** The flow state is spent the moment a callback has been seen, and one

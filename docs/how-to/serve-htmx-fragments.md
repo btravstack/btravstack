@@ -243,7 +243,8 @@ and kept only when it starts with `/` and its second character is neither `/`
 nor `\`; otherwise it is reported as `/`. A route with a leading parameter
 would otherwise let a crafted `/\evil.com` mint a return the browser resolves
 off-site. Those two clauses are the whole guard: whether a header can carry
-the result is answered by `encodeURI` where the value becomes a `Location`,
+the result is answered by `forLocation` where the value becomes a `Location` —
+which leaves an already-encoded `%` exactly as the browser sent it —
 which is what keeps a perfectly ordinary `/订单/1` from failing the response.
 The rest of the open-redirect question is the login answerer's, at the point
 the value is followed.

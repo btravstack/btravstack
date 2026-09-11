@@ -307,16 +307,23 @@ authenticates the principal that codec seals: an answerer serving
 authorization-code flow with PKCE. It needs `openid-client`, an optional peer
 behind that subpath.
 
-| Option         | What it is                                                                                                      |
-| -------------- | --------------------------------------------------------------------------------------------------------------- |
-| `principal`    | **required** — what the ID token's claims make the caller; `undefined` refuses the login                        |
-| `issuer`       | pins `HTTP_OIDC_ISSUER` — the provider, as its discovery document names itself                                  |
-| `clientId`     | pins `HTTP_OIDC_CLIENT_ID` — this deployment's client                                                           |
-| `clientSecret` | pins `HTTP_OIDC_CLIENT_SECRET` — its secret; the flow is a confidential client's                                |
-| `redirectUri`  | pins `HTTP_OIDC_REDIRECT_URI` — the URI **registered** with the provider, and what the grant is checked against |
-| `prefix`       | where the three routes are mounted (default `/auth`)                                                            |
-| `scope`        | what the authorization request asks for (default `openid`)                                                      |
-| `postLogout`   | where a logout lands when the provider advertises no end-session endpoint (default `/`)                         |
+| Option                | What it is                                                                                                      |
+| --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `principal`           | **required** — what the ID token's claims make the caller; `undefined` refuses the login                        |
+| `issuer`              | pins `HTTP_OIDC_ISSUER` — the provider, as its discovery document names itself                                  |
+| `clientId`            | pins `HTTP_OIDC_CLIENT_ID` — this deployment's client                                                           |
+| `clientSecret`        | pins `HTTP_OIDC_CLIENT_SECRET` — its secret; the flow is a confidential client's                                |
+| `redirectUri`         | pins `HTTP_OIDC_REDIRECT_URI` — the URI **registered** with the provider, and what the grant is checked against |
+| `prefix`              | where the three routes are mounted (default `/auth`)                                                            |
+| `scope`               | what the authorization request asks for (default `openid`)                                                      |
+| `postLogout`          | where a logout lands when the provider advertises no end-session endpoint (default `/`)                         |
+| `allowInsecureIssuer` | talk to an `http:` issuer that is not on a loopback host (default `false`, and a boot failure without it)       |
+
+An `http:` issuer is refused at boot unless its host is loopback —
+`localhost`, `127.0.0.1`, `[::1]` — or `allowInsecureIssuer: true` is pinned at
+the call: cleartext sends the client secret, the authorization code and every
+token in the open. An option rather than a variable, because its silent change
+is a security regression.
 
 Discovery runs once, at boot: a provider that is not there is an
 `OidcUnreachable` naming the issuer, rather than a `500` on the first login.

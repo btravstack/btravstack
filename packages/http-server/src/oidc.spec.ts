@@ -310,24 +310,26 @@ describe("oidc(), the login answerer", () => {
     START_UP,
   );
 
-  it("lands a browser on the path it was sent from, encoded exactly as it sent it", async ({
-    bff,
-  }) => {
-    // GIVEN the value the htmx seam mints for a browser target of
-    // `/orders/a%20b/row`: the target the browser already percent-encoded,
-    // encoded once more as a query component
-    const browser = await bff();
+  it(
+    "lands a browser on the path it was sent from, encoded exactly as it sent it",
+    async ({ bff }) => {
+      // GIVEN the value the htmx seam mints for a browser target of
+      // `/orders/a%20b/row`: the target the browser already percent-encoded,
+      // encoded once more as a query component
+      const browser = await bff();
 
-    // WHEN the flow is walked with it
-    const back = await browser.login(ORY_USERS.alice, "?return=%2Forders%2Fa%2520b%2Frow");
+      // WHEN the flow is walked with it
+      const back = await browser.login(ORY_USERS.alice, "?return=%2Forders%2Fa%2520b%2Frow");
 
-    // THEN the `Location` is the browser's own target, not a second encoding
-    // of it — a `%20` stays `%20`, never `%2520`
-    expect({ status: back.status, location: back.location }).toEqual({
-      status: 303,
-      location: "/orders/a%20b/row",
-    });
-  });
+      // THEN the `Location` is the browser's own target, not a second encoding
+      // of it — a `%20` stays `%20`, never `%2520`
+      expect({ status: back.status, location: back.location }).toEqual({
+        status: 303,
+        location: "/orders/a%20b/row",
+      });
+    },
+    START_UP,
+  );
 
   it(
     "encodes a return path a header cannot carry, rather than 500ing on it",
@@ -508,6 +510,49 @@ describe("oidc(), the login answerer", () => {
       }),
     );
   });
+
+  it("refuses a cleartext issuer that is not on this machine", async ({ oidcApp }) => {
+    // GIVEN an `http:` issuer on a host that is not loopback — a deployment
+    // that would send the client secret and every token over the open wire,
+    // with `allowInsecureRequests` turning off the check that says so
+    const app = oidcApp({ ...oidcEnv, HTTP_OIDC_ISSUER: "http://issuer.example/" });
+
+    // WHEN the application boots
+    // THEN it does not, and the variable is named: `Config.url` says a value
+    // parses, not that it is safe, so the posture is checked where it is bound
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        port: "HttpOidc",
+        issues: [
+          expect.objectContaining({
+            message: expect.stringContaining("https:"),
+            path: ["HTTP_OIDC_ISSUER"],
+          }),
+        ],
+      }),
+    );
+  });
+
+  it(
+    "takes the same cleartext issuer once the deployment opted in at the call",
+    async ({ oidcApp }) => {
+      // GIVEN the same issuer, and `allowInsecureIssuer: true` pinned on
+      // `oidc()` — an OPTION, because its silent change is a security
+      // regression rather than a deployment detail
+      const app = oidcApp({ ...oidcEnv, HTTP_OIDC_ISSUER: "http://issuer.example/" }, true);
+
+      // WHEN the application boots
+      // THEN configuration accepts it and the boot gets as far as discovery,
+      // which is the next thing to fail — the posture gate is behind it
+      await expect(app.exited).toBeErrWith(
+        expect.objectContaining({
+          constructor: OidcUnreachable,
+          issuer: "http://issuer.example/",
+        }),
+      );
+    },
+    START_UP,
+  );
 
   it("names a missing HTTP_OIDC_CLIENT_ID at boot", async ({ oidcApp }) => {
     // GIVEN a deployment that configured the issuer, the secret and the

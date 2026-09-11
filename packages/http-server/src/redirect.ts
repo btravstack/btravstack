@@ -19,13 +19,15 @@
  * first left `/订单/1` — an ordinary non-Latin-1 path, arriving through this
  * very seam — passing the guard and then `ERR_INVALID_CHAR`ing the response
  * with the caller's authorization code already spent. So every caller runs
- * `encodeURI` where the value becomes a `Location`, which closes both classes
- * at once (measured: `/订单/1` → `/%E8%AE%A2%E5%8D%95/1`; `/\nX` → `/%0AX`,
- * unsplittable) — through {@link forLocation}, NOT `encodeURI`. The value a
- * browser sent is already percent-encoded (`/orders/a%20b/row`), the seam
- * decodes it exactly once on the way back, and `encodeURI` re-encodes the `%`
- * it finds: `/orders/a%2520b/row`, a real user landing on a route whose
- * parameter binds to the literal `a%20b`. So the encoder leaves `%` alone and
+ * {@link forLocation} where the value becomes a `Location`, which closes both
+ * classes at once (measured: `/订单/1` → `/%E8%AE%A2%E5%8D%95/1`; `/\nX` →
+ * `/%0AX`, unsplittable).
+ *
+ * **`forLocation`, and NOT `encodeURI`.** The value a browser sent is already
+ * percent-encoded (`/orders/a%20b/row`), the seam decodes it exactly once on
+ * the way back, and `encodeURI` would re-encode the `%` it finds:
+ * `/orders/a%2520b/row`, a real user landing on a route whose parameter binds
+ * to the literal `a%20b`. So the encoder leaves `%` exactly as it arrived and
  * touches only what a URI cannot carry.
  *
  * The value must arrive DECODED ONCE — a query parser's own decode is that

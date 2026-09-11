@@ -597,6 +597,7 @@ const bffFragments = bffApi.HtmxFragments([bffRowFragment]);
 const bffAppOf = (
   principal: (claims: IDToken) => OidcIdentity | undefined,
   member: (operation: Operation) => Settle,
+  allowInsecureIssuer = false,
 ) =>
   HttpModule("OidcBff")({
     fragments: bffFragments,
@@ -606,7 +607,7 @@ const bffAppOf = (
     provides: [
       bffRowFragment,
       sessionCodec(),
-      oidc({ principal, scope: ORY_SCOPE }),
+      oidc({ principal, scope: ORY_SCOPE, allowInsecureIssuer }),
       Provider.member(Observers)({ inject: {}, value: member }),
     ],
   });
@@ -2007,7 +2008,10 @@ export type HttpFixtures = {
    * that are meant to fail. A startup failure is the test's to assert on
    * `app.exited`.
    */
-  readonly oidcApp: (env: Environment) => RunningApp<ConfigInvalid | OidcUnreachable, HttpInfo>;
+  readonly oidcApp: (
+    env: Environment,
+    allowInsecureIssuer?: boolean,
+  ) => RunningApp<ConfigInvalid | OidcUnreachable, HttpInfo>;
 
   /** A JWE under a header and payload of the test's choosing, sealed with a held key. */
   readonly forgeSession: (
@@ -2770,7 +2774,9 @@ export const it = test.extend<HttpFixtures>({
   // No `ory` dependency: both boots this serves fail before anything is
   // fetched, and a fixture is only built by a test that names it.
   oidcApp: async ({ boot }, use) => {
-    await use((env) => boot(bffAppOf(oidcPrincipal, recordingObserver().member), { env }));
+    await use((env, allowInsecureIssuer) =>
+      boot(bffAppOf(oidcPrincipal, recordingObserver().member, allowInsecureIssuer), { env }),
+    );
   },
 
   bothProtocols: async ({ boot }, use) => {

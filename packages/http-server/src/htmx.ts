@@ -151,11 +151,12 @@ type Refusal = { readonly status: 401 | 403 } | { readonly login: string };
 const refusalOf = (login: `/${string}` | undefined, url: string | undefined): Refusal =>
   login === undefined
     ? { status: 401 }
-    : // `encodeURI` on the mount, `encodeURIComponent` on the value: Node's
+    : // `forLocation` on the mount, `encodeURIComponent` on the value: Node's
       // header validator refuses every code point above U+00FF, so an
       // application whose login route is not Latin-1 would `ERR_INVALID_CHAR`
-      // its own refusal. `encodeURI` leaves `?` and `=` alone, which is why the
-      // query is built after it rather than run through it.
+      // its own refusal. `forLocation` leaves `?`, `=` and an already-encoded
+      // `%` alone, which is why the query is built after it rather than run
+      // through it.
       { login: `${forLocation(login)}?return=${encodeURIComponent(returnTo(url))}` };
 
 const refuseAuth = (request: IncomingMessage, response: ServerResponse, refusal: Refusal): void => {

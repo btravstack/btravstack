@@ -280,16 +280,21 @@ export const httpServer = <
 export const http = <Units extends Readonly<Record<string, AnyUnitModule>> | undefined = undefined>(
   options: Omit<HttpOptions, "unit"> & { readonly unit?: Units } = {},
 ): Module<
-  HttpRuntime | HttpConfig | HttpHandler,
+  HttpRuntime | HttpConfig | HttpHandler | Observers,
   ConfigInvalid,
   Env | OrpcRouterPort | UnitsNeedsOf<Units>
 > =>
   Module("Http")({
     imports: [httpServer(options)],
     provides: [orpc(options)],
-    exports: [HttpRuntime, HttpConfig, HttpHandler],
+    // `Observers` travels through, for the reason `httpServer` exports it: a
+    // sibling answerer in the root — `oidc()` — reports its own operations and
+    // is a single member provider with nowhere to put a no-op member of its
+    // own. Without this, `http()` and `httpServer()` disagree about what a
+    // root gets, and only the sugar's callers pay.
+    exports: [HttpRuntime, HttpConfig, HttpHandler, Observers],
   } as never) as unknown as Module<
-    HttpRuntime | HttpConfig | HttpHandler,
+    HttpRuntime | HttpConfig | HttpHandler | Observers,
     ConfigInvalid,
     Env | OrpcRouterPort | UnitsNeedsOf<Units>
   >;

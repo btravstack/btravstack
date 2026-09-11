@@ -34,10 +34,13 @@ secret does not read as a spike of bad logins. It costs a root nothing —
 `http()` already contributes the no-op observer, and now exports the port so a
 sibling provider can report to the same set.
 
-A `return` path is `encodeURI`d where it becomes a `Location`: Node's header
-validator refuses every code point above U+00FF, so `/订单/1` would otherwise
-pass the same-site guard and then fail the response with the authorization
-code already spent.
+A `return` path goes through `forLocation` where it becomes a `Location`:
+Node's header validator refuses every code point above U+00FF, so `/订单/1`
+would otherwise pass the same-site guard and then fail the response with the
+authorization code already spent. `forLocation` rather than `encodeURI`,
+because the value a browser sent is already percent-encoded and the seam
+decodes it exactly once — `encodeURI` would re-encode that `%` and land a real
+user on `/orders/a%2520b/row`.
 
 `htmx({ login })` — and `HttpModule({ fragmentsLogin })`, which forwards it —
 are the other half of the seam and are new here too: set one and a fragment
@@ -46,6 +49,18 @@ login ROUTE carrying `?return=` (a `303` for a navigating browser, a `401`
 with `HX-Redirect` for a request htmx made) instead of answering a bare `401`.
 An under-scoped caller still gets `403` either way. A consumer has to set one
 of them to reach `oidc()` at all.
+
+An `http:` issuer is refused at boot — a `ConfigInvalid` naming
+`HTTP_OIDC_ISSUER` — unless its host is loopback (`localhost`, `127.0.0.1`,
+`[::1]`) or `allowInsecureIssuer: true` is pinned on `oidc()`. Cleartext sends
+the client secret, the authorization code and every token in the open, and the
+`allowInsecureRequests` this package applies for such an issuer is the check
+that would otherwise have refused it. An option rather than a variable, because
+its silent change is a security regression.
+
+`http()` exports `Observers` beside `httpServer()`, so a root that imports the
+oRPC sugar and provides `oidc()` discharges the answerer's own need without
+writing an observability line.
 
 `SessionCodecService` now publishes `ttlSec`: a login has to write the lifetime
 the codec stamps into the cookie's `Max-Age`.

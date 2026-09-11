@@ -2,9 +2,10 @@
 // its needs are the environment and the CODEC's port — so a root that composes
 // it without `sessionCodec()` is di's own unmet need — and `principal` is the
 // one option it cannot be built without. Each `@ts-expect-error` is an assertion.
-import type { ConfigInvalid, Env } from "@btravstack/config";
+import { Env, type ConfigInvalid } from "@btravstack/config";
 import type { Observers } from "@btravstack/core";
-import type { Provider } from "@btravstack/di";
+import { Module, type Provider } from "@btravstack/di";
+import { oc } from "@orpc/contract";
 import type { IDToken } from "openid-client";
 import { OkAsync } from "unthrown";
 import { expectTypeOf } from "vitest";
@@ -13,6 +14,7 @@ import { defineHttp } from "./define-http.js";
 import { HttpHandler } from "./handler.js";
 import { html } from "./html.js";
 import { HttpModule } from "./http-module.js";
+import { HttpRuntime, http } from "./http-runtime.js";
 import { oidc, type OidcUnreachable } from "./oidc.js";
 import { SessionCodec, sessionAuthenticator, sessionCodec } from "./session.js";
 
@@ -99,4 +101,31 @@ void HttpModule("PublicWithLogin")({
 void HttpModule("PublicWithLoginNoCodec")({
   fragments: publicApi.HtmxFragments([status]),
   provides: [status, oidc({ principal: identityOf })],
+});
+
+// `http()` exports `Observers` too, so a root that imports the oRPC sugar and
+// provides `oidc()` beside it discharges the answerer's own need without
+// writing an observability line. `httpServer()` exported it and `http()` did
+// not, which made that root fail the gate on a port it never named.
+const pingContract = oc.router({ ping: oc });
+
+const pingRouter = publicApi.OrpcRouter(pingContract)({
+  inject: {},
+  sync: () => ({ ping: () => OkAsync("pong") }),
+});
+
+void Module("RpcWithLogin")({
+  imports: [http()],
+  provides: [pingRouter, sessionCodec(), oidc({ principal: identityOf })],
+  exports: [HttpRuntime, HttpHandler],
+  needs: [Env],
+});
+
+// The insecure-issuer opt-in is a boolean option and nothing else.
+void oidc({ principal: identityOf, allowInsecureIssuer: true });
+
+void oidc({
+  principal: identityOf,
+  // @ts-expect-error -- Type 'string' is not assignable to type 'boolean | undefined'
+  allowInsecureIssuer: "yes",
 });
