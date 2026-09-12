@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
-  "ignorePatterns": ["pnpm-lock.yaml", ".claude/"],
+  "ignorePatterns": ["pnpm-lock.yaml"],
   "sortImports": true,
   "embeddedLanguageFormatting": "off",
   "overrides": [{ "files": ["**/*.md"], "options": { "printWidth": 80 } }]
