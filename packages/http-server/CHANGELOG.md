@@ -1,5 +1,154 @@
 # @btravstack/http-server
 
+## 0.14.0
+
+### Minor Changes
+
+- acf4400: `csrf` is a named option, on by default once a composed scheme reads a cookie
+
+  `csrf?: boolean` joins CORS, body limits, compression, security headers and
+  authentication as handler configuration on `orpc()`, `http()` and `HttpModule`.
+  Left unset it is **on exactly when a composed scheme reads a cookie**, which is
+  a fact about the graph rather than a line somebody remembered to write:
+  `sessionAuthenticator` contributes to a set port, and composing it is what turns
+  the check on.
+
+  The check is stateless — no token and no form field. A state-changing request
+  (`POST`/`PUT`/`PATCH`/`DELETE`) carrying cookies must be same-site by
+  `Sec-Fetch-Site`, or, from a client that sends no fetch metadata, carry an
+  `Origin` whose host matches the request's own; otherwise it is refused with
+  `403` before anything is dispatched and before a unit is opened. oRPC's
+  `GetMethodCsrfProtectionHandlerPlugin` rides the same flag, so a cross-site
+  `GET` at an RPC mount is refused too.
+
+  A graph that composes no cookie-reading scheme is unaffected, and `csrf: false`
+  turns it off.
+
+- b62f78c: `oidc()` logs a browser in over the authorization-code flow
+
+  `oidc({ principal, ... })`, from `@btravstack/http-server/oidc`, is the other
+  half of the session: `sessionCodec` seals a principal, and this is what
+  authenticates one. It is an answerer — one `HttpHandler` member beside
+  `orpc()` and `htmx()` — mounted at `prefix` (default `/auth`) and serving
+  three routes. `openid-client` is its optional peer, behind that subpath.
+
+  `GET <prefix>/login?return=<path>&as=<hint>` seals a PKCE verifier, `state`,
+  `nonce` and where to return to into a five-minute `__Host-oidc` cookie and
+  redirects to the provider — `return` being the seam `htmx({ login })` writes,
+  and `as` riding through as `login_hint`. `GET <prefix>/callback` checks the
+  returned `state` against that cookie, exchanges the code against the
+  **registered** redirect URI rather than anything built from `Host`, and seals
+  `principal(claims)` into `__Host-session`, writing `Session.scopes` from the ID
+  token's `scope` claim and `Session.sid` from `sid`. `POST <prefix>/logout`
+  clears the session and sends the browser to the provider's
+  `end_session_endpoint`, parameterless.
+
+  Discovery runs once, at boot: a provider that is not there is a modeled
+  `OidcUnreachable` naming the issuer, not a `500` on the first login, and the ID
+  token's signature is checked rather than trusted for having come over TLS.
+  `return` is decoded exactly once and kept only when it stays on this site.
+  `issuer`, `clientId`, `clientSecret` and `redirectUri` pin `HTTP_OIDC_ISSUER`,
+  `HTTP_OIDC_CLIENT_ID`, `HTTP_OIDC_CLIENT_SECRET` and `HTTP_OIDC_REDIRECT_URI`.
+
+  Each route is an operation reported to `Observers`: a refusal settles `error`
+  carrying its own `reason` and clears the spent transient, so a rotated client
+  secret does not read as a spike of bad logins. It costs a root nothing —
+  `http()` already contributes the no-op observer, and now exports the port so a
+  sibling provider can report to the same set.
+
+  A `return` path goes through `forLocation` where it becomes a `Location`:
+  Node's header validator refuses every code point above U+00FF, so `/订单/1`
+  would otherwise pass the same-site guard and then fail the response with the
+  authorization code already spent. `forLocation` rather than `encodeURI`,
+  because the value a browser sent is already percent-encoded and the seam
+  decodes it exactly once — `encodeURI` would re-encode that `%` and land a real
+  user on `/orders/a%2520b/row`.
+
+  `htmx({ login })` — and `HttpModule({ fragmentsLogin })`, which forwards it —
+  are the other half of the seam and are new here too: set one and a fragment
+  route whose `requires` resolves `Unauthenticated` sends the caller to that
+  login ROUTE carrying `?return=` (a `303` for a navigating browser, a `401`
+  with `HX-Redirect` for a request htmx made) instead of answering a bare `401`.
+  An under-scoped caller still gets `403` either way. A consumer has to set one
+  of them to reach `oidc()` at all.
+
+  An `http:` issuer is refused at boot — a `ConfigInvalid` naming
+  `HTTP_OIDC_ISSUER` — unless its host is loopback (`localhost`, `127.0.0.1`,
+  `[::1]`) or `allowInsecureIssuer: true` is pinned on `oidc()`. Cleartext sends
+  the client secret, the authorization code and every token in the open, and the
+  `allowInsecureRequests` this package applies for such an issuer is the check
+  that would otherwise have refused it. An option rather than a variable, because
+  its silent change is a security regression.
+
+  `http()` exports `Observers` beside `httpServer()`, so a root that imports the
+  oRPC sugar and provides `oidc()` discharges the answerer's own need without
+  writing an observability line.
+
+  `SessionCodecService` now publishes `ttlSec`: a login has to write the lifetime
+  the codec stamps into the cookie's `Max-Age`.
+
+  **Breaking:** `sessionAuthenticator`'s `cookie` option is gone, and the name it
+  defaulted to is exported as `SESSION_COOKIE`. `oidc()` seals that cookie, so a
+  scheme able to read a different one is a deployment where every login succeeds
+  into a cookie nothing reads — a redirect loop with no compile error and no
+  runtime error. Both sides name one constant instead.
+
+- 3757ab6: `sessionAuthenticator` makes the session cookie a scheme
+
+  `sessionAuthenticator<P>()({ cookie?, scopes?, principal? })`, from
+  `@btravstack/http-server/session`, is a third shipped scheme beside
+  `jwtAuthenticator` and `apiKeyAuthenticator`: bind it in
+  `defineHttp({ authenticators })` and `requires: [{ session: [] }]` on a
+  fragment route or `authenticated({ session: [] })` on a procedure work with
+  nothing new.
+
+  It injects `SessionCodec` rather than holding keys, so a root composing it
+  without `sessionCodec()` is refused at the `HttpModule` call and the codec that
+  reads a cookie is the one that sealed it. The cookie defaults to
+  `__Host-session` — a prefix the browser enforces — and is matched by name
+  exactly. `scopes` is the vocabulary, decided once at composition, and the grant
+  is its intersection with the session's own; `Session` carries `scopes` for it.
+  No cookie, a cookie no key opens, an expired session and a principal the
+  application declines are one `Unauthenticated`.
+
+- dfad5c9: `Config.list` reads a comma-separated variable, and
+  `@btravstack/http-server/session` binds one
+
+  `Config.list(variable, { default?, min? })` answers `readonly string[]`: entries
+  are trimmed, empty ones dropped, and a list shorter than `min` (default `1`) is
+  named against the variable, by the same rule a pin and a default take.
+
+  `sessionCodec({ keys?, ttlSec? })`, behind `@btravstack/http-server/session`
+  with `jose` as an optional peer, is the storage-free half of a session cookie:
+  `seal` turns a principal into a `dir` + `A256GCM` JWE stamped with its own
+  lifetime, `unseal` turns a cookie back into a session or into nothing. Keys come
+  from `HTTP_SESSION_KEYS` — the first seals, every one unseals, so rotation is
+  prepend, deploy, drop.
+
+- 9d560b1: The session codec seals login state under its own marker
+
+  `SessionCodecService` carries a `transient` pair beside `seal`/`unseal`:
+  `codec.transient.seal(state)` takes the login flow's own record of strings — a
+  PKCE verifier, `state`, `nonce`, where to return to — and seals it with the SAME
+  keys under `typ: "oidc"` and a fixed lifetime of `TRANSIENT_TTL_SEC`, five
+  minutes; `codec.transient.unseal(cookie)` requires that marker back and answers
+  the state with the codec's own stamps stripped, or nothing.
+
+  The session reader keeps requiring `typ: "session"`, so the two purposes refuse
+  each other in both directions: a transient replayed under the session cookie's
+  name is anonymous, and a session presented as login state is nothing. Five
+  minutes is a constant rather than an option — a login that takes longer is a
+  login to start again — and the pair lives on the codec rather than a second
+  provider because the decoded keys live inside the codec.
+
+### Patch Changes
+
+- Updated dependencies [dfad5c9]
+  - @btravstack/config@0.14.0
+  - @btravstack/core@0.14.0
+  - @btravstack/contract@0.14.0
+  - @btravstack/di@0.14.0
+
 ## 0.13.0
 
 ### Minor Changes

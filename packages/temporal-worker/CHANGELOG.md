@@ -1,5 +1,14 @@
 # @btravstack/temporal-worker
 
+## 0.14.0
+
+### Patch Changes
+
+- Updated dependencies [dfad5c9]
+  - @btravstack/config@0.14.0
+  - @btravstack/core@0.14.0
+  - @btravstack/di@0.14.0
+
 ## 0.13.0
 
 ### Minor Changes
