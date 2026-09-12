@@ -140,7 +140,8 @@ const main = async (): Promise<void> => {
     `HTTP_JWT_ISSUER=${DEV_ISSUER}`,
     `HTTP_JWT_AUDIENCE=${DEV_AUDIENCE}`,
     // The OpenID provider `sharedOry` started, and the key the browser session
-    // is sealed with. Nothing binds these yet — the later phases of #160 do.
+    // is sealed with. `order-api`'s `session` scheme and its login answerer
+    // bind these; `pnpm dev:login` mints the cookie they accept.
     `HTTP_OIDC_ISSUER=${ORY_ISSUER}`,
     `HTTP_OIDC_CLIENT_ID=${ORY_CLIENT_ID}`,
     `HTTP_OIDC_CLIENT_SECRET=${ORY_CLIENT_SECRET}`,

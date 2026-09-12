@@ -20,6 +20,7 @@
   },
   "scripts": {
     "dev:env": "tsx src/dev-env.ts",
+    "dev:login": "tsx src/dev-login.ts",
     "dev:token": "tsx src/dev-token.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

@@ -49,6 +49,7 @@ happened. The recipe is one import.
 ```ts
 import { Module, Provider } from "@btravstack/di";
 import { HttpModule } from "@btravstack/http-server";
+import { sessionCodec } from "@btravstack/http-server/session";
 import { Logger } from "@btravstack/core";
 import { observability } from "@btravstack/observability";
 
@@ -67,6 +68,7 @@ export const OrderApi = HttpModule("OrderApi")({
     observability(),
     otel(),
   ],
+  provides: [sessionCodec()],
   // Everything a forked kind reads out of the application scope.
   exports: [Logger, Tracer, Meter, OrderDatabase],
 });
@@ -303,6 +305,7 @@ const RecordingApi = HttpModule("RecordingApi")({
     observability({ sink: (line) => lines.push(line), level: "trace" }),
     otel(),
   ],
+  provides: [sessionCodec()],
   exports: [Logger],
 });
 ```

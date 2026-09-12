@@ -7,6 +7,7 @@ description: The complete surface of @btravstack/observability — the Logger po
 import { runMain, Logger, Meter, Tracer, type Attributes, type Level } from "@btravstack/core";
 import { Config } from "@btravstack/config";
 import { HttpModule } from "@btravstack/http-server";
+import { sessionCodec } from "@btravstack/http-server/session";
 import { createLogger, jsonSink, kernelEvents, logLevel, observability, type Line } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { cache } from "@btravstack/cache";
@@ -295,6 +296,7 @@ export const OrderApi = HttpModule("OrderApi")({
     observability(),
     otel(),
   ],
+  provides: [sessionCodec()],
   exports: [Logger, Tracer, Meter],
 });
 ```

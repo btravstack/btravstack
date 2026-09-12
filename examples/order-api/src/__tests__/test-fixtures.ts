@@ -28,6 +28,17 @@ import {
 import type { OrderDatabase } from "@btravstack/example-order-infrastructure";
 import type { HttpHandler, HttpInfo, HttpRuntime } from "@btravstack/http-server";
 import type { Claims } from "@btravstack/http-server/jwt";
+import { SESSION_COOKIE } from "@btravstack/http-server/session";
+import {
+  ORY_CLIENT_ID,
+  ORY_CLIENT_SECRET,
+  ORY_ISSUER,
+  ORY_REDIRECT_URI,
+  createIdentity,
+  sharedOry,
+  type Ory,
+} from "@btravstack/internal-test-infra/ory";
+import { headlessLogin } from "@btravstack/internal-test-infra/ory-login";
 import { LoggerConfig, createLogger, type Line, type Sink } from "@btravstack/observability";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import { localIssuer, type LocalIssuer } from "@btravstack/testing/jwt";
@@ -38,13 +49,23 @@ import { inject, test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "../client.js";
 import { OrderApi, orderApiOver } from "../module.js";
-import { RequestModule, ServiceModule, UserModule } from "../request-scope.js";
+import { RequestModule, ServiceModule, SessionModule, UserModule } from "../request-scope.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
 
 /** The two rows the listing stub pages over, fixed so a spec can name them. */
 const FIRST_ID = "0199a1e0-0000-7000-8000-00000000000a";
 const SECOND_ID = "0199a1e0-0000-7000-8000-00000000000b";
+
+/**
+ * A login walks Kratos and Hydra, and the first one on a cold machine pays
+ * the containers' startup: the Ory containers' own `START_UP` in
+ * `internal/test-infra`, for the same reason.
+ */
+export const LOGIN = 120_000;
+
+/** The key `sessionCodec()` seals with, minted once so every root a spec boots reads back its own cookies. */
+const sessionKey = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
 
 /**
  * The customers repository as an override on the ROOT: its port is in the
@@ -91,6 +112,7 @@ const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) 
       anonymous: RequestModule,
       user: userKindOver(repository),
       service: ServiceModule,
+      session: SessionModule,
     }),
     [
       stubCustomers,
@@ -241,6 +263,17 @@ export type ApiFixtures = {
   readonly env: Record<string, string>;
   /** The JWKS the `user` scheme fetches, and the key every token below is signed with. */
   readonly issuer: LocalIssuer;
+  /** The three Ory containers, attached to; file-scoped like the issuer. */
+  readonly ory: Ory;
+  /**
+   * A browser that logged in through the provider as an identity minted for
+   * this test alone, in this test's own `tenant` — and the `cookie` header
+   * that carries the session it came back with. The identity is the per-test
+   * boundary on Ory: nothing is cleaned up, so nothing is shared.
+   */
+  readonly browser: <E>(
+    app: RunningApp<E, HttpInfo>,
+  ) => Promise<{ readonly cookie: string; readonly tenant: string }>;
   /**
    * A token this test's issuer signed, for this test's tenant and `u-1` unless
    * the claims say otherwise — the only way to reach a marked procedure here.
@@ -347,10 +380,54 @@ const localIssuerFixture = async (
 export const it = test.extend<ApiFixtures>({
   issuer: [localIssuerFixture, { scope: "file" }],
 
+  ory: [
+    // oxlint-disable-next-line no-empty-pattern -- see above
+    async ({}, use) => {
+      await use(await sharedOry());
+    },
+    { scope: "file" },
+  ],
+
+  browser: async ({ ory: _ory, tenant }, use) => {
+    await use(async (app) => {
+      const user = {
+        email: `${tenant}@btravstack.test`,
+        password: "correct-horse-battery-staple",
+        tenant,
+      };
+      await createIdentity(user);
+      const origin = await originOf(app);
+
+      const started = await fetch(`${origin}/auth/login`, { redirect: "manual" });
+      const location = started.headers.get("location");
+      assert.ok(location !== null, "the login route answered no Location");
+      const transient = started.headers.getSetCookie().map((set) => set.split(";")[0] ?? "");
+
+      // Only the QUERY travels: the path is written out to match
+      // `ORY_REDIRECT_URI`'s own, because the provider answers a callback on
+      // the port it has registered, `:3000`, and the app binds an ephemeral one.
+      const back = await headlessLogin({ authorizationUrl: new URL(location), user });
+      const finished = await fetch(`${origin}/auth/callback${back.search}`, {
+        redirect: "manual",
+        headers: { cookie: transient.join("; ") },
+      });
+      const session = finished.headers
+        .getSetCookie()
+        .map((set) => set.split(";")[0] ?? "")
+        .find((pair) => pair.startsWith(`${SESSION_COOKIE}=`));
+      assert.ok(session !== undefined, `the callback sealed no session: ${finished.status}`);
+
+      return { cookie: session, tenant };
+    });
+  },
+
   // `LOG_LEVEL: "fatal"` keeps the real `OrderApi`, whose sink is the production
   // `jsonSink()` on stdout, out of the runner's own output. The roots a spec
   // reads back pin their level instead.
-  env: async ({ issuer }, use) => {
+  // `ory` is named here rather than only by `browser`: the root composes
+  // `oidc()`, which discovers its provider at BOOT, so every spec that boots
+  // waits for the containers instead of racing their cold start.
+  env: async ({ issuer, ory: _ory }, use) => {
     await use({
       PORT: "0",
       HOST: "127.0.0.1",
@@ -367,6 +444,13 @@ export const it = test.extend<ApiFixtures>({
       HTTP_JWT_JWKS_URI: issuer.jwks,
       HTTP_JWT_ISSUER: issuer.issuer,
       HTTP_JWT_AUDIENCE: issuer.audience,
+      // The cookie half: one key the codec seals and unseals with, and the
+      // confidential client the login answerer authenticates to Ory as.
+      HTTP_SESSION_KEYS: sessionKey,
+      HTTP_OIDC_ISSUER: ORY_ISSUER,
+      HTTP_OIDC_CLIENT_ID: ORY_CLIENT_ID,
+      HTTP_OIDC_CLIENT_SECRET: ORY_CLIENT_SECRET,
+      HTTP_OIDC_REDIRECT_URI: ORY_REDIRECT_URI,
     });
   },
 

@@ -297,7 +297,8 @@ is the index of the workspaces themselves.
 
   **`order-api` splits `defineHttp` in two, and the tenant is why.**
   `src/auth.ts` binds `auth = defineHttp({ authenticators })` first, then
-  `api = auth.units<{ anonymous; user; service }>()` over an `import type` of
+  `api = auth.units<{ anonymous; user; service; session }>()` over an
+  `import type` of
   `./request-scope.js`. One call would be mutually recursive: `UserModule`
   names `auth.principals.user` in its own `needs` — that is how a credential
   becomes a `Tenant` inside the graph — so a `defineHttp` naming `UserModule`
@@ -306,6 +307,23 @@ is the index of the workspaces themselves.
   it. The mechanism is `packages/http-server/CLAUDE.md`'s; what belongs here
   is that the second step is the price of taking the tenant off the principal,
   and an application pays it once.
+
+  The `session` kind is `SessionModule`, `UserModule`'s shape over
+  `auth.principals.session` — a browser that logged in is a user, and the one
+  line that differs is which principal the `Tenant` is read from. The fragment
+  route requires `session` and the JSON procedures keep `user` and `service`,
+  which is what lets a cookie and a bearer token stay two credentials for one
+  identity. The root composes `sessionCodec()` and
+  `oidc({ principal, scope })` beside `fragmentsLogin: "/auth/login"`, so the
+  answerer that seals the cookie and the scheme that reads it hold the same
+  keys and the same `principal` the bearer scheme reads its claims with.
+
+  **A scheme is not free to add, and `exportable` is where the bill arrives.**
+  `Caller` is derived from the declared schemes, so `session` failed
+  `slices/orders/authorize.ts` until that rule said whether a browser exports
+  like a user or like a machine — the compile error the `Caller` type exists
+  to produce, on the one function that must decide. It shares the `user` arm:
+  what differs between the two is the credential, never the ceiling.
 
   **The tenant is branded, and the ids beside it are branded on the answer
   side only** (`TenantId` in
@@ -501,10 +519,11 @@ exports: [Outbox, OrderDatabase, Logger, Tracer], … })`) — a graph with no
   `orderRouter = api.OrpcRouter(contract)([ordersController,
 customersController])` and `orderFragments = api.HtmxFragments([orderRowFragment])`,
   each the composing array form — and
-  **`HttpModule("OrderApi")({ router: orderRouter, fragments: orderFragments, unit: { anonymous:
-RequestModule, user: UserModule, service: ServiceModule }, imports: [OrdersSlice, CustomersSlice,
-OrderPersistenceModule, cache(…), observability(), otel()], exports: [Logger, Tracer, Meter,
-OrderDatabase] })`** is the whole
+  **`HttpModule("OrderApi")({ router: orderRouter, fragments: orderFragments, fragmentsLogin:
+"/auth/login", unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule, session:
+SessionModule }, imports: [OrdersSlice, CustomersSlice, OrderPersistenceModule, cache(…),
+observability(), otel()], provides: [sessionCodec(), oidc({ principal, scope })], exports: [Logger,
+Tracer, Meter, OrderDatabase] })`** is the whole
   composition root, a list of slices plus what no slice owns — the
   sugar imports `http()`, provides the router and the fragments provider on the
   starter's own ports and
@@ -512,19 +531,19 @@ OrderDatabase] })`** is the whole
   environment inside the graph, the router is mounted under `/rpc` and the
   fragments under `/` — `htmx()`'s own default. It is spelled as
   `orderApiOver(unit)` with `OrderApi = orderApiOver({ anonymous: RequestModule,
-user: UserModule, service: ServiceModule })` beside it, and that is a
+user: UserModule, service: ServiceModule, session: SessionModule })` beside it, and that is a
   **fixture** concession with a reason: `@btravstack/testing`'s `overridden`
   wraps the ROOT, and a unit module is forked later, so a spec has no other
   way to substitute a provider inside `UserModule` — the stub goes in the kind
   and the same one root definition composes it. The root itself stays
   override-free, which is the convention. The
-  two authenticators are **not** in that list: they ride the router and the
+  authenticators are **not** in that list: they ride the router and the
   fragments provider, which are what need them, and `HttpModule` puts them in
   `provides` itself, deduplicated by reference where both name the same one. The
   **unmarked** `customers` fragment declares `tenantId` on its input, so a
   procedure hands it to the use case and the use case to the repository; the
   **marked** `orders` fragment declares none, and a request under it forks the
-  `user` kind, whose `Tenant` comes from the principal — so its leaves name no
+  `session` kind, whose `Tenant` comes from the principal — so its leaves name no
   tenant either, they read use cases already bound to one off `context.unit`.
   A caller does not name the tenant it
   is served, and a required field the handler ignores would be a confused
@@ -534,7 +553,7 @@ user: UserModule, service: ServiceModule })` beside it, and that is a
   request scope write to, and `Logger` is in `exports` because `RequestModule`
   reads it out of the application scope once forked — as `OrderDatabase` is,
   because `UserModule`'s `OrderTenantPersistence` reads the one client from
-  there. The three kinds ride
+  there. The four kinds ride
   `HttpModule`'s own `unit` field, so the
   per-request fork is the answerers' — each one opens it around the request it
   is handling, not the kernel's, which forks nothing of its own any more.

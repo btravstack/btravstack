@@ -6,6 +6,7 @@ description: The Spring Boot idea applied to this kernel — a module that bring
 <!-- doctest: prelude
 import { Logger } from "@btravstack/core";
 import { HttpModule } from "@btravstack/http-server";
+import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
 import { orderRouter } from "../../module.js";
 import { CustomersSlice } from "../../slices/customers/module.js";
@@ -104,6 +105,7 @@ spelled once. From [`examples/order-api`](/examples/order-api):
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
+  provides: [sessionCodec()],
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });

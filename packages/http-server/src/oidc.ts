@@ -338,7 +338,8 @@ const logout = <P>(response: ServerResponse, bound: Bound<P>): void => {
 };
 
 /** A plaintext issuer that never leaves the machine: the dev loop's own Ory. */
-const LOOPBACK = new Set(["localhost", "127.0.0.1", "::1"]);
+// `url.hostname` keeps an IPv6 literal's brackets, so the set spells them.
+const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /**
  * Whether this issuer may be talked to in cleartext, decided once at boot.

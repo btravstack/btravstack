@@ -24,6 +24,7 @@ export const exportable = (caller: Caller, order: Order): Result<Authorized<Orde
   switch (caller.scheme) {
     case "service":
       return Ok(order as Authorized<Order>);
+    case "session":
     case "user":
       return order.quantity <= USER_EXPORT_CEILING
         ? Ok(order as Authorized<Order>)

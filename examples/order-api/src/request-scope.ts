@@ -85,6 +85,24 @@ export const UserModule = Module("User")({
 });
 
 /**
+ * The `session` kind: `UserModule`'s shape over the principal the session
+ * scheme resolved. A browser that logged in is a user, so it exports what
+ * `UserModule` exports; only the credential — a cookie the login answerer
+ * sealed, read by `browserAuth` — differs, and that is the one line that does.
+ */
+export const SessionModule = Module("Session")({
+  needs: [auth.principals.session],
+  imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
+  provides: [
+    Provider(Tenant)({
+      inject: { principal: auth.principals.session },
+      sync: ({ principal }) => principal.tenantId,
+    }),
+  ],
+  exports: [RequestModule, Tenant, PlaceOrder, FindOrder, ListOrders],
+});
+
+/**
  * The `service` kind: the same shape as `UserModule`, over the tenant the
  * caller's API key was cut for — `Tenant` from `auth.principals.service`
  * exactly as the `user` kind takes it from its own principal. A credential

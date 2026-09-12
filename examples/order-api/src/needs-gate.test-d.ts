@@ -16,10 +16,11 @@ import { Env } from "@btravstack/config";
 import { start, Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { HttpModule, HttpRuntime, http } from "@btravstack/http-server";
+import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
 
 import { OrderApi, orderRouter } from "./module.js";
-import { RequestModule, ServiceModule, UserModule } from "./request-scope.js";
+import { RequestModule, ServiceModule, SessionModule, UserModule } from "./request-scope.js";
 import { CustomersSlice } from "./slices/customers/module.js";
 import { OrdersSlice } from "./slices/orders/module.js";
 
@@ -44,7 +45,7 @@ const RuntimelessApi = Module("RuntimelessApi")({
   // the contract marks `orders`, so a graph carrying the router without them
   // has an unmet need too, and an arm that could fail either way pins neither
   // gate. `HttpModule` is what spreads them for a root that uses the sugar.
-  provides: [orderRouter, ...orderRouter.authenticators],
+  provides: [orderRouter, ...orderRouter.authenticators, sessionCodec()],
   exports: [Logger],
 });
 
@@ -81,7 +82,13 @@ const _missingRouter = start(RouterlessApi, options);
 // re-exports the database module, and exports the port the fork reads.
 const _databaselessApi = HttpModule("DatabaselessApi")({
   router: orderRouter,
-  unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule },
+  unit: {
+    anonymous: RequestModule,
+    user: UserModule,
+    service: ServiceModule,
+    session: SessionModule,
+  },
+  provides: [sessionCodec()],
   imports: [OrdersSlice, CustomersSlice, observability(), cache({ adapter: memoryCache() })],
   exports: [Logger],
 });

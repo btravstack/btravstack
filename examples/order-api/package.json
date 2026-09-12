@@ -10,7 +10,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "dev": "PORT=0 PROBE_PORT=0 tsx watch --env-file=../../.env.dev src/main.ts",
+    "dev": "PORT=3000 PROBE_PORT=0 tsx watch --env-file=../../.env.dev src/main.ts",
     "generate": "node ../../docs/scripts/extract-doc-samples.ts --group order-api --out src/generated/doc-samples",
     "test": "vitest run",
     "test:types": "tsc --noEmit -p tsconfig.test-d.json",
@@ -35,6 +35,7 @@
     "@orpc/openapi": "catalog:",
     "@unthrown/orpc": "catalog:",
     "jose": "catalog:",
+    "openid-client": "catalog:",
     "unthrown": "catalog:"
   },
   "devDependencies": {
@@ -50,7 +51,6 @@
     "@types/node": "catalog:",
     "@types/supertest": "catalog:",
     "@unthrown/vitest": "catalog:",
-    "openid-client": "catalog:",
     "supertest": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",

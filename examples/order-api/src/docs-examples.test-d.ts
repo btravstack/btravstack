@@ -39,6 +39,7 @@ import {
 } from "@btravstack/example-order-infrastructure";
 import { HttpModule, html } from "@btravstack/http-server";
 import { jwtAuthenticator } from "@btravstack/http-server/jwt";
+import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
 import { P } from "unthrown";
 
@@ -188,6 +189,7 @@ const _DocsOrderApi = HttpModule("DocsOrderApi")({
   needs: [Env],
   router: docsRouter,
   unit: docsUnits,
+  provides: [sessionCodec()],
   imports: [DocsOrdersSlice, DocsCustomersSlice, OrderPersistenceModule, observability()],
   exports: [Logger],
 });
@@ -210,6 +212,7 @@ const _DocsOrdersApi = HttpModule("DocsOrdersApi")({
   needs: [Env],
   router: liftedOrdersRouter,
   unit: docsUnits,
+  provides: [sessionCodec()],
   imports: [DocsOrdersSlice, OrderPersistenceModule, observability()],
 });
 
@@ -288,6 +291,7 @@ const _DocsDepsApi = HttpModule("DocsDepsApi")({
   needs: [Env],
   router: depsOrdersRouter,
   unit: docsUnits,
+  provides: [sessionCodec()],
   imports: [OrderPersistenceModule, observability()],
   exports: [Logger],
 });
@@ -342,7 +346,7 @@ const _DocsFragmentsApi = HttpModule("DocsFragmentsApi")({
   needs: [Env],
   fragments: _docsOrderFragments,
   unit: docsUnits,
-  provides: [_docsOrderRowFragment],
+  provides: [_docsOrderRowFragment, sessionCodec()],
   imports: [OrderPersistenceModule, observability()],
   exports: [Logger],
 });

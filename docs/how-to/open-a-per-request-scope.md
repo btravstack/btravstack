@@ -216,7 +216,7 @@ hands back the **same object** under a narrower type — nothing is rebuilt.
 The root then binds the values, and `HttpModule` gates them against the kinds
 that call declared:
 
-<!-- doctest: skip — binds the two kinds the fence above declares; `examples/order-api` declares three, `anonymous`, `user` and `service` -->
+<!-- doctest: skip — binds the two kinds the fence above declares; `examples/order-api` declares four, `anonymous`, `user`, `service` and `session` -->
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({

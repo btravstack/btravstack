@@ -9,13 +9,13 @@ socket, and the router itself is a di-provided service. The contract lives in
 its own package, because a client needs it and needs none of this.
 
 ```text
-src/auth.ts                           the two schemes (user, service), their authenticators, and the one api = defineHttp({ authenticators }) call
+src/auth.ts                           the three schemes (user, service, session), their authenticators, and the one api = defineHttp({ authenticators }) call
 src/slices/orders/controller.ts       api.OrpcController(contract, "orders")({ inject: { logger: Logger }, unit: { place: PlaceOrder, find: FindOrder, list: ListOrders }, sync }) — where the orders slice's own domain error becomes an ORPCError
 src/slices/orders/authorize.ts        exportable(caller, order) — the authorization rule, and renderCsv, which nothing but its answer reaches
 src/slices/orders/module.ts           OrdersSlice — provides the controller and the orders fragment, exports both
 src/slices/customers/controller.ts    api.OrpcController(contract, "customers")({ inject: { find: FindCustomer }, sync }) — same shape, for the customers slice's own domain error
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
-src/request-scope.ts                  RequestModule, UserModule, ServiceModule — the three unit kinds HttpModule binds; the answerers fork one per request
+src/request-scope.ts                  RequestModule, UserModule, ServiceModule, SessionModule — the four unit kinds HttpModule binds; the answerers fork one per request
 src/client.ts                         an AsyncResult client for the same contract
 src/module.ts                         OrderApi — the composition root: orderRouter = api.OrpcRouter(contract)([ordersController, customersController]), then HttpModule("OrderApi")({
   needs: [Env], router: orderRouter, … })
@@ -230,10 +230,10 @@ constructed instead of rebuilding it. `RequestSpan`'s `onStop` runs while the
 unit is still open, which is what gives its line the request's own trace id —
 and no handler code manages any of it.
 
-There are three kinds here, bound on `HttpModule`'s own `unit` option:
+There are four kinds here, bound on `HttpModule`'s own `unit` option:
 
 ```ts
-unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule }
+unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule, session: SessionModule }
 ```
 
 `RequestModule` is the base every request gets. `UserModule` is where the
@@ -248,7 +248,10 @@ belongs to one, so the tenant is a field of `ServiceIdentity` stated per key in
 exports `FindOrder` and neither of the other two, which is what makes
 `context.unit.place` and `context.unit.list` unreadable from `export`, the one
 leaf both schemes serve: the record a leaf is given is the intersection of what
-its kinds export.
+its kinds export. `SessionModule` is `UserModule`'s own shape again, over the
+principal the `session` scheme resolves — the cookie a browser carries rather
+than a bearer token — so a browser that logged in reaches the same tenant and
+the same orders vertical as a token-holding caller would.
 
 ### Three layers of authorization, and only the third is written by hand
 
@@ -328,8 +331,10 @@ pnpm --filter @btravstack/example-order-api test
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON
 serialization, which is where the defect collapse to `INTERNAL_SERVER_ERROR`
-actually happens. They need the Docker daemon, for the shared Postgres and
-Redis `internal/test-infra` starts.
+actually happens. They need the Docker daemon, for the shared Postgres, Redis
+and Ory containers `internal/test-infra` starts — the root composes `oidc()`,
+which discovers its provider at boot, so even a spec that never logs in
+needs the provider up.
 
 Every helper they need is a Vitest fixture in `src/__tests__/test-fixtures.ts`, so the spec
 opens on `describe` and each test names its dependencies in its own parameter
@@ -385,6 +390,34 @@ and the kernel binds its own `PROBE_PORT` (default `9000`). A malformed value �
 `PORT=abc`, `PORT=` — is a `ConfigInvalid` the kernel reports as a
 `startFailed` event and exit code `78`, sysexits(3)'s `EX_CONFIG`; nothing in
 this package validates, prints or exits.
+
+### As a browser
+
+The `user` scheme above takes a bearer token; the `session` scheme takes a
+cookie instead, sealed by a login answerer the root composes beside the
+router:
+
+<!-- doctest: skip — an excerpt of src/module.ts, which typecheck compiles -->
+
+```ts
+fragmentsLogin: "/auth/login",
+unit: { …, session: SessionModule },
+provides: [sessionCodec(), oidc({ principal, scope: "openid orders:export" })],
+```
+
+`GET /auth/login` redirects to the identity provider and `GET /auth/callback`
+seals the `__Host-session` cookie on the way back. The gate's Kratos has no
+login UI, on purpose, so
+[`internal/test-infra`](../../internal/test-infra)'s `pnpm dev:login` drives
+the same headless walk the specs use and prints that cookie:
+
+```sh
+COOKIE=$(pnpm dev:login -- --as alice@btravstack.test) && \
+  curl -s -b "$COOKIE" http://localhost:3000/orders/0199a1e0-0000-7000-8000-000000000001/row
+```
+
+The fragment routes take that cookie; the JSON procedures above keep the
+bearer token.
 
 ## Multi-tenant by design, not by framework
 

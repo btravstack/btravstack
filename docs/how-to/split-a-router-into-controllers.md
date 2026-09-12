@@ -7,6 +7,7 @@ description: Give each slice of a large API its own contract fragment and contro
 import { Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { HttpModule } from "@btravstack/http-server";
+import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
 import { P } from "unthrown";
 import type { Order } from "@btravstack/example-order-domain";
@@ -242,6 +243,7 @@ export const OrderApi = HttpModule("OrderApi")({
     user: UserModule,
     service: ServiceModule,
   },
+  provides: [sessionCodec()],
   imports: [OrdersSlice, CustomersSlice, OrderPersistenceModule, observability()],
   exports: [Logger, OrderDatabase],
 });
@@ -287,6 +289,7 @@ export const ordersRouter = api.OrpcRouter(contract.orders)({
 
 export const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
+  provides: [sessionCodec()],
   imports: [OrdersSlice, observability()],
 });
 ```

@@ -171,6 +171,9 @@ catalogs:
     oxfmt:
       specifier: 0.66.0
       version: 0.66.0
+    oxlint:
+      specifier: 1.81.0
+      version: 1.81.0
     pino:
       specifier: 10.3.1
       version: 10.3.1
@@ -501,6 +504,9 @@ importers:
       jose:
         specifier: 'catalog:'
         version: 6.2.12
+      openid-client:
+        specifier: 'catalog:'
+        version: 6.8.8
       unthrown:
         specifier: 'catalog:'
         version: 5.8.0
@@ -541,9 +547,6 @@ importers:
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.8.0(unthrown@5.8.0)(vitest@4.1.11)
-      openid-client:
-        specifier: 'catalog:'
-        version: 6.8.8
       supertest:
         specifier: 'catalog:'
         version: 7.2.2
