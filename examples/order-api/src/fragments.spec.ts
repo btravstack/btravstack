@@ -85,7 +85,11 @@ describe("order-api fragments", () => {
       .set("authorization", `Bearer ${await tokenFor()}`);
 
     // THEN the route's `requires` is the scheme list, and `user` is not on it:
-    // a browser route takes a cookie, and a token is not one
-    expect(response.status).toBe(303);
+    // a browser route takes a cookie, and a token is not one — so it is sent
+    // to log in exactly as a caller with nothing is, `return` included
+    expect({ status: response.status, location: response.headers["location"] }).toEqual({
+      status: 303,
+      location: `/auth/login?return=${encodeURIComponent(`/orders/${orderId}/row`)}`,
+    });
   });
 });
