@@ -301,10 +301,15 @@ provider spells the claim differently:
 | Auth0       | `https://<domain>/`                                  | `org_id` with Organizations, else a custom namespaced claim from an Action               |
 | Authelia    | `https://<host>`                                     | no tenant concept: a group claim, or one Authelia per tenant                             |
 
-`principal` is where the spelling is chosen, once. A provider that cannot put
-a tenant on the token is one where `principal` answers `undefined` and the
-login is refused with `400` — `principal_refused` — rather than a session
-with no tenant. A loopback `http:` issuer needs nothing: it is the dev loop.
+`principal` is where the spelling is chosen, once — and for ONE provider. The
+example's reads `claims["tenant"]` because that is what its consent app
+writes; against Entra it reads `claims["tid"]`, against Auth0
+`claims["org_id"]`, and the rest of the function stays as it is. It does not
+try every spelling in turn: a deployment talks to one issuer, and a function
+that recognised five would answer a tenant for a claim nobody configured. A
+provider that cannot put a tenant on the token is one where `principal`
+answers `undefined` and the login is refused with `400` —
+`principal_refused` — rather than a session with no tenant. A loopback `http:` issuer needs nothing: it is the dev loop.
 Any other `http:` issuer is refused at boot unless `allowInsecureIssuer: true`
 is pinned at the `oidc()` call.
 

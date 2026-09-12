@@ -388,8 +388,9 @@ uses, and writes the repository root's `.env.dev` — the addresses each example
 process reads through Node's `--env-file`, the `HTTP_JWT_*` three the dev
 issuer above supplies included. Same containers, attached to rather than
 duplicated: a dev loop and a `pnpm test` can run side by side. `pnpm dev:token`
-and `pnpm dev:login` need nothing running but the containers `dev:env`
-started.
+needs nothing running but the containers `dev:env` started; `pnpm dev:login`
+needs `order-api` running too, since the login route and the callback it
+walks are the application's own.
 
 **`pnpm dev:login`** (`src/dev-login.ts`) is `dev:token`'s browser sibling: it
 drives the same walk the specs do — the login route, the provider's own
