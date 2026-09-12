@@ -45,4 +45,13 @@ docs/api/index.md
 # The suites run against the shared PostgreSQL container, so nothing reads it.
 examples/order-infrastructure/.migrate.db
 **/src/generated/doc-samples/
-.claude/
+
+# `.claude/` is local agent state — worktrees, transcripts, per-machine
+# settings. `skills/` is the exception: a skill is spec that `CLAUDE.md` points
+# at, so it has to travel with the repo or the pointer resolves to nothing on
+# every machine but this one. It also puts the skill back on the markdown gate,
+# which reads this file since `gitignore: true`. This has to be `.claude/*`
+# rather than `.claude/`: git cannot re-include a path inside an excluded
+# DIRECTORY, so the negation below would never fire.
+.claude/*
+!.claude/skills/
