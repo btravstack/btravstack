@@ -347,10 +347,29 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    lands rejects traffic the ingress is still routing to it. That window is what
    the delay closes, and shipping the fix as a default is worth more than most
    of the framework. `drainTimeoutMs` sits deliberately under the k8s
-   `terminationGracePeriodSeconds` default of 30s, leaving headroom for
-   `stopping` before SIGKILL; raise one and you must raise the other.
-   Only a **signal** drains — `stop()` and an uncaught exception both go
+   `terminationGracePeriodSeconds` default of 30s, and the headroom it leaves
+   is beat 3's sibling deadline, `stopTimeoutMs` (default `5_000`) — so the
+   three sum to the grace period exactly; raise one and you must raise them
+   all. Only a **signal** drains — `stop()` and an uncaught exception both go
    straight to `stopping`, leaving `ExitReport.drain` `undefined`.
+
+   **Every phase now has a deadline, because the ones that did not were where
+   a shutdown wedged.** The three beats bounded in-flight WORK and nothing
+   bounded the teardown or the boot: a `release` that never settled left the
+   phase at `stopping` with no `exited` event, no exit code and no exit
+   report — the artefact the lifecycle exists to produce — and an uncaught
+   exception mid-build was absorbed entirely, since `shutdown.promise` is read
+   inside `runtime.start`'s own `flatMap` and installing the handler had
+   already suppressed Node's exit `1`. So `stopTimeoutMs` bounds
+   `stopping` (`Serving.stop` **and** di's finalisers, which is why the race
+   sits at `Module.scoped` rather than inside `finish`), a crash or a **second**
+   signal before `serving` abandons the build, and either reports
+   `ExitReport.abandonedAt` with a `stoppedWaiting` event and exit `2`. It is
+   "stopped waiting", never "cancelled": nothing can cancel a finaliser, so a
+   wedged one can still hold the loop until SIGKILL — what changes is that the
+   report exists and names the phase. A FIRST signal mid-build stays buffered
+   and drains once serving, which is what beat 2's charge-from-request
+   arithmetic depends on.
 
    **A long-lived stream is a unit, and the HTTP runtime resets it at beat
    3's start** (issue #137): `@btravstack/http-server` destroys a
@@ -1103,7 +1122,7 @@ A sixth rule is about production code that tests keep honest:
    timeout has to agree with a pod's `terminationGracePeriodSeconds`, a CORS
    origin with whoever is calling, a body limit with what the endpoint
    accepts — all in the manifest, none in the image. So `PRE_DRAIN_DELAY_MS`,
-   `DRAIN_TIMEOUT_MS`, `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
+   `DRAIN_TIMEOUT_MS`, `STOP_TIMEOUT_MS`, `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
    `TEMPORAL_GRACE_PERIOD_MS`, `TEMPORAL_FORCE_AFTER_MS` and
    `AMQP_CONNECT_TIMEOUT_MS` are fields beside `PORT`, `HOST`,
    `TEMPORAL_ADDRESS` and `AMQP_URL`, each **pinned** by the matching option:

@@ -53,7 +53,7 @@ stale the next time a case is added (#192):
   with a spy — read `mock.calls` **before** `mockRestore`, which clears them).
 - `observability.spec.ts` — the level bound from the environment and
   filtering the graph's own logger, `ConfigInvalid` for a level outside the
-  six, a pinned level beating the environment, and the five `kernelEvents`
+  six, a pinned level beating the environment, and the six `kernelEvents`
   mappings.
 - `observers.spec.ts` — what `observability()` contributes to `Observers`: a
   failed operation written as a line, a successful one written nowhere (that is

@@ -368,7 +368,7 @@ const appConfig = Config.provider("AppConfig")(
 kernelEvents(logger: LoggerService): EventSink;
 ```
 
-The kernel's [nine lifecycle events](/reference/core/events) as log lines on
+The kernel's [ten lifecycle events](/reference/core/events) as log lines on
 `logger`, for `StartOptions.onEvent`. The kernel's own default writes JSON to
 stderr, which is right for a process with no logger and wrong for one with:
 two streams, two shapes, two sets of fields to search.
@@ -588,6 +588,6 @@ collapses into another.
 - [Log and correlate](/how-to/log-and-correlate) — the task, end to end.
 - [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit) —
   the record the logger reads, and who else may read it.
-- [Kernel events](/reference/core/events) — the nine `kernelEvents` maps.
+- [Kernel events](/reference/core/events) — the ten `kernelEvents` maps.
 - [Configure from the environment](/how-to/configure-from-the-environment) —
   how `LOG_LEVEL` is bound, and what a bad one costs.

@@ -173,7 +173,7 @@ need, refused at compile time.
 
 ## Step 5 — Get the 401
 
-Run it (`GREETING=Ahoy PORT=3000 node src/main.ts`), then call the marked
+Run it (`GREETING=Ahoy PORT=3000 npx tsx src/main.ts`), then call the marked
 procedure with no credential:
 
 ```sh

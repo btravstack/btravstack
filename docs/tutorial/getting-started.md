@@ -20,22 +20,36 @@ to stop. It takes about ten minutes.
 
 ```sh [pnpm]
 pnpm add @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di unthrown @orpc/server@^2.0.0-beta @orpc/contract@^2.0.0-beta @unthrown/orpc zod
+pnpm add -D tsx
 ```
 
 ```sh [npm]
 npm install @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di unthrown @orpc/server@^2.0.0-beta @orpc/contract@^2.0.0-beta @unthrown/orpc zod
+npm install -D tsx
 ```
 
 ```sh [yarn]
 yarn add @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di unthrown @orpc/server@^2.0.0-beta @orpc/contract@^2.0.0-beta @unthrown/orpc zod
+yarn add -D tsx
 ```
 
 :::
 
 Every one of those but `zod` is a **peer** of `@btravstack/http-server`, so your
-application holds a single copy of each ([why](/explanation/peer-dependencies)). The
-project needs `"type": "module"` in its `package.json` — `main.ts` ends in a
-top-level `await` — TypeScript in `strict` mode, and Node `>=22`.
+application holds a single copy of each ([why](/explanation/peer-dependencies)).
+`tsx` is the odd one out: a dev dependency, and only to **run** the TypeScript
+you are about to write — Step 7 says why Node's own type stripping is not enough
+here.
+
+The oRPC ranges carry `@^2.0.0-beta` deliberately. oRPC v2 is pre-release and
+its `latest` tag still points at the 1.x line, which `@unthrown/orpc` does not
+peer on; an unpinned install resolves the wrong major and the first compile
+fails ([the full list](/reference/packages)).
+
+The project needs `"type": "module"` in its `package.json` — `main.ts` ends in a
+top-level `await` — TypeScript in `strict` mode with `moduleResolution: "nodenext"`
+(which is why every relative import below carries a `.js` suffix), and Node
+`>=22`.
 
 ## Step 2 — Declare a service
 
@@ -172,17 +186,26 @@ a drain that abandoned work. It never calls `process.exit`
 ## Step 7 — Run it
 
 ```sh
-PORT=3000 node src/main.ts
+PORT=3000 npx tsx src/main.ts
 ```
 
-Node `>=22.18` runs a `.ts` entry point directly by stripping the types; on an
-older Node, `npx tsx src/main.ts` does the same. On stderr, one JSON line per
-kernel event:
+**`tsx` rather than `node`, and the reason is the `.js` suffixes.** Node `>=22.18`
+does run a `.ts` entry point by stripping the types, but stripping is all it
+does: it never remaps `./contract.js` to `./contract.ts`, and `.js` is what
+`moduleResolution: "nodenext"` makes you write. `node src/main.ts` therefore ends
+in `ERR_MODULE_NOT_FOUND` on a file that plainly exists. `tsx` resolves the
+suffix and is what this repository's own examples run.
+
+On stderr, one JSON line per kernel event:
 
 ```json
 {"type":"building"}
-{"type":"serving","runtime":"http"}
+{"type":"serving","runtime":"http","info":{"port":3000},"probePort":9000}
 ```
+
+`info` is whatever the runtime published about itself — `{ port }` for this one,
+which is how a `PORT=0` boot tells you what it got — and `probePort` is the
+kernel's own listener, not the runtime's.
 
 `PORT` was read _inside_ the graph — the starter binds `PORT` (default `3000`)
 and `HOST` (default `0.0.0.0`) onto a `HttpConfig` port from the `Env` port the
@@ -213,7 +236,7 @@ console.log(message); // Hello, world!
 ```
 
 ```sh
-node src/client.ts
+npx tsx src/client.ts
 ```
 
 `client.hello` takes `{ name: string }` and returns `{ message: string }`

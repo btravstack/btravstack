@@ -69,6 +69,7 @@ That is the whole of `examples/order-api/src/main.ts`.
 | `Err` — a `ConfigInvalid`, or a `RuntimeStartFailed` whose `cause` is one (the kernel's `PROBE_PORT`) | `78` | `EX_CONFIG`   |
 | `Ok` — `drain.abandoned > 0`                                                                          | `2`  |               |
 | `Ok` — `teardownErrors` non-empty                                                                     | `2`  |               |
+| `Ok` — `abandonedAt` set: the kernel stopped waiting for the teardown or for a build                  | `2`  |               |
 | `Ok` — `reason === "uncaught"`                                                                        | `70` | `EX_SOFTWARE` |
 | `Defect` — an unmodeled failure anywhere on the path                                                  | `70` | `EX_SOFTWARE` |
 

@@ -106,16 +106,18 @@ describe("PROBE_PORT", () => {
   it("binds the drain timings from the environment when nothing pins them", async ({
     configured,
   }) => {
-    // GIVEN an application deployed with its own drain timings and no pins
+    // GIVEN an application deployed with its own shutdown timings and no pins
     // WHEN it drains
     const slept = await configured.drainSleepsFor({
       PROBE_PORT: "0",
       PRE_DRAIN_DELAY_MS: "1000",
       DRAIN_TIMEOUT_MS: "12345",
+      STOP_TIMEOUT_MS: "4321",
     });
 
-    // THEN the deployment's own values are what the two beats waited, not the
-    // kernel's defaults of 5s and 20s
-    expect(slept).toEqual([1_000, 12_345]);
+    // THEN the deployment's own values are what each wait took, not the
+    // kernel's defaults of 5s, 20s and 5s — in the order the shutdown walks
+    // them: the pre-drain delay, the drain deadline, then the stop's
+    expect(slept).toEqual([1_000, 12_345, 4_321]);
   });
 });

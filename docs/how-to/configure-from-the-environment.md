@@ -193,7 +193,8 @@ module above with `DATABASE_URL` unset and `DATABASE_POOL_SIZE=100`:
 {"type":"exited"}
 ```
 
-The kernel's own `PROBE_PORT`, `PRE_DRAIN_DELAY_MS` and `DRAIN_TIMEOUT_MS` are
+The kernel's own `PROBE_PORT`, `PRE_DRAIN_DELAY_MS`, `DRAIN_TIMEOUT_MS` and
+`STOP_TIMEOUT_MS` are
 bound the same way, in one pass; a bad one is a `RuntimeStartFailed` for
 `"kernel"` whose `cause` is the `ConfigInvalid`, and `runMain` still exits
 `78`. See [runMain and exit codes](/reference/core/exit-codes).
@@ -211,6 +212,7 @@ composition root.
 | `PROBE_PORT`               | `9000`                  | the kernel ([probes](/reference/core/probes))                                                                                                                          |
 | `PRE_DRAIN_DELAY_MS`       | `5000`                  | the kernel ([drain](/how-to/tune-the-drain-for-kubernetes))                                                                                                            |
 | `DRAIN_TIMEOUT_MS`         | `20000`                 | the kernel                                                                                                                                                             |
+| `STOP_TIMEOUT_MS`          | `5000`                  | the kernel — the deadline on `stopping`, so a wedged finaliser still reports                                                                                           |
 | `PORT` / `HOST`            | `3000` / `0.0.0.0`      | [`http()`](/reference/http-server)                                                                                                                                     |
 | `HTTP_BODY_LIMIT`          | `1048576`               | `http()` — `0` is unbounded                                                                                                                                            |
 | `HTTP_CORS_ORIGIN`         | unset (CORS off)        | `http()` — comma-separated origins, or `*`                                                                                                                             |

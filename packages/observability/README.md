@@ -33,7 +33,7 @@ class OrderRepository extends Port("OrderRepository")<{
 > **strict** `Logger` port — no `any`, no printf, no mutable context, no static
 > instance — a default implementation that stamps every line with the ambient
 > unit's trace id, a dependency-free JSON sink, pino behind a subpath, and the
-> kernel's nine lifecycle events as log lines in the same stream.
+> kernel's ten lifecycle events as log lines in the same stream.
 
 📖 **[Documentation](https://btravstack.github.io/btravstack/reference/observability)** ·
 [How-to](https://btravstack.github.io/btravstack/how-to/log-and-correlate) ·

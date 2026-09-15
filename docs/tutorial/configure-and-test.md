@@ -84,7 +84,7 @@ Nothing else changes: `router.ts`, `app.ts` and `main.ts` still compile,
 because the module's exports did not move. Run it:
 
 ```sh
-GREETING=Ahoy PORT=3000 node src/main.ts
+GREETING=Ahoy PORT=3000 npx tsx src/main.ts
 ```
 
 and `client.ts` from lesson one now prints `Ahoy, world!`. Try

@@ -135,9 +135,12 @@ them and none should own a private copy:
   telling the runtime to stop accepting — endpoint removal is eventually
   consistent — then in-flight work gets `drainTimeoutMs` (`DRAIN_TIMEOUT_MS`,
   default `20_000`); whatever is still open is aborted and reported
-  `abandoned`. A second signal skips the drain. Both timings have to agree with
-  the pod's `terminationGracePeriodSeconds`, which is why the deployment can
-  set them and the option only pins them.
+  `abandoned`. The teardown that follows gets `stopTimeoutMs`
+  (`STOP_TIMEOUT_MS`, default `5_000`), so a `release` that never settles is
+  reported as `abandonedAt: "stop"` rather than leaving the process in
+  `stopping` with no exit report at all. A second signal stops every wait at
+  once. The three sum to the pod's `terminationGracePeriodSeconds` default of
+  30 s, which is why the deployment sets them and the options only pin them.
 - **Probes from the state machine.** `GET /livez` and `GET /readyz` on
   `PROBE_PORT` (default `9000`), up before the graph is built.
 - **Configuration from the environment, typed.** The kernel provides

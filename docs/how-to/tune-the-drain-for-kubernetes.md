@@ -46,10 +46,25 @@ window before the runtime stops listening. It is charged from the moment the
 signal was _received_, so a signal that lands mid-build does not pay it twice.
 
 `drainTimeoutMs` sits deliberately under `terminationGracePeriodSeconds`'
-default of `30`, leaving headroom for `stopping` (closing the runtime and the
-application scope) before SIGKILL. `5 + 20 = 25` seconds, five in hand.
+default of `30`, and the five seconds in hand are `stopTimeoutMs`
+(`STOP_TIMEOUT_MS`) — the deadline on `stopping`, which closes the runtime and
+then the application scope. `5 + 20 + 5 = 30` seconds, the grace period
+exactly.
 
-Raise the grace period and raise the drain with it — in the same manifest,
+**`stopping` is bounded because the teardown is where a shutdown wedges.** Beat
+3's deadline covers in-flight work; a `release` that never settles — a pool
+draining to a host that stopped answering — is not work, and until it had a
+deadline of its own it left the process in `stopping` with no `exited` event, no
+exit code and no exit report: the artefact the whole lifecycle exists to
+produce. Past the deadline the kernel reports anyway, with
+`ExitReport.abandonedAt: "stop"` and a `stoppedWaiting` line on stderr.
+
+It stops WAITING rather than cancelling: nothing can cancel a finaliser, so a
+wedged one can still hold the event loop until SIGKILL. What changes is that
+the report exists and names the phase, so `kubectl logs --previous` answers why
+instead of ending mid-sentence.
+
+Raise the grace period and raise the three with it — in the same manifest,
 which is why they are variables:
 
 ```yaml

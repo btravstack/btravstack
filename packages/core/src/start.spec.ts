@@ -10,6 +10,9 @@ import { start } from "./start.js";
 
 class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 
+/** The one event whose absence is as load-bearing as its presence: a clean stop emits none. */
+const isStoppedWaiting = (event: KernelEvent): boolean => event.type === "stoppedWaiting";
+
 describe("start", () => {
   it("builds the graph, serves, and exits cleanly when stopped", async () => {
     const runtime = testRuntime();
@@ -257,6 +260,158 @@ describe("start", () => {
       expect.objectContaining({
         teardownErrors: [{ port: "Greeting", cause: boom }],
       }),
+    );
+  });
+
+  it("reports a stop whose finalisers outlive stopTimeoutMs, instead of never reporting", async () => {
+    // GIVEN a release that never settles — a pool draining to a host that
+    // stopped answering — which is the one thing `finish` cannot see, since di
+    // closes the scope only after it has returned
+    const clock = createFakeClock();
+    const runtime = testRuntime();
+    const events: KernelEvent[] = [];
+    const Wedged = Module("Wedged")({
+      imports: [runtime.module],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => new Promise<void>(() => {}),
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Wedged, {
+      clock,
+      signals: false,
+      probes: false,
+      stopTimeoutMs: 5_000,
+      onEvent: (event) => events.push(event),
+    });
+    await runtime.untilStarted();
+    app.stop();
+
+    // WHEN the stop deadline passes with the finaliser still running
+    await clock.advance(5_000);
+
+    // THEN the report exists and says which phase ran long — where before it
+    // was never produced at all and the process sat in `stopping` until SIGKILL
+    expect({ report: await app.exited, stoppedWaiting: events.filter(isStoppedWaiting) }).toEqual({
+      report: expect.toBeOkWith(
+        expect.objectContaining({ reason: "runtimeStopped", abandonedAt: "stop" }),
+      ),
+      stoppedWaiting: [{ type: "stoppedWaiting", phase: "stop", afterMs: 5_000 }],
+    });
+  });
+
+  it("cuts the stop wait short on a second signal, naming no deadline", async () => {
+    // GIVEN a shutdown wedged in its finalisers, with a deadline nobody wants
+    // to wait out
+    const runtime = testRuntime();
+    const events: KernelEvent[] = [];
+    const Wedged = Module("WedgedBySignal")({
+      imports: [runtime.module],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => new Promise<void>(() => {}),
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Wedged, {
+      probes: false,
+      preDrainDelayMs: 0,
+      drainTimeoutMs: 0,
+      stopTimeoutMs: 600_000,
+      onEvent: (event) => events.push(event),
+    });
+    await runtime.untilStarted();
+
+    process.emit("SIGTERM");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    process.emit("SIGTERM");
+
+    // WHEN the operator asks a second time
+    // THEN the wait ends now and `afterMs` is absent, because the ten-minute
+    // deadline is not what ended it
+    expect({ report: await app.exited, stoppedWaiting: events.filter(isStoppedWaiting) }).toEqual({
+      report: expect.toBeOkWith(expect.objectContaining({ reason: "signal", abandonedAt: "stop" })),
+      stoppedWaiting: [{ type: "stoppedWaiting", phase: "stop", afterMs: undefined }],
+    });
+  });
+
+  it("reports an uncaught exception raised while the graph is still building", async () => {
+    // GIVEN a provider that never resolves, so the application never serves —
+    // and an uncaught exception, whose handler has already suppressed Node's
+    // own exit code by being installed at all
+    const uncaughtListeners = (): number =>
+      process.listenerCount("uncaughtException") + process.listenerCount("unhandledRejection");
+    const before = uncaughtListeners();
+    const runtime = testRuntime();
+    const events: KernelEvent[] = [];
+    const NeverBuilds = Module("NeverBuilds")({
+      imports: [runtime.module],
+      provides: [
+        Provider(Greeting)({ inject: {}, make: () => fromSafePromise(new Promise(() => {})) }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(NeverBuilds, {
+      probes: false,
+      onEvent: (event) => events.push(event),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(app.phase()).toBe("building");
+
+    // WHEN it crashes mid-build
+    process.emit("uncaughtException", new Error("boom"));
+
+    // THEN the crash is reported rather than absorbed: `70` under `runMain`,
+    // and the handlers are gone so the next test's signals are its own
+    expect({
+      report: await app.exited,
+      phase: app.phase(),
+      listeners: uncaughtListeners() - before,
+      stoppedWaiting: events.filter(isStoppedWaiting),
+    }).toEqual({
+      report: expect.toBeOkWith(
+        expect.objectContaining({ reason: "uncaught", drain: undefined, abandonedAt: "build" }),
+      ),
+      phase: "exited",
+      listeners: 0,
+      stoppedWaiting: [{ type: "stoppedWaiting", phase: "build", afterMs: undefined }],
+    });
+  });
+
+  it("gives up on a build a second signal has given up on", async () => {
+    // GIVEN a boot that hangs — an unreachable dependency acquired at
+    // construction — where the FIRST signal is deliberately buffered for the
+    // drain that a serving application would run
+    const runtime = testRuntime();
+    const NeverBuilds = Module("NeverBuildsSignal")({
+      imports: [runtime.module],
+      provides: [
+        Provider(Greeting)({ inject: {}, make: () => fromSafePromise(new Promise(() => {})) }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(NeverBuilds, { probes: false, onEvent: () => {} });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    process.emit("SIGTERM");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // THEN the first is buffered — nothing observes it until the runtime
+    // serves, which this graph never does
+    expect(app.phase()).toBe("building");
+
+    // WHEN the operator asks again
+    process.emit("SIGTERM");
+
+    // THEN the kernel stops waiting for a build that was never going to finish
+    expect(await app.exited).toBeOkWith(
+      expect.objectContaining({ reason: "signal", abandonedAt: "build" }),
     );
   });
 

@@ -246,7 +246,7 @@ api.OrpcController(contract, "ceremonies");
 ## Step 5 — Run it
 
 ```sh
-GREETING=Ahoy PORT=3000 node src/main.ts
+GREETING=Ahoy PORT=3000 npx tsx src/main.ts
 ```
 
 ```sh
