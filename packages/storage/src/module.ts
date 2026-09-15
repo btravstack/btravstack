@@ -15,17 +15,20 @@ export type StorageOptions<E, N> = {
 };
 
 /**
- * The storage starter: an adapter, and `Storage` provided from it —
- * instrumented or not, decided here at the composition root.
+ * The storage starter: an adapter, and `Storage` provided from it.
  *
  * ```ts
- * storage({ adapter: s3Storage() });                      // spans, counts, log lines
- * storage({ adapter: s3Storage(), instrumented: false }); // just a store
+ * storage({ adapter: s3Storage() });
  * ```
  *
  * **Two ports, because di allows one provider per port per graph**: the port an
- * application depends on must not be the one an adapter provides, which is also
- * why instrumentation is a flag on the composition rather than a wrapper.
+ * application depends on must not be the one an adapter provides, which is what
+ * lets this function be the seam.
+ *
+ * **There is no `instrumented` flag.** Every operation is handed to whatever
+ * contributed to `Observers`; a graph that composed no observability has only
+ * this module's own no-op member, so it costs one call per operation and nothing
+ * else.
  */
 export const storage = <E, N>({
   adapter,

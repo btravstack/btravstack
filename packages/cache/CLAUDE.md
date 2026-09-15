@@ -2,8 +2,7 @@
 
 The application-service port for caching: a `Cache` an application depends on,
 adapters that provide the `CacheBackend` behind it, and one composition
-function that binds them together, with every call reported through
-counted and logged.
+function that binds them together, with every call reported to `Observers`.
 
 It is a plain di port. No kernel change, no runtime, no thesis exemption —
 which is what issue #62 said these should be.

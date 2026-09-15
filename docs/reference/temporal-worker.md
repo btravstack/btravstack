@@ -149,10 +149,10 @@ framework that owns the unit lifecycle gets them for free — and an observer is
 what turns a report into a measurement. Reporting always happens; **collection
 happens when `otel()` is composed**, and not before:
 
-| Instrument                              | Kind           | Dimensions            |
-| --------------------------------------- | -------------- | --------------------- |
-| `btravstack.temporal.activity.attempts` | counter        | `activity`, `outcome` |
-| `btravstack.temporal.activity.duration` | histogram (ms) | the same two          |
+| Instrument                       | Kind           | Dimensions            |
+| -------------------------------- | -------------- | --------------------- |
+| `btravstack.temporal.operations` | counter        | `activity`, `outcome` |
+| `btravstack.temporal.duration`   | histogram (ms) | the same two          |
 
 `instrumented` is gone. Every unit is handed to `Observers`, and this module
 contributes a no-op member of its own — so a graph composing no observability
@@ -645,8 +645,12 @@ neither the option nor the clock.
 
 `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`,
 `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`,
-`@temporal-contract/worker`, `@temporal-contract/contract`. All nine are
-peers. Node `>=22`.
+`@temporal-contract/worker`, `@temporal-contract/contract`, and
+`@temporal-contract/client` as an **optional** peer that only the
+`@btravstack/temporal-worker/schedule` subpath reads — a consumer that never
+imports `ensureSchedule` installs nothing for it (see
+[Run something on a schedule](/how-to/run-something-on-a-schedule)). Node
+`>=22`.
 
 ## Deliberately not included
 
@@ -668,19 +672,18 @@ by the whole repository, with a **namespace per spec file** for isolation
 (see [Order Temporal worker](/examples/order-temporal-worker) for the same
 choice and its measured cost). It replaced a time-skipping test server started
 per vitest worker; neither suite ever advanced a clock, so the skippable clock
-bought nothing a private namespace does not. `temporal-runtime.spec.ts` carries 13 specs — one
-the published info, four the starter's configuration, one the connection, two
-the qualified startup chain, two the unit boundary, three the drain;
-`workflow-activities.spec.ts`
-adds 2 more — a two-workflow, one-task-queue contract composed from two
-pieces, pinning that both are mounted and that each was built from the ports
-its own provider declared — for 15 total. `workflow-activities.test-d.ts`
+bought nothing a private namespace does not. `temporal-runtime.spec.ts`
+covers the published info, the starter's configuration, the connection, the
+qualified startup chain, the unit boundary and its seeded fork, and the drain;
+`workflow-activities.spec.ts` composes a two-workflow, one-task-queue contract
+from two pieces, pinning that both are mounted and that each was built from the
+ports its own provider declared. `workflow-activities.test-d.ts`
 pins the composing form's compile-time gates: a piece typed by its own key,
 an array covering every declared key composing into what `TemporalModule`
 takes, a key the contract does not declare refused at the piece's own call,
 an array missing a key refused at the composing call, and a piece built for
-another contract refused there too. The two files are deliberate mirrors —
-six labelled properties each, three of them negatives — and they drifted apart
-once (issue #51). Checked by
+another contract refused there too. It and `@btravstack/amqp-worker`'s
+`handler.test-d.ts` are deliberate mirrors, so a gate added to one belongs in
+the other — they drifted apart once (issue #51). Checked by
 `tsc -p tsconfig.test-d.json`, which the package's own `test:types` script
 runs and `typecheck` runs alongside the ordinary `tsc --noEmit`.

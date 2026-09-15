@@ -3,8 +3,8 @@
 The observability package's public surface. The root `CLAUDE.md` is the
 authoritative spec for the kernel and the conventions; this file holds what
 only matters when you are working under `packages/observability/`. Keep it in
-sync with the code in the same commit, and with `README.md` — the package
-ships no `docs-examples.test-d.ts`, so nothing else compiles these claims.
+sync with the code in the same commit, and with `README.md` — the doc-samples
+gate compiles the README's unskipped `ts` fences, but nothing checks this file.
 
 ## What this is: the implementations, not the contracts
 
@@ -77,18 +77,14 @@ sets.
 ## Deferred, deliberately
 
 - **Traces and metrics ship behind the `@btravstack/observability/otel`
-  subpath.** The surface: `otel(options?)`,
-  a module providing the kernel's `Tracer` and `Meter` ports over a
-  `NodeSDK` held as a **resourceful** provider — `release` is `sdk.shutdown()`,
-  which flushes, so the kernel's close-on-every-path is what gets spans out of
-  a dying process and a lost flush becomes a `teardownError` and exit `2`
-  rather than silence (pinned by `otel.spec.ts` with an hour-delayed batch
-  processor: the span leaves only because release flushed it) — and
-  `UnitSpanModule`, a module a starter's own `unit` option binds — `unit: {
-message: UnitSpanModule }`, `unit: { activity: UnitSpanModule }` — opening a
-  span per unit the runtime forks it around, with the ambient record's
-  `unitId`/`traceId`/`tenantId` as attributes, ended by `onStop` on every path
-  out. **No config slice, deliberately**: the
+  subpath**; `otel(options?)` and `UnitSpanModule` are `src/otel.ts`'s TSDoc
+  and `docs/reference/observability.md`'s. What they decided: the `NodeSDK` is
+  a **resourceful** provider whose `release` is `sdk.shutdown()`, which
+  flushes, so the kernel's close-on-every-path is what gets spans out of a
+  dying process and a lost flush becomes a `teardownError` and exit `2` rather
+  than silence (pinned by `src/otel.spec.ts` with an hour-delayed batch
+  processor: the span leaves only because release flushed it).
+  **No config slice, deliberately**: the
   SDK reads the `OTEL_*` env conventions itself, and re-binding them through
   `Config` would be a second spelling of names operators already know. **One
   `otel()` per process**: the api's globals register once — the SDK's own

@@ -3,11 +3,11 @@
 The application-service port for object storage: a `Storage` an application
 depends on, adapters that provide the `StorageBackend` behind it, and one
 composition function that binds them together, with every operation reported
-is spanned, counted and logged.
+to `Observers`.
 
 The third of issue #62's three ports, on `@btravstack/cache`'s shape exactly —
-read that package's `CLAUDE.md` for the two-port rationale and the conditional
-return type; only what differs is written out here.
+read that package's `CLAUDE.md` for the two-port rationale; only what differs
+is written out here.
 
 ## Public surface
 
@@ -17,18 +17,19 @@ and `docs/reference/storage.md` is the reader's page.
 
 ## Decisions
 
-- **A missing object is `not_found`, counted apart and logged at `info`.**
-  Asking for something that is not there is an ordinary answer — a caller
-  checking whether a document exists yet meets it on the happy path — and a
-  dashboard that treats it as a fault teaches its readers to ignore the fault
-  line. `StorageUnavailable` is what pages somebody.
-- **`PresignNotSupported` shares the outcome and NOT the message.** It is the
-  same class — a "no" the caller can act on, not an outage — so the counter
-  says `not_found` for both. But the line says `"this store cannot mint a
-url"`, because the object may be sitting exactly where it was put, and an
-  operator reading "the object was not there" would go hunting for nothing.
-  A counter separates ordinary from faulty; a log line has to say what
-  actually happened.
+- **A missing object settles `ok` with `result: "not_found"`, and writes no
+  line.** Asking for something that is not there is an ordinary answer — a
+  caller checking whether a document exists yet meets it on the happy path —
+  and a dashboard that treats it as a fault teaches its readers to ignore the
+  fault line. `StorageUnavailable` is what pages somebody, and the only failure
+  that settles `error`.
+- **`PresignNotSupported` shares the result and NOT the words.** It is the
+  same class — a "no" the caller can act on, not an outage — so both settle
+  `result: "not_found"`. But its `reason` attribute says `"this store cannot
+mint a url"` where a missing object's says `"the object was not there"`,
+  because the object may be sitting exactly where it was put, and an operator
+  reading the latter would go hunting for nothing. The `result` separates
+  ordinary from faulty; the `reason` has to say what actually happened.
 - **`presignedUpload` signs the content type and the content length, and
   `contentLength` is therefore required.** Both are set on the command, so both
   are in the signature and a client sending different ones is refused by the

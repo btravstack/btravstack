@@ -20,8 +20,8 @@ type QueryExtension = {
 type Extendable = { readonly $extends: (extension: QueryExtension) => unknown };
 
 /**
- * Every query, wrapped: a span around it, a count of how it came out, and a log
- * line if it failed.
+ * Every query, handed to the graph's observers: a count of how it came out, and
+ * a log line if it failed.
  *
  * **This is why a generated client can be instrumented at all.** Prisma's
  * `$extends` takes a `query` component, and `$allModels.$allOperations`
@@ -30,10 +30,11 @@ type Extendable = { readonly $extends: (extension: QueryExtension) => unknown };
  * revision of this package claimed instrumentation was impossible for that
  * reason; it was wrong, and this is the mechanism it missed.
  *
- * **It deliberately opens no span.** `@btravstack/prisma/otel` enables Prisma's
- * own `@prisma/instrumentation`, which traces at the ENGINE level — the real
- * SQL, the connection acquisition, the serialisation — all of it below what a
- * client-level wrapper can see. Emitting a span here as well would put two
+ * **It deliberately opens no span.** Prisma's own `@prisma/instrumentation`,
+ * which this package offers to `Instrumentations` and
+ * `@btravstack/observability/otel` enables, traces at the ENGINE level — the
+ * real SQL, the connection acquisition, the serialisation — all of it below
+ * what a client-level wrapper can see. Emitting a span here as well would put two
  * spans on every query for strictly less information. What this wrapper keeps
  * is the pair Prisma's instrumentation does not do at all: a metric, and an
  * error line correlated with the ambient unit.

@@ -10,9 +10,8 @@ commit.
 - **`BootDefaults`** and **`SubmittedUnit`** are exported because a documented
   parameter or return type a consumer cannot name is a surface gap, and the
   doc-samples signature gate is what found both.
-- **`testRuntime`'s `Unit` parameter defaults to `undefined`**
-  (`Unit extends AnyUnitModule | undefined = undefined`) — the same shape the
-  three shipped starters carry, and without that default `Needs` degrades to
+- **`testRuntime`'s `Unit` type parameter defaults to `undefined`**, the same
+  shape the shipped starters carry: without that default, `Needs` degrades to
   `unknown`.
 - **`localIssuer`**, on the `@btravstack/testing/jwt` subpath: a real Keycloak
   or Dex container was considered and declined — either is another daemon on

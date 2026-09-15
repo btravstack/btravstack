@@ -1,54 +1,36 @@
 # packages/http-server
 
-The HTTP starter's public surface. The root `CLAUDE.md` is the authoritative
-spec for the kernel and the conventions; this file holds what only matters when
-you are working under `packages/http-server/`. Keep it in sync with the code in
-the same commit, and with `README.md` — the package ships no
-`docs-examples.test-d.ts`, so nothing else compiles these claims.
+The HTTP starter's decisions, gotchas and deliberate exclusions. The root
+`CLAUDE.md` is the authoritative spec for the kernel and the conventions; this
+file holds what only matters when you are working under `packages/http-server/`.
+The surface itself — every signature, option, export and inject — is
+`docs/reference/http-server.md` and the source TSDoc behind it; the doc-samples
+gate compiles that page's `ts` fences and `README.md`'s. The authentication half
+is `AUTH.md`. Keep this file in sync with the code in the same commit.
 
-## Public surface
+## Decisions and gotchas, by surface
 
-- **`HttpModule(name)({ router?, fragments?, fragmentsPrefix?, fragmentsLogin?, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })`**
-  (`http-module.ts`) — THE way an application declares an HTTP deployment:
-  `Module(name)({...})` plus a router, fragments, or both. It appends
-  `httpServer(options)` to `imports`; when `router` is supplied it prepends
-  the router **and** `orpc(options)` to `provides`, mounted under `prefix`
-  (default `/rpc`); when `fragments` is supplied it prepends the fragments
-  provider **and** `htmx({ prefix: fragmentsPrefix, login: fragmentsLogin })` —
-  `fragmentsPrefix`
-  (default `/`, `htmx()`'s own default) is the second, independently-named
-  mount point, since one field cannot carry two mounts with two different
-  defaults, and `fragmentsLogin` carries `htmx()`'s `login` under the same
-  naming rule: it is the fragment answerer's alone, where a bare `login` would
-  read as covering the oRPC half, which redirects nothing.
+- **`HttpModule(name)({...})`** (`http-module.ts`) — THE way an application
+  declares an HTTP deployment. What it takes, what it adds to `imports`,
+  `provides` and `exports`, and which providers `router` and `fragments`
+  accept are in the reference page; what follows is what that page does not
+  argue.
+  `fragmentsPrefix` and `fragmentsLogin` are named for the fragment answerer
+  alone: one field cannot carry two mounts with two different defaults, and a
+  bare `login` would read as covering the oRPC half, which redirects nothing.
   **Both are forwarded field by field, and that is the one place this sugar's
   "an option it forgets to forward cannot exist" is not structurally true** —
   `httpServer`/`orpc` take the whole options record, `htmx()` cannot, because
   its two fields are named differently here than there. Adding an `HtmxOptions`
   field means adding a line to this call.
-  Either or both, plus each answerer's own scheme authenticators —
-  read off `router.authenticators` and `fragments.authenticators`,
-  deduplicated by **reference** before they reach `provides`, so a scheme the
-  two share (one `defineHttp` call, named by both) lands once. `HttpRuntime`
-  and `HttpHandler` are appended to `exports` — the runtime resolves
-  `HttpHandler`, so `start`'s gate needs it exported regardless of which
-  answerer(s) compose it — and the augmented tuples — `Imports<I>` /
-  `Provides<P, Router, Fragments>`, readonly and exact — go to di's own
-  `Module(name)({...})`, whose
+  The augmented tuples — `Imports<I>` / `Provides<P, Router, Fragments>`,
+  readonly and exact — go to di's own `Module(name)({...})`, whose
   return type IS the sugar's: nothing spelled twice. di exports `AnyModule`,
   `AnyProvider` and `Exportable` for exactly that (constraining the tuples the
   way `Module(name)` does); its other module-typing pieces stay internal.
   (Spelling the return through a named generic alias was tried and removed:
   declaration emit keeps such an alias unreduced and cannot name imported
-  modules' internal ports — TS2883, measured.) `router` is
-  `Provider<OrpcRouterPort, RouterError, RouterNeeds>` — what
-  `api.OrpcRouter(contract)({ inject, unit?, sync })` returns; `fragments` is
-  `Provider<HtmxFragmentsPort, …>` — what `api.HtmxFragments([…])`
-  returns. A provider of anything else fails at the call, and there is no
-  port to read off either: the sugar's job is to provide the port the
-  matching starter needs. Covered by the package's own `rpc` fixture (router
-  alone) and `bothProtocols`/`sharedAuth`/`fragmentsOnly` (fragments alone and
-  both together). Options `port`/`hostname` pin as for `http()`.
+  modules' internal ports — TS2883, measured.)
   **There is no `authenticator` option.** Each router/fragments provider
   carries `readonly authenticators: readonly Auth[]` — the per-scheme
   providers `defineHttp` bound — and the sugar spreads them into `provides`
@@ -436,26 +418,19 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   principal and the decoded input to `unknown` — the answerer's own concern,
   not the piece's.
 
-- **`http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders? })` →
-  `Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | OrpcRouterPort>`**
-  — the starter, and **oRPC's answerer under the HTTP runtime**: one protocol,
-  over its own node adapter, contributing one member to the `HttpHandler` set
-  port. It used to be "the one way HTTP is answered here" and is not any more —
+- **`http(options)`** — the starter, and **oRPC's answerer under the HTTP
+  runtime**: one protocol, over its own node adapter, contributing one member
+  to the `HttpHandler` set port. Its signature, options, what it provides,
+  exports and needs, `HttpConfig`'s variables and defaults, and `HttpInfo` are
+  in the reference page. It used to be "the one way HTTP is answered here" and is not any more —
   see **Several answerers, one runtime** below. The
   former `@btravstack/orpc` was folded in for that reason — oRPC shares this
   stack's convictions (a contract, typed errors, `Result` at the boundary), so
   it is enforced, not offered among alternatives. The router is not an
   option: the module **needs** `OrpcRouterPort`, and the application provides
   it — a provider that declares the use cases its procedures call (di injects
-  them, oRPC's context stays empty), built by
-  `api.OrpcRouter(contract)({ inject, unit?, sync })`. The starter provides
-  `Runtime<never, HttpInfo>` on the **`HttpRuntime`** port (a class over
-  core's `RuntimePort`, **an empty `resolves`**), which the composition root imports
-  next to the application and exports so `start` finds it, and **`HttpConfig`**
-  (`{ port, hostname, bodyLimit, corsOrigin, compression }`) bound through
-  `Config.provider` from `PORT` (default `3000`), `HOST` (default `0.0.0.0` — a
-  pod, not a laptop), `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN` and `HTTP_COMPRESSION` in the
-  kernel's `Env`. It is declared in `http-config.ts` rather than
+  them, oRPC's context stays empty).
+  `HttpConfig` is declared in `http-config.ts` rather than
   `http-runtime.ts` because `orpc.ts` reads it and `http-runtime.ts` imports
   `orpc` — a leaf module is what keeps that from being a runtime import cycle.
   Every field **pins** instead of reading — explicit >
@@ -465,21 +440,12 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   stay whatever is pinned — one signature, no overload pair to keep in step
   (the kernel discharges the one, a pinned config never produces the other).
   There is **no fully-pinned shortcut provider** any more: it existed to skip
-  the `Env` read when `port` and `hostname` were both given, and with five
-  fields it would have been a branch nobody could satisfy — `Config.pinned`
-  already reads nothing.
-  `prefix` (default `/rpc`) is where the RPC endpoint is mounted. The worked
-  example is `Module("OrderApi")({ imports: [Application, Persistence,
-http()], provides: [orderRouter], exports:
-[HttpRuntime] })` + `runMain(OrderApi)`; a test passes `env: { PORT: "0",
-HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
-  `Serving.info` once bound; `0` lets the OS pick, read back via
-  `runtimeInfo()`.
-- **`cors`, `bodyLimit`, `compression`** — three oRPC plugins as named
-  options, each typed by the plugin's own options type per the passthrough
-  rule: `boolean | CORSHandlerPluginOptions<DefaultInitialContext>`,
-  `number | false`, and
-  `boolean | ResponseCompressionHandlerPluginOptions<DefaultInitialContext>`.
+  the `Env` read when `port` and `hostname` were both given, and once the
+  transport policies became config fields it would have been a branch nobody
+  could satisfy — `Config.pinned` already reads nothing.
+- **`cors`, `bodyLimit`, `compression`** — oRPC plugins as named options, each
+  typed by the plugin's own options type per the passthrough rule; the types
+  and variables are in the reference page.
 
   **Each SCALAR half is a field of `HttpConfig`, not a closure**, bound from
   `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN` and `HTTP_COMPRESSION` and **pinned** by the option —
@@ -571,16 +537,7 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   deployment that can silently turn `x-frame-options`, or this check, off is a
   footgun the transport-policy options are not.
 
-- **`plugins`** —
-  `readonly NodeHttpHandlerPlugin<DefaultInitialContext>[]`, from
-  `@orpc/server/node` — any oRPC plugin the named options do not cover,
-  appended to them and forwarded to `new RPCHandler(service, { plugins })`.
-  Each option threads through all three surfaces on the same
-  `...(x === undefined ? {} : { x })` spread every other option here uses —
-  `OrpcOptions` (`orpc.ts`) → `HttpOptions` (`http-runtime.ts`)
-  → `HttpModuleOptions` (`http-module.ts`) — and needs no generic
-  parameter on any of the three, since each is a plain optional field like
-  `prefix`. `plugins` is an **honest escape hatch, not a keyhole**: oRPC's
+- **`plugins`** is an **honest escape hatch, not a keyhole**: oRPC's
   `StandardHandlerPlugin.init` transforms handler options **including
   `StandardHandlerOptions.interceptors`**, so a plugin can wrap execution and
   an application determined to see a procedure's outcome can get there. What
@@ -590,24 +547,16 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   refuse, and reaching past it is a visible act rather than the default shape.
   `principalMiddleware` (see `AUTH.md`) is the one per-request hook this package
   itself installs, and only on a marked leaf.
-- **`securityHeaders`** — `boolean | Readonly<Record<string, string>>`,
-  default `true`. **Not** routed through `orpc()`: it stays on `HttpOptions`
-  after `prefix` and `plugins` are destructured out of `http()`'s options, so
-  it lands in `socket` — the rest handed to `httpServer` — and is applied by
+- **`securityHeaders`** is **not** routed through `orpc()`: it is applied by
   `http-runtime.ts`'s `listen`, on the raw node listener, **before**
   dispatch. That placement, not an oRPC plugin, is deliberate: a plugin only
   runs for a request oRPC **matched**, so the runtime's own `404` and `500`
   would go out bare — the opposite of what helmet-style headers are for.
-  `true` applies the package's small default set
-  (`x-content-type-options: nosniff`, `x-frame-options: DENY`,
-  `referrer-policy: no-referrer`); `false` disables the feature; a record
-  replaces the defaults outright. Resolved once per `listen` call, outside
-  the per-request `createServer` callback, and set as its **first**
-  statement — before `open.add(response)` — so it covers a served response,
-  the runtime's `404`, its `500`, and a drained/retired response alike.
-  `HttpModuleOptions.securityHeaders` (`http-module.ts`) forwards it to
-  `http()` on the same `...(x === undefined ? {} : { x })` spread every
-  other option here uses.
+  Resolved once per `listen` call, outside the per-request `createServer`
+  callback, and set as its **first** statement — before `open.add(response)` —
+  so it covers a served response, the runtime's `404`, its `500`, and a
+  drained/retired response alike. Its type, default and default header set
+  are in the reference page.
 - **Two gates, both compile-time, and they are different mechanisms.**
   `start`'s phantom marker — intersected onto `module` — turns
   a composition exporting no `HttpRuntime` into a `TS2345` whose last line is
@@ -647,7 +596,8 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   close until the response's `'close'` event fires, and closes at once if that
   event already fired before the work ran — so
   there is no seam for a late write to land in, and `id: randomUUID()` is
-  minted per request (a non-blank inbound `x-request-id` becomes `traceId`),
+  minted per request (an inbound `traceparent`'s trace id becomes `traceId`,
+  else a non-blank inbound `x-request-id`),
   so the two contracts a runtime owes are structural here rather than left to
   a caller's care.
 - **The fork is the answerer's, for a request it handles — not the kernel's,
@@ -807,37 +757,25 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   not a swap of this one), a middleware
   slot for application logic, `Result` → HTTP status, HTTPS, HTTP/2 — see the
   package README's _"What it does not do"_ for why each is a non-goal.
-- **`httpServer({ port?, hostname?, cors?, bodyLimit?, compression?, securityHeaders?, unit? })`
-  → `Module<HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers, ConfigInvalid, Env | UnitsNeedsOf<Units>>`** —
-  the socket half: the runtime, its config, the kind → module record on
-  `HttpUnit`, and no answerer. `http()` re-exports the same set, `Observers`
-  included — it wraps this module and re-declares its own `exports`, so the
-  two must be kept in step by hand. It EXPORTS `Observers` as well as providing the
+- **`httpServer(options)`** — the socket half: the runtime, its config, the
+  kind → module record on `HttpUnit`, and no answerer. Its signature and what
+  it provides and exports are in the reference page and `http-runtime.ts`.
+  `http()` wraps this module and re-declares its own `exports`, so what the
+  two export must be kept in step by hand. `httpServer` EXPORTS `Observers` as well as providing the
   no-op member: a sibling answerer that reports its own operations —
   `oidc()` is the first — is one `Provider.member(HttpHandler)` with nowhere
   to put a no-op member of its own, so without the export the set port every
   other starter here gets for free would have been the one thing a login
-  answerer charged a root for. `http()` is
-  `Module("Http")({ imports: [httpServer(options)], provides: [orpc(options)],
-exports: [HttpRuntime, HttpConfig, HttpHandler] })` — this plus `orpc()`. The
+  answerer charged a root for. The
   package's own transport specs, and a fragments-only graph, compose
   `httpServer` directly, with no oRPC router anywhere: a set port makes a
   single answerer welded to the socket the wrong default, and a fragments-only
   application would otherwise have to compose `http()` and declare an oRPC
   router it does not have. `httpRuntime`, the runtime value's factory, stays
   internal.
-- **`htmx({ prefix?, login? })` → a `Provider.member(HttpHandler)` over
-  `{ fragments: HtmxFragmentsPort, config: HttpConfig }`** (`htmx.ts`) — the
-  second answerer: fragments, mounted under `prefix` (default `/`). It
-  matches a request against `fragments.routes` by method and path, resolves
-  the principal through `resolvePrincipal` when the route carries a
-  requirement, reads and validates a `POST` body against the route's own
-  schema, and calls the route's `handle`, writing the returned `Html`'s value
-  with `content-type: text/html; charset=utf-8`. A request no route claims
-  resolves unwritten, exactly like oRPC's answerer, so the runtime's own
-  `404` answers it. `cors` and `compression` are oRPC plugins with no
-  fragment-answerer equivalent — only `bodyLimit`, read off the same
-  `HttpConfig` `orpc()` reads, applies here.
+- **`htmx(options)`** (`htmx.ts`) — the second answerer: fragments. Its
+  signature, options, injects and what it matches, forks and writes are in the
+  reference page.
 
   **`login` is where this answerer and the login answerer touch, and it is the
   ONLY place the two know about each other.** It is the login ROUTE, not the

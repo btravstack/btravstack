@@ -273,7 +273,7 @@ and `cause: "[unserialisable]"` rather than costing the line.
 
 ```ts
 observability(options?: ObservabilityOptions):
-  Module<Logger | LoggerConfig, ConfigInvalid, Env>;
+  Module<Logger | LoggerConfig | Observers, ConfigInvalid, Env>;
 
 type ObservabilityOptions = {
   readonly sink?: Sink; // unset: jsonSink() — one JSON object per line, to stdout
@@ -282,7 +282,9 @@ type ObservabilityOptions = {
 ```
 
 The starter: a module providing the application's `Logger` and the
-`LoggerConfig` it was built from, both exported. Import it next to the
+`LoggerConfig` it was built from, both exported, and contributing an
+`Observers` member that writes an observed operation's failure as a
+`<component>.<name> failed` line at `error` — a success writes nothing. Import it next to the
 application and export `Logger` if anything outside the root reads it — a
 bound `unit` module, a test:
 

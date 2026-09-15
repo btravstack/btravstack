@@ -24,7 +24,7 @@ the old repository.
 - **Every `ts` fence on the site, in the root README and in the package
   READMEs is compiled by `pnpm typecheck`, continuously.**
   The markers, the groups and how a page becomes one module are
-  `docs/scripts/extract-doc-samples.ts`'s header.
+  `scripts/extract-doc-samples.ts`'s header.
   A page whose fences import a package its group's workspace does not have
   needs that package as a **devDependency there**, ignored for it in
   `knip.json` — `examples/order-api` carries `@btravstack/prisma` and
@@ -98,8 +98,10 @@ the old repository.
 
   The rule that generalises: **an exemption justified by another gate's
   behaviour is only as true as that behaviour**, and nothing re-checks it. The
-  `doctest: skip` paragraph below is the same shape. If a third gate is ever
-  given a reason of this kind, verify the claim rather than the reason.
+  skip reason signature displays used to carry — "the surface it quotes is
+  compiled as the package itself" — was the same shape (**A signature display
+  is a gate, not a skip**, above). If a third gate is ever given a reason of
+  this kind, verify the claim rather than the reason.
 
   **The API hub is generated for the same reason** — `docs/scripts/build-api.ts`
   emits `api/index.md` from the `typedoc.*.json` files on disk, each entry
@@ -136,7 +138,7 @@ the old repository.
   The house style is `unthrown`'s; read a page there before writing one here.
 - The site's build is on the gate — `@btravstack/docs#build` is one of the
   tasks `pnpm build` runs; `dev` is not. A dead `#fragment` is
-  `check-anchors.ts`'s, which reads the **rendered** `dist` — its header says
+  `scripts/check-anchors.ts`'s, which reads the **rendered** `dist` — its header says
   why, and why markdownlint's `MD051` is off in `.markdownlint-cli2.jsonc`.
   `/api/` is skipped, since TypeDoc's cross-references are its own output —
   the same carve-out `ignoreDeadLinks` makes, and the skipped count is printed

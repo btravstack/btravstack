@@ -57,9 +57,9 @@ export type WorkflowSource =
 
 /**
  * Where the Temporal service is, as a service: `temporal()` binds it from the
- * environment — `TEMPORAL_ADDRESS` (default `127.0.0.1:7233`) and
- * `TEMPORAL_NAMESPACE` (default `default`) — unless pinned, and anything else
- * in the graph may read it.
+ * environment — `TEMPORAL_ADDRESS` (default `127.0.0.1:7233`),
+ * `TEMPORAL_NAMESPACE` (default `default`) and the shutdown budgets below —
+ * unless pinned, and anything else in the graph may read it.
  */
 export class TemporalConfig extends Port("TemporalConfig")<{
   readonly address: string;
@@ -170,9 +170,10 @@ export type TemporalTuning<Unit extends AnyUnitModule | undefined = undefined> =
   readonly gracePeriod?: Duration;
   /**
    * The unit module the worker forks around every activity attempt it
-   * dispatches, with no seed. Built after the activity is invoked, torn down
-   * when the unit closes — the point where a later phase seeds it with the
-   * workflow's tenant.
+   * dispatches, seeded with the validated input on `ActivityInput(contract)`.
+   * Built after the activity is invoked, before it runs; torn down when the
+   * unit closes. What it exports is what a piece may declare on its own
+   * `unit:` record.
    */
   readonly unit?: { readonly activity?: Unit };
 };
@@ -206,14 +207,14 @@ type Provided = TemporalRuntime | TemporalConfig | TemporalConnection;
 
 /**
  * The Temporal starter: a module providing the runtime, its configuration
- * (bound from `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE` unless pinned) and the
- * connection (a resource opened with the scope and closed with it; a service
- * that will not answer is a modeled `TemporalUnreachable`). Import it next to
- * the application, export `TemporalRuntime`, provide the activities — the
+ * (bound from the `TEMPORAL_*` variables unless pinned) and the connection (a
+ * resource opened with the scope and closed with it; a service that will not
+ * answer is a modeled `TemporalUnreachable`). Import it next to the
+ * application, export `TemporalRuntime`, provide the activities — the
  * activities port is a need of this module.
  *
- * With both configuration fields pinned the module reads nothing from the
- * environment; pin only one and the other still comes from it.
+ * Each configuration field is pinned on its own: a pinned field reads nothing
+ * from the environment, and a field left unpinned still does.
  */
 export const temporal = <
   C extends ContractDefinition,

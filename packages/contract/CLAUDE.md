@@ -3,8 +3,8 @@
 The contract package's public surface. The root `CLAUDE.md` is the
 authoritative spec for the kernel and the conventions; this file holds what
 only matters when you are working under `packages/contract/`. Keep it in
-sync with the code in the same commit, and with `README.md` — the package
-ships no `docs-examples.test-d.ts`, so nothing else compiles these claims.
+sync with the code in the same commit, and with `README.md` — the doc-samples
+gate compiles the README's unskipped `ts` fences, but nothing checks this file.
 
 ## What this is
 
@@ -89,7 +89,7 @@ applied by accident or written literally; it does **not** make it unforgeable.
 needs it, so a deliberate
 `node as unknown as Authenticated<typeof node, [{ user: [] }]>` types as
 protected while the registry stays empty: the type says marked so `HttpModule`
-demands an authenticator, `hasMarked` answers `false` at runtime so `routerOf`
+demands an authenticator, `isAuthenticated` answers `undefined` at runtime so `routerOf`
 installs no middleware, and the leaf serves unauthenticated. It
 takes a double cast to reach, which is the whole of the protection. Exporting
 the symbol would remove even that, which is why the TS2527 wart a consumer

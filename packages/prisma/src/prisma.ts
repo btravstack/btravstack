@@ -85,14 +85,10 @@ export const prismaDatabase =
     const open = (url: string): C => client(new PrismaPg({ connectionString: url }));
     const port = DatabasePort as PortClassOf<string, C>;
 
-    // Both arms are built and one is chosen, so the conditional return type is
-    // spelled by the arms themselves rather than by naming di's provider type.
-    // Building the unused one costs a descriptor; `Provider` constructs nothing.
-    //
-    // The seam differs from `cache`'s deliberately: there, instrumentation is a
+    // The seam differs from `cache`'s deliberately: there, observation is a
     // second port layering over the adapter's, because di allows one provider
     // per port per graph. Here a `query` extension wraps the client at
-    // construction, so one port suffices and the branch lives inside `acquire`.
+    // construction, so one port suffices and the wrapping lives inside `acquire`.
     const clientProvider = Provider(port)({
       inject: { settings: config.port, observers: Observers },
       acquire: ({ settings, observers }): AsyncResult<C, never> => {
@@ -109,8 +105,7 @@ export const prismaDatabase =
     // A MODULE, not three loose pieces. An application writes
     // `imports: [database]` and reads `database.port`; the config provider and
     // the resourceful provider are never its business, which is the bargain
-    // `cache({ adapter })` already makes. `needs` differs per arm because the
-    // instrumented provider reads three more ports.
+    // `cache({ adapter })` already makes.
     // `SELECT 1` rather than `$connect()`: a pooled client reports connected
     // while the server behind it is gone, so the probe has to make the server
     // answer something.

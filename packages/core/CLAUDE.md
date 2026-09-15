@@ -2,13 +2,13 @@
 
 The kernel's internals, and the reasoning behind its public surface — the
 surface itself is `docs/reference/core/`. The root `CLAUDE.md` carries the
-thesis and the conventions. All three sections below are load-bearing: keep
-them in sync with the code in the same commit.
+thesis and the conventions. The sections below are load-bearing: keep them in
+sync with the code in the same commit.
 
 ## Public surface
 
-- **`start(module, options?)`** — the gate (`StartGate<X, N>`) and its three
-  arms are `docs/reference/core/start.md`'s. A `Runtime` phantom carrying a
+- **`start(module, options?)`** — the gate (`StartGate<X, N>`) and its arms
+  are `docs/reference/core/start.md`'s. A `Runtime` phantom carrying a
   `fork` module's needs through this marker was tried and reverted: every
   shipped runtime port fixes its `Runtime` argument at declaration
   (`class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}`), so
@@ -36,11 +36,10 @@ PORTS`, a correct diagnosis of the second mistake that reads as a wrong one
   parser is two places for the all-zero rule to be forgotten. Its semantics are
   `docs/reference/core/runtime.md`'s.
 
-- **`releasedBy(signal, running)`** — `running`, but no later than the kernel's
-  drain deadline: `race([running, whenAborted(signal)])`, for a `Serving.drain`
-  whose work settles on somebody else's clock (Temporal's `shutdownForceTime`,
-  a broker's `close()`) and so cannot honour `signal` itself. Hoisted here in
-  #24, where it was duplicated verbatim in `@btravstack/temporal-worker` and
+- **`releasedBy(signal, running)`** — its semantics are
+  `docs/reference/core/runtime.md`'s; it races `running` against a private
+  `whenAborted(signal)`. Hoisted here in #24, where it was duplicated verbatim
+  in `@btravstack/temporal-worker` and
   `@btravstack/amqp-worker` with divergent TSDoc; it is runtime-author toolkit,
   which is why it sits beside the `Runtime` contract rather than in a shared
   internal. The losing branch's `Result` is **dropped** — once the deadline
@@ -48,12 +47,10 @@ PORTS`, a correct diagnosis of the second mistake that reads as a wrong one
   stays private: `releasedBy` is the whole use case, and its already-aborted
   arm is load-bearing, since `addEventListener` on an aborted signal never
   fires and the race would hang.
-- **`RuntimePort`** — `Port("Runtime")`, exported **generic** (no fixed
-  service): a runtime package declares its own concrete port over it —
-  `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}`
-  — so every runtime is one id at runtime while each carries its own
-  `Resolves`/`Info` in the type. `RuntimeOf<X>` / `RuntimeResolvesOf<X>` /
-  `RuntimeInfoOf<X>` read those back out of a module's exports (only
+- **`RuntimePort`** — its declaration, and why every runtime port shares one
+  id, are `docs/reference/core/runtime.md`'s. `RuntimeOf<X>` /
+  `RuntimeResolvesOf<X>` / `RuntimeInfoOf<X>` read a runtime's `Resolves` and
+  `Info` back out of a module's exports (only
   `RuntimeInfoOf` is exported — the other two are the gate's internals);
   `RuntimeInstance` is the shared instance type
   (`InstanceType<PortClass<"Runtime">>`, internal too). The two helper types
@@ -89,7 +86,7 @@ The `HealthChecks` list is **late-bound**: probes answer from `building`
 onward, which is before the graph declaring the checks exists, so `start` fills
 a holder once `Module.scoped` hands it a context. Until then `/healthz` reports
 healthy with no components, which is the honest answer while building. The
-surface is `docs/reference/core/probes.md` and `health.ts`.
+surface is `docs/reference/core/probes.md` and `src/health.ts`.
 
 ## Load-bearing runtime invariants (tests must guard these)
 
@@ -272,8 +269,8 @@ id> }`, which is checked before either.
   `start.test-d.ts` — `@ts-expect-error` accepts any error, so the sentence a
   reader is shown is asserted there or nowhere.
   `InstanceType<never>` is `never`, so a runtime resolving nothing works against any
-  module. `Needs` and `Info` are not type parameters of `start` any more: they
-  are read off `X` (`RuntimeResolvesOf<X>`, `RuntimeInfoOf<X>` — `ServiceOf` of
+  module. What the runtime resolves and its `Info` are not type parameters of
+  `start`: they are read off `X` (`RuntimeResolvesOf<X>`, `RuntimeInfoOf<X>` — `ServiceOf` of
   `Extract<X, RuntimeInstance>`, all in `runtime.ts`; only `RuntimeInfoOf` is
   exported from the package, the rest are the gate's internals), which is what
   lets `RunningApp<E, RuntimeInfoOf<X>>` type `runtimeInfo()` from the module
@@ -292,20 +289,20 @@ id> }`, which is checked before either.
 
 `packages/core/src/` is one concept per file.
 
-- **`Env` is provided by wrapping, not seeding.** `start` builds
-  `Module("Kernel")({ imports: [module, Module("Environment")({ provides:
-[Provider(Env)({ inject: {}, value: env })], exports: [Env] })], exports: [module] })`
-  — unless the module (or a module it imports, recursively: `providesEnv`)
-  already provides `Env` itself, in which case the wrap imports the module
-  alone, so an application supplying its own environment provider is not
-  handed a second `Env` and di's duplicate-provider gate does not fire —
-  and hands THAT to `Module.scoped`: di lets a module re-export an imported
-  module, so `X` stays exactly what the caller composed, and `Env` reaches
-  every provider — and every unit fork, since the built context holds all
-  services, not only the exports — through the ordinary graph. The cast to
-  `Module<X, E, Scope>` restates what the signature already promised
-  (`Module<X, E, Scope | Env>` in, `Env` discharged here). `Port("Env")` is
-  declared once, in `@btravstack/config`.
+- **`Env` is provided by wrapping, not seeding.** `start` wraps the module in a
+  `Kernel` module that imports it beside an `Environment` module providing
+  `Env` from `StartOptions.env`, and re-exports it (`src/start.ts`) — unless
+  the module (or a module it imports, recursively: `providesEnv`) already
+  provides `Env` itself, in which case the wrap imports the module alone, so an
+  application supplying its own environment provider is not handed a second
+  `Env` and di's duplicate-provider gate does not fire — and hands THAT to
+  `Module.scoped`: di lets a module re-export an imported module, so `X` stays
+  exactly what the caller composed, and `Env` reaches every provider — and
+  every unit fork, since the built context holds all services, not only the
+  exports — through the ordinary graph. The cast to `Module<X, E, Scope>`
+  restates what `StartGate` proved at the call site: `N` owes nothing beyond
+  `Scope | Env`, and the wrap discharges `Env`. `Port("Env")` is declared once,
+  in `@btravstack/config`.
 
 - **The kernel's own variables are read in ONE pass**, by `readKernelConfig`:
   `PROBE_PORT`, `PRE_DRAIN_DELAY_MS` and `DRAIN_TIMEOUT_MS` through the same
@@ -342,11 +339,11 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   which the wrapper turns into the defect it is.
 
 - **The needs check is a phantom marker intersected onto `module`, not a
-  trailing rest tuple.**
-  `module: Module<X, E, Scope | Env> & ([InstanceType<RuntimeResolvesOf<X>>] extends [X] ? unknown : "UNSATISFIED RUNTIME PORTS — …")`
-  (preceded by the `NO RUNTIME` arm on `Extract<X, RuntimeInstance>`) —
-  against the module's exports alone, never a fork's: a port a `fork` module
-  provides exists only in the `Context` `fork` hands back, and `RuntimeHost.ctx`
+  trailing rest tuple.** The marker is `StartGate<X, N>` (`src/start.ts`), and
+  its arms run in order: `UNSATISFIED DEPENDENCIES` on `N` first, then
+  `NO RUNTIME`, then `UNSATISFIED RUNTIME PORTS` on `RuntimeResolvesOf<X>` —
+  the last checked against the module's exports alone, never a fork's: a port
+  a `fork` module provides exists only in the `Context` `fork` hands back, and `RuntimeHost.ctx`
   is the application context, so a runtime naming it in `resolves` would
   type-check into a startup defect (`start.test-d.ts`'s `SpanApp` pins the
   rejection).
@@ -380,9 +377,10 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   application context whose exports cover what the runtime resolves is assignable to
   `Context<InstanceType<Resolves>>` with no work. The
   `ctx as unknown as Context<InstanceType<Resolves>>` inside `start`'s `use`
-  callback is needed only because the gate proves `InstanceType<Needs> extends X`
-  at the **call site**, and that proof is not visible to the checker inside a
-  body where `X` and `Needs` are still unresolved type parameters.
+  callback (`Resolves` being `RuntimeResolvesOf<X>`, `src/start.ts`) is needed
+  only because `StartGate` proves at the **call site** that the module's
+  exports cover what the runtime resolves, and that proof is not visible to the
+  checker inside a body where `X` is still an unresolved type parameter.
   `@btravstack/testing`'s `bootFixture` has the same problem
   and solves it the same way — by forwarding through a signature with the
   phantom marker already discharged.
@@ -558,6 +556,6 @@ fork }` and never opens a second scope, zero overhead beyond the `fork`
   `resolve` is idempotent, so the second SIGTERM — and the uncaught handler
   racing a signal — cannot rewrite the reason an application stopped.
 
-`Observers` (`observation.ts`), the set port every starter reports through: the
-reasoning is the root `CLAUDE.md`'s _Observability is a set port, never a
-flag_, and the surface is `docs/reference/core/observability.md`.
+`Observers` (`src/observation.ts`), the set port every starter reports
+through: the reasoning is the root `CLAUDE.md`'s _Observability is a set port,
+never a flag_, and the surface is `docs/reference/core/observability.md`.

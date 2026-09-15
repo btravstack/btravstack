@@ -11,17 +11,11 @@ way: `packages/di` must never import from another workspace package.
 
 All runtime code lives in `packages/di/src`, one concept per file:
 
-- **`port.ts`** — `Port("Id")` returns a phantom class; consumers write
-  `class OrderRepository extends Port("OrderRepository")<Shape> {}`. Identity is
-  nominal via module-private `unique symbol` brands (`ID`/`SERVICE`) —
-  deliberately unexported so port instances are unforgeable. `Scope` is a
-  phantom port (service shape `never`) that resourceful providers add to
-  `Needs`. `Port.many` creates SET PORTS — several providers contribute
-  members, and `Context.get` yields every one — with the static `many: true`
-  field as the runtime discriminant and the `[MANY]` brand as its type-level
-  twin.
+- **`port.ts`** — `Port`, `Port.many` and the type-only `Scope` are
+  `docs/reference/di/ports.md`'s. The brands (`ID`, `SERVICE`, `[MANY]`) stay
+  module-private `unique symbol`s, so a port instance cannot be forged.
 
-  They were removed in `38d85f7` and restored for health checks. The removal's
+  Set ports were removed in `38d85f7` and restored for health checks. The removal's
   reason was that an audit "found no consumer in any of the eight packages or
   ten examples" — true when written, and since expired: a starter that declares
   a health check and a kernel that collects every one is exactly this shape,
@@ -31,14 +25,9 @@ All runtime code lives in `packages/di/src`, one concept per file:
   counts against member totals, because keyed by bare `portId` the first member
   to land would drop its not-yet-placed siblings.
 
-- **`provider.ts`** — `Provider(Port)({ inject: { name: Dep }, ...arm })` with a
-  construction family of
-  mutually exclusive option arms: `value` / `sync` / `make` (fallible, returns
-  `Result`) / `class` / `acquire`+`release` (resourceful — puts `Scope` in
-  `Needs`). Exclusivity is enforced by giving each arm the other keys as optional
-  `never`. `Provider.member` contributes one member to a set port. Dependencies are
-  a **record**, never an array or a parameter list, and the
-  factory receives one services record keyed the same way.
+- **`provider.ts`** — the construction arms, the `inject` record and
+  `Provider.member` are `docs/reference/di/providers.md`'s. Arm exclusivity is
+  enforced by giving each arm the other keys as optional `never`.
 
   **`inject` rides in the same options object, and it is REQUIRED** (issue
   #227). One signature, one runtime path reading one key: the two overloads
@@ -68,15 +57,11 @@ prismaOrderRepository(db) }` — an adapter factory takes the client, not a
   of them single-dependency, and the cheaper fix if the arrow grates is those
   five adapter factories taking `{ db }` instead of `db`.
 
-- **`module.ts`** — the `Module<Exports, E, Needs>` algebra. Four option
-  tuples — `imports`, `provides`, `exports`, `needs` — and three phantom
-  channels with a deliberate variance rule: capability channels (`_exports`) are
-  contravariant ("you may forget what you have"), obligation channels (`_error`,
-  `_needs`) are covariant ("you may not forget what you owe"). Entry points hang
-  off the `Module` const: `Module.build` (requires `Needs = never`),
-  `Module.scoped` (opens a scope, excludes `Scope` from the check, guarantees
-  close on every path), `Module.forkScope` (per-request scope seeded from a built
-  parent `Context`). Unmet dependencies are compile errors via `DependencyGate`, a
+- **`module.ts`** — the `Module<Exports, E, Needs>` algebra: its option lists,
+  channels and variance rule are `docs/reference/di/modules.md`'s, and the
+  entry points hanging off the `Module` const are
+  `docs/reference/di/entry-points.md`'s. Unmet dependencies are compile errors
+  via `DependencyGate`, a
   marker intersected onto each entry point's `module` parameter (issue #93):
   `unknown` when the remaining `Needs` is `never` — invisible in an
   intersection — and `{ readonly "UNSATISFIED DEPENDENCIES — nothing
@@ -105,13 +90,8 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   `needs` is the fourth tuple and the subject of **Module visibility** below:
   what this module expects a composition root to supply, named. Anything it
   owes and did not name is refused at the `Module(name)({...})` call by
-  `NeedsGate`, which rides an intersection on the options parameter.
-  `exports` accepts an available **port class**, a **provider** for
-  one (normalised to `provider.port` when the module is built, so the stored
-  `exports` array stays `readonly (AnyPort | AnyModule)[]`, and yielding the
-  identical `Exports` channel either way), or an imported module. The provider
-  arm is what the port-minting helpers need — `Config.provider(name)(schema)`,
-  `OrpcController(contract, path)` — where there is no class to name.
+  `NeedsGate`, which rides an intersection on the options parameter. What
+  `exports` accepts is `docs/reference/di/modules.md`'s.
 
 - **`build.ts`** — `flatten` (dedupe by provider reference), `plan` (levels
   providers for concurrent construction; detects cycles, duplicate providers,
@@ -139,36 +119,27 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   Keep it for that, and do not "verify" it by deleting it and watching the
   gate stay green — the gate is answering a different question.
 
-  `PortInstance` and **`PortClassOf<Id, Service>`**
-  (`{ portId: Id; new (): PortInstance<Id, Service> }`, both types only) so a
-  provider over a port declared inside a helper — one minted per call
-  (`Config.provider("RelayConfig")(schema)`) or the helper's own fixed one
-  (`OrpcRouter(contract)({ inject: { name: Dep }, sync })`, on `@btravstack/http-server`'s
-  `OrpcRouterPort`) — has a nameable
-  declared type when a consumer exports it: the class expression
-  `class extends Port(id)<S> {}` has an anonymous type declaration emit cannot
-  name across packages (TS4023, measured), `PortClassOf` is its nameable
-  spelling, and naming the instance type forges nothing (the brand keys stay
-  private). `Provider(port)({ inject: { name: Dep }, ...arm })`'s return type is `Provider<P, E, N> &
-{ readonly port: typeof port }` — the provider carries its port class typed,
-  so `provider.port` is what a dependent lists in its deps; purely additive. `AnyModule`, `AnyProvider`,
-  `Exportable` and **`NeedsGate`** are exported so a package offering a **shaped module** (a
-  starter's `HttpModule(name)({ router, imports, provides, exports })` sugar,
-  which appends its own import and export to what the application wrote) can
-  constrain its `imports`/`provides`/`exports` the way `Module(name)` does and
-  then hand those tuples to `Module(name)({...})` itself — whose return type is
-  then the sugar's, spelled once, here. (Spelling it again in the sugar
-  through a named generic alias was tried and removed: declaration emit keeps
-  such an alias unreduced and cannot name imported modules' internal ports —
-  TS2883 on the first consumer. `ModuleDeclaration`'s own return type stays
-  inline for the same reason.)
+  `PortInstance` and `PortClassOf` (`docs/reference/di/ports.md`) give a
+  provider on a helper-minted port — `Config.provider("RelayConfig")(schema)`,
+  or a starter's fixed port such as the one `api.OrpcRouter(contract)(…)`
+  targets, `api` being `defineHttp`'s binding — a nameable declared type: the
+  class expression `class extends Port(id)<S> {}` is anonymous, and a consumer
+  exporting such a provider fails declaration emit with TS4023 (measured). The
+  typed `provider.port` is `docs/reference/di/providers.md`'s. `AnyModule`,
+  `AnyProvider`, `Exportable` and `NeedsGate` are exported for a starter's
+  shaped module, as `docs/reference/di/modules.md` states. Spelling the shaped
+  module's return type again in the sugar through a named generic alias was
+  tried and removed: declaration emit keeps such an alias unreduced and cannot
+  name imported modules' internal ports — TS2883 on the first consumer.
+  `ModuleDeclaration`'s own return type stays inline for the same reason.
 
 ### The one example that came with it
 
 `examples/di-hexagonal` is the one that survived the merge, on the
 declaration-emit guard the root `CLAUDE.md` describes. If a set-port or
-forked-scope example is ever wanted again, write it from `many.spec.ts` and
-`fork.spec.ts` rather than restoring a workspace whose tests were duplicates.
+forked-scope example is ever wanted again, write it from `src/many.spec.ts`
+and `src/fork.spec.ts` rather than restoring a workspace whose tests were
+duplicates.
 
 ## Module visibility: a need is DECLARED, never absorbed
 

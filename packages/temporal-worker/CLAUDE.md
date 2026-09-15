@@ -1,35 +1,21 @@
 # packages/temporal-worker
 
-The Temporal worker starter's public surface. The root `CLAUDE.md` is the
-authoritative spec for the kernel and the conventions; this file holds what only
-matters when you are working under `packages/temporal-worker/`. Keep it in sync
-with the code in the same commit, and with `README.md` — the package ships no
-`docs-examples.test-d.ts`, so nothing else compiles these claims.
+The Temporal worker starter's decisions, gotchas and exclusions. Its surface —
+every export, option and default — is `docs/reference/temporal-worker.md`, and
+the root `CLAUDE.md` is the authoritative spec for the kernel and the
+conventions; this file holds what only matters when you are working under
+`packages/temporal-worker/`. Keep it in sync with the code in the same commit:
+the doc-samples gate compiles the `ts` fences of `README.md` and the reference
+page, never this file.
 
-## Public surface
+## Decisions and gotchas
 
-- **`TemporalModule(name)({ contract, activities, workflows, address?,
-namespace?, gracePeriod?, forceAfter?, unit?, imports?, provides?, exports?, needs? })`** —
-  THE way an application writes its worker root; `temporal-module.ts`, the
-  same shape as `@btravstack/http-server`'s `HttpModule`. `activities` is the
-  **provider** of the starter's activities port for THIS contract — a plain
-  `Provider<ActivitiesInstanceOf<C>, ActivitiesError, ActivitiesNeeds>`, which
-  is what `TemporalActivities(contract)({ inject, unit?, sync })` returns — so a provider
-  of anything but the implementations record for `contract` fails there
-  (structurally, on the record: one built for another contract is refused).
-  It delegates to `temporal({ contract, workflows, … })` and hands the
-  augmented tuples — `Imports<I, C, Unit>` / `Provides<P, C, ActivitiesError,
-ActivitiesNeeds>`, readonly and exact — to di's own
-  `Module(name)({...})`, whose return type IS the sugar's: nothing spelled
-  twice (di exports `AnyModule`, `AnyProvider`, `Exportable` for the tuple
-  constraints; a named generic alias for the return was tried and removed,
-  TS2883). The starter's type in that tuple is always `Module<Provided,
-ConfigInvalid | TemporalUnreachable, Env | Scope | ActivitiesInstanceOf<C> |
-UnitNeedsOf<Unit>>`,
-  pins or not — `Env` is discharged by `start` anyway. `TemporalModuleOptions`
-  is exported for the type. Covered by `test-fixtures.ts`'s `compose`, which
-  is written with it. `temporal()` stays exported as the primitive it
-  delegates to.
+- **`TemporalModule`'s return type is di's own `Module(name)({...})` over the
+  augmented tuples, never a named alias.** A named generic alias was tried and
+  removed: declaration emit keeps it unreduced and cannot name imported
+  modules' internal ports (TS2883, measured on `HttpModule`).
+  `test-fixtures.ts`'s `compose` is written with the sugar, so the suite
+  exercises it.
 
   `TemporalModule` also takes **`needs`**, forwarded to di's own — what this
   root's OWN providers expect from outside. The starter's `Env` is not among them: the

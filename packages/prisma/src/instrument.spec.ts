@@ -22,7 +22,7 @@ describe("instrument", () => {
     // WHEN a query runs to completion
     await client.query("Order", "findMany", Promise.resolve(["a"]));
 
-    // THEN the call is recorded untraced, because `@btravstack/prisma/otel`
+    // THEN the call is recorded untraced, because `@prisma/instrumentation`
     // traces at the ENGINE level and a second client-level span would carry
     // strictly less
     expect(observed.taken()).toEqual([

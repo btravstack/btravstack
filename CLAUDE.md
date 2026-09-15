@@ -496,11 +496,11 @@ supertype could have made for it.
 cursor arithmetic, in the adapter, and answers `[rows, meta]` with
 `InvalidCursor` as its one modeled failure. `examples/order-infrastructure`'s
 `list` is the worked case: the library's shape stops at the adapter exactly as
-`UniqueConstraintViolation` does, and the application declares its own
-`Page<T>` / `PageRequest` / `MalformedCursor` (`order-application`'s
-`pagination.ts`) — declared once for the layer rather than per repository, with
-no framework type in any port. Nothing here needs to ship for that to be true,
-which is why nothing does.
+`UniqueConstraintViolation` does. The ports speak `@btravstack/contract`'s
+`Page<T>` / `PageRequest` — the normed page a client needs as much as the
+server, which is why it lives in the contract tier — and the application
+declares only its own `MalformedCursor` (`order-application`'s
+`pagination.ts`). No persistence type reaches a port.
 
 **A flag and its cursor are ONE fact, at both ends of the wire** — why
 `Page<T>` is an intersection of two unions while the contract's schema is a

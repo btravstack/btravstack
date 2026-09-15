@@ -166,23 +166,25 @@ export const DocumentsApp = Module("ReferenceDocumentsApp")({
 });
 ```
 
-| Signal  | Name                                                                                                                     | Attributes                                              |
-| ------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
-| span    | `storage.put` / `.get` / `.delete` / `.presigned_url` / `.presigned_upload`                                              | `btravstack.storage.key`; error status on a failure     |
-| counter | `btravstack.storage.operations`                                                                                          | `{ operation, outcome }` — `ok`, `not_found` or `error` |
-| log     | `"the object was not there"` / `"this store cannot mint a url"` at **`info`**; `"the store could not answer"` at `error` | `{ operation, key }`, with the failure as the cause     |
+| Signal    | Name                                                                        | Attributes                                                                                                                                        |
+| --------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| span      | `storage.put` / `.get` / `.delete` / `.presigned_url` / `.presigned_upload` | `btravstack.storage.key`; error status on a failure                                                                                               |
+| counter   | `btravstack.storage.operations`                                             | `{ operation, outcome, result }` — `outcome` is `ok` or `error`; `result` is `ok`, `not_found` or `error`, and a `not_found` carries its `reason` |
+| histogram | `btravstack.storage.duration`                                               | the same as the counter                                                                                                                           |
+| log       | `"storage.<operation> failed"` at `error`, for `StorageUnavailable` only    | `operation`, the key and `result`, with the failure as the cause                                                                                  |
 
-**A missing object is counted apart and logged at `info`, not `error`.**
-Asking for something that is not there is an ordinary answer — a caller
-checking whether a document exists yet meets it on the happy path — and a
-dashboard that treats it as a fault teaches its readers to ignore the fault
-line. `StorageUnavailable` is what pages somebody.
+**A missing object settles `ok`, counted apart by `result: "not_found"`, and
+writes no line.** Asking for something that is not there is an ordinary answer
+— a caller checking whether a document exists yet meets it on the happy path —
+and a dashboard that treats it as a fault teaches its readers to ignore the
+fault line. `StorageUnavailable` is what pages somebody, and the only failure
+that settles `error`.
 
-**A presign refusal shares that outcome and not that message.** It is the same
-class of answer, so the counter says `not_found` for both — but the line says
-`"this store cannot mint a url"`, because the object may be sitting exactly
-where it was put, and an operator reading "the object was not there" would go
-hunting for nothing.
+**A presign refusal shares that result and not its words.** It is the same
+class of answer, so both carry `result: "not_found"` — but its `reason` says
+`"this store cannot mint a url"` where a missing object's says `"the object
+was not there"`, because the object may be sitting exactly where it was put,
+and an operator reading the latter would go hunting for nothing.
 
 **Observation is a set port, not a flag.** Every call is handed to whatever
 contributed to `Observers`, and this module contributes a no-op member of its

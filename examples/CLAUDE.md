@@ -7,15 +7,14 @@ is the index of the workspaces themselves.
 
 ## The examples are part of the gate
 
-- **`examples/` is part of the gate, not a folder of illustrations.** All
-  ten workspaces run under the same six commands as the kernel — their specs
-  plus four `needs-gate.test-d.ts` files, four `layering.test-d.ts` ones and
-  `di-hexagonal`'s `index.test-d.ts` —
-  so an example that stops compiling, stops linting or stops passing fails CI
-  exactly as `packages/core` would. Three of the four needs-gate files pin
+- **`examples/` is part of the gate, not a folder of illustrations.** Every
+  workspace runs under the same six commands as the kernel — its specs and its
+  `*.test-d.ts` files — so an example that stops compiling, stops linting or
+  stops passing fails CI exactly as `packages/core` would. The deployments'
+  `needs-gate.test-d.ts` files pin
   **`start`'s** gate (`order-api`, `order-temporal-worker`,
-  `order-amqp-worker` — its `NO RUNTIME` arm, since no starter's runtime
-  resolves anything any more; `order-api`'s also pins the `unit` halves) and
+  `order-amqp-worker` — its `NO RUNTIME` arm; `order-api`'s also pins the
+  `unit` halves) and
   the **unmet need** on the starter's port (a composition importing `http()` /
   `temporal({ contract, workflows })` / `amqp({ contract })` without providing
   the router / activities / handlers carries the starter's port in `Needs`, and
@@ -26,7 +25,7 @@ is the index of the workspaces themselves.
   `UNSATISFIED DEPENDENCIES` gate on `Module.scoped` — `DependencyGate`, a
   marker on the `module` parameter since issue #93, whose message ends on the
   missing ports:
-  `'{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": Logger | OrderRepository; }'`
+  `'{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": Logger | OrderRepository | Tenant; }'`
   (it was a rest-tuple arity error printing `Expected 5 arguments, but got 2`
   and nothing else).
   A **fourth** mechanism joined them in #50 and is pinned beside the third:
@@ -38,7 +37,7 @@ is the index of the workspaces themselves.
   prints a name. Do not call the second "di's `UNSATISFIED DEPENDENCIES` gate": an
   earlier revision of this file did, and it is wrong in both halves. `start`'s
   `UNSATISFIED RUNTIME PORTS` arm is pinned only by `packages/core`'s own
-  `start.test-d.ts`, since every shipped runtime declares `resolves: []`.
+  `start.test-d.ts`.
   **The contract says WHICH SCHEMES protect a route, and which
   scopes each must grant; the application's `defineHttp({ authenticators })`
   says WHAT each scheme resolves to.**
@@ -91,13 +90,14 @@ is the index of the workspaces themselves.
     `globalSetup` — as the **owner**, then provisioning `orders_app` and
     writing that role's URL, so `pnpm dev` runs under the same row security
     the specs do — and writes `DATABASE_URL` / `AMQP_URL` /
-    `TEMPORAL_ADDRESS` / `REDIS_URL` / `SMTP_URL` / the four `STORAGE_S3_*` /
-    the three `HTTP_JWT_*`. They are written to a file rather than defaulted
+    `TEMPORAL_ADDRESS` / `REDIS_URL` / `SMTP_URL` / `STORAGE_S3_*` /
+    `HTTP_JWT_*` / `HTTP_OIDC_*` / `HTTP_SESSION_KEYS`. They are written to a
+    file rather than defaulted
     because the ports are whatever Docker mapped, and an ephemeral mapped
     port cannot be a default. `--env-file` is Node's own; no `dotenv`.
-  - **`PROBE_PORT` is `0` in each `dev` script, and so is the API's `PORT`**:
+  - **`PROBE_PORT` is `0` in each `dev` script**:
     `PROBE_PORT` defaults to `9000` for every application, so on one machine
-    two of the three would fail with `RuntimeStartFailed` for `"probes"` —
+    all but one of them would fail with `RuntimeStartFailed` for `"probes"` —
     the kernel reporting an `EADDRINUSE` correctly, since in production each
     pod has the port to itself. Hardcoding `9000`/`9001`/`9002` fixed that and
     broke on parallel **worktrees**, which this repository uses constantly.
@@ -110,13 +110,13 @@ is the index of the workspaces themselves.
     `preDrainDelayMs: 5_000` then up to `drainTimeoutMs: 20_000`. To watch a
     real drain, run the entry point without `watch`. Measured end to end:
     `draining` → `drained` exactly 5.002 s later → `stopping` → `exited 0`.
-  - **The root `dev` script is filtered for a reason.** Sixteen workspaces
-    have a `dev` script (thirteen packages' watch-builds, `docs`, three examples),
+  - **The root `dev` script is filtered for a reason.** Every package has a
+    watch-build `dev` script, and so do `docs` and each example deployment,
     and turbo refuses more persistent tasks than its concurrency — so the
     unfiltered `turbo run dev` the root carried was **already broken** before
-    this, failing on ten persistent tasks against a concurrency of ten.
+    this.
 
-    The thirteen package scripts are not dead for being unreachable from the
+    The package scripts are not dead for being unreachable from the
     root. `dev` depends on `^build`, not `^dev`, so a package's
     `tsdown --watch` is reached only by an explicit
     `pnpm --filter @btravstack/core dev` in a second terminal — which is the
@@ -126,7 +126,7 @@ is the index of the workspaces themselves.
     `tsx watch`'s default `**/node_modules/**` ignore: `tsdown` rewrites the
     package's `dist` and the example reloads. Measured, because an audit
     scanning for callers finds none of these scripts and proposes cutting all
-    thirteen — the consumer is a contributor, not code.
+    of them — the consumer is a contributor, not code.
 
 ## The example application is multi-tenant
 
@@ -252,10 +252,12 @@ is the index of the workspaces themselves.
 
 ## What each deployment consumes
 
-Each composition root is its deployment's `src/module.ts` — `OrderApi`,
-`OrderTemporalWorker`, `OrderAmqpWorker` — whose TSDoc says why it is shaped
-the way it is; the slice modules, the unit modules and the `main.ts` files
-carry their own.
+Each composition root is its deployment's module file —
+`examples/order-api/src/module.ts` (`OrderApi`),
+`examples/order-temporal-worker/src/module.ts` (`OrderTemporalWorker`) and
+`examples/order-amqp-worker/src/module.ts` (`OrderAmqpWorker`) — whose TSDoc
+says why it is shaped the way it is; the slice modules, the unit modules and
+each deployment's `src/main.ts` carry their own.
 
 - Each metric an application mints sits at an adapter seam, never in the
   application layer — the outbox relay's per-tenant `relayed` counter, the

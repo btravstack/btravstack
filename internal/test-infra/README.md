@@ -167,10 +167,10 @@ so the dev loop needs an issuer of its own — the specs use
 TENANT=0199a1e0-0000-7000-8000-000000000001 # a UUIDv7
 TOKEN=$(pnpm dev:token -- --tenant "$TENANT") || exit
 
-# the port is the one the API's `serving` event logged, `PORT=0` in its dev script
+# the API listens on `PORT=3000`, which its dev script sets
 curl -s -H "authorization: Bearer $TOKEN" \
      -H 'content-type: application/json' -d '{"json":{}}' \
-     http://localhost:57234/rpc/orders/list
+     http://localhost:3000/rpc/orders/list
 ```
 
 `--tenant` is required and must be a **UUIDv7**: `principal` parses it with

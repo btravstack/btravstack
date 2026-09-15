@@ -38,7 +38,7 @@ dual-copy hazard is what they exist to prevent.
 **`devDependencies` included** — and it cannot do that for a workspace package
 that has no `version` field. `@btravstack/internal-test-infra` is `private: true`
 and had none, which is why the `0.3.0` release published `@btravstack/di` and
-then failed on the five packages that devDepend on it:
+then failed on the packages that devDepend on it:
 
 ```text
 ERR_PNPM_CANNOT_RESOLVE_WORKSPACE_PROTOCOL: Cannot resolve workspace protocol

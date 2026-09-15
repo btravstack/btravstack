@@ -1,43 +1,21 @@
 # packages/amqp-worker
 
-The AMQP starter's public surface. The root `CLAUDE.md` is the authoritative
-spec for the kernel and the conventions; this file holds what only matters
-when you are working under `packages/amqp-worker/`. Keep it in sync with the code in
-the same commit, and with `README.md` — the package ships no
-`docs-examples.test-d.ts`, so nothing else compiles these claims.
+The AMQP starter's decisions, gotchas and exclusions. Its surface — every
+export, option and default — is `docs/reference/amqp-worker.md`, and the root
+`CLAUDE.md` is the authoritative spec for the kernel and the conventions; this
+file holds what only matters when you are working under
+`packages/amqp-worker/`. Keep it in sync with the code in the same commit: the
+doc-samples gate compiles the `ts` fences of `README.md` and the reference
+page, never this file.
 
-## Public surface
+## Decisions and gotchas
 
-- **`AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, unit?, imports?, provides?, exports?, needs? })`**
-  (`amqp-module.ts`) — THE way an application declares an AMQP deployment:
-  `Module(name)({...})` plus the contract and the handlers **provider**. It
-  appends `amqp({ contract, … })` to `imports`,
-  prepends the provider to `provides` and `AmqpRuntime` to `exports`, and
-  hands the augmented tuples — `Imports<I, TContract, Unit>` / `Provides<P,
-TContract, HandlersError, HandlersNeeds>`, readonly and exact — to
-  di's own `Module(name)({...})`, whose return type IS the sugar's: nothing
-  spelled twice (di exports `AnyModule`, `AnyProvider`, `Exportable` for the
-  tuple constraints; a named generic alias for the return was tried and
-  removed — declaration emit keeps it unreduced and cannot name imported
-  modules' internal ports, TS2883, measured on `HttpModule`). `handlers` is a
-  plain `Provider<HandlersInstanceOf<TContract>, HandlersError,
-HandlersNeeds>` — a provider on the starter's handlers port typed for THIS
-  contract, which is what `AmqpHandlers(contract)({ inject, unit?, sync })` returns — so a
-  provider whose service is not the contract's handlers fails at the call,
-  structurally on the record: one built for another contract is refused
-  (`amqp-runtime.test-d.ts` pins it). There is no port to read off it: the
-  starter needs its own port, and the sugar's job is to provide it. The
-  starter it adds
-  is typed `Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env |
-HandlersInstanceOf<TContract> | UnitNeedsOf<Unit>>` whether or not `url` is pinned — one declared
-  type, no
-  overload pair — so a pinned composition still carries `ConfigInvalid` in its
-  error channel (the package's own `App` fixture type is
-  `RunningApp<ConfigInvalid, AmqpInfo>` for that reason). Covered by the
-  package's own `consuming` fixture, which composes every `serve` /
-  `serveBroken` app through it. `AmqpModuleOptions` is
-  the exported options type. `AnyAmqpContract` is exported from
-  `amqp-runtime.ts` for the sugar's bound, not from `index.ts`.
+- **`AmqpModule`'s return type is di's own `Module(name)({...})` over the
+  augmented tuples, never a named alias.** A named generic alias was tried and
+  removed: declaration emit keeps it unreduced and cannot name imported
+  modules' internal ports (TS2883, measured on `HttpModule`). The package's
+  `consuming` fixture composes every `serve` / `serveBroken` app through the
+  sugar.
 - **`AmqpHandlers(contract)`** takes the contract as a value only its type
   reads. Same shape as `@btravstack/http-server`'s `OrpcRouter(contract)` and
   `@btravstack/temporal-worker`'s `TemporalActivities(contract)` — unlike
@@ -106,10 +84,10 @@ HandlersInstanceOf<TContract> | UnitNeedsOf<Unit>>` whether or not `url` is pinn
 - **`@amqp-contract/worker` is a peer; `@amqp-contract/contract` is not.**
   The package's value imports (`TypedAmqpWorker`) and its public types
   (`WorkerInferHandlers`, through `HandlersInstanceOf`) live in `worker`, and
-  bundling it cost two orders of magnitude of dist size: 344 KB, measured at
-  the commit where it was still bundled, against **~6 KB** peered (`pnpm
---filter @btravstack/amqp-worker build`'s own report — re-measure rather than
-  trust this number).
+  bundling it cost more than an order of magnitude of dist size: 344 KB at the
+  commit where it was still bundled, a few KB peered. Re-measure with
+  `pnpm --filter @btravstack/amqp-worker build` rather than trust either
+  figure.
 - **Not included, deliberately**: `Result` → ack / retry / DLQ, which is a
   **three-way** split rather than the library's alone. A modeled
   `RetryableError` / `NonRetryableError` is routed by `amqp-contract`'s own

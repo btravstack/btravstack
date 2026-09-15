@@ -2,12 +2,12 @@
 
 The application-service port for sending mail: a `Mailer` an application
 depends on, adapters that provide the `MailerBackend` behind it, and one
-composition function that binds them together, with every send reported is
-spanned, counted and logged.
+composition function that binds them together, with every send reported to
+`Observers`.
 
 The second of issue #62's three ports, on `@btravstack/cache`'s shape exactly
-— read that package's `CLAUDE.md` for the two-port rationale and the
-conditional return type; only what differs is written out here.
+— read that package's `CLAUDE.md` for the two-port rationale; only what
+differs is written out here.
 
 ## Public surface
 
