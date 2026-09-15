@@ -136,7 +136,7 @@ export const prismaDatabase =
           loadPrismaInstrumentation(logger),
     });
 
-    const chosen = Module(name)({
+    const database = Module(name)({
       needs: [Env, Logger],
       provides: [
         config,
@@ -157,7 +157,7 @@ export const prismaDatabase =
     // The cast is what carries BOTH halves: `Object.assign` over a conditional
     // first argument widens to the added property alone, dropping the module's
     // own shape.
-    return Object.assign(chosen, { port: DatabasePort }) as typeof chosen & {
+    return Object.assign(database, { port: DatabasePort }) as typeof database & {
       readonly port: PortClassOf<N, C>;
     };
   };

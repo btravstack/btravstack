@@ -141,5 +141,5 @@ server or a worker.
 
 ```bash
 pnpm --filter @btravstack/example-order-application test        # 9 specs
-pnpm --filter @btravstack/example-order-application test:types  # the needs gate
+pnpm --filter @btravstack/example-order-application typecheck   # the needs gate rides it
 ```

@@ -559,3 +559,9 @@ fork }` and never opens a second scope, zero overhead beyond the `fork`
 `Observers` (`src/observation.ts`), the set port every starter reports
 through: the reasoning is the root `CLAUDE.md`'s _Observability is a set port,
 never a flag_, and the surface is `docs/reference/core/observability.md`.
+`observed(observers, operation, call, settled?)` is `observe` wrapped around
+one `() => AsyncResult<T, E>`, settling from whichever channel the call comes
+back on, with `settled.ok` / `settled.failure` replacing either default where a
+starter has more to say. It exists so cache, mailer and storage do not each
+carry the same `tap`/`tapFailure` pair; `observation.spec.ts`'s `observed`
+block pins both defaults, the defect arm and both hooks.

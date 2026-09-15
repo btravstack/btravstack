@@ -3,7 +3,7 @@
  * rather than by review: a publisher has to be able to describe what it sends
  * with nothing but the contract — not the worker that consumes it, its di
  * wiring, its persistence or the kernel. This file fails to resolve on
- * purpose, and `test:types` fails if it ever stops failing, which is what
+ * purpose, and `typecheck` fails if it ever stops failing, which is what
  * would happen the moment someone added the worker package to this package's
  * dependencies.
  */

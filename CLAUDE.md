@@ -521,7 +521,11 @@ above is what it would have to satisfy — an adapter, not a base class.
 A starter reports what it did to `Observers` — declared in `@btravstack/core`,
 contributed to by `@btravstack/observability` — and holds no `Logger`, `Meter`
 or `Tracer` of its own. `observe(observers, operation)` starts every member and
-hands back the one finisher that settles them all.
+hands back the one finisher that settles them all; `observed(observers,
+operation, call, settled?)` is that wrapped around one `AsyncResult`-returning
+call, settling `ok` or `error` from the channel the call came back on, so a
+starter's instrumentation is one line per method rather than a `tap` /
+`tapFailure` pair each.
 
 **This replaced an `instrumented` flag on six packages, and the flag was the
 mistake.** It defaulted to `true`, which put `Logger`, `Meter` and `Tracer` in
@@ -663,10 +667,11 @@ in its place.
   declaration for the workspace's type environment, not a test helper, which
   is the reason it reads as belonging in `src` anyway.
 
-  Coverage exclusions become one entry per workspace, `"src/__tests__/**"`,
-  in place of naming each artifact — which is worth having, because
-  `@btravstack/cache` shipped with that list one entry short and counted a
-  type test as uncovered source.
+  The coverage block is stated ONCE, as `vitest.shared.ts`'s `covered()`,
+  which every published package merges over the shared config — it used to
+  be thirteen copies, and `@btravstack/cache` shipped with its copy one
+  exclusion short, counting a type test as uncovered source. A package with
+  more to exclude names only the extra file (`covered("src/test-workflows.ts")`).
 
   **Three import forms break when one of these files moves, and only the
   first is caught by the compiler**: a static `from "./x.js"`, a dynamic

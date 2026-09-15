@@ -153,10 +153,7 @@ export const otel = (
       // the global providers the getters read are the configured ones.
       Provider(Tracer)({
         inject: { sdk: OtelSdk },
-        sync: () => {
-          const tracer = trace.getTracer("@btravstack/observability");
-          return { startSpan: (name) => tracer.startSpan(name) };
-        },
+        sync: () => trace.getTracer("@btravstack/observability"),
       }),
       Provider(Meter)({
         inject: { sdk: OtelSdk },

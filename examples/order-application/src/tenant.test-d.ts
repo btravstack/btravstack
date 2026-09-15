@@ -8,7 +8,7 @@
  * BRAND is what keeps `(TenantId, string)` unswappable, since two `string`s
  * in a fixed order are what the compiler has nothing to say about.
  *
- * Type-checked by this package's `test:types` script, never executed.
+ * Type-checked by this package's `typecheck` script, never executed.
  */
 import type { ServiceOf } from "@btravstack/di";
 import { TenantId } from "@btravstack/example-order-domain";

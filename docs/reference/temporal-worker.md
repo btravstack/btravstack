@@ -685,5 +685,5 @@ an array missing a key refused at the composing call, and a piece built for
 another contract refused there too. It and `@btravstack/amqp-worker`'s
 `handler.test-d.ts` are deliberate mirrors, so a gate added to one belongs in
 the other — they drifted apart once (issue #51). Checked by
-`tsc -p tsconfig.test-d.json`, which the package's own `test:types` script
-runs and `typecheck` runs alongside the ordinary `tsc --noEmit`.
+`tsc -p tsconfig.test-d.json`, which the package's own `typecheck` script runs
+alongside the ordinary `tsc --noEmit`.

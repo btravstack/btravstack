@@ -73,7 +73,7 @@ dependencies by name`; a positional array is refused as
   `examples/order-api-contract`'s dependencies, not `examples/order-api`'s, so
   a fragment is compiled where it lives — though a marker removed from it
   still fails this file, since the controllers are typed by it. No config
-  change was needed; the workspace already wires `test:types`.
+  change was needed; the workspace already runs the test-d pass under `typecheck`.
 
 - **The local loop is the production shape, not an exception to it** (issue
   #67). Three deployments meant three terminals, and the tempting fix — a

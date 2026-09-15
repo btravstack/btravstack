@@ -3,7 +3,7 @@
  * that routes a resourceful graph through `Module.scoped`. Both are
  * compile-time guarantees, so — mirroring the library's own
  * `example.test-d.ts` — this file's bodies are type-checked (this package's
- * `test:types` script, `tsc --noEmit -p tsconfig.test-d.json`) but never
+ * `typecheck` script, `tsc --noEmit -p tsconfig.test-d.json`) but never
  * executed: `vitest.config.ts`'s `include` only matches `*.spec.ts`, so
  * `vitest run` never loads this file at all. That split matters more than
  * usual here — `ctx` below stands in for a `Context` that is never actually

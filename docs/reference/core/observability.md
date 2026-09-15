@@ -6,6 +6,7 @@ description: The Logger, Tracer, Meter and Observers ports the kernel declares �
 <!-- doctest: prelude
 import { Port } from "@btravstack/di";
 import type { Attributes, Operation, Settle, Settled } from "@btravstack/core";
+import type { AsyncResult, FailureView } from "unthrown";
 -->
 
 # Observability contracts
@@ -196,6 +197,15 @@ const observe: (
   operation: Operation,
 ) => Settle;
 const noObserver: () => Settle;
+const observed: <T, E>(
+  observers: readonly ((operation: Operation) => Settle)[],
+  operation: Operation,
+  call: () => AsyncResult<T, E>,
+  settled?: {
+    readonly ok?: (value: T) => Settled;
+    readonly failure?: (failure: FailureView<E, T>) => Settled;
+  },
+) => AsyncResult<T, E>;
 ```
 
 Every starter that reports what it did — the three servers,
@@ -221,6 +231,15 @@ and ride the instruments; details are unbounded — a cache key, a mail subject 
 and ride the span and the error line only. That split is what lets one observer
 serve every component without making each choose between a useful span and a
 safe metric.
+
+**`observed` is `observe` around one call.** It starts every observer, runs
+`call`, and settles from whichever channel the `AsyncResult` came back on: `ok`
+on success, `error` with the `Err` or the defect as `cause` otherwise. `settled`
+replaces either default where a starter has more to say — `ok` receives the
+value (a cache reports hit or miss), `failure` the `FailureView` (storage
+reports a missing object as an ordinary answer). One line per method, and the
+`tap`/`tapFailure` pair that used to be copied into every starter is written
+once.
 
 `traced: false` declines the span for a component whose spans come from
 somewhere better — `@btravstack/prisma` says so, because

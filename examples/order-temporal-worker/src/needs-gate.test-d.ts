@@ -28,7 +28,7 @@ import { start, Logger } from "@btravstack/core";
  * out to `start`. The use cases are NOT among them any more: a piece reads
  * those off `context.unit`, so they are the bound unit module's business.
  *
- * Type-checked by this package's `test:types` script, never executed.
+ * Type-checked by this package's `typecheck` script, never executed.
  */
 import { Module, Port, Provider } from "@btravstack/di";
 import { ShippingService, StockService } from "@btravstack/example-order-application";

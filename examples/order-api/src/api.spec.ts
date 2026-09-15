@@ -1,5 +1,4 @@
 import { ORPCError } from "@orpc/client";
-import request from "supertest";
 import { Ok } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
@@ -308,8 +307,8 @@ describe("order-api", () => {
 
     // WHEN both endpoints are read while serving
     const probed = {
-      livez: (await probes.get("/livez")).status,
-      readyz: (await probes.get("/readyz")).status,
+      livez: (await probes("/livez")).status,
+      readyz: (await probes("/readyz")).status,
       ready: app.ready(),
     };
 
@@ -346,16 +345,17 @@ describe("order-api", () => {
     // facts the typed client hides live
 
     // WHEN the marked procedure is called with no credential at all
-    const response = await request(origin)
-      .post("/rpc/orders/place")
-      .set("content-type", "application/json")
-      .send({ json: { id: "0199a1e0-0000-7000-8000-000000000001", quantity: 1 } });
+    const response = await fetch(`${origin}/rpc/orders/place`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ json: { id: "0199a1e0-0000-7000-8000-000000000001", quantity: 1 } }),
+    });
 
     // THEN the refusal is a plain 401, and the listener's security headers
     // ride even a refused response
     expect({
       status: response.status,
-      nosniff: response.headers["x-content-type-options"],
+      nosniff: response.headers.get("x-content-type-options"),
     }).toEqual({ status: 401, nosniff: "nosniff" });
   });
 
@@ -587,18 +587,22 @@ describe("order-api", () => {
     const origin = await originFor(serve(stubbed));
 
     // WHEN the last page is read as raw JSON
-    const response = await request(origin)
-      .post("/rpc/orders/list")
-      .set("authorization", `Bearer ${await tokenFor()}`)
-      .set("content-type", "application/json")
-      .send({ json: { limit: 1, after: "page-1-end" } });
+    const response = await fetch(`${origin}/rpc/orders/list`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${await tokenFor()}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ json: { limit: 1, after: "page-1-end" } }),
+    });
+    const body = (await response.json()) as { readonly json: unknown };
 
     // THEN `hasNextPage: false` arrives with no `nextCursor` KEY at all — the
     // arm of the output schema that carries the cursor is the one that claims
     // the page, so a null nobody may follow cannot be sent. `toStrictEqual`
     // rather than `toEqual`: the absence IS the assertion here, and `toEqual`
     // reads an `undefined` property as an absent one
-    expect(response.body.json).toStrictEqual({
+    expect(body.json).toStrictEqual({
       items: [{ id: "0199a1e0-0000-7000-8000-00000000000b", quantity: 2 }],
       previousCursor: "page-2-start",
       hasPreviousPage: true,
@@ -912,8 +916,8 @@ describe("order-api", () => {
     app.requestDrain();
     await vi.waitUntil(() => !app.ready());
     const probed = {
-      readyz: (await probes.get("/readyz")).status,
-      livez: (await probes.get("/livez")).status,
+      readyz: (await probes("/readyz")).status,
+      livez: (await probes("/livez")).status,
       ready: app.ready(),
     };
     gate.release();

@@ -7,7 +7,7 @@
  * beside it is what makes the calls observed — with no second call site to
  * change, which is the whole of the argument against the flag.
  *
- * Type-checked by this package's `test:types` script, never executed.
+ * Type-checked by this package's `typecheck` script, never executed.
  */
 import { Env } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";

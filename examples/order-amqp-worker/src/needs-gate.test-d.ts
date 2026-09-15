@@ -4,7 +4,7 @@ import { AmqpHandlers, AmqpModule, AmqpRuntime, amqp } from "@btravstack/amqp-wo
  * runtime from the `AmqpRuntime` port `@btravstack/amqp-worker`'s starter provides
  * and the composition root exports, so a module that exports no runtime fails
  * to match the `NO RUNTIME — …` sentence `start` intersects onto its `module`
- * parameter. Type-checked by this package's `test:types` script,
+ * parameter. Type-checked by this package's `typecheck` script,
  * never executed.
  *
  * There is no UNSATISFIED RUNTIME PORTS negative any more: the runtime

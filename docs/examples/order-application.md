@@ -392,7 +392,7 @@ import type {} from "@btravstack/example-order-application";
 Because each layer is its own workspace package, the wrong-direction import
 does not resolve (TS2307), and the `@ts-expect-error` turns that into an
 assertion: add the dependency and the directive goes unused, which
-`test:types` reports. The contract packages do the same against their
+`typecheck` reports. The contract packages do the same against their
 transport package, so a client can always take a contract without the router,
 activities or handlers that implement it.
 

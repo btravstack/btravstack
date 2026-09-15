@@ -8,7 +8,7 @@
  * module that neither provides nor declares them does not compile at all. Two gates rather than one, which is the
  * point of the split: closing the orders half says nothing about the customers
  * half, and the compiler says so at each module rather than once for the
- * layer. Type-checked by this package's `test:types` script, never executed.
+ * layer. Type-checked by this package's `typecheck` script, never executed.
  */
 import { page } from "@btravstack/contract";
 import { Logger } from "@btravstack/core";
