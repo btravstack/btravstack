@@ -1,21 +1,11 @@
 # packages/di
 
-The container. It was its own repository (`btravstack/di`) until it was merged
-here with its history; the root `CLAUDE.md` owns the framework's thesis and the
+The container. The root `CLAUDE.md` owns the framework's thesis and the
 conventions, and this file holds what only matters when you are working under
 `packages/di/`. Keep it in sync with the code in the same commit.
 
-`@btravstack/di` — a module-based dependency-injection container for TypeScript.
-Ports are the vocabulary an application defines, providers bind them at one
-edge, modules declare `imports`/`exports`. Every wiring mistake the type system
-can catch is a compile error; what it can't (cycles, duplicate providers)
-surfaces as a defect before any factory runs. Nothing throws to callers: every
-fallible operation returns an
-[`unthrown`](https://github.com/btravstack/unthrown) `Result` (peer dependency).
-
-It is the one published package here with no dependency on the kernel — the
-arrow runs the other way, and `@btravstack/core` peers on it. `packages/di` must
-never import from another workspace package.
+`@btravstack/core` peers on this package and the arrow never runs the other
+way: `packages/di` must never import from another workspace package.
 
 ## Architecture
 
@@ -45,13 +35,7 @@ All runtime code lives in `packages/di/src`, one concept per file:
   construction family of
   mutually exclusive option arms: `value` / `sync` / `make` (fallible, returns
   `Result`) / `class` / `acquire`+`release` (resourceful — puts `Scope` in
-  `Needs`). **The axis those two names encode is FAILABILITY, not timing**:
-  `sync` is "cannot fail" and `make` is "may fail", and a `make` returning a
-  plain `Result` is synchronous. The arm that does not exist is the reverse —
-  asynchronous and infallible — because `AsyncResult<S, never>` is what a
-  `make` already returns when nothing in it fails. Worth stating because the
-  names read as a question about `await`, and it is the one place a reader
-  guesses wrong. Exclusivity is enforced by giving each arm the other keys as optional
+  `Needs`). Exclusivity is enforced by giving each arm the other keys as optional
   `never`. `Provider.member` contributes one member to a set port. Dependencies are
   a **record**, never an array or a parameter list, and the
   factory receives one services record keyed the same way.
@@ -83,13 +67,6 @@ prismaOrderRepository(db) }` — an adapter factory takes the client, not a
   there are **five** pure pass-through providers in all production code, four
   of them single-dependency, and the cheaper fix if the arrow grates is those
   five adapter factories taking `{ db }` instead of `db`.
-
-  `overrideProvider(provider)` (issue #63) marks a provider — via a
-  module-private symbol, so this call is the only mint — to REPLACE the base
-  provider for its port at plan time; `isOverride` is the package-private
-  predicate `build.ts` reads. Test-harness-facing, stated in its TSDoc and in
-  `index.ts`: `@btravstack/testing`'s `overridden` is the intended caller,
-  and production composition stays override-free by convention.
 
 - **`module.ts`** — the `Module<Exports, E, Needs>` algebra. Four option
   tuples — `imports`, `provides`, `exports`, `needs` — and three phantom
@@ -149,14 +126,6 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   `WiringDefect` inside a `.map` callback on purpose: unthrown converts the throw
   into its `Defect` channel, which is where wiring bugs (vs. modeled failures)
   belong.
-- **`lifecycle.ts`** — constructs one level concurrently; collects `onStart`
-  hooks, which fire only after the whole graph is built, in declaration order.
-- **`context.ts`** — the built container: a flat map, `Context<R>.get(port)`.
-  Internal `unsafeAdd`/`unsafeAddAll`/`unsafeKeys` are package-private, not
-  exported from `index.ts`.
-- **`scope.ts`** — `createScope`: finalisers run LIFO on close; a throwing
-  finaliser is reported (via `onTeardownError`) and swallowed, never rethrown, so
-  teardown always completes and never masks the original failure.
 - **`index.ts`** — the deliberate public surface. `Scope` is exported as a _type
   only_ (the class value would let consumers provide or alias it);
   `PortClass`/`ManyPortClass` are exported so declaration emit **names** what
@@ -194,38 +163,12 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   TS2883 on the first consumer. `ModuleDeclaration`'s own return type stays
   inline for the same reason.)
 
-### Type-level tests
-
-Behaviour that exists only at the type level (phantom-channel variance, arm
-exclusivity, `Scope` gating) is pinned in `src/*.test-d.ts` via
-`@ts-expect-error`, checked by `tsc --noEmit -p tsconfig.test-d.json` (part of
-`pnpm typecheck`). These files are excluded from the main tsc pass, from oxlint,
-and from lefthook's pre-commit lint. If you change a type-level guarantee, update
-the matching assertion. `src/__tests__/type-assert.ts` (`Equal<A, B>`) is a test-only
-helper, excluded from knip.
-
-### Two TypeScript versions
-
-The catalog pins `typescript` 7.0.2 (what the repo builds with) and
-`typescript-consumer` (alias for 5.9.3 — what a consumer is realistically on).
-`examples/di-hexagonal`'s `typecheck` compiles declaration emit with
-_both_ and re-checks the emitted `.d.ts` under the consumer version;
-`src/emit-guards.ts` there is the fixture keeping the emitted declarations free
-of unnameable private types (the TS4020 class of bug). It is the only workspace
-here that compiles twice, and the only reason the `typescript-consumer` catalog
-entry exists.
-
 ### The one example that came with it
 
-`examples/di-hexagonal` exercises the container from a real consumer
-workspace (`workspace:*`, own `unthrown` dep since it's a peer) and predates the
-kernel — it composes a `Module` and never calls `start`, which is what makes it
-the container's own test rather than the framework's. It survived the merge on
-the declaration-emit guard above; `plugin-registry` and `request-scope` did not,
-because `many.spec.ts` and `fork.spec.ts` already pin what they asserted (and
-`order-api` forks a real per-request scope besides). If a set-port or
-forked-scope example is ever wanted again, write it from those specs rather than
-restoring a workspace whose tests were duplicates.
+`examples/di-hexagonal` is the one that survived the merge, on the
+declaration-emit guard the root `CLAUDE.md` describes. If a set-port or
+forked-scope example is ever wanted again, write it from `many.spec.ts` and
+`fork.spec.ts` rather than restoring a workspace whose tests were duplicates.
 
 ## Module visibility: a need is DECLARED, never absorbed
 
@@ -368,9 +311,6 @@ because conflating them is easy.
   decisions measured against a specific TypeScript version or a real failure mode
   (a diagnostic code, a variance bug, an unsoundness). Verify before
   "simplifying" them away.
-- **Errors as values.** The `unthrown/*` oxlint rules are binding: no throwing
-  outside a documented defect path. The existing `WiringDefect` throws each carry
-  a targeted `oxlint-disable` with the rationale — new exceptions need the same.
 - **One name per concept.** Resist convenience aliases. The surface is meant to
   stay small enough that the library can be "done"; contributions that sharpen
   the design beat ones that grow it.

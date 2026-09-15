@@ -3,8 +3,9 @@
 The authentication half of this package's public surface. It governs
 `auth.ts`, `principal.ts`, `define-http.ts` and the `@btravstack/contract`
 marker; **read it before changing any of those.** The rest of the surface —
-the router, the controller, `HttpModule`, the runtime and the internal seam —
-is in `packages/http-server/CLAUDE.md`, and the repository-wide theses are in
+the router, the controller, `HttpModule` and the runtime — is in
+`docs/reference/http-server.md`, its decisions and gotchas in
+`packages/http-server/CLAUDE.md`, and the repository-wide theses are in
 the root `CLAUDE.md`.
 
 The two rules this half exists to state, before the detail:

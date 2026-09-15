@@ -1,6 +1,6 @@
 ---
 name: deferred-decisions
-description: Decisions this repository deliberately deferred, declined or has already closed. Read BEFORE proposing a feature, a package, a lint rule or a gate that sounds new — it may be a settled "no", or already shipped. Covers container reaping, the currentUnit() lint rule, traces/metrics in observability, and the doc-samples gate.
+description: Decisions this repository deliberately deferred, declined or has already closed. Read BEFORE proposing a feature, a package, a lint rule or a gate that sounds new — it may be a settled "no", or already shipped. Covers container reaping, the currentUnit() lint rule, traces/metrics in observability, the doc-samples gate, the one-process dev runner, HTML-means-fragments, transport package naming and the one leaf shape.
 ---
 
 # Deferred, deliberately
@@ -74,3 +74,97 @@ dependencies by name`; a positional array is refused as
   a fragment is compiled where it lives — though a marker removed from it
   still fails this file, since the controllers are typed by it. No config
   change was needed; the workspace already wires `test:types`.
+
+- **The local loop is the production shape, not an exception to it** (issue
+  #67). Three deployments meant three terminals, and the tempting fix — a
+  kernel API booting all three in one process, which `start` would happily
+  support — was measured and declined: it cannot watch (reloading an ESM
+  graph in place is a bespoke loader), it shares one event loop and the
+  process-global uncaught handlers, so one crash takes all three down and a
+  blocking worker starves the API, and it exercises the drain through one
+  shared signal instead of three real ones. A dev loop that misrepresents
+  failure isolation teaches the wrong lesson about the very thesis it sits
+  under. So `pnpm dev` is `turbo run dev --filter=./examples/*`: one process
+  per deployment, `tsx watch` on each, output prefixed by workspace — the mechanics are in `examples/CLAUDE.md`.
+- **"HTML" here means fragments, and only fragments** (#179's open question).
+  Four things were being called HTML support: a template engine's rendered
+  pages, an endpoint answering `text/html` for a partial, static assets with
+  an SPA fallback, and JSX/SSR with a component model. `htmx()` is the second
+  — the one closest to a procedure and hardest to tell apart from one, which
+  is why it sharpened the second-answerer question rather than dodging it. The
+  first and fourth are #166's rendering layer; the third is #161, and its own
+  counter-argument (that it may still be the ingress's job) stands.
+- **Each transport package is named for the HALF it implements, and the
+  other half's name is reserved.** `http-server`, `temporal-worker` and
+  `amqp-worker` — not `http`, `temporal`, `amqp`, which claimed a whole
+  transport and delivered the serving side of it. The calling side exists
+  today as somebody else's library, used directly by the examples
+  (`@orpc/client`, `@temporal-contract/client`, `@amqp-contract/client`),
+  and when this family grows its own they take `-client` names beside these.
+  Three things decided the spelling:
+  - **The neighbours qualify both sides** — `@orpc/server`/`@orpc/client`,
+    `@temporal-contract/worker`/`/client` — so an unqualified name reads as
+    the umbrella containing both, which is exactly what it is not.
+  - **"worker" rather than a uniform `-server`**, because it is Temporal's
+    and AMQP's own word, and because `temporal-server` already means the
+    Temporal Service — the cluster `internal/test-infra` runs as
+    `temporalio/auto-setup`. A name that suggests you are booting the
+    cluster is worse than a suffix that varies.
+  - **A client will be a PACKAGE, never a subpath.** Peers are per-package,
+    so `@btravstack/http-server/client` would drag `@orpc/server` into a
+    consumer that only ever calls — the same reason `examples/*-contract`
+    are packages of their own: a client must be able to take a contract
+    without the server.
+
+  The rename cost nothing because only `@btravstack/di` had ever been
+  published (`0.1.0`); after the first release it would have cost a
+  deprecation cycle, which is why it happened when it did.
+
+- **The LEAF is one shape, and oRPC's is the one** (issue #207, closed by
+  btravstack/temporal-contract#415 and btravstack/amqp-contract#671). A
+  developer writes the same function on all three transports: **one record
+  carrying everything the invocation has — the input included — and that input
+  repeated as a second positional parameter.**
+
+  ```ts
+  place:   ({ errors, context, input })      => …   // HTTP, oRPC's own shape
+  place:   ({ errors, context, input })      => …   // Temporal
+  process: ({ errors, context, raw, input }) => …   // AMQP
+  ```
+
+  **oRPC is the reference because it is the most widely used of the three**,
+  not because the shape is inherently better: a developer arriving here is more
+  likely to have seen it than either of the others, so it is what costs the
+  least to match. It is oRPC's shape down to the DUPLICATION — its
+  `ProcedureHandlerOptions` carries `input` and its handler still takes it
+  positionally — so `({ errors }, input)` remains the same call, and a caller
+  picks. The record is what the docs teach, because it is the spelling that
+  needs no `_` placeholder when a leaf wants only its input.
+
+  **`input` is the field name on all three**, not `args` or `message`. A local
+  synonym per transport would put the relearning back on the one field every
+  leaf touches.
+
+  **The convergence happened UPSTREAM, not in an adapter here.** A starter
+  could have reshaped the leaf at the call site it already owns, and did not:
+  the leaf's type is INFERRED from each contract library's own types, so an
+  adapter would re-derive rather than infer it, and it would leave the
+  starter's documentation and the library's documentation describing the same
+  function with two different signatures. Both libraries are this org's and
+  were in beta, so it cost a beta bump rather than a deprecation cycle.
+
+  The AMQP half was the one that was not merely cosmetic: it had no helpers
+  record at all, so a handler wanting "infrastructure comes back" imported and
+  constructed `RetryableError` by hand. Its record now carries `retryable` and
+  `nonRetryable` beside `errors`, so that triage reads like HTTP's — and `raw`,
+  the amqplib delivery, which used to be a third parameter no other transport
+  had.
+
+  **The naming asymmetry is a separate, smaller decision and is still NOT
+  made.** `AmqpHandler`/`AmqpHandlers` differ by one letter, and
+  `TemporalWorkflowActivities`/`TemporalActivities` give the piece the longer
+  name where HTTP gives the composer a different word entirely
+  (`OrpcController`/`OrpcRouter`). The recommendation on the table is HTTP's
+  rule — piece and composer get different words, never singular and plural —
+  but it renames public API on two packages with no obviously-right
+  replacement, so it is recorded here rather than guessed at.

@@ -39,69 +39,24 @@ is the index of the workspaces themselves.
   earlier revision of this file did, and it is wrong in both halves. `start`'s
   `UNSATISFIED RUNTIME PORTS` arm is pinned only by `packages/core`'s own
   `start.test-d.ts`, since every shipped runtime declares `resolves: []`.
-  `examples/` is not the only place the gate is pinned by a **type test**:
-  `packages/amqp-worker/src/amqp-runtime.test-d.ts` pins the handlers-port half of
-  `amqp`'s own gate, and its sibling `packages/amqp-worker/src/handler.test-d.ts` pins
-  the composing form's — a piece typed by the one key it names, and the root's
-  array refused when it misses a declared key. `packages/temporal-worker/src/workflow-activities.test-d.ts`
-  pins the same shape for `temporal`'s composing form and is that package's
-  **first** type test — `packages/temporal-worker` had no `*.test-d.ts` file, and no
-  `tsconfig.test-d.json` or `test:types` script, before it. `packages/http-server/src/controller.test-d.ts`
-  pins the
-  five compile-time gates the composing `OrpcRouter(contract)([...])` form
-  owes (see `packages/http-server/CLAUDE.md`). `@btravstack/http-server`'s specs (the
-  per-file breakdown and the current total are `packages/http-server/CLAUDE.md`'s own, kept in one
-  place rather than restated here) drive the
-  transport through `httpServer` with a bare listener, the
-  starter proper through `HttpModule`, the composing router and fragments
-  forms through the `rpcSliced` and `htmx` fixtures, and the contract marker's
-  runtime half — the per-scheme
-  authenticator ports and the one middleware they install — through
-  `rpcAuthed`. **The contract says WHICH SCHEMES protect a route, and which
+  **The contract says WHICH SCHEMES protect a route, and which
   scopes each must grant; the application's `defineHttp({ authenticators })`
   says WHAT each scheme resolves to.**
-  `@btravstack/contract` names no identity type at all — `authenticated` takes
-  OpenAPI requirements and no type parameter — so nothing about a server's
-  view of a caller reaches a client, and a marked fragment reached through
-  anything but that one call types `principal: never`, which makes every read a
-  compile error and is the signal to use the factory.
-  `examples/order-api/src/auth.ts` is the one file per application that names
-  its identities, and there is no identity comparison left to make: declaring a
-  scheme and implementing it are the same act, so a scheme the contract names
-  with no authenticator behind it is di's own unmet need on
-  `HttpAuthenticator:<scheme>`. **Both schemes are the starter's own:** `user`
+  The argument is `packages/contract/CLAUDE.md`'s.
+  **Both schemes are the starter's own:** `user`
   is `jwtAuthenticator` with nothing pinned, so `HTTP_JWT_JWKS_URI`,
   `HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE` are a deployment's and an unset one
   fails the boot with the variable named; `service` is `apiKeyAuthenticator`.
-  The `Bearer <tenantId>:<userId>:<scopes>` stand-in the file used to carry is
-  gone, and with it the only place in these examples that vouched for a value
-  instead of checking it. What stays the application's is `principal(claims)`:
+  What stays the application's is `principal(claims)`:
   the one place this deployment writes which claim carries a tenant — `tenant`
   here, `tid` on Entra, `org_id` on Auth0 — and the one place the `TenantId`
   brand is claimed on this path. The specs mint real tokens through
   `@btravstack/testing/jwt`'s `localIssuer`, file-scoped, and `boot`'s
-  environment carries the three variables off it. The one call's result is held as **one
-  binding and never destructured** — each destructured member expands to a type
-  mentioning `@btravstack/contract`'s inaccessible `unique symbol` (TS2527),
-  while held whole it collapses to the nameable `Http<A>`, which is why the
-  application writes no type annotation at all.
-- **Authorization is three layers, and `orders.export` is where all three
-  meet.** Scope is in the CONTRACT, checked by the starter before a handler
-  runs; the tenant is in the UNIT, so `context.unit.find` cannot reach another
-  tenant's row however the handler is written; and policy —
-  `(principal, resource) → decision` — is in the HANDLER, because it is the
-  only layer that has the resource. Only the third is written by hand, and it
-  is `examples/order-api/src/slices/orders/authorize.ts`: a plain function
-  answering `Result<Authorized<Order>, Forbidden>`.
-
-  Four things about its shape are the point, and none of them is a framework
-  feature:
-  - **The witness is a brand only the rule can mint.** `Authorized<T>` is
-    `T & { readonly [AUTHORIZED]: true }` over a declared-only unique symbol
-    the module does not export, and `renderCsv` takes an
-    `Authorized<Order>` — so the operation the decision protects cannot be
-    called without the decision, and forgetting the check is a compile error
-    rather than a code review. That is why it is a type and not a boolean.
+  environment carries the three variables off it.
+- **Authorization is three layers — root thesis #2 — and `orders.export` is
+  where all three meet.** The one written by hand is
+  `examples/order-api/src/slices/orders/authorize.ts`, and three things about
+  its shape are the point, none of them a framework feature:
   - **`Forbidden` is the application's own tagged error**, folded by the same
     exhaustive `mapErrCases` as every domain error. There is no framework
     `Policy` port, no registry and nothing to register — a rule with one
@@ -118,17 +73,11 @@ is the index of the workspaces themselves.
     because a worker places orders with nobody behind them. Ownership is the
     rule a reader writes on this same shape once their domain records one.
 
-  Two refusals share the `403`, and the specs tell them apart by the payload:
-  the starter's `UnderScoped` is thrown, carries no `data` and is not
-  inferable, so a client sees a defect; the rule's is `errors.FORBIDDEN({ data:
-{ id, reason } })`, declared on the contract, so it is a value on the `Err`
-  channel.
-
 - **The local loop is `pnpm dev`, and it is the production shape** (issue
   #67): `turbo run dev --filter=./examples/*`, one process per deployment,
   each `tsx watch --env-file=../../.env.dev src/main.ts`, output prefixed by
-  workspace. The reasoning against a one-process runner is in thesis #1; what
-  lives here is the mechanics.
+  workspace. The reasoning against a one-process runner is in the
+  `deferred-decisions` skill; what lives here is the mechanics.
   - **`tsx`, because Node alone cannot run these files.** Relative imports
     carry `.js` (`moduleResolution: NodeNext`) and Node's own type stripping
     does not remap `./module.js` to `./module.ts` — measured, it is an
@@ -146,19 +95,6 @@ is the index of the workspaces themselves.
     the three `HTTP_JWT_*`. They are written to a file rather than defaulted
     because the ports are whatever Docker mapped, and an ephemeral mapped
     port cannot be a default. `--env-file` is Node's own; no `dotenv`.
-  - **The dev loop's OIDC issuer is a CONTAINER, not a process, and its key is
-    persisted.** `order-api`'s `user` scheme verifies a real token against a
-    real JWKS, so `.env.dev` has to carry a `HTTP_JWT_JWKS_URI` that answers.
-    An in-process `localIssuer` — what the specs use — cannot be it: `dev:env`
-    is one-shot, it exits the moment the file is written, and a listener it
-    opened dies with it. So the JWKS is `nginx:1.29-alpine` with the public key
-    copied in, started beside the other six and reused like them. The key pair
-    itself lives in `<repo>/.cache/dev-issuer/` rather than being minted per
-    run, because a token minted before a `dev:env` would otherwise stop
-    verifying after it — and pasting a fresh token into every terminal is
-    exactly the friction this closes. `pnpm dev:token -- --tenant <uuidv7>`
-    prints one; the mechanics are in
-    `internal/test-infra/README.md`.
   - **`PROBE_PORT` is `0` in each `dev` script, and so is the API's `PORT`**:
     `PROBE_PORT` defaults to `9000` for every application, so on one machine
     two of the three would fail with `RuntimeStartFailed` for `"probes"` —
@@ -194,22 +130,10 @@ is the index of the workspaces themselves.
 
 ## The example application is multi-tenant
 
-- **The example application is multi-tenant, and that is why one database
-  serves the whole gate.** `examples/order-infrastructure` is PostgreSQL on
-  the shared server — a database of its own next to Temporal's — migrated once
-  per run by `src/global-setup.ts` with **`prisma migrate deploy`**, the
-  command a deployment runs, under the same cross-process lock. Nothing is
-  truncated or dropped between tests: each test declares a **tenant** of its
-  own (a UUID), so a shared database costs one migration for the whole gate
-  instead of one per test, and no test can see another's rows whatever order
-  they run in. The migration runs as the database **owner**; everything else
-  connects as `orders_app`, the `NOSUPERUSER NOBYPASSRLS` role
-  `internal/test-infra` provisions after it — because a superuser bypasses row
-  security whatever the tables say, and the container's bootstrap user is one.
-
-  It replaced SQLite **in memory**, which was the right call while every test
-  built its own database and stopped being one the moment the gate needed a
-  PostgreSQL for Temporal anyway.
+- **The shared database, the `orders_app` role, the row security under `Order`
+  and the two tables that are not policed are
+  `examples/order-infrastructure/README.md`'s.** What follows is how the
+  tenancy reaches each deployment.
 
   **The tenancy is the APPLICATION's, and it is a capability of the UNIT
   rather than an argument.** `Tenant` is a port `order-application` declares
@@ -225,88 +149,11 @@ is the index of the workspaces themselves.
   `OrderRepository.find(id)` — have no tenant slot at all. The framework still
   has no concept of one, and no starter reads a tenant off anything.
 
-  **And RLS is underneath it, so for `Order` the guarantee is the database's
-  rather than the adapter's.** `OrderTenantPersistence` provides a second port,
-  `Db` (`order-infrastructure/src/database.ts`): the application scope's client
-  wrapped in `@btravstack/prisma/rls`'s `tenantScoped(tenant)`, which pins every
-  statement through a transaction-local `set_config`, with the repository built
-  over `Db` rather than over the raw client. `Order` carries a
-  `tenant_isolation` policy under `FORCE ROW LEVEL SECURITY` reading that same
-  setting (`prisma/migrations/20260906120000_order_rls/`), so `list` names no
-  tenant in its `where` at all — the policy is what narrows it, and a forgotten
-  filter stops being a way to read another tenant's rows. What goes is the
-  **predicate**, not the column or the key: `save` still writes `tenantId` in its
-  `data`, and `find` and `remove` still address the composite `tenantId_orderId`,
-  because a policy narrows what a statement may touch and does not fill a row in.
-  `src/rls.spec.ts`
-  proves it against the real server: an unpinned read matches nothing, a
-  cross-tenant insert is refused with `42501`, and the role the specs connect as
-  is neither a superuser nor exempt from row security — that last one because a
-  superuser bypasses every policy whatever `FORCE` says, and the container's own
-  bootstrap user is one.
-
-  **`Customer` and `OutboxMessage` are deliberately not policed, and it is two
-  specs that guard them rather than the database.** The unmarked `customers`
-  procedures carry the tenant on the wire and fork `anonymous`, which has no
-  principal to take one from; the outbox relay reads across tenants from outside
-  any unit. So both stay on the raw client and are filtered by hand, and what
-  holds those filters honest is `prisma-customer-repository.spec.ts`'s "does not
-  read another tenant's customer" and `prisma-outbox.spec.ts`'s "does not hand
-  one tenant another's pending events". A hand-filter bug on those two tables is
-  caught by a test run, not refused by PostgreSQL — which is exactly the
-  difference the policy buys on `Order`.
-
-  **That reverses an earlier revision of this file, which said every port
-  names its tenant — and it keeps that revision's argument rather than
-  dropping it.** Making the tenant an argument made every CONSUMER of a port
-  responsible for a fact the runtime already held: the request that
-  authenticated, the attempt that was scheduled, the delivery that arrived
-  each knew the tenant before any use case ran, and each new caller had to be
-  told again. The claim that a forgotten tenant does not compile still holds,
-  one level up — `OrderApplicationModule` names `Tenant` in `needs`, so a root
-  composing the orders vertical outside a unit is
-  `UNSATISFIED DEPENDENCIES — Tenant`, which `order-application`'s
-  `needs-gate.test-d.ts` pins as `TenantlessOrders`. An argument had to be
-  remembered per call; the port has to be provided once per unit or nothing
-  builds.
-
-  **What keeps a tenant parameter, and why each one does.**
-  `CustomerRepository.find` and `FindCustomer.execute` keep theirs: the
-  `customers` procedures are **unmarked**, so a request under them forks the
-  `anonymous` kind, which has no principal to take a tenant from — the caller
-  names it on the input and the controller claims the brand once, with
-  `TenantId(input.tenantId)`. `Outbox.pending(tenantId, limit)` keeps its
-  own: the relay is a background sweep with no request, delivery or attempt
-  behind it, so there is no unit to read one from. `Storage` keys and cache
-  keys keep theirs one layer out, because an application service takes plain
-  string keys and has no tenant slot to fill. What was the rule is now the
-  exception, and each exception names the reason it is one.
-
-  **`Tenant` is a capability in the di `Context`, and `UnitRecord.tenantId`
-  stays unset by every starter.** That is thesis #2's own line, on the side
-  the thesis puts it: a tenant reached through the ambient store would be a
-  dependency no `inject` record names, where a declared port is injected,
-  visible in the graph and substitutable in a test — which is what makes a
-  missing one a **compile** error rather than an `undefined` at run time or,
-  worse, a query that quietly reads another tenant's rows. The record's field
-  is still there for a **hand-rolled** runtime whose author has answered what
-  establishes a tenant and what happens when it is missing; a starter with a
-  `tenantOf` hook would answer both on the application's behalf, which is the
-  first step of a framework tenancy model that owes many more answers than
-  that one.
-
-  **`order-api` splits `defineHttp` in two, and the tenant is why.**
-  `src/auth.ts` binds `auth = defineHttp({ authenticators })` first, then
-  `api = auth.units<{ anonymous; user; service; session }>()` over an
-  `import type` of
-  `./request-scope.js`. One call would be mutually recursive: `UserModule`
-  names `auth.principals.user` in its own `needs` — that is how a credential
-  becomes a `Tenant` inside the graph — so a `defineHttp` naming `UserModule`
-  would be defined in terms of a module defined in terms of it (TS7022), and
-  `import type` is what keeps the cycle type-level, where TypeScript resolves
-  it. The mechanism is `packages/http-server/CLAUDE.md`'s; what belongs here
-  is that the second step is the price of taking the tenant off the principal,
-  and an application pays it once.
+  **`UnitRecord.tenantId` stays unset by every starter, and no starter has a
+  `tenantOf` hook** (root thesis #2): such a hook would answer what establishes
+  a tenant and what happens when it is missing on the application's behalf,
+  which is the first step of a framework tenancy model that owes many more
+  answers than that one.
 
   The `session` kind is `SessionModule`, `UserModule`'s shape over
   `auth.principals.session` — a browser that logged in is a user, and the one
@@ -317,13 +164,6 @@ is the index of the workspaces themselves.
   `oidc({ principal, scope })` beside `fragmentsLogin: "/auth/login"`, so the
   answerer that seals the cookie and the scheme that reads it hold the same
   keys and the same `principal` the bearer scheme reads its claims with.
-
-  **A scheme is not free to add, and `exportable` is where the bill arrives.**
-  `Caller` is derived from the declared schemes, so `session` failed
-  `slices/orders/authorize.ts` until that rule said whether a browser exports
-  like a user or like a machine — the compile error the `Caller` type exists
-  to produce, on the one function that must decide. It shares the `user` arm:
-  what differs between the two is the credential, never the ceiling.
 
   **The tenant is branded, and the ids beside it are branded on the answer
   side only** (`TenantId` in
@@ -410,181 +250,17 @@ is the index of the workspaces themselves.
   configuration (`OUTBOX_TENANTS`), and it sweeps tenant by tenant so one
   tenant's backlog cannot starve another's.
 
-- **The Prisma client is generated at test time, and there is nothing to
-  install.** `@btravstack/example-order-infrastructure`'s `generate`
-  script writes a gitignored client into `src/generated`, and turbo's `test` /
-  `typecheck` / `test:types` tasks carry **both** a `generate` and a
-  `^generate` edge — the first so the workspace's own client exists, the second
-  so a dependent workspace gets one too. The scripts themselves do **not** call
-  `prisma generate`: they did until 2026-08-13, and on a cold cache turbo ran
-  the `generate` task and the script's inline copy **concurrently**, which
-  fails with `EEXIST: mkdir …/generated/prisma/models`. One generator, ordered
-  by the task graph, is what makes that impossible rather than rare.
-
 ## What each deployment consumes
 
-- **`examples/order-temporal-worker` consumes `@btravstack/temporal-worker`**, the same
-  way `order-api` consumes `@btravstack/http-server`: it supplies the contract, the
-  activities provider and the `mapErrCases` triage, and reads `{ taskQueue,
-namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
-  attempt and the deadline race are the package's. It is a **two-slice
-  modulith**: `FulfillmentSlice`'s `fulfillOrder = TemporalWorkflowActivities(orderContract,
-"fulfillOrder")({ inject: { stock: StockService, shipping: ShippingService, storage: Storage },
-unit: { place: PlaceOrder, repository: OrderRepository }, sync })` and `BillingSlice`'s
-  `chargeOrder = TemporalWorkflowActivities(orderContract,
-"chargeOrder")({ inject: { payments: PaymentService }, sync })` are each a **piece** — a provider
-  on the port its own contract key mints, closing over only the services its
-  own saga calls — and the root composes them,
-  `orderActivities = TemporalActivities(orderContract)([fulfillOrder,
-chargeOrder])`, into the composition root
-  `TemporalModule("OrderTemporalWorker")({ contract, activities:
-orderActivities, workflows, imports: [FulfillmentSlice, BillingSlice,
-OrderPersistenceModule, storage(…), observability(), otel()], unit: { activity: ActivityUnitModule },
-exports: [Tracer, Logger, OrderDatabase] })`, the sugar importing the starter. Neither slice
-  imports the orders vertical: `FulfillmentSlice` imports `FulfillmentModule`
-  and `BillingSlice` `BillingModule`, and the vertical is composed per attempt
-  in `ActivityUnitModule`, over the `Tenant` that attempt's own input names —
-  which is why `fulfillOrder` reads `place` and `repository` off
-  `context.unit` and only its stand-in services through `inject`. The
-  connection and `TEMPORAL_*` come
-  from the starter, and `LOG_LEVEL` and the `Logger` the sagas' stand-in
-  services write to come from `observability()`. `order-amqp-worker` is the
-  same shape — `NotificationsSlice`'s `orderNotifications = AmqpHandler(orderContract,
-"orderNotifications")({ inject: { logger: Logger, mailer: Mailer }, unit: { tenant: Tenant }, sync })`
-  and `AuditSlice`'s `orderAudit = AmqpHandler(orderContract, "orderAudit")({ inject: { logger:
-Logger }, unit: { tenant: Tenant }, sync })`, composed as
-  `orderHandlers = AmqpHandlers(orderContract)([orderNotifications,
-orderAudit])` — but **neither** slice imports a vertical, and neither does
-  the root: a subscriber reacts to a fact somebody else already committed, so
-  nothing in this deployment places an order off a message. What stays at the
-  root is the persistence the outbox relay reads through
-  (`AmqpModule("OrderAmqpWorker")({ contract, handlers: orderHandlers,
-imports: [OrderPersistenceModule, NotificationsSlice, AuditSlice, mailer(…),
-observability(), otel()], unit: { message: MessageUnitModule },
-exports: [Outbox, OrderDatabase, Logger, Tracer], … })`) — a graph with no
-  tenant at the root cannot compose the orders vertical there anyway, which is
-  the tenancy above showing up as a compile error rather than a convention —
-  with its outbox relay a resourceful provider of its own rather than
-  something layered onto the runtime — the relay is also the one place in the
-  examples that logs a **failure** with nobody to return it to — a sweep has no
-  caller — on the port's own
-  `(message, attributes?, cause?)` ordering — and it chooses its level per arm
-  rather than uniformly: `error` for what is left pending (a message that does
-  not fit the contract, a `markPublished` that failed), `warn` for what the
-  next sweep takes (a refused publish, an unreadable outbox), each carrying its
-  cause as the third argument. Both are also where **honouring the
-  kernel's deadline through the ambient record** is worked: neither middleware
-  injects anything into the call — `next()` unchanged — so
-  `currentUnit()?.signal` is the only route to it, and what each piece answers
-  when it is aborted is that **slice's own** business now: `order-amqp-worker`'s
-  `orderNotifications` returns a `RetryableError`, leaving the delivery
-  un-acked so the broker hands it to the next worker, while `orderAudit` keeps
-  writing through the drain window rather than leaving a delivery un-acked;
-  `order-temporal-worker`'s `ShippingService.arrange` fails as a **defect**,
-  which the platform retries on another worker — the contract's
-  `ShippingUnavailable` is a permanent no and would be the wrong error for "we
-  ran out of time".
-- **`examples/order-api` consumes `@btravstack/http-server` rather than
-  hand-rolling a transport, and composes both of the package's answerers: oRPC
-  over its own node adapter (`@unthrown/orpc` at the boundary) for the router,
-  and htmx fragments for one server-rendered route.** It is a
-  two-slice modulith on the shape above: `slices/orders/` and
-  `slices/customers/`, each its own contract fragment, its own
-  `OrpcController` and its own di module exporting only
-  its controller, in di's provider form (`exports: [ordersController]`, since
-  `OrpcController` mints the port and there is no class to name; the two
-  slices are that form's first call sites). **Only `CustomersSlice` imports a
-  vertical** (`CustomerApplicationModule` + `CustomerPersistenceModule`),
-  because its procedures are unmarked and its repository is not tenant-bound;
-  `OrdersSlice` imports none, since the use cases its pieces read are built
-  per request in `UserModule` over the tenant that request authenticated as.
-  The orders slice also carries
-  `slices/orders/fragment.ts`'s `orderRowFragment` — `api.HtmxGet("/orders/:id/row",
-{ requires: [{ user: [] }] })`, minted straight from its method and path with no
-  contract in between — reading `FindOrder` off `context.unit` exactly as the
-  controller does, so a caller's credential is what scopes the row rather than
-  the path, which names only `id`; a cross-tenant test in `fragments.spec.ts`
-  renders the slice's own not-found row for a caller whose tenant never placed
-  the order.
-  One module per vertical in **both**
-  layers, not one per layer: a slice, a worker or a unit module carries its own
-  vertical and none of the other's. What the graph still shares is the
-  internal `DatabaseModule` every persistence module imports: a diamond, not
-  duplication, since `build.ts`'s `flatten` collapses the tree into a `Set`
-  keyed by provider **reference**, so one `OrderDatabase` is built however many
-  modules name it — which is also why `OrderTenantPersistence` **needs** that
-  port rather than importing the database module: a fork constructs every
-  provider in its own tree, so an import there would open a Prisma client per
-  request. The root composes them —
-  `orderRouter = api.OrpcRouter(contract)([ordersController,
-customersController])` and `orderFragments = api.HtmxFragments([orderRowFragment])`,
-  each the composing array form — and
-  **`HttpModule("OrderApi")({ router: orderRouter, fragments: orderFragments, fragmentsLogin:
-"/auth/login", unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule, session:
-SessionModule }, imports: [OrdersSlice, CustomersSlice, OrderPersistenceModule, cache(…),
-observability(), otel()], provides: [sessionCodec(), oidc({ principal, scope })], exports: [Logger,
-Tracer, Meter, OrderDatabase] })`** is the whole
-  composition root, a list of slices plus what no slice owns — the
-  sugar imports `http()`, provides the router and the fragments provider on the
-  starter's own ports and
-  exports `HttpRuntime`: `PORT`/`HOST`, `DATABASE_URL` and `REDIS_URL` come from the
-  environment inside the graph, the router is mounted under `/rpc` and the
-  fragments under `/` — `htmx()`'s own default. It is spelled as
-  `orderApiOver(unit)` with `OrderApi = orderApiOver({ anonymous: RequestModule,
-user: UserModule, service: ServiceModule, session: SessionModule })` beside it, and that is a
-  **fixture** concession with a reason: `@btravstack/testing`'s `overridden`
-  wraps the ROOT, and a unit module is forked later, so a spec has no other
-  way to substitute a provider inside `UserModule` — the stub goes in the kind
-  and the same one root definition composes it. The root itself stays
-  override-free, which is the convention. The
-  authenticators are **not** in that list: they ride the router and the
-  fragments provider, which are what need them, and `HttpModule` puts them in
-  `provides` itself, deduplicated by reference where both name the same one. The
-  **unmarked** `customers` fragment declares `tenantId` on its input, so a
-  procedure hands it to the use case and the use case to the repository; the
-  **marked** `orders` fragment declares none, and a request under it forks the
-  `session` kind, whose `Tenant` comes from the principal — so its leaves name no
-  tenant either, they read use cases already bound to one off `context.unit`.
-  A caller does not name the tenant it
-  is served, and a required field the handler ignores would be a confused
-  deputy in contract form. Either way the transport reads nothing about
-  tenancy.
-  `observability()` is what provides the `Logger` the interactors and the
-  request scope write to, and `Logger` is in `exports` because `RequestModule`
-  reads it out of the application scope once forked — as `OrderDatabase` is,
-  because `UserModule`'s `OrderTenantPersistence` reads the one client from
-  there. The four kinds ride
-  `HttpModule`'s own `unit` field, so the
-  per-request fork is the answerers' — each one opens it around the request it
-  is handling, not the kernel's, which forks nothing of its own any more.
-  There is no `runtime`, `resolves`,
-  `handler`, `port` or env-reading to spell anywhere. Its `main.ts` passes
-  `onEvent: kernelEvents(createLogger(jsonSink()))` so the kernel's nine events
-  land in the application's own stream, with the logger built by hand because
-  `building` is emitted while the graph still is — the kernel's stderr sink
-  is a fine default and this is the upgrade, not the requirement. All three
-  composition roots bind a unit module on their own runtime options, and every
-  one of those modules imports `UnitSpanModule` — `RequestModule` here, which
-  the other two kinds import in turn, and `MessageUnitModule` /
-  `ActivityUnitModule` on the two workers — so every unit, request or delivery
-  or activity attempt, opens an OTel span carrying the same ids the logger
-  stamps, and the roots compose `otel()` beside `observability()` and export
-  its ports for the fork to read. None of this rides `main.ts` any more — all
-  three are the one line `await runMain(<Root>)`, `OrderApi`'s own the sole
-  exception, for `onEvent`. Each metric an application mints sits at an adapter
-  seam, never in the application layer — the outbox relay's per-tenant
-  `relayed` counter, the billing stand-in's `authorized` counter — and nothing
-  in this application measures a request at all: `@btravstack/http-server`
-  reports every one to `Observers` at the unit seam, where `otel()`'s member
-  mints `btravstack.http.duration` dimensioned by method, answerer and status,
-  none of which a request scope can see from inside itself. Each procedure is a plain
-  `Result`-returning function typed by its slice's fragment (`@unthrown/orpc`'s
-  `.result()` handler, wrapped by the router's walk at composition). It reads
-  `port` back off
-  `Serving.info`; binding, the drain and the trace-id policy are the
-  package's. Two gates keep the composition honest at compile time: a root
-  that forgets `http()` is refused against
-  `"NO RUNTIME — the module exports no port declared over RuntimePort"`, the
-  sentence intersected onto `start`'s `module` parameter, and one that imports
-  it without providing `orderRouter` leaves `OrpcRouterPort` in `Needs`, which
-  the same parameter refuses by assignability — not di's dependency gate.
+Each composition root is its deployment's `src/module.ts` — `OrderApi`,
+`OrderTemporalWorker`, `OrderAmqpWorker` — whose TSDoc says why it is shaped
+the way it is; the slice modules, the unit modules and the `main.ts` files
+carry their own.
+
+- Each metric an application mints sits at an adapter seam, never in the
+  application layer — the outbox relay's per-tenant `relayed` counter, the
+  billing stand-in's `authorized` counter — and nothing in this application
+  measures a request at all: `@btravstack/http-server` reports every one to
+  `Observers` at the unit seam, where `otel()`'s member mints
+  `btravstack.http.duration` dimensioned by method, answerer and status, none
+  of which a request scope can see from inside itself.

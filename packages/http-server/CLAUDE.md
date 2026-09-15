@@ -327,7 +327,8 @@ not cover"` marker, and what the marker names is a procedure path
   marker. In short: the contract says WHICH SCHEMES protect a route and which
   scopes each must grant, `defineHttp({ authenticators })` says WHAT each
   scheme resolves to, and an unmarked procedure is public with nothing failing
-  if the marker is forgotten.
+  if the marker is forgotten. `AUTH.md` also covers the shipped authenticators
+  (`apiKeyAuthenticator`, `jwtAuthenticator`), the session scheme and `oidc()`.
 
 - **`html`/`raw` and `Html`** (`html.ts`) — a tagged template escaping every
   interpolation by default: `` html`<tr>${value}</tr>` `` HTML-escapes
@@ -806,22 +807,6 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   not a swap of this one), a middleware
   slot for application logic, `Result` → HTTP status, HTTPS, HTTP/2 — see the
   package README's _"What it does not do"_ for why each is a non-goal.
-  `plugins` (above) is an honest escape hatch rather than a keyhole — a plugin
-  can reach `StandardHandlerOptions.interceptors` and therefore a procedure's
-  execution — but the ordinary path is visible configuration at the
-  composition root, and an application middleware acting on the handler's
-  `Result` is what stays refused.
-- Peer dependencies: `@btravstack/core`, `@btravstack/config`,
-  `@btravstack/di`, `@btravstack/contract`, `unthrown`, `@orpc/server`,
-  `@orpc/contract`, `@unthrown/orpc`. `@btravstack/contract` is a peer for the
-  same dual-copy reason as the rest: its marker is a `unique symbol` and two
-  copies of the package are two different symbols, so a contract marked
-  against one would read as unmarked here. Hono and `@hono/node-server` were peers until the second
-  code review of PR #40: Hono routed exactly one pattern (`${prefix}/*`) to
-  oRPC's fetch adapter and 404'd the rest, which `@orpc/server/node`'s
-  `RPCHandler.handle(req, res, { prefix })` plus the runtime's own `404` do
-  with two dependencies fewer — and no `overrideGlobalObjects` footgun to
-  disarm.
 - **`httpServer({ port?, hostname?, cors?, bodyLimit?, compression?, securityHeaders?, unit? })`
   → `Module<HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers, ConfigInvalid, Env | UnitsNeedsOf<Units>>`** —
   the socket half: the runtime, its config, the kind → module record on
@@ -951,22 +936,6 @@ URLSearchParams(...))`, which keeps only the LAST value for a repeated key.**
   **A refusal (`401`/`403`/`413`/`422`) carries no body**, where the runtime's
   own `404`/`500` fallback carries `application/json` — `refuse` owes the
   caller nothing beyond the status.
-
-- **`resolveScheme(requirements, authenticators, headers)`
-  → `AsyncResult<{ scheme, identity }, Unauthenticated | UnderScoped>`**
-  (internal — not exported from `index.ts`) — the authentication walk, protocol-neutral, shared by every answerer so a scope
-  check cannot drift between protocols. It reports the SCHEME as well as the
-  identity, because the scheme is the unit kind a request opens under.
-  `UnderScoped` is the `403` case, distinct from `Unauthenticated`'s `401`.
-- **`principalOf(requirements, resolved)`** (internal — not exported from
-  `index.ts`) folds that to what a handler is injected: the identity bare, or `{ scheme, identity }` when the endpoint
-  named more than one scheme. One decision site, so the two answerers cannot
-  drift.
-- **`resolvePrincipal(requirements, authenticators, headers)`
-  → `AsyncResult<unknown, Unauthenticated | UnderScoped>`** — the two composed,
-  and the shape `index.ts` exports. `principalMiddleware` is oRPC's adapter
-  over the pair and keeps the throw at the boundary that demands one; it puts
-  both `principal` and `resolved` on the context, the second for `unitScope`.
 
 ### Unit kinds: `auth.principals` and `auth.units<…>()`
 
@@ -1103,129 +1072,6 @@ api.OrpcController(contract, "orders")({
   record and a piece that declared `unit:` receives `{}` at runtime once
   lifted. A lifted root must restate `unit:` on the router arm.
 
-## The authenticators that ship
-
-The seam was here and none of the implementations were, so every application
-wrote the same four things by hand — and this is the one area of the framework
-where "the application writes it" carries a security cost rather than a
-keystroke cost (issue #157). JWT, API key and the session cookie ship; the
-full surface is in `AUTH.md`.
-
-**`apiKeyAuthenticator`** is on the main entry point, because it has no peer to
-be optional about. What it owns is the constant-time compare: SHA-256 digests
-rather than strings (`===` leaks a prefix through timing, and `timingSafeEqual`
-refuses unequal lengths, which would leak the key's length instead), every key
-checked with no early return, and a missing header on the same path as a wrong
-one.
-
-**`jwtAuthenticator`** is behind `@btravstack/http-server/jwt` with `jose` an
-optional peer — the `@btravstack/observability/pino` protocol. JWKS fetch,
-cache and rotation; an allowlist that is asymmetric-only, because a JWKS
-publishes PUBLIC keys and accepting `HS256` beside them is the
-algorithm-confusion attack; `iss`, `aud` and `exp` required to be
-PRESENT through jose's `requiredClaims` — it validates `exp` only when the claim
-is there, so without that a signed token omitting it authenticates and never
-expires, which `jwt.spec.ts` now pins. `nbf` is honoured when present and not
-required: real issuers often omit it. Clock tolerance defaults to zero. Every failure is one refusal, so the endpoint is
-not an oracle for which check the attacker got wrong. There is a test that
-mints the confusion token and a test that mints one signed by a key the JWKS
-does not publish.
-
-**`jwks`, `issuer` and `audience` are bound from `HTTP_JWT_JWKS_URI`,
-`HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE`, and the option PINS its variable** —
-`http({ port })` against `PORT`, one layer down. Rule 6's test decides it: all
-three vary by DEPLOYMENT and none of them varies by code. Staging and
-production authenticate against different issuers, an issuer's JWKS moves, and
-a token's audience is the deployment's own name — none of that is a decision
-the image gets to carry, and every one of them was a rebuild before this.
-`algorithms`, `clockToleranceSec`, `header`, `principal` and `scopes` stay
-options: the first two are a security posture whose silent change is a
-regression, and the last three are a shape or a function, which an environment
-cannot carry.
-
-**One JWT scheme per process is the default, and a second one pins all three.**
-The prefix is `HTTP_JWT_`, singular, because a process serves one issuer in
-every deployment this stack has met — the `PORT` case, not the
-`HTTP_`-versus-`AMQP_` one. Two schemes reading the same three variables would
-be two schemes with identical configuration, which is one scheme; a genuine
-second issuer therefore pins `jwks`/`issuer`/`audience` explicitly, which is
-already how a test states one. What is deliberately NOT here is a
-per-scheme prefix (`HTTP_JWT_USER_ISSUER`), which would buy the rare case a
-naming convention nothing enforces and make the common one longer.
-
-**The piece is a `make` arm, not a `sync` one, and that is what the arm is
-for.** Reading the environment can FAIL, and a scheme whose configuration is
-wrong must not boot: `make` puts `ConfigInvalid` on the description's error
-channel, `SchemeProviders` carries it, and the graph refuses to build —
-`runMain` reports it and exits `78`, naming every variable at once. The
-alternative was an authenticator that constructs happily and refuses every
-caller at runtime with a 401 carrying no reason, which is the worst diagnostic
-this package could produce. `Config.parse` is the step it runs, lifted out of
-`Config.provider` so both callers share one home; the piece is already its own
-provider, so there is no second port for `Config.provider` to bind.
-
-**It needs `Env`, and `HttpModule` carries that for every provider in the root
-— its schemes included — rather than making every root restate it.** The scheme's provider sits in the ROOT's
-`provides` (it rides in on the router or the fragments), so di's `NeedsGate`
-would ask the root to declare `Env` — a line that lands on every deployment and
-every doc page mirroring one. `HttpModuleOptions` instantiates that gate as
-`NeedsGate<…, EnvAnd<N>>` instead, `EnvAnd<N>` being `readonly [...N, typeof
-Env]`. It is legal and free: di's `needs` array is **type-level only** (`Module`
-drops it and computes the needs channel from the providers), and its gate asks
-only that the unmet set be a SUBSET of the declared one, so declaring a port
-nothing needs costs nothing. `Env` still leaves this root on the module's needs
-channel, so `start`'s own gate is what supplies it — unchanged. This hides
-exactly `Env` and nothing else: a scheme owing any OTHER unmet port is still
-refused at the `HttpModule` call, which `auth.test-d.ts`'s case 12 pins beside
-`jwt.test-d.ts`'s positive. The precedent is in the same file: the starter this
-sugar imports needs `Env` too, and no root has ever named that either.
-
-**The JWKS URI is `Config.url`, not `Config.string`.** `createRemoteJWKSet`
-takes a `URL`, so the piece constructs one inside `make` — and `new URL` throws,
-which inside a combinator is how this repo mints a `Defect`. A scheme-less
-`HTTP_JWT_JWKS_URI` is the likeliest of the three operator slips, and it was the
-one case that escaped the `ConfigInvalid` this feature promises: it died as an
-unnamed defect instead of `runMain`'s `78` naming the variable. `Config.url` is
-`URL.canParse` as a field rule, checked on the pin as well as on the variable,
-so the value the piece hands to `new URL` is one that has already parsed.
-
-**`jose` is ESM-only, and that lands on ONE subpath under ONE module format.**
-The CJS build's `require("jose")` needs `require(esm)`, on by default from Node
-22.12; ESM is fine on any Node 22, and a consumer that never imports
-`@btravstack/http-server/jwt` is unaffected either way. So it is documented
-where the subpath is, rather than paid for by raising the package's `engines`
-floor from `>=22` — which is a breaking change for every consumer, to serve the
-CJS ones on 22.0–22.11.
-
-**A declared vocabulary must be grantable, and the way to guarantee that is to
-stop declaring it twice.** Both authenticators take the curried `<P>()(…)` shape
-`HttpAuthenticator` already uses — the principal stated, the vocabulary
-INFERRED: from `scopes` on the JWT side, from the union of what the keys grant
-on the API-key side. A vocabulary written separately from what is granted can
-name a scope nothing issues, which passes `ScopeGate` and then refuses every
-caller with a permanent 403 — the failure that gate exists to catch, walked past
-one layer down. Inference deletes the second place it could be written.
-
-The API-key scheme is scoped when ANY key grants something, decided once at
-composition so the answer's shape cannot vary per key: a scoped scheme whose
-matched key declared nothing answers an empty grant, never a bare identity.
-
-**No new checking surface.** A grant goes through `granted()` and the existing
-walk produces the 403 — which is why `scopes` is a vocabulary and the grant is
-its INTERSECTION with the token's claim: a token claiming a scope the scheme
-does not know grants nothing extra, and nothing had to learn a second way to
-compare.
-
-**Password hashing and credential ISSUING are declined, not deferred.** Every
-scheme here is on the verifying side, and that is the line rather than an
-accident of what shipped: the credential is minted by whoever owns the
-identity — an OIDC provider, a partner's key vault — and this package reads
-what arrives. The session cookie does not move it, since `sessionCodec` seals
-a principal somebody else already authenticated. So a hasher here would be a
-primitive with nothing calling it. `argon2` directly, at whatever mints your
-tokens, is one dependency and no framework opinion, which is the right size
-for it.
-
 ## The session codec — from `@btravstack/http-server/session`
 
 **`sessionCodec({ keys?, ttlSec? })`** — a `Provider(SessionCodec)` binding the
@@ -1358,80 +1204,7 @@ the codec is a provider, not a unit — so the expiry spec pins the boundary wit
 `ttlSec: 0` (`exp === iat`, and `>` refuses it) rather than by aging a cookie.
 A `Clock` here would be machinery bought for one test.
 
-## `sessionAuthenticator` — the cookie as a SCHEME
-
-**`sessionAuthenticator<P>()({ scopes?, principal? })` →
-`Authenticator<P, Scopes[number], SessionCodec, never>`**, from the same
-`/session` subpath. A third scheme beside JWT and API key, so
-`requires: [{ session: [] }]` on a fragment route and
-`authenticated({ session: [] })` on a procedure need **nothing new** — which is
-the point of it being a scheme rather than a middleware: the walk, the scope
-check, the 401/403 split, the unit kind and the principal port already exist,
-and this contributes one `AuthenticatorService` to them.
-
-**It injects the PORT, not keys.** `inject: { codec: SessionCodec }`, so the
-description's needs channel is `SessionCodec` and a root composing the scheme
-without `sessionCodec()` is di's own unmet need naming `SessionCodec`,
-refused at the `HttpModule` call. It also means the codec that reads a cookie
-is by construction the one that sealed it — one key list, one rotation.
-
-**The `cookie` header is parsed by hand, in `cookie.ts`.** `node:http` hands
-over one string, so `cookieValue` splits on `;` and takes the first part whose
-name matches EXACTLY. Three things it gets right that a `split("=")` does not:
-`__Host-session-theme` is not `__Host-session` (a prefix match unseals the
-wrong cookie); only the FIRST `=` splits, so a value carrying one arrives
-whole; and the FIRST of a repeated name wins, which is the order a browser
-sends them in — most specific first — so a duplicate cannot shadow the session.
-Six lines and no dependency — and they are shared with `oidc()`, which reads
-its own transient with them and writes both cookies with `setCookie` /
-`clearCookie` beside them. `cookie.ts` is deliberately NOT a tsdown entry: it
-is an intra-package need, and satisfying it through `session.ts` would have
-widened a published surface for it.
-
-**`SESSION_COOKIE` is `__Host-session`, and there is no `cookie` option any
-more.** `__Host-` is enforced by the BROWSER — `Secure`, `Path=/`, no `Domain`
-— so the guarantee costs this package no code and cannot be misconfigured from
-here. The knob is gone because `oidc()` SEALS that name: a scheme that could
-read `sid` while the answerer wrote `__Host-session` is a deployment where
-every login succeeds into a cookie nothing reads — an infinite redirect between
-the fragment and `/auth/login`, with no compile error and no runtime error. Two
-options that must agree is the shape where they silently do not, so both sides
-name one exported constant. It had exactly one consumer in the repository, a
-type test asserting it accepted a string, and nothing said why a deployment
-would rename it.
-
-**The lifetime is FIXED, and it is the codec's.** A scheme is handed headers,
-not a response, so it has nowhere to put a `Set-Cookie` — there is no sliding
-re-seal to be had here even in principle, which is why `ttlSec` is the whole
-session and a login is what issues the next one. Rotation is the codec's for
-the same reason: prepend, deploy, drop.
-
-**The vocabulary is decided ONCE at composition**, `apiKeyAuthenticator`'s own
-rule and for its reason: `scopes` present makes the scheme scoped, so a session
-holding none answers an empty grant rather than a bare identity, and the
-answer's SHAPE cannot vary per request. The grant is the INTERSECTION of the
-vocabulary with `Session.scopes`.
-
-**`Session.scopes` was ADDED for this, rather than a second shape invented
-beside it.** It is `readonly string[] | undefined`, `seal` carries it, and an
-OIDC login writes it from the token's `scope` claim. It is also why `sessionOf`
-now checks it: the plaintext is authenticated, not validated, and a string
-`scopes` would defect on the `Set` the scheme builds from it.
-
-**`principal(session)` defaults to `session.principal`, refusing a `null`
-one.** The codec cannot know `P` — `{ principal: null }` seals and unseals
-happily — so the refusal belongs here, exactly where `jwtAuthenticator`'s
-`principal(claims)` puts it. Everything refused is refused the same way: no
-cookie, an unopenable one, an expired one and a declined principal are one
-`Unauthenticated` carrying no reason.
-
 ## `oidc()` — the login answerer, from `@btravstack/http-server/oidc`
-
-**`oidc({ principal, issuer?, clientId?, clientSecret?, redirectUri?, prefix?,
-scope?, postLogout?, allowInsecureIssuer? })` → a `Provider.member(HttpHandler)` needing
-`Env | SessionCodec` and reporting `ConfigInvalid | OidcUnreachable`.**
-`openid-client` is its optional peer, behind this subpath, on the protocol
-`pino` and `jose` already use.
 
 **It is an ANSWERER, not a scheme, and that is the design.** A login is a
 redirect protocol — three requests, a cookie written on two of them, a browser
@@ -1443,21 +1216,6 @@ the same set port `orpc()` and `htmx()` contribute to, mounted at `prefix`
 for one it serves no route for, rather than resolving unwritten the way
 `htmx()` does — `htmx()` is mounted at `/` by default and shares that space
 with everything, where this owns a prefix nobody else claims.
-
-**The two halves meet at exactly one place, and it is the cookie.** `oidc()`
-seals `__Host-session`, `sessionAuthenticator` reads it, both through the same
-`SessionCodec` port — so the codec that opens a cookie is by construction the
-one that sealed it, key rotation included. That is also why the answerer
-injects the port rather than the keys: a root composing `oidc()` without
-`sessionCodec()` is di's own unmet need naming `SessionCodec`, refused at the
-`HttpModule` call.
-
-**`SessionCodecService.ttlSec` was published for this.** The cookie's
-`Max-Age` and the payload's `exp` are the same fact told twice, and only the
-codec knows the number: a wrapper that guessed it would either drop the cookie
-while the session was still live or keep sending one that unseals to nothing.
-The alternative was unsealing what had just been sealed to read `exp` back —
-one AEAD open per login, to recover a value the codec already had.
 
 **An `http:` issuer is REFUSED at boot unless it is loopback or opted in.**
 `Config.url` validates that a value parses; nothing validated what it meant.
@@ -1486,66 +1244,12 @@ does not carry over (measured against a real Hydra); and
 all — OIDC Core lets a client trust a token that arrived over TLS from the
 token endpoint, which is a trust this package does not extend.
 
-**`return` is decoded exactly once, and the guard runs on both legs.** The
-query parser IS that decode; a second `decodeURIComponent` would turn `%255C`
-back into `\`, and `new URL("/\\evil.com", base)` resolves to
-`https://evil.com/` — the WHATWG parser reads `\` as `/` in relative-slash
-state — so a value that already passed the guard could be walked past it again.
-The rule is `redirect.ts`'s one `returnTo`, shared with `htmx()`: starts with
-`/`, and its second character is neither `/` nor `\`. It is checked at
-`/login`, where the value is sealed, AND at the callback, where it is followed:
-`htmx()` guarding where it mints the value does not make the query at `/login`
-any less the caller's.
-
-**What a HEADER accepts is a separate question, and it is the header's.** Node's
-validator is `/[^\t\x20-\x7e\x80-\xff]/` — control characters AND every code
-point above U+00FF — so `/订单/1`, an ordinary path arriving through the very
-`htmx({ login })` seam, passed every same-site clause and then
-`ERR_INVALID_CHAR`ed the response with the caller's code already spent. The
-answer is `forLocation` where the value becomes a `Location`, in both packages,
-which closes the non-Latin-1 class and the CR/LF one together and is shorter
-than the control-character clause it replaced. It is `forLocation` and not
-`encodeURI`: a browser's target arrives already percent-encoded and the seam
-decodes it exactly once, so re-encoding that `%` puts a real user on
-`/orders/a%2520b/row`. A guard clause that existed only
-to satisfy a header was the header's job written in the wrong file; the guard
-now says one thing, "this stays on my site", and says it about a value
-`forLocation` round-trips exactly, `%` included.
-
-**The grant's `currentUrl` is the REGISTERED redirect URI plus this request's
-query.** Never rebuilt from `Host`, which the caller writes — and the same
-choice is what lets a deployment sit behind a proxy, or a spec bind an
-ephemeral port while the provider only ever knew about `:3000`.
-
 **A refusal is `400` unless the PROVIDER refused, which is `401`.** No
 transient cookie, one no key opens, one past its five minutes, a `state` that
 does not match and a `principal(claims)` answering `undefined` are all `400`:
 this end could not make sense of the callback. A code the provider would not
 exchange is `401`. None of them seals a session; every one of them CLEARS the
 transient, which is the point of routing them all through one `refuse`.
-
-**Logout is parameterless, and a `POST`.** No `id_token_hint`, because the
-cookie holds a principal and no token — so no `post_logout_redirect_uri`
-either, which a provider is entitled to refuse without a hint (Hydra does;
-measured). It is a `POST` because it is a state change, which also puts it
-under the CSRF check a composed session scheme turns on, exactly like any other
-cookie-bearing state change. Every redirect this answerer writes is a `303`,
-`htmx()`'s own ruling and for its reason.
-
-**`principal(claims)` is `jwtAuthenticator`'s hook, on `openid-client`'s
-`IDToken`.** One function serves both schemes, and it is the only place the
-application's own claims — a tenant, above all — are read. `Session.scopes`
-comes from the space-delimited `scope` claim and `Session.sid` from `sid`, each
-only when the provider wrote a string there: neither is a claim the standard
-puts in an ID token, so a provider that omits one leaves the field absent and a
-scoped `sessionAuthenticator` grants nothing.
-
-**The cookie NAME is one constant, `session.ts`'s `SESSION_COOKIE`.** The
-scheme's `cookie` option was deleted rather than mirrored here: a pair of
-options that must agree is the shape where they silently do not, and the
-failure is invisible — every login succeeds, nothing reads the cookie, and the
-browser loops between the fragment and `/auth/login` with no error anywhere.
-Nothing had ever renamed it, and the `__Host-` prefix is the design.
 
 **Each route is an OPERATION on `Observers`, and it holds no `Logger` of its
 own.** That is the root spec's rule — a starter reports what it did and holds
@@ -1574,331 +1278,14 @@ reads. It is `http-runtime.ts`'s own rule for the request, applied one level
 down — `response.closed` checked first, because subscribing to a stream that
 already fired is this package's documented footgun.
 
-**It costs a root nothing, and `httpServer` — and `http()` — now export
-`Observers` so that stays true.** A reader of a set port must contribute a no-op member of its own,
-and `oidc()` is a single `Provider.member`, not a module — it has nowhere to
-put one. The starter already provides that member; adding the port to its
-`exports` is what makes it visible to a SIBLING provider in the root, so a
-graph composing `oidc()` writes no observability line and gets an inert call
-per route. The alternative was making `oidc()` a module, which would have
-changed `provides: [oidc(...)]` into an import for one no-op provider. `http()`
-re-exports it for the same reason and was missed on the first pass: it wraps
-`httpServer` and re-declares its own `exports`, so a root importing the sugar
-rather than the socket half failed the gate on a port it never named.
-
-**The transient is cleared on EVERY exit of the callback, not on success
-alone.** The flow state is spent the moment a callback has been seen, and one
-left behind for five minutes is what the next tab's login collides with. Two
-concurrent logins in one browser therefore share one transient and the last
-`/login` wins: the other tab's callback finds a `state` that does not match and
-is refused. That is a browser-level fact rather than a bug — the cookie is the
-whole memory, and there is one of it — and the recovery is the refused tab
-logging in again.
-
-**`oidc()` contributes no `cookieScheme()` member.** CSRF on
-`POST <prefix>/logout` rides the session scheme being composed, which is not a
-gap worth closing: an `oidc()` with no session scheme in the same root logs a
-browser into a cookie nothing reads, so the composition that would need this
-answerer's own CSRF marker is one that does not work at all.
-
 ## `openApiDocument` — from `@btravstack/http-server/openapi`
 
-**`openApiDocument(contract, { base?, securitySchemes? })` →
-`AsyncResult<OpenApiDocument, never>`** (`openapi.ts`) — the contract as an
-OpenAPI document, with the `@btravstack/contract` marker folded into each
-operation's `security`. Async, and cannot fail — thesis #6's spelling — through
-`fromSafePromise`: a generator fault is a defect, never a raw rejection. Both
-options are typed by the library per the passthrough rule: `base` is
-`Partial<OpenApiDocument>` and `securitySchemes` is `OpenApiSecuritySchemes`,
-the document's own `components.securitySchemes` shape reached by index off
-`OpenApiDocument` (exported for the same TS4023 reason as the alias itself), so
-a key the generator would ignore is a type error rather than silently inert.
-
-**It is a fold, not a translation**, and that is the whole reason this was
-cheap: `Requirement` is `Readonly<Record<string, readonly string[]>>` and
-`Requirements` an array of them — byte-identical to OpenAPI's
-`SecurityRequirementObject[]`, where keys within one object are AND and separate
-objects are OR. That correspondence is why `@btravstack/contract` refuses a
-two-scheme requirement it would otherwise run as OR, and it means the emitted
-`security` is the marker's value with nothing reinterpreted.
-
-**So a document from this stack carries OR and never AND**, because AND cannot
-be expressed a layer earlier: the contract refuses the multi-key requirement
-OpenAPI would read as AND. An earlier revision of the spec asserted an AND
-round-trip and the compiler refused it, which is the two packages agreeing.
-
-**Operations are matched by `operationId`.** `@orpc/openapi` defaults it to the
-router segments joined by `.` — measured, not assumed — which is the same
-dotted path the contract tree gives, so the walk keys on the contract's own
-path rather than on the document's shape.
-
-**`securitySchemes` is the caller's**, because the contract deliberately does
-not say what a scheme IS. That is the same split as
-`defineHttp({ authenticators })`, one layer out: `auth.ts` says what `user`
-resolves to for the server, the document says what it looks like to a client.
-A scheme named by the contract with no definition still appears in `security` —
-a visible unresolvable reference beats a silently dropped requirement.
-
-**`OpenApiDocument` is exported so a consumer can name it.** Its constituent
-types come from `@hey-api/spec-types`, a transitive dependency nothing here
-depends on directly, so an application annotating nothing gets TS4023 in its own
-declaration emit — measured on `examples/order-api`, the same hazard that shapes
-`OrpcRouterPort` and `@btravstack/prisma`'s port.
-
-**Nothing serves it, deliberately.** This package mounts no documentation route
-and ships no UI asset: a Swagger UI bundle in a transport package would be a
-runtime dependency for every consumer, including the ones who never ask for a
-document. An application serves the value from a route of its own —
-`examples/order-api/src/openapi.ts` is the whole recipe.
-
-`@orpc/openapi` and `@orpc/json-schema` are **optional peers behind the
-subpath**, so a consumer that never imports it installs neither.
-`StandardJsonSchemaConverter` is what converts the schemas, and it is why no
+The surface and its reasoning are in `docs/reference/http-server.md` and
+`openapi.ts`'s TSDoc. `StandardJsonSchemaConverter` is what converts the schemas, and it is why no
 `@orpc/zod` is needed: zod v4 is Standard Schema, and `@orpc/zod` publishes no
 `2.0.0-beta.28` to match the catalog's pin anyway.
 
-## Internal seam
-
-- **`HttpHandler` is NOT internal any more** — it is the set port of
-  **Several answerers, one runtime** below, exported from `index.ts` because a
-  second protocol's package has to name what it contributes to. What stays
-  internal is the oRPC answerer's own wiring: `orpc.ts`'s `orpc({ prefix })` is
-  a `Provider.member(HttpHandler)({ router: OrpcRouterPort, config: HttpConfig
-}, …)` answering `{ prefix, handle }`, where `handle` is `@orpc/server/node`'s
-  `RPCHandler` — `(request, response, _signal, host) => rpc.handle(request,
-response, { prefix, context: { request, host } })`, unmatched → resolves
-  unwritten. `handle` returns
-  `PromiseLike<unknown>` rather than `void` because the package must know when
-  an answerer is finished to write a `404` over a declined request without
-  racing a response still in flight; `unknown` because oRPC's `handle` resolves
-  `{ matched }`, never the unit's result — and the runtime reads "did you
-  answer?" off the response rather than off that, which is what lets an
-  answerer be written against `node:http` alone.
-- **100% lines and functions, on every spec file.** Every app boots through the `boot`
-  fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
-  `configured` and `appOnPort` depend on — so it is stopped when the test
-  ends, on every exit path, and the teardown is Defect-only: a startup
-  failure (`configured`'s `ConfigInvalid`, `occupied`'s port in use) is the
-  test's to assert on `app.exited`. `http-runtime.spec.ts` carries 24,
-  through `test-fixtures.ts`'s `appOf` — `httpServer({ port: 0, hostname:
-"127.0.0.1" })` imported next to `answering(handler)` in `provides`,
-  `answering` being the fixture that mounts a bare handler as the graph's one
-  answerer — so the
-  guarantees (`404`/`500` fallbacks, the unit open until `'close'`, the drain,
-  streamed responses, keep-alive retirement, the trace-id policy, port
-  failures) are exercised with no router in the way, and one more — "serves a
-  fragments-only graph, with no oRPC router anywhere" — boots `httpServer()` next
-  to `htmx()` alone, pinning that the socket half needs no oRPC answerer wired
-  in at all; three of them are the
-  starter's config (_"binds PORT and HOST from the environment when nothing is
-  pinned"_, _"pins what it is given and reads the rest from the environment"_,
-  _"fails startup with ConfigInvalid for HttpConfig when PORT is not a port"_,
-  through the `configured` fixture, whose `BoundConfig` provider captures what
-  the graph bound), and four of them are `securityHeaders`: the defaults on a
-  served response through `serve`, the same defaults on the runtime's own
-  `404` through `rpc` — the path a handler plugin would never reach — their
-  absence when `securityHeaders: false` is pinned, and a **custom record**
-  applied verbatim (the given headers on the response and the defaults gone,
-  since the record replaces them rather than extending them), `serve`'s third
-  argument threading straight into `appOf`. `orpc.spec.ts` carries 18. Eight
-  are the starter proper answers
-  for, through the `rpc` fixture — `HttpModule("RpcApp")({ router:
-greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
-  a router provider that declares a `Greeter`, with a typed `RPCLink` client:
-  dependencies injected, a nested procedure, a stray implementation key
-  dropped, `prefix` honoured, the runtime's 404 outside and under the prefix,
-  and oRPC's `INTERNAL_SERVER_ERROR` collapse — plus one through `rpcWithCors`,
-  a `greet`-only router configured with oRPC's own `CORSHandlerPlugin`, proving
-  `plugins` reaches `RPCHandler` rather than being silently accepted and
-  dropped: the plugin, not this package, decided the response's
-  `access-control-allow-origin`. The other ten are `cors`/`bodyLimit`/`compression`:
-  reflecting the request's origin by default and taking a given `cors` record
-  instead, rejecting a body over `DEFAULT_BODY_LIMIT` and over a given limit,
-  reading an unbounded body when the limit is pinned off, compressing a
-  response when `compression` is enabled and taking given compression
-  options, reading the body limit and CORS origin from `HTTP_BODY_LIMIT`/`HTTP_CORS_ORIGIN`
-  and compression from `HTTP_COMPRESSION` when nothing is pinned, and preferring the
-  option over the environment per field — the same precedence
-  `http-runtime.spec.ts`'s config tests pin for `PORT`/`HOST`, proved here for
-  the three fields `orpc()` owns instead of `httpServer()`. `controller.spec.ts` carries 6, through the
-  `controllers`, `rpcSliced` and `rpcDeep` fixtures: a piece carries the port
-  its contract key minted (`OrpcController:greetings`) and the deps it
-  declared; `api.OrpcRouter(contract)([...])` serves a router composed from
-  two pieces — `helloController` over the `greetings` fragment and
-  `echoesController` minted by the dotted path `"echoes.ping"` — with a
-  procedure from each answering through one client, proving every piece's
-  slice was mounted under the path its port id carries, `nest`'s rebuild
-  included; one pins that a router declaring `inject: {}` still has its `sync`
-  handed exactly one argument, the empty services record (the former sync-key
-  discrimination spec is deleted with the record form: there is no record for a
-  `sync` key to be confused with, `Array.isArray` decides); and two are `rpcDeep`, over a contract with two
-  pieces sharing the nested `"v1"` parent (`"v1.orders"` and
-  `"v1.customers"`) plus one minted at the bare procedure path `"health"` —
-  the shared parent is what forces `nest`'s `node[segment] ??=` to find a
-  node the first piece already created rather than only ever creating one,
-  and `"health"` is the depth-N leaf case, a piece with no fragment around it
-  at all. A sixth pins that the rebuild reaches **no prototype**: `nest` builds
-  with `Object.create(null)`, because on a plain `{}` a `"__proto__"` segment
-  reads `Object.prototype` — not nullish, so `??=` assigns nothing — and the
-  walk then writes the piece onto `Object.prototype` itself, corrupting every
-  object in the process (measured). `routerOf` only ever `Object.entries` what
-  it is handed, so nothing downstream wants the prototype.
-  A process still serves one router (thesis #1); the composing
-  form changes how many providers build it, not that fact. `auth.spec.ts`
-  carries 21, through the `rpcAuthed`, `rpcRootMarked`,
-  `rpcRootMarkedDeep`, `controllers` and `headers` fixtures — every router, controller and
-  authenticator in them minted by ONE `defineHttp({ authenticators })`,
-  since a contract naming no principal leaves the factory as the only way a
-  handler gets a readable one. Four are over
-  `authedContract` — `{ orders: authenticated({ user: [] })({ whoami }), health: { ping } }`,
-  one protected fragment and one public one: the handler reading a `userId`
-  only the factory typed, a rejected token answering `UNAUTHORIZED` with the
-  handler never entered, an authenticator's own defect collapsing to
-  `INTERNAL_SERVER_ERROR` rather than a 401, and an unmarked procedure served
-  with no credentials at all. One more is over the authenticator that
-  **declares a dependency** — a `Verifier` port, the arm `defineHttp` binds
-  through `Provider(port)({ inject, ...arm })` — proving its need travelled with it into
-  the graph, and one more is `rpcSubstituted` — the same router with the
-  scheme's authenticator replaced on its port, the substitution seam
-  `authenticatorPort` exists for. Two are over `rootMarkedContract` —
-  `authenticated({ user: [] })({ orders: { whoami } })`, the mark on the **root**, where
-  there is no `contract[key]` to read it from: every leaf beneath it is
-  protected, and an accepted caller still reaches the
-  handler with its principal. Two more are over `rootMarkedDeepContract` — the
-  same root mark served through a piece minted **two levels below it**
-  (`"v1.orders"`) — the fold-vs-walk proof: an accepted caller reaches the
-  piece with its principal and a refused one never enters it, evidence that
-  `FragmentAt`'s compile-time fold (applied where the piece is minted) and
-  `routerOf`'s runtime `inherited` walk (seeded from the router's own root,
-  regardless of how many pieces compose it) type and protect the same leaf.
-  Two are composition-time — the scheme's own port
-  declared alongside the dependencies the caller wrote, and no scheme port at
-  all when the contract marks nothing. The last nine are over the `headers`
-  fixture and pin the shared walk's own rules: eight drive
-  `principalMiddleware` directly — the first requirement a caller satisfies
-  wins, `UNAUTHORIZED` when none is, a granted scope admits, a bare identity
-  carrying a `scopes` field injected whole rather than mistaken for a scoped
-  grant, `FORBIDDEN` when
-  the scheme grants no scopes at all, `FORBIDDEN` when the credential is valid
-  but under-scoped, the principal tagged when **one** requirement names two
-  schemes, and a defect stopping the walk instead of falling through to the
-  next requirement — and the ninth calls `resolvePrincipal` itself rather than
-  the middleware, pinning that an under-scoped credential settles the
-  protocol-neutral `UnderScoped` tag rather than a bare rejection, which is
-  what lets `principalMiddleware`'s `403` and `htmx()`'s `403` both read the
-  same distinction off one shared `Err`.
-  `controller.test-d.ts` is the package's own compile-time gate — see Public
-  surface.
-
-- **`fragments.spec.ts` carries 7**, all for `matchPath` — binding every named
-  segment, declining a segment-count mismatch, a literal-segment mismatch, a
-  trailing slash that would bind an empty parameter and a malformed
-  percent-encoding, and matching a parameter-free pattern and the literal
-  root each with an empty (not `undefined`) binding, the distinction
-  `htmx.ts`'s "no route matches" check depends on.
-- **`html.spec.ts` carries 5**, over `html`/`raw` directly, no app involved:
-  every character HTML gives meaning to escaped in both element and quoted
-  attribute position, a nested `Html` spliced once rather than escaped twice,
-  an array of fragments concatenated with no separator, a hostile
-  non-string value's own `toString` output escaped rather than trusted, and
-  `raw` as the one way markup survives unescaped.
-- **`htmx-route.spec.ts` carries 3**, through the `htmx` fixture's own
-  `HtmxFragments` composition over three routes and two schemes: a piece
-  carries the port its route's own method and path minted
-  (`HtmxFragment:GET /orders/:id/row`) and the deps it declared; the composed
-  port carries each route's OWN requirements — two routes requiring "user",
-  one requiring "service" — with each scheme key resolving to its OWN
-  authenticator, proving a scheme shared across routes cannot resolve to the
-  wrong one; and one route's principal and path parameter both reach its own
-  piece's handler through `handle`, the answerer's own erased-to-`unknown`
-  call shape.
-- **`answerers.spec.ts` carries 5**, over a graph composing two bare
-  answerers rather than real oRPC or htmx ones, so the routing decision is
-  isolated from either protocol: the longest matching prefix wins, a mount
-  point itself (not only what is under it) belongs to its own answerer, a
-  path no mount covers is the runtime's own `404` with neither answerer
-  consulted, a mount point is a path segment rather than a string prefix (a
-  sibling path sharing its first characters is not swallowed), and two
-  answerers claiming one mount — a trailing slash included — is a
-  `RuntimeStartFailed` at `listen` rather than a coin toss.
-- **`htmx.spec.ts` carries 19.** Nine are the answerer proper, through the
-  `htmxServer` fixture: a GET fragment served with its path parameter bound,
-  the `text/html; charset=utf-8` content-type, the runtime's own `404` for a
-  path no route declares, a POST on a GET-only path not reaching the GET
-  handler (matched by method, not path alone), `401`/`403` for a marked
-  route with no credential and one under-scoped, `413` for an over-limit body
-  sent across several real TCP chunks — the shape that distinguishes a
-  buffer-then-check implementation from `readBody`'s own stream-checking
-  one — `422` for a body a route's schema rejects with the handler never
-  entered, and the handler reached with the schema's own validated output
-  for a body that passes. Three more are over `htmxServer` too: the resolved
-  principal reaching a protected route's handler, the unconditional
-  `Cache-Control: no-store` on an authenticated response, and an
-  authenticator's own defect collapsing to the runtime's `500` rather than a
-  `401`. One is the route with no `input` at all, proving the decoded form
-  reaches the handler unvalidated. Two drive the built answerer directly,
-  past `htmxServer`'s app: a genuine request-stream fault propagating rather
-  than being modeled, and a request already destroyed by the time a marked
-  route's authentication `await` yields — `readBody`'s own already-fired
-  guard, without which the promise never settles. Three are
-  composition-level, through `bothProtocols`/`sharedAuth`/`fragmentsOnly`:
-  each protocol's own path answering from the one runtime
-  `HttpModule({ router, fragments })` starts, a scheme shared by both
-  resolving through one authenticator rather than two, and `fragmentsPrefix`
-  reaching `htmx()` rather than being silently defaulted to `/`. The last is
-  two `HtmxGet` pieces minted on the same method and path refused as di's
-  duplicate-provider defect — the route-first sibling of the port-id
-  collision `controller.spec.ts` already covers for `OrpcController`.
-- **`openapi.spec.ts` carries 4** — pre-dating this feature set, undocumented
-  here until now: `openApiDocument` answering through the `Result` channel —
-  async and cannot fail, never a raw rejection — a marked procedure's own
-  scheme and scopes reaching `security` with an unmarked one carrying none,
-  several schemes on one mark round-tripping as one requirement per
-  alternative (OpenAPI's own OR — there is no AND case, since
-  `@btravstack/contract` refuses the multi-scheme requirement OpenAPI would
-  read as AND), and a procedure's own mark shadowing its record's for itself
-  while a sibling still inherits the record's.
-
-- **`oidc.spec.ts` runs the whole flow against a real provider**, the shared
-  Ory containers `internal/test-infra` owns — a file-scoped `ory` fixture, a
-  `bff` fixture booting `oidc()` + `sessionCodec()` + the session scheme + one
-  fragment behind a scope, and a `browser` with a cookie jar following nothing.
-  It pins the redirect out (PKCE `S256`, `state`, `nonce`, the registered
-  redirect URI, and the five-minute `__Host-oidc` cookie), the walk end to end
-  (alice signed in headlessly, the callback sealing a session and clearing the
-  transient, and the fragment she was going to answering with her own tenant
-  behind a scope only the ID token's `scope` claim carries), the four refusals
-  (a mismatched `state`, no transient at all, a code the provider rejects, and
-  a `principal` the application declines — each with no cookie set), both
-  open-redirect shapes (`//evil.example`, and `%252F%255Cevil.com`, which is
-  the doubly-decoded one), `login_hint`, the logout, the `404` under the mount,
-  and both boots that fail — `OidcUnreachable` on an issuer at a closed port
-  and `ConfigInvalid` naming a variable nobody set. Five more came out of
-  review: a transient re-sealed with the WRONG nonce, presented with an
-  otherwise valid code, refused `401` — the pin on `expectedNonce`, which is
-  also what forces an ID token to be present at all; a `return` carrying a
-  control character, which `writeHead` would refuse as `ERR_INVALID_CHAR`
-  after the code was already spent, now encoded rather than dropped; and a provider-side `error=access_denied`
-  arriving with a matching `state`, told apart from a bad code on the
-  observation rather than on the wire; and the two a header cannot carry —
-  `/订单/1` and a CR/LF path — each arriving at the browser percent-encoded
-  rather than as a 500. Each refusal asserts, in one projection, the status,
-  the cleared transient and the operation the observer saw settle: its
-  `component`, its `name`, its bounded `reason` and — where there is one — the
-  cause the unbounded text rides.
-
 ## Several answerers, one runtime
-
-**`HttpHandler` is a SET port of `{ prefix, handle }`, and each protocol served
-in this process contributes one member.** Three ship: oRPC (`orpc()`, from
-`http()`), htmx fragments (`htmx()`, serving `Html`) and the login (`oidc()`,
-from the `/oidc` subpath, mounted at `/auth` by default). GraphQL is what the
-family is being extended for next (#179). The shape was chosen in #174, and
-the reason is a constraint rather
-than a preference: **a graph holds exactly one runtime** (thesis #1 — every
-runtime port is declared over the kernel's `RuntimePort`, so a graph can hold
-exactly one), so three protocols cannot be three runtimes. They are three
-answerers under one.
 
 **Routing is by longest matching prefix, and there is no chain.** `/rpc` owns
 `/rpc` and everything under it; a `/` fragment answerer takes the rest. Nesting
@@ -1910,28 +1297,6 @@ point covers is the runtime's own `404`, written before any answerer is
 consulted; a path a mount DOES cover, whose answerer declines, is the same
 `404` it always was.
 
-Four consequences worth stating because each is a decision:
-
-- **A mount point is a path segment, not a string prefix.** `/rpc` does not own
-  `/rpcx`. A trailing slash is the same mount (`/rpc/` and `/rpc` collide), and
-  two answerers on one mount is a `RuntimeStartFailed` at `listen` rather than
-  a coin toss.
-- **The runtime reads the members through `Runtime.resolves`, not through di.**
-  A member contributed by a SIBLING module is not visible from inside the
-  starter's own module, and `resolves` is the mechanism the kernel already ships
-  for "what the runtime reads back out of the built application context". The
-  cost is that a composition root must export `HttpHandler`; `HttpModule` does
-  it for the application, and `start`'s gate names the port when a hand-written
-  root forgets.
-- **`HttpHandler` is public now.** It was internal on the stated grounds that
-  "there is one way to answer HTTP here, oRPC, so nothing outside this package
-  provides or names it". A second protocol's package has to name it, so that
-  sentence is gone from `handler.ts`.
-- **The socket half composes on its own** (`httpServer`, in **Public surface**
-  above). An application serves oRPC (`http()`), fragments (`httpServer()` +
-  `htmx()`), or both — the weld between the socket and one answerer was a
-  leftover from when there was exactly one.
-
 **An answerer outside a contract carries its own authentication, and nothing
 checks that it did.** `@btravstack/contract`'s marker is what says which scheme
 protects an oRPC procedure, and `defineHttp({ authenticators })` is what
@@ -1939,42 +1304,19 @@ resolves it. A fragment or GraphQL answerer has no such statement of intent, so
 its routes are **public** unless it brings authentication of its own — the same
 way an unmarked procedure is public, and with the same absence of a gate for
 "you forgot". Do not describe a non-oRPC answerer as protected by the
-contract's marker. What the common way across protocols should be is #179's
-question and is deliberately not answered here.
+contract's marker. What it brings is declared as data on the route — `requires`
+on `api.HtmxGet`/`api.HtmxPost`, checked at the mint by `RequiresGate` and
+resolved through the same walk oRPC's leaves use — and a GraphQL answerer
+inherits that seam the same way.
 
 ## Cross-cutting concerns: configuration, not a middleware slot
 
-CORS, body limits, compression, CSRF, security headers and authentication all
-arrive at the same door, and the answer is the same for all of them: **they are
-handler configuration, not a middleware slot.** Thesis #3's refusal survives
-intact, narrowed to what it was always about.
-
-**All six are configuration, and CSRF was the last exception.** `cors`,
-`bodyLimit` and `compression` are options that pin `HttpConfig` fields a
-deployment can set instead; `securityHeaders` and `csrf` are options on the
-listener; authentication is bound through `defineHttp`'s authenticators, which
-ride the router rather than being an option on `http()`. CSRF was reached
-through `plugins` for as long as this package read no cookie; a session scheme
-reads one, so it is the named option it was always promised as — on by default
-exactly when a cookie-reading scheme is composed. The claim used to cover all
-six while the code shipped two, which is the drift the root `CLAUDE.md` names
-as the failure mode it fears most; it now covers six and ships six. An oRPC
-plugin and the starter's
-own `principalMiddleware` act on the **request/response envelope** — bytes,
+An oRPC plugin and the starter's own `principalMiddleware` act on the **request/response envelope** — bytes,
 headers, a principal resolved before dispatch. An application middleware would
 act on the handler's **`Result`**, and that is the only one `@btravstack/http-server`
 refuses, because it is the one that would put a use case's outcome in the
 transport's hands.
 
-- **`plugins` is an honest escape hatch, not a keyhole.** It forwards straight
-  to `new RPCHandler(service, { plugins })`, and an oRPC plugin can reach
-  oRPC's interceptors — so an application determined to see a procedure's
-  outcome can get there. Nothing pretends otherwise. What the option buys is
-  that the ordinary path is configuration a reader can see at the composition
-  root, and reaching past it is a visible act rather than the default shape.
-- **Security headers are set on the listener, not as a plugin.** A plugin only
-  runs for a request oRPC **matched**, so the runtime's own `404` would go out
-  bare — the opposite of what helmet-style headers are for.
 - **Rate limiting is a stated non-goal.** A per-process counter is the wrong
   unit: an `api` deployment is N pods (thesis #1), so a per-process budget is
   N independent budgets and none of them is the limit anybody meant. The
@@ -1997,24 +1339,10 @@ transport's hands.
   "is there a principal, and what is it?" — is answerable before dispatch, and
   is the only half the contract carries.
 
-  A **scope** is the exception that proves the rule, and it is admitted on the
-  same test: it is a property of the credential, answerable before dispatch,
-  which is exactly why authentication is in the contract already. What stays
-  out is resource-dependent authorization — the order's owner, the row's tenant
-  — which a scope was never going to answer. `@btravstack/http-server` checks a
-  credential's granted scopes against the endpoint's declared ones and answers
-  `403`, distinct from the `401` a caller with no valid credential gets.
-
 ## RED metrics: the runtime records them, because only it can
 
-`btravstack.http.requests` (counter) and `btravstack.http.duration`
-(histogram, ms), both dimensioned `{ method, answerer, status }`, recorded at
-the unit seam. Every unit is handed to `Observers`, and this module contributes a no-op
-member of its own — so a graph composing no observability owes nothing — an operation costs one
-inert call per module that reads the port. There is no `instrumented` flag: composing `observability()`
-and `otel()` is what turns the lines and the instruments on.
-
-**Recorded on the response's `'close'`, not on the unit settling.** They would
+**Recorded on the response's `'close'`, not on the unit settling.** The metrics'
+names and dimensions are in `docs/reference/http-server.md`. The two would
 usually agree — the unit's own contract is that the response is flushed inside
 it — but `'close'` is the one event that has seen the FINAL status, which
 includes the runtime's own `404` (no answerer claimed the path) and the `500`
@@ -2029,7 +1357,3 @@ series per order, which is the classic way a metrics bill becomes the incident.
 `answerer` is a mount prefix, so the graph bounds it; `status` is a small
 integer set; `method` is HTTP's own closed list. An application that wants
 per-route timing has the contract's own procedure name and its own `Meter`.
-
-`examples/order-api`'s `RequestModule` used to hand-write this histogram, which
-was the proof it was missing here. What is left there is the log LINE, which is
-that module's actual subject.
