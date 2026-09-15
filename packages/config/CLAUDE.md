@@ -1,118 +1,16 @@
 # packages/config
 
-Configuration's public surface. The root `CLAUDE.md` is the authoritative spec;
-this file holds what only matters under `packages/config/`. Keep it in sync with
-the code and `README.md` in the same commit — the package ships no
-`docs-examples.test-d.ts` (the kernel's compiles the shared sample).
+Configuration. The root `CLAUDE.md` is the authoritative spec, and the surface
+is `docs/reference/config.md`; this file holds what only matters under
+`packages/config/`. Keep it in sync with the code and `README.md` in the same
+commit.
 
 ## Public surface
 
-- **`Env`** — `Port("Env")<Environment>`, `Environment` being
-  `Readonly<Record<string, string | undefined>>` (`process.env`'s shape).
-  Declared **once**, here; the kernel imports it to provide it, so di's
-  duplicate-id warning never fires. Whoever boots a graph provides it — the
-  kernel does for every `start`; a bare `Module.scoped` needs
-  `Provider(Env)({ inject: {}, value })`, which is what this package's own fixtures do.
-- **`Config.string` / `integer` / `boolean` / `port` / `url` / `list`** — `ConfigField<T>`
-  factories over one variable: `{ variable, parse(raw: string | undefined) →
-Result<T, ConfigFieldInvalid> }`. All go through one `present()` helper that
-  fixes the shared semantics (unset → default or `is required`; trimmed empty →
-  `is set but empty`; otherwise the field's own `read`), so "empty is an
-  error, never a default" is decided in one place. `integer`/`port` share
-  `integerIn(min, max)`: `Number()` + `Number.isInteger` + inclusive bounds.
-  `boolean` takes `true`/`false`, `1`/`0`, `yes`/`no` and `on`/`off` in either
-  case, and **errors on anything else rather than reading it as falsy** — a
-  deployment that wrote `HTTP_COMPRESSION=enabled` meant to turn it on, and a silent
-  `false` there is the kind of configuration bug nothing reports. **`url` keeps
-  the STRING** and validates it with `URL.canParse`: the value a consumer hands
-  to `new URL`, checked before it gets there. It exists because `new URL` throws
-  and a throw inside a provider's `make` is a `Defect` with no variable named —
-  `@btravstack/http-server/jwt`'s `HTTP_JWT_JWKS_URI` was exactly that, and a
-  scheme-less URI is the ordinary operator slip. The rule is `check` as well as
-  `read`, so a bad PIN is refused with the same message; it validates shape, not
-  scheme, so a non-`http` URL is the caller's business. **`list` answers
-  `readonly string[]`** from a comma-separated variable, each entry trimmed and
-  the empty ones dropped, with `min` (default `1`) as the floor a shorter list
-  is named against — so a variable that lists nothing is a deployment mistake
-  rather than an empty list nothing downstream can use. It knows nothing about
-  what the entries MEAN: `@btravstack/http-server/session`'s `HTTP_SESSION_KEYS`
-  is a list of base64url keys, and that they are 32 bytes is the codec's own
-  check, in its `make`, reported as a `ConfigInvalid` naming the same variable.
-- **`Config.pinned(value, field)`** — `field` unless `value` is given, then a
-  field answering `value` and reading nothing. What a starter's options do to
-  its own fields — explicit beats environment beats default, **per field** —
-  declared once here rather than as a local helper in each starter (`http` and
-  `temporal` had one apiece). **The pin is CHECKED** against the field's own
-  rule (`ConfigField.check`, run on a value that is already a `T`), so the two
-  routes into a configuration cannot disagree about what is valid: a pinned
-  `NaN` body limit used to turn a trust boundary off in silence, since
-  `size > NaN` is `false`, and the composition root was the one input nothing
-  validated (#177). A `default` takes the same check, for the same reason.
-  `check` is optional, so a hand-written `ConfigField` keeps compiling and
-  accepts whatever it is handed.
-- **`Config.object(fields)`** — a hand-rolled Standard Schema v1
-  (`~standard: { version: 1, vendor: "btravstack", validate }`) over
-  `Environment`, typed `ConfigSchema<Environment, { [K]: T }>`. `validate` is
-  synchronous, walks EVERY field (one round trip for the operator), reports
-  each failure as an issue with `path: [variable]`, and never throws: a field
-  whose `parse` defects (a bug in the field) is folded into an issue against
-  its variable.
-- **`Config.parse(port, schema)(env)`** — `AsyncResult<Output, ConfigInvalid>`:
-  awaits `schema["~standard"].validate(env)` inside `fromSafePromise` over an
-  `async` wrapper (a third-party schema may be async and may throw — the throw
-  becomes the defect it is) and answers `Ok(value)` or
-  `Err(new ConfigInvalid({ port, issues }))`, where `port` is the name the
-  error reports rather than a port class. It exists because that step has a
-  second caller: a piece that is ALREADY its own provider has no second port
-  to hang a `Config.provider` on, and
-  `@btravstack/http-server/jwt`'s `jwtAuthenticator` is the first — it binds
-  `HTTP_JWT_*` inside the `make` arm of the authenticator it is. Lifting the
-  body rather than copying it is what keeps one home for validate-then-
-  `ConfigInvalid`: `Config.provider` is now a caller of this.
-- **`Config.provider(port)(schema)` / `Config.provider(name)(schema)`** — two
-  overloads over one body: `Provider(port)({ inject: { env: Env }, make })`,
-  `make` being `Config.parse(port.portId, schema)(env)`. The **name** form
-  mints the port (`class extends Port(name)<Output> {}`, service = the
-  schema's output) and returns `Provider<PortInstance<Name, Output>,
-ConfigInvalid, Env> & { readonly port: PortClassOf<Name, Output> }` — di's
-  `PortClassOf` is the nameable spelling of that class (`{ portId: Name; new
-(): PortInstance<Name, Output> }`; the same type the starters spell their
-  fixed router / activities / handlers ports through), because the class
-  expression's own type expands the brand keys in declaration emit. The **class** form returns `Provider<InstanceType<P>,
-ConfigInvalid, Env> & { readonly port: P }` (di's own `Provider(port)`
-  return). The implementation signature returns `unknown`: no one type is
-  assignable both ways to both overloads (`Provider` is contravariant in its
-  port). Which to use: the name form for a slice that is one application's
-  own (`relayConfig.port` in a dependent's deps); the class form for a slice
-  that is public API another package names (`HttpConfig`).
-- **`ConfigSchema<Input, Output>`** — the structural slice of Standard Schema
-  v1 this package speaks, restated locally so it depends on nothing;
-  `ConfigIssue` likewise (`{ message, path? }`). A `zod`/`valibot`/`arktype`
-  schema satisfies it as is.
-- **`ConfigInvalid`** — `TaggedError("ConfigInvalid")<{ port, issues }>`,
-  `message` = `"<port> could not be configured:\n  VAR: reason"` per issue
-  (an object path segment prints its `key`; no path prints `(environment)`).
-  **`ConfigFieldInvalid`** — `TaggedError<{ reason }>`, `message = reason`;
-  the modeled error of a field so `Config.object`'s match names it
-  (`P.tag("ConfigFieldInvalid")`) instead of a catch-all over `string`.
-- Peer dependencies: `@btravstack/di`, `unthrown`. Nothing else — that is the
-  point of hand-rolling the schema.
+- **`Env`** is declared **once**, here; the kernel imports it to provide it, so
+  di's duplicate-id warning never fires.
 
 ## Tests
 
-`config.spec.ts`: `Config.object`'s semantics (defaults, parsed
-values, `PORT=0`, empty, blank ×2 + malformed named in one validation, `3.5`,
-bounds, a required field, a defecting field), `Config.url` (a good value, a
-scheme-less one, and the same one pinned), `Config.list` (one value, three,
-padded entries, a trailing separator and a default; then blank, separator-only,
-absent and one short of `min`, by both routes into a value),
-`Config.pinned` (the pin over
-the environment, the field otherwise), `ConfigInvalid.message`,
-`Config.parse` on its own — outside any graph, on a valid environment and on
-one whose two bad fields both land in one `ConfigInvalid` (the `parsed`
-fixture) — and `Config.provider` end to end through a real
-`Module.scoped` graph with `Env` provided as a value (`bound`, `boundThrough`
-fixtures in `src/__tests__/test-fixtures.ts`) — including an async third-party
-Standard Schema. Coverage 100% lines/functions. The kernel-facing half — the
-provider through `start`, `runMain`'s `78`, `PROBE_PORT` — lives in
-`packages/core/src/config.spec.ts`.
+The kernel-facing half — the provider through `start`, `runMain`'s `78`,
+`PROBE_PORT` — lives in `packages/core/src/config.spec.ts`.

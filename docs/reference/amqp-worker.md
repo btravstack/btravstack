@@ -49,6 +49,7 @@ import { NotificationsSlice } from "../../slices/notifications/module.js";
 | `AmqpMessagePortOf<C>`  | type  | `AmqpMessage(C)`'s port class, typed for `C`                                                                                                                                                                                      |
 | `amqp`                  | value | `amqp({ contract, … })` — the starter module itself, needing the handlers port for `contract`; what `AmqpModule` imports                                                                                                          |
 | `AmqpOptions`           | type  | `amqp()`'s options                                                                                                                                                                                                                |
+| `AmqpConnectionOptions` | type  | The connection tuning `TypedAmqpWorker.create` accepts — heartbeat, reconnect interval, `findServers`, TLS/socket options; reached by index, since the library does not export it by name                                         |
 | `AmqpRuntime`           | value | `class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}` — the runtime's port                                                                                                                                         |
 | `AmqpConfig`            | value | `class AmqpConfig extends Port("AmqpConfig")<{ url: string; connectTimeoutMs: number }> {}` — the broker, bound from `AMQP_URL` and `AMQP_CONNECT_TIMEOUT_MS`; a publisher sharing the consumer's broker reads it too             |
 | `AmqpInfo`              | type  | `{ readonly queues: readonly string[] }` — published on `Serving.info` once consuming                                                                                                                                             |
@@ -143,7 +144,7 @@ happens when `otel()` is composed**, and not before:
 
 | Instrument                   | Kind           | Dimensions           |
 | ---------------------------- | -------------- | -------------------- |
-| `btravstack.amqp.deliveries` | counter        | `handler`, `outcome` |
+| `btravstack.amqp.operations` | counter        | `handler`, `outcome` |
 | `btravstack.amqp.duration`   | histogram (ms) | the same two         |
 
 `instrumented` is gone. Every unit is handed to `Observers`, and this module
@@ -309,23 +310,31 @@ const orderHandlers = AmqpHandlers(orderContract)([
 
 ## `amqp(options)`
 
-<!-- doctest: skip — the quoted constraint names `AnyAmqpContract`, which this package declares for its own signatures and does not re-export, so there is nothing a signature check could name it by -->
+<!-- doctest: skip — the quoted signature names `AnyAmqpContract`, `AnyUnitModule` and `UnitNeedsOf`, which this package declares for its own type parameters and does not re-export, so there is nothing a signature check could name them by -->
 
 ```ts
-const amqp: <TContract extends AnyAmqpContract>(
-  options: AmqpOptions<TContract>,
-) => Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>;
+const amqp: <TContract extends AnyAmqpContract, Unit extends AnyUnitModule | undefined = undefined>(
+  options: AmqpOptions<TContract, Unit>,
+) => Module<
+  AmqpRuntime | AmqpConfig,
+  ConfigInvalid,
+  Env | HandlersInstanceOf<TContract> | UnitNeedsOf<Unit>
+>;
 ```
 
-The primitive `AmqpModule` delegates to. `AmqpOptions<TContract>` has the
+The primitive `AmqpModule` delegates to. `AmqpOptions<TContract, Unit>` has the
 sugar's fields minus `handlers` / `imports` / `provides` / `exports`: the
 handlers are not an option but the module's need. It provides and exports
 `AmqpRuntime` and `AmqpConfig`, and **needs** `Env` (the kernel discharges
-it) and the handlers port typed for
-`contract` (`HandlersInstanceOf<TContract>`)
+it), the handlers port typed for `contract` (`HandlersInstanceOf<TContract>`)
 — the runtime provider depends on it through di, so a root that imports the
 starter without providing the handlers, or provides one built for another
-contract, is refused at `start` (di's gate). The declared type is the same with `url` pinned or not.
+contract, is refused at `start`, whose `module` parameter accepts no need but
+`Env` and `Scope` — and a bound `unit.message` module's own unmet needs
+(`UnitNeedsOf<Unit>`).
+
+The declared type is the same with `url` pinned or not, so a pinned
+composition still carries `ConfigInvalid` in its error channel.
 
 ## `AmqpConfig`, and the environment
 
@@ -371,10 +380,10 @@ defer to — an un-acked delivery is redelivered, which is recovery, not
 cancellation — so answering a `RetryableError` on an aborted signal is what
 hands the message to the next worker.
 
-| `UnitMeta` field | Value                                                                                                            |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `id`             | `randomUUID()`, minted per delivery                                                                              |
-| `traceId`        | the publisher's `messageId`, else `correlationId` (an RPC-shaped message), else the minted `id` — non-blank only |
+| `UnitMeta` field | Value                                                                                                                                                             |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`             | `randomUUID()`, minted per delivery                                                                                                                               |
+| `traceId`        | the trace id of a W3C `traceparent` header, else the publisher's `messageId`, else `correlationId` (an RPC-shaped message), else the minted `id` — non-blank only |
 
 A **delivery tag is not a unit id**: tags are per-channel and restart at `1`
 after a reconnect, which `amqp-connection-manager` performs silently
@@ -383,7 +392,9 @@ not, across exactly the event this library exists to handle.
 `consumerTag + deliveryTag` almost fixes it, until `ConsumerOptions` lets a
 caller pin `consumerTag`. Minting is the only form of the rule that survives.
 A blank `messageId` is ignored rather than adopted, since `""` is not nullish
-and would otherwise give every delivery the same trace id.
+and would otherwise give every delivery the same trace id. A `traceparent`
+header outranks `messageId` because it is the one value minted to span
+processes.
 
 ### `AmqpMessage(contract)` — the one seeded port
 
@@ -504,14 +515,19 @@ type its own tests. Node `>=22`.
 
 ## Testing
 
-The package's own suite needs a Docker daemon: `@amqp-contract/testing`
-boots one RabbitMQ container per vitest run, because the retry and
-dead-letter routing it relies on is the broker's behaviour, not something an
-in-memory fake could stand in for. `amqp-runtime.spec.ts` carries 8 specs;
-`handler.spec.ts` adds 2 more — a broadcast with two consumers of one
-publisher, composed from two pieces, pinning that both run and that each was
-built from the ports its own provider declared rather than a record closing
-over both — for 10 total. `handler.test-d.ts` pins the composing form's
+The package's own suite needs a Docker daemon: it runs against a real
+RabbitMQ, because the retry and dead-letter routing it relies on is the
+broker's behaviour, not something an in-memory fake could stand in for. The
+broker is the one container `@btravstack/internal-test-infra/rabbitmq` starts
+for the whole repository and every workspace reuses, and each test gets a vhost
+of its own from `@amqp-contract/testing`'s `it` extension.
+`amqp-runtime.spec.ts` covers the published info, the unreachable broker, the
+environment binding, the unit boundary and its fork, and the drain;
+`handler.spec.ts` composes a broadcast with two consumers of one publisher from
+two pieces, pinning that both run and that each was built from the ports its
+own provider declared rather than a record closing over both, and drives the
+seeded fork through a piece and through the record arm. `handler.test-d.ts`
+pins the composing form's
 compile-time gates: a piece typed by its own key, an array covering every
 declared key, a missing key refused and named, and a piece built for another
 contract refused structurally.

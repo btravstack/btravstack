@@ -123,7 +123,7 @@ plus the starter's own fields. Supply `router`, `fragments`, or both; supplying
 **neither is refused at this call**, against a
 `"SERVES NOTHING — supply a router, fragments, or both"` marker, rather than
 booting a listener with nothing behind it. It appends
-`httpServer({ port, hostname, cors, bodyLimit, compression, securityHeaders })`
+`httpServer(options)` — the whole options record, `csrf` and `unit` included —
 to `imports`; when `router` is given it prepends `router` **and the scheme
 authenticators it carries**, plus `orpc({ prefix, plugins, … })`, to
 `provides`; when `fragments` is given it prepends `fragments` and its own
@@ -1326,9 +1326,13 @@ does, so `HttpModule` can deduplicate a scheme the two share, by reference.
 <!-- doctest: skip — the quoted needs channel names `OrpcRouterPort`, which this package deliberately does not export, so there is nothing a signature check could name it by -->
 
 ```ts
-const http: (
-  options?: HttpOptions,
-) => Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | OrpcRouterPort>;
+const http: <Units extends Readonly<Record<string, AnyUnitModule>> | undefined = undefined>(
+  options?: Omit<HttpOptions, "unit"> & { readonly unit?: Units },
+) => Module<
+  HttpRuntime | HttpConfig | HttpHandler | Observers,
+  ConfigInvalid,
+  Env | OrpcRouterPort | UnitsNeedsOf<Units>
+>;
 ```
 
 The primitive `HttpModule` delegates to, for a composition root written by
@@ -1348,7 +1352,7 @@ hand. `HttpOptions`:
 | `unit`            | no       | none               | kind → module, **un-gated** here — see [The unit](#the-unit)         |
 
 The module **provides** `HttpRuntime`, `HttpConfig` and `HttpUnit`, exports
-`HttpRuntime` and `HttpConfig`, and **needs** `Env` (the kernel discharges it),
+`HttpRuntime`, `HttpConfig`, `HttpHandler` and `Observers`, and **needs** `Env` (the kernel discharges it),
 the starter's router port
 (`OrpcRouterPort`, the port `api.OrpcRouter(contract)({ inject, unit?, sync })` provides on) and,
 for every kind `unit` binds, that module's own unmet needs — `Scope` excluded,
@@ -1778,10 +1782,10 @@ unit's work resolves on the response's `'close'` event (or at once if that
 already fired before the work ran), so there is no seam for a late write to
 land in.
 
-| `UnitMeta` field | Value                                                                                             |
-| ---------------- | ------------------------------------------------------------------------------------------------- |
-| `id`             | `randomUUID()`, minted per request — never the route, which would give every request one trace id |
-| `traceId`        | the inbound `x-request-id` header when **non-blank**; otherwise absent, so it defaults to `id`    |
+| `UnitMeta` field | Value                                                                                                                                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`             | `randomUUID()`, minted per request — never the route, which would give every request one trace id                                                                                                                    |
+| `traceId`        | the trace id of an inbound `traceparent`; else the inbound `x-request-id` header when **non-blank**; otherwise absent, so it defaults to `id`. A malformed or all-zero `traceparent` falls through to `x-request-id` |
 
 A blank header is ignored rather than adopted, because `""` is not nullish
 and would otherwise win over the minted id.

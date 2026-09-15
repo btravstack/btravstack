@@ -337,12 +337,13 @@ saga slices land in different places, deliberately: a subscriber reacts to a
 fact somebody else already committed, so `NotificationsSlice` and
 `AuditSlice` own no domain and no persistence — the vertical stays at the
 root, next to the outbox relay that writes it. A workflow orchestrates one,
-so `FulfillmentSlice` imports the orders vertical
-(`OrderApplicationModule` + `OrderPersistenceModule`) plus `FulfillmentModule`,
-and `BillingSlice` imports `BillingModule` alone — two different verticals,
-meeting only in the root's `imports` list, never inside either slice's own
-graph. Neither shape is weaker than the other: a slice owns as much as its
-transport gives it to own.
+so each saga slice owns the services only its own saga calls:
+`FulfillmentSlice` imports `FulfillmentModule` and `BillingSlice` imports
+`BillingModule`, meeting only in the root's `imports` list, never inside either
+slice's own graph. Neither slice imports the orders vertical: its use cases are
+built per attempt, in the root's `ActivityUnitModule`, over the tenant the
+attempt's input names. Neither shape is weaker than the other: a slice owns as
+much as its transport gives it to own.
 
 ## See also
 

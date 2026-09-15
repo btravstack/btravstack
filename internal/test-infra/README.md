@@ -25,7 +25,10 @@ workflow platform were started per workspace instead: two RabbitMQ containers
 and up to three Temporal time-skipping servers, and `pnpm test` was
 intermittently red at turbo's
 default concurrency because the 60s testcontainers startup wait was what gave
-out first ([#52](https://github.com/btravstack/btravstack/issues/52)).
+out first ([#52](https://github.com/btravstack/btravstack/issues/52)). The
+time-skipping servers went with it: neither Temporal suite ever advanced a
+clock, so a skippable clock bought nothing a private namespace does not, and
+it was the one workspace that needed the network on a cold cache.
 
 ## Isolation is logical, not physical
 
@@ -37,7 +40,8 @@ finer than "a server of my own":
 - **A namespace per spec file.** `createNamespace` registers one and waits for
   every Temporal service's registry to catch up before returning it — a
   `startWorkflow` issued the instant `registerNamespace` resolves fails with
-  `NamespaceNotFound` until they do. Per file rather than per test because
+  `NamespaceNotFound` until they do, and `describeNamespace` answers from the
+  frontend alone, so it is not the wait. Per file rather than per test because
   registration costs that refresh, and a task queue per test (which both
   suites already mint) is what separates tests inside a file.
 - **A tenant per test.** The example application is multi-tenant, so one
@@ -147,7 +151,8 @@ so the dev loop needs an issuer of its own — the specs use
 - **A container serving it.** `nginx:1.29-alpine` with
   `{ "keys": [publicJwk] }` copied in as `/jwks.json` — a real endpoint, so
   `jose`'s `createRemoteJWKSet` does a real fetch over the network. `dev:env`
-  starts it beside the other six, and it carries the same
+  starts it beside the other shared containers — a container rather than an
+  in-process listener because `dev:env` is one-shot and exits — and it carries the same
   `com.btravstack.test-infra` label. The key's RFC 7638 **thumbprint is one of
   its labels**, and labels are part of what testcontainers hashes for reuse: a
   new key pair therefore gets a new container rather than one still serving the
@@ -162,10 +167,10 @@ so the dev loop needs an issuer of its own — the specs use
 TENANT=0199a1e0-0000-7000-8000-000000000001 # a UUIDv7
 TOKEN=$(pnpm dev:token -- --tenant "$TENANT") || exit
 
-# the port is the one the API's `serving` event logged, `PORT=0` in its dev script
+# the API listens on `PORT=3000`, which its dev script sets
 curl -s -H "authorization: Bearer $TOKEN" \
      -H 'content-type: application/json' -d '{"json":{}}' \
-     http://localhost:57234/rpc/orders/list
+     http://localhost:3000/rpc/orders/list
 ```
 
 `--tenant` is required and must be a **UUIDv7**: `principal` parses it with

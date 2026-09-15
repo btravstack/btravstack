@@ -1,7 +1,7 @@
 {
   "name": "@btravstack/cache",
   "version": "0.14.0",
-  "description": "A Cache port for @btravstack/core: an in-memory adapter, a Redis adapter, and an opt-in instrumented composition that spans, counts and logs every call",
+  "description": "A Cache port for @btravstack/core: an in-memory adapter, a Redis adapter, and a composition that reports every call to Observers",
   "keywords": [
     "cache",
     "dependency-injection",

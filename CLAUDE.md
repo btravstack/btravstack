@@ -34,7 +34,7 @@ adapter behind its own subpath; it IMPLEMENTS the `Logger`, `Tracer` and
 `Meter` ports rather than declaring them, which is `core`'s job), `cache`
 `mailer` and `storage` (the three application-service ports of issue #62, on
 one shape — a port, a real adapter, an in-process adapter, and one
-composition function whose `instrumented` flag defaults to on), and the three
+composition function), and the three
 **servers**, each named for the half it implements: `http-server` (oRPC over
 `node:http`), `temporal-worker` and `amqp-worker`. `di` was its own repository until it was merged here
 **with its history**; it and `contract` are the two packages that depend on
@@ -148,18 +148,10 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    raced against it — and `@temporalio/worker` exposes no public forced
    shutdown to escalate to, so "stop waiting" is the escalation.
 
-   **The local loop is the production shape, not an exception to it** (issue
-   #67). Three deployments meant three terminals, and the tempting fix — a
-   kernel API booting all three in one process, which `start` would happily
-   support — was measured and declined: it cannot watch (reloading an ESM
-   graph in place is a bespoke loader), it shares one event loop and the
-   process-global uncaught handlers, so one crash takes all three down and a
-   blocking worker starves the API, and it exercises the drain through one
-   shared signal instead of three real ones. A dev loop that misrepresents
-   failure isolation teaches the wrong lesson about the very thesis it sits
-   under. So `pnpm dev` is `turbo run dev --filter=./examples/*`: one process
-   per deployment, `tsx watch` on each, output prefixed by workspace — see
-   **The local loop** under _Toolchain & conventions_.
+   **The local loop is the production shape, not an exception to it**:
+   `pnpm dev` is one process per deployment, never one process booting all
+   three. The declined alternative is in the `deferred-decisions` skill, the
+   mechanics in `examples/CLAUDE.md`.
 
    **One runtime does not mean one protocol.** A graph holds exactly one
    runtime, and that is what bounds the process — not what bounds HTTP itself.
@@ -171,69 +163,17 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    session cookie). GraphQL is what the package is being extended for next
    (#179).
    Every member is an answerer under one runtime, routed by longest matching
-   prefix, because three runtimes is the one thing this thesis forbids. The
-   package's own spec used to say "there is one way to answer HTTP here,
-   oRPC"; that was true of the package and was never a consequence of this
-   thesis, and it is gone.
+   prefix, because three runtimes is the one thing this thesis forbids.
 
-   **"HTML" here means fragments, and only fragments** (#179's open question).
-   Four things were being called HTML support: a template engine's rendered
-   pages, an endpoint answering `text/html` for a partial, static assets with
-   an SPA fallback, and JSX/SSR with a component model. `htmx()` is the second
-   — the one closest to a procedure and hardest to tell apart from one, which
-   is why it sharpened the second-answerer question rather than dodging it. The
-   first and fourth are #166's rendering layer; the third is #161, and its own
-   counter-argument (that it may still be the ingress's job) stands.
+   **"HTML" here means fragments, and only fragments** — what that excludes,
+   and which issues hold the rest, is in the `deferred-decisions` skill.
 
-   **The auth cluster was sequenced behind this, and the sequencing paid off in
-   a way worth recording**: the seam generalised the moment a second answerer
-   landed, rather than needing to be redesigned. `resolvePrincipal` is one walk
-   both answerers share, so a scope check cannot drift between protocols — and
-   a protocol with **no contract** declares its requirements as **data on the
-   route** (`api.HtmxGet(path, { requires: [{ user: [] }] })`), gated by
-   `RequiresGate`, the contract-less analogue of oRPC's `ScopeGate`. So
-   `AuthenticatorService` is protocol-neutral by construction: it is
-   `(headers) => AsyncResult<Granted<P, Scope>, Unauthenticated>` and names no
-   protocol at all. A GraphQL answerer inherits that seam by declaring
-   requirements the same way; it is not a redesign waiting to happen, which is
-   what #179 could not know before the second answerer existed.
-
-   Three consequences for the cluster, and they are not the same:
-
-   - **#157 (authenticators) is not blocked.** Its verification half — JWKS
-     fetch and cache, `iss`/`aud`/`exp`, key rotation, constant-time API-key
-     compare — never was, and its binding half stopped being blocked when
-     `requires`-as-data shipped.
-   - **#160 (cookies and sessions) unblocked when `htmx()` landed, and both
-     halves shipped.** The deferral was that a session cookie had no
-     legitimate consumer; a browser navigating fragments is one. So
-     `@btravstack/http-server/session` seals a principal into a cookie and
-     `sessionAuthenticator` reads it back as the third shipped scheme. The
-     CSRF deferral #164 made — on the stated grounds that "this package
-     configures no cookies" — went with it, exactly as predicted: the two
-     moved together, and `csrf` is now a named option beside the other five
-     (see **Cross-cutting concerns** below), on by default when a composed
-     scheme reads a cookie. Surfaces in `packages/http-server/CLAUDE.md` and
-     `packages/http-server/AUTH.md`.
-
-     **`examples/order-api` is the worked consumer, and it serves its
-     fragments on the session.** `SessionModule` is the `session` kind —
-     `UserModule`'s own shape over `auth.principals.session` instead of
-     `.user`, since a browser that logged in is a user — and
-     `oidc({ principal })` rides in `provides` beside the router and the
-     fragments, with `fragmentsLogin` naming the route a caller with no
-     session is sent to. `pnpm dev:login` is the local loop's browser sibling
-     to `dev:token`, for a provider whose own login page is deliberately
-     dead. `docs/how-to/log-a-browser-in.md` is the page, with the provider
-     table naming where the tenant claim comes from on five identity
-     providers.
-
-   - **#158 (authorization) was never blocked by any of this, and it
-     shipped.** Its third layer is `(principal, resource) → decision` in the
-     application layer, above the transport; only its `principal` input is
-     protocol-shaped, and nothing it decides turns on the number of
-     protocols. The position is thesis #2's closing paragraph and
-     `docs/how-to/authorize-a-request.md`.
+   **The auth seam is protocol-neutral.** `resolvePrincipal` is one walk every
+   answerer shares, and a protocol with no contract declares its requirements
+   as data on the route, gated by `RequiresGate` — so a GraphQL answerer
+   inherits the seam rather than redesigning it. The surfaces are
+   `packages/http-server/CLAUDE.md` and `AUTH.md`; the worked browser consumer
+   is `examples/order-api` (`docs/how-to/log-a-browser-in.md`).
 
    **The transport role map is a decision, not an inventory** (issues #61 and
    #60): answering is `@btravstack/http-server`; orchestration — and with it
@@ -248,67 +188,16 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    contract's own line). A workload the map does not cover is a new decision
    to record here, never a fourth runtime by default.
 
-   **Scheduling stands by Temporal, and the FLOOR is stated rather than
-   discovered** (issue #163). The argument that a workflow already is a durable
-   job wins on capability and loses on floor: the smallest thing a team can do
-   to run a nightly report here is stand up a cluster, where every competing
-   framework answers it in one line with no new infrastructure. That cost is
-   now written where an evaluator meets it —
-   `docs/how-to/run-something-on-a-schedule.md`, titled what a person searches
-   for — with the four things an in-process `setInterval` gets wrong (N
-   replicas fire N times, a missed window is silently missed, a retry has
-   nowhere to live, and it fights beat 2 of the drain) and the honest
-   conclusion: one scheduled job and nothing else is a Kubernetes `CronJob`
-   against your own API, not this stack.
+   Scheduling stands by Temporal Schedules. The floor that costs — a cluster
+   for one nightly job — is stated in `docs/how-to/run-something-on-a-schedule.md`,
+   and `ensureSchedule` (a subpath rather than a client package, because it is
+   a deployment operation) is in `packages/temporal-worker/CLAUDE.md`.
 
-   What ships is the one piece the floor does not cover:
-   `@btravstack/temporal-worker/schedule`'s `ensureSchedule`, on the
-   optional-peer-behind-a-subpath protocol. `@temporal-contract/client` already
-   has a fully typed schedule client; what it lacks is **idempotence**, and a
-   deploy runs again on every release. `create` answers
-   `ScheduleAlreadyExistsError`, the repair everyone reaches for is a
-   `try`/ignore, and that hides the failure that matters — a schedule left on
-   the server with a spec the deploy stopped writing, a cron that silently
-   stopped matching the code. `ensureSchedule` recovers that ONE error into an
-   `update` and leaves every other on the channel, still typed; the matcher has
-   no wildcard, so a fourth upstream error fails that file rather than being
-   recovered into a schedule nobody registered. It writes `spec` and NOT
-   `state`: a schedule an operator paused stays paused, because unpausing is a
-   decision a person made.
-
-   It is a **subpath rather than a client package**, the one place the naming
-   thesis's "a client will be a PACKAGE, never a subpath" does not apply — and
-   for that rule's own reason. The rule exists because peers are per-package,
-   so a caller must not be made to install the serving half. `ensureSchedule`
-   is not the calling half of a contract (it starts no workflow and awaits no
-   result); it is a **deployment operation** performed by whoever ships the
-   worker, who already holds this package.
-
-   **Each transport package is named for the HALF it implements, and the
-   other half's name is reserved.** `http-server`, `temporal-worker` and
-   `amqp-worker` — not `http`, `temporal`, `amqp`, which claimed a whole
-   transport and delivered the serving side of it. The calling side exists
-   today as somebody else's library, used directly by the examples
-   (`@orpc/client`, `@temporal-contract/client`, `@amqp-contract/client`),
-   and when this family grows its own they take `-client` names beside these.
-   Three things decided the spelling:
-   - **The neighbours qualify both sides** — `@orpc/server`/`@orpc/client`,
-     `@temporal-contract/worker`/`/client` — so an unqualified name reads as
-     the umbrella containing both, which is exactly what it is not.
-   - **"worker" rather than a uniform `-server`**, because it is Temporal's
-     and AMQP's own word, and because `temporal-server` already means the
-     Temporal Service — the cluster `internal/test-infra` runs as
-     `temporalio/auto-setup`. A name that suggests you are booting the
-     cluster is worse than a suffix that varies.
-   - **A client will be a PACKAGE, never a subpath.** Peers are per-package,
-     so `@btravstack/http-server/client` would drag `@orpc/server` into a
-     consumer that only ever calls — the same reason `examples/*-contract`
-     are packages of their own: a client must be able to take a contract
-     without the server.
-
-   The rename cost nothing because only `@btravstack/di` had ever been
-   published (`0.1.0`); after the first release it would have cost a
-   deprecation cycle, which is why it happened when it did.
+   **Each transport package is named for the HALF it implements** —
+   `http-server`, `temporal-worker`, `amqp-worker` — and a client will be a
+   separate `-client` PACKAGE, never a subpath: peers are per-package, so a
+   subpath would drag the serving half into a consumer that only calls. Why
+   these spellings is in the `deferred-decisions` skill.
 
 2. **Ambient carries DATA. The DI `Context` carries CAPABILITIES.** The kernel
    opens one `AsyncLocalStorage` store per unit holding a small, fixed record —
@@ -395,15 +284,9 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    belongs to the router an application hands `@btravstack/http-server`
    (oRPC's `.result()` triage) — the package itself declines that mapping,
    deliberately — `Result` → activity failure to `@btravstack/temporal-worker`, likewise. `@btravstack/amqp-worker`
-   declines it too, and more starkly: `Result` → ack/nack/DLQ is a **three-way**
-   split between `amqp-contract`'s own dispatch and the handler, not something
-   either package owns outright. A modeled `RetryableError`/`NonRetryableError`
-   is routed by the library against the queue's `retry` config; a `Defect` is
-   **not** — it is nacked once, immediately, straight to the dead-letter queue,
-   never touching that budget — so a handler that wants "infrastructure comes
-   back" has to recover its own `Defect`s into a `RetryableError` explicitly, or
-   an infrastructure failure is parked on the first attempt exactly like a
-   permanent domain error. The claim that survives across all three transports
+   declines it too: `Result` → ack/nack/DLQ is a three-way split between
+   `amqp-contract`'s dispatch and the handler, and a `Defect` skips the retry
+   budget (`packages/amqp-worker/CLAUDE.md`). The claim that survives across all three transports
    is only that the _kernel_ maps nothing; what each transport's own mapping
    looks like is the transport's own business, sometimes split further still.
    `RunUnit` is
@@ -470,20 +353,11 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    straight to `stopping`, leaving `ExitReport.drain` `undefined`.
 
    **A long-lived stream is a unit, and the HTTP runtime resets it at beat
-   3's start** (issue #137). A server-sent-events response never finishes on
-   its own, so `@btravstack/http-server`'s retire step destroys a
-   `text/event-stream` response the moment `Serving.drain` is called — after
-   beat 2, when the ingress has stopped routing here — and the client
-   reconnects to a replica that is staying, carrying `Last-Event-ID`. The
-   unit closes on the response and is counted `completed`; `abandoned` keeps
-   meaning work that ignored the deadline. It is a **reset**, not a clean
-   end, by measurement: oRPC's client reads a clean end as the iterator
-   finishing and never reconnects, while both it and a bare `EventSource`
-   reconnect on a reset. Every ecosystem surveyed (Go, hyper, Spring, Node)
-   counts a stream as in flight and tells the application to close it at
-   shutdown by hand; graphql-ws is the one library that does it itself. This
-   ships that as a default, on beat 2's own argument, and it is transport
-   semantics inside the runtime's `drain` — the kernel stays three beats.
+   3's start** (issue #137): `@btravstack/http-server` destroys a
+   `text/event-stream` response when `Serving.drain` is called, so the client
+   reconnects to a replica that is staying. That is transport semantics inside
+   the runtime's `drain` — the kernel stays three beats. Why a reset rather
+   than a clean end is in `packages/http-server/CLAUDE.md`.
 
 6. **Every async API returns an `AsyncResult`, never a bare `Promise`.** Not
    only the fallible ones: `AsyncResult<T, never>` is this package's spelling of
@@ -561,61 +435,23 @@ Stated in both READMEs; found in Task 12's review, and it is the reason the
 
 ## Two contracts a runtime owes, and neither is checkable
 
-Both surfaced from building the first real runtime against this kernel, and
-both are silent when broken. They live in the `RunUnit` / `RuntimeHost` /
-`UnitMeta` TSDoc, in the documentation site's
-`docs/how-to/write-a-runtime.md` and `docs/reference/core/runtime.md` — four
-places that must stay in sync. A third, smaller one arrived once a per-unit
-scope became something a runtime opens itself, through `UnitHost.fork`, and
-lives in the same four places.
+Three obligations, each silent when broken. Their full statement, with the
+measurements behind them, is the `RunUnit` / `RuntimeHost` / `UnitMeta` TSDoc,
+`docs/how-to/write-a-runtime.md` and `docs/reference/core/runtime.md` — keep
+those three in sync.
 
-**1. The response must be flushed INSIDE the unit.** A unit is closed the
-instant its `Result` settles; `registry.awaitIdle()` is what beat 3 of the
-drain races, and an idle registry is the kernel's permission to move on to
-`Serving.stop()`. A runtime that resolves the unit and _then_ writes to its
-client is racing `stop()` tearing the transport down — with a small body the
-write usually wins, with a large one it does not (proved with an 8 MB body:
-`UND_ERR_SOCKET: other side closed`). A unit is not "compute the answer", it is
-"compute the answer **and get it out of the process**". The kernel cannot
-enforce this: it sees a settled `Result`, and has no idea whether bytes are
-still in flight.
-
-**2. `UnitMeta.id` must be unique per unit, unless a `traceId` is supplied.**
-`traceId` defaults to `meta.id`, so a runtime passing a _category_ as the id —
-an HTTP runtime using the route template `"POST /orders"` — gives every request
-the same trace id, and the ambient record's whole purpose is silently defeated.
-`traceId` stays **optional** deliberately: `meta.id` genuinely IS a correct
-trace id whenever it is already unique per unit (a queue job id, a broker
-message id), which is the common case, and the kernel could not verify a
-required one either — it would have to remember every id ever seen, so the
-obligation would be syntactic, not checked, and `traceId: routeTemplate` would
-type just as well as the bug it replaces. The defect was the unstated contract,
-not the default. Note `UnitRecord.unitId` is minted per unit and always unique,
-so telling two units apart never needs `traceId`; `traceId` is the
-**correlation** id, which is why it is the one a runtime may supply — it
-carries an id from outside the process so a line logged here joins a trace that
-started elsewhere.
-
-**3. `RuntimeHost.ctx` is the application context, and a fork's own scope is
-not synchronous with `host.run`.** A per-unit scope is the runtime's own to
-open now, not the kernel's: call `unit.fork(module, seed)` from inside
-`host.run`'s work callback, at the moment you hold the unit's own input (a
-request, a delivery). `fork` builds `module` over `host.ctx` plus `seed` and
-hands back the forked `Context`, so a port `module` provides exists only
-inside that fork's own `Context` — never in `host.ctx` itself — and
-`host.ctx.get(...)` of one at runtime startup type-checks against nothing and
-is a defect; resolve at `start` only what the application module itself
-exports. A bound module's own unmet needs join the starter's own `Needs`
-channel instead — the same channel an import's needs travel — so there is no
-separate gate arm for them any more. The kernel still closes the fork's scope
-once the unit settles, after the runtime's own work returns. And the fork is
-not synchronous with dispatch: the work runs only once `fork` has resolved —
-after an `await` when the module's own provider is async — so a runtime that
-subscribes to an event from inside its work (a response's `'close'`) must
-first check whether it already fired:
-`@btravstack/http-server`'s `closedOf` checks `response.closed` for exactly this,
-found by a client hanging up during a slow per-request acquire and leaving a
-unit open for the process lifetime.
+1. **The response must be flushed INSIDE the unit.** A unit closes the instant
+   its `Result` settles, and an idle registry is the kernel's permission to
+   tear the transport down — a runtime that resolves first and writes after
+   loses large bodies.
+2. **`UnitMeta.id` must be unique per unit, unless a `traceId` is supplied.**
+   `traceId` defaults to `meta.id`, so a category id (a route template) gives
+   every request the same trace id.
+3. **A fork's scope is not synchronous with `host.run`.** Call
+   `unit.fork(module, seed)` inside the work callback; a port the module
+   provides exists only in the forked `Context`, never in `host.ctx`, and a
+   runtime that subscribes to an event from inside its work (a response's
+   `'close'`) must first check whether it already fired.
 
 ## Health checks: a module declares one, the kernel collects them
 
@@ -633,15 +469,6 @@ have each starter `needs` it and call `register(...)` while constructing —
 which type-checks whether or not the call is ever made, so a starter that
 forgot would compile and report healthy forever. A contribution is a provider
 like any other: declared, levelled, and visible in the graph.
-
-**This reversed `38d85f7`, which deleted `Port.many`/`Provider.member` because
-"an audit found no consumer in any of the eight packages or ten examples".**
-That was true when written. It stopped being true the moment a second feature
-wanted the same shape — auto-registered OTel instrumentation was the first ask,
-health checks the second — and the removal is what made both look impossible.
-Restoring it brought back the levelling cost the removal cited, which is real:
-`plan` keys `placed` by provider identity and compares member counts, because
-keyed by bare `portId` the first member to land drops its siblings.
 
 **`/healthz` does not gate `/readyz`, and that is the decision.** Readiness
 removes a pod from its Service's endpoints; failing it on a dependency the
@@ -669,32 +496,15 @@ supertype could have made for it.
 cursor arithmetic, in the adapter, and answers `[rows, meta]` with
 `InvalidCursor` as its one modeled failure. `examples/order-infrastructure`'s
 `list` is the worked case: the library's shape stops at the adapter exactly as
-`UniqueConstraintViolation` does, and the application declares its own
-`Page<T>` / `PageRequest` / `MalformedCursor` (`order-application`'s
-`pagination.ts`) — declared once for the layer rather than per repository, with
-no framework type in any port. Nothing here needs to ship for that to be true,
-which is why nothing does.
+`UniqueConstraintViolation` does. The ports speak `@btravstack/contract`'s
+`Page<T>` / `PageRequest` — the normed page a client needs as much as the
+server, which is why it lives in the contract tier — and the application
+declares only its own `MalformedCursor` (`order-application`'s
+`pagination.ts`). No persistence type reaches a port.
 
-**A flag and its cursor are ONE fact, at both ends of the wire.** `Page<T>`
-pairs `hasNextPage: true` with the `nextCursor` that continues the listing and
-gives `hasNextPage: false` no such field at all — the same move as
-`PageRequest`'s exclusive `after`/`before`, and the contract's `list` output is
-the union of the four pages that exist, so a reader that checked the flag holds
-a `string` rather than a `string | null` it has to re-check. `page(items, {
-previous, next })` is the one constructor and DERIVES the flags from the
-cursors, which is what keeps the pair impossible to disagree: a side with no
-cursor is a side the caller cannot reach, so `@unthrown/prisma`'s
-`hasPreviousPage: true` with a null `startCursor` (an empty page past the end)
-is reported as the reachable answer rather than as a flag with nothing to
-follow. The two ends spell it
-differently on purpose: `Page<T>` is an **intersection of two independent
-unions**, one per side, which narrows exactly as four arms would and states
-each side once; the contract's schema is the **union of four `strictObject`
-arms**, because JSON Schema has no working intersection of closed objects
-(`allOf` of two `additionalProperties: false` subschemas validates nothing)
-and the OpenAPI document is an interop surface. `strictObject` rather than
-`object` there because a stripping parser would answer what its own published
-schema rejects.
+**A flag and its cursor are ONE fact, at both ends of the wire** — why
+`Page<T>` is an intersection of two unions while the contract's schema is a
+union of four `strictObject` arms is in `packages/contract/CLAUDE.md`.
 
 **The filter is a field, never a query object.** `OrderQuery` is
 `PageRequest & { minQuantity? }`. A port taking a predicate or a `where` record
@@ -773,15 +583,13 @@ or carry an `Origin` matching the request's own host, and is refused with
 
 ## Public surface
 
-Each package's surface is stated **once**, in that package's own `CLAUDE.md`,
-and again for a reader on the documentation site. It is deliberately **not**
-restated here: this file used to carry a copy, and the copy drifted — it
-described `Logger.error`/`fatal` as taking `(message, cause?, attributes?)`
-while `logger.ts` shipped `(message, attributes?, cause?)` on all six methods
-_and argued for that ordering in its own TSDoc_. Five copies, one gate, and
-the copy with no gate is the one that lies.
+Each package's surface is stated **once**, in `docs/reference/*` — compiled by
+the doc-samples gate — and in the source TSDoc behind it. A package's
+`CLAUDE.md` keeps only what neither can say: its decisions, its gotchas and
+what it deliberately leaves out. The surface is not restated there or here: a
+copy with no gate is the copy that lies.
 
-| Package                       | Surface lives in                                                             | Reference page               |
+| Package                       | Decisions and gotchas                                                        | Reference page               |
 | ----------------------------- | ---------------------------------------------------------------------------- | ---------------------------- |
 | `@btravstack/contract`        | `packages/contract/CLAUDE.md`                                                | `/reference/contract`        |
 | `@btravstack/di`              | `packages/di/CLAUDE.md`                                                      | `/reference/di/`             |
@@ -799,7 +607,7 @@ the copy with no gate is the one that lies.
 
 **Four ports are declared in `@btravstack/core` and implemented elsewhere:
 `Logger`, `Tracer`, `Meter` and `Observers`.** That is the one place the table's
-"surface lives in" column splits from "who ships the behaviour", and it is
+"decisions and gotchas" column splits from "who ships the behaviour", and it is
 deliberate: a contract that other framework packages depend on has to be
 reachable without installing an implementation, and `core` is the package all
 of them already peer on — so `@btravstack/cache` can count its hits without
@@ -807,7 +615,7 @@ its consumers installing a logging package and an OpenTelemetry SDK to
 compile. The tracing pair is declared **without naming OpenTelemetry**, as a
 narrowing its real types satisfy structurally, so the vendor stops at
 `@btravstack/observability/otel`. Their detailed home is
-`packages/core/CLAUDE.md` and `/reference/core/observability`.
+`/reference/core/observability`.
 
 What stays here is what no single package owns: the theses above, the footgun,
 the two contracts a runtime owes, and the conventions below.
@@ -876,87 +684,20 @@ in its place.
   workspaces run under the same six commands as the kernel, and an example that
   stops compiling fails CI exactly as `packages/core` would. The type-level gates
   they pin, and the `pnpm dev` local loop, are in `examples/CLAUDE.md`.
-- **The whole gate runs on TEN containers, shared, and `internal/test-infra`
-  owns them.** One `postgres:18.1`, one `rabbitmq:4.2.1-management-alpine`,
-  one `temporalio/auto-setup:1.29.1`, one `redis:8.8.2-alpine`, one
-  `axllent/mailpit:v1.31.0`, one `rustfs/rustfs:1.0.0-rc.3`, one
-  `nginx:1.29-alpine` — the dev loop's JWKS endpoint, which is a container
-  rather than a listener because `dev:env` is one-shot and exits — and the
-  three the OpenID provider takes: `oryd/hydra:v2.3.0`, `oryd/kratos:v1.3.1`
-  and a `node:24-alpine` running the consent-and-logout handler this
-  repository owns, because Hydra has no mode in which that endpoint is
-  unreachable (`skip_consent` is advice to a consent application, never
-  permission to omit one). Those three take **fixed** host ports and share a
-  fixed-name network, which the others do not: a redirect protocol needs its
-  URLs before the container exists. Their state is in the shared Postgres,
-  joined to that network at runtime — a `memory` DSN refuses the concurrent
-  logins the gate makes, measured in `internal/test-infra/README.md`. Started
-  once per machine and reused by
-  every workspace's vitest run **and by `pnpm dev`**. Ten workspaces need a Docker daemon —
-  `packages/amqp-worker`, `packages/temporal-worker`, `packages/cache`, `packages/mailer`,
-  `packages/storage`, `internal/test-infra`, and the four
-  `examples/` that boot the
-  application or a broker-backed runtime — and that is a fact a contributor
-  discovers the hard way unless a README says so, which is why each one's
-  does.
-
-  It used to be **five servers for those six workspaces** — a RabbitMQ
-  container per AMQP vitest run and a Temporal time-skipping server per
-  Temporal vitest _worker_ — and `pnpm test` was intermittently red because
-  the 60 s testcontainers startup wait was what gave out first, with the
-  failing workspace moving between runs (issue #52). Nothing about that was a
-  missing isolation boundary; each system already had one finer than "a server
-  of my own", and only the server was duplicated:
-  - **a vhost per test**, minted by `@amqp-contract/testing`'s `it` extension
-    from the management API — untouched by this;
-  - **a namespace per spec file**, registered by
-    `@btravstack/internal-test-infra/namespace`, which then polls a
-    namespace-scoped read until every Temporal service's registry has caught
-    up (`describeNamespace` answers from the frontend alone and is not
-    enough). Per file, not per test: registration costs that refresh, and a
-    task queue per test — which both suites already mint — separates the tests
-    inside one file;
-  - **a tenant per test**, which is what the example application being
-    multi-tenant buys (see below);
-  - **a key prefix per test**, which is what a Redis suite mints — finer than
-    a database index, and free;
-  - **a recipient per test**, which is what a mail suite mints — Mailpit
-    delivers nowhere and keeps everything, so a UUID localpart is a mailbox
-    nobody else reads;
-  - **a key prefix per test** again for object storage, inside ONE bucket: a
-    bucket per test would be a create-and-delete round trip bought for an
-    isolation a UUID prefix already gives for nothing.
-  - **an identity per spec** on the OpenID Connect provider, minted through
-    `internal/test-infra`'s `createIdentity` when a spec needs state of its
-    own — never a client: one registered client is what the provider's
-    redirect URIs are cut for, and two fixed identities serve every spec that
-    only needs to log in.
-
-  `withReuse()` is what makes the second, third and fourth workspace attach
-  instead of start. Two consequences are deliberate and stated in
-  `internal/test-infra/README.md`: a reused container is **not** registered
-  with Ryuk, so it outlives the run (`docker rm -f $(docker ps -aq --filter
-label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
-  lock is **in-process**, which does nothing about turbo starting several runs
-  at the same instant — a `mkdir`-based file lock under `<repo>/.cache/`
-  closes that race.
-
-  Two `globalSetup` modules replace the upstream ones
-  (`@amqp-contract/testing/global-setup`,
-  `@temporal-contract/testing/global-setup`) by providing the **same** inject
-  keys, so both upstream `it` extensions keep working unchanged. The
-  time-skipping test server is gone with them: neither Temporal suite ever
-  advanced a clock, so the skippable clock bought nothing a private namespace
-  does not — and with it went the one workspace that needed the **network** on
-  a cold cache, and the CI cache gap that came with it.
+- **The whole gate runs on shared containers, and `internal/test-infra` owns
+  them** — started once per machine and reused by every workspace's vitest run
+  and by `pnpm dev`. Its README lists them, why each exists, the reuse lock and
+  how to clear them; a workspace that needs Docker says so in its own README.
+  Isolation is per boundary, never per server (Test conventions rule 7).
 
 - **The example application is multi-tenant, and that is why one database
   serves the whole gate.** The tenancy is the APPLICATION's — a `Tenant` port
   it declares, provided by each deployment's unit module from what the unit was
   opened for, with the repository bound to it inside that fork; no starter
-  reads a tenant off anything and no orders port names one. The full rule, what
-  keeps a tenant parameter and why, the id
-  branding and the Prisma generation step are in `examples/CLAUDE.md`.
+  reads a tenant off anything and no orders port names one. The full rule and
+  the id branding are in `examples/CLAUDE.md`; what keeps a tenant parameter
+  is the header of `examples/order-application/src/tenant.test-d.ts`, and the
+  Prisma generation step is in `examples/order-infrastructure/README.md`.
 - **An integration test may boot its real dependency with Docker and
   testcontainers.** A suite that needs a broker, a database or a service starts
   one; there is no rule against a daemon, and a hand-written double that fakes
@@ -1000,168 +741,53 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   makes composing several slices into one router a starting point rather than a
   trap, and it is the one property marked do-not-break in the design.
 
-  **The LEAF is one shape, and oRPC's is the one** (issue #207, closed by
-  btravstack/temporal-contract#415 and btravstack/amqp-contract#671). A
-  developer writes the same function on all three transports: **one record
-  carrying everything the invocation has — the input included — and that input
-  repeated as a second positional parameter.**
+  **The LEAF is one shape on all three transports**, oRPC's: one record
+  carrying everything the invocation has, `input` included, and that input
+  repeated as a second positional parameter. Why oRPC's, and the naming
+  asymmetry still undecided, are in the `deferred-decisions` skill.
 
-  ```ts
-  place:   ({ errors, context, input })      => …   // HTTP, oRPC's own shape
-  place:   ({ errors, context, input })      => …   // Temporal
-  process: ({ errors, context, raw, input }) => …   // AMQP
-  ```
-
-  **oRPC is the reference because it is the most widely used of the three**,
-  not because the shape is inherently better: a developer arriving here is more
-  likely to have seen it than either of the others, so it is what costs the
-  least to match. It is oRPC's shape down to the DUPLICATION — its
-  `ProcedureHandlerOptions` carries `input` and its handler still takes it
-  positionally — so `({ errors }, input)` remains the same call, and a caller
-  picks. The record is what the docs teach, because it is the spelling that
-  needs no `_` placeholder when a leaf wants only its input.
-
-  **`input` is the field name on all three**, not `args` or `message`. A local
-  synonym per transport would put the relearning back on the one field every
-  leaf touches.
-
-  **The convergence happened UPSTREAM, not in an adapter here.** A starter
-  could have reshaped the leaf at the call site it already owns, and did not:
-  the leaf's type is INFERRED from each contract library's own types, so an
-  adapter would re-derive rather than infer it, and it would leave the
-  starter's documentation and the library's documentation describing the same
-  function with two different signatures. Both libraries are this org's and
-  were in beta, so it cost a beta bump rather than a deprecation cycle.
-
-  The AMQP half was the one that was not merely cosmetic: it had no helpers
-  record at all, so a handler wanting "infrastructure comes back" imported and
-  constructed `RetryableError` by hand. Its record now carries `retryable` and
-  `nonRetryable` beside `errors`, so that triage reads like HTTP's — and `raw`,
-  the amqplib delivery, which used to be a third parameter no other transport
-  had.
-
-  **The naming asymmetry is a separate, smaller decision and is still NOT
-  made.** `AmqpHandler`/`AmqpHandlers` differ by one letter, and
-  `TemporalWorkflowActivities`/`TemporalActivities` give the piece the longer
-  name where HTTP gives the composer a different word entirely
-  (`OrpcController`/`OrpcRouter`). The recommendation on the table is HTTP's
-  rule — piece and composer get different words, never singular and plural —
-  but it renames public API on two packages with no obviously-right
-  replacement, so it is recorded here rather than guessed at.
-
-  **All three starters share one shape**: mint a piece straight from a
-  contract key — HTTP's `api.OrpcController(contract, path)`,
-  `@btravstack/amqp-worker`'s `AmqpHandler(contract, key)`,
-  `@btravstack/temporal-worker`'s `TemporalWorkflowActivities(contract, key)` —
-  each with the key carried on the piece's own port id rather than on a record
-  position, and compose an **array** of them:
-  `api.OrpcRouter(contract)([...])`, `AmqpHandlers(contract)([...])`,
-  `TemporalActivities(contract)([...])`. Every leaf the contract declares must
-  be covered (an uncovered one is refused at the call, against an
-  `"UNCOVERED CONTROLLERS — …"` / `"UNCOVERED HANDLERS — …"` /
-  `"UNCOVERED ACTIVITIES — …"` marker — at the **tail of the third line** of a
-  `TS2769`, past three hundred characters of the caller's own contract, which
-  is not shortenable from inside any of the three packages because the width
-  is in the type arguments rather than in a name; the missing key is named
-  beside the marker, on the array's **trailing element**, because the refusal
-  is a tuple as long as the array the caller wrote — it used to be a fixed
-  two-element one, which named the key only when the array happened to be two
-  elements long), and two slices both discharged for one key are di's duplicate-provider
-  defect at build — the exactness comes from the port id every piece carries,
-  not from a record shape. HTTP's key space is the one that nests — `"v1"` and
-  `"v1.orders"` are different paths into the same contract — so it alone
-  carries a **second** gate: `"OVERLAPPING CONTROLLERS — …"`, refusing an
-  array where one piece's path sits inside another's, which the flat worker
-  key spaces have no way to construct in the first place. See
-  `packages/http-server/CLAUDE.md`, `packages/amqp-worker/CLAUDE.md` and
-  `packages/temporal-worker/CLAUDE.md` for the full surface, and
-  `docs/how-to/split-a-worker-into-slices.md` for the worker-side task — the
-  sibling of `controller.test-d.ts`'s do-not-break property above does not
-  exist on the worker side: a worker's array has no lifted-fragment form to
-  preserve, since a piece already IS one contract key on its own.
+  **All three starters share one shape**: mint a piece from a contract key
+  (`api.OrpcController(contract, path)`, `AmqpHandler(contract, key)`,
+  `TemporalWorkflowActivities(contract, key)`) and compose an **array** of them
+  (`api.OrpcRouter(contract)([...])`, `AmqpHandlers(contract)([...])`,
+  `TemporalActivities(contract)([...])`). An uncovered leaf is refused at the
+  call — the `UNCOVERED …` marker sits at the tail of the `TS2769`'s third
+  line — a leaf discharged twice is di's duplicate-provider defect, and HTTP's
+  nested key space adds `OVERLAPPING CONTROLLERS`. HTTP's gates are in
+  `packages/http-server/CLAUDE.md`; the worker side is
+  `docs/how-to/split-a-worker-into-slices.md`.
 
 - **`examples/order-api` consumes `@btravstack/http-server`**, `order-temporal-worker`
   consumes `@btravstack/temporal-worker` and `order-amqp-worker` consumes
   `@btravstack/amqp-worker` — each supplying its own contract, pieces and triage.
-  What each composition root looks like is in `examples/CLAUDE.md`.
-- **oRPC is pinned to an exact beta.** `@orpc/{client,contract,server}` sit at
-  `2.0.0-beta.28` in the catalog because oRPC v2's `latest` dist-tag is still
-  the **1.x** line, while `@unthrown/orpc` peers on `^2.0.0-beta`: an unpinned
-  range resolves 1.x and fails `strictPeerDependencies`. The exact beta is the
-  contract until v2 goes stable; raise it deliberately, not on a bot bump.
+  Each composition root is its deployment's `src/module.ts`.
+- **oRPC is pinned to an exact beta** in the catalog, because oRPC v2's
+  `latest` dist-tag is still the **1.x** line while `@unthrown/orpc` peers on
+  `^2.0.0-beta`: an unpinned range resolves 1.x and fails
+  `strictPeerDependencies`. The exact beta is the contract until v2 goes
+  stable; raise it deliberately, not on a bot bump.
 - **`temporal-contract` is pinned to an exact beta, for the same shape of
-  reason.** `@temporal-contract/{client,contract,testing,worker}` sit at
-  `8.0.0-beta.7` because the `latest` dist-tag is the **7.x** line, which peers
-  on `unthrown@^4` while this repo pins 5.2.0 — and 7.x ships neither the
-  `test-rig` nor the `workflow-bundle` subpath the Temporal example's specs are
-  built on. `testcontainers` is an **optional** peer of
-  `@temporal-contract/testing` and is not installed, because the time-skipping
-  server is what that example uses — not because containers are unwelcome.
+  reason**: its `latest` dist-tag is the **7.x** line, which peers on an older
+  `unthrown` major and ships neither the `test-rig` nor the `workflow-bundle`
+  subpath the Temporal example's specs are built on.
 - **Runtime dependencies: none.** `unthrown` and `@btravstack/di` are **peer**
-  dependencies of `@btravstack/core` — the dual-copy hazard is real for both (di's port
-  identity and unthrown's `isResult` each compare across copies). `@btravstack/http-server`
-  peers on both of those plus `@btravstack/core` itself, for the same reason.
+  dependencies of `@btravstack/core` — the dual-copy hazard is real for both
+  (di's port identity and unthrown's `isResult` each compare across copies) —
+  and every in-repo package that needs them peers on them for the same reason.
   `node:` builtins only otherwise. Do not add a dependency — `Config` is
-  hand-rolled Standard Schema for exactly this reason. `@btravstack/di`
-  living in this workspace does **not** change that: it is `workspace:*` in
-  `devDependencies` and `workspace:^` in `peerDependencies` — the same
-  protocol as every other in-repo peer, which pnpm rewrites to a real `^`
-  range at publish, so a consumer still installs one copy themselves. It was
-  a hardcoded `^0.1.0` until the versions went lockstep; a literal range in a
-  peer field is a pin that goes stale silently the first time the dependency
-  is bumped. `di` itself peers on
-  `unthrown` and depends on nothing; `contract`'s root depends on nothing at
-  all, not even `unthrown`, and its one peer — `zod`, behind
-  `@btravstack/contract/zod` — is optional on the subpath protocol, so a
-  contract that only marks its procedures installs nothing;
-  `config` peers on `di` and `unthrown`;
-  `core` peers on all three; `testing` peers on all four (and not on
-  `vitest` — `bootFixture` is a plain function in vitest's fixture shape),
-  plus an optional `jose` behind `@btravstack/testing/jwt`;
-  `observability` peers on all four too and has **no runtime dependency of its
-  own** — the default sink is `JSON.stringify` and a `write`; its peer on
-  `core` is not optional and cannot be, since the ports it implements are
-  declared there. A
-  **starter** is the exception by definition:
-  `@btravstack/http-server` peers on `@orpc/server`, `@orpc/contract` and
-  `@unthrown/orpc` — peers, not dependencies, so an application holds one
-  copy of each. **Optional peers behind a subpath** are the family's second
-  shape, and `@btravstack/observability`'s `pino` was the first: a consumer
-  that never imports `@btravstack/observability/pino` never installs it, and
-  the package's own `tsdown` build emits `src/pino.ts` as a second entry
-  point for exactly that. `@btravstack/observability/otel` follows it, `jose`
-  behind `@btravstack/http-server/jwt` (issue #157's JWT/JWKS authenticator —
-  its API-key sibling needs no peer and is on the main entry point), `jose`
-  again behind `@btravstack/testing/jwt` (the `localIssuer` a test signs
-  with), `openid-client` behind `@btravstack/http-server/oidc` (the login
-  answerer — a graph that only SEALS sessions somebody else authenticated
-  composes the codec and installs none of it), and each of the three
-  application-service ports carries exactly one more:
-  `redis` behind `@btravstack/cache/redis`, `nodemailer` behind
-  `@btravstack/mailer/smtp`, and the two `@aws-sdk` packages behind
-  `@btravstack/storage/s3` — every one of them `optional: true` in
-  `peerDependenciesMeta`, so a graph composing the plain `cache()` over the
-  memory adapter installs none of them.
-  **Instrumentation is not one of these, and needs no subpath**: `instrument.ts`
-  imports `Logger` and `Meter` from `@btravstack/core`, which is where those
-  ports are declared, so the `instrumented` flag costs a consumer no dependency
-  at all. That is the reason the trio lives in `core` rather than in
-  `@btravstack/observability`.
-- **`packages/core`'s specs use `@btravstack/testing`, which peers on core —
-  and it is NOT a devDependency of core**, because that would be a
-  package-graph cycle turbo refuses. Instead: `packages/core/tsconfig.json`
-  maps `paths: { "@btravstack/testing": ["../testing/dist/index.d.mts"],
-"@btravstack/testing/jwt": ["../testing/dist/jwt.d.mts"] }` for the type
-  checker (the built d.ts — the source would fall outside `rootDir`; a
-  subpath a doc sample names gets its own entry, which is how `/jwt` joined
-  the map), and `tsconfig.build.json`, what `tsdown` compiles, empties
-  `paths` and excludes the specs so the published `dist` never sees it;
-  `packages/core/vitest.config.ts` aliases `@btravstack/testing` to
-  `../testing/src/index.ts` and `@btravstack/core` to `./src/index.ts` (one
-  kernel in play; coverage measures what the specs run); `turbo.json` gives
-  `@btravstack/core#typecheck` an explicit edge on
-  `@btravstack/testing#build`; `knip.json` ignores the dependency for
-  `packages/core`. Four places; a change to one is a change to all.
+  hand-rolled Standard Schema for exactly this reason. An in-repo peer is
+  `workspace:*` in `devDependencies` and `workspace:^` in `peerDependencies`,
+  which pnpm rewrites to a real `^` range at publish — never a literal range,
+  which goes stale silently the first time the dependency is bumped. A
+  **starter** peers on its transport's libraries (peers, not dependencies, so
+  an application holds one copy of each), and a vendor adapter is an
+  **optional peer behind a subpath** — `optional: true` in
+  `peerDependenciesMeta` and its own `tsdown` entry point — so a consumer that
+  never imports the subpath never installs it. `package.json` is the
+  inventory.
+- **`packages/core`'s specs use `@btravstack/testing` without depending on
+  it** — that would be a package-graph cycle turbo refuses — so four configs
+  carry the wiring and move together: see `packages/testing/CLAUDE.md`.
 - `declarationMap: false` on all thirteen published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **A deployment extends `@btravstack/tsconfig/app.json`; everything that
@@ -1199,31 +825,16 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   wanting `>= 22.22`) moves the root `engines` **and** CI's floor row in the
   same commit, or the install fails on that row.
 
-  It was `>=20` until Node 20 reached end of life on 2026-04-30. That floor
-  was never provable — CI runs the dev toolchain, and pnpm 11 needs
-  `node:sqlite`, which Node 20 does not have — so it promised a line nothing
-  here had ever executed. Raising it is what let `packages/core` drop its
-  `createDeferred` shim for `Promise.withResolvers` (ES2024, Node 22), and
-  CI's `22.22` row now runs the same major the promise names.
-
 - **oxlint rules are binding: no `interface` (use `type`), no `any` (use
   `unknown`).** Genuine exceptions carry a targeted `oxlint-disable` **with a
   reason**. Two are structural: `units.ts`'s `UnitWork` return union
   (`prefer-async-result`, a function-type return position) and `run-main.ts`'s
   `P._` (`no-catch-all-pattern`, the generic-`E` case where the catch-all is
   the only arm that can terminate the match).
-- The repo dogfoods **every** `@unthrown/oxlint` rule — the six
-  `recommended` ones plus both opt-ins (`no-throw`, `no-get-or-throw`). There
-  were three
-  until `@unthrown/oxlint@5.4.0` removed `prefer-ensure` and `no-throw`; 5.5.0
-  restored `no-throw` and kept `prefer-ensure` removed, on the grounds that it
-  flagged correct code violating no thesis and carried a known false positive;
-  5.6.0 added `no-async-result-race` (issue #92, born from this repo's own
-  eager-`AsyncResult` hazard — see the sequencing bullet below), and adopting
-  it fired on nothing: the `flatTap`/`DoAsync` discipline was already kept.
-  oxlint refuses to parse a config naming an unknown rule, so a config still
-  listing a removed rule fails the **whole** lint run, every non-unthrown rule
-  included — which is how the 5.5.0 bump surfaced here.
+- The repo dogfoods **every** `@unthrown/oxlint` rule, opt-ins included
+  (`no-throw`, `no-get-or-throw`). oxlint refuses to parse a config naming an
+  unknown rule, so a config still listing a rule an upgrade removed fails the
+  **whole** lint run, every non-unthrown rule included.
   So a `throw` is a lint error everywhere, spec files included: every one
   that survives carries an `oxlint-disable-next-line unthrown/no-throw`
   naming why. In the kernel and the harness they fall into three kinds — a
@@ -1267,11 +878,7 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   `.toAsync()` survives only where it lifts a `Result` that already exists —
   `examples/order-application`'s `placeOrder(id, quantity).toAsync()`,
   `start.ts`'s `probesOptions.toAsync()`, `fromNullable(row, …).toAsync()` and
-  the handful like them. It used to say that was **the one** such site, which
-  was wrong in both directions: eight sites lift an existing `Result`
-  legitimately, and thirty-three lifted a fresh literal in violation of this
-  very bullet — across `di`, `observability` and `di-hexagonal`, specs
-  included. `.toAsync()` on an `Ok(`/`Err(` receiver is what the rule bans, and
+  the handful like them. `.toAsync()` on an `Ok(`/`Err(` receiver is what the rule bans, and
   the receiver is what makes it mechanical: no lint rule enforces it here yet
   (btravstack/unthrown#260).
 - **A sequence is `flatTap` or `DoAsync`, never sibling `const`s.** An
@@ -1294,12 +901,7 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   shipping. Measured: the sibling spelling logs `start:a start:b end:b end:a`,
   `flatTap` logs `start:a end:a start:b end:b`.
 - **Comment density: sparse, and the rule now has a test.** No comments in JSON
-  files. Rationale belongs **here**, not inline. The bullet used to end "which
-  is what the surviving comments are" and that had stopped being true: measured
-  before the sweep, 2 649 inline `//` lines and 4 302 TSDoc lines against 27 762
-  lines of TypeScript — **a quarter of the code was comment**, one line in ten
-  an inline essay. A reader looking for the code had to skim past the reasons
-  for it.
+  files. Rationale belongs **here**, not inline.
 
   A comment earns its line only if it passes one of four tests:
 
@@ -1323,10 +925,6 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   thesis above; prose that explains a package's surface belongs in that
   package's own `CLAUDE.md` and its reference page.
 
-- Conventional commits (`feat:`, `fix:`, `docs:`, `test:`, `chore:`).
-- Coverage thresholds are 100% lines/functions on `packages/core`,
-  `packages/testing` and `packages/observability`, with each package's
-  `test-fixtures.ts` (test code, per the Test conventions) excluded.
 - Test mechanics: `@unthrown/vitest`'s matchers are registered via `setupFiles`
   (`toBeOk`, `toBeOkWith`, `toBeErrTagged`, …). Timing is asserted through
   `createFakeClock`, never a real `setTimeout` — a kernel whose own tests are
@@ -1362,16 +960,9 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   the deploy gate holds them) — **and**
   `docs-examples.test-d.ts` in the same commit — and when
   the change is to `packages/core/src/` internals or the invariants guarding
-  them, `packages/core/CLAUDE.md` too — and for a runtime package, its own:
-  `packages/config/CLAUDE.md`, `packages/testing/CLAUDE.md`,
-  `packages/http-server/CLAUDE.md`, `packages/temporal-worker/CLAUDE.md` or
-  `packages/amqp-worker/CLAUDE.md`, whichever is where that package's public
-  surface lives — or `packages/di/CLAUDE.md` for the container, or
-  `packages/contract/CLAUDE.md` for the auth marker, or
-  `packages/cache/CLAUDE.md`, `packages/mailer/CLAUDE.md` or
-  `packages/storage/CLAUDE.md` for the application-service ports. There are
-  **thirteen** `CLAUDE.md` files; naming the wrong one is how the last drift
-  happened.
+  them, `packages/core/CLAUDE.md` too — and the `CLAUDE.md` of any package
+  whose decisions or gotchas the change touches. Naming the wrong one is how
+  the last drift happened.
 
 ## Documentation site
 
@@ -1392,10 +983,8 @@ caught three separate times in review, which is why it is a rule and not a
 preference.
 
 **Rules 1 to 3 are structural and bind `examples/`**, the teaching surface,
-where the shape of a spec is itself read as advice. Ten of the kernel's 12 spec
-files predate them (`config.spec.ts` and `unit-module.spec.ts` are the two
-written since; `test-runtime`, `fake-clock` and `with-app` moved to
-`packages/testing` with the harness and predate them too) and are
+where the shape of a spec is itself read as advice. Most of the kernel's specs
+predate them and are
 **deliberately not swept**: they are mutation-verified, hold
 the package at 100% line and function coverage, and are the tests guarding the
 shipped invariants — restructuring them buys consistency while risking exactly
@@ -1529,16 +1118,11 @@ A sixth rule is about production code that tests keep honest:
    Three
    things stay options on purpose — a **shape** (`plugins`, a CORS record's
    allowed headers), because an environment carries strings; a **graph
-   decision** (`instrumented`, an adapter choice), because it changes what is
+   decision** (an adapter choice), because it changes what is
    built rather than how it behaves; and a value whose silent change is a
    security regression, which is why `securityHeaders` is an option and
    `HTTP_CORS_ORIGIN` is a variable. The full index is
    `docs/how-to/configure-from-the-environment.md`.
-
-   `examples/order-config` and the three `env.ts`
-   files were the earlier shape (a shared zod fragment, `readEnv()`,
-   `describeEnvIssues`, `abort(78)` by hand in every `main.ts`); they were
-   deleted when the kernel took this over.
 
 And a seventh, about the infrastructure a suite runs against:
 

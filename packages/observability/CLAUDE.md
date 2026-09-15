@@ -3,8 +3,8 @@
 The observability package's public surface. The root `CLAUDE.md` is the
 authoritative spec for the kernel and the conventions; this file holds what
 only matters when you are working under `packages/observability/`. Keep it in
-sync with the code in the same commit, and with `README.md` — the package
-ships no `docs-examples.test-d.ts`, so nothing else compiles these claims.
+sync with the code in the same commit, and with `README.md` — the doc-samples
+gate compiles the README's unskipped `ts` fences, but nothing checks this file.
 
 ## What this is: the implementations, not the contracts
 
@@ -29,106 +29,16 @@ _behaves_, edit here.
 
 ## Public surface
 
-- **`Logger`, `LoggerService`, `Level`, `LEVELS`, `Attributes`,
-  `Tracer`, `Meter` and the types behind them are `@btravstack/core`'s.** They
-  are documented in `packages/core/CLAUDE.md`, imported from there by
-  everything here, and **not re-exported** — one home per contract, so two
-  import paths can never drift. The paragraphs below describe what this
-  package does with them.
-- **The logger's shape**, for the reader who is here rather than there —
-  `LoggerService` is
-  `log(level, message, attributes?, cause?)`, one method per level with the
-  **same three arguments in the same order** — `(message, attributes?,
-cause?)` — plus `with(attributes)` and `isEnabled(level)`. The uniformity
-  was a correction: `error(message, cause, attributes)` read better at the one
-  call site that always has a cause, made every other site remember which arm
-  it was in, and left `warn` with nowhere to put one — so a retryable failure
-  (a broker refusing a publish, which the next sweep takes) had to be logged
-  at `error` purely to keep its reason, and `kernelEvents`' `teardownError`
-  arm silently dropped the finaliser's error. A failure is not a property of
-  severity. The cost is `logger.error("boom", undefined, cause)` for a failure
-  with nothing else to say; a line worth writing almost always has an id to
-  write with it. It is the framework's port, not
-  the application's: the framework itself logs (see `kernelEvents`), so an
-  application-declared port could not serve both, and every application
-  declaring the same port by hand was the copy-paste the `Env` port removed for
-  configuration.
-- **Six differences from NestJS's `Logger`**, each a defect this shape does not
-  have, and the reason the port looks the way it does: a port rather than a
-  class you `new` (no static, no `useLogger` reaching past DI); `with` returns
-  a value rather than `setContext` mutating the instance every caller shares;
-  `Attributes` is a flat record of scalars rather than `any` varargs; a failure
-  has its own `cause` channel; it cannot throw; and correlation is the
-  implementation's job, not the caller's. Keep that list in the port's TSDoc —
-  it is the package's whole argument.
-- **`createLogger(sink, level?)`** — the implementation. Two load-bearing
-  details: `currentUnit()` is read **per call** (one logger per scope, a
-  record per unit — capturing it at construction would stamp the first unit's
-  trace id on every line thereafter), and every write is wrapped in a `try` that
-  swallows, because a logger that throws turns an observability fault into an
-  outage. `with` layers attributes and shares the sink, so a child costs one
-  object.
-- **`Line` / `Sink`** — what an implementation hands a destination:
-  `{ level, message, attributes, cause, time, unit }`, where `unit` is
-  `undefined` outside a unit and `{ unitId, traceId, tenantId? }` inside one.
-  A `Sink` is `(line: Line) => void` and is allowed to throw — `createLogger`
-  is what makes that safe.
-- **`jsonSink(stream?)`** (`json-sink.ts`) — the default: one JSON object per
-  line on `process.stdout`. The caller's attributes are spread **first** and
-  the line's own fields after them, which is what makes the precedence true:
-  a caller's `{ level: "info" }` can never rewrite an `error` line's severity,
-  nor its `traceId`. The unit's ids are spread at the **top level**, not
-  nested under `unit`: `traceId` is the field an operator searches. and `renderCause` walks `Error.cause` up to four levels because an
-  `Error`'s `message` and `stack` are non-enumerable and a bare
-  `JSON.stringify` renders the line that exists to carry a failure as `{}` —
-  the same rule, and the same reason, as the kernel's `stderrSink`. A payload
-  `JSON.stringify` refuses outright falls back to the message and its severity
-  rather than costing the line.
-- **`observability({ sink?, level? })`** (`observability.ts`) — the starter:
-  a `Module<Logger | LoggerConfig, ConfigInvalid, Env>` providing the logger
-  and the configuration it was built from. `level` **pins** the way every
-  starter's options pin (explicit > env > default, through `Config.pinned`).
-- **`LoggerConfig`** — `{ level }`, bound through `Config.provider` from
-  `LOG_LEVEL` (default `info`). A value outside the six is a `ConfigInvalid`
-  naming the variable and the set — exit `78` under `runMain`, before a line is
-  written — rather than a silent fallback: a deployment that meant `debug` and
-  typed `verbose` should be told, not quietly under-logged for a week.
-- **`logLevel({ default? })`** (`config.ts`) — that field on its own, exported
-  so an application composing its own schema can reuse the validation rather
-  than re-deriving it.
-- **`kernelEvents(logger)`** — the kernel's `EventSink` over the logger, for
-  `StartOptions.onEvent`. The mapping is deliberate, not mechanical:
-  `startFailed` and `uncaught` are `error` (they carry a cause and are what an
-  operator is paged for), `teardownError` is `warn` (the application is already
-  stopping and the exit code says so), everything else is `info`. Each event's
-  own fields become **attributes** — `draining` keeps `inFlight`, `drained`
-  keeps the three report numbers — so a drain is queryable by field rather than
-  parsed out of a sentence. `serving` is the one that needs a guard: its `info`
-  is `unknown` (the kernel cannot know a runtime's `Info` at the event union),
-  so it is **spread only when it is a plain record** — which is what puts
-  `port`, `taskQueue`/`namespace` and `queues` on the line for free, with no
-  per-runtime logging code, and what keeps a hand-rolled runtime publishing a
-  string from costing the line. `probePort` rides beside it as its own field. The logger is a **parameter**, not resolved from
-  the graph: `building` is emitted while the graph is still being built, so the
-  sink cannot come from the context it is watching. That is also why an
-  application wiring this passes `createLogger(jsonSink())` by hand in
-  `main.ts` — a second logger, deliberately, and the only one the framework
-  asks anybody to construct.
-- **`pinoSink(logger)`** (`pino.ts`, the `@btravstack/observability/pino`
-  subpath) — a `Sink` over a pino logger, for a deployment where the default
-  sink's `JSON.stringify` per line shows up in a profile. `pino` is an
-  **optional** peer: a consumer that never imports the subpath never installs
-  it. The level filter stays **ours** — `createLogger` has already decided the
-  line is worth writing by the time a sink sees it — so pino is configured at
-  `trace` in the docs and the spec, one filter in the process, and it is the
-  one `LOG_LEVEL` validated. The cause is handed over as `err`, which pino's
-  own serialiser renders with the stack.
+`Logger`, `Tracer`, `Meter` and their service types are `@btravstack/core`'s
+(`packages/core/CLAUDE.md`) and are not re-exported. What this package exports
+is `src/index.ts`, `src/pino.ts` and `src/otel.ts`, each with its TSDoc;
+`docs/reference/observability.md` is the reader's page, including the logger's
+argument order and the six differences from NestJS's `Logger`.
 
 ## Specs
 
-`vitest run --coverage`, 100% lines/functions like every other package. What
-each spec file pins — the list, never a tally, since a count in prose is stale
-the next time a case is added (#192):
+What each spec file pins — the list, never a tally, since a count in prose is
+stale the next time a case is added (#192):
 
 - `logger.spec.ts` — the surface (one line per level, at its own severity),
   the level floor and `isEnabled`, the cause channel, `with` layering **and not
@@ -164,33 +74,17 @@ the next time a case is added (#192):
 hand-rolled runtime opens a unit with a `tenantId`, which no shipped runtime
 sets.
 
-## Dependencies
-
-Peers: `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`,
-with `pino`, `@opentelemetry/api` and `@opentelemetry/sdk-node` as
-**optional** ones behind their subpaths. `@btravstack/core` is not optional
-and cannot be: the ports this package implements are declared there. The package itself has no runtime
-dependencies — the default sink is `JSON.stringify` and a `write`, for the same
-reason `Config` is a hand-rolled Standard Schema.
-
 ## Deferred, deliberately
 
-- **Traces and metrics shipped in issue #64**, as the deferred design
-  prescribed, behind the `@btravstack/observability/otel` subpath on the
-  `pino` protocol: `@opentelemetry/api` and `@opentelemetry/sdk-node` are
-  **optional** peers a consumer that never imports the subpath never installs
-  (`src/otel.ts` is `tsdown`'s third entry point). The surface: `otel(options?)`,
-  a module providing the kernel's `Tracer` and `Meter` ports over a
-  `NodeSDK` held as a **resourceful** provider — `release` is `sdk.shutdown()`,
-  which flushes, so the kernel's close-on-every-path is what gets spans out of
-  a dying process and a lost flush becomes a `teardownError` and exit `2`
-  rather than silence (pinned by `otel.spec.ts` with an hour-delayed batch
-  processor: the span leaves only because release flushed it) — and
-  `UnitSpanModule`, a module a starter's own `unit` option binds — `unit: {
-message: UnitSpanModule }`, `unit: { activity: UnitSpanModule }` — opening a
-  span per unit the runtime forks it around, with the ambient record's
-  `unitId`/`traceId`/`tenantId` as attributes, ended by `onStop` on every path
-  out. **No config slice, deliberately**: the
+- **Traces and metrics ship behind the `@btravstack/observability/otel`
+  subpath**; `otel(options?)` and `UnitSpanModule` are `src/otel.ts`'s TSDoc
+  and `docs/reference/observability.md`'s. What they decided: the `NodeSDK` is
+  a **resourceful** provider whose `release` is `sdk.shutdown()`, which
+  flushes, so the kernel's close-on-every-path is what gets spans out of a
+  dying process and a lost flush becomes a `teardownError` and exit `2` rather
+  than silence (pinned by `src/otel.spec.ts` with an hour-delayed batch
+  processor: the span leaves only because release flushed it).
+  **No config slice, deliberately**: the
   SDK reads the `OTEL_*` env conventions itself, and re-binding them through
   `Config` would be a second spelling of names operators already know. **One
   `otel()` per process**: the api's globals register once — the SDK's own
@@ -202,13 +96,6 @@ message: UnitSpanModule }`, `unit: { activity: UnitSpanModule }` — opening a
   `x-request-id`) and `@btravstack/amqp-worker` (over `messageId`), trace-id field
   only; `@btravstack/temporal-worker` deliberately keeps the workflow/activity id as
   its correlation — see its own `CLAUDE.md`.
-- **The two ports moved to `@btravstack/core` after this shipped**, when the
-  first application-service package (`@btravstack/cache`) needed to depend on
-  the contracts without pulling OTel in. `Tracer` kept its narrowed
-  `{ startSpan(name) }`; `Meter` stopped being OTel's own type and became a
-  narrowing too (`createCounter` / `createHistogram`, verified structurally
-  against the real meter). Nothing here changed but the import: this file
-  provides them, and no longer declares them.
 - **A constraint that will not go away**: OTel _auto_-instrumentation
   (`@opentelemetry/auto-instrumentations-node/register`) must be preloaded
   before the instrumented libraries are imported, so it cannot be DI-provided.
@@ -249,11 +136,8 @@ Guice's `newSetBinder` declares the empty set for the same reason.
 with an operation are here, and they are the reason a starter holds no `Logger`,
 `Meter` or `Tracer` of its own.
 
-- **`observability()` contributes the LINE**, and only for a failure:
-  `component.name failed`, with the operation's attributes, its details and the
-  cause. A success writes nothing — that is what the metric is for, and a line
-  per success broke an application spec asserting that neither its controller
-  nor its interactor had written anything.
+- **`observability()` contributes the LINE**, and only for a failure — the root
+  `CLAUDE.md`'s **Observability is a set port, never a flag** says why.
 - **`otel()` contributes the SPAN and the INSTRUMENTS**:
   `component.name` as the span, `btravstack.<component>.operations` and
   `btravstack.<component>.duration` as the pair, both minted per component and
@@ -265,13 +149,3 @@ with an operation are here, and they are the reason a starter holds no `Logger`,
 a starter's contribution may read `Observers`, and the member closes the loop
 back onto the SDK. The examples' integration tests caught it as
 `[di] dependency cycle among ports: OrderDatabase, HealthChecks, Instrumentations, …`.
-
-**The tracer is read once and the meter per operation**, which is not symmetry
-worth restoring: `trace.getTracer` answers a proxy that resolves when the SDK
-registers, and `metrics.getMeter` does not — read once before `sdk.start()` it
-returns the no-op meter and keeps it. Only the instruments it mints are cached.
-
-**Details ride the span and the line, never an instrument.** `Operation.details`
-is the unbounded half — a cache key, a mail subject, a URL — and putting it on a
-counter is one time series per value. The first cut of the shared observer did
-exactly that with `btravstack.cache.key`.

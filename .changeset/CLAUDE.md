@@ -3,17 +3,11 @@
 Release and versioning policy. The gate commands and the package inventory
 live in the root `CLAUDE.md`.
 
-The thirteen published packages share **one version number**, enforced by a
-`fixed` group in `.changeset/config.json`. A release bumps every one of them,
-whether or not it changed — Spring Boot's model, and the reason is the same:
+A release bumps every one of the thirteen published packages, whether or not
+it changed — Spring Boot's model, and the reason is the same:
 an application installs a kernel and two or three starters together, and
 "which version of `@btravstack/http-server` goes with `@btravstack/core@0.4.1`" is a
 question nobody should have to answer.
-
-`@btravstack/di` is the only one with a published history (`0.1.0`, from its
-standalone repository, before the merge). The unified line therefore starts at
-**0.2.0**: above di's published version, and 0.x because the API still moves —
-this repo removed `Port.many` and `withApp` in a single afternoon.
 
 **A minor no longer forces 1.0.0 — `@changesets/cli@3.0.0` fixed it.** Every
 package here peer-depends on `@btravstack/di` and most on `@btravstack/config`
@@ -38,21 +32,13 @@ config, and neither was the `updateInternalDependencies` this repo's
 result). The internal peers still cannot become ordinary dependencies — the
 dual-copy hazard is what they exist to prevent.
 
-So the hand-override the `0.2.0` release performed — rewriting the eight
-`package.json` versions, the eight `CHANGELOG.md` headings **and the
-`Updated dependencies` blocks inside those changelogs** — is no longer needed
-for a feature release. Reaching `1.0.0` is a decision again rather than an
-accident. **Do not downgrade `@changesets/cli` below 3.0.0** without
-restoring this warning: on 2.x the next `pnpm run version` silently ships a
-major.
-
 ## A private workspace package still needs a `version`
 
 `pnpm publish` rewrites every `workspace:` dependency into a concrete range —
 **`devDependencies` included** — and it cannot do that for a workspace package
 that has no `version` field. `@btravstack/internal-test-infra` is `private: true`
 and had none, which is why the `0.3.0` release published `@btravstack/di` and
-then failed on the five packages that devDepend on it:
+then failed on the packages that devDepend on it:
 
 ```text
 ERR_PNPM_CANNOT_RESOLVE_WORKSPACE_PROTOCOL: Cannot resolve workspace protocol
@@ -77,18 +63,10 @@ dependency's devDependencies — and it is the standard cost of this fix.
 
 ## Releasing is CI's job from 0.4.0 onward
 
-`.github/workflows/release.yml` calls
-`btravstack/tools/.github/workflows/release-reusable.yml@workflows-v1` — the
-same reusable workflow `unthrown` calls, pinned at the same ref `ci.yml` uses.
-It is **triggered by** a green CI run on `main`, and changesets' two-step does
-the rest: a push carrying changesets opens a release PR with the bumps and the
-rendered CHANGELOGs, and merging that PR publishes.
-
-It is **pinned** to that run's commit, not merely triggered by it: the caller
-passes `github.event.workflow_run.head_sha`, because a `workflow_run` checkout
-otherwise takes the default branch's current tip, which a push landing after CI
-went green can have moved. The `ref` input for that landed in
-btravstack/tools#6.
+`.github/workflows/release.yml`'s own comments describe the flow: the
+reusable workflow, the chain off a green CI run, the `head_sha` pin, changesets'
+two-step, and the two things it needs outside the file (`RELEASE_PAT` and a
+Trusted Publisher per package). One gotcha lives only here.
 
 **`changesets/action` must stay on v2 or newer.** v1 bundles
 `@changesets/read@^0.6.7`, which parses every `.changeset/*.md` as a changeset —
@@ -99,18 +77,3 @@ hypothetical: it is what this repository's first automated release run did.
 `GEMINI.md`. A local `pnpm run version` never showed it, because a repository
 installs a current reader and only the action's bundled copy was old — so the
 failure existed in CI and nowhere else.
-
-Two things live outside the file and the workflow is inert without them:
-
-- **`RELEASE_PAT`**, a secret with Contents + Pull requests write. The bare
-  `GITHUB_TOKEN` will not do: events it triggers do not start new workflow
-  runs, so the release PR would skip CI — the single thing chaining off CI
-  exists to guarantee.
-- **A Trusted Publisher on npmjs.com per package**, pointing at this repository
-  and this workflow file. Publishing rides the OIDC token `id-token: write`
-  mints; there is no `NPM_TOKEN` anywhere, and provenance comes with it.
-
-**A package must exist on npm before a Trusted Publisher can be configured for
-it.** That is why `0.3.0` was cut from a laptop and why this workflow could not
-have replaced it: eleven of the twelve had no publisher to trust. It takes over
-from `0.4.0`.

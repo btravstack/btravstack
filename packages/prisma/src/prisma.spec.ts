@@ -131,7 +131,7 @@ describe("prismaDatabase", () => {
     );
 
     // THEN it was observed — the client came out wrapped without anyone asking.
-    // Untraced: engine-level tracing is `@btravstack/prisma/otel`'s job, and a
+    // Untraced: engine-level tracing is `@prisma/instrumentation`'s job, and a
     // client-level span would only duplicate it more shallowly.
     expect(observed.taken()).toEqual([
       expect.objectContaining({
