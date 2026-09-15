@@ -1,5 +1,20 @@
 # @btravstack/core
 
+## 0.15.0
+
+### Minor Changes
+
+- e747896: `observed(observers, operation, call, settled?)` joins `observe`: the same
+  start-then-settle around one `AsyncResult`-returning call, settling `ok` or
+  `error` from the channel it came back on, so a starter's instrumentation is one
+  line per method. `@btravstack/cache`, `@btravstack/mailer` and
+  `@btravstack/storage` report through it; what they report is unchanged.
+
+### Patch Changes
+
+- @btravstack/config@0.15.0
+  - @btravstack/di@0.15.0
+
 ## 0.14.0
 
 ### Patch Changes
