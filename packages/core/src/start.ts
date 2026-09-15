@@ -427,6 +427,16 @@ export const start = <X, E, N>(
     fromSafePromise(abandoningBuild.promise).map((reason) => {
       emit({ type: "stoppedWaiting", phase: "build", afterMs: undefined });
       registry.abortAll();
+      // The same two lines every other route out of a half-built graph runs —
+      // the probe bind's `tapFailure` and `Module.scoped`'s. `stopping` before
+      // `exited` because the tracker is monotonic and skipping it would drop
+      // the phase, and its event, out of a lifecycle that documents both as
+      // reached on every path; `runtimePublished` because `runtimeInfo()`
+      // promises `undefined` for a runtime that never served, and this route
+      // leaves `Module.scoped` pending forever, so the `tapFailure` that
+      // usually settles it never runs.
+      runtimePublished.resolve(undefined);
+      tracker.advanceTo("stopping");
       disposeAll();
       return reportOf(reason, undefined, "build");
     });

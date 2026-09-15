@@ -1136,7 +1136,7 @@ A sixth rule is about production code that tests keep honest:
    exceptions are names the **ecosystem** already owns and a platform injects
    (`PORT`, `HOST`, `DATABASE_URL`, `REDIS_URL`, `SMTP_URL`, `LOG_LEVEL`),
    where a prefix breaks the convention rather than protecting it — and the
-   kernel's own three, since a process has exactly one kernel and nothing else
+   kernel's own, since a process has exactly one kernel and nothing else
    binds them.
 
    Three

@@ -377,17 +377,18 @@ The mapping is deliberate rather than mechanical. Each event's own fields
 become **attributes**, so a drain is queryable by field rather than parsed out
 of a sentence:
 
-| Event           | Level   | Message                                                 | Attributes besides `event`                  | Carries `cause` |
-| --------------- | ------- | ------------------------------------------------------- | ------------------------------------------- | --------------- |
-| `building`      | `info`  | `building`                                              | —                                           | —               |
-| `startFailed`   | `error` | `the application failed to start`                       | —                                           | yes             |
-| `serving`       | `info`  | `serving`                                               | `runtime`                                   | —               |
-| `draining`      | `info`  | `draining`                                              | `inFlight`                                  | —               |
-| `drained`       | `info`  | `drained`                                               | `inFlightAtStart`, `completed`, `abandoned` | —               |
-| `stopping`      | `info`  | `stopping`                                              | —                                           | —               |
-| `exited`        | `info`  | `exited`                                                | —                                           | —               |
-| `teardownError` | `warn`  | `a finaliser failed while the application was stopping` | `port`                                      | yes             |
-| `uncaught`      | `error` | `an uncaught exception stopped the application`         | —                                           | yes             |
+| Event            | Level   | Message                                                              | Attributes besides `event`                                                        | Carries `cause` |
+| ---------------- | ------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------- |
+| `building`       | `info`  | `building`                                                           | —                                                                                 | —               |
+| `startFailed`    | `error` | `the application failed to start`                                    | —                                                                                 | yes             |
+| `serving`        | `info`  | `serving`                                                            | `runtime`                                                                         | —               |
+| `draining`       | `info`  | `draining`                                                           | `inFlight`                                                                        | —               |
+| `drained`        | `info`  | `drained`                                                            | `inFlightAtStart`, `completed`, `abandoned`                                       | —               |
+| `stopping`       | `info`  | `stopping`                                                           | —                                                                                 | —               |
+| `exited`         | `info`  | `exited`                                                             | —                                                                                 | —               |
+| `teardownError`  | `warn`  | `a finaliser failed while the application was stopping`              | `port`                                                                            | yes             |
+| `uncaught`       | `error` | `an uncaught exception stopped the application`                      | —                                                                                 | yes             |
+| `stoppedWaiting` | `warn`  | `the kernel stopped waiting for a phase with no deadline of its own` | `phase`, and `afterMs` when a deadline rather than a second signal ended the wait | —               |
 
 Every line carries `event` — the event's own `type` — as an attribute, so one
 query finds the transitions whatever the message says. `startFailed` and

@@ -363,25 +363,29 @@ describe("start", () => {
       onEvent: (event) => events.push(event),
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(app.phase()).toBe("building");
+    const beforeCrash = app.phase();
 
     // WHEN it crashes mid-build
     process.emit("uncaughtException", new Error("boom"));
 
     // THEN the crash is reported rather than absorbed: `70` under `runMain`,
-    // and the handlers are gone so the next test's signals are its own
+    // through `stopping` like every other route out of a half-built graph, with
+    // `runtimeInfo()` settled rather than left hanging on a runtime that never
+    // served, and the handlers gone so the next test's signals are its own
     expect({
+      beforeCrash,
       report: await app.exited,
-      phase: app.phase(),
+      info: await app.runtimeInfo(),
+      phases: events.map((event) => event.type),
       listeners: uncaughtListeners() - before,
-      stoppedWaiting: events.filter(isStoppedWaiting),
     }).toEqual({
+      beforeCrash: "building",
       report: expect.toBeOkWith(
         expect.objectContaining({ reason: "uncaught", drain: undefined, abandonedAt: "build" }),
       ),
-      phase: "exited",
+      info: expect.toBeOkWith(undefined),
+      phases: ["building", "uncaught", "stoppedWaiting", "stopping", "exited"],
       listeners: 0,
-      stoppedWaiting: [{ type: "stoppedWaiting", phase: "build", afterMs: undefined }],
     });
   });
 
@@ -402,17 +406,20 @@ describe("start", () => {
 
     process.emit("SIGTERM");
     await new Promise((resolve) => setTimeout(resolve, 0));
-    // THEN the first is buffered — nothing observes it until the runtime
-    // serves, which this graph never does
-    expect(app.phase()).toBe("building");
+    const afterFirstSignal = app.phase();
 
     // WHEN the operator asks again
     process.emit("SIGTERM");
 
-    // THEN the kernel stops waiting for a build that was never going to finish
-    expect(await app.exited).toBeOkWith(
-      expect.objectContaining({ reason: "signal", abandonedAt: "build" }),
-    );
+    // THEN the first was buffered — nothing observes it until the runtime
+    // serves, which this graph never does — and the second is what makes the
+    // kernel stop waiting for a build that was never going to finish
+    expect({ afterFirstSignal, report: await app.exited }).toEqual({
+      afterFirstSignal: "building",
+      report: expect.toBeOkWith(
+        expect.objectContaining({ reason: "signal", abandonedAt: "build" }),
+      ),
+    });
   });
 
   it("drains on SIGTERM and skips the drain on a second signal", async () => {
