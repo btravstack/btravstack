@@ -1,6 +1,6 @@
 ---
 title: Tune the drain for Kubernetes
-description: Set PRE_DRAIN_DELAY_MS and DRAIN_TIMEOUT_MS (or their options) against terminationGracePeriodSeconds, wire the probes, and read what the drain reported.
+description: Set PRE_DRAIN_DELAY_MS, DRAIN_TIMEOUT_MS and STOP_TIMEOUT_MS (or their options) against terminationGracePeriodSeconds, wire the probes, and read what the drain reported.
 ---
 
 <!-- doctest: prelude
@@ -15,25 +15,27 @@ import { createServer } from "node:http";
 
 # Tune the drain for Kubernetes
 
-> **How-to.** Make a pod stop without dropping requests: size the two drain
-> knobs against the grace period, point the probes at the kernel, and read the
-> `DrainReport`. For _why_ the drain has three beats, see
+> **How-to.** Make a pod stop without dropping requests: size the three
+> shutdown knobs against the grace period, point the probes at the kernel, and
+> read the `DrainReport`. For _why_ the drain has three beats, see
 > [Draining, in three beats](/explanation/draining-in-three-beats); for every
 > option, see [start and StartOptions](/reference/core/start).
 
 The defaults already fit a stock cluster. Change them only when you change the
-grace period, and change both together.
+grace period, and change them together.
 
-## The two knobs
+## The three knobs
 
-| Option            | Variable             | Default  | What it governs                                                                                         |
-| ----------------- | -------------------- | -------- | ------------------------------------------------------------------------------------------------------- |
-| `preDrainDelayMs` | `PRE_DRAIN_DELAY_MS` | `5_000`  | how long after SIGTERM the kernel keeps **accepting** before it tells the runtime to stop               |
-| `drainTimeoutMs`  | `DRAIN_TIMEOUT_MS`   | `20_000` | how long in-flight units then get to finish; whatever is still open is aborted and reported `abandoned` |
+| Option            | Variable             | Default  | What it governs                                                                                                                   |
+| ----------------- | -------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `preDrainDelayMs` | `PRE_DRAIN_DELAY_MS` | `5_000`  | how long after SIGTERM the kernel keeps **accepting** before it tells the runtime to stop                                         |
+| `drainTimeoutMs`  | `DRAIN_TIMEOUT_MS`   | `20_000` | how long in-flight units then get to finish; whatever is still open is aborted and reported `abandoned`                           |
+| `stopTimeoutMs`   | `STOP_TIMEOUT_MS`    | `5_000`  | how long `Serving.stop` and the scope's finalisers then get; past it the kernel reports `abandonedAt: "stop"` rather than waiting |
 
-**Both are readable from the environment**, and that is the point of this
-page: `terminationGracePeriodSeconds` lives in the manifest, so the two values
-it has to agree with belong beside it rather than compiled into the image. The
+**All three are readable from the environment**, and that is the point of this
+page: `terminationGracePeriodSeconds` lives in the manifest, so the values it
+has to agree with belong beside it rather than compiled into the image. The
+defaults sum to it exactly — `5 + 20 + 5 = 30`. The
 option **pins** the field — explicit > environment > default, per field — so a
 test fixes a timing while the deployment sets its own.
 
@@ -45,16 +47,25 @@ flips `false` synchronously at the first beat; the delay is what closes the
 window before the runtime stops listening. It is charged from the moment the
 signal was _received_, so a signal that lands mid-build does not pay it twice.
 
-`drainTimeoutMs` sits deliberately under `terminationGracePeriodSeconds`'
-default of `30`, leaving headroom for `stopping` (closing the runtime and the
-application scope) before SIGKILL. `5 + 20 = 25` seconds, five in hand.
+**`stopping` is bounded because the teardown is where a shutdown wedges.** Beat
+3's deadline covers in-flight work; a `release` that never settles — a pool
+draining to a host that stopped answering — is not work, and until it had a
+deadline of its own it left the process in `stopping` with no `exited` event, no
+exit code and no exit report: the artefact the whole lifecycle exists to
+produce. Past the deadline the kernel reports anyway, with
+`ExitReport.abandonedAt: "stop"` and a `stoppedWaiting` line on stderr.
 
-Raise the grace period and raise the drain with it — in the same manifest,
+It stops WAITING rather than cancelling: nothing can cancel a finaliser, so a
+wedged one can still hold the event loop until SIGKILL. What changes is that
+the report exists and names the phase, so `kubectl logs --previous` answers why
+instead of ending mid-sentence.
+
+Raise the grace period and raise the three with it — in the same manifest,
 which is why they are variables:
 
 ```yaml
 spec:
-  terminationGracePeriodSeconds: 60 # > PRE_DRAIN_DELAY_MS + DRAIN_TIMEOUT_MS, with headroom
+  terminationGracePeriodSeconds: 60 # >= PRE_DRAIN_DELAY_MS + DRAIN_TIMEOUT_MS + STOP_TIMEOUT_MS
   containers:
     - name: api
       env:
@@ -62,6 +73,8 @@ spec:
           value: "10000"
         - name: DRAIN_TIMEOUT_MS
           value: "40000"
+        - name: STOP_TIMEOUT_MS
+          value: "10000"
 ```
 
 Pin them in code instead when the value is a decision rather than a
@@ -69,7 +82,11 @@ deployment's — a test, or a runtime whose own shutdown budget they have to
 match:
 
 ```ts
-await runMain(OrderApi, { preDrainDelayMs: 10_000, drainTimeoutMs: 40_000 });
+await runMain(OrderApi, {
+  preDrainDelayMs: 10_000,
+  drainTimeoutMs: 40_000,
+  stopTimeoutMs: 10_000,
+});
 ```
 
 A variable that is not a whole number, or is set but empty, is a

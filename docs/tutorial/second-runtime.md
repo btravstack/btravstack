@@ -235,7 +235,7 @@ await runMain(Worker);
 Identical to lesson one's, down to the import. Run it:
 
 ```sh
-node src/worker-main.ts
+npx tsx src/worker-main.ts
 ```
 
 `TEMPORAL_ADDRESS` (default `127.0.0.1:7233`) and `TEMPORAL_NAMESPACE`

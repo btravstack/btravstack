@@ -171,6 +171,43 @@ describe("the kernel's events as log lines", () => {
     );
   });
 
+  it("logs an abandoned phase as a warning, keeping the phase and the deadline queryable", ({
+    loggerAt,
+    recorder,
+  }) => {
+    // GIVEN the adapter
+    // WHEN the kernel reports that it stopped waiting for the teardown
+    kernelEvents(loggerAt("trace"))({ type: "stoppedWaiting", phase: "stop", afterMs: 5_000 });
+
+    // THEN it is a warning beside `teardownError`, and both facts are fields:
+    // this is the line an operator greps for after a pod was SIGKILLed
+    expect(recorder.only()).toEqual(
+      expect.objectContaining({
+        level: "warn",
+        attributes: { event: "stoppedWaiting", phase: "stop", afterMs: 5_000 },
+      }),
+    );
+  });
+
+  it("omits afterMs entirely when a second signal, not a deadline, ended the wait", ({
+    loggerAt,
+    recorder,
+  }) => {
+    // GIVEN the adapter
+    // WHEN the wait was cut short rather than timed out
+    kernelEvents(loggerAt("trace"))({
+      type: "stoppedWaiting",
+      phase: "build",
+      afterMs: undefined,
+    });
+
+    // THEN no `afterMs` key is written, rather than one carrying `undefined`:
+    // naming a deadline that did not expire would be a small lie
+    expect(recorder.only()).toEqual(
+      expect.objectContaining({ attributes: { event: "stoppedWaiting", phase: "build" } }),
+    );
+  });
+
   it("keeps the drain's numbers as attributes rather than a rendered sentence", ({
     loggerAt,
     recorder,

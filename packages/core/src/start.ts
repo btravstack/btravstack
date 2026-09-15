@@ -31,6 +31,14 @@ import { createUnitRegistry } from "./units.js";
 
 export type TeardownError = { readonly port: string; readonly cause: unknown };
 
+/**
+ * An arm of a race that has lost and has nothing to report: it never settles,
+ * so the winner decides. It holds no timer and no handle, which is what makes
+ * it safe — the alternative is an arm that answers a report no consumer reads,
+ * and whose side effects then have to be guarded one by one.
+ */
+const withdrawn = <T>(): AsyncResult<T, never> => fromSafePromise(new Promise<T>(() => {}));
+
 const providesEnv = (module: AnyModule): boolean =>
   module.provides.some((provider) => provider.port.portId === Env.portId) ||
   module.imports.some(providesEnv);
@@ -40,6 +48,18 @@ export type ExitReport = {
   readonly drain: DrainReport | undefined;
   readonly teardownErrors: readonly TeardownError[];
   readonly uptimeMs: number;
+  /**
+   * Set when the kernel stopped WAITING for a phase that has no deadline of its
+   * own — `"stop"` for a `Serving.stop` or a finaliser still running at
+   * `stopTimeoutMs`, `"build"` for a graph abandoned before it ever served.
+   *
+   * It is "stopped waiting", not "cancelled": nothing here can cancel a
+   * finaliser, so a wedged one can still hold the event loop past this report
+   * and end in SIGKILL. What the field buys is that the report EXISTS and says
+   * which phase ran long — where the alternative was a process stuck in
+   * `stopping` with no event, no code and no exit report at all.
+   */
+  readonly abandonedAt?: "build" | "stop";
 };
 
 /**
@@ -51,12 +71,13 @@ const KERNEL_DEFAULTS = {
   probePort: 9000,
   preDrainDelayMs: 5_000,
   drainTimeoutMs: 20_000,
+  stopTimeoutMs: 5_000,
 } as const;
 
 type KernelConfig = { readonly [K in keyof typeof KERNEL_DEFAULTS]: number };
 
 const readKernelConfig = (
-  options: Pick<StartOptions, "probes" | "preDrainDelayMs" | "drainTimeoutMs">,
+  options: Pick<StartOptions, "probes" | "preDrainDelayMs" | "drainTimeoutMs" | "stopTimeoutMs">,
   env: Environment,
 ): Result<KernelConfig, RuntimeStartFailed> => {
   // `probes: false` pins the default and so reads nothing: a deployment that
@@ -79,6 +100,10 @@ const readKernelConfig = (
     drainTimeoutMs: Config.pinned(
       options.drainTimeoutMs,
       Config.integer("DRAIN_TIMEOUT_MS", { default: KERNEL_DEFAULTS.drainTimeoutMs, min: 0 }),
+    ),
+    stopTimeoutMs: Config.pinned(
+      options.stopTimeoutMs,
+      Config.integer("STOP_TIMEOUT_MS", { default: KERNEL_DEFAULTS.stopTimeoutMs, min: 0 }),
     ),
   });
   // Synchronous by construction — `Config.object` never defers — so the
@@ -126,6 +151,21 @@ export type StartOptions = {
    * together, in the same manifest.
    */
   readonly drainTimeoutMs?: number;
+  /**
+   * How long the kernel waits for `Serving.stop` and the application scope's
+   * finalisers together before it stops waiting and reports
+   * `ExitReport.abandonedAt: "stop"`. Unset, it is bound from
+   * `STOP_TIMEOUT_MS` in `env` (default `5_000`).
+   *
+   * It exists because beat 3's deadline covers in-flight WORK and nothing
+   * covered the teardown: a `release` that never settles — a socket to a host
+   * that stopped answering — left the phase at `stopping` with no exit report,
+   * which is the one artefact the lifecycle exists to produce. The three
+   * timings are cumulative against the pod's
+   * `terminationGracePeriodSeconds`, so the defaults sum to 30 s exactly
+   * (`5_000 + 20_000 + 5_000`): raise one and raise the grace period with it.
+   */
+  readonly stopTimeoutMs?: number;
   readonly onEvent?: EventSink;
 };
 
@@ -229,8 +269,26 @@ export const start = <X, E, N>(
   // defaults when it fails, which changes nothing: the same failure is what
   // `exited` reports, and no drain happens after it.
   const kernelConfig = readKernelConfig(options, env);
-  const { preDrainDelayMs, drainTimeoutMs } = kernelConfig.getOrElse(() => KERNEL_DEFAULTS);
+  const { preDrainDelayMs, drainTimeoutMs, stopTimeoutMs } = kernelConfig.getOrElse(
+    () => KERNEL_DEFAULTS,
+  );
   const skipDrain = new AbortController();
+  // Cuts the stop wait short: aborted when the stop settles on its own (so the
+  // timer is not left armed) and by a second signal, which means "stop waiting"
+  // about the teardown exactly as it already does about the drain.
+  const stopSettled = new AbortController();
+  // Set when the WHOLE scoped call settles — `Serving.stop` *and* di's
+  // finalisers — which is strictly later than `finish`'s own `.map`, and that
+  // gap is the bug this whole deadline exists for: a `release` that never
+  // settles leaves `finish` having returned a report that nothing can read,
+  // because `Module.scoped` has not settled to hand it over. Guarding the
+  // deadline on the phase, or on `serving.stop()` alone, reinstates exactly
+  // that hole.
+  let lifecycleSettled = false;
+  const onLifecycleSettled = (): void => {
+    lifecycleSettled = true;
+    stopSettled.abort();
+  };
   let shutdownRequestedAt = startedAt;
   let shutdownRequested = false;
   const sinceShutdownRequested = (): number => clock.now() - shutdownRequestedAt;
@@ -254,7 +312,15 @@ export const start = <X, E, N>(
       ? () => {}
       : installSignalHandlers({
           onFirst: () => requestShutdown("signal"),
-          onSecond: () => skipDrain.abort(),
+          // "Stop waiting", applied to every wait there is: the drain's two
+          // sleeps, the teardown's, and a build that has not served — where the
+          // first signal is deliberately buffered and would otherwise leave a
+          // hung boot with nothing an operator can do but SIGKILL.
+          onSecond: () => {
+            skipDrain.abort();
+            stopSettled.abort();
+            abandonBuild("signal");
+          },
         });
   const disposeUncaught =
     options.signals === false
@@ -264,8 +330,38 @@ export const start = <X, E, N>(
           onUnready();
           skipDrain.abort();
           requestShutdown("uncaught");
+          // A crash mid-build reaches no `finish`, and installing the handler
+          // has already suppressed Node's own exit `1` — so without this the
+          // process absorbs its own crash: no code, no report, nothing.
+          abandonBuild("uncaught");
         });
   let disposeProbes = (): void => {};
+  // One place, because three paths out now reach it: `finish`, the abandoned
+  // stop and the abandoned build. The order is load-bearing only in that the
+  // handlers go before `exited`, so a signal arriving during the last tick of
+  // a shutdown cannot re-enter a lifecycle that has already reported.
+  const disposeAll = (): void => {
+    disposeSignals();
+    disposeUncaught();
+    tracker.advanceTo("exited");
+    disposeProbes();
+  };
+  const reportOf = (
+    reason: ExitReport["reason"],
+    drain: DrainReport | undefined,
+    abandonedAt?: "build" | "stop",
+  ): ExitReport => ({
+    reason,
+    drain,
+    // The aliasing is LOAD-BEARING: di closes the scope after this object is
+    // built, so a defensive copy would drop every teardown error. On the
+    // abandoned-stop path the close is still running, so the array may still
+    // grow after a reader has the report — which is the same property, not a
+    // new hazard.
+    teardownErrors,
+    uptimeMs: clock.now() - startedAt,
+    ...(abandonedAt === undefined ? {} : { abandonedAt }),
+  });
   // Probes answer from `building` onward, which is BEFORE the graph that
   // declares the checks exists — so the list is late-bound rather than passed
   // in. Until it is filled, `/healthz` reports healthy with no components:
@@ -274,6 +370,80 @@ export const start = <X, E, N>(
   const health = (): AsyncResult<HealthReport, never> => runHealthChecks(healthChecks);
   const probeBound = Promise.withResolvers<number | undefined>();
   const runtimePublished = Promise.withResolvers<Info | undefined>();
+
+  // The two phases with no deadline of their own, each as an arm of the race
+  // that produces `exited` below. Both are CONSUMED there rather than floated,
+  // and both are armed by a deferred that stays pending on the ordinary path —
+  // so an application that stops cleanly starts neither timer.
+  const stopping = Promise.withResolvers<{
+    readonly reason: ExitReport["reason"];
+    readonly drain: DrainReport | undefined;
+  }>();
+  // `Serving.stop` AND di's scope close, together: the close runs after
+  // `finish` has returned, inside `Module.scoped`, so a race inside `finish`
+  // could only ever have covered the first half — and the finalisers are the
+  // half that hangs (a pool draining to a host that stopped answering).
+  //
+  // A THUNK, not a value, and both arms below match it: an `AsyncResult` is
+  // eager, so constructing one here would start it beside the other two rather
+  // than as part of the race that consumes it.
+  const stopAbandoned = (): AsyncResult<ExitReport, never> =>
+    fromSafePromise(stopping.promise).flatMap(({ reason, drain }) =>
+      clock.sleep(stopTimeoutMs, stopSettled.signal).flatMap(() =>
+        // `clock.sleep` RESOLVES when its signal aborts — that is how the
+        // drain's two sleeps are cut short — and a settled lifecycle aborts
+        // this one. So reaching here says nothing on its own:
+        // `lifecycleSettled` is what tells a deadline from a shutdown that
+        // completed, and reading the signal instead reported a timeout on
+        // every clean stop (measured, by writing it that way first).
+        lifecycleSettled ? withdrawn<ExitReport>() : OkAsync(abandonStop(reason, drain)),
+      ),
+    );
+
+  const abandonStop = (
+    reason: ExitReport["reason"],
+    drain: DrainReport | undefined,
+  ): ExitReport => {
+    emit({
+      type: "stoppedWaiting",
+      phase: "stop",
+      // A second signal cut the wait short, so the deadline is not what ended
+      // it and naming one would be a small lie.
+      afterMs: stopSettled.signal.aborted ? undefined : stopTimeoutMs,
+    });
+    disposeAll();
+    return reportOf(reason, drain, "stop");
+  };
+
+  const abandoningBuild = Promise.withResolvers<ExitReport["reason"]>();
+  // A shutdown requested before the runtime serves has no `finish` to reach:
+  // `shutdown.promise` is read inside `runtime.start`'s own `flatMap`, which a
+  // graph that never finished building never reaches — and the handlers have
+  // already suppressed Node's own exit, so the event was absorbed entirely.
+  // Only an UNCAUGHT exception or a SECOND signal comes here; a first signal
+  // mid-build stays buffered and drains once serving, which is the tested
+  // behaviour `preDrainDelayMs`'s arithmetic depends on.
+  const buildAbandoned = (): AsyncResult<ExitReport, never> =>
+    fromSafePromise(abandoningBuild.promise).map((reason) => {
+      emit({ type: "stoppedWaiting", phase: "build", afterMs: undefined });
+      registry.abortAll();
+      // The same two lines every other route out of a half-built graph runs —
+      // the probe bind's `tapFailure` and `Module.scoped`'s. `stopping` before
+      // `exited` because the tracker is monotonic and skipping it would drop
+      // the phase, and its event, out of a lifecycle that documents both as
+      // reached on every path; `runtimePublished` because `runtimeInfo()`
+      // promises `undefined` for a runtime that never served, and this route
+      // leaves `Module.scoped` pending forever, so the `tapFailure` that
+      // usually settles it never runs.
+      runtimePublished.resolve(undefined);
+      tracker.advanceTo("stopping");
+      disposeAll();
+      return reportOf(reason, undefined, "build");
+    });
+  const abandonBuild = (reason: ExitReport["reason"]): void => {
+    const phase = tracker.current();
+    if (phase === "building" || phase === "starting") abandoningBuild.resolve(reason);
+  };
 
   emit({ type: "building" });
 
@@ -356,25 +526,22 @@ export const start = <X, E, N>(
 
     return drained.flatMap((report) => {
       tracker.advanceTo("stopping");
+      // Arms `stopAbandoned`, the other arm of the race that settles `exited`.
+      // Synchronous with the phase change, so the deadline covers the whole of
+      // `stopping` — `serving.stop()` here and the finalisers di runs after
+      // this callback returns.
+      stopping.resolve({ reason, drain: report });
 
+      // No `onLifecycleSettled` here, deliberately: di closes the scope after
+      // this callback returns, so the stop is only half over.
       return serving.stop().map(() => {
-        disposeSignals();
-        disposeUncaught();
-        tracker.advanceTo("exited");
-        disposeProbes();
-        return {
-          reason,
-          drain: report,
-          // The aliasing is LOAD-BEARING: di closes the scope after this object
-          // is built, so a defensive copy would drop every teardown error.
-          teardownErrors,
-          uptimeMs: clock.now() - startedAt,
-        };
+        disposeAll();
+        return reportOf(reason, report);
       });
     });
   };
 
-  const exited = probesStarted.flatMap(() =>
+  const built = (): AsyncResult<ExitReport, E | RuntimeStartFailed> =>
     Module.scoped(
       root,
       (ctx: Context<X>): AsyncResult<ExitReport, RuntimeStartFailed> => {
@@ -481,18 +648,36 @@ export const start = <X, E, N>(
           emit({ type: "teardownError", port, cause });
         },
       },
-    ).tapFailure((failure) => {
-      // Reaching here past `stopping` is a shutdown defect, not a startup one.
-      if (tracker.current() !== "stopping") {
-        emit({ type: "startFailed", cause: failure.tag === "Err" ? failure.error : failure.cause });
-      }
-      runtimePublished.resolve(undefined);
-      tracker.advanceTo("stopping");
-      disposeSignals();
-      disposeUncaught();
-      tracker.advanceTo("exited");
-      disposeProbes();
-    }),
+    )
+      .tapFailure((failure) => {
+        // Reaching here past `stopping` is a shutdown defect, not a startup one.
+        if (tracker.current() !== "stopping") {
+          emit({
+            type: "startFailed",
+            cause: failure.tag === "Err" ? failure.error : failure.cause,
+          });
+        }
+        runtimePublished.resolve(undefined);
+        tracker.advanceTo("stopping");
+        disposeAll();
+      })
+      // Both channels, because either settling means the deadline has nothing
+      // left to report: the arm withdraws rather than writing a line 5 s after
+      // the process already said how it ended.
+      .tap(onLifecycleSettled)
+      .tapFailure(onLifecycleSettled) as AsyncResult<ExitReport, E | RuntimeStartFailed>;
+
+  // The three ways a lifecycle ends, raced: the graph settling on its own, the
+  // teardown running past its deadline, and a build nothing will finish. The
+  // losing branches' `Result`s are DROPPED, which is `releasedBy`'s own
+  // bargain one layer up — once a report has been handed to `runMain` the
+  // outcome of a finaliser still running has no consumer left. Both abandon
+  // arms stay pending on the ordinary path, so a clean stop races nothing and
+  // arms no timer.
+  const exited = probesStarted.flatMap(() =>
+    fromSafePromise(Promise.race([built(), stopAbandoned(), buildAbandoned()])).flatMap(
+      (settled) => settled,
+    ),
   );
 
   return {

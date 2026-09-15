@@ -368,7 +368,7 @@ const appConfig = Config.provider("AppConfig")(
 kernelEvents(logger: LoggerService): EventSink;
 ```
 
-The kernel's [nine lifecycle events](/reference/core/events) as log lines on
+The kernel's [ten lifecycle events](/reference/core/events) as log lines on
 `logger`, for `StartOptions.onEvent`. The kernel's own default writes JSON to
 stderr, which is right for a process with no logger and wrong for one with:
 two streams, two shapes, two sets of fields to search.
@@ -377,17 +377,18 @@ The mapping is deliberate rather than mechanical. Each event's own fields
 become **attributes**, so a drain is queryable by field rather than parsed out
 of a sentence:
 
-| Event           | Level   | Message                                                 | Attributes besides `event`                  | Carries `cause` |
-| --------------- | ------- | ------------------------------------------------------- | ------------------------------------------- | --------------- |
-| `building`      | `info`  | `building`                                              | —                                           | —               |
-| `startFailed`   | `error` | `the application failed to start`                       | —                                           | yes             |
-| `serving`       | `info`  | `serving`                                               | `runtime`                                   | —               |
-| `draining`      | `info`  | `draining`                                              | `inFlight`                                  | —               |
-| `drained`       | `info`  | `drained`                                               | `inFlightAtStart`, `completed`, `abandoned` | —               |
-| `stopping`      | `info`  | `stopping`                                              | —                                           | —               |
-| `exited`        | `info`  | `exited`                                                | —                                           | —               |
-| `teardownError` | `warn`  | `a finaliser failed while the application was stopping` | `port`                                      | yes             |
-| `uncaught`      | `error` | `an uncaught exception stopped the application`         | —                                           | yes             |
+| Event            | Level   | Message                                                              | Attributes besides `event`                                                        | Carries `cause` |
+| ---------------- | ------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------- |
+| `building`       | `info`  | `building`                                                           | —                                                                                 | —               |
+| `startFailed`    | `error` | `the application failed to start`                                    | —                                                                                 | yes             |
+| `serving`        | `info`  | `serving`                                                            | `runtime`                                                                         | —               |
+| `draining`       | `info`  | `draining`                                                           | `inFlight`                                                                        | —               |
+| `drained`        | `info`  | `drained`                                                            | `inFlightAtStart`, `completed`, `abandoned`                                       | —               |
+| `stopping`       | `info`  | `stopping`                                                           | —                                                                                 | —               |
+| `exited`         | `info`  | `exited`                                                             | —                                                                                 | —               |
+| `teardownError`  | `warn`  | `a finaliser failed while the application was stopping`              | `port`                                                                            | yes             |
+| `uncaught`       | `error` | `an uncaught exception stopped the application`                      | —                                                                                 | yes             |
+| `stoppedWaiting` | `warn`  | `the kernel stopped waiting for a phase with no deadline of its own` | `phase`, and `afterMs` when a deadline rather than a second signal ended the wait | —               |
 
 Every line carries `event` — the event's own `type` — as an attribute, so one
 query finds the transitions whatever the message says. `startFailed` and
@@ -588,6 +589,6 @@ collapses into another.
 - [Log and correlate](/how-to/log-and-correlate) — the task, end to end.
 - [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit) —
   the record the logger reads, and who else may read it.
-- [Kernel events](/reference/core/events) — the nine `kernelEvents` maps.
+- [Kernel events](/reference/core/events) — the ten `kernelEvents` maps.
 - [Configure from the environment](/how-to/configure-from-the-environment) —
   how `LOG_LEVEL` is bound, and what a bad one costs.

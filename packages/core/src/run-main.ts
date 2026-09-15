@@ -24,7 +24,15 @@ const isConfig = (error: unknown): boolean =>
 // ordering it second reports `2` for a process that died.
 const codeFor = (report: ExitReport): number => {
   if (report.reason === "uncaught") return EX_SOFTWARE;
-  const unclean = (report.drain?.abandoned ?? 0) > 0 || report.teardownErrors.length > 0;
+  // `abandonedAt` belongs in this list for the reason the other two are in it:
+  // the process stopped, and not cleanly. Without it a shutdown whose
+  // finalisers outlived `stopTimeoutMs` reported success — no unit was
+  // abandoned and no finaliser had failed *yet*, so both other terms were
+  // false while the kernel had just given up waiting for one.
+  const unclean =
+    (report.drain?.abandoned ?? 0) > 0 ||
+    report.teardownErrors.length > 0 ||
+    report.abandonedAt !== undefined;
   return unclean ? 2 : 0;
 };
 
@@ -72,6 +80,7 @@ export const awaitExit = async <E>(
  * | a configuration port that could not be bound (`ConfigInvalid`, `PROBE_PORT` included) | `78` |
  * | drained with work abandoned | `2` |
  * | exited with teardown errors | `2` |
+ * | stopped waiting for the teardown or a build (`ExitReport.abandonedAt`) | `2` |
  * | stopped by an uncaught exception or unhandled rejection | `70` |
  * | a defect | `70` |
  *

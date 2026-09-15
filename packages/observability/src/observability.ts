@@ -136,6 +136,18 @@ export const kernelEvents =
           abandoned: event.report.abandoned,
         });
         return;
+      // `warn`, beside `teardownError` and for its reason: the application is
+      // already stopping and the exit code says so, but a shutdown that ran
+      // past its deadline is the line an operator greps for after a pod was
+      // SIGKILLed. An arm of its own rather than the `default`, so `phase` and
+      // `afterMs` are queryable fields instead of a sentence.
+      case "stoppedWaiting":
+        logger.warn("the kernel stopped waiting for a phase with no deadline of its own", {
+          event: event.type,
+          phase: event.phase,
+          ...(event.afterMs === undefined ? {} : { afterMs: event.afterMs }),
+        });
+        return;
       default:
         logger.info(event.type, { event: event.type });
     }

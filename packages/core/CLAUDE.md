@@ -148,6 +148,25 @@ that proves them, rather than duplicated).
 
 Beyond the nine:
 
+- **Every phase has a deadline, and the two that did not were where a shutdown
+  wedged.** `stopTimeoutMs` bounds `stopping` — `Serving.stop` **and** di's
+  finalisers, which is why the race sits on `Module.scoped` rather than inside
+  `finish`, whose `.map` returns before a single `release` has run — and a
+  crash or a **second** signal before `serving` abandons the build. Both report
+  `ExitReport.abandonedAt` with a `stoppedWaiting` event, and `runMain` reads
+  the field as exit `2`. Guarded by `start.spec.ts` → _"reports a stop whose
+  finalisers outlive stopTimeoutMs, instead of never reporting"_, _"cuts the
+  stop wait short on a second signal, naming no deadline"_, _"reports an
+  uncaught exception raised while the graph is still building"_ and _"gives up
+  on a build a second signal has given up on"_ — all four hang forever against
+  the pre-fix kernel, which is the reported symptom rather than a wrong value.
+  Two things are load-bearing in the implementation: the deadline arm's guard
+  is `lifecycleSettled`, set when `Module.scoped` settles and **not** when
+  `serving.stop()` returns (the gap between them is the whole bug), and
+  `clock.sleep` RESOLVES on abort, so reading the signal instead of the flag
+  reported a timeout on every clean stop. A FIRST signal mid-build stays
+  buffered — invariant "spends only what is left of preDrainDelayMs" depends on
+  it.
 - **Readiness is a one-way latch.** Forced false by the drain and by an uncaught
   exception, never reset. `invariants.spec.ts` → _"readiness never returns to
   200 once forced false"_. The `forcedUnready` term of `ready()` is load-bearing
@@ -305,7 +324,7 @@ id> }`, which is checked before either.
   in `@btravstack/config`.
 
 - **The kernel's own variables are read in ONE pass**, by `readKernelConfig`:
-  `PROBE_PORT`, `PRE_DRAIN_DELAY_MS` and `DRAIN_TIMEOUT_MS` through the same
+  `PROBE_PORT`, `PRE_DRAIN_DELAY_MS`, `DRAIN_TIMEOUT_MS` and `STOP_TIMEOUT_MS` through the same
   `Config.object` + `Config.pinned` the public API ships — not a private
   parser, so there is one definition of what a port is and one of what a whole
   number is, and a deployment that got two of them wrong is told both at once.

@@ -38,8 +38,9 @@ export type BootDefaults = Omit<StartOptions, "signals">;
  * ```
  *
  * The defaults are a test's: `signals: false` always (process-wide handlers
- * would fight across a file), `probes: false`, `preDrainDelayMs: 0` and a silent
- * `onEvent` — each overridable by `defaults` and again per call.
+ * would fight across a file), `probes: false`, `preDrainDelayMs: 0`, a
+ * `stopTimeoutMs` far out of reach and a silent `onEvent` — each overridable by
+ * `defaults` and again per call.
  *
  * Teardown is `stop()`, then `exited` is examined: a **`Defect`** fails the test
  * even when the test never looked at `exited`, while a modeled `Err` passes
@@ -61,6 +62,15 @@ export const bootFixture =
         ) => RunningApp<unknown, unknown>
       )(module, {
         preDrainDelayMs: 0,
+        // Out of reach rather than zero, which is the opposite move from
+        // `preDrainDelayMs` above and for the same goal: that one is a WAIT, so
+        // removing it means making it nothing, while this one is a DEADLINE, so
+        // removing it means putting it where a test's own `clock.advance` will
+        // not cross it. Otherwise a spec that advances a fake clock to walk a
+        // drain trips the stop deadline and reports `abandonedAt: "stop"`
+        // before the finalisers it was asserting on have run. Override it to
+        // assert the deadline itself.
+        stopTimeoutMs: 600_000,
         onEvent: () => {},
         probes: false,
         ...defaults,

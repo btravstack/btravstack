@@ -25,6 +25,19 @@ export type KernelEvent =
     }
   | { readonly type: "draining"; readonly inFlight: number }
   | { readonly type: "drained"; readonly report: DrainReport }
+  | {
+      /**
+       * The kernel stopped WAITING for a phase that has no deadline of its own,
+       * and reported anyway. Without it a stop that ran long and a stop that
+       * finished are the same two lines on stderr (`stopping`, `exited`), which
+       * is the silence `ExitReport.abandonedAt` exists to end.
+       */
+      readonly type: "stoppedWaiting";
+      /** `"stop"` for `Serving.stop` and the finalisers, `"build"` for a graph that never served. */
+      readonly phase: "build" | "stop";
+      /** The deadline that expired, or `undefined` when a second signal cut the wait short. */
+      readonly afterMs: number | undefined;
+    }
   | { readonly type: "stopping" }
   | { readonly type: "exited" }
   | { readonly type: "teardownError"; readonly port: string; readonly cause: unknown }

@@ -382,6 +382,10 @@ describe("probe wiring", () => {
       clock,
       signals: false,
       probes: { port: 0 },
+      // Pinned well past the 25s this test advances: `stop` is held open on
+      // purpose here, and the stop deadline would otherwise abandon it and
+      // report, which is its job and not this test's subject.
+      stopTimeoutMs: 600_000,
       onEvent: () => {},
     });
 
