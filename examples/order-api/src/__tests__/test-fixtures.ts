@@ -42,7 +42,6 @@ import { headlessLogin } from "@btravstack/internal-test-infra/ory-login";
 import { LoggerConfig, createLogger, type Line, type Sink } from "@btravstack/observability";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import { localIssuer, type LocalIssuer } from "@btravstack/testing/jwt";
-import request from "supertest";
 import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
 import { uuidv7 } from "uuidv7";
 import { inject, test } from "vitest";
@@ -250,9 +249,6 @@ const portOf = async <E>(app: RunningApp<E, HttpInfo>): Promise<number> => {
   return info.port;
 };
 
-/** Derived rather than deep-imported: supertest's `exports` map does not name the agent type publicly, and `supertest/lib/agent.js` is internal layout an upgrade may move. */
-type TestAgent = ReturnType<typeof request>;
-
 export type ApiFixtures = {
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
@@ -333,18 +329,20 @@ export type ApiFixtures = {
    */
   readonly serviceClientFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<OrderApiClient>;
   /**
-   * A supertest agent bound to the probe server — the one HTTP surface here with
-   * no contract for the typed client to speak.
+   * A `fetch` bound to the probe server — the one HTTP surface here with no
+   * contract for the typed client to speak.
    */
-  readonly probesFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<TestAgent>;
+  readonly probesFor: <E>(
+    app: RunningApp<E, HttpInfo>,
+  ) => Promise<(path: `/${string}`) => Promise<Response>>;
   /**
-   * The origin string `supertest` takes directly, for a given served app — the
-   * fragment answerer has no typed client, unlike the oRPC one `clientFor` gives.
+   * The origin a raw `fetch` is aimed at, for a given served app — the fragment
+   * answerer has no typed client, unlike the oRPC one `clientFor` gives.
    */
   readonly originFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<string>;
   /**
-   * The real root, served, as the origin string `supertest` takes directly — for
-   * a spec about statuses and headers rather than payloads.
+   * The real root, served, as the origin a raw `fetch` is aimed at — for a spec
+   * about statuses and headers rather than payloads.
    */
   readonly origin: string;
   /** The real composition root. */
@@ -513,7 +511,7 @@ export const it = test.extend<ApiFixtures>({
     await use(async (app) => {
       const port = (await app.probePort()).get();
       assert.ok(port !== undefined, "the probe server published no port");
-      return request(`http://127.0.0.1:${port}`);
+      return (path) => fetch(`http://127.0.0.1:${port}${path}`);
     });
   },
 

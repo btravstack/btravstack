@@ -49,7 +49,6 @@
     "dev": "tsdown src/index.ts --format cjs,esm --dts --watch --tsconfig tsconfig.build.json",
     "generate": "node ../../docs/scripts/extract-doc-samples.ts --group core --out src/generated/doc-samples",
     "test": "vitest run --coverage",
-    "test:types": "tsc --noEmit -p tsconfig.test-d.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
   },
   "devDependencies": {

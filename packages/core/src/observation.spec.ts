@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { ErrAsync, OkAsync, type AsyncResult } from "unthrown";
+import { describe, expect } from "vitest";
 
-import { noObserver, observe, type Operation, type Settle } from "./observation.js";
+import { it } from "./__tests__/test-fixtures.js";
+import { noObserver, observe, observed, type Operation, type Settle } from "./observation.js";
+
+const operation: Operation = { component: "cache", name: "get", attributes: {} };
 
 describe("observe", () => {
   it("starts every observer, in order, before the operation runs", () => {
@@ -14,11 +18,7 @@ describe("observe", () => {
       };
 
     // WHEN one operation is observed
-    observe([observer("first"), observer("second")], {
-      component: "cache",
-      name: "get",
-      attributes: {},
-    });
+    observe([observer("first"), observer("second")], operation);
 
     // THEN both were started, in the order the set holds them — a span opened
     // by one has to be opened BEFORE the work, which is the whole reason an
@@ -35,11 +35,7 @@ describe("observe", () => {
       ({ outcome }) => {
         settled.push({ name, outcome });
       };
-    const settle = observe([observer("first"), observer("second")], {
-      component: "cache",
-      name: "get",
-      attributes: {},
-    });
+    const settle = observe([observer("first"), observer("second")], operation);
 
     // WHEN the one finisher is called
     settle({ outcome: "error" });
@@ -61,7 +57,7 @@ describe("observe", () => {
           settlements += 1;
         },
       ],
-      { component: "cache", name: "get", attributes: {} },
+      operation,
     );
 
     // WHEN the finisher is called twice — a `tap` and a `tapFailure` on one
@@ -77,11 +73,93 @@ describe("observe", () => {
   it("does nothing at all when nothing observes", () => {
     // GIVEN an empty set — impossible in a real graph, since every reader
     // contributes a no-op, but the arithmetic still has to hold
-    const settle = observe([], { component: "cache", name: "get", attributes: {} });
+    const settle = observe([], operation);
 
     // WHEN it settles
     // THEN it is inert rather than a failure
     expect(() => settle({ outcome: "ok" })).not.toThrow();
+  });
+});
+
+describe("observed", () => {
+  it("answers the success value untouched", async ({ recording }) => {
+    // GIVEN a call that succeeds
+    // WHEN it is observed
+    const answer = observed([recording.observer], operation, () => OkAsync("hit"));
+
+    // THEN the caller gets exactly what the call answered
+    await expect(answer).toBeOkWith("hit");
+  });
+
+  it("settles a plain ok on the success channel", async ({ recording }) => {
+    // GIVEN a call that succeeds
+    // WHEN it is observed
+    await observed([recording.observer], operation, () => OkAsync("hit"));
+
+    // THEN the observer saw one plain ok
+    expect(recording.seen).toEqual([{ outcome: "ok" }]);
+  });
+
+  it("answers the Err untouched", async ({ recording }) => {
+    // GIVEN a call that fails on the Err channel
+    // WHEN it is observed
+    const answer = observed([recording.observer], operation, () => ErrAsync("down"));
+
+    // THEN the caller gets exactly the Err the call answered
+    await expect(answer).toBeErrWith("down");
+  });
+
+  it("settles error with the Err as cause", async ({ recording }) => {
+    // GIVEN a call that fails on the Err channel
+    // WHEN it is observed
+    await observed([recording.observer], operation, () => ErrAsync("down"));
+
+    // THEN the observer saw the error carrying the Err
+    expect(recording.seen).toEqual([{ outcome: "error", cause: "down" }]);
+  });
+
+  it("settles error with the defect as cause, so a throw is a failed call too", async ({
+    recording,
+  }) => {
+    // GIVEN a call whose AsyncResult defects
+    const boom = new Error("boom");
+    const defecting = (): AsyncResult<string, never> =>
+      OkAsync().map((): string => {
+        // oxlint-disable-next-line unthrown/no-throw -- the defect is the subject under test
+        throw boom;
+      });
+
+    // WHEN it is observed
+    await observed([recording.observer], operation, defecting);
+
+    // THEN the observer saw the error carrying the thrown cause
+    expect(recording.seen).toEqual([{ outcome: "error", cause: boom }]);
+  });
+
+  it("lets the caller shape the ok settlement from the value", async ({ recording }) => {
+    // GIVEN an `ok` hook reading a dimension off the value
+    // WHEN a miss is observed
+    await observed([recording.observer], operation, () => OkAsync(undefined), {
+      ok: (hit) => ({ outcome: "ok", attributes: { result: hit === undefined ? "miss" : "hit" } }),
+    });
+
+    // THEN the observer saw the hook's settlement rather than the default
+    expect(recording.seen).toEqual([{ outcome: "ok", attributes: { result: "miss" } }]);
+  });
+
+  it("lets the caller shape the failure settlement from the failure view", async ({
+    recording,
+  }) => {
+    // GIVEN a `failure` hook reading an ordinary answer as ok
+    // WHEN a modeled not-found is observed
+    await observed([recording.observer], operation, () => ErrAsync({ _tag: "NotFound" }), {
+      failure: (failure) => ({
+        outcome: failure.tag === "Err" && failure.error._tag === "NotFound" ? "ok" : "error",
+      }),
+    });
+
+    // THEN the observer saw the hook's settlement rather than the default
+    expect(recording.seen).toEqual([{ outcome: "ok" }]);
   });
 });
 

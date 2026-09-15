@@ -193,7 +193,7 @@ one over another tenant is what a cross-tenant spec asserts across, and nothing
 cleans up.
 
 The generated client is gitignored and minted by turbo's own `generate` task —
-which `test`, `typecheck` and `test:types` all depend on, so one generator runs,
+which `test` and `typecheck` both depend on, so one generator runs,
 ordered by the task graph. The scripts themselves do not call
 `prisma generate`: they did until a cold cache ran the task and the script's
 inline copy concurrently and the two collided on `mkdir`.

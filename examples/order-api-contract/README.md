@@ -28,7 +28,7 @@ So the arrow points the other way from every other one in this example set:
 
 `src/layering.test-d.ts` is that sentence as a compile error: it imports
 `@btravstack/example-order-api` under a `@ts-expect-error`, so the day
-this package gains a dependency on the server it implements, `test:types` fails
+this package gains a dependency on the server it implements, `typecheck` fails
 because the directive stops being used.
 
 ## The proof is a client, not a claim

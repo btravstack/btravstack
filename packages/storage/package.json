@@ -56,8 +56,7 @@
     "build": "tsdown src/index.ts src/s3.ts --format cjs,esm --dts --clean",
     "dev": "tsdown src/index.ts src/s3.ts --format cjs,esm --dts --watch",
     "test": "vitest run --coverage",
-    "test:types": "tsc -p tsconfig.test-d.json --noEmit",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "catalog:",

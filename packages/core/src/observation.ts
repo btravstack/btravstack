@@ -1,4 +1,5 @@
 import { Port } from "@btravstack/di";
+import type { AsyncResult, FailureView } from "unthrown";
 
 import type { Attributes } from "./observability.js";
 
@@ -109,4 +110,37 @@ export const observe = (
     done = true;
     for (const settle of settlers) settle(settled);
   };
+};
+
+/**
+ * {@link observe}, wrapped around one call: every observer is started before
+ * `call` runs and settled from whichever channel it comes back on — `ok` on
+ * success, `error` carrying the `Err` or the defect as `cause` otherwise. The
+ * wrapper is transparent to the `Result`: whatever `call` answers is what the
+ * caller receives.
+ *
+ * `settled` replaces either default where a starter has more to say: `ok`
+ * receives the value (a cache reports a hit or a miss), `failure` the
+ * `FailureView` (a store reports a missing object as an ordinary answer).
+ */
+export const observed = <T, E>(
+  observers: readonly ((operation: Operation) => Settle)[],
+  operation: Operation,
+  call: () => AsyncResult<T, E>,
+  settled: {
+    readonly ok?: (value: T) => Settled;
+    readonly failure?: (failure: FailureView<E, T>) => Settled;
+  } = {},
+): AsyncResult<T, E> => {
+  const settle = observe(observers, operation);
+  return call()
+    .tap((value) => settle(settled.ok?.(value) ?? { outcome: "ok" }))
+    .tapFailure((failure) =>
+      settle(
+        settled.failure?.(failure) ?? {
+          outcome: "error",
+          cause: failure.tag === "Err" ? failure.error : failure.cause,
+        },
+      ),
+    );
 };

@@ -13,7 +13,7 @@ packages:
 catalog:
   # `@amqp-contract/{contract,testing,worker}` v3 are still in beta and their
   # `latest` dist-tag is the 2.4.0 line, which peers on `unthrown@^4` while
-  # this repo pins 5.7.0. The exact beta is the contract until v3 goes stable;
+  # this repo pins 5.8.0. The exact beta is the contract until v3 goes stable;
   # raise it deliberately, not on a bot bump.
   # RustFS is pre-1.0 and its `latest` tag moves; the gate pins the exact
   # release candidate it was measured against (put, get with content type,
@@ -59,7 +59,7 @@ catalog:
   "@prisma/instrumentation": 7.10.0
   "@tanstack/query-core": 5.102.8
   # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
-  # 7.x line, which peers on `unthrown@^4` while this repo pins 5.7.0. 8.x also
+  # 7.x line, which peers on `unthrown@^4` while this repo pins 5.8.0. 8.x also
   # ships the `test-rig` / `workflow-bundle` subpaths the Temporal example's
   # specs are built on. The exact beta is the contract until v8 goes stable.
   "@temporal-contract/client": 8.0.0-beta.9
@@ -73,7 +73,6 @@ catalog:
   "@temporalio/worker": 1.23.0
   "@temporalio/workflow": 1.23.0
   "@types/nodemailer": 8.0.1
-  "@types/supertest": 7.2.1
   "@types/node": 26.4.1
   "@unthrown/oxlint": 5.8.0
   "@unthrown/orpc": 0.2.0
@@ -110,7 +109,6 @@ catalog:
   unthrown: 5.8.0
   "@vitest/coverage-v8": 4.1.11
   vitepress: 1.6.4
-  supertest: 7.2.2
   vitest: 4.1.11
   zod: 4.5.4
 
@@ -184,31 +182,3 @@ peerDependencyRules:
     - "@types/react"
     # Optional peer of `@docsearch/react`, pulled in transitively by vitepress.
     - search-insights
-
-minimumReleaseAgeExclude:
-  # First-party shared config (@btravstack scope): adopt immediately, skip the delay.
-  - "@btravstack/theme"
-  - "@btravstack/tsconfig"
-  - "@btravstack/typedoc"
-  - "@amqp-contract/contract@3.0.0-beta.7"
-  - "@amqp-contract/core@3.0.0-beta.7"
-  - "@amqp-contract/testing@3.0.0-beta.7"
-  - "@amqp-contract/worker@3.0.0-beta.7"
-  - "@temporal-contract/client@8.0.0-beta.9"
-  - "@temporal-contract/contract@8.0.0-beta.9"
-  - "@temporal-contract/testing@8.0.0-beta.9"
-  - "@temporal-contract/worker@8.0.0-beta.9"
-  - "@btravstack/entity@0.7.0"
-  - "@unthrown/orpc@0.2.0"
-  - "@unthrown/oxlint@5.7.0"
-  - "@unthrown/prisma@0.4.0"
-  - "@unthrown/standard-schema@5.7.0"
-  - "@unthrown/vitest@5.7.0"
-  - "unthrown@5.7.0"
-  - "@aws-sdk/client-s3@3.1117.0"
-  - "@aws-sdk/s3-request-presigner@3.1117.0"
-  - "@prisma/instrumentation@7.10.0"
-  - "@amqp-contract/client@3.0.0-beta.7"
-  # Pulled in transitively by `@temporal-contract/worker`, which builds its
-  # `context.saga()` on it.
-  - "@unthrown/saga@5.7.0"

@@ -27,8 +27,7 @@
         "@btravstack/prisma",
         "@orpc/tanstack-query",
         "@tanstack/query-core",
-        "@prisma/adapter-pg",
-        "zod"
+        "@prisma/adapter-pg"
       ]
     },
     "examples/order-temporal-worker": {

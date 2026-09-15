@@ -42,7 +42,7 @@ repository and the kernel.
 
 `src/layering.test-d.ts` is that sentence as a compile error: it imports
 `@btravstack/example-order-temporal-worker` under a `@ts-expect-error`, so the
-day this package gains a dependency on the worker it describes, `test:types`
+day this package gains a dependency on the worker it describes, `typecheck`
 fails because the directive stops being used.
 
 ## The schemas are the demonstration

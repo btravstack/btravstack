@@ -12,6 +12,7 @@ import { OkAsync, type AsyncResult } from "unthrown";
 import { expect, test } from "vitest";
 
 import type { KernelEvent } from "../events.js";
+import type { Operation, Settle, Settled } from "../observation.js";
 import { runMain } from "../run-main.js";
 import type { Runtime } from "../runtime.js";
 import { start, type RunningApp } from "../start.js";
@@ -105,6 +106,12 @@ export type UnitApp = {
   readonly forkAfterSettled: () => AsyncResult<unknown, never>;
 };
 
+/** One observer that records every settlement it is handed, and the list it records into. */
+export type Recording = {
+  readonly seen: readonly Settled[];
+  readonly observer: (operation: Operation) => Settle;
+};
+
 /**
  * A serving application whose runtime binds a `unit` module: `Span` is
  * constructed as each unit opens — reading `Parent` out of the application
@@ -113,8 +120,24 @@ export type UnitApp = {
  * on re-declaration) while the providers, and therefore the counters, are
  * fresh per test.
  */
-export const it = test.extend<{ boot: Boot; unitApp: UnitApp; configured: ConfiguredApp }>({
+export const it = test.extend<{
+  boot: Boot;
+  unitApp: UnitApp;
+  configured: ConfiguredApp;
+  recording: Recording;
+}>({
   boot: bootFixture(),
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  recording: async ({}, use) => {
+    const seen: Settled[] = [];
+    await use({
+      seen,
+      observer: () => (settled) => {
+        seen.push(settled);
+      },
+    });
+  },
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   configured: async ({}, use) => {

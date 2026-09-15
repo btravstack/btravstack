@@ -9,7 +9,7 @@
  * providing its router into an unmet need the same parameter refuses by
  * assignability, naming the port. Neither is di's `UNSATISFIED DEPENDENCIES`
  * gate. Type-checked by
- * this package's `test:types` script, never executed.
+ * this package's `typecheck` script, never executed.
  */
 import { cache, memoryCache } from "@btravstack/cache";
 import { Env } from "@btravstack/config";

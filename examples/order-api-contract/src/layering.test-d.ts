@@ -2,7 +2,7 @@
  * What makes a contract a *shared* artifact, enforced by the package boundary
  * rather than by review: a client has to be able to take the contract without
  * the server that implements it — the router, its di wiring, its persistence,
- * the kernel. This file fails to resolve on purpose, and `test:types` fails if
+ * the kernel. This file fails to resolve on purpose, and `typecheck` fails if
  * it ever stops failing, which is what would happen the moment someone added
  * the transport package to this package's dependencies.
  */

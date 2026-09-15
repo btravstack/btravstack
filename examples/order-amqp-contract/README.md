@@ -43,7 +43,7 @@ Prisma-backed repository or the kernel.
 
 `src/layering.test-d.ts` is that sentence as a compile error: it imports
 `@btravstack/example-order-amqp-worker` under a `@ts-expect-error`, so the day
-this package gains a dependency on the worker it describes, `test:types` fails
+this package gains a dependency on the worker it describes, `typecheck` fails
 because the directive stops being used.
 
 ## A publisher entry is structurally required

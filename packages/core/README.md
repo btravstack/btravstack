@@ -153,6 +153,14 @@ them and none should own a private copy:
   there. `signal` is the very `AbortSignal` the unit's work callback is handed,
   so a runtime whose work is a library's `next()` — a Temporal activity, an
   AMQP delivery — can still honour the drain deadline.
+- **Observation as a set port, not a logger in every starter.** A starter
+  hands each operation to `Observers` — `observe(observers, operation)` for a
+  span-shaped start-then-settle, `observed(observers, operation, call)` around
+  one `AsyncResult`-returning call — and holds no `Logger`, `Meter` or
+  `Tracer` of its own. Composing
+  [`@btravstack/observability`](../observability) is what turns those
+  operations into lines, spans and instruments; composing nothing costs an
+  inert call.
 - **Nothing throws.** Every async surface is an
   [`unthrown`](https://github.com/btravstack/unthrown) `AsyncResult`;
   `runMain` sets `process.exitCode` — `0` clean, `1` a modeled startup error,

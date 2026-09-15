@@ -1,10 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
-    "lint": {
-      "dependsOn": ["^build"]
-    },
-    "format": {},
     "generate": {
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -21,9 +17,6 @@
     },
     "@btravstack/core#typecheck": {
       "dependsOn": ["build", "@btravstack/testing#build"]
-    },
-    "test:types": {
-      "dependsOn": ["^build", "generate", "^generate"]
     },
     "test": {
       "dependsOn": ["^build", "generate", "^generate"],

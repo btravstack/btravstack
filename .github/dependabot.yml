@@ -42,9 +42,7 @@ updates:
       commitlint:
         patterns:
           - "@commitlint/*"
-      # First-party shared config. `pnpm-workspace.yaml`'s
-      # `minimumReleaseAgeExclude` already singles this scope out for immediate
-      # adoption; one PR keeps that intent.
+      # First-party shared config, adopted as one PR.
       btravstack:
         patterns:
           - "@btravstack/*"

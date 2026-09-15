@@ -1,4 +1,3 @@
-import request from "supertest";
 import { describe, expect } from "vitest";
 
 import { LOGIN, it } from "./__tests__/test-fixtures.js";
@@ -16,12 +15,12 @@ describe("order-api fragments", () => {
 
       // WHEN the fragment route is requested with the cookie and nothing else —
       // the route's own path names only `id`, and the tenant comes off the session
-      const response = await request(await originFor(app))
-        .get(`/orders/${orderId}/row`)
-        .set("cookie", cookie);
+      const response = await fetch(`${await originFor(app)}/orders/${orderId}/row`, {
+        headers: { cookie },
+      });
 
       // THEN the rendered row carries the order, over a plain HTML response
-      expect({ status: response.status, body: response.text }).toEqual({
+      expect({ status: response.status, body: await response.text() }).toEqual({
         status: 200,
         body: `<tr id="order-${orderId}"><td>2</td></tr>`,
       });
@@ -39,12 +38,12 @@ describe("order-api fragments", () => {
 
       // WHEN a browser logged in as a different tenant requests the same id
       const { cookie } = await browser(app);
-      const response = await request(await originFor(app))
-        .get(`/orders/${orderId}/row`)
-        .set("cookie", cookie);
+      const response = await fetch(`${await originFor(app)}/orders/${orderId}/row`, {
+        headers: { cookie },
+      });
 
       // THEN the slice's own triage rendered the not-found row, not the owner's order
-      expect(response.text).toBe("<tr><td>not found</td></tr>");
+      expect(await response.text()).toBe("<tr><td>not found</td></tr>");
     },
     LOGIN,
   );
@@ -59,11 +58,13 @@ describe("order-api fragments", () => {
     const app = serve(api);
 
     // WHEN it navigates to a fragment route
-    const response = await request(await originFor(app)).get(`/orders/${orderId}/row`);
+    const response = await fetch(`${await originFor(app)}/orders/${orderId}/row`, {
+      redirect: "manual",
+    });
 
     // THEN it is sent to the login route `fragmentsLogin` names, with the
     // path it asked for as `return` — a 303, never a bare 401 to a person
-    expect({ status: response.status, location: response.headers["location"] }).toEqual({
+    expect({ status: response.status, location: response.headers.get("location") }).toEqual({
       status: 303,
       location: `/auth/login?return=${encodeURIComponent(`/orders/${orderId}/row`)}`,
     });
@@ -80,14 +81,15 @@ describe("order-api fragments", () => {
     const app = serve(api);
 
     // WHEN it is presented to a route that requires `session`
-    const response = await request(await originFor(app))
-      .get(`/orders/${orderId}/row`)
-      .set("authorization", `Bearer ${await tokenFor()}`);
+    const response = await fetch(`${await originFor(app)}/orders/${orderId}/row`, {
+      headers: { authorization: `Bearer ${await tokenFor()}` },
+      redirect: "manual",
+    });
 
     // THEN the route's `requires` is the scheme list, and `user` is not on it:
     // a browser route takes a cookie, and a token is not one — so it is sent
     // to log in exactly as a caller with nothing is, `return` included
-    expect({ status: response.status, location: response.headers["location"] }).toEqual({
+    expect({ status: response.status, location: response.headers.get("location") }).toEqual({
       status: 303,
       location: `/auth/login?return=${encodeURIComponent(`/orders/${orderId}/row`)}`,
     });

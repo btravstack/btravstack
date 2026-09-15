@@ -4,7 +4,7 @@
 // that genuinely cannot compile opts out visibly, with a reason.
 //
 // Invoked from a TARGET workspace's `generate` script with `--group <name>`;
-// turbo's existing `generate` edges on `typecheck` / `test:types` / `test` do
+// turbo's existing `generate` edges on `typecheck` / `test` do
 // the ordering, exactly as they do for the Prisma client. Groups are resolved
 // from each page's own imports (a temporal import → the temporal worker, …),
 // so the mapping maintains itself; a page the resolver cannot place carries an

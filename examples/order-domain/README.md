@@ -170,12 +170,12 @@ import type {} from "@btravstack/example-order-application";
 Because each layer is its own workspace package, the wrong-direction import does
 not resolve (TS2307) — and the `@ts-expect-error` turns "it does not resolve"
 into an assertion: add the application layer to this package's dependencies and
-the directive goes unused, which `test:types` reports as an error. The guard
+the directive goes unused, which `typecheck` reports as an error. The guard
 fails in both directions, which is what makes it a guard rather than a comment.
 
 ## Running it
 
 ```bash
 pnpm --filter @btravstack/example-order-domain test        # 21 specs
-pnpm --filter @btravstack/example-order-domain test:types  # the layering guard
+pnpm --filter @btravstack/example-order-domain typecheck   # the layering guard rides it
 ```

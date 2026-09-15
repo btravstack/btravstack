@@ -1,14 +1,13 @@
 import { defineConfig } from "vitest/config";
 
+import { covered } from "../../vitest.shared.js";
+
+// Not the shared config: it registers `@unthrown/vitest`, and this package
+// depends on nothing — not even unthrown.
 export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.spec.ts"],
-    coverage: {
-      provider: "v8",
-      include: ["src/**/*.ts"],
-      exclude: ["src/**/*.spec.ts", "src/**/*.test-d.ts", "src/__tests__/**"],
-      thresholds: { lines: 100, functions: 100 },
-    },
+    coverage: covered(),
   },
 });
