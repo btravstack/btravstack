@@ -114,6 +114,20 @@ is a module that exports no runtime port at all.
 
 ## For a runtime author
 
+**`Serving` carries an optional third member, `stopped`** — the channel a
+runtime reports its own death on, `() => AsyncResult<void, never>`. Without it
+the lifecycle only ever moves on a signal or a `stop()` call, so a worker whose
+poll loop died stays alive with `/readyz` answering `200`: a pod in a Service's
+endpoints, consuming nothing. A runtime that can stop on its own account should
+implement it; the ticker above does not, because a `setInterval` has no third
+state to report, and that is why the field is optional rather than required.
+
+The obligation is the half a signature cannot express: **withdraw after a stop
+the kernel asked for.** An arm that settles on the ordinary path races every
+clean shutdown. `@btravstack/temporal-worker` is the worked implementation, and
+[the runtime reference](https://btravstack.github.io/btravstack/reference/core/runtime)
+states the contract in full.
+
 Two helpers sit beside the `Runtime` contract, because every transport needs
 them and none should own a private copy:
 
