@@ -108,6 +108,11 @@ const seen = new Set<string>();
  * key, so one would silently read the other's service. That is a declaration bug,
  * not a modeled failure, so it warns once per id in development and is folded out
  * of production builds by bundler define-replacement.
+ *
+ * `build.ts`'s `plan` is what FAILS on it, independent of `NODE_ENV`, and this
+ * stays because the two see different things: `seen` is per module instance, so
+ * it catches a second declaration whether or not the two ever meet in a graph,
+ * where `plan` catches two copies of a package that this set cannot compare.
  */
 function warnOnDuplicateId(id: string): void {
   if (process.env["NODE_ENV"] === "production") return;

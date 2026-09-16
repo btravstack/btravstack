@@ -266,6 +266,21 @@ describe("httpRuntime", () => {
     expect(traced.seen()).toEqual(["abc-123"]);
   });
 
+  it("keeps its own minted trace id when x-request-id is not a bounded token", async ({
+    serve,
+    traced,
+  }) => {
+    // GIVEN a caller sending a header that would ride every log line and span
+    const { origin } = await serve(traced.handler);
+
+    // WHEN it makes a request carrying an over-long one
+    await fetch(origin, { headers: { "x-request-id": "a".repeat(129) } });
+
+    // THEN the minted id won: an inbound correlation id is adopted only in the
+    // shape the `traceparent` path already demands of one
+    expect(traced.seen()).toEqual([expect.not.stringContaining("aaaa")]);
+  });
+
   it("keeps its own minted trace id when x-request-id is blank", async ({ serve, traced }) => {
     // GIVEN a caller that sends the header but leaves it empty
     const { origin } = await serve(traced.handler);

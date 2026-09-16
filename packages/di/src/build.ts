@@ -90,7 +90,29 @@ const plan = (
   providers = resolveOverrides(providers);
   const byPort = new Map<string, AnyProvider>();
   const totalByPort = new Map<string, number>();
-  const manyByPort = new Map<string, boolean>();
+  const classOf = new Map<string, AnyPort>();
+
+  // Two distinct classes for one id are two TYPES and one runtime key, so one
+  // provider silently answers the other's dependents — the hazard `port.ts`'s
+  // warning cannot see, being per module instance and development-only, where
+  // this walks the graph the two copies met in.
+  //
+  // It runs AFTER the duplicate-provider check, not with it: a piece-mint
+  // helper (`api.HtmxGet(path)`, `api.OrpcController(contract, key)`) returns a
+  // fresh class per call and leans on the id to make two pieces at one path a
+  // duplicate provider, so checking classes first would rename that diagnostic
+  // to something a slice author cannot act on.
+  const notePort = (port: AnyPort): void => {
+    const first = classOf.get(port.portId);
+    if (first !== undefined && first !== port) {
+      // oxlint-disable-next-line unthrown/no-throw -- same channel as the throws below
+      throw new WiringDefect(
+        `[di] two distinct port classes share the id ${JSON.stringify(port.portId)} — one would read the other's service`,
+      );
+    }
+    classOf.set(port.portId, port);
+  };
+
   for (const provider of providers) {
     const id = provider.port.portId;
     // A provider for `Scope` is a wiring bug, not merely an unmet-dependency
@@ -102,23 +124,6 @@ const plan = (
       throw new WiringDefect(`[di] Scope cannot be provided; open one with Module.scoped instead`);
     }
     const isMany = provider.port.many === true;
-    const seenMany = manyByPort.get(id);
-    if (seenMany !== undefined && seenMany !== isMany) {
-      // Same class of wiring bug as the duplicate-provider throw below, and
-      // thrown for the same reason: a portId declared as an ordinary port by
-      // one provider and a set port by another is a declaration bug, not
-      // something `unsafeAddAll` (`context.ts`) should have to cope with —
-      // left unchecked, whichever provider lands second silently `continue`s
-      // past (if it is the set-port one) or overwrites (if it is the
-      // ordinary one) `byPort`'s entry, and the failure that eventually
-      // surfaces is `unsafeAddAll` spreading a non-array single service, a
-      // `TypeError` defect whose message says nothing about the real cause.
-      // oxlint-disable-next-line unthrown/no-throw
-      throw new WiringDefect(
-        `[di] port ${JSON.stringify(id)} is registered as both a set port and an ordinary port`,
-      );
-    }
-    manyByPort.set(id, isMany);
     totalByPort.set(id, (totalByPort.get(id) ?? 0) + 1);
     // Members accumulate; several providers for one set port are not a
     // collision. Keyed on `many === true` — the static field `Port.many`
@@ -135,6 +140,14 @@ const plan = (
       throw new WiringDefect(`[di] two providers registered for port ${JSON.stringify(id)}`);
     }
     byPort.set(id, provider);
+  }
+
+  // Every port the graph names, provided or depended on. The dep side is the
+  // half that matters: a consumer holding one copy's `Logger` while the
+  // provider registered the other's is the read nothing else here can see.
+  for (const provider of providers) {
+    notePort(provider.port);
+    for (const dep of provider.deps) notePort(dep);
   }
 
   // Its own pass after the loop, not inside it: a dependency may legitimately be

@@ -54,6 +54,22 @@ describe("http, over several answerers", () => {
     expect(response.status).toBe(404);
   });
 
+  it("routes an absolute-form request target, which some forward proxies send", async ({
+    mounted,
+    keepAlive,
+  }) => {
+    // GIVEN one answerer, mounted at /rpc
+    const { origin } = await mounted(["/rpc"]);
+
+    // WHEN a path under it arrives as `GET http://host/rpc/orders`, the form
+    // `fetch` cannot spell
+    const call = await keepAlive.call(origin, `${origin}/rpc/orders`);
+
+    // THEN the mount claimed it, rather than the runtime's 404 for a path it
+    // could not see past the scheme and authority
+    await expect(call.head()).resolves.toContain("HTTP/1.1 200 OK");
+  });
+
   it("refuses to start when two answerers claim one mount point", async ({ mountedApp }) => {
     // GIVEN two answerers mounted on the same prefix, one spelled with a
     // trailing slash — the same mount point, not two

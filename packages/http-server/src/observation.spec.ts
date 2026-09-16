@@ -22,7 +22,7 @@ describe("the runtime's observations", () => {
     expect(taken()[0]).toEqual({
       component: "http",
       name: "request",
-      attributes: { method: "GET", answerer: "/rpc", status: 200 },
+      attributes: { method: "GET", answerer: "/rpc", status: 200, aborted: false },
       outcome: "ok",
     });
   });
@@ -45,7 +45,7 @@ describe("the runtime's observations", () => {
     expect(taken()[0]).toEqual({
       component: "http",
       name: "request",
-      attributes: { method: "DELETE", answerer: "", status: 404 },
+      attributes: { method: "DELETE", answerer: "", status: 404, aborted: false },
       outcome: "ok",
     });
   });
@@ -68,7 +68,33 @@ describe("the runtime's observations", () => {
     expect(taken()[0]).toEqual({
       component: "http",
       name: "request",
-      attributes: { method: "GET", answerer: "/rpc", status: 500 },
+      attributes: { method: "GET", answerer: "/rpc", status: 500, aborted: false },
+      outcome: "error",
+    });
+  });
+
+  it("settles a client-aborted request as an error, not the 200 it meant to send", async ({
+    observed,
+  }) => {
+    // GIVEN a handler that has written its head and is still streaming
+    const { origin, taken } = await observed((_request, response) => {
+      response.writeHead(200);
+      response.write("partial");
+      return OkAsync();
+    });
+
+    // WHEN the caller walks away before the body is flushed
+    const aborting = new AbortController();
+    await fetch(`${origin}/rpc/anything`, { signal: aborting.signal });
+    aborting.abort();
+    await vi.waitUntil(() => taken().length === 1);
+
+    // THEN `statusCode` is what we MEANT to send and the flush is what decides:
+    // an abort counted `ok 200` is the request an operator never sees fail
+    expect(taken()[0]).toEqual({
+      component: "http",
+      name: "request",
+      attributes: { method: "GET", answerer: "/rpc", status: 200, aborted: true },
       outcome: "error",
     });
   });
@@ -96,7 +122,7 @@ describe("the runtime's observations", () => {
     expect(taken()[0]).toEqual({
       component: "http",
       name: "request",
-      attributes: { method: "POST", answerer: "/rpc", status: 403 },
+      attributes: { method: "POST", answerer: "/rpc", status: 403, aborted: false },
       outcome: "ok",
     });
   });

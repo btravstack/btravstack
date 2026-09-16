@@ -85,7 +85,17 @@ export const activityUnits =
  *
  * The workflow id becomes the `traceId` — minted outside this process and steady
  * across every retry, so all attempts join up in a log. An activity with no
- * workflow falls back to the activity id.
+ * workflow falls back to the activity id; `workflowExecution` is optional
+ * because Temporal's own `Info` declares it so, "not set if the activity was
+ * not started by a Workflow", which a worker polling a task queue never sees.
+ *
+ * **A REUSED workflow id merges its runs into one trace**, and that is the
+ * trade rather than an oversight: Temporal allows an id again once the previous
+ * execution closed, so `order-42` run twice is one `traceId` over two runs.
+ * `runId` would separate them and is the wrong correlation for this transport —
+ * server-minted, opaque, and not what an operator greps for. A deployment that
+ * needs per-run traces gives its workflows unique ids, which is what a Schedule
+ * already does.
  */
 const metaFor = (): UnitMeta => {
   const info = activityInfo();

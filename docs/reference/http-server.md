@@ -210,10 +210,10 @@ framework that owns the unit lifecycle gets them for free — and an observer is
 what turns a report into a measurement. Reporting always happens; **collection
 happens when `otel()` is composed**, and not before:
 
-| Instrument                 | Kind           | Dimensions                     |
-| -------------------------- | -------------- | ------------------------------ |
-| `btravstack.http.requests` | counter        | `method`, `answerer`, `status` |
-| `btravstack.http.duration` | histogram (ms) | the same three                 |
+| Instrument                 | Kind           | Dimensions                                |
+| -------------------------- | -------------- | ----------------------------------------- |
+| `btravstack.http.requests` | counter        | `method`, `answerer`, `status`, `aborted` |
+| `btravstack.http.duration` | histogram (ms) | the same four                             |
 
 `instrumented` is gone. Every unit is handed to `Observers`, and this module
 contributes a no-op member of its own — so a graph composing no observability
@@ -224,6 +224,13 @@ failures as lines; composing `otel()` beside it opens the spans and mints
 
 **The dimensions are chosen for cardinality, and what is absent matters more
 than what is present.** The request **path** is not a dimension: `/orders/42` would mint a time series per order, which is the classic way a metrics bill becomes the incident. `answerer` is a mount prefix, so the graph bounds it. Recording happens on the response's `'close'`, which is the one event that has seen the final status — the runtime's own `404` and `500` included, which no answerer ever sees.
+
+**`status` is what the runtime MEANT to send, and `aborted` is whether it
+arrived.** `ServerResponse.statusCode` defaults to `200` and is never rewritten
+by a socket dying, so a client that walks away mid-body, and a stream the drain
+resets, would both count as a success. `aborted` is `!response.writableFinished`
+at `'close'`, and an aborted request settles `error` whatever its status says —
+filter on the dimension to tell a genuine `500` from a caller who left.
 
 ### The authenticators that ship
 
@@ -1805,13 +1812,16 @@ unit's work resolves on the response's `'close'` event (or at once if that
 already fired before the work ran), so there is no seam for a late write to
 land in.
 
-| `UnitMeta` field | Value                                                                                                                                                                                                                |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`             | `randomUUID()`, minted per request — never the route, which would give every request one trace id                                                                                                                    |
-| `traceId`        | the trace id of an inbound `traceparent`; else the inbound `x-request-id` header when **non-blank**; otherwise absent, so it defaults to `id`. A malformed or all-zero `traceparent` falls through to `x-request-id` |
+| `UnitMeta` field | Value                                                                                                                                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`             | `randomUUID()`, minted per request — never the route, which would give every request one trace id                                                                                                                                     |
+| `traceId`        | the trace id of an inbound `traceparent`; else the inbound `x-request-id` header when it matches `/^[\w.-]{1,128}$/`; otherwise absent, so it defaults to `id`. A malformed or all-zero `traceparent` falls through to `x-request-id` |
 
-A blank header is ignored rather than adopted, because `""` is not nullish
-and would otherwise win over the minted id.
+An `x-request-id` that is not that bounded token — blank, a kilobyte of it, a
+newline — is ignored rather than adopted. The value lands on every log line and
+every span, so what a caller may put there is the same kind of question the
+`traceparent` parser already answers; and a blank one would win over the minted
+id outright, since `""` is not nullish.
 
 ### `unit`, and who forks it
 

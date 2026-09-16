@@ -46,7 +46,7 @@ describe("ensureSchedule", () => {
     );
   });
 
-  it("leaves the existing action alone — only the spec is reconciled", async ({ schedules }) => {
+  it("reconciles the action's args, not only the spec", async ({ schedules }) => {
     // GIVEN a schedule registered with one argument, then ensured again with a
     // new cron AND a different argument
     const described = await schedules
@@ -54,11 +54,8 @@ describe("ensureSchedule", () => {
       .flatMap(() => schedules.ensure({ cronExpressions: ["0 4 * * *"] }, "second"))
       .flatMap(() => schedules.describe());
 
-    // THEN the cron moved and the argument did not. `create` validates args
-    // against the workflow's schema and the handle's `update` validates
-    // nothing, so writing them here would push unvalidated input at the server
-    // through a door the typed client keeps shut — changing what a schedule
-    // RUNS is an explicit delete-and-create
+    // THEN both moved: a deploy that changed what the workflow is called with
+    // used to answer `"updated"` while the server kept firing the old action
     expect(described).toBeOkWith(
       expect.objectContaining({
         spec: expect.objectContaining({
@@ -66,9 +63,40 @@ describe("ensureSchedule", () => {
             expect.objectContaining({ hour: [expect.objectContaining({ start: 4 })] }),
           ]),
         }),
-        action: expect.objectContaining({ args: ["first"] }),
+        action: expect.objectContaining({ args: ["second"] }),
       }),
     );
+  });
+
+  it("reconciles the policies, which drift as silently as the args did", async ({ schedules }) => {
+    // GIVEN a schedule registered without one, then ensured again asking for it
+    const described = await schedules
+      .ensure({ cronExpressions: ["0 3 * * *"] })
+      .flatMap(() =>
+        schedules.ensure({ cronExpressions: ["0 3 * * *"] }, "x", { pauseOnFailure: true }),
+      )
+      .flatMap(() => schedules.describe());
+
+    // THEN the server holds what the deploy asked for, rather than what the
+    // first deploy to touch this id happened to say
+    expect(described).toBeOkWith(
+      expect.objectContaining({ policies: expect.objectContaining({ pauseOnFailure: true }) }),
+    );
+  });
+
+  it("refuses args the schema rejects on the update path too, not only on create", async ({
+    schedules,
+  }) => {
+    // GIVEN a schedule already registered, then ensured again with args its
+    // workflow's input schema refuses
+    // WHEN the second ensure runs, which is the `update` arm
+    const outcome = await schedules
+      .ensure({ cronExpressions: ["0 3 * * *"] })
+      .flatMap(() => schedules.ensureInvalid({ cronExpressions: ["0 4 * * *"] }));
+
+    // THEN the typed handle checked them before anything was persisted — which
+    // is what makes writing the action safe, and the old rationale wrong
+    expect(outcome).toBeErrTagged("@temporal-contract/WorkflowValidationError");
   });
 
   it("passes a workflow the contract never declared through, still typed", async ({

@@ -26,24 +26,29 @@ export type ScheduleOutcome = "created" | "updated";
  * This recovers exactly that one error into an `update`. Every other error
  * stays on the channel, still typed.
  *
- * **`spec` is the only field reconciled**, and the rest of an existing
- * schedule is left as it stands. Two different reasons, and they are worth
- * telling apart:
+ * **`spec`, the action's `workflowType` and `args`, and `policies` are
+ * reconciled**; everything else about an existing schedule is left as it
+ * stands.
  *
+ * - **`args` and `workflowType` are written, and they are checked on the way
+ *   through.** The typed handle's `update` validates the returned action's
+ *   `args` against the named workflow's input schema before anything is
+ *   persisted, and answers `WorkflowValidationError` — the same error `create`
+ *   answers, already on this channel. So a deploy that changed what the
+ *   workflow takes is either written or refused, never reported `"updated"`
+ *   over a server still holding the old action. `workflowType` rides with them
+ *   because it is what selects the schema those args are checked against.
  * - **`state` is deliberately preserved.** A schedule an operator paused stays
  *   paused across a deploy, because unpausing it is a decision a person made
  *   and a deploy is not the place to reverse it.
- * - **`args` and the rest of the action are preserved because this cannot
- *   reconcile them SAFELY.** `create` validates `args` against the workflow's
- *   input schema; the handle's `update` takes Temporal's own
- *   `ScheduleUpdateOptions` and validates nothing, so writing them here would
- *   push unvalidated input at the server through a door the typed client keeps
- *   shut. A deploy that changes what a schedule RUNS — its args, its workflow,
- *   its policies — should say so explicitly: delete the schedule and create it,
- *   or reach `getHandle(id).update(...)` directly and own the shape.
+ * - **`memo`, `searchAttributes` and the action's own overrides are
+ *   preserved**, because rebuilding the action wholesale means reproducing
+ *   `create`'s own assembly here — the task queue off the contract, the search
+ *   attribute translation, eight optional overrides — which is a copy that
+ *   drifts. A deploy changing one of those deletes the schedule and creates it.
  *
- * So: after this call the schedule FIRES when the arguments say. What it fires
- * with is whatever it already fired with.
+ * So: after this call the schedule FIRES when the arguments say, and RUNS what
+ * they say.
  *
  * ```ts
  * await ensureSchedule(client.for(orderContract).schedule, "sweepStaleOrders", {
@@ -72,7 +77,12 @@ export const ensureSchedule = <
         .with(P.tag(SCHEDULE_ALREADY_EXISTS_ERROR_TAG), () =>
           schedules
             .getHandle(options.scheduleId)
-            .update((previous) => ({ ...previous, spec: options.spec }))
+            .update((previous) => ({
+              ...previous,
+              spec: options.spec,
+              action: { ...previous.action, workflowType: workflow, args: [options.args] },
+              ...(options.policies === undefined ? {} : { policies: options.policies }),
+            }))
             .map((): ScheduleOutcome => "updated"),
         )
         // Named rather than left to a wildcard: the matcher has none, so a
