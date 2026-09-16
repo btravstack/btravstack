@@ -143,7 +143,7 @@ export const it = test.extend<{
         .flat()
         .find((candidate) => candidate?.family === "IPv4" && !candidate.internal)?.address;
       // oxlint-disable-next-line unthrown/no-throw -- a loud fixture: a machine with no external interface cannot prove this invariant either way, and a silent skip would read as coverage
-      if (address === undefined) throw new Error("[invariants] no non-loopback IPv4 interface");
+      if (address === undefined) throw new Error("[test-fixtures] no non-loopback IPv4 interface");
       return address;
     });
   },
