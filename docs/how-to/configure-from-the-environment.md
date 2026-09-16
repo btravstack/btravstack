@@ -246,7 +246,7 @@ database composes three of them. `HTTP_`, `TEMPORAL_`, `AMQP_`, `STORAGE_S3_`
 are the namespaces; the exceptions are names the ecosystem already owns and
 that a platform injects for you (`PORT`, `HOST`, `DATABASE_URL`, `REDIS_URL`,
 `SMTP_URL`, `LOG_LEVEL`), where a prefix would break the convention rather than
-protect it. The kernel's three are unprefixed because there is exactly one
+protect it. The kernel's own are unprefixed because there is exactly one
 kernel in a process and nothing else binds them.
 
 A **shape** is never a variable: a plugin list, a CORS record's allowed
