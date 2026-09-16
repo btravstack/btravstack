@@ -1,5 +1,4 @@
 import { createServer } from "node:net";
-import { networkInterfaces } from "node:os";
 
 import { Module, Port, Provider } from "@btravstack/di";
 import { createFakeClock, testRuntime, TestRuntimePort } from "@btravstack/testing";
@@ -20,20 +19,6 @@ const get = async (
 ): Promise<{ status: number; body: string }> => {
   const response = await fetch(`http://${host}:${port}${path}`);
   return { status: response.status, body: await response.text() };
-};
-
-/**
- * One of this machine's own IPv4 addresses that is NOT loopback — the closest
- * thing a test has to a pod IP, and the only way to tell a `0.0.0.0` bind apart
- * from a `127.0.0.1` one from outside the process.
- */
-const nonLoopbackHost = (): string => {
-  const address = Object.values(networkInterfaces())
-    .flat()
-    .find((candidate) => candidate?.family === "IPv4" && !candidate.internal)?.address;
-  // oxlint-disable-next-line unthrown/no-throw -- a test-only fixture: a machine with no external interface cannot prove this invariant either way, and a silent skip would read as coverage
-  if (address === undefined) throw new Error("[invariants] no non-loopback IPv4 interface");
-  return address;
 };
 
 const boundPort = async (app: RunningApp<never, unknown>): Promise<number> => {
@@ -467,20 +452,27 @@ describe("probe wiring", () => {
     await expect(get(failedPort, "/livez")).rejects.toThrow();
   });
 
-  it("binds 0.0.0.0:9000 when no probe port or host is given", async () => {
+  it("binds 0.0.0.0:9000 when no probe port or host is given", async ({ nonLoopbackHost }) => {
+    // GIVEN a kernel given no probe port and no probe host — `env: {}`, so the
+    // defaults are the kernel's rather than whatever `PROBE_PORT` or
+    // `PROBE_HOST` the shell running this suite carries
     const runtime = testRuntime();
-    // `env: {}` — the defaults are the kernel's, not whatever `PROBE_PORT` or
-    // `PROBE_HOST` the shell running this suite carries.
     const app = start(runtime.module, { env: {}, signals: false, onEvent: () => {} });
 
-    // Asserted positively — the bound port IS 9000 and answers there — rather
-    // than inferred from a deliberate conflict, which proved the default only by
-    // implication and failed on any machine already using the port. The
-    // interface is asserted from OUTSIDE loopback, through the machine's own
-    // address: a kubelet `httpGet` probe reaches the pod IP, so a default that
-    // silently went back to `127.0.0.1` would pass a loopback-only check.
-    await expect(app.probePort()).toBeOkWith(9000);
-    expect(await get(9000, "/livez", nonLoopbackHost())).toEqual({ status: 200, body: "ok" });
+    // WHEN the bound port is read, and reached from OUTSIDE loopback through
+    // the machine's own address: a kubelet `httpGet` probe reaches the pod IP,
+    // so a default that silently went back to `127.0.0.1` would pass a
+    // loopback-only check
+    const port = (await app.probePort()).get();
+    const answered = await get(9000, "/livez", nonLoopbackHost());
+
+    // THEN the port IS the default and answers there. Asserted positively
+    // rather than inferred from a deliberate conflict, which proved the default
+    // only by implication and failed on any machine already using the port.
+    expect({ port, answered }).toEqual({
+      port: 9000,
+      answered: { status: 200, body: "ok" },
+    });
 
     await runtime.untilStarted();
     app.stop();

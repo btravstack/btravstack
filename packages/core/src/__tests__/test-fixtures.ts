@@ -1,3 +1,5 @@
+import { networkInterfaces } from "node:os";
+
 import { Config, Env, type ConfigInvalid, type Environment } from "@btravstack/config";
 import { Module, Port, Provider } from "@btravstack/di";
 import {
@@ -125,8 +127,26 @@ export const it = test.extend<{
   unitApp: UnitApp;
   configured: ConfiguredApp;
   recording: Recording;
+  /**
+   * One of this machine's own IPv4 addresses that is NOT loopback — the
+   * closest thing a test has to a pod IP, and the only way to tell a
+   * `0.0.0.0` bind apart from a `127.0.0.1` one from outside the process.
+   */
+  nonLoopbackHost: () => string;
 }>({
   boot: bootFixture(),
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  nonLoopbackHost: async ({}, use) => {
+    await use(() => {
+      const address = Object.values(networkInterfaces())
+        .flat()
+        .find((candidate) => candidate?.family === "IPv4" && !candidate.internal)?.address;
+      // oxlint-disable-next-line unthrown/no-throw -- a loud fixture: a machine with no external interface cannot prove this invariant either way, and a silent skip would read as coverage
+      if (address === undefined) throw new Error("[test-fixtures] no non-loopback IPv4 interface");
+      return address;
+    });
+  },
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   recording: async ({}, use) => {
