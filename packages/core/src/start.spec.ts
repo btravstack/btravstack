@@ -586,6 +586,7 @@ describe("runtimeInfo", () => {
     // it settles when the transport ends, and withdraws when the end was the
     // kernel's own doing
     let asked = false;
+    let channelObserved = false;
     let channelSettled = false;
     const ended = Promise.withResolvers<void>();
     const wired: Runtime<never, { readonly name: string }> = {
@@ -604,12 +605,14 @@ describe("runtimeInfo", () => {
             ended.resolve();
             return OkAsync();
           },
-          stopped: () =>
-            fromSafePromise(ended.promise)
+          stopped: () => {
+            channelObserved = true;
+            return fromSafePromise(ended.promise)
               .flatMap(() => (asked ? fromSafePromise(new Promise<void>(() => {})) : OkAsync()))
               .tap(() => {
                 channelSettled = true;
-              }),
+              });
+          },
         }),
     };
     const app = start(runtimeModule(wired), {
@@ -623,12 +626,15 @@ describe("runtimeInfo", () => {
     app.stop();
     const report = await app.exited;
 
-    // THEN the channel never settled. The REASON cannot tell the two apart —
-    // `RunningApp.stop()` reports `runtimeStopped` whatever the channel does —
-    // so what this asserts is the obligation itself: an arm that settled here
-    // would race every clean shutdown.
-    expect({ reason: report.getOrThrow().reason, channelSettled }).toEqual({
+    // THEN the kernel SUBSCRIBED and the channel never settled. Both halves
+    // are needed and neither is the reason: `RunningApp.stop()` reports
+    // `runtimeStopped` whatever the channel does, and a kernel that stopped
+    // calling `stopped()` at all would leave `channelSettled` false too — so
+    // `channelObserved` is what stops this passing on a deleted subscription,
+    // and `channelSettled` is the withdrawal obligation itself.
+    expect({ reason: report.getOrThrow().reason, channelObserved, channelSettled }).toEqual({
       reason: "runtimeStopped",
+      channelObserved: true,
       channelSettled: false,
     });
   });
