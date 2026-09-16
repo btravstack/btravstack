@@ -67,9 +67,9 @@ to be answered by a `needs` entry, and a module that does not is refused where
 it is written:
 
 ```text
-Property '"UNDECLARED NEEDS — name it in `needs`"' is missing in type
+Property '"UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)"' is missing in type
   '{ provides: [...]; exports: [...]; }' but required in type
-  '{ readonly "UNDECLARED NEEDS — name it in `needs`": Logger; }'.
+  '{ readonly "UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)": Logger; }'.
 ```
 
 That is the first of the checks, and the only one that fires at a module rather

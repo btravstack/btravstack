@@ -208,9 +208,9 @@ not. **The property, rather than `StartGate`'s bare string, is what makes the
 diagnostic name the port** (measured, both ways):
 
 ```text
-Property '"UNDECLARED NEEDS — name it in `needs`"' is missing in type
+Property '"UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)"' is missing in type
   '{ provides: [...]; exports: [...]; }' but required in type
-  '{ readonly "UNDECLARED NEEDS — name it in `needs`": Logger; }'.
+  '{ readonly "UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)": Logger; }'.
 ```
 
 Two details in that type are load-bearing and both were measured after they

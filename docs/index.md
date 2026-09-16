@@ -57,9 +57,26 @@ It is the layer between your business logic and the process it runs in.
 An HTTP API is four files: a contract, a router that implements it, a
 composition root, and an entry point.
 
+**Six names below are yours, not this framework's**, and the page shows them
+rather than hiding them, because "where does `PlaceOrder` come from?" is the
+first question a reader has:
+
+| Name                                             | What it is                                                                                                                             |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `PlaceOrder`                                     | your own di `Port` — the use case, with its own modeled errors. Nothing here declares it                                               |
+| `OrderPersistenceModule`                         | your adapters: the repository behind that port                                                                                         |
+| `api`                                            | your one `defineHttp({ authenticators })` binding — see [Protect a procedure](/how-to/protect-a-procedure)                             |
+| `RequestModule` / `UserModule` / `ServiceModule` | your per-request modules, one per scheme a request can arrive under — see [Open a per-request scope](/how-to/open-a-per-request-scope) |
+
+The [tutorial](/tutorial/getting-started) builds every one of them from an
+empty directory, in order, with nothing declared off-page.
+
 **`contract.ts`** — what the API promises. A client can take this file alone.
 
 <!-- doctest: prelude
+// Compiled against `examples/order-api`, which is where these six live. A
+// reader writes their own; the table above says which is which, and the
+// tutorial builds them.
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { PlaceOrder } from "@btravstack/example-order-application";

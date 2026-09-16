@@ -150,6 +150,15 @@ export const ordersContract = {
 
 **`router.ts`** — one `Result`-returning function per procedure, typed by the contract.
 
+Three names in the fences below are **yours**, not this framework's, and
+nothing here declares them for you: `PlaceOrder` is a di `Port` carrying your
+use case and its modeled errors (`InvalidQuantity`, `InvalidOrderId`,
+`DuplicateOrder`); `OrderApplicationModule` provides it; `OrderPersistenceModule`
+holds the adapters behind it. Together they are about twenty lines of ordinary
+TypeScript — the
+[tutorial](https://btravstack.github.io/btravstack/tutorial/getting-started)
+writes every one from an empty directory.
+
 ```ts
 import { defineHttp } from "@btravstack/http-server";
 import { P } from "unthrown";

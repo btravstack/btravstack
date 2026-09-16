@@ -101,9 +101,9 @@ its own provides plus its imports' exports — so the dependency is unmet, and
 module**, and the diagnostic names the port:
 
 ```text
-Property '"UNDECLARED NEEDS — name it in `needs`"' is missing in type
+Property '"UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)"' is missing in type
   '{ imports: [...]; provides: [...]; exports: [...]; }' but required in type
-  '{ readonly "UNDECLARED NEEDS — name it in `needs`": Pool; }'.
+  '{ readonly "UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)": Pool; }'.
 ```
 
 Naming it in `needs` is not a way round the boundary — it does not make
