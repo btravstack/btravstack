@@ -299,7 +299,7 @@ describe("order-api", () => {
 
   it("answers both probes while the runtime serves", async ({ serve, probesFor, gate }) => {
     // GIVEN the runtime and the kernel's probe server both bound
-    const app = serve(gate.api, { probes: { port: 0 } });
+    const app = serve(gate.api, { probes: { port: 0, host: "127.0.0.1" } });
     const probes = await probesFor(app);
     // The probe server binds BEFORE the graph is built and answers 503 until the
     // runtime is serving, so `runtimeInfo()` is the barrier.
@@ -904,7 +904,7 @@ describe("order-api", () => {
   it("goes unready on drain while staying live", async ({ serve, clientFor, probesFor, gate }) => {
     // GIVEN the runtime and the probe server both bound, with a call in flight
     // so the drain — and the process — stays alive while the probes are read
-    const app = serve(gate.api, { probes: { port: 0 } });
+    const app = serve(gate.api, { probes: { port: 0, host: "127.0.0.1" } });
     const probes = await probesFor(app);
     const client = await clientFor(app);
     const inFlight = client.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" });

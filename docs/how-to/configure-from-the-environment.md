@@ -122,15 +122,17 @@ Every field goes through the same three-way read, pinned by the package's own
 spec. **An empty or blank value is an error, never the default** — `Number("")`
 is `0`, and `PORT=` would otherwise bind the ephemeral port.
 
-| Variable is…                    | Result                                       |
-| ------------------------------- | -------------------------------------------- |
-| unset                           | the `default`, or `is required` without one  |
-| set to `""` or whitespace       | `is set but empty`                           |
-| `abc` for an integer or port    | `is not a whole number: "abc"`               |
-| `3.5` for an integer or port    | `is not a whole number: "3.5"`               |
-| outside `min`/`max` (inclusive) | `must be between 1 and 64, got 100`          |
-| a port                          | `0..65535` — `0` is legal, an ephemeral bind |
-| a URL with no scheme            | `is not a URL: "issuer.test/jwks"`           |
+| Variable is…                    | Result                                                                |
+| ------------------------------- | --------------------------------------------------------------------- |
+| unset                           | the `default`, or `is required` without one                           |
+| set to `""` or whitespace       | `is set but empty`                                                    |
+| `abc` for an integer or port    | `is not a whole number: "abc"`                                        |
+| `3.5` for an integer or port    | `is not a whole number: "3.5"`                                        |
+| `0x1F90` for an integer or port | `is not a whole number: "0x1F90"` — decimal only, never `8080`        |
+| outside `min`/`max` (inclusive) | `must be between 1 and 64, got 100`                                   |
+| a port                          | `0..65535` — `0` is legal, an ephemeral bind                          |
+| a URL with no scheme            | `is not a URL: "issuer.test/jwks"`                                    |
+| a URL carrying a password       | the userinfo is redacted — `is not a URL: "postgres://***@db:bad/db"` |
 
 `Config.port` has a floor of `0` deliberately: `PORT=0` is how a test asks the
 OS for a free port and reads it back from `runtimeInfo()`. `Config.url` keeps
@@ -193,8 +195,8 @@ module above with `DATABASE_URL` unset and `DATABASE_POOL_SIZE=100`:
 {"type":"exited"}
 ```
 
-The kernel's own `PROBE_PORT`, `PRE_DRAIN_DELAY_MS`, `DRAIN_TIMEOUT_MS` and
-`STOP_TIMEOUT_MS` are
+The kernel's own `PROBE_PORT`, `PROBE_HOST`, `PRE_DRAIN_DELAY_MS`,
+`DRAIN_TIMEOUT_MS` and `STOP_TIMEOUT_MS` are
 bound the same way, in one pass; a bad one is a `RuntimeStartFailed` for
 `"kernel"` whose `cause` is the `ConfigInvalid`, and `runMain` still exits
 `78`. See [runMain and exit codes](/reference/core/exit-codes).
@@ -210,6 +212,7 @@ composition root.
 | Variable                   | Default                 | Bound by                                                                                                                                                               |
 | -------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `PROBE_PORT`               | `9000`                  | the kernel ([probes](/reference/core/probes))                                                                                                                          |
+| `PROBE_HOST`               | `0.0.0.0`               | the kernel — the interface the probe server binds; `0.0.0.0` is what lets a kubelet `httpGet` probe reach it over the pod IP                                           |
 | `PRE_DRAIN_DELAY_MS`       | `5000`                  | the kernel ([drain](/how-to/tune-the-drain-for-kubernetes))                                                                                                            |
 | `DRAIN_TIMEOUT_MS`         | `20000`                 | the kernel                                                                                                                                                             |
 | `STOP_TIMEOUT_MS`          | `5000`                  | the kernel — the deadline on `stopping`, so a wedged finaliser still reports                                                                                           |

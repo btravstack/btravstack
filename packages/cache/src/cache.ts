@@ -22,6 +22,11 @@ export class CacheUnavailable extends TaggedError("CacheUnavailable")<{
 export type CacheBackendService = {
   /** A miss is `Ok(undefined)`: absence is the cache working, not failing. */
   readonly get: (key: string) => AsyncResult<CacheHit | undefined, CacheUnavailable>;
+  /**
+   * An adapter reached through `Cache` is handed whole milliseconds or nothing
+   * — `readThrough` reads `ttlMs` once for every adapter, so none of them has
+   * to decide what a zero, a fraction or a `NaN` means.
+   */
   readonly set: (
     key: string,
     value: unknown,
@@ -37,7 +42,10 @@ export type CacheBackendService = {
  */
 export type CacheService = CacheBackendService & {
   /**
-   * Answer from the cache, or run `loader` and store what it produced.
+   * Answer from the cache, or run `loader` and store what it produced. A
+   * `ttlMs` that is not at least a whole millisecond means the value is not
+   * stored — see `readThrough` — so the loader's answer still reaches the
+   * caller.
    *
    * **The degradation policy is decided here, once**: an unavailable cache is a
    * miss, so the loader runs and the caller sees the answer; a failed write is
@@ -56,29 +64,62 @@ export type CacheService = CacheBackendService & {
   ) => AsyncResult<T, E>;
 };
 
-/** The derivation, applied by `cache()` — an adapter never implements it. */
-export const readThrough = (backend: CacheBackendService): CacheService => ({
-  ...backend,
-  getOrSet: <T, E>(
-    key: string,
-    loader: () => AsyncResult<T, E>,
-    options?: { readonly ttlMs?: number },
-  ): AsyncResult<T, E> =>
-    backend
-      .get(key)
-      .recoverErrCases((matcher) => matcher.with(P.tag("CacheUnavailable"), () => undefined))
-      .flatMap((hit) =>
-        hit === undefined
-          ? loader().flatTap((value) =>
-              backend
-                .set(key, value, options)
-                .recoverErrCases((matcher) =>
+/**
+ * The one reading of `ttlMs`, shared by every adapter: whole milliseconds, and
+ * `undefined` for anything that is not at least one of them.
+ *
+ * **`undefined` here means DO NOT STORE, not store forever** — `set` answers
+ * `Ok` and writes nothing, so the next `get` is an ordinary miss. A computed
+ * `deadline - now` goes zero or negative the moment the deadline has passed,
+ * which is the common way a bad value arrives, and a miss is what every caller
+ * already handles. The two alternatives are both worse: storing without expiry
+ * turns an arithmetic slip into a leak, and the Redis adapter's own `PX 0`
+ * reported a caller's bug as `CacheUnavailable` — an outage class, which is
+ * what an operator pages on.
+ */
+const wholeMs = (ttlMs: number | undefined): number | undefined => {
+  if (ttlMs === undefined) return undefined;
+  const rounded = Math.round(ttlMs);
+  return Number.isFinite(rounded) && rounded >= 1 ? rounded : undefined;
+};
+
+/**
+ * The derivation, applied by `cache()` — an adapter never implements it.
+ *
+ * `set` is overridden rather than spread through, because it is the one place
+ * both the direct call and `getOrSet`'s write pass through: an adapter is
+ * handed a `ttlMs` that has already been read the same way whichever route the
+ * caller took.
+ */
+export const readThrough = (backend: CacheBackendService): CacheService => {
+  const set: CacheBackendService["set"] = (key, value, options) => {
+    const ttlMs = wholeMs(options?.ttlMs);
+    if (options?.ttlMs !== undefined && ttlMs === undefined) return OkAsync();
+    return backend.set(key, value, ttlMs === undefined ? undefined : { ttlMs });
+  };
+
+  return {
+    ...backend,
+    set,
+    getOrSet: <T, E>(
+      key: string,
+      loader: () => AsyncResult<T, E>,
+      options?: { readonly ttlMs?: number },
+    ): AsyncResult<T, E> =>
+      backend
+        .get(key)
+        .recoverErrCases((matcher) => matcher.with(P.tag("CacheUnavailable"), () => undefined))
+        .flatMap((hit) =>
+          hit === undefined
+            ? loader().flatTap((value) =>
+                set(key, value, options).recoverErrCases((matcher) =>
                   matcher.with(P.tag("CacheUnavailable"), () => undefined),
                 ),
-            )
-          : OkAsync(hit.value as T),
-      ),
-});
+              )
+            : OkAsync(hit.value as T),
+        ),
+  };
+};
 
 /**
  * The port an application depends on.

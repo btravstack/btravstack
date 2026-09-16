@@ -6,7 +6,7 @@ import { vi } from "vitest";
 import { inject } from "vitest";
 
 import { aMail, it } from "./__tests__/test-fixtures.js";
-import { smtpMailer, verifyWithin } from "./smtp.js";
+import { smtpMailer } from "./smtp.js";
 
 describe("smtpMailer", () => {
   it("delivers the message to the server", async ({ smtp, recipient, delivered }) => {
@@ -131,19 +131,26 @@ describe("smtpMailer", () => {
     });
   });
 
-  it("gives up on a relay that never answers, rather than holding the probe open", async () => {
-    // GIVEN a transport whose `verify()` never settles — the shape a relay
-    // that accepts the connection and never greets presents
-    const hanging = {
-      verify: () => new Promise<boolean>(() => {}),
-    } as unknown as Parameters<typeof verifyWithin>[0];
+  it("declares its own deadline, so a relay that never answers is reported rather than waited on", async () => {
+    // GIVEN the contributed check pointed at a relay that accepts the
+    // connection and never greets, with the deadline cut to keep the suite
+    // fast — which is what `timeoutMs` on the contribution exists for
+    const root = Module("HangingFixture")({
+      imports: [smtpMailer()],
+      provides: [Provider(Env)({ inject: {}, value: { SMTP_URL: "smtp://127.0.0.1:1" } })],
+      exports: [HealthChecks],
+    });
 
-    // WHEN the health check's own deadline passes
-    // THEN it reports rather than waiting: `runHealthChecks` has no deadline
-    // of its own, so a probe that hangs is one an orchestrator times out
-    // instead of reading
-    await expect(verifyWithin(hanging, 5)).toBeErrTagged("HealthCheckFailed", {
-      reason: "the relay did not answer within 5 ms",
+    // WHEN the check is run through the fold, which is what owns the race now
+    const report = await Module.scoped(root, (ctx) =>
+      runHealthChecks(ctx.get(HealthChecks).map((check) => ({ ...check, timeoutMs: 5 }))),
+    );
+
+    // THEN the component is named and unhealthy rather than the probe being
+    // held open — this race used to be hand-rolled in this package
+    expect(report).toBeOkWith({
+      status: "unhealthy",
+      components: [{ name: "mailer", status: "unhealthy", reason: expect.any(String) }],
     });
   });
 });

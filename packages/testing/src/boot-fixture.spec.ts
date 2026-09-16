@@ -25,7 +25,7 @@ describe("bootFixture", () => {
   it("lets a call bind an ephemeral probe port over the default", async ({ boot }) => {
     // GIVEN a boot asking for a probe server on port 0
     const { runtime, module } = greetingApp();
-    const app = boot(module, { probes: { port: 0 } });
+    const app = boot(module, { probes: { port: 0, host: "127.0.0.1" } });
     await runtime.untilStarted();
 
     // WHEN the bound port is read

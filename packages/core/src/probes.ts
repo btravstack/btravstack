@@ -12,6 +12,17 @@ export type ProbeServer = {
 
 export type ProbeArgs = {
   readonly port: number;
+  /**
+   * The interface to bind. `0.0.0.0` by default, matching `HOST`'s own: a
+   * kubelet `httpGet` probe connects over the POD IP, so a loopback-only
+   * listener is unreachable from the one probe shape every manifest reaches
+   * for — the deploy guide showed exactly that and it could never have worked.
+   *
+   * `127.0.0.1` is still the right answer where the port is shared with
+   * something else on the host, and the drain guide keeps the `exec` probe for
+   * it.
+   */
+  readonly hostname: string;
   readonly live: () => boolean;
   readonly ready: () => boolean;
   /**
@@ -75,7 +86,7 @@ export const startProbeServer = (args: ProbeArgs): AsyncResult<ProbeServer, Runt
       // escapes the executor and reaches the caller as a defect, bypassing the
       // `RuntimeStartFailed` this function declares.
       try {
-        server.listen(args.port, "127.0.0.1", () => {
+        server.listen(args.port, args.hostname, () => {
           server.removeListener("error", onBindError);
           server.on("error", ignoreServingError);
 

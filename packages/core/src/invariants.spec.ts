@@ -1,4 +1,5 @@
 import { createServer } from "node:net";
+import { networkInterfaces } from "node:os";
 
 import { Module, Port, Provider } from "@btravstack/di";
 import { createFakeClock, testRuntime, TestRuntimePort } from "@btravstack/testing";
@@ -12,9 +13,27 @@ import { start, type RunningApp } from "./start.js";
 
 class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 
-const get = async (port: number, path: string): Promise<{ status: number; body: string }> => {
-  const response = await fetch(`http://127.0.0.1:${port}${path}`);
+const get = async (
+  port: number,
+  path: string,
+  host = "127.0.0.1",
+): Promise<{ status: number; body: string }> => {
+  const response = await fetch(`http://${host}:${port}${path}`);
   return { status: response.status, body: await response.text() };
+};
+
+/**
+ * One of this machine's own IPv4 addresses that is NOT loopback — the closest
+ * thing a test has to a pod IP, and the only way to tell a `0.0.0.0` bind apart
+ * from a `127.0.0.1` one from outside the process.
+ */
+const nonLoopbackHost = (): string => {
+  const address = Object.values(networkInterfaces())
+    .flat()
+    .find((candidate) => candidate?.family === "IPv4" && !candidate.internal)?.address;
+  // oxlint-disable-next-line unthrown/no-throw -- a test-only fixture: a machine with no external interface cannot prove this invariant either way, and a silent skip would read as coverage
+  if (address === undefined) throw new Error("[invariants] no non-loopback IPv4 interface");
+  return address;
 };
 
 const boundPort = async (app: RunningApp<never, unknown>): Promise<number> => {
@@ -258,7 +277,7 @@ describe("probe wiring", () => {
 
     const app = start(runtimeModule(stalled), {
       signals: false,
-      probes: { port: 0 },
+      probes: { port: 0, host: "127.0.0.1" },
       onEvent: () => {},
     });
 
@@ -283,7 +302,7 @@ describe("probe wiring", () => {
 
     const app = start(runtimeModule(stalled), {
       signals: false,
-      probes: { port: 0 },
+      probes: { port: 0, host: "127.0.0.1" },
       onEvent: () => {},
     });
 
@@ -303,7 +322,7 @@ describe("probe wiring", () => {
     const app = start(runtime.module, {
       clock,
       signals: false,
-      probes: { port: 0 },
+      probes: { port: 0, host: "127.0.0.1" },
       onEvent: () => {},
     });
 
@@ -343,7 +362,10 @@ describe("probe wiring", () => {
         })),
     };
 
-    const app = start(runtimeModule(held), { probes: { port: 0 }, onEvent: () => {} });
+    const app = start(runtimeModule(held), {
+      probes: { port: 0, host: "127.0.0.1" },
+      onEvent: () => {},
+    });
 
     await inner.untilStarted();
     const port = await boundPort(app);
@@ -381,7 +403,7 @@ describe("probe wiring", () => {
     const app = start(runtimeModule(held), {
       clock,
       signals: false,
-      probes: { port: 0 },
+      probes: { port: 0, host: "127.0.0.1" },
       // Pinned well past the 25s this test advances: `stop` is held open on
       // purpose here, and the stop deadline would otherwise abandon it and
       // report, which is its job and not this test's subject.
@@ -413,7 +435,7 @@ describe("probe wiring", () => {
     const runtime = testRuntime();
     const app = start(runtime.module, {
       signals: false,
-      probes: { port: 0 },
+      probes: { port: 0, host: "127.0.0.1" },
       onEvent: () => {},
     });
 
@@ -432,7 +454,7 @@ describe("probe wiring", () => {
     };
     const failing = start(runtimeModule(broken), {
       signals: false,
-      probes: { port: 0 },
+      probes: { port: 0, host: "127.0.0.1" },
       onEvent: () => {},
     });
 
@@ -445,17 +467,20 @@ describe("probe wiring", () => {
     await expect(get(failedPort, "/livez")).rejects.toThrow();
   });
 
-  it("binds 9000 when no probe port is given", async () => {
+  it("binds 0.0.0.0:9000 when no probe port or host is given", async () => {
     const runtime = testRuntime();
-    // `env: {}` — the default is the kernel's, not whatever `PROBE_PORT` the
-    // shell running this suite carries.
+    // `env: {}` — the defaults are the kernel's, not whatever `PROBE_PORT` or
+    // `PROBE_HOST` the shell running this suite carries.
     const app = start(runtime.module, { env: {}, signals: false, onEvent: () => {} });
 
     // Asserted positively — the bound port IS 9000 and answers there — rather
     // than inferred from a deliberate conflict, which proved the default only by
-    // implication and failed on any machine already using the port.
+    // implication and failed on any machine already using the port. The
+    // interface is asserted from OUTSIDE loopback, through the machine's own
+    // address: a kubelet `httpGet` probe reaches the pod IP, so a default that
+    // silently went back to `127.0.0.1` would pass a loopback-only check.
     await expect(app.probePort()).toBeOkWith(9000);
-    expect(await get(9000, "/livez")).toEqual({ status: 200, body: "ok" });
+    expect(await get(9000, "/livez", nonLoopbackHost())).toEqual({ status: 200, body: "ok" });
 
     await runtime.untilStarted();
     app.stop();
@@ -481,7 +506,7 @@ describe("probe wiring", () => {
     });
 
     const app = start(Watched, {
-      probes: { port: blocker.port },
+      probes: { port: blocker.port, host: "127.0.0.1" },
       onEvent: () => {},
     });
 
@@ -500,7 +525,7 @@ describe("probe wiring", () => {
     expect(handlerCounts()).toEqual(before);
     // The failure route out of the bind attempt still settles `probePort`, so
     // a caller awaiting it cannot hang. (The success route is asserted by
-    // every `probes: { port: 0 }` test above, via `boundPort`.)
+    // every ephemeral-port test above, via `boundPort`.)
     await expect(app.probePort()).toBeOkWith(undefined);
 
     await blocker.close();
@@ -529,7 +554,7 @@ describe("health checks", () => {
     const runtime = runtimeModule(testRuntime());
     const app = start(Module("App")({ imports: [runtime, checks], exports: [runtime, checks] }), {
       signals: false,
-      probes: { port: 0 },
+      probes: { port: 0, host: "127.0.0.1" },
       onEvent: () => {},
     });
     const port = await boundPort(app);

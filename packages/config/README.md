@@ -70,16 +70,18 @@ a test. Anywhere else, provide it yourself: `Provider(Env)({ inject: {}, value: 
 
 ## Fields
 
-| Field                                           | Value                                                           |
-| ----------------------------------------------- | --------------------------------------------------------------- |
-| `Config.string(VAR, { default? })`              | a non-empty string                                              |
-| `Config.integer(VAR, { min?, max?, default? })` | a whole number, bounds inclusive                                |
-| `Config.boolean(VAR, { default? })`             | a flag: `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`         |
-| `Config.port(VAR, { default? })`                | a whole number in `0..65535` — `0` (an ephemeral bind) included |
+| Field                                           | Value                                                                 |
+| ----------------------------------------------- | --------------------------------------------------------------------- |
+| `Config.string(VAR, { default? })`              | a non-empty string                                                    |
+| `Config.integer(VAR, { min?, max?, default? })` | a whole number in decimal, bounds inclusive                           |
+| `Config.boolean(VAR, { default? })`             | a flag: `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`               |
+| `Config.port(VAR, { default? })`                | a whole number in `0..65535` — `0` (an ephemeral bind) included       |
+| `Config.url(VAR, { default? })`                 | a URL, kept as written; a bad one is named with its userinfo redacted |
+| `Config.list(VAR, { min?, default? })`          | a comma-separated list, entries trimmed and the empty ones dropped    |
 
 An unset variable takes its `default` (or `is required`); a **set but empty or
-blank** one is an error, never the default; `abc`, `3.5` and out-of-range
-values are named; every field is read before answering, so one validation
+blank** one is an error, never the default; `abc`, `3.5`, `0x1F90` and
+out-of-range values are named; every field is read before answering, so one validation
 names every fault at once. `Config.pinned(value, field)` is how a starter's
 option beats the environment, per field — and where the field carries a rule
 about the VALUE (`integer`, `port`), the pin is checked by it, so a bound a

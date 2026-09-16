@@ -53,7 +53,7 @@ type ConfigField<T> = {
 | `Config.boolean(variable, options?)` | a flag: `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, case-insensitive                                           | `{ default?: boolean }`                                                                                                                    |
 | `Config.port(variable, options?)`    | a whole number in `0..65535`, `0` (an ephemeral bind) included                                                        | `{ default?: number }`                                                                                                                     |
 | `Config.url(variable, options?)`     | a URL, kept as the string it was written as                                                                           | `{ default?: string }`                                                                                                                     |
-| `Config.list(variable, options?)`    | a comma-separated list, entries trimmed and the empty ones dropped                                                    | `{ default?: readonly string[]; min?: number }` — `min` defaults to `1`                                                                    |
+| `Config.list(variable, options?)`    | a comma-separated list, entries trimmed and the empty ones dropped                                                    | `{ default?: readonly string[]; min?: number }` — `min` defaults to `1`, or to `0` when a `default` is given                               |
 | `Config.pinned(value, field)`        | `field` unless `value` is given, then a field answering `value` and reading nothing — checked by the field's own rule | —                                                                                                                                          |
 
 Semantics shared by every field, in one place:
@@ -64,9 +64,11 @@ Semantics shared by every field, in one place:
 | `""` or whitespace only     | `is set but empty` — an error, **never** the default                     |
 | `abc` (integer/port)        | `is not a whole number: "abc"`                                           |
 | `3.5` (integer/port)        | `is not a whole number: "3.5"` — named, not truncated                    |
+| `0x1F90` (integer/port)     | `is not a whole number: "0x1F90"` — decimal only, not read as `8080`     |
 | out of range (integer/port) | `must be between <min> and <max>, got <n>` — both bounds inclusive       |
 | `0` (port)                  | valid — a port's floor is `0` so an ephemeral bind stays expressible     |
 | `issuer.test/jwks` (url)    | `is not a URL: "issuer.test/jwks"` — a URL needs its scheme              |
+| `pg://u:p@h:bad/d` (url)    | `is not a URL: "pg://***@h:bad/d"` — the userinfo is redacted            |
 | `a, b,` (list)              | `["a", "b"]` — trimmed, and a trailing separator is not an entry         |
 | `,` (list)                  | `must list at least 1, got 0` — the `min` floor, named                   |
 
@@ -77,10 +79,15 @@ whose surrounding whitespace is significant in the environment — pin that one
 through the composition root, where `Config.pinned` hands the value over
 untouched.
 
-Integers are `Number()` plus `Number.isInteger`; an unbounded `Config.integer`
-spans the safe-integer range. `""` being an error rather than an absent
-variable is what stops `PORT=` binding the ephemeral port through
-`Number("") === 0`.
+Integers are **decimal digits and an optional sign**, then `Number()` and
+`Number.isInteger`; an unbounded `Config.integer` spans the safe-integer range.
+`""` being an error rather than an absent variable is what stops `PORT=`
+binding the ephemeral port through `Number("") === 0`.
+
+The grammar is narrower than `Number`'s on purpose. `Number` accepts `0x1F90`,
+`1e3`, `0b101`, `0o17`, `+5` and `7.0`, and a manifest holding any of them is
+far likelier to be a typo than an intention — `PORT=0x1F90` binding `8080` is a
+field guessing, where naming it is a field an operator can argue with.
 
 A flag is `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, in either case.
 Anything else is an **error rather than a falsy reading**: a deployment that
@@ -95,10 +102,24 @@ wherever the URL is finally needed. It checks **parseability, not the scheme**:
 `file:///keys.json` is a URL, so an endpoint that must be reachable over HTTP
 is the consumer's own check.
 
+**The message redacts the URL's userinfo**, so
+`postgres://user:hunter2@db:notaport/orders` is reported as
+`postgres://***@db:notaport/orders`. `DATABASE_URL`, `REDIS_URL`, `SMTP_URL`
+and `AMQP_URL` all carry credentials in that position, and this message reaches
+stderr through `runMain`'s `startFailed` line at exit `78` — the log an
+operator pastes into a ticket. Everything that helps diagnose the value stays:
+the scheme, the host, the bad port and the path.
+
 `Config.list` splits on commas and nothing else: an entry containing one is not
 expressible, which is the trade for a variable an operator can read. `min`
 defaults to `1`, so a variable set to separators alone is a deployment mistake
-rather than an empty list. It says nothing about what the entries mean —
+rather than an empty list — **unless a `default` is given, and then it is `0`**:
+`{ default: [] }` is the composition root saying what it wants when nobody sets
+the variable, and under the flat floor that was always refused, with a message
+naming a variable the deployment never touched. An explicit `min` still applies
+to the default, and to a pin: `Config.pinned([], Config.list("HTTP_SESSION_KEYS"))`
+is still refused, because that field has no default and a session codec with no
+key to seal with is broken rather than empty. It says nothing about what the entries mean —
 `HTTP_SESSION_KEYS` is a list of base64url keys, and that each is 32 bytes is
 `@btravstack/http-server/session`'s own check, reported against the same
 variable at boot.

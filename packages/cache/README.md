@@ -96,12 +96,12 @@ export const CustomersApp = Module("CustomersApp")({
 
 ## Options
 
-| Option      | Where                               | What it is                                                                        |
-| ----------- | ----------------------------------- | --------------------------------------------------------------------------------- |
-| `adapter`   | `cache({ adapter })`                | the adapter module providing `CacheBackend` — required                            |
-| `clock`     | `memoryCache`                       | what a ttl is measured against (default: the kernel's `systemClock`)              |
-| `REDIS_URL` | environment, read by `redisCache()` | the connection URL — required, validated at graph build                           |
-| `ttlMs`     | `cache.set` / `cache.getOrSet`      | per-entry expiry (default: none — the entry stays until it is deleted or evicted) |
+| Option      | Where                               | What it is                                                                                                                                                         |
+| ----------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `adapter`   | `cache({ adapter })`                | the adapter module providing `CacheBackend` — required                                                                                                             |
+| `clock`     | `memoryCache`                       | what a ttl is measured against (default: the kernel's `systemClock`)                                                                                               |
+| `REDIS_URL` | environment, read by `redisCache()` | the connection URL — required, validated at graph build                                                                                                            |
+| `ttlMs`     | `cache.set` / `cache.getOrSet`      | per-entry expiry, rounded to whole milliseconds (default: none — the entry stays until it is deleted or evicted; a value under 1 ms means the entry is not stored) |
 
 The full table — defaults, semantics and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/cache),

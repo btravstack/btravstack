@@ -184,7 +184,7 @@ describe("start", () => {
     const runtime = testRuntime();
     const app = start(runtime.module, {
       signals: false,
-      probes: { port: 0 },
+      probes: { port: 0, host: "127.0.0.1" },
       onEvent: (event) => {
         if (event.type === "serving") served.push(event);
       },

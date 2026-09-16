@@ -38,6 +38,43 @@ describe("redisCache", () => {
     await expect(read).toBeOkWith(undefined);
   });
 
+  it("reports a value another writer left under the key, rather than defecting", async ({
+    redis,
+    otherWriter,
+    keyPrefix,
+  }) => {
+    // GIVEN a key holding bytes this adapter did not encode — a second process
+    // sharing the database, which `REDIS_URL` makes easy to arrange by accident
+    await otherWriter.set(`${keyPrefix}foreign`, "not json at all");
+
+    // WHEN it is read through the adapter
+    const read = redis.get(`${keyPrefix}foreign`);
+
+    // THEN the operation failed, on the channel every caller already degrades
+    // to a miss. As a defect — which is what `JSON.parse` inside `.map` used to
+    // produce — `readThrough` recovered nothing, so one foreign key made every
+    // `getOrSet` on it defect until the key expired.
+    await expect(read).toBeErrWith(
+      expect.objectContaining({ operation: "get", key: `${keyPrefix}foreign` }),
+    );
+  });
+
+  it("answers a defect for a value it cannot encode, without throwing at the call", async ({
+    redis,
+    keyPrefix,
+  }) => {
+    // GIVEN a value `JSON.stringify` refuses — a `BigInt`, the one this package
+    // says is a bug in the caller rather than an outage
+    // WHEN it is written
+    // THEN the throw is on the returned channel rather than escaping a method
+    // typed `AsyncResult`: eagerly evaluated as an argument, it used to come
+    // out of `set(...)` as a synchronous exception no caller could catch with a
+    // `Result` in hand.
+    await expect(redis.set(`${keyPrefix}big`, 1n)).toBeDefectWith(
+      expect.objectContaining({ constructor: TypeError }),
+    );
+  });
+
   it("forgets a deleted key", async ({ redis, keyPrefix }) => {
     // GIVEN a stored key
     // WHEN it is deleted and read back
@@ -48,6 +85,28 @@ describe("redisCache", () => {
 
     // THEN the read is a miss
     await expect(read).toBeOkWith(undefined);
+  });
+});
+
+describe("redisCache, when it cannot connect at all", () => {
+  it("answers CacheConnectionFailed rather than defecting the whole boot", async ({
+    connectingTo,
+  }) => {
+    // GIVEN a `REDIS_URL` nothing is listening on — the ordinary shape of a
+    // wrong value in a manifest
+    // WHEN the graph is built
+    const built = connectingTo("redis://127.0.0.1:1");
+
+    // THEN it is a modeled startup failure, which `runMain` exits `1` for.
+    // node-redis retries the first connect forever, so this used to HANG the
+    // build — a pod answering `/livez`, never `/readyz`, with no report and no
+    // exit code for a typo in a manifest. The `'error'` the client emits on
+    // each attempt is absorbed by the adapter's listener; unhandled, the first
+    // one would be an `EventEmitter` throw that never reached this channel.
+    await expect(built).toBeErrTagged(
+      "CacheConnectionFailed",
+      expect.objectContaining({ reason: expect.any(String) }),
+    );
   });
 });
 

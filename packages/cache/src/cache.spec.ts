@@ -23,6 +23,58 @@ describe("readThrough", () => {
     expect(read).toBeOkWith({ stored: { value: "v" }, expired: undefined });
   });
 
+  it("does not store a value whose ttl is not a whole millisecond", async ({ backend }) => {
+    // GIVEN a read-through and a ttl a caller computed from a deadline that has
+    // already passed — the ordinary way a zero or a negative arrives
+    const cache = readThrough(backend);
+
+    // WHEN a value is written under each of the four shapes, and read back
+    const read = await cache
+      .set("zero", "v", { ttlMs: 0 })
+      .flatTap(() => cache.set("negative", "v", { ttlMs: -1 }))
+      .flatTap(() => cache.set("fractional", "v", { ttlMs: 0.4 }))
+      .flatTap(() => cache.set("nan", "v", { ttlMs: Number.NaN }))
+      .flatMap(() => backend.get("zero"))
+      .flatMap((zero) =>
+        backend
+          .get("negative")
+          .flatMap((negative) =>
+            backend
+              .get("fractional")
+              .flatMap((fractional) =>
+                backend.get("nan").map((nan) => ({ zero, negative, fractional, nan })),
+              ),
+          ),
+      );
+
+    // THEN none of them is in the cache, and none of them failed. Storing
+    // without expiry would turn an arithmetic slip into a leak, and the Redis
+    // adapter used to report `PX 0` as `CacheUnavailable` — an outage class,
+    // for a caller's own bug.
+    expect(read).toBeOkWith({
+      zero: undefined,
+      negative: undefined,
+      fractional: undefined,
+      nan: undefined,
+    });
+  });
+
+  it("rounds a ttl the adapter could not have taken whole", async ({ backend, clock }) => {
+    // GIVEN a ttl with a fraction big enough to round up — a value this rounds
+    // rather than refuses, because `1500.5` is an ordinary computed number and
+    // dropping it would surprise the caller who wrote the arithmetic
+    const cache = readThrough(backend);
+
+    // WHEN it is stored and the clock stops one millisecond short of the round
+    const read = await cache
+      .set("k", "v", { ttlMs: 1_000.6 })
+      .flatMap(() => clock.advance(1_000))
+      .flatMap(() => backend.get("k"));
+
+    // THEN the value is still there: it was stored under `1001`, not dropped
+    expect(read).toBeOkWith({ value: "v" });
+  });
+
   it("answers a hit without running the loader", async ({ backend }) => {
     // GIVEN a key the cache already holds
     const cache = readThrough(backend);

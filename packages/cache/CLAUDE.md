@@ -42,6 +42,26 @@ and a wrapper transparent to the `Result`.
   reach by construction: the `get` and the `set` it makes are the observed
   ones, so a read-through emits the hit or miss it really performed rather than
   a fourth operation nobody's dashboard knows.
+- **`readThrough` OVERRIDES `set` rather than spreading it through, and that
+  is what makes `ttlMs` mean one thing.** It is the single point both the
+  direct call and `getOrSet`'s write pass through, so an adapter is handed
+  whole milliseconds or nothing and never has to decide what a zero, a
+  fraction or a `NaN` means. The rule — round, and do not store below 1 ms —
+  is `wholeMs`'s own TSDoc; what it replaced is two adapters disagreeing on
+  all four values, with Redis reporting a caller's bug as `CacheUnavailable`,
+  an outage class an operator pages on.
+- **The Redis adapter bounds the FIRST connect and nothing else.** node-redis
+  retries the initial connect forever (measured against 6.2.1), so a wrong
+  `REDIS_URL` used to hang the build — `/livez` answering, `/readyz` never,
+  no report and no exit code. A `reconnectStrategy` that hands the cause back
+  after `CONNECT_ATTEMPTS` ends the loop and rejects `connect()`, which is
+  what `CacheConnectionFailed` is for; a `connected` flag lets every later
+  reconnect retry without limit, because a server that came back is not a
+  misconfiguration. The client also carries a permanent silent `'error'`
+  listener, for the reason `probes.ts` and `http-runtime.ts` each carry one:
+  an `EventEmitter` with no listener for `'error'` throws, and the kernel's
+  `uncaughtException` handler would tear the application down over a
+  transient socket fault.
 
 ## Deliberately not here
 
