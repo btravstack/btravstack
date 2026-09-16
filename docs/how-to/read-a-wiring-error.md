@@ -34,14 +34,37 @@ you can act on, and it sits where your eye ends up.
 
 ## The markers
 
-| Marker                                              | What happened                                                                                                                                                                                                                       | Where the fix goes                                                                               |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `UNSATISFIED DEPENDENCIES — nothing provides`       | Something in the graph reads a port nothing provides. The port is named by its **id** — a bound `unit` module's own unmet needs join this same channel, since they travel published in the starter's type exactly like an import's. | `provides`, or an import that provides it. Not `exports`.                                        |
-| `NO RUNTIME`                                        | The module exports no port declared over `RuntimePort`, so there is nothing to boot.                                                                                                                                                | Compose a runtime — `HttpModule`/`http()`, `TemporalModule`, `AmqpModule` — and export its port. |
-| `UNSATISFIED RUNTIME PORTS`                         | The runtime resolves a port the module does not **export**.                                                                                                                                                                         | `exports`. The module's own, never a fork's.                                                     |
-| `UNCOVERED CONTROLLERS` / `HANDLERS` / `ACTIVITIES` | An array of pieces leaves a contract leaf unimplemented. The leaf is named beside the marker.                                                                                                                                       | The array: add the missing piece.                                                                |
-| `OVERLAPPING CONTROLLERS`                           | One piece's path sits inside another's, so both would implement the same procedures.                                                                                                                                                | The array: drop one, or mint them at sibling paths.                                              |
-| `UNSLICEABLE CONTRACT KEY`                          | A top-level contract key contains a dot, which a piece path cannot encode.                                                                                                                                                          | Serve that contract with the `{ inject, sync }` form instead.                                    |
+| Marker                                                                             | What happened                                                                                                                                                                                                                       | Where the fix goes                                                                               |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `UNSATISFIED DEPENDENCIES — nothing provides`                                      | Something in the graph reads a port nothing provides. The port is named by its **id** — a bound `unit` module's own unmet needs join this same channel, since they travel published in the starter's type exactly like an import's. | `provides`, or an import that provides it. Not `exports`.                                        |
+| `NO RUNTIME`                                                                       | The module exports no port declared over `RuntimePort`, so there is nothing to boot.                                                                                                                                                | Compose a runtime — `HttpModule`/`http()`, `TemporalModule`, `AmqpModule` — and export its port. |
+| `UNSATISFIED RUNTIME PORTS`                                                        | The runtime resolves a port the module does not **export**.                                                                                                                                                                         | `exports`. The module's own, never a fork's.                                                     |
+| `UNCOVERED CONTROLLERS` / `HANDLERS` / `ACTIVITIES`                                | An array of pieces leaves a contract leaf unimplemented. The leaf is named beside the marker.                                                                                                                                       | The array: add the missing piece.                                                                |
+| `OVERLAPPING CONTROLLERS`                                                          | One piece's path sits inside another's, so both would implement the same procedures.                                                                                                                                                | The array: drop one, or mint them at sibling paths.                                              |
+| `UNSLICEABLE CONTRACT KEY`                                                         | A top-level contract key contains a dot, which a piece path cannot encode.                                                                                                                                                          | Serve that contract with the `{ inject, sync }` form instead.                                    |
+| `UNDECLARED NEEDS — name it in \`needs\` (a slice), or import/provide it (a root)` | A provider in THIS module reads a port the module neither provides nor imports nor names. The port is named by its instance type.                                                                                                   | Two, and the sentence says both — see below.                                                     |
+| `UNDECLARED UNIT KIND`                                                             | A `unit:` record binds a kind the starter does not know. The misspelt kind is named beside the marker, so `"anonymuos"` reads back at you.                                                                                          | The `unit` record's key.                                                                         |
+| `UNGRANTABLE SCOPE`                                                                | A route or procedure requires a scope its scheme's vocabulary does not contain, so no credential could ever satisfy it.                                                                                                             | The scheme's `scopes` array, or the requirement.                                                 |
+| `SERVES NOTHING`                                                                   | A composed answerer covers no route at all.                                                                                                                                                                                         | What you handed it: an empty array, or a contract fragment with no leaves.                       |
+
+### `UNDECLARED NEEDS` names two fixes, and which one is yours depends on what you are writing
+
+This is the marker most likely to send you the wrong way, so the sentence
+carries both halves:
+
+- **A slice** — a module that owns one piece of the surface and expects the
+  root to supply the rest — names the port in `needs`. That is the whole
+  point: a slice states what it expects from outside without naming who
+  provides it.
+- **A composition root** has nobody above it. Naming the port in `needs` moves
+  the complaint one line down, to `start`/`runMain`'s own
+  `UNSATISFIED DEPENDENCIES — nothing provides`, and changes nothing else. Add
+  the module to `imports`, or the provider to `provides`.
+
+**This gate fires FIRST**, at the `Module`/`HttpModule` call, and the one that
+names the real fix for a root fires below it. So a root author who reads only
+the first sentence adds `needs: [Greeter]`, recompiles, and meets the second
+error having made no progress.
 
 ## An unmet dependency
 
@@ -100,6 +123,24 @@ If you see this one, read it and stop: any further error on the array below it
 is a consequence. The array's own gates deliberately **stand down** when a
 piece's key is a union, which is what a refused mint looks like from the
 outside.
+
+### Stop at the first error, generally
+
+That advice is not special to the mint. A wiring mistake normally produces one
+diagnostic you can act on and a **cascade** of derived ones, and the derived
+ones are recognisable: they name no port. After a good
+`UNCOVERED CONTROLLERS`, for instance, you will see
+
+```text
+UNDECLARED NEEDS — …: AnyPortInstance
+UNSATISFIED DEPENDENCIES — nothing provides: string
+```
+
+`AnyPortInstance` and `string` are what a port id degrades to once the
+composing call has already been refused — nothing was inferred, so there was
+nothing to name. Fix the first error that names something real, recompile, and
+read again. A marker whose port is a placeholder is a consequence, never a
+second mistake.
 
 ## Two lines of noise you can turn off
 

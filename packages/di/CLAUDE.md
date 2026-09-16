@@ -208,10 +208,18 @@ not. **The property, rather than `StartGate`'s bare string, is what makes the
 diagnostic name the port** (measured, both ways):
 
 ```text
-Property '"UNDECLARED NEEDS — name it in `needs`"' is missing in type
+Property '"UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)"' is missing in type
   '{ provides: [...]; exports: [...]; }' but required in type
-  '{ readonly "UNDECLARED NEEDS — name it in `needs`": Logger; }'.
+  '{ readonly "UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)": Logger; }'.
 ```
+
+**The sentence names BOTH fixes, and that is not redundancy.** A slice names
+the port in `needs` and lets whoever composes it supply one; a composition
+ROOT has no ancestor, so naming it there moves the complaint one line down to
+`start`'s own `UNSATISFIED DEPENDENCIES` and changes nothing else. Measured on
+a beginner's first `HttpModule`, this gate fires FIRST — at the module call —
+and the one naming the real fix for a root fires below it, so the older
+"name it in `needs`" sent a root author the wrong way twice in a row.
 
 Two details in that type are load-bearing and both were measured after they
 broke something:

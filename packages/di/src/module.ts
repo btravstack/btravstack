@@ -111,8 +111,9 @@ export type NeedsGate<
   ? unknown
   : {
       // Inline, never a named alias: an alias prints unreduced and the reader
-      // gets their own tuples back instead of the port.
-      readonly "UNDECLARED NEEDS — name it in `needs`": Exclude<
+      // gets their own tuples back instead of the port. Both fixes stay in the
+      // sentence: a root cannot discharge a need by naming it.
+      readonly "UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)": Exclude<
         Exclude<NeedOf<P[number]>, Available<I, P>>,
         InstanceType<N[number]> | Scope
       >;

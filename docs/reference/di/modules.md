@@ -111,9 +111,9 @@ const Slice = Module("Slice")({
 Leave it out and the call does not compile, and the diagnostic names the port:
 
 ```text
-Property '"UNDECLARED NEEDS — name it in `needs`"' is missing in type
+Property '"UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)"' is missing in type
   '{ provides: [...]; exports: [...]; }' but required in type
-  '{ readonly "UNDECLARED NEEDS — name it in `needs`": Logger; }'.
+  '{ readonly "UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)": Logger; }'.
 ```
 
 The gate reads **this module's own providers only**. A module that merely

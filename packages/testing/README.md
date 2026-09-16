@@ -92,6 +92,14 @@ answers the very instances the running graph holds once it is built — after
   provides it where a starter would; `unit` is a module every submitted unit
   forks, with no seed, before its work runs — and what that module needs joins
   `module`'s own, so `start` names it instead of the first `submit()` failing.
+- **`overridden(module, [providers])`** — substitute named providers into your
+  **real** composition root, rather than maintaining a parallel test root
+  beside it. It replaces one **provider**, never a subsystem: the replaced
+  provider's siblings still construct, so swapping a whole adapter stack is
+  still a different module composed in its place. An override for a port the
+  tree stopped providing is a `WiringDefect` ("nothing to override"), which is
+  what keeps a test root from drifting silently away from the real one — the
+  drift that four hand-maintained parallel roots had already produced here.
 - **`createFakeClock(start?)`** — a `Clock` for `StartOptions.clock` whose
   time moves only on `advance(ms)`.
 

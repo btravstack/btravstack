@@ -97,12 +97,20 @@ dependencies** beyond `node:` builtins — the default log sink is
 unconditionally; `@amqp-contract/contract` is deliberately not in its list.
 
 ::: warning Two exact-beta pins
-`@orpc/{client,contract,server}` are pinned to `2.0.0-beta.23` in this
-repository's catalog: oRPC v2's `latest` dist-tag is still the 1.x line, while
-`@unthrown/orpc` peers on `^2.0.0-beta`, so an unpinned range resolves 1.x and
-fails a strict peer check. `@temporal-contract/*` are pinned to `8.0.0-beta.5`
-for the same shape of reason (`latest` is 7.x, which peers on `unthrown@^4`).
-Pin the same versions in an application until both go stable.
+`@orpc/{client,contract,server}` and `@temporal-contract/*` are pinned to an
+**exact** beta in this repository's catalog, and an application should pin the
+same ones until they go stable.
+
+The reason is the same for both: each library's `latest` dist-tag still points
+at its previous major — oRPC's at 1.x, temporal-contract's at 7.x — while the
+adapters here peer on the beta line, so an unpinned range resolves the old
+major and fails a strict peer check.
+
+**The versions are deliberately not written here.** They move, and a number in
+prose goes stale on a commit that never touched this page. `pnpm-workspace.yaml`
+is where they live; each entry carries its own comment, and the install
+snippets on this site are checked against it by the
+[install-pin gate](https://github.com/btravstack/btravstack/blob/main/docs/scripts/check-install-pins.ts).
 :::
 
 ## Install
@@ -156,33 +164,34 @@ reached end of life on 2026-04-30.
 
 ## Entry points
 
-| Specifier                         | Contents                                                                                                                                                                                                                                                                         |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@btravstack/core`                | `start`, `runMain`, `RuntimePort`, `RuntimeStartFailed`, `currentUnit`, `systemClock`, `stderrSink` and the types — see [start](/reference/core/start)                                                                                                                           |
-| `@btravstack/testing`             | `bootFixture`, `tapped`, `testRuntime`, `TestRuntimePort`, `createFakeClock` and the types — a package of its own, so a production bundle never pulls the fakes in; see [@btravstack/testing](/reference/testing)                                                                |
-| `@btravstack/config`              | `Env`, `Config`, `ConfigInvalid`, `ConfigFieldInvalid` and the types — see [@btravstack/config](/reference/config)                                                                                                                                                               |
-| `@btravstack/di`                  | `Port`, `Provider`, `Module`, `Context` and the types — see [Ports](/reference/di/ports)                                                                                                                                                                                         |
-| `@btravstack/contract`            | `authenticated`, `isAuthenticated`, `Authenticated`, `PrincipalKey`, `IsMarked` — see [@btravstack/contract](/reference/contract)                                                                                                                                                |
-| `@btravstack/observability`       | `createLogger`, `jsonSink`, `observability`, `LoggerConfig`, `logLevel`, `kernelEvents`, `Line`, `Sink` — and `pinoSink` / `otel` / `UnitSpanModule` behind their subpaths. The ports it implements are the kernel's — see [@btravstack/observability](/reference/observability) |
-| `@btravstack/observability/pino`  | `pinoSink` alone, so `pino` stays an optional peer a consumer that never imports this never installs                                                                                                                                                                             |
-| `@btravstack/observability/otel`  | `otel` and `UnitSpanModule` — the OpenTelemetry SDK as a resourceful provider, so `@opentelemetry/*` stays an optional peer. (`Instrumentations` is the kernel's port, exported by `@btravstack/core`.) See [@btravstack/observability](/reference/observability)                |
-| `@btravstack/cache`               | `Cache`, `cache`, `memoryCacheBackend`, `CacheUnavailable` and the types — see [@btravstack/cache](/reference/cache)                                                                                                                                                             |
-| `@btravstack/cache/redis`         | `redisCacheBackend` alone, so `redis` stays an optional peer                                                                                                                                                                                                                     |
-| `@btravstack/mailer`              | `Mailer`, `mailer`, `recordingMailerBackend`, `MailNotSent` and the types — see [@btravstack/mailer](/reference/mailer)                                                                                                                                                          |
-| `@btravstack/mailer/smtp`         | `smtpMailerBackend` alone, so `nodemailer` stays an optional peer                                                                                                                                                                                                                |
-| `@btravstack/storage`             | `Storage`, `storage`, `memoryStorageBackend`, `StorageUnavailable` and the types — see [@btravstack/storage](/reference/storage)                                                                                                                                                 |
-| `@btravstack/storage/s3`          | `s3StorageBackend` alone, so the two `@aws-sdk` packages stay optional peers                                                                                                                                                                                                     |
-| `@btravstack/prisma`              | the Prisma starter — see [@btravstack/prisma](/reference/prisma)                                                                                                                                                                                                                 |
-| `@btravstack/http-server`         | `HttpModule`, `defineHttp`, `http`, `httpServer`, `htmx`, `html`, `HttpAuthenticator`, the `HttpHandler`, `HttpRuntime` and `HttpConfig` ports and the types — see [@btravstack/http-server](/reference/http-server)                                                             |
-| `@btravstack/http-server/openapi` | the OpenAPI answerer, so its own peers stay optional                                                                                                                                                                                                                             |
-| `@btravstack/temporal-worker`     | `TemporalModule`, `TemporalActivities`, `TemporalWorkflowActivities`, `temporal` and the types — see [@btravstack/temporal-worker](/reference/temporal-worker)                                                                                                                   |
-| `@btravstack/amqp-worker`         | `AmqpModule`, `AmqpHandlers`, `AmqpHandler`, `amqp` and the types — see [@btravstack/amqp-worker](/reference/amqp-worker)                                                                                                                                                        |
+Every package's root specifier is its whole surface, and
+[`/api/`](/api/) is the list to trust: it is **generated** from each package's
+own `exports` map, so it cannot drift from what is published. Each package's
+own reference page walks the same surface in prose.
 
-All thirteen packages ship dual CJS/ESM builds with `.d.ts` files and no source
-maps (the tarball carries no `src/`, so a map would be a dead end). **Five** of
-them carry extra entry points: `@btravstack/observability` behind `/pino` and
-`/otel`, `@btravstack/cache` behind `/redis`, `@btravstack/mailer` behind
-`/smtp`, `@btravstack/storage` behind `/s3` — each keeping a heavy dependency
-an optional peer — and `@btravstack/http-server` behind `/openapi`. The list
-above is the one to trust: `/api/` derives it from every package's own
-`exports` map.
+What is worth stating here rather than derived is the **subpath** shape, since
+a subpath is a decision a reader acts on: it exists so a heavy dependency can
+stay an **optional peer** that a consumer who never imports it never installs.
+
+| Subpath                                | What it holds                                   | The optional peer it keeps out       |
+| -------------------------------------- | ----------------------------------------------- | ------------------------------------ |
+| `@btravstack/contract/zod`             | the cursor page's schema                        | `zod`                                |
+| `@btravstack/observability/pino`       | `pinoSink`                                      | `pino`                               |
+| `@btravstack/observability/otel`       | `otel`, `UnitSpanModule`                        | the `@opentelemetry/*` SDK           |
+| `@btravstack/cache/redis`              | the Redis adapter                               | `redis`                              |
+| `@btravstack/mailer/smtp`              | the SMTP adapter                                | `nodemailer`                         |
+| `@btravstack/storage/s3`               | the S3 adapter                                  | the two `@aws-sdk` packages          |
+| `@btravstack/prisma/rls`               | row-level security, pinned to the unit's tenant | —                                    |
+| `@btravstack/http-server/openapi`      | `openApiDocument`                               | `@orpc/openapi`, `@orpc/json-schema` |
+| `@btravstack/http-server/jwt`          | `jwtAuthenticator`                              | `jose`                               |
+| `@btravstack/http-server/session`      | `sessionCodec`, `sessionAuthenticator`          | —                                    |
+| `@btravstack/http-server/oidc`         | `oidc`, the login answerer                      | `openid-client`                      |
+| `@btravstack/temporal-worker/schedule` | `ensureSchedule`                                | `@temporal-contract/client`          |
+| `@btravstack/testing/jwt`              | `localIssuer`, the issuer a test signs with     | `jose`                               |
+
+Two of those keep no peer out and are subpaths for a different reason: the
+surface is separable and most graphs do not want it. `/session` is the cookie
+half of authentication, and `/rls` is a policy a deployment opts into.
+
+Every published package ships dual CJS/ESM builds with `.d.ts` files and no
+source maps — the tarball carries no `src/`, so a map would be a dead end.

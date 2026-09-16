@@ -165,6 +165,21 @@ the router's provider declares `Greeter`, and nothing supplies it. That is
 di's gate ([Compile errors, not surprises](/explanation/compile-time-wiring)),
 and it fires before any process exists.
 
+**Read the sentence, and read it whole.** The error is at the `HttpModule`
+call, and its last line is:
+
+```text
+UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)
+```
+
+Two fixes, because two readers meet this. A **slice** names the port in
+`needs` and lets whoever composes it supply one. A **composition root** — which
+`App` is — has nobody above it, so naming it in `needs` only moves the
+complaint one line down, to `runMain`'s own
+`UNSATISFIED DEPENDENCIES — nothing provides`. Put the module back in
+`imports`. [Read a wiring error](/how-to/read-a-wiring-error) has the marker
+table and where each fix goes.
+
 ## Step 6 — Write `main.ts`
 
 **`main.ts`**
