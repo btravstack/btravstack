@@ -80,7 +80,11 @@ export type CacheService = CacheBackendService & {
 const wholeMs = (ttlMs: number | undefined): number | undefined => {
   if (ttlMs === undefined) return undefined;
   const rounded = Math.round(ttlMs);
-  return Number.isFinite(rounded) && rounded >= 1 ? rounded : undefined;
+  // `isSafeInteger`, not `isFinite`: `1e100` is finite and rounds to itself, and
+  // Redis answers an argument error for a `PX` that large — which would report
+  // the caller's own arithmetic as `CacheUnavailable`, the outage class this
+  // whole rule exists to keep it out of.
+  return Number.isSafeInteger(rounded) && rounded >= 1 ? rounded : undefined;
 };
 
 /**

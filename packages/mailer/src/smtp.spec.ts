@@ -1,6 +1,7 @@
 import { Env } from "@btravstack/config";
 import { HealthChecks, runHealthChecks } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
+import { OkAsync } from "unthrown";
 import { describe, expect } from "vitest";
 import { vi } from "vitest";
 import { inject } from "vitest";
@@ -131,26 +132,28 @@ describe("smtpMailer", () => {
     });
   });
 
-  it("declares its own deadline, so a relay that never answers is reported rather than waited on", async () => {
-    // GIVEN the contributed check pointed at a relay that accepts the
-    // connection and never greets, with the deadline cut to keep the suite
-    // fast — which is what `timeoutMs` on the contribution exists for
-    const root = Module("HangingFixture")({
+  it("declares a deadline of its own on the contribution", async () => {
+    // GIVEN the adapter composed anywhere at all — the deadline is a property
+    // of what it CONTRIBUTES, not of any relay it is pointed at
+    const root = Module("DeadlineFixture")({
       imports: [smtpMailer()],
       provides: [Provider(Env)({ inject: {}, value: { SMTP_URL: "smtp://127.0.0.1:1" } })],
       exports: [HealthChecks],
     });
 
-    // WHEN the check is run through the fold, which is what owns the race now
-    const report = await Module.scoped(root, (ctx) =>
-      runHealthChecks(ctx.get(HealthChecks).map((check) => ({ ...check, timeoutMs: 5 }))),
+    // WHEN the contributed check is inspected rather than run
+    const declared = await Module.scoped(root, (ctx) =>
+      OkAsync(
+        ctx.get(HealthChecks).map((check) => ({ name: check.name, timeoutMs: check.timeoutMs })),
+      ),
     );
 
-    // THEN the component is named and unhealthy rather than the probe being
-    // held open — this race used to be hand-rolled in this package
-    expect(report).toBeOkWith({
-      status: "unhealthy",
-      components: [{ name: "mailer", status: "unhealthy", reason: expect.any(String) }],
-    });
+    // THEN it names a `timeoutMs` of its own. An SMTP greeting and a `SELECT 1`
+    // over a warm pool are two orders of magnitude apart, which is why the
+    // number is on the contribution — and why the fold's 800 ms default would
+    // be a false unhealthy here. What that deadline DOES is
+    // `packages/core/src/health.spec.ts`'s: this asserts only that the adapter
+    // still declares one, which a test that overwrote it could not.
+    expect(declared).toBeOkWith([{ name: "mailer", timeoutMs: 5_000 }]);
   });
 });

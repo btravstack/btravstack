@@ -84,10 +84,14 @@ Integers are **decimal digits and an optional sign**, then `Number()` and
 `""` being an error rather than an absent variable is what stops `PORT=`
 binding the ephemeral port through `Number("") === 0`.
 
-The grammar is narrower than `Number`'s on purpose. `Number` accepts `0x1F90`,
-`1e3`, `0b101`, `0o17`, `+5` and `7.0`, and a manifest holding any of them is
-far likelier to be a typo than an intention — `PORT=0x1F90` binding `8080` is a
-field guessing, where naming it is a field an operator can argue with.
+The grammar is narrower than `Number`'s on purpose. `Number` also accepts
+`0x1F90`, `1e3`, `0b101`, `0o17` and `7.0`, and a manifest holding any of them
+is far likelier to be a typo than an intention — `PORT=0x1F90` binding `8080`
+is a field guessing, where naming it is a field an operator can argue with.
+
+A leading sign is the one spelling kept: `+5` and `-5` are decimal, unambiguous
+and mean what they look like, so a bound is what refuses `-5` for a port rather
+than the grammar.
 
 A flag is `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, in either case.
 Anything else is an **error rather than a falsy reading**: a deployment that

@@ -75,6 +75,23 @@ describe("redisCache", () => {
     );
   });
 
+  it("answers a defect for a value that serialises to nothing at all", async ({
+    redis,
+    keyPrefix,
+  }) => {
+    // GIVEN the OTHER half of what `JSON.stringify` refuses, and the quiet
+    // half: a function returns `undefined` rather than throwing, as a
+    // top-level `undefined` and a symbol also do
+    // WHEN it is written
+    // THEN it is a defect like the `BigInt`. Unchecked, that `undefined`
+    // reached `client.set`, which refuses it — so a caller's serialisation bug
+    // arrived as `CacheUnavailable`, the outage class this package reserves
+    // for a server that could not answer.
+    await expect(redis.set(`${keyPrefix}fn`, () => 1)).toBeDefectWith(
+      expect.objectContaining({ constructor: TypeError }),
+    );
+  });
+
   it("forgets a deleted key", async ({ redis, keyPrefix }) => {
     // GIVEN a stored key
     // WHEN it is deleted and read back
@@ -106,6 +123,24 @@ describe("redisCache, when it cannot connect at all", () => {
     await expect(built).toBeErrTagged(
       "CacheConnectionFailed",
       expect.objectContaining({ reason: expect.any(String) }),
+    );
+  });
+
+  it("answers CacheConnectionFailed for a URL the client cannot even parse", async ({
+    connectingTo,
+  }) => {
+    // GIVEN a `REDIS_URL` that is not one. `Config.string` only asks that it is
+    // present, so the value reaches `createClient` — which parses it
+    // SYNCHRONOUSLY and throws `TypeError: Invalid protocol` here
+    // WHEN the graph is built
+    const built = connectingTo("http://localhost:6379");
+
+    // THEN it is the same modeled startup failure a dead server gives, rather
+    // than a defect and exit `70`: the throw happens before `connect()` is ever
+    // reached, so the `fromPromise` guarding that call could not see it.
+    await expect(built).toBeErrTagged(
+      "CacheConnectionFailed",
+      expect.objectContaining({ reason: expect.stringContaining("Invalid protocol") }),
     );
   });
 });

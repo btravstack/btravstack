@@ -2,7 +2,7 @@ import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import type { Scope } from "@btravstack/di";
 import { Module, Port, Provider } from "@btravstack/di";
 import { createClient, type RedisClientType } from "redis";
-import { OkAsync, TaggedError, fromPromise, fromThrowable } from "unthrown";
+import { OkAsync, TaggedError, fromPromise, fromThrowable, type AsyncResult } from "unthrown";
 
 import {
   CacheBackend,
@@ -61,6 +61,23 @@ export const redisSchema = Config.object({ url: Config.string("REDIS_URL") });
 class RedisConnection extends Port("RedisConnection")<RedisClientType> {}
 
 /**
+ * `JSON.stringify`, with its two silent answers made loud.
+ *
+ * It THROWS on a cycle and on a `BigInt`, which the pipeline turns into the
+ * defect this package says an unencodable value is. It **returns `undefined`**
+ * for a top-level `undefined`, a function and a symbol — no throw at all — and
+ * that `undefined` would then reach `client.set`, which refuses it, so a
+ * caller's serialisation bug arrived as `CacheUnavailable`: an outage class,
+ * for exactly the case the contract calls a defect.
+ */
+const encoded = (value: unknown): string => {
+  const json = JSON.stringify(value);
+  // oxlint-disable-next-line unthrown/no-throw -- `Defect` has no public constructor, and this is the channel `JSON.stringify`'s own throw already takes; the alternative is reporting a caller's bug as an outage
+  if (json === undefined) throw new TypeError("a cache value must be JSON-encodable");
+  return json;
+};
+
+/**
  * The adapter's service over a connected client. Values are JSON, which is what
  * every other reader of that database already speaks. A value `JSON.stringify`
  * cannot take is a **defect**, not a `CacheUnavailable`: a bug in the caller,
@@ -89,12 +106,12 @@ export const redisCacheBackend = (client: RedisClientType): CacheBackendService 
     // `AsyncResult` as a synchronous exception rather than as the defect this
     // package says a value it cannot encode is.
     OkAsync()
-      .map(() => JSON.stringify(value))
-      .flatMap((encoded) =>
+      .map(() => encoded(value))
+      .flatMap((json) =>
         fromPromise(
           options?.ttlMs === undefined
-            ? client.set(key, encoded)
-            : client.set(key, encoded, { expiration: { type: "PX", value: options.ttlMs } }),
+            ? client.set(key, json)
+            : client.set(key, json, { expiration: { type: "PX", value: options.ttlMs } }),
           () => new CacheUnavailable({ operation: "set", key }),
         ),
       )
@@ -104,6 +121,33 @@ export const redisCacheBackend = (client: RedisClientType): CacheBackendService 
       () => undefined,
     ),
 });
+
+/**
+ * The connect half, once the client exists: bounded by the reconnect strategy
+ * the caller built into it, and modeled either way.
+ */
+const connecting = (
+  client: RedisClientType,
+  onConnected: () => void,
+): AsyncResult<RedisClientType, CacheConnectionFailed> => {
+  // Permanent, and deliberately silent. node-redis emits `'error'` on a socket
+  // drop, a decoder fault or a failed keep-alive, and an `EventEmitter` with no
+  // `'error'` listener THROWS — which the kernel's `uncaughtException` handler
+  // turns into a whole-application teardown at exit 70, over a fault the
+  // client's own reconnect recovers from in milliseconds. Nothing is logged
+  // here because the adapter holds no logger and the next operation reports
+  // itself: `CacheUnavailable` is already on every method's channel.
+  client.on("error", () => {});
+  return fromPromise(
+    client.connect(),
+    (cause: unknown) =>
+      new CacheConnectionFailed({
+        reason: cause instanceof Error ? cause.message : "the server did not answer",
+      }),
+  )
+    .tap(onConnected)
+    .map(() => client);
+};
 
 /**
  * The Redis adapter: one connection, opened with the scope and closed with it,
@@ -124,40 +168,37 @@ export const redisCache = (): Module<
         inject: { config: CacheConfig },
         acquire: ({ config }) => {
           let connected = false;
-          const client = createClient({
-            url: config.url,
-            socket: {
-              // Handing the cause back is what ENDS the retry loop: node-redis
-              // rejects `connect()` with it rather than scheduling another
-              // attempt. A number is a delay, which is the arm a reconnect
-              // after boot always takes.
-              reconnectStrategy: (retries: number, cause: Error) =>
-                connected || retries < CONNECT_ATTEMPTS
-                  ? Math.min((retries + 1) * 50, 1_000)
-                  : cause,
-            },
-          }) as RedisClientType;
-          // Permanent, and deliberately silent. node-redis emits `'error'` on a
-          // socket drop, a decoder fault or a failed keep-alive, and an
-          // `EventEmitter` with no `'error'` listener THROWS — which the
-          // kernel's `uncaughtException` handler turns into a whole-application
-          // teardown at exit 70, over a fault the client's own reconnect
-          // recovers from in milliseconds. Nothing is logged here because the
-          // adapter holds no logger and the next operation reports itself:
-          // `CacheUnavailable` is already on every method's channel, and that
-          // is the line an operator should be reading.
-          client.on("error", () => {});
-          return fromPromise(
-            client.connect(),
+          // `createClient` parses the URL SYNCHRONOUSLY and throws on one it
+          // cannot take — measured against 6.2.1: `TypeError: Invalid URL` for
+          // a malformed value, `Invalid protocol` for `http://`. Uncaught, that
+          // is a defect and exit 70, bypassing the `CacheConnectionFailed` this
+          // provider declares — the same hole the `connect()` rejection had,
+          // one call earlier.
+          const opened = fromThrowable(
+            () =>
+              createClient({
+                url: config.url,
+                socket: {
+                  // Handing the cause back is what ENDS the retry loop:
+                  // node-redis rejects `connect()` with it rather than
+                  // scheduling another attempt. A number is a delay, which is
+                  // the arm a reconnect after boot always takes.
+                  reconnectStrategy: (retries: number, cause: Error) =>
+                    connected || retries < CONNECT_ATTEMPTS
+                      ? Math.min((retries + 1) * 50, 1_000)
+                      : cause,
+                },
+              }) as RedisClientType,
             (cause: unknown) =>
               new CacheConnectionFailed({
-                reason: cause instanceof Error ? cause.message : "the server did not answer",
+                reason: cause instanceof Error ? cause.message : "REDIS_URL is not a Redis URL",
               }),
-          )
-            .tap(() => {
+          )();
+          return opened.toAsync().flatMap((client) =>
+            connecting(client, () => {
               connected = true;
-            })
-            .map(() => client);
+            }),
+          );
         },
         release: (client) => client.close(),
       }),

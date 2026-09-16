@@ -19,7 +19,6 @@ const defecting = (name: string, message: string): HealthCheck => ({
     }),
 });
 
-/** A component that accepts the question and never answers — no error, no defect, only silence. */
 const silent = (name: string, timeoutMs?: number): HealthCheck => ({
   name,
   check: () => fromSafePromise(new Promise<void>(() => {})),
