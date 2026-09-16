@@ -98,11 +98,16 @@ flush and an embedding host keep its own lifetime; the process ends when the
 event loop empties, and a transport still winding down is holding it open. An
 AMQP connection closes only once the deliveries it already took have drained,
 and Temporal's native Runtime only once every worker and connection is
-deregistered. Under Kubernetes that ends at `terminationGracePeriodSeconds`,
-with SIGKILL, so exit `2` is what this report SAYS rather than what the
-orchestrator observes. The report reaches stderr first either way, which is
-what `kubectl logs --previous` is for — and it is the whole reason the
-`stopping` phase got a deadline of its own.
+deregistered.
+
+Under a **Kubernetes-initiated** shutdown — the case a drain normally comes
+from — that ends at `terminationGracePeriodSeconds`, with SIGKILL, so exit `2`
+is what this report SAYS rather than what the orchestrator observes. **Outside
+that lifecycle nothing kills it**: a drain that hits its deadline in a test, a
+dev loop or an embedder leaves the process alive until the transport finishes
+on its own clock. The report reaches stderr first either way, which is what
+`kubectl logs --previous` is for — and it is the whole reason the `stopping`
+phase got a deadline of its own.
 
 ## Reading one
 

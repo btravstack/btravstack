@@ -132,14 +132,18 @@ that proves them, rather than duplicated).
    own clock and usually finishes — an abandoned AMQP delivery is acked a
    moment later, an abandoned Temporal activity completes. That same transport
    is what holds the event loop open, and `runMain` never calls
-   `process.exit()` (thesis #4), so under Kubernetes an abandoned drain ends
-   at `terminationGracePeriodSeconds` with SIGKILL and exit `2` is what the
-   REPORT says rather than what the orchestrator observes. Forcing the
-   transport shut was considered and declined: destroying an AMQP connection
-   under an ack in flight loses that ack, which is worse than a SIGKILL the
-   orchestrator was going to send anyway. Stated on four pages rather than
-   fixed, which is the honest half of "the kernel stops waiting rather than
-   cancelling".
+   `process.exit()` (thesis #4), so nothing here terminates the process.
+   Under a **Kubernetes-initiated** shutdown that ends at
+   `terminationGracePeriodSeconds` with SIGKILL, and exit `2` is what the
+   REPORT says rather than what the orchestrator observes; **outside that
+   lifecycle nothing kills it** and the process stays alive until the
+   transport is done — the distinction matters for a test, a dev loop and an
+   embedder, which is where a drain deadline is otherwise most often met.
+   Forcing the transport shut was considered and declined: destroying an AMQP
+   connection under an ack in flight loses that ack, which is worse than a
+   SIGKILL the orchestrator was going to send anyway. Stated on the pages
+   rather than fixed, which is the honest half of "the kernel stops waiting
+   rather than cancelling".
 
 4. **The unit `AbortSignal` fires at the drain deadline.**
    `invariants.spec.ts` → _"4. the unit AbortSignal fires at the drain

@@ -25,10 +25,14 @@ export type DrainReport = {
    * **The consequence, stated because nothing else states it: the process may
    * not end by itself.** `runMain` sets an exit code and deliberately never
    * calls `process.exit()`, so the process ends when the event loop empties —
-   * and a transport still winding down is holding it open. Under Kubernetes
-   * that ends at `terminationGracePeriodSeconds`, with SIGKILL. The exit code
-   * `2` is therefore what the report SAYS, not necessarily what the
-   * orchestrator observes; `kubectl logs --previous` carries the report either
+   * and a transport still winding down is holding it open. Nothing here
+   * terminates it.
+   *
+   * Under a Kubernetes-initiated shutdown that ends at
+   * `terminationGracePeriodSeconds`, with SIGKILL, so exit `2` is what the
+   * report SAYS rather than what the orchestrator observes. Outside that
+   * lifecycle there is no SIGKILL: the process simply stays alive until the
+   * transport is done. `kubectl logs --previous` carries the report either
    * way, which is what it is for.
    */
   readonly abandoned: number;

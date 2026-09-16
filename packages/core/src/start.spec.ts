@@ -564,7 +564,9 @@ describe("runtimeInfo", () => {
       probes: false,
       onEvent: () => {},
     });
-    await expect(app.runtimeInfo()).toBeOkWith({ name: "selfStopping" });
+    // Setup synchronisation, not an assertion: the test's one `expect` is on
+    // `exited` below.
+    (await app.runtimeInfo()).get();
 
     // WHEN it reports that it has stopped
     gave.resolve();
@@ -579,11 +581,12 @@ describe("runtimeInfo", () => {
     );
   });
 
-  it("does not report runtimeStopped when the runtime stopped because it was asked", async () => {
+  it("withdraws the stopped channel when the kernel is the one that asked", async () => {
     // GIVEN a runtime whose `stopped` channel is wired the way a real one is:
     // it settles when the transport ends, and withdraws when the end was the
     // kernel's own doing
     let asked = false;
+    let channelSettled = false;
     const ended = Promise.withResolvers<void>();
     const wired: Runtime<never, { readonly name: string }> = {
       name: "wired",
@@ -602,9 +605,11 @@ describe("runtimeInfo", () => {
             return OkAsync();
           },
           stopped: () =>
-            fromSafePromise(ended.promise).flatMap(() =>
-              asked ? fromSafePromise(new Promise<void>(() => {})) : OkAsync(),
-            ),
+            fromSafePromise(ended.promise)
+              .flatMap(() => (asked ? fromSafePromise(new Promise<void>(() => {})) : OkAsync()))
+              .tap(() => {
+                channelSettled = true;
+              }),
         }),
     };
     const app = start(runtimeModule(wired), {
@@ -612,15 +617,19 @@ describe("runtimeInfo", () => {
       probes: false,
       onEvent: () => {},
     });
-    await app.runtimeInfo();
+    (await app.runtimeInfo()).get();
 
     // WHEN a caller stops it
     app.stop();
+    const report = await app.exited;
 
-    // THEN the reason is the caller's. `Promise.withResolvers`' `resolve` is
-    // idempotent, so a channel that resolved on the ordinary path could not
-    // rewrite this — but it would race every clean stop, and a runtime with
-    // nothing to report is meant to withdraw rather than answer.
-    await expect(app.exited).toBeOkWith(expect.objectContaining({ reason: "runtimeStopped" }));
+    // THEN the channel never settled. The REASON cannot tell the two apart —
+    // `RunningApp.stop()` reports `runtimeStopped` whatever the channel does —
+    // so what this asserts is the obligation itself: an arm that settled here
+    // would race every clean shutdown.
+    expect({ reason: report.getOrThrow().reason, channelSettled }).toEqual({
+      reason: "runtimeStopped",
+      channelSettled: false,
+    });
   });
 });

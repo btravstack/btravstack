@@ -1,8 +1,10 @@
+import type { Serving } from "@btravstack/core";
 import type { Worker } from "@temporalio/worker";
+import type { AsyncResult } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
 import { it, undeclared } from "./__tests__/test-fixtures.js";
-import { poll } from "./temporal-runtime.js";
+import { poll, type TemporalInfo } from "./temporal-runtime.js";
 
 describe("temporal", () => {
   it("publishes the task queue and namespace it polls", async ({ server, serve }) => {
@@ -437,12 +439,24 @@ const deferred = (): {
   return { promise, settle };
 };
 
+/**
+ * The channel, refused if it is absent. `Serving.stopped` is OPTIONAL, so
+ * `serving.stopped?.()` on a `poll()` that stopped providing it would skip the
+ * callback and leave every assertion below passing on nothing.
+ */
+const stoppedOf = (serving: Serving<TemporalInfo>): (() => AsyncResult<void, never>) => {
+  const channel = serving.stopped;
+  // oxlint-disable-next-line unthrown/no-throw -- a test-only guard: a `poll()` that stopped declaring `stopped` is a regression the tests below could not otherwise see
+  if (channel === undefined) throw new Error("[temporal] poll() declared no `stopped` channel");
+  return channel;
+};
+
 describe("temporal, when the worker stops on its own account", () => {
   it("settles `stopped` for a run that ended with nobody asking", async () => {
     // GIVEN a worker whose `run()` rejects mid-flight, which is what a worker
     // reaching `FAILED` looks like from here
     const run = deferred();
-    const serving = poll(stubWorker(run.promise), "t", "ns");
+    const stopped = stoppedOf(poll(stubWorker(run.promise), "t", "ns"));
 
     // WHEN it fails
     run.settle(new Error("worker failed"));
@@ -451,7 +465,7 @@ describe("temporal, when the worker stops on its own account", () => {
     // rejection used to sit on `running` until a shutdown somebody else
     // requested came along to read it, so a worker that had stopped polling
     // left the process alive with `/readyz` answering 200.
-    await expect(serving.stopped?.()).toBeOk();
+    await expect(stopped()).toBeOk();
   });
 
   it("withdraws `stopped` for a run the kernel ended", async () => {
@@ -459,7 +473,7 @@ describe("temporal, when the worker stops on its own account", () => {
     const run = deferred();
     const serving = poll(stubWorker(run.promise), "t", "ns");
     let settled = false;
-    void serving.stopped?.().map(() => {
+    void stoppedOf(serving)().map(() => {
       settled = true;
     });
 

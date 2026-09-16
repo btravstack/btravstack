@@ -140,11 +140,18 @@ races every clean shutdown.
 <!-- doctest: skip — an object-property excerpt, not a statement: the compiled form is `@btravstack/temporal-worker`'s own `stopped`, which this fence quotes -->
 
 ```ts
-stopped: () => running.flatMap(() => (asked ? withdrawn() : OkAsync()));
+stopped: () =>
+  running.recoverDefect(() => Ok(undefined)).flatMap(() => (asked ? withdrawn() : OkAsync()));
 ```
 
 where `asked` is set by your own `drain` and `stop`, and `withdrawn()` is an
-`AsyncResult` that never settles. See
+`AsyncResult` that never settles.
+
+**`recoverDefect` first, and it is the whole point of the arm.** `flatMap` does
+not run its callback on a `Defect`, and a transport that gave up is exactly the
+case whose wait defects — so without it the channel stays silent on the one
+path it exists for, and withdraws on none. `AsyncResult<T, never>` empties the
+ERROR channel only. See
 [`Serving.stopped`](/reference/core/runtime#when-a-runtime-stops-on-its-own).
 
 A transport that can fail to come up answers with `RuntimeStartFailed`, the one

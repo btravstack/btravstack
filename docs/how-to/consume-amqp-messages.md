@@ -333,8 +333,10 @@ exits, not when the drain deadline passes.
 **And the process does not end on its own.** `runMain` sets an exit code and
 never calls `process.exit()`, and `worker.close()` closes the connection only
 once the deliveries it already took have drained — so the event loop stays
-alive and Kubernetes ends the pod at `terminationGracePeriodSeconds`. The exit
-code `2` is what the report says rather than what the orchestrator observes.
+alive. Under a Kubernetes-initiated shutdown the pod then ends at
+`terminationGracePeriodSeconds`, and exit `2` is what the report says rather
+than what the orchestrator observes; outside that lifecycle nothing kills it
+and the process waits for the deliveries.
 
 Nothing here forces the connection shut, deliberately: destroying it under an
 ack in flight loses that ack, which is a worse outcome than a SIGKILL the

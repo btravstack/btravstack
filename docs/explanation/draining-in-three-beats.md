@@ -56,10 +56,13 @@ process ends when the event loop empties. After a deadline the transport is
 still winding down on its own clock and is holding the loop open: an AMQP
 connection closes only once the deliveries it already took have drained, and
 Temporal's native Runtime only once every worker and connection is
-deregistered. So the last box is where SIGKILL actually lands, and exit `2` is
-what the report SAYS rather than what the orchestrator observes. The report is
-on stderr before that either way, which is what `kubectl logs --previous` is
-for.
+deregistered.
+
+So the last box is where SIGKILL lands **when Kubernetes is the one shutting
+the pod down**, and exit `2` is what the report SAYS rather than what the
+orchestrator observes. Outside that lifecycle nothing kills it and the process
+simply stays alive until the transport is done. The report is on stderr before
+either outcome, which is what `kubectl logs --previous` is for.
 
 That also sharpens what `abandoned` means: **not awaited, rather than not
 finished**. The kernel aborts each unit's signal and stops waiting; it cannot
