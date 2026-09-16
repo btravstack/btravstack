@@ -1,6 +1,6 @@
 ---
 title: The Runtime contract
-description: Runtime, RuntimeHost, UnitHost, RunUnit, Serving, RuntimePort and RuntimeStartFailed, the unit-of-work types, currentUnit, Clock — and the three contracts a runtime owes that the kernel cannot check.
+description: Runtime, RuntimeHost, UnitHost, RunUnit, Serving, RuntimePort and RuntimeStartFailed, the unit-of-work types, currentUnit, Clock — and the contracts a runtime owes that the kernel cannot check.
 ---
 
 <!-- doctest: prelude
@@ -124,18 +124,52 @@ type Serving<Info = never> = {
   readonly drain: (signal: AbortSignal) => AsyncResult<void, never>;
   readonly stop: () => AsyncResult<void, never>;
   readonly info?: Info;
+  readonly stopped?: () => AsyncResult<void, never>;
 };
 ```
 
-| Member  | Semantics                                                                                                                                                                                                                                                                                                                |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `drain` | "Stop accepting." Returns `void`, **not** a `DrainReport` — only the kernel can see the unit registry, so the kernel owns the accounting. `signal` fires when the kernel's deadline passes; a runtime never does arithmetic on time. A runtime whose transport waits (a Temporal Worker's `run()`) must race the signal. |
-| `stop`  | Tear the transport down. Called after the drain, or straight away when the drain is skipped.                                                                                                                                                                                                                             |
-| `info`  | What the runtime publishes about **itself** once serving, read back through `RunningApp.runtimeInfo()`. `Info` defaults to `never`, so the field is unwritable and optional with no ceremony. It is deliberately not a port number: `{ port }` for an HTTP runtime, `{ taskQueue, namespace }` for a Temporal one.       |
+| Member    | Semantics                                                                                                                                                                                                                                                                                                                |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `drain`   | "Stop accepting." Returns `void`, **not** a `DrainReport` — only the kernel can see the unit registry, so the kernel owns the accounting. `signal` fires when the kernel's deadline passes; a runtime never does arithmetic on time. A runtime whose transport waits (a Temporal Worker's `run()`) must race the signal. |
+| `stop`    | Tear the transport down. Called after the drain, or straight away when the drain is skipped.                                                                                                                                                                                                                             |
+| `info`    | What the runtime publishes about **itself** once serving, read back through `RunningApp.runtimeInfo()`. `Info` defaults to `never`, so the field is unwritable and optional with no ceremony. It is deliberately not a port number: `{ port }` for an HTTP runtime, `{ taskQueue, namespace }` for a Temporal one.       |
+| `stopped` | Optional. Settles when the runtime has stopped serving **on its own account** — see below.                                                                                                                                                                                                                               |
 
-Both are typed `AsyncResult<void, never>`; `never` empties the error channel
-only, so a `drain` that throws internally arrives at the kernel as a `Defect`
-and is threaded, not dropped.
+All three functions are typed `AsyncResult<void, never>`; `never` empties the
+error channel only, so a `drain` that throws internally arrives at the kernel as
+a `Defect` and is threaded, not dropped.
+
+### When a runtime stops on its own
+
+Without it a runtime has no way to say it has given up, and the lifecycle only
+ever moves on a signal or a `stop()` call. So a Temporal worker whose `run()`
+rejected mid-flight, or an AMQP consumer the server cancelled with nothing
+re-subscribing, left the process **alive** and `/readyz` answering `200` — a pod
+in a Service's endpoints, consuming nothing. The orchestrator cannot learn that
+by itself: liveness answers from `building` onward, and readiness is the
+lifecycle's state rather than the transport's.
+
+The kernel races it against its own shutdown deferred and reports
+`reason: "runtimeStopped"`, which `runMain` exits `1` for — a restart, the right
+answer to a transport that has given up.
+
+**A runtime that cannot know omits it, and one with nothing to say withdraws.**
+An HTTP server that is listening is serving; there is no third state, and a
+field it had to write `OkAsync()` into would be a promise it could not keep. A
+runtime that CAN report this returns an `AsyncResult` that never settles while
+nothing is wrong — and, crucially, after a stop the kernel itself asked for:
+settling on the ordinary path would race every clean shutdown.
+
+It says nothing about **why**. The runtime that knows writes that line itself,
+through [`Observers`](/reference/core/observability); this channel exists so the
+process ends, not so the reason travels.
+
+`@btravstack/temporal-worker` wires it; `@btravstack/amqp-worker` does not, and
+that is a gap rather than a decision — `@amqp-contract/worker` reports a
+server-initiated consumer cancel as a log line and exposes no signal a runtime
+can race. What that package does now is route the library's diagnostics to
+`Observers`, so the cancel is at least visible; closing the gap properly needs a
+hook upstream.
 
 ## `RuntimePort`, `RuntimeInfoOf` and `RuntimeStartFailed`
 
@@ -301,7 +335,7 @@ type Clock = {
 `unref`'d, so a shutdown sleep never keeps the event loop alive.
 `createFakeClock()` from `@btravstack/testing` is the other implementation.
 
-## Three contracts a runtime owes
+## The contracts a runtime owes
 
 None of these is checkable by the kernel, and each is silent when broken.
 [Write a runtime](/how-to/write-a-runtime) shows how to keep them.
@@ -321,11 +355,19 @@ None of these is checkable by the kernel, and each is silent when broken.
    runs after an `await` once that module's own provider is async — a runtime
    subscribing to an event from inside it must check whether it already fired
    (`@btravstack/http-server` checks `response.closed` for exactly this).
+4. **A runtime that can stop on its own must say so through `stopped`, and
+   must withdraw after a stop the kernel asked for.** The field is optional
+   because a listening HTTP server has no third state; a worker whose poll
+   loop can die does, and without it the process outlives the transport with
+   `/readyz` answering `200`. The obligation is the withdrawal — a channel
+   that settles on the ordinary path races every clean shutdown.
 
 ## A minimal runtime
 
-The smallest runtime that keeps all three, from `packages/core`'s compiled
-README samples — a timer, so nothing external is pulled in:
+The smallest runtime that keeps them, from `packages/core`'s compiled
+README samples — a timer, so nothing external is pulled in. It omits
+`stopped`, which is the right answer for a runtime that cannot stop on its
+own:
 
 ```ts
 import { RuntimePort, type Runtime, type Serving } from "@btravstack/core";

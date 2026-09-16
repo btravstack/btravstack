@@ -463,9 +463,9 @@ turns off the uncaught handlers, at the cost of the signal-driven drain).
 Stated in both READMEs; found in Task 12's review, and it is the reason the
 `uncaught` row exists in the exit-code table at all.
 
-## Two contracts a runtime owes, and neither is checkable
+## The contracts a runtime owes, and none is checkable
 
-Three obligations, each silent when broken. Their full statement, with the
+Four obligations, each silent when broken. Their full statement, with the
 measurements behind them, is the `RunUnit` / `RuntimeHost` / `UnitMeta` TSDoc,
 `docs/how-to/write-a-runtime.md` and `docs/reference/core/runtime.md` — keep
 those three in sync.
@@ -482,6 +482,18 @@ those three in sync.
    provides exists only in the forked `Context`, never in `host.ctx`, and a
    runtime that subscribes to an event from inside its work (a response's
    `'close'`) must first check whether it already fired.
+4. **A runtime that can stop on its own must say so, through
+   `Serving.stopped`** — and must WITHDRAW after a stop the kernel asked for.
+   The field is optional because an HTTP server that is listening has no third
+   state to report; a worker whose poll loop can die does, and without it the
+   lifecycle only ever moves on a signal or a `stop()` call, so the process
+   stayed alive with `/readyz` answering `200` — a pod in a Service's
+   endpoints, consuming nothing. The obligation is the withdrawal: a channel
+   that settles on the ordinary path races every clean shutdown.
+   `@btravstack/temporal-worker` implements it; `@btravstack/amqp-worker` does
+   not, because `@amqp-contract/worker` reports a server-initiated consumer
+   cancel as a log line and exposes no signal to race — a gap, stated as one,
+   and its diagnostics now at least reach `Observers`.
 
 ## Health checks: a module declares one, the kernel collects them
 
@@ -652,7 +664,7 @@ narrowing its real types satisfy structurally, so the vendor stops at
 `/reference/core/observability`.
 
 What stays here is what no single package owns: the theses above, the footgun,
-the two contracts a runtime owes, and the conventions below.
+the contracts a runtime owes, and the conventions below.
 
 `packages/core/src/index.ts` is the one place the kernel's API is decided —
 one entry point. The test doubles are `@btravstack/testing`, a package of its
@@ -959,7 +971,7 @@ in its place.
      `teardownErrors` aliasing, the `ready()` latch, the monotonic `completed`,
      `closedOf`'s `response.closed` check. One or two lines, naming what breaks.
   2. **It is TSDoc stating a symbol's contract** — what it does, and any
-     obligation a signature cannot express (the two contracts a runtime owes).
+     obligation a signature cannot express (the contracts a runtime owes).
      Public API only; TypeDoc turns it into the reference page.
   3. **It is a directive with a reason** — `oxlint-disable`, and a
      `@ts-expect-error` in a `*.test-d.ts` naming the error it expects.

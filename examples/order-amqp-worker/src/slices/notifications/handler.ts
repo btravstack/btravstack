@@ -19,10 +19,9 @@ import { ErrAsync, P } from "unthrown";
  * reading — the same fact, claimed once.
  *
  * The mail is what the slice is for, and its failure arm is the interesting
- * half: a `MailNotSent` becomes a `RetryableError`, so the delivery is left
- * un-acked and the BROKER's retry budget owns redelivery — thesis #3 one
- * layer out, with the transport mapping an outcome the thing that produced
- * it declined to.
+ * half: a `MailNotSent` becomes a `RetryableError`, so the BROKER's retry
+ * budget owns redelivery — thesis #3 one layer out, with the transport
+ * mapping an outcome the thing that produced it declined to.
  *
  * The `payload === null` branch is the whole point of the envelope: one
  * handler, one stream, and a reader that keeps its own copy of a subject
@@ -31,8 +30,10 @@ import { ErrAsync, P } from "unthrown";
  * It also honours the kernel's deadline. `currentUnit()?.signal` is aborted
  * when the drain runs out of time, and a delivery this process is no longer
  * waiting for should not have a notification sent on its behalf: answering a
- * `RetryableError` leaves the message un-acked, so the broker hands it to the
- * next worker.
+ * `RetryableError` hands the message to the next worker. Note what that COSTS
+ * — `@amqp-contract/worker` acks the original and republishes a copy carrying
+ * `x-retry-count + 1`, rather than leaving it un-acked — so a rollout spends
+ * one attempt per in-flight message, and `maxRetries` has to have room for it.
  */
 export const orderNotifications = AmqpHandler(
   orderContract,

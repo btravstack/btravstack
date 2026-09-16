@@ -635,6 +635,15 @@ keeps winding down on Temporal's clock until the process exits. The losing
 branch's `Result` is dropped — the kernel has already settled `exited` — and
 it is the one drop in the package.
 
+**The process does not end on its own after that**, and the page used to leave
+that implicit. `runMain` sets an exit code and never calls `process.exit()`;
+the native Runtime shuts down only once every worker and connection is
+deregistered, and a worker still winding down holds the event loop. So a drain
+that hits its deadline ends at Kubernetes' `terminationGracePeriodSeconds`,
+with SIGKILL, and exit `2` is what the report says rather than what the
+orchestrator observes. The report itself still reaches stderr before that,
+which is what `kubectl logs --previous` is for.
+
 `stop()` with no prior `drain` (the `RunningApp.stop()` path) has no deadline
 to race and waits on `run()` alone, which is where `forceAfter` decides when
 the process exits. Keep `forceAfter` at or below `drainTimeoutMs`

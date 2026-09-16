@@ -663,6 +663,27 @@ export const start = <X, E, N>(
           tracker.advanceTo("serving");
           runtimePublished.resolve(serving.info);
 
+          // A runtime that gave up on its own says so here, and the kernel
+          // treats it exactly like a `stop()` call: the lifecycle otherwise
+          // only ever moves on a signal or a caller, so a worker whose poll
+          // loop died left the process alive and `/readyz` answering 200 —
+          // a pod in a Service's endpoints, consuming nothing. The `Result`
+          // is dropped on purpose: whichever route reaches `requestShutdown`
+          // first decides the reason, and a runtime that stopped after a
+          // signal has nothing left to add.
+
+          // A runtime that gave up on its own says so here, and the kernel
+          // treats it exactly like a `stop()` call: the lifecycle otherwise
+          // only ever moves on a signal or a caller, so a worker whose poll
+          // loop died left the process alive and `/readyz` answering 200 —
+          // a pod in a Service's endpoints, consuming nothing. The `Result`
+          // is dropped on purpose: whichever route reaches `requestShutdown`
+          // first decides the reason, and a runtime that stopped after a
+          // signal has nothing left to add.
+          void serving.stopped?.().map(() => {
+            requestShutdown("runtimeStopped");
+          });
+
           return fromSafePromise(shutdown.promise).flatMap((reason) => finish(serving, reason));
         });
       },

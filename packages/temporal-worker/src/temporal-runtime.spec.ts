@@ -1,6 +1,8 @@
+import type { Worker } from "@temporalio/worker";
 import { describe, expect, vi } from "vitest";
 
 import { it, undeclared } from "./__tests__/test-fixtures.js";
+import { poll } from "./temporal-runtime.js";
 
 describe("temporal", () => {
   it("publishes the task queue and namespace it polls", async ({ server, serve }) => {
@@ -400,10 +402,77 @@ describe("temporal", () => {
     // kernel's deadline rather than Temporal's `shutdownForceTime`, which is
     // what `Serving.drain(signal)` promises the kernel.
     expect(
-      report.map((exit) => ({ drain: exit.drain, promptly: Date.now() - askedAt < 5_000 })),
+      report.map((exit) => ({ drain: exit.drain, promptly: Date.now() - askedAt < 2_000 })),
     ).toBeOkWith({
       drain: { inFlightAtStart: 1, completed: 0, abandoned: 1 },
       promptly: true,
     });
+  });
+});
+
+/**
+ * A stub worker, because the arm under test is `run()` REJECTING mid-flight —
+ * the worker reaching `FAILED` — and there is no way to make a real one do that
+ * without taking the shared Temporal server down for every other spec here.
+ */
+const stubWorker = (running: Promise<void>): Worker =>
+  ({
+    run: () => running,
+    getState: () => "RUNNING",
+    shutdown: () => undefined,
+  }) as unknown as Worker;
+
+/** `Promise.withResolvers` by hand: this package's `lib` predates it. */
+const deferred = (): {
+  readonly promise: Promise<void>;
+  readonly settle: (cause?: Error) => void;
+} => {
+  let settle: (cause?: Error) => void = () => undefined;
+  const promise = new Promise<void>((resolve, reject) => {
+    settle = (cause) => {
+      if (cause === undefined) resolve();
+      else reject(cause);
+    };
+  });
+  return { promise, settle };
+};
+
+describe("temporal, when the worker stops on its own account", () => {
+  it("settles `stopped` for a run that ended with nobody asking", async () => {
+    // GIVEN a worker whose `run()` rejects mid-flight, which is what a worker
+    // reaching `FAILED` looks like from here
+    const run = deferred();
+    const serving = poll(stubWorker(run.promise), "t", "ns");
+
+    // WHEN it fails
+    run.settle(new Error("worker failed"));
+
+    // THEN the channel settles, which is what asks the kernel to stop. The
+    // rejection used to sit on `running` until a shutdown somebody else
+    // requested came along to read it, so a worker that had stopped polling
+    // left the process alive with `/readyz` answering 200.
+    await expect(serving.stopped?.()).toBeOk();
+  });
+
+  it("withdraws `stopped` for a run the kernel ended", async () => {
+    // GIVEN a worker that stops because it was told to
+    const run = deferred();
+    const serving = poll(stubWorker(run.promise), "t", "ns");
+    let settled = false;
+    void serving.stopped?.().map(() => {
+      settled = true;
+    });
+
+    // WHEN the kernel stops it and the run ends
+    const stopping = serving.stop();
+    run.settle();
+    await stopping;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // THEN the channel never settles. Settling it here would report
+    // `runtimeStopped` on top of every clean shutdown — harmless in the end,
+    // since the kernel's own deferred resolves once, and wrong, because this
+    // channel means "nobody asked me to".
+    expect(settled).toBe(false);
   });
 });

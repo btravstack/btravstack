@@ -77,7 +77,7 @@ type DrainReport = {
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `inFlightAtStart` | Units open when the drain began — sampled synchronously in the same turn readiness flipped false, **before** the pre-drain delay, so it agrees with the `draining` event emitted from that turn.                                                                                                                                                      |
 | `completed`       | Units that **closed during** the drain, counted from a monotonic total, not as `inFlightAtStart - abandoned`. It **may exceed** `inFlightAtStart` when in-flight work spawned more units during the drain — honest reporting, not a bug: the subtraction would go negative the moment a unit started after the sample and closed before the deadline. |
-| `abandoned`       | Units still open at the deadline. Each is aborted through its `AbortSignal` and reported here. **The field the exit code keys on**: `> 0` is exit code `2` under `runMain`.                                                                                                                                                                           |
+| `abandoned`       | Units still open at the deadline. Each is aborted through its `AbortSignal` and reported here. **The field the exit code keys on**: `> 0` is exit code `2` under `runMain`. It means "no longer AWAITED", not "did not finish" — see below.                                                                                                           |
 
 The deadline race is `Serving.drain(signal)` **then** `awaitIdle()`, against
 `clock.sleep(drainTimeoutMs)`. `awaitIdle()` is sequenced after `drain`
@@ -85,6 +85,24 @@ resolves rather than sampled alongside it, so a unit that opens while the
 runtime is still winding down is waited for rather than reported abandoned with
 the budget unspent. Whichever branch wins, `signal` is aborted at once, so a
 runtime that treats it as its cue to return is always released.
+
+**`abandoned` means "no longer awaited", not "did not finish".** The kernel
+aborts each unit's signal and stops waiting; it cannot cancel work, and the
+transport underneath keeps running on its own clock. An abandoned AMQP delivery
+is usually acked a moment later and an abandoned Temporal activity usually
+completes — after this report said they did not.
+
+**So the process may not end by itself.** `runMain` sets an exit code and
+deliberately never calls `process.exit()`, which is what lets pending output
+flush and an embedding host keep its own lifetime; the process ends when the
+event loop empties, and a transport still winding down is holding it open. An
+AMQP connection closes only once the deliveries it already took have drained,
+and Temporal's native Runtime only once every worker and connection is
+deregistered. Under Kubernetes that ends at `terminationGracePeriodSeconds`,
+with SIGKILL, so exit `2` is what this report SAYS rather than what the
+orchestrator observes. The report reaches stderr first either way, which is
+what `kubectl logs --previous` is for — and it is the whole reason the
+`stopping` phase got a deadline of its own.
 
 ## Reading one
 

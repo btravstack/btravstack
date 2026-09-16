@@ -543,4 +543,84 @@ describe("runtimeInfo", () => {
     );
     await expect(app.runtimeInfo()).toBeOkWith(undefined);
   });
+
+  it("stops the application when the runtime says it has stopped serving", async () => {
+    // GIVEN a runtime that gives up on its own — a worker whose poll loop died,
+    // a consumer the server cancelled — with nobody asking it to
+    const gave = Promise.withResolvers<void>();
+    const selfStopping: Runtime<never, { readonly name: string }> = {
+      name: "selfStopping",
+      resolves: [],
+      start: () =>
+        OkAsync({
+          info: { name: "selfStopping" },
+          drain: () => OkAsync(),
+          stop: () => OkAsync(),
+          stopped: () => fromSafePromise(gave.promise),
+        }),
+    };
+    const app = start(runtimeModule(selfStopping), {
+      signals: false,
+      probes: false,
+      onEvent: () => {},
+    });
+    await expect(app.runtimeInfo()).toBeOkWith({ name: "selfStopping" });
+
+    // WHEN it reports that it has stopped
+    gave.resolve();
+
+    // THEN the process stops, reporting the same reason a `stop()` call does —
+    // and the drain is skipped, because nothing asked for one. Without this
+    // channel the lifecycle only ever moved on a signal or a caller, so the
+    // process stayed alive with `/readyz` answering 200: a pod in a Service's
+    // endpoints, serving nothing.
+    await expect(app.exited).toBeOkWith(
+      expect.objectContaining({ reason: "runtimeStopped", drain: undefined }),
+    );
+  });
+
+  it("does not report runtimeStopped when the runtime stopped because it was asked", async () => {
+    // GIVEN a runtime whose `stopped` channel is wired the way a real one is:
+    // it settles when the transport ends, and withdraws when the end was the
+    // kernel's own doing
+    let asked = false;
+    const ended = Promise.withResolvers<void>();
+    const wired: Runtime<never, { readonly name: string }> = {
+      name: "wired",
+      resolves: [],
+      start: () =>
+        OkAsync({
+          info: { name: "wired" },
+          drain: () => {
+            asked = true;
+            ended.resolve();
+            return OkAsync();
+          },
+          stop: () => {
+            asked = true;
+            ended.resolve();
+            return OkAsync();
+          },
+          stopped: () =>
+            fromSafePromise(ended.promise).flatMap(() =>
+              asked ? fromSafePromise(new Promise<void>(() => {})) : OkAsync(),
+            ),
+        }),
+    };
+    const app = start(runtimeModule(wired), {
+      signals: false,
+      probes: false,
+      onEvent: () => {},
+    });
+    await app.runtimeInfo();
+
+    // WHEN a caller stops it
+    app.stop();
+
+    // THEN the reason is the caller's. `Promise.withResolvers`' `resolve` is
+    // idempotent, so a channel that resolved on the ordinary path could not
+    // rewrite this — but it would race every clean stop, and a runtime with
+    // nothing to report is meant to withdraw rather than answer.
+    await expect(app.exited).toBeOkWith(expect.objectContaining({ reason: "runtimeStopped" }));
+  });
 });

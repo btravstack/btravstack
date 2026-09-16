@@ -13,7 +13,24 @@ export type DrainReport = {
    * reporting, where `inFlightAtStart - abandoned` can go negative.
    */
   readonly completed: number;
-  /** Units still open at the deadline. The exit-code decision reads this. */
+  /**
+   * Units still open at the deadline. The exit-code decision reads this.
+   *
+   * **It means "no longer AWAITED", not "did not finish".** The kernel stops
+   * waiting and aborts each unit's signal; it cannot cancel work, and the
+   * transport underneath keeps running on its own clock. An abandoned AMQP
+   * delivery usually goes on to be acked, and an abandoned Temporal activity
+   * goes on to complete — after this report said they did not.
+   *
+   * **The consequence, stated because nothing else states it: the process may
+   * not end by itself.** `runMain` sets an exit code and deliberately never
+   * calls `process.exit()`, so the process ends when the event loop empties —
+   * and a transport still winding down is holding it open. Under Kubernetes
+   * that ends at `terminationGracePeriodSeconds`, with SIGKILL. The exit code
+   * `2` is therefore what the report SAYS, not necessarily what the
+   * orchestrator observes; `kubectl logs --previous` carries the report either
+   * way, which is what it is for.
+   */
   readonly abandoned: number;
 };
 

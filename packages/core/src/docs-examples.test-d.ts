@@ -181,6 +181,7 @@ type ReadmeServing<Info = never> = {
   readonly drain: (signal: AbortSignal) => AsyncResult<void, never>;
   readonly stop: () => AsyncResult<void, never>;
   readonly info?: Info;
+  readonly stopped?: () => AsyncResult<void, never>;
 };
 
 type ReadmeRuntime<Resolves extends AnyPort = never, Info = never> = {
