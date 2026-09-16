@@ -61,6 +61,39 @@ describe("smtpMailer", () => {
     );
   });
 
+  it("delivers a bcc and an attachment given as bytes with its own type", async ({
+    smtp,
+    recipient,
+    delivered,
+  }) => {
+    // GIVEN the other half of the envelope and the other half of an attachment:
+    // a `bcc`, and `content` as BYTES with an explicit `contentType` — the arms
+    // the string-and-cc test above never reaches
+    const blind = `bcc-${recipient}`;
+
+    // WHEN it is sent
+    await smtp.send({
+      ...aMail(recipient),
+      bcc: [blind],
+      attachments: [
+        {
+          filename: "invoice.pdf",
+          content: new Uint8Array([37, 80, 68, 70]),
+          contentType: "application/pdf",
+        },
+      ],
+    });
+
+    // THEN the bytes rode the same envelope. The adapter builds a Buffer VIEW
+    // over the caller's memory rather than copying it, which is the line this
+    // covers — and `bcc` is by definition invisible on the delivered message,
+    // so the assertion is that the message arrived at all with its attachment.
+    await vi.waitUntil(async () => (await delivered(recipient)).length === 1);
+    expect((await delivered(recipient))[0]).toEqual(
+      expect.objectContaining({ Subject: "your order", Attachments: 1 }),
+    );
+  });
+
   it("delivers an extra header", async ({ smtp, recipient, delivered, headersOf }) => {
     // GIVEN a message carrying a header the port does not name
     // WHEN it is sent

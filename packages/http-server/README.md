@@ -20,7 +20,12 @@ pnpm add @btravstack/http-server @btravstack/core @btravstack/config @btravstack
 ```
 
 All of those are peer dependencies — install every one, so the application
-holds a single copy of each. Node `>=22`.
+holds a single copy of each. Node `>=22`, and
+`"moduleResolution": "node16"` or `"nodenext"`: the subpaths below publish no
+`typesVersions` shim, so the legacy `"node"` algorithm — which ignores
+`exports` entirely — resolves no types for them. That is a decision rather than
+an omission; a consumer on legacy resolution cannot use this stack anyway,
+since every relative import here carries a `.js` suffix for the same reason.
 
 ## A worked example
 

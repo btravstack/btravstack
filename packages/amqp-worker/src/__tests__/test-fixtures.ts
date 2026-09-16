@@ -8,7 +8,7 @@ import {
 } from "@amqp-contract/contract";
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
-import type { WorkerInferConsumerHandler } from "@amqp-contract/worker";
+import type { ConsumerOptions, WorkerInferConsumerHandler } from "@amqp-contract/worker";
 import type { ConfigInvalid, Environment } from "@btravstack/config";
 import {
   Observers,
@@ -29,6 +29,7 @@ import { AmqpModule } from "../amqp-module.js";
 import {
   AmqpConfig,
   AmqpHandlers,
+  type AmqpConnectionOptions,
   type AmqpInfo,
   type AnyUnitModule,
   type HandlersPortOf,
@@ -77,12 +78,25 @@ const consuming = (
   handlers: EchoProvider,
   connectTimeoutMs?: number,
   unit?: AnyUnitModule,
+  // The two passthroughs issue #25 typed. Nothing else in this suite sets
+  // them, so without a caller the arms that forward them are never taken —
+  // which is how a passthrough that silently stopped forwarding would ship.
+  passthrough?: {
+    readonly connectionOptions?: AmqpConnectionOptions;
+    readonly defaultConsumerOptions?: ConsumerOptions;
+  },
 ) =>
   AmqpModule("Consuming")({
     contract: echoContract,
     handlers,
     url,
     ...(connectTimeoutMs === undefined ? {} : { connectTimeoutMs }),
+    ...(passthrough?.connectionOptions === undefined
+      ? {}
+      : { connectionOptions: passthrough.connectionOptions }),
+    ...(passthrough?.defaultConsumerOptions === undefined
+      ? {}
+      : { defaultConsumerOptions: passthrough.defaultConsumerOptions }),
     // `as never`: `unit` is `AnyUnitModule`, whose own needs are erased to
     // `unknown` — passed through untyped it would poison `AmqpModule`'s
     // inferred `Unit` into an unsatisfiable `unknown` need for every caller
@@ -165,7 +179,12 @@ const failingHandlers: EchoProvider = echoHandlers({
 
 type App = RunningApp<ConfigInvalid, AmqpInfo>;
 
-type ServeOptions = { readonly drainTimeoutMs: number; readonly unit?: AnyUnitModule };
+type ServeOptions = {
+  readonly drainTimeoutMs?: number;
+  readonly unit?: AnyUnitModule;
+  readonly connectionOptions?: AmqpConnectionOptions;
+  readonly defaultConsumerOptions?: ConsumerOptions;
+};
 
 class CountingMark extends Port("CountingMark")<{ readonly at: number }> {}
 
@@ -488,7 +507,10 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
   boot: bootFixture(),
   serve: async ({ amqpConnectionUrl, boot }, use) => {
     await use(async (handlers = plainHandlers, options) => {
-      const app = boot(consuming(amqpConnectionUrl, handlers, undefined, options?.unit), options);
+      const app = boot(
+        consuming(amqpConnectionUrl, handlers, undefined, options?.unit, options),
+        options?.drainTimeoutMs === undefined ? {} : { drainTimeoutMs: options.drainTimeoutMs },
+      );
       // `runtimeInfo()` resolves once the worker is consuming — await it here
       // so the caller's test body never races the worker's own startup.
       await app.runtimeInfo();

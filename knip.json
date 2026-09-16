@@ -35,6 +35,10 @@
     },
     "examples/order-amqp-worker": {
       "ignoreDependencies": ["@amqp-contract/contract", "zod"]
+    },
+    "internal/consumer-check": {
+      "ignore": ["src/consumer.ts"],
+      "ignoreDependencies": ["@arethetypeswrong/cli", "publint", "typescript-consumer"]
     }
   }
 }

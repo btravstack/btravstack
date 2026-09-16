@@ -18,6 +18,24 @@
     "@btravstack/core#typecheck": {
       "dependsOn": ["build", "@btravstack/testing#build"]
     },
+    "@btravstack/internal-consumer-check#typecheck": {
+      "cache": false,
+      "dependsOn": [
+        "@btravstack/amqp-worker#build",
+        "@btravstack/cache#build",
+        "@btravstack/config#build",
+        "@btravstack/contract#build",
+        "@btravstack/core#build",
+        "@btravstack/di#build",
+        "@btravstack/http-server#build",
+        "@btravstack/mailer#build",
+        "@btravstack/observability#build",
+        "@btravstack/prisma#build",
+        "@btravstack/storage#build",
+        "@btravstack/temporal-worker#build",
+        "@btravstack/testing#build"
+      ]
+    },
     "test": {
       "dependsOn": ["^build", "generate", "^generate"],
       "cache": false

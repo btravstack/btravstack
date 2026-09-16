@@ -1,0 +1,21 @@
+{
+  "name": "@btravstack/internal-consumer-check",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Answers the consumer's question from outside the workspace: pack every published package, install the tarballs into a throwaway project, and compile a file that re-exports the shapes a library consumer would",
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsx src/check.ts"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "catalog:",
+    "@btravstack/tsconfig": "catalog:",
+    "@types/node": "catalog:",
+    "publint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "typescript-consumer": "catalog:"
+  }
+}
