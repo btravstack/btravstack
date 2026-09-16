@@ -1,8 +1,8 @@
 import type { IncomingMessage, OutgoingHttpHeaders, ServerResponse } from "node:http";
 
-import { Config, ConfigInvalid, Env } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import { Observers, observe, type Operation, type Settle } from "@btravstack/core";
-import { Provider } from "@btravstack/di";
+import { Provider, type AnyProvider } from "@btravstack/di";
 import {
   ClientSecretBasic,
   allowInsecureRequests,
@@ -20,6 +20,7 @@ import {
 } from "openid-client";
 import { ErrAsync, TaggedError, fromPromise, type AsyncResult } from "unthrown";
 
+import { cleartext, cleartextRefused } from "./cleartext.js";
 import { clearCookie, cookieValue, setCookie } from "./cookie.js";
 import { HttpHandler, type HttpAnswerer } from "./handler.js";
 import { forLocation, returnTo } from "./redirect.js";
@@ -27,8 +28,20 @@ import {
   SESSION_COOKIE,
   SessionCodec,
   TRANSIENT_TTL_SEC,
+  cookieScheme,
   type SessionCodecService,
 } from "./session.js";
+
+/**
+ * The answerer half of what {@link oidc} composes — the three login routes as
+ * one `HttpHandler` member. The second half is a `CookieSchemes` member, which
+ * carries no type of its own.
+ */
+export type OidcAnswerer = Provider<
+  HttpHandler,
+  ConfigInvalid | OidcUnreachable,
+  Env | SessionCodec | Observers
+> & { readonly port: typeof HttpHandler };
 
 /**
  * Discovery did not answer, at boot. `cause` is whatever `openid-client`
@@ -337,30 +350,6 @@ const logout = <P>(response: ServerResponse, bound: Bound<P>): void => {
   });
 };
 
-/** A plaintext issuer that never leaves the machine: the dev loop's own Ory. */
-// `url.hostname` keeps an IPv6 literal's brackets, so the set spells them.
-const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
-
-/**
- * Whether this issuer may be talked to in cleartext, decided once at boot.
- *
- * `Config.url` says a value parses, not that it is safe: an `https:` issuer is
- * always fine, an `http:` one on a loopback host is the dev loop, and any
- * other `http:` issuer sends the client secret, the authorization code and
- * every token across the wire — with `allowInsecureRequests` turning off the
- * one check that would have refused to. That last case is a `ConfigInvalid` at
- * boot unless `allowInsecureIssuer` is pinned at the call, which is where a
- * security posture belongs.
- */
-const insecureIssuer = (issuer: string, allowed: boolean): boolean | "refused" => {
-  const url = new URL(issuer);
-  return url.protocol !== "http:"
-    ? false
-    : allowed || LOOPBACK.has(url.hostname)
-      ? true
-      : "refused";
-};
-
 /**
  * The discovery document, once, at boot — so a provider that is not there is a
  * typed startup failure rather than a 500 on the first login, and so the JWKS
@@ -439,8 +428,19 @@ const handlerFor =
  * seals a session here is the one `sessionAuthenticator` reads it back with —
  * and a root composing this without `sessionCodec()` is di's own unmet need
  * naming the port.
+ *
+ * **It answers TWO providers, and the second is why they are spread**: the
+ * answerer, and a {@link CookieSchemes} member, because this is a cookie-reading
+ * surface and `csrf`'s default is a fact about the graph rather than a line
+ * somebody remembered to write. Without it a root composing `oidc()` and
+ * `sessionCodec()` but no `sessionAuthenticator` served a state-changing
+ * `POST <prefix>/logout` over a cookie with CSRF off — the composition the
+ * package's own spec called "does not work at all", which nonetheless logs a
+ * browser in and exposes the logout. `defineHttp` already spreads the same
+ * member beside a scheme that reads one; this is that rule reaching the one
+ * surface it could not see.
  */
-export const oidc = <P>(options: OidcOptions<P>) => {
+export const oidc = <P>(options: OidcOptions<P>): readonly [OidcAnswerer, AnyProvider] => {
   const prefix = options.prefix ?? DEFAULT_PREFIX;
   const schema = Config.object({
     issuer: Config.pinned(options.issuer, Config.url("HTTP_OIDC_ISSUER")),
@@ -449,25 +449,21 @@ export const oidc = <P>(options: OidcOptions<P>) => {
     redirectUri: Config.pinned(options.redirectUri, Config.url("HTTP_OIDC_REDIRECT_URI")),
   });
 
-  return Provider.member(HttpHandler)({
+  const answerer: OidcAnswerer = Provider.member(HttpHandler)({
     inject: { env: Env, codec: SessionCodec, observers: Observers },
     make: ({ env, codec, observers }): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> =>
       Config.parse(
         "HttpOidc",
         schema,
       )(env).flatMap((bound): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> => {
-        const insecure = insecureIssuer(bound.issuer, options.allowInsecureIssuer ?? false);
+        const insecure = cleartext(bound.issuer, options.allowInsecureIssuer ?? false);
         if (insecure === "refused")
           return ErrAsync(
-            new ConfigInvalid({
+            cleartextRefused({
               port: "HttpOidc",
-              issues: [
-                {
-                  message:
-                    "must be an https: issuer — a cleartext one sends the client secret, the authorization code and every token in the open. Only a loopback host (localhost, 127.0.0.1, [::1]) is accepted without `allowInsecureIssuer: true` on `oidc()`",
-                  path: ["HTTP_OIDC_ISSUER"],
-                },
-              ],
+              variable: "HTTP_OIDC_ISSUER",
+              option: "allowInsecureIssuer` on `oidc()",
+              what: "it sends the client secret, the authorization code and every token in the open",
             }),
           );
         return discover(bound.issuer, bound.clientId, bound.clientSecret, insecure).map(
@@ -489,4 +485,6 @@ export const oidc = <P>(options: OidcOptions<P>) => {
         );
       }),
   });
+
+  return [answerer, cookieScheme()];
 };

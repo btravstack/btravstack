@@ -1,9 +1,13 @@
 // The type half of the JWT scheme: its three transport options are OPTIONAL —
 // pins, over variables the deployment sets — and the description it hands back
-// carries `Env` in its needs channel and `ConfigInvalid` in its error one, so a
-// misconfigured deployment fails the boot with a typed error rather than
-// refusing every caller. Each `@ts-expect-error` is an assertion.
+// carries `Env | Observers` in its needs channel and `ConfigInvalid` in its
+// error one, so a misconfigured deployment fails the boot with a typed error
+// rather than refusing every caller. `Observers` is there because an ISSUER
+// outage is reported rather than swallowed, and it costs a root nothing:
+// `httpServer` contributes the no-op member and exports the port. Each
+// `@ts-expect-error` is an assertion.
 import type { ConfigInvalid, Env } from "@btravstack/config";
+import type { Observers } from "@btravstack/core";
 import { OkAsync } from "unthrown";
 import { expectTypeOf } from "vitest";
 
@@ -23,7 +27,9 @@ const principal = (claims: Claims): Identity | undefined =>
 // Nothing pinned: every option arrives from `HTTP_JWT_*`.
 const fromEnvironment = jwtAuthenticator<Identity>()({ principal });
 
-expectTypeOf(fromEnvironment).toEqualTypeOf<Authenticator<Identity, never, Env, ConfigInvalid>>();
+expectTypeOf(fromEnvironment).toEqualTypeOf<
+  Authenticator<Identity, never, Env | Observers, ConfigInvalid>
+>();
 
 // All three pinned — what a test does — is the same description.
 const pinned = jwtAuthenticator<Identity>()({
@@ -34,7 +40,9 @@ const pinned = jwtAuthenticator<Identity>()({
   principal,
 });
 
-expectTypeOf(pinned).toEqualTypeOf<Authenticator<Identity, "orders:export", Env, ConfigInvalid>>();
+expectTypeOf(pinned).toEqualTypeOf<
+  Authenticator<Identity, "orders:export", Env | Observers, ConfigInvalid>
+>();
 
 // Negative: a second accepted issuer is a second authenticator, not an array —
 // an environment carries one string, so the array forms are gone.

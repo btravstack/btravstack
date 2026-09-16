@@ -601,7 +601,7 @@ export const OrderApi = HttpModule("OrderApi")({
     otel(),
   ],
   // The session cookie's codec and the login answerer that seals it.
-  provides: [sessionCodec(), oidc({ principal, scope: "openid orders:export" })],
+  provides: [sessionCodec(), ...oidc({ principal, scope: "openid orders:export" })],
   // Everything a forked kind reads out of the application scope.
   exports: [Logger, Tracer, Meter, OrderDatabase],
 });

@@ -282,15 +282,19 @@ it, `securityHeaders` and `csrf` because a deployment that can silently turn
 line for it: `HttpModule` carries `Env` for every provider in the root, its
 schemes included, the same way it already carries the starter's own.
 
-| Option     | What it is                                                                |
-| ---------- | ------------------------------------------------------------------------- |
-| `jwks`     | pins `HTTP_JWT_JWKS_URI` — the issuer's JWKS endpoint                     |
-| `issuer`   | pins `HTTP_JWT_ISSUER` — the required `iss`                               |
-| `audience` | pins `HTTP_JWT_AUDIENCE` — the required `aud`, this deployment's own name |
+| Option              | What it is                                                                                         |
+| ------------------- | -------------------------------------------------------------------------------------------------- |
+| `jwks`              | pins `HTTP_JWT_JWKS_URI` — the issuer's JWKS endpoint                                              |
+| `issuer`            | pins `HTTP_JWT_ISSUER` — the required `iss`                                                        |
+| `audience`          | pins `HTTP_JWT_AUDIENCE` — the required `aud`, this deployment's own name                          |
+| `allowInsecureJwks` | fetch the key set from a non-loopback `http:` URL (default `false`, and a boot failure without it) |
 
 A variable nobody pinned and nobody set — or a `HTTP_JWT_JWKS_URI` that is not
-a URL — fails the boot with a `ConfigInvalid` naming it, rather than a scheme
-that refuses every caller.
+a URL, or a cleartext one that is not loopback — fails the boot with a
+`ConfigInvalid` naming it, rather than a scheme that refuses every caller. A
+refusal the ISSUER caused, rather than the token, is reported to `Observers`,
+so a key-rotation incident is a metric and a line instead of a `401` per
+request.
 
 `sessionCodec({ keys?, ttlSec? })`, from `@btravstack/http-server/session`,
 pins one variable the same way — and `sessionAuthenticator` is the scheme that

@@ -8,8 +8,13 @@ import { Err, Ok, TaggedError, fromSafePromise, type AsyncResult, type Result } 
 /**
  * A caller was refused. Carries nothing: the starter surfaces no reason — a
  * rejected caller gets an `UNAUTHORIZED` and oRPC's default message — so a
- * payload here would be write-only. An authenticator that wants to record why
- * logs it before returning this.
+ * payload here would be write-only.
+ *
+ * An authenticator that wants to record why reports it to `Observers` before
+ * returning this — `jwtAuthenticator` is the worked case, and note WHAT it
+ * records: a refusal its DEPENDENCY caused, never one the caller's credential
+ * caused. A line per refused credential is how a scanner writes an
+ * application's logs for it.
  */
 export class Unauthenticated extends TaggedError("Unauthenticated") {}
 

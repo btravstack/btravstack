@@ -1,6 +1,7 @@
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
+import { Observers, observe } from "@btravstack/core";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
-import { ErrAsync, OkAsync, fromPromise } from "unthrown";
+import { Err, ErrAsync, Ok, OkAsync, fromPromise, type Result } from "unthrown";
 
 import {
   HttpAuthenticator,
@@ -9,6 +10,7 @@ import {
   type Authenticator,
   type AuthenticatorService,
 } from "./auth.js";
+import { cleartext, cleartextRefused } from "./cleartext.js";
 
 /** The verified claims, as `jose` reports them. */
 export type Claims = JWTPayload;
@@ -36,6 +38,21 @@ export type JwtOptions<P, Scopes extends readonly string[]> = {
   readonly algorithms?: readonly string[];
   /** Leeway on `exp`/`nbf`, in seconds. Default `0`. */
   readonly clockToleranceSec?: number;
+  /**
+   * Fetch the key set from an `http:` URL that is NOT on a loopback host.
+   * Default `false`, and a `ConfigInvalid` at boot without it.
+   *
+   * A JWKS carries public keys, which is exactly why cleartext is fatal rather
+   * than merely untidy: anything on the path substitutes its own key and mints
+   * tokens this process then accepts, and there is no secret it had to steal
+   * first. RFC 8725 §3.
+   *
+   * An OPTION rather than a variable, and `oidc()`'s `allowInsecureIssuer`'s
+   * twin down to the loopback exception — `localhost`, `127.0.0.1`, `[::1]`
+   * need nothing, because plaintext that never leaves the machine is the dev
+   * loop's own issuer.
+   */
+  readonly allowInsecureJwks?: boolean;
   /** Which header carries the token. Default `authorization`, as `Bearer <token>`. */
   readonly header?: string;
   /**
@@ -76,6 +93,46 @@ const claimedScopes = (claims: Claims): readonly string[] => {
   const scp = claims["scp"];
   if (Array.isArray(scp)) return scp.filter((value): value is string => typeof value === "string");
   return [];
+};
+
+/**
+ * What the ISSUER's key set could not do, keyed by `jose`'s own stable `code`.
+ *
+ * The complement is what the TOKEN got wrong — a bad signature, an expired or
+ * mismatched claim, a refused algorithm — and those stay silent: the caller
+ * presented a credential and it was refused, which is not news.
+ *
+ * These are. A JWKS that times out, a `kid` no published key matches, a key set
+ * that is not one — plus anything with no `code` at all, which is a fetch
+ * `TypeError`, a DNS failure or a 5xx surfaced as a plain `Error`. Every one of
+ * them refused EVERY caller at once, and as a bare `401` that reads as the
+ * whole world suddenly sending bad credentials. `ERR_JWKS_NO_MATCHING_KEY` is
+ * on this side deliberately: it is ambiguous — a forged `kid`, or a rotation
+ * this cache has not caught up with — and the rotation reading is the one worth
+ * an operator's attention.
+ */
+const KEY_SET_REASONS: Readonly<Record<string, string>> = {
+  ERR_JWKS_TIMEOUT: "keys_unreachable",
+  ERR_JWKS_INVALID: "keys_invalid",
+  ERR_JWKS_NO_MATCHING_KEY: "no_matching_key",
+  ERR_JWKS_MULTIPLE_MATCHING_KEYS: "keys_ambiguous",
+  ERR_JWK_INVALID: "key_invalid",
+  ERR_JOSE_GENERIC: "issuer_unreachable",
+};
+
+/**
+ * The bounded dimension for a refusal the issuer caused, or `undefined` when the
+ * token itself was the problem.
+ *
+ * Read off `code` rather than `instanceof`: `jose` publishes the codes as its
+ * stable identity, and matching on the class would break the moment a consumer
+ * held a second copy of the library — the dual-copy hazard every peer here
+ * exists to avoid.
+ */
+const keySetReason = (cause: unknown): string | undefined => {
+  const code: unknown = cause instanceof Error ? (cause as { code?: unknown }).code : undefined;
+  if (typeof code !== "string") return "issuer_unreachable";
+  return KEY_SET_REASONS[code];
 };
 
 const bearer = (value: string | readonly string[] | undefined): string | undefined => {
@@ -120,14 +177,18 @@ const bearer = (value: string | readonly string[] | undefined): string | undefin
  * shape `http({ port })` has against `PORT`. A variable nobody pinned and
  * nobody set is a `ConfigInvalid` naming it, at startup.
  *
- * A refusal carries no reason, which is `Unauthenticated`'s own rule: an
- * authenticator that wants to record why logs it before returning.
+ * A refusal carries no reason ON THE WIRE, which is `Unauthenticated`'s own
+ * rule. What this scheme records instead is narrower and deliberate: a refusal
+ * the TOKEN caused is silent, and a refusal the ISSUER's key set caused settles
+ * an `Observers` operation — see {@link KEY_SET_REASONS}. A line per refused
+ * credential is how a scanner writes an application's logs for it; a key-set
+ * incident refused every caller at once and deserved to be visible.
  */
 export const jwtAuthenticator =
   <P>() =>
   <const Scopes extends readonly string[] = readonly []>(
     options: JwtOptions<P, Scopes>,
-  ): Authenticator<P, Scopes[number], Env, ConfigInvalid> => {
+  ): Authenticator<P, Scopes[number], Env | Observers, ConfigInvalid> => {
     const header = (options.header ?? "authorization").toLowerCase();
     const vocabulary = options.scopes;
     const schema = Config.object({
@@ -137,17 +198,42 @@ export const jwtAuthenticator =
     });
 
     return HttpAuthenticator<P, Scopes[number]>()({
-      inject: { env: Env },
-      make: ({ env }) =>
+      inject: { env: Env, observers: Observers },
+      make: ({ env, observers }) =>
         Config.parse(
           "HttpJwt",
           schema,
-        )(env).map((bound): AuthenticatorService<P, Scopes[number]> => {
+        )(env).flatMap((bound): Result<AuthenticatorService<P, Scopes[number]>, ConfigInvalid> => {
+          // The scheme half `Config.url` does not check. A key set fetched in
+          // cleartext lets anything on the path publish its own key and mint
+          // tokens this process then accepts — which is a sharper version of
+          // the same rule `oidc()` already applied to its issuer, since a JWKS
+          // needs no secret to be worth attacking. The two disagreed until this.
+          if (cleartext(bound.jwks, options.allowInsecureJwks ?? false) === "refused")
+            return Err(
+              cleartextRefused({
+                port: "HttpJwt",
+                variable: "HTTP_JWT_JWKS_URI",
+                option: "allowInsecureJwks` on `jwtAuthenticator()",
+                what: "anything on the path can substitute its own signing key and mint tokens this process accepts",
+              }),
+            );
           // Built once, once the graph knows where the JWKS is: the key set IS
           // the cache, so one per request would refetch the issuer's keys on
           // every call.
           const keys = createRemoteJWKSet(new URL(bound.jwks));
-          return (headers) => {
+          // A refusal the ISSUER caused is an operation that failed; one the
+          // token caused is not an operation at all. So this is called on the
+          // key-set branch alone, and a verified token — like every other
+          // success here — writes nothing.
+          const reportKeySet = (cause: unknown, reason: string): void => {
+            observe(observers, { component: "jwt", name: "verify", attributes: {} })({
+              outcome: "error",
+              attributes: { reason },
+              cause,
+            });
+          };
+          const resolve: AuthenticatorService<P, Scopes[number]> = (headers) => {
             const token = bearer(headers[header]);
             if (token === undefined) return ErrAsync(new Unauthenticated());
             return (
@@ -163,11 +249,20 @@ export const jwtAuthenticator =
                   // often omit it, and it is honoured when present either way.
                   requiredClaims: ["iss", "aud", "exp"],
                 }),
-                // Every failure is the same refusal: a signature that does not
-                // verify, an expired token and an audience mismatch must not be
-                // distinguishable from outside, or the endpoint becomes an
-                // oracle for which of them the attacker got wrong.
-                () => new Unauthenticated(),
+                // Every failure is the same refusal ON THE WIRE: a signature
+                // that does not verify, an expired token and an audience
+                // mismatch must not be distinguishable from outside, or the
+                // endpoint becomes an oracle for which of them the attacker got
+                // wrong. A JWKS outage answers the same `401` for the same
+                // reason — there is nothing here that can authenticate anyone —
+                // but it is REPORTED, because it refused every caller at once
+                // and a bare `401` per request reads as the whole world
+                // suddenly sending bad credentials.
+                (cause: unknown) => {
+                  const reason = keySetReason(cause);
+                  if (reason !== undefined) reportKeySet(cause, reason);
+                  return new Unauthenticated();
+                },
               )
                 .map(({ payload }) => payload)
                 // `flatMap`, not `map`: `principal` answering `undefined` is a
@@ -188,6 +283,7 @@ export const jwtAuthenticator =
                 })
             );
           };
+          return Ok(resolve);
         }),
     });
   };

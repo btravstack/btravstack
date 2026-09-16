@@ -74,7 +74,7 @@ export const orderApiOver = (unit: {
     // The session cookie's codec and the login answerer that seals it: the
     // scheme reading the cookie rides `fragments` like the other two ride
     // `router`, and the codec is what ties the two halves to one key list.
-    provides: [sessionCodec(), oidc({ principal, scope: "openid orders:export" })],
+    provides: [sessionCodec(), ...oidc({ principal, scope: "openid orders:export" })],
     // Everything a forked kind reads out of the application scope: the three
     // observability ports and the one database client every request's
     // repository is built over.

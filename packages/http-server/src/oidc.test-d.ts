@@ -1,10 +1,12 @@
-// The type half of the login answerer: it is one member of the HTTP set port,
-// its needs are the environment and the CODEC's port — so a root that composes
-// it without `sessionCodec()` is di's own unmet need — and `principal` is the
-// one option it cannot be built without. Each `@ts-expect-error` is an assertion.
+// The type half of the login answerer: it is TWO providers — one member of the
+// HTTP set port, and the `CookieSchemes` member that turns the runtime's `csrf`
+// default on for a cookie-reading surface — so a root spreads it. Its needs are
+// the environment and the CODEC's port, so a root that composes it without
+// `sessionCodec()` is di's own unmet need, and `principal` is the one option it
+// cannot be built without. Each `@ts-expect-error` is an assertion.
 import { Env, type ConfigInvalid } from "@btravstack/config";
 import type { Observers } from "@btravstack/core";
-import { Module, type Provider } from "@btravstack/di";
+import { Module, type AnyProvider, type Provider } from "@btravstack/di";
 import { oc } from "@orpc/contract";
 import type { IDToken } from "openid-client";
 import { OkAsync } from "unthrown";
@@ -31,9 +33,12 @@ const identityOf = (claims: IDToken): Identity | undefined =>
 // `httpServer` already contributes the no-op member and exports the port.
 // Both ways a boot can refuse are on the error channel.
 expectTypeOf(oidc({ principal: identityOf })).toEqualTypeOf<
-  Provider<HttpHandler, ConfigInvalid | OidcUnreachable, Env | SessionCodec | Observers> & {
-    readonly port: typeof HttpHandler;
-  }
+  readonly [
+    Provider<HttpHandler, ConfigInvalid | OidcUnreachable, Env | SessionCodec | Observers> & {
+      readonly port: typeof HttpHandler;
+    },
+    AnyProvider,
+  ]
 >();
 
 // Every transport option pinned at the call is the same provider: a pin
@@ -50,9 +55,12 @@ expectTypeOf(
     principal: identityOf,
   }),
 ).toEqualTypeOf<
-  Provider<HttpHandler, ConfigInvalid | OidcUnreachable, Env | SessionCodec | Observers> & {
-    readonly port: typeof HttpHandler;
-  }
+  readonly [
+    Provider<HttpHandler, ConfigInvalid | OidcUnreachable, Env | SessionCodec | Observers> & {
+      readonly port: typeof HttpHandler;
+    },
+    AnyProvider,
+  ]
 >();
 
 // @ts-expect-error -- Property 'principal' is missing: there is no default for what claims mean
@@ -75,7 +83,7 @@ const row = api.HtmxGet("/orders/:id/row", { requires: [{ session: ["orders:expo
 void HttpModule("BrowserApi")({
   fragments: api.HtmxFragments([row]),
   fragmentsLogin: "/auth/login",
-  provides: [row, sessionCodec(), oidc({ principal: identityOf })],
+  provides: [row, sessionCodec(), ...oidc({ principal: identityOf })],
 });
 
 // The negative below is built over fragments with NO session scheme, and that
@@ -94,13 +102,13 @@ const status = publicApi.HtmxGet("/status")({
 // codec beside it discharges that.
 void HttpModule("PublicWithLogin")({
   fragments: publicApi.HtmxFragments([status]),
-  provides: [status, sessionCodec(), oidc({ principal: identityOf })],
+  provides: [status, sessionCodec(), ...oidc({ principal: identityOf })],
 });
 
 // @ts-expect-error -- UNSATISFIED DEPENDENCIES: nothing discharges `SessionCodec`, which only `oidc()` needs here
 void HttpModule("PublicWithLoginNoCodec")({
   fragments: publicApi.HtmxFragments([status]),
-  provides: [status, oidc({ principal: identityOf })],
+  provides: [status, ...oidc({ principal: identityOf })],
 });
 
 // `http()` exports `Observers` too, so a root that imports the oRPC sugar and
@@ -116,7 +124,7 @@ const pingRouter = publicApi.OrpcRouter(pingContract)({
 
 void Module("RpcWithLogin")({
   imports: [http()],
-  provides: [pingRouter, sessionCodec(), oidc({ principal: identityOf })],
+  provides: [pingRouter, sessionCodec(), ...oidc({ principal: identityOf })],
   exports: [HttpRuntime, HttpHandler],
   needs: [Env],
 });

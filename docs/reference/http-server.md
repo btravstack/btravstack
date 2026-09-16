@@ -287,6 +287,7 @@ Its other options:
 | `algorithms`        | no       | `DEFAULT_ALGORITHMS`          | the accepted signature algorithms; asymmetric only, and `none` is not expressible         |
 | `clockToleranceSec` | no       | `0`                           | leeway on `exp` and `nbf`, in seconds                                                     |
 | `header`            | no       | `authorization`               | which header carries the token, as `Bearer <token>`                                       |
+| `allowInsecureJwks` | no       | `false`                       | fetch the key set from an `http:` URL that is not on a loopback host                      |
 
 **`jwks`, `issuer` and `audience` are pins, the same rule `http({ port })` has against
 `PORT`**: explicit beats environment, per field. Left unset, they bind from
@@ -296,7 +297,20 @@ scheme's `make` arm, so a variable nobody pinned and nobody set is a
 `ConfigInvalid` naming it at **startup** — exit `78` under `runMain` — rather
 than a `401` for every caller. `jwks` is a
 [`Config.url`](/reference/config#fields) field: a malformed URI is refused with
-the variable named instead of defecting at the first request. The scheme's
+the variable named instead of defecting at the first request.
+
+**A cleartext `jwks` is refused at boot too**, on the same rule
+[`oidc()`](#the-login-answerer) applies to its issuer and with the same
+loopback exception — `localhost`, `127.0.0.1` and `[::1]` are the dev loop.
+`Config.url` says a value PARSES, not that it is safe; a key set fetched over
+`http:` lets anything on the path publish its own signing key and mint tokens
+this process then accepts, and unlike the issuer case there is no secret an
+attacker had to steal first (RFC 8725 §3). Pin `allowInsecureJwks: true` to
+override it — an **option and not a variable**, for `securityHeaders`' own
+reason: a value whose silent change is a security regression stays in the
+composition root. The two schemes disagreed about this until it was one rule.
+
+The scheme's
 `Env` need travels with it into the graph like any other, and `HttpModule`
 declares `Env` for the whole root, so a composition root writes no `needs` line
 for it.
@@ -459,7 +473,7 @@ export const BrowserApi = HttpModule("BrowserApi")({
   provides: [
     row,
     sessionCodec(),
-    oidc({
+    ...oidc({
       scope: "openid orders:export",
       principal: (claims) =>
         typeof claims["tenant"] === "string" && typeof claims.sub === "string"
@@ -576,9 +590,9 @@ own `error_description` and the library error's message are caller-controlled,
 so they ride the `cause` — a line or a span, never an instrument — and the
 authorization code and the tokens ride nothing. **It costs a root nothing**:
 the starter contributes the no-op observer every reader of that set port owes,
-and exports the port too — `oidc()` is a single member provider rather than a
-module, so it has nowhere to put a no-op of its own, and the export is what
-keeps the set free to a root instead of making this one answerer charge for it.
+and exports the port too — `oidc()` answers providers rather than a module, so
+it has nowhere to put a no-op of its own, and the export is what keeps the set
+free to a root instead of making this one answerer charge for it.
 Composing [`observability()`](/reference/observability) is what turns the line
 on; composing none leaves an inert call per route.
 
@@ -1082,9 +1096,18 @@ against a user directory, a session store or an ingress's mTLS headers looks
 like.
 
 `Unauthenticated` is a `TaggedError` with an **empty payload**: the starter
-surfaces no reason, so a field would be write-only. An authenticator that wants
-to record why logs it before returning. Forwarding a reason would put "no such
-user" versus "bad signature" in a 401 body by default.
+surfaces no reason, so a field would be write-only. Forwarding a reason would
+put "no such user" versus "bad signature" in a 401 body by default.
+
+An authenticator that wants to record why reports it to
+[`Observers`](/reference/core/observability) before returning, and
+`jwtAuthenticator` is the worked case — note **what** it records. A refusal the
+caller's own credential caused stays silent, because a line per unauthenticated
+request is how a scanner writes an application's logs for it. A refusal the
+scheme's own DEPENDENCY caused — a JWKS that times out, a key set that is not
+one, a `kid` no published key matches — settles an `error` operation carrying a
+bounded `reason`, because it refused every caller at once and a bare `401` per
+request reads as the whole world suddenly sending bad credentials.
 
 ### `defineHttp({ authenticators })` — what each scheme resolves to
 
@@ -2086,6 +2109,19 @@ A document from this stack therefore carries **OR and never AND** — not a
 limitation of the generator but of what a contract can say:
 [`@btravstack/contract`](/reference/contract) refuses the multi-key requirement
 OpenAPI reads as AND, because this package would run it as OR.
+
+**Operations are matched by `operationId`, computed the way the generator
+computes it.** The walk reads `@orpc/openapi`'s own meta and falls back to the
+router segments joined by `.`, so a procedure that named an `operationId` of
+its own — through `oc.meta(openapi({ operationId }))`, which is what a
+generated client's method is named after — keeps its `security`. It used to key
+on the contract path alone, and every such operation published with no
+`security` at all, which a reader of the document takes as public.
+
+A procedure that replaces the whole operation with an `openapi({ spec })`
+**owns its `security` too**: an object `spec` IS the operation, so there is
+nothing for the fold to add to, and a function `spec` is handed the built
+operation and may drop what the fold wrote.
 
 **`securitySchemes` is yours to supply.** The contract says WHICH schemes
 protect a route and deliberately never says what a scheme IS — the same split

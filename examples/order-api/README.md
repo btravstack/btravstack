@@ -402,7 +402,7 @@ router:
 ```ts
 fragmentsLogin: "/auth/login",
 unit: { …, session: SessionModule },
-provides: [sessionCodec(), oidc({ principal, scope: "openid orders:export" })],
+provides: [sessionCodec(), ...oidc({ principal, scope: "openid orders:export" })],
 ```
 
 `GET /auth/login` redirects to the identity provider and `GET /auth/callback`
