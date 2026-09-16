@@ -96,12 +96,12 @@ export const CustomersApp = Module("CustomersApp")({
 
 ## Options
 
-| Option      | Where                               | What it is                                                                        |
-| ----------- | ----------------------------------- | --------------------------------------------------------------------------------- |
-| `adapter`   | `cache({ adapter })`                | the adapter module providing `CacheBackend` — required                            |
-| `clock`     | `memoryCache`                       | what a ttl is measured against (default: the kernel's `systemClock`)              |
-| `REDIS_URL` | environment, read by `redisCache()` | the connection URL — required, validated at graph build                           |
-| `ttlMs`     | `cache.set` / `cache.getOrSet`      | per-entry expiry (default: none — the entry stays until it is deleted or evicted) |
+| Option      | Where                               | What it is                                                                                                                                                                                                                                                                 |
+| ----------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `adapter`   | `cache({ adapter })`                | the adapter module providing `CacheBackend` — required                                                                                                                                                                                                                     |
+| `clock`     | `memoryCache`                       | what a ttl is measured against (default: the kernel's `systemClock`)                                                                                                                                                                                                       |
+| `REDIS_URL` | environment, read by `redisCache()` | the connection URL — required, validated at graph build                                                                                                                                                                                                                    |
+| `ttlMs`     | `cache.set` / `cache.getOrSet`      | per-entry expiry, rounded to whole milliseconds (default: none — the entry stays until it is deleted or evicted; a value that does not round to a whole millisecond of at least 1 means the entry is not stored, so `0.6` is stored as `1` and `0.4` is not stored at all) |
 
 The full table — defaults, semantics and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/cache),

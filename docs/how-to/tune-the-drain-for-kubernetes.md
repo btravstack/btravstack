@@ -116,10 +116,9 @@ pins it, `probes: { port: 0 }` lets the OS choose (read it back with
 startup failure — `RuntimeStartFailed` for `"probes"` with a `ConfigInvalid`
 cause, exit code `78` under `runMain`.
 
-The server binds **`127.0.0.1` only**. A kubelet `httpGet` probe connects to
-the pod IP, so it cannot reach a loopback-only listener; use an `exec` probe
-that runs inside the container instead. `node` is always in a Node image,
-`curl` and `wget` are not:
+The server binds **`0.0.0.0`** by default, from `PROBE_HOST` — `HOST`'s own
+default, for `HOST`'s own reason. A kubelet `httpGet` probe connects over the
+**pod IP**, so that is what makes the ordinary probe shape work:
 
 ```yaml
 containers:
@@ -128,19 +127,33 @@ containers:
       - name: PROBE_PORT
         value: "9000"
     readinessProbe:
-      exec:
-        command:
-          - node
-          - -e
-          - "fetch('http://127.0.0.1:9000/readyz').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      httpGet:
+        path: /readyz
+        port: 9000
       periodSeconds: 5
     livenessProbe:
-      exec:
-        command:
-          - node
-          - -e
-          - "fetch('http://127.0.0.1:9000/livez').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      httpGet:
+        path: /livez
+        port: 9000
       periodSeconds: 10
+```
+
+Set `PROBE_HOST=127.0.0.1` where the probe port must not leave the container —
+a node whose pod network is shared, or a port you are reusing. Then the
+`httpGet` above cannot reach it, and the probe has to run **inside** the
+container. `node` is always in a Node image; `curl` and `wget` are not:
+
+```yaml
+env:
+  - name: PROBE_HOST
+    value: "127.0.0.1"
+readinessProbe:
+  exec:
+    command:
+      - node
+      - -e
+      - "fetch('http://127.0.0.1:9000/readyz').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+  periodSeconds: 5
 ```
 
 There is no separate startup probe by design: `/livez` answers `200` from

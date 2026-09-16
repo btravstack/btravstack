@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { Env } from "@btravstack/config";
+import { Env, type ConfigInvalid } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";
 import { observability, type Line } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
@@ -8,7 +8,8 @@ import { createFakeClock, type FakeClock } from "@btravstack/testing";
 import { metrics, trace } from "@opentelemetry/api";
 import { PeriodicExportingMetricReader, type DataPoint } from "@opentelemetry/sdk-metrics";
 import { BatchSpanProcessor, type ReadableSpan, type SpanExporter } from "@opentelemetry/sdk-trace";
-import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
+import { createClient, type RedisClientType } from "redis";
+import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { inject, test } from "vitest";
 
 import {
@@ -21,7 +22,7 @@ import {
 } from "../cache.js";
 import { memoryCacheBackend } from "../memory.js";
 import { cache } from "../module.js";
-import { redisCache } from "../redis.js";
+import { redisCache, type CacheConnectionFailed } from "../redis.js";
 
 /** An adapter that is always down, so the failure arms are reachable without breaking the shared server. */
 export const failingBackend: CacheBackendService = {
@@ -90,6 +91,16 @@ export type CacheFixtures = {
   readonly redis: CacheBackendService;
   /** The same service, after its scope closed — the shape an adapter takes when the server is gone. */
   readonly disconnected: CacheBackendService;
+  /**
+   * A raw node-redis client on the shared server, standing in for the OTHER
+   * writer — the process that put something under a key this adapter did not
+   * encode. Nothing else can produce that state honestly.
+   */
+  readonly otherWriter: RedisClientType;
+  /** The Redis adapter composed over a `REDIS_URL`, so a spec can assert what a bad one does. */
+  readonly connectingTo: (
+    url: string,
+  ) => AsyncResult<CacheBackendService, ConfigInvalid | CacheConnectionFailed>;
   /** An instrumented cache, and the three signals it emits. */
   readonly instrumented: Instrumented;
 };
@@ -142,6 +153,29 @@ export const it = test.extend<CacheFixtures>({
     );
 
     await use(served.getOrThrow());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  otherWriter: async ({}, use) => {
+    const client = createClient({
+      url: inject("__TESTCONTAINERS_REDIS_URL__"),
+    }) as RedisClientType;
+    client.on("error", () => {});
+    await client.connect();
+    await use(client);
+    await client.close();
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  connectingTo: async ({}, use) => {
+    await use((url) =>
+      Module.scoped(
+        Module("ConnectingFixture")({
+          imports: [redisCache()],
+          provides: [Provider(Env)({ inject: {}, value: { REDIS_URL: url } })],
+          exports: [CacheBackend],
+        }),
+        (ctx) => OkAsync(ctx.get(CacheBackend)),
+      ),
+    );
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   instrumented: async ({}, use) => {

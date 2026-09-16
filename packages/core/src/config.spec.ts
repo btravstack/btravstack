@@ -38,14 +38,34 @@ describe("PROBE_PORT", () => {
   it("binds the probe server from the environment when no option is given", async ({
     configured,
   }) => {
-    // GIVEN an environment asking for an ephemeral probe port
-    const app = configured.probesFrom({ PROBE_PORT: "0" });
+    // GIVEN an environment asking for an ephemeral probe port on loopback —
+    // the interface is pinned because the shipped default is the wildcard, and
+    // a suite has no business listening on every interface of its machine
+    const app = configured.probesFrom({ PROBE_PORT: "0", PROBE_HOST: "127.0.0.1" });
 
     // WHEN the probe server has bound
     const port = await app.probePort();
 
     // THEN the OS picked one — a real, non-zero port — rather than the default 9000
     expect(port).toBeOkWith(expect.any(Number));
+  });
+
+  it("binds the probe interface from PROBE_HOST, and reports a bind it cannot make", async ({
+    configured,
+  }) => {
+    // GIVEN an address this machine does not have — TEST-NET-1, which RFC 5737
+    // reserves precisely so nothing can be assigned it. `PROBE_HOST` is a
+    // string, so it is the BIND that must refuse it rather than the schema,
+    // which is only true if the variable reaches `listen` at all.
+    const app = configured.probesFrom({ PROBE_PORT: "0", PROBE_HOST: "192.0.2.1" });
+
+    // WHEN the kernel tries to bind it
+    // THEN it is a modeled startup failure naming the probe server, carrying
+    // the operating system's own refusal
+    await expect(app.exited).toBeErrTagged(
+      "RuntimeStartFailed",
+      expect.objectContaining({ runtime: "probes" }),
+    );
   });
 
   it("exits 78 when PROBE_PORT is not a port", async ({ configured }) => {

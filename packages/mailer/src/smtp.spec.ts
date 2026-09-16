@@ -1,12 +1,13 @@
 import { Env } from "@btravstack/config";
 import { HealthChecks, runHealthChecks } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
+import { OkAsync } from "unthrown";
 import { describe, expect } from "vitest";
 import { vi } from "vitest";
 import { inject } from "vitest";
 
 import { aMail, it } from "./__tests__/test-fixtures.js";
-import { smtpMailer, verifyWithin } from "./smtp.js";
+import { smtpMailer } from "./smtp.js";
 
 describe("smtpMailer", () => {
   it("delivers the message to the server", async ({ smtp, recipient, delivered }) => {
@@ -131,19 +132,28 @@ describe("smtpMailer", () => {
     });
   });
 
-  it("gives up on a relay that never answers, rather than holding the probe open", async () => {
-    // GIVEN a transport whose `verify()` never settles — the shape a relay
-    // that accepts the connection and never greets presents
-    const hanging = {
-      verify: () => new Promise<boolean>(() => {}),
-    } as unknown as Parameters<typeof verifyWithin>[0];
-
-    // WHEN the health check's own deadline passes
-    // THEN it reports rather than waiting: `runHealthChecks` has no deadline
-    // of its own, so a probe that hangs is one an orchestrator times out
-    // instead of reading
-    await expect(verifyWithin(hanging, 5)).toBeErrTagged("HealthCheckFailed", {
-      reason: "the relay did not answer within 5 ms",
+  it("declares a deadline of its own on the contribution", async () => {
+    // GIVEN the adapter composed anywhere at all — the deadline is a property
+    // of what it CONTRIBUTES, not of any relay it is pointed at
+    const root = Module("DeadlineFixture")({
+      imports: [smtpMailer()],
+      provides: [Provider(Env)({ inject: {}, value: { SMTP_URL: "smtp://127.0.0.1:1" } })],
+      exports: [HealthChecks],
     });
+
+    // WHEN the contributed check is inspected rather than run
+    const declared = await Module.scoped(root, (ctx) =>
+      OkAsync(
+        ctx.get(HealthChecks).map((check) => ({ name: check.name, timeoutMs: check.timeoutMs })),
+      ),
+    );
+
+    // THEN it names a `timeoutMs` of its own. An SMTP greeting and a `SELECT 1`
+    // over a warm pool are two orders of magnitude apart, which is why the
+    // number is on the contribution — and why the fold's 800 ms default would
+    // be a false unhealthy here. What that deadline DOES is
+    // `packages/core/src/health.spec.ts`'s: this asserts only that the adapter
+    // still declares one, which a test that overwrote it could not.
+    expect(declared).toBeOkWith([{ name: "mailer", timeoutMs: 5_000 }]);
   });
 });

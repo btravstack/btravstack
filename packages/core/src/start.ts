@@ -69,29 +69,43 @@ export type ExitReport = {
  */
 const KERNEL_DEFAULTS = {
   probePort: 9000,
+  // `HOST`'s own default, and for `HOST`'s own reason — a pod, not a laptop. A
+  // kubelet `httpGet` probe connects over the pod IP, so a loopback-only
+  // listener cannot answer the probe shape every manifest reaches for first.
+  probeHost: "0.0.0.0",
   preDrainDelayMs: 5_000,
   drainTimeoutMs: 20_000,
   stopTimeoutMs: 5_000,
 } as const;
 
-type KernelConfig = { readonly [K in keyof typeof KERNEL_DEFAULTS]: number };
+// Derived rather than restated, so a field added above cannot be forgotten
+// here — `validate`'s result is cast to this, so drift would be silent.
+type KernelConfig = {
+  readonly [K in keyof typeof KERNEL_DEFAULTS]: (typeof KERNEL_DEFAULTS)[K] extends string
+    ? string
+    : number;
+};
 
 const readKernelConfig = (
   options: Pick<StartOptions, "probes" | "preDrainDelayMs" | "drainTimeoutMs" | "stopTimeoutMs">,
   env: Environment,
 ): Result<KernelConfig, RuntimeStartFailed> => {
-  // `probes: false` pins the default and so reads nothing: a deployment that
-  // disabled the probe server should not fail on its port.
-  const probePort =
-    options.probes === undefined
-      ? undefined
-      : options.probes === false
-        ? KERNEL_DEFAULTS.probePort
-        : options.probes.port;
+  // `probes: false` pins BOTH defaults and so reads neither: a deployment that
+  // disabled the probe server should not fail on its port or its interface.
+  const probes =
+    options.probes === false
+      ? { port: KERNEL_DEFAULTS.probePort, host: KERNEL_DEFAULTS.probeHost }
+      : options.probes;
+  const probePort = probes?.port;
+  const probeHost = probes?.host;
   const schema = Config.object({
     probePort: Config.pinned(
       probePort,
       Config.port("PROBE_PORT", { default: KERNEL_DEFAULTS.probePort }),
+    ),
+    probeHost: Config.pinned(
+      probeHost,
+      Config.string("PROBE_HOST", { default: KERNEL_DEFAULTS.probeHost }),
     ),
     preDrainDelayMs: Config.pinned(
       options.preDrainDelayMs,
@@ -124,17 +138,23 @@ const readKernelConfig = (
 export type StartOptions = {
   /**
    * The environment the graph is configured from, provided to it as the `Env`
-   * port and read for the kernel's own `PROBE_PORT`. Defaults to
-   * `process.env`.
+   * port and read for the kernel's own variables. Defaults to `process.env`.
    */
   readonly env?: Environment;
   readonly clock?: Clock;
   readonly signals?: boolean;
   /**
-   * The probe server's port. Unset, it is bound from `PROBE_PORT` in `env`
-   * (default `9000`); `false` disables the probe server.
+   * The probe server's port and interface. Unset, they are bound from
+   * `PROBE_PORT` (default `9000`) and `PROBE_HOST` (default `0.0.0.0`) in
+   * `env`; `false` disables the probe server and reads neither.
+   *
+   * `0.0.0.0` matches `HOST`'s own default for `HOST`'s own reason: a kubelet
+   * `httpGet` probe connects over the POD IP, so the loopback-only bind this
+   * used to hardcode could not answer the probe shape every manifest reaches
+   * for first. Pin `host: "127.0.0.1"` where the port is shared with something
+   * else on the host, and probe it with `exec` from inside the container.
    */
-  readonly probes?: { readonly port: number } | false;
+  readonly probes?: { readonly port: number; readonly host?: string } | false;
   /**
    * How long readiness stays false before the runtime is told to stop
    * accepting. Unset, it is bound from `PRE_DRAIN_DELAY_MS` in `env` (default
@@ -450,8 +470,12 @@ export const start = <X, E, N>(
   // Mapped through `kernelConfig` even when probes are off: the read covers
   // the drain timings too, and short-circuiting on `probes: false` would let a
   // malformed `DRAIN_TIMEOUT_MS` boot on the defaults with nothing reported.
-  const probesOptions: Result<{ readonly port: number } | false, RuntimeStartFailed> =
-    kernelConfig.map(({ probePort }) => (options.probes === false ? false : { port: probePort }));
+  const probesOptions: Result<
+    { readonly port: number; readonly hostname: string } | false,
+    RuntimeStartFailed
+  > = kernelConfig.map(({ probePort, probeHost }) =>
+    options.probes === false ? false : { port: probePort, hostname: probeHost },
+  );
   if (options.probes === false) probeBound.resolve(undefined);
 
   const probesStarted: AsyncResult<void, RuntimeStartFailed> = probesOptions
@@ -459,7 +483,7 @@ export const start = <X, E, N>(
     .flatMap((probes) =>
       probes === false
         ? OkAsync()
-        : startProbeServer({ port: probes.port, live, ready, health })
+        : startProbeServer({ port: probes.port, hostname: probes.hostname, live, ready, health })
             .tap((server) => {
               probeBoundPort = server.port;
               probeBound.resolve(server.port);

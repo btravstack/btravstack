@@ -66,7 +66,21 @@ until something deletes it, the memory adapter's process ends, or Redis evicts
 it under its own policy. There is no default TTL — a cache that quietly forgot
 entries after some interval nobody chose would be the worst of both.
 
-Four things the signatures decide:
+**A `ttlMs` that is supplied is read the same way for every adapter**, once, in
+`readThrough`: it is rounded to whole milliseconds, and anything that is not
+then at least `1` — a zero, a negative, a `NaN`, an `Infinity` — means the
+entry is **not stored at all**. `set` still answers `Ok`, so the next `get` is
+an ordinary miss and `getOrSet` still returns the loader's value.
+
+That rule exists because a `ttlMs` is usually computed, and `deadline - now`
+goes zero or negative the moment the deadline has passed. The two alternatives
+are both worse than a miss: storing without expiry turns an arithmetic slip
+into a leak that outlives the request, and the Redis adapter's own `PX 0` was
+reported as `CacheUnavailable` — an outage class, for a bug in the caller. The
+memory and Redis adapters disagreed on all four values before this; now neither
+of them sees one.
+
+Five things the signatures decide:
 
 **A miss is `Ok(undefined)`.** Absence is the cache working, not failing, so
 nothing has to triage a "not found" that was never an error.
@@ -88,7 +102,16 @@ export const viewOf = (
 A value `JSON.stringify` cannot take — a cycle, a `BigInt` — is a **defect**,
 not a `CacheUnavailable`: it is a bug in the caller rather than an operational
 state, and modelling it would put an arm on every call site no correct program
-can reach.
+can reach. The defect is on the returned `AsyncResult`, not a synchronous throw
+out of `set(...)`: the encode happens inside the pipeline.
+
+**A value another writer left under the key is the opposite case, and it is a
+`CacheUnavailable`.** `REDIS_URL` carries a database index, so two applications
+sharing one is a deployment away; bytes this adapter did not encode make
+`JSON.parse` throw, and as a defect that survived `getOrSet`'s recovery — one
+foreign key made every read through it defect until the key expired. Reported
+as the `get` failing, it lands on the arm every caller already degrades to a
+miss.
 
 ## `CacheUnavailable`, and who recovers it
 
@@ -199,6 +222,24 @@ No default is deliberate: a cache quietly pointed at `localhost` in a
 deployment that meant to set this would look like it was working. An unset or
 blank variable is a `ConfigInvalid` naming it — exit `78` under `runMain`,
 before a single read is served.
+
+**A `REDIS_URL` nothing answers is `CacheConnectionFailed`, after five
+attempts.** node-redis retries the first connect forever, which under a kernel
+that is still `building` is a pod answering `/livez`, never `/readyz`, with no
+report and no exit code — for a typo in a manifest. The adapter bounds the
+FIRST connect only: once it has connected, reconnection is unlimited, because a
+server that came back is not a misconfiguration. Kubernetes restarting the pod
+is the right answer to a dependency that is not up yet, and it needs the
+process to exit to give it.
+
+**The client carries a permanent `'error'` listener, and it is silent.**
+node-redis emits `'error'` on a socket drop, a decoder fault or a failed
+keep-alive, and an `EventEmitter` with no listener for it **throws** — which the
+kernel's `uncaughtException` handler turns into a whole-application teardown at
+exit `70`, over a fault the client's own reconnect recovers from in
+milliseconds. Nothing is logged there because the next operation reports
+itself: `CacheUnavailable` is already on every method's channel, and that is
+the line worth reading.
 
 `redis` is an **optional** peer dependency, reached only through the
 `@btravstack/cache/redis` subpath, so a consumer composing the memory adapter

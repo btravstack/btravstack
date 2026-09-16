@@ -6,7 +6,16 @@ import {
   type PortInstance,
   type ServiceOf,
 } from "@btravstack/di";
-import { Err, Ok, P, TaggedError, fromSafePromise, type AsyncResult, type Result } from "unthrown";
+import {
+  Err,
+  Ok,
+  P,
+  TaggedError,
+  fromSafePromise,
+  fromThrowable,
+  type AsyncResult,
+  type Result,
+} from "unthrown";
 
 /** The process environment as it actually arrives: flat, and every value a string or absent. */
 export type Environment = Readonly<Record<string, string | undefined>>;
@@ -152,22 +161,38 @@ const wholeNumberIn =
     return Ok(parsed);
   };
 
+// Decimal digits and an optional sign, and nothing else. `Number` alone accepts
+// a grammar nobody writes in a manifest on purpose and reads wrong when they
+// do: `PORT=0x1F90` binds 8080, `1e3` binds 1000, `0b101` binds 5, `+5` and
+// `7.0` bind quietly. A port written in hex is far likelier to be a typo than
+// an intention, and a field that guesses is worse than one that names it.
+const DECIMAL = /^[+-]?\d+$/;
+
 const integerIn = (min: number, max: number) => {
   const rule = wholeNumberIn(min, max);
-  return (value: string): Result<number, ConfigFieldInvalid> => {
-    const parsed = Number(value);
+  return (value: string): Result<number, ConfigFieldInvalid> =>
     // The raw string is what an operator wrote, so it is what the message
     // quotes; the shared rule takes over once there is a number to bound.
-    return Number.isInteger(parsed)
-      ? rule(parsed)
+    DECIMAL.test(value)
+      ? rule(Number(value))
       : invalid(`is not a whole number: ${JSON.stringify(value)}`);
-  };
 };
+
+// Credentials live in URLs — `postgres://user:hunter2@host/db` is the ordinary
+// shape of `DATABASE_URL`, `REDIS_URL`, `SMTP_URL` and `AMQP_URL` — and this
+// message reaches stderr through `runMain`'s `startFailed` line. The authority's
+// userinfo goes; the rest stays, because an operator still has to see WHICH
+// part they got wrong. `[^/?#]*` is bounded to the authority, so a password
+// containing `@` takes the last one rather than eating the path.
+const USERINFO = /(\/\/)[^/?#]*@/;
+const withoutCredentials = (value: string): string => value.replace(USERINFO, "$1***@");
 
 // `URL.canParse` rather than a regex or a try/catch around `new URL`: it is the
 // same parser every consumer eventually runs, and it does not throw.
 const absoluteUrl = (value: string): Result<string, ConfigFieldInvalid> =>
-  URL.canParse(value) ? Ok(value) : invalid(`is not a URL: ${JSON.stringify(value)}`);
+  URL.canParse(value)
+    ? Ok(value)
+    : invalid(`is not a URL: ${JSON.stringify(withoutCredentials(value))}`);
 
 const atLeast =
   (min: number) =>
@@ -175,6 +200,15 @@ const atLeast =
     entries.length < min
       ? invalid(`must list at least ${min}, got ${entries.length}`)
       : Ok(entries);
+
+const parsed = (
+  field: AnyConfigField,
+  raw: string | undefined,
+): Result<unknown, ConfigFieldInvalid> =>
+  fromThrowable(
+    () => field.parse(raw),
+    (cause: unknown) => new ConfigFieldInvalid({ reason: String(cause) }),
+  )().flatMap((result) => result);
 
 const TRUTHY = new Set(["true", "1", "yes", "on"]);
 const FALSY = new Set(["false", "0", "no", "off"]);
@@ -244,15 +278,29 @@ export const Config = {
 
   /**
    * A comma-separated list, each entry trimmed and empty entries dropped, so
-   * `"a, b,"` is `["a", "b"]`. `min` (default `1`) is the floor a shorter list
-   * is named against — a variable that lists nothing is a deployment mistake,
-   * not an empty list.
+   * `"a, b,"` is `["a", "b"]`. `min` is the floor a shorter list is named
+   * against — a variable that lists nothing is a deployment mistake, not an
+   * empty list.
+   *
+   * @remarks
+   * **`min` defaults to `1`, unless a `default` is given — then `0`.** A
+   * `default` is the composition root saying what it wants when nobody sets
+   * the variable, and `{ default: [] }` is a legitimate thing to want; under
+   * the flat `1` it was always refused, with a message blaming a variable
+   * nobody had set. An explicit `min` still applies to the default too, so the
+   * "a bound the environment route would refuse is not one a default gets to
+   * smuggle past" rule survives wherever a caller states one.
+   *
+   * A **pin** is checked against `min` whatever it is, which is why
+   * `Config.pinned([], Config.list("HTTP_SESSION_KEYS"))` is still refused:
+   * that field has no default, so its floor is `1`, and a session codec with
+   * no key to seal with is broken rather than empty.
    */
   list: (
     variable: string,
     options: WithDefault<readonly string[]> & { readonly min?: number } = {},
   ): ConfigField<readonly string[]> => {
-    const rule = atLeast(options.min ?? 1);
+    const rule = atLeast(options.min ?? (options.default === undefined ? 1 : 0));
     return present(
       variable,
       options,
@@ -310,7 +358,14 @@ export const Config = {
         const issues: ConfigIssue[] = [];
         const value: Record<string, unknown> = {};
         for (const [key, field] of Object.entries(fields)) {
-          field.parse(env[field.variable]).match({
+          // `fromThrowable`, not a bare call: a hand-written field whose
+          // `parse` THROWS would otherwise escape a `validate` this package
+          // promises never throws — and `start` calls it directly for the
+          // kernel's own fields, so the throw would land as a defect where
+          // thesis #4 says a bad environment is a modeled `Err`. A field that
+          // returns a defect is the `defect:` arm below; this is the other
+          // half of the same "a bug in the field" case, reported the same way.
+          parsed(field, env[field.variable]).match({
             ok: (parsed) => {
               value[key] = parsed;
             },

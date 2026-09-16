@@ -136,6 +136,28 @@ describe("Config.object", () => {
     // THEN the validation still answers with issues rather than throwing
     expect(result).toEqual({ issues: [{ message: "Error: parser bug", path: ["BROKEN"] }] });
   });
+
+  it("reports a field whose parser throws outright against its variable", () => {
+    // GIVEN a hand-written field that throws instead of returning — the other
+    // half of "a bug in the field", and the half that used to escape
+    const broken: ConfigField<number> = {
+      variable: "BROKEN",
+      parse: () => {
+        // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test: a field whose `parse` escapes the fold is what this guards
+        throw new Error("field bug");
+      },
+    };
+    const schema = Config.object({ n: broken });
+
+    // WHEN it is validated
+    const result = schema["~standard"].validate({ BROKEN: "1" });
+
+    // THEN it answers with issues rather than throwing out of a `validate` this
+    // package promises never throws. `start` calls `validate` directly for the
+    // kernel's own fields, so the escape landed as a defect and exit `70` where
+    // a bad environment is meant to be a modeled `Err` and exit `78`.
+    expect(result).toEqual({ issues: [{ message: "Error: field bug", path: ["BROKEN"] }] });
+  });
 });
 
 describe("Config.list", () => {
@@ -191,6 +213,24 @@ describe("Config.list", () => {
       shortDefault: "must list at least 2, got 1",
     });
   });
+
+  it("lets a supplied default be the empty list, without blaming the variable", () => {
+    // GIVEN a field whose composition root says "nothing, unless the
+    // deployment says otherwise" — `{ default: [] }`, which the flat floor of
+    // one refused outright
+    const field = Config.list("HTTP_CORS_ORIGIN", { default: [] });
+
+    // WHEN the variable nobody set is read, and one that was
+    const read = {
+      absent: field.parse(undefined).getOrThrow(),
+      supplied: field.parse("a.example,b.example").getOrThrow(),
+    };
+
+    // THEN the default comes through as the empty list it was written as. It
+    // used to answer `must list at least 1, got 0` — a message naming a
+    // variable the deployment never touched, for a decision the code made.
+    expect(read).toEqual({ absent: [], supplied: ["a.example", "b.example"] });
+  });
 });
 
 describe("Config.boolean", () => {
@@ -244,6 +284,59 @@ describe("Config.url", () => {
       pinned: expect.objectContaining({
         error: expect.objectContaining({ reason: 'is not a URL: "issuer.example/jwks.json"' }),
       }),
+    });
+  });
+
+  it("keeps the password out of the message when a connection URL is malformed", () => {
+    // GIVEN the ordinary shape of `DATABASE_URL`, with a port that is not one —
+    // the message reaches stderr through `runMain`'s `startFailed` line, which
+    // is the log an operator pastes into a ticket
+    const field = Config.url("DATABASE_URL");
+
+    // WHEN the malformed value is read
+    const read = field.parse("postgres://user:hunter2@db.internal:notaport/orders");
+
+    // THEN the userinfo is gone and everything that helps diagnose it stays:
+    // the scheme, the host, the bad port and the path. The secret used to be
+    // quoted whole, which is the twelve-factor rule saying config is
+    // credentials, in the one place this package prints config.
+    expect(read).toEqual(
+      expect.objectContaining({
+        error: expect.objectContaining({
+          reason: 'is not a URL: "postgres://***@db.internal:notaport/orders"',
+        }),
+      }),
+    );
+  });
+});
+
+describe("Config.integer, on the grammar it accepts", () => {
+  it("reads decimal only, so a port written another way is named rather than guessed", () => {
+    // GIVEN a port field, and the spellings `Number()` accepts silently
+    const field = Config.port("PORT");
+    const reasonOf = (result: Result<number, ConfigFieldInvalid>): string | number =>
+      result.isErr() ? result.error.reason : result.getOrThrow();
+
+    // WHEN each is read
+    const read = {
+      decimal: reasonOf(field.parse("8080")),
+      hex: reasonOf(field.parse("0x1F90")),
+      exponent: reasonOf(field.parse("1e3")),
+      binary: reasonOf(field.parse("0b101")),
+      octal: reasonOf(field.parse("0o17")),
+      trailingZero: reasonOf(field.parse("7.0")),
+    };
+
+    // THEN only the decimal one binds. `0x1F90` used to bind 8080 — a hex port
+    // in a manifest is far likelier to be a typo than an intention, and a field
+    // that guesses is worse than one that names it.
+    expect(read).toEqual({
+      decimal: 8080,
+      hex: 'is not a whole number: "0x1F90"',
+      exponent: 'is not a whole number: "1e3"',
+      binary: 'is not a whole number: "0b101"',
+      octal: 'is not a whole number: "0o17"',
+      trailingZero: 'is not a whole number: "7.0"',
     });
   });
 });

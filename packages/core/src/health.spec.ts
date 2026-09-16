@@ -1,4 +1,4 @@
-import { ErrAsync, OkAsync, type AsyncResult } from "unthrown";
+import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { describe, expect, it } from "vitest";
 
 import { HealthCheckFailed, runHealthChecks, type HealthCheck } from "./health.js";
@@ -17,6 +17,12 @@ const defecting = (name: string, message: string): HealthCheck => ({
       // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject: a buggy check whose AsyncResult defects
       throw new Error(message);
     }),
+});
+
+const silent = (name: string, timeoutMs?: number): HealthCheck => ({
+  name,
+  check: () => fromSafePromise(new Promise<void>(() => {})),
+  ...(timeoutMs === undefined ? {} : { timeoutMs }),
 });
 
 const throwing = (name: string, message: string): HealthCheck => ({
@@ -85,6 +91,47 @@ describe("runHealthChecks", () => {
     await expect(runHealthChecks([throwing("mailer", "bug in the check")])).toBeOkWith({
       status: "unhealthy",
       components: [{ name: "mailer", status: "unhealthy", reason: "Error: bug in the check" }],
+    });
+  });
+
+  it("names a component that never answers, instead of waiting on it", async () => {
+    // GIVEN a component that accepts the question and goes quiet, beside one
+    // that answers — the third failure shape, which neither recovery can see:
+    // no error, no defect, only silence
+    const checks = [healthy("cache"), silent("database")];
+
+    // WHEN the checks are folded with a deadline a test can afford
+    const report = runHealthChecks(checks, { timeoutMs: 5 });
+
+    // THEN the silent component is named and unhealthy, and its sibling still
+    // reports — `/healthz` used to hold a socket open per hit while the
+    // orchestrator timed out against a report that named nothing
+    await expect(report).toBeOkWith({
+      status: "unhealthy",
+      components: [
+        { name: "cache", status: "healthy" },
+        { name: "database", status: "unhealthy", reason: "did not answer within 5 ms" },
+      ],
+    });
+  });
+
+  it("lets a contribution declare its own deadline, over the fold's", async () => {
+    // GIVEN two silent components, one of which says how long it needs — an
+    // SMTP greeting and a `SELECT 1` over a warm pool are orders of magnitude
+    // apart, which is why the number is on the contribution
+    const checks = [silent("cache"), silent("mailer", 9)];
+
+    // WHEN the fold is given a deadline of its own
+    const report = runHealthChecks(checks, { timeoutMs: 4 });
+
+    // THEN each component is named against the deadline that governed it: the
+    // fold's for the one that declared nothing, its own for the one that did
+    await expect(report).toBeOkWith({
+      status: "unhealthy",
+      components: [
+        { name: "cache", status: "unhealthy", reason: "did not answer within 4 ms" },
+        { name: "mailer", status: "unhealthy", reason: "did not answer within 9 ms" },
+      ],
     });
   });
 

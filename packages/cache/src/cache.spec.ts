@@ -23,6 +23,51 @@ describe("readThrough", () => {
     expect(read).toBeOkWith({ stored: { value: "v" }, expired: undefined });
   });
 
+  // One key per case, so a failure names the shape that regressed rather than a
+  // projection of four. A loop rather than `it.each`, because the extended `it`
+  // hands a test its fixtures through the FIRST parameter and `each` has
+  // already taken it. Every case is a `ttlMs` a caller computed: a deadline
+  // already passed, a sub-millisecond remainder, arithmetic that went `NaN`,
+  // and a value past the safe-integer range — finite, so it would reach Redis
+  // as a `PX` the server answers an argument error for.
+  for (const { shape, ttlMs } of [
+    { shape: "zero", ttlMs: 0 },
+    { shape: "negative", ttlMs: -1 },
+    { shape: "sub-millisecond", ttlMs: 0.4 },
+    { shape: "NaN", ttlMs: Number.NaN },
+    { shape: "beyond the safe-integer range", ttlMs: 1e100 },
+  ]) {
+    it(`does not store a value whose ttl is ${shape}`, async ({ backend }) => {
+      // GIVEN a read-through over the in-memory adapter
+      const cache = readThrough(backend);
+
+      // WHEN a value is written under that ttl and read back
+      const read = await cache.set(shape, "v", { ttlMs }).flatMap(() => backend.get(shape));
+
+      // THEN it is not in the cache, and the write did not fail. Storing
+      // without expiry would turn an arithmetic slip into a leak, and the
+      // Redis adapter used to report `PX 0` as `CacheUnavailable` — an outage
+      // class, for a caller's own bug.
+      expect(read).toBeOkWith(undefined);
+    });
+  }
+
+  it("rounds a ttl the adapter could not have taken whole", async ({ backend, clock }) => {
+    // GIVEN a ttl with a fraction big enough to round up — a value this rounds
+    // rather than refuses, because `1500.5` is an ordinary computed number and
+    // dropping it would surprise the caller who wrote the arithmetic
+    const cache = readThrough(backend);
+
+    // WHEN it is stored and the clock stops one millisecond short of the round
+    const read = await cache
+      .set("k", "v", { ttlMs: 1_000.6 })
+      .flatMap(() => clock.advance(1_000))
+      .flatMap(() => backend.get("k"));
+
+    // THEN the value is still there: it was stored under `1001`, not dropped
+    expect(read).toBeOkWith({ value: "v" });
+  });
+
   it("answers a hit without running the loader", async ({ backend }) => {
     // GIVEN a key the cache already holds
     const cache = readThrough(backend);

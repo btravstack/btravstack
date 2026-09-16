@@ -215,6 +215,18 @@ Beyond the nine:
   asserts the success route.
 - **The probe socket is closed at both dispose sites.** `invariants.spec.ts` →
   _"both dispose sites close the probe socket"_.
+- **The probe server is reachable from off the loopback interface.**
+  `invariants.spec.ts` → _"binds 0.0.0.0:9000 when no probe port or host is
+  given"_, which fetches `/livez` through one of the machine's OWN non-loopback
+  addresses rather than through `127.0.0.1` — the closest a test gets to a pod
+  IP, and the only thing that tells a wildcard bind apart from a loopback one
+  from outside the process. A loopback default passes every other probe test in
+  the suite, which is how the original could ship against a deploy guide whose
+  `httpGet` probes could never have worked. `probes.spec.ts` → _"binds the
+  interface it was given, rather than loopback"_ pins the argument itself, and
+  `config.spec.ts` → _"binds the probe interface from PROBE_HOST, and reports a
+  bind it cannot make"_ pins the environment route against an address RFC 5737
+  reserves.
 - **`/healthz` answers whatever the checks do — a buggy check can neither hang
   the endpoint nor take the application down.** A check whose `AsyncResult`
   defects, and one that throws synchronously instead of answering, are both
@@ -255,7 +267,7 @@ Beyond the nine:
   so a caller cannot hang"_.
 
 - **A bad environment is a modeled startup `Err`, exit `78`, and the kernel
-  binds its own three variables the same way.** The binding itself — field
+  binds its own variables the same way.** The binding itself — field
   semantics, `Config.object`, `Config.provider` reading `Env` — is
   `@btravstack/config`'s own spec's business; the kernel's `config.spec.ts`
   guards only how the kernel reports it: `Config.provider` through `start`
@@ -324,14 +336,21 @@ id> }`, which is checked before either.
   in `@btravstack/config`.
 
 - **The kernel's own variables are read in ONE pass**, by `readKernelConfig`:
-  `PROBE_PORT`, `PRE_DRAIN_DELAY_MS`, `DRAIN_TIMEOUT_MS` and `STOP_TIMEOUT_MS` through the same
+  `PROBE_PORT`, `PROBE_HOST`, `PRE_DRAIN_DELAY_MS`, `DRAIN_TIMEOUT_MS` and
+  `STOP_TIMEOUT_MS` through the same
   `Config.object` + `Config.pinned` the public API ships — not a private
   parser, so there is one definition of what a port is and one of what a whole
   number is, and a deployment that got two of them wrong is told both at once.
-  Each `StartOptions` field pins its own variable; `probes: false` pins the
-  default port and so reads nothing, which is why every kernel spec that does
+  `KernelConfig` is DERIVED from `KERNEL_DEFAULTS` rather than restated
+  beside it, conditional on each default's own type, because `validate`'s
+  result is cast to it and a field added to one and forgotten in the other
+  would be silent.
+  Each `StartOptions` field pins its own variable; `probes: false` pins both
+  probe defaults and so reads neither, which is why every kernel spec that does
   not test probes passes `probes: false` (an unset `probes` in a test would
-  try to bind 9000).
+  try to bind 9000). A spec that DOES test probes pins
+  `host: "127.0.0.1"`: the shipped default is the wildcard, and a suite has no
+  business listening on every interface of the machine running it.
 
   The failure is wrapped in `RuntimeStartFailed({ runtime: "kernel", cause:
 ConfigInvalid })` rather than widening `exited`'s error union for every
@@ -351,8 +370,13 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
 
 - **`Config.object`'s `~standard.validate` is synchronous and never throws.**
   It walks every field, so an operator sees every fault at once; a field whose
-  `parse` defects (a bug in the field) is folded into an issue against its
-  variable rather than thrown through a validation that promised issues.
+  `parse` defects **or throws outright** (both are a bug in the field) is
+  folded into an issue against its variable rather than thrown through a
+  validation that promised issues. The throwing half needed
+  `fromThrowable` around the call — without it the throw escaped, and `start`
+  calls `validate` directly for the kernel's own fields, so it landed as a
+  defect and exit `70` where thesis #4 says a bad environment is a modeled
+  `Err`.
   `Config.provider` still awaits `validate` (`fromSafePromise` over an `async`
   wrapper) because a third-party Standard Schema may be async — and may throw,
   which the wrapper turns into the defect it is.
@@ -454,7 +478,10 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   startup probe. A bind failure is a startup failure of its own: its
   `tapFailure` runs the same cleanup as `Module.scoped`'s, because a failed
   `probesStarted` short-circuits the `flatMap` that would otherwise reach it.
-  It binds `127.0.0.1` and `unref`s the server.
+  It binds `PROBE_HOST` — `0.0.0.0` by default, which is `HOST`'s own default
+  for `HOST`'s own reason: a kubelet `httpGet` probe connects over the pod IP,
+  so the loopback-only bind this used to hardcode could not answer the probe
+  shape the deploy guide itself showed. It `unref`s the server.
 
 - **`skipDrain` is one `AbortController` shared by both drain sleeps.** A second
   signal aborts it, cutting short whichever sleep is pending; the uncaught

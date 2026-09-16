@@ -142,7 +142,8 @@ them and none should own a private copy:
   once. The three sum to the pod's `terminationGracePeriodSeconds` default of
   30 s, which is why the deployment sets them and the options only pin them.
 - **Probes from the state machine.** `GET /livez` and `GET /readyz` on
-  `PROBE_PORT` (default `9000`), up before the graph is built.
+  `PROBE_PORT` (default `9000`) and `PROBE_HOST` (default `0.0.0.0`, so a
+  kubelet `httpGet` probe reaches them), up before the graph is built.
 - **Configuration from the environment, typed.** The kernel provides
   [`@btravstack/config`](../config)'s `Env` port to every graph it boots; a
   bad value is a `ConfigInvalid` naming every fault at once, and exit `78`.
