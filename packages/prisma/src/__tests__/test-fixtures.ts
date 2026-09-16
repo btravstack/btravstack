@@ -28,6 +28,11 @@ export type StubClient = {
   /** Makes the next `$queryRaw` reject, so the health check can be driven down. */
   readonly breakQueries: (reason: string) => void;
   /**
+   * The same, with whatever the driver felt like rejecting. A driver is not
+   * obliged to reject with an `Error`, and the health check has an arm for it.
+   */
+  readonly breakQueriesWith: (cause: unknown) => void;
+  /**
    * Answers a NEW client carrying the extension's hooks stacked over the ones
    * already there, as Prisma's own does. Statements on it route through the
    * top-level hook; statements on the client it was called on do not — which is
@@ -110,7 +115,7 @@ export const it = test.extend<{ stub: Stub; observed: Observed; logs: Logs }>({
     let last: StubClient | undefined;
     let count = 0;
     const make = (url: string): StubClient => {
-      let queryFailure: string | undefined;
+      let queryFailure: { readonly cause: unknown } | undefined;
       let batch: readonly unknown[] = [1, undefined];
       let operations = 0;
       const issued: Issued[] = [];
@@ -118,7 +123,7 @@ export const it = test.extend<{ stub: Stub; observed: Observed; logs: Logs }>({
       const rawQuery = () =>
         queryFailure === undefined
           ? Promise.resolve([{ "?column?": 1 }])
-          : Promise.reject(new Error(queryFailure));
+          : Promise.reject(queryFailure.cause);
 
       const rawExecute = (query: TemplateStringsArray, ...values: unknown[]) =>
         tag(Promise.resolve(1), { statement: { raw: query.join("?"), values } });
@@ -179,7 +184,10 @@ export const it = test.extend<{ stub: Stub; observed: Observed; logs: Logs }>({
               ? transact(arg)
               : hooks.override.call(client, arg, options),
           breakQueries: (reason: string) => {
-            queryFailure = reason;
+            queryFailure = { cause: new Error(reason) };
+          },
+          breakQueriesWith: (cause: unknown) => {
+            queryFailure = { cause };
           },
           $disconnect: () => {
             count += 1;

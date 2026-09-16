@@ -1,6 +1,12 @@
 autoInstallPeers: false
 dedupePeerDependents: true
 engineStrict: true
+# Three days. A compromised release is usually yanked within hours of being
+# noticed, and the window between publish and discovery is the one a lockfile
+# cannot protect against. The exact-pinned catalog already slows adoption for
+# everything listed there, so what this actually guards is `pnpm add` and
+# `pnpm dlx` — the two commands that reach for `latest` without a review.
+minimumReleaseAge: 4320
 saveExact: true
 strictPeerDependencies: true
 
@@ -106,6 +112,10 @@ catalog:
   # everything. Aliased because one `package.json` cannot name `typescript`
   # twice.
   typescript-consumer: "npm:typescript@5.9.3"
+  # The two tarball linters `internal/consumer-check` runs. Neither is imported
+  # by anything: they are invoked as binaries, once per package, from a script.
+  publint: 0.3.15
+  "@arethetypeswrong/cli": 0.18.5
   unthrown: 5.8.0
   "@vitest/coverage-v8": 4.1.11
   vitepress: 1.6.4

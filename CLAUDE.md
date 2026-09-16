@@ -73,8 +73,19 @@ version of "green gate, no consumer can build" this repo has met. Do not
 judge the workspace by the example half; a reader who does concludes it is
 redundant with `order-api`, and takes the emit gate with it. `docs/` is the documentation site (see **Documentation
 site** below); it is a workspace but not a published package. `internal/`
-holds one more, `test-infra`, which is neither: it owns the containers
-the whole gate shares and is documented in its own README.
+holds two more, neither of them either: `test-infra` owns the containers the
+whole gate shares, and `consumer-check` answers from OUTSIDE the workspace a
+question two gates here answer from inside — it packs every published package,
+installs the tarballs into a throwaway project and compiles a file that
+re-exports what a library consumer exports, under `typescript-consumer` and
+`declaration: true`. Both are documented in their own READMEs.
+
+**That second one exists because `examples/di-hexagonal`'s emit guard covers
+only a di port**, and the three example deployments sit on
+`@btravstack/tsconfig/app.json` (`declaration: false`) precisely so they never
+meet TS4023 — so nothing compiled `defineHttp(...)`'s `api`, an `HttpModule` or
+a `Config.provider` the way a consumer does. It rides the existing Type Check
+job, the same move that put `markdownlint` on `lint`.
 
 ## Commands
 
@@ -85,7 +96,7 @@ pnpm format --check   # oxfmt (run without --check to auto-fix)
 pnpm lint             # oxlint (all eight @unthrown rules) + markdownlint-cli2
 pnpm typecheck        # tsc, incl. the type-level *.test-d.ts files
 pnpm knip             # dead code / unused deps
-pnpm test             # vitest + v8 coverage (100% lines/functions, enforced)
+pnpm test             # vitest + v8 coverage (100% lines/functions, 90% branches)
 pnpm build            # tsdown dual CJS/ESM + d.ts
 ```
 
@@ -690,7 +701,22 @@ in its place.
   which every published package merges over the shared config — it used to
   be thirteen copies, and `@btravstack/cache` shipped with its copy one
   exclusion short, counting a type test as uncovered source. A package with
-  more to exclude names only the extra file (`covered("src/test-workflows.ts")`).
+  more to exclude names only the extra file
+  (`covered({}, "src/test-workflows.ts")`).
+
+  **`branches` is the threshold that catches an untested DECISION**, and it
+  was absent: 100% lines and functions say every line ran, never that an
+  `else` was taken. Measured when it was added, the gap was widest exactly
+  where it mattered — `@btravstack/http-server` at 91.79%, 42 untested arms,
+  in the package that owns authentication, CSRF and redirects. The default is
+  `90`; `@btravstack/temporal-worker` passes `{ branches: 86 }`, with the two
+  arms named at the call and the reason they are unreachable from a real
+  worker. Every number is a RATCHET: raise it by testing arms, never lower it
+  to fit code that regressed.
+
+  **The `covered()` call sites are what a threshold ratchets against**, so a
+  package's own number lives beside its exclusions rather than in a table
+  here. This file carries the rule; `vitest.config.ts` carries the reading.
 
   **Three import forms break when one of these files moves, and only the
   first is caught by the compiler**: a static `from "./x.js"`, a dynamic

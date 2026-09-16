@@ -195,6 +195,39 @@ describe("prismaDatabase", () => {
     });
   });
 
+  it("names the database unreachable when the driver rejected with no message", async ({
+    stub,
+  }) => {
+    // GIVEN a driver that rejects with something that is not an `Error` — which
+    // nothing obliges it not to do, and which leaves the check with no message
+    // to pass on
+    const db = prismaDatabase("OrderDatabase")({
+      client: (adapter) => {
+        const client = stub.client(connectionStringOf(adapter));
+        client.breakQueriesWith({ code: "57P01" });
+        return client;
+      },
+    });
+    const root = Module("Root")({
+      imports: [db],
+      provides: [
+        Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
+        silentLogger,
+      ],
+      exports: [db.port, HealthChecks],
+    });
+
+    // WHEN the contributed check is run
+    const report = await Module.scoped(root, (ctx) => runHealthChecks(ctx.get(HealthChecks)));
+
+    // THEN the component is still named and still unhealthy, with the fallback
+    // reason rather than `[object Object]` or an empty string
+    expect(report).toBeOkWith({
+      status: "unhealthy",
+      components: [{ name: "OrderDatabase", status: "unhealthy", reason: "database unreachable" }],
+    });
+  });
+
   it("offers its engine instrumentation rather than registering it", async ({ stub, observed }) => {
     // GIVEN the starter, which offers its instrumentation unconditionally now
     // that there is no arm to be on the wrong side of

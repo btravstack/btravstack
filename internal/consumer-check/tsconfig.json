@@ -1,0 +1,14 @@
+{
+  "extends": "@btravstack/tsconfig/base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  // `src/consumer.ts` is deliberately NOT here. It is a consumer's file, not
+  // this workspace's: it resolves `@btravstack/*` through the tarballs in a
+  // temporary project, under `typescript-consumer` and `declaration: true`,
+  // which is the whole point. Compiling it here would resolve the workspace
+  // links instead and answer the question this gate exists to ask differently.
+  "include": ["src/check.ts"],
+  "exclude": ["node_modules"]
+}

@@ -16,6 +16,31 @@ describe("amqp", () => {
     await expect(info).toBeOkWith({ queues: ["amqp-echo"] });
   });
 
+  it("forwards both passthrough options to the library", async ({
+    serve,
+    publishMessage,
+    seam,
+  }) => {
+    // GIVEN a worker composed with the two options issue #25 gave real types
+    // to — the connection tuning and the per-consumer defaults — rather than
+    // the `Record<string, unknown>` bags they used to be
+    const app = await serve(seam.handlers, {
+      connectionOptions: { heartbeatIntervalInSeconds: 30 },
+      defaultConsumerOptions: { prefetch: 1 },
+    });
+    await expect(app.runtimeInfo()).toBeOkWith({ queues: ["amqp-echo"] });
+
+    // WHEN a message is delivered through the consumer those options configured
+    publishMessage({ exchange: "amqp-test", routingKey: "echo.requested" }, { value: "x" });
+
+    // THEN it arrives. A key the library ignores is silently inert, so what
+    // this pins is that the arms forwarding them are TAKEN — without a caller
+    // they never were, and a passthrough that quietly stopped forwarding would
+    // have shipped green.
+    await vi.waitUntil(() => seam.seen().length === 1);
+    expect(seam.seen()[0]).toEqual(expect.objectContaining({ unitId: expect.any(String) }));
+  });
+
   it("reports a broker that will not answer as Err, not a defect", async ({ serveBroken }) => {
     // GIVEN a URL nothing is listening on
     const app = await serveBroken();

@@ -1,0 +1,61 @@
+name: CodeQL
+
+# Static analysis for the patterns the six-command gate cannot see: a taint
+# path from a request to a sink, an unsafe deserialisation, a regular
+# expression that backtracks. `oxlint` reasons about one file, `tsc` about
+# types; neither follows a value across module boundaries.
+#
+# A hand-check of `packages/http-server/src` for the patterns this targets
+# found nothing, so expect a quiet gate — which is the point. It is here to
+# catch what a reviewer misses on the day a taint path is introduced, not to
+# report a backlog.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, because CodeQL's own query packs change under a repository that
+    # has not: a finding can arrive from an updated query rather than from a
+    # commit, and nothing else in this repository would surface it.
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          # One language: everything here is TypeScript, and the two are one
+          # CodeQL language since 2024.
+          languages: javascript-typescript
+          # `security-extended` over the default `security-and-quality`: the
+          # quality queries overlap `oxlint` and `knip`, which already run on
+          # every PR and fail faster, so they would only add noise a
+          # contributor learns to scroll past.
+          queries: security-extended
+
+      # No build step: the JavaScript/TypeScript extractor reads the source
+      # tree directly, so this never has to agree with `tsdown` about what a
+      # build is.
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"

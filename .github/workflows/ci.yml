@@ -37,3 +37,14 @@ jobs:
       # `vitest run --coverage` (with 100% thresholds), and the root script is
       # `turbo run test`, which would take the extra flags as its own.
       test-command: "pnpm test"
+      # "A user-facing change needs a changeset" was convention alone until
+      # this line: the job was skipped because the input defaults to `false`.
+      # The reusable workflow exempts the release PR itself, so turning it on
+      # costs nothing on the one PR that legitimately has no changeset.
+      #
+      # `integration-tests` stays off deliberately and is NOT the same gap: the
+      # Docker-backed suites already run inside `pnpm test` on the runner —
+      # `oidc.spec`, `amqp-runtime.spec`, `api.spec`, `cache.spec`, `smtp.spec`,
+      # `s3.spec` and `ory.spec` are all in the job log — so the separate job
+      # would run them a second time.
+      changeset: true
