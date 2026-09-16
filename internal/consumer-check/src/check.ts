@@ -51,10 +51,16 @@ const main = (): void => {
     for (const dir of dirs) {
       run("pnpm", ["pack", "--pack-destination", work], dir);
 
-      // `publint` reads the package directory; `attw --pack` reads the tarball
-      // it builds itself. Both are per package, so a failure names one.
+      // Both run from HERE, with the package as an argument — never with the
+      // package as the cwd. `publint` and `attw` are this workspace's
+      // devDependencies and pnpm links a binary into the declaring package's
+      // own `node_modules/.bin` alone, so `pnpm exec` from `dir` resolves
+      // neither (verified: `Command "publint" not found`). It appeared to work
+      // only because the outer `pnpm ... typecheck` had already put this
+      // workspace's `.bin` on `PATH`, which is an accident of how the script
+      // happens to be invoked.
       try {
-        run("pnpm", ["exec", "publint", "--strict"], dir);
+        run("pnpm", ["exec", "publint", "run", dir, "--strict"], HERE);
       } catch {
         failures.push(`publint: ${dir}`);
       }
@@ -66,7 +72,7 @@ const main = (): void => {
       // stack anyway — every relative import here carries a `.js` suffix
       // because `nodenext` requires it. See this workspace's README.
       try {
-        run("pnpm", ["exec", "attw", "--pack", ".", "--profile", "node16", "--quiet"], dir);
+        run("pnpm", ["exec", "attw", "--pack", dir, "--profile", "node16", "--quiet"], HERE);
       } catch {
         failures.push(`attw: ${dir}`);
       }
