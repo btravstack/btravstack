@@ -75,12 +75,22 @@ page, never this file.
   ack/nack/DLQ split is deliberately not this package's (thesis #3).
 - **The kernel's per-unit `AbortSignal` rides the ambient `currentUnit()`
   record, and there is no other route to it here.** This transport also has no cancellation story of its own to fall
-  back on: an un-acked delivery is **redelivered**, which is recovery, not
+  back on: a **redelivery** is recovery, not
   cancellation. So a handler that must stop when the kernel stops waiting reads
   `currentUnit()?.signal`, and what it answers is its own business —
   `examples/order-amqp-worker`'s `orderNotifications` returns a
-  `RetryableError`, leaving the delivery un-acked so the broker hands it to
-  the next worker.
+  `RetryableError`, which hands the message to the next worker.
+
+  **That arm SPENDS a retry, and four places used to say it left the delivery
+  un-acked.** Measured against `@amqp-contract/worker@3.0.0-beta.7`:
+  `publishForRetry` republishes a copy with `x-retry-count + 1` and then
+  **acks** the original — to the queue itself in `immediate-requeue` mode, to
+  the tier's wait queue under `ttl-backoff`. Only a **quorum** queue in
+  `immediate-requeue` mode nacks with `requeue: true`. The consequence is the
+  reason the claim was worth correcting rather than merely tidying: every
+  in-flight message when a pod drains past its deadline comes back one attempt
+  poorer, so a rollout can dead-letter work that nothing was wrong with.
+
 - **`@amqp-contract/worker` is a peer; `@amqp-contract/contract` is not.**
   The package's value imports (`TypedAmqpWorker`) and its public types
   (`WorkerInferHandlers`, through `HandlersInstanceOf`) live in `worker`, and

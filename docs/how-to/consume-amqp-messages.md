@@ -255,12 +255,12 @@ await runMain(OrderAmqpWorker);
 and needs the
 handlers port. Options on `AmqpModule` and `amqp()` alike:
 
-| Variable / option        | Default                                | Notes                                                                                        |
-| ------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `AMQP_URL` / `url`       | `amqp://127.0.0.1:5672`                | `url` pins the broker (a test's container); a blank variable is a `ConfigInvalid`, exit `78` |
-| `connectTimeoutMs`       | `5000`, from `AMQP_CONNECT_TIMEOUT_MS` | how long `create` waits before an unreachable broker is a `RuntimeStartFailed`, exit `1`     |
-| `connectionOptions`      | —                                      | `AmqpConnectionOptions` — heartbeat, reconnect interval, `findServers`, TLS/socket options   |
-| `defaultConsumerOptions` | —                                      | the library's `ConsumerOptions` — `prefetch` (the throughput knob), `priority`, …            |
+| Variable / option        | Default                                | Notes                                                                                                                      |
+| ------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `AMQP_URL` / `url`       | `amqp://127.0.0.1:5672`                | `url` pins the broker (a test's container); a blank variable is a `ConfigInvalid`, exit `78`                               |
+| `connectTimeoutMs`       | `5000`, from `AMQP_CONNECT_TIMEOUT_MS` | how long `create` waits before an unreachable broker is a `RuntimeStartFailed`, exit `1`                                   |
+| `connectionOptions`      | —                                      | `AmqpConnectionOptions` — heartbeat, reconnect interval, `findServers`, TLS/socket options                                 |
+| `defaultConsumerOptions` | —                                      | the library's `ConsumerOptions` — `prefetch` (the throughput knob — unset is `10`, `"unbounded"` is no cap), `priority`, … |
 
 Once consuming, the runtime publishes `AmqpInfo` — `{ queues }`, every queue
 the contract's consumers and RPCs drain — on `Serving.info`, read through
@@ -296,10 +296,24 @@ orderNotifications: ({ input: message }) => {
 };
 ```
 
-A `RetryableError` leaves the delivery **un-acked**, so the broker hands it to
-the next worker — the transport's own answer to "this process stopped waiting".
-There is no cancellation to defer to here: AMQP has none, and a redelivery is
-recovery rather than cancellation.
+A `RetryableError` spends **one retry from the queue's own budget**, which is
+the transport's answer to "this process stopped waiting". There is no
+cancellation to defer to here: AMQP has none, and a redelivery is recovery
+rather than cancellation.
+
+**It does not leave the delivery un-acked**, and the difference matters on a
+rollout. `@amqp-contract/worker` acks the original and republishes a copy with
+`x-retry-count` incremented — to the queue itself in `immediate-requeue` mode,
+or to the backoff tier's wait queue under `ttl-backoff`. So every message in
+flight when a pod drains past its deadline comes back one attempt poorer, and a
+message that was already near `maxRetries` reaches the dead-letter queue
+because of a deploy rather than because of anything wrong with it. The one
+exception is a **quorum** queue in `immediate-requeue` mode, which nacks with
+`requeue: true` and genuinely leaves it un-acked.
+
+Size `maxRetries` with that in mind, or answer a `NonRetryableError` and put
+the message somewhere your own code owns. What this arm buys either way is that
+the work is not silently dropped when the kernel stops waiting.
 
 ## The drain: one deadline
 
@@ -310,11 +324,24 @@ deliberate: the library's own default drain timeout is 30 s, above the
 kernel's 20 s default, and would quietly win. Telling the library to wait
 forever leaves the kernel's `drainTimeoutMs` as the only clock in the process.
 
-::: info When the deadline wins
+::: warning When the deadline wins, expect a SIGKILL
 The kernel reports the unit `abandoned` (exit `2`), but nothing was dropped:
 the connection stays open and the handler runs on toward its own ack or nack.
-Redelivery happens only once the connection actually drops — when the
-process exits, not when the drain deadline passes.
+Redelivery happens only once the connection actually drops — when the process
+exits, not when the drain deadline passes.
+
+**And the process does not end on its own.** `runMain` sets an exit code and
+never calls `process.exit()`, and `worker.close()` closes the connection only
+once the deliveries it already took have drained — so the event loop stays
+alive. Under a Kubernetes-initiated shutdown the pod then ends at
+`terminationGracePeriodSeconds`, and exit `2` is what the report says rather
+than what the orchestrator observes; outside that lifecycle nothing kills it
+and the process waits for the deliveries.
+
+Nothing here forces the connection shut, deliberately: destroying it under an
+ack in flight loses that ack, which is a worse outcome than a SIGKILL the
+orchestrator was already going to send. Size `drainTimeoutMs` so the deadline
+is the exception, and read the report from `kubectl logs --previous`.
 :::
 
 ## The publishing half

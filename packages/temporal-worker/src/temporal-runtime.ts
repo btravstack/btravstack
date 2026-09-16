@@ -29,6 +29,8 @@ import {
 import { msToNumber, type Duration } from "@temporalio/common";
 import { NativeConnection, Worker, type WorkflowBundleWithSourceMap } from "@temporalio/worker";
 import {
+  Ok,
+  OkAsync,
   TaggedError,
   fromPromise,
   fromSafePromise,
@@ -350,7 +352,19 @@ const createWorker = <C extends ContractDefinition, Unit extends AnyUnitModule |
     .map((worker) => poll(worker, taskQueue, namespace));
 };
 
-const poll = (worker: Worker, taskQueue: string, namespace: string): Serving<TemporalInfo> => {
+/**
+ * The `Serving` over a started worker.
+ *
+ * @internal Exported for `temporal-runtime.spec.ts` alone: the `stopped`
+ * channel is about a worker's `run()` REJECTING mid-flight, and there is no way
+ * to make a real one do that without taking the shared Temporal server down for
+ * every other spec. A stub worker is what reaches that arm.
+ */
+export const poll = (
+  worker: Worker,
+  taskQueue: string,
+  namespace: string,
+): Serving<TemporalInfo> => {
   // `run()` moves the worker to RUNNING synchronously, before its first await,
   // which is what lets `stopPolling` trust `getState()`. The result is HELD,
   // not dropped: `run()` can defect, and an empty error channel is not an empty
@@ -369,22 +383,41 @@ const poll = (worker: Worker, taskQueue: string, namespace: string): Serving<Tem
   // Temporal's `shutdownForceTime` back in charge of when the process exits.
   let deadline: AbortSignal | undefined;
 
-  const stopped = (): AsyncResult<void, never> =>
+  const awaitRun = (): AsyncResult<void, never> =>
     deadline === undefined ? running : releasedBy(deadline, running);
+
+  // Whether the KERNEL asked. `run()` settling after it did is the ordinary
+  // shutdown; settling before is the worker having given up on its own.
+  let asked = false;
+
+  // Never settles, which is how a channel says "not this route": the kernel
+  // races this against its own shutdown deferred, so resolving it on the
+  // ordinary path would report `runtimeStopped` for every clean exit.
+  const withdrawn = (): AsyncResult<void, never> => fromSafePromise(new Promise<void>(() => {}));
 
   return {
     info: { taskQueue, namespace },
+    // `run()` rejecting mid-flight — the worker reaching `FAILED` — is the
+    // whole reason this channel exists: the rejection used to sit on `running`
+    // until a shutdown somebody else requested came along to read it, so a
+    // worker that had stopped polling left the process alive and `/readyz`
+    // answering 200. The DEFECT is recovered here and only here: `awaitRun`
+    // still holds it for the shutdown path, which is what reports it.
+    stopped: () =>
+      running.recoverDefect(() => Ok(undefined)).flatMap(() => (asked ? withdrawn() : OkAsync())),
     // `@temporalio/worker` exposes no public forced shutdown, so the only
     // escalation is to stop waiting: the kernel gets its thread back at its own
     // deadline and the worker winds down on Temporal's clock.
     drain: (signal) => {
+      asked = true;
       deadline = signal;
       stopPolling();
-      return stopped();
+      return awaitRun();
     },
     stop: () => {
+      asked = true;
       stopPolling();
-      return stopped();
+      return awaitRun();
     },
   };
 };

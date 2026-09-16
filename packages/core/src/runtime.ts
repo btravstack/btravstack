@@ -104,6 +104,33 @@ export type Serving<Info = never> = {
   readonly drain: (signal: AbortSignal) => AsyncResult<void, never>;
   readonly stop: () => AsyncResult<void, never>;
   readonly info?: Info;
+  /**
+   * Settles when the runtime has stopped serving **on its own account** —
+   * nobody asked it to, and it is not coming back.
+   *
+   * Without this a runtime has no way to say so, and the kernel's lifecycle
+   * only ever moves on a signal or a `stop()` call. So a Temporal worker whose
+   * `run()` rejected mid-flight, or an AMQP consumer the server cancelled and
+   * nothing re-subscribed, left the process alive and `/readyz` answering
+   * `200` — a pod in a Service's endpoints, consuming nothing. The orchestrator
+   * has no way to learn that on its own: liveness answers from `building`
+   * onward, and readiness is the lifecycle's, not the transport's.
+   *
+   * The kernel races it against its own shutdown deferred and reports
+   * `reason: "runtimeStopped"`, which `runMain` exits `1` for — a restart,
+   * which is the right answer to a transport that has given up.
+   *
+   * **Optional, and a runtime that cannot know omits it.** An HTTP server that
+   * is listening is serving; there is no third state for it to report, and a
+   * field it had to write `OkAsync()` into would be a promise it could not
+   * keep. A `never`-settling `AsyncResult` is the other honest spelling for a
+   * runtime that could report this and has nothing to say yet.
+   *
+   * It says nothing about WHY. The runtime that knows writes that line itself,
+   * through `Observers` or its own diagnostics; this channel exists so the
+   * process ends, not so the reason travels.
+   */
+  readonly stopped?: () => AsyncResult<void, never>;
 };
 
 export type Runtime<Resolves extends AnyPort = never, Info = never> = {

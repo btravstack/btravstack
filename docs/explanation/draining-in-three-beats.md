@@ -49,6 +49,26 @@ SIGTERM, with the process already serving
                  default) — which is why 5 + 20 leaves five seconds in hand
 ```
 
+**A clean run ends by itself; an abandoned one often does not.** `runMain`
+sets `process.exitCode` and never calls `process.exit()` — that is what lets
+pending output flush and an embedding host keep its own lifetime — so the
+process ends when the event loop empties. After a deadline the transport is
+still winding down on its own clock and is holding the loop open: an AMQP
+connection closes only once the deliveries it already took have drained, and
+Temporal's native Runtime only once every worker and connection is
+deregistered.
+
+So the last box is where SIGKILL lands **when Kubernetes is the one shutting
+the pod down**, and exit `2` is what the report SAYS rather than what the
+orchestrator observes. Outside that lifecycle nothing kills it and the process
+simply stays alive until the transport is done. The report is on stderr before
+either outcome, which is what `kubectl logs --previous` is for.
+
+That also sharpens what `abandoned` means: **not awaited, rather than not
+finished**. The kernel aborts each unit's signal and stops waiting; it cannot
+cancel work. An abandoned delivery is usually acked a moment later, and an
+abandoned activity usually completes — after the report said they did not.
+
 The two durations are variables a deployment sets (`PRE_DRAIN_DELAY_MS`,
 `DRAIN_TIMEOUT_MS`) and must stay under `terminationGracePeriodSeconds`, which
 is Kubernetes' own; the exit codes are the kernel's, not configuration. And the

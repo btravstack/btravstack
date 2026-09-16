@@ -8,6 +8,7 @@ import {
   type Attributes,
   type Operation,
   type RunningApp,
+  type Serving,
   type Settle,
   type UnitRecord,
 } from "@btravstack/core";
@@ -23,12 +24,14 @@ import {
 } from "@temporal-contract/contract";
 import { Client, Connection, type ScheduleSpec } from "@temporalio/client";
 import type { Duration } from "@temporalio/common";
-import { OkAsync, fromSafePromise } from "unthrown";
+import type { Worker } from "@temporalio/worker";
+import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { inject, test } from "vitest";
 import { z } from "zod";
 
 import { ensureSchedule } from "../schedule.js";
 import { TemporalActivities, TemporalModule } from "../temporal-module.js";
+import { poll } from "../temporal-runtime.js";
 import {
   TemporalConfig,
   type AnyUnitModule,
@@ -497,7 +500,27 @@ const countingUnit = (): {
   return { module, counts: () => counts };
 };
 
+/** One stubbed worker and the three handles a `stopped` test drives it through. */
+export type Stubbed = {
+  /** Settles the worker's `run()` — with a cause to reject it, without one to end it. */
+  readonly run: { readonly settle: (cause?: Error) => void };
+  readonly serving: Serving<TemporalInfo>;
+  /**
+   * The `stopped` channel, refused if it is absent. `Serving.stopped` is
+   * OPTIONAL, so reaching it through `?.` would skip a test's callback and
+   * leave the assertion passing on nothing.
+   */
+  readonly stopped: () => AsyncResult<void, never>;
+};
+
 export type TemporalFixtures = {
+  /**
+   * A `poll()` over a STUB worker. The arm it exists for is `run()` rejecting
+   * mid-flight — a worker reaching `FAILED` — and there is no way to make a
+   * real one do that without taking the shared Temporal server down for every
+   * other spec here.
+   */
+  readonly stubbed: () => Stubbed;
   /** Where the shared server is, and the namespace this spec file owns on it. */
   readonly server: Server;
   /** A client bound to {@link server}'s namespace. */
@@ -644,6 +667,31 @@ const schedulesOf = async (client: Client, contract: typeof echoContract) => {
 };
 
 export const it = test.extend<TemporalFixtures>({
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  stubbed: async ({}, use) => {
+    await use(() => {
+      // `Promise.withResolvers` by hand: this package's `lib` predates it.
+      let settle: (cause?: Error) => void = () => undefined;
+      const running = new Promise<void>((resolve, reject) => {
+        settle = (cause) => {
+          if (cause === undefined) resolve();
+          else reject(cause);
+        };
+      });
+      const worker = {
+        run: () => running,
+        getState: () => "RUNNING",
+        shutdown: () => undefined,
+      } as unknown as Worker;
+      const serving = poll(worker, "t", "ns");
+      const channel = serving.stopped;
+      if (channel === undefined) {
+        // oxlint-disable-next-line unthrown/no-throw -- a loud fixture: a `poll()` that stopped declaring `stopped` is a regression the tests could not otherwise see
+        throw new Error("[temporal] poll() declared no `stopped` channel");
+      }
+      return { run: { settle }, serving, stopped: channel };
+    });
+  },
   server: [
     // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
     async ({}, use) => {

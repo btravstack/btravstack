@@ -130,6 +130,30 @@ branch costs. `Serving.info` is optional and typed by `Info`; a runtime that bin
 ephemeral port publishes `{ port }` there and the caller reads it back through
 `app.runtimeInfo()`.
 
+**If your transport can stop on its own, say so through `stopped`.** It is
+optional, and an HTTP server that is listening has no third state to report —
+but a worker whose poll loop can die does, and without it the process stays
+alive with `/readyz` answering `200`. The obligation is one line and it is easy
+to get wrong: **withdraw after a stop the kernel asked for**, or the channel
+races every clean shutdown.
+
+<!-- doctest: skip — an object-property excerpt, not a statement: the compiled form is `@btravstack/temporal-worker`'s own `stopped`, which this fence quotes -->
+
+```ts
+stopped: () =>
+  running.recoverDefect(() => Ok(undefined)).flatMap(() => (asked ? withdrawn() : OkAsync()));
+```
+
+where `asked` is set by your own `drain` and `stop`, and `withdrawn()` is an
+`AsyncResult` that never settles.
+
+**`recoverDefect` first, and it is the whole point of the arm.** `flatMap` does
+not run its callback on a `Defect`, and a transport that gave up is exactly the
+case whose wait defects — so without it the channel stays silent on the one
+path it exists for, and withdraws on none. `AsyncResult<T, never>` empties the
+ERROR channel only. See
+[`Serving.stopped`](/reference/core/runtime#when-a-runtime-stops-on-its-own).
+
 A transport that can fail to come up answers with `RuntimeStartFailed`, the one
 error the kernel mints, named after your runtime:
 
@@ -198,10 +222,10 @@ The composition root is what differs between an `api`, a `worker` and a
 Either way the sentence is the error's **last** line; the first names the two
 `Module<…>` types.
 
-## Honour the three contracts the kernel cannot check
+## Honour the contracts the kernel cannot check
 
 Building the first real runtime on this contract hit every one of these, and
-all three are silent when broken.
+every one is silent when broken. The fourth, `Serving.stopped`, is above.
 
 **1. Flush the response inside the unit.** A unit is closed the instant its
 `Result` settles; an idle registry is the kernel's permission to call

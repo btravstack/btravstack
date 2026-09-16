@@ -77,7 +77,7 @@ type DrainReport = {
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `inFlightAtStart` | Units open when the drain began — sampled synchronously in the same turn readiness flipped false, **before** the pre-drain delay, so it agrees with the `draining` event emitted from that turn.                                                                                                                                                      |
 | `completed`       | Units that **closed during** the drain, counted from a monotonic total, not as `inFlightAtStart - abandoned`. It **may exceed** `inFlightAtStart` when in-flight work spawned more units during the drain — honest reporting, not a bug: the subtraction would go negative the moment a unit started after the sample and closed before the deadline. |
-| `abandoned`       | Units still open at the deadline. Each is aborted through its `AbortSignal` and reported here. **The field the exit code keys on**: `> 0` is exit code `2` under `runMain`.                                                                                                                                                                           |
+| `abandoned`       | Units still open at the deadline. Each is aborted through its `AbortSignal` and reported here. **The field the exit code keys on**: `> 0` is exit code `2` under `runMain`. It means "no longer AWAITED", not "did not finish" — see below.                                                                                                           |
 
 The deadline race is `Serving.drain(signal)` **then** `awaitIdle()`, against
 `clock.sleep(drainTimeoutMs)`. `awaitIdle()` is sequenced after `drain`
@@ -86,6 +86,29 @@ runtime is still winding down is waited for rather than reported abandoned with
 the budget unspent. Whichever branch wins, `signal` is aborted at once, so a
 runtime that treats it as its cue to return is always released.
 
+**`abandoned` means "no longer awaited", not "did not finish".** The kernel
+aborts each unit's signal and stops waiting; it cannot cancel work, and the
+transport underneath keeps running on its own clock. An abandoned AMQP delivery
+is usually acked a moment later and an abandoned Temporal activity usually
+completes — after this report said they did not.
+
+**So the process may not end by itself.** `runMain` sets an exit code and
+deliberately never calls `process.exit()`, which is what lets pending output
+flush and an embedding host keep its own lifetime; the process ends when the
+event loop empties, and a transport still winding down is holding it open. An
+AMQP connection closes only once the deliveries it already took have drained,
+and Temporal's native Runtime only once every worker and connection is
+deregistered.
+
+Under a **Kubernetes-initiated** shutdown — the case a drain normally comes
+from — that ends at `terminationGracePeriodSeconds`, with SIGKILL, so exit `2`
+is what this report SAYS rather than what the orchestrator observes. **Outside
+that lifecycle nothing kills it**: a drain that hits its deadline in a test, a
+dev loop or an embedder leaves the process alive until the transport finishes
+on its own clock. The report reaches stderr first either way, which is what
+`kubectl logs --previous` is for — and it is the whole reason the `stopping`
+phase got a deadline of its own.
+
 ## Reading one
 
 ```ts
@@ -93,6 +116,7 @@ import type { ExitReport } from "@btravstack/core";
 
 const clean = (report: ExitReport): boolean =>
   report.reason !== "uncaught" &&
+  report.abandonedAt === undefined &&
   (report.drain?.abandoned ?? 0) === 0 &&
   report.teardownErrors.length === 0;
 ```
@@ -100,3 +124,9 @@ const clean = (report: ExitReport): boolean =>
 That predicate is the `0` row of `runMain`'s table; every other outcome earns a
 non-zero code, in the precedence
 [runMain and exit codes](/reference/core/exit-codes) states.
+
+`abandonedAt` is a term for the same reason the other two are: the kernel
+stopped waiting, so the process stopped and not cleanly. It is the term a
+hand-rolled predicate is most likely to miss, because a teardown that outlived
+`stopTimeoutMs` abandoned no unit and had no finaliser fail **yet** — both
+other terms read false while the kernel had just given up.

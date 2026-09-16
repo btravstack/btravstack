@@ -271,9 +271,16 @@ describe("amqp", () => {
     // background (this test's `gate` fixture releases it in teardown, and the
     // library then acks it normally), so an unacked-message round trip is not
     // something this same-process test can observe; only the kernel's own
-    // prompt release is.
+    // prompt release is. `2_000` against a `100` ms deadline is headroom for a
+    // loaded CI box, not a claim about the deadline's precision — what it rules
+    // out is the library's own 30 s default having decided this instead.
+    //
+    // And note what "abandoned" does NOT mean: this delivery is still running,
+    // and the library acks it when the gate releases in teardown. The kernel
+    // stopped WAITING. That is also why a real deployment's process does not
+    // end here — see `ExitReport`'s own TSDoc.
     expect(
-      report.map((exit) => ({ drain: exit.drain, promptly: Date.now() - askedAt < 5_000 })),
+      report.map((exit) => ({ drain: exit.drain, promptly: Date.now() - askedAt < 2_000 })),
     ).toBeOkWith({
       drain: { inFlightAtStart: 1, completed: 0, abandoned: 1 },
       promptly: true,

@@ -28,6 +28,7 @@ import {
 } from "@btravstack/di";
 import { P, type AsyncResult } from "unthrown";
 
+import { brokerLog } from "./broker-log.js";
 import {
   HANDLER_PREFIX,
   type AmqpMessageInstance,
@@ -395,6 +396,11 @@ const createWorker = <TContract extends AnyAmqpContract, Unit extends AnyUnitMod
     contract: options.contract,
     handlers,
     middleware: messageUnits(host, observers, options.unit?.message),
+    // The library writes diagnostics nothing else in this process can see —
+    // a server-initiated consumer cancel, a poison delivery nacked before the
+    // handler middleware runs, a retry budget spent. Given no logger it
+    // discarded every one of them.
+    logger: brokerLog(observers),
     urls: [config.url],
     ...(options.connectionOptions === undefined
       ? {}

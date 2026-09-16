@@ -47,6 +47,22 @@ PORTS`, a correct diagnosis of the second mistake that reads as a wrong one
   stays private: `releasedBy` is the whole use case, and its already-aborted
   arm is load-bearing, since `addEventListener` on an aborted signal never
   fires and the race would hang.
+- **`Serving.stopped`** — the channel a runtime says "nobody asked me to" on.
+  Its semantics are `docs/reference/core/runtime.md`'s; what belongs here is
+  why the kernel treats it the way it does. It is raced against `shutdown`
+  and reaches `requestShutdown("runtimeStopped")`, and the `Result` is
+  **dropped**: whichever route gets there first decides the reason, and
+  `Promise.withResolvers`' `resolve` is idempotent, so a runtime that stopped
+  after a signal cannot rewrite it. Optional, so no shipped runtime had to
+  change and `testRuntime` still satisfies the contract. The obligation it
+  puts on a runtime that DOES implement it is the one a test must guard:
+  **withdraw after a stop the kernel asked for** — an arm that settles on the
+  ordinary path races every clean shutdown. `start.spec.ts` → _"stops the
+  application when the runtime says it has stopped serving"_ and _"does not
+  report runtimeStopped when the runtime stopped because it was asked"_;
+  `@btravstack/temporal-worker`'s `temporal-runtime.spec.ts` pins the same
+  pair against a stub worker, since a real one cannot be made to fail without
+  taking the shared Temporal server down.
 - **`RuntimePort`** — its declaration, and why every runtime port shares one
   id, are `docs/reference/core/runtime.md`'s. `RuntimeOf<X>` /
   `RuntimeResolvesOf<X>` / `RuntimeInfoOf<X>` read a runtime's `Resolves` and
@@ -109,6 +125,26 @@ that proves them, rather than duplicated).
    `invariants.spec.ts` → _"3. units still open at the deadline are counted as
    abandoned"_; the accounting itself in `drain.spec.ts` → _"counts a unit still
    open at the deadline as abandoned"_.
+
+   **`abandoned` is "no longer AWAITED", never "did not finish", and the
+   process may not end by itself.** The kernel aborts each unit's signal and
+   stops waiting; it cannot cancel work, so the transport keeps running on its
+   own clock and usually finishes — an abandoned AMQP delivery is acked a
+   moment later, an abandoned Temporal activity completes. That same transport
+   is what holds the event loop open, and `runMain` never calls
+   `process.exit()` (thesis #4), so nothing here terminates the process.
+   Under a **Kubernetes-initiated** shutdown that ends at
+   `terminationGracePeriodSeconds` with SIGKILL, and exit `2` is what the
+   REPORT says rather than what the orchestrator observes; **outside that
+   lifecycle nothing kills it** and the process stays alive until the
+   transport is done — the distinction matters for a test, a dev loop and an
+   embedder, which is where a drain deadline is otherwise most often met.
+   Forcing the transport shut was considered and declined: destroying an AMQP
+   connection under an ack in flight loses that ack, which is worse than a
+   SIGKILL the orchestrator was going to send anyway. Stated on the pages
+   rather than fixed, which is the honest half of "the kernel stops waiting
+   rather than cancelling".
+
 4. **The unit `AbortSignal` fires at the drain deadline.**
    `invariants.spec.ts` → _"4. the unit AbortSignal fires at the drain
    deadline"_. The abort comes from `registry.abortAll()`, not from the runtime

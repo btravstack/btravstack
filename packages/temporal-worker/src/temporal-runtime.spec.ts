@@ -400,10 +400,48 @@ describe("temporal", () => {
     // kernel's deadline rather than Temporal's `shutdownForceTime`, which is
     // what `Serving.drain(signal)` promises the kernel.
     expect(
-      report.map((exit) => ({ drain: exit.drain, promptly: Date.now() - askedAt < 5_000 })),
+      report.map((exit) => ({ drain: exit.drain, promptly: Date.now() - askedAt < 2_000 })),
     ).toBeOkWith({
       drain: { inFlightAtStart: 1, completed: 0, abandoned: 1 },
       promptly: true,
     });
+  });
+});
+
+describe("temporal, when the worker stops on its own account", () => {
+  it("settles `stopped` for a run that ended with nobody asking", async ({ stubbed }) => {
+    // GIVEN a worker whose `run()` rejects mid-flight, which is what a worker
+    // reaching `FAILED` looks like from here
+    const { run, stopped } = stubbed();
+
+    // WHEN it fails
+    run.settle(new Error("worker failed"));
+
+    // THEN the channel settles, which is what asks the kernel to stop. The
+    // rejection used to sit on `running` until a shutdown somebody else
+    // requested came along to read it, so a worker that had stopped polling
+    // left the process alive with `/readyz` answering 200.
+    await expect(stopped()).toBeOk();
+  });
+
+  it("withdraws `stopped` for a run the kernel ended", async ({ stubbed }) => {
+    // GIVEN a worker that stops because it was told to
+    const { run, serving, stopped } = stubbed();
+    let settled = false;
+    void stopped().map(() => {
+      settled = true;
+    });
+
+    // WHEN the kernel stops it and the run ends
+    const stopping = serving.stop();
+    run.settle();
+    await stopping;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // THEN the channel never settles. Settling it here would report
+    // `runtimeStopped` on top of every clean shutdown — harmless in the end,
+    // since the kernel's own deferred resolves once, and wrong, because this
+    // channel means "nobody asked me to".
+    expect(settled).toBe(false);
   });
 });
