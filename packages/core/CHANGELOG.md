@@ -1,5 +1,127 @@
 # @btravstack/core
 
+## 0.15.0
+
+### Minor Changes
+
+- 5f5efef: Gave a runtime a way to say it has stopped, routed the AMQP library's own
+  diagnostics somewhere, and corrected what the drain's reports mean.
+
+  **`Serving.stopped` is the channel for "nobody asked me to".** Optional, so no
+  shipped runtime had to change. A runtime had no way to report that it had given
+  up, and the lifecycle only ever moved on a signal or a `stop()` call — so a
+  Temporal worker whose `run()` rejected mid-flight left the process alive with
+  `/readyz` answering `200`, a pod in a Service's endpoints consuming nothing. The
+  kernel races the channel against its own shutdown and reports
+  `reason: "runtimeStopped"`. A runtime that implements it must **withdraw** after
+  a stop the kernel asked for, or it races every clean shutdown.
+
+  `@btravstack/temporal-worker` wires it. `@btravstack/amqp-worker` does not:
+  `@amqp-contract/worker` reports a server-initiated consumer cancel as a log line
+  and exposes no signal to race. That is stated as a gap rather than papered over.
+
+  **The AMQP starter passes the library a logger, as `Observers` operations.** It
+  was given none, so every diagnostic was discarded — a consumer the server
+  cancelled, a poison delivery, a spent retry budget, a failed retry publish, a
+  channel error. A poison delivery matters most: the library nacks it before the
+  handler middleware runs, so the `delivery` operation and the `outcome` dimension
+  never saw one, and a poison stream presented as a perfectly healthy worker
+  beside a filling dead-letter queue. `warn` and `error` become
+  `component: "amqp"`, `name: "broker"` operations; `debug` and `info` are dropped,
+  since an observer writes no line for a successful operation anyway.
+
+  **Four claims that a `RetryableError` leaves the delivery un-acked were wrong.**
+  Measured against `@amqp-contract/worker@3.0.0-beta.7`: it **acks** the original
+  and republishes a copy carrying `x-retry-count + 1`. Only a quorum queue in
+  `immediate-requeue` mode nacks with `requeue: true`. So the recommended
+  drain-abort arm spends one retry per in-flight message, and a rollout can
+  dead-letter work that nothing was wrong with. `prefetch` unset is `10`, not
+  uncapped, which two pages also had wrong.
+
+  **`abandoned` means "no longer awaited", not "did not finish", and the process
+  may not end by itself.** The kernel stops waiting and cannot cancel; the
+  transport keeps running and usually completes. That same transport holds the
+  event loop open, and `runMain` never calls `process.exit()`, so an abandoned
+  drain ends at Kubernetes' `terminationGracePeriodSeconds` with SIGKILL — exit `2`
+  is what the report says rather than what the orchestrator observes. Four pages
+  claimed a self-exit. Forcing the transport shut was declined: destroying an AMQP
+  connection under an ack in flight loses that ack.
+
+- f0686e1: Bound the two lifecycle phases that had no deadline, so a shutdown always
+  produces its exit report.
+
+  `stopTimeoutMs` / `STOP_TIMEOUT_MS` (default `5_000`) bounds `stopping` —
+  `Serving.stop` **and** the application scope's finalisers — and a crash or a
+  second signal before the runtime serves abandons the build. Either reports
+  `ExitReport.abandonedAt` (`"stop" | "build"`), emits a new `stoppedWaiting`
+  kernel event, and exits `2` under `runMain`. Previously a `release` that never
+  settled left the process in `stopping` with no event, no exit code and no
+  report, and an uncaught exception mid-build was absorbed entirely.
+
+  It stops waiting rather than cancelling: a wedged finaliser can still hold the
+  event loop until SIGKILL, but the report now exists and names the phase. The
+  three shutdown timings sum to the Kubernetes grace-period default of 30 s.
+
+  `@btravstack/observability`'s `kernelEvents` logs the new event at `warn` with
+  `phase` and `afterMs` as fields; `@btravstack/testing`'s `bootFixture` puts the
+  new deadline out of reach so a spec advancing a fake clock through a drain is
+  unaffected.
+
+- e747896: `observed(observers, operation, call, settled?)` joins `observe`: the same
+  start-then-settle around one `AsyncResult`-returning call, settling `ok` or
+  `error` from the channel it came back on, so a starter's instrumentation is one
+  line per method. `@btravstack/cache`, `@btravstack/mailer` and
+  `@btravstack/storage` report through it; what they report is unchanged.
+- 01318f8: Made the probe server reachable, gave health checks a deadline, and closed four
+  ways an adapter or a config field failed dishonestly.
+
+  **The probe server binds `0.0.0.0` by default**, from the new `PROBE_HOST` /
+  `probes: { host }` — `HOST`'s own default for `HOST`'s own reason. It bound
+  `127.0.0.1` only, which a kubelet `httpGet` probe cannot reach because it
+  connects over the pod IP; the deploy guide showed exactly that shape and it
+  could never have worked. Pin `127.0.0.1` where the port is shared, and probe it
+  with `exec` from inside the container.
+
+  **`runHealthChecks` bounds each check**, at `DEFAULT_HEALTH_TIMEOUT_MS` (`800`,
+  under kubelet's own `timeoutSeconds` default of `1`) or a per-contribution
+  `HealthCheck.timeoutMs`. A check that never settled held a socket open per hit
+  on `/healthz` while the orchestrator timed out against a report naming nothing;
+  now the component that hung is named like any other unhealthy one.
+  `@btravstack/mailer` declares `timeoutMs` on its contribution and its
+  hand-rolled race is gone.
+
+  **`@btravstack/cache/redis`** carries a permanent `'error'` listener, so a
+  socket drop no longer reaches the kernel's `uncaughtException` handler as a
+  whole-application teardown at exit `70`. A `REDIS_URL` nothing answers is now
+  `CacheConnectionFailed` after five attempts rather than a build that hangs
+  forever — node-redis retries the first connect without limit, which under a
+  kernel still `building` is a pod answering `/livez` and never `/readyz`. A
+  value another writer left under a key is a `CacheUnavailable` rather than a
+  defect `getOrSet` could not recover, and a value `JSON.stringify` refuses is a
+  defect on the returned channel rather than a synchronous throw out of `set`.
+
+  **`ttlMs` means one thing for every adapter.** `readThrough` rounds it to whole
+  milliseconds and stores nothing below `1`, so a computed `deadline - now` that
+  has gone negative is a miss on both adapters — where the memory one stored
+  forever and the Redis one reported `PX 0` as `CacheUnavailable`, an outage
+  class, for a bug in the caller.
+
+  **`@btravstack/config`**: a malformed URL's message redacts its userinfo, so a
+  `DATABASE_URL` password no longer reaches stderr through `runMain`'s
+  `startFailed` line; a field whose `parse` throws is folded into an issue
+  instead of escaping a `validate` this package promises never throws;
+  `Config.list(v, { default: [] })` is accepted, `min` defaulting to `0` when a
+  default is given rather than blaming a variable nobody set; and `integer` /
+  `port` read decimal only, so `PORT=0x1F90` is named rather than silently bound
+  as `8080`.
+
+### Patch Changes
+
+- Updated dependencies [5accb9b]
+- Updated dependencies [01318f8]
+  - @btravstack/di@0.15.0
+  - @btravstack/config@0.15.0
+
 ## 0.14.0
 
 ### Patch Changes
