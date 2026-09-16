@@ -111,16 +111,8 @@ export type NeedsGate<
   ? unknown
   : {
       // Inline, never a named alias: an alias prints unreduced and the reader
-      // gets their own tuples back instead of the port.
-      //
-      // The sentence names BOTH fixes because the two readers meet it in
-      // different places. A slice names the port in `needs` and lets an
-      // ancestor supply it; a composition ROOT has no ancestor, so naming it
-      // moves the error one line down to `start`'s own
-      // `UNSATISFIED DEPENDENCIES` and nothing else. Measured on a beginner's
-      // first `HttpModule`: this gate fires FIRST, at the module call, and the
-      // one that names the real fix fires below it — so a sentence that said
-      // only "name it in `needs`" sent a root author the wrong way, twice.
+      // gets their own tuples back instead of the port. Both fixes stay in the
+      // sentence: a root cannot discharge a need by naming it.
       readonly "UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)": Exclude<
         Exclude<NeedOf<P[number]>, Available<I, P>>,
         InstanceType<N[number]> | Scope
