@@ -1,10 +1,6 @@
-import type { Serving } from "@btravstack/core";
-import type { Worker } from "@temporalio/worker";
-import type { AsyncResult } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
 import { it, undeclared } from "./__tests__/test-fixtures.js";
-import { poll, type TemporalInfo } from "./temporal-runtime.js";
 
 describe("temporal", () => {
   it("publishes the task queue and namespace it polls", async ({ server, serve }) => {
@@ -412,51 +408,11 @@ describe("temporal", () => {
   });
 });
 
-/**
- * A stub worker, because the arm under test is `run()` REJECTING mid-flight —
- * the worker reaching `FAILED` — and there is no way to make a real one do that
- * without taking the shared Temporal server down for every other spec here.
- */
-const stubWorker = (running: Promise<void>): Worker =>
-  ({
-    run: () => running,
-    getState: () => "RUNNING",
-    shutdown: () => undefined,
-  }) as unknown as Worker;
-
-/** `Promise.withResolvers` by hand: this package's `lib` predates it. */
-const deferred = (): {
-  readonly promise: Promise<void>;
-  readonly settle: (cause?: Error) => void;
-} => {
-  let settle: (cause?: Error) => void = () => undefined;
-  const promise = new Promise<void>((resolve, reject) => {
-    settle = (cause) => {
-      if (cause === undefined) resolve();
-      else reject(cause);
-    };
-  });
-  return { promise, settle };
-};
-
-/**
- * The channel, refused if it is absent. `Serving.stopped` is OPTIONAL, so
- * `serving.stopped?.()` on a `poll()` that stopped providing it would skip the
- * callback and leave every assertion below passing on nothing.
- */
-const stoppedOf = (serving: Serving<TemporalInfo>): (() => AsyncResult<void, never>) => {
-  const channel = serving.stopped;
-  // oxlint-disable-next-line unthrown/no-throw -- a test-only guard: a `poll()` that stopped declaring `stopped` is a regression the tests below could not otherwise see
-  if (channel === undefined) throw new Error("[temporal] poll() declared no `stopped` channel");
-  return channel;
-};
-
 describe("temporal, when the worker stops on its own account", () => {
-  it("settles `stopped` for a run that ended with nobody asking", async () => {
+  it("settles `stopped` for a run that ended with nobody asking", async ({ stubbed }) => {
     // GIVEN a worker whose `run()` rejects mid-flight, which is what a worker
     // reaching `FAILED` looks like from here
-    const run = deferred();
-    const stopped = stoppedOf(poll(stubWorker(run.promise), "t", "ns"));
+    const { run, stopped } = stubbed();
 
     // WHEN it fails
     run.settle(new Error("worker failed"));
@@ -468,12 +424,11 @@ describe("temporal, when the worker stops on its own account", () => {
     await expect(stopped()).toBeOk();
   });
 
-  it("withdraws `stopped` for a run the kernel ended", async () => {
+  it("withdraws `stopped` for a run the kernel ended", async ({ stubbed }) => {
     // GIVEN a worker that stops because it was told to
-    const run = deferred();
-    const serving = poll(stubWorker(run.promise), "t", "ns");
+    const { run, serving, stopped } = stubbed();
     let settled = false;
-    void stoppedOf(serving)().map(() => {
+    void stopped().map(() => {
       settled = true;
     });
 
