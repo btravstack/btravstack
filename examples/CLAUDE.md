@@ -161,7 +161,7 @@ is the index of the workspaces themselves.
   route requires `session` and the JSON procedures keep `user` and `service`,
   which is what lets a cookie and a bearer token stay two credentials for one
   identity. The root composes `sessionCodec()` and
-  `oidc({ principal, scope })` beside `fragmentsLogin: "/auth/login"`, so the
+  `...oidc({ principal, scope })` beside `fragmentsLogin: "/auth/login"`, so the
   answerer that seals the cookie and the scheme that reads it hold the same
   keys and the same `principal` the bearer scheme reads its claims with.
 

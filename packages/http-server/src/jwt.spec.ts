@@ -310,4 +310,107 @@ describe("jwtAuthenticator", () => {
       variable: false,
     });
   });
+
+  it("refuses a cleartext JWKS endpoint at boot, unless it is loopback", async ({
+    issuer,
+    jwtApp,
+  }) => {
+    // GIVEN a deployment pointing the key set at a plaintext host that is not
+    // this machine — the shape a staging environment reaches for
+    const app = jwtApp({
+      HTTP_JWT_JWKS_URI: "http://keys.internal/.well-known/jwks.json",
+      HTTP_JWT_ISSUER: issuer.issuer,
+      HTTP_JWT_AUDIENCE: issuer.audience,
+    });
+
+    // WHEN the application boots
+    // THEN it is a `ConfigInvalid` naming the variable, before a single
+    // request. `Config.url` only says the value PARSES; a key set fetched in
+    // cleartext lets anything on the path publish its own signing key and mint
+    // tokens this process then accepts. `oidc()` already refused a cleartext
+    // issuer on the same rule, and the two used to disagree.
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        port: "HttpJwt",
+        issues: [
+          expect.objectContaining({
+            path: ["HTTP_JWT_JWKS_URI"],
+            // The WHOLE message, not a prefix: the option name and the call
+            // it is pinned at are interpolated, and folding them into one
+            // field once produced "`allowInsecureJwks` on `jwtAuthenticator():
+            // true`" — the `: true` on the wrong half, backticks unbalanced,
+            // and a prefix match that never noticed.
+            message:
+              "must be an https: URL — in cleartext anything on the path can substitute its own signing key and mint tokens this process accepts. Only a loopback host (localhost, 127.0.0.1, [::1]) is accepted without `allowInsecureJwks: true` on `jwtAuthenticator()`",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("fetches a loopback JWKS over plaintext, which is the dev loop", async ({
+    issuer,
+    jwtApp,
+  }) => {
+    // GIVEN this file's own issuer, which serves its key set from `127.0.0.1`
+    // over plain HTTP
+    const app = jwtApp({
+      HTTP_JWT_JWKS_URI: issuer.jwks,
+      HTTP_JWT_ISSUER: issuer.issuer,
+      HTTP_JWT_AUDIENCE: issuer.audience,
+    });
+
+    // WHEN the application boots
+    const info = (await app.runtimeInfo()).get();
+
+    // THEN it served: plaintext that never leaves the machine is not the
+    // attack the refusal above exists for, and refusing it would mean every
+    // local suite and every `pnpm dev` had to opt out of a security default
+    expect(info).toEqual(expect.objectContaining({ port: expect.any(Number) }));
+  });
+
+  it("reports a JWKS it cannot reach, rather than refusing in silence", async ({
+    issuer,
+    unreachableJwks,
+  }) => {
+    // GIVEN a scheme whose issuer's key set is not answering, and a token that
+    // is otherwise perfectly good
+    const scheme = await unreachableJwks();
+    const token = await issuer.sign({ sub: "u-1", tenant: "acme" }).get();
+
+    // WHEN it is presented
+    await scheme.resolve({ authorization: `Bearer ${token}` });
+
+    // THEN the outage settled an operation carrying a bounded reason and the
+    // library's own cause. Unreported, a key-set incident refused every caller
+    // at once as a bare `401` — an issuer outage presenting as the whole world
+    // suddenly sending bad credentials, with nothing anywhere saying otherwise.
+    expect(scheme.taken()).toEqual([
+      expect.objectContaining({
+        component: "jwt",
+        name: "verify",
+        outcome: "error",
+        attributes: { reason: "issuer_unreachable" },
+        cause: expect.anything(),
+      }),
+    ]);
+  });
+
+  it("says nothing about a token the caller got wrong", async ({ issuer, unreachableJwks }) => {
+    // GIVEN the same recording scheme, and a request carrying no token at all —
+    // the shape a caller controls
+    const scheme = await unreachableJwks();
+    void issuer;
+
+    // WHEN it is presented
+    const answered = await scheme.resolve({});
+
+    // THEN it is refused and NOTHING was observed. A refused credential is not
+    // an operation that failed, and a line per unauthenticated request is how a
+    // scanner writes an application's logs for it.
+    expect({ refused: answered.isErr(), observed: scheme.taken() }).toEqual({
+      refused: true,
+      observed: [],
+    });
+  });
 });

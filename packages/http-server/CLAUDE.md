@@ -506,7 +506,7 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   nothing at all saying where from is refused.
 
   **The default is a GRAPH fact, not an option default**: on when any composed
-  scheme reads a cookie, off otherwise. `sessionAuthenticator`'s description
+  surface reads a cookie, off otherwise. `sessionAuthenticator`'s description
   carries `cookie: true`, `defineHttp` turns that into a member of the
   `CookieSchemes` set port beside the scheme's own provider, and both the
   listener and `orpc()` read the set. A set port rather than a marker
@@ -516,6 +516,18 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   `ctx.get` at start could not answer it either, di's `Context` having no
   `has`. `httpServer` contributes the `false` member that keeps the set from
   being the empty dependency di refuses.
+
+  **A cookie surface that is not a SCHEME contributes too, and forgetting that
+  was the bug.** `oidc()` reads `__Host-oidc`, seals `__Host-session` and
+  serves a state-changing `POST <prefix>/logout`, and it contributed nothing —
+  on the argument that a session scheme composed beside it would turn the
+  default on. A root composing `oidc()` and `sessionCodec()` with no
+  `sessionAuthenticator` has no such scheme, still logs a browser in and still
+  exposes the logout, so it ran with CSRF off. `oidc()` now answers TWO
+  providers — the answerer and a `cookieScheme()` member — which is why a root
+  spreads it. The rule to carry forward: **whatever reads or writes a cookie
+  contributes, whether or not it is an authenticator**, because the set is what
+  makes the default a fact rather than a line somebody remembered.
 
   **oRPC's `GetMethodCsrfProtectionHandlerPlugin` rides the same flag**, and
   the two halves are disjoint: the listener judges the state-changing methods
@@ -763,7 +775,7 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   `http()` wraps this module and re-declares its own `exports`, so what the
   two export must be kept in step by hand. `httpServer` EXPORTS `Observers` as well as providing the
   no-op member: a sibling answerer that reports its own operations —
-  `oidc()` is the first — is one `Provider.member(HttpHandler)` with nowhere
+  `oidc()` is the first — answers providers rather than a module, with nowhere
   to put a no-op member of its own, so without the export the set port every
   other starter here gets for free would have been the one thing a login
   answerer charged a root for. The
@@ -1165,9 +1177,22 @@ both directions. `localhost`, `127.0.0.1` and `[::1]` are taken as they stand
 suite exercises that arm); anything else is a `ConfigInvalid` naming the
 variable unless `allowInsecureIssuer: true` is pinned. It is an **option**, not
 a variable, on rule 6's test — `securityHeaders`' own argument — and the flag
-`discover` takes is COMPUTED once by `insecureIssuer` and handed in rather than
+`discover` takes is COMPUTED once by `cleartext` and handed in rather than
 re-derived there, so the check that refuses and the switch that permits cannot
 drift apart.
+
+**The rule lives in `cleartext.ts` because two callers need it and they
+disagreed.** `oidc()` refused a cleartext issuer from the day it shipped;
+`jwtAuthenticator` handed an `http:` JWKS URI straight to `jose` — the same
+class of value, two answers, and the silent one was the sharper hole: a key
+set carries public keys, so substituting a signing key and minting accepted
+tokens needs no secret stolen first (RFC 8725 §3). One predicate and one
+message builder now serve both, with the loopback exception and the
+option-not-a-variable posture written once. The alternative on the table was a
+`protocols?: readonly string[]` option on `Config.url`; it was declined
+because the loopback exception is not expressible as a scheme list, and a
+second option to carry it would put a security rule in a package that knows
+nothing about what a URL is for.
 
 **Discovery runs ONCE, in `make`.** Three consequences, and each is why it is
 there rather than per request: a provider that is not there fails the BOOT with
@@ -1219,7 +1244,18 @@ already fired is this package's documented footgun.
 ## `openApiDocument` — from `@btravstack/http-server/openapi`
 
 The surface and its reasoning are in `docs/reference/http-server.md` and
-`openapi.ts`'s TSDoc. `StandardJsonSchemaConverter` is what converts the schemas, and it is why no
+`openapi.ts`'s TSDoc.
+
+**The requirements walk keys on `@orpc/openapi`'s own `getOpenAPIMeta`, not on
+the contract path**, because the generator writes
+`meta?.operationId ?? path.join(".")` and the two stop agreeing the moment a
+procedure names an `operationId`. Keying on the path alone dropped every such
+operation's `security` and published it as public, while the TSDoc claimed the
+opposite. Importing the accessor rather than reproducing the rule is what makes
+the two agree by construction: if upstream changes how an id is derived, this
+changes with it.
+
+`StandardJsonSchemaConverter` is what converts the schemas, and it is why no
 `@orpc/zod` is needed: zod v4 is Standard Schema, and `@orpc/zod` publishes no
 `2.0.0-beta.28` to match the catalog's pin anyway.
 

@@ -607,3 +607,49 @@ describe("oidc(), the login answerer", () => {
     );
   });
 });
+
+describe("oidc(), as a cookie surface the CSRF default has to see", () => {
+  it(
+    "refuses a cross-site logout in a root whose only cookie surface is the answerer",
+    async ({ loginOnly }) => {
+      // GIVEN the composition the default used to miss: `oidc()` and
+      // `sessionCodec()` with no session scheme, so nothing carries
+      // `cookie: true` on an authenticator's description
+      const browser = await loginOnly();
+
+      // WHEN another site posts the logout with the browser's ambient cookie
+      browser.plant("__Host-session", "whatever-the-jar-holds");
+      const answered = await browser.go("/auth/logout", {
+        method: "POST",
+        headers: { "sec-fetch-site": "cross-site" },
+      });
+
+      // THEN it is refused before the answerer, with nothing said about why.
+      // The answerer contributes its own `CookieSchemes` member now; without
+      // it this composition served a state-changing route over a cookie with
+      // the check off, which is what the spec called a composition that "does
+      // not work at all" and which nonetheless logs a browser in.
+      expect({ status: answered.status, text: answered.text }).toEqual({ status: 403, text: "" });
+    },
+    START_UP,
+  );
+
+  it(
+    "still serves that logout same-origin, so the member turned the check on rather than the route off",
+    async ({ loginOnly }) => {
+      // GIVEN the same deployment
+      const browser = await loginOnly();
+
+      // WHEN the browser posts it from the page it is already on
+      browser.plant("__Host-session", "whatever-the-jar-holds");
+      const answered = await browser.go("/auth/logout", {
+        method: "POST",
+        headers: { "sec-fetch-site": "same-origin" },
+      });
+
+      // THEN the answerer runs — a redirect away, which is what logout is
+      expect(answered.status).toBe(303);
+    },
+    START_UP,
+  );
+});

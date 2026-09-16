@@ -192,10 +192,27 @@ The two rules this half exists to state, before the detail:
     often omit it, and requiring it would refuse legitimate tokens.
     `clockToleranceSec` defaults to `0`, so leeway is opt-in. `aud` is the one
     whose absence lets a token minted for a sibling service be replayed here.
-  - **One refusal for every failure.** A bad signature, an expired token and an
-    audience mismatch are indistinguishable from outside — `Unauthenticated`
-    carries no reason, so the endpoint is not an oracle for which of them the
-    attacker got wrong.
+  - **One refusal for every failure ON THE WIRE.** A bad signature, an expired
+    token and an audience mismatch are indistinguishable from outside —
+    `Unauthenticated` carries no reason, so the endpoint is not an oracle for
+    which of them the attacker got wrong.
+  - **An ISSUER outage is reported, even though it answers the same `401`.**
+    A JWKS that times out, a key set that is not one, a `kid` no published key
+    matches, and anything with no `jose` `code` at all — a fetch `TypeError`, a
+    DNS failure, a 5xx — settle an `Observers` operation (`component: "jwt"`,
+    `name: "verify"`, `outcome: "error"`) carrying a bounded `reason` dimension
+    and the library's own cause. They used to be the same silent refusal as a
+    bad token, so a key-rotation incident presented as every client in the
+    world suddenly sending bad credentials, with nothing anywhere saying
+    otherwise. The status does not change: there is genuinely nothing here that
+    can authenticate anyone, and widening `Unauthenticated` into a union so a
+    `503` could reach the wire would put a transport's status in a seam that
+    deliberately names no protocol. What changes is that it is a metric and a
+    line. Reported through the same set port every starter here uses, so a root
+    that composed no observability pays one inert call and the scheme's
+    `Observers` need costs it nothing — `httpServer` contributes the no-op
+    member and exports the port.
+  - **A cleartext JWKS is refused at BOOT.** See `allowInsecureJwks` below.
 
   **`jwks`, `issuer` and `audience` are OPTIONAL, and bound from
   `HTTP_JWT_JWKS_URI`, `HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE` when they are
@@ -207,10 +224,22 @@ The two rules this half exists to state, before the detail:
   against different issuers, a JWKS endpoint moves, and the audience is the
   deployment's own name; none of it belongs in the image. A variable nobody
   pinned and nobody set is a `ConfigInvalid` naming it, at startup, with every
-  offending variable in one message. The rest stay options: `algorithms` and
-  `clockToleranceSec` because a value whose silent change is a security
-  regression is not an environment's to change, `header`/`principal`/`scopes`
-  because an environment carries no functions and no arrays.
+  offending variable in one message. The rest stay options: `algorithms`,
+  `clockToleranceSec` and `allowInsecureJwks` because a value whose silent
+  change is a security regression is not an environment's to change,
+  `header`/`principal`/`scopes` because an environment carries no functions and
+  no arrays.
+
+  **`allowInsecureJwks` is `oidc()`'s `allowInsecureIssuer` under another
+  name, and the two now share one rule** (`cleartext.ts`). An `https:` URL is
+  always fine, an `http:` one on `localhost`/`127.0.0.1`/`[::1]` is the dev
+  loop, and any other `http:` URL is a `ConfigInvalid` at boot unless the
+  option is pinned. `oidc()` had refused a cleartext issuer since it shipped
+  while this scheme handed an `http:` JWKS URI straight to `jose` — the same
+  class of value, two answers. The JWKS case is the sharper of the two: a key
+  set carries public keys, so there is no secret an attacker had to steal
+  before substituting a signing key and minting tokens this process accepts
+  (RFC 8725 §3).
 
   **One JWT scheme per process**, which is why the prefix is `HTTP_JWT_` and
   not `HTTP_JWT_<SCHEME>_`. Two schemes reading the same three variables are
@@ -225,7 +254,7 @@ The two rules this half exists to state, before the detail:
   variables — instead of constructing happily and refusing every caller with a
   401 that carries no reason. `Config.parse` is what it runs, the step
   `Config.provider` performs, lifted so both have one home. Its `inject` is
-  `{ env: Env }`, and a root composing this scheme writes no `needs` line for
+  `{ env: Env, observers: Observers }`, and a root composing this scheme writes no `needs` line for
   it: `HttpModule` carries `Env` for every provider in the root, its schemes
   included, the same way it already carries the starter's own. A scheme owing any OTHER unmet port is
   still refused at the `HttpModule` call.
@@ -442,9 +471,9 @@ The two rules this half exists to state, before the detail:
   caller-controlled and unbounded, so they ride the `cause`, which an observer
   puts on a line or a span and never on an instrument. It costs a root nothing:
   `httpServer` contributes the no-op member every reader of a set port owes,
-  and now EXPORTS the port as well — because `oidc()` is one
-  `Provider.member(HttpHandler)` rather than a module, so it has nowhere to put
-  a no-op member of its own, and without the export the set port every other
+  and now EXPORTS the port as well — because `oidc()` answers providers rather
+  than a module, so it has nowhere to put a no-op member of its own, and
+  without the export the set port every other
   starter here gets for free would have been the one thing a login answerer
   charged a root for. Composing `observability()` is what turns the line on;
   composing none leaves an inert call per route.
@@ -457,10 +486,17 @@ The two rules this half exists to state, before the detail:
   `state` that does not match and is refused. The cookie is the whole memory of
   the flow and there is one of it; the refused tab logs in again.
 
-  **It contributes no `cookieScheme()` member**, so CSRF on the logout route
-  rides a session scheme being composed in the same root — which is not a gap:
-  an `oidc()` with no session scheme seals a cookie nothing reads, so the
-  composition that would need this answerer's own marker does not work at all.
+  **It contributes a `cookieScheme()` member of its own**, which is why it is
+  spread: `...oidc({ principal })`, two providers, the answerer and the marker.
+  It used to contribute none, on the argument that CSRF rode a session scheme
+  composed in the same root and that an `oidc()` with no session scheme "seals
+  a cookie nothing reads, so the composition does not work at all". The second
+  half of that is false as a security claim, however true it is as a design
+  one: a root composing `oidc()` and `sessionCodec()` with no
+  `sessionAuthenticator` still logs a browser in and still serves a
+  state-changing `POST <prefix>/logout` over a cookie — with CSRF off. A
+  default computed from the graph has to see every cookie surface in it, and
+  this was the one it could not.
 
   **Logout is parameterless and is a `POST`.** No `id_token_hint`, because the
   cookie carries a principal and no token — and therefore no

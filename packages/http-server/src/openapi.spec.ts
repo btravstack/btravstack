@@ -1,5 +1,6 @@
 import { authenticated } from "@btravstack/contract";
 import { oc } from "@orpc/contract";
+import { openapi } from "@orpc/openapi";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -71,6 +72,36 @@ describe("openApiDocument", () => {
 
     // THEN each alternative is its own object, which is OpenAPI's own OR
     expect(doc.paths?.["/either/run"]?.post?.security).toEqual([{ user: [] }, { mtls: [] }]);
+  });
+
+  it("keeps the requirement on a procedure that named its own operationId", async () => {
+    // GIVEN a marked procedure that renamed itself for the document — the
+    // ordinary reason to touch `.route()`, and what a generated client's method
+    // is named after
+    const contract = {
+      orders: authenticated({ user: ["orders:write"] })({
+        place: oc
+          .meta(openapi({ operationId: "placeOrder" }))
+          .input(ref)
+          .output(ref),
+      }),
+    };
+
+    // WHEN a document is generated
+    const doc = (
+      await openApiDocument(contract, { base, securitySchemes: { user: bearer } })
+    ).get();
+
+    // THEN the operation carries both its chosen id and its requirement. The
+    // fold keyed on the contract path alone, which no longer matches the id the
+    // generator wrote — so this operation published with no `security` at all,
+    // and a reader of the document saw a public endpoint.
+    expect(doc.paths?.["/orders/place"]?.post).toEqual(
+      expect.objectContaining({
+        operationId: "placeOrder",
+        security: [{ user: ["orders:write"] }],
+      }),
+    );
   });
 
   it("lets a procedure's own mark shadow the record's", async () => {

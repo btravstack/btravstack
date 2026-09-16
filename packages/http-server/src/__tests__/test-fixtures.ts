@@ -222,16 +222,21 @@ const serviceOf = <P, Scope extends string>(
  * environment the kernel would have provided, without a graph around it.
  */
 const jwtServiceOf = <P, Scope extends string>(
-  authenticator: Authenticator<P, Scope, Env, ConfigInvalid>,
+  authenticator: Authenticator<P, Scope, Env | Observers, ConfigInvalid>,
   env: Environment,
+  // The set the graph would have handed it. Empty by default, which is a
+  // deployment that composed no observability: the scheme reports into nothing
+  // and costs a call.
+  observers: readonly ((operation: Operation) => Settle)[] = [],
 ): AsyncResult<AuthenticatorService<P, Scope>, ConfigInvalid> =>
   (
     authenticator.options as {
       readonly make: (services: {
         readonly env: Environment;
+        readonly observers: readonly ((operation: Operation) => Settle)[];
       }) => AsyncResult<AuthenticatorService<P, Scope>, ConfigInvalid>;
     }
-  ).make({ env });
+  ).make({ env, observers });
 
 /**
  * One `localIssuer`, closed when the file is done. Both issuer fixtures are
@@ -607,8 +612,35 @@ const bffAppOf = (
     provides: [
       bffRowFragment,
       sessionCodec(),
-      oidc({ principal, scope: ORY_SCOPE, allowInsecureIssuer }),
+      ...oidc({ principal, scope: ORY_SCOPE, allowInsecureIssuer }),
       Provider.member(Observers)({ inject: {}, value: member }),
+    ],
+  });
+
+/**
+ * The composition the CSRF default used to miss: `oidc()` and `sessionCodec()`
+ * with NO session scheme, so nothing in the graph carries `cookie: true` on an
+ * authenticator's description. It still logs a browser in and still serves a
+ * state-changing `POST /auth/logout` over a cookie, which is why the answerer
+ * owes a `CookieSchemes` member of its own.
+ */
+const loginOnlyApi = defineHttp();
+
+const loginOnlyStatusFragment = loginOnlyApi.HtmxGet("/status")({
+  inject: {},
+  sync: () => () => OkAsync(html`ok`),
+});
+
+const loginOnlyAppOf = () =>
+  HttpModule("LoginOnlyApp")({
+    fragments: loginOnlyApi.HtmxFragments([loginOnlyStatusFragment]),
+    port: 0,
+    hostname: "127.0.0.1",
+    fragmentsLogin: "/auth/login",
+    provides: [
+      loginOnlyStatusFragment,
+      sessionCodec(),
+      ...oidc({ principal: oidcPrincipal, scope: ORY_SCOPE }),
     ],
   });
 
@@ -2004,6 +2036,12 @@ export type HttpFixtures = {
    */
   readonly bff: (principal?: (claims: IDToken) => OidcIdentity | undefined) => Promise<Bff>;
   /**
+   * The same provider, but a root composing `oidc()` and `sessionCodec()` with
+   * NO session scheme — so the only thing in the graph that touches a cookie is
+   * the login answerer itself. What the CSRF default has to see, and did not.
+   */
+  readonly loginOnly: () => Promise<Bff>;
+  /**
    * The same root over whatever environment a test hands it, for the two boots
    * that are meant to fail. A startup failure is the test's to assert on
    * `app.exited`.
@@ -2046,6 +2084,15 @@ export type HttpFixtures = {
   readonly jwtService: AuthenticatorService<JwtIdentity>;
   /** The JWT scheme declaring `orders:export`, where `scopes` is required. */
   readonly scopedJwtService: AuthenticatorService<JwtIdentity, "orders:export">;
+  /**
+   * The JWT scheme pointed at a JWKS endpoint that is not there, over a
+   * recording observer — an ISSUER outage rather than a bad token, and the one
+   * refusal this scheme is supposed to report rather than swallow.
+   */
+  readonly unreachableJwks: () => Promise<{
+    readonly resolve: AuthenticatorService<JwtIdentity>;
+    readonly taken: () => readonly Observation[];
+  }>;
   /**
    * The starter over a fragment requiring a JWT scheme that pins NOTHING, on an
    * ephemeral port. Every option arrives through `env`, which is what lets the
@@ -2152,6 +2199,27 @@ export const it = test.extend<HttpFixtures>({
         )
       ).getOrThrow(),
     );
+  },
+
+  unreachableJwks: async ({ issuer }, use) => {
+    await use(async () => {
+      const observer = recordingObserver();
+      const resolve = (
+        await jwtServiceOf(
+          jwtAuthenticator<JwtIdentity>()({
+            // A port nothing is listening on: the fetch fails rather than
+            // answering a key set, which is what a JWKS outage is.
+            jwks: "http://127.0.0.1:1/.well-known/jwks.json",
+            issuer: issuer.issuer,
+            audience: issuer.audience,
+            principal: jwtPrincipal,
+          }),
+          {},
+          [observer.member],
+        )
+      ).getOrThrow();
+      return { resolve, taken: observer.taken };
+    });
   },
 
   jwtApp: async ({ boot }, use) => {
@@ -2768,6 +2836,15 @@ export const it = test.extend<HttpFixtures>({
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return bffOf(`http://127.0.0.1:${info.port}`, observer.taken);
+    });
+  },
+
+  loginOnly: async ({ boot, ory: _ory }, use) => {
+    await use(async () => {
+      const app = boot(loginOnlyAppOf(), { env: oidcEnv });
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return bffOf(`http://127.0.0.1:${info.port}`, () => []);
     });
   },
 

@@ -1,7 +1,7 @@
 import { isAuthenticated, type Requirements } from "@btravstack/contract";
 import type { RouterContract } from "@orpc/contract";
 import { StandardJsonSchemaConverter } from "@orpc/json-schema";
-import { OpenAPIGenerator } from "@orpc/openapi";
+import { OpenAPIGenerator, getOpenAPIMeta } from "@orpc/openapi";
 import { fromSafePromise, type AsyncResult } from "unthrown";
 
 /**
@@ -65,7 +65,14 @@ const requirementsByPath = (
   const isProcedure = "~orpc" in (node as Record<string, unknown>);
 
   if (isProcedure) {
-    if (own !== undefined && path.length > 0) into.set(path.join("."), own);
+    // Keyed by the id the DOCUMENT will carry, read through `@orpc/openapi`'s
+    // own accessor rather than guessed at: the generator writes
+    // `meta?.operationId ?? path.join(".")`, and keying on the contract path
+    // alone dropped the `security` of every procedure that set an
+    // `operationId` of its own — published as public.
+    const meta = getOpenAPIMeta(node as Parameters<typeof getOpenAPIMeta>[0]);
+    const id = meta?.operationId ?? path.join(".");
+    if (own !== undefined && id !== "") into.set(id, own);
     return;
   }
 
@@ -92,10 +99,17 @@ const requirementsByPath = (
  * the reason `@btravstack/contract` refuses a two-scheme requirement it would
  * otherwise run as OR.
  *
- * Operations are matched by **`operationId`**, which `@orpc/openapi` defaults to
- * the router segments joined by `.` — the same dotted path the contract tree
- * gives. Set `operationId` yourself on a procedure and its requirement is still
- * found, because the walk keys on the contract's own path, not on the document's.
+ * Operations are matched by **`operationId`**, and the walk computes it the way
+ * the generator does — `@orpc/openapi`'s own `getOpenAPIMeta`, then
+ * `meta?.operationId ?? path.join(".")` — so a procedure that sets an
+ * `operationId` of its own is matched by that id rather than missed. Keying on
+ * the contract path alone published every such operation with no `security`,
+ * which reads as public.
+ *
+ * **A procedure that replaces the whole operation with `.route({ spec })` owns
+ * its `security` too.** An object `spec` is the operation, so there is nothing
+ * for this fold to add to; a function `spec` is handed the built operation and
+ * can drop what this wrote. Neither is guessed at.
  */
 export const openApiDocument = (
   contract: Record<string, RouterContract>,

@@ -85,14 +85,26 @@ export class SessionCodec extends Port("HttpSessionCodec")<SessionCodecService> 
  * application's authenticators — the root composes them itself — so a signal
  * read off the options record would leave that surface silently unprotected.
  * A `ctx.get` at start could not answer it either: di's `Context` has no `has`.
+ *
+ * A member is owed by anything that READS OR WRITES a cookie, which is wider
+ * than "an authenticator": `oidc()` is not a scheme and contributes one.
  */
 export class CookieSchemes extends Port.many("HttpCookieSchemes")<boolean> {}
 
-/** What `defineHttp` contributes for a scheme whose description says it reads a cookie. */
+/**
+ * What every cookie surface contributes — `defineHttp` for a scheme whose
+ * description says it reads one, and `oidc()` for itself, which is not a scheme
+ * at all but reads `__Host-oidc` and serves a state-changing `POST /logout`.
+ *
+ * "Whatever touches a cookie contributes" is the rule, not "whatever
+ * authenticates": the narrower reading left a root composing `oidc()` and
+ * `sessionCodec()` without `sessionAuthenticator` serving that logout with CSRF
+ * off.
+ */
 export const cookieScheme = (): AnyProvider =>
   Provider.member(CookieSchemes)({ inject: {}, value: true });
 
-/** `csrf` unset is on exactly when a composed scheme reads a cookie. */
+/** `csrf` unset is on exactly when a composed surface reads a cookie. */
 export const csrfOn = (option: boolean | undefined, schemes: readonly boolean[]): boolean =>
   option ?? schemes.some(Boolean);
 
