@@ -462,7 +462,8 @@ export const oidc = <P>(options: OidcOptions<P>): readonly [OidcAnswerer, AnyPro
             cleartextRefused({
               port: "HttpOidc",
               variable: "HTTP_OIDC_ISSUER",
-              option: "allowInsecureIssuer` on `oidc()",
+              option: "allowInsecureIssuer",
+              on: "oidc()",
               what: "it sends the client secret, the authorization code and every token in the open",
             }),
           );

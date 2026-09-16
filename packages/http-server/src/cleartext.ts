@@ -40,19 +40,24 @@ export const cleartext = (url: string, allowed: boolean): boolean | "refused" =>
  * callers cannot drift into explaining the same rule differently.
  *
  * `port` is the configuration port's name and `variable` the one an operator
- * sets; `option` is what they would pin to say they meant it.
+ * sets; `option` is the option they would pin to say they meant it and `on`
+ * the call it is pinned at. The two are separate fields because this builder
+ * puts the backticks in — folding the call into `option` produced
+ * `` `allowInsecureIssuer` on `oidc(): true` ``, with the `: true` attached to
+ * the wrong half and the backticks unbalanced.
  */
 export const cleartextRefused = (args: {
   readonly port: string;
   readonly variable: string;
   readonly option: string;
+  readonly on: string;
   readonly what: string;
 }): ConfigInvalid =>
   new ConfigInvalid({
     port: args.port,
     issues: [
       {
-        message: `must be an https: URL — in cleartext ${args.what}. Only a loopback host (localhost, 127.0.0.1, [::1]) is accepted without \`${args.option}: true\``,
+        message: `must be an https: URL — in cleartext ${args.what}. Only a loopback host (localhost, 127.0.0.1, [::1]) is accepted without \`${args.option}: true\` on \`${args.on}\``,
         path: [args.variable],
       },
     ],

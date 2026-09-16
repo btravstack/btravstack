@@ -335,7 +335,13 @@ describe("jwtAuthenticator", () => {
         issues: [
           expect.objectContaining({
             path: ["HTTP_JWT_JWKS_URI"],
-            message: expect.stringContaining("must be an https: URL"),
+            // The WHOLE message, not a prefix: the option name and the call
+            // it is pinned at are interpolated, and folding them into one
+            // field once produced "`allowInsecureJwks` on `jwtAuthenticator():
+            // true`" — the `: true` on the wrong half, backticks unbalanced,
+            // and a prefix match that never noticed.
+            message:
+              "must be an https: URL — in cleartext anything on the path can substitute its own signing key and mint tokens this process accepts. Only a loopback host (localhost, 127.0.0.1, [::1]) is accepted without `allowInsecureJwks: true` on `jwtAuthenticator()`",
           }),
         ],
       }),

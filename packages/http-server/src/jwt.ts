@@ -214,7 +214,8 @@ export const jwtAuthenticator =
               cleartextRefused({
                 port: "HttpJwt",
                 variable: "HTTP_JWT_JWKS_URI",
-                option: "allowInsecureJwks` on `jwtAuthenticator()",
+                option: "allowInsecureJwks",
+                on: "jwtAuthenticator()",
                 what: "anything on the path can substitute its own signing key and mint tokens this process accepts",
               }),
             );
