@@ -116,6 +116,7 @@ import type { ExitReport } from "@btravstack/core";
 
 const clean = (report: ExitReport): boolean =>
   report.reason !== "uncaught" &&
+  report.abandonedAt === undefined &&
   (report.drain?.abandoned ?? 0) === 0 &&
   report.teardownErrors.length === 0;
 ```
@@ -123,3 +124,9 @@ const clean = (report: ExitReport): boolean =>
 That predicate is the `0` row of `runMain`'s table; every other outcome earns a
 non-zero code, in the precedence
 [runMain and exit codes](/reference/core/exit-codes) states.
+
+`abandonedAt` is a term for the same reason the other two are: the kernel
+stopped waiting, so the process stopped and not cleanly. It is the term a
+hand-rolled predicate is most likely to miss, because a teardown that outlived
+`stopTimeoutMs` abandoned no unit and had no finaliser fail **yet** — both
+other terms read false while the kernel had just given up.
