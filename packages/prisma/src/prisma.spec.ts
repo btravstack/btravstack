@@ -83,19 +83,24 @@ describe("prismaDatabase", () => {
     await Module.scoped(root, (ctx) => {
       const client = ctx.get(db.port);
       const hook = client.middleware[0];
-      return OkAsync(hook?.afterQuery({}, { completed: true, rowCount: 2, latencyMs: 7 }, {}));
+      const plan = { planExecutionId: "q1" } as const;
+      return OkAsync(
+        hook
+          ?.beforeQuery({ sql: "SELECT 1" }, plan)
+          .then(() => hook.afterQuery({}, { completed: true, source: "driver" }, plan)),
+      );
     });
 
     // THEN it was observed — the client was constructed with the hook without
-    // anyone asking, and the runtime's own measurements ride the DETAILS,
-    // where an unbounded value belongs
+    // anyone asking, and the operation was open ACROSS the query rather than
+    // reported after it
     expect(observed.taken()).toEqual([
       expect.objectContaining({
         component: "database",
         name: "query",
         outcome: "ok",
-        attributes: { source: "driver" },
-        details: { rows: 2, latencyMs: 7 },
+        attributes: { scope: "runtime", source: "driver" },
+        details: { sql: "SELECT 1" },
       }),
     ]);
   });

@@ -201,10 +201,30 @@ Prisma 7's `instrument.ts` wrapped `$extends({ query: { $allModels:
 runtime with no engine and explicitly ships no telemetry package, so both files
 are deleted and `Instrumentations` is no longer in this module's exports.
 
-**One `afterQuery` middleware replaces them**, and it is strictly better: a
+**One middleware replaces them**, on four hooks, and it is strictly better: a
 middleware sees every lane — the ORM's, the SQL builder's and the raw one —
-where `$allModels` saw only the first, and the runtime has already measured
-`latencyMs` by the time the hook runs. `Logger` left the module's `needs` with
+where `$allModels` saw only the first.
+
+**It uses `beforeQuery`/`afterQuery` rather than `afterQuery` alone**, paired
+by `ctx.planExecutionId` — the runtime's own correlation id, whose TSDoc names
+tracing and timing as the reason it exists. The port is called at the START and
+answers a finisher precisely so a span can be opened around the work; settling
+an operation started in the same tick gives a zero-width span that is the
+parent of nothing. It also means `latencyMs` is not passed along: the observer
+started the operation, so the duration is its own. `Settled` carries no
+`details` channel anyway — only bounded `attributes` — which is the port
+saying the same thing.
+
+**Both lanes, and the write one is easy to miss.** `beforeExecute` /
+`afterExecute` are a separate pair: a SQL-builder statement with no
+`RETURNING`, run through `runtime().execute(plan)`, never touches the query
+hooks. Measured with a real client: a `delete()` plan produced
+`beforeExecute` / `afterExecute` and no `afterQuery` at all.
+
+**A failed statement DOES reach the hook**, measured rather than assumed: a
+duplicate insert against a real database arrives as
+`afterQuery … completed=false` before the rejection surfaces. That is what the
+in-flight map depends on for its own cleanup, and why it is not a leak. `Logger` left the module's `needs` with
 the loader, since the one `debug` line it existed for ("engine tracing is off
 because the optional peer is absent") has nothing left to report.
 

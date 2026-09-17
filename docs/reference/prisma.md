@@ -111,14 +111,38 @@ owes nothing. There is no flag, as on [`cache`](/reference/cache), `mailer` and
 
 **It is a middleware, not a wrapper.** Prisma 8 has no `$extends` to layer one
 over a built client, and needs none: `middleware` is a construction option, and
-one `afterQuery` hook sees every query on **every lane** — the ORM's, the SQL
-builder's and the raw one — without knowing the contract, which is the thing
-this package cannot see. The v7 `$allModels` wrapper saw only the first.
+a hook sees every statement on **every lane** — the ORM's, the SQL builder's and
+the raw one — without knowing the contract, which is the thing this package
+cannot see. The v7 `$allModels` wrapper saw only the first.
 
-The operation is `component: "database"`, `name: "query"`, dimensioned by the
-row count and — when the runtime measured them — its own `latencyMs` and
-`source`. `completed` is what settles the outcome, so a failed query is an
-error rather than an absence.
+**The operation is opened in `beforeQuery` and settled in `afterQuery`**,
+paired by `ctx.planExecutionId`, so a span an observer opens is one the query
+runs _inside_. That is what `Observers` is for — called at the start, answering
+a finisher — and it is why the runtime's own `latencyMs` is not passed along:
+the observer started the operation, so the duration is its own.
+
+**Both lanes, because there are two.** A read settles through `afterQuery`; a
+write with no `RETURNING` — a SQL-builder `delete()` run through
+`runtime().execute(plan)` — settles through `afterExecute`, and a middleware
+implementing only the query hooks leaves every such write unobserved.
+
+The operation is `component: "database"`, `name: "query"`, with `scope`
+(`runtime` / `connection` / `transaction`) and `source` (`driver` /
+`middleware`) as its dimensions — both closed sets — and the rendered statement
+on `details`, where an unbounded value rides the span and the failure line but
+never an instrument. The row count is deliberately absent: it is unbounded, and
+one time series per row count is how a metrics bill becomes the incident.
+
+`completed` is what settles the outcome, and a failed statement does reach the
+hook — measured against a real database, a duplicate insert arrives as
+`completed: false` before the rejection surfaces.
+
+**Prisma 8 ships no OpenTelemetry instrumentation of its own**, so this is the
+whole seam rather than a second one. There is no `@prisma/instrumentation`
+successor: nothing in `@prisma/orm-postgres`, `@prisma/orm-family-sql` or
+`@prisma/orm-framework` references OpenTelemetry at all. Composing
+`@btravstack/observability/otel` is what turns these operations into spans and
+instruments.
 
 Composing [`observability()`](/reference/observability) writes the failed
 queries as lines and `otel()` opens the spans and mints the instruments —
