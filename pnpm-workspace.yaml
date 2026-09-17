@@ -153,27 +153,43 @@ overrides:
   # there is nothing upstream to take; lift the line to 1.8.0. Drop this when
   # markdownlint-cli2 ships a release that takes 1.7.1 or later.
   "smol-toml@<1.7.1": "1.8.0"
-  # GHSA-ggr8-5vv4-36mx: deepmerge-ts stack exhaustion when merging recursive
-  # object graphs. Reaches us via examples/order-infrastructure > prisma >
-  # @prisma/config > deepmerge-ts — the CLI at `generate` time, never a
-  # published package's runtime deps. Re-measured 2026-08-25: prisma@7.9.1 is
-  # still latest and @prisma/config@7.9.1 pins deepmerge-ts at an exact 7.1.5,
-  # so there is nothing upstream to take (7.1.6 exists and is still under the
-  # advisory's first patched 8.0.0); lift any pre-8 line to 8.0.2. Dropping it
-  # brings the advisory straight back — verified. Issue #54 holds it.
-  "deepmerge-ts@<8.0.0": "8.0.2"
   # GHSA-3f6p-5ww8-9rcr: mysql2 lets a hostile server downgrade authentication to
-  # `mysql_clear_password`, which sends the password in plaintext. Reaches us via
-  # examples/order-infrastructure > prisma > mysql2 — the CLI bundling a driver
-  # per datasource, where this example's datasource is PostgreSQL
-  # (`@prisma/adapter-pg`), so the vulnerable code is installed and never
-  # loaded. Installed nonetheless is installed, and `pnpm audit` is right to say
-  # so. The catalog pins prisma 7.10.0, npm's newest STABLE line — `latest` is
-  # 8.0.0-rc.12, a release candidate, and 7.10.0 carries the `prev` tag — and
-  # 7.10.0 depends on mysql2 3.15.3, so there is nothing upstream to take
-  # without moving to an RC. Lift any pre-3.22.0 line to 3.24.2, which is what
-  # the lockfile then resolves.
+  # `mysql_clear_password`, which sends the password in plaintext. It used to
+  # reach us through the Prisma 7 CLI bundling a driver per datasource; on
+  # Prisma 8 the path is `prisma` > `@prisma/composer-cli` > `alchemy`, one of
+  # the five below. Still installed, still never loaded — this example's
+  # datasource is PostgreSQL — and `pnpm audit` is still right to say so.
   "mysql2@<3.22.0": "3.24.2"
+  # The next four all arrive on ONE path and none of them is ever loaded:
+  #
+  #   prisma > @prisma/composer-cli > alchemy > @prisma/dev > …
+  #
+  # `@prisma/dev` is Prisma 8's local development server and `alchemy` its
+  # deploy half. This repository runs `contract emit`, `migration plan` and
+  # `db migrate` and never `prisma composer` or `prisma dev`, which is the same
+  # reason `workerd` and `msgpackr-extract` are refused a build script below.
+  # Installed is installed, so each is lifted to its first patched release
+  # rather than waived — and each selector is version-scoped, so only the
+  # affected line moves. Re-measure when the `prisma` pin is raised: the RC's
+  # transitive tree is still moving, and an override whose path has gone is
+  # the kind of dead line the v7 `deepmerge-ts` one became.
+  #
+  # GHSA (37 advisories): Hono, reached as `@prisma/dev`'s HTTP server —
+  # serveStatic arbitrary file access, body-limit bypasses, JWT NumericDate
+  # validation. 4.13.5 is the first release past all of them; 4.13.7 rather
+  # than the newer 4.13.8 because `minimumReleaseAge` refuses a package
+  # published inside the last three days, and taking the exclusion instead
+  # would waive the supply-chain window for a transitive dev dependency
+  # nothing here loads.
+  "hono@<4.13.5": "4.13.7"
+  # The node adapter's own: an authorization bypass for protected static files
+  # and a middleware bypass via repeated slashes.
+  "@hono/node-server@<1.19.15": "1.19.15"
+  # GHSA: lodash `_.template` code injection and prototype pollution via an
+  # array path. Reached through `@mrleebo/prisma-ast` > chevrotain.
+  "lodash@<4.18.1": "4.18.1"
+  # GHSA: valibot's `record()` issue paths make `flatten()` throw.
+  "valibot@<1.4.2": "1.5.0"
 
 allowBuilds:
   # Both reach us through the Prisma 8 CLI's deploy half — `prisma` >

@@ -80,6 +80,34 @@ describe("the transactional outbox", () => {
     ]);
   });
 
+  it("marks EVERY id it was handed, not just the first", async ({
+    tenant,
+    repository,
+    outbox,
+    anOrder,
+  }) => {
+    // GIVEN three placed orders and their three pending events
+    const pending = (
+      await repository
+        .save(anOrder("0199a1e0-0000-7000-8000-000000000011", 1))
+        .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000012", 2)))
+        .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000013", 3)))
+        .flatMap(() => outbox.pending(tenant, 10))
+    ).getOrThrow();
+
+    // WHEN all three are marked published in one call
+    const rest = await outbox
+      .markPublished(pending.map((event) => event.id))
+      .flatMap(() => outbox.pending(tenant, 10));
+
+    // THEN nothing is left pending. A batch that marks only its first id is
+    // silent — the relay simply publishes the rest again on the next sweep,
+    // and a subscriber sees the event twice. Prisma 8's `.where(…).update(…)`
+    // updates ONE row, so this is the assertion that keeps the loop in
+    // `markPublished` honest; marking a single id cannot tell the difference.
+    expect(rest).toBeOkWith([]);
+  });
+
   it("appends a tombstone when the order is removed", async ({
     tenant,
     repository,

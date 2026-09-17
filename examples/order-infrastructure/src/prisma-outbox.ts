@@ -68,10 +68,29 @@ export const prismaOutbox = (db: OrderDatabaseClient): ServiceOf<Outbox> => ({
         ),
       ),
 
+  /**
+   * One statement per id, in one transaction — **not** a predicate over
+   * `id.in([...])`.
+   *
+   * Prisma 8's `.where(…).update(…)` updates a SINGLE row and answers it, the
+   * way `findFirst` reads one: measured, an `id.in([1, 2, 3])` update marked
+   * one row of three and reported success. There is no `updateMany`, and the
+   * SQL builder's own predicate helpers carry no `IN`. So the batch is a loop,
+   * and the transaction is what keeps it all-or-nothing.
+   *
+   * Leaving a row unmarked is not a small bug: the relay re-reads it on the
+   * next sweep and publishes the event twice, which is what a subscriber sees
+   * — it cost a duplicate tombstone in CI before this was understood. The
+   * batch is bounded by the `limit` `pending` was called with.
+   */
   markPublished: (ids) =>
     tryQuery(() =>
-      db.orm.public.OutboxMessage.where((message) => message.id.in([...ids])).update({
-        publishedAt: new Date().toISOString(),
+      db.transaction(async (tx) => {
+        for (const id of ids) {
+          await tx.orm.public.OutboxMessage.where({ id }).update({
+            publishedAt: new Date().toISOString(),
+          });
+        }
       }),
     )
       .map(() => undefined)
