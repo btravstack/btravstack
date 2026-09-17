@@ -26,13 +26,12 @@ import {
   openDatabase,
   type OrderDatabaseClient,
 } from "@btravstack/example-order-infrastructure";
-import { prismaDatabase } from "@btravstack/prisma";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { prismaDatabase, type PrismaBinding } from "@btravstack/prisma";
 import { P, type AsyncResult, type Result } from "unthrown";
 
-// The client THIS application's schema generates, with `@unthrown/prisma`
-// applied — the one thing the starter cannot own.
-declare const createClient: (adapter: PrismaPg) => OrderDatabaseClient;
+// The client THIS application's contract types — the one thing the starter
+// cannot own.
+declare const createClient: (binding: PrismaBinding) => OrderDatabaseClient;
 
 class OrderDatabase extends Port("OrderDatabase")<OrderDatabaseClient> {}
 declare const PlaceOrderInteractor: new (deps: {
@@ -277,45 +276,45 @@ becomes the domain's:
 
 ```ts
 // `tenantId` is closed over: `prismaOrderRepository(db, tenantId)` is built
-// inside the unit, so no method takes one.
+// inside the unit, so no method takes one. `pinned` is
+// `tryQuery(() => tenantPinned(db, tenantId, work))` — one transaction, with
+// the row-security setting pinned on its own connection first.
 save: (order) =>
-  db
-    .$tryTransaction((tx) =>
-      tx.order
-        .tryCreate({ data: { tenantId, orderId: order.id, quantity: order.quantity } })
-        .flatMap(() =>
-          tx.outboxMessage.tryCreate({
-            data: {
-              tenantId,
-              kind: "order",
-              subjectId: order.id,
-              payload: JSON.stringify({ quantity: order.quantity }),
-            },
-          }),
-        ),
-    )
+  pinned(async (tx) => {
+    await tx.orm.public.Order.create({ tenantId, orderId: order.id, quantity: order.quantity });
+    await tx.orm.public.OutboxMessage.create({
+      tenantId,
+      kind: "order",
+      subjectId: order.id,
+      payload: JSON.stringify({ quantity: order.quantity }),
+    });
+  })
     .mapErrCases((matcher, defect) =>
       matcher
         .with(P.tag("UniqueConstraintViolation"), () => new DuplicateOrder({ id: order.id }))
         .with(P.tag("ForeignKeyViolation"), (violation) => defect(violation))
-        .with(P.tag("RecordNotFound"), (missing) => defect(missing)),
+        .with(P.tag("NotAuthorized"), (refused) => defect(refused)),
     )
     .map(() => order),
 ```
 
-Every P-code `@unthrown/prisma` puts in `tryCreate`'s error channel is named,
-because the matcher has no wildcard. Only the unique-constraint violation has
-a meaning the application shares; the other two describe a schema this
-adapter does not have, so reaching them is a bug — the defect channel, not
-`E`. Adding a fourth P-code upstream breaks this file and nothing downstream.
+Every SQLSTATE `@btravstack/prisma/result` models is named, because the matcher
+has no wildcard. Only the unique-constraint violation (`23505`) has a meaning
+the application shares; a foreign key is a relation this schema does not have,
+and `NotAuthorized` (`42501`) is the row-security policy refusing a write —
+which an adapter bound to one tenant cannot legitimately provoke. Both are the
+defect channel, not `E`. Adding a fourth arm upstream breaks this file and
+nothing downstream.
 
-`remove` is the same shape in the other direction: `tryDelete` then a
+`remove` is the same shape in the other direction: a delete then a
 **tombstone** — an outbox row with a `null` payload — in one transaction, so a
-subscriber that learned an order exists also learns it is gone, and nothing is
-written when there was nothing to delete. `prisma-outbox.ts` is the read side:
-`pending` ordered by `id` so the relay publishes in commit order, filtered on
-`publishedAt: null` so a crash between publish and mark re-delivers rather
-than loses.
+subscriber that learned an order exists also learns it is gone. Prisma 8
+answers `null` for a delete that matched nothing rather than throwing, so
+"there was nothing to remove" is a branch that returns the domain's
+`OrderNotFound` before the tombstone is written, which rolls the transaction
+back. `prisma-outbox.ts` is the read side: `pending` ordered by `id` so the
+relay publishes in commit order, filtered on `publishedAt` being null so a
+crash between publish and mark re-delivers rather than loses.
 
 The specs pin the claims that matter: a real `UNIQUE` index raising a real
 `P2002` becomes `DuplicateOrder`; a corrupt row surfaces as a defect, not an

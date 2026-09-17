@@ -86,7 +86,7 @@ is the index of the workspaces themselves.
     `@btravstack/internal-test-infra#dev:env`, which attaches to the **same
     shared containers the specs use** (`withReuse()` — a second set
     would be issue #52's duplication in another hat), runs
-    `prisma migrate deploy` under the same lock as the example's own
+    `prisma db migrate` under the same lock as the example's own
     `globalSetup` — as the **owner**, then provisioning `orders_app` and
     writing that role's URL, so `pnpm dev` runs under the same row security
     the specs do — and writes `DATABASE_URL` / `AMQP_URL` /

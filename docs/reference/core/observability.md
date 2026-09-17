@@ -243,5 +243,5 @@ once.
 
 `traced: false` declines the span for a component whose spans come from
 somewhere better — `@btravstack/prisma` says so, because
-`@prisma/instrumentation` traces at the engine level and a client-level span
+an engine-level tracer would trace below the client and a client-level span
 would carry strictly less beside it.

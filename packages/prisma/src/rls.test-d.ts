@@ -51,10 +51,9 @@ type _Counted = Expect<Exactly<typeof counted, Promise<number>>>;
 void tenantPinned(db, "acme", () => Promise.resolve(undefined), { setting: "app.org_id" });
 
 // 4. A client with no raw lane cannot be pinned: there is nothing to build the
-//    `set_config` with.
+//    `set_config` with. `Pinnable` types the tag as `unknown` — a parameter is
+//    contravariant, so describing it would refuse every real client — but the
+//    PROPERTY is still required, which is what this arm pins.
+declare const rawless: { readonly transaction: Db["transaction"] };
 // @ts-expect-error — no `raw`, so there is no statement to pin with
-void tenantPinned(
-  { transaction: (fn) => fn({ query: () => Promise.resolve(undefined) }) },
-  "a",
-  () => Promise.resolve(undefined),
-);
+void tenantPinned(rawless, "a", () => Promise.resolve(undefined));

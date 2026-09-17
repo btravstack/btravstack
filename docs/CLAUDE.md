@@ -28,7 +28,7 @@ the old repository.
   A page whose fences import a package its group's workspace does not have
   needs that package as a **devDependency there**, ignored for it in
   `knip.json` — `examples/order-api` carries `@btravstack/prisma` and
-  `@prisma/adapter-pg` for `how-to/talk-to-the-database.md` on exactly those
+  `@prisma/orm-postgres` for `how-to/talk-to-the-database.md` on exactly those
   terms, the way `examples/order-temporal-worker` already carried `zod`. The
   one sample that cannot compile anywhere is `pinoSink`'s — no example
   workspace installs `pino` — held by `packages/observability/src/pino.spec.ts`

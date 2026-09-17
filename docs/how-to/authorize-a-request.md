@@ -296,7 +296,7 @@ second and leaves the first to the deployment.
 
 ## Underneath: the database refuses what the layers missed
 
-[`@btravstack/prisma/rls`](/reference/prisma)'s `tenantScoped(tenant)` pins
+[`@btravstack/prisma/rls`](/reference/prisma)'s `tenantPinned(db, tenant, work)` pins
 every statement the unit issues — raw SQL included — to the tenant the fork was
 seeded with, through a transaction-local `set_config`. The
 `tenant_isolation` policy on the table, under `FORCE ROW LEVEL SECURITY`, is

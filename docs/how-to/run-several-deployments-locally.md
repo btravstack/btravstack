@@ -99,7 +99,7 @@ and the local loop is what overrides it.
 `internal/test-infra`'s `dev:env`, which starts the shared containers — the
 very ones the test suites use, attached to rather than duplicated, via
 testcontainers' `withReuse()` — applies the committed migrations with
-`prisma migrate deploy`, and writes the addresses out:
+`prisma db migrate`, and writes the addresses out:
 
 ```sh
 DATABASE_URL=postgresql://orders_app:orders_app@localhost:55000/orders
