@@ -1,88 +1,70 @@
 import { observe, type Operation, type Settle } from "@btravstack/core";
 
-import type { PrismaLike } from "./prisma.js";
-
-/** The `query` extension component, as this package uses it. */
-type QueryExtension = {
-  readonly query: {
-    readonly $allModels: {
-      readonly $allOperations: (args: {
-        readonly model: string | undefined;
-        readonly operation: string;
-        readonly args: unknown;
-        readonly query: (args: unknown) => Promise<unknown>;
-      }) => Promise<unknown>;
-    };
-  };
+/**
+ * A Prisma 8 middleware, structurally — `name`, `familyId` and the one hook
+ * this starter implements.
+ *
+ * Declared here rather than imported from `@prisma/orm-postgres/family-runtime`
+ * so the option's type does not drag the target package into a consumer that
+ * only reads this module's types. A real `SqlMiddleware` satisfies it.
+ */
+export type SqlMiddlewareLike = {
+  readonly name: string;
+  readonly familyId: "sql";
+  readonly afterQuery: (plan: unknown, result: QueryResult, ctx: unknown) => Promise<void>;
 };
 
-/** What applying an extension needs, which `PrismaLike` deliberately does not require. */
-type Extendable = { readonly $extends: (extension: QueryExtension) => unknown };
+/** What `afterQuery` is told about the query that just ran. */
+type QueryResult = {
+  readonly completed: boolean;
+  readonly rowCount?: number;
+  readonly latencyMs?: number;
+  readonly source?: string;
+};
 
 /**
  * Every query, handed to the graph's observers: a count of how it came out, and
  * a log line if it failed.
  *
- * **This is why a generated client can be instrumented at all.** Prisma's
- * `$extends` takes a `query` component, and `$allModels.$allOperations`
- * intercepts every operation on every model — so the wrapper never needs to
- * know the schema, which is the thing this package cannot see. An earlier
- * revision of this package claimed instrumentation was impossible for that
- * reason; it was wrong, and this is the mechanism it missed.
+ * **This is why a client the starter cannot name can be instrumented at all.**
+ * `middleware` is a construction option rather than a wrapper, and a hook sees
+ * every query on both lanes — the ORM's and the SQL builder's, the raw lane
+ * included — so it never needs to know the contract, which is the thing this
+ * package cannot see.
  *
- * **It deliberately opens no span.** Prisma's own `@prisma/instrumentation`,
- * which this package offers to `Instrumentations` and
- * `@btravstack/observability/otel` enables, traces at the ENGINE level — the
- * real SQL, the connection acquisition, the serialisation — all of it below
- * what a client-level wrapper can see. Emitting a span here as well would put two
- * spans on every query for strictly less information. What this wrapper keeps
- * is the pair Prisma's instrumentation does not do at all: a metric, and an
- * error line correlated with the ambient unit.
+ * **It deliberately opens no span, and it no longer defers to an engine.** The
+ * v7 wrapper left tracing to `@prisma/instrumentation`, which traced below what
+ * a client-level wrapper could see. Prisma 8 is a TypeScript runtime with no
+ * engine and ships no telemetry package: this hook, with the latency the
+ * runtime already measured, is the whole seam. A span here would be the one
+ * span, not a second one — and is still not opened, because `Observers` is
+ * where a graph decides that (`@btravstack/observability/otel` opens one from
+ * the same operation).
  *
- * The wrapper is transparent to the answer: whatever the query resolves or
- * rejects with is what the caller receives, which is the kernel's own `RunUnit`
- * rule one layer down. `Promise.reject` re-raises rather than `throw`, so the
- * rejection propagates to `@unthrown/prisma`'s `try*` twin without this file
- * needing a `no-throw` exemption.
+ * `completed` is what settles the outcome. A failed query still reaches the
+ * hook, which is what keeps the errors half of RED honest.
  */
-export const instrument = <C extends PrismaLike>(
-  client: C,
+export const queryObserver = (
   observers: readonly ((operation: Operation) => Settle)[],
-): C => {
-  const extension: QueryExtension = {
-    query: {
-      $allModels: {
-        $allOperations: ({ model, operation, args, query }) => {
-          const label = model ?? "raw";
-          const settle = observe(observers, {
-            component: "database",
-            name: operation,
-            attributes: { model: label, operation },
-            // No span, deliberately: `@prisma/instrumentation` traces at the
-            // ENGINE level — the real SQL, the connection acquisition, the
-            // serialisation — all of it below what this wrapper can see, so a
-            // span here would cost one more per query for strictly less
-            // information. Counting and timing still happen.
-            traced: false,
-          });
-
-          return query(args).then(
-            (value) => {
-              settle({ outcome: "ok" });
-              return value;
-            },
-            (cause: unknown) => {
-              settle({ outcome: "error", cause });
-              return Promise.reject(cause);
-            },
-          );
-        },
+): SqlMiddlewareLike => ({
+  name: "btravstack-observers",
+  familyId: "sql",
+  // eslint is not the gate here; `async` is Prisma's own hook signature.
+  afterQuery: (_plan, result) => {
+    // Started and settled in one call: the runtime has already measured the
+    // query by the time the hook runs, so there is no window to observe. The
+    // duration an observer records is its own, which is why `latencyMs` rides
+    // the attributes rather than replacing it.
+    const settle = observe(observers, {
+      component: "database",
+      name: "query",
+      attributes: {
+        rows: result.rowCount ?? 0,
+        ...(result.latencyMs === undefined ? {} : { latencyMs: result.latencyMs }),
+        ...(result.source === undefined ? {} : { source: result.source }),
       },
-    },
-  };
-
-  // A `query`-only extension intercepts calls without adding or removing any
-  // model surface, so the extended client IS a `C` — which `$extends`'s own
-  // return type, built for extensions that DO add surface, cannot express.
-  return (client as unknown as Extendable).$extends(extension) as C;
-};
+    });
+    settle(result.completed ? { outcome: "ok" } : { outcome: "error" });
+    return Promise.resolve();
+  },
+});

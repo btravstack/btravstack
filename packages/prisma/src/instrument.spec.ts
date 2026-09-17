@@ -1,98 +1,57 @@
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { instrument } from "./instrument.js";
+import { queryObserver } from "./instrument.js";
 
-describe("instrument", () => {
-  it("hands the caller's own value straight back", async ({ stub, observed }) => {
-    // GIVEN an observed client
-    const client = instrument(stub.client("postgres://localhost/orders"), observed.members);
+describe("queryObserver", () => {
+  it("settles a completed query ok, carrying the runtime's own latency", async ({ observed }) => {
+    // GIVEN the starter's middleware over a recording observer
+    const hook = queryObserver(observed.members);
 
-    // WHEN a query runs to completion
-    const answer = await client.query("Order", "findMany", Promise.resolve(["a"]));
+    // WHEN a query completes
+    await hook.afterQuery(
+      {},
+      { completed: true, rowCount: 3, latencyMs: 12, source: "driver" },
+      {},
+    );
 
-    // THEN the wrapper is transparent
-    expect(answer).toEqual(["a"]);
-  });
-
-  it("observes a query that answers, and opens no span", async ({ stub, observed }) => {
-    // GIVEN an observed client
-    const client = instrument(stub.client("postgres://localhost/orders"), observed.members);
-
-    // WHEN a query runs to completion
-    await client.query("Order", "findMany", Promise.resolve(["a"]));
-
-    // THEN the call is recorded untraced, because `@prisma/instrumentation`
-    // traces at the ENGINE level and a second client-level span would carry
-    // strictly less
+    // THEN one operation was reported, dimensioned by what the runtime measured
     expect(observed.taken()).toEqual([
       {
         component: "database",
-        name: "findMany",
-        attributes: { model: "Order", operation: "findMany" },
+        name: "query",
+        attributes: { rows: 3, latencyMs: 12, source: "driver" },
         outcome: "ok",
         failed: false,
-        traced: false,
+        traced: true,
       },
     ]);
   });
 
-  it("lets a rejection reach the caller unchanged", async ({ stub, observed }) => {
-    // GIVEN an observed client and a query that will reject
-    const client = instrument(stub.client("postgres://localhost/orders"), observed.members);
+  it("settles a failed query as an error, which is what keeps RED honest", async ({ observed }) => {
+    // GIVEN the same middleware
+    const hook = queryObserver(observed.members);
 
-    // WHEN it runs
-    const rejected = await client
-      .query("Order", "create", Promise.reject(new Error("deadlock detected")))
-      .then(() => "resolved")
-      .catch(() => "rejected");
+    // WHEN a query does not complete — the hook still runs
+    await hook.afterQuery({}, { completed: false, rowCount: 0 }, {});
 
-    // THEN the wrapper is transparent on the failure path too
-    expect(rejected).toBe("rejected");
-  });
-
-  it("observes a query that rejects, carrying the cause", async ({ stub, observed }) => {
-    // GIVEN an observed client and a query that will reject
-    const client = instrument(stub.client("postgres://localhost/orders"), observed.members);
-
-    // WHEN it runs
-    await client
-      .query("Order", "create", Promise.reject(new Error("deadlock detected")))
-      .catch(() => undefined);
-
-    // THEN the failure was observed with the cause an observer needs to write
-    // a line about it
+    // THEN the outcome says so: a failed query counted beside the successes is
+    // the one an operator most needs to see
     expect(observed.taken()).toEqual([
-      {
-        component: "database",
-        name: "create",
-        attributes: { model: "Order", operation: "create" },
-        outcome: "error",
-        failed: true,
-        traced: false,
-      },
+      expect.objectContaining({ outcome: "error", attributes: { rows: 0 } }),
     ]);
   });
 
-  it("names a raw query `raw`, since it belongs to no model", async ({ stub, observed }) => {
-    // GIVEN an observed client
-    const client = instrument(stub.client("postgres://localhost/orders"), observed.members);
+  it("reports a query the runtime measured nothing about", async ({ observed }) => {
+    // GIVEN a result carrying neither latency nor source, which the hook's own
+    // type admits
+    const hook = queryObserver(observed.members);
 
-    // WHEN a query with no model runs
-    await client.query(undefined as unknown as string, "$queryRaw", Promise.resolve([]));
+    // WHEN it settles
+    await hook.afterQuery({}, { completed: true }, {});
 
-    // THEN the dimension is `raw` rather than absent, so the series is still
-    // groupable by model — asserted on the whole record, since a partial match
-    // would pass just as well with a second observation beside it
-    expect(observed.taken()).toEqual([
-      {
-        component: "database",
-        name: "$queryRaw",
-        attributes: { model: "raw", operation: "$queryRaw" },
-        outcome: "ok",
-        failed: false,
-        traced: false,
-      },
-    ]);
+    // THEN the absent dimensions are absent rather than `undefined` — an
+    // attribute whose value is nothing is a time series nobody can read
+    expect(observed.taken()).toEqual([expect.objectContaining({ attributes: { rows: 0 } })]);
   });
 });

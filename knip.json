@@ -27,7 +27,7 @@
         "@btravstack/prisma",
         "@orpc/tanstack-query",
         "@tanstack/query-core",
-        "@prisma/adapter-pg"
+        "@prisma/orm-postgres"
       ]
     },
     "examples/order-temporal-worker": {

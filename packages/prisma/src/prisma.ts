@@ -2,64 +2,112 @@ import { Config, Env } from "@btravstack/config";
 import {
   HealthCheckFailed,
   HealthChecks,
-  Instrumentations,
-  Logger,
   Observers,
   noObserver,
+  type Operation,
+  type Settle,
 } from "@btravstack/core";
 import { Module, Port, Provider, type PortClassOf } from "@btravstack/di";
-import { PrismaPg } from "@prisma/adapter-pg";
 import { fromPromise, fromSafePromise, type AsyncResult } from "unthrown";
 
-import { instrument } from "./instrument.js";
-import { loadPrismaInstrumentation } from "./tracing.js";
+import { queryObserver, type SqlMiddlewareLike } from "./instrument.js";
 
 /**
- * All this starter needs of a client: a pool it can close. A generated Prisma
- * client satisfies it structurally, and so does an extended one — `$extends`
- * preserves `$disconnect` — which is why the application's own client type
- * flows through untouched.
+ * All this starter needs of a client: a raw lane to probe with, and a runtime
+ * to run the probe on and to close.
+ *
+ * A Prisma 8 client satisfies it structurally. Both members are part of the
+ * contract rather than optional because every client has them, and a probe that
+ * has to feature-detect its own client cannot report the difference between
+ * "the database is down" and "this client cannot be asked".
  */
 export type PrismaLike = {
-  readonly $disconnect: () => Promise<void>;
   /**
-   * What the health check asks. Part of the contract rather than optional
-   * because every generated Prisma client has it, and a probe that has to
-   * feature-detect its own client cannot report the difference between "the
-   * database is down" and "this client cannot be asked".
+   * The raw lane, required to EXIST and deliberately not described further.
+   *
+   * Spelling its signature out here would refuse every real client: a
+   * parameter is contravariant, and the genuine `raw.sql` takes the target's
+   * own interpolation union and its own row-spec type, both of which are
+   * narrower than anything this package — which cannot see a contract — could
+   * name. `unknown` on the property still requires it to be there, which is
+   * what makes a client with no raw lane a compile error.
    */
-  readonly $queryRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+  readonly raw: { readonly sql: unknown };
+  /**
+   * Required to exist, and read through the same cast for the same reason: the
+   * real `execute` takes the contract's own plan type.
+   */
+  readonly runtime: unknown;
+};
+
+/**
+ * The probe's own view of a client, reached by a cast for the reason above:
+ * the real plan and statistics types are the contract's, and the only thing
+ * this package does with either is build one statement and run it.
+ */
+type Probeable = {
+  readonly raw: {
+    readonly sql: (strings: TemplateStringsArray) => {
+      readonly affectedCount: () => { readonly build: () => unknown };
+    };
+  };
+  readonly runtime: () => {
+    readonly query: (plan: unknown) => Promise<unknown>;
+    readonly close: () => Promise<void>;
+  };
+};
+
+/** The one place the cast above is spelled. */
+const probeable = (db: PrismaLike): Probeable => db as unknown as Probeable;
+
+/** What the starter hands {@link PrismaOptions.client}. */
+export type PrismaBinding = {
+  /** `DATABASE_URL`, read through `Config` rather than by the application. */
+  readonly url: string;
+  /**
+   * The starter's own middleware — one `afterQuery` hook reporting every
+   * query to `Observers`. Spread it into the client's `middleware` array
+   * beside any of the application's own.
+   */
+  readonly middleware: readonly SqlMiddlewareLike[];
 };
 
 /** What {@link prismaDatabase} is handed. */
 export type PrismaOptions<C extends PrismaLike> = {
   /**
-   * Builds the client from the driver adapter, which is already constructed
-   * from the environment's URL.
+   * Builds the client from what the starter bound.
    *
-   * This is the one thing the starter cannot own: a Prisma client is
-   * **generated per application** from its own schema, so there is no client
-   * type to ship. Applying `@unthrown/prisma`'s extension belongs here too, so
-   * the returned type is exactly the one the application will hold.
+   * This is the one thing the starter cannot own: a Prisma 8 client is typed by
+   * the application's own emitted `Contract` and constructed from its own
+   * `contract.json`, so there is no client type to ship. Building it here is
+   * what makes the returned type exactly the one the application will hold.
+   *
+   * @example
+   * ```ts
+   * prismaDatabase("OrderDatabase")({
+   *   client: ({ url, middleware }) =>
+   *     postgres<Contract>({ contractJson, url, middleware }),
+   * });
+   * ```
    */
-  readonly client: (adapter: PrismaPg) => C;
+  readonly client: (binding: PrismaBinding) => C;
 };
 
 /**
  * A Prisma client whose pool is the application scope's.
  *
- * Returns the three pieces a composition root needs and nothing more: the
- * `config` provider binding the connection string, the `port` the client is
- * reached through, and the resourceful `provider` that opens it and closes it
- * again. Put both providers in a module's `provides` and export the port.
+ * Returns a module carrying the three pieces a composition root needs and
+ * nothing more: the `config` provider binding the connection string, the `port`
+ * the client is reached through, and the resourceful provider that opens it and
+ * closes it again.
  *
  * **The pool closes on every exit path**, including a boot that fails after
  * this provider ran — that is what makes it resourceful rather than a plain
- * value. `$disconnect` ends the driver adapter's pool without killing the
- * client; Prisma dials again lazily on the next statement, which is why no
- * spec asserts that a released client refuses to query.
+ * value. `runtime().close()` ends the pool; Prisma dials again lazily on the
+ * next statement, which is why no spec asserts that a released client refuses
+ * to query.
  *
- * **Migrations are not run here.** A deployment runs `prisma migrate deploy`
+ * **Migrations are not run here.** A deployment runs `prisma db migrate`
  * against this same URL *before the process starts*; an application that
  * migrates itself at boot races every other replica.
  */
@@ -82,40 +130,45 @@ export const prismaDatabase =
     // generic parameter that inference defers and `S` lands on `never`. The
     // returned `port` keeps the literal `N`, so a consumer still sees its own
     // port id.
-    const open = (url: string): C => client(new PrismaPg({ connectionString: url }));
     const port = DatabasePort as PortClassOf<string, C>;
 
-    // The seam differs from `cache`'s deliberately: there, observation is a
-    // second port layering over the adapter's, because di allows one provider
-    // per port per graph. Here a `query` extension wraps the client at
-    // construction, so one port suffices and the wrapping lives inside `acquire`.
+    // Instrumentation is a MIDDLEWARE the application spreads into its own
+    // client, not a wrapper applied here. Prisma 8 has no `$extends` to layer
+    // one over a built client, and it needs none: `middleware` is a
+    // construction option, and an `afterQuery` hook sees every query on both
+    // lanes — the ORM's and the SQL builder's — which is more than the v7
+    // `$allModels` wrapper ever did.
     const clientProvider = Provider(port)({
       inject: { settings: config.port, observers: Observers },
-      acquire: ({ settings, observers }): AsyncResult<C, never> => {
+      acquire: ({ settings, observers }): AsyncResult<C, never> =>
         // Cast because `C` is only constrained by `PrismaLike`, so unthrown's
         // `NotThenable` guard cannot prove a client is not a promise. It is
         // whatever the application's `client` arrow returned.
-        return fromSafePromise(
-          Promise.resolve(instrument(open(settings.url), observers)),
-        ) as AsyncResult<C, never>;
-      },
-      release: (db: C) => db.$disconnect(),
+        fromSafePromise(
+          Promise.resolve(
+            client({
+              url: settings.url,
+              middleware: [queryObserver(observers as readonly ((o: Operation) => Settle)[])],
+            }),
+          ),
+        ) as AsyncResult<C, never>,
+      release: (db: C) => probeable(db).runtime().close(),
     });
 
-    // A MODULE, not three loose pieces. An application writes
-    // `imports: [database]` and reads `database.port`; the config provider and
-    // the resourceful provider are never its business, which is the bargain
-    // `cache({ adapter })` already makes.
-    // `SELECT 1` rather than `$connect()`: a pooled client reports connected
-    // while the server behind it is gone, so the probe has to make the server
-    // answer something.
+    // `SELECT 1` terminated by `affectedCount()` rather than by a row spec: the
+    // statement still runs, so the server has to answer — a pooled client
+    // reports connected while the server behind it is gone — and nothing
+    // decodes a row, so the probe needs no codec the application's contract may
+    // not have registered.
     const healthCheck = Provider.member(HealthChecks)({
       inject: { db: port },
       sync: ({ db }) => ({
         name,
         check: () =>
           fromPromise(
-            db.$queryRaw`SELECT 1`,
+            probeable(db)
+              .runtime()
+              .query(probeable(db).raw.sql`SELECT 1`.affectedCount().build()),
             (cause: unknown) =>
               new HealthCheckFailed({
                 reason: cause instanceof Error ? cause.message : "database unreachable",
@@ -124,20 +177,12 @@ export const prismaDatabase =
       }),
     });
 
-    // Offered, not registered: nothing loads it unless an OTel SDK is composed.
-    // The one `Logger` this starter still holds, and the reason the module
-    // needs one: whether the optional peer loaded is a STARTUP fact, not an
-    // operation, so the `Observers` seam has nothing to settle for it.
-    const instrumentation = Provider.member(Instrumentations)({
-      inject: { logger: Logger },
-      sync:
-        ({ logger }) =>
-        () =>
-          loadPrismaInstrumentation(logger),
-    });
-
+    // A MODULE, not three loose pieces. An application writes
+    // `imports: [database]` and reads `database.port`; the config provider and
+    // the resourceful provider are never its business, which is the bargain
+    // `cache({ adapter })` already makes.
     const database = Module(name)({
-      needs: [Env, Logger],
+      needs: [Env],
       provides: [
         config,
         // The no-op member, so the set this module reads is never the empty
@@ -146,9 +191,8 @@ export const prismaDatabase =
         Provider.member(Observers)({ inject: {}, value: noObserver }),
         clientProvider,
         healthCheck,
-        instrumentation,
       ],
-      exports: [DatabasePort, HealthChecks, Instrumentations],
+      exports: [DatabasePort, HealthChecks],
     });
 
     // The port rides the module because it is minted from `name` HERE, so an

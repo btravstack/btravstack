@@ -60,9 +60,14 @@ catalog:
   "@orpc/openapi": 2.0.0-beta.28
   "@orpc/server": 2.0.0-beta.28
   "@orpc/tanstack-query": 2.0.0-beta.28
-  "@prisma/adapter-pg": 7.10.0
-  "@prisma/client": 7.10.0
-  "@prisma/instrumentation": 7.10.0
+  # Prisma 8 is a different package family, not a version bump: the runtime is
+  # `@prisma/orm-postgres` ("the one package a Postgres application installs")
+  # and `@prisma/client` / `@prisma/adapter-pg` / `@prisma/instrumentation` have
+  # no successor. `@prisma/client` never published an 8.x line at all. The CLI's
+  # `latest` IS the RC, and it is pinned exactly for the reason oRPC's beta is:
+  # the surface moves between release candidates.
+  "@prisma/cli-engine": 0.4.0
+  "@prisma/orm-postgres": 8.0.0-rc.11
   "@tanstack/query-core": 5.102.8
   # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
   # 7.x line, which peers on `unthrown@^4` while this repo pins 5.8.0. 8.x also
@@ -82,7 +87,6 @@ catalog:
   "@types/node": 26.4.1
   "@unthrown/oxlint": 5.8.0
   "@unthrown/orpc": 0.2.0
-  "@unthrown/prisma": 0.4.0
   "@unthrown/standard-schema": 5.8.0
   "@unthrown/vitest": 5.8.0
   jose: 6.2.12
@@ -94,7 +98,7 @@ catalog:
   pino: 10.3.1
   nodemailer: 10.0.0
   openid-client: 6.8.8
-  prisma: 7.10.0
+  prisma: 8.0.0-rc.15
   uuidv7: 1.2.1
   redis: 6.2.1
   tsdown: 0.23.0
@@ -172,8 +176,15 @@ overrides:
   "mysql2@<3.22.0": "3.24.2"
 
 allowBuilds:
-  # Prisma 7 is engine-less (WASM query compiler); nothing to build or download.
-  "@prisma/engines": false
+  # Both reach us through the Prisma 8 CLI's deploy half — `prisma` >
+  # `@prisma/composer-cli` > `alchemy` > `@alchemy.run/cloudflare-runtime`.
+  # `workerd` downloads a Cloudflare Workers runtime binary and
+  # `msgpackr-extract` builds a native msgpack accelerator that `msgpackr`
+  # falls back off when it is absent. This repository runs `contract emit`,
+  # `db init` and `db migrate` and never `prisma composer`, so neither is
+  # loaded — refused rather than allowed, the way `@prisma/engines` was.
+  workerd: false
+  msgpackr-extract: false
   # Pulled in by @temporalio/*; both allowed upstream in temporal-contract.
   "@swc/core": true
   protobufjs: true

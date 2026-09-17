@@ -6,7 +6,7 @@ import {
   Tenant,
 } from "@btravstack/example-order-application";
 
-import { Db, OrderDatabase, OrderDatabaseModule, scopedTo } from "./database.js";
+import { OrderDatabase, OrderDatabaseModule } from "./database.js";
 import { customerRepositoryProvider } from "./prisma-customer-repository.js";
 import { prismaOrderRepository } from "./prisma-order-repository.js";
 import { outboxProvider } from "./prisma-outbox.js";
@@ -20,22 +20,22 @@ import { outboxProvider } from "./prisma-outbox.js";
  * database's providers in the fork's own tree, and a Prisma client would be
  * opened and closed per unit.
  *
- * `Db` is that client pinned to the unit's tenant — the wrapper is per tenant,
- * the pool underneath is the one the application scope holds.
+ * The tenant is not a pinned CLIENT any more, and that is the Prisma 8 change
+ * worth knowing: `set_config(..., true)` is transaction-local, so the pin
+ * belongs to a transaction rather than to a wrapper around the client. The
+ * repository opens one per operation and pins it there — which is why there is
+ * no second port here, and why the pool underneath is still the one the
+ * application scope holds.
  */
 export const OrderTenantPersistence = Module("OrderTenantPersistence")({
   needs: [Tenant, OrderDatabase],
   provides: [
-    Provider(Db)({
-      inject: { database: OrderDatabase, tenant: Tenant },
-      sync: ({ database, tenant }) => scopedTo(database, tenant),
-    }),
     Provider(OrderRepository)({
-      inject: { db: Db, tenant: Tenant },
+      inject: { db: OrderDatabase, tenant: Tenant },
       sync: ({ db, tenant }) => prismaOrderRepository(db, tenant),
     }),
   ],
-  exports: [Db, OrderRepository],
+  exports: [OrderRepository],
 });
 
 /**

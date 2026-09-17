@@ -20,9 +20,14 @@ coverage/
 # outlived live in git history. Ignored so they cannot grow back.
 docs/superpowers/
 
-# Generated Prisma client, minted by the persistence example's `generate` script
-# (run by its `test` / `typecheck` scripts). Ignored at the root so a checkout
-# predating the package cannot leave it visible and sweepable into a commit.
+# The emitted Prisma contract, minted by the persistence example's `generate`
+# script (run by its `test` / `typecheck` scripts). Prisma 8 emits the runtime
+# IR and the types beside the contract source rather than into a generated
+# client directory; the source itself, `contract.prisma`, is committed.
+# Ignored at the root so a checkout predating the package cannot leave one
+# visible and sweepable into a commit.
+**/src/prisma/contract.json
+**/src/prisma/contract.d.ts
 **/src/generated/prisma/
 
 # The shared test infrastructure's cross-process locks — `internal/test-infra`

@@ -13,7 +13,6 @@ import {
   prismaCustomerRepository,
   prismaOrderRepository,
   prismaOutbox,
-  scopedTo,
   type OrderDatabaseClient,
 } from "../index.js";
 
@@ -68,7 +67,7 @@ export const it = test.extend<PersistenceFixtures>({
     // wants from a database that would not open.
     const db = (await openDatabase(inject("__ORDERS_DATABASE_URL__"))).get();
     await use(db);
-    await db.$disconnect();
+    await db.runtime().close();
   },
 
   raw: async ({ db }, use) => {
@@ -86,11 +85,11 @@ export const it = test.extend<PersistenceFixtures>({
   },
 
   repository: async ({ db, tenant }, use) => {
-    await use(prismaOrderRepository(scopedTo(db, tenant), tenant));
+    await use(prismaOrderRepository(db, tenant));
   },
 
   otherRepository: async ({ db, otherTenant }, use) => {
-    await use(prismaOrderRepository(scopedTo(db, otherTenant), otherTenant));
+    await use(prismaOrderRepository(db, otherTenant));
   },
 
   customers: async ({ db }, use) => {
@@ -108,7 +107,7 @@ export const it = test.extend<PersistenceFixtures>({
 
   aCustomer: async ({ db, tenant }, use) => {
     await use(async (id, name) => {
-      await db.customer.create({ data: { tenantId: tenant, customerId: id, name } });
+      await db.orm.public.Customer.create({ tenantId: tenant, customerId: id, name });
     });
   },
 });
