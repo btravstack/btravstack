@@ -6,6 +6,7 @@ job is to make sure none of that vocabulary reaches the layers above it.
 ```text
 src/prisma/contract.prisma         the Order, Customer and OutboxMessage models, and Order's RLS policy
 prisma/migrations/                 planned from the contract, committed, applied by db:migrate
+prisma/migrations/app/refs/db.json the contract hash a dev database is at — what `migration plan` diffs from
 src/database.ts                    the client, the OrderDatabase port, the acquire/release provider
 src/prisma-order-repository.ts     the adapter — where Prisma's errors become the domain's
 src/prisma-customer-repository.ts  the customers vertical's adapter — read-only, because its port is
@@ -40,6 +41,41 @@ pnpm turbo run db:migrate
 `turbo.json` makes `dev` depend on `^db:migrate`, so the app cannot start
 against an unmigrated database. The application never migrates itself at boot —
 that belongs to the deploy step, not the process.
+
+### Authoring one: plan, review, apply, and move the ref
+
+```bash
+pnpm --filter @btravstack/example-order-infrastructure exec prisma migration plan --name add_note
+# review prisma/migrations/app/<timestamp>_add_note/, then:
+DATABASE_URL="postgres://owner:secret@localhost:5432/orders" \
+  pnpm --filter @btravstack/example-order-infrastructure db:migrate:dev
+git add prisma/migrations
+```
+
+**The last step is not optional, and `db:migrate` is not a substitute for
+`db:migrate:dev` here.** `migration plan` diffs the contract against an
+_origin_, and with no `--from` that origin is the **`db` ref** —
+`prisma/migrations/app/refs/db.json`, a committed file naming the contract hash
+the dev database has been brought to. `db migrate --advance-ref db` is the only
+apply-time command that moves it.
+
+Skip it and the ref stays at the previous head, so the _next_ plan diffs from
+there and re-includes the migration you already shipped. Measured on this
+example: with the ref left behind, a second plan came out at **2 operations**
+instead of 1, redoing the first change — and a migration like that cannot apply
+to a database that already has it (`MIGRATION.PATH_UNREACHABLE`).
+
+With **no** ref at all it is louder rather than quieter: `migration plan`
+refuses with `MIGRATION.PLAN_ORIGIN_UNKNOWN` rather than writing a
+recreate-everything package. That is why the ref is committed — the first
+contract change after this one would otherwise stop there.
+
+**A deployment runs plain `db:migrate`**, without `--advance-ref`: the ref is a
+file in the repository describing a _development_ database, and a release
+running from a built artifact has no business writing one. For the same reason
+neither the test setup nor `pnpm dev` advances it — both apply migrations to a
+throwaway container, and a `pnpm test` that mutates a tracked file would be a
+worse bug than the one it prevented.
 
 The suites do the same rather than something of their own: `src/global-setup.ts`
 runs **`prisma db migrate`** — that very command — against the shared test

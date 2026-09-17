@@ -335,6 +335,15 @@ _before the process starts_ — and, where row security is on, as its **owner**
 rather than the role `DATABASE_URL` carries. An application that migrates itself
 at boot races every other replica.
 
+A deployment runs that command **plain**. `migration plan` diffs against the
+`db` ref — a committed file naming the contract hash a _development_ database
+is at — and `db migrate --advance-ref db` is the only apply-time command that
+moves it. That belongs to whoever authors a migration, not to a release running
+from a built artifact: advancing it in a deploy would have a release writing a
+repository file. Leave it behind on the authoring side, though, and the next
+plan re-includes the migration you already shipped — the example README carries
+the worked sequence.
+
 **Engine-level tracing.** There is no engine. Prisma 8 is a TypeScript runtime
 and ships no instrumentation package, so the `Instrumentations` loader this
 starter contributed under Prisma 7 is gone, and with it the `Logger` it needed

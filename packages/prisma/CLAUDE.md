@@ -145,6 +145,33 @@ role and a policy, both of which belong to the application. It lives in
    policies and not `GRANT`s; a role with policies and no grant gets a
    permission error rather than filtered rows.
 
+## The `db` ref is committed, and only the AUTHORING command moves it
+
+`migration plan` diffs the contract against an origin: an explicit `--from`,
+else the **`db` ref** (`migrations/app/refs/db.json`, a committed file holding
+the contract hash a dev database has been brought to), else the empty database.
+
+Three measured facts decide how this repository uses it:
+
+1. **With no ref and migrations on disk, `migration plan` REFUSES** —
+   `MIGRATION.PLAN_ORIGIN_UNKNOWN` — rather than writing a recreate-everything
+   package. So the absence of a ref is loud, not silent.
+2. **With a stale ref, the next plan re-includes the migration already
+   shipped.** Measured on `examples/order-infrastructure`: leaving the ref at
+   the previous head made a second plan `2 operations` instead of `1`, and
+   such a migration cannot apply to a database that already has the first
+   (`MIGRATION.PATH_UNREACHABLE`).
+3. **`db migrate --advance-ref <name>` is the only apply-time advancement.**
+   `db init` / `db update` advance it but are suppressed by `--db`; `db sign`
+   advances it either way.
+
+So the example ships **two** scripts and they are not interchangeable:
+`db:migrate` is what a DEPLOYMENT runs and writes no file, and
+`db:migrate:dev` (`--advance-ref db`) is what the author of a migration runs
+against their own database. Neither the vitest `globalSetup` nor `pnpm dev`
+advances the ref: both migrate a throwaway container, and a `pnpm test` that
+wrote a tracked file would be a worse bug than the one it prevented.
+
 ## Engine tracing is gone, with the engine
 
 Prisma 7's `instrument.ts` wrapped `$extends({ query: { $allModels:

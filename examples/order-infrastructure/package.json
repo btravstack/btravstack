@@ -12,6 +12,7 @@
   },
   "scripts": {
     "db:migrate": "prisma db migrate",
+    "db:migrate:dev": "prisma db migrate --advance-ref db",
     "generate": "prisma contract emit",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
