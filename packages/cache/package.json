@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/cache",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "A Cache port for @btravstack/core: an in-memory adapter, a Redis adapter, and a composition that reports every call to Observers",
   "keywords": [
     "cache",

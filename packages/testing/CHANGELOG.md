@@ -1,5 +1,14 @@
 # @btravstack/testing
 
+## 0.16.0
+
+### Patch Changes
+
+- Updated dependencies [b468999]
+  - @btravstack/di@0.16.0
+  - @btravstack/config@0.16.0
+  - @btravstack/core@0.16.0
+
 ## 0.15.0
 
 ### Patch Changes
