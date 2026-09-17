@@ -66,6 +66,13 @@ catalog:
   # no successor. `@prisma/client` never published an 8.x line at all. The CLI's
   # `latest` IS the RC, and it is pinned exactly for the reason oRPC's beta is:
   # the surface moves between release candidates.
+  #
+  # The three numbers do not match because upstream ships three release trains
+  # and pins across them exactly: `prisma@8.0.0-rc.15` — the CLI's own `latest`
+  # — depends on `@prisma/cli-engine@0.4.0` and `@prisma/orm-toolchain@
+  # 8.0.0-rc.11`, and `@prisma/orm-postgres`'s own `latest` is `8.0.0-rc.11`.
+  # Each entry here is the head of its own train, and aligning them by hand
+  # would mean naming a version one of these packages has never published.
   "@prisma/cli-engine": 0.4.0
   "@prisma/orm-postgres": 8.0.0-rc.11
   "@tanstack/query-core": 5.102.8

@@ -10,6 +10,14 @@ a version bump: `@prisma/orm-postgres` is the one peer, and `@prisma/client`,
 pinned to an exact release candidate in the catalog for the reason oRPC's beta
 is — the surface moves between candidates.
 
+**The three catalog numbers are deliberately unaligned**, and the alignment
+belongs upstream rather than here: Prisma ships three release trains and pins
+across them exactly, so `prisma@8.0.0-rc.15` depends on
+`@prisma/cli-engine@0.4.0` and `@prisma/orm-toolchain@8.0.0-rc.11`, while
+`@prisma/orm-postgres`'s own `latest` is `8.0.0-rc.11`. Each entry is the head
+of its own train. Do not "fix" them to one number — for two of the three it
+names a version that was never published.
+
 **`@prisma/orm-postgres` ships its own agent skill**, at
 `node_modules/@prisma/orm-postgres/skills/prisma-8/`, which states that it is
 the source of truth for the exact installed version and to prefer it over
@@ -86,6 +94,32 @@ the call site has already started before the Result exists — the hazard
 `Promise.resolve().then(run)` rather than called directly, so a SYNCHRONOUS
 throw from it lands on the Result's channel instead of escaping as a real
 throw, which is the one channel this function exists to close.
+
+**Why this is not a Prisma extension, when Prisma 8 does have extensions.**
+Two different things carry that name, and neither could host this:
+
+- **`$extends` is gone with the engine.** There is no client wrapper in Prisma
+  8, which is exactly why the v7 `tenantScoped` had to be rewritten.
+- **A Prisma 8 "extension" is a contract-time package**, registered under
+  `extensions:` in `prisma.config.ts`, consuming the framework SPI and
+  contributing namespaced type constructors (`pgvector.Vector(1536)`), codecs,
+  migration operations and middleware. The skill's `upgrade-extension.md` is
+  its whole authoring flow, and `@prisma/orm-extension-middleware-cache` is a
+  shipped one.
+
+What an extension contributes is what a contract can **say** and what a
+migration **emits**. The client's method types come from the emitted
+`contract.d.ts`, so nothing at runtime — extension or middleware — can change
+`db.orm.orders.Order.create()`'s declared return from a `Promise` to an
+`AsyncResult`. Middleware runs on the PLAN, below the ORM: `interceptQuery`
+substitutes rows, and never sees which method the caller invoked. That
+asymmetry is why the observability half of this package IS a middleware and
+this half is a call-site function.
+
+And it would cost the module its whole point: `result.ts` imports `unthrown`
+and nothing else so it can move to that repository as a file rather than a
+port (issue #327). An extension would have to consume the SPI, which is a
+`@prisma/*` dependency in the one module that must not have one.
 
 ### `@btravstack/prisma/rls`
 
