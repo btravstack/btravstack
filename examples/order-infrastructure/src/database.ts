@@ -1,8 +1,8 @@
 import { type PrismaBinding, prismaDatabase } from "@btravstack/prisma";
 import postgres from "@prisma/orm-postgres/runtime";
-import { OkAsync, type AsyncResult } from "unthrown";
+import { fromSafePromise, type AsyncResult } from "unthrown";
 
-import type { Contract } from "./prisma/contract.d.ts";
+import type { Contract } from "./prisma/contract.js";
 import contractJson from "./prisma/contract.json" with { type: "json" };
 
 /**
@@ -47,4 +47,7 @@ export const OrderDatabase = OrderDatabaseModule.port;
  * that opens one by hand is asking for the opposite.
  */
 export const openDatabase = (url: string): AsyncResult<OrderDatabaseClient, never> =>
-  OkAsync(createClient({ url, middleware: [] }));
+  // Built inside the promise, not before it: `postgres()` validates the URL
+  // synchronously and throws for one it cannot parse, which would escape a
+  // channel that says `never` rather than arriving as the defect it is.
+  fromSafePromise(Promise.resolve().then(() => createClient({ url, middleware: [] })));

@@ -141,11 +141,18 @@ export const prismaDatabase =
     const clientProvider = Provider(port)({
       inject: { settings: config.port, observers: Observers },
       acquire: ({ settings, observers }): AsyncResult<C, never> =>
-        // Cast because `C` is only constrained by `PrismaLike`, so unthrown's
-        // `NotThenable` guard cannot prove a client is not a promise. It is
-        // whatever the application's `client` arrow returned.
+        // `Promise.resolve().then(...)` rather than `Promise.resolve(client(...))`:
+        // the factory runs INSIDE the promise either way for the second form's
+        // argument, which is evaluated first — measured, `postgres()` throws
+        // `StructuredError: Postgres URL must be a valid URL` synchronously for
+        // a URL `Config.string` accepted as non-blank. Built eagerly, that
+        // throw escapes an `AsyncResult` whose channel says `never`.
+        //
+        // The cast is because `C` is only constrained by `PrismaLike`, so
+        // unthrown's `NotThenable` guard cannot prove a client is not a
+        // promise. It is whatever the application's `client` arrow returned.
         fromSafePromise(
-          Promise.resolve(
+          Promise.resolve().then(() =>
             client({
               url: settings.url,
               middleware: [queryObserver(observers as readonly ((o: Operation) => Settle)[])],

@@ -1,10 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { tryQuery } from "./result.js";
-
-/** What a Prisma 8 `SqlQueryError` carries, as the qualifier reads it. */
-const sqlError = (sqlState: string, extra?: Record<string, string>) =>
-  Object.assign(new Error(`refused: ${sqlState}`), { sqlState, ...extra });
 
 describe("tryQuery", () => {
   it("answers the query's value on the Ok channel", async () => {
@@ -16,7 +13,7 @@ describe("tryQuery", () => {
     expect(answered).toBeOkWith([{ id: 1 }]);
   });
 
-  it("names a unique violation with the constraint the database named", async () => {
+  it("names a unique violation with the constraint the database named", async ({ sqlError }) => {
     // GIVEN a write the unique index refused — SQLSTATE 23505
     // WHEN it is run
     const refused = await tryQuery(() =>
@@ -36,7 +33,7 @@ describe("tryQuery", () => {
     );
   });
 
-  it("names a foreign-key violation", async () => {
+  it("names a foreign-key violation", async ({ sqlError }) => {
     // GIVEN a write a relation refused — SQLSTATE 23503
     // WHEN it is run
     const refused = await tryQuery(() =>
@@ -52,7 +49,7 @@ describe("tryQuery", () => {
     );
   });
 
-  it("names a refusal the row-security policy made", async () => {
+  it("names a refusal the row-security policy made", async ({ sqlError }) => {
     // GIVEN a write outside the policy's `WITH CHECK` — SQLSTATE 42501
     // WHEN it is run
     const refused = await tryQuery(() => Promise.reject(sqlError("42501", { table: "order" })));
@@ -62,7 +59,7 @@ describe("tryQuery", () => {
     expect(refused).toBeErrWith(expect.objectContaining({ _tag: "NotAuthorized", table: "order" }));
   });
 
-  it("defects on a SQLSTATE nothing models", async () => {
+  it("defects on a SQLSTATE nothing models", async ({ sqlError }) => {
     // GIVEN a deadlock — infrastructure a caller cannot act on differently
     // WHEN it is run
     const failed = await tryQuery(() => Promise.reject(sqlError("40P01")));
@@ -81,9 +78,9 @@ describe("tryQuery", () => {
     expect(failed).toBeDefectWith(expect.objectContaining({ message: "ECONNRESET" }));
   });
 
-  it("catches a thunk that throws synchronously", async () => {
-    // GIVEN work that fails before it ever returns a promise — a builder
-    // rejecting its arguments, say
+  it("catches a thunk that throws synchronously", async ({ sqlError }) => {
+    // GIVEN work that fails before it ever returns a promise — a client
+    // validating its URL at construction, say
     // WHEN it is run
     const failed = await tryQuery(() => {
       // oxlint-disable-next-line unthrown/no-throw -- the synchronous throw IS the subject: it is the channel this function exists to close

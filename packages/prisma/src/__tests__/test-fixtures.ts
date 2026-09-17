@@ -50,11 +50,19 @@ export type StubClient = {
   readonly ran: () => readonly Plan[];
 };
 
-/** One observed operation, as an observer saw it settle. */
+/**
+ * One observed operation, as an observer saw it settle.
+ *
+ * `attributes` and `details` are kept APART rather than merged, which is what
+ * makes the bounded/unbounded split assertable: an attribute rides the
+ * instruments, so a spec that flattened the two could not catch a row count
+ * minting a time series per value.
+ */
 export type Observation = {
   readonly component: string;
   readonly name: string;
   readonly attributes: Attributes;
+  readonly details: Attributes;
   readonly outcome: "ok" | "error";
   readonly failed: boolean;
   readonly traced: boolean;
@@ -65,6 +73,12 @@ export type Observed = {
   readonly members: readonly ((operation: Operation) => Settle)[];
   readonly taken: () => readonly Observation[];
 };
+
+/** A Prisma 8 `SqlQueryError`, as the qualifier reads one. */
+export type SqlErrorOf = (
+  sqlState: string,
+  extra?: Readonly<Record<string, string>>,
+) => Error & { readonly sqlState: string };
 
 export type Stub = {
   readonly client: (binding: {
@@ -79,7 +93,14 @@ export type Stub = {
  * statements ran and in which transaction. The starter owns the pool's lifetime
  * and the middleware it passes; a real client would be testing Prisma.
  */
-export const it = test.extend<{ stub: Stub; observed: Observed }>({
+export const it = test.extend<{ stub: Stub; observed: Observed; sqlError: SqlErrorOf }>({
+  // oxlint-disable-next-line no-empty-pattern -- see below
+  sqlError: async ({}, use) => {
+    await use((sqlState, extra) =>
+      Object.assign(new Error(`refused: ${sqlState}`), { sqlState, ...extra }),
+    );
+  },
+
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   stub: async ({}, use) => {
     let last: StubClient | undefined;
@@ -157,7 +178,8 @@ export const it = test.extend<{ stub: Stub; observed: Observed }>({
             taken.push({
               component,
               name,
-              attributes: { ...attributes, ...details, ...settled },
+              attributes: { ...attributes, ...settled },
+              details: { ...details },
               outcome,
               failed: cause !== undefined,
               traced: traced !== false,

@@ -87,13 +87,15 @@ describe("prismaDatabase", () => {
     });
 
     // THEN it was observed — the client was constructed with the hook without
-    // anyone asking, and the runtime's own latency rides the attributes
+    // anyone asking, and the runtime's own measurements ride the DETAILS,
+    // where an unbounded value belongs
     expect(observed.taken()).toEqual([
       expect.objectContaining({
         component: "database",
         name: "query",
         outcome: "ok",
-        attributes: { rows: 2, latencyMs: 7 },
+        attributes: { source: "driver" },
+        details: { rows: 2, latencyMs: 7 },
       }),
     ]);
   });

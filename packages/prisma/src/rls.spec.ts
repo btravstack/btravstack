@@ -45,8 +45,8 @@ describe("tenantPinned", () => {
     // WHEN the work answers something
     const answered = await tenantPinned(db, "acme", () => Promise.resolve(["a", "b"]));
 
-    // THEN the pin is transparent to it
-    expect(answered).toEqual(["a", "b"]);
+    // THEN the pin is transparent to it, on the Ok channel
+    expect(answered).toBeOkWith(["a", "b"]);
   });
 
   it("pins LOCAL, so the setting dies with the transaction", async ({ stub }) => {
@@ -56,9 +56,17 @@ describe("tenantPinned", () => {
     // WHEN the work runs pinned
     await tenantPinned(db, "acme", () => Promise.resolve(undefined));
 
-    // THEN `set_config`'s third argument is `true`: a session-scoped pin would
-    // outlive the transaction and reach whatever the pool hands the connection
-    // to next, which is a tenant leak rather than a stale setting
-    expect(db.ran()[0]?.values[2]).toBe(true);
+    // THEN `set_config`'s third argument is `true`, and the statement ran
+    // inside the transaction: a session-scoped pin would outlive it and reach
+    // whatever the pool hands the connection to next, which is a tenant leak
+    // rather than a stale setting
+    expect(db.ran()).toEqual([
+      {
+        sql: "SELECT set_config(?, ?, ?) AS pinned",
+        values: ["app.tenant_id", "acme", true],
+        kind: "row",
+        tx: 1,
+      },
+    ]);
   });
 });

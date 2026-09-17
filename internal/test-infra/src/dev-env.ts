@@ -39,7 +39,7 @@ const run = promisify(execFile);
 const envFile = new URL("../../../.env.dev", import.meta.url);
 /**
  * The one workspace this script knows by path: it owns the schema and the
- * `prisma` CLI. The same `prisma migrate deploy` under the same lock as its own
+ * `prisma` CLI. The same `prisma db migrate` under the same lock as its own
  * `globalSetup`, because the dev loop and the gate share one database and
  * neither may assume it ran first.
  */
@@ -97,7 +97,7 @@ const main = async (): Promise<void> => {
   ]);
 
   await withLock("orders-migrate", () =>
-    run("pnpm", ["exec", "prisma", "migrate", "deploy"], {
+    run("pnpm", ["exec", "prisma", "db", "migrate"], {
       cwd: infrastructure,
       env: { ...process.env, DATABASE_URL: ownerUrl },
     }),

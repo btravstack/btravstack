@@ -19,11 +19,20 @@ const modelsInContract = (): readonly string[] =>
   ].map((match) => (match[1] ?? "").replace(/^./u, (first) => first.toLowerCase()));
 
 describe("the committed migrations", () => {
+  it("reads the models out of the contract it is checking against", () => {
+    // GIVEN the contract source on disk
+    // WHEN its models are parsed
+    // THEN there are some — a regex that silently matched nothing would make
+    // the table assertion below vacuously true
+    expect(modelsInContract()).toEqual(
+      expect.arrayContaining(["order", "customer", "outboxMessage"]),
+    );
+  });
+
   it("creates a table for every model the contract declares", async ({ db }) => {
     // GIVEN the models `contract.prisma` declares — the source `contract.d.ts`
     // is emitted from, and so the source the client's types come from
     const models = modelsInContract();
-    expect(models.length).toBeGreaterThan(0);
 
     // WHEN the database `openDatabase` built is asked what it actually has
     const tables = await db

@@ -14,7 +14,14 @@ export type SqlMiddlewareLike = {
   readonly afterQuery: (plan: unknown, result: QueryResult, ctx: unknown) => Promise<void>;
 };
 
-/** What `afterQuery` is told about the query that just ran. */
+/**
+ * What `afterQuery` is told about the query that just ran.
+ *
+ * There is no error here, and that is Prisma's shape rather than an omission:
+ * `AfterQueryResult` is `{ latencyMs, source, rowCount, completed }` and
+ * nothing else, so a failed query is reported as `completed: false` with no
+ * cause to attach. `ctx` carries the runtime's own logger, not the error.
+ */
 type QueryResult = {
   readonly completed: boolean;
   readonly rowCount?: number;
@@ -53,15 +60,20 @@ export const queryObserver = (
   afterQuery: (_plan, result) => {
     // Started and settled in one call: the runtime has already measured the
     // query by the time the hook runs, so there is no window to observe. The
-    // duration an observer records is its own, which is why `latencyMs` rides
-    // the attributes rather than replacing it.
+    // duration an observer records is its own.
+    //
+    // `rows` and `latencyMs` are DETAILS, not attributes. An attribute is a
+    // bounded metric dimension — a row count and a millisecond reading are
+    // neither, and one time series per value is how a metrics bill becomes the
+    // incident. `source` is bounded (`'driver' | 'middleware'`) and a dimension
+    // worth having: it is what tells a cache hit from a real query.
     const settle = observe(observers, {
       component: "database",
       name: "query",
-      attributes: {
+      attributes: { source: result.source ?? "driver" },
+      details: {
         rows: result.rowCount ?? 0,
         ...(result.latencyMs === undefined ? {} : { latencyMs: result.latencyMs }),
-        ...(result.source === undefined ? {} : { source: result.source }),
       },
     });
     settle(result.completed ? { outcome: "ok" } : { outcome: "error" });

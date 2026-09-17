@@ -8,7 +8,6 @@ import {
   type OrderId,
   type TenantId,
 } from "@btravstack/example-order-domain";
-import { tryQuery } from "@btravstack/prisma/result";
 import { tenantPinned } from "@btravstack/prisma/rls";
 import { all, Err, Ok, P, type Result } from "unthrown";
 
@@ -67,7 +66,7 @@ export const prismaOrderRepository = (
   tenantId: TenantId,
 ): ServiceOf<OrderRepository> => {
   const pinned = <R>(work: (tx: OrderTransaction) => PromiseLike<R>) =>
-    tryQuery(() => tenantPinned(db, tenantId, work));
+    tenantPinned(db, tenantId, work);
 
   return {
     // The transactional-outbox write: the row and the fact of the row commit

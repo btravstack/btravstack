@@ -20,7 +20,12 @@ describe("queryObserver", () => {
       {
         component: "database",
         name: "query",
-        attributes: { rows: 3, latencyMs: 12, source: "driver" },
+        // The split is the assertion: `source` is a bounded dimension and
+        // rides the instruments; a row count and a millisecond reading are not,
+        // and one time series per value is how a metrics bill becomes the
+        // incident.
+        attributes: { source: "driver" },
+        details: { rows: 3, latencyMs: 12 },
         outcome: "ok",
         failed: false,
         traced: true,
@@ -38,7 +43,11 @@ describe("queryObserver", () => {
     // THEN the outcome says so: a failed query counted beside the successes is
     // the one an operator most needs to see
     expect(observed.taken()).toEqual([
-      expect.objectContaining({ outcome: "error", attributes: { rows: 0 } }),
+      expect.objectContaining({
+        outcome: "error",
+        attributes: { source: "driver" },
+        details: { rows: 0 },
+      }),
     ]);
   });
 
@@ -52,6 +61,8 @@ describe("queryObserver", () => {
 
     // THEN the absent dimensions are absent rather than `undefined` — an
     // attribute whose value is nothing is a time series nobody can read
-    expect(observed.taken()).toEqual([expect.objectContaining({ attributes: { rows: 0 } })]);
+    expect(observed.taken()).toEqual([
+      expect.objectContaining({ attributes: { source: "driver" }, details: { rows: 0 } }),
+    ]);
   });
 });

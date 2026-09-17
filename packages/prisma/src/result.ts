@@ -21,12 +21,16 @@ export class ForeignKeyViolation extends TaggedError("ForeignKeyViolation")<{
 /**
  * The database refused the statement outright — SQLSTATE `42501`.
  *
- * On a table with row-level security this is what a row the policy does not
- * admit looks like on the WRITE side: the read side filters silently, and a
- * write that would land outside the policy is refused. It is modeled rather
- * than left as a defect because only the caller knows whether reaching it is a
- * bug (an adapter bound to one tenant) or a request (a caller asking for
- * something it may not have).
+ * On a table with row-level security this is what a `WITH CHECK` violation
+ * looks like — an `INSERT` or an `UPDATE` whose resulting row falls outside the
+ * policy. It is **not** what every cross-tenant statement produces: `USING`
+ * FILTERS, so a `SELECT`, `UPDATE` or `DELETE` that matches another tenant's
+ * rows answers nothing at all rather than failing. Only a write that lands
+ * outside the policy raises this.
+ *
+ * It is modeled rather than left as a defect because only the caller knows
+ * whether reaching it is a bug (an adapter bound to one tenant) or a request
+ * (a caller asking for something it may not have).
  */
 export class NotAuthorized extends TaggedError("NotAuthorized")<{
   readonly table: string | undefined;

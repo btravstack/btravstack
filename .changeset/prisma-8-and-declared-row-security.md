@@ -1,5 +1,5 @@
 ---
-"@btravstack/prisma": major
+"@btravstack/prisma": minor
 "@btravstack/observability": patch
 ---
 

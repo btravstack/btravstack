@@ -1,3 +1,7 @@
+import type { AsyncResult } from "unthrown";
+
+import { tryQuery, type SqlError } from "./result.js";
+
 /** Options of {@link tenantPinned}. */
 export type TenantPinnedOptions = {
   /**
@@ -53,10 +57,15 @@ type Queryable = { readonly query: (plan: never) => PromiseLike<unknown> };
  * the first time it does not; it is the shape a middleware would take, and it
  * is why there is no middleware here.
  *
+ * It answers an `AsyncResult`, qualified by {@link tryQuery}: the pin and the
+ * work run on one connection and fail on one channel, so a caller never wraps
+ * this in a second combinator. `work` still hands back a `PromiseLike`, because
+ * that is what Prisma's own transaction callback is.
+ *
  * @remarks
  * The policy must read the **same** setting name. A `tenantPinned(db, tenant,
- * { setting })` whose policy names a different one denies every row and every
- * write, which looks exactly like row security working.
+ * work, { setting })` whose policy names a different one denies every row and
+ * every write, which looks exactly like row security working.
  *
  * @example
  * ```ts
@@ -68,7 +77,7 @@ export const tenantPinned = <Tx extends Queryable, R>(
   tenant: string,
   work: (tx: Tx) => PromiseLike<R>,
   options?: TenantPinnedOptions,
-): Promise<R> => {
+): AsyncResult<R, SqlError> => {
   const setting = options?.setting ?? "app.tenant_id";
   // Built off the client, run on the transaction: `db.raw` is where the tagged
   // template lives, and `tx.query` is what puts the statement on the
@@ -80,10 +89,12 @@ export const tenantPinned = <Tx extends Queryable, R>(
       pinned: "pg/text@1",
     })
     .build();
-  return db.transaction(async (tx) => {
-    await (tx as unknown as { readonly query: (plan: unknown) => PromiseLike<unknown> }).query(
-      plan,
-    );
-    return work(tx);
-  });
+  return tryQuery(() =>
+    db.transaction(async (tx) => {
+      await (tx as unknown as { readonly query: (plan: unknown) => PromiseLike<unknown> }).query(
+        plan,
+      );
+      return work(tx);
+    }),
+  );
 };

@@ -77,7 +77,11 @@ SQLSTATE — `UniqueConstraintViolation` (`23505`), `ForeignKeyViolation`
 three has to be dealt with here:
 
 ```ts
-tryQuery(() => db.orm.public.Order.create({ orderId: order.id, quantity: order.quantity }))
+// `tenantId` is the adapter's own, closed over at construction — the policy's
+// `WITH CHECK` refuses a row that names another.
+tryQuery(() =>
+  db.orm.public.Order.create({ tenantId, orderId: order.id, quantity: order.quantity }),
+)
   .mapErrCases((matcher, defect) =>
     matcher
       .with(

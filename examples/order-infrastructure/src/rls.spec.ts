@@ -37,9 +37,7 @@ describe("the tenant_isolation policy on Order", () => {
     const rows = await repository
       .save(anOrder("0199a1e0-0000-7000-8000-000000000602", 3))
       .flatMap(() => otherRepository.save(anOrder("0199a1e0-0000-7000-8000-000000000603", 4)))
-      .flatMap(() =>
-        fromSafePromise(tenantPinned(raw, tenant, (tx) => tx.orm.public.Order.all().toArray())),
-      );
+      .flatMap(() => tenantPinned(raw, tenant, (tx) => tx.orm.public.Order.all().toArray()));
 
     // THEN the unfiltered query is already scoped — the database is what
     // narrowed it, not the query
@@ -54,14 +52,12 @@ describe("the tenant_isolation policy on Order", () => {
   it("refuses an insert naming another tenant", async ({ raw, tenant, otherTenant }) => {
     // GIVEN a transaction pinned to this tenant
     // WHEN it writes a row claiming another one
-    const refused = await tryQuery(() =>
-      tenantPinned(raw, tenant, (tx) =>
-        tx.orm.public.Order.create({
-          tenantId: otherTenant,
-          orderId: "0199a1e0-0000-7000-8000-000000000604",
-          quantity: 1,
-        }),
-      ),
+    const refused = await tenantPinned(raw, tenant, (tx) =>
+      tx.orm.public.Order.create({
+        tenantId: otherTenant,
+        orderId: "0199a1e0-0000-7000-8000-000000000604",
+        quantity: 1,
+      }),
     );
 
     // THEN `WITH CHECK` refuses it, as SQLSTATE 42501 — `NotAuthorized`, which
@@ -98,9 +94,7 @@ describe("the tenant_isolation policy on Order", () => {
     // policy, the outbox row beside it
     const written = await repository
       .save(anOrder("0199a1e0-0000-7000-8000-000000000606", 3))
-      .flatMap(() =>
-        fromSafePromise(tenantPinned(raw, tenant, (tx) => tx.orm.public.Order.all().toArray())),
-      )
+      .flatMap(() => tenantPinned(raw, tenant, (tx) => tx.orm.public.Order.all().toArray()))
       .flatMap((orders) => outbox.pending(tenant, 10).map((events) => ({ orders, events })));
 
     // THEN both halves are there: the pin reached the whole transaction, and

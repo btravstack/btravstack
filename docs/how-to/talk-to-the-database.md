@@ -9,7 +9,7 @@ import { Env } from "@btravstack/config";
 import { Module, Port, Provider } from "@btravstack/di";
 import { prismaDatabase, type PrismaBinding } from "@btravstack/prisma";
 import { tryQuery } from "@btravstack/prisma/result";
-import { ErrAsync, OkAsync, TaggedError, P, type AsyncResult } from "unthrown";
+import { TaggedError, P, fromNullable, type AsyncResult } from "unthrown";
 
 // The stand-in for the client YOUR contract types — there is no such type in
 // the starter, which is the whole point of the `client` arrow.
@@ -96,12 +96,8 @@ export const prismaOrderRepository = Provider(OrderRepository)({
             (cause) => defect(cause),
           ),
         )
-        .flatMap((row) =>
-          row === null
-            ? // A miss IS a modeled outcome, and this is where it becomes one.
-              ErrAsync(new OrderNotFound({ id }))
-            : OkAsync({ id: row.id, quantity: row.quantity }),
-        ),
+        // A miss IS a modeled outcome, and this is where it becomes one.
+        .flatMap((row) => fromNullable(row, () => new OrderNotFound({ id })).toAsync()),
   }),
 });
 ```
