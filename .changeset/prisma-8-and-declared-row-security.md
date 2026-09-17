@@ -12,7 +12,7 @@ them. Consumers on Prisma 7 stay on `@btravstack/prisma@0.14`.
 **`client` now receives a binding rather than a driver adapter.**
 `prismaDatabase(name)({ client: ({ url, middleware }) => postgres({
 contractJson, url, middleware }) })`. The middleware in that binding is the
-starter's own `afterQuery` hook — spread it in, or the queries go unobserved.
+starter's own observability hook — spread it in, or the queries go unobserved.
 `PrismaLike` requires `raw` and `runtime` to exist and describes neither, which
 is measured rather than lazy: a parameter is contravariant, and the real
 signatures name contract types no package that cannot see a contract could
@@ -44,11 +44,15 @@ else, so it can move to that repository whole once Prisma 8 is stable.
 
 **Engine tracing is gone with the engine.** Prisma 8 is a TypeScript runtime
 and ships no telemetry package, so `instrument.ts` and `tracing.ts` collapse
-into one `afterQuery` middleware feeding `Observers` — which sees the ORM lane,
-the SQL builder and the raw lane alike, where the v7 `$allModels` wrapper saw
-only the first, and carries the runtime's own `latencyMs`. `Instrumentations`
-leaves the module's exports and `Logger` leaves its needs, since the one `debug`
-line it existed for has nothing left to report.
+into one middleware feeding `Observers` — which sees the ORM lane, the SQL
+builder and the raw lane alike, where the v7 `$allModels` wrapper saw only the
+first. It opens the operation in `beforeQuery` and settles it in `afterQuery`,
+paired by `ctx.planExecutionId`, because `Observers` is called at the START and
+answers a finisher precisely so a span can be opened around the work; it
+implements `beforeExecute`/`afterExecute` too, since a SQL-builder statement
+with no `RETURNING` never touches the query hooks and would otherwise go
+unobserved. `Instrumentations` leaves the module's exports and `Logger` leaves
+its needs, since the one `debug` line it existed for has nothing left to report.
 
 **The example declares a namespace of its own rather than using `public`**, and
 the reference page states the reason carefully because the usual one is

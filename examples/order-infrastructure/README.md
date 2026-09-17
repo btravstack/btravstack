@@ -45,10 +45,10 @@ that belongs to the deploy step, not the process.
 ### Authoring one: plan, review, apply, and move the ref
 
 ```bash
-pnpm --filter @btravstack/example-order-infrastructure exec prisma migration plan --name add_note
+cd examples/order-infrastructure   # the paths below are relative to it
+pnpm exec prisma migration plan --name add_note
 # review prisma/migrations/app/<timestamp>_add_note/, then:
-DATABASE_URL="postgres://owner:secret@localhost:5432/orders" \
-  pnpm --filter @btravstack/example-order-infrastructure db:migrate:dev
+DATABASE_URL="postgres://owner:secret@localhost:5432/orders" pnpm db:migrate:dev
 git add prisma/migrations
 ```
 

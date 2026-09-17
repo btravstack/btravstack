@@ -277,8 +277,9 @@ becomes the domain's:
 ```ts
 // `tenantId` is closed over: `prismaOrderRepository(db, tenantId)` is built
 // inside the unit, so no method takes one. `pinned` is
-// `tryQuery(() => tenantPinned(db, tenantId, work))` — one transaction, with
-// the row-security setting pinned on its own connection first.
+// `tenantPinned(db, tenantId, work)` — one transaction, with the row-security
+// setting pinned on its own connection first, answering a `Result` already so
+// nothing wraps it a second time.
 save: (order) =>
   pinned(async (tx) => {
     await tx.orm.orders.Order.create({ tenantId, orderId: order.id, quantity: order.quantity });

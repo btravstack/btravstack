@@ -1,4 +1,4 @@
-import { page } from "@btravstack/contract";
+import { keyset } from "@btravstack/contract";
 import { type ServiceOf } from "@btravstack/di";
 import { MalformedCursor, type OrderRepository } from "@btravstack/example-order-application";
 import {
@@ -111,24 +111,18 @@ export const prismaOrderRepository = (
         ),
 
     /**
-     * The listing. Prisma 8's own keyset cursor does the arithmetic —
-     * `.orderBy(...).cursor({ id }).limit(n)` resumes strictly after the row the
-     * cursor names — so the off-by-one this example would otherwise have
-     * shipped is the ORM's problem rather than this file's.
+     * The listing, and what is left of it is the three decisions this
+     * application owns: the tenant filter's absence, the ORM's own seek call,
+     * and the translation of a bad cursor.
      *
-     * What stays here is the part that is the application's: one extra row is
-     * fetched to learn whether another page exists, and `page` folds the flag
-     * and the cursor into one fact, because a side with no cursor is a side the
-     * caller cannot reach.
-     *
-     * `before` pages BACKWARD — descending from the cursor — and the rows are
-     * handed back in the query's own ascending order, so the previous page
-     * reads the way the next one does. The two cursors are exclusive in the
-     * port's type: a page runs in one direction.
+     * Everything else is `keyset` — the over-fetch, the direction, the trim and
+     * both cursors — because none of that is Prisma's or this application's. It
+     * is the same arithmetic against every store, and it is where the
+     * off-by-ones live.
      */
-    list: ({ limit, after, before, minQuantity }) => {
-      const from = before ?? after;
-      const start = from === undefined ? Ok(undefined) : decodeCursor(from);
+    list: ({ minQuantity, ...request }) => {
+      const keys = keyset(request);
+      const start = keys.cursor === undefined ? Ok(undefined) : decodeCursor(keys.cursor);
       return start.toAsync().flatMap((cursor) =>
         pinned(async (tx) => {
           // No `tenantId` filter: the policy on `Order` holds it, and a filter
@@ -137,14 +131,14 @@ export const prismaOrderRepository = (
             minQuantity === undefined
               ? tx.orm.orders.Order
               : tx.orm.orders.Order.where((order) => order.quantity.gte(minQuantity));
-          const ordered =
-            before === undefined
-              ? base.orderBy((order) => order.id.asc())
-              : base.orderBy((order) => order.id.desc());
+          const ordered = keys.backward
+            ? base.orderBy((order) => order.id.desc())
+            : base.orderBy((order) => order.id.asc());
+          // `.cursor({ id })` resumes strictly AFTER the row it names, in
+          // whichever direction the `orderBy` set — so the exclusivity is the
+          // ORM's, and nothing here compensates for it.
           const seeked = cursor === undefined ? ordered : ordered.cursor({ id: cursor });
-          // One more than asked for: the extra row is how a page learns there
-          // is another, without a second count query.
-          return seeked.limit(limit + 1).all();
+          return seeked.limit(keys.take).all();
         })
           .mapErrCases((matcher, defect) =>
             matcher.with(
@@ -154,37 +148,15 @@ export const prismaOrderRepository = (
               (e) => defect(e),
             ),
           )
-          .flatMap((fetched) => {
-            const more = fetched.length > limit;
-            const window = more ? fetched.slice(0, limit) : fetched;
-            const rows = before === undefined ? window : [...window].reverse();
-            return all(rows.map(hydrate)).map((items) =>
-              page(items, {
-                previous:
-                  before === undefined
-                    ? after === undefined
-                      ? null
-                      : rows[0] === undefined
-                        ? null
-                        : cursorOf(rows[0])
-                    : more
-                      ? rows[0] === undefined
-                        ? null
-                        : cursorOf(rows[0])
-                      : null,
-                next:
-                  before === undefined
-                    ? more
-                      ? rows.at(-1) === undefined
-                        ? null
-                        : cursorOf(rows.at(-1)!)
-                      : null
-                    : rows.at(-1) === undefined
-                      ? null
-                      : cursorOf(rows.at(-1)!),
-              }),
-            );
-          }),
+          .flatMap((fetched) =>
+            all(fetched.map((row) => hydrate(row).map((order) => ({ row, order })))).map((rows) =>
+              keys.page(
+                rows,
+                ({ row }) => cursorOf(row),
+                ({ order }) => order,
+              ),
+            ),
+          ),
       );
     },
 

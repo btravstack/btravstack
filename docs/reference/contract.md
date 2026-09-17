@@ -55,6 +55,8 @@ the server's view of a caller reaches a client.
 | `PageRequest`   | root   | type  | `{ limit: number }` with `after` **or** `before`, never both                                                                                        |
 | `PageQuery`     | root   | type  | `{ limit: number; after?: string; before?: string }` — the flat shape a schema validates to                                                         |
 | `pageRequest`   | root   | value | `<Q extends PageQuery>(query: Q) => PageRequest & Omit<Q, "after" \| "before">` — the crossing, filters carried through                             |
+| `Keyset`        | root   | type  | `{ take: number; backward: boolean; cursor: string \| undefined; page }` — one keyset window, both halves                                           |
+| `keyset`        | root   | value | `(request: PageRequest) => Keyset` — the over-fetch, the direction, the trim and both cursors. It does not run the query                            |
 | `pageOf`        | `/zod` | value | `<Item extends z.ZodType>(item: Item)` — the four pages that exist, as a union of four `strictObject`s                                              |
 | `pageRequestOf` | `/zod` | value | `(filters, limits?: PageLimits)` — the input schema, refusing both cursors, with this listing's filters. `limit`, `after` and `before` are reserved |
 | `PageLimits`    | `/zod` | type  | `{ defaultLimit?: number; maxLimit?: number }` — default `20`, ceiling `100`                                                                        |
@@ -269,13 +271,59 @@ input schema is identical either way.
 
 ### The three call sites
 
-An adapter builds a page from the cursors its pagination library reports,
-`null` where there is nothing to follow:
+An adapter pages a listing with `keyset`. It answers one object holding both
+halves of a keyset page — what to ask the store for, and how to fold what comes
+back — and the store's own seek call goes in between:
+
+<!-- doctest: prelude
+declare const store: {
+  seek: (keys: { take: number; backward: boolean; cursor: string | undefined }) =>
+    readonly { readonly id: number; readonly name: string }[];
+};
+declare const request: import("@btravstack/contract").PageRequest;
+-->
+
+```ts
+import { keyset } from "@btravstack/contract";
+
+const keys = keyset(request);
+const listed = keys.page(store.seek(keys), (row) => String(row.id));
+```
+
+The two halves ride one object because they have to **agree**. `take` is one
+more row than the page — the extra row is how a page learns there is another,
+without a second count query — and `page` subtracts that same row back out. A
+store queried for `limit` and folded as though it had been queried for
+`limit + 1` reports the last page as having a next one, forever.
+
+**Backward is not forward reversed.** `before` walks the index descending, so
+the rows arrive newest-first and `page` hands them back ascending — a previous
+page reads the way a next one does. It also flips which side the extra row
+proves: paging forward one more row means there is a page **after**, paging
+backward it means there is one **before**. And a cursor is minted only from a
+row actually on the page, so an empty page carries neither — which is what
+keeps both flags honest.
+
+`page` takes a third argument where the row a store seeks by is not the thing
+the port hands back — an adapter pages on a surrogate key and answers domain
+entities, so the cursor and the item come off the same row by two routes:
+
+```ts
+const named = keys.page(
+  store.seek(keys),
+  (row) => String(row.id),
+  (row) => row.name,
+);
+```
+
+What `keyset` deliberately does not do is run the query: the seek is the one
+thing this tier cannot express, and every store spells it differently. Where a
+store already reports both cursors itself, `page` takes them directly:
 
 ```ts
 import { page } from "@btravstack/contract";
 
-const listed = page(rows, { previous: startCursor, next: endCursor });
+const built = page(rows, { previous: startCursor, next: endCursor });
 ```
 
 A controller turns a validated input into what the port takes, carrying the

@@ -547,17 +547,33 @@ instead of a tenant filter, the ORM's cursor call and the decoding of a
 caller's cursor into `MalformedCursor` — three decisions this application owns,
 none of which a supertype could have made for it.
 
-**Pagination is expressible once and already is — one layer lower.** Prisma
-8's own keyset cursor (`.orderBy(…).cursor({ id }).limit(n)`) owns the
-arithmetic, in the adapter; what stays in the application is fetching one extra
-row to learn whether another page exists, and turning a cursor it cannot decode
-into `MalformedCursor`. `examples/order-infrastructure`'s `list` is the worked
-case: the ORM's shape stops at the adapter exactly as
-`UniqueConstraintViolation` does. The ports speak `@btravstack/contract`'s
-`Page<T>` / `PageRequest` — the normed page a client needs as much as the
-server, which is why it lives in the contract tier — and the application
-declares only its own `MalformedCursor` (`order-application`'s
-`pagination.ts`). No persistence type reaches a port.
+**Pagination is expressible once, and `@btravstack/contract`'s `keyset` is
+where.** `keyset(request)` answers one object carrying both halves of a keyset
+page — `take` (the page plus one row, so the extra row proves the next page
+without a second count query), `backward`, `cursor`, and a `page(rows,
+cursorOf, item?)` that folds what the store answered. The two halves ride one
+object because they have to **agree**: a store queried for `limit` and folded
+as though it had been queried for `limit + 1` reports the last page as having
+a next one, forever.
+
+What it deliberately does not do is run the query — the store's own seek call
+is the one thing this tier cannot express, and every store spells it
+differently. What it owns is the arithmetic around that call, which is
+identical everywhere and is where the off-by-ones live: the over-fetch, the
+trim, the backward walk handed back in reading order, and the rule that each
+side's cursor comes from a row actually on the page. `item` is there because
+the row a store seeks by is rarely the thing a port hands back — an adapter
+pages on a surrogate key and answers entities.
+
+It is used twice, against two stores, which is the admission rule's own
+trigger: `examples/order-infrastructure`'s `list` over Prisma 8's
+`.orderBy(…).cursor({ id }).limit(n)`, and `order-application`'s in-memory
+repository over an array. Each writes its seek and nothing else. What stays
+the application's is turning a cursor it cannot decode into `MalformedCursor`
+(`order-application`'s `pagination.ts`) — the adapter's storage is the only
+thing that knows what a cursor spells. The ports speak `Page<T>` /
+`PageRequest`, the normed page a client needs as much as the server, which is
+why all of it lives in the contract tier. No persistence type reaches a port.
 
 **A flag and its cursor are ONE fact, at both ends of the wire** — why
 `Page<T>` is an intersection of two unions while the contract's schema is a
