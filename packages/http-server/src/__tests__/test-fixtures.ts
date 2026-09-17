@@ -1853,7 +1853,14 @@ export type HttpFixtures = {
    * point — `closeIdleConnections()` reaches every IDLE connection and no others.
    */
   readonly keepAlive: {
-    readonly call: (origin: string) => Promise<{
+    /**
+     * `target` is written into the request line verbatim, which is the only way
+     * to send one `fetch` cannot spell — the absolute form a forward proxy uses.
+     */
+    readonly call: (
+      origin: string,
+      target?: string,
+    ) => Promise<{
       readonly head: () => Promise<string>;
       /** Resolves once the raw socket itself closes — the observable a header can no longer carry once it is already on the wire. */
       readonly closed: () => Promise<void>;
@@ -2554,7 +2561,7 @@ export const it = test.extend<HttpFixtures>({
     const portOf = (origin: string): number => Number(new URL(origin).port);
 
     await use({
-      call: async (origin) => {
+      call: async (origin, target = "/") => {
         const socket = connect(portOf(origin), "127.0.0.1");
         // A raw socket with no `'error'` listener throws on reset, and the drain
         // under test resets it by design.
@@ -2572,7 +2579,7 @@ export const it = test.extend<HttpFixtures>({
         });
         const closed = once(socket, "close").then(() => undefined);
 
-        socket.write("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n");
+        socket.write(`GET ${target} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n`);
         return { head: () => head, closed: () => closed };
       },
       // A fresh connection being refused is the only honest observable: the phase

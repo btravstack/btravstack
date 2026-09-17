@@ -609,7 +609,9 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   event already fired before the work ran — so
   there is no seam for a late write to land in, and `id: randomUUID()` is
   minted per request (an inbound `traceparent`'s trace id becomes `traceId`,
-  else a non-blank inbound `x-request-id`),
+  else an inbound `x-request-id` matching `REQUEST_ID` — a bounded token, since
+  the value rides every log line and every span, and a blank one would beat the
+  minted id outright),
   so the two contracts a runtime owes are structural here rather than left to
   a caller's care.
 - **The fork is the answerer's, for a request it handles — not the kernel's,
@@ -1262,7 +1264,13 @@ changes with it.
 ## Several answerers, one runtime
 
 **Routing is by longest matching prefix, and there is no chain.** `/rpc` owns
-`/rpc` and everything under it; a `/` fragment answerer takes the rest. Nesting
+`/rpc` and everything under it; a `/` fragment answerer takes the rest. The
+path is read with `URL.parse(request.url, "http://x")`, not by splitting on
+`?`: the request target is origin-form from a browser and **absolute-form**
+(`GET http://host/rpc/x`) from some forward proxies, and the split left the
+second matching no mount at all. `URL.parse` rather than `new URL` because a
+target no parser accepts must not throw out of the request callback, where the
+kernel's `uncaughtException` handler would read it as the application failing. Nesting
 is the expected shape rather than a conflict, so ordering never has to be
 decided — which is the whole reason this beat #174's own option (2), where a
 chain of "answer or decline" would have made ordering a property of provider
@@ -1331,3 +1339,14 @@ series per order, which is the classic way a metrics bill becomes the incident.
 `answerer` is a mount prefix, so the graph bounds it; `status` is a small
 integer set; `method` is HTTP's own closed list. An application that wants
 per-route timing has the contract's own procedure name and its own `Meter`.
+
+**`status` is what was MEANT, so the outcome is decided by the flush.**
+`ServerResponse.statusCode` defaults to `200` and nothing rewrites it when a
+socket dies, so a client that walked away mid-body and a `text/event-stream`
+the drain reset both settled `ok 200` — the request an operator most needs to
+see never appearing in the errors half of RED. `aborted` is
+`!response.writableFinished` read at `'close'`, it is a fourth dimension
+(boolean, so the cardinality argument above is untouched), and an aborted
+request settles `error` whatever its status says. A deploy's own stream resets
+are therefore errors too, which is truthful — the `aborted` dimension is what
+separates them from a genuine `500`.

@@ -89,19 +89,8 @@ test("two providers for an ordinary port are still a defect after the many-port 
   expect(built).toBeDefect();
 });
 
-// Regression test for a review finding: nothing stopped one portId from being
-// declared both an ordinary port (by one class) and a set port (by another),
-// and left unchecked the ordinary provider's later-arriving `continue` (if
-// declared after the set-port one) or silent overwrite (if declared before
-// it) meant the mismatch was never reported as the wiring bug it is —
-// `unsafeAddAll` (`context.ts`) would instead try to spread a single,
-// non-iterable service as though it were a set port's member array, and the
-// resulting `TypeError` defect said nothing about the real cause. `plan`
-// (`build.ts`) now checks every provider's `many`-ness against whatever it
-// has already seen for that portId and throws a clear `WiringDefect` the
-// moment they disagree — before any factory runs, same as every other
-// wiring check.
 test("a portId used as both a set port and an ordinary port is a clear wiring defect", async () => {
+  // GIVEN one id declared twice, once each way
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   class MixedOrdinary extends Port("MDMixedId")<{ readonly check: () => string }> {}
   class MixedMany extends Port.many("MDMixedId")<{ readonly check: () => string }> {}
@@ -113,13 +102,15 @@ test("a portId used as both a set port and an ordinary port is a clear wiring de
     ],
     exports: [MixedOrdinary],
   });
+
+  // WHEN the graph is built
   const built = await Module.build(mod);
-  expect(built).toBeDefect();
-  // Not merely "some defect" — the *clear* WiringDefect, not the misleading
-  // spread-a-non-iterable TypeError the old, unchecked code path produced.
-  expect(built.isDefect() && built.cause).toBeInstanceOf(Error);
-  expect(built.isDefect() && (built.cause as Error).message).toBe(
-    '[di] port "MDMixedId" is registered as both a set port and an ordinary port',
+
+  // THEN the shared id is named, not the `TypeError` an unchecked spread produced
+  expect(built).toBeDefectWith(
+    expect.objectContaining({
+      message: `[di] two distinct port classes share the id "MDMixedId" — one would read the other's service`,
+    }),
   );
 
   warn.mockRestore();

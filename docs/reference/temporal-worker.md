@@ -542,6 +542,12 @@ under the same execution, and Temporal lets a workflow id be reused once an
 execution closes. It is the correlation id — stable across every retry — which
 is what `traceId` is for.
 
+That reuse is visible in the traces, and it is the accepted cost: two runs
+under one id are one `traceId`. `runId` would split them and is the wrong
+correlation here — server-minted, opaque, not what an operator greps for — so a
+deployment that needs per-run traces gives its workflows unique ids, which a
+Temporal Schedule already does.
+
 ### `ActivityInput(contract)` — the one seeded port
 
 The fork is seeded with the **validated input**, on `ActivityInput(contract)`.
@@ -651,9 +657,16 @@ which is what `kubectl logs --previous` is for.
 
 `stop()` with no prior `drain` (the `RunningApp.stop()` path) has no deadline
 to race and waits on `run()` alone, which is where `forceAfter` decides when
-the process exits. Keep `forceAfter` at or below `drainTimeoutMs`
-(default `20_000`); the package cannot enforce that, since a runtime is handed
-neither the option nor the clock.
+the process exits — the kernel's own `stopTimeoutMs` bounds how long it waits
+for that, and the worker keeps winding down after it.
+
+Keep `forceAfter` at or below `drainTimeoutMs` (default `20_000`). The starter
+does **not** check it, and the reason is not that the numbers are out of reach —
+this module reads `Env` at build, so `DRAIN_TIMEOUT_MS` is right there. It is
+that the variable is not the effective value: `start({ drainTimeoutMs })` pins
+the kernel's own, and a starter cannot see a pin in another package's options.
+A check over the variable alone would refuse a boot whose real deadline was
+fine, which is worse than the advice.
 
 ## Peer dependencies
 

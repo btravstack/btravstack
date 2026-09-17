@@ -22,7 +22,7 @@ import {
   defineWorkflow,
   type ContractDefinition,
 } from "@temporal-contract/contract";
-import { Client, Connection, type ScheduleSpec } from "@temporalio/client";
+import { Client, Connection, type ScheduleOptions, type ScheduleSpec } from "@temporalio/client";
 import type { Duration } from "@temporalio/common";
 import type { Worker } from "@temporalio/worker";
 import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
@@ -654,8 +654,13 @@ const schedulesOf = async (client: Client, contract: typeof echoContract) => {
   const scheduleId = `sched-${randomUUID()}`;
   const schedules = (await TypedClient.create({ client })).get().for(contract).schedule;
   return {
-    ensure: (spec: ScheduleSpec, args = "x") =>
-      ensureSchedule(schedules, "runEcho", { scheduleId, spec, args }),
+    ensure: (spec: ScheduleSpec, args = "x", policies?: ScheduleOptions["policies"]) =>
+      ensureSchedule(schedules, "runEcho", {
+        scheduleId,
+        spec,
+        args,
+        ...(policies === undefined ? {} : { policies }),
+      }),
     // The two pass-through arms, reached past the types: a workflow the
     // contract does not declare, and args its schema refuses.
     ensureUnknown: (spec: ScheduleSpec) =>

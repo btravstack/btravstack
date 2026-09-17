@@ -264,5 +264,6 @@ each deployment's `src/main.ts` carry their own.
   billing stand-in's `authorized` counter — and nothing in this application
   measures a request at all: `@btravstack/http-server` reports every one to
   `Observers` at the unit seam, where `otel()`'s member mints
-  `btravstack.http.duration` dimensioned by method, answerer and status, none
-  of which a request scope can see from inside itself.
+  `btravstack.http.duration` dimensioned by method, answerer, status and
+  whether the response was aborted, none of which a request scope can see from
+  inside itself.

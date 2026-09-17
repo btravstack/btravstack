@@ -321,3 +321,29 @@ test("an override inherits its base's declaration position — onStart order is 
   // THEN the override fired in A's own position, ahead of B — not at the tail
   expect(order).toBeOkWith(["A-override", "B"]);
 });
+
+test("a dependency's port class is checked too, not only a provider's", async () => {
+  // GIVEN one id declared by two packages, each holding its own class
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  class TheirsLogger extends Port("BLogger")<{ readonly v: string }> {}
+  class OursLogger extends Port("BLogger")<{ readonly v: string }> {}
+  const mod = Module("TwoCopies")({
+    provides: [
+      Provider(TheirsLogger)({ inject: {}, value: { v: "theirs" } }),
+      Provider(A)({ inject: { logger: OursLogger }, sync: ({ logger }) => logger }),
+    ],
+    exports: [A],
+  });
+
+  // WHEN the graph is built
+  const built = await Module.build(mod as never);
+
+  // THEN the read that would have silently crossed copies is refused
+  expect(built).toBeDefectWith(
+    expect.objectContaining({
+      message: `[di] two distinct port classes share the id "BLogger" — one would read the other's service`,
+    }),
+  );
+
+  warn.mockRestore();
+});

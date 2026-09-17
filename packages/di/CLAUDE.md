@@ -95,7 +95,14 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
 
 - **`build.ts`** — `flatten` (dedupe by provider reference), `plan` (levels
   providers for concurrent construction; detects cycles, duplicate providers,
-  ordinary/set-port conflicts, providers for `Scope`, missing providers — all
+  two distinct port CLASSES sharing one id (checked over every `deps` entry as
+  well as every `provides` — the cross-copy read is the half a provider list
+  cannot show — and ordered AFTER the duplicate-provider check, because a
+  piece-mint helper returns a fresh class per call and leans on the shared id
+  to make two pieces at one path a duplicate provider; it subsumes the
+  ordinary/set-port conflict, which is exempt from that check and takes two
+  classes to arise at all since `many` is read off the class), providers for
+  `Scope`, missing providers — all
   _before_ any factory runs; its first act is `resolveOverrides`, which
   substitutes each override IN ITS BASE'S POSITION — so the base is never
   levelled or constructed and declaration order, which error determinism and

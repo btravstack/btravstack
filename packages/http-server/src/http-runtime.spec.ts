@@ -266,6 +266,28 @@ describe("httpRuntime", () => {
     expect(traced.seen()).toEqual(["abc-123"]);
   });
 
+  it("keeps its own minted trace id when x-request-id is not a bounded token", async ({
+    serve,
+    traced,
+  }) => {
+    // GIVEN a caller sending a header that would ride every log line and span
+    const { origin } = await serve(traced.handler);
+
+    // WHEN it makes a request carrying an over-long one
+    await fetch(origin, { headers: { "x-request-id": "a".repeat(129) } });
+
+    // THEN the minted id won: an inbound correlation id is adopted only in the
+    // shape the `traceparent` path already demands of one. The assertion is the
+    // minted id's own SHAPE — `meta.id` is a `randomUUID()`, which the header
+    // could never be — rather than the absence of the header's text, which
+    // `randomUUID()` can produce by chance
+    expect(traced.seen()).toEqual([
+      expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+      ),
+    ]);
+  });
+
   it("keeps its own minted trace id when x-request-id is blank", async ({ serve, traced }) => {
     // GIVEN a caller that sends the header but leaves it empty
     const { origin } = await serve(traced.handler);
@@ -276,7 +298,11 @@ describe("httpRuntime", () => {
     // THEN the minted id wins: `traceId` falls back to `meta.id` only when
     // nullish, and `""` is not — so a blank header would hand every request from
     // that caller the same empty id
-    expect(traced.seen()).toEqual([expect.not.stringMatching(/^$/u)]);
+    expect(traced.seen()).toEqual([
+      expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+      ),
+    ]);
   });
 
   it("closes a keep-alive connection that was busy when the drain began", async ({

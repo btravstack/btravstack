@@ -326,6 +326,15 @@ const routesOf = (
 // answerers. The root normalises to `""`, which every path starts with.
 const normalize = (prefix: string): string => prefix.replace(/\/+$/, "");
 
+// The request TARGET, which is origin-form for a browser and absolute-form
+// (`GET http://host/rpc/x`) from some forward proxies — splitting on `?` would
+// leave the second matching no mount and taking the runtime's own 404.
+// `URL.parse` rather than `new URL`: a target no parser accepts must not throw
+// out of the request callback, where the kernel's uncaught handler would read
+// it as the whole application failing.
+const pathOf = (url: string | undefined): string =>
+  URL.parse(url ?? "/", "http://x")?.pathname ?? "/";
+
 /**
  * The answerer a path belongs to: the longest prefix it sits at or under.
  * `/rpc` owns `/rpc` and `/rpc/orders` and NOT `/rpcx`, which is the difference
@@ -335,7 +344,7 @@ const answererFor = (
   routes: readonly HttpAnswerer[],
   url: string | undefined,
 ): HttpAnswerer | undefined => {
-  const path = (url ?? "/").split("?")[0] ?? "/";
+  const path = pathOf(url);
   return routes.find(({ prefix }) => {
     const mount = normalize(prefix);
     return path === mount || path.startsWith(`${mount}/`);
@@ -409,12 +418,18 @@ const listen = (
               observers,
               requestOperation(request.method ?? "", answerer?.prefix ?? ""),
             );
-            response.once("close", () =>
+            response.once("close", () => {
+              // `statusCode` defaults to `200` and is only ever what we MEANT
+              // to send, so a socket destroyed mid-handler — by the client, or
+              // by the drain retiring a stream — closes reading `ok 200`
+              // unless the flush is what decides. `writableFinished` is that:
+              // true once the last byte is handed to the socket.
+              const aborted = !response.writableFinished;
               settle({
-                outcome: response.statusCode >= 500 ? "error" : "ok",
-                attributes: { status: response.statusCode },
-              }),
-            );
+                outcome: aborted || response.statusCode >= 500 ? "error" : "ok",
+                attributes: { status: response.statusCode, aborted },
+              });
+            });
             // Before dispatch, so no answerer — and no unit — ever sees it. No
             // body: a refusal tells a cross-site caller nothing it is entitled
             // to. AFTER the tracking above, so a refusal is an answer the RED
@@ -543,19 +558,26 @@ const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
 const isEventStream = (response: ServerResponse): boolean =>
   String(response.getHeader("content-type") ?? "").startsWith("text/event-stream");
 
+/** What an inbound `x-request-id` may be: a bounded, printable correlation id. */
+const REQUEST_ID = /^[\w.-]{1,128}$/;
+
 /**
  * `id` is minted fresh per request and never taken from the route, since
  * `traceId` defaults to it. Inbound, `traceparent` wins over `x-request-id`.
  *
- * Only a NON-BLANK header is adopted: the kernel falls back to `meta.id` when
- * `traceId` is nullish and `""` is not, so an empty header would hand a caller's
- * every request the same blank id.
+ * An inbound `x-request-id` is adopted only if it matches {@link REQUEST_ID}:
+ * the value lands on every log line and every span, so a caller must not be
+ * able to send a megabyte of it, or a newline. That also subsumes the
+ * non-blank rule the `traceparent` path states — the kernel falls back to
+ * `meta.id` when `traceId` is nullish and `""` is not, so an empty header would
+ * hand a caller's every request the same blank id.
  */
 const metaFor = (request: IncomingMessage): UnitMeta => {
   const parent = request.headers["traceparent"];
   const fromParent = typeof parent === "string" ? traceIdOfTraceparent(parent) : undefined;
   const inbound = request.headers["x-request-id"];
-  const traceId = fromParent ?? (typeof inbound === "string" ? inbound.trim() : "");
+  const candidate = typeof inbound === "string" ? inbound.trim() : "";
+  const traceId = fromParent ?? (REQUEST_ID.test(candidate) ? candidate : "");
   return {
     kind: "http",
     id: randomUUID(),
