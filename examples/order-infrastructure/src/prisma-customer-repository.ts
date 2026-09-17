@@ -40,7 +40,7 @@ export const prismaCustomerRepository = (
       // is what holds it, not a leftover of the one `prisma-order-repository`'s
       // `list` dropped. "does not read another tenant's customer" is what
       // catches its removal.
-      db.orm.public.Customer.where({ tenantId, customerId: id }).first(),
+      db.orm.orders.Customer.where({ tenantId, customerId: id }).first(),
     )
       .mapErrCases((matcher, defect) =>
         // A read against a table with no policy and no relation: every arm is

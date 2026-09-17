@@ -106,6 +106,11 @@ export const postgresUrl = (
  * nothing outside this repository connects with is not configuration.
  */
 export const ORDERS_APP_USER = "orders_app";
+/**
+ * The schema the example's contract declares a `namespace` for. Every grant
+ * below is scoped to it; nothing is granted on `public`.
+ */
+export const ORDERS_SCHEMA = "orders";
 
 /** That role's password, on the same gate-only terms. */
 export const ORDERS_APP_PASSWORD = "orders_app";
@@ -118,9 +123,16 @@ export const ORDERS_APP_PASSWORD = "orders_app";
  * whatever `FORCE ROW LEVEL SECURITY` says, and the container's bootstrap user
  * is one — so a policy tested through it would pass while proving nothing.
  *
- * Run as the owner AFTER `prisma migrate deploy`: `ON ALL TABLES` covers only
- * what exists, and `ALTER DEFAULT PRIVILEGES` only what the owner creates from
- * here on. Idempotent, because a reused container outlives the run.
+ * Run as the owner AFTER `prisma db migrate`, and the ordering is not
+ * incidental: the migration is what CREATEs the `orders` schema, `ON ALL
+ * TABLES` covers only what exists by then, and `ALTER DEFAULT PRIVILEGES` only
+ * what the owner creates from here on. Idempotent, because a reused container
+ * outlives the run.
+ *
+ * Every grant is scoped to the application's own schema rather than to
+ * `public` — which is the point of the contract declaring a `namespace`: the
+ * role can reach this application's tables and nothing else the database may
+ * grow later.
  */
 export const provisionApplicationRole = (postgres: StartedTestContainer): Promise<void> =>
   withLock(`postgres-${ORDERS_APP_USER}`, async () => {
@@ -134,11 +146,11 @@ export const provisionApplicationRole = (postgres: StartedTestContainer): Promis
         CREATE ROLE ${ORDERS_APP_USER} NOSUPERUSER NOBYPASSRLS LOGIN PASSWORD '${ORDERS_APP_PASSWORD}';
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
       GRANT CONNECT ON DATABASE ${ORDERS_DATABASE} TO ${ORDERS_APP_USER};
-      GRANT USAGE ON SCHEMA public TO ${ORDERS_APP_USER};
-      GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${ORDERS_APP_USER};
-      GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${ORDERS_APP_USER};
-      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${ORDERS_APP_USER};
-      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ${ORDERS_APP_USER};
+      GRANT USAGE ON SCHEMA ${ORDERS_SCHEMA} TO ${ORDERS_APP_USER};
+      GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ${ORDERS_SCHEMA} TO ${ORDERS_APP_USER};
+      GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ${ORDERS_SCHEMA} TO ${ORDERS_APP_USER};
+      ALTER DEFAULT PRIVILEGES IN SCHEMA ${ORDERS_SCHEMA} GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${ORDERS_APP_USER};
+      ALTER DEFAULT PRIVILEGES IN SCHEMA ${ORDERS_SCHEMA} GRANT USAGE, SELECT ON SEQUENCES TO ${ORDERS_APP_USER};
     `;
     const { exitCode, output } = await postgres.exec([
       "psql",

@@ -26,7 +26,7 @@ export const prismaOutbox = (db: OrderDatabaseClient): ServiceOf<Outbox> => ({
       // not a leftover of the one `prisma-order-repository`'s `list` dropped.
       // "does not hand one tenant another's pending events" is what catches
       // its removal.
-      db.orm.public.OutboxMessage.where({ tenantId })
+      db.orm.orders.OutboxMessage.where({ tenantId })
         .where((message) => message.publishedAt.isNull())
         .orderBy((message) => message.id.asc())
         .limit(limit)
@@ -87,7 +87,7 @@ export const prismaOutbox = (db: OrderDatabaseClient): ServiceOf<Outbox> => ({
     tryQuery(() =>
       db.transaction(async (tx) => {
         for (const id of ids) {
-          await tx.orm.public.OutboxMessage.where({ id }).update({
+          await tx.orm.orders.OutboxMessage.where({ id }).update({
             publishedAt: new Date().toISOString(),
           });
         }

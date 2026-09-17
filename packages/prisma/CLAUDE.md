@@ -145,6 +145,27 @@ role and a policy, both of which belong to the application. It lives in
    policies and not `GRANT`s; a role with policies and no grant gets a
    permission error rather than filtered rows.
 
+## The example declares a namespace, and the usual reason is wrong
+
+`examples/order-infrastructure`'s contract wraps its models in
+`namespace orders { … }`. The folklore reason — `public` is world-writable —
+is a PostgreSQL 14 fact: 15 revoked `CREATE` from `PUBLIC`, and measured on
+this repository's own 18.1 container `orders_app` already cannot create there
+(`has_schema_privilege(…,'public','CREATE') → f`). Do not restate it.
+
+The reason that holds is that a shared database is the ordinary end state and
+moving a live table between schemas later is a downtime-risk migration, where
+declaring one in the first migration costs a block. Grants scope to the schema
+as a consequence, which is why `provisionApplicationRole` grants
+`IN SCHEMA orders` and nothing on `public`.
+
+Two mechanics worth knowing before editing the contract: a `policy_*` block
+must sit INSIDE the namespace it polices and name its target unqualified
+(`target = orders.Order` from the top level is
+`PSL_INVALID_EXTENSION_BLOCK_MEMBER`), and the planner still emits a
+`Create schema "public"` operation even when nothing lives there — harmless and
+idempotent, not a sign the namespace was ignored.
+
 ## The `db` ref is committed, and only the AUTHORING command moves it
 
 `migration plan` diffs the contract against an origin: an explicit `--from`,

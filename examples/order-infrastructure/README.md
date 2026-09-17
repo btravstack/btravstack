@@ -116,7 +116,7 @@ three has to be dealt with here:
 // `tenantId` is the adapter's own, closed over at construction — the policy's
 // `WITH CHECK` refuses a row that names another.
 tryQuery(() =>
-  db.orm.public.Order.create({ tenantId, orderId: order.id, quantity: order.quantity }),
+  db.orm.orders.Order.create({ tenantId, orderId: order.id, quantity: order.quantity }),
 )
   .mapErrCases((matcher, defect) =>
     matcher
@@ -155,7 +155,7 @@ not answer is a defect. `find` therefore adds the one error the domain does
 model:
 
 ```ts
-tryQuery(() => db.orm.public.Order.where({ tenantId, orderId: id }).first())
+tryQuery(() => db.orm.orders.Order.where({ tenantId, orderId: id }).first())
   .flatMap((row) =>
     row === null ? Err(new OrderNotFound({ id })) : hydrate(row),
   );

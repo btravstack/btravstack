@@ -9,13 +9,18 @@ import { it } from "./__tests__/test-fixtures.js";
  * Every `model` the contract declares. PostgreSQL gets a table named after the
  * model, lower-camel, unless `@@map` says otherwise — and nothing here uses
  * `@@map`.
+ *
+ * The leading `\s*` is load-bearing: the models sit INSIDE a
+ * `namespace orders { … }` block, so an anchored `^model` matches nothing and
+ * the table assertion below would pass over an empty list. That is what the
+ * companion test guards.
  */
 const modelsInContract = (): readonly string[] =>
   [
     ...readFileSync(
       fileURLToPath(new URL("./prisma/contract.prisma", import.meta.url)),
       "utf8",
-    ).matchAll(/^model\s+(\w+)\s*\{/gm),
+    ).matchAll(/^\s*model\s+(\w+)\s*\{/gm),
   ].map((match) => (match[1] ?? "").replace(/^./u, (first) => first.toLowerCase()));
 
 describe("the committed migrations", () => {
@@ -38,7 +43,7 @@ describe("the committed migrations", () => {
     const tables = await db
       .runtime()
       .query(
-        db.raw.sql`SELECT tablename AS name FROM pg_tables WHERE schemaname = 'public'`
+        db.raw.sql`SELECT tablename AS name FROM pg_tables WHERE schemaname = 'orders'`
           .returnsRow({ name: "pg/text@1" })
           .build(),
       );
@@ -64,8 +69,8 @@ describe("the committed migrations", () => {
       db.raw
         .sql`SELECT c.relrowsecurity AS enabled, c.relforcerowsecurity AS forced, p.policyname AS policy
          FROM pg_class c
-         LEFT JOIN pg_policies p ON p.schemaname = 'public' AND p.tablename = c.relname
-        WHERE c.relnamespace = 'public'::regnamespace AND c.relname = 'order'`
+         LEFT JOIN pg_policies p ON p.schemaname = 'orders' AND p.tablename = c.relname
+        WHERE c.relnamespace = 'orders'::regnamespace AND c.relname = 'order'`
         .returnsRow({ enabled: "pg/bool@1", forced: "pg/bool@1", policy: "pg/text@1" })
         .build(),
     );

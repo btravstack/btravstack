@@ -1,5 +1,22 @@
 [
   {
+    "id": "schema.orders",
+    "label": "Create schema \"orders\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres"
+    },
+    "precheck": [],
+    "execute": [
+      {
+        "description": "Create schema \"orders\"",
+        "sql": "CREATE SCHEMA IF NOT EXISTS \"orders\"",
+        "params": []
+      }
+    ],
+    "postcheck": []
+  },
+  {
     "id": "schema.public",
     "label": "Create schema \"public\"",
     "operationClass": "additive",
@@ -24,7 +41,7 @@
     "target": {
       "id": "postgres",
       "details": {
-        "schema": "public",
+        "schema": "orders",
         "objectType": "table",
         "name": "customer"
       }
@@ -33,13 +50,13 @@
       {
         "description": "ensure table \"customer\" does not exist",
         "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
-        "params": ["\"public\".\"customer\""]
+        "params": ["\"orders\".\"customer\""]
       }
     ],
     "execute": [
       {
         "description": "create table \"customer\"",
-        "sql": "CREATE TABLE \"public\".\"customer\" (\n  \"customerId\" text NOT NULL,\n  \"id\" SERIAL NOT NULL,\n  \"name\" text NOT NULL,\n  \"tenantId\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "sql": "CREATE TABLE \"orders\".\"customer\" (\n  \"customerId\" text NOT NULL,\n  \"id\" SERIAL NOT NULL,\n  \"name\" text NOT NULL,\n  \"tenantId\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
         "params": []
       }
     ],
@@ -47,7 +64,7 @@
       {
         "description": "verify table \"customer\" exists",
         "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
-        "params": ["\"public\".\"customer\""]
+        "params": ["\"orders\".\"customer\""]
       }
     ]
   },
@@ -59,7 +76,7 @@
     "target": {
       "id": "postgres",
       "details": {
-        "schema": "public",
+        "schema": "orders",
         "objectType": "table",
         "name": "order"
       }
@@ -68,13 +85,13 @@
       {
         "description": "ensure table \"order\" does not exist",
         "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
-        "params": ["\"public\".\"order\""]
+        "params": ["\"orders\".\"order\""]
       }
     ],
     "execute": [
       {
         "description": "create table \"order\"",
-        "sql": "CREATE TABLE \"public\".\"order\" (\n  \"id\" SERIAL NOT NULL,\n  \"orderId\" text NOT NULL,\n  \"quantity\" int4 NOT NULL,\n  \"tenantId\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "sql": "CREATE TABLE \"orders\".\"order\" (\n  \"id\" SERIAL NOT NULL,\n  \"orderId\" text NOT NULL,\n  \"quantity\" int4 NOT NULL,\n  \"tenantId\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
         "params": []
       }
     ],
@@ -82,7 +99,7 @@
       {
         "description": "verify table \"order\" exists",
         "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
-        "params": ["\"public\".\"order\""]
+        "params": ["\"orders\".\"order\""]
       }
     ]
   },
@@ -94,7 +111,7 @@
     "target": {
       "id": "postgres",
       "details": {
-        "schema": "public",
+        "schema": "orders",
         "objectType": "table",
         "name": "outboxMessage"
       }
@@ -103,13 +120,13 @@
       {
         "description": "ensure table \"outboxMessage\" does not exist",
         "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
-        "params": ["\"public\".\"outboxMessage\""]
+        "params": ["\"orders\".\"outboxMessage\""]
       }
     ],
     "execute": [
       {
         "description": "create table \"outboxMessage\"",
-        "sql": "CREATE TABLE \"public\".\"outboxMessage\" (\n  \"id\" SERIAL NOT NULL,\n  \"kind\" text NOT NULL,\n  \"occurredAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"payload\" text,\n  \"publishedAt\" timestamptz,\n  \"subjectId\" text NOT NULL,\n  \"tenantId\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "sql": "CREATE TABLE \"orders\".\"outboxMessage\" (\n  \"id\" SERIAL NOT NULL,\n  \"kind\" text NOT NULL,\n  \"occurredAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"payload\" text,\n  \"publishedAt\" timestamptz,\n  \"subjectId\" text NOT NULL,\n  \"tenantId\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
         "params": []
       }
     ],
@@ -117,7 +134,7 @@
       {
         "description": "verify table \"outboxMessage\" exists",
         "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
-        "params": ["\"public\".\"outboxMessage\""]
+        "params": ["\"orders\".\"outboxMessage\""]
       }
     ]
   },
@@ -128,7 +145,7 @@
     "target": {
       "id": "postgres",
       "details": {
-        "schema": "public",
+        "schema": "orders",
         "objectType": "unique",
         "name": "customer_tenantId_customerId_key",
         "table": "customer"
@@ -138,20 +155,20 @@
       {
         "description": "ensure constraint \"customer_tenantId_customerId_key\" does not exist",
         "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
-        "params": ["customer_tenantId_customerId_key", "public", "\"public\".\"customer\""]
+        "params": ["customer_tenantId_customerId_key", "orders", "\"orders\".\"customer\""]
       }
     ],
     "execute": [
       {
         "description": "add unique constraint \"customer_tenantId_customerId_key\"",
-        "sql": "ALTER TABLE \"public\".\"customer\" ADD CONSTRAINT \"customer_tenantId_customerId_key\" UNIQUE (\"tenantId\", \"customerId\")"
+        "sql": "ALTER TABLE \"orders\".\"customer\" ADD CONSTRAINT \"customer_tenantId_customerId_key\" UNIQUE (\"tenantId\", \"customerId\")"
       }
     ],
     "postcheck": [
       {
         "description": "verify constraint \"customer_tenantId_customerId_key\" exists",
         "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
-        "params": ["customer_tenantId_customerId_key", "public", "\"public\".\"customer\""]
+        "params": ["customer_tenantId_customerId_key", "orders", "\"orders\".\"customer\""]
       }
     ]
   },
@@ -162,7 +179,7 @@
     "target": {
       "id": "postgres",
       "details": {
-        "schema": "public",
+        "schema": "orders",
         "objectType": "unique",
         "name": "order_tenantId_orderId_key",
         "table": "order"
@@ -172,31 +189,31 @@
       {
         "description": "ensure constraint \"order_tenantId_orderId_key\" does not exist",
         "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
-        "params": ["order_tenantId_orderId_key", "public", "\"public\".\"order\""]
+        "params": ["order_tenantId_orderId_key", "orders", "\"orders\".\"order\""]
       }
     ],
     "execute": [
       {
         "description": "add unique constraint \"order_tenantId_orderId_key\"",
-        "sql": "ALTER TABLE \"public\".\"order\" ADD CONSTRAINT \"order_tenantId_orderId_key\" UNIQUE (\"tenantId\", \"orderId\")"
+        "sql": "ALTER TABLE \"orders\".\"order\" ADD CONSTRAINT \"order_tenantId_orderId_key\" UNIQUE (\"tenantId\", \"orderId\")"
       }
     ],
     "postcheck": [
       {
         "description": "verify constraint \"order_tenantId_orderId_key\" exists",
         "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
-        "params": ["order_tenantId_orderId_key", "public", "\"public\".\"order\""]
+        "params": ["order_tenantId_orderId_key", "orders", "\"orders\".\"order\""]
       }
     ]
   },
   {
-    "id": "rowLevelSecurity.public.order",
+    "id": "rowLevelSecurity.orders.order",
     "label": "Enable row-level security on \"order\"",
     "operationClass": "additive",
     "target": {
       "id": "postgres",
       "details": {
-        "schema": "public",
+        "schema": "orders",
         "objectType": "rowLevelSecurity",
         "name": "order"
       }
@@ -205,31 +222,31 @@
       {
         "description": "check RLS is not already enabled on \"order\"",
         "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_class\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"relnamespace\" WHERE (\"n\".\"nspname\" = $1 AND \"c\".\"relname\" = $2 AND NOT (\"c\".\"relrowsecurity\"))) AS \"result\"",
-        "params": ["public", "order"]
+        "params": ["orders", "order"]
       }
     ],
     "execute": [
       {
         "description": "enable row-level security on \"order\"",
-        "sql": "ALTER TABLE \"public\".\"order\" ENABLE ROW LEVEL SECURITY"
+        "sql": "ALTER TABLE \"orders\".\"order\" ENABLE ROW LEVEL SECURITY"
       }
     ],
     "postcheck": [
       {
         "description": "verify row-level security is enabled on \"order\"",
         "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_class\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"relnamespace\" WHERE (\"n\".\"nspname\" = $1 AND \"c\".\"relname\" = $2 AND \"c\".\"relrowsecurity\")) AS \"result\"",
-        "params": ["public", "order"]
+        "params": ["orders", "order"]
       }
     ]
   },
   {
-    "id": "rlsPolicy.public.order.order_tenant_isolation_c516f4ff",
+    "id": "rlsPolicy.orders.order.order_tenant_isolation_c516f4ff",
     "label": "Create RLS policy \"order_tenant_isolation_c516f4ff\" on \"order\"",
     "operationClass": "additive",
     "target": {
       "id": "postgres",
       "details": {
-        "schema": "public",
+        "schema": "orders",
         "objectType": "rlsPolicy",
         "name": "order_tenant_isolation_c516f4ff",
         "table": "order"
@@ -239,13 +256,13 @@
       {
         "description": "ensure RLS policy \"order_tenant_isolation_c516f4ff\" does not exist",
         "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_policies\" WHERE (\"schemaname\" = $1 AND \"tablename\" = $2 AND \"policyname\" = $3)) AS \"result\"",
-        "params": ["public", "order", "order_tenant_isolation_c516f4ff"]
+        "params": ["orders", "order", "order_tenant_isolation_c516f4ff"]
       }
     ],
     "execute": [
       {
         "description": "create RLS policy \"order_tenant_isolation_c516f4ff\"",
-        "sql": "CREATE POLICY \"order_tenant_isolation_c516f4ff\" ON \"public\".\"order\" AS PERMISSIVE FOR ALL TO PUBLIC USING (\"tenantId\" = current_setting('app.tenant_id', true)) WITH CHECK (\"tenantId\" = current_setting('app.tenant_id', true))",
+        "sql": "CREATE POLICY \"order_tenant_isolation_c516f4ff\" ON \"orders\".\"order\" AS PERMISSIVE FOR ALL TO PUBLIC USING (\"tenantId\" = current_setting('app.tenant_id', true)) WITH CHECK (\"tenantId\" = current_setting('app.tenant_id', true))",
         "params": []
       }
     ],
@@ -253,7 +270,7 @@
       {
         "description": "verify RLS policy \"order_tenant_isolation_c516f4ff\" exists",
         "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_policies\" WHERE (\"schemaname\" = $1 AND \"tablename\" = $2 AND \"policyname\" = $3)) AS \"result\"",
-        "params": ["public", "order", "order_tenant_isolation_c516f4ff"]
+        "params": ["orders", "order", "order_tenant_isolation_c516f4ff"]
       }
     ]
   }

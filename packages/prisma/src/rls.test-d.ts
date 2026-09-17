@@ -19,7 +19,7 @@ type Exactly<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 type Tx = {
   readonly query: (plan: unknown) => Promise<unknown>;
   readonly orm: {
-    readonly public: {
+    readonly orders: {
       readonly Order: { readonly all: () => Promise<readonly { readonly id: number }[]> };
     };
   };
@@ -44,13 +44,13 @@ declare const db: Db;
 //    implicit `any`, which is what the v7 override needed a cast to preserve.
 //    The answer is an `AsyncResult`, qualified: thesis #6 has exactly three
 //    bare-`Promise` exceptions and this is not a fourth.
-const rows = tenantPinned(db, "acme", (tx) => tx.orm.public.Order.all());
+const rows = tenantPinned(db, "acme", (tx) => tx.orm.orders.Order.all());
 type _Rows = Expect<
   Exactly<typeof rows, AsyncResult<readonly { readonly id: number }[], SqlError>>
 >;
 
 // 2. The answer is the work's, not the pin's.
-const counted = tenantPinned(db, "acme", async (tx) => (await tx.orm.public.Order.all()).length);
+const counted = tenantPinned(db, "acme", async (tx) => (await tx.orm.orders.Order.all()).length);
 type _Counted = Expect<Exactly<typeof counted, AsyncResult<number, SqlError>>>;
 
 // 3. The setting is an option, and it is the one thing that has to agree with

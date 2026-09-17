@@ -33,7 +33,7 @@ import type {
 } from "@prisma/orm-postgres/target/codec-types";
 
 export type StorageHash =
-  StorageHashBase<"41301af477c07263d3c5f96992cac531933198d4ca09c28be19ceb23fae27232">;
+  StorageHashBase<"b449367e57cae35b33b11bfb11b78ee29d3a94235bf8425e3f56b2bb440e8c74">;
 export type ExecutionHash = ExecutionHashBase<string>;
 export type ProfileHash =
   ProfileHashBase<"3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2">;
@@ -239,7 +239,7 @@ type DefaultLiteralValue<CodecId extends string, Encoded> = CodecId extends keyo
   : Encoded;
 
 export type FieldOutputTypes = {
-  readonly public: {
+  readonly orders: {
     readonly Customer: {
       readonly id: CodecTypes["pg/int4@1"]["output"];
       readonly tenantId: CodecTypes["pg/text@1"]["output"];
@@ -264,7 +264,7 @@ export type FieldOutputTypes = {
   };
 };
 export type FieldInputTypes = {
-  readonly public: {
+  readonly orders: {
     readonly Customer: {
       readonly id: CodecTypes["pg/int4@1"]["input"];
       readonly tenantId: CodecTypes["pg/text@1"]["input"];
@@ -289,7 +289,7 @@ export type FieldInputTypes = {
   };
 };
 export type StorageColumnTypes = {
-  readonly public: {
+  readonly orders: {
     readonly customer: {
       readonly customerId: CodecTypes["pg/text@1"]["output"];
       readonly id: CodecTypes["pg/int4@1"]["output"];
@@ -312,9 +312,10 @@ export type StorageColumnTypes = {
       readonly tenantId: CodecTypes["pg/text@1"]["output"];
     };
   };
+  readonly public: {};
 };
 export type StorageColumnInputTypes = {
-  readonly public: {
+  readonly orders: {
     readonly customer: {
       readonly customerId: CodecTypes["pg/text@1"]["input"];
       readonly id: CodecTypes["pg/int4@1"]["input"];
@@ -337,24 +338,25 @@ export type StorageColumnInputTypes = {
       readonly tenantId: CodecTypes["pg/text@1"]["input"];
     };
   };
+  readonly public: {};
 };
 
 export namespace Models {
-  export type public_Order = {
+  export type orders_Order = {
     id: CodecTypes["pg/int4@1"]["output"];
     tenantId: CodecTypes["pg/text@1"]["output"];
     orderId: CodecTypes["pg/text@1"]["output"];
     quantity: CodecTypes["pg/int4@1"]["output"];
     readonly [RelationKeys]?: never;
   };
-  export type public_Customer = {
+  export type orders_Customer = {
     id: CodecTypes["pg/int4@1"]["output"];
     tenantId: CodecTypes["pg/text@1"]["output"];
     customerId: CodecTypes["pg/text@1"]["output"];
     name: CodecTypes["pg/text@1"]["output"];
     readonly [RelationKeys]?: never;
   };
-  export type public_OutboxMessage = {
+  export type orders_OutboxMessage = {
     id: CodecTypes["pg/int4@1"]["output"];
     tenantId: CodecTypes["pg/text@1"]["output"];
     kind: CodecTypes["pg/text@1"]["output"];
@@ -367,10 +369,10 @@ export namespace Models {
 }
 
 export declare const models: {
-  public: {
-    Order: Models.public_Order;
-    Customer: Models.public_Customer;
-    OutboxMessage: Models.public_OutboxMessage;
+  orders: {
+    Order: Models.orders_Order;
+    Customer: Models.orders_Customer;
+    OutboxMessage: Models.orders_OutboxMessage;
   };
 };
 
@@ -387,8 +389,8 @@ export type TypeMaps = TypeMapsType<
 type ContractBase = Omit<
   ContractType<{
     readonly namespaces: {
-      readonly public: {
-        readonly id: "public";
+      readonly orders: {
+        readonly id: "orders";
         readonly kind: "postgres-schema";
         readonly entries: {
           readonly table: {
@@ -507,6 +509,11 @@ type ContractBase = Omit<
           };
         };
       };
+      readonly public: {
+        readonly id: "public";
+        readonly kind: "postgres-schema";
+        readonly entries: { readonly table: {} };
+      };
     };
     readonly storageHash: StorageHash;
   }>,
@@ -515,16 +522,16 @@ type ContractBase = Omit<
   readonly target: "postgres";
   readonly targetFamily: "sql";
   readonly roots: {
-    readonly order: { readonly namespace: "public" & NamespaceId; readonly model: "Order" };
-    readonly customer: { readonly namespace: "public" & NamespaceId; readonly model: "Customer" };
+    readonly order: { readonly namespace: "orders" & NamespaceId; readonly model: "Order" };
+    readonly customer: { readonly namespace: "orders" & NamespaceId; readonly model: "Customer" };
     readonly outboxMessage: {
-      readonly namespace: "public" & NamespaceId;
+      readonly namespace: "orders" & NamespaceId;
       readonly model: "OutboxMessage";
     };
   };
   readonly domain: {
     readonly namespaces: {
-      readonly public: {
+      readonly orders: {
         readonly models: {
           readonly Customer: {
             readonly fields: {
@@ -548,7 +555,7 @@ type ContractBase = Omit<
             readonly relations: Record<string, never>;
             readonly storage: {
               readonly table: "customer";
-              readonly namespaceId: "public";
+              readonly namespaceId: "orders";
               readonly fields: {
                 readonly id: { readonly column: "id" };
                 readonly tenantId: { readonly column: "tenantId" };
@@ -579,7 +586,7 @@ type ContractBase = Omit<
             readonly relations: Record<string, never>;
             readonly storage: {
               readonly table: "order";
-              readonly namespaceId: "public";
+              readonly namespaceId: "orders";
               readonly fields: {
                 readonly id: { readonly column: "id" };
                 readonly tenantId: { readonly column: "tenantId" };
@@ -628,7 +635,7 @@ type ContractBase = Omit<
             readonly relations: Record<string, never>;
             readonly storage: {
               readonly table: "outboxMessage";
-              readonly namespaceId: "public";
+              readonly namespaceId: "orders";
               readonly fields: {
                 readonly id: { readonly column: "id" };
                 readonly tenantId: { readonly column: "tenantId" };

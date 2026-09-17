@@ -24,7 +24,7 @@ type Client = {
     readonly execute: (plan: unknown) => Promise<unknown>;
     readonly close: () => Promise<void>;
   };
-  readonly orm: { readonly public: { readonly Order: { readonly all: () => Promise<string[]> } } };
+  readonly orm: { readonly orders: { readonly Order: { readonly all: () => Promise<string[]> } } };
 };
 declare const client: (binding: PrismaBinding) => Client;
 

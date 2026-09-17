@@ -96,13 +96,13 @@ including a write a row-security policy refused). Anything else is a defect.
 import { tryQuery } from "@btravstack/prisma/result";
 import { P } from "unthrown";
 
-declare const db: { readonly orm: { readonly public: { readonly Order: { readonly create: (row: { readonly orderId: string }) => Promise<unknown> } } } };
+declare const db: { readonly orm: { readonly orders: { readonly Order: { readonly create: (row: { readonly orderId: string }) => Promise<unknown> } } } };
 declare const orderId: string;
 declare const duplicate: (id: string) => Error;
 -->
 
 ```ts
-const saved = tryQuery(() => db.orm.public.Order.create({ orderId })).mapErrCases(
+const saved = tryQuery(() => db.orm.orders.Order.create({ orderId })).mapErrCases(
   (matcher, defect) =>
     matcher
       .with(P.tag("UniqueConstraintViolation"), () => duplicate(orderId))
@@ -125,13 +125,13 @@ import { tenantPinned } from "@btravstack/prisma/rls";
 
 declare const db: {
   readonly raw: { readonly sql: unknown };
-  readonly transaction: <R>(fn: (tx: { readonly query: (plan: never) => Promise<unknown>; readonly orm: { readonly public: { readonly Order: { readonly all: () => Promise<readonly unknown[]> } } } }) => PromiseLike<R>) => Promise<R>;
+  readonly transaction: <R>(fn: (tx: { readonly query: (plan: never) => Promise<unknown>; readonly orm: { readonly orders: { readonly Order: { readonly all: () => Promise<readonly unknown[]> } } } }) => PromiseLike<R>) => Promise<R>;
 };
 declare const tenant: string;
 -->
 
 ```ts
-const orders = await tenantPinned(db, tenant, (tx) => tx.orm.public.Order.all());
+const orders = await tenantPinned(db, tenant, (tx) => tx.orm.orders.Order.all());
 ```
 
 `set_config(…, true)` is **transaction-local**, which is why this opens one

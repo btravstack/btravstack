@@ -50,6 +50,17 @@ only the first, and carries the runtime's own `latencyMs`. `Instrumentations`
 leaves the module's exports and `Logger` leaves its needs, since the one `debug`
 line it existed for has nothing left to report.
 
+**The example declares a namespace of its own rather than using `public`**, and
+the reference page states the reason carefully because the usual one is
+obsolete: "never use `public`" describes PostgreSQL 14, and 15 revoked
+`CREATE` from `PUBLIC` — measured on this repo's own 18.1 container, an
+ordinary application role already cannot create there. What survives is cost
+asymmetry: a shared database is the ordinary end state and moving a live table
+between schemas later is a downtime-risk migration, where declaring one in the
+first migration costs a block. Grants scope to the schema as a consequence.
+Queries read `db.orm.orders.Order`; Prisma 8 addresses by namespace coordinate
+either way, so this makes the coordinate meaningful rather than removing it.
+
 **Two gaps are Prisma 8's and are documented rather than worked around.** It
 emits `ENABLE ROW LEVEL SECURITY` with no way to express `FORCE`, so the
 table's owner — the role that ran the migrations — bypasses every policy, and a

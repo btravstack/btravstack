@@ -16,7 +16,7 @@ import contractJson from "./prisma/contract.json" with { type: "json" };
 const createClient = ({ url, middleware }: PrismaBinding) =>
   postgres<Contract>({ contractJson, url, middleware: middleware as never });
 
-/** The client, typed by the contract: `db.orm.public.Order`, `db.sql`, `db.raw`. */
+/** The client, typed by the contract: `db.orm.orders.Order`, `db.sql`, `db.raw`. */
 export type OrderDatabaseClient = ReturnType<typeof createClient>;
 
 /** The transaction context a pinned unit of work runs on. */

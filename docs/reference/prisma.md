@@ -179,6 +179,44 @@ This module imports `unthrown` and **nothing else** — no `@btravstack/*`, no
 package of its own once Prisma 8 is stable. The error shape it reads is
 structural for the same reason.
 
+## Give the application a namespace of its own
+
+Declare your models inside a `namespace <name> { … }` block rather than letting
+them fall into `public`. The migration then emits `CREATE SCHEMA`, the tables
+land in it, and every query reads `db.orm.<name>.<Model>`.
+
+**Not for the reason this advice usually carries.** "Never use `public`"
+describes PostgreSQL 14 and earlier, where the schema was world-writable and
+any role could plant an object that shadowed a function on someone's
+`search_path`. PostgreSQL 15 revoked `CREATE` from `PUBLIC`, and on a 18
+container an ordinary application role already cannot create there:
+
+```text
+public | pg_database_owner | {pg_database_owner=UC, =U, orders_app=U}
+has_schema_privilege('orders_app','public','CREATE') → f
+```
+
+That hazard is closed, and repeating it as the reason would be teaching
+something false.
+
+**The reason that survives is cost asymmetry.** A shared database is the
+ordinary end state — an application beside a queue, an analytics tool, or a
+second service on one managed instance — and moving a live table between
+schemas afterwards is a migration with downtime risk. Declaring the namespace
+in the first migration costs a block and nothing else. Two smaller things come
+with it: grants scope to the schema (`GRANT … IN SCHEMA orders`) instead of to
+every table `public` may ever hold, and nothing depends on `search_path`
+resolution order.
+
+**What it does not do is remove the namespace from your queries.** Prisma 8
+addresses by namespace coordinate always — there is no flat `db.orm.Order` on
+Postgres — so this turns `db.orm.public.Order` into `db.orm.orders.Order`, a
+more meaningful coordinate rather than one fewer.
+
+`examples/order-infrastructure` is the worked case: one `namespace orders`
+block holding all three models and the policy, `internal/test-infra`'s grants
+scoped to it, and `schema-drift.spec.ts` asserting the tables landed there.
+
 ## Row-level security, on the `@btravstack/prisma/rls` subpath
 
 Two halves, and in Prisma 8 **both are declared**.
@@ -191,21 +229,27 @@ other migration operation. No hand-written DDL, and no `@@map` — the wire name
 is hashed from the block's contents.
 
 ```prisma
-model Order {
-  id       Int    @id @default(autoincrement())
-  tenantId String
-  orderId  String
+namespace orders {
+  model Order {
+    id       Int    @id @default(autoincrement())
+    tenantId String
+    orderId  String
 
-  @@unique([tenantId, orderId])
-  @@rls
-}
+    @@unique([tenantId, orderId])
+    @@rls
+  }
 
-policy_all order_tenant_isolation {
-  target    = Order
-  using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
-  withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
+  policy_all order_tenant_isolation {
+    target    = Order
+    using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
+    withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
+  }
 }
 ```
+
+The `policy_*` block lives **inside** the namespace it polices and names its
+target unqualified; `target = orders.Order` from the top level fails emit with
+`PSL_INVALID_EXTENSION_BLOCK_MEMBER`.
 
 `using` narrows what a statement may see; `withCheck` refuses a write that
 would land outside it, as SQLSTATE `42501`. **Without the second argument to
@@ -230,7 +274,7 @@ declare const tenant: string;
 ```ts
 import { tenantPinned } from "@btravstack/prisma/rls";
 
-const orders = await tenantPinned(db, tenant, (tx) => tx.orm.public.Order.all());
+const orders = await tenantPinned(db, tenant, (tx) => tx.orm.orders.Order.all());
 ```
 
 | Export                               | What it is                                                                               |

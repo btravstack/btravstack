@@ -42,7 +42,7 @@ describe("the Prisma CustomerRepository", () => {
 
   it("does not read another tenant's customer", async ({ tenant, customers, db }) => {
     // GIVEN a customer registered under somebody else's tenant
-    await db.orm.public.Customer.create({
+    await db.orm.orders.Customer.create({
       tenantId: `${tenant}-other`,
       customerId: "c-theirs",
       name: "Grace",

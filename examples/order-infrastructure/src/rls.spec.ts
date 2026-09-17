@@ -17,7 +17,7 @@ describe("the tenant_isolation policy on Order", () => {
     const rows = await repository
       .save(anOrder("0199a1e0-0000-7000-8000-000000000601", 3))
       .flatMap(() =>
-        fromSafePromise(raw.orm.public.Order.where({ tenantId: tenant }).all().toArray()),
+        fromSafePromise(raw.orm.orders.Order.where({ tenantId: tenant }).all().toArray()),
       );
 
     // THEN it sees nothing: `current_setting('app.tenant_id', true)` is NULL,
@@ -37,7 +37,7 @@ describe("the tenant_isolation policy on Order", () => {
     const rows = await repository
       .save(anOrder("0199a1e0-0000-7000-8000-000000000602", 3))
       .flatMap(() => otherRepository.save(anOrder("0199a1e0-0000-7000-8000-000000000603", 4)))
-      .flatMap(() => tenantPinned(raw, tenant, (tx) => tx.orm.public.Order.all().toArray()));
+      .flatMap(() => tenantPinned(raw, tenant, (tx) => tx.orm.orders.Order.all().toArray()));
 
     // THEN the unfiltered query is already scoped — the database is what
     // narrowed it, not the query
@@ -53,7 +53,7 @@ describe("the tenant_isolation policy on Order", () => {
     // GIVEN a transaction pinned to this tenant
     // WHEN it writes a row claiming another one
     const refused = await tenantPinned(raw, tenant, (tx) =>
-      tx.orm.public.Order.create({
+      tx.orm.orders.Order.create({
         tenantId: otherTenant,
         orderId: "0199a1e0-0000-7000-8000-000000000604",
         quantity: 1,
@@ -70,7 +70,7 @@ describe("the tenant_isolation policy on Order", () => {
     // GIVEN the unpinned client, naming its own tenant on the row
     // WHEN it writes
     const refused = await tryQuery(() =>
-      raw.orm.public.Order.create({
+      raw.orm.orders.Order.create({
         tenantId: tenant,
         orderId: "0199a1e0-0000-7000-8000-000000000605",
         quantity: 1,
@@ -94,7 +94,7 @@ describe("the tenant_isolation policy on Order", () => {
     // policy, the outbox row beside it
     const written = await repository
       .save(anOrder("0199a1e0-0000-7000-8000-000000000606", 3))
-      .flatMap(() => tenantPinned(raw, tenant, (tx) => tx.orm.public.Order.all().toArray()))
+      .flatMap(() => tenantPinned(raw, tenant, (tx) => tx.orm.orders.Order.all().toArray()))
       .flatMap((orders) => outbox.pending(tenant, 10).map((events) => ({ orders, events })));
 
     // THEN both halves are there: the pin reached the whole transaction, and

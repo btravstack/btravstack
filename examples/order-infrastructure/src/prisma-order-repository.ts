@@ -76,12 +76,12 @@ export const prismaOrderRepository = (
     // is what `tenantPinned` exists to guarantee.
     save: (order) =>
       pinned(async (tx) => {
-        await tx.orm.public.Order.create({
+        await tx.orm.orders.Order.create({
           tenantId,
           orderId: order.id,
           quantity: order.quantity,
         });
-        await tx.orm.public.OutboxMessage.create({
+        await tx.orm.orders.OutboxMessage.create({
           tenantId,
           kind: "order",
           subjectId: order.id,
@@ -97,7 +97,7 @@ export const prismaOrderRepository = (
         .map(() => order),
 
     find: (id) =>
-      pinned((tx) => tx.orm.public.Order.where({ tenantId, orderId: id }).first())
+      pinned((tx) => tx.orm.orders.Order.where({ tenantId, orderId: id }).first())
         .mapErrCases((matcher, defect) =>
           matcher.with(
             P.tag("UniqueConstraintViolation"),
@@ -135,8 +135,8 @@ export const prismaOrderRepository = (
           // here would hide whether it does.
           const base =
             minQuantity === undefined
-              ? tx.orm.public.Order
-              : tx.orm.public.Order.where((order) => order.quantity.gte(minQuantity));
+              ? tx.orm.orders.Order
+              : tx.orm.orders.Order.where((order) => order.quantity.gte(minQuantity));
           const ordered =
             before === undefined
               ? base.orderBy((order) => order.id.asc())
@@ -203,9 +203,9 @@ export const prismaOrderRepository = (
      */
     remove: (id) =>
       pinned(async (tx) => {
-        const deleted = await tx.orm.public.Order.where({ tenantId, orderId: id }).delete();
+        const deleted = await tx.orm.orders.Order.where({ tenantId, orderId: id }).delete();
         if (deleted === null) return false;
-        await tx.orm.public.OutboxMessage.create({
+        await tx.orm.orders.OutboxMessage.create({
           tenantId,
           kind: "order",
           subjectId: id,

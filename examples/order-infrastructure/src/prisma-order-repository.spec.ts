@@ -170,7 +170,7 @@ describe("the read path's error channel", () => {
     await tenantPinned(db, tenant, (tx) =>
       tx.query(
         db.raw
-          .sql`INSERT INTO "order" ("tenantId", "orderId", "quantity") VALUES (${tenant}, 'o-corrupt', ${0})`
+          .sql`INSERT INTO "orders"."order" ("tenantId", "orderId", "quantity") VALUES (${tenant}, 'o-corrupt', ${0})`
           .affectedCount()
           .build(),
       ),

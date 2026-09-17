@@ -69,7 +69,7 @@ type Queryable = { readonly query: (plan: never) => PromiseLike<unknown> };
  *
  * @example
  * ```ts
- * const orders = await tenantPinned(db, tenant, (tx) => tx.orm.public.Order.all());
+ * const orders = await tenantPinned(db, tenant, (tx) => tx.orm.orders.Order.all());
  * ```
  */
 export const tenantPinned = <Tx extends Queryable, R>(

@@ -89,7 +89,7 @@ export const qualify = <D>(cause: unknown, defect: (cause: unknown) => D): SqlEr
  * @example
  * ```ts
  * const save = (order: Order) =>
- *   tryQuery(() => db.orm.public.Order.create({ orderId: order.id })).mapErrCases(
+ *   tryQuery(() => db.orm.orders.Order.create({ orderId: order.id })).mapErrCases(
  *     (matcher, defect) =>
  *       matcher
  *         .with(P.tag("UniqueConstraintViolation"), () => new DuplicateOrder({ id: order.id }))

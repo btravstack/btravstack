@@ -107,7 +107,7 @@ export const it = test.extend<PersistenceFixtures>({
 
   aCustomer: async ({ db, tenant }, use) => {
     await use(async (id, name) => {
-      await db.orm.public.Customer.create({ tenantId: tenant, customerId: id, name });
+      await db.orm.orders.Customer.create({ tenantId: tenant, customerId: id, name });
     });
   },
 });

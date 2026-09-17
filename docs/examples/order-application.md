@@ -281,8 +281,8 @@ becomes the domain's:
 // the row-security setting pinned on its own connection first.
 save: (order) =>
   pinned(async (tx) => {
-    await tx.orm.public.Order.create({ tenantId, orderId: order.id, quantity: order.quantity });
-    await tx.orm.public.OutboxMessage.create({
+    await tx.orm.orders.Order.create({ tenantId, orderId: order.id, quantity: order.quantity });
+    await tx.orm.orders.OutboxMessage.create({
       tenantId,
       kind: "order",
       subjectId: order.id,

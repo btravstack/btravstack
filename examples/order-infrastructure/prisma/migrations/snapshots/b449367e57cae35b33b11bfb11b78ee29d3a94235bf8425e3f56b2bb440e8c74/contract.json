@@ -24,7 +24,7 @@
   },
   "domain": {
     "namespaces": {
-      "public": {
+      "orders": {
         "models": {
           "Customer": {
             "fields": {
@@ -47,7 +47,7 @@
                 "name": { "column": "name" },
                 "tenantId": { "column": "tenantId" }
               },
-              "namespaceId": "public",
+              "namespaceId": "orders",
               "table": "customer"
             }
           },
@@ -75,7 +75,7 @@
                 "quantity": { "column": "quantity" },
                 "tenantId": { "column": "tenantId" }
               },
-              "namespaceId": "public",
+              "namespaceId": "orders",
               "table": "order"
             }
           },
@@ -112,7 +112,7 @@
                 "subjectId": { "column": "subjectId" },
                 "tenantId": { "column": "tenantId" }
               },
-              "namespaceId": "public",
+              "namespaceId": "orders",
               "table": "outboxMessage"
             }
           }
@@ -124,20 +124,20 @@
   "meta": {},
   "profileHash": "3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2",
   "roots": {
-    "customer": { "model": "Customer", "namespace": "public" },
-    "order": { "model": "Order", "namespace": "public" },
-    "outboxMessage": { "model": "OutboxMessage", "namespace": "public" }
+    "customer": { "model": "Customer", "namespace": "orders" },
+    "order": { "model": "Order", "namespace": "orders" },
+    "outboxMessage": { "model": "OutboxMessage", "namespace": "orders" }
   },
   "schemaVersion": "1",
   "storage": {
     "namespaces": {
-      "public": {
+      "orders": {
         "entries": {
           "policy": {
             "order_tenant_isolation": {
               "kind": "policy",
               "name": "order_tenant_isolation_c516f4ff",
-              "namespaceId": "public",
+              "namespaceId": "orders",
               "operation": "all",
               "permissive": true,
               "prefix": "order_tenant_isolation",
@@ -147,7 +147,7 @@
               "withCheck": "\"tenantId\" = current_setting('app.tenant_id', true)"
             }
           },
-          "rls": { "order": { "kind": "rls", "namespaceId": "public", "tableName": "order" } },
+          "rls": { "order": { "kind": "rls", "namespaceId": "orders", "tableName": "order" } },
           "table": {
             "customer": {
               "columns": {
@@ -214,11 +214,12 @@
             }
           }
         },
-        "id": "public",
+        "id": "orders",
         "kind": "postgres-schema"
-      }
+      },
+      "public": { "entries": { "table": {} }, "id": "public", "kind": "postgres-schema" }
     },
-    "storageHash": "41301af477c07263d3c5f96992cac531933198d4ca09c28be19ceb23fae27232"
+    "storageHash": "b449367e57cae35b33b11bfb11b78ee29d3a94235bf8425e3f56b2bb440e8c74"
   },
   "target": "postgres",
   "targetFamily": "sql"

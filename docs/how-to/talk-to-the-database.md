@@ -18,7 +18,7 @@ declare const postgres: (options: PrismaBinding & { readonly contractJson: unkno
   readonly raw: { readonly sql: unknown };
   readonly runtime: unknown;
   readonly orm: {
-    readonly public: {
+    readonly orders: {
       readonly Order: { readonly first: (pk: { readonly id: string }) => Promise<OrderRow | null> };
     };
   };
@@ -84,7 +84,7 @@ export const prismaOrderRepository = Provider(OrderRepository)({
     find: (id) =>
       // `tryQuery` takes a THUNK, so the query starts inside the Result rather
       // than before it, and turns the database's SQLSTATEs into tagged errors.
-      tryQuery(() => db.orm.public.Order.first({ id }))
+      tryQuery(() => db.orm.orders.Order.first({ id }))
         .mapErrCases((matcher, defect) =>
           // None of them is a modeled outcome of "find an order", so they go
           // to the defect channel rather than arriving as an `OrderNotFound`
@@ -148,21 +148,27 @@ hand.
 operation:
 
 ```prisma
-model Order {
-  id       Int    @id @default(autoincrement())
-  tenantId String
-  orderId  String
+namespace orders {
+  model Order {
+    id       Int    @id @default(autoincrement())
+    tenantId String
+    orderId  String
 
-  @@unique([tenantId, orderId])
-  @@rls
-}
+    @@unique([tenantId, orderId])
+    @@rls
+  }
 
-policy_all order_tenant_isolation {
-  target    = Order
-  using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
-  withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
+  policy_all order_tenant_isolation {
+    target    = Order
+    using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
+    withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
+  }
 }
 ```
+
+The `policy_*` block lives **inside** the namespace it polices and names its
+target unqualified; `target = orders.Order` from the top level fails emit with
+`PSL_INVALID_EXTENSION_BLOCK_MEMBER`.
 
 **The pin is a transaction**, from `@btravstack/prisma/rls`:
 
@@ -175,7 +181,7 @@ declare const tenant: string;
 -->
 
 ```ts
-const orders = await tenantPinned(db, tenant, (tx) => tx.orm.public.Order.all());
+const orders = await tenantPinned(db, tenant, (tx) => tx.orm.orders.Order.all());
 ```
 
 `set_config(..., true)` is transaction-local, which is why this opens one

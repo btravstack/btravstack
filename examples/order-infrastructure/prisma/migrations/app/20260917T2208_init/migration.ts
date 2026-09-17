@@ -1,17 +1,18 @@
 #!/usr/bin/env -S node
 import { Migration, MigrationCLI, col, fn, primaryKey } from "@prisma/orm-postgres/migration";
 
-import type { Contract as End } from "../../snapshots/41301af477c07263d3c5f96992cac531933198d4ca09c28be19ceb23fae27232/contract";
-import endContract from "../../snapshots/41301af477c07263d3c5f96992cac531933198d4ca09c28be19ceb23fae27232/contract.json" with { type: "json" };
+import type { Contract as End } from "../../snapshots/b449367e57cae35b33b11bfb11b78ee29d3a94235bf8425e3f56b2bb440e8c74/contract";
+import endContract from "../../snapshots/b449367e57cae35b33b11bfb11b78ee29d3a94235bf8425e3f56b2bb440e8c74/contract.json" with { type: "json" };
 
 export default class M extends Migration<never, End> {
   override readonly endContractJson = endContract;
 
   override get operations() {
     return [
+      this.createSchema({ schema: "orders" }),
       this.createSchema({ schema: "public" }),
       this.createTable({
-        schema: "public",
+        schema: "orders",
         table: "customer",
         columns: [
           col("customerId", "text", { notNull: true, codecRef: { codecId: "pg/text@1" } }),
@@ -22,7 +23,7 @@ export default class M extends Migration<never, End> {
         constraints: [primaryKey(["id"])],
       }),
       this.createTable({
-        schema: "public",
+        schema: "orders",
         table: "order",
         columns: [
           col("id", "SERIAL", { notNull: true, codecRef: { codecId: "pg/int4@1" } }),
@@ -33,7 +34,7 @@ export default class M extends Migration<never, End> {
         constraints: [primaryKey(["id"])],
       }),
       this.createTable({
-        schema: "public",
+        schema: "orders",
         table: "outboxMessage",
         columns: [
           col("id", "SERIAL", { notNull: true, codecRef: { codecId: "pg/int4@1" } }),
@@ -51,25 +52,25 @@ export default class M extends Migration<never, End> {
         constraints: [primaryKey(["id"])],
       }),
       this.addUnique({
-        schema: "public",
+        schema: "orders",
         table: "customer",
         constraint: "customer_tenantId_customerId_key",
         columns: ["tenantId", "customerId"],
       }),
       this.addUnique({
-        schema: "public",
+        schema: "orders",
         table: "order",
         constraint: "order_tenantId_orderId_key",
         columns: ["tenantId", "orderId"],
       }),
-      this.enableRowLevelSecurity({ schema: "public", table: "order" }),
+      this.enableRowLevelSecurity({ schema: "orders", table: "order" }),
       this.createRlsPolicy({
-        schema: "public",
+        schema: "orders",
         table: "order",
         policy: {
           naming: { kind: "wire", prefix: "order_tenant_isolation", hash: "c516f4ff" },
           tableName: "order",
-          namespaceId: "public",
+          namespaceId: "orders",
           operation: "all",
           roles: [],
           using: "\"tenantId\" = current_setting('app.tenant_id', true)",
