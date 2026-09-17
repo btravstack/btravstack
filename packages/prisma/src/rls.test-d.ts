@@ -1,70 +1,66 @@
-// What `tenantScoped` promises at the type level: applying it costs a consumer
-// nothing. Model delegates keep their own types, an EARLIER extension's client
-// methods survive, and the `$transaction` it installs hands the callback a `tx`
-// that is the extended client rather than an implicit `any`.
+// What `tenantPinned` promises at the type level: the client it takes is
+// STRUCTURAL, so a contract-typed client passes without the starter naming one;
+// the transaction context reaches the work with its own type intact; and the
+// work's answer is what comes back.
 //
-// Its limit: the stand-in's `$extends` takes `never`, so this file pins `tx`'s
-// type GIVEN the extension applies, not that `tenantScoped` is assignable to a
-// generated client's own `$extends`. Task 3's real client is what pins that.
-import type { ITXClientDenyList } from "@prisma/client/runtime/client";
+// Where the v7 `tenantScoped` had to pin an extension's `tx` type and copy
+// Prisma's own transaction deny list by hand, there is nothing here to copy:
+// the transaction is the client's own, and this function only runs one
+// statement inside it.
+import type { AsyncResult } from "unthrown";
 
-import { tenantScoped, type ScopedTransactionClient } from "./rls.js";
+import type { SqlError } from "./result.js";
+import { tenantPinned } from "./rls.js";
 
-/** How Prisma resolves a `client` extension component onto the extended client. */
-type Unthunk<C> = { [K in keyof C]: C[K] extends () => infer V ? V : never };
+type Expect<T extends true> = T;
+type Exactly<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
-type Db = {
-  readonly order: {
-    readonly findMany: (args?: {
-      readonly where?: { readonly tenantId: string };
-    }) => Promise<readonly { readonly id: number }[]>;
+/** A stand-in for the client an emitted contract types. */
+type Tx = {
+  readonly query: (plan: unknown) => Promise<unknown>;
+  readonly orm: {
+    readonly orders: {
+      readonly Order: { readonly all: () => Promise<readonly { readonly id: number }[]> };
+    };
   };
-  /** An earlier extension's client method — `@unthrown/prisma`'s, in the example. */
-  readonly $tryTransaction: <R>(fn: (tx: Db) => Promise<R>) => Promise<R>;
-  readonly $extends: <A extends { client: Record<string, () => unknown> }>(
-    define: (client: never) => { $extends: { extArgs: A } },
-  ) => Db & Unthunk<A["client"]>;
+};
+type Db = {
+  readonly raw: {
+    readonly sql: (
+      strings: TemplateStringsArray,
+      ...values: readonly unknown[]
+    ) => {
+      readonly returnsRow: (spec: Readonly<Record<string, string>>) => {
+        readonly build: () => unknown;
+      };
+    };
+  };
+  readonly transaction: <R>(fn: (tx: Tx) => PromiseLike<R>) => Promise<R>;
 };
 
 declare const db: Db;
 
-const scoped = db.$extends(tenantScoped("t"));
+// 1. The work's `tx` keeps the client's own type — a query surface, not an
+//    implicit `any`, which is what the v7 override needed a cast to preserve.
+//    The answer is an `AsyncResult`, qualified: thesis #6 has exactly three
+//    bare-`Promise` exceptions and this is not a fourth.
+const rows = tenantPinned(db, "acme", (tx) => tx.orm.orders.Order.all());
+type _Rows = Expect<
+  Exactly<typeof rows, AsyncResult<readonly { readonly id: number }[], SqlError>>
+>;
 
-// 1. A model delegate keeps its own argument and result types.
-const _rows: Promise<readonly { readonly id: number }[]> = scoped.order.findMany({
-  where: { tenantId: "t" },
-});
+// 2. The answer is the work's, not the pin's.
+const counted = tenantPinned(db, "acme", async (tx) => (await tx.orm.orders.Order.all()).length);
+type _Counted = Expect<Exactly<typeof counted, AsyncResult<number, SqlError>>>;
 
-// 2. An earlier extension's client method survives.
-const _tried: Promise<number> = scoped.$tryTransaction(
-  async (tx) => (await tx.order.findMany()).length,
-);
+// 3. The setting is an option, and it is the one thing that has to agree with
+//    the policy.
+void tenantPinned(db, "acme", () => Promise.resolve(undefined), { setting: "app.org_id" });
 
-// 3. `$transaction`'s `tx` is the extended client. Without the cast in `rls.ts`
-//    the implementation's own signature is what a consumer sees, and this line
-//    fails with `TS7006: Parameter 'tx' implicitly has an 'any' type`.
-const _counted: Promise<number> = scoped.$transaction(
-  async (tx) => (await tx.order.findMany()).length,
-);
-
-// 4. …which is why an unknown member of `tx` is an error rather than free.
-// @ts-expect-error - `tx` is typed, so `nope` does not exist on it
-const _nope = scoped.$transaction(async (tx) => tx.nope());
-
-// 5. The array form is absent from the type as well as refused at run time.
-// @ts-expect-error - `$transaction([...])` is unsupported; use the callback form
-const _batch = scoped.$transaction([Promise.resolve(1)]);
-
-// 6. The deny list `ScopedTransactionClient` omits by hand is Prisma's own.
-//    `Omit` of a key that does not exist is silent, so without this a member
-//    Prisma adds to — or drops from — `ITXClientDenyList` would leave `tx`
-//    offering what a transaction cannot do, or hiding what it can. The type is
-//    reachable from `@prisma/client/runtime/client`; `rls.ts` still copies it,
-//    because a published `.d.ts` naming it would need an OPTIONAL peer to
-//    resolve.
-type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
-type AnyClient = Record<ITXClientDenyList | "$transaction" | "order", unknown>;
-const _denyList: Mutual<
-  ScopedTransactionClient<AnyClient>,
-  Omit<AnyClient, ITXClientDenyList>
-> = true;
+// 4. A client with no raw lane cannot be pinned: there is nothing to build the
+//    `set_config` with. `Pinnable` types the tag as `unknown` — a parameter is
+//    contravariant, so describing it would refuse every real client — but the
+//    PROPERTY is still required, which is what this arm pins.
+declare const rawless: { readonly transaction: Db["transaction"] };
+// @ts-expect-error — no `raw`, so there is no statement to pin with
+void tenantPinned(rawless, "a", () => Promise.resolve(undefined));

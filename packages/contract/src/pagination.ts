@@ -88,3 +88,81 @@ export const pageRequest = <Q extends PageQuery>(
     ...(before !== undefined ? { before } : after !== undefined ? { after } : {}),
   };
 };
+
+/**
+ * One keyset window: what to ask the store for, and how to fold what comes back.
+ *
+ * The two halves ride one object because they have to AGREE. `take` is one more
+ * row than the page so the extra row answers "is there another page" without a
+ * second count query — and `page` subtracts that same row back out. A store
+ * queried for `limit` and folded as though it had been queried for `limit + 1`
+ * reports the last page as having a next one, forever.
+ */
+export type Keyset = {
+  /** How many rows to ask for: the page, plus one to detect the next. */
+  readonly take: number;
+  /** Walk descending from the cursor. `before` pages backward; everything else forward. */
+  readonly backward: boolean;
+  /** The cursor to resume from, whichever side it came from, or `undefined` at the end. */
+  readonly cursor: string | undefined;
+  /**
+   * The rows the store answered — in the order it answered them — folded into a
+   * page, with `cursorOf` minting the opaque cursor for a row.
+   *
+   * `item` is there because **the row a store seeks by is rarely the thing a
+   * port hands back**: an adapter pages on a surrogate key and answers domain
+   * entities, so the cursor and the item come off the same row by two different
+   * routes. It defaults to the row itself.
+   */
+  readonly page: <T, U = T>(
+    rows: readonly T[],
+    cursorOf: (row: T) => string,
+    item?: (row: T) => U,
+  ) => Page<U>;
+};
+
+/**
+ * The keyset pagination an adapter would otherwise hand-roll: the over-fetch,
+ * the direction, the trim, and both cursors.
+ *
+ * It does not run the query — the store's own seek call is the one thing this
+ * tier cannot express, and every store spells it differently. What it owns is
+ * the arithmetic around that call, which is identical everywhere and is where
+ * the off-by-ones live.
+ *
+ * **Backward is not forward reversed.** `before` walks the index descending, so
+ * the rows arrive newest-first and `page` hands them back ascending — a
+ * previous page reads the way the next one does. It also flips which side the
+ * extra row proves: paging forward, one more row means there is a page AFTER;
+ * paging backward it means there is one BEFORE.
+ *
+ * A cursor is minted only from a row that is actually on the page, so an empty
+ * page carries neither — which is what makes both flags on {@link Page} honest.
+ *
+ * @example
+ * ```ts
+ * const keys = keyset(request);
+ * const rows = await store.seek(keys.cursor, keys.backward).take(keys.take);
+ * return keys.page(rows, (row) => String(row.id));
+ * ```
+ */
+export const keyset = (request: PageRequest): Keyset => {
+  const { limit } = request;
+  const backward = request.before !== undefined;
+  return {
+    take: limit + 1,
+    backward,
+    cursor: request.before ?? request.after,
+    page: (rows, cursorOf, item = (row) => row as never) => {
+      const more = rows.length > limit;
+      const trimmed = more ? rows.slice(0, limit) : rows;
+      const seen = backward ? [...trimmed].reverse() : trimmed;
+      const edge = (row: (typeof seen)[number] | undefined) =>
+        row === undefined ? null : cursorOf(row);
+      return page(seen.map(item), {
+        previous: (backward ? more : request.after !== undefined) ? edge(seen[0]) : null,
+        next: backward || more ? edge(seen.at(-1)) : null,
+      });
+    },
+  };
+};

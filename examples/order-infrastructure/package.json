@@ -11,8 +11,9 @@
     "./global-setup": "./src/global-setup.ts"
   },
   "scripts": {
-    "db:migrate": "prisma migrate deploy",
-    "generate": "prisma generate",
+    "db:migrate": "prisma db migrate",
+    "db:migrate:dev": "prisma db migrate --advance-ref db",
+    "generate": "prisma contract emit",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -25,15 +26,13 @@
     "@btravstack/example-order-domain": "workspace:*",
     "@btravstack/observability": "workspace:*",
     "@btravstack/prisma": "workspace:*",
-    "@prisma/adapter-pg": "catalog:",
-    "@prisma/client": "catalog:",
-    "@prisma/instrumentation": "catalog:",
-    "@unthrown/prisma": "catalog:",
+    "@prisma/orm-postgres": "catalog:",
     "unthrown": "catalog:"
   },
   "devDependencies": {
     "@btravstack/internal-test-infra": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
+    "@prisma/cli-engine": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
     "prisma": "catalog:",

@@ -1,5 +1,5 @@
 import { Env } from "@btravstack/config";
-import { page } from "@btravstack/contract";
+import { keyset } from "@btravstack/contract";
 import { Module, Provider } from "@btravstack/di";
 import {
   Customer,
@@ -66,38 +66,24 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
             ? ErrAsync(new OrderNotFound({ id: id as OrderId }))
             : OkAsync(row);
         },
-        // Insertion-ordered, cursor = the order id: enough to page over in both
-        // directions, and the real cursor arithmetic is `@unthrown/prisma`'s,
-        // exercised against Postgres by examples/order-infrastructure.
-        list: ({ limit, after, before, minQuantity }: OrderQuery) => {
+        // Insertion-ordered, cursor = the order id. What this stub owes is the
+        // SEEK — walk the direction asked for, resume strictly after the cursor,
+        // answer at most `take` — and `keyset` does the rest, exactly as it does
+        // for the Prisma adapter. Two stores, one arithmetic.
+        list: ({ minQuantity, ...request }: OrderQuery) => {
           const scoped = mine().filter(
             (order) => minQuantity === undefined || order.quantity >= minQuantity,
           );
-          const at = (cursor: string) => scoped.findIndex((order) => order.id === cursor);
+          const keys = keyset(request);
+          const walked = keys.backward ? [...scoped].reverse() : scoped;
           // A cursor naming no row is `MalformedCursor`, exactly as the Prisma
           // adapter answers: `findIndex` would otherwise return -1 and page from
           // the start, so a stub that skipped this would let a spec pass on a
           // cursor the listing never issued.
-          const anchor = before ?? after;
-          if (anchor !== undefined && at(anchor) === -1)
-            return ErrAsync(new MalformedCursor({ cursor: anchor }));
-          // `before` takes the `limit` rows ENDING before the cursor, handed back
-          // in the collection's own order — the previous page reads the way the
-          // next one does, which is what the library's own backward page gives.
-          const from =
-            before !== undefined
-              ? Math.max(0, at(before) - limit)
-              : after === undefined
-                ? 0
-                : at(after) + 1;
-          const to = before !== undefined ? at(before) : from + limit;
-          const items = scoped.slice(from, to);
-          return OkAsync(
-            page(items, {
-              previous: from > 0 ? (items[0]?.id ?? null) : null,
-              next: to < scoped.length ? (items.at(-1)?.id ?? null) : null,
-            }),
-          );
+          const at = keys.cursor === undefined ? -1 : walked.findIndex((o) => o.id === keys.cursor);
+          if (keys.cursor !== undefined && at === -1)
+            return ErrAsync(new MalformedCursor({ cursor: keys.cursor }));
+          return OkAsync(keys.page(walked.slice(at + 1, at + 1 + keys.take), (order) => order.id));
         },
         remove: (id: string) =>
           rows.delete(key(id)) ? OkAsync() : ErrAsync(new OrderNotFound({ id: id as OrderId })),

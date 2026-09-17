@@ -1,69 +1,70 @@
 # @btravstack/prisma
 
 > The Prisma starter for [`@btravstack/core`](https://github.com/btravstack/btravstack):
-> `DATABASE_URL` bound through `Config`, the Postgres driver adapter, and a
-> client whose pool is the application scope's.
+> `DATABASE_URL` bound through `Config`, per-query observation as middleware,
+> and a client whose pool is the application scope's. Prisma **8**.
 
 📖 **[Documentation](https://btravstack.github.io/btravstack/reference/prisma)** ·
 [API Reference](https://btravstack.github.io/btravstack/api/prisma/)
 
 ```sh
 pnpm add @btravstack/prisma @btravstack/core @btravstack/config @btravstack/di unthrown \
-  @prisma/adapter-pg
+  @prisma/orm-postgres@8.0.0-rc.11
 ```
 
 Five peer dependencies — install every one, so the application holds a single
-copy of each. Your own `@prisma/client`, `prisma` and (if you want the `try*`
-twins) `@unthrown/prisma` are yours, not this package's: the client is
-generated from your schema. `@prisma/client` is also an **optional** peer here,
-used only by the `@btravstack/prisma/rls` subpath below — a consumer that never
-imports it installs nothing extra. Node `>=22`.
+copy of each. The `prisma` CLI is yours, as a dev dependency: the client is
+built from _your_ emitted contract, so there is none for this package to ship.
+Node `>=22`.
+
+**This is Prisma 8**, which is a different package family rather than a version
+bump — `@prisma/orm-postgres` replaces `@prisma/client` and `@prisma/adapter-pg`
+both, and there is no `@prisma/instrumentation`. For Prisma 7 use
+`@btravstack/prisma@0.14`.
 
 ## A worked example
 
 <!-- doctest: group=order-api -->
 <!-- doctest: prelude
 import { Env } from "@btravstack/config";
-import { Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
-import { PrismaPg } from "@prisma/adapter-pg";
+import type { PrismaBinding } from "@btravstack/prisma";
 
-// The stand-in for the client YOUR schema generates, and the extension you
-// apply to it. Neither exists in this package — that is what the `client`
-// arrow is for.
-declare class PrismaClient {
-  constructor(options: { readonly adapter: PrismaPg });
-  $disconnect(): Promise<void>;
-  $queryRaw(query: TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
-  $extends(extension: unknown): this;
-}
-declare const unthrownPrisma: unknown;
+// The stand-in for the client YOUR contract types. It does not exist in this
+// package — that is what the `client` arrow is for.
+declare const postgres: (options: PrismaBinding & { readonly contractJson: unknown }) => {
+  readonly raw: { readonly sql: unknown };
+  readonly runtime: unknown;
+};
+declare const contractJson: unknown;
 -->
 
 ```ts
 import { prismaDatabase } from "@btravstack/prisma";
 
 const database = prismaDatabase("OrderDatabase")({
-  client: (adapter) => new PrismaClient({ adapter }).$extends(unthrownPrisma),
+  client: ({ url, middleware }) => postgres({ contractJson, url, middleware }),
 });
 ```
 
 That is the whole surface. `database` is a **module** carrying the port a
 composition root reads; the provider binding `DATABASE_URL`, the resourceful
-client provider, the health check and the engine-tracing loader are inside it:
+client provider and the health check are inside it:
 
 ```ts
 export const PersistenceModule = Module("Persistence")({
   imports: [database],
   exports: [database.port],
-  needs: [Env, Logger],
+  needs: [Env],
 });
 ```
 
-**The client type is yours, and that is deliberate.** A Prisma client is
-generated from _your_ schema, so there is none for this package to ship — the
-`client` arrow is where your generated class and your extensions meet, and the
-port is typed by exactly what it returns.
+**The client type is yours, and that is deliberate.** A Prisma 8 client is
+typed by _your_ emitted `Contract` and built from _your_ `contract.json`, so
+there is none for this package to ship — the `client` arrow is where your
+contract and this starter meet, and the port is typed by exactly what it
+returns. Spread the `middleware` it hands you into the client: that is where
+the per-query observation below comes from.
 
 ## What it owns
 
@@ -71,87 +72,98 @@ port is typed by exactly what it returns.
   `ConfigInvalid` naming the variable, not a throw — so a misconfigured
   deployment exits `78` with the reason on stderr instead of crashing on the
   first query.
-- **The Postgres driver adapter**, constructed from that URL. Another driver is
-  reachable — build it in your own `client` arrow and ignore the one passed in.
 - **The pool's lifetime.** The provider is _resourceful_, so `release` closes it
   on every exit path, including a boot that fails after it ran.
-- **A health check**, named after the starter — `SELECT 1` through `$queryRaw`,
-  folded into the kernel's `GET /healthz` with nothing wired. `/readyz` does not
-  read it: failing readiness on a dependency every replica shares removes them
-  all at once.
-- **Engine tracing, offered rather than registered.** The starter contributes a
-  loader for the optional `@prisma/instrumentation` peer to `Instrumentations`;
-  composing `@btravstack/observability/otel` is what turns it on, and a graph
-  with no SDK never imports it. A missing peer is a `debug` line, never silence.
-- **Every query handed to `Observers`**, so composing `observability()` writes
-  the failures as lines and `otel()` mints the instruments — with no flag here
-  and no port list to satisfy when you compose neither.
+- **A health check**, named after the starter — `SELECT 1` through the raw
+  lane, folded into the kernel's `GET /healthz` with nothing wired. `/readyz`
+  does not read it: failing readiness on a dependency every replica shares
+  removes them all at once.
+- **Every query handed to `Observers`**, as one `afterQuery` middleware, so
+  composing `observability()` writes the failures as lines and `otel()` opens
+  the spans and mints the instruments — with no flag here and no port list to
+  satisfy when you compose neither. A middleware sees the ORM lane, the SQL
+  builder and the raw lane alike, and carries the runtime's own `latencyMs`.
+
+## `Result`s, on the `@btravstack/prisma/result` subpath
+
+Prisma 8 throws a **structured** error carrying PostgreSQL's own SQLSTATE.
+`tryQuery` turns that into a `Result` with three modeled arms —
+`UniqueConstraintViolation` (`23505`, with the `constraint` the database
+named), `ForeignKeyViolation` (`23503`) and `NotAuthorized` (`42501`,
+including a write a row-security policy refused). Anything else is a defect.
+
+<!-- doctest: isolate
+import { tryQuery } from "@btravstack/prisma/result";
+import { P } from "unthrown";
+
+declare const db: { readonly orm: { readonly orders: { readonly Order: { readonly create: (row: { readonly orderId: string }) => Promise<unknown> } } } };
+declare const orderId: string;
+declare const duplicate: (id: string) => Error;
+-->
+
+```ts
+const saved = tryQuery(() => db.orm.orders.Order.create({ orderId })).mapErrCases(
+  (matcher, defect) =>
+    matcher
+      .with(P.tag("UniqueConstraintViolation"), () => duplicate(orderId))
+      .with(P.tag("ForeignKeyViolation"), P.tag("NotAuthorized"), (cause) => defect(cause)),
+);
+```
+
+It takes a **thunk** rather than a promise: an `AsyncResult` is eager, so a
+promise built at the call site has already started before the Result exists.
 
 ## Row-level security, on the `@btravstack/prisma/rls` subpath
 
-`tenantScoped(tenant)` is a Prisma client extension that pins **every** statement
-— raw SQL included — to `tenant` through a transaction-local
-`set_config('app.tenant_id', tenant, true)`, so a PostgreSQL row-level-security
-policy reading `current_setting('app.tenant_id', true)` sees it. Apply it
-**last**:
+**The policy is declared in your contract** — `@@rls` on the model and a
+`policy_all` block beside it — and the planner emits `ENABLE ROW LEVEL
+SECURITY` and `CREATE POLICY` like any other migration operation. **The pin is
+a transaction:**
 
 <!-- doctest: isolate
-// `PrismaClient` and `unthrownPrisma` are the reader's own, exactly as in the
-// worked example above — so what this fence holds is `tenantScoped`'s call
-// shape and its place in the chain, not the generated client's `$extends`.
-// That half is compiled on the reference page, over the real client.
-import { PrismaPg } from "@prisma/adapter-pg";
+import { tenantPinned } from "@btravstack/prisma/rls";
 
-declare class PrismaClient {
-  constructor(options: { readonly adapter: PrismaPg });
-  $extends(extension: unknown): this;
-}
-declare const adapter: PrismaPg;
-declare const unthrownPrisma: unknown;
+declare const db: {
+  readonly raw: { readonly sql: unknown };
+  readonly transaction: <R>(fn: (tx: { readonly query: (plan: never) => Promise<unknown>; readonly orm: { readonly orders: { readonly Order: { readonly all: () => Promise<readonly unknown[]> } } } }) => PromiseLike<R>) => Promise<R>;
+};
 declare const tenant: string;
 -->
 
 ```ts
-import { tenantScoped } from "@btravstack/prisma/rls";
-
-const db = new PrismaClient({ adapter }).$extends(unthrownPrisma).$extends(tenantScoped(tenant));
+const orders = await tenantPinned(db, tenant, (tx) => tx.orm.orders.Order.all());
 ```
 
-That fence compiles `tenantScoped`'s call shape and its place in the chain over
-a client declared for the sample; the fence on the
-[reference page](https://btravstack.github.io/btravstack/reference/prisma) is
-the one compiled over a real generated client, which is what proves the
-extension is assignable to its `$extends`.
+`set_config(…, true)` is **transaction-local**, which is why this opens one
+rather than handing back a pinned client: a session-scoped pin works only while
+the pool happens to return the same connection, and fails silently the first
+time it does not. The policy must read the **same** setting — `app.tenant_id`
+is only the default — because a `tenantPinned(db, tenant, work, { setting })`
+and a policy naming a different one deny every row and every write, which looks
+exactly like row security working.
 
-It goes last because a transaction callback's `tx` comes from the client as it
-stood when this extension was applied, so anything added after it is invisible
-inside a transaction. `$transaction([...])` is refused rather than silently pinned: the
-batch form stops being atomic under this design, and a rejected promise beats a
-transaction that quietly no longer rolls back. Use the callback form.
-
-The database half stays the deployment's, and every part of it fails quietly
-when forgotten: a **superuser** role bypasses row security whatever the table
-says, and a policy without `FORCE ROW LEVEL SECURITY` is not applied to the
-table's **owner** — the role that ran the migrations. Either way the
-application works and no tenant is isolated. The policy must also read the
-**same** setting `tenantScoped` was given — `app.tenant_id` is only the default
-— because a `tenantScoped(tenant, { setting })` and a policy naming a different
-one deny every row and every write, which looks exactly like row security
-working. The
+Two halves stay the deployment's, and both fail quietly when forgotten: Prisma 8
+authors policies but no `GRANT`s, and it emits `ENABLE ROW LEVEL SECURITY` with
+no way to say `FORCE` — so the table's **owner**, which is the role that ran the
+migrations, bypasses every policy. Connect as a role that is neither the owner
+nor a superuser. The
 [reference page](https://btravstack.github.io/btravstack/reference/prisma)
-carries the DDL and the two smaller lines that fail the same way.
+carries the DDL and the smaller lines that fail the same way.
 
 ## What it does not
 
-**Migrations.** A deployment runs `prisma migrate deploy` against the same
-database _before the process starts_ — and, where row security is on, as its
-**owner** rather than the role `DATABASE_URL` carries. An application that
-migrates itself at boot races every other replica.
+**Migrations.** A deployment runs `prisma db migrate` against the same database
+_before the process starts_ — and, where row security is on, as its **owner**
+rather than the role `DATABASE_URL` carries. An application that migrates itself
+at boot races every other replica.
+
+**Engine-level tracing.** There is no engine: Prisma 8 is a TypeScript runtime
+and ships no instrumentation package, so the `afterQuery` middleware is the
+whole seam and it already carries the runtime's own latency.
 
 **Transactions.** Commit boundaries belong to the adapter, spelled at the call —
-`@unthrown/prisma`'s `$tryTransaction` is the primitive. The `rls` subpath
-overrides `$transaction` to pin the tenant on the connection and nothing more;
-it opens no boundary of its own. There is no unit-scoped
+`db.transaction(fn)` is the primitive. The `rls` subpath opens one transaction
+to pin a setting on and the work inside it is yours. There is no unit-scoped
 transaction and there will not be one; see
 [the kernel maps nothing](https://btravstack.github.io/btravstack/explanation/the-kernel-maps-nothing).
 
@@ -160,12 +172,12 @@ package's.
 
 ## Options
 
-| Option         | Where                                       | What it is                                                                               |
-| -------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `name`         | `prismaDatabase(name)`                      | the port's id and the health check's name — required                                     |
-| `client`       | `prismaDatabase(name)({ client })`          | builds your client from the driver adapter this package built from the URL — required    |
-| `DATABASE_URL` | environment, read by `prismaDatabase(name)` | the connection string — required, validated at graph build; blank is an error, exit `78` |
-| `setting`      | `tenantScoped(tenant, { setting })`         | the PostgreSQL run-time setting the policy reads — default `app.tenant_id`               |
+| Option         | Where                                         | What it is                                                                               |
+| -------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `name`         | `prismaDatabase(name)`                        | the port's id and the health check's name — required                                     |
+| `client`       | `prismaDatabase(name)({ client })`            | builds your client from the URL and middleware this package bound — required             |
+| `DATABASE_URL` | environment, read by `prismaDatabase(name)`   | the connection string — required, validated at graph build; blank is an error, exit `78` |
+| `setting`      | `tenantPinned(db, tenant, work, { setting })` | the PostgreSQL run-time setting the policy reads — default `app.tenant_id`               |
 
 There is **no `instrumented` flag**: observation is a set port every call is
 handed to, so a graph composing no observability pays one inert call and no

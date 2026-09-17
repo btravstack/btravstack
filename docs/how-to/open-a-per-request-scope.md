@@ -198,14 +198,16 @@ export const findOrder = api.OrpcController(
 });
 ```
 
-**One client per process, one _pinning_ per unit.** `OrderTenantPersistence` is
-what makes that distinction: it reads `OrderDatabase` out of the application
-scope and provides `Db` — that same client wrapped in
-[`@btravstack/prisma/rls`](/reference/prisma)'s `tenantScoped(tenant)` — then
-builds the repository over `Db`. So every statement the unit issues is pinned to
-the tenant the fork was seeded with, and PostgreSQL's own policy is what narrows
-it. The wrapper is per unit and costs nothing to build; the pool underneath is
-still the one the application scope holds.
+**One client per process, one _pinning_ per unit of work.**
+`OrderTenantPersistence` is what makes that distinction: it reads
+`OrderDatabase` out of the application scope and builds the repository over it,
+bound to the tenant the fork was seeded with. Each of that repository's methods
+runs inside [`@btravstack/prisma/rls`](/reference/prisma)'s
+`tenantPinned(db, tenant, work)`, which opens a transaction and pins it there —
+`set_config(…, true)` is transaction-local, so the pin belongs to a transaction
+rather than to a wrapper around the client. PostgreSQL's own policy is what
+narrows the query. The tenant is per unit; the pool underneath is still the one
+the application scope holds.
 
 **The kinds arrive on a second call for a reason a single call cannot have.** A
 unit module names `auth.principals.<scheme>`, so its type depends on

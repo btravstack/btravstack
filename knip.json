@@ -14,12 +14,12 @@
       "entry": ["scripts/*.ts"],
       "project": ["scripts/**/*.ts"]
     },
-    "packages/core": {
-      "ignoreDependencies": ["@btravstack/testing"]
-    },
     "examples/di-hexagonal": {
       "entry": ["src/emit-guards.ts"],
       "project": ["src/**/*.ts"]
+    },
+    "examples/order-amqp-worker": {
+      "ignoreDependencies": ["@amqp-contract/contract", "zod"]
     },
     "examples/order-api": {
       "ignoreDependencies": [
@@ -27,18 +27,24 @@
         "@btravstack/prisma",
         "@orpc/tanstack-query",
         "@tanstack/query-core",
-        "@prisma/adapter-pg"
+        "@prisma/orm-postgres"
       ]
+    },
+    "examples/order-infrastructure": {
+      "ignore": ["prisma/migrations/**"]
     },
     "examples/order-temporal-worker": {
       "ignoreDependencies": ["zod"]
     },
-    "examples/order-amqp-worker": {
-      "ignoreDependencies": ["@amqp-contract/contract", "zod"]
-    },
     "internal/consumer-check": {
       "ignore": ["src/consumer.ts"],
       "ignoreDependencies": ["@arethetypeswrong/cli", "publint", "typescript-consumer"]
+    },
+    "packages/core": {
+      "ignoreDependencies": ["@btravstack/testing"]
+    },
+    "packages/prisma": {
+      "ignoreDependencies": ["@prisma/orm-postgres"]
     }
   }
 }

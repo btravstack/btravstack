@@ -1,6 +1,7 @@
 import { Provider, type ServiceOf } from "@btravstack/di";
 import { CustomerRepository } from "@btravstack/example-order-application";
 import { Customer, CustomerNotFound, type CustomerId } from "@btravstack/example-order-domain";
+import { tryQuery } from "@btravstack/prisma/result";
 import { Err, P, type Result } from "unthrown";
 
 import { OrderDatabase, type OrderDatabaseClient } from "./database.js";
@@ -33,13 +34,24 @@ export const prismaCustomerRepository = (
   db: OrderDatabaseClient,
 ): ServiceOf<CustomerRepository> => ({
   find: (tenantId, id) =>
-    db.customer
+    tryQuery(() =>
       // `Customer` carries no policy, and this client is unpinned — the
       // customers procedures carry the tenant on the wire — so this `tenantId`
       // is what holds it, not a leftover of the one `prisma-order-repository`'s
       // `list` dropped. "does not read another tenant's customer" is what
       // catches its removal.
-      .tryFindUnique({ where: { tenantId_customerId: { tenantId, customerId: id } } })
+      db.orm.orders.Customer.where({ tenantId, customerId: id }).first(),
+    )
+      .mapErrCases((matcher, defect) =>
+        // A read against a table with no policy and no relation: every arm is
+        // a bug by this schema's lights, so the port's own channel is kept.
+        matcher.with(
+          P.tag("UniqueConstraintViolation"),
+          P.tag("ForeignKeyViolation"),
+          P.tag("NotAuthorized"),
+          (e) => defect(e),
+        ),
+      )
       .flatMap((row) =>
         row === null ? Err(new CustomerNotFound({ id: id as CustomerId })) : hydrate(row),
       ),

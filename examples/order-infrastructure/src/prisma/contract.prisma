@@ -1,0 +1,108 @@
+// use prisma-8
+//
+// The example's data contract, on PostgreSQL — the same server the Temporal
+// example's test infrastructure runs on, one database each.
+//
+// Every table carries `tenantId`, and it is the LEADING column of every
+// business-identity constraint. That is what makes the application
+// multi-tenant at the layer that should own it: the order adapter is BUILT
+// inside a unit, over the `Tenant` port that unit's module provides, and
+// scopes every statement by the tenant it closed over — so no orders port
+// names one. The customer adapter takes it as an argument instead, because
+// the procedures it serves are unmarked and open no unit that has one to
+// give. Either way it is the application's own vocabulary, never the
+// kernel's ambient record. `orderId` is still the business id the domain
+// speaks, kept distinct from the surrogate primary key — it is unique *per
+// tenant*, and it is that composite constraint whose violation (SQLSTATE
+// 23505) the adapter translates into the domain's own `DuplicateOrder`.
+//
+// Emitted to contract.json / contract.d.ts (both gitignored) by the
+// test/typecheck scripts.
+
+// **A namespace of its own, not `public`, and the reason is NOT the one
+// usually given.** The advice to avoid `public` is about PostgreSQL 14 and
+// earlier, where it was world-writable and any role could plant a shadowing
+// object; 15 revoked `CREATE` from `PUBLIC`, and measured on this repository's
+// own PostgreSQL 18 container `orders_app` already cannot create there. That
+// hazard is closed.
+//
+// What remains is that a shared database is the ordinary end state — an
+// application beside a queue, an analytics tool, or a second service on one
+// managed instance — and moving a live table between schemas later is a
+// migration with downtime risk, where declaring one now costs a block. Grants
+// scope to this schema rather than to every table in `public`, and nothing
+// depends on `search_path`.
+//
+// A `policy_*` block lives INSIDE the namespace it polices: `target` names the
+// model unqualified, and `target = orders.Order` from the top level fails emit
+// with `PSL_INVALID_EXTENSION_BLOCK_MEMBER`.
+namespace orders {
+  model Order {
+    id       Int    @id @default(autoincrement())
+    tenantId String
+    orderId  String
+    quantity Int
+
+    @@unique([tenantId, orderId])
+    @@rls
+  }
+
+  // The customers vertical, on the same shape: `customerId` is the business id
+  // the domain speaks, unique within its tenant.
+  //
+  // No `@@rls`, deliberately, and it is the same reason `OutboxMessage` has
+  // none: the customers procedures are unmarked, so they open no unit with a
+  // tenant to pin, and the adapter carries the tenant as an argument instead. A
+  // policy here would deny every row to a client nothing pinned.
+  model Customer {
+    id         Int    @id @default(autoincrement())
+    tenantId   String
+    customerId String
+    name       String
+
+    @@unique([tenantId, customerId])
+  }
+
+  // The transactional outbox: one row per fact worth broadcasting, written in
+  // the same transaction as the write it describes.
+  //
+  // The row IS the event envelope — `tenantId` (whose fact it is), `kind`
+  // (which sort of thing changed), `subjectId` (which one, and the key a reader
+  // compacts on), `occurredAt`, and `payload`. A NULL payload is the
+  // **tombstone**: the last word about a subject, saying it is gone. `id` is
+  // the sequence the relay publishes in, so a reader sees a subject's create
+  // before its tombstone. `publishedAt` is the relay's own bookkeeping — NULL
+  // means pending.
+  //
+  // The relay sweeps ACROSS tenants, which is why nothing here is scoped by one
+  // and why it carries no `@@rls`: it runs outside any unit, so there is no
+  // tenant pinned on its connection and a policy would deny it every row.
+  // `TimestamptzString`, not `Timestamptz`: the latter reads and writes
+  // `Temporal.Instant` and throws `RUNTIME.TEMPORAL_UNAVAILABLE` on a runtime
+  // with no `globalThis.Temporal`, which is every Node before 26.8.2 —
+  // including every version this repository supports. The `String` variants
+  // carry PostgreSQL's own text and need no polyfill; the adapter is where that
+  // text becomes the `Date` the port speaks.
+  model OutboxMessage {
+    id          Int                @id @default(autoincrement())
+    tenantId    String
+    kind        String
+    subjectId   String
+    payload     String?
+    occurredAt  TimestamptzString  @default(now())
+    publishedAt TimestamptzString?
+  }
+
+  // Row security is the DATABASE's answer to "whose row is this", and the
+  // application pins the tenant on the connection (see `tenantPinned` in
+  // `@btravstack/prisma/rls`). `policy_all` covers reads and writes alike:
+  // `using` filters what a statement may see, `withCheck` refuses a write that
+  // would put a row under another tenant — which is SQLSTATE 42501, a defect
+  // rather than a modeled failure, because the adapter closes over its tenant
+  // and cannot legitimately produce one.
+  policy_all order_tenant_isolation {
+    target    = Order
+    using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
+    withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
+  }
+}

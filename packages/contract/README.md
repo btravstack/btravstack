@@ -105,9 +105,31 @@ and a client that checked the flag holds the cursor with no null to widen it.
 `after` and `before` are a union in the type and refused as a pair by the
 schema: a page runs in one direction.
 
-An adapter builds one with `page(items, { previous, next })`, which derives
-the flags, and a controller turns a validated input into the port's
-`PageRequest` with `pageRequest(input)`.
+An adapter pages a listing with `keyset(request)`, which answers one object
+holding both halves of a keyset page — `take` (the page plus the one extra row
+that proves the next one), `backward`, `cursor`, and a `page` that folds what
+the store answered:
+
+<!-- doctest: prelude
+declare const store: {
+  seek: (keys: { take: number; backward: boolean; cursor: string | undefined }) =>
+    readonly { readonly id: number }[];
+};
+declare const request: import("@btravstack/contract").PageRequest;
+-->
+
+```ts
+import { keyset } from "@btravstack/contract";
+
+const keys = keyset(request);
+const listed = keys.page(store.seek(keys), (row) => String(row.id));
+```
+
+The over-fetch and the trim agree by construction, which is the whole reason
+they are one object. `keyset` does not run the query — that is the one thing
+this tier cannot express — and where a store reports both cursors itself,
+`page(items, { previous, next })` takes them directly. A controller turns a
+validated input into the port's `PageRequest` with `pageRequest(input)`.
 
 ## License
 

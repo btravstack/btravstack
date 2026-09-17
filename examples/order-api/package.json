@@ -45,7 +45,7 @@
     "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@orpc/tanstack-query": "catalog:",
-    "@prisma/adapter-pg": "catalog:",
+    "@prisma/orm-postgres": "catalog:",
     "@tanstack/query-core": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",

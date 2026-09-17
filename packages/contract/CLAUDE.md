@@ -27,6 +27,12 @@ package is what stops that promise from being a slogan. Filters and sorts are
 the next candidates and are **not** here: nothing has written the same one
 twice yet.
 
+`keyset` is the rule's own second clause firing: the page's ARITHMETIC had
+been written twice, by `examples/order-infrastructure`'s Prisma adapter and by
+`order-application`'s in-memory one, and the two disagreed about which side an
+over-fetched row proved. It is admitted as part of the page rather than as a
+new shape — the cursors it mints are the ones `page` already takes.
+
 ## The marker
 
 A marker a contract puts on a node — a record of procedures or a single
@@ -101,7 +107,15 @@ annotation at all.
 
 ## Specs
 
-`pagination.spec.ts` covers the page: the flags are derived from the cursors,
+`pagination.spec.ts`'s `keyset` block pages a store fixture end to end rather
+than asserting the arithmetic in isolation, because the arithmetic only means
+something against a seek: the fixture walks the direction it was given, resumes
+STRICTLY after the cursor and answers at most `take`, which is what every real
+store's cursor call promises. It covers the first page, a continued one, the
+last one, both backward cases, an empty listing reached from a cursor, the
+`item` route, and the `take`/trim agreement.
+
+The rest of `pagination.spec.ts` covers the page: the flags are derived from the cursors,
 every page `page()` builds parses against `pageOf` (all four), a cursor on a
 closed side is refused rather than stripped, the schema refuses both cursors
 at once, `PageLimits` applies and bounds, a filter survives the schema and the
@@ -157,6 +171,20 @@ because a side with no cursor is a side a caller cannot reach. `PageRequest`
 makes `after` and `before` a union, so a page runs in one direction by
 construction; `pageRequest(query)` is the crossing from the flat shape a
 schema validates into that union, carrying a listing's own filters through.
+
+`keyset(request)` is the arithmetic between those two, and what makes it
+correct rather than merely shared is that both halves ride **one object**: a
+store queried for `limit` and folded as though it had been queried for
+`limit + 1` reports the last page as having a next one, forever, and there is
+no way to spell that here. It is not a query builder and must not become one —
+the seek is every store's own, and the moment this package knows how to issue
+one it has taken a persistence opinion the tier exists to refuse.
+
+`item` is what lets the row a store pages by differ from the item a port hands
+back. It is defaulted to the row itself, and the default is a cast (`row as
+never`): TypeScript cannot see that `U` is `T` when the parameter is omitted,
+and every alternative — an overload pair, two named members — spells the same
+function twice.
 
 `pageOf(item)` is the four pages that exist, as four closed objects in a
 union — a union rather than an intersection because `allOf` of closed objects

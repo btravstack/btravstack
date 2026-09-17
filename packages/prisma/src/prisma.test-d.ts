@@ -5,22 +5,28 @@
 // too — one-way assignability would let it widen silently, which is exactly how
 // the observability ports would creep back in.
 import { Env, type ConfigInvalid } from "@btravstack/config";
-import type { Logger } from "@btravstack/core";
 import type { Module, ServiceOf } from "@btravstack/di";
-import type { PrismaPg } from "@prisma/adapter-pg";
 
-import { prismaDatabase } from "./prisma.js";
+import { prismaDatabase, type PrismaBinding } from "./prisma.js";
 
 type Expect<T extends true> = T;
 type Exactly<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
-/** A stand-in for the client a schema generates, with an extension applied. */
+/** A stand-in for the client an emitted contract types. */
 type Client = {
-  readonly $disconnect: () => Promise<void>;
-  readonly $queryRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
-  readonly order: { readonly tryFindMany: () => Promise<readonly string[]> };
+  readonly raw: {
+    readonly sql: (
+      strings: TemplateStringsArray,
+      ...values: readonly unknown[]
+    ) => { readonly affectedCount: () => unknown };
+  };
+  readonly runtime: () => {
+    readonly execute: (plan: unknown) => Promise<unknown>;
+    readonly close: () => Promise<void>;
+  };
+  readonly orm: { readonly orders: { readonly Order: { readonly all: () => Promise<string[]> } } };
 };
-declare const client: (adapter: PrismaPg) => Client;
+declare const client: (binding: PrismaBinding) => Client;
 
 const database = prismaDatabase("OrderDatabase")({ client });
 
@@ -35,14 +41,13 @@ type _Service = Expect<Exactly<ServiceOf<InstanceType<typeof database.port>>, Cl
 //    application are two ports rather than a duplicate-provider defect.
 type _PortId = Expect<Exactly<typeof database.port.portId, "OrderDatabase">>;
 
-// 3. `Env` and `Logger`, and NOTHING else — where the flag charged `Logger`,
-//    `Meter` and `Tracer`. Observation is a set port this module contributes
-//    its own no-op member to, so the telemetry ports are gone; `Logger` stays
-//    for exactly one line, the `debug` that says engine tracing is off because
-//    the optional peer is absent — a STARTUP fact, not an operation an
-//    observer could settle. The assertion is MUTUAL, so a port creeping back
-//    in fails here.
-type _Needs = Expect<Exactly<NeedsOf<typeof database>, Env | Logger>>;
+// 3. `Env`, and NOTHING else. `Logger` went with the engine: Prisma 8 has no
+//    engine to trace and ships no instrumentation package, so the one startup
+//    fact that needed a logger — "tracing is off because the optional peer is
+//    absent" — has nothing left to report. Observation is a set port this
+//    module contributes its own no-op member to. The assertion is MUTUAL, so a
+//    port creeping back in fails here.
+type _Needs = Expect<Exactly<NeedsOf<typeof database>, Env>>;
 
 // 4. The flag is gone, not deprecated: passing it is a compile error rather
 //    than a silently ignored option.
@@ -55,5 +60,5 @@ type _Error = Expect<Exactly<ErrorOf<typeof database>, ConfigInvalid>>;
 
 // 6. A client with no pool to close is refused: `PrismaLike` is the one thing
 //    the starter needs of it.
-// @ts-expect-error — no `$disconnect`, so the resourceful provider has nothing to release
-void prismaDatabase("Bad")({ client: () => ({ order: {} }) });
+// @ts-expect-error — no `runtime()`, so the resourceful provider has nothing to release
+void prismaDatabase("Bad")({ client: () => ({ orm: {} }) });

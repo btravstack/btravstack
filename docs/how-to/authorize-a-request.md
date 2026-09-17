@@ -296,12 +296,12 @@ second and leaves the first to the deployment.
 
 ## Underneath: the database refuses what the layers missed
 
-[`@btravstack/prisma/rls`](/reference/prisma)'s `tenantScoped(tenant)` pins
-every statement the unit issues — raw SQL included — to the tenant the fork was
-seeded with, through a transaction-local `set_config`. The
-`tenant_isolation` policy on the table, under `FORCE ROW LEVEL SECURITY`, is
-what narrows the query. Omission fails **closed**: an unpinned read matches no
-row rather than erroring, and an unpinned write is refused.
+[`@btravstack/prisma/rls`](/reference/prisma)'s `tenantPinned(db, tenant, work)`
+runs a unit of work in a transaction pinned to the tenant the fork was seeded
+with, through a transaction-local `set_config`. The policy the contract
+declares on the table — `@@rls` plus a `policy_all` block — is what narrows the
+query. Omission fails **closed**: an unpinned read matches no row rather than
+erroring, and an unpinned write is refused.
 
 It is the floor, not a fourth layer, because it answers a different question —
 not "may this caller", but "did anything at all say which tenant this statement
@@ -311,9 +311,11 @@ that escapes the unit-bound repository still matches nothing.
 
 Two deployment facts decide whether any of it is real, and forgetting either
 leaves row security that enforces nothing and looks fine: the policy must read
-the **same** setting `tenantScoped` was given, and the application role must be
-neither a superuser nor `BYPASSRLS`. Both, with the DDL and what each looks like
-when it is missing, are on
+the **same** setting `tenantPinned` was given, and the application role must be
+neither the table's **owner** nor a superuser nor `BYPASSRLS`. The owner matters
+because Prisma 8 emits `ENABLE ROW LEVEL SECURITY` and cannot express `FORCE`,
+which is what would have made a policy apply to it. Both, with the DDL and what
+each looks like when it is missing, are on
 [`@btravstack/prisma`](/reference/prisma#row-level-security-on-the-btravstack-prisma-rls-subpath).
 
 ## What is deliberately not here
@@ -362,8 +364,8 @@ them is the `data` — which is why the contract declares one at all.
   marker, the schemes behind it, and what a rejected caller gets.
 - [Open a per-request scope](/how-to/open-a-per-request-scope) — layer 2 in
   full: the fork, the kinds, and the gate on the kinds a root binds.
-- [`@btravstack/prisma`](/reference/prisma) — the floor: `tenantScoped`, the
-  policy DDL, and the role rule.
+- [`@btravstack/prisma`](/reference/prisma) — the floor: `tenantPinned`, the
+  contract-declared policy, and the role rule.
 - [`@btravstack/contract`](/reference/contract) — what the marker models, and
   why resource-dependent authorization is not part of it.
 - [Order API (HTTP)](/examples/order-api) — the deployment all four layers are

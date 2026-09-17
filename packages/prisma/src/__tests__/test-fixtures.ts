@@ -1,251 +1,171 @@
-import type { Attributes, LoggerService, Operation, Settle } from "@btravstack/core";
+import type { Attributes, Operation, Settle } from "@btravstack/core";
 import { test } from "vitest";
 
-/** What a `query` extension hands `$allOperations`, as this package uses it. */
-export type AllOperations = (args: {
-  readonly model: string | undefined;
-  readonly operation: string;
-  readonly args: unknown;
-  readonly query: (args: unknown) => Promise<unknown>;
-}) => Promise<unknown>;
+import type { SqlMiddlewareLike } from "../instrument.js";
 
-/** One statement the stub saw, as `$executeRaw` received it. */
-export type Statement = { readonly raw: string; readonly values: readonly unknown[] };
+/** One statement the stub was asked to run, as the raw lane built it. */
+export type Plan = {
+  readonly sql: string;
+  readonly values: readonly unknown[];
+  /** Which terminal built it — `execute` takes the first, `query` the second. */
+  readonly kind: "affectedCount" | "row";
+  /** The transaction it ran in, or `undefined` for one run on the client. */
+  readonly tx: number | undefined;
+};
 
-/** One `$transaction` the extension issued through the stub. */
-export type Issued =
-  | {
-      readonly kind: "batch";
-      readonly statements: readonly (Statement | { readonly op: string })[];
-    }
-  | { readonly kind: "interactive"; readonly pinned: Statement | undefined };
+/** What a transaction callback is handed: somewhere to run a plan. */
+export type StubTx = { readonly query: (plan: unknown) => Promise<unknown> };
 
 export type StubClient = {
-  readonly $disconnect: () => Promise<void>;
-  readonly $queryRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
-  readonly $executeRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<number>;
-  readonly $transaction: (arg: unknown, options?: unknown) => Promise<unknown>;
-  /** Makes the next `$queryRaw` reject, so the health check can be driven down. */
+  readonly raw: {
+    readonly sql: (
+      strings: TemplateStringsArray,
+      ...values: readonly unknown[]
+    ) => {
+      readonly affectedCount: () => { readonly build: () => unknown };
+      readonly returnsRow: (spec: Readonly<Record<string, string>>) => {
+        readonly build: () => unknown;
+      };
+    };
+  };
+  readonly runtime: () => {
+    readonly execute: (plan: unknown) => Promise<unknown>;
+    readonly query: (plan: unknown) => Promise<unknown>;
+    readonly close: () => Promise<void>;
+  };
+  readonly transaction: <R>(fn: (tx: StubTx) => PromiseLike<R>) => Promise<R>;
+  /** Makes every statement reject, so the health check can be driven down. */
   readonly breakQueries: (reason: string) => void;
   /**
    * The same, with whatever the driver felt like rejecting. A driver is not
    * obliged to reject with an `Error`, and the health check has an arm for it.
    */
   readonly breakQueriesWith: (cause: unknown) => void;
-  /**
-   * Answers a NEW client carrying the extension's hooks stacked over the ones
-   * already there, as Prisma's own does. Statements on it route through the
-   * top-level hook; statements on the client it was called on do not — which is
-   * what makes an extension's choice of client observable.
-   */
-  readonly $extends: (extension: unknown) => StubClient;
-  readonly disconnected: () => number;
+  /** What the starter bound: the URL it read, and the middleware it passed. */
   readonly url: string;
-  /** Drives this client's `$allModels` hook, as Prisma would on a model call. */
-  readonly query: (model: string, operation: string, answer: Promise<unknown>) => Promise<unknown>;
-  /** Drives this client's top-level `$allOperations` hook. */
-  readonly operation: (
-    model: string | undefined,
-    operation: string,
-    answer: Promise<unknown>,
-  ) => Promise<unknown>;
-  /** How many times a top-level hook has run, over every client of this family. */
-  readonly operations: () => number;
-  /** What the stub's batch `$transaction` resolves with. */
-  readonly resolveBatchWith: (results: readonly unknown[]) => void;
-  /** Every `$transaction` issued through this family of clients. */
-  readonly issued: () => readonly Issued[];
+  readonly middleware: readonly SqlMiddlewareLike[];
+  /** How many times the pool was closed, over every client this factory made. */
+  readonly closed: () => number;
+  /** Every plan run, in order — the order the pin depends on. */
+  readonly ran: () => readonly Plan[];
 };
-
-/** A `$executeRaw` / `query` promise, tagged so the batch can be read back. */
-type Tagged = Promise<unknown> & { statement?: Statement; op?: string };
-
-const statementOf = (element: unknown): Statement | { readonly op: string } => {
-  const tagged = element as Tagged;
-  return tagged.statement ?? { op: tagged.op ?? "untagged" };
-};
-
-const tag = <T>(promise: Promise<T>, marks: { statement?: Statement; op?: string }): Promise<T> =>
-  Object.assign(promise, marks);
 
 /**
- * Stacks a newly applied hook over the one already on the client, as Prisma
- * does: the last extension applied is the OUTERMOST, and its `query` call is
- * what lets the one under it run.
+ * One observed operation, as an observer saw it settle.
+ *
+ * `attributes` and `details` are kept APART rather than merged, which is what
+ * makes the bounded/unbounded split assertable: an attribute rides the
+ * instruments, so a spec that flattened the two could not catch a row count
+ * minting a time series per value.
  */
-const chain = (
-  outer: AllOperations | undefined,
-  inner: AllOperations | undefined,
-): AllOperations | undefined =>
-  outer === undefined || inner === undefined
-    ? (outer ?? inner)
-    : (params) =>
-        outer({ ...params, query: (args) => inner({ ...params, args, query: params.query }) });
-
-/** One observed operation, as an observer saw it settle. */
 export type Observation = {
   readonly component: string;
   readonly name: string;
   readonly attributes: Attributes;
+  readonly details: Attributes;
   readonly outcome: "ok" | "error";
   readonly failed: boolean;
   readonly traced: boolean;
 };
 
-export type Logs = {
-  readonly logger: LoggerService;
-  /** Every `debug` message written — the one level `loadPrismaInstrumentation` uses. */
-  readonly debug: () => readonly string[];
-};
-
 export type Observed = {
-  /** The set a spec hands `instrument` and `loadPrismaInstrumentation`. */
+  /** The set a spec hands `queryObserver`. */
   readonly members: readonly ((operation: Operation) => Settle)[];
   readonly taken: () => readonly Observation[];
 };
 
+/** A Prisma 8 `SqlQueryError`, as the qualifier reads one. */
+export type SqlErrorOf = (
+  sqlState: string,
+  extra?: Readonly<Record<string, string>>,
+) => Error & { readonly sqlState: string };
+
+export type Stub = {
+  readonly client: (binding: {
+    readonly url: string;
+    readonly middleware: readonly SqlMiddlewareLike[];
+  }) => StubClient;
+  readonly last: () => StubClient | undefined;
+};
+
 /**
- * A stand-in for a generated Prisma client that captures the `query` extension
- * this package applies, so a spec can drive it the way Prisma would. The
- * starter owns the pool's lifetime and the wrapper; a real client would be
- * testing Prisma.
+ * A stand-in for a Prisma 8 client: it records what the starter bound, what
+ * statements ran and in which transaction. The starter owns the pool's lifetime
+ * and the middleware it passes; a real client would be testing Prisma.
  */
-export const it = test.extend<{ stub: Stub; observed: Observed; logs: Logs }>({
-  stub: async ({}, use) => {
-    let last: StubClient | undefined;
-    let count = 0;
-    const make = (url: string): StubClient => {
-      let queryFailure: { readonly cause: unknown } | undefined;
-      let batch: readonly unknown[] = [1, undefined];
-      let operations = 0;
-      const issued: Issued[] = [];
-
-      const rawQuery = () =>
-        queryFailure === undefined
-          ? Promise.resolve([{ "?column?": 1 }])
-          : Promise.reject(queryFailure.cause);
-
-      const rawExecute = (query: TemplateStringsArray, ...values: unknown[]) =>
-        tag(Promise.resolve(1), { statement: { raw: query.join("?"), values } });
-
-      const build = (hooks: {
-        readonly models?: AllOperations | undefined;
-        readonly all?: AllOperations | undefined;
-        readonly override?: ((arg: unknown, options?: unknown) => Promise<unknown>) | undefined;
-      }): StubClient => {
-        /** Every statement this client issues, through its own top-level hook if it has one. */
-        const drive = (
-          model: string | undefined,
-          operation: string,
-          run: () => Promise<unknown>,
-        ) => {
-          const all = hooks.all;
-          if (all === undefined) return run();
-          operations += 1;
-          return all({
-            model,
-            operation,
-            args: {},
-            query: () => tag(run(), { op: operation }),
-          });
-        };
-
-        const transact = (arg: unknown): Promise<unknown> => {
-          if (Array.isArray(arg)) {
-            issued.push({ kind: "batch", statements: arg.map(statementOf) });
-            return Promise.resolve(batch);
-          }
-          const entry: { kind: "interactive"; pinned: Statement | undefined } = {
-            kind: "interactive",
-            pinned: undefined,
-          };
-          issued.push(entry);
-          // `tx` carries the hooks of the client `$transaction` was called on
-          // and nothing added after it, exactly as Prisma's does — which is why
-          // `tenantScoped` must be applied last, and why its own hook never
-          // sees a statement inside its own transaction.
-          const inner = build(hooks);
-          const tx: StubClient = {
-            ...inner,
-            $executeRaw: (query, ...values) => {
-              entry.pinned ??= { raw: query.join("?"), values };
-              return inner.$executeRaw(query, ...values);
-            },
-          };
-          return (arg as (tx: unknown) => Promise<unknown>)(tx);
-        };
-
-        const client: StubClient = {
-          $queryRaw: (_query, ..._values) => drive(undefined, "$queryRaw", rawQuery),
-          $executeRaw: (query, ...values) =>
-            drive(undefined, "$executeRaw", () => rawExecute(query, ...values)) as Promise<number>,
-          $transaction: (arg, options) =>
-            hooks.override === undefined
-              ? transact(arg)
-              : hooks.override.call(client, arg, options),
-          breakQueries: (reason: string) => {
-            queryFailure = { cause: new Error(reason) };
-          },
-          breakQueriesWith: (cause: unknown) => {
-            queryFailure = { cause };
-          },
-          $disconnect: () => {
-            count += 1;
-            return Promise.resolve();
-          },
-          $extends: (extension) => {
-            const ext = extension as {
-              readonly query?: {
-                readonly $allModels?: { readonly $allOperations?: AllOperations };
-                readonly $allOperations?: AllOperations;
-              };
-              readonly client?: {
-                readonly $transaction?: (arg: unknown, options?: unknown) => Promise<unknown>;
-              };
-            };
-            return build({
-              models: chain(ext.query?.$allModels?.$allOperations, hooks.models),
-              all: chain(ext.query?.$allOperations, hooks.all),
-              override: ext.client?.$transaction ?? hooks.override,
-            });
-          },
-          disconnected: () => count,
-          url,
-          query: (model, operation, answer) =>
-            hooks.models === undefined
-              ? answer
-              : hooks.models({ model, operation, args: {}, query: () => answer }),
-          operation: (model, operation, answer) => drive(model, operation, () => answer),
-          operations: () => operations,
-          resolveBatchWith: (results) => {
-            batch = results;
-          },
-          issued: () => issued,
-        };
-        return client;
-      };
-
-      last = build({});
-      return last;
-    };
-    await use({ client: make, last: () => last });
+export const it = test.extend<{ stub: Stub; observed: Observed; sqlError: SqlErrorOf }>({
+  // oxlint-disable-next-line no-empty-pattern -- see below
+  sqlError: async ({}, use) => {
+    await use((sqlState, extra) =>
+      Object.assign(new Error(`refused: ${sqlState}`), { sqlState, ...extra }),
+    );
   },
 
-  // oxlint-disable-next-line no-empty-pattern -- see above
-  logs: async ({}, use) => {
-    const debug: string[] = [];
-    const logger = {
-      log: () => {},
-      trace: () => {},
-      debug: (message: string) => debug.push(message),
-      info: () => {},
-      warn: () => {},
-      error: () => {},
-      fatal: () => {},
-      with: () => logger,
-      isEnabled: () => true,
-    } as unknown as LoggerService;
-    await use({ logger, debug: () => debug });
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  stub: async ({}, use) => {
+    let last: StubClient | undefined;
+    let closed = 0;
+
+    const make = (binding: {
+      readonly url: string;
+      readonly middleware: readonly SqlMiddlewareLike[];
+    }): StubClient => {
+      let failure: { readonly cause: unknown } | undefined;
+      let transactions = 0;
+      const ran: Plan[] = [];
+
+      // The plan a terminal builds carries its own text; running it is what
+      // appends to `ran`, so a plan built and never run is invisible — which is
+      // what makes "the pin ran FIRST, inside the transaction" assertable.
+      const planOf = (
+        strings: TemplateStringsArray,
+        values: readonly unknown[],
+        kind: Plan["kind"],
+      ): Plan => ({ sql: strings.join("?"), values, kind, tx: undefined });
+
+      const run = (plan: unknown, tx: number | undefined): Promise<unknown> => {
+        ran.push({ ...(plan as Plan), tx });
+        return failure === undefined
+          ? Promise.resolve([{ pinned: "ok" }])
+          : Promise.reject(failure.cause);
+      };
+
+      const client: StubClient = {
+        raw: {
+          sql: (strings, ...values) => ({
+            affectedCount: () => ({ build: () => planOf(strings, values, "affectedCount") }),
+            returnsRow: () => ({ build: () => planOf(strings, values, "row") }),
+          }),
+        },
+        runtime: () => ({
+          execute: (plan) => run(plan, undefined),
+          query: (plan) => run(plan, undefined),
+          close: () => {
+            closed += 1;
+            return Promise.resolve();
+          },
+        }),
+        transaction: async (fn) => {
+          transactions += 1;
+          const id = transactions;
+          return fn({ query: (plan) => run(plan, id) });
+        },
+        breakQueries: (reason) => {
+          failure = { cause: new Error(reason) };
+        },
+        breakQueriesWith: (cause) => {
+          failure = { cause };
+        },
+        url: binding.url,
+        middleware: binding.middleware,
+        closed: () => closed,
+        ran: () => ran,
+      };
+      last = client;
+      return client;
+    };
+
+    await use({ client: make, last: () => last });
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above
@@ -258,7 +178,8 @@ export const it = test.extend<{ stub: Stub; observed: Observed; logs: Logs }>({
             taken.push({
               component,
               name,
-              attributes: { ...attributes, ...details, ...settled },
+              attributes: { ...attributes, ...settled },
+              details: { ...details },
               outcome,
               failed: cause !== undefined,
               traced: traced !== false,
@@ -269,8 +190,3 @@ export const it = test.extend<{ stub: Stub; observed: Observed; logs: Logs }>({
     });
   },
 });
-
-export type Stub = {
-  readonly client: (connectionString: string) => StubClient;
-  readonly last: () => StubClient | undefined;
-};

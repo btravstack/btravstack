@@ -93,7 +93,7 @@
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",
     "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/sdk-node": "^0.221.0",
+    "@opentelemetry/sdk-node": "^0.222.0",
     "pino": "^10",
     "unthrown": "^5.0.0"
   },

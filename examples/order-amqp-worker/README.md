@@ -67,7 +67,7 @@ refuses it, naming the exact port — a compile error, not a runtime surprise.
 ## The pattern, in three places
 
 **The write** is `OrderRepository.save` in `order-infrastructure`: the order
-row and its `OutboxMessage` row commit in one `$tryTransaction`. There is no
+row and its `OutboxMessage` row commit in one `db.transaction`. There is no
 "publish after save" call to forget, and no window where the order exists but
 the fact of it is lost — the failure mode the naive `save(); publish();`
 sequence carries by construction.

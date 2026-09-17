@@ -34,9 +34,9 @@ const workspace = fileURLToPath(new URL("../", import.meta.url));
 /**
  * The vitest `globalSetup` every workspace that boots the example application
  * registers: the shared PostgreSQL server comes up, and the committed migrations
- * are applied with **`prisma migrate deploy`** — the literal command a
- * deployment runs. `_prisma_migrations` makes running it again a no-op, and
- * {@link withLock} stops two workspaces' runs racing to be first.
+ * are applied with **`prisma db migrate`** — the literal command a deployment
+ * runs. The marker in `prisma_contract.marker` makes running it again a no-op,
+ * and {@link withLock} stops two workspaces' runs racing to be first.
  *
  * Nothing here truncates or drops anything: each test works inside a **tenant of
  * its own**, so there is nothing to clean and no order they must run in.
@@ -50,7 +50,7 @@ export default async ({ provide }: TestProject): Promise<() => void> => {
   const ownerUrl = postgresUrl(postgres, ORDERS_DATABASE);
 
   await withLock("orders-migrate", () =>
-    run("pnpm", ["exec", "prisma", "migrate", "deploy"], {
+    run("pnpm", ["exec", "prisma", "db", "migrate"], {
       cwd: workspace,
       env: { ...process.env, DATABASE_URL: ownerUrl },
     }),

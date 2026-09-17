@@ -1,98 +1,99 @@
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { instrument } from "./instrument.js";
+import { queryObserver } from "./instrument.js";
 
-describe("instrument", () => {
-  it("hands the caller's own value straight back", async ({ stub, observed }) => {
-    // GIVEN an observed client
-    const client = instrument(stub.client("postgres://localhost/orders"), observed.members);
+const ctx = (id: string, scope?: "runtime" | "transaction") => ({
+  planExecutionId: id,
+  ...(scope === undefined ? {} : { scope }),
+});
 
-    // WHEN a query runs to completion
-    const answer = await client.query("Order", "findMany", Promise.resolve(["a"]));
+describe("queryObserver", () => {
+  it("spans the query rather than reporting it after the fact", async ({ observed }) => {
+    // GIVEN the starter's middleware over a recording observer
+    const hook = queryObserver(observed.members);
 
-    // THEN the wrapper is transparent
-    expect(answer).toEqual(["a"]);
-  });
+    // WHEN a query runs: started before the driver, settled after
+    await hook.beforeQuery({ sql: "SELECT 1" }, ctx("a", "transaction"));
+    await hook.afterQuery({}, { completed: true, source: "driver" }, ctx("a"));
 
-  it("observes a query that answers, and opens no span", async ({ stub, observed }) => {
-    // GIVEN an observed client
-    const client = instrument(stub.client("postgres://localhost/orders"), observed.members);
-
-    // WHEN a query runs to completion
-    await client.query("Order", "findMany", Promise.resolve(["a"]));
-
-    // THEN the call is recorded untraced, because `@prisma/instrumentation`
-    // traces at the ENGINE level and a second client-level span would carry
-    // strictly less
+    // THEN the operation was OPEN across the query, which is what lets an
+    // observer put a span around it — and the statement rides `details`, where
+    // an unbounded value belongs, while the bounded pair are attributes
     expect(observed.taken()).toEqual([
       {
         component: "database",
-        name: "findMany",
-        attributes: { model: "Order", operation: "findMany" },
+        name: "query",
+        attributes: { scope: "transaction", source: "driver" },
+        details: { sql: "SELECT 1" },
         outcome: "ok",
         failed: false,
-        traced: false,
+        traced: true,
       },
     ]);
   });
 
-  it("lets a rejection reach the caller unchanged", async ({ stub, observed }) => {
-    // GIVEN an observed client and a query that will reject
-    const client = instrument(stub.client("postgres://localhost/orders"), observed.members);
+  it("settles a failed query as an error, which is what keeps RED honest", async ({ observed }) => {
+    // GIVEN a query in flight
+    const hook = queryObserver(observed.members);
+    await hook.beforeQuery({ sql: "INSERT …" }, ctx("b"));
+
+    // WHEN it does not complete — measured against a real database, a duplicate
+    // insert reaches the hook this way before the rejection surfaces
+    await hook.afterQuery({}, { completed: false }, ctx("b"));
+
+    // THEN the outcome says so: a failed query counted beside the successes is
+    // the one an operator most needs to see
+    expect(observed.taken()).toEqual([
+      expect.objectContaining({ outcome: "error", attributes: { scope: "runtime" } }),
+    ]);
+  });
+
+  it("observes the WRITE lane too, which has hooks of its own", async ({ observed }) => {
+    // GIVEN a statement with no `RETURNING` — a SQL-builder `delete()` run
+    // through `runtime().execute(plan)`
+    const hook = queryObserver(observed.members);
 
     // WHEN it runs
-    const rejected = await client
-      .query("Order", "create", Promise.reject(new Error("deadlock detected")))
-      .then(() => "resolved")
-      .catch(() => "rejected");
+    await hook.beforeExecute({ sql: "DELETE FROM …" }, ctx("c"));
+    await hook.afterExecute({}, { completed: true }, ctx("c"));
 
-    // THEN the wrapper is transparent on the failure path too
-    expect(rejected).toBe("rejected");
-  });
-
-  it("observes a query that rejects, carrying the cause", async ({ stub, observed }) => {
-    // GIVEN an observed client and a query that will reject
-    const client = instrument(stub.client("postgres://localhost/orders"), observed.members);
-
-    // WHEN it runs
-    await client
-      .query("Order", "create", Promise.reject(new Error("deadlock detected")))
-      .catch(() => undefined);
-
-    // THEN the failure was observed with the cause an observer needs to write
-    // a line about it
+    // THEN it is observed. Implementing only the query hooks would leave every
+    // non-returning write invisible, which is the half a RED dashboard would
+    // never notice was missing
     expect(observed.taken()).toEqual([
-      {
-        component: "database",
-        name: "create",
-        attributes: { model: "Order", operation: "create" },
-        outcome: "error",
-        failed: true,
-        traced: false,
-      },
+      expect.objectContaining({ outcome: "ok", details: { sql: "DELETE FROM …" } }),
     ]);
   });
 
-  it("names a raw query `raw`, since it belongs to no model", async ({ stub, observed }) => {
-    // GIVEN an observed client
-    const client = instrument(stub.client("postgres://localhost/orders"), observed.members);
+  it("keeps two statements in flight apart, by the runtime's own id", async ({ observed }) => {
+    // GIVEN two overlapping statements
+    const hook = queryObserver(observed.members);
+    await hook.beforeQuery({ sql: "first" }, ctx("one"));
+    await hook.beforeQuery({ sql: "second" }, ctx("two"));
 
-    // WHEN a query with no model runs
-    await client.query(undefined as unknown as string, "$queryRaw", Promise.resolve([]));
+    // WHEN they settle out of order, one failing
+    await hook.afterQuery({}, { completed: false }, ctx("two"));
+    await hook.afterQuery({}, { completed: true }, ctx("one"));
 
-    // THEN the dimension is `raw` rather than absent, so the series is still
-    // groupable by model — asserted on the whole record, since a partial match
-    // would pass just as well with a second observation beside it
+    // THEN each settled its OWN operation: `planExecutionId` is what pairs a
+    // `before` with its `after`, and a single pending slot would have crossed
+    // the outcomes
     expect(observed.taken()).toEqual([
-      {
-        component: "database",
-        name: "$queryRaw",
-        attributes: { model: "raw", operation: "$queryRaw" },
-        outcome: "ok",
-        failed: false,
-        traced: false,
-      },
+      expect.objectContaining({ details: { sql: "second" }, outcome: "error" }),
+      expect.objectContaining({ details: { sql: "first" }, outcome: "ok" }),
     ]);
+  });
+
+  it("ignores an `after` for a statement it never saw start", async ({ observed }) => {
+    // GIVEN a middleware added to a client mid-flight, so an `after` arrives
+    // with no `before` behind it
+    const hook = queryObserver(observed.members);
+
+    // WHEN that `after` runs
+    await hook.afterQuery({}, { completed: true }, ctx("unknown"));
+
+    // THEN nothing is reported, rather than an operation with no beginning
+    expect(observed.taken()).toEqual([]);
   });
 });

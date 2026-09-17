@@ -126,7 +126,8 @@ covered, or the call is refused. See
 
 **pinned** — Of a statement: carrying the tenant setting inside its own transaction, so
 a row-level-security policy reading `current_setting('app.tenant_id', true)`
-can narrow it. `tenantScoped(tenant)` pins every statement; an **unpinned**
+can narrow it. `tenantPinned(db, tenant, work)` pins the transaction its work
+runs in; an **unpinned**
 read matches no row rather than erroring, and an unpinned write is refused with
 `42501`. See
 [`@btravstack/prisma`](/reference/prisma).

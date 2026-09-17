@@ -6,24 +6,24 @@ description: "Compose the Prisma starter, declare a repository port, write the a
 <!-- doctest: group=order-api -->
 <!-- doctest: prelude
 import { Env } from "@btravstack/config";
-import { Logger } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
-import { prismaDatabase } from "@btravstack/prisma";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { ErrAsync, OkAsync, TaggedError, fromPromise, type AsyncResult } from "unthrown";
+import { prismaDatabase, type PrismaBinding } from "@btravstack/prisma";
+import { tryQuery } from "@btravstack/prisma/result";
+import { TaggedError, P, fromNullable, type AsyncResult } from "unthrown";
 
-// The stand-in for the client YOUR schema generates — there is no such type in
+// The stand-in for the client YOUR contract types — there is no such type in
 // the starter, which is the whole point of the `client` arrow.
-declare class PrismaClient {
-  constructor(options: { readonly adapter: PrismaPg });
-  $disconnect(): Promise<void>;
-  $queryRaw(query: TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
-  order: {
-    findUnique(args: {
-      where: { readonly id: string };
-    }): Promise<{ readonly id: string; readonly quantity: number } | null>;
+type OrderRow = { readonly id: string; readonly quantity: number };
+declare const postgres: (options: PrismaBinding & { readonly contractJson: unknown }) => {
+  readonly raw: { readonly sql: unknown };
+  readonly runtime: unknown;
+  readonly orm: {
+    readonly orders: {
+      readonly Order: { readonly first: (pk: { readonly id: string }) => Promise<OrderRow | null> };
+    };
   };
-}
+};
+declare const contractJson: unknown;
 -->
 
 # Talk to a database
@@ -35,22 +35,24 @@ declare class PrismaClient {
 ## 1. Compose the starter
 
 `prismaDatabase(name)({ client })` is a **module**: it binds `DATABASE_URL`
-through `Config`, builds the Postgres driver adapter from it, and holds your
-client as a resourceful provider whose `release` closes the pool on every exit
-path.
+through `Config`, hands it to your client factory along with its own
+middleware, and holds the result as a resourceful provider whose `release`
+closes the pool on every exit path.
 
 ```ts
 export const database = prismaDatabase("OrderDatabase")({
-  client: (adapter) => new PrismaClient({ adapter }),
+  client: ({ url, middleware }) => postgres({ contractJson, url, middleware }),
 });
 ```
 
-The `client` arrow is the one thing the starter cannot own: a Prisma client is
-generated from **your** schema, so there is no client type to ship. Whatever
-you return is what the port carries — apply
-[`@unthrown/prisma`](https://github.com/btravstack/unthrown)'s extension here
-too, if you want the `try*` twins, and the graph holds the extended client
-rather than a bare one.
+The `client` arrow is the one thing the starter cannot own: a Prisma 8 client
+is typed by **your** emitted `Contract` and built from **your**
+`contract.json`, so there is no client type to ship. Whatever you return is
+what the port carries.
+
+Spread `middleware` into the client rather than dropping it: that is the
+starter's own `afterQuery` hook, and it is where the per-query observation
+below comes from.
 
 ## 2. Declare the port your domain speaks
 
@@ -80,19 +82,22 @@ export const prismaOrderRepository = Provider(OrderRepository)({
   inject: { db: database.port },
   sync: ({ db }) => ({
     find: (id) =>
-      fromPromise(
-        db.order.findUnique({ where: { id } }),
-        // `fromPromise`'s second argument decides what a rejection becomes.
-        // A driver failure is nobody's modeled outcome, so it goes to the
-        // defect channel rather than arriving as an `OrderNotFound` the
-        // caller would read as "no such order".
-        (cause, defect) => defect(cause),
-      ).flatMap((row) =>
-        row === null
-          ? // A miss IS a modeled outcome, and this is where it becomes one.
-            ErrAsync(new OrderNotFound({ id }))
-          : OkAsync({ id: row.id, quantity: row.quantity }),
-      ),
+      // `tryQuery` takes a THUNK, so the query starts inside the Result rather
+      // than before it, and turns the database's SQLSTATEs into tagged errors.
+      tryQuery(() => db.orm.orders.Order.first({ id }))
+        .mapErrCases((matcher, defect) =>
+          // None of them is a modeled outcome of "find an order", so they go
+          // to the defect channel rather than arriving as an `OrderNotFound`
+          // the caller would read as "no such order".
+          matcher.with(
+            P.tag("UniqueConstraintViolation"),
+            P.tag("ForeignKeyViolation"),
+            P.tag("NotAuthorized"),
+            (cause) => defect(cause),
+          ),
+        )
+        // A miss IS a modeled outcome, and this is where it becomes one.
+        .flatMap((row) => fromNullable(row, () => new OrderNotFound({ id })).toAsync()),
   }),
 });
 ```
@@ -108,7 +113,7 @@ export const PersistenceModule = Module("Persistence")({
   imports: [database],
   provides: [prismaOrderRepository],
   exports: [OrderRepository],
-  needs: [Env, Logger],
+  needs: [Env],
 });
 ```
 
@@ -116,14 +121,15 @@ export const PersistenceModule = Module("Persistence")({
 application sees. The client port itself stays private unless you export it —
 nothing outside this module should hold a Prisma client.
 
-The module needs `Env` (for `DATABASE_URL`) and `Logger` (for the one `debug`
-line the starter writes when engine tracing's optional peer is absent). Both
-are satisfied at the composition root, and the kernel provides `Env` itself.
+The module needs `Env`, for `DATABASE_URL`, and nothing else — the kernel
+provides it. The starter needed a `Logger` under Prisma 7, for one `debug` line
+about engine tracing's optional peer; Prisma 8 has no engine and no such
+package, so that need went with it.
 
 ## 5. Migrations run before the process, never at boot
 
 ```sh
-npx prisma migrate deploy
+npx prisma db migrate
 ```
 
 That is a deployment step — a Job or a release command that runs to completion
@@ -134,25 +140,66 @@ pods, three migrations, one of them losing.
 ## 6. Scope it to the tenant
 
 If the application is multi-tenant, a `tenantId` in every `where` the adapter
-writes is a filter someone has to remember.
-`@btravstack/prisma/rls`'s `tenantScoped(tenant)` moves that guarantee
-into PostgreSQL: applied **last** on the client, it pins every statement to
-`tenant` through a transaction-local `set_config`, and a row-level-security
-policy on the table is what narrows the query — so the tenant **predicate**
-leaves that table's reads and writes, and forgetting to name it stops being a
-way to read someone else's rows.
-`examples/order-infrastructure/src/prisma-order-repository.ts`'s `list` is the
-worked case, and it names no tenant at all. The **column** and the **key** stay:
-`save` still writes `tenantId` in its `data`, and `find` and `remove` still
-address the composite `tenantId_orderId`.
+writes is a filter someone has to remember. Row-level security moves that
+guarantee into PostgreSQL, and both halves are declared rather than written by
+hand.
 
-The extension is one line; the DDL is the deployment's, and forgetting a piece
-of it fails quietly rather than loudly. Both halves, with what each looks like
-when it is missing, are on
-[the reference page](/reference/prisma). The worked application is
-`examples/order-infrastructure` — the client in `src/database.ts`, the policy in
-`prisma/migrations/20260906120000_order_rls/`, and `src/rls.spec.ts` proving it
-against a real server.
+**The policy is in the contract**, so the planner emits it like any other
+operation:
+
+```prisma
+namespace orders {
+  model Order {
+    id       Int    @id @default(autoincrement())
+    tenantId String
+    orderId  String
+
+    @@unique([tenantId, orderId])
+    @@rls
+  }
+
+  policy_all order_tenant_isolation {
+    target    = Order
+    using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
+    withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
+  }
+}
+```
+
+The `policy_*` block lives **inside** the namespace it polices and names its
+target unqualified; `target = orders.Order` from the top level fails emit with
+`PSL_INVALID_EXTENSION_BLOCK_MEMBER`.
+
+**The pin is a transaction**, from `@btravstack/prisma/rls`:
+
+<!-- doctest: isolate
+import { tenantPinned } from "@btravstack/prisma/rls";
+import type { OrderDatabaseClient } from "@btravstack/example-order-infrastructure";
+
+declare const db: OrderDatabaseClient;
+declare const tenant: string;
+-->
+
+```ts
+const orders = await tenantPinned(db, tenant, (tx) => tx.orm.orders.Order.all());
+```
+
+`set_config(..., true)` is transaction-local, which is why this opens one
+rather than handing back a pinned client: a session-scoped pin works only
+while the pool happens to return the same connection, and fails silently the
+first time it does not. Inside it the tenant **predicate** leaves that table's
+reads and writes — `examples/order-infrastructure`'s `list` names no tenant at
+all — and forgetting to name it stops being a way to read someone else's rows.
+The **column** and the **key** stay: `save` still writes `tenantId`, and `find`
+and `remove` still address `(tenantId, orderId)`.
+
+**Two things are still yours**, and both fail quietly rather than loudly:
+Prisma 8 authors policies but not `GRANT`s, and it emits `ENABLE ROW LEVEL
+SECURITY` with no way to say `FORCE` — so the table's **owner bypasses every
+policy**. Connect as a non-owner role. Both, with what each looks like when it
+is missing, are on [the reference page](/reference/prisma); the worked
+application is `examples/order-infrastructure`, with `src/rls.spec.ts` proving
+it against a real server as a `NOSUPERUSER NOBYPASSRLS` role.
 
 It is the **floor** under the three layers that decide who a caller is and what
 they may do, not a replacement for any of them:
@@ -165,13 +212,13 @@ they may do, not a replacement for any of them:
   for — not a crash on the first query.
 - **The pool closed on every exit path**, including a boot that failed after it
   opened.
-- **A health check** named after the starter, `SELECT 1` through `$queryRaw`,
+- **A health check** named after the starter, `SELECT 1` through the raw lane,
   folded into the kernel's `/healthz` with nothing wired.
 - **Every query counted and its failures logged**, through the `Observers` set
   port — compose `observability()` and `otel()` beside it and the instruments
-  appear; compose neither and it costs one inert call.
-- **Engine-level tracing** when `@prisma/instrumentation` is installed, turned
-  on by an OTel SDK being composed rather than by anything you write.
+  appear; compose neither and it costs one inert call. The starter's middleware
+  is what reports them, so it sees the ORM lane, the SQL builder and the raw
+  lane alike, with the runtime's own `latencyMs`.
 
 ## Testing it
 

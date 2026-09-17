@@ -50,11 +50,21 @@
         "default": "./dist/rls.cjs"
       }
     },
+    "./result": {
+      "import": {
+        "types": "./dist/result.d.mts",
+        "default": "./dist/result.mjs"
+      },
+      "require": {
+        "types": "./dist/result.d.cts",
+        "default": "./dist/result.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsdown src/index.ts src/rls.ts --format cjs,esm --dts --clean",
-    "dev": "tsdown src/index.ts src/rls.ts --format cjs,esm --dts --watch",
+    "build": "tsdown src/index.ts src/rls.ts src/result.ts --format cjs,esm --dts --clean",
+    "dev": "tsdown src/index.ts src/rls.ts src/result.ts --format cjs,esm --dts --watch",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
   },
@@ -63,9 +73,7 @@
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
-    "@prisma/adapter-pg": "catalog:",
-    "@prisma/client": "catalog:",
-    "@prisma/instrumentation": "catalog:",
+    "@prisma/orm-postgres": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
@@ -78,18 +86,8 @@
     "@btravstack/config": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",
-    "@prisma/adapter-pg": "^7.0.0",
-    "@prisma/client": "^7.10.0",
-    "@prisma/instrumentation": "^7.0.0",
+    "@prisma/orm-postgres": "^8.0.0-rc.11",
     "unthrown": "^5.0.0"
-  },
-  "peerDependenciesMeta": {
-    "@prisma/client": {
-      "optional": true
-    },
-    "@prisma/instrumentation": {
-      "optional": true
-    }
   },
   "engines": {
     "node": ">=22"

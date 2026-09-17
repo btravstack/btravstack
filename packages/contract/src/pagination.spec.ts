@@ -2,7 +2,7 @@ import { describe, expect } from "vitest";
 import { z } from "zod";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { page, pageRequest } from "./index.js";
+import { keyset, page, pageRequest } from "./index.js";
 import { pageOf, pageRequestOf } from "./zod.js";
 
 describe("page", () => {
@@ -141,5 +141,158 @@ describe("pageRequest", () => {
 
     // THEN one direction wins and the function stays total
     expect(narrowed).toEqual({ limit: 20, before: "b" });
+  });
+});
+
+describe("keyset", () => {
+  it("opens a listing with a next cursor and no way back", ({ store }) => {
+    // GIVEN five rows and a request for the first two
+    const keys = keyset({ limit: 2 });
+
+    // WHEN the store is seeked and what it answered is folded
+    const built = keys.page(store.seek(keys), (row) => String(row.id));
+
+    // THEN the page carries the two rows asked for — never the extra one the
+    // over-fetch bought — and only the side a caller can actually reach
+    expect(built).toEqual({
+      items: [
+        { id: 1, label: "row-1" },
+        { id: 2, label: "row-2" },
+      ],
+      hasPreviousPage: false,
+      hasNextPage: true,
+      nextCursor: "2",
+    });
+  });
+
+  it("gives a continued page both sides, because it was reached from one", ({ store }) => {
+    // GIVEN the cursor the first page handed back
+    const keys = keyset({ limit: 2, after: "2" });
+
+    // WHEN the listing continues
+    const built = keys.page(store.seek(keys), (row) => String(row.id));
+
+    // THEN `previous` exists because the caller came from somewhere, and it is
+    // the page's OWN first row rather than the cursor that was handed in
+    expect(built).toEqual({
+      items: [
+        { id: 3, label: "row-3" },
+        { id: 4, label: "row-4" },
+      ],
+      hasPreviousPage: true,
+      previousCursor: "3",
+      hasNextPage: true,
+      nextCursor: "4",
+    });
+  });
+
+  it("closes the listing when the over-fetch comes back short", ({ store }) => {
+    // GIVEN a cursor with one row left after it
+    const keys = keyset({ limit: 2, after: "4" });
+
+    // WHEN the last page is fetched
+    const built = keys.page(store.seek(keys), (row) => String(row.id));
+
+    // THEN there is no next cursor: the extra row is what would have proved
+    // one, and asking for `limit + 1` is the only reason this is knowable
+    // without a second count query
+    expect(built).toEqual({
+      items: [{ id: 5, label: "row-5" }],
+      hasPreviousPage: true,
+      previousCursor: "5",
+      hasNextPage: false,
+    });
+  });
+
+  it("hands a backward page back in reading order, not query order", ({ store }) => {
+    // GIVEN a request to page BACKWARD from the fourth row
+    const keys = keyset({ limit: 2, before: "4" });
+
+    // WHEN the store walks descending and the rows are folded
+    const built = keys.page(store.seek(keys), (row) => String(row.id));
+
+    // THEN they arrive ascending, so a previous page reads the way a next one
+    // does — and the extra row proves a page BEFORE this one rather than after,
+    // while `next` is certain because `before` says the caller came from there
+    expect(built).toEqual({
+      items: [
+        { id: 2, label: "row-2" },
+        { id: 3, label: "row-3" },
+      ],
+      hasPreviousPage: true,
+      previousCursor: "2",
+      hasNextPage: true,
+      nextCursor: "3",
+    });
+  });
+
+  it("closes the far side when a backward page runs out of rows", ({ store }) => {
+    // GIVEN a backward page wider than what is behind the cursor
+    const keys = keyset({ limit: 4, before: "3" });
+
+    // WHEN it is fetched
+    const built = keys.page(store.seek(keys), (row) => String(row.id));
+
+    // THEN the start of the listing has no previous cursor, where a fold that
+    // read `more` as "there is a next page" would have minted one
+    expect(built).toEqual({
+      items: [
+        { id: 1, label: "row-1" },
+        { id: 2, label: "row-2" },
+      ],
+      hasPreviousPage: false,
+      hasNextPage: true,
+      nextCursor: "2",
+    });
+  });
+
+  it("mints no cursor at all for a page with no rows to mint one from", ({ empty }) => {
+    // GIVEN a listing that holds nothing, asked for from a cursor
+    const keys = keyset({ limit: 2, after: "9" });
+
+    // WHEN the empty answer is folded
+    const built = keys.page(empty.seek(keys), (row) => String(row.id));
+
+    // THEN both sides are closed: `after` alone would otherwise claim a
+    // previous page, and there is no row to name one with
+    expect(built).toEqual({ items: [], hasPreviousPage: false, hasNextPage: false });
+  });
+
+  it("takes the cursor off the row and the item off that same row", ({ store }) => {
+    // GIVEN a listing whose items are not the rows it pages by
+    const keys = keyset({ limit: 2 });
+
+    // WHEN the fold is given both routes off one row
+    const built = keys.page(
+      store.seek(keys),
+      (row) => String(row.id),
+      (row) => row.label,
+    );
+
+    // THEN the page carries the mapped items while the cursor stays the key —
+    // which is the ordinary adapter shape: seek on a surrogate, answer entities
+    expect(built).toEqual({
+      items: ["row-1", "row-2"],
+      hasPreviousPage: false,
+      hasNextPage: true,
+      nextCursor: "2",
+    });
+  });
+
+  it("asks for exactly one more row than the page it hands back", ({ store }) => {
+    // GIVEN a request for three rows
+    const keys = keyset({ limit: 3 });
+
+    // WHEN what the store was asked for is compared with what came back
+    const built = keys.page(store.seek(keys), (row) => String(row.id));
+
+    // THEN the over-fetch and the trim agree by construction: they are two
+    // halves of one object, and a store queried for `limit` then folded as
+    // though it had been queried for `limit + 1` reports a next page forever
+    expect({ take: keys.take, backward: keys.backward, items: built.items.length }).toEqual({
+      take: 4,
+      backward: false,
+      items: 3,
+    });
   });
 });

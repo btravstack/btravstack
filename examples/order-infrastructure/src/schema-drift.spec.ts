@@ -6,63 +6,86 @@ import { describe, expect } from "vitest";
 import { it } from "./__tests__/test-fixtures.js";
 
 /**
- * Every `model` schema.prisma declares. PostgreSQL gets a table named after
- * the model unless `@@map` says otherwise, and nothing here uses `@@map`.
+ * Every `model` the contract declares. PostgreSQL gets a table named after the
+ * model, lower-camel, unless `@@map` says otherwise — and nothing here uses
+ * `@@map`.
+ *
+ * The leading `\s*` is load-bearing: the models sit INSIDE a
+ * `namespace orders { … }` block, so an anchored `^model` matches nothing and
+ * the table assertion below would pass over an empty list. That is what the
+ * companion test guards.
  */
-const modelsInSchema = (): readonly string[] =>
+const modelsInContract = (): readonly string[] =>
   [
     ...readFileSync(
-      fileURLToPath(new URL("../prisma/schema.prisma", import.meta.url)),
+      fileURLToPath(new URL("./prisma/contract.prisma", import.meta.url)),
       "utf8",
-    ).matchAll(/^model\s+(\w+)\s*\{/gm),
-  ].map((match) => match[1] ?? "");
+    ).matchAll(/^\s*model\s+(\w+)\s*\{/gm),
+  ].map((match) => (match[1] ?? "").replace(/^./u, (first) => first.toLowerCase()));
 
 describe("the committed migrations", () => {
-  it("creates a table for every model the schema declares", async ({ db }) => {
-    // GIVEN the models `schema.prisma` declares — the source the generated
-    // client's types are built from
-    const models = modelsInSchema();
-    expect(models.length).toBeGreaterThan(0);
-
-    // WHEN the database `openDatabase` built is asked what it actually has
-    const tables = await db.$queryRawUnsafe<readonly { readonly name: string }[]>(
-      "SELECT tablename AS name FROM pg_tables WHERE schemaname = 'public'",
+  it("reads the models out of the contract it is checking against", () => {
+    // GIVEN the contract source on disk
+    // WHEN its models are parsed
+    // THEN there are some — a regex that silently matched nothing would make
+    // the table assertion below vacuously true
+    expect(modelsInContract()).toEqual(
+      expect.arrayContaining(["order", "customer", "outboxMessage"]),
     );
-
-    // THEN every model has its table. The migrations are generated from this
-    // schema, so the two agree by construction — what this pins is that they
-    // were *regenerated*: editing the schema without running
-    // `prisma migrate dev` leaves the client's types (which come from the
-    // schema) describing a column no migration ever created, and nothing else
-    // in the gate would notice until a query reached it.
-    expect(tables.map((table) => table.name)).toEqual(expect.arrayContaining([...models]));
   });
 
-  it("keeps row security enabled, forced, and policed on Order", async ({ db }) => {
-    // GIVEN the same database, carrying one migration `prisma migrate dev`
-    // would never generate
+  it("creates a table for every model the contract declares", async ({ db }) => {
+    // GIVEN the models `contract.prisma` declares — the source `contract.d.ts`
+    // is emitted from, and so the source the client's types come from
+    const models = modelsInContract();
 
-    // WHEN it is asked what row security `Order` carries
-    const security = await db.$queryRawUnsafe<
-      readonly {
-        readonly enabled: boolean;
-        readonly forced: boolean;
-        readonly policy: string | null;
-      }[]
-    >(
-      `SELECT c.relrowsecurity AS enabled, c.relforcerowsecurity AS forced, p.policyname AS policy
+    // WHEN the database `openDatabase` built is asked what it actually has
+    const tables = await db
+      .runtime()
+      .query(
+        db.raw.sql`SELECT tablename AS name FROM pg_tables WHERE schemaname = 'orders'`
+          .returnsRow({ name: "pg/text@1" })
+          .build(),
+      );
+
+    // THEN every model has its table. The migrations are planned from this
+    // contract, so the two agree by construction — what this pins is that they
+    // were *replanned*: editing the contract without running
+    // `prisma migration plan` leaves the emitted types describing a column no
+    // migration ever created, and nothing else in the gate would notice until a
+    // query reached it.
+    expect((tables as readonly { readonly name: string }[]).map((table) => table.name)).toEqual(
+      expect.arrayContaining([...models]),
+    );
+  });
+
+  it("keeps row security enabled and policed on Order", async ({ db }) => {
+    // GIVEN the same database, carrying the policy the CONTRACT declares —
+    // `@@rls` plus a `policy_all` block, planned and applied like any other
+    // operation rather than hand-written DDL
+
+    // WHEN it is asked what row security `order` carries
+    const security = await db.runtime().query(
+      db.raw
+        .sql`SELECT c.relrowsecurity AS enabled, c.relforcerowsecurity AS forced, p.policyname AS policy
          FROM pg_class c
-         LEFT JOIN pg_policies p ON p.schemaname = 'public' AND p.tablename = c.relname
-        WHERE c.relnamespace = 'public'::regnamespace AND c.relname = 'Order'`,
+         LEFT JOIN pg_policies p ON p.schemaname = 'orders' AND p.tablename = c.relname
+        WHERE c.relnamespace = 'orders'::regnamespace AND c.relname = 'order'`
+        .returnsRow({ enabled: "pg/bool@1", forced: "pg/bool@1", policy: "pg/text@1" })
+        .build(),
     );
 
-    // THEN all three of the migration's statements are still in force.
-    // Regenerating the migration set drops the file that creates them, and
-    // nothing else in the gate would notice until one tenant read another's
-    // rows. `forced` is here because no other spec can see it: every fixture
-    // connects as `orders_app`, a non-owner, for whom the policy applies with
-    // or without `FORCE` — while the migrations and `pnpm dev` connect as the
-    // owner, who is exempt from it without.
-    expect(security).toEqual([{ enabled: true, forced: true, policy: "tenant_isolation" }]);
+    // THEN row security is on and the policy is there, under the wire name the
+    // planner hashed from the block's contents.
+    //
+    // `forced` is FALSE, and that is Prisma 8's own gap rather than a mistake
+    // here: it emits `ENABLE ROW LEVEL SECURITY` and has no way to express
+    // `FORCE`, so the table's OWNER still bypasses every policy. What closes it
+    // is connecting as a non-owner — which is what `orders_app` is, and what
+    // the role spec in `rls.spec.ts` pins. A deployment that connects as the
+    // owner has no row security at all.
+    expect(security).toEqual([
+      { enabled: true, forced: false, policy: "order_tenant_isolation_c516f4ff" },
+    ]);
   });
 });

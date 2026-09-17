@@ -1,88 +1,112 @@
 import { observe, type Operation, type Settle } from "@btravstack/core";
 
-import type { PrismaLike } from "./prisma.js";
-
-/** The `query` extension component, as this package uses it. */
-type QueryExtension = {
-  readonly query: {
-    readonly $allModels: {
-      readonly $allOperations: (args: {
-        readonly model: string | undefined;
-        readonly operation: string;
-        readonly args: unknown;
-        readonly query: (args: unknown) => Promise<unknown>;
-      }) => Promise<unknown>;
-    };
-  };
+/**
+ * A Prisma 8 middleware, structurally — `name`, `familyId` and the four hooks
+ * this starter implements.
+ *
+ * Declared here rather than imported from `@prisma/orm-postgres/family-runtime`
+ * so the option's type does not drag the target package into a consumer that
+ * only reads this module's types. A real `SqlMiddleware` satisfies it.
+ */
+export type SqlMiddlewareLike = {
+  readonly name: string;
+  readonly familyId: "sql";
+  readonly beforeQuery: (plan: Plan, ctx: MiddlewareContext) => Promise<void>;
+  readonly afterQuery: (plan: Plan, result: Settled, ctx: MiddlewareContext) => Promise<void>;
+  readonly beforeExecute: (plan: Plan, ctx: MiddlewareContext) => Promise<void>;
+  readonly afterExecute: (plan: Plan, result: Settled, ctx: MiddlewareContext) => Promise<void>;
 };
 
-/** What applying an extension needs, which `PrismaLike` deliberately does not require. */
-type Extendable = { readonly $extends: (extension: QueryExtension) => unknown };
+/** The rendered statement, which both `before` hooks are handed. */
+type Plan = { readonly sql?: string };
 
 /**
- * Every query, handed to the graph's observers: a count of how it came out, and
- * a log line if it failed.
- *
- * **This is why a generated client can be instrumented at all.** Prisma's
- * `$extends` takes a `query` component, and `$allModels.$allOperations`
- * intercepts every operation on every model — so the wrapper never needs to
- * know the schema, which is the thing this package cannot see. An earlier
- * revision of this package claimed instrumentation was impossible for that
- * reason; it was wrong, and this is the mechanism it missed.
- *
- * **It deliberately opens no span.** Prisma's own `@prisma/instrumentation`,
- * which this package offers to `Instrumentations` and
- * `@btravstack/observability/otel` enables, traces at the ENGINE level — the
- * real SQL, the connection acquisition, the serialisation — all of it below
- * what a client-level wrapper can see. Emitting a span here as well would put two
- * spans on every query for strictly less information. What this wrapper keeps
- * is the pair Prisma's instrumentation does not do at all: a metric, and an
- * error line correlated with the ambient unit.
- *
- * The wrapper is transparent to the answer: whatever the query resolves or
- * rejects with is what the caller receives, which is the kernel's own `RunUnit`
- * rule one layer down. `Promise.reject` re-raises rather than `throw`, so the
- * rejection propagates to `@unthrown/prisma`'s `try*` twin without this file
- * needing a `no-throw` exemption.
+ * What every hook is handed. `planExecutionId` is the runtime's own correlation
+ * id — its TSDoc names tracing and timing as the reason it exists — and it is
+ * what pairs a `before` with its `after`.
  */
-export const instrument = <C extends PrismaLike>(
-  client: C,
-  observers: readonly ((operation: Operation) => Settle)[],
-): C => {
-  const extension: QueryExtension = {
-    query: {
-      $allModels: {
-        $allOperations: ({ model, operation, args, query }) => {
-          const label = model ?? "raw";
-          const settle = observe(observers, {
-            component: "database",
-            name: operation,
-            attributes: { model: label, operation },
-            // No span, deliberately: `@prisma/instrumentation` traces at the
-            // ENGINE level — the real SQL, the connection acquisition, the
-            // serialisation — all of it below what this wrapper can see, so a
-            // span here would cost one more per query for strictly less
-            // information. Counting and timing still happen.
-            traced: false,
-          });
+type MiddlewareContext = {
+  readonly planExecutionId: string;
+  readonly scope?: "runtime" | "connection" | "transaction";
+};
 
-          return query(args).then(
-            (value) => {
-              settle({ outcome: "ok" });
-              return value;
-            },
-            (cause: unknown) => {
-              settle({ outcome: "error", cause });
-              return Promise.reject(cause);
-            },
-          );
-        },
-      },
-    },
+/** What an `after` hook reports. There is no error here: Prisma's shape carries none. */
+type Settled = { readonly completed: boolean; readonly source?: string };
+
+/**
+ * Every query, handed to the graph's observers: a span that spans the query, a
+ * count of how it came out, and a log line if it failed.
+ *
+ * **This is why a client the starter cannot name can be instrumented at all.**
+ * `middleware` is a construction option rather than a wrapper, and a hook sees
+ * every statement on every lane — the ORM's, the SQL builder's and the raw
+ * one — so it never needs to know the contract, which is the thing this package
+ * cannot see.
+ *
+ * **It starts the operation in `beforeQuery` and settles it in `afterQuery`**,
+ * paired by `ctx.planExecutionId`, because that is what `Observers` is for: the
+ * port is called at the START and answers a finisher, so an observer can open a
+ * span the query runs *inside*. Settling a span reconstructed afterwards from a
+ * duration would make it the parent of nothing. It is also why the runtime's
+ * own `latencyMs` is not reported — the observer started the operation, so the
+ * duration is its own measurement rather than something to pass along.
+ *
+ * **Both lanes, because there are two.** A read settles through
+ * `afterQuery`; a write with no `RETURNING` — a SQL-builder `delete()` run
+ * through `runtime().execute(plan)` — settles through `afterExecute` and would
+ * otherwise go unobserved entirely.
+ *
+ * `completed` is what settles the outcome, and a failed statement does reach
+ * the hook: measured against a real database, a duplicate insert arrives as
+ * `afterQuery … completed=false` before the rejection surfaces. That is what
+ * keeps the errors half of RED honest.
+ */
+export const queryObserver = (
+  observers: readonly ((operation: Operation) => Settle)[],
+): SqlMiddlewareLike => {
+  // One entry per statement in flight, removed by its own `after` hook. The
+  // hooks are measured to fire in pairs on success, on failure, and on a cache
+  // hit (`source: "middleware"`), so the only way an entry outlives its
+  // statement is a runtime torn down mid-query — bounded by what was in flight.
+  const open = new Map<string, Settle>();
+
+  const start = (plan: Plan, ctx: MiddlewareContext): Promise<void> => {
+    open.set(
+      ctx.planExecutionId,
+      observe(observers, {
+        component: "database",
+        name: "query",
+        // `scope` is the runtime's own closed set, so it is a dimension worth
+        // having: it separates a statement inside a transaction from one that
+        // stands alone. The row count is NOT here — it is unbounded, and one
+        // time series per row count is how a metrics bill becomes the incident.
+        attributes: { scope: ctx.scope ?? "runtime" },
+        // The statement, for the span and the failure line only. Parameters are
+        // bound separately, so this carries placeholders rather than values.
+        ...(plan.sql === undefined ? {} : { details: { sql: plan.sql } }),
+      }),
+    );
+    return Promise.resolve();
   };
 
-  // A `query`-only extension intercepts calls without adding or removing any
-  // model surface, so the extended client IS a `C` — which `$extends`'s own
-  // return type, built for extensions that DO add surface, cannot express.
-  return (client as unknown as Extendable).$extends(extension) as C;
+  const finish = (_plan: Plan, result: Settled, ctx: MiddlewareContext): Promise<void> => {
+    const settle = open.get(ctx.planExecutionId);
+    open.delete(ctx.planExecutionId);
+    settle?.({
+      outcome: result.completed ? "ok" : "error",
+      // Known only at the end, and bounded — `'driver'` or `'middleware'`,
+      // which is what tells a real query from one a cache middleware answered.
+      ...(result.source === undefined ? {} : { attributes: { source: result.source } }),
+    });
+    return Promise.resolve();
+  };
+
+  return {
+    name: "btravstack-observers",
+    familyId: "sql",
+    beforeQuery: start,
+    afterQuery: finish,
+    beforeExecute: start,
+    afterExecute: finish,
+  };
 };

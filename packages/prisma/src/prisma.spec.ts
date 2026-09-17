@@ -1,57 +1,21 @@
 import { Env } from "@btravstack/config";
-import {
-  HealthChecks,
-  Instrumentations,
-  Logger,
-  Observers,
-  runHealthChecks,
-} from "@btravstack/core";
-import { Module, Provider, type ServiceOf } from "@btravstack/di";
-import { OkAsync, fromSafePromise } from "unthrown";
+import { HealthChecks, Observers, runHealthChecks } from "@btravstack/core";
+import { Module, Provider } from "@btravstack/di";
+import { OkAsync } from "unthrown";
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
 import { prismaDatabase } from "./prisma.js";
 
-/**
- * The URL the starter put into the driver adapter. Read off the adapter rather
- * than handed to the arrow: this asserts the ADAPTER was configured, which is
- * the thing that actually reaches Postgres.
- */
-const connectionStringOf = (adapter: unknown): string =>
-  (adapter as { readonly config: { readonly connectionString: string } }).config.connectionString;
-
-/**
- * The one port this starter still needs: `loadPrismaInstrumentation` says at
- * `debug` when the optional peer is absent, which is a startup fact rather than
- * an operation an observer could settle.
- */
-const silentLoggerService: ServiceOf<Logger> = {
-  log: () => {},
-  trace: () => {},
-  debug: () => {},
-  info: () => {},
-  warn: () => {},
-  error: () => {},
-  fatal: () => {},
-  with: () => silentLoggerService,
-  isEnabled: () => false,
-};
-
-const silentLogger = Provider(Logger)({ inject: {}, value: silentLoggerService });
+const DATABASE_URL = "postgres://localhost:5432/orders";
 
 describe("prismaDatabase", () => {
   it("opens the client against the URL the environment names", async ({ stub }) => {
     // GIVEN a starter over a stub client, and DATABASE_URL in the environment
-    const db = prismaDatabase("OrderDatabase")({
-      client: (adapter) => stub.client(connectionStringOf(adapter)),
-    });
+    const db = prismaDatabase("OrderDatabase")({ client: stub.client });
     const root = Module("Root")({
       imports: [db],
-      provides: [
-        Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
-        silentLogger,
-      ],
+      provides: [Provider(Env)({ inject: {}, value: { DATABASE_URL } })],
       exports: [db.port],
     });
 
@@ -59,20 +23,15 @@ describe("prismaDatabase", () => {
     const url = await Module.scoped(root, (ctx) => OkAsync(ctx.get(db.port).url));
 
     // THEN the client was built with what the environment named
-    expect(url).toBeOkWith("postgres://localhost:5432/orders");
+    expect(url).toBeOkWith(DATABASE_URL);
   });
 
-  it("disconnects the client when the scope closes", async ({ stub }) => {
+  it("closes the pool when the scope closes", async ({ stub }) => {
     // GIVEN a graph holding the client open
-    const db = prismaDatabase("OrderDatabase")({
-      client: (adapter) => stub.client(connectionStringOf(adapter)),
-    });
+    const db = prismaDatabase("OrderDatabase")({ client: stub.client });
     const root = Module("Root")({
       imports: [db],
-      provides: [
-        Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
-        silentLogger,
-      ],
+      provides: [Provider(Env)({ inject: {}, value: { DATABASE_URL } })],
       exports: [db.port],
     });
 
@@ -80,17 +39,15 @@ describe("prismaDatabase", () => {
     await Module.scoped(root, (ctx) => OkAsync(ctx.get(db.port).url));
 
     // THEN the pool was released on the way out
-    expect(stub.last()?.disconnected()).toBe(1);
+    expect(stub.last()?.closed()).toBe(1);
   });
 
   it("reports a missing DATABASE_URL as a modeled error naming it", async ({ stub }) => {
     // GIVEN the same graph and an environment that names no database
-    const db = prismaDatabase("OrderDatabase")({
-      client: (adapter) => stub.client(connectionStringOf(adapter)),
-    });
+    const db = prismaDatabase("OrderDatabase")({ client: stub.client });
     const root = Module("Root")({
       imports: [db],
-      provides: [Provider(Env)({ inject: {}, value: {} }), silentLogger],
+      provides: [Provider(Env)({ inject: {}, value: {} })],
       exports: [db.port],
     });
 
@@ -103,21 +60,18 @@ describe("prismaDatabase", () => {
     );
   });
 
-  it("observes a query through the graph, with no flag and no ports owed", async ({
+  it("hands the client its own observing middleware, with no flag and no ports owed", async ({
     stub,
     observed,
   }) => {
     // GIVEN the starter in a root that owes it NOTHING beyond `Env` — the
     // observer is a set-port member, so composing one is the whole of what
     // makes the queries observed
-    const db = prismaDatabase("OrderDatabase")({
-      client: (adapter) => stub.client(connectionStringOf(adapter)),
-    });
+    const db = prismaDatabase("OrderDatabase")({ client: stub.client });
     const root = Module("Root")({
       imports: [db],
       provides: [
-        Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
-        silentLogger,
+        Provider(Env)({ inject: {}, value: { DATABASE_URL } }),
         ...observed.members.map((member) =>
           Provider.member(Observers)({ inject: {}, value: member }),
         ),
@@ -125,35 +79,38 @@ describe("prismaDatabase", () => {
       exports: [db.port],
     });
 
-    // WHEN a query runs against the client the graph handed back
-    await Module.scoped(root, (ctx) =>
-      fromSafePromise(ctx.get(db.port).query("Order", "findMany", Promise.resolve([]))),
-    );
+    // WHEN a query the client ran reaches the middleware it was built with
+    await Module.scoped(root, (ctx) => {
+      const client = ctx.get(db.port);
+      const hook = client.middleware[0];
+      const plan = { planExecutionId: "q1" } as const;
+      return OkAsync(
+        hook
+          ?.beforeQuery({ sql: "SELECT 1" }, plan)
+          .then(() => hook.afterQuery({}, { completed: true, source: "driver" }, plan)),
+      );
+    });
 
-    // THEN it was observed — the client came out wrapped without anyone asking.
-    // Untraced: engine-level tracing is `@prisma/instrumentation`'s job, and a
-    // client-level span would only duplicate it more shallowly.
+    // THEN it was observed — the client was constructed with the hook without
+    // anyone asking, and the operation was open ACROSS the query rather than
+    // reported after it
     expect(observed.taken()).toEqual([
       expect.objectContaining({
         component: "database",
-        name: "findMany",
+        name: "query",
         outcome: "ok",
-        traced: false,
+        attributes: { scope: "runtime", source: "driver" },
+        details: { sql: "SELECT 1" },
       }),
     ]);
   });
 
   it("declares a health check that asks the database to answer", async ({ stub }) => {
     // GIVEN a starter over a reachable stub client
-    const db = prismaDatabase("OrderDatabase")({
-      client: (adapter) => stub.client(connectionStringOf(adapter)),
-    });
+    const db = prismaDatabase("OrderDatabase")({ client: stub.client });
     const root = Module("Root")({
       imports: [db],
-      provides: [
-        Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
-        silentLogger,
-      ],
+      provides: [Provider(Env)({ inject: {}, value: { DATABASE_URL } })],
       exports: [db.port, HealthChecks],
     });
 
@@ -167,21 +124,38 @@ describe("prismaDatabase", () => {
     });
   });
 
+  it("probes with a statement the server has to run, decoding no rows", async ({ stub }) => {
+    // GIVEN a starter over a reachable stub client
+    const db = prismaDatabase("OrderDatabase")({ client: stub.client });
+    const root = Module("Root")({
+      imports: [db],
+      provides: [Provider(Env)({ inject: {}, value: { DATABASE_URL } })],
+      exports: [db.port, HealthChecks],
+    });
+
+    // WHEN the contributed check is run
+    await Module.scoped(root, (ctx) => runHealthChecks(ctx.get(HealthChecks)));
+
+    // THEN it went out as an `affectedCount` plan: the statement still runs, so
+    // a pool whose server is gone cannot answer it, and nothing decodes a row —
+    // which is what keeps the probe off any codec the contract may not register
+    expect(stub.last()?.ran()).toEqual([
+      { sql: "SELECT 1", values: [], kind: "affectedCount", tx: undefined },
+    ]);
+  });
+
   it("reports the database unhealthy when it cannot answer", async ({ stub }) => {
     // GIVEN a client whose queries fail, as an unreachable server's would
     const db = prismaDatabase("OrderDatabase")({
-      client: (adapter) => {
-        const client = stub.client(connectionStringOf(adapter));
+      client: (binding) => {
+        const client = stub.client(binding);
         client.breakQueries("connection refused");
         return client;
       },
     });
     const root = Module("Root")({
       imports: [db],
-      provides: [
-        Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
-        silentLogger,
-      ],
+      provides: [Provider(Env)({ inject: {}, value: { DATABASE_URL } })],
       exports: [db.port, HealthChecks],
     });
 
@@ -202,18 +176,15 @@ describe("prismaDatabase", () => {
     // nothing obliges it not to do, and which leaves the check with no message
     // to pass on
     const db = prismaDatabase("OrderDatabase")({
-      client: (adapter) => {
-        const client = stub.client(connectionStringOf(adapter));
+      client: (binding) => {
+        const client = stub.client(binding);
         client.breakQueriesWith({ code: "57P01" });
         return client;
       },
     });
     const root = Module("Root")({
       imports: [db],
-      provides: [
-        Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
-        silentLogger,
-      ],
+      provides: [Provider(Env)({ inject: {}, value: { DATABASE_URL } })],
       exports: [db.port, HealthChecks],
     });
 
@@ -226,38 +197,5 @@ describe("prismaDatabase", () => {
       status: "unhealthy",
       components: [{ name: "OrderDatabase", status: "unhealthy", reason: "database unreachable" }],
     });
-  });
-
-  it("offers its engine instrumentation rather than registering it", async ({ stub, observed }) => {
-    // GIVEN the starter, which offers its instrumentation unconditionally now
-    // that there is no arm to be on the wrong side of
-    const db = prismaDatabase("OrderDatabase")({
-      client: (adapter) => stub.client(connectionStringOf(adapter)),
-    });
-    const root = Module("Root")({
-      imports: [db],
-      provides: [
-        Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
-        silentLogger,
-        ...observed.members.map((member) =>
-          Provider.member(Observers)({ inject: {}, value: member }),
-        ),
-      ],
-      exports: [db.port, Instrumentations],
-    });
-
-    // WHEN the contributions are collected and loaded, as an OTel SDK does
-    const loaded = await Module.scoped(root, (ctx) =>
-      fromSafePromise(
-        Promise.all(ctx.get(Instrumentations).map((load) => load())).then((all) =>
-          all.map((one) => one !== undefined),
-        ),
-      ),
-    );
-
-    // THEN one instrumentation is offered, and it loads because the optional
-    // peer IS installed here — a graph composing no SDK never calls the
-    // loader, which is what makes this a declaration rather than a side effect
-    expect(loaded).toBeOkWith([true]);
   });
 });

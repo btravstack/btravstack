@@ -4,11 +4,12 @@ import { OrderRepository, tenantOf } from "@btravstack/example-order-application
 import type { TenantId } from "@btravstack/example-order-domain";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
+import { tenantPinned } from "@btravstack/prisma/rls";
 import { fromSafePromise } from "unthrown";
 import { describe, expect, inject, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { OrderPersistenceModule, OrderTenantPersistence, scopedTo } from "./index.js";
+import { OrderPersistenceModule, OrderTenantPersistence } from "./index.js";
 
 /**
  * The two persistence modules a deployment composes — the application scope's
@@ -163,12 +164,16 @@ describe("tenancy", () => {
 
 describe("the read path's error channel", () => {
   it("surfaces a corrupt row as a defect, not as an error", async ({ db, tenant, repository }) => {
-    // GIVEN a row written straight past Prisma into this test's tenant,
-    // carrying a quantity the entity's invariant rejects. Through the pinned
-    // client, because `Order`'s policy refuses an unpinned insert.
-    await scopedTo(db, tenant).$executeRawUnsafe(
-      `INSERT INTO "Order" ("tenantId", "orderId", "quantity") VALUES ($1, 'o-corrupt', 0)`,
-      tenant,
+    // GIVEN a row written straight past the ORM into this test's tenant,
+    // carrying a quantity the entity's invariant rejects. Inside a pinned
+    // transaction, because `Order`'s policy refuses an unpinned insert.
+    await tenantPinned(db, tenant, (tx) =>
+      tx.query(
+        db.raw
+          .sql`INSERT INTO "orders"."order" ("tenantId", "orderId", "quantity") VALUES (${tenant}, 'o-corrupt', ${0})`
+          .affectedCount()
+          .build(),
+      ),
     );
 
     // WHEN it is read back
@@ -319,10 +324,14 @@ describe("OrderPersistenceModule", () => {
     // can be counted on a server the whole repository shares
     const applicationName = `pool-${tenant}`;
     const backends = async (): Promise<number> => {
-      const rows = await db.$queryRawUnsafe<readonly { readonly n: number }[]>(
-        "SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name = $1",
-        applicationName,
-      );
+      const rows = (await db
+        .runtime()
+        .query(
+          db.raw
+            .sql`SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name = ${applicationName}`
+            .returnsRow({ n: "pg/int4@1" })
+            .build(),
+        )) as readonly { readonly n: number }[];
       return rows[0]?.n ?? 0;
     };
 
