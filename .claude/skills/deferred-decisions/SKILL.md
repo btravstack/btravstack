@@ -1,6 +1,6 @@
 ---
 name: deferred-decisions
-description: Decisions this repository deliberately deferred, declined or has already closed. Read BEFORE proposing a feature, a package, a lint rule or a gate that sounds new — it may be a settled "no", or already shipped. Covers container reaping, the currentUnit() lint rule, traces/metrics in observability, the doc-samples gate, the one-process dev runner, HTML-means-fragments, transport package naming and the one leaf shape.
+description: Decisions this repository deliberately deferred, declined or has already closed. Read BEFORE proposing a feature, a package, a lint rule or a gate that sounds new — it may be a settled "no", or already shipped. Covers container reaping, the currentUnit() lint rule, traces/metrics in observability, the doc-samples gate, the one-process dev runner, HTML-means-fragments, transport package naming, the one leaf shape, and filtering and sorting on a cursor page.
 ---
 
 # Deferred, deliberately
@@ -168,3 +168,22 @@ dependencies by name`; a positional array is refused as
   rule — piece and composer get different words, never singular and plural —
   but it renames public API on two packages with no obviously-right
   replacement, so it is recorded here rather than guessed at.
+
+- **Filtering with operators is declined; sorting is deferred with its cursor
+  rule already chosen** (issue #261). A normed `{ field, op, value }` owes an
+  operator set per type, nesting and null handling, and then a translator into
+  Prisma or SQL — a query builder those libraries already are, and thesis #8's
+  territory. It has no trigger. A listing declaring its own filter fields
+  through `pageRequestOf({ minQuantity })` is the narrow version, and it
+  ships.
+
+  Sorting is the page's missing half rather than a neighbouring feature,
+  because **a keyset cursor encodes the order it was issued under**. It waits
+  on a second listing that sorts by something other than its keyset key —
+  `orders.list`, the only one here, sorts by `id`, which is the seek key. The
+  rule that listing inherits is decided: **a cursor is valid only for the sort
+  it was issued under, and a mismatch is refused**, by the adapter that mints
+  it, beside `MalformedCursor`. Resetting to page one discards the caller's
+  place silently; leaving it to each adapter is how the bug gets written. The
+  reasoning, and the two constraints on whatever ships, are in
+  `packages/contract/CLAUDE.md`.

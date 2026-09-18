@@ -24,8 +24,8 @@ is the application's.
 
 The test is deliberately narrow, because the name promises a tier and the
 package is what stops that promise from being a slogan. Filters and sorts are
-the next candidates and are **not** here: nothing has written the same one
-twice yet.
+the next candidates and are **not** here — the two are less alike than they
+look, and **Deferred, deliberately** below states each position separately.
 
 `keyset` is the rule's own second clause firing: the page's ARITHMETIC had
 been written twice, by `examples/order-infrastructure`'s Prisma adapter and by
@@ -204,3 +204,45 @@ only consumer today. Nothing here is HTTP-shaped — an AMQP or Temporal
 contract could mark a node with the same `authenticated` and its starter read
 `isAuthenticated` — but neither does, and this package does not anticipate
 what a broker's or a workflow's authenticator would look like.
+
+**Filtering with operators is DECLINED, and there is no trigger.** Once
+`{ field, op, value }` is normed, this package owes an answer to which
+operators exist per type, whether `AND` and `OR` nest, and how null is
+handled — and then somebody has to turn the result into Prisma or SQL.
+Either the norm ships that translator, which is a query builder Prisma and
+Drizzle already are and which thesis #8 puts out of scope, or every adapter
+writes the translation anyway and the wire shape is all the norm bought. It
+also opens a surface where a client names fields the API never meant to
+expose.
+
+The narrow version is not a filter language and already ships: a listing
+declares its own filter fields and `pageRequestOf({ minQuantity })` carries
+them through to the `PageRequest` a port takes, with `limit`, `after` and
+`before` refused among them at the call. The operators stay the
+application's, where the store that has to answer them is.
+
+**Sorting is DEFERRED, and the cursor rule is decided rather than left
+open.** Nothing has written it once, let alone twice: `orders.list` is the
+only listing here and its adapter orders by `id`, the seek key itself, so a
+sort shape would be guessed at rather than extracted — which is what the
+admission rule exists to prevent. The trigger is a second listing that sorts
+by something other than its keyset key.
+
+What is decided now is the rule that listing would otherwise rediscover as a
+bug. **A cursor is valid only for the sort it was issued under, and a
+mismatch is refused.** A keyset seek compares against the sort key, so a
+cursor minted under `createdAt desc` is meaningless — or silently wrong —
+when replayed with `quantity asc`. Resetting to the first page instead is
+what most APIs do implicitly, and it discards the caller's place without
+saying so; saying nothing and letting each adapter decide is how the bug gets
+written. Refusing is the page's own posture: a state that cannot be served is
+unrepresentable rather than merely unexpected, the way a flag without its
+cursor is.
+
+The refusal is the **adapter's**, beside `MalformedCursor`, for the same
+reason the decoding is: this tier does not know what a cursor spells, and the
+moment it does it has taken the persistence opinion `keyset` refuses to take.
+Two things constrain whatever ships — the sort is typed against the item's
+own schema, which a contract already declares, so a misspelled field is a
+compile error rather than a `400`; and `pageOf` / `pageRequestOf` stay a
+union of closed objects, since the emitted document is an interop surface.
