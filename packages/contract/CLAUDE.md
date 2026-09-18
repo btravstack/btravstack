@@ -23,9 +23,11 @@ per contract, and each transport's destination is its own library's
 is the application's.
 
 The test is deliberately narrow, because the name promises a tier and the
-package is what stops that promise from being a slogan. Filters and sorts are
-the next candidates and are **not** here — the two are less alike than they
-look, and **Deferred, deliberately** below states each position separately.
+package is what stops that promise from being a slogan. A filter LANGUAGE and
+a sort are the next candidates and are **not** here — a listing's own filter
+fields ride `pageRequestOf` and always have, which is a different thing
+entirely. The two candidates are less alike than they look, and **Deferred,
+deliberately** below states each position separately.
 
 `keyset` is the rule's own second clause firing: the page's ARITHMETIC had
 been written twice, by `examples/order-infrastructure`'s Prisma adapter and by
@@ -244,5 +246,6 @@ reason the decoding is: this tier does not know what a cursor spells, and the
 moment it does it has taken the persistence opinion `keyset` refuses to take.
 Two things constrain whatever ships — the sort is typed against the item's
 own schema, which a contract already declares, so a misspelled field is a
-compile error rather than a `400`; and `pageOf` / `pageRequestOf` stay a
-union of closed objects, since the emitted document is an interop surface.
+compile error rather than a `400`; and `pageOf` stays a union of closed
+objects, since the emitted document is an interop surface. The sort is an
+addition to `pageRequestOf`'s input, not a shape beside it.
