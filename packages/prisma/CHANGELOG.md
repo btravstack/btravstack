@@ -1,5 +1,89 @@
 # @btravstack/prisma
 
+## 0.16.0
+
+### Minor Changes
+
+- afc6801: Moved the persistence starter to **Prisma 8**, which is a different package
+  family rather than a version bump: `@prisma/orm-postgres` is the one peer, and
+  `@prisma/client`, `@prisma/adapter-pg` and `@prisma/instrumentation` have no
+  successor. `@unthrown/prisma` peers on `@prisma/client@^7`, so it goes with
+  them. Consumers on Prisma 7 stay on `@btravstack/prisma@0.14`.
+
+  **`client` now receives a binding rather than a driver adapter.**
+  `prismaDatabase(name)({ client: ({ url, middleware }) => postgres({
+contractJson, url, middleware }) })`. The middleware in that binding is the
+  starter's own observability hook — spread it in, or the queries go unobserved.
+  `PrismaLike` requires `raw` and `runtime` to exist and describes neither, which
+  is measured rather than lazy: a parameter is contravariant, and the real
+  signatures name contract types no package that cannot see a contract could
+  spell.
+
+  **Row-level security is DECLARED.** `@@rls` on the model plus a
+  `policy_<operation>` block in the contract, planned and applied as ordinary
+  migration operations. The whole of `tenantScoped` is gone — the client
+  extension, the `$allOperations` hook, the pre-extension-client recursion guard,
+  the `this`-polymorphic `$transaction` override, the `$transaction([...])`
+  refusal and the hand-copied `ITXClientDenyList`. What replaces it is
+  `tenantPinned(db, tenant, work)`, which opens the transaction the
+  `set_config(…, true)` is local to.
+
+  **That it opens a transaction is the design, not an implementation detail.** A
+  session-scoped pin followed by a separate query was measured to work — and only
+  because the pool happened to hand back the same connection. It is the shape a
+  `beforeQuery` middleware would have taken, and it fails silently under
+  concurrency, which is why there is no middleware.
+
+  **New: `@btravstack/prisma/result`.** Prisma 8 throws a structured error
+  carrying PostgreSQL's own SQLSTATE, so `tryQuery(() => query)` answers a
+  `Result` with three modeled arms — `UniqueConstraintViolation` (`23505`, with
+  the `constraint` the database named, which `P2002` could not say),
+  `ForeignKeyViolation` (`23503`) and `NotAuthorized` (`42501`, a write the
+  policy's `WITH CHECK` refused). Anything else is a defect. It takes a **thunk**,
+  because an `AsyncResult` is eager. The module imports `unthrown` and nothing
+  else, so it can move to that repository whole once Prisma 8 is stable.
+
+  **Engine tracing is gone with the engine.** Prisma 8 is a TypeScript runtime
+  and ships no telemetry package, so `instrument.ts` and `tracing.ts` collapse
+  into one middleware feeding `Observers` — which sees the ORM lane, the SQL
+  builder and the raw lane alike, where the v7 `$allModels` wrapper saw only the
+  first. It opens the operation in `beforeQuery` and settles it in `afterQuery`,
+  paired by `ctx.planExecutionId`, because `Observers` is called at the START and
+  answers a finisher precisely so a span can be opened around the work; it
+  implements `beforeExecute`/`afterExecute` too, since a SQL-builder statement
+  with no `RETURNING` never touches the query hooks and would otherwise go
+  unobserved. `Instrumentations` leaves the module's exports and `Logger` leaves
+  its needs, since the one `debug` line it existed for has nothing left to report.
+
+  **The example declares a namespace of its own rather than using `public`**, and
+  the reference page states the reason carefully because the usual one is
+  obsolete: "never use `public`" describes PostgreSQL 14, and 15 revoked
+  `CREATE` from `PUBLIC` — measured on this repo's own 18.1 container, an
+  ordinary application role already cannot create there. What survives is cost
+  asymmetry: a shared database is the ordinary end state and moving a live table
+  between schemas later is a downtime-risk migration, where declaring one in the
+  first migration costs a block. Grants scope to the schema as a consequence.
+  Queries read `db.orm.orders.Order`; Prisma 8 addresses by namespace coordinate
+  either way, so this makes the coordinate meaningful rather than removing it.
+
+  **Two gaps are Prisma 8's and are documented rather than worked around.** It
+  emits `ENABLE ROW LEVEL SECURITY` with no way to express `FORCE`, so the
+  table's owner — the role that ran the migrations — bypasses every policy, and a
+  deployment must connect as a non-owner; and it authors no `GRANT`s. Both fail
+  quietly, which is why `examples/order-infrastructure` carries "is neither a
+  superuser nor exempt from row security" as a standing test.
+
+  `@btravstack/observability`'s `@opentelemetry/sdk-node` peer moves to
+  `^0.222.0`, matching the version the catalog has installed since the last bump.
+  `^0.221.0` excluded it, which a frozen lockfile was hiding.
+
+### Patch Changes
+
+- Updated dependencies [b468999]
+  - @btravstack/di@0.16.0
+  - @btravstack/config@0.16.0
+  - @btravstack/core@0.16.0
+
 ## 0.15.0
 
 ### Patch Changes
