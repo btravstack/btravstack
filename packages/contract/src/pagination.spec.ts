@@ -296,3 +296,147 @@ describe("keyset", () => {
     });
   });
 });
+
+describe("keyset, sorted", () => {
+  it("mints a cursor carrying the sort it was issued under", () => {
+    // GIVEN a sorted first page
+    const keys = keyset({ limit: 2, sort: { field: "quantity", direction: "desc" } });
+
+    // WHEN a page is folded from rows the store answered
+    const built = keys.resumable
+      ? keys.page(
+          [
+            { quantity: 9, id: 1 },
+            { quantity: 9, id: 2 },
+            { quantity: 8, id: 3 },
+          ],
+          (row) => [String(row.quantity), String(row.id)],
+        )
+      : undefined;
+
+    // THEN the next cursor names the sort, then both values, in that order
+    expect(built).toEqual({
+      items: [
+        { quantity: 9, id: 1 },
+        { quantity: 9, id: 2 },
+      ],
+      hasPreviousPage: false,
+      hasNextPage: true,
+      nextCursor: "quantity:desc|9|2",
+    });
+  });
+
+  it("resumes from a cursor issued under the same sort", () => {
+    // GIVEN a cursor minted under `quantity desc`
+    const request = {
+      limit: 2,
+      after: "quantity:desc|9|2",
+      sort: { field: "quantity", direction: "desc" },
+    } as const;
+
+    // WHEN the keyset is taken for the same sort
+    const keys = keyset(request);
+
+    // THEN it resumes, handing the seek both values decoded
+    expect(keys).toMatchObject({ resumable: true, backward: false, cursor: ["9", "2"] });
+  });
+
+  it("refuses a cursor issued under a different field", () => {
+    // GIVEN a cursor minted under `quantity desc`
+    const cursor = "quantity:desc|9|2";
+
+    // WHEN it is replayed against a listing sorted by another field
+    const keys = keyset({
+      limit: 2,
+      after: cursor,
+      sort: { field: "placedAt", direction: "desc" },
+    });
+
+    // THEN it is refused, naming the cursor that was refused
+    expect(keys).toEqual({ resumable: false, cursor });
+  });
+
+  it("refuses a cursor issued under the same field in the other direction", () => {
+    // GIVEN a cursor minted under `quantity desc`
+    const cursor = "quantity:desc|9|2";
+
+    // WHEN it is replayed with the direction flipped
+    const keys = keyset({ limit: 2, after: cursor, sort: { field: "quantity", direction: "asc" } });
+
+    // THEN it is refused rather than served from the wrong side
+    expect(keys).toEqual({ resumable: false, cursor });
+  });
+
+  it("refuses a cursor missing the tiebreak value rather than seeking without it", () => {
+    // GIVEN a cursor carrying the sort and one value
+    const cursor = "quantity:desc|9";
+
+    // WHEN it is replayed
+    const keys = keyset({
+      limit: 2,
+      after: cursor,
+      sort: { field: "quantity", direction: "desc" },
+    });
+
+    // THEN it is refused: a partial keyset seeks on one column and skips rows
+    expect(keys).toEqual({ resumable: false, cursor });
+  });
+
+  it("hands a backward page back in reading order", () => {
+    // GIVEN a backward page whose store answered newest-first
+    const keys = keyset({
+      limit: 2,
+      before: "quantity:desc|5|9",
+      sort: { field: "quantity", direction: "desc" },
+    });
+
+    // WHEN three rows come back for a page of two
+    const built = keys.resumable
+      ? keys.page(
+          [
+            { quantity: 6, id: 3 },
+            { quantity: 7, id: 2 },
+            { quantity: 8, id: 1 },
+          ],
+          (row) => [String(row.quantity), String(row.id)],
+        )
+      : undefined;
+
+    // THEN the extra row proves the side BEFORE, and the rows read ascending
+    expect(built).toEqual({
+      items: [
+        { quantity: 7, id: 2 },
+        { quantity: 6, id: 3 },
+      ],
+      hasPreviousPage: true,
+      previousCursor: "quantity:desc|7|2",
+      hasNextPage: true,
+      nextCursor: "quantity:desc|6|3",
+    });
+  });
+
+  it("round-trips a value containing the separator", () => {
+    // GIVEN a sort value containing the separator, and the over-fetch row that
+    // is what makes a next cursor exist to replay
+    const keys = keyset({ limit: 1, sort: { field: "label", direction: "asc" } });
+    const minted = keys.resumable
+      ? keys.page(
+          [
+            { label: "a|b", id: 1 },
+            { label: "c", id: 2 },
+          ],
+          (row) => [row.label, String(row.id)],
+        )
+      : undefined;
+
+    // WHEN the cursor it minted is replayed
+    const resumed = keyset({
+      limit: 1,
+      after: minted?.hasNextPage === true ? minted.nextCursor : "",
+      sort: { field: "label", direction: "asc" },
+    });
+
+    // THEN the value survives encoding rather than splitting the cursor
+    expect(resumed).toMatchObject({ resumable: true, cursor: ["a|b", "1"] });
+  });
+});
