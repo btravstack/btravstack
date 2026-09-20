@@ -701,12 +701,19 @@ export const ordersRouter = api.OrpcRouter(contract.orders)({
         )
         .map((found) => ({ ...found, items: found.items.map(view) }))
         .mapErrCases((matcher) =>
-          matcher.with(P.tag("MalformedCursor"), (error) =>
-            errors.BAD_REQUEST({
-              message: "the cursor could not be read",
-              data: { cursor: error.cursor },
-            }),
-          ),
+          matcher
+            .with(P.tag("MalformedCursor"), (error) =>
+              errors.BAD_REQUEST({
+                message: "the cursor could not be read",
+                data: { cursor: error.cursor },
+              }),
+            )
+            .with(P.tag("CursorSortMismatch"), (error) =>
+              errors.CURSOR_SORT_MISMATCH({
+                message: "this cursor was issued under a different sort; start from the first page",
+                data: { cursor: error.cursor },
+              }),
+            ),
         ),
     // `export` names two schemes, so its principal is a tagged union — which
     // is what an authorization rule takes, since what a caller may export

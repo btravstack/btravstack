@@ -11,6 +11,7 @@ import {
 } from "@btravstack/core";
 import { Provider, type Module, type Scope, type ServiceOf } from "@btravstack/di";
 import {
+  CursorSortMismatch,
   CustomerRepository,
   MalformedCursor,
   OrderRepository,
@@ -178,10 +179,11 @@ const stubbedApi = () =>
     // assert the round trip rather than the string.
     //
     // Only the cursors it ISSUED move the listing; every other one is
-    // `MalformedCursor`. A stub that accepted any defined cursor would let a
-    // round-trip test pass on an altered cursor, which is the one thing that
-    // test exists to rule out. Two pages, so `before` has somewhere to go back
-    // to — the direction a "previous" link exercises.
+    // `MalformedCursor`, except the one reserved to stand in for a cursor
+    // issued under a different sort. A stub that accepted any defined cursor
+    // would let a round-trip test pass on an altered cursor, which is the one
+    // thing that test exists to rule out. Two pages, so `before` has
+    // somewhere to go back to — the direction a "previous" link exercises.
     list: ({ after, before }) => {
       const first = page([anOrder(FIRST_ID, 1)], { previous: null, next: "page-1-end" });
       if (before !== undefined)
@@ -189,6 +191,7 @@ const stubbedApi = () =>
           ? OkAsync(first)
           : ErrAsync(new MalformedCursor({ cursor: before }));
       if (after === undefined) return OkAsync(first);
+      if (after === "sort-mismatch") return ErrAsync(new CursorSortMismatch({ cursor: after }));
       return after === "page-1-end"
         ? OkAsync(page([anOrder(SECOND_ID, 2)], { previous: "page-2-start", next: null }))
         : ErrAsync(new MalformedCursor({ cursor: after }));

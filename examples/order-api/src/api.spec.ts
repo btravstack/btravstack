@@ -692,6 +692,28 @@ describe("order-api", () => {
     );
   });
 
+  it("answers a cursor from another sort with its own error rather than a bad request", async ({
+    serve,
+    clientFor,
+    stubbed,
+  }) => {
+    // GIVEN a cursor the stub reserves for one issued under a different sort
+    const client = await clientFor(serve(stubbed));
+
+    // WHEN it is replayed
+    const refused = await client.orders.list({ limit: 1, after: "sort-mismatch" });
+
+    // THEN the caller is told to re-issue, told apart from a corrupt token
+    expect(refused).toBeErrWith(
+      expect.objectContaining({
+        constructor: ORPCError,
+        code: "CURSOR_SORT_MISMATCH",
+        inferable: true,
+        data: { cursor: "sort-mismatch" },
+      }),
+    );
+  });
+
   it("refuses a malformed input before the use case is reached", async ({
     serve,
     clientFor,
