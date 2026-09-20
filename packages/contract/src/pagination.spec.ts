@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { it } from "./__tests__/test-fixtures.js";
 import { keyset, page, pageRequest } from "./index.js";
-import { pageOf, pageRequestOf } from "./zod.js";
+import { pageOf, pageRequestOf, sortableBy } from "./zod.js";
 
 describe("page", () => {
   it("derives each side's flag from whether that side has a cursor", () => {
@@ -438,5 +438,84 @@ describe("keyset, sorted", () => {
 
     // THEN the value survives encoding rather than splitting the cursor
     expect(resumed).toMatchObject({ resumable: true, cursor: ["a|b", "1"] });
+  });
+});
+
+describe("pageRequestOf, sorted", () => {
+  it("applies the declared default when the caller names no sort", () => {
+    // GIVEN a listing that sorts by quantity, newest first by default
+    const schema = pageRequestOf(
+      {},
+      {
+        sortableBy: sortableBy(z.object({ id: z.string(), quantity: z.number() }), ["quantity"]),
+        defaultSort: { field: "quantity", direction: "desc" },
+      },
+    );
+
+    // WHEN an input naming no sort is parsed
+    const parsed = schema.safeParse({});
+
+    // THEN the default is applied, parsed rather than handed back raw
+    expect(parsed).toMatchObject({
+      success: true,
+      data: { limit: 20, sort: { field: "quantity", direction: "desc" } },
+    });
+  });
+
+  it("refuses a sort field the listing did not declare", () => {
+    // GIVEN the same listing
+    const schema = pageRequestOf(
+      {},
+      {
+        sortableBy: sortableBy(z.object({ id: z.string(), quantity: z.number() }), ["quantity"]),
+        defaultSort: { field: "quantity", direction: "desc" },
+      },
+    );
+
+    // WHEN a caller asks for a field that is not sortable
+    const parsed = schema.safeParse({ sort: { field: "id", direction: "asc" } });
+
+    // THEN it is refused, rather than dropped and served under the default
+    expect(parsed).toMatchObject({ success: false });
+  });
+
+  it("refuses a sort missing its direction", () => {
+    // GIVEN the same listing
+    const schema = pageRequestOf(
+      {},
+      {
+        sortableBy: sortableBy(z.object({ id: z.string(), quantity: z.number() }), ["quantity"]),
+        defaultSort: { field: "quantity", direction: "desc" },
+      },
+    );
+
+    // WHEN a caller sends a field with no direction
+    const parsed = schema.safeParse({ sort: { field: "quantity" } });
+
+    // THEN it is refused: the pair is one fact
+    expect(parsed).toMatchObject({ success: false });
+  });
+
+  it("carries a parsed sort through the narrowing into the port's request", () => {
+    // GIVEN a parsed sorted input carrying a cursor
+    const schema = pageRequestOf(
+      { minQuantity: z.number().optional() },
+      {
+        sortableBy: sortableBy(z.object({ id: z.string(), quantity: z.number() }), ["quantity"]),
+        defaultSort: { field: "quantity", direction: "desc" },
+      },
+    );
+    const parsed = schema.parse({ after: "quantity:desc|9|2", minQuantity: 3 });
+
+    // WHEN it crosses into the one-direction request
+    const request = pageRequest(parsed);
+
+    // THEN the sort rides across beside the filter and the cursor
+    expect(request).toEqual({
+      limit: 20,
+      after: "quantity:desc|9|2",
+      minQuantity: 3,
+      sort: { field: "quantity", direction: "desc" },
+    });
   });
 });

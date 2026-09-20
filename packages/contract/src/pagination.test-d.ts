@@ -1,7 +1,8 @@
+import { expectTypeOf } from "vitest";
 import { z } from "zod";
 
-import { page, pageRequest, type Page, type PageRequest } from "./index.js";
-import { pageOf, pageRequestOf } from "./zod.js";
+import { keyset, page, pageRequest, type Page, type PageRequest } from "./index.js";
+import { pageOf, pageRequestOf, sortableBy } from "./zod.js";
 
 const item = z.object({ id: z.string() });
 type Item = z.infer<typeof item>;
@@ -60,3 +61,52 @@ void reservedLimit;
 // @ts-expect-error -- and so is a cursor
 const reservedCursor = pageRequestOf({ after: z.number() });
 void reservedCursor;
+
+// A sorted, narrowed query carries its `Sort`; an unsorted one has none to carry.
+const sortedNarrowed = pageRequest({
+  limit: 20,
+  after: "a",
+  sort: { field: "quantity" as const, direction: "desc" },
+});
+const sortedIsARequest: PageRequest<"quantity"> = sortedNarrowed;
+void sortedIsARequest;
+
+const unsortedNarrowed = pageRequest({ limit: 20, after: "a" });
+// @ts-expect-error -- an unsorted narrowing carries no `sort` to satisfy a sorted `PageRequest`
+const stillSorted: PageRequest<"quantity"> = unsortedNarrowed;
+void stillSorted;
+
+const view = z.object({
+  id: z.string(),
+  quantity: z.number(),
+  cancelledAt: z.string().nullable(),
+  note: z.string().optional(),
+});
+
+// A declared key must be a key of the item's own shape.
+// @ts-expect-error -- `total` is not a key of `view`
+sortableBy(view, ["total"]);
+
+// A nullable key is refused: a null breaks the keyset comparison.
+// @ts-expect-error -- `cancelledAt` is nullable
+sortableBy(view, ["cancelledAt"]);
+
+// An optional key is refused for the same reason.
+// @ts-expect-error -- `note` is optional
+sortableBy(view, ["note"]);
+
+const sortable = sortableBy(view, ["quantity"]);
+expectTypeOf(sortable).toEqualTypeOf<readonly ["quantity"]>();
+
+// A sorted keyset's cursor callback must answer BOTH values.
+const sorted = keyset({ limit: 10, sort: { field: "quantity", direction: "desc" } });
+if (sorted.resumable) {
+  // @ts-expect-error -- a bare key is not a keyset for a sorted listing
+  sorted.page([{ id: "a", quantity: 1 }], (row) => row.id);
+  expectTypeOf(sorted.cursor).toEqualTypeOf<readonly [string, string] | undefined>();
+}
+
+// An unsorted keyset still takes one string, and has no `resumable` to check.
+const plain = keyset({ limit: 10 });
+expectTypeOf(plain.cursor).toEqualTypeOf<string | undefined>();
+expectTypeOf(plain.page([{ id: "a" }], (row) => row.id)).toEqualTypeOf<Page<{ id: string }>>();

@@ -13,8 +13,11 @@ export {
   keyset,
   page,
   pageRequest,
+  type CursorRefused,
   type Keyset,
   type Page,
   type PageQuery,
   type PageRequest,
+  type Sort,
+  type SortedKeyset,
 } from "./pagination.js";
