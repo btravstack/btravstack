@@ -1,11 +1,11 @@
 import { Env } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";
 import { OrderRepository, tenantOf } from "@btravstack/example-order-application";
-import type { TenantId } from "@btravstack/example-order-domain";
+import type { DuplicateOrder, TenantId } from "@btravstack/example-order-domain";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { tenantPinned } from "@btravstack/prisma/rls";
-import { fromSafePromise } from "unthrown";
+import { fromSafePromise, OkAsync, type AsyncResult } from "unthrown";
 import { describe, expect, inject, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -189,15 +189,18 @@ describe("the read path's error channel", () => {
 describe("OrderPersistenceModule", () => {
   it("pages with the cursor the previous page handed back", async ({ repository, anOrder }) => {
     // GIVEN three orders under this test's own tenant
+    const sort = { field: "quantity", direction: "asc" } as const;
+
     // WHEN a page of two is taken, then the page after its cursor
     const second = await repository
       .save(anOrder("0199a1e0-0000-7000-8000-000000000101", 1))
       .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000102", 5)))
       .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000103", 9)))
-      .flatMap(() => repository.list({ limit: 2 }))
+      .flatMap(() => repository.list({ limit: 2, sort }))
       .flatMap((page) =>
         repository.list({
           limit: 2,
+          sort,
           ...(page.hasNextPage ? { after: page.nextCursor } : {}),
         }),
       );
@@ -216,21 +219,25 @@ describe("OrderPersistenceModule", () => {
   it("pages backward from the cursor a page handed back", async ({ repository, anOrder }) => {
     // GIVEN three orders under this test's own tenant, and the LAST page taken
     // by following the cursors forward
+    const sort = { field: "quantity", direction: "asc" } as const;
+
     // WHEN the page before it is asked for
     const back = await repository
       .save(anOrder("0199a1e0-0000-7000-8000-000000000131", 1))
       .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000132", 5)))
       .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000133", 9)))
-      .flatMap(() => repository.list({ limit: 2 }))
+      .flatMap(() => repository.list({ limit: 2, sort }))
       .flatMap((page) =>
         repository.list({
           limit: 2,
+          sort,
           ...(page.hasNextPage ? { after: page.nextCursor } : {}),
         }),
       )
       .flatMap((page) =>
         repository.list({
           limit: 2,
+          sort,
           ...(page.hasPreviousPage ? { before: page.previousCursor } : {}),
         }),
       );
@@ -256,7 +263,13 @@ describe("OrderPersistenceModule", () => {
       .save(anOrder("0199a1e0-0000-7000-8000-000000000111", 1))
       .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000112", 5)))
       .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000113", 9)))
-      .flatMap(() => repository.list({ limit: 2, minQuantity: 5 }));
+      .flatMap(() =>
+        repository.list({
+          limit: 2,
+          minQuantity: 5,
+          sort: { field: "quantity", direction: "asc" },
+        }),
+      );
 
     // THEN the page is FULL of matches — a filter applied after paging would
     // have answered one row and claimed the page was short
@@ -280,7 +293,7 @@ describe("OrderPersistenceModule", () => {
     const page = await repository
       .save(anOrder("0199a1e0-0000-7000-8000-000000000121", 1))
       .flatMap(() => otherRepository.save(anOrder("0199a1e0-0000-7000-8000-000000000122", 1)))
-      .flatMap(() => repository.list({ limit: 10 }));
+      .flatMap(() => repository.list({ limit: 10, sort: { field: "quantity", direction: "asc" } }));
 
     // THEN it sees its own row only, on a server every other spec is writing
     // to — held by `Order`'s policy, since `list`'s `where` names no tenant
@@ -294,11 +307,51 @@ describe("OrderPersistenceModule", () => {
   it("answers MalformedCursor for a cursor it cannot read", async ({ repository }) => {
     // GIVEN nothing saved — the cursor is refused before any row is read
     // WHEN a page is asked for after a cursor the client made up
-    const page = await repository.list({ limit: 10, after: "not-a-cursor" });
+    const page = await repository.list({
+      limit: 10,
+      after: "not-a-cursor",
+      sort: { field: "quantity", direction: "asc" },
+    });
 
     // THEN it is a modeled error carrying the offending string, not a defect:
     // a cursor is the one part of the query that came from outside
     expect(page).toBeErrTagged("MalformedCursor", { cursor: "not-a-cursor" });
+  });
+
+  it("pages rows tied on the sort key without skipping or repeating one", async ({
+    repository,
+    anOrder,
+  }) => {
+    // GIVEN three orders sharing a quantity, saved in ascending surrogate-id
+    // order
+    const ids = [
+      "0199a1e0-0000-7000-8000-0000000000f1",
+      "0199a1e0-0000-7000-8000-0000000000f2",
+      "0199a1e0-0000-7000-8000-0000000000f3",
+    ];
+    const sort = { field: "quantity", direction: "desc" } as const;
+
+    // WHEN the tied run is walked one page at a time
+    const walked = await ids
+      .reduce<AsyncResult<unknown, DuplicateOrder>>(
+        (saved, id) => saved.flatMap(() => repository.save(anOrder(id, 7))),
+        OkAsync(undefined),
+      )
+      .flatMap(() => repository.list({ limit: 2, sort }))
+      .flatMap((first) =>
+        repository
+          .list({
+            limit: 2,
+            sort,
+            ...(first.hasNextPage ? { after: first.nextCursor } : {}),
+          })
+          .map((second) => [...first.items, ...second.items].map((order) => order.id)),
+      );
+
+    // THEN every tied row is seen exactly once — the tiebreak is the
+    // surrogate id, DESCENDING with the rest of a "desc" sort, so the walk
+    // comes back in the reverse of insertion order
+    expect(walked).toBeOkWith([...ids].reverse());
   });
 
   it("satisfies the application's OrderRepository need inside a scope", async ({
