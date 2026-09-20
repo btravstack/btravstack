@@ -105,21 +105,23 @@ const runsInOneDirection = (
 
 const oneDirectionMessage = "a page runs in one direction: pass `after` or `before`, not both";
 
+const pageLimitsShape = (limits: PageLimits) => ({
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(limits.maxLimit ?? 100)
+    // `prefault`, not `default`: a default is handed back unparsed, so a
+    // listing whose `defaultLimit` sits above its own ceiling would serve a
+    // page larger than it published. The emitted input schema is identical.
+    .prefault(limits.defaultLimit ?? 20),
+  after: z.string().optional(),
+  before: z.string().optional(),
+});
+
 const unsortedRequest = <Filters extends ReservedKeysFree>(filters: Filters, limits: PageLimits) =>
   z
-    .object({
-      limit: z
-        .number()
-        .int()
-        .min(1)
-        .max(limits.maxLimit ?? 100)
-        // `prefault`, not `default`: a default is handed back unparsed, so a
-        // listing whose `defaultLimit` sits above its own ceiling would serve a
-        // page larger than it published. The emitted input schema is identical.
-        .prefault(limits.defaultLimit ?? 20),
-      after: z.string().optional(),
-      before: z.string().optional(),
-    })
+    .object(pageLimitsShape(limits))
     .extend(filters)
     .refine(runsInOneDirection, { message: oneDirectionMessage });
 
@@ -132,14 +134,7 @@ const sortedRequest = <
 ) =>
   z
     .object({
-      limit: z
-        .number()
-        .int()
-        .min(1)
-        .max(options.maxLimit ?? 100)
-        .prefault(options.defaultLimit ?? 20),
-      after: z.string().optional(),
-      before: z.string().optional(),
+      ...pageLimitsShape(options),
       sort: z
         .strictObject({ field: z.enum(options.sortableBy), direction: z.enum(["asc", "desc"]) })
         .prefault(options.defaultSort),
