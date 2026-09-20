@@ -40,6 +40,17 @@ because only the second is actionable. `SortedKeyset<F>.page`'s `cursorOf`
 must now return both the sort value and the tiebreak, so a forgotten tiebreak
 is a compile error rather than a keyset that silently skips tied rows.
 
-Nothing about an unsorted listing changes: `pageRequestOf(filters)` and
+An unsorted listing keeps its behaviour: `pageRequestOf(filters)` and
 `keyset(request)` with no `sort` still answer the plain `PageRequest` and
-`Keyset` they always did.
+`Keyset` they always did. One thing about DECLARING one changes, and it is why
+this is a `minor` — `sort` joins `limit`, `after` and `before` as a reserved
+key, so a listing that already declares a filter named `sort`
+(`pageRequestOf({ sort: z.string() })`) stops compiling.
+
+**Adopting `sortableBy` on a listing that already shipped invalidates every
+outstanding cursor.** A cursor minted before the sort existed carries no
+`field:direction` head, so the first request after the deploy is refused as
+`"malformed"` — a `400`, not a silent reset to page one. That is the posture,
+not an accident: serving that page from the wrong side is the bug the head
+exists to prevent. Clients recover by starting the listing again, which is
+what a well-behaved one does anyway when the sort changes.
