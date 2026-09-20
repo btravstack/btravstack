@@ -352,8 +352,9 @@ describe("keyset, sorted", () => {
       sort: { field: "placedAt", direction: "desc" },
     });
 
-    // THEN it is refused, naming the cursor that was refused
-    expect(keys).toEqual({ resumable: false, cursor });
+    // THEN it is refused as its own sort, naming the cursor that was refused —
+    // it had a sort-shaped head, and named a different one
+    expect(keys).toEqual({ resumable: false, cursor, reason: "sort-mismatch" });
   });
 
   it("refuses a cursor issued under the same field in the other direction", () => {
@@ -364,7 +365,7 @@ describe("keyset, sorted", () => {
     const keys = keyset({ limit: 2, after: cursor, sort: { field: "quantity", direction: "asc" } });
 
     // THEN it is refused rather than served from the wrong side
-    expect(keys).toEqual({ resumable: false, cursor });
+    expect(keys).toEqual({ resumable: false, cursor, reason: "sort-mismatch" });
   });
 
   it("refuses a cursor missing the tiebreak value rather than seeking without it", () => {
@@ -378,8 +379,25 @@ describe("keyset, sorted", () => {
       sort: { field: "quantity", direction: "desc" },
     });
 
-    // THEN it is refused: a partial keyset seeks on one column and skips rows
-    expect(keys).toEqual({ resumable: false, cursor });
+    // THEN it is malformed: a partial keyset seeks on one column and skips
+    // rows, and there is no full head-and-value shape to compare against a sort
+    expect(keys).toEqual({ resumable: false, cursor, reason: "malformed" });
+  });
+
+  it("refuses a cursor with no sort-shaped head at all", () => {
+    // GIVEN a cursor that never had a `field:direction` head to read
+    const cursor = "invented";
+
+    // WHEN it is replayed against a sorted listing
+    const keys = keyset({
+      limit: 2,
+      after: cursor,
+      sort: { field: "quantity", direction: "desc" },
+    });
+
+    // THEN it is malformed rather than a sort mismatch — there was no head to
+    // compare against the declared sort in the first place
+    expect(keys).toEqual({ resumable: false, cursor, reason: "malformed" });
   });
 
   it("hands a backward page back in reading order", () => {

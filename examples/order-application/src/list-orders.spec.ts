@@ -173,6 +173,21 @@ describe("ListOrders", () => {
     });
   });
 
+  it("refuses a cursor with no sort-shaped head to parse", async ({ scopeFor }) => {
+    // GIVEN one order placed
+    // WHEN a page is asked for after a cursor that never had a sort's head
+    const result = await Module.scoped(scopeFor(ACME), (ctx) =>
+      ctx
+        .get(PlaceOrder)
+        .execute(A, 1)
+        .flatMap(() => ctx.get(ListOrders).execute({ limit: 2, sort: SORT, after: "invented" })),
+    );
+
+    // THEN it is malformed rather than a sort mismatch — there was no head to
+    // compare against the declared sort in the first place
+    expect(result).toBeErrTagged("MalformedCursor", { cursor: "invented" });
+  });
+
   it("pages rows that tie on the sort key without skipping or repeating one", async ({
     scopeFor,
   }) => {

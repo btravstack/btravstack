@@ -170,18 +170,43 @@ export type SortedKeyset<F extends string> = {
   ) => Page<U>;
 };
 
-/** A cursor that cannot be honoured under the sort it arrived with. */
-export type CursorRefused = { readonly resumable: false; readonly cursor: string };
+/**
+ * A cursor that cannot be honoured under the sort it arrived with, and why:
+ * `"malformed"` never had a sort-shaped head to compare, where
+ * `"sort-mismatch"` did, and named a different one. The two are separately
+ * triageable — the first is not actionable, the second tells a caller to
+ * re-issue from the first page — so an adapter needs the reason, not just the
+ * refusal.
+ */
+export type CursorRefused = {
+  readonly resumable: false;
+  readonly cursor: string;
+  readonly reason: "malformed" | "sort-mismatch";
+};
 
 const SEPARATOR = "|";
+const HEAD_PATTERN = /^[^:]*:(?:asc|desc)$/;
 
 const headOf = (sort: Sort): string => `${encodeURIComponent(sort.field)}:${sort.direction}`;
 
-const partsOf = (cursor: string, sort: Sort): readonly [string, string] | undefined => {
+/**
+ * Whether a cursor has the three-part, sort-headed SHAPE a sorted keyset
+ * requires — independent of which sort it names. Splitting shape from
+ * identity is what lets a refusal say WHY: a cursor with no such head is
+ * unreadable regardless of sort, where one with a head naming a different
+ * sort is readable and simply wrong.
+ */
+const shapeOf = (
+  cursor: string,
+): { readonly head: string; readonly sortValue: string; readonly key: string } | undefined => {
   const parts = cursor.split(SEPARATOR);
   const [head, sortValue, key] = parts;
-  return parts.length === 3 && head === headOf(sort) && sortValue !== undefined && key !== undefined
-    ? [decodeURIComponent(sortValue), decodeURIComponent(key)]
+  return parts.length === 3 &&
+    head !== undefined &&
+    HEAD_PATTERN.test(head) &&
+    sortValue !== undefined &&
+    key !== undefined
+    ? { head, sortValue: decodeURIComponent(sortValue), key: decodeURIComponent(key) }
     : undefined;
 };
 
@@ -268,7 +293,11 @@ export function keyset(
   const given = request.before ?? request.after;
   const { sort } = request;
   if (sort === undefined) return unsortedKeyset(limit, backward, given);
-  const parts = given === undefined ? undefined : partsOf(given, sort);
-  if (given !== undefined && parts === undefined) return { resumable: false, cursor: given };
-  return sortedKeyset(limit, backward, sort, parts);
+  const shape = given === undefined ? undefined : shapeOf(given);
+  if (given !== undefined) {
+    if (shape === undefined) return { resumable: false, cursor: given, reason: "malformed" };
+    if (shape.head !== headOf(sort))
+      return { resumable: false, cursor: given, reason: "sort-mismatch" };
+  }
+  return sortedKeyset(limit, backward, sort, shape && [shape.sortValue, shape.key]);
 }

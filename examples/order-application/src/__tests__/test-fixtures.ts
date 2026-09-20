@@ -76,7 +76,12 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
             (order) => minQuantity === undefined || order.quantity >= minQuantity,
           );
           const keys = keyset(request);
-          if (!keys.resumable) return ErrAsync(new CursorSortMismatch({ cursor: keys.cursor }));
+          if (!keys.resumable)
+            return ErrAsync(
+              keys.reason === "malformed"
+                ? new MalformedCursor({ cursor: keys.cursor })
+                : new CursorSortMismatch({ cursor: keys.cursor }),
+            );
           // Sorted by the key the caller chose, then by id — the tiebreak, without
           // which rows sharing a quantity have no defined order and the page below
           // either skips them or repeats them.
