@@ -96,12 +96,18 @@ export type PageQuery = {
   readonly before?: string | undefined;
 } & ({ readonly sort: Sort } | { readonly sort?: never });
 
-// The union above states the two states and refuses `sort?: Sort | undefined`.
-// It does NOT refuse the `exactOptionalPropertyTypes` spelling `sort?: Sort`:
-// a union's arms are compared one at a time, and that comparison fails only on
-// the EOPT relation, which assignability to a union does not consult. So the
-// parameter carries this beside the constraint.
-type SortIsDecided<Q> = "sort" extends keyof Q
+/**
+ * The gate {@link pageRequest} intersects into its parameter, refusing a
+ * `sort` that is neither required nor absent.
+ *
+ * {@link PageQuery}'s union already states the two states a sort may be in,
+ * but a union's arms are compared one at a time, and only that per-arm
+ * comparison consults the `exactOptionalPropertyTypes` relation —
+ * assignability to the union as a whole does not. So `sort?: Sort`, a key
+ * present but optional, still types as assignable to a `PageQuery` the union
+ * alone was meant to refuse. This gate closes that spelling directly.
+ */
+export type SortIsDecided<Q> = "sort" extends keyof Q
   ? Q extends { readonly sort: Sort }
     ? unknown
     : { readonly sort: "A SORT IS REQUIRED OR ABSENT — an optional one is neither" }

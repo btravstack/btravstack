@@ -20,4 +20,5 @@ export {
   type PageRequest,
   type Sort,
   type SortedKeyset,
+  type SortIsDecided,
 } from "./pagination.js";

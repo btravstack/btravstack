@@ -47,6 +47,10 @@ this is a `minor` — `sort` joins `limit`, `after` and `before` as a reserved
 key, so a listing that already declares a filter named `sort`
 (`pageRequestOf({ sort: z.string() })`) stops compiling.
 
+**`SortIsDecided`, the gate `pageRequest` intersects into its own parameter to
+refuse an optional `sort`, is exported** — so a caller's own generic wrapper
+around `pageRequest` can restate the same constraint on its own parameter.
+
 **Adopting `sortableBy` on a listing that already shipped invalidates every
 outstanding cursor.** A cursor minted before the sort existed carries no
 `field:direction` head, so the first request after the deploy is refused as
