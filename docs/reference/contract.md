@@ -309,10 +309,10 @@ the keyset, so refusing it once here is what keeps every adapter from having
 to.
 
 **The wire cursor carries the sort verbatim, not hashed.** `field:direction`
-is the head of a sorted cursor — `encodeURIComponent`d, like the sort value
-and the tiebreak that follow it — and legible on purpose: the vocabulary is
-already public in the emitted OpenAPI document (`sortableBy`'s own keys), so
-hashing it would hide nothing a reader could not already see.
+is the head of a sorted cursor — the field half `encodeURIComponent`d, like
+the sort value and the tiebreak that follow it — and legible on purpose: the
+vocabulary is already public in the emitted OpenAPI document (`sortableBy`'s
+own keys), so hashing it would hide nothing a reader could not already see.
 
 **A cursor is valid only for the sort it was issued under, and a mismatch is
 refused.** Sorted, `keyset(request)` answers `SortedKeyset<F> |

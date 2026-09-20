@@ -248,12 +248,13 @@ input always carries a sort rather than an optional one a port would have to
 branch on.
 
 **The cursor carries the sort verbatim, not hashed.** `field:direction` is
-the head of every sorted cursor, `encodeURIComponent`d like the two values
-that follow it — and it is legible on purpose: the vocabulary is already
-public in the emitted OpenAPI document (`sortableBy`'s own keys), so hashing
-would hide nothing a reader could not already see, and this package cannot
-import `node:crypto` to hash it with anyway (root `CLAUDE.md`'s dependency
-rule).
+the head of every sorted cursor — the field half `encodeURIComponent`d, like
+the sort value and the tiebreak that follow it — and it is legible on
+purpose: the vocabulary is already public in the emitted OpenAPI document
+(`sortableBy`'s own keys), so hashing would hide nothing a reader could not
+already see. Hashing would also cost a dependency this root cannot spend:
+`@btravstack/contract`'s root entry point is imported by **browser**
+clients, where `node:crypto` does not exist.
 
 **A mismatch is refused by `keyset` itself, as a union arm the adapter must
 branch on — never as an unfiltered page.** Sorted, `keyset(request)` answers

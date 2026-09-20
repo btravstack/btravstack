@@ -156,8 +156,9 @@ export const sortedOrders = oc.router({
 ```
 
 The cursor carries the sort **verbatim, not hashed** — `field:direction`,
-`encodeURIComponent`d beside the sort value and the tiebreak — because the
-vocabulary is already public in the emitted OpenAPI document. A cursor is
+the field half `encodeURIComponent`d, like the sort value and the tiebreak
+beside it — because the vocabulary is already public in the emitted OpenAPI
+document. A cursor is
 valid only for the sort it was issued under: sorted, `keyset(request)`
 answers `SortedKeyset<F> | CursorRefused`, a union the adapter must branch on
 rather than an unfiltered page served from the wrong side:
