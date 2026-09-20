@@ -17,3 +17,16 @@ import { TaggedError } from "unthrown";
 export class MalformedCursor extends TaggedError("MalformedCursor")<{
   readonly cursor: string;
 }> {}
+
+/**
+ * The cursor was issued under a different sort.
+ *
+ * A separate fact from {@link MalformedCursor}, and separately triageable: a
+ * malformed token is not actionable, where this one tells a caller to re-issue
+ * from the first page under the sort they asked for. A keyset seek compares
+ * against the sort key, so honouring this cursor would serve a page from the
+ * wrong side rather than fail.
+ */
+export class CursorSortMismatch extends TaggedError("CursorSortMismatch")<{
+  readonly cursor: string;
+}> {}

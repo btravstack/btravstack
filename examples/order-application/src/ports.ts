@@ -15,7 +15,7 @@ import type {
 } from "@btravstack/example-order-domain";
 import type { AsyncResult } from "unthrown";
 
-import type { MalformedCursor } from "./pagination.js";
+import type { CursorSortMismatch, MalformedCursor } from "./pagination.js";
 
 /**
  * The tenant one unit of work is scoped to. A port rather than a parameter:
@@ -40,18 +40,21 @@ export class Tenant extends Port("Tenant")<TenantId> {}
 export class OrderRepository extends Port("OrderRepository")<{
   readonly save: (order: Order) => AsyncResult<Order, DuplicateOrder>;
   readonly find: (id: string) => AsyncResult<Order, OrderNotFound>;
-  readonly list: (query: OrderQuery) => AsyncResult<Page<Order>, MalformedCursor>;
+  readonly list: (
+    query: OrderQuery,
+  ) => AsyncResult<Page<Order>, MalformedCursor | CursorSortMismatch>;
   readonly remove: (id: string) => AsyncResult<void, OrderNotFound>;
 }> {}
 
 /**
- * A page of orders, plus the one filter this listing supports.
+ * A page of orders, sorted by quantity, plus the one filter this listing
+ * supports.
  *
  * The filter is a FIELD rather than a free-form predicate: a port that took a
  * query object would be asking the application layer to speak the adapter's
  * query language, and every store would then have to answer it.
  */
-export type OrderQuery = PageRequest & { readonly minQuantity?: number | undefined };
+export type OrderQuery = PageRequest<"quantity"> & { readonly minQuantity?: number | undefined };
 
 /**
  * The customers slice's own port. Its tenant stays a parameter: the unmarked
@@ -142,7 +145,9 @@ export class FindOrder extends Port("FindOrder")<{
 }> {}
 
 export class ListOrders extends Port("ListOrders")<{
-  readonly execute: (query: OrderQuery) => AsyncResult<Page<Order>, MalformedCursor>;
+  readonly execute: (
+    query: OrderQuery,
+  ) => AsyncResult<Page<Order>, MalformedCursor | CursorSortMismatch>;
 }> {}
 
 export class FindCustomer extends Port("FindCustomer")<{
