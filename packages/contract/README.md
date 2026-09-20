@@ -131,6 +131,55 @@ this tier cannot express — and where a store reports both cursors itself,
 `page(items, { previous, next })` takes them directly. A controller turns a
 validated input into the port's `PageRequest` with `pageRequest(input)`.
 
+### Sorting a listing
+
+A listing declares its own sortable vocabulary, checked against the item it
+already publishes, and a required default — an implicit one would be a
+listing sorted by something nobody chose:
+
+```ts
+import { sortableBy } from "@btravstack/contract/zod";
+
+export const sortedOrders = oc.router({
+  list: oc
+    .input(
+      pageRequestOf(
+        { minQuantity: z.number().int().min(1).optional() },
+        {
+          sortableBy: sortableBy(orderView, ["quantity"]),
+          defaultSort: { field: "quantity", direction: "desc" },
+        },
+      ),
+    )
+    .output(pageOf(orderView)),
+});
+```
+
+The cursor carries the sort **verbatim, not hashed** — `field:direction`,
+`encodeURIComponent`d beside the sort value and the tiebreak — because the
+vocabulary is already public in the emitted OpenAPI document. A cursor is
+valid only for the sort it was issued under: sorted, `keyset(request)`
+answers `SortedKeyset<F> | CursorRefused`, a union the adapter must branch on
+rather than an unfiltered page served from the wrong side:
+
+<!-- doctest: prelude
+declare const sortedRequest: import("@btravstack/contract").PageRequest<"quantity">;
+declare const sortedRows: readonly { readonly id: string; readonly quantity: number }[];
+-->
+
+```ts
+import { keyset } from "@btravstack/contract";
+
+const sortedKeys = keyset(sortedRequest);
+const sortedListed = sortedKeys.resumable
+  ? sortedKeys.page(sortedRows, (row) => [String(row.quantity), String(row.id)])
+  : sortedKeys.reason; // "malformed" or "sort-mismatch"
+```
+
+`SortedKeyset<F>.page`'s `cursorOf` returns **both** values a sorted seek
+needs — the sort key's and the tiebreak's — so a forgotten tiebreak is a
+compile error rather than a keyset that silently skips rows that tie.
+
 ## License
 
 [MIT](./LICENSE) © Benoit TRAVERS

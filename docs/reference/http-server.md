@@ -690,8 +690,9 @@ export const ordersRouter = api.OrpcRouter(contract.orders)({
         ),
     // A listing. The one translation is the cursor — the contract carries
     // `after` and `before` and refuses both, where the port makes them a
-    // union — and the only modeled failure is that cursor, the one field
-    // that came from outside.
+    // union — and the two modeled failures are both about that cursor, the
+    // one field that came from outside: unreadable, or issued under a sort
+    // this request no longer names.
     list: ({ errors, context }, { after, before, ...page }) =>
       context.unit.list
         .execute(

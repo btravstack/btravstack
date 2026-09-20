@@ -400,6 +400,23 @@ describe("keyset, sorted", () => {
     expect(keys).toEqual({ resumable: false, cursor, reason: "malformed" });
   });
 
+  it("refuses a three-part cursor whose head is not field:direction shaped", () => {
+    // GIVEN a cursor with the right PART COUNT but no `field:direction` head —
+    // the part-count check alone would let this one through
+    const cursor = "a|b|c";
+
+    // WHEN it is replayed against a sorted listing
+    const keys = keyset({
+      limit: 2,
+      after: cursor,
+      sort: { field: "quantity", direction: "desc" },
+    });
+
+    // THEN it is malformed: the head-pattern check is what catches it, not the
+    // part count
+    expect(keys).toEqual({ resumable: false, cursor, reason: "malformed" });
+  });
+
   it("hands a backward page back in reading order", () => {
     // GIVEN a backward page whose store answered newest-first
     const keys = keyset({

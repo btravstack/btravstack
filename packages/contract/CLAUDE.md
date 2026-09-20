@@ -23,11 +23,13 @@ per contract, and each transport's destination is its own library's
 is the application's.
 
 The test is deliberately narrow, because the name promises a tier and the
-package is what stops that promise from being a slogan. A filter LANGUAGE and
-a sort are the next candidates and are **not** here — a listing's own filter
-fields ride `pageRequestOf` and always have, which is a different thing
-entirely. The two candidates are less alike than they look, and **Deferred,
-deliberately** below states each position separately.
+package is what stops that promise from being a slogan. A filter LANGUAGE is
+the next candidate and is **not** here — a listing's own filter fields ride
+`pageRequestOf` and always have, which is a different thing entirely, and
+**Deferred, deliberately** below states that position. A sort is admitted on
+the same terms as a filter field: `sortableBy` and `Sort<F>` are the page's
+own vocabulary riding `pageRequestOf`, not a second shape beside it — see
+**The page, and what it deliberately is not** below.
 
 `keyset` is the rule's own second clause firing: the page's ARITHMETIC had
 been written twice, by `examples/order-infrastructure`'s Prisma adapter and by
@@ -188,6 +190,15 @@ never`): TypeScript cannot see that `U` is `T` when the parameter is omitted,
 and every alternative — an overload pair, two named members — spells the same
 function twice.
 
+`pageRequest`'s own body carries the same class of cast, for a sibling
+reason: its return type is a **deferred conditional** on `Q`
+(`Q extends { readonly sort: Sort<infer F> } ? PageRequest<F> : PageRequest`)
+that only resolves once `Q` is known at the call, so nothing inside the
+function body is assignable to it — the conditional has nowhere to resolve
+to until a caller supplies `Q`. `as never` is what lets the body compile
+against a return type it cannot itself satisfy, the same trade `item`'s
+default makes.
+
 `pageOf(item)` is the four pages that exist, as four closed objects in a
 union — a union rather than an intersection because `allOf` of closed objects
 validates nothing in JSON Schema, and the emitted OpenAPI document is an
@@ -223,29 +234,49 @@ them through to the `PageRequest` a port takes, with `limit`, `after` and
 `before` refused among them at the call. The operators stay the
 application's, where the store that has to answer them is.
 
-**Sorting is DEFERRED, and the cursor rule is decided rather than left
-open.** Nothing has written it once, let alone twice: `orders.list` is the
-only listing here and its adapter orders by `id`, the seek key itself, so a
-sort shape would be guessed at rather than extracted — which is what the
-admission rule exists to prevent. The trigger is a second listing that sorts
-by something other than its keyset key.
+**Sorting ships: one sort key from a curated vocabulary, checked against the
+item's own schema.** `sortableBy(item, keys)` is that vocabulary —
+`keys` a non-empty readonly tuple of the item's own field names — and a name
+outside the item's shape, or a nullable or optional one, is a compile error
+here rather than a runtime surprise: a null in a sort key breaks the keyset
+comparison that walks the page, so refusing it once at declaration is what
+keeps every adapter from having to handle it. `pageRequestOf(filters, {
+sortableBy, defaultSort })` takes it beside the filters; `defaultSort` is
+**required** alongside `sortableBy`, because an implicit default is a listing
+sorted by something nobody chose, and the field is `prefault`ed so a parsed
+input always carries a sort rather than an optional one a port would have to
+branch on.
 
-What is decided now is the rule that listing would otherwise rediscover as a
-bug. **A cursor is valid only for the sort it was issued under, and a
-mismatch is refused.** A keyset seek compares against the sort key, so a
-cursor minted under `createdAt desc` is meaningless — or silently wrong —
-when replayed with `quantity asc`. Resetting to the first page instead is
-what most APIs do implicitly, and it discards the caller's place without
-saying so; saying nothing and letting each adapter decide is how the bug gets
-written. Refusing is the page's own posture: a state that cannot be served is
-unrepresentable rather than merely unexpected, the way a flag without its
-cursor is.
+**The cursor carries the sort verbatim, not hashed.** `field:direction` is
+the head of every sorted cursor, `encodeURIComponent`d like the two values
+that follow it — and it is legible on purpose: the vocabulary is already
+public in the emitted OpenAPI document (`sortableBy`'s own keys), so hashing
+would hide nothing a reader could not already see, and this package cannot
+import `node:crypto` to hash it with anyway (root `CLAUDE.md`'s dependency
+rule).
 
-The refusal is the **adapter's**, beside `MalformedCursor`, for the same
-reason the decoding is: this tier does not know what a cursor spells, and the
-moment it does it has taken the persistence opinion `keyset` refuses to take.
-Two things constrain whatever ships — the sort is typed against the item's
-own schema, which a contract already declares, so a misspelled field is a
-compile error rather than a `400`; and `pageOf` stays a union of closed
-objects, since the emitted document is an interop surface. The sort is an
-addition to `pageRequestOf`'s input, not a shape beside it.
+**A mismatch is refused by `keyset` itself, as a union arm the adapter must
+branch on — never as an unfiltered page.** Sorted, `keyset(request)` answers
+`SortedKeyset<F> | CursorRefused`, discriminated by `resumable`. A keyset seek
+compares against the sort key, so a cursor minted under `createdAt desc` is
+meaningless — or silently wrong — when replayed with `quantity asc`.
+Resetting to the first page instead is what most APIs do implicitly, and it
+discards the caller's place without saying so; serving it anyway is how the
+bug gets written. Refusing is the page's own posture: a state that cannot be
+served is unrepresentable rather than merely unexpected, the way a flag
+without its cursor is.
+
+**Two refusals, deliberately separate.** `CursorRefused.reason` is
+`"malformed"` or `"sort-mismatch"` — the first never had a sort-shaped head to
+compare, the second did and named a different one — because they are
+separately triageable: a malformed token is not actionable, where a mismatch
+tells a caller to re-issue from the first page. Folding them into one shape
+would lose that distinction at the one place an adapter could still use it.
+
+**A sorted `page` takes both values a seek needs, or it does not compile.**
+`SortedKeyset<F>.page(rows, cursorOf, item?)` requires `cursorOf` to return a
+`readonly [sortValue, key]` pair, never a single string: a store queried with
+only the sort value seeks on one column and silently skips every row that
+ties on it, so the tiebreak is not optional here the way it would be if
+`cursorOf` still returned one string. A forgotten tiebreak is therefore a
+compile error rather than a keyset that drops rows in production.

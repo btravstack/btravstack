@@ -714,6 +714,32 @@ describe("order-api", () => {
     );
   });
 
+  it("pins — does not endorse — the wire status CURSOR_SORT_MISMATCH gets today: 500", async ({
+    serve,
+    originFor,
+    stubbed,
+    tokenFor,
+  }) => {
+    // GIVEN the stub root on the raw transport surface, where oRPC's own
+    // status mapping answers rather than the typed client
+    const origin = await originFor(serve(stubbed));
+
+    // WHEN a cursor reserved for a different sort is replayed
+    const response = await fetch(`${origin}/rpc/orders/list`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${await tokenFor()}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ json: { limit: 1, after: "sort-mismatch" } }),
+    });
+
+    // THEN a custom error code outside oRPC's COMMON_ERROR_STATUS_MAP falls back
+    // to DEFAULT_ERROR_STATUS — see packages/http-server/CLAUDE.md for why this
+    // is a documented defect, not the intended status
+    expect(response.status).toBe(500);
+  });
+
   it("refuses a malformed input before the use case is reached", async ({
     serve,
     clientFor,
