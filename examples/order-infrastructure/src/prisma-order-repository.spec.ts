@@ -318,20 +318,24 @@ describe("OrderPersistenceModule", () => {
     expect(page).toBeErrTagged("MalformedCursor", { cursor: "not-a-cursor" });
   });
 
-  it("pages rows tied on the sort key without skipping or repeating one", async ({
+  it("pages rows tied on the sort key without skipping or repeating one, either way", async ({
     repository,
     anOrder,
   }) => {
     // GIVEN three orders sharing a quantity, saved in ascending surrogate-id
-    // order
+    // order. Sorted `quantity desc`, the sort key ties everywhere, so the
+    // tiebreak alone decides the order — descending with the rest of the sort,
+    // which is the reverse of insertion
     const ids = [
       "0199a1e0-0000-7000-8000-0000000000f1",
       "0199a1e0-0000-7000-8000-0000000000f2",
       "0199a1e0-0000-7000-8000-0000000000f3",
     ];
     const sort = { field: "quantity", direction: "desc" } as const;
+    const reading = [...ids].reverse();
 
-    // WHEN the tied run is walked one page at a time
+    // WHEN the tied run is walked forward one page at a time, and then back
+    // from the cursor the last page handed over
     const walked = await ids
       .reduce<AsyncResult<unknown, DuplicateOrder>>(
         (saved, id) => saved.flatMap(() => repository.save(anOrder(id, 7))),
@@ -345,13 +349,26 @@ describe("OrderPersistenceModule", () => {
             sort,
             ...(first.hasNextPage ? { after: first.nextCursor } : {}),
           })
-          .map((second) => [...first.items, ...second.items].map((order) => order.id)),
+          .flatMap((second) =>
+            repository
+              .list({
+                limit: 2,
+                sort,
+                ...(second.hasPreviousPage ? { before: second.previousCursor } : {}),
+              })
+              .map((back) => ({
+                forward: [...first.items, ...second.items].map((order) => order.id),
+                back: back.items.map((order) => order.id),
+              })),
+          ),
       );
 
-    // THEN every tied row is seen exactly once — the tiebreak is the
-    // surrogate id, DESCENDING with the rest of a "desc" sort, so the walk
-    // comes back in the reverse of insertion order
-    expect(walked).toBeOkWith([...ids].reverse());
+    // THEN every tied row is seen exactly once going out, and the way back is
+    // the page before — which holds only if BOTH columns flipped for the
+    // backward walk. A backward page that flipped the sort key alone leaves the
+    // tied run ordered the other way, and the seek after that cursor finds
+    // nothing at all
+    expect(walked).toBeOkWith({ forward: reading, back: reading.slice(0, 2) });
   });
 
   it("satisfies the application's OrderRepository need inside a scope", async ({

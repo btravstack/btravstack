@@ -3,6 +3,7 @@ import { type ServiceOf } from "@btravstack/di";
 import {
   CursorSortMismatch,
   MalformedCursor,
+  type OrderQuery,
   type OrderRepository,
 } from "@btravstack/example-order-application";
 import {
@@ -31,22 +32,27 @@ const hydrate = (row: OrderRow): Result<Order, never> =>
   );
 
 /**
- * A cursor carries the sort key and the surrogate `id` that breaks its ties, as
- * two strings on the wire.
+ * Which column a sortable field is stored in, exhaustive over the listing's own
+ * vocabulary: a key the application declares sortable with no column here is a
+ * compile error, never a page quietly ordered by something else.
+ */
+const sortColumn: Record<OrderQuery["sort"]["field"], "quantity"> = { quantity: "quantity" };
+
+/**
+ * A cursor carries the sort key's value and the surrogate `id` that breaks its
+ * ties, as two strings on the wire.
  *
  * Opaque to the caller and numeric underneath, which is the one place this
  * adapter's storage shows through — so decoding is where a caller's garbage
  * becomes the application's `MalformedCursor` rather than a `NaN` that pages
  * from nowhere.
  */
-const cursorOf = (row: { readonly quantity: number; readonly id: number }) =>
-  [String(row.quantity), String(row.id)] as const;
 const decodeCursor = (
   cursor: readonly [string, string],
-): Result<{ readonly quantity: number; readonly id: number }, MalformedCursor> => {
-  const [quantity, id] = [Number(cursor[0]), Number(cursor[1])];
-  return Number.isSafeInteger(quantity) && Number.isSafeInteger(id)
-    ? Ok({ quantity, id })
+): Result<{ readonly value: number; readonly id: number }, MalformedCursor> => {
+  const [value, id] = [Number(cursor[0]), Number(cursor[1])];
+  return Number.isSafeInteger(value) && Number.isSafeInteger(id)
+    ? Ok({ value, id })
     : Err(new MalformedCursor({ cursor: cursor.join("|") }));
 };
 
@@ -136,6 +142,7 @@ export const prismaOrderRepository = (
         return keys.reason === "malformed"
           ? ErrAsync(new MalformedCursor({ cursor: keys.cursor }))
           : ErrAsync(new CursorSortMismatch({ cursor: keys.cursor }));
+      const column = sortColumn[keys.sort.field];
       const start = keys.cursor === undefined ? Ok(undefined) : decodeCursor(keys.cursor);
       return start.toAsync().flatMap((cursor) =>
         pinned(async (tx) => {
@@ -151,14 +158,17 @@ export const prismaOrderRepository = (
           // breaks.
           const descending = (keys.sort.direction === "desc") !== keys.backward;
           const ordered = descending
-            ? base.orderBy([(order) => order.quantity.desc(), (order) => order.id.desc()])
-            : base.orderBy([(order) => order.quantity.asc(), (order) => order.id.asc()]);
+            ? base.orderBy([(order) => order[column].desc(), (order) => order.id.desc()])
+            : base.orderBy([(order) => order[column].asc(), (order) => order.id.asc()]);
           // Every ordering column gets a value: a partial cursor seeks on one
-          // column and silently skips the rows that tie on it.
+          // column and silently skips the rows that tie on it. `.cursor(...)`
+          // then resumes strictly AFTER the row it names, in whichever
+          // direction the `orderBy` set — so the exclusivity is the ORM's, and
+          // nothing here compensates for it.
           const seeked =
             cursor === undefined
               ? ordered
-              : ordered.cursor({ quantity: cursor.quantity, id: cursor.id });
+              : ordered.cursor({ [column]: cursor.value, id: cursor.id });
           return seeked.limit(keys.take).all();
         })
           .mapErrCases((matcher, defect) =>
@@ -173,7 +183,7 @@ export const prismaOrderRepository = (
             all(fetched.map((row) => hydrate(row).map((order) => ({ row, order })))).map((rows) =>
               keys.page(
                 rows,
-                ({ row }) => cursorOf(row),
+                ({ row }) => [String(row[column]), String(row.id)],
                 ({ order }) => order,
               ),
             ),

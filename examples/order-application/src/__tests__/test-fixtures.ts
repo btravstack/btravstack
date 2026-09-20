@@ -34,6 +34,16 @@ import {
 type Store = Map<string, Order>;
 
 /**
+ * What a sortable field reads off a row — the same exhaustive map the Prisma
+ * adapter keeps as a column, so a key the application declares sortable with
+ * no accessor here is a compile error rather than a page ordered by something
+ * else. It is what both the comparator and the cursor go through.
+ */
+const sortValue: Record<OrderQuery["sort"]["field"], (order: Order) => number> = {
+  quantity: (order) => order.quantity,
+};
+
+/**
  * The whole point of the layer split: the use cases run against a stub
  * repository provided by a module that exists only in this file. No database,
  * no HTTP, no kernel — the application layer is exercised with the
@@ -85,8 +95,9 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
           // Sorted by the key the caller chose, then by id — the tiebreak, without
           // which rows sharing a quantity have no defined order and the page below
           // either skips them or repeats them.
+          const value = sortValue[keys.sort.field];
           const sorted = [...scoped].sort(
-            (a, b) => a.quantity - b.quantity || a.id.localeCompare(b.id),
+            (a, b) => value(a) - value(b) || a.id.localeCompare(b.id),
           );
           const ordered = keys.sort.direction === "desc" ? [...sorted].reverse() : sorted;
           const walked = keys.backward ? [...ordered].reverse() : ordered;
@@ -99,13 +110,13 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
             resume === undefined
               ? -1
               : walked.findIndex(
-                  (order) => String(order.quantity) === resume[0] && order.id === resume[1],
+                  (order) => String(value(order)) === resume[0] && order.id === resume[1],
                 );
           if (resume !== undefined && at === -1)
             return ErrAsync(new MalformedCursor({ cursor: resume.join("|") }));
           return OkAsync(
             keys.page(walked.slice(at + 1, at + 1 + keys.take), (order) => [
-              String(order.quantity),
+              String(value(order)),
               order.id,
             ]),
           );
