@@ -17,11 +17,12 @@ export type PageLimits = {
 };
 
 /**
- * A filter shape that leaves the three fields a page owns alone.
+ * A filter shape that leaves the page's own fields — `limit`, `after`, `before`
+ * and `sort` — to the page.
  *
  * `.extend` overwrites rather than merges, so without this a filter named
  * `limit` would silently replace the bounded one, and one named `after` would
- * re-type a cursor. Naming any of the three is a compile error at the call.
+ * re-type a cursor. Naming any of them is a compile error at the call.
  */
 type ReservedKeysFree = z.ZodRawShape & {
   readonly [K in "limit" | "after" | "before" | "sort"]?: never;

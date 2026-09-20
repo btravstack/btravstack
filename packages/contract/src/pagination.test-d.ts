@@ -1,7 +1,7 @@
 import { expectTypeOf } from "vitest";
 import { z } from "zod";
 
-import { keyset, page, pageRequest, type Page, type PageRequest } from "./index.js";
+import { keyset, page, pageRequest, type Page, type PageRequest, type Sort } from "./index.js";
 import { pageOf, pageRequestOf, sortableBy } from "./zod.js";
 
 const item = z.object({ id: z.string() });
@@ -52,7 +52,7 @@ const parsedRequestNarrows: PageRequest & { readonly minQuantity: number } = pag
 );
 void parsedRequestNarrows;
 
-// The three fields a page owns are not a listing's to redefine: `.extend`
+// The fields a page owns are not a listing's to redefine: `.extend`
 // overwrites, so a filter named `limit` would silently unbound it.
 // @ts-expect-error -- `limit` is the page's own
 const reservedLimit = pageRequestOf({ limit: z.string() });
@@ -61,6 +61,10 @@ void reservedLimit;
 // @ts-expect-error -- and so is a cursor
 const reservedCursor = pageRequestOf({ after: z.number() });
 void reservedCursor;
+
+// @ts-expect-error -- and so is the sort, which a filter would shadow
+const reservedSort = pageRequestOf({ sort: z.string() });
+void reservedSort;
 
 // A sorted, narrowed query carries its `Sort`; an unsorted one has none to carry.
 const sortedNarrowed = pageRequest({
@@ -75,6 +79,19 @@ const unsortedNarrowed = pageRequest({ limit: 20, after: "a" });
 // @ts-expect-error -- an unsorted narrowing carries no `sort` to satisfy a sorted `PageRequest`
 const stillSorted: PageRequest<"quantity"> = unsortedNarrowed;
 void stillSorted;
+
+// A query either carries a sort or has no such field. An OPTIONAL one is
+// neither: it would narrow to the unsorted `PageRequest` and then mint a
+// pair-shaped cursor at runtime, which is a `TypeError` in the fold. Both
+// spellings are refused, by two different mechanisms — the union's own arms,
+// and the gate that covers what a union comparison lets through.
+declare const looselySorted: { readonly limit: number; readonly sort?: Sort | undefined };
+// @ts-expect-error -- `sort?: Sort | undefined` satisfies neither arm
+pageRequest(looselySorted);
+
+declare const exactlySorted: { readonly limit: number; readonly sort?: Sort };
+// @ts-expect-error -- and neither does the `exactOptionalPropertyTypes` spelling
+pageRequest(exactlySorted);
 
 const view = z.object({
   id: z.string(),
@@ -110,3 +127,8 @@ if (sorted.resumable) {
 const plain = keyset({ limit: 10 });
 expectTypeOf(plain.cursor).toEqualTypeOf<string | undefined>();
 expectTypeOf(plain.page([{ id: "a" }], (row) => row.id)).toEqualTypeOf<Page<{ id: string }>>();
+
+// And it refuses the pair, so the arity runs both ways: a listing with no sort
+// has one ordering column and nothing to tiebreak it against.
+// @ts-expect-error -- a pair is not a keyset for an unsorted listing
+plain.page([{ id: "a" }], (row) => [row.id, row.id]);

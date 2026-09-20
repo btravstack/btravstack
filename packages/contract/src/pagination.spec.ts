@@ -417,6 +417,39 @@ describe("keyset, sorted", () => {
     expect(keys).toEqual({ resumable: false, cursor, reason: "malformed" });
   });
 
+  it("refuses a cursor whose sort value carries a truncated escape", () => {
+    // GIVEN a cursor a client could reach without trying: `%25` is a literal
+    // `%`, and one intermediary decoding the query string twice leaves this
+    const cursor = "quantity:desc|%|1";
+
+    // WHEN it is replayed against the sort it names
+    const keys = keyset({
+      limit: 2,
+      after: cursor,
+      sort: { field: "quantity", direction: "desc" },
+    });
+
+    // THEN it is refused like any other unreadable token — `decodeURIComponent`
+    // reports this input by THROWING, and a `URIError` would be a third outcome
+    // on a path that has two
+    expect(keys).toEqual({ resumable: false, cursor, reason: "malformed" });
+  });
+
+  it("refuses a cursor whose tiebreak carries an invalid escape", () => {
+    // GIVEN the same corruption in the other decoded part
+    const cursor = "quantity:desc|9|%zz";
+
+    // WHEN it is replayed
+    const keys = keyset({
+      limit: 2,
+      after: cursor,
+      sort: { field: "quantity", direction: "desc" },
+    });
+
+    // THEN both parts are guarded, not just the first one read
+    expect(keys).toEqual({ resumable: false, cursor, reason: "malformed" });
+  });
+
   it("hands a backward page back in reading order", () => {
     // GIVEN a backward page whose store answered newest-first
     const keys = keyset({

@@ -127,8 +127,11 @@ narrowing, an absent cursor is dropped rather than carried as `undefined`, and
 `before` wins when both somehow arrive. A `defaultLimit` above the listing's
 own ceiling is refused, which is why the limit uses `prefault` rather than
 `default` — a default is handed back unparsed. `pagination.test-d.ts` pins
-what `pageOf` parses to, the unrepresentable states, and the refusal of a
-filter named `limit`, `after` or `before`.
+what `pageOf` parses to, the unrepresentable states, the refusal of a filter
+named `limit`, `after`, `before` or `sort`, and the refusal of a `sort` that is
+neither required nor absent — the third state a hand-rolled `PageQuery` would
+otherwise cross into the unsorted `PageRequest` with, and mint a pair-shaped
+cursor for at runtime.
 
 `auth.spec.ts` covers the marker: marking returns the same reference and readable requirements,
 several requirements survive in the order given, no enumerable key is added,
@@ -175,6 +178,20 @@ because a side with no cursor is a side a caller cannot reach. `PageRequest`
 makes `after` and `before` a union, so a page runs in one direction by
 construction; `pageRequest(query)` is the crossing from the flat shape a
 schema validates into that union, carrying a listing's own filters through.
+
+**`PageQuery` carries `PageRequest`'s two sort states and no third**, and that
+costs one type nobody else needs. `pageRequest`'s return type is a conditional
+on a **required** `sort`, so an OPTIONAL one takes the unsorted branch, hands
+the caller a plain `Keyset`, and then mints a pair-shaped cursor at runtime —
+a `TypeError` inside the fold. Spelling the two states as a union refuses
+`sort?: Sort | undefined`; it does **not** refuse the
+`exactOptionalPropertyTypes` spelling `sort?: Sort`, because a union's arms are
+compared one at a time and that comparison fails only on the EOPT relation,
+which assignability to a union does not consult. `SortIsDecided<Q>`, intersected
+into the parameter, is what closes the second spelling. Unreachable through
+`pageRequestOf`, whose `prefault` makes the field required — but `PageQuery` is
+exported and any Standard Schema validator is admitted, which is the surface it
+guards.
 
 `keyset(request)` is the arithmetic between those two, and what makes it
 correct rather than merely shared is that both halves ride **one object**: a
@@ -230,8 +247,9 @@ expose.
 
 The narrow version is not a filter language and already ships: a listing
 declares its own filter fields and `pageRequestOf({ minQuantity })` carries
-them through to the `PageRequest` a port takes, with `limit`, `after` and
-`before` refused among them at the call. The operators stay the
+them through to the `PageRequest` a port takes, with the page's own fields —
+`limit`, `after`, `before` and `sort` — refused among them at the call. The
+operators stay the
 application's, where the store that has to answer them is.
 
 **Sorting ships: one sort key from a curated vocabulary, checked against the
@@ -273,6 +291,15 @@ compare, the second did and named a different one — because they are
 separately triageable: a malformed token is not actionable, where a mismatch
 tells a caller to re-issue from the first page. Folding them into one shape
 would lose that distinction at the one place an adapter could still use it.
+
+**And two refusals is all there is.** `decodeURIComponent` THROWS on an invalid
+percent-escape, so reading a cursor's parts with a bare call made a hostile or
+double-decoded token a `URIError` — an undeclared third outcome, a `500` on a
+branch published as a `400`, in the one function on this path whose input came
+from outside. It is reachable without an attacker: `%25` is a legitimate cursor
+carrying a literal `%`, and one intermediary decoding the query string an extra
+time leaves `%`. A part that will not decode is `"malformed"`, ranking ahead of
+the head comparison: the token is unreadable whichever sort it names.
 
 **A sorted `page` takes both values a seek needs, or it does not compile.**
 `SortedKeyset<F>.page(rows, cursorOf, item?)` requires `cursorOf` to return a

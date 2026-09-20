@@ -84,13 +84,28 @@ export type PageRequest<F extends string = never> = (
  * A schema states "at most one of these" as a rule over two optional fields; a
  * type states it as a union. This is the former, and {@link pageRequest} is the
  * crossing between them.
+ *
+ * The sort keeps {@link PageRequest}'s two states and gains no third: a query
+ * either carries one or has no such field. An OPTIONAL `sort` would cross into
+ * the unsorted `PageRequest` at compile time and mint a sorted cursor at
+ * runtime, so it is refused here rather than at the seek.
  */
 export type PageQuery = {
   readonly limit: number;
   readonly after?: string | undefined;
   readonly before?: string | undefined;
-  readonly sort?: Sort | undefined;
-};
+} & ({ readonly sort: Sort } | { readonly sort?: never });
+
+// The union above states the two states and refuses `sort?: Sort | undefined`.
+// It does NOT refuse the `exactOptionalPropertyTypes` spelling `sort?: Sort`:
+// a union's arms are compared one at a time, and that comparison fails only on
+// the EOPT relation, which assignability to a union does not consult. So the
+// parameter carries this beside the constraint.
+type SortIsDecided<Q> = "sort" extends keyof Q
+  ? Q extends { readonly sort: Sort }
+    ? unknown
+    : { readonly sort: "A SORT IS REQUIRED OR ABSENT — an optional one is neither" }
+  : unknown;
 
 /**
  * A validated page input, narrowed into the one-direction {@link PageRequest} a
@@ -106,7 +121,7 @@ export type PageQuery = {
  * own vocabulary rather than of none.
  */
 export const pageRequest = <Q extends PageQuery>(
-  query: Q,
+  query: Q & SortIsDecided<Q>,
 ): (Q extends { readonly sort: Sort<infer F> } ? PageRequest<F> : PageRequest) &
   Omit<Q, "after" | "before"> => {
   const { after, before, ...filters } = query;
@@ -156,6 +171,12 @@ export type Keyset = {
  * `cursor` carries BOTH values a sorted seek needs — the sort key's and the
  * tiebreak's — because a store queried with only the first seeks on one column
  * and silently skips every row that ties on it.
+ *
+ * It is the DECODED pair, with the sort head already stripped and the escaping
+ * undone: it is what the seek takes, not what the client sent. So an adapter
+ * that refuses it downstream — a value its own storage cannot read — reports
+ * the adapter's vocabulary rather than the wire token, and a support engineer
+ * handed that string cannot replay the request with it.
  */
 export type SortedKeyset<F extends string> = {
   readonly resumable: true;
@@ -189,25 +210,44 @@ const HEAD_PATTERN = /^[^:]*:(?:asc|desc)$/;
 
 const headOf = (sort: Sort): string => `${encodeURIComponent(sort.field)}:${sort.direction}`;
 
+// `decodeURIComponent` THROWS on an invalid percent-escape, and a cursor is the
+// one part of a request that came from outside — so a bare call here would make
+// a hostile or double-decoded token a crash instead of a refusal.
+const decoded = (value: string): string | undefined => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return undefined;
+  }
+};
+
 /**
  * Whether a cursor has the three-part, sort-headed SHAPE a sorted keyset
  * requires — independent of which sort it names. Splitting shape from
  * identity is what lets a refusal say WHY: a cursor with no such head is
  * unreadable regardless of sort, where one with a head naming a different
  * sort is readable and simply wrong.
+ *
+ * A part that will not decode is unreadable in the same sense, so it answers
+ * here rather than reaching the sort comparison.
  */
 const shapeOf = (
   cursor: string,
 ): { readonly head: string; readonly sortValue: string; readonly key: string } | undefined => {
   const parts = cursor.split(SEPARATOR);
   const [head, sortValue, key] = parts;
-  return parts.length === 3 &&
-    head !== undefined &&
-    HEAD_PATTERN.test(head) &&
-    sortValue !== undefined &&
-    key !== undefined
-    ? { head, sortValue: decodeURIComponent(sortValue), key: decodeURIComponent(key) }
-    : undefined;
+  if (
+    parts.length !== 3 ||
+    head === undefined ||
+    !HEAD_PATTERN.test(head) ||
+    sortValue === undefined ||
+    key === undefined
+  )
+    return undefined;
+  const [value, tiebreak] = [decoded(sortValue), decoded(key)];
+  return value === undefined || tiebreak === undefined
+    ? undefined
+    : { head, sortValue: value, key: tiebreak };
 };
 
 const fold = <T, U>(
