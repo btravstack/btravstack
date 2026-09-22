@@ -40,9 +40,9 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           # One language: everything here is TypeScript, and the two are one
           # CodeQL language since 2024.
@@ -56,6 +56,6 @@ jobs:
       # No build step: the JavaScript/TypeScript extractor reads the source
       # tree directly, so this never has to agree with `tsdown` about what a
       # build is.
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
         with:
           category: "/language:javascript-typescript"
