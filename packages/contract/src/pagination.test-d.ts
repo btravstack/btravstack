@@ -1,7 +1,8 @@
+import { expectTypeOf } from "vitest";
 import { z } from "zod";
 
-import { page, pageRequest, type Page, type PageRequest } from "./index.js";
-import { pageOf, pageRequestOf } from "./zod.js";
+import { keyset, page, pageRequest, type Page, type PageRequest, type Sort } from "./index.js";
+import { pageOf, pageRequestOf, sortableBy } from "./zod.js";
 
 const item = z.object({ id: z.string() });
 type Item = z.infer<typeof item>;
@@ -51,7 +52,7 @@ const parsedRequestNarrows: PageRequest & { readonly minQuantity: number } = pag
 );
 void parsedRequestNarrows;
 
-// The three fields a page owns are not a listing's to redefine: `.extend`
+// The fields a page owns are not a listing's to redefine: `.extend`
 // overwrites, so a filter named `limit` would silently unbound it.
 // @ts-expect-error -- `limit` is the page's own
 const reservedLimit = pageRequestOf({ limit: z.string() });
@@ -60,3 +61,74 @@ void reservedLimit;
 // @ts-expect-error -- and so is a cursor
 const reservedCursor = pageRequestOf({ after: z.number() });
 void reservedCursor;
+
+// @ts-expect-error -- and so is the sort, which a filter would shadow
+const reservedSort = pageRequestOf({ sort: z.string() });
+void reservedSort;
+
+// A sorted, narrowed query carries its `Sort`; an unsorted one has none to carry.
+const sortedNarrowed = pageRequest({
+  limit: 20,
+  after: "a",
+  sort: { field: "quantity" as const, direction: "desc" },
+});
+const sortedIsARequest: PageRequest<"quantity"> = sortedNarrowed;
+void sortedIsARequest;
+
+const unsortedNarrowed = pageRequest({ limit: 20, after: "a" });
+// @ts-expect-error -- an unsorted narrowing carries no `sort` to satisfy a sorted `PageRequest`
+const stillSorted: PageRequest<"quantity"> = unsortedNarrowed;
+void stillSorted;
+
+// A query either carries a sort or has no such field. An OPTIONAL one is
+// neither: it would narrow to the unsorted `PageRequest` and then mint a
+// pair-shaped cursor at runtime, which is a `TypeError` in the fold. Both
+// spellings are refused, by two different mechanisms — the union's own arms,
+// and the gate that covers what a union comparison lets through.
+declare const looselySorted: { readonly limit: number; readonly sort?: Sort | undefined };
+// @ts-expect-error -- `sort?: Sort | undefined` satisfies neither arm
+pageRequest(looselySorted);
+
+declare const exactlySorted: { readonly limit: number; readonly sort?: Sort };
+// @ts-expect-error -- and neither does the `exactOptionalPropertyTypes` spelling
+pageRequest(exactlySorted);
+
+const view = z.object({
+  id: z.string(),
+  quantity: z.number(),
+  cancelledAt: z.string().nullable(),
+  note: z.string().optional(),
+});
+
+// A declared key must be a key of the item's own shape.
+// @ts-expect-error -- `total` is not a key of `view`
+sortableBy(view, ["total"]);
+
+// A nullable key is refused: a null breaks the keyset comparison.
+// @ts-expect-error -- `cancelledAt` is nullable
+sortableBy(view, ["cancelledAt"]);
+
+// An optional key is refused for the same reason.
+// @ts-expect-error -- `note` is optional
+sortableBy(view, ["note"]);
+
+const sortable = sortableBy(view, ["quantity"]);
+expectTypeOf(sortable).toEqualTypeOf<readonly ["quantity"]>();
+
+// A sorted keyset's cursor callback must answer BOTH values.
+const sorted = keyset({ limit: 10, sort: { field: "quantity", direction: "desc" } });
+if (sorted.resumable) {
+  // @ts-expect-error -- a bare key is not a keyset for a sorted listing
+  sorted.page([{ id: "a", quantity: 1 }], (row) => row.id);
+  expectTypeOf(sorted.cursor).toEqualTypeOf<readonly [string, string] | undefined>();
+}
+
+// An unsorted keyset still takes one string, and has no `resumable` to check.
+const plain = keyset({ limit: 10 });
+expectTypeOf(plain.cursor).toEqualTypeOf<string | undefined>();
+expectTypeOf(plain.page([{ id: "a" }], (row) => row.id)).toEqualTypeOf<Page<{ id: string }>>();
+
+// And it refuses the pair, so the arity runs both ways: a listing with no sort
+// has one ordering column and nothing to tiebreak it against.
+// @ts-expect-error -- a pair is not a keyset for an unsorted listing
+plain.page([{ id: "a" }], (row) => [row.id, row.id]);

@@ -85,12 +85,19 @@ export const ordersController = api.OrpcController(
         .execute(pageRequest(input))
         .map((found) => ({ ...found, items: found.items.map(view) }))
         .mapErrCases((matcher) =>
-          matcher.with(P.tag("MalformedCursor"), (error) =>
-            errors.BAD_REQUEST({
-              message: "the cursor could not be read",
-              data: { cursor: error.cursor },
-            }),
-          ),
+          matcher
+            .with(P.tag("MalformedCursor"), (error) =>
+              errors.BAD_REQUEST({
+                message: "the cursor could not be read",
+                data: { cursor: error.cursor },
+              }),
+            )
+            .with(P.tag("CursorSortMismatch"), (error) =>
+              errors.CURSOR_SORT_MISMATCH({
+                message: "this cursor was issued under a different sort; start from the first page",
+                data: { cursor: error.cursor },
+              }),
+            ),
         ),
 
     // The third layer, and the only one written by hand: the unit already bound

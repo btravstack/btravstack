@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { it } from "./__tests__/test-fixtures.js";
 import { keyset, page, pageRequest } from "./index.js";
-import { pageOf, pageRequestOf } from "./zod.js";
+import { pageOf, pageRequestOf, sortableBy } from "./zod.js";
 
 describe("page", () => {
   it("derives each side's flag from whether that side has a cursor", () => {
@@ -293,6 +293,297 @@ describe("keyset", () => {
       take: 4,
       backward: false,
       items: 3,
+    });
+  });
+});
+
+describe("keyset, sorted", () => {
+  it("mints a cursor carrying the sort it was issued under", () => {
+    // GIVEN a sorted first page
+    const keys = keyset({ limit: 2, sort: { field: "quantity", direction: "desc" } });
+
+    // WHEN a page is folded from rows the store answered
+    const built = keys.resumable
+      ? keys.page(
+          [
+            { quantity: 9, id: 1 },
+            { quantity: 9, id: 2 },
+            { quantity: 8, id: 3 },
+          ],
+          (row) => [String(row.quantity), String(row.id)],
+        )
+      : undefined;
+
+    // THEN the next cursor names the sort, then both values, in that order
+    expect(built).toEqual({
+      items: [
+        { quantity: 9, id: 1 },
+        { quantity: 9, id: 2 },
+      ],
+      hasPreviousPage: false,
+      hasNextPage: true,
+      nextCursor: "quantity:desc|9|2",
+    });
+  });
+
+  it("resumes from a cursor issued under the same sort", () => {
+    // GIVEN a cursor minted under `quantity desc`
+    const request = {
+      limit: 2,
+      after: "quantity:desc|9|2",
+      sort: { field: "quantity", direction: "desc" },
+    } as const;
+
+    // WHEN the keyset is taken for the same sort
+    const keys = keyset(request);
+
+    // THEN it resumes, handing the seek both values decoded
+    expect(keys).toMatchObject({ resumable: true, backward: false, cursor: ["9", "2"] });
+  });
+
+  it("refuses a cursor issued under a different field", () => {
+    // GIVEN a cursor minted under `quantity desc`
+    const cursor = "quantity:desc|9|2";
+
+    // WHEN it is replayed against a listing sorted by another field
+    const keys = keyset({
+      limit: 2,
+      after: cursor,
+      sort: { field: "placedAt", direction: "desc" },
+    });
+
+    // THEN it is refused as its own sort, naming the cursor that was refused —
+    // it had a sort-shaped head, and named a different one
+    expect(keys).toEqual({ resumable: false, cursor, reason: "sort-mismatch" });
+  });
+
+  it("refuses a cursor issued under the same field in the other direction", () => {
+    // GIVEN a cursor minted under `quantity desc`
+    const cursor = "quantity:desc|9|2";
+
+    // WHEN it is replayed with the direction flipped
+    const keys = keyset({ limit: 2, after: cursor, sort: { field: "quantity", direction: "asc" } });
+
+    // THEN it is refused rather than served from the wrong side
+    expect(keys).toEqual({ resumable: false, cursor, reason: "sort-mismatch" });
+  });
+
+  it("refuses a cursor missing the tiebreak value rather than seeking without it", () => {
+    // GIVEN a cursor carrying the sort and one value
+    const cursor = "quantity:desc|9";
+
+    // WHEN it is replayed
+    const keys = keyset({
+      limit: 2,
+      after: cursor,
+      sort: { field: "quantity", direction: "desc" },
+    });
+
+    // THEN it is malformed: a partial keyset seeks on one column and skips
+    // rows, and there is no full head-and-value shape to compare against a sort
+    expect(keys).toEqual({ resumable: false, cursor, reason: "malformed" });
+  });
+
+  it("refuses a cursor with no sort-shaped head at all", () => {
+    // GIVEN a cursor that never had a `field:direction` head to read
+    const cursor = "invented";
+
+    // WHEN it is replayed against a sorted listing
+    const keys = keyset({
+      limit: 2,
+      after: cursor,
+      sort: { field: "quantity", direction: "desc" },
+    });
+
+    // THEN it is malformed rather than a sort mismatch — there was no head to
+    // compare against the declared sort in the first place
+    expect(keys).toEqual({ resumable: false, cursor, reason: "malformed" });
+  });
+
+  it("refuses a three-part cursor whose head is not field:direction shaped", () => {
+    // GIVEN a cursor with the right PART COUNT but no `field:direction` head —
+    // the part-count check alone would let this one through
+    const cursor = "a|b|c";
+
+    // WHEN it is replayed against a sorted listing
+    const keys = keyset({
+      limit: 2,
+      after: cursor,
+      sort: { field: "quantity", direction: "desc" },
+    });
+
+    // THEN it is malformed: the head-pattern check is what catches it, not the
+    // part count
+    expect(keys).toEqual({ resumable: false, cursor, reason: "malformed" });
+  });
+
+  it("refuses a cursor whose sort value carries a truncated escape", () => {
+    // GIVEN a cursor a client could reach without trying: `%25` is a literal
+    // `%`, and one intermediary decoding the query string twice leaves this
+    const cursor = "quantity:desc|%|1";
+
+    // WHEN it is replayed against the sort it names
+    const keys = keyset({
+      limit: 2,
+      after: cursor,
+      sort: { field: "quantity", direction: "desc" },
+    });
+
+    // THEN it is refused like any other unreadable token — `decodeURIComponent`
+    // reports this input by THROWING, and a `URIError` would be a third outcome
+    // on a path that has two
+    expect(keys).toEqual({ resumable: false, cursor, reason: "malformed" });
+  });
+
+  it("refuses a cursor whose tiebreak carries an invalid escape", () => {
+    // GIVEN the same corruption in the other decoded part
+    const cursor = "quantity:desc|9|%zz";
+
+    // WHEN it is replayed
+    const keys = keyset({
+      limit: 2,
+      after: cursor,
+      sort: { field: "quantity", direction: "desc" },
+    });
+
+    // THEN both parts are guarded, not just the first one read
+    expect(keys).toEqual({ resumable: false, cursor, reason: "malformed" });
+  });
+
+  it("hands a backward page back in reading order", () => {
+    // GIVEN a backward page whose store answered newest-first
+    const keys = keyset({
+      limit: 2,
+      before: "quantity:desc|5|9",
+      sort: { field: "quantity", direction: "desc" },
+    });
+
+    // WHEN three rows come back for a page of two
+    const built = keys.resumable
+      ? keys.page(
+          [
+            { quantity: 6, id: 3 },
+            { quantity: 7, id: 2 },
+            { quantity: 8, id: 1 },
+          ],
+          (row) => [String(row.quantity), String(row.id)],
+        )
+      : undefined;
+
+    // THEN the extra row proves the side BEFORE, and the rows read ascending
+    expect(built).toEqual({
+      items: [
+        { quantity: 7, id: 2 },
+        { quantity: 6, id: 3 },
+      ],
+      hasPreviousPage: true,
+      previousCursor: "quantity:desc|7|2",
+      hasNextPage: true,
+      nextCursor: "quantity:desc|6|3",
+    });
+  });
+
+  it("round-trips a value containing the separator", () => {
+    // GIVEN a sort value containing the separator, and the over-fetch row that
+    // is what makes a next cursor exist to replay
+    const keys = keyset({ limit: 1, sort: { field: "label", direction: "asc" } });
+    const minted = keys.resumable
+      ? keys.page(
+          [
+            { label: "a|b", id: 1 },
+            { label: "c", id: 2 },
+          ],
+          (row) => [row.label, String(row.id)],
+        )
+      : undefined;
+
+    // WHEN the cursor it minted is replayed
+    const resumed = keyset({
+      limit: 1,
+      after: minted?.hasNextPage === true ? minted.nextCursor : "",
+      sort: { field: "label", direction: "asc" },
+    });
+
+    // THEN the value survives encoding rather than splitting the cursor
+    expect(resumed).toMatchObject({ resumable: true, cursor: ["a|b", "1"] });
+  });
+});
+
+describe("pageRequestOf, sorted", () => {
+  it("applies the declared default when the caller names no sort", () => {
+    // GIVEN a listing that sorts by quantity, newest first by default
+    const schema = pageRequestOf(
+      {},
+      {
+        sortableBy: sortableBy(z.object({ id: z.string(), quantity: z.number() }), ["quantity"]),
+        defaultSort: { field: "quantity", direction: "desc" },
+      },
+    );
+
+    // WHEN an input naming no sort is parsed
+    const parsed = schema.safeParse({});
+
+    // THEN the default is applied, parsed rather than handed back raw
+    expect(parsed).toMatchObject({
+      success: true,
+      data: { limit: 20, sort: { field: "quantity", direction: "desc" } },
+    });
+  });
+
+  it("refuses a sort field the listing did not declare", () => {
+    // GIVEN the same listing
+    const schema = pageRequestOf(
+      {},
+      {
+        sortableBy: sortableBy(z.object({ id: z.string(), quantity: z.number() }), ["quantity"]),
+        defaultSort: { field: "quantity", direction: "desc" },
+      },
+    );
+
+    // WHEN a caller asks for a field that is not sortable
+    const parsed = schema.safeParse({ sort: { field: "id", direction: "asc" } });
+
+    // THEN it is refused, rather than dropped and served under the default
+    expect(parsed).toMatchObject({ success: false });
+  });
+
+  it("refuses a sort missing its direction", () => {
+    // GIVEN the same listing
+    const schema = pageRequestOf(
+      {},
+      {
+        sortableBy: sortableBy(z.object({ id: z.string(), quantity: z.number() }), ["quantity"]),
+        defaultSort: { field: "quantity", direction: "desc" },
+      },
+    );
+
+    // WHEN a caller sends a field with no direction
+    const parsed = schema.safeParse({ sort: { field: "quantity" } });
+
+    // THEN it is refused: the pair is one fact
+    expect(parsed).toMatchObject({ success: false });
+  });
+
+  it("carries a parsed sort through the narrowing into the port's request", () => {
+    // GIVEN a parsed sorted input carrying a cursor
+    const schema = pageRequestOf(
+      { minQuantity: z.number().optional() },
+      {
+        sortableBy: sortableBy(z.object({ id: z.string(), quantity: z.number() }), ["quantity"]),
+        defaultSort: { field: "quantity", direction: "desc" },
+      },
+    );
+    const parsed = schema.parse({ after: "quantity:desc|9|2", minQuantity: 3 });
+
+    // WHEN it crosses into the one-direction request
+    const request = pageRequest(parsed);
+
+    // THEN the sort rides across beside the filter and the cursor
+    expect(request).toEqual({
+      limit: 20,
+      after: "quantity:desc|9|2",
+      minQuantity: 3,
+      sort: { field: "quantity", direction: "desc" },
     });
   });
 });

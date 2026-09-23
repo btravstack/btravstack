@@ -692,6 +692,54 @@ describe("order-api", () => {
     );
   });
 
+  it("answers a cursor from another sort with its own error rather than a bad request", async ({
+    serve,
+    clientFor,
+    stubbed,
+  }) => {
+    // GIVEN a cursor the stub reserves for one issued under a different sort
+    const client = await clientFor(serve(stubbed));
+
+    // WHEN it is replayed
+    const refused = await client.orders.list({ limit: 1, after: "sort-mismatch" });
+
+    // THEN the caller is told to re-issue, told apart from a corrupt token
+    expect(refused).toBeErrWith(
+      expect.objectContaining({
+        constructor: ORPCError,
+        code: "CURSOR_SORT_MISMATCH",
+        inferable: true,
+        data: { cursor: "sort-mismatch" },
+      }),
+    );
+  });
+
+  it("pins — does not endorse — the wire status CURSOR_SORT_MISMATCH gets today: 500", async ({
+    serve,
+    originFor,
+    stubbed,
+    tokenFor,
+  }) => {
+    // GIVEN the stub root on the raw transport surface, where oRPC's own
+    // status mapping answers rather than the typed client
+    const origin = await originFor(serve(stubbed));
+
+    // WHEN a cursor reserved for a different sort is replayed
+    const response = await fetch(`${origin}/rpc/orders/list`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${await tokenFor()}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ json: { limit: 1, after: "sort-mismatch" } }),
+    });
+
+    // THEN a custom error code outside oRPC's COMMON_ERROR_STATUS_MAP falls back
+    // to DEFAULT_ERROR_STATUS — see packages/http-server/CLAUDE.md for why this
+    // is a documented defect, not the intended status
+    expect(response.status).toBe(500);
+  });
+
   it("refuses a malformed input before the use case is reached", async ({
     serve,
     clientFor,

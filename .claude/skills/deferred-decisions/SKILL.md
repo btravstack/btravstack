@@ -1,6 +1,6 @@
 ---
 name: deferred-decisions
-description: Decisions this repository deliberately deferred, declined or has already closed. Read BEFORE proposing a feature, a package, a lint rule or a gate that sounds new — it may be a settled "no", or already shipped. Covers container reaping, the currentUnit() lint rule, traces/metrics in observability, the doc-samples gate, the one-process dev runner, HTML-means-fragments, transport package naming and the one leaf shape.
+description: Decisions this repository deliberately deferred, declined or has already closed. Read BEFORE proposing a feature, a package, a lint rule or a gate that sounds new — it may be a settled "no", or already shipped. Covers container reaping, the currentUnit() lint rule, traces/metrics in observability, the doc-samples gate, the one-process dev runner, HTML-means-fragments, transport package naming, the one leaf shape, filtering on a cursor page (declined), and sorting on a cursor page (shipped).
 ---
 
 # Deferred, deliberately
@@ -168,3 +168,24 @@ dependencies by name`; a positional array is refused as
   rule — piece and composer get different words, never singular and plural —
   but it renames public API on two packages with no obviously-right
   replacement, so it is recorded here rather than guessed at.
+
+- **Filtering with operators is declined** (issue #261). A normed
+  `{ field, op, value }` owes an operator set per type, nesting and null
+  handling, and then a translator into Prisma or SQL — a query builder those
+  libraries already are, and thesis #8's territory. It has no trigger. A
+  listing declaring its own filter fields through `pageRequestOf({
+minQuantity })` is the narrow version, and it ships.
+
+  ~~Sorting is deferred with its cursor rule already chosen.~~ **Closed by
+  shipping** (issue #261): `sortableBy(item, keys)` is a curated vocabulary
+  checked against the item's own schema, `pageRequestOf(filters, {
+sortableBy, defaultSort })` takes it beside the filters with `defaultSort`
+  required, and a sorted `keyset(request)` answers `SortedKeyset<F> |
+CursorRefused` — a union the adapter must branch on, discriminated by
+  `resumable`. The cursor rule this entry used to name as decided-but-unbuilt
+  is now how it ships: a cursor is valid only for the sort it was issued
+  under (`field:direction`, carried verbatim rather than hashed — the
+  vocabulary is already public in the emitted document), and a mismatch is
+  refused with `reason: "sort-mismatch"`, told apart from an unreadable
+  cursor's `"malformed"`. The full position is
+  `packages/contract/CLAUDE.md`'s.

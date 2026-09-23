@@ -48,18 +48,24 @@ the server's view of a caller reaches a client.
 `packages/contract/src/pagination.ts` adds these to the root, and
 `src/zod.ts` is the subpath:
 
-| Export          | Where  | Kind  | What it is                                                                                                                                          |
-| --------------- | ------ | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Page<T>`       | root   | type  | `{ items: readonly T[] }` and, per side, either a `true` flag with its cursor or a `false` flag with no cursor field                                |
-| `page`          | root   | value | `<T>(items: readonly T[], cursors: { previous: string \| null; next: string \| null }) => Page<T>` — the flags are derived                          |
-| `PageRequest`   | root   | type  | `{ limit: number }` with `after` **or** `before`, never both                                                                                        |
-| `PageQuery`     | root   | type  | `{ limit: number; after?: string; before?: string }` — the flat shape a schema validates to                                                         |
-| `pageRequest`   | root   | value | `<Q extends PageQuery>(query: Q) => PageRequest & Omit<Q, "after" \| "before">` — the crossing, filters carried through                             |
-| `Keyset`        | root   | type  | `{ take: number; backward: boolean; cursor: string \| undefined; page }` — one keyset window, both halves                                           |
-| `keyset`        | root   | value | `(request: PageRequest) => Keyset` — the over-fetch, the direction, the trim and both cursors. It does not run the query                            |
-| `pageOf`        | `/zod` | value | `<Item extends z.ZodType>(item: Item)` — the four pages that exist, as a union of four `strictObject`s                                              |
-| `pageRequestOf` | `/zod` | value | `(filters, limits?: PageLimits)` — the input schema, refusing both cursors, with this listing's filters. `limit`, `after` and `before` are reserved |
-| `PageLimits`    | `/zod` | type  | `{ defaultLimit?: number; maxLimit?: number }` — default `20`, ceiling `100`                                                                        |
+| Export              | Where  | Kind  | What it is                                                                                                                                                                                                                                                                                                            |
+| ------------------- | ------ | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Page<T>`           | root   | type  | `{ items: readonly T[] }` and, per side, either a `true` flag with its cursor or a `false` flag with no cursor field                                                                                                                                                                                                  |
+| `page`              | root   | value | `<T>(items: readonly T[], cursors: { previous: string \| null; next: string \| null }) => Page<T>` — the flags are derived                                                                                                                                                                                            |
+| `Sort<F>`           | root   | type  | `{ field: F; direction: "asc" \| "desc" }` — one sort key, not a list; both halves required, so a field with no direction is unrepresentable                                                                                                                                                                          |
+| `PageRequest<F>`    | root   | type  | `{ limit: number }` with `after` **or** `before`, never both, and — when `F` is not `never` — a required `sort: Sort<F>`; a listing that names no sortable vocabulary can never carry one                                                                                                                             |
+| `PageQuery`         | root   | type  | `{ limit: number; after?: string; before?: string }` and either a required `sort: Sort` or no `sort` field — the flat shape a schema validates to, keeping `PageRequest`'s two states                                                                                                                                 |
+| `SortIsDecided<Q>`  | root   | type  | `"sort" extends keyof Q ? (Q extends { sort: Sort } ? unknown : { sort: string }) : unknown` — the gate `pageRequest` intersects into its parameter, refusing a `Q` whose `sort` is optional rather than required or absent; a wrapper around `pageRequest` restates it as `<Q extends PageQuery & SortIsDecided<Q>>` |
+| `pageRequest`       | root   | value | `<Q extends PageQuery>(query: Q & SortIsDecided<Q>) => (Q extends { readonly sort: Sort<infer F> } ? PageRequest<F> : PageRequest) & Omit<Q, "after" \| "before">` — the crossing, filters and sort carried through; an OPTIONAL `sort` is refused at the call rather than narrowed to the unsorted request           |
+| `Keyset`            | root   | type  | `{ take: number; backward: boolean; cursor: string \| undefined; page }` — one keyset window, both halves                                                                                                                                                                                                             |
+| `SortedKeyset<F>`   | root   | type  | `{ resumable: true; take: number; backward: boolean; sort: Sort<F>; cursor: readonly [sortValue: string, key: string] \| undefined; page }` — a keyset for a sorted listing; `page`'s `cursorOf` returns the sort value AND the tiebreak                                                                              |
+| `CursorRefused`     | root   | type  | `{ resumable: false; cursor: string; reason: "malformed" \| "sort-mismatch" }` — a cursor a sorted `keyset` could not honour, and why                                                                                                                                                                                 |
+| `keyset`            | root   | value | `(request: PageRequest) => Keyset`; overloaded `<F extends string>(request: PageRequest<F>) => SortedKeyset<F> \| CursorRefused` for a sorted request — the over-fetch, the direction, the trim and both cursors. It does not run the query                                                                           |
+| `pageOf`            | `/zod` | value | `<Item extends z.ZodType>(item: Item)` — the four pages that exist, as a union of four `strictObject`s                                                                                                                                                                                                                |
+| `sortableBy`        | `/zod` | value | `<Item extends z.ZodObject, const Keys extends readonly [string, ...string[]]>(item: Item, keys: Keys) => Keys` — the sortable vocabulary, checked against `item`'s own schema; a name outside its shape, or a nullable or optional key, is a compile error                                                           |
+| `SortOptions<Keys>` | `/zod` | type  | `{ sortableBy: Keys; defaultSort: Sort<Keys[number]> }` — `pageRequestOf`'s sorted overload; `defaultSort` is **required** alongside `sortableBy`                                                                                                                                                                     |
+| `pageRequestOf`     | `/zod` | value | `(filters, limits?: PageLimits)`; overloaded `(filters, options: PageLimits & SortOptions<Keys>)` for a sorted listing — the input schema, refusing both cursors, with this listing's filters and, when sorted, its `sort` field `prefault`ed to `defaultSort`. `limit`, `after`, `before` and `sort` are reserved    |
+| `PageLimits`        | `/zod` | type  | `{ defaultLimit?: number; maxLimit?: number }` — default `20`, ceiling `100`                                                                                                                                                                                                                                          |
 
 A cursor is an **opaque string**. The server mints it and is the only side
 that may read it; the client hands it back verbatim and interprets nothing.
@@ -226,10 +232,15 @@ One page, described once. The type a port speaks and the schema a contract
 publishes are the same shape:
 
 <!-- doctest: prelude
-declare const orderView: import("zod").ZodObject<{ id: import("zod").ZodString }>;
+declare const orderView: import("zod").ZodObject<{
+  id: import("zod").ZodString;
+  quantity: import("zod").ZodNumber;
+}>;
 declare const rows: readonly { readonly id: string }[];
 declare const startCursor: string | null;
 declare const endCursor: string | null;
+declare const sortedRequest: import("@btravstack/contract").PageRequest<"quantity">;
+declare const sortedRows: readonly { readonly id: string; readonly quantity: number }[];
 -->
 
 ```ts
@@ -268,6 +279,63 @@ The limit uses zod's `prefault` rather than `default`, because a default is
 handed back **unparsed**: a listing whose `defaultLimit` sat above its own
 `maxLimit` would otherwise serve a page larger than it published. The emitted
 input schema is identical either way.
+
+### Sorting a listing
+
+A listing that wants one declares its own vocabulary, checked against the
+item it already publishes, and a default — `defaultSort` is **required**
+alongside `sortableBy`, because an implicit default is a listing sorted by
+something nobody chose:
+
+```ts
+import { sortableBy } from "@btravstack/contract/zod";
+
+export const sortedListing = oc
+  .input(
+    pageRequestOf(
+      { minQuantity: z.number().int().min(1).optional() },
+      {
+        sortableBy: sortableBy(orderView, ["quantity"]),
+        defaultSort: { field: "quantity", direction: "desc" },
+      },
+    ),
+  )
+  .output(pageOf(orderView));
+```
+
+A name outside the item's shape, or a nullable or optional one, is refused at
+`sortableBy` itself — a compile error rather than a `400`, and rather than
+handled per adapter: a null in a sort key breaks the comparison that walks
+the keyset, so refusing it once here is what keeps every adapter from having
+to.
+
+**The wire cursor carries the sort verbatim, not hashed.** `field:direction`
+is the head of a sorted cursor — the field half `encodeURIComponent`d, like
+the sort value and the tiebreak that follow it — and legible on purpose: the
+vocabulary is already public in the emitted OpenAPI document (`sortableBy`'s
+own keys), so hashing it would hide nothing a reader could not already see.
+
+**A cursor is valid only for the sort it was issued under, and a mismatch is
+refused.** Sorted, `keyset(request)` answers `SortedKeyset<F> |
+CursorRefused` — a union the adapter must branch on, discriminated by
+`resumable`, rather than an unfiltered page served from the wrong side:
+
+```ts
+import { keyset } from "@btravstack/contract";
+
+const sortedKeys = keyset(sortedRequest);
+const sorted = sortedKeys.resumable
+  ? sortedKeys.page(sortedRows, (row) => [String(row.quantity), String(row.id)])
+  : sortedKeys.reason; // "malformed" or "sort-mismatch"
+```
+
+`SortedKeyset<F>.page`'s `cursorOf` returns **both** values a sorted seek
+needs — the sort key's and the tiebreak's — because a store queried with only
+the first seeks on one column and silently skips every row that ties on it: a
+forgotten tiebreak is a compile error here, not a keyset that drops rows in
+production. `CursorRefused.reason` is `"malformed"` or `"sort-mismatch"`,
+told apart because they are separately triageable — the first is not
+actionable, the second tells a caller to re-issue from the first page.
 
 ### The three call sites
 

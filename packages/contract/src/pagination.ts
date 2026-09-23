@@ -45,16 +45,37 @@ export const page = <T>(
 });
 
 /**
- * What a caller asks for: a size, and at most one cursor.
+ * One sort key and the direction it runs in.
+ *
+ * Both halves are required, so a field without a direction is
+ * unrepresentable. One key, not a list: a cursor has to encode every ordering
+ * column, and each extra column is another value the seek and the token must
+ * agree about.
+ */
+export type Sort<F extends string = string> = {
+  readonly field: F;
+  readonly direction: "asc" | "desc";
+};
+
+/**
+ * What a caller asks for: a size, at most one cursor, and — for a listing that
+ * declares one — the sort it runs in.
  *
  * `after` and `before` are the opaque cursors a previous page handed back, and
  * they are **mutually exclusive in the type**: a page runs in one direction,
  * and "after X and before Y" is a range query wearing a page's clothes. A union
  * is what makes that unrepresentable rather than merely documented.
+ *
+ * `F` is the listing's own sortable vocabulary. There are two states and no
+ * third: a listing that names one always has a sort, a listing that names none
+ * can never carry one — which is what lets a cursor's arity be known from the
+ * request alone.
  */
-export type PageRequest =
+export type PageRequest<F extends string = never> = (
   | { readonly limit: number; readonly after?: string | undefined; readonly before?: never }
-  | { readonly limit: number; readonly before?: string | undefined; readonly after?: never };
+  | { readonly limit: number; readonly before?: string | undefined; readonly after?: never }
+) &
+  ([F] extends [never] ? { readonly sort?: never } : { readonly sort: Sort<F> });
 
 /**
  * The flat shape a validated page input arrives in, before its two cursors have
@@ -63,12 +84,34 @@ export type PageRequest =
  * A schema states "at most one of these" as a rule over two optional fields; a
  * type states it as a union. This is the former, and {@link pageRequest} is the
  * crossing between them.
+ *
+ * The sort keeps {@link PageRequest}'s two states and gains no third: a query
+ * either carries one or has no such field. An OPTIONAL `sort` would cross into
+ * the unsorted `PageRequest` at compile time and mint a sorted cursor at
+ * runtime, so it is refused here rather than at the seek.
  */
 export type PageQuery = {
   readonly limit: number;
   readonly after?: string | undefined;
   readonly before?: string | undefined;
-};
+} & ({ readonly sort: Sort } | { readonly sort?: never });
+
+/**
+ * The gate {@link pageRequest} intersects into its parameter, refusing a
+ * `sort` that is neither required nor absent.
+ *
+ * {@link PageQuery}'s union already states the two states a sort may be in,
+ * but a union's arms are compared one at a time, and only that per-arm
+ * comparison consults the `exactOptionalPropertyTypes` relation —
+ * assignability to the union as a whole does not. So `sort?: Sort`, a key
+ * present but optional, still types as assignable to a `PageQuery` the union
+ * alone was meant to refuse. This gate closes that spelling directly.
+ */
+export type SortIsDecided<Q> = "sort" extends keyof Q
+  ? Q extends { readonly sort: Sort }
+    ? unknown
+    : { readonly sort: "A SORT IS REQUIRED OR ABSENT — an optional one is neither" }
+  : unknown;
 
 /**
  * A validated page input, narrowed into the one-direction {@link PageRequest} a
@@ -78,15 +121,21 @@ export type PageQuery = {
  * through `pageRequestOf`, whose schema refuses the pair — it exists so this
  * function is total rather than partial, not as a policy a caller should rely
  * on.
+ *
+ * A sort stays a sort: it is a field of the query like any filter, so it rides
+ * through untouched and the result is the {@link PageRequest} of that listing's
+ * own vocabulary rather than of none.
  */
 export const pageRequest = <Q extends PageQuery>(
-  query: Q,
-): PageRequest & Omit<Q, "after" | "before"> => {
+  query: Q & SortIsDecided<Q>,
+): (Q extends { readonly sort: Sort<infer F> } ? PageRequest<F> : PageRequest) &
+  Omit<Q, "after" | "before"> => {
   const { after, before, ...filters } = query;
+  // `Q` resolves at the call, and nothing is assignable to a deferred conditional.
   return {
     ...filters,
     ...(before !== undefined ? { before } : after !== undefined ? { after } : {}),
-  };
+  } as never;
 };
 
 /**
@@ -122,6 +171,135 @@ export type Keyset = {
 };
 
 /**
+ * A keyset for a sorted listing, or the refusal of a cursor that was issued
+ * under a different one.
+ *
+ * `cursor` carries BOTH values a sorted seek needs — the sort key's and the
+ * tiebreak's — because a store queried with only the first seeks on one column
+ * and silently skips every row that ties on it.
+ *
+ * It is the DECODED pair, with the sort head already stripped and the escaping
+ * undone: it is what the seek takes, not what the client sent. So an adapter
+ * that refuses it downstream — a value its own storage cannot read — reports
+ * the adapter's vocabulary rather than the wire token, and a support engineer
+ * handed that string cannot replay the request with it.
+ */
+export type SortedKeyset<F extends string> = {
+  readonly resumable: true;
+  readonly take: number;
+  readonly backward: boolean;
+  readonly sort: Sort<F>;
+  readonly cursor: readonly [sortValue: string, key: string] | undefined;
+  readonly page: <T, U = T>(
+    rows: readonly T[],
+    cursorOf: (row: T) => readonly [sortValue: string, key: string],
+    item?: (row: T) => U,
+  ) => Page<U>;
+};
+
+/**
+ * A cursor that cannot be honoured under the sort it arrived with, and why:
+ * `"malformed"` never had a sort-shaped head to compare, where
+ * `"sort-mismatch"` did, and named a different one. The two are separately
+ * triageable — the first is not actionable, the second tells a caller to
+ * re-issue from the first page — so an adapter needs the reason, not just the
+ * refusal.
+ */
+export type CursorRefused = {
+  readonly resumable: false;
+  readonly cursor: string;
+  readonly reason: "malformed" | "sort-mismatch";
+};
+
+const SEPARATOR = "|";
+const HEAD_PATTERN = /^[^:]*:(?:asc|desc)$/;
+
+const headOf = (sort: Sort): string => `${encodeURIComponent(sort.field)}:${sort.direction}`;
+
+// `decodeURIComponent` THROWS on an invalid percent-escape, and a cursor is the
+// one part of a request that came from outside — so a bare call here would make
+// a hostile or double-decoded token a crash instead of a refusal.
+const decoded = (value: string): string | undefined => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Whether a cursor has the three-part, sort-headed SHAPE a sorted keyset
+ * requires — independent of which sort it names. Splitting shape from
+ * identity is what lets a refusal say WHY: a cursor with no such head is
+ * unreadable regardless of sort, where one with a head naming a different
+ * sort is readable and simply wrong.
+ *
+ * A part that will not decode is unreadable in the same sense, so it answers
+ * here rather than reaching the sort comparison.
+ */
+const shapeOf = (
+  cursor: string,
+): { readonly head: string; readonly sortValue: string; readonly key: string } | undefined => {
+  const parts = cursor.split(SEPARATOR);
+  const [head, sortValue, key] = parts;
+  if (
+    parts.length !== 3 ||
+    head === undefined ||
+    !HEAD_PATTERN.test(head) ||
+    sortValue === undefined ||
+    key === undefined
+  )
+    return undefined;
+  const [value, tiebreak] = [decoded(sortValue), decoded(key)];
+  return value === undefined || tiebreak === undefined
+    ? undefined
+    : { head, sortValue: value, key: tiebreak };
+};
+
+const fold = <T, U>(
+  rows: readonly T[],
+  limit: number,
+  backward: boolean,
+  resumed: boolean,
+  item: (row: T) => U,
+  cursorOf: (row: T) => string,
+): Page<U> => {
+  const more = rows.length > limit;
+  const trimmed = more ? rows.slice(0, limit) : rows;
+  const seen = backward ? [...trimmed].reverse() : trimmed;
+  const edge = (row: T | undefined) => (row === undefined ? null : cursorOf(row));
+  return page(seen.map(item), {
+    previous: (backward ? more : resumed) ? edge(seen[0]) : null,
+    next: backward || more ? edge(seen.at(-1)) : null,
+  });
+};
+
+const unsortedKeyset = (limit: number, backward: boolean, cursor: string | undefined): Keyset => ({
+  take: limit + 1,
+  backward,
+  cursor,
+  page: (rows, cursorOf, item = (row) => row as never) =>
+    fold(rows, limit, backward, cursor !== undefined && !backward, item, cursorOf),
+});
+
+const sortedKeyset = (
+  limit: number,
+  backward: boolean,
+  sort: Sort,
+  cursor: readonly [sortValue: string, key: string] | undefined,
+): SortedKeyset<string> => ({
+  resumable: true,
+  take: limit + 1,
+  backward,
+  sort,
+  cursor,
+  page: (rows, cursorOf, item = (row) => row as never) =>
+    fold(rows, limit, backward, cursor !== undefined && !backward, item, (row) =>
+      [headOf(sort), ...cursorOf(row).map((part) => encodeURIComponent(part))].join(SEPARATOR),
+    ),
+});
+
+/**
  * The keyset pagination an adapter would otherwise hand-roll: the over-fetch,
  * the direction, the trim, and both cursors.
  *
@@ -139,6 +317,11 @@ export type Keyset = {
  * A cursor is minted only from a row that is actually on the page, so an empty
  * page carries neither — which is what makes both flags on {@link Page} honest.
  *
+ * **A sorted request answers a union the caller must branch on.** The cursor a
+ * sorted listing mints carries the sort it was issued under, so one replayed
+ * under a different field — or the same field in the other direction — is
+ * REFUSED rather than served from the wrong side.
+ *
  * @example
  * ```ts
  * const keys = keyset(request);
@@ -146,23 +329,21 @@ export type Keyset = {
  * return keys.page(rows, (row) => String(row.id));
  * ```
  */
-export const keyset = (request: PageRequest): Keyset => {
+export function keyset(request: PageRequest): Keyset;
+export function keyset<F extends string>(request: PageRequest<F>): SortedKeyset<F> | CursorRefused;
+export function keyset(
+  request: PageRequest | PageRequest<string>,
+): Keyset | SortedKeyset<string> | CursorRefused {
   const { limit } = request;
   const backward = request.before !== undefined;
-  return {
-    take: limit + 1,
-    backward,
-    cursor: request.before ?? request.after,
-    page: (rows, cursorOf, item = (row) => row as never) => {
-      const more = rows.length > limit;
-      const trimmed = more ? rows.slice(0, limit) : rows;
-      const seen = backward ? [...trimmed].reverse() : trimmed;
-      const edge = (row: (typeof seen)[number] | undefined) =>
-        row === undefined ? null : cursorOf(row);
-      return page(seen.map(item), {
-        previous: (backward ? more : request.after !== undefined) ? edge(seen[0]) : null,
-        next: backward || more ? edge(seen.at(-1)) : null,
-      });
-    },
-  };
-};
+  const given = request.before ?? request.after;
+  const { sort } = request;
+  if (sort === undefined) return unsortedKeyset(limit, backward, given);
+  const shape = given === undefined ? undefined : shapeOf(given);
+  if (given !== undefined) {
+    if (shape === undefined) return { resumable: false, cursor: given, reason: "malformed" };
+    if (shape.head !== headOf(sort))
+      return { resumable: false, cursor: given, reason: "sort-mismatch" };
+  }
+  return sortedKeyset(limit, backward, sort, shape && [shape.sortValue, shape.key]);
+}

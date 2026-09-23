@@ -1,5 +1,5 @@
 import { authenticated } from "@btravstack/contract";
-import { pageOf, pageRequestOf } from "@btravstack/contract/zod";
+import { pageOf, pageRequestOf, sortableBy } from "@btravstack/contract/zod";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
@@ -81,9 +81,20 @@ const ordersContract = authenticated({ user: [] })({
   // own vocabulary, which is why `BAD_REQUEST` is declared here.
   //
   list: oc
-    .input(pageRequestOf({ minQuantity: z.number().int().min(1).optional() }))
+    .input(
+      pageRequestOf(
+        { minQuantity: z.number().int().min(1).optional() },
+        {
+          sortableBy: sortableBy(orderView, ["quantity"]),
+          defaultSort: { field: "quantity", direction: "desc" },
+        },
+      ),
+    )
     .output(pageOf(orderView))
-    .errors({ BAD_REQUEST: { data: z.object({ cursor: z.string() }) } }),
+    .errors({
+      BAD_REQUEST: { data: z.object({ cursor: z.string() }) },
+      CURSOR_SORT_MISMATCH: { data: z.object({ cursor: z.string() }) },
+    }),
 
   // Overrides the group default for itself: a service token may export too,
   // and a user token needs the scope.

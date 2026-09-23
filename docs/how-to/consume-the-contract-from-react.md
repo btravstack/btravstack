@@ -142,6 +142,23 @@ schema refusal and the type say the same thing at the two ends of the wire.
 "After X and before Y" is a range query wearing a page's clothes, and TanStack
 asks in one direction at a time anyway.
 
+**A sort belongs in the query key, not the page param.** TanStack Query's own
+guidance already puts every input that changes what a query returns in its
+key, and a sort does exactly that — so `orpc.orders.list.infiniteOptions`
+reads it off `queryKey` the same way it reads `minQuantity`, not off `input`'s
+`Cursor`. Changing the sort therefore starts a **fresh** infinite query at
+`initialPageParam` rather than continuing the old one, which is why refusing
+a cursor replayed under a different sort costs a well-behaved client nothing:
+it was never going to hand one across the boundary that already resets it.
+
+The deploy where the **server** gains a sort is the one case that does cost
+something: every cursor a client is still holding was minted before the sort
+head existed, so the first request after it is refused as `malformed` and
+answered `400`. Nothing about the query key changes, so a client recovers by
+starting the listing again — treat `MalformedCursor` on a listing that has just
+gained a sort as "refetch from `initialPageParam`", exactly as a changed sort
+already does.
+
 Then, in a component:
 
 <!-- doctest: skip — needs `react`, which no example workspace installs; the options object it receives is compiled by the fence above -->

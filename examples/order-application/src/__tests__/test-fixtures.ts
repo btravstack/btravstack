@@ -18,6 +18,7 @@ import { test } from "vitest";
 import {
   CustomerApplicationModule,
   CustomerRepository,
+  CursorSortMismatch,
   FindCustomer,
   FindOrder,
   ListOrders,
@@ -31,6 +32,16 @@ import {
 
 /** Every tenant's rows in one map, keyed the way the real schema's composite unique key is. */
 type Store = Map<string, Order>;
+
+/**
+ * What a sortable field reads off a row — the same exhaustive map the Prisma
+ * adapter keeps as a column, so a key the application declares sortable with
+ * no accessor here is a compile error rather than a page ordered by something
+ * else. It is what both the comparator and the cursor go through.
+ */
+const sortValue: Record<OrderQuery["sort"]["field"], (order: Order) => number> = {
+  quantity: (order) => order.quantity,
+};
 
 /**
  * The whole point of the layer split: the use cases run against a stub
@@ -66,24 +77,49 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
             ? ErrAsync(new OrderNotFound({ id: id as OrderId }))
             : OkAsync(row);
         },
-        // Insertion-ordered, cursor = the order id. What this stub owes is the
-        // SEEK — walk the direction asked for, resume strictly after the cursor,
-        // answer at most `take` — and `keyset` does the rest, exactly as it does
-        // for the Prisma adapter. Two stores, one arithmetic.
+        // What this stub owes is the SEEK — walk the direction and sort asked
+        // for, resume strictly after the cursor, answer at most `take` — and
+        // `keyset` does the rest, exactly as it does for the Prisma adapter.
+        // Two stores, one arithmetic.
         list: ({ minQuantity, ...request }: OrderQuery) => {
           const scoped = mine().filter(
             (order) => minQuantity === undefined || order.quantity >= minQuantity,
           );
           const keys = keyset(request);
-          const walked = keys.backward ? [...scoped].reverse() : scoped;
+          if (!keys.resumable)
+            return ErrAsync(
+              keys.reason === "malformed"
+                ? new MalformedCursor({ cursor: keys.cursor })
+                : new CursorSortMismatch({ cursor: keys.cursor }),
+            );
+          // Sorted by the key the caller chose, then by id — the tiebreak, without
+          // which rows sharing a quantity have no defined order and the page below
+          // either skips them or repeats them.
+          const value = sortValue[keys.sort.field];
+          const sorted = [...scoped].sort(
+            (a, b) => value(a) - value(b) || a.id.localeCompare(b.id),
+          );
+          const ordered = keys.sort.direction === "desc" ? [...sorted].reverse() : sorted;
+          const walked = keys.backward ? [...ordered].reverse() : ordered;
           // A cursor naming no row is `MalformedCursor`, exactly as the Prisma
           // adapter answers: `findIndex` would otherwise return -1 and page from
           // the start, so a stub that skipped this would let a spec pass on a
           // cursor the listing never issued.
-          const at = keys.cursor === undefined ? -1 : walked.findIndex((o) => o.id === keys.cursor);
-          if (keys.cursor !== undefined && at === -1)
-            return ErrAsync(new MalformedCursor({ cursor: keys.cursor }));
-          return OkAsync(keys.page(walked.slice(at + 1, at + 1 + keys.take), (order) => order.id));
+          const resume = keys.cursor;
+          const at =
+            resume === undefined
+              ? -1
+              : walked.findIndex(
+                  (order) => String(value(order)) === resume[0] && order.id === resume[1],
+                );
+          if (resume !== undefined && at === -1)
+            return ErrAsync(new MalformedCursor({ cursor: resume.join("|") }));
+          return OkAsync(
+            keys.page(walked.slice(at + 1, at + 1 + keys.take), (order) => [
+              String(value(order)),
+              order.id,
+            ]),
+          );
         },
         remove: (id: string) =>
           rows.delete(key(id)) ? OkAsync() : ErrAsync(new OrderNotFound({ id: id as OrderId })),

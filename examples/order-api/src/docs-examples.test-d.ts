@@ -115,12 +115,19 @@ const ordersController = api.OrpcController(
         )
         .map((found) => ({ ...found, items: found.items.map(view) }))
         .mapErrCases((matcher) =>
-          matcher.with(P.tag("MalformedCursor"), (error) =>
-            errors.BAD_REQUEST({
-              message: "the cursor could not be read",
-              data: { cursor: error.cursor },
-            }),
-          ),
+          matcher
+            .with(P.tag("MalformedCursor"), (error) =>
+              errors.BAD_REQUEST({
+                message: "the cursor could not be read",
+                data: { cursor: error.cursor },
+              }),
+            )
+            .with(P.tag("CursorSortMismatch"), (error) =>
+              errors.CURSOR_SORT_MISMATCH({
+                message: "this cursor was issued under a different sort; start from the first page",
+                data: { cursor: error.cursor },
+              }),
+            ),
         ),
     export: ({ errors, context }, input) => {
       logger.info("order export requested", {
@@ -260,12 +267,19 @@ const depsOrdersRouter = api.OrpcRouter(contract.orders)({
         )
         .map((found) => ({ ...found, items: found.items.map(view) }))
         .mapErrCases((matcher) =>
-          matcher.with(P.tag("MalformedCursor"), (error) =>
-            errors.BAD_REQUEST({
-              message: "the cursor could not be read",
-              data: { cursor: error.cursor },
-            }),
-          ),
+          matcher
+            .with(P.tag("MalformedCursor"), (error) =>
+              errors.BAD_REQUEST({
+                message: "the cursor could not be read",
+                data: { cursor: error.cursor },
+              }),
+            )
+            .with(P.tag("CursorSortMismatch"), (error) =>
+              errors.CURSOR_SORT_MISMATCH({
+                message: "this cursor was issued under a different sort; start from the first page",
+                data: { cursor: error.cursor },
+              }),
+            ),
         ),
     export: ({ errors, context }, input) =>
       context.unit.find

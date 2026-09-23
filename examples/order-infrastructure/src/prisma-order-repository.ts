@@ -1,6 +1,11 @@
 import { keyset } from "@btravstack/contract";
 import { type ServiceOf } from "@btravstack/di";
-import { MalformedCursor, type OrderRepository } from "@btravstack/example-order-application";
+import {
+  CursorSortMismatch,
+  MalformedCursor,
+  type OrderQuery,
+  type OrderRepository,
+} from "@btravstack/example-order-application";
 import {
   DuplicateOrder,
   Order,
@@ -9,7 +14,7 @@ import {
   type TenantId,
 } from "@btravstack/example-order-domain";
 import { tenantPinned } from "@btravstack/prisma/rls";
-import { all, Err, Ok, P, type Result } from "unthrown";
+import { all, Err, ErrAsync, Ok, P, type Result } from "unthrown";
 
 import type { OrderDatabaseClient, OrderTransaction } from "./database.js";
 
@@ -27,17 +32,28 @@ const hydrate = (row: OrderRow): Result<Order, never> =>
   );
 
 /**
- * A cursor is the `id` the keyset resumes from, as a string on the wire.
+ * Which column a sortable field is stored in, exhaustive over the listing's own
+ * vocabulary: a key the application declares sortable with no column here is a
+ * compile error, never a page quietly ordered by something else.
+ */
+const sortColumn: Record<OrderQuery["sort"]["field"], "quantity"> = { quantity: "quantity" };
+
+/**
+ * A cursor carries the sort key's value and the surrogate `id` that breaks its
+ * ties, as two strings on the wire.
  *
  * Opaque to the caller and numeric underneath, which is the one place this
  * adapter's storage shows through — so decoding is where a caller's garbage
  * becomes the application's `MalformedCursor` rather than a `NaN` that pages
  * from nowhere.
  */
-const cursorOf = (row: { readonly id: number }): string => String(row.id);
-const decodeCursor = (cursor: string): Result<number, MalformedCursor> => {
-  const id = Number(cursor);
-  return Number.isSafeInteger(id) ? Ok(id) : Err(new MalformedCursor({ cursor }));
+const decodeCursor = (
+  cursor: readonly [string, string],
+): Result<{ readonly value: number; readonly id: number }, MalformedCursor> => {
+  const [value, id] = [Number(cursor[0]), Number(cursor[1])];
+  return Number.isSafeInteger(value) && Number.isSafeInteger(id)
+    ? Ok({ value, id })
+    : Err(new MalformedCursor({ cursor: cursor.join("|") }));
 };
 
 /**
@@ -122,6 +138,11 @@ export const prismaOrderRepository = (
      */
     list: ({ minQuantity, ...request }) => {
       const keys = keyset(request);
+      if (!keys.resumable)
+        return keys.reason === "malformed"
+          ? ErrAsync(new MalformedCursor({ cursor: keys.cursor }))
+          : ErrAsync(new CursorSortMismatch({ cursor: keys.cursor }));
+      const column = sortColumn[keys.sort.field];
       const start = keys.cursor === undefined ? Ok(undefined) : decodeCursor(keys.cursor);
       return start.toAsync().flatMap((cursor) =>
         pinned(async (tx) => {
@@ -131,13 +152,23 @@ export const prismaOrderRepository = (
             minQuantity === undefined
               ? tx.orm.orders.Order
               : tx.orm.orders.Order.where((order) => order.quantity.gte(minQuantity));
-          const ordered = keys.backward
-            ? base.orderBy((order) => order.id.desc())
-            : base.orderBy((order) => order.id.asc());
-          // `.cursor({ id })` resumes strictly AFTER the row it names, in
-          // whichever direction the `orderBy` set — so the exclusivity is the
-          // ORM's, and nothing here compensates for it.
-          const seeked = cursor === undefined ? ordered : ordered.cursor({ id: cursor });
+          // A backward page walks the index the other way, so the direction is
+          // the caller's sort flipped by the direction of travel — and BOTH
+          // columns flip together, or the tiebreak disagrees with the key it
+          // breaks.
+          const descending = (keys.sort.direction === "desc") !== keys.backward;
+          const ordered = descending
+            ? base.orderBy([(order) => order[column].desc(), (order) => order.id.desc()])
+            : base.orderBy([(order) => order[column].asc(), (order) => order.id.asc()]);
+          // Every ordering column gets a value: a partial cursor seeks on one
+          // column and silently skips the rows that tie on it. `.cursor(...)`
+          // then resumes strictly AFTER the row it names, in whichever
+          // direction the `orderBy` set — so the exclusivity is the ORM's, and
+          // nothing here compensates for it.
+          const seeked =
+            cursor === undefined
+              ? ordered
+              : ordered.cursor({ [column]: cursor.value, id: cursor.id });
           return seeked.limit(keys.take).all();
         })
           .mapErrCases((matcher, defect) =>
@@ -152,7 +183,7 @@ export const prismaOrderRepository = (
             all(fetched.map((row) => hydrate(row).map((order) => ({ row, order })))).map((rows) =>
               keys.page(
                 rows,
-                ({ row }) => cursorOf(row),
+                ({ row }) => [String(row[column]), String(row.id)],
                 ({ order }) => order,
               ),
             ),
