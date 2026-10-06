@@ -14,6 +14,31 @@ import { fileURLToPath } from "node:url";
 const HERE = resolve(fileURLToPath(import.meta.url), "..", "..");
 const ROOT = resolve(HERE, "..", "..");
 
+/** The version this workspace's catalog pins `name` at, so the gate installs what the repository builds against. */
+const catalogVersion = (name: string): string | undefined => {
+  const catalog = readFileSync(join(ROOT, "pnpm-workspace.yaml"), "utf8");
+  const escaped = name.replaceAll(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+  return new RegExp(`^ +"?${escaped}"?: "?([^"\\s]+)"?$`, "m").exec(catalog)?.[1];
+};
+
+/** The peers a consumer installs beside the tarballs, and the compiler it realistically has (catalogued under an alias). */
+const consumerPeers = (): readonly string[] | undefined => {
+  const peers = [
+    "@types/node",
+    "unthrown",
+    "zod",
+    "@orpc/contract",
+    "@orpc/server",
+    "@unthrown/orpc",
+  ];
+  const versions = [...peers, "typescript-consumer"].map(catalogVersion);
+  if (versions.includes(undefined)) return undefined;
+  return [
+    ...peers.map((name, index) => `${name}@${String(versions[index])}`),
+    String(versions.at(-1)).replace(/^npm:/, ""),
+  ];
+};
+
 /** The published packages, read off the workspace rather than listed here. */
 const published = (): readonly string[] =>
   readdirSync(join(ROOT, "packages"), { withFileTypes: true })
@@ -31,6 +56,15 @@ const main = (): void => {
   const dirs = published();
   const work = mkdtempSync(join(tmpdir(), "btravstack-consumer-"));
   const failures: string[] = [];
+
+  const peers = consumerPeers();
+  if (peers === undefined) {
+    process.stderr.write(
+      "[consumer-check] a consumer peer has no entry in pnpm-workspace.yaml's catalog\n",
+    );
+    process.exitCode = 1;
+    return;
+  }
 
   try {
     // Turbo's graph orders the builds before this, and its entry names each
@@ -128,16 +162,10 @@ const main = (): void => {
       [
         "add",
         ...tarballs.map((name) => `./${name}`),
-        // The peers a consumer installs beside them, at the versions the
-        // install snippets on the documentation site name. Floating them would
-        // make this gate a test of whoever published last.
-        "@types/node@26.4.1",
-        "unthrown@5.8.0",
-        "zod@4.5.4",
-        "@orpc/contract@2.0.0-beta.28",
-        "@orpc/server@2.0.0-beta.28",
-        "@unthrown/orpc@0.2.0",
-        "typescript@5.9.3",
+        // At the catalog's own versions: floating them would make this gate a
+        // test of whoever published last, and a hand-kept list drifted from
+        // what the repository builds against.
+        ...peers,
         // Nothing here resolves `latest` for a package this repository
         // publishes, so the release-age policy has nothing to wait on.
         "--config.minimum-release-age=0",
