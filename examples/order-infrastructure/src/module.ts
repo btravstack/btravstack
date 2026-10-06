@@ -1,15 +1,11 @@
 import { Module, Provider } from "@btravstack/di";
-import {
-  CustomerRepository,
-  OrderRepository,
-  Outbox,
-  Tenant,
-} from "@btravstack/example-order-application";
+import { CustomerRepository, OrderRepository, Tenant } from "@btravstack/example-order-application";
+import { OutboxStore } from "@btravstack/outbox";
+import { prismaOutboxStore } from "@btravstack/outbox/prisma";
 
 import { OrderDatabase, OrderDatabaseModule } from "./database.js";
 import { customerRepositoryProvider } from "./prisma-customer-repository.js";
 import { prismaOrderRepository } from "./prisma-order-repository.js";
-import { outboxProvider } from "./prisma-outbox.js";
 
 /**
  * The orders repository, bound to the tenant of the unit it is built in.
@@ -39,15 +35,25 @@ export const OrderTenantPersistence = Module("OrderTenantPersistence")({
 });
 
 /**
- * What the application scope holds: the outbox, whose relay sweeps across
- * tenants from outside any unit, and the database module itself — re-exported
- * so a unit forked over this scope can read the client that
- * `OrderTenantPersistence` binds a tenant to.
+ * What the application scope holds: the outbox store, over the `OutboxMessage`
+ * table `prismaOrderRepository` writes inside its own transactions, and the
+ * database module itself — re-exported so a unit forked over this scope can
+ * read the client that `OrderTenantPersistence` binds a tenant to.
+ *
+ * The store is `@btravstack/outbox`'s, not this application's: what is left
+ * here is where the table lives. It runs on the unpinned client because the
+ * relay sweeps across tenants from outside any unit, which is why the table
+ * carries no policy.
  */
 export const OrderPersistenceModule = Module("OrderPersistence")({
   imports: [OrderDatabaseModule],
-  provides: [outboxProvider],
-  exports: [Outbox, OrderDatabaseModule],
+  provides: [
+    Provider(OutboxStore)({
+      inject: { db: OrderDatabase },
+      sync: ({ db }) => prismaOutboxStore(db, { schema: "orders" }),
+    }),
+  ],
+  exports: [OutboxStore, OrderDatabaseModule],
 });
 
 /**

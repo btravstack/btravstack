@@ -25,6 +25,7 @@
     "@btravstack/example-order-application": "workspace:*",
     "@btravstack/example-order-domain": "workspace:*",
     "@btravstack/observability": "workspace:*",
+    "@btravstack/outbox": "workspace:*",
     "@btravstack/prisma": "workspace:*",
     "@prisma/orm-postgres": "catalog:",
     "unthrown": "catalog:"

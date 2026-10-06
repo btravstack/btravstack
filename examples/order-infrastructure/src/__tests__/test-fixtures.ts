@@ -1,10 +1,8 @@
 import type { ServiceOf } from "@btravstack/di";
-import type {
-  CustomerRepository,
-  Outbox,
-  OrderRepository,
-} from "@btravstack/example-order-application";
+import type { CustomerRepository, OrderRepository } from "@btravstack/example-order-application";
 import { TenantId, placeOrder, type Order } from "@btravstack/example-order-domain";
+import type { OutboxStoreService } from "@btravstack/outbox";
+import { prismaOutboxStore } from "@btravstack/outbox/prisma";
 import { uuidv7 } from "uuidv7";
 import { inject, test } from "vitest";
 
@@ -12,7 +10,6 @@ import {
   openDatabase,
   prismaCustomerRepository,
   prismaOrderRepository,
-  prismaOutbox,
   type OrderDatabaseClient,
 } from "../index.js";
 
@@ -48,7 +45,8 @@ export type PersistenceFixtures = {
   /** The same adapter bound to `otherTenant`, so a cross-tenant spec writes through a real one. */
   readonly otherRepository: ServiceOf<OrderRepository>;
   readonly customers: ServiceOf<CustomerRepository>;
-  readonly outbox: ServiceOf<Outbox>;
+  /** `@btravstack/outbox`'s store over this application's own table — what the relay claims from. */
+  readonly outbox: OutboxStoreService;
   readonly anOrder: (id: string, quantity: number) => Order;
   /**
    * Puts a customer in this test's tenant. Straight through the client, past
@@ -97,7 +95,7 @@ export const it = test.extend<PersistenceFixtures>({
   },
 
   outbox: async ({ db }, use) => {
-    await use(prismaOutbox(db));
+    await use(prismaOutboxStore(db, { schema: "orders" }));
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

@@ -1,4 +1,7 @@
-import { P } from "unthrown";
+import type { DuplicateOrder } from "@btravstack/example-order-domain";
+import type { OutboxMessage } from "@btravstack/outbox";
+import { OkAsync, P, fromSafePromise, type AsyncResult } from "unthrown";
+import { uuidv7 } from "uuidv7";
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -24,7 +27,8 @@ describe("the transactional outbox", () => {
         tenantId: tenant,
         kind: "order",
         subjectId: "0199a1e0-0000-7000-8000-000000000001",
-        payload: { quantity: 3 },
+        payload: JSON.stringify({ quantity: 3 }),
+        occurredAt: expect.any(Date),
       }),
     ]);
   });
@@ -49,63 +53,145 @@ describe("the transactional outbox", () => {
     expect(events).toBeOkWith([
       expect.objectContaining({
         subjectId: "0199a1e0-0000-7000-8000-000000000001",
-        payload: { quantity: 1 },
+        payload: JSON.stringify({ quantity: 1 }),
       }),
     ]);
   });
 
-  it("marks published events so the relay never re-reads them", async ({
+  it("marks published exactly what the relay published", async ({
     tenant,
     repository,
     outbox,
     anOrder,
   }) => {
     // GIVEN two placed orders and their pending events
-    const pending = (
-      await repository
-        .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 1))
-        .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000002", 2)))
-        .flatMap(() => outbox.pending(tenant, 10))
-    ).getOrThrow();
+    // WHEN a claim's relay publishes only the first of the batch
+    const rest = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 1))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000002", 2)))
+      .flatMap(() => outbox.claim(tenant, 10, ([first]) => OkAsync(first ? [first.id] : [])))
+      .flatMap(() => outbox.pending(tenant, 10));
 
-    // WHEN the first is marked published
-    const first = pending[0];
-    // oxlint-disable-next-line unthrown/no-throw -- a missing row here is a broken GIVEN, and the loudest possible answer is the right one
-    if (first === undefined) throw new Error("expected a pending event");
-    const rest = await outbox.markPublished([first.id]).flatMap(() => outbox.pending(tenant, 10));
-
-    // THEN only the second remains pending
+    // THEN only the second remains pending, for the next claim
     expect(rest).toBeOkWith([
       expect.objectContaining({ subjectId: "0199a1e0-0000-7000-8000-000000000002" }),
     ]);
   });
 
-  it("marks EVERY id it was handed, not just the first", async ({
+  it("marks EVERY id the relay hands back, not just the first", async ({
     tenant,
     repository,
     outbox,
     anOrder,
   }) => {
     // GIVEN three placed orders and their three pending events
-    const pending = (
-      await repository
-        .save(anOrder("0199a1e0-0000-7000-8000-000000000011", 1))
-        .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000012", 2)))
-        .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000013", 3)))
-        .flatMap(() => outbox.pending(tenant, 10))
-    ).getOrThrow();
-
-    // WHEN all three are marked published in one call
-    const rest = await outbox
-      .markPublished(pending.map((event) => event.id))
+    // WHEN one claim publishes all three
+    const rest = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000011", 1))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000012", 2)))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000013", 3)))
+      .flatMap(() => outbox.claim(tenant, 10, (batch) => OkAsync(batch.map(({ id }) => id))))
       .flatMap(() => outbox.pending(tenant, 10));
 
-    // THEN nothing is left pending. A batch that marks only its first id is
-    // silent — the relay simply publishes the rest again on the next sweep,
-    // and a subscriber sees the event twice. Prisma 8's `.where(…).update(…)`
-    // updates ONE row, so this is the assertion that keeps the loop in
-    // `markPublished` honest; marking a single id cannot tell the difference.
+    // THEN nothing is left pending. A mark that took only its first id would be
+    // silent — the relay would publish the rest again on the next sweep.
     expect(rest).toBeOkWith([]);
+  });
+
+  it("marks nothing when the relay defects mid-batch", async ({
+    tenant,
+    repository,
+    outbox,
+    anOrder,
+  }) => {
+    // GIVEN two placed orders
+    // WHEN the claim's relay dies — the transaction the mark would have
+    // committed in rolls back with it
+    const rest = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000021", 1))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000022", 2)))
+      .flatMap(() =>
+        outbox
+          .claim(tenant, 10, () =>
+            fromSafePromise(Promise.reject(new Error("the relay died"))).map((): number[] => []),
+          )
+          .recoverDefect(() => OkAsync(undefined)),
+      )
+      .flatMap(() => outbox.pending(tenant, 10));
+
+    // THEN both are still pending: a crash re-delivers rather than loses
+    expect(rest).toBeOkWith([
+      expect.objectContaining({ subjectId: "0199a1e0-0000-7000-8000-000000000021" }),
+      expect.objectContaining({ subjectId: "0199a1e0-0000-7000-8000-000000000022" }),
+    ]);
+  });
+
+  it("skips a tenant another relay holds, rather than handing it the same rows", async ({
+    tenant,
+    repository,
+    outbox,
+    anOrder,
+  }) => {
+    // GIVEN a pending event
+    const seenBySecond: (readonly OutboxMessage[])[] = [];
+
+    // WHEN a second relay claims the tenant WHILE the first holds it — from
+    // inside the first's batch, on another connection of the same pool
+    const claimed = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000031", 1))
+      .flatMap(() =>
+        outbox.claim(tenant, 10, (batch) =>
+          outbox
+            .claim(tenant, 10, (second) => {
+              seenBySecond.push(second);
+              return OkAsync([]);
+            })
+            .map(() => batch.map(({ id }) => id)),
+        ),
+      )
+      .map(() => seenBySecond);
+
+    // THEN the second relay was never handed a batch at all
+    expect(claimed).toBeOkWith([]);
+  });
+
+  it("publishes every message exactly once across four racing relays", async ({
+    tenant,
+    repository,
+    outbox,
+    anOrder,
+  }) => {
+    // GIVEN 48 pending events, and a relay that claims in batches of four
+    // until nothing is pending. Each batch reads the outbox once more before
+    // answering, so a claim stays held across a real round trip and the four
+    // relays below overlap.
+    const ids = Array.from({ length: 48 }, () => uuidv7());
+    const published: string[] = [];
+    const relay = async (): Promise<void> => {
+      while ((await outbox.pending(tenant, 1)).get().length > 0) {
+        await outbox
+          .claim(tenant, 4, (batch) =>
+            outbox.pending(tenant, 1).map(() => {
+              published.push(...batch.map(({ subjectId }) => subjectId));
+              return batch.map(({ id }) => id);
+            }),
+          )
+          .get();
+      }
+    };
+
+    // WHEN four relays sweep the one tenant at once
+    const swept = await ids
+      .reduce<AsyncResult<void, DuplicateOrder>>(
+        (chain, id) => chain.flatMap(() => repository.save(anOrder(id, 1)).map(() => undefined)),
+        OkAsync(),
+      )
+      .flatMap(() => fromSafePromise(Promise.all([relay(), relay(), relay(), relay()])))
+      .map(() => published);
+
+    // THEN each subject went out once, and in the order it was written: the
+    // claim is per tenant, so a later batch never overtakes an earlier one
+    expect(swept).toBeOkWith(ids);
   });
 
   it("appends a tombstone when the order is removed", async ({
@@ -127,7 +213,7 @@ describe("the transactional outbox", () => {
     expect(events).toBeOkWith([
       expect.objectContaining({
         subjectId: "0199a1e0-0000-7000-8000-000000000001",
-        payload: { quantity: 3 },
+        payload: JSON.stringify({ quantity: 3 }),
       }),
       expect.objectContaining({ subjectId: "0199a1e0-0000-7000-8000-000000000001", payload: null }),
     ]);

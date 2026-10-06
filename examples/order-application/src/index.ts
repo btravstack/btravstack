@@ -6,12 +6,10 @@ export {
   FindOrder,
   ListOrders,
   OrderRepository,
-  Outbox,
   PaymentService,
   PlaceOrder,
   ShippingService,
   StockService,
   Tenant,
-  type OrderEvent,
   type OrderQuery,
 } from "./ports.js";

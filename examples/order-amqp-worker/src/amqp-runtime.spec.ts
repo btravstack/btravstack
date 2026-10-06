@@ -1,9 +1,6 @@
-import {
-  OrderRepository,
-  PlaceOrder,
-  type OrderEvent,
-} from "@btravstack/example-order-application";
+import { OrderRepository, PlaceOrder } from "@btravstack/example-order-application";
 import type { Line } from "@btravstack/observability";
+import type { OutboxMessage } from "@btravstack/outbox";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -61,12 +58,12 @@ describe("the broadcast deployment", () => {
     await expect(
       writer((ctx) => ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-000000000002", 1)),
     ).toBeOk();
-    const pending = async (): Promise<readonly OrderEvent[]> =>
+    const pending = async (): Promise<readonly OutboxMessage[]> =>
       (await outbox.pending(tenant, 10)).get();
 
     // WHEN the relay has swept it. Synchronising on the MARK, not on the
-    // notification: a subscriber's line proves the publish happened, and
-    // `markPublished` runs after it — so waiting on the line and asserting on
+    // notification: a subscriber's line proves the publish happened, and the
+    // claim marks it published after — so waiting on the line and asserting on
     // the outbox is waiting for one resource and asserting about another,
     // which is a race the machine wins about half the time under load.
     await vi.waitUntil(async () => (await pending()).length === 0, { timeout: 5_000 });

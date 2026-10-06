@@ -72,7 +72,8 @@ namespace orders {
   // **tombstone**: the last word about a subject, saying it is gone. `id` is
   // the sequence the relay publishes in, so a reader sees a subject's create
   // before its tombstone. `publishedAt` is the relay's own bookkeeping — NULL
-  // means pending.
+  // means pending. The shape is `@btravstack/outbox`'s documented table, which
+  // its `prismaOutboxStore` reads and claims in raw SQL.
   //
   // The relay sweeps ACROSS tenants, which is why nothing here is scoped by one
   // and why it carries no `@@rls`: it runs outside any unit, so there is no
