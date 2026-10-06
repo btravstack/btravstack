@@ -138,7 +138,7 @@ catalog:
   typescript-consumer: "npm:typescript@5.9.3"
   # The two tarball linters `internal/consumer-check` runs. Neither is imported
   # by anything: they are invoked as binaries, once per package, from a script.
-  publint: 0.3.15
+  publint: 0.3.25
   "@arethetypeswrong/cli": 0.18.5
   unthrown: 5.12.0
   "@vitest/coverage-v8": 5.0.3
