@@ -48,8 +48,8 @@ stale the next time a case is added (#192):
   tenant a runtime supplied.
 - `json-sink.spec.ts` — the line shape and the trailing newline, an
   `Error`'s `message`/`stack`/`cause` chain surviving, a caller's attribute not
-  rewriting `level`/`message`/`traceId`, a circular cause and a BigInt
-  attribute each dropped and named in `unserialisable` while the rest of the
+  rewriting `level`/`message`/`traceId`, a circular cause, a BigInt
+  attribute and a `toJSON` that refuses only under its own key each dropped and named in `unserialisable` while the rest of the
   line — the unit's ids included — survives, and the default stream being `process.stdout` (captured
   with a spy — read `mock.calls` **before** `mockRestore`, which clears them).
 - `observability.spec.ts` — the level bound from the environment and

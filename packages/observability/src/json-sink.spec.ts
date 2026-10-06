@@ -126,6 +126,41 @@ describe("the JSON sink", () => {
     });
   });
 
+  it("tests a field under its own key, so a key-dependent toJSON cannot cost the line", ({
+    written,
+  }) => {
+    // GIVEN a cause whose toJSON refuses only when rendered as `cause`
+    const keyed = {
+      toJSON: (key: string) => {
+        // oxlint-disable-next-line unthrown/no-throw -- the subject under test: a toJSON that throws for one property key only
+        if (key === "cause") throw new Error("not as a cause");
+        return "fine elsewhere";
+      },
+    };
+
+    // WHEN it is written
+    jsonSink(written)({
+      level: "warn",
+      message: "kept",
+      attributes: {},
+      cause: keyed,
+      time: 0,
+      unit: { unitId: "u-1", traceId: "t-1" },
+    });
+
+    // THEN the line is written with the culprit named, rather than lost
+    expect(written.chunks().map((chunk) => JSON.parse(chunk) as unknown)).toEqual([
+      {
+        time: "1970-01-01T00:00:00.000Z",
+        level: "warn",
+        message: "kept",
+        unitId: "u-1",
+        traceId: "t-1",
+        unserialisable: ["cause"],
+      },
+    ]);
+  });
+
   it("defaults to stdout, so a process that configures nothing still logs", () => {
     // GIVEN the sink with no stream given, and stdout captured
     const written = vi.spyOn(process.stdout, "write").mockReturnValue(true);

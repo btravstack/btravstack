@@ -45,9 +45,11 @@ export const jsonSink =
     stream.write(`${safeStringify(rendered)}\n`);
   };
 
-const serialises = (value: unknown): boolean => {
+// Under its own key, as the line renders it: a `toJSON(key)` may answer
+// differently for `cause` than for the root.
+const serialises = (key: string, value: unknown): boolean => {
   try {
-    JSON.stringify(value);
+    JSON.stringify({ [key]: value });
     return true;
   } catch {
     return false;
@@ -61,10 +63,10 @@ const safeStringify = (rendered: Record<string, unknown>): string => {
   try {
     return JSON.stringify(rendered);
   } catch {
-    const kept = Object.entries(rendered).filter(([, value]) => serialises(value));
+    const kept = Object.entries(rendered).filter(([key, value]) => serialises(key, value));
     return JSON.stringify({
       ...Object.fromEntries(kept),
-      unserialisable: Object.keys(rendered).filter((key) => !serialises(rendered[key])),
+      unserialisable: Object.keys(rendered).filter((key) => !serialises(key, rendered[key])),
     });
   }
 };
