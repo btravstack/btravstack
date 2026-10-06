@@ -2175,4 +2175,5 @@ This package mounts no documentation route and ships no UI asset. A Swagger UI
 bundle inside a transport package would be a runtime dependency for every
 consumer, including the ones who never ask for a document — so an application
 serves the value from a route of its own. `examples/order-api/src/openapi.ts`
-is the whole recipe.
+is the whole recipe, and the same document is the route list:
+[List what a process serves](/how-to/list-what-a-process-serves).

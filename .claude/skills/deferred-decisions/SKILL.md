@@ -219,3 +219,15 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   `packages/config/AGENTS.md`'s; the Kubernetes shape is
   `docs/how-to/configure-a-kubernetes-deployment.md`. A trigger would be a
   value that must change faster than a rollout can replace a pod.
+
+- **Introspection: the route list ships as a recipe; a graph dump and a REPL
+  are declined** (issue #168). The route list is a few lines over
+  `openApiDocument` — the composed contract is what a modulith serves, and the
+  document is already that list in a standard format — with the htmx and
+  login routes read off the composition root, since they live outside the
+  contract (`docs/how-to/list-what-a-process-serves.md`). A graph dump would
+  print a graph the type checker already accepted: a missing provider or a
+  forgotten slice import is a compile error at the root naming the port, and
+  what does reach runtime is a `WiringDefect` naming it. A REPL against a
+  booted application is a test booting the real root. The trigger would be a
+  wiring failure that reaches runtime without naming its port.

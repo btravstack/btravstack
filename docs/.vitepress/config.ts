@@ -69,6 +69,7 @@ const GUIDE_SIDEBAR = [
             text: "Consume the contract from React",
             link: "/how-to/consume-the-contract-from-react",
           },
+          { text: "List what a process serves", link: "/how-to/list-what-a-process-serves" },
         ],
       },
       {
