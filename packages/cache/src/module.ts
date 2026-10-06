@@ -1,4 +1,4 @@
-import { HealthCheckFailed, HealthChecks, Observers, noObserver } from "@btravstack/core";
+import { HealthCheckFailed, HealthChecks, Observers, noObserverMember } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import { P } from "unthrown";
 
@@ -64,9 +64,7 @@ export const cache = <E, N>({
   return Module("Cache")({
     imports: [adapter],
     provides: [
-      // The no-op member, so the set this module reads is never the empty
-      // dependency di refuses: a graph composing no observability still starts.
-      Provider.member(Observers)({ inject: {}, value: noObserver }),
+      noObserverMember,
       Provider(Cache)({
         inject: { backend: CacheBackend, observers: Observers },
         sync: ({ backend, observers }) => readThrough(instrument(backend, observers)),

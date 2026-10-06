@@ -1,4 +1,4 @@
-import { Observers, noObserver } from "@btravstack/core";
+import { Observers, noObserverMember } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 
 import { instrument } from "./instrument.js";
@@ -34,9 +34,7 @@ export const mailer = <E, N>({ adapter }: MailerOptions<E, N>): Module<Mailer, E
   Module("Mailer")({
     imports: [adapter],
     provides: [
-      // The no-op member, so the set this module reads is never the empty
-      // dependency di refuses: a graph composing no observability still starts.
-      Provider.member(Observers)({ inject: {}, value: noObserver }),
+      noObserverMember,
       Provider(Mailer)({
         inject: { backend: MailerBackend, observers: Observers },
         sync: ({ backend, observers }) => instrument(backend, observers),

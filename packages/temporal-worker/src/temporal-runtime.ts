@@ -3,7 +3,7 @@ import {
   Observers,
   RuntimePort,
   RuntimeStartFailed,
-  noObserver,
+  noObserverMember,
   releasedBy,
   type Operation,
   type Runtime,
@@ -256,9 +256,7 @@ export const temporal = <
             .close()
             .catch((cause: unknown) => (heldByWorker(cause) ? undefined : Promise.reject(cause))),
       }),
-      // The no-op member, so the set this module reads is never the empty
-      // dependency di refuses: a graph composing no observability still starts.
-      Provider.member(Observers)({ inject: {}, value: noObserver }),
+      noObserverMember,
       Provider(TemporalRuntime)({
         inject: {
           connection: TemporalConnection,

@@ -9,7 +9,7 @@ import {
   RuntimePort,
   RuntimeStartFailed,
   composeByPrefix,
-  noObserver,
+  noObserverMember,
   releasedBy,
   type Operation,
   type Runtime,
@@ -183,9 +183,7 @@ export const amqp = <
     needs: [Env, AmqpHandlersPort as HandlersPortOf<TContract>],
     provides: [
       config,
-      // The no-op member, so the set this module reads is never the empty
-      // dependency di refuses: a graph composing no observability still starts.
-      Provider.member(Observers)({ inject: {}, value: noObserver }),
+      noObserverMember,
       Provider(AmqpRuntime)({
         inject: {
           config: AmqpConfig,

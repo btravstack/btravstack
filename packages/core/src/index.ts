@@ -44,3 +44,4 @@ export type {
 } from "./unit-record.js";
 export { composeByPrefix, mintPiece } from "./pieces.js";
 export type { Refuse } from "./pieces.js";
+export { noObserverMember } from "./starter.js";
