@@ -25,7 +25,8 @@ export type HealthCheck = {
   readonly name: string;
   readonly check: () => AsyncResult<void, HealthCheckFailed>;
   /**
-   * How long this component gets to answer, overriding the fold's own default.
+   * How long this component gets to answer, overriding
+   * {@link DEFAULT_HEALTH_TIMEOUT_MS}.
    *
    * It is on the CONTRIBUTION because only the contributor knows: a `SELECT 1`
    * over a warm pool and an SMTP relay's greeting are two orders of magnitude
@@ -59,17 +60,12 @@ export type HealthReport = {
 };
 
 /**
- * How long one check gets to answer before it is reported unhealthy, unless a
- * caller says otherwise. Under kubelet's own `timeoutSeconds` default of `1`,
+ * How long one check gets to answer before it is reported unhealthy, unless
+ * the contribution says otherwise. Under kubelet's own `timeoutSeconds` default of `1`,
  * so a probe that times out has already been answered from here — with a line
  * naming the component that hung, where the kubelet's timeout names nothing.
  */
 export const DEFAULT_HEALTH_TIMEOUT_MS = 800;
-
-export type HealthOptions = {
-  /** Per check, not for the fold: the checks run concurrently. Default {@link DEFAULT_HEALTH_TIMEOUT_MS}. */
-  readonly timeoutMs?: number;
-};
 
 /**
  * A check that never settles, bounded. `unref`'d, so a pending probe is never
@@ -117,16 +113,14 @@ const answeringWithin = (health: HealthCheck, ms: number): AsyncResult<void, Hea
  * rather than a recovery.** Neither recovery above can see one: there is no
  * error and no defect, only silence, so `/healthz` held a socket open per hit
  * while kubelet timed out against a report that named nothing. Each check now
- * races {@link HealthOptions.timeoutMs}, and the component that hung is named
+ * races its own `timeoutMs` (default {@link DEFAULT_HEALTH_TIMEOUT_MS}), and
+ * the component that hung is named
  * in the report like any other unhealthy one.
  */
-export const runHealthChecks = (
-  checks: readonly HealthCheck[],
-  options: HealthOptions = {},
-): AsyncResult<HealthReport, never> =>
+export const runHealthChecks = (checks: readonly HealthCheck[]): AsyncResult<HealthReport, never> =>
   allAsync(
     checks.map((health) =>
-      answeringWithin(health, health.timeoutMs ?? options.timeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS)
+      answeringWithin(health, health.timeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS)
         .map((): ComponentHealth => ({ name: health.name, status: "healthy" }))
         .recoverErrCases((matcher) =>
           matcher.with(P.tag("HealthCheckFailed"), (error): ComponentHealth => ({

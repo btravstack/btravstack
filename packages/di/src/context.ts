@@ -84,15 +84,6 @@ export const unsafeAdd = <R>(
 export const unsafeKeys = (ctx: Context<never>): ReadonlySet<string> =>
   new Set(entries.get(ctx)?.keys() ?? []);
 
-// Unlike `get`/`unsafeAdd`'s callers, which treat a missing key as this
-// package's own bug, a set port genuinely has nothing registered yet before
-// its first level of members lands — a missing key here is the ordinary
-// case, not a defect, hence `orElse` rather than a throw.
-const getOrElse = (ctx: Context<never>, port: PortLike, orElse: () => unknown): unknown => {
-  const services = entries.get(ctx);
-  return services !== undefined && services.has(port.portId) ? services.get(port.portId) : orElse();
-};
-
 /**
  * Internal: used only by `build.ts`'s `run`, folding one dependency-ordered
  * level's constructed results into `ctx`. An ordinary port's single service
@@ -103,8 +94,8 @@ const getOrElse = (ctx: Context<never>, port: PortLike, orElse: () => unknown): 
  * A set port's members can land across more than one level — a
  * dependency-free member is ready earlier than a sibling that depends on
  * something else — so each group is appended to whatever array an *earlier*
- * level already registered for that port (`getOrElse`, `[]` the first time),
- * never overwritten. That is also what lets a later level's consumer, which
+ * level already registered for that port (`[]` the first time), never
+ * overwritten. That is also what lets a later level's consumer, which
  * `build.ts`'s `plan` schedules only once every member of a port it depends
  * on has been placed, see every contribution built so far.
  */
@@ -112,27 +103,10 @@ export const unsafeAddAll = (
   ctx: Context<never>,
   built: readonly (readonly [PortLike, unknown])[],
 ): Context<never> => {
-  const singles = built.filter(([port]) => port.many !== true);
-  const members = built.filter(([port]) => port.many === true);
-
-  const withSingles = singles.reduce<Context<never>>(
-    (c, [port, service]) => unsafeAdd(c, port, service) as Context<never>,
-    ctx,
-  );
-
-  const grouped = new Map<string, readonly [PortLike, unknown[]]>();
-  for (const [port, service] of members) {
-    const existing = grouped.get(port.portId);
-    if (existing === undefined) {
-      const already = getOrElse(withSingles, port, () => []) as unknown[];
-      grouped.set(port.portId, [port, [...already, service]]);
-      continue;
-    }
-    existing[1].push(service);
+  const next = new Map(entries.get(ctx));
+  for (const [port, service] of built) {
+    const members = (): unknown[] => (next.get(port.portId) as unknown[] | undefined) ?? [];
+    next.set(port.portId, port.many === true ? [...members(), service] : service);
   }
-
-  return [...grouped.values()].reduce<Context<never>>(
-    (c, [port, services]) => unsafeAdd(c, port, services) as Context<never>,
-    withSingles,
-  );
+  return make(next);
 };

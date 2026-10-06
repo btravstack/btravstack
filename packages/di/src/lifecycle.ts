@@ -2,6 +2,7 @@ import { OkAsync, allAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 import type { Context } from "./context.js";
 import type { AnyPort } from "./port.js";
+import type { Provider } from "./provider.js";
 import type { ClosableFinalisers } from "./scope.js";
 
 /**
@@ -10,17 +11,7 @@ import type { ClosableFinalisers } from "./scope.js";
  * reason about how a port is built; this file and `build.ts` are the code that
  * does need them.
  */
-export type AnyProvider = {
-  readonly port: AnyPort;
-  readonly deps: readonly AnyPort[];
-  // The package's own construction boundary — same rationale as `provider.ts`'s
-  // identical field, which this type mirrors.
-  // oxlint-disable-next-line unthrown/no-ambiguous-error-type
-  readonly construct: (services: readonly unknown[]) => AsyncResult<unknown, unknown>;
-  readonly release: ((service: unknown) => void | Promise<void>) | undefined;
-  readonly onStart: ((service: unknown) => void | Promise<void>) | undefined;
-  readonly onStop: ((service: unknown) => void | Promise<void>) | undefined;
-};
+export type AnyProvider = Omit<Provider<unknown, unknown, unknown>, "_port" | "_error" | "_needs">;
 
 /**
  * Reads a service an earlier level placed into `ctx`. Not `Context`'s public

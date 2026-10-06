@@ -210,8 +210,16 @@ const parsed = (
     (cause: unknown) => new ConfigFieldInvalid({ reason: String(cause) }),
   )().flatMap((result) => result);
 
-const TRUTHY = new Set(["true", "1", "yes", "on"]);
-const FALSY = new Set(["false", "0", "no", "off"]);
+const FLAGS = new Map([
+  ["true", true],
+  ["1", true],
+  ["yes", true],
+  ["on", true],
+  ["false", false],
+  ["0", false],
+  ["no", false],
+  ["off", false],
+]);
 
 /**
  * Configuration, the twelve-factor way: typed values bound from the environment,
@@ -243,14 +251,13 @@ export const Config = {
   /** A whole number, optionally bounded (both bounds inclusive). */
   integer: (
     variable: string,
-    options: WithDefault<number> & { readonly min?: number; readonly max?: number } = {},
+    {
+      min = Number.MIN_SAFE_INTEGER,
+      max = Number.MAX_SAFE_INTEGER,
+      ...options
+    }: WithDefault<number> & { readonly min?: number; readonly max?: number } = {},
   ): ConfigField<number> =>
-    present(
-      variable,
-      options,
-      integerIn(options.min ?? Number.MIN_SAFE_INTEGER, options.max ?? Number.MAX_SAFE_INTEGER),
-      wholeNumberIn(options.min ?? Number.MIN_SAFE_INTEGER, options.max ?? Number.MAX_SAFE_INTEGER),
-    ),
+    present(variable, options, integerIn(min, max), wholeNumberIn(min, max)),
 
   /**
    * A flag: `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, case-insensitive.
@@ -259,11 +266,7 @@ export const Config = {
    */
   boolean: (variable: string, options: WithDefault<boolean> = {}): ConfigField<boolean> =>
     present(variable, options, (value) => {
-      const flag = TRUTHY.has(value.toLowerCase())
-        ? true
-        : FALSY.has(value.toLowerCase())
-          ? false
-          : undefined;
+      const flag = FLAGS.get(value.toLowerCase());
       return flag === undefined ? invalid(`is not a flag: ${JSON.stringify(value)}`) : Ok(flag);
     }),
 
@@ -317,7 +320,7 @@ export const Config = {
 
   /** A TCP port: a whole number the OS will accept, `0` (an ephemeral bind) included. */
   port: (variable: string, options: WithDefault<number> = {}): ConfigField<number> =>
-    present(variable, options, integerIn(0, 65_535), wholeNumberIn(0, 65_535)),
+    Config.integer(variable, { ...options, min: 0, max: 65_535 }),
 
   /**
    * `field`, unless `value` is given — then a field answering `value` and

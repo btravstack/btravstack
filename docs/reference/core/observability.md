@@ -46,12 +46,6 @@ type Attributes = Readonly<
 >;
 
 type LoggerService = {
-  readonly log: (
-    level: Level,
-    message: string,
-    attributes?: Attributes,
-    cause?: unknown,
-  ) => void;
   readonly trace: (
     message: string,
     attributes?: Attributes,
@@ -241,8 +235,9 @@ reports a missing object as an ordinary answer). One line per method, and the
 `tap`/`tapFailure` pair that used to be copied into every starter is written
 once.
 
-`traced: false` declines the span for a component whose spans come from
-somewhere better — a vendor tracer reaching below what the contributor can
-see, where a second span would carry strictly less. No starter passes it
-today: `@btravstack/prisma` did while Prisma 7's engine tracer existed, and
-Prisma 8's query middleware is now the only span there is.
+`traced: false` declines the span for an operation a span would say nothing
+about — one whose spans come from somewhere better, or one with no duration.
+`@btravstack/amqp-worker`'s broker diagnostics pass it, a zero-length span per
+broker event being noise; `@btravstack/prisma` passed it while Prisma 7's
+engine tracer existed, and no longer does, since Prisma 8's query middleware
+is now the only span there is.

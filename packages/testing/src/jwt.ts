@@ -5,12 +5,11 @@ import { exportJWK, generateKeyPair, SignJWT, type JWK, type JWTPayload } from "
 import { fromSafePromise, type AsyncResult } from "unthrown";
 
 const KID = "k1";
+const ALG = "RS256";
 
 export type LocalIssuerOptions = {
   readonly issuer: string;
   readonly audience: string;
-  /** Asymmetric only, the same list `jwtAuthenticator` accepts; default `"RS256"`. */
-  readonly algorithm?: "RS256" | "RS384" | "RS512" | "ES256" | "ES384";
 };
 
 export type SignOptions = {
@@ -39,13 +38,11 @@ export type LocalIssuer = {
  * listener answering the JWKS on any path, and `sign` closing over the
  * private key. `close()` stops the listener; nothing else needs tearing down.
  */
-export const localIssuer = (options: LocalIssuerOptions): AsyncResult<LocalIssuer, never> => {
-  const algorithm = options.algorithm ?? "RS256";
-
-  return fromSafePromise(
+export const localIssuer = (options: LocalIssuerOptions): AsyncResult<LocalIssuer, never> =>
+  fromSafePromise(
     (async () => {
-      const { publicKey, privateKey } = await generateKeyPair(algorithm, { extractable: true });
-      const jwk = { ...(await exportJWK(publicKey)), kid: KID, alg: algorithm, use: "sig" };
+      const { publicKey, privateKey } = await generateKeyPair(ALG, { extractable: true });
+      const jwk = { ...(await exportJWK(publicKey)), kid: KID, alg: ALG, use: "sig" };
       const server = createServer((_request, response) => {
         response.setHeader("content-type", "application/json");
         response.end(JSON.stringify({ keys: [jwk] }));
@@ -62,7 +59,7 @@ export const localIssuer = (options: LocalIssuerOptions): AsyncResult<LocalIssue
           fromSafePromise(
             (async () => {
               const token = new SignJWT(claims)
-                .setProtectedHeader({ alg: algorithm, kid: KID })
+                .setProtectedHeader({ alg: ALG, kid: KID })
                 .setIssuer(signOptions.issuer ?? options.issuer)
                 .setAudience(signOptions.audience ?? options.audience)
                 .setIssuedAt();
@@ -76,4 +73,3 @@ export const localIssuer = (options: LocalIssuerOptions): AsyncResult<LocalIssue
       };
     })(),
   );
-};

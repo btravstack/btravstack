@@ -260,47 +260,29 @@ const shapeOf = (
     : { head, sortValue: value, key: tiebreak };
 };
 
-const fold = <T, U>(
-  rows: readonly T[],
+const keysetOver = <C>(
   limit: number,
   backward: boolean,
-  resumed: boolean,
-  item: (row: T) => U,
-  cursorOf: (row: T) => string,
-): Page<U> => {
-  const more = rows.length > limit;
-  const trimmed = more ? rows.slice(0, limit) : rows;
-  const seen = backward ? [...trimmed].reverse() : trimmed;
-  const edge = (row: T | undefined) => (row === undefined ? null : cursorOf(row));
-  return page(seen.map(item), {
-    previous: (backward ? more : resumed) ? edge(seen[0]) : null,
-    next: backward || more ? edge(seen.at(-1)) : null,
-  });
-};
-
-const unsortedKeyset = (limit: number, backward: boolean, cursor: string | undefined): Keyset => ({
+  cursor: C | undefined,
+  encode: (cursor: C) => string,
+) => ({
   take: limit + 1,
   backward,
   cursor,
-  page: (rows, cursorOf, item = (row) => row as never) =>
-    fold(rows, limit, backward, cursor !== undefined && !backward, item, cursorOf),
-});
-
-const sortedKeyset = (
-  limit: number,
-  backward: boolean,
-  sort: Sort,
-  cursor: readonly [sortValue: string, key: string] | undefined,
-): SortedKeyset<string> => ({
-  resumable: true,
-  take: limit + 1,
-  backward,
-  sort,
-  cursor,
-  page: (rows, cursorOf, item = (row) => row as never) =>
-    fold(rows, limit, backward, cursor !== undefined && !backward, item, (row) =>
-      [headOf(sort), ...cursorOf(row).map((part) => encodeURIComponent(part))].join(SEPARATOR),
-    ),
+  page: <T, U = T>(
+    rows: readonly T[],
+    cursorOf: (row: T) => C,
+    item: (row: T) => U = (row) => row as never,
+  ): Page<U> => {
+    const more = rows.length > limit;
+    const trimmed = more ? rows.slice(0, limit) : rows;
+    const seen = backward ? [...trimmed].reverse() : trimmed;
+    const edge = (row: T | undefined) => (row === undefined ? null : encode(cursorOf(row)));
+    return page(seen.map(item), {
+      previous: (backward ? more : cursor !== undefined) ? edge(seen[0]) : null,
+      next: backward || more ? edge(seen.at(-1)) : null,
+    });
+  },
 });
 
 /**
@@ -342,12 +324,19 @@ export function keyset(
   const backward = request.before !== undefined;
   const given = request.before ?? request.after;
   const { sort } = request;
-  if (sort === undefined) return unsortedKeyset(limit, backward, given);
+  if (sort === undefined) return keysetOver(limit, backward, given, (cursor: string) => cursor);
   const shape = given === undefined ? undefined : shapeOf(given);
   if (given !== undefined) {
     if (shape === undefined) return { resumable: false, cursor: given, reason: "malformed" };
     if (shape.head !== headOf(sort))
       return { resumable: false, cursor: given, reason: "sort-mismatch" };
   }
-  return sortedKeyset(limit, backward, sort, shape && [shape.sortValue, shape.key]);
+  const cursor = shape && ([shape.sortValue, shape.key] as const);
+  return {
+    resumable: true,
+    sort,
+    ...keysetOver(limit, backward, cursor, (parts) =>
+      [headOf(sort), ...parts.map((part) => encodeURIComponent(part))].join(SEPARATOR),
+    ),
+  };
 }

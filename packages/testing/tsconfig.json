@@ -4,7 +4,10 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "declarationMap": false,
-    "types": ["node"]
+    "types": ["node"],
+    // Above the base's `ES2023`, for `Promise.withResolvers` — safe on the
+    // published `engines` floor of `>=22`, as in `@btravstack/core`.
+    "lib": ["ES2024"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

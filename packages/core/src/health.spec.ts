@@ -19,10 +19,10 @@ const defecting = (name: string, message: string): HealthCheck => ({
     }),
 });
 
-const silent = (name: string, timeoutMs?: number): HealthCheck => ({
+const silent = (name: string, timeoutMs: number): HealthCheck => ({
   name,
   check: () => fromSafePromise(new Promise<void>(() => {})),
-  ...(timeoutMs === undefined ? {} : { timeoutMs }),
+  timeoutMs,
 });
 
 const throwing = (name: string, message: string): HealthCheck => ({
@@ -98,10 +98,10 @@ describe("runHealthChecks", () => {
     // GIVEN a component that accepts the question and goes quiet, beside one
     // that answers — the third failure shape, which neither recovery can see:
     // no error, no defect, only silence
-    const checks = [healthy("cache"), silent("database")];
+    const checks = [healthy("cache"), silent("database", 5)];
 
-    // WHEN the checks are folded with a deadline a test can afford
-    const report = runHealthChecks(checks, { timeoutMs: 5 });
+    // WHEN the checks are folded
+    const report = runHealthChecks(checks);
 
     // THEN the silent component is named and unhealthy, and its sibling still
     // reports — `/healthz` used to hold a socket open per hit while the
@@ -115,17 +115,16 @@ describe("runHealthChecks", () => {
     });
   });
 
-  it("lets a contribution declare its own deadline, over the fold's", async () => {
-    // GIVEN two silent components, one of which says how long it needs — an
-    // SMTP greeting and a `SELECT 1` over a warm pool are orders of magnitude
+  it("holds each contribution to its own deadline", async () => {
+    // GIVEN two silent components, each saying how long it needs — an SMTP
+    // greeting and a `SELECT 1` over a warm pool are orders of magnitude
     // apart, which is why the number is on the contribution
-    const checks = [silent("cache"), silent("mailer", 9)];
+    const checks = [silent("cache", 4), silent("mailer", 9)];
 
-    // WHEN the fold is given a deadline of its own
-    const report = runHealthChecks(checks, { timeoutMs: 4 });
+    // WHEN the checks are folded
+    const report = runHealthChecks(checks);
 
-    // THEN each component is named against the deadline that governed it: the
-    // fold's for the one that declared nothing, its own for the one that did
+    // THEN each component is named against the deadline it declared
     await expect(report).toBeOkWith({
       status: "unhealthy",
       components: [

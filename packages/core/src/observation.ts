@@ -40,15 +40,12 @@ export type Operation = {
   /**
    * Whether a tracing observer should open a span (default `true`).
    *
-   * `false` is for a component whose spans already come from somewhere better —
-   * a vendor tracer reaching below what the contributor can see, where a second
-   * span would cost one more per operation for strictly less information.
-   * Counting and timing still happen.
-   *
-   * **No starter here passes `false` today.** `@btravstack/prisma` did, while
-   * Prisma 7's engine-level `@prisma/instrumentation` was the better source;
-   * Prisma 8 has no engine and ships no tracer, so its middleware is the only
-   * span there is and it opens one.
+   * `false` is for an operation a span would say nothing about — one whose
+   * spans already come from somewhere better, or one with no duration at all.
+   * Counting and timing still happen. `@btravstack/amqp-worker`'s broker
+   * diagnostics pass it, being zero-length events; `@btravstack/prisma` no
+   * longer does, since Prisma 8 ships no engine tracer and its middleware is
+   * the only span there is.
    *
    * Whether a span is worth opening is the CONTRIBUTOR's knowledge, which is
    * why it rides the operation rather than being configured on the observer.

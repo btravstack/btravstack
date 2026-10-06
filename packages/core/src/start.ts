@@ -390,6 +390,17 @@ export const start = <X, E, N>(
   const health = (): AsyncResult<HealthReport, never> => runHealthChecks(healthChecks);
   const probeBound = Promise.withResolvers<number | undefined>();
   const runtimePublished = Promise.withResolvers<Info | undefined>();
+  // Every route out of a half-built graph: the probe bind's `tapFailure`,
+  // `Module.scoped`'s and the abandoned build. `stopping` before `exited`
+  // because the tracker is monotonic and skipping it would drop the phase, and
+  // its event, out of a lifecycle that documents both as reached on every
+  // path; `runtimePublished` because `runtimeInfo()` promises `undefined` for
+  // a runtime that never served.
+  const leaveStartup = (): void => {
+    runtimePublished.resolve(undefined);
+    tracker.advanceTo("stopping");
+    disposeAll();
+  };
 
   // The two phases with no deadline of their own, each as an arm of the race
   // that produces `exited` below. Both are CONSUMED there rather than floated,
@@ -447,17 +458,9 @@ export const start = <X, E, N>(
     fromSafePromise(abandoningBuild.promise).map((reason) => {
       emit({ type: "stoppedWaiting", phase: "build", afterMs: undefined });
       registry.abortAll();
-      // The same two lines every other route out of a half-built graph runs —
-      // the probe bind's `tapFailure` and `Module.scoped`'s. `stopping` before
-      // `exited` because the tracker is monotonic and skipping it would drop
-      // the phase, and its event, out of a lifecycle that documents both as
-      // reached on every path; `runtimePublished` because `runtimeInfo()`
-      // promises `undefined` for a runtime that never served, and this route
-      // leaves `Module.scoped` pending forever, so the `tapFailure` that
-      // usually settles it never runs.
-      runtimePublished.resolve(undefined);
-      tracker.advanceTo("stopping");
-      disposeAll();
+      // This route leaves `Module.scoped` pending forever, so the
+      // `tapFailure` that usually leaves startup never runs.
+      leaveStartup();
       return reportOf(reason, undefined, "build");
     });
   const abandonBuild = (reason: ExitReport["reason"]): void => {
@@ -498,11 +501,7 @@ export const start = <X, E, N>(
     .tapFailure((failure) => {
       emit({ type: "startFailed", cause: failure.tag === "Err" ? failure.error : failure.cause });
       probeBound.resolve(undefined);
-      runtimePublished.resolve(undefined);
-      tracker.advanceTo("stopping");
-      disposeSignals();
-      disposeUncaught();
-      tracker.advanceTo("exited");
+      leaveStartup();
     });
 
   const root = Module("Kernel")({
@@ -693,9 +692,7 @@ export const start = <X, E, N>(
             cause: failure.tag === "Err" ? failure.error : failure.cause,
           });
         }
-        runtimePublished.resolve(undefined);
-        tracker.advanceTo("stopping");
-        disposeAll();
+        leaveStartup();
       })
       // Both channels, because either settling means the deadline has nothing
       // left to report: the arm withdraws rather than writing a line 5 s after
