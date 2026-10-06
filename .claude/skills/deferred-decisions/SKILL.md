@@ -1,6 +1,6 @@
 ---
 name: deferred-decisions
-description: Decisions this repository deliberately deferred, declined or has already closed. Read BEFORE proposing a feature, a package, a lint rule or a gate that sounds new — it may be a settled "no", or already shipped. Covers container reaping, the currentUnit() lint rule, traces/metrics in observability, the doc-samples gate, the one-process dev runner, HTML-means-fragments, transport package naming, the one leaf shape, filtering on a cursor page (declined), and sorting on a cursor page (shipped).
+description: Decisions this repository deliberately deferred, declined or has already closed. Read BEFORE proposing a feature, a package, a lint rule or a gate that sounds new — it may be a settled "no", or already shipped. Covers container reaping, the currentUnit() lint rule, traces/metrics in observability, the doc-samples gate, the one-process dev runner, HTML-means-fragments, transport package naming, the one leaf shape, filtering on a cursor page (declined), sorting on a cursor page (shipped), static files and an SPA fallback (declined), server push over SSE and WebSocket (declined), views and i18n (the application's), config profiles, file layering, secrets and refresh (the platform's), introspection — the route list, a graph dump, a REPL — scaffolding and slice generators (declined), and declared-versus-reachable authenticators.
 ---
 
 # Deferred, deliberately
@@ -243,3 +243,12 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   config would cost a commitment to turborepo as the blessed project shape,
   which was not made. A one-shot new-app initialiser (`npm create btravstack`)
   is untouched by any of this and would be its own issue if wanted.
+
+- **A router carries the DECLARED authenticators, not the reachable ones**
+  (issue #288). Narrowing a root's `Needs` to the schemes its composed pieces
+  actually name was declined for stability: a contract gaining a marker never
+  silently changes a root's requirements, and the compile error stays at the
+  root composing what `defineHttp` declared. The cost — a router-only root
+  provides `sessionCodec()` for a scheme it never reaches — is accepted and
+  stated in `packages/http-server/AUTH.md`. The trigger would be a deployment
+  that cannot satisfy a declared scheme's needs at all.

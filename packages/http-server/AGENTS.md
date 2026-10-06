@@ -35,6 +35,9 @@ is `AUTH.md`. Keep this file in sync with the code in the same commit.
   carries `readonly authenticators: readonly Auth[]` — the per-scheme
   providers `defineHttp` bound — and the sugar spreads them into `provides`
   itself, so an application never lists one and cannot list the wrong one.
+  It carries the DECLARED set, not the reachable one, so a root owes every
+  scheme's needs whether its pieces reach the scheme or not — the decision
+  and its reason are `AUTH.md`'s (#288).
   `Provides<P, Router, Fragments>` is a union-element **array**, not a tuple —
   an authenticator union is one type per scheme, and a tuple takes one rest
   element, not two. Nothing downstream wants the arity — di reads
