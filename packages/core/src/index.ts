@@ -35,6 +35,7 @@ export type { ExitReport, RunningApp, StartGate, StartOptions, TeardownError } f
 export { currentUnit, unitOutcome } from "./units.js";
 export type { UnitMeta, UnitOutcome, UnitRecord, UnitRegistry, UnitWork } from "./units.js";
 export { dispatchUnit, withUnitRecord } from "./unit-record.js";
+export { UnitOverrides } from "./unit-overrides.js";
 export type {
   AnyUnitModule,
   UnitExportsOf,

@@ -56,6 +56,22 @@ describe("amqp handler units", () => {
     expect(scoped.seen()).toEqual(["acme"]);
   });
 
+  it("forks the overridden provider in the message kind's module, when a spec overrides it", async ({
+    serveScoped,
+    scoped,
+    publishMessage,
+  }) => {
+    // GIVEN the same worker, with the `message` kind's `Tenant` overridden
+    await serveScoped(scoped, "stubbed");
+
+    // WHEN one message is published
+    publishMessage({ exchange: "amqp-test", routingKey: "echo.requested" }, { value: "acme" });
+    await vi.waitUntil(() => scoped.seen().length === 1);
+
+    // THEN the handler read the override, not the tenant the real provider derives
+    expect(scoped.seen()).toEqual(["stubbed"]);
+  });
+
   it("hands the whole-record arm the ports it declared, built from the seeded delivery", async ({
     serveScoped,
     wholeScoped,

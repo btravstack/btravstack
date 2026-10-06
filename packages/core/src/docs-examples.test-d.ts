@@ -22,6 +22,7 @@ import {
   currentUnit,
   runMain,
   start,
+  type AnyUnitModule,
   type DrainReport,
   type ExitReport,
   type RunUnit,
@@ -188,6 +189,7 @@ type ReadmeRuntime<Resolves extends AnyPort = never, Info = never> = {
   readonly name: string;
   readonly resolves: readonly Resolves[];
   readonly start: (host: RuntimeHost<Resolves>) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
+  readonly units?: Readonly<Record<string, AnyUnitModule | undefined>>;
 };
 
 type ReadmeRuntimeHost<Resolves extends AnyPort> = {

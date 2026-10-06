@@ -737,7 +737,11 @@ roots in `examples/` that mirrored the real ones and drifted silently. An
 override the root stops backing is a `WiringDefect` ("nothing to override"),
 so the mirror is now held mechanically. Production composition roots stay
 override-free by convention; a root that reaches for `overrideProvider` is
-recomposing the lazy way. And an override replaces one **provider**, never a
+recomposing the lazy way. A root that binds **unit modules** stays a constant too:
+`overridden(root, providers, { unit: { user: [...] } })` substitutes inside the
+kind's module, applied by the kernel at boot and forked in place of the real
+one (issue #268), so an application never writes its root as a factory over
+its kinds for a spec's sake. And an override replaces one **provider**, never a
 subsystem: the replaced provider's siblings still construct, so swapping a
 whole adapter stack — or a graph whose SHAPE varies per test, like the
 temporal fixture's per-queue contract — remains a different module composed

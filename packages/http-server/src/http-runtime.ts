@@ -224,14 +224,21 @@ export const httpServer = <
       // cookie scheme leaves this set with only this `false` in it.
       Provider.member(CookieSchemes)({ inject: {}, value: false }),
       Provider(HttpRuntime)({
-        inject: { config: HttpConfig, observers: Observers, cookieSchemes: CookieSchemes },
-        sync: ({ config: bound, observers, cookieSchemes }) =>
-          _internal_httpRuntime(
+        inject: {
+          config: HttpConfig,
+          observers: Observers,
+          cookieSchemes: CookieSchemes,
+          units: HttpUnit,
+        },
+        sync: ({ config: bound, observers, cookieSchemes, units }) => ({
+          ..._internal_httpRuntime(
             bound,
             securityHeaders,
             observers,
             csrfOn(options.csrf, cookieSchemes),
           ),
+          units,
+        }),
       }),
       Provider(HttpUnit)({ inject: {}, value: options.unit ?? {} }),
     ],

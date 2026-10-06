@@ -193,6 +193,7 @@ export const amqp = <
         sync: ({ config: bound, handlers, observers }): Runtime<never, AmqpInfo> => ({
           name: "amqp",
           resolves: [],
+          units: { message: options.unit?.message },
           start: (host) => createWorker(host, bound, options, handlers, observers),
         }),
       }),

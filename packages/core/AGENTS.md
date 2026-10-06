@@ -645,6 +645,22 @@ once"` (_"reports a second fork in one unit as a defect"_) — two open
 fork }` and never opens a second scope, zero overhead beyond the `fork`
   closure itself.
 
+- **A unit override is applied at boot and substituted at the fork, by module
+  identity** (`unit-overrides.ts`). `start` reads `UnitOverrides` off the
+  built context — a set port, so a graph `overridden` never touched reads
+  `[]` and pays one empty `Map` — synchronously ahead of `runtime.start`, in the
+  callback di runs inside a `flatMap`,
+  so a kind the runtime's `units` does not bind, a port that kind's module
+  does not provide, or a module bound under two kinds is the boot's `Defect`
+  before the runtime is started (`unit-overrides.spec.ts`). The fork then
+  swaps `substitutes.get(module) ?? module`; the map is filled before
+  `runtime.start` runs, so no fork can read it empty. `provides` is the same
+  tree walk `providesEnv` already was, now shared. Keyed by identity rather
+  than kind because `UnitHost.fork` is handed a module — widening that
+  signature to carry a kind would have been a contract change for every
+  runtime, where `Runtime.units` is one optional field a runtime that never
+  meets an override can omit.
+
 - **`options.signals === false` disables the uncaught handlers too.** One flag,
   two handler families, because both are process-global and a test harness needs
   all of them off together. Worth knowing before reading the option's name as

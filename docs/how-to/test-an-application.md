@@ -219,7 +219,7 @@ it("runs each call in its own unit, with its own trace id", async ({
 
 It used to be a parallel root, because nothing can be layered over a graph
 that already provides `Logger` — and the hand-kept mirror is exactly what
-[`overridden`](/reference/testing#overridden-module-overrides) retired: the
+[`overridden`](/reference/testing#overridden-module-overrides-options) retired: the
 real `OrderApi` with only its `Logger` provider substituted, and a loud
 `WiringDefect` the day the root stops providing it. Give the fixture's own
 `env` a

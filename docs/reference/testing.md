@@ -211,14 +211,15 @@ string. A sink is a value the composition takes, so nothing has to be reached
 for inside the graph. See
 [Log and correlate](/how-to/log-and-correlate).
 
-## `overridden(module, overrides)`
+## `overridden(module, overrides, options?)`
 
-<!-- doctest: skip — the quoted signature names di's `AnyProviderFor` and `ErrorsOf`, which are internal to that package -->
+<!-- doctest: skip — the quoted signature names `AnyProviderFor`, `UnitProviderFor` and `ErrorsOf`, which are internal to this package -->
 
 ```ts
 const overridden: <X, E, N, const O extends readonly AnyProviderFor[]>(
   module: Module<X, E, N>,
   overrides: O,
+  options?: { readonly unit?: Readonly<Record<string, readonly UnitProviderFor[]>> },
 ) => Module<X, E | ErrorsOf<O>, N>;
 ```
 
@@ -249,6 +250,54 @@ replaces one **provider**, never a subsystem: the replaced provider's
 siblings still construct, so swapping a whole adapter stack — or a graph
 whose shape varies per test — remains a different module composed in its
 place, as `examples/order-temporal-worker`'s fixture shows.
+
+### Inside a unit module
+
+A root that binds **unit modules** — `unit: { user: UserModule }` on HTTP,
+`unit: { message }` on AMQP, `unit: { activity }` on Temporal — builds the
+providers a spec most wants to substitute inside them, and a unit module is
+forked per unit, after the root is built, where a root-level override cannot
+see it. `options.unit` reaches it, keyed by the kind the root binds:
+
+```ts
+import { Module, Port, Provider } from "@btravstack/di";
+import { overridden } from "@btravstack/testing";
+
+class Repository extends Port("Repository")<{ readonly find: () => string }> {}
+
+declare const Root: Module<never, never, never>;
+
+export const stubbed = overridden(Root, [], {
+  unit: { user: [Provider(Repository)({ inject: {}, value: { find: () => "stub" } })] },
+});
+```
+
+The root stays a constant: nothing in it is a factory over its kinds. The
+kernel applies the overrides at **boot**, before the runtime starts — it reads
+which module each kind binds from the runtime's `units` and forks a module
+wrapping it, with the overrides in place of their bases — and the drift gate
+fires there, as a `Defect`, exactly when a root-level one would:
+
+```text
+[core] unit override for kind "user", which runtime "http" binds no module for
+[core] unit override for port "OrderRepository" in kind "user" with nothing to override — its module no longer provides it
+```
+
+Both are **boot-time, not compile-time**. A root's type carries neither the
+kinds it binds nor what each kind's module provides — `HttpUnit`'s service is a
+`Record<string, …>` — so a compile-time refusal would mean threading the kind
+record through every starter's return type, changing diagnostics this
+repository pins. What IS refused at compile time is an override with an error
+channel: a fork is `Module<…, never, …>`, so a unit override is
+`Provider<…, never, …>`.
+
+The substitution is keyed by module identity, since a fork is handed a module
+and never a kind; a module the root binds under two kinds is therefore refused
+too rather than overridden under both (see
+[`UnitOverrides`](/reference/core/runtime#unitoverrides)). The rest of the
+section above holds unchanged: one provider, never a subsystem, and the
+override's own deps resolve from the fork — the unit's seed, its siblings and
+the application scope.
 
 `overridden` rides `overrideProvider`, the one deliberately test-facing
 export in `@btravstack/di`'s own surface; a production root that reaches for

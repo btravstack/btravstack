@@ -87,6 +87,7 @@ export const testRuntime = <Unit extends AnyUnitModule | undefined = undefined>(
       exports: [TestRuntimePort],
     }),
     resolves: [],
+    units: { test: options.unit },
     start: (h: RuntimeHost<never>) => {
       host = h;
       accepting = true;

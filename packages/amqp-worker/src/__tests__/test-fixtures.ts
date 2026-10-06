@@ -21,7 +21,7 @@ import {
   type UnitRecord,
 } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
-import { bootFixture, type Boot } from "@btravstack/testing";
+import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import { OkAsync, fromSafePromise } from "unthrown";
 import type { TestAPI } from "vitest";
 import { z } from "zod";
@@ -487,8 +487,13 @@ export type AmqpFixtures = {
   readonly tupled: ReturnType<typeof scopedOf>;
   /** The same seed read through the whole-record arm's own `unit:`, no piece involved. */
   readonly wholeScoped: ReturnType<typeof wholeScopedOf>;
+  /**
+   * Serves a scoped worker; given `stubTenant`, through `overridden` with the
+   * `message` kind's `Tenant` replaced by one answering that id.
+   */
   readonly serveScoped: (
     scoped: ReturnType<typeof scopedOf> | ReturnType<typeof wholeScopedOf>,
+    stubTenant?: string,
   ) => Promise<App>;
   /** The starter served over an observer that records what it was handed. */
   readonly serveObserved: (
@@ -583,15 +588,21 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     await use(wholeScopedOf());
   },
   serveScoped: async ({ amqpConnectionUrl, boot }, use) => {
-    await use(async (scoped) => {
+    await use(async (scoped, stubTenant) => {
       const app = boot(
-        AmqpModule("Scoped")({
-          contract: echoContract,
-          handlers: scoped.handlers,
-          url: amqpConnectionUrl,
-          provides: scoped.pieces,
-          unit: { message: scoped.module },
-        }),
+        overridden(
+          AmqpModule("Scoped")({
+            contract: echoContract,
+            handlers: scoped.handlers,
+            url: amqpConnectionUrl,
+            provides: scoped.pieces,
+            unit: { message: scoped.module },
+          }),
+          [],
+          stubTenant === undefined
+            ? {}
+            : { unit: { message: [Provider(Tenant)({ inject: {}, value: { id: stubTenant } })] } },
+        ),
       );
       await app.runtimeInfo();
       return app;

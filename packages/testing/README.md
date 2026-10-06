@@ -100,6 +100,9 @@ answers the very instances the running graph holds once it is built — after
   tree stopped providing is a `WiringDefect` ("nothing to override"), which is
   what keeps a test root from drifting silently away from the real one — the
   drift that four hand-maintained parallel roots had already produced here.
+  `overridden(module, [providers], { unit: { user: [providers] } })` reaches
+  inside a unit module the root binds, by kind, with the same drift gate at
+  boot.
 - **`createFakeClock(start?)`** — a `Clock` for `StartOptions.clock` whose
   time moves only on `advance(ms)`.
 

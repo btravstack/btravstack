@@ -36,14 +36,16 @@ type Runtime<Resolves extends AnyPort = never, Info = never> = {
   readonly start: (
     host: RuntimeHost<Resolves>,
   ) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
+  readonly units?: Readonly<Record<string, AnyUnitModule | undefined>>;
 };
 ```
 
-| Member     | Semantics                                                                                                                                                                                                                                                                                                                             |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`     | Reported on the `serving` event.                                                                                                                                                                                                                                                                                                      |
-| `resolves` | The port **classes** the runtime resolves from `host.ctx`. `start`'s gate checks them against the module's exports at the call site. Every shipped starter declares `resolves: []` — what its handlers read is its provider's business, through di — so this is the general contract, used by `testRuntime` and hand-rolled runtimes. |
-| `start`    | Called once, after the graph is built. `Ok(serving)` moves the phase to `serving`; `Err(RuntimeStartFailed)` is a startup failure the kernel reports through `exited`.                                                                                                                                                                |
+| Member     | Semantics                                                                                                                                                                                                                                                                                                                               |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`     | Reported on the `serving` event.                                                                                                                                                                                                                                                                                                        |
+| `resolves` | The port **classes** the runtime resolves from `host.ctx`. `start`'s gate checks them against the module's exports at the call site. Every shipped starter declares `resolves: []` — what its handlers read is its provider's business, through di — so this is the general contract, used by `testRuntime` and hand-rolled runtimes.   |
+| `start`    | Called once, after the graph is built. `Ok(serving)` moves the phase to `serving`; `Err(RuntimeStartFailed)` is a startup failure the kernel reports through `exited`.                                                                                                                                                                  |
+| `units`    | Optional: the unit modules the runtime forks, by kind (`{ message: … }`, one per HTTP scheme). Read only to apply a test's `UnitOverrides`: the override names a kind, `fork` is handed a module, and this maps one onto the other. A runtime that omits it refuses every unit override at boot. See [`UnitOverrides`](#unitoverrides). |
 
 `Resolves` is parameterised by port **classes** (`AnyPort`) but hands out
 `Context<InstanceType<Resolves>>`, because di parameterises `Context<in R>` by
@@ -346,6 +348,29 @@ entry `sync` answers. Both are untyped on purpose — the starter states the
 types, these carry the body. `Refuse<T, Marker, Detail>` is the refused-array
 shape their composing arms report an uncovered key through, as long as the
 array the caller wrote so the marker lands on its last element.
+
+## `UnitOverrides`
+
+The set port a test's providers reach a unit module through —
+`@btravstack/testing`'s [`overridden(root, providers, { unit })`](/reference/testing#overridden-module-overrides-options)
+is its one contributor, and a production root never names it. Each member is
+a record of kind → override-branded providers. Before `runtime.start`, the
+kernel maps each kind onto the module `Runtime.units` binds for it and wraps
+that module so its overrides replace their bases when the unit is forked; a
+fork of any other module is untouched.
+
+Three `Defect`s at boot, all before the runtime starts, which is where a
+root-level override's `WiringDefect` lands too:
+
+```text
+[core] unit override for kind "user", which runtime "http" binds no module for
+[core] unit override for port "OrderRepository" in kind "user" with nothing to override — its module no longer provides it
+[core] unit override for kind "user", whose module kind "session" binds too — an override cannot reach one without the other
+```
+
+The third exists because `UnitHost.fork` is handed a module, never a kind: the
+substitution is keyed by module identity, so one module bound under two kinds
+could not be overridden under one alone.
 
 ## Units of work
 
