@@ -634,16 +634,13 @@ type AllRequirementsOf<C> =
         }[Exclude<keyof C, PrincipalKey>]);
 
 /**
- * Distributes `SchemesOf` over the union of requirement tuples a walk
- * collected. Exported for `htmx-route.ts`, which feeds it a route's own
- * `requires` directly — data read off one piece, never a contract to walk —
- * both at a route's own mint (`RequiresGate`) and over the array arm's union
- * of pieces (`RequiresOfPiece`).
+ * Distributes `SchemesOf` over a union of requirement tuples — the ones a
+ * contract walk collected, or a route's own `requires`, which is already one.
  */
-export type SchemesIn<R> = R extends Requirements ? SchemesOf<R> : never;
+type SchemesIn<R> = R extends Requirements ? SchemesOf<R> : never;
 
-/** Every scope string the contract names for scheme `K`, across every requirement. */
-export type ScopesIn<R, K extends string> = R extends Requirements
+/** Every scope string `R` names for scheme `K`, across every requirement. */
+type ScopesIn<R, K extends string> = R extends Requirements
   ? {
       // `K extends keyof R[I]` first, never `R[I][K & keyof R[I]]`: indexing a
       // requirement that does not name `K` gives `never`, and inferring `S`
@@ -657,29 +654,31 @@ export type ScopesIn<R, K extends string> = R extends Requirements
     }[number]
   : never;
 
-/** A scope the contract names that its scheme's authenticator cannot grant. */
-type Ungrantable<C, Vocab> = {
+/** A scope `R` names that its scheme's authenticator cannot grant. */
+type UngrantableIn<R, Vocab> = {
   // A scheme the registry does not know is di's to report, not this gate's:
   // treating it as an empty vocabulary turns a misspelled SCHEME into a scope
   // complaint, the wrong diagnostic and earlier than the right one.
-  [K in SchemesIn<AllRequirementsOf<C>>]: K extends keyof Vocab
-    ? Exclude<ScopesIn<AllRequirementsOf<C>, K>, Vocab[K]>
-    : never;
-}[SchemesIn<AllRequirementsOf<C>>];
+  [K in SchemesIn<R>]: K extends keyof Vocab ? Exclude<ScopesIn<R, K>, Vocab[K]> : never;
+}[SchemesIn<R>];
 
 /**
- * The scope half of what `routerFor` checks. It rides an intersection on the
- * `contract` parameter, and its failure branch is an object with one required
+ * The scope check over a requirements union. It rides an intersection on the
+ * parameter it checks, and its failure branch is an object with one required
  * property, which is what makes the diagnostic name the offending scope.
+ * Exported for `htmx-route.ts`, whose `requires` already IS such a union.
  */
-type ScopeGate<C, Vocab> = [Ungrantable<C, Vocab>] extends [never]
+export type RequiresGate<R, Vocab> = [UngrantableIn<R, Vocab>] extends [never]
   ? unknown
   : {
-      readonly "UNGRANTABLE SCOPE — its scheme's authenticator cannot grant it": Ungrantable<
-        C,
+      readonly "UNGRANTABLE SCOPE — its scheme's authenticator cannot grant it": UngrantableIn<
+        R,
         Vocab
       >;
     };
+
+/** What `routerFor` checks: `RequiresGate` over every requirement the contract carries. */
+type ScopeGate<C, Vocab> = RequiresGate<AllRequirementsOf<C>, Vocab>;
 
 /**
  * One port instance per scheme named anywhere in `R`, a union of requirement

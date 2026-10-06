@@ -12,30 +12,12 @@ import type { AsyncResult } from "unthrown";
 import { authenticatorPort, type AuthenticatorService } from "./auth.js";
 import type { FragmentInputSchema, ParamsOf } from "./fragments.js";
 import type { Html } from "./html.js";
-import type { ScopesIn, SchemePortsOf, SchemesIn } from "./orpc.js";
+import type { RequiresGate, SchemePortsOf } from "./orpc.js";
 import type { Principal, SchemesOf } from "./principal.js";
 import type { KindOf, UnitFor } from "./unit.js";
 
 /** The prefix a piece's port id carries, ahead of its own method and path. */
 export const FRAGMENT_PREFIX = "HtmxFragment:";
-
-/** Every scope string `R` names for scheme `K` — `orpc.ts`'s `ScopesIn`, fed directly since `requires` already IS a requirements union, not a tree to walk. */
-type UngrantableIn<R, Vocab> = {
-  [K in SchemesIn<R>]: K extends keyof Vocab ? Exclude<ScopesIn<R, K>, Vocab[K]> : never;
-}[SchemesIn<R>];
-
-/**
- * `orpc.ts`'s `ScopeGate` with the contract fold removed: `requires` is data,
- * not a tree, so there is nothing to walk before checking it.
- */
-type RequiresGate<R, Vocab> = [UngrantableIn<R, Vocab>] extends [never]
-  ? unknown
-  : {
-      readonly "UNGRANTABLE SCOPE — its scheme's authenticator cannot grant it": UngrantableIn<
-        R,
-        Vocab
-      >;
-    };
 
 /** What a route's own schema infers, or the raw decoded form when it declares none. */
 type InputOfSchema<S extends FragmentInputSchema | undefined> = S extends undefined
