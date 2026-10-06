@@ -17,28 +17,41 @@ never reloads, and each of those is the platform's job on purpose: Kubernetes
 already selects per environment, stores secrets, and replaces pods. What
 follows is what that looks like.
 
-## 1. The plain variables: a ConfigMap
+The manifests below configure `examples/order-api`'s `OrderApi` root: every
+variable it reads with no default — the database, the Redis cache, the bearer
+scheme, the session cookie and the login answerer — plus the drain knobs.
+Everything else it reads has a default (the full list is
+[What the framework itself reads](/how-to/configure-from-the-environment#what-the-framework-itself-reads))
+and is set only to change it.
+
+## 1. What every environment shares: the base ConfigMap
+
+The base holds **only** values that are the same in every environment — the
+listener, and the drain knobs, which agree with the base Deployment's
+`terminationGracePeriodSeconds`. kustomize generates the map, so each overlay
+can merge into it:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: orders-api
-data:
-  PORT: "8080"
-  HOST: "0.0.0.0"
-  LOG_LEVEL: "info"
-  PRE_DRAIN_DELAY_MS: "10000"
-  DRAIN_TIMEOUT_MS: "40000"
-  HTTP_CORS_ORIGIN: "https://app.example.com"
-  HTTP_JWT_ISSUER: "https://id.example.com/"
-  HTTP_JWT_AUDIENCE: "orders-api"
-  HTTP_JWT_JWKS_URI: "https://id.example.com/.well-known/jwks.json"
+# deploy/base/kustomization.yaml
+resources: ["deployment.yaml", "service.yaml"]
+configMapGenerator:
+  - name: orders-api
+    literals:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - PRE_DRAIN_DELAY_MS=10000
+      - DRAIN_TIMEOUT_MS=40000
 ```
 
 Every value is a string, because an environment only carries strings — the
 `Config` field on the other side is what turns `"10000"` into a number and
 refuses `"10s"` by name.
+
+**Nothing that points the pod at an environment goes here**: no identity
+provider, no caller origin, no redirect URI. An overlay that merges inherits
+every key it leaves out, so a value in the base is a default for every
+environment — and one meant for staging, inherited by production, boots
+cleanly and trusts the wrong issuer. Those live only in the overlays (step 3).
 
 ## 2. The secret ones: a Secret, referenced by key
 
@@ -50,14 +63,17 @@ metadata:
 type: Opaque
 stringData:
   database-url: "postgres://orders_app:…@db.internal:5432/orders"
+  redis-url: "rediss://:…@redis.internal:6380"
   session-keys: "…"
   oidc-client-secret: "…"
 ```
 
-Both reach the container as plain environment variables, which is all the
-framework can tell apart:
+One Secret per environment, in that environment's namespace — never in the
+base. Both kinds reach the container as plain environment variables, which is
+all the framework can tell apart:
 
 ```yaml
+# deploy/base/deployment.yaml, the container
 containers:
   - name: api
     envFrom:
@@ -66,6 +82,9 @@ containers:
       - name: DATABASE_URL
         valueFrom:
           secretKeyRef: { name: orders, key: database-url }
+      - name: REDIS_URL
+        valueFrom:
+          secretKeyRef: { name: orders, key: redis-url }
       - name: HTTP_SESSION_KEYS
         valueFrom:
           secretKeyRef: { name: orders, key: session-keys }
@@ -95,12 +114,14 @@ environment, with [kustomize](https://kubectl.docs.kubernetes.io/references/kust
 
 ```text
 deploy/
-  base/               Deployment, Service, and a configMapGenerator for the
-                      variables above, so every overlay merges into one map
+  base/               Deployment, Service, the shared ConfigMap of step 1
   overlays/
-    staging/          kustomization.yaml patching LOG_LEVEL, HTTP_CORS_ORIGIN
-    production/       kustomization.yaml patching replicas, the drain knobs
+    staging/          every environment-specific variable, for staging
+    production/       the same keys for production, plus replicas
 ```
+
+Each overlay states **every** environment-specific variable, not only the ones
+that differ from some other environment:
 
 ```yaml
 # deploy/overlays/staging/kustomization.yaml
@@ -111,13 +132,23 @@ configMapGenerator:
     literals:
       - LOG_LEVEL=debug
       - HTTP_CORS_ORIGIN=https://staging.app.example.com
+      - HTTP_JWT_ISSUER=https://id.staging.example.com/
+      - HTTP_JWT_AUDIENCE=orders-api
+      - HTTP_JWT_JWKS_URI=https://id.staging.example.com/.well-known/jwks.json
+      - HTTP_OIDC_ISSUER=https://id.staging.example.com/
+      - HTTP_OIDC_CLIENT_ID=orders-staging
+      - HTTP_OIDC_REDIRECT_URI=https://staging.app.example.com/auth/callback
 ```
 
 The difference between two environments is then a file somebody reviews,
 rather than a selector the process reads and a set of defaults it carries for
-every environment it might be told it is in. A variable forgotten in one
-overlay is not a wrong default: an unset required field is a `ConfigInvalid`
-naming it, exit `78`, before the pod ever turns ready.
+every environment it might be told it is in. **And a forgotten required
+variable fails closed**, because the base does not carry it: an overlay that
+leaves out `HTTP_JWT_ISSUER` produces a pod whose environment has none, which
+is a `ConfigInvalid` naming it, exit `78`, before the pod ever turns ready. A
+variable with a default is the exception by construction — left out, it takes
+the default — which is why `HTTP_CORS_ORIGIN` unset means CORS off: cross-origin
+browsers are refused rather than admitted from the wrong origin.
 
 Locally the same role is played by `node --env-file`, which `pnpm dev` already
 uses: a file read **by the runtime, before** the process starts, so the
@@ -145,8 +176,10 @@ read half of each, a validation that passed at boot and is never run again.
 A restart has none of that, and it is cheap here — each old pod
 [drains in three beats](/explanation/draining-in-three-beats), so in-flight
 work finishes and the ingress stops routing before the process goes. And a bad
-value fails **the new pod's** boot with exit `78`, so a rollout with
-`maxUnavailable: 0` stops with the old pods still serving.
+bad value — a required one missing, or any one malformed — fails **the new
+pod's** boot with exit `78`. Whether the old pods keep serving meanwhile is the rollout
+strategy's: under `RollingUpdate` with `maxUnavailable: 0` the rollout stops
+with every old pod still serving, while `Recreate` has already terminated them.
 
 Rotating `HTTP_SESSION_KEYS` is two rollouts for the same reason the variable
 is a list: put the new key **first** (it seals) and keep the old one after it

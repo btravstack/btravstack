@@ -263,8 +263,9 @@ secret-store client, no reload. Each is something the platform already does:
 
 - **Profiles** are an overlay per environment in the deployment's manifests,
   so the difference between staging and production is a file somebody
-  reviews, and a variable one overlay forgot is a `78` at boot rather than a
-  default meant for somewhere else.
+  reviews. A **required** variable one overlay forgot is a `78` at boot rather
+  than a value meant for somewhere else — provided the shared base does not
+  carry it; a variable with a default simply takes the default.
 - **Files** are read by the runtime before the process starts —
   `node --env-file=.env`, which is what `pnpm dev` does — so what was
   validated and what was in the environment are one surface.
@@ -272,7 +273,9 @@ secret-store client, no reload. Each is something the platform already does:
   secret store (Vault, AWS Secrets Manager, SSM) syncs into.
 - **Refresh is a restart.** A live-reloaded configuration is a consistency
   problem at every reader; a restart drains in three beats and revalidates,
-  and a bad value fails the new pod's boot while the old ones keep serving.
+  and a bad value fails the new pod's boot. The old pods keep serving only
+  under a `RollingUpdate` that keeps them available until replacements are
+  ready (`maxUnavailable: 0`); `Recreate` terminates them first.
 
 [Configure a Kubernetes deployment](/how-to/configure-a-kubernetes-deployment)
 is all four, concretely.

@@ -20,7 +20,9 @@ Kubernetes shape is `docs/how-to/configure-a-kubernetes-deployment.md`:
   Helm values) is a reviewed file stating the difference; a profile selector
   would have the process carry every environment's defaults and pick one, so a
   forgotten variable becomes a plausible wrong value instead of the
-  `ConfigInvalid` an unset required field is today.
+  `ConfigInvalid` an unset required field is today. That holds only for a
+  REQUIRED field the shared base does not carry: a defaulted one takes its
+  default, and a base value is inherited by every overlay that merges.
 - **File layering is the runtime's.** `node --env-file` reads a file before
   the process starts, which `pnpm dev` already uses; reading one here would
   make "what the framework validated" and "what was in the environment" two
@@ -32,8 +34,9 @@ Kubernetes shape is `docs/how-to/configure-a-kubernetes-deployment.md`:
 - **Refresh is a restart.** A live-reloaded configuration is a consistency
   problem at every reader — a pool sized by the old value, a timeout read
   from the new — and validation would run once and never again. A restart is
-  cheap and drains, and a bad value then fails the NEW pod's boot with `78`
-  while the old pods keep serving.
+  cheap and drains, and a bad value then fails the NEW pod's boot with `78`.
+  The old pods keep serving only under a `RollingUpdate` with
+  `maxUnavailable: 0`; `Recreate` has terminated them first.
 
 ## Tests
 
