@@ -8,6 +8,7 @@ import {
   Observers,
   RuntimePort,
   RuntimeStartFailed,
+  composeByPrefix,
   noObserver,
   releasedBy,
   type Operation,
@@ -16,6 +17,7 @@ import {
   type Serving,
   type Settle,
   type AnyUnitModule,
+  type Refuse,
   type UnitNeedsOf as UnitNeedsOfModule,
   type UnitRecordOf,
 } from "@btravstack/core";
@@ -238,25 +240,6 @@ type Uncovered<C extends AnyAmqpContract, T extends readonly PieceOf<C>[]> = Exc
 >;
 
 /**
- * A refused array: as long as the array the caller wrote, its head the caller's
- * own elements — which match — and its LAST element the marker paired with what
- * is wrong.
- *
- * TypeScript compares two equal-length tuples element by element, so the extra
- * diagnostic it reports lands on the trailing element and carries both the
- * sentence and the missing key. A fixed two-element tuple named the key only
- * when the array happened to be two elements long; every other arity was a
- * length mismatch, and the developer diffed the contract against the array by
- * hand.
- */
-type Refuse<T extends readonly unknown[], Marker extends string, Detail> = T extends readonly [
-  ...infer Head,
-  unknown,
-]
-  ? readonly [...Head, readonly [Marker, Detail]]
-  : readonly [readonly [Marker, Detail]];
-
-/**
  * The record arm: the whole handlers record from one `sync`, with one `unit:`
  * record shared by every entry in it.
  *
@@ -323,37 +306,7 @@ type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]
  */
 export const AmqpHandlers = <C extends AnyAmqpContract>(contract: C): Whole<C> & Compose<C> => {
   void contract;
-  const build = Provider(AmqpHandlersPort as HandlersPortOf<C>);
-  const compose = (pieces: readonly { readonly port: { readonly portId: string } }[]): unknown =>
-    build({
-      inject: Object.fromEntries(
-        pieces.map((piece) => [piece.port.portId.slice(HANDLER_PREFIX.length), piece.port]),
-      ),
-      sync: (services: unknown) => services,
-    } as never);
-  const whole = (options: {
-    readonly inject: Readonly<Record<string, AnyPort>>;
-    readonly unit?: Readonly<Record<string, AnyPort>>;
-    readonly sync: (services: never) => Readonly<Record<string, unknown>>;
-  }): unknown => {
-    const record = options.unit ?? {};
-    return build({
-      inject: options.inject,
-      sync: (services: never) =>
-        Object.fromEntries(
-          Object.entries(options.sync(services)).map(([key, entry]) => [
-            key,
-            withUnit(record, entry),
-          ]),
-        ),
-    } as never);
-  };
-  // An array is never a valid record call — its one argument is a record — so
-  // `Array.isArray` alone identifies the composing arm.
-  return ((first: unknown) =>
-    Array.isArray(first)
-      ? compose(first as readonly { readonly port: { readonly portId: string } }[])
-      : whole(first as Parameters<typeof whole>[0])) as never;
+  return composeByPrefix(AmqpHandlersPort, HANDLER_PREFIX, withUnit) as never;
 };
 
 const startFailed = (cause: unknown): RuntimeStartFailed =>

@@ -319,6 +319,33 @@ still owes less `Scope` and the seeded port, `UnitRecordOf<U>` the record a
 piece reads, and `UnitGate<Unit, Declared>` the `"UNIT DOES NOT PROVIDE — …"`
 refusal a worker's sugar rides on its options.
 
+<!-- doctest: signature=@btravstack/core -->
+
+```ts
+const mintPiece: (
+  port: AnyPort,
+  withUnit: (record: Readonly<Record<string, AnyPort>>, entry: unknown) => unknown,
+) => (options: {
+  readonly inject: Readonly<Record<string, AnyPort>>;
+  readonly unit?: Readonly<Record<string, AnyPort>>;
+  readonly sync: (services: never) => unknown;
+}) => unknown;
+const composeByPrefix: (
+  port: AnyPort,
+  prefix: string,
+  withUnit: (record: Readonly<Record<string, AnyPort>>, entry: unknown) => unknown,
+) => (first: unknown) => unknown;
+```
+
+The runtime halves of a worker's piece factory and its composing provider:
+`AmqpHandler` / `TemporalWorkflowActivities` mint through `mintPiece`, and
+`AmqpHandlers` / `TemporalActivities` through `composeByPrefix`, whose array arm
+keys each piece by its port id less `prefix` and whose record arm wraps every
+entry `sync` answers. Both are untyped on purpose — the starter states the
+types, these carry the body. `Refuse<T, Marker, Detail>` is the refused-array
+shape their composing arms report an uncovered key through, as long as the
+array the caller wrote so the marker lands on its last element.
+
 ## Units of work
 
 <!-- doctest: signature=@btravstack/core -->

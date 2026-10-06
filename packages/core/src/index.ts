@@ -42,3 +42,5 @@ export type {
   UnitNeedsOf,
   UnitRecordOf,
 } from "./unit-record.js";
+export { composeByPrefix, mintPiece } from "./pieces.js";
+export type { Refuse } from "./pieces.js";

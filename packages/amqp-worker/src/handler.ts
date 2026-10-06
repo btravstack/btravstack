@@ -1,8 +1,8 @@
 import type { WorkerInferHandlers } from "@amqp-contract/worker";
-import type { UnitRecordOf } from "@btravstack/core";
+import { mintPiece, type UnitRecordOf } from "@btravstack/core";
 import {
   Port,
-  Provider,
+  type Provider,
   type AnyPort,
   type PortClassOf,
   type PortInstance,
@@ -86,8 +86,6 @@ type MintedHandler<
   U extends Readonly<Record<string, AnyPort>>,
 > = Provider<InstanceType<HandlerPortOf<C, K>>, never, N> & {
   readonly port: HandlerPortOf<C, K>;
-  /** The declared `unit:` record, which `AmqpHandlers`'s array arm reads back off the piece. */
-  readonly unit: U;
   /** Phantom: the ports this piece injects, which the root's `unit.message` must export. */
   readonly _declared?: InstanceType<U[keyof U]>;
 };
@@ -115,6 +113,7 @@ export const AmqpHandler = <C extends AnyAmqpContract, const K extends HandlerKe
   void contract;
   // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
   const port = class extends Port(`${HANDLER_PREFIX}${key}`)<WorkerInferHandlers<C>[K]> {};
+  const mint = mintPiece(port, withUnit);
 
   return <
     const D extends Readonly<Record<string, AnyPort>>,
@@ -127,14 +126,5 @@ export const AmqpHandler = <C extends AnyAmqpContract, const K extends HandlerKe
       readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
     }) => WorkerInferHandlers<C, { readonly unit: UnitRecordOf<U> }>[K &
       keyof WorkerInferHandlers<C, { readonly unit: UnitRecordOf<U> }>];
-  }): MintedHandler<C, K, InstanceType<D[keyof D]>, U> => {
-    const record = options.unit ?? {};
-    return Object.assign(
-      Provider(port as never)({
-        inject: options.inject,
-        sync: (services: never) => withUnit(record, options.sync(services)),
-      } as never),
-      { unit: record },
-    ) as never;
-  };
+  }): MintedHandler<C, K, InstanceType<D[keyof D]>, U> => mint(options as never) as never;
 };

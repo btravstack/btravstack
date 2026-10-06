@@ -1,7 +1,7 @@
-import type { UnitRecordOf } from "@btravstack/core";
+import { mintPiece, type UnitRecordOf } from "@btravstack/core";
 import {
   Port,
-  Provider,
+  type Provider,
   type AnyPort,
   type PortClassOf,
   type PortInstance,
@@ -106,8 +106,6 @@ type MintedActivities<
   U extends Readonly<Record<string, AnyPort>>,
 > = Provider<InstanceType<WorkflowActivitiesPortOf<C, K>>, never, N> & {
   readonly port: WorkflowActivitiesPortOf<C, K>;
-  /** The declared `unit:` record, which the wrapper resolves against. */
-  readonly unit: U;
   /** Phantom: the ports this piece injects, which the root's `unit.activity` must export. */
   readonly _declared?: InstanceType<U[keyof U]>;
 };
@@ -154,6 +152,7 @@ export const TemporalWorkflowActivities = <
   const port = class extends Port(`${WORKFLOW_ACTIVITIES_PREFIX}${key}`)<
     ActivitiesRecordOf<C>[K]
   > {};
+  const mint = mintPiece(port, withUnit);
 
   return <
     const D extends Readonly<Record<string, AnyPort>>,
@@ -165,14 +164,5 @@ export const TemporalWorkflowActivities = <
     readonly sync: (services: {
       readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
     }) => ScopedActivitiesOf<C, K, U>;
-  }): MintedActivities<C, K, InstanceType<D[keyof D]>, U> => {
-    const record = options.unit ?? {};
-    return Object.assign(
-      Provider(port as never)({
-        inject: options.inject,
-        sync: (services: never) => withUnit(record, options.sync(services)),
-      } as never),
-      { unit: record },
-    ) as never;
-  };
+  }): MintedActivities<C, K, InstanceType<D[keyof D]>, U> => mint(options as never) as never;
 };
