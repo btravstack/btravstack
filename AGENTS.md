@@ -7,8 +7,15 @@ an `@AGENTS.md` import: Claude Code expands an import only in the launch
 directory's own `CLAUDE.md`, never in an ancestor's (anthropics/claude-code#78697,
 reproduced on 2.1.291), so a session started inside a package would silently
 lose this file. It is the authoritative spec — the rules _and_ the reasoning
-behind them. Keep it in sync with the code as
-the package evolves (describe what _is_, not what was planned).
+behind them. Keep it in sync with the code as the package evolves (describe
+what _is_, not what was planned).
+
+**If your instructions stop before the last section, _Deferred, deliberately_,
+read this file in full — and the `AGENTS.md` of the package you are working in
+— before changing anything.** The specs are longer than some agents load by
+default. Codex reads a fixed budget of `AGENTS.md` across the whole chain and
+drops the rest silently; `.codex/config.toml` raises that budget, but only for a
+checkout marked trusted.
 
 ## What this is
 
