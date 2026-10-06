@@ -212,6 +212,25 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    contract's own line). A workload the map does not cover is a new decision
    to record here, never a fourth runtime by default.
 
+   **Answering covers server-to-client push, over SSE** (#162). A procedure
+   whose output is an `eventIterator` is served as `text/event-stream`, the
+   stream is a unit, and the runtime resets it at beat 3 so the client
+   reconnects to a replica that is staying (`docs/how-to/stream-with-server-sent-events.md`).
+   **WebSocket is a non-goal for now**: an upgrade path on `http-server` would
+   be a second, bidirectional protocol riding a connection that is no longer a
+   request — a hole in "one process, one runtime" rather than one more
+   answerer — and the alternative is a fourth runtime, which this map exists
+   to refuse by default. What a client sends is a request, which answering
+   already covers. **Fan-out across replicas is an application pattern, and it
+   passes the N-pods test** the way rate limiting's refusal did: a
+   per-process connection registry is N registries, so no replica can push to
+   a browser connected to another — and none needs to, once every replica
+   receives every fact. A subscription the HTTP process's graph holds as a
+   resource (an exclusive queue per replica, bound to the fact's exchange)
+   feeds that process's own streams; the broker is the backplane, it is an
+   adapter rather than a second runtime, and `@btravstack/amqp-worker` is not
+   composed into the HTTP process to get it.
+
    Scheduling stands by Temporal Schedules. The floor that costs — a cluster
    for one nightly job — is stated in `docs/how-to/run-something-on-a-schedule.md`,
    and `ensureSchedule` (a subpath rather than a client package, because it is

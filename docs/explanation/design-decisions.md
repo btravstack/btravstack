@@ -265,6 +265,20 @@ that outlives the caller), and Temporal Schedules are the cron; a queue
 package would re-ship those semantics over a broker that models
 announcements.
 
+No WebSocket, and no push runtime (issue #162): answering covers
+server-to-client push, over [server-sent events](/how-to/stream-with-server-sent-events)
+— a procedure whose output is an event iterator, served as a stream that is a
+unit and is reset at the drain's third beat so the browser reconnects to a
+replica that is staying. A WebSocket upgrade on the HTTP server would be a
+second, bidirectional protocol riding a connection that is no longer a
+request — a hole in [one process, one runtime](/explanation/one-process-one-runtime)
+— and a fourth runtime is what the role map refuses by default; what a client
+sends is an ordinary request. Fan-out across replicas survives the N-pods
+test because no replica keeps a registry anyone else must see: each one holds
+its own broker subscription — an exclusive queue per replica, a resource of
+the HTTP process's graph rather than a second runtime — and feeds the streams
+connected to it, so a fact published anywhere reaches every browser.
+
 No `Defect` constructor, no accumulation of runtimes,
 no `recoverFailure`-style channel-moving helper. Swapping an adapter is
 composing a different module, which di already documents and the type checker

@@ -195,3 +195,13 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   refused with `reason: "sort-mismatch"`, told apart from an unreadable
   cursor's `"malformed"`. The full position is
   `packages/contract/AGENTS.md`'s.
+
+- **Server push is answering's, over SSE; WebSocket is declined for now**
+  (issue #162). SSE already ships and drains (#137), so the role map stays
+  three roles. An upgrade path would be a second protocol on a connection that
+  is no longer a request, and a push runtime would be the fourth runtime the
+  map refuses by default. Fan-out across replicas is an application pattern —
+  a broker subscription per replica feeding that process's streams — not a
+  shared connection registry, which would be N registries. The trigger that
+  would reopen it is a client-to-server stream a request cannot carry. The
+  position is the root `AGENTS.md`'s, thesis #1.
