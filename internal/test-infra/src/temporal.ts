@@ -25,13 +25,9 @@ declare module "vitest" {
  * spec file on one real server, which is the isolation those suites actually
  * needed — neither of them ever advanced time.
  */
-export default async ({ provide }: TestProject): Promise<() => void> => {
+export default async ({ provide }: TestProject): Promise<void> => {
   const temporal = await sharedTemporal(await sharedPostgres());
 
   provide("__TESTCONTAINERS_TEMPORAL_IP__", temporal.getHost());
   provide("__TESTCONTAINERS_TEMPORAL_PORT_7233__", temporal.getMappedPort(7233));
-
-  // Reused, so stopping it here would pull it out from under whichever
-  // workspace's run is still going.
-  return () => {};
 };

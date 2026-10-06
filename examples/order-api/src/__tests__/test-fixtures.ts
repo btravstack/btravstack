@@ -22,14 +22,12 @@ import {
   OrderNotFound,
   placeOrder,
   type Order,
-  type TenantId,
   type CustomerId,
   type OrderId,
 } from "@btravstack/example-order-domain";
 import type { OrderDatabase } from "@btravstack/example-order-infrastructure";
 import type { HttpHandler, HttpInfo, HttpRuntime } from "@btravstack/http-server";
 import type { Claims } from "@btravstack/http-server/jwt";
-import { SESSION_COOKIE } from "@btravstack/http-server/session";
 import {
   ORY_CLIENT_ID,
   ORY_CLIENT_SECRET,
@@ -39,7 +37,7 @@ import {
   sharedOry,
   type Ory,
 } from "@btravstack/internal-test-infra/ory";
-import { headlessLogin } from "@btravstack/internal-test-infra/ory-login";
+import { browserLogin } from "@btravstack/internal-test-infra/ory-login";
 import { LoggerConfig, createLogger, type Line, type Sink } from "@btravstack/observability";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import { localIssuer, type LocalIssuer } from "@btravstack/testing/jwt";
@@ -71,15 +69,14 @@ const sessionKey = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toStr
  * The customers repository as an override on the ROOT: its port is in the
  * application scope, because the procedures it serves are unmarked.
  */
-const stubCustomers = Provider(CustomerRepository)({
-  inject: {},
-  value: {
-    find: (_tenantId: TenantId, id: string) =>
-      id === "0199a1e0-0000-7000-8000-0000000000c1"
-        ? OkAsync(Customer.make({ id, name: "Ada" }).getOrThrow())
-        : ErrAsync(new CustomerNotFound({ id: id as CustomerId })),
-  },
-});
+const customersStub: ServiceOf<CustomerRepository> = {
+  find: (_tenantId, id) =>
+    id === "0199a1e0-0000-7000-8000-0000000000c1"
+      ? OkAsync(Customer.make({ id, name: "Ada" }).getOrThrow())
+      : ErrAsync(new CustomerNotFound({ id: id as CustomerId })),
+};
+
+const stubCustomers = Provider(CustomerRepository)({ inject: {}, value: customersStub });
 
 /**
  * The orders repository is overridden INSIDE the `user` kind, because that is
@@ -152,11 +149,9 @@ const countingCustomers = () => {
       Provider(CustomerRepository)({
         inject: {},
         value: {
-          find: (_tenantId: TenantId, id: string) => {
+          find: (tenantId, id) => {
             reads += 1;
-            return id === "0199a1e0-0000-7000-8000-0000000000c1"
-              ? OkAsync(Customer.make({ id, name: "Ada" }).getOrThrow())
-              : ErrAsync(new CustomerNotFound({ id: id as CustomerId }));
+            return customersStub.find(tenantId, id);
           },
         },
       }),
@@ -397,28 +392,8 @@ export const it = test.extend<ApiFixtures>({
         tenant,
       };
       await createIdentity(user);
-      const origin = await originOf(app);
 
-      const started = await fetch(`${origin}/auth/login`, { redirect: "manual" });
-      const location = started.headers.get("location");
-      assert.ok(location !== null, "the login route answered no Location");
-      const transient = started.headers.getSetCookie().map((set) => set.split(";")[0] ?? "");
-
-      // Only the QUERY travels: the path is written out to match
-      // `ORY_REDIRECT_URI`'s own, because the provider answers a callback on
-      // the port it has registered, `:3000`, and the app binds an ephemeral one.
-      const back = await headlessLogin({ authorizationUrl: new URL(location), user });
-      const finished = await fetch(`${origin}/auth/callback${back.search}`, {
-        redirect: "manual",
-        headers: { cookie: transient.join("; ") },
-      });
-      const session = finished.headers
-        .getSetCookie()
-        .map((set) => set.split(";")[0] ?? "")
-        .find((pair) => pair.startsWith(`${SESSION_COOKIE}=`));
-      assert.ok(session !== undefined, `the callback sealed no session: ${finished.status}`);
-
-      return { cookie: session, tenant };
+      return { cookie: await browserLogin(await originOf(app), user), tenant };
     });
   },
 

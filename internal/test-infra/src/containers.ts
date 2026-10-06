@@ -1,3 +1,7 @@
+import { execFile } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+
 import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
 
 import { withLock } from "./lock.js";
@@ -17,7 +21,7 @@ export const POSTGRES_USER = "btravstack";
 export const POSTGRES_PASSWORD = "btravstack";
 /** Temporal's own persistence, created by `temporalio/auto-setup`'s schema tool. */
 export const TEMPORAL_DATABASE = "temporal";
-/** The example application's, created by {@link sharedPostgres} and migrated by its own global setup. */
+/** The example application's, created by {@link sharedPostgres} and migrated by {@link migrateOrders}. */
 export const ORDERS_DATABASE = "orders";
 
 /**
@@ -167,6 +171,39 @@ export const provisionApplicationRole = (postgres: StartedTestContainer): Promis
       // oxlint-disable-next-line unthrown/no-throw -- a vitest `globalSetup` reports failure by rejecting; there is no Result channel here
       throw new Error(`Could not provision the '${ORDERS_APP_USER}' role: ${output}`);
   });
+
+const run = promisify(execFile);
+
+/** The one workspace this module knows by path: it owns the schema and the `prisma` CLI. */
+const ordersInfrastructure = fileURLToPath(
+  new URL("../../../examples/order-infrastructure", import.meta.url),
+);
+
+/**
+ * Applies the example application's migrations with **`prisma db migrate`** —
+ * the literal command a deployment runs — as the owner, provisions
+ * {@link ORDERS_APP_USER}, and answers that role's URL: the owner's never
+ * leaves here, because a superuser bypasses row security.
+ *
+ * The marker in `prisma_contract.marker` makes a second run a no-op, and
+ * {@link withLock} stops the gate's runs and the dev loop racing to be first,
+ * since they share one database and none may assume another ran first.
+ */
+export const migrateOrders = async (postgres: StartedTestContainer): Promise<string> => {
+  await withLock("orders-migrate", () =>
+    run("pnpm", ["exec", "prisma", "db", "migrate"], {
+      cwd: ordersInfrastructure,
+      env: { ...process.env, DATABASE_URL: postgresUrl(postgres, ORDERS_DATABASE) },
+    }),
+  );
+
+  await provisionApplicationRole(postgres);
+
+  return postgresUrl(postgres, ORDERS_DATABASE, {
+    user: ORDERS_APP_USER,
+    password: ORDERS_APP_PASSWORD,
+  });
+};
 
 /**
  * The broker both AMQP workspaces consume. Each TEST still mints its own vhost,

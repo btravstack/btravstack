@@ -33,7 +33,7 @@ declare module "vitest" {
  * `@amqp-contract/testing/global-setup`, which starts a container of its own
  * per vitest run and is the reason two of them raced.
  */
-export default async ({ provide }: TestProject): Promise<() => void> => {
+export default async ({ provide }: TestProject): Promise<void> => {
   const rabbitmq = await sharedRabbitMq();
 
   provide("__TESTCONTAINERS_RABBITMQ_IP__", rabbitmq.getHost());
@@ -41,8 +41,4 @@ export default async ({ provide }: TestProject): Promise<() => void> => {
   provide("__TESTCONTAINERS_RABBITMQ_PORT_15672__", rabbitmq.getMappedPort(15672));
   provide("__TESTCONTAINERS_RABBITMQ_USERNAME__", "guest");
   provide("__TESTCONTAINERS_RABBITMQ_PASSWORD__", "guest");
-
-  // Nothing to tear down: the container is reused, so stopping it here would
-  // pull it out from under whichever workspace's run is still going.
-  return () => {};
 };
