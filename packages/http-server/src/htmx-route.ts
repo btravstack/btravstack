@@ -9,7 +9,7 @@ import {
 } from "@btravstack/di";
 import type { AsyncResult } from "unthrown";
 
-import { authenticatorPort, type AuthenticatorService } from "./auth.js";
+import { schemeDeps, schemeServices, type AuthenticatorService } from "./auth.js";
 import type { FragmentInputSchema, ParamsOf } from "./fragments.js";
 import type { Html } from "./html.js";
 import type { RequiresGate, SchemePortsOf } from "./orpc.js";
@@ -224,21 +224,14 @@ export class HtmxFragmentsPort extends Port("HtmxFragments")<{
   readonly principals: Readonly<Record<string, AnyPort>>;
 }> {}
 
-// Namespaced so a scheme's key cannot collide with a route name the caller wrote.
-const AUTHENTICATOR = "@btravstack/http-server/fragment-authenticator:";
-
 /**
  * Every scheme any route's `requires` names, walked directly over the raw
  * data — a route's `requires` is `Requirements` data, read straight off
  * `piece.route`, never a marker `isAuthenticated` could resolve.
  */
-const schemesInRoutes = (routes: readonly AnyRoutePiece[]): readonly string[] => {
-  const found = new Set<string>();
-  for (const piece of routes)
-    for (const requirement of piece.route.requires ?? [])
-      for (const scheme of Object.keys(requirement)) found.add(scheme);
-  return [...found];
-};
+const schemesInRoutes = (routes: readonly AnyRoutePiece[]): readonly string[] => [
+  ...new Set(routes.flatMap((piece) => (piece.route.requires ?? []).flatMap(Object.keys))),
+];
 
 /**
  * `HtmxFragments`: every route composed from an array of `HtmxGet`/`HtmxPost`
@@ -267,9 +260,7 @@ export const htmxFragmentsFor =
     const schemes = schemesInRoutes(routes);
     const deps: Record<string, AnyPort> = {
       ...Object.fromEntries(routeEntries),
-      ...Object.fromEntries(
-        schemes.map((scheme) => [`${AUTHENTICATOR}${scheme}`, authenticatorPort(scheme)]),
-      ),
+      ...schemeDeps(schemes),
     };
     const sync = (
       services: Record<string, unknown>,
@@ -282,9 +273,7 @@ export const htmxFragmentsFor =
         unit: piece.unit,
         handle: services[`route:${index}`] as FragmentAnswer["handle"],
       })),
-      authenticators: Object.fromEntries(
-        schemes.map((scheme) => [scheme, services[`${AUTHENTICATOR}${scheme}`]]),
-      ) as Readonly<Record<string, AuthenticatorService<unknown>>>,
+      authenticators: schemeServices(schemes, services),
       principals,
     });
     return Object.assign(Provider(HtmxFragmentsPort)({ inject: deps, sync } as never), {

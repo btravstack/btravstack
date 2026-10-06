@@ -161,8 +161,8 @@ not cover"` marker, and what the marker names is a procedure path
   composed provider's `deps` are the piece
   **ports**, keyed by the very dotted path each port id carries — so di
   builds every piece before the router, and `nest` folds the flat path-keyed
-  services record back into the nesting the contract already has before
-  `routerFrom`: `routerOf` walks the same tree it always did, marks,
+  services record back into the nesting the contract already has before the
+  walk: `routerOf` walks the same tree it always did, marks,
   inheritance and the stray-key drop included. The walk itself is untouched —
   `nest` lives in the composing arm because the walk is shared with the
   `{ inject, unit?, sync }` form, which never nests. The pieces themselves still need

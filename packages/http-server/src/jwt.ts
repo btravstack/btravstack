@@ -6,7 +6,7 @@ import { Err, ErrAsync, Ok, OkAsync, fromPromise, type Result } from "unthrown";
 import {
   HttpAuthenticator,
   Unauthenticated,
-  granted,
+  grantOf,
   type Authenticator,
   type AuthenticatorService,
 } from "./auth.js";
@@ -273,14 +273,7 @@ export const jwtAuthenticator =
                 .flatMap((claims) => {
                   const principal = options.principal(claims);
                   if (principal === undefined) return ErrAsync(new Unauthenticated());
-                  if (vocabulary === undefined) return OkAsync(principal as never);
-                  const held = new Set(claimedScopes(claims));
-                  return OkAsync(
-                    granted(
-                      principal,
-                      vocabulary.filter((scope) => held.has(scope)),
-                    ) as never,
-                  );
+                  return OkAsync(grantOf(principal, vocabulary, claimedScopes(claims)) as never);
                 })
             );
           };

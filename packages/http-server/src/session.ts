@@ -3,7 +3,7 @@ import { Port, Provider } from "@btravstack/di";
 import { CompactEncrypt, compactDecrypt } from "jose";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
-import { HttpAuthenticator, Unauthenticated, granted, type Authenticator } from "./auth.js";
+import { HttpAuthenticator, Unauthenticated, grantOf, type Authenticator } from "./auth.js";
 import { cookieValue } from "./cookie.js";
 
 export { CookieSchemes, cookieScheme, csrfOn } from "./cookie.js";
@@ -354,14 +354,7 @@ export const sessionAuthenticator =
               if (session === undefined) return ErrAsync(new Unauthenticated());
               const principal = principalOf(session);
               if (principal === undefined) return ErrAsync(new Unauthenticated());
-              if (vocabulary === undefined) return OkAsync(principal as never);
-              const held = new Set(session.scopes);
-              return OkAsync(
-                granted(
-                  principal,
-                  vocabulary.filter((scope) => held.has(scope)),
-                ) as never,
-              );
+              return OkAsync(grantOf(principal, vocabulary, session.scopes) as never);
             }),
       }),
       cookie: true as const,

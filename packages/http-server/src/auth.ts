@@ -69,6 +69,24 @@ export const granted = <P, const Scope extends string = never>(
 ): Grant<P, Scope> => ({ identity, scopes, [GRANT]: true });
 
 /**
+ * A shipped scheme's answer: the identity bare when it declared no vocabulary,
+ * else a grant of the vocabulary's INTERSECTION with what the credential held,
+ * so a credential naming a scope the scheme does not know grants nothing extra.
+ */
+export const grantOf = (
+  principal: unknown,
+  vocabulary: readonly string[] | undefined,
+  held: Iterable<string> | undefined,
+): unknown => {
+  if (vocabulary === undefined) return principal;
+  const holds = new Set(held);
+  return granted(
+    principal,
+    vocabulary.filter((scope) => holds.has(scope)),
+  );
+};
+
+/**
  * Headers, not the request: an authenticator has no business reading a body,
  * and the narrower argument is what keeps it testable without a socket.
  */
@@ -77,6 +95,16 @@ export type AuthenticatorService<P, Scope extends string = never> = (
 ) => AsyncResult<Granted<P, Scope>, Unauthenticated>;
 
 const ports = new Map<string, unknown>();
+
+// Memoised for the WARNING, not for resolution: two classes under one id are
+// the same type and the same lookup, but a second `Port(id)` call costs di's
+// duplicate-id warning — and binding in `defineHttp` plus depending in
+// `routerFor` is the designed two-call pattern, not the declaration bug it
+// exists to catch.
+const memoised = (id: string, mint: () => unknown): never => {
+  if (!ports.has(id)) ports.set(id, mint());
+  return ports.get(id) as never;
+};
 
 /**
  * One port per scheme, its id carrying the scheme name. The service type is
@@ -95,17 +123,9 @@ const ports = new Map<string, unknown>();
 export const authenticatorPort = <const S extends string>(
   scheme: S,
 ): PortClassOf<`HttpAuthenticator:${S}`, AuthenticatorService<unknown>> => {
-  const id = `HttpAuthenticator:${scheme}` as const;
-  // Memoised for the WARNING, not for resolution: two classes under one id are
-  // the same type and the same lookup, but a second `Port(id)` call costs di's
-  // duplicate-id warning — and binding here plus depending in `routerFor` is
-  // the designed two-call pattern, not the declaration bug it exists to catch.
-  const existing = ports.get(id);
-  if (existing !== undefined) return existing as never;
+  const id = `HttpAuthenticator:${scheme}`;
   // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
-  const minted = class extends Port(id)<AuthenticatorService<unknown>> {};
-  ports.set(id, minted);
-  return minted as never;
+  return memoised(id, () => class extends Port(id)<AuthenticatorService<unknown>> {});
 };
 
 /**
@@ -120,14 +140,32 @@ export const authenticatorPort = <const S extends string>(
 export const principalPort = <const S extends string, P = unknown>(
   scheme: S,
 ): PortClassOf<`HttpPrincipal:${S}`, P> => {
-  const id = `HttpPrincipal:${scheme}` as const;
-  const existing = ports.get(id);
-  if (existing !== undefined) return existing as never;
+  const id = `HttpPrincipal:${scheme}`;
   // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
-  const minted = class extends Port(id)<P> {};
-  ports.set(id, minted);
-  return minted as never;
+  return memoised(id, () => class extends Port(id)<P> {});
 };
+
+// The key a scheme's port is injected under: namespaced so it cannot collide
+// with a dependency the caller named, and the scheme name follows the colon.
+const AUTHENTICATOR = "@btravstack/http-server/authenticator:";
+
+/** One injected dependency per scheme, keyed by {@link AUTHENTICATOR}. */
+export const schemeDeps = (schemes: readonly string[]): Record<string, AnyPort> =>
+  Object.fromEntries(
+    schemes.map((scheme) => [`${AUTHENTICATOR}${scheme}`, authenticatorPort(scheme)]),
+  );
+
+/** What {@link schemeDeps} injected, read back off a services record keyed by scheme. */
+export const schemeServices = (
+  schemes: readonly string[],
+  services: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, AuthenticatorService<unknown>>> =>
+  Object.fromEntries(
+    schemes.map((scheme) => [
+      scheme,
+      services[`${AUTHENTICATOR}${scheme}`] as AuthenticatorService<unknown>,
+    ]),
+  );
 
 /**
  * What `HttpAuthenticator` hands back: a description `defineHttp` binds to a
