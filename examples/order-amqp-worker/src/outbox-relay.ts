@@ -1,3 +1,5 @@
+import { setTimeout as delay } from "node:timers/promises";
+
 import { TypedAmqpClient } from "@amqp-contract/client";
 import { AmqpConfig } from "@btravstack/amqp-worker";
 import { Config } from "@btravstack/config";
@@ -101,20 +103,12 @@ const startOutboxRelay = (
       // per tenant, since the sweep is per tenant and one tenant's backlog is
       // the thing an operator asks about.
       const relayed = meter.createCounter("btravstack.outbox.relayed");
-      let stopped = false;
-      let wake: (() => void) | undefined;
+      const stopping = new AbortController();
+      const { signal } = stopping;
+      // Unref'ed: an idle relay must not pin the process on its own. The abort
+      // that wakes it early rejects, which is the one way out of the wait.
       const sleep = (): Promise<void> =>
-        new Promise((resolve) => {
-          // The timer is cleared on an early wake and `unref`ed besides: a
-          // stray timeout would keep the event loop alive past `stop()` for up
-          // to `pollMs`, and an idle relay must not pin the process on its own.
-          const timer = setTimeout(resolve, pollMs);
-          timer.unref();
-          wake = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-        });
+        delay(pollMs, undefined, { ref: false, signal }).catch(() => {});
 
       const sweepTenant = async (tenantId: TenantId): Promise<void> => {
         await outbox.pending(tenantId, BATCH).match({
@@ -193,9 +187,9 @@ const startOutboxRelay = (
       };
 
       const running = (async () => {
-        while (!stopped) {
+        while (!signal.aborted) {
           await sweep();
-          if (!stopped) await sleep();
+          await sleep();
         }
       })();
 
@@ -203,8 +197,7 @@ const startOutboxRelay = (
         stop: () =>
           fromSafePromise(
             (async () => {
-              stopped = true;
-              wake?.();
+              stopping.abort();
               await running;
             })(),
           ).flatMap(() => client.close()),
