@@ -88,7 +88,7 @@ catalog:
   # would mean naming a version one of these packages has never published.
   "@prisma/cli-engine": 0.4.0
   "@prisma/orm-postgres": 8.0.0-rc.11
-  "@tanstack/query-core": 5.102.8
+  "@tanstack/query-core": 5.104.1
   # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
   # 7.x line, which peers on `unthrown@^4` while this repo pins 5.12.0. 8.x also
   # ships the `test-rig` / `workflow-bundle` subpaths the Temporal example's
