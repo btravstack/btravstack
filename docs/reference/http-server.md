@@ -2096,6 +2096,17 @@ fine on any Node 22.
 - **OpenAPI document metadata.** A scheme's own definition — `type: http`,
   `bearerFormat`, an OAuth flow — belongs beside the contract, not in
   `defineHttp`.
+- **Static files and an SPA fallback**, a stated non-goal. The ingress or a
+  CDN serves assets — the deployment model already puts an ingress in front of
+  the pod, and one that routes the asset path to a bucket serves immutable
+  files with caching, compression and range requests better than a Node
+  process will. With [htmx fragments](#api-htmxget-path-options-and-api-htmxpost-path-options)
+  there is no SPA to fall back to: the asset set is htmx and a stylesheet,
+  which a CDN serves and a layout can vendor. **The CSP for an HTML response is
+  the deployment's**: [`securityHeaders`](#securityheaders) sets none by
+  default, because htmx's `hx-*` attributes and any inline `<script>` meet a
+  policy at once — pass a record carrying your own policy beside the three
+  defaults, since a record replaces them.
 - **HTTPS, HTTP/2.** `node:http` only; terminate TLS at the ingress.
 
 ## `openApiDocument()` — from `@btravstack/http-server/openapi`

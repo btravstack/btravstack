@@ -391,6 +391,9 @@ Each of these is a decision with a reason, and the reasons are on
 - **`Result` → HTTP status** — the router's `.result()` triage owns it.
 - **Rate limiting** — a per-process counter is the wrong unit when a deployment
   is N pods; the ingress counts a request once.
+- **Static files and an SPA fallback** — the ingress or a CDN serves assets;
+  with htmx fragments the asset set is htmx plus a stylesheet. The CSP for an
+  HTML response is the deployment's: pass a `securityHeaders` record.
 - **Resource-dependent authorization** — a scope is checked here because it is
   a property of the credential; "is this caller the order's owner" needs the
   order, so it stays in the handler.

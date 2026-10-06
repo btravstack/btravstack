@@ -92,8 +92,14 @@ dependencies by name`; a positional array is refused as
   an SPA fallback, and JSX/SSR with a component model. `htmx()` is the second
   — the one closest to a procedure and hardest to tell apart from one, which
   is why it sharpened the second-answerer question rather than dodging it. The
-  first and fourth are #166's rendering layer; the third is #161, and its own
-  counter-argument (that it may still be the ingress's job) stands.
+  first and fourth are #166's rendering layer; the third is **declined**
+  (#161): the ingress or a CDN serves assets, and with no SPA left the asset
+  set is htmx plus a stylesheet. The narrower option — a minimal asset
+  route so `pnpm dev` needs no ingress — was the development loop's argument,
+  not production's, and two files a layout can link from a CDN or vendor
+  inline do not carry it. The reasoning, and the CSP that stays
+  the deployment's, is in `packages/http-server/AGENTS.md`'s cross-cutting
+  section.
 - **Each transport package is named for the HALF it implements, and the
   other half's name is reserved.** `http-server`, `temporal-worker` and
   `amqp-worker` — not `http`, `temporal`, `amqp`, which claimed a whole

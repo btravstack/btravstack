@@ -803,8 +803,9 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
 - **Not included, deliberately**: another ROUTER for oRPC's own answerer (there
   is no `handler` option on `http()`; a second protocol is a second answerer,
   not a swap of this one), a middleware
-  slot for application logic, `Result` → HTTP status, HTTPS, HTTP/2 — see the
-  package README's _"What it does not do"_ for why each is a non-goal.
+  slot for application logic, `Result` → HTTP status, static files and an SPA
+  fallback, HTTPS, HTTP/2 — see the package README's _"What it does not do"_
+  for why each is a non-goal.
 - **`httpServer(options)`** — the socket half: the runtime, its config, the
   kind → module record on `HttpUnit`, and no answerer. Its signature and what
   it provides and exports are in the reference page and `http-runtime.ts`.
@@ -1344,6 +1345,21 @@ transport's hands.
   ingress or gateway is where a request count is counted once. An application
   that wants one anyway writes a plugin and passes it through `plugins` —
   which is the escape hatch doing its job, not a gap.
+- **Static files and an SPA fallback are a stated non-goal** (#161). The
+  ingress or a CDN serves assets: thesis #1 already puts an ingress in front of
+  every `api` deployment, and one that routes `/assets` to a bucket and `/rpc`
+  to the pod serves immutable files with caching, compression and range
+  requests no Node process here should re-implement. Fragments removed the
+  case that would have forced the question — there is no SPA to fall back to,
+  and an htmx application's asset set is htmx plus a stylesheet, which a CDN
+  serves better than Node and a layout can simply vendor. If it ever ships, it
+  is one more answerer on the `HttpHandler` set, not an oRPC plugin and not an
+  option on `http()`.
+  **The CSP for an HTML response is the deployment's**, and stays so:
+  `securityHeaders` sets no `content-security-policy` because a policy right
+  for an RPC endpoint is a live constraint on a page — htmx's `hx-*`
+  attributes and any inline `<script>` meet it at once — so a deployment that
+  serves fragments passes a `securityHeaders` record carrying its own policy.
 - **A procedure with no mark on it or above it is public, and nothing fails if the marker is
   forgotten.** `@btravstack/contract`'s marker makes the requirement
   **legible** in the contract and makes the principal's type reach the
