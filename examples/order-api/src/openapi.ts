@@ -27,6 +27,6 @@ export const openApi = (): AsyncResult<OpenApiDocument, never> =>
     },
     securitySchemes: {
       user: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
-      service: { type: "apiKey", in: "header", name: "x-service-key" },
+      service: { type: "apiKey", in: "header", name: "x-api-key" },
     },
   });

@@ -38,8 +38,9 @@ DATABASE_URL="postgres://owner:secret@localhost:5432/orders" \
 pnpm turbo run db:migrate
 ```
 
-`turbo.json` makes `dev` depend on `^db:migrate`, so the app cannot start
-against an unmigrated database. The application never migrates itself at boot —
+`pnpm dev` runs `@btravstack/internal-test-infra`'s `dev:env` first
+(`turbo.json`), which migrates the shared database under the same lock the
+suites take, so the app cannot start against an unmigrated one. The application never migrates itself at boot —
 that belongs to the deploy step, not the process.
 
 ### Authoring one: plan, review, apply, and move the ref
