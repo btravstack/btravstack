@@ -1,5 +1,21 @@
 # @btravstack/testing
 
+## 0.17.0
+
+### Minor Changes
+
+- 1e58eaa: **Removed: `localIssuer`'s `algorithm` option.** Nothing passed it. The issuer always signs with RS256, which was already the default, so a call without the option behaves exactly as before.
+
+### Patch Changes
+
+- Updated dependencies [acbb93a]
+- Updated dependencies [f050da2]
+- Updated dependencies [3538048]
+- Updated dependencies [c0b9e08]
+  - @btravstack/core@0.17.0
+  - @btravstack/config@0.17.0
+  - @btravstack/di@0.17.0
+
 ## 0.16.0
 
 ### Patch Changes

@@ -1,5 +1,24 @@
 # @btravstack/observability
 
+## 0.17.0
+
+### Minor Changes
+
+- c0b9e08: **Removed: `LoggerService.log(level, …)` and `runHealthChecks`' second argument.** Neither had a caller.
+
+  - `LoggerService` keeps one method per level (`logger.fatal("…")` where `logger.log("fatal", "…")` was written), and `createLogger` no longer returns `log`.
+  - `runHealthChecks(checks)` takes no options. Each check is held to its own `timeoutMs`, or to `DEFAULT_HEALTH_TIMEOUT_MS` (`800`) when it declares none. That is what `/healthz` already did, since the kernel never passed the option.
+
+### Patch Changes
+
+- Updated dependencies [acbb93a]
+- Updated dependencies [f050da2]
+- Updated dependencies [3538048]
+- Updated dependencies [c0b9e08]
+  - @btravstack/core@0.17.0
+  - @btravstack/config@0.17.0
+  - @btravstack/di@0.17.0
+
 ## 0.16.0
 
 ### Patch Changes

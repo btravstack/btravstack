@@ -1,5 +1,19 @@
 # @btravstack/temporal-worker
 
+## 0.17.0
+
+### Patch Changes
+
+- f050da2: **New in `@btravstack/core`: `mintPiece`, `composeByPrefix` and the `Refuse` type** — the runtime halves of a worker's piece factory and composing provider, which `AmqpHandler` / `AmqpHandlers` and `TemporalWorkflowActivities` / `TemporalActivities` each carried a copy of. A minted handler or activities piece no longer carries a runtime `unit` property: nothing read it, since the record travels with the piece's own wrapper. The `UNCOVERED …` refusals are unchanged.
+- 3538048: **New in `@btravstack/core`: `dispatchUnit`, `withUnitRecord`, and the `AnyUnitModule`, `UnitNeedsOf`, `UnitExportsOf`, `UnitRecordOf` and `UnitGate` types.** The AMQP and Temporal workers each carried the same middleware body and the same `context.unit` wrapper, and every package taking a `unit` option declared `AnyUnitModule` again. They now share one copy. Nothing changes for an application: the workers behave exactly as before, and the gates report the same sentences.
+- Updated dependencies [acbb93a]
+- Updated dependencies [f050da2]
+- Updated dependencies [3538048]
+- Updated dependencies [c0b9e08]
+  - @btravstack/core@0.17.0
+  - @btravstack/config@0.17.0
+  - @btravstack/di@0.17.0
+
 ## 0.16.0
 
 ### Minor Changes

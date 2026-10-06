@@ -1,5 +1,21 @@
 # @btravstack/cache
 
+## 0.17.0
+
+### Minor Changes
+
+- c034efb: **Breaking: the adapters' internals are no longer exported.** `redisCacheBackend`, `redisSchema` and `CacheConfig` from `@btravstack/cache/redis`, `smtpSchema` and `MailerConfig` from `@btravstack/mailer/smtp`, `recordingMailerBackend` from `@btravstack/mailer`, and `s3Schema` and `StorageConfig` from `@btravstack/storage/s3` had no user anywhere. Compose the adapter modules — `redisCache()`, `smtpMailer()`, `recordingMailer(recorder)` or `recordingMailerProvider(recorder)`, `s3Storage()` — as before.
+
+### Patch Changes
+
+- Updated dependencies [acbb93a]
+- Updated dependencies [f050da2]
+- Updated dependencies [3538048]
+- Updated dependencies [c0b9e08]
+  - @btravstack/core@0.17.0
+  - @btravstack/config@0.17.0
+  - @btravstack/di@0.17.0
+
 ## 0.16.0
 
 ### Patch Changes
