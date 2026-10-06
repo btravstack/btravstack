@@ -1,5 +1,12 @@
-import { RuntimePort, type Runtime, type RuntimeHost, type Serving } from "@btravstack/core";
-import { Module, Provider, type Scope } from "@btravstack/di";
+import {
+  RuntimePort,
+  type AnyUnitModule,
+  type Runtime,
+  type RuntimeHost,
+  type Serving,
+  type UnitNeedsOf,
+} from "@btravstack/core";
+import { Module, Provider } from "@btravstack/di";
 import { OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 export type SubmittedUnit<T, E> = {
@@ -16,24 +23,6 @@ export type TestRuntimeInfo = { readonly name: string };
 
 /** The in-memory runtime's port: what `TestRuntime.module` provides, and what a test composition exports. */
 export class TestRuntimePort extends RuntimePort<Runtime<never, TestRuntimeInfo>> {}
-
-/**
- * A module `options.unit` may bind, as the upper bound `testRuntime`
- * constrains its own `Unit` type parameter to. `Module`'s `_exports` channel is
- * contravariant, so `Exports = never` — never `unknown` — is what makes a REAL
- * module's own (necessarily narrower) export type assignable to this bound.
- * `@btravstack/http-server`'s `AnyUnitModule` carries the same bound for the
- * same reason.
- */
-export type AnyUnitModule = Module<never, never, unknown>;
-
-/**
- * The needs a bound `unit` module still owes, or `never` when none is bound.
- * `Scope` is excluded, since nothing can ever provide it — the same exemption
- * `NeedsGate` itself carries.
- */
-export type UnitNeedsOf<Unit> =
-  Unit extends Module<never, never, infer N> ? Exclude<N, Scope> : never;
 
 export type TestRuntimeOptions<Unit extends AnyUnitModule | undefined = undefined> = {
   /** A module every submitted unit forks, with no seed, before its work runs. */

@@ -15,6 +15,9 @@ import {
   type RuntimeHost,
   type Serving,
   type Settle,
+  type AnyUnitModule,
+  type UnitNeedsOf as UnitNeedsOfModule,
+  type UnitRecordOf,
 } from "@btravstack/core";
 import {
   Module,
@@ -23,7 +26,6 @@ import {
   type AnyPort,
   type PortClassOf,
   type PortInstance,
-  type Scope,
   type ServiceOf,
 } from "@btravstack/di";
 import { P, type AsyncResult } from "unthrown";
@@ -36,7 +38,7 @@ import {
   type HandlerPortOf,
 } from "./handler.js";
 import { messageUnits } from "./message-units.js";
-import { withUnit, type UnitRecordOf } from "./unit.js";
+import { withUnit } from "./unit.js";
 
 /** What the worker publishes once it is consuming, read back through `RunningApp.runtimeInfo()`. */
 export type AmqpInfo = { readonly queues: readonly string[] };
@@ -63,24 +65,8 @@ const DEFAULT_CONNECT_TIMEOUT_MS = 5_000;
 /** The runtime's port: what `amqp()` provides, and what the module `start` boots must export. */
 export class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}
 
-/**
- * A module `unit.message` may bind, as the upper bound `amqp()` constrains its
- * own `Unit` type parameter to. `Module`'s `_exports` channel is contravariant,
- * so `Exports = never` — never `unknown` — is what makes a REAL module's own
- * (necessarily narrower) export type assignable to this bound: `(x: Concrete)
- * => void` is assignable to `(x: never) => void`, not to `(x: unknown) =>
- * void`.
- */
-export type AnyUnitModule = Module<never, never, unknown>;
-
-/**
- * The needs a bound `unit.message` module still owes, or `never` when none is
- * bound. `Scope` is excluded, since nothing can ever provide it — the same
- * exemption `NeedsGate` itself carries — and so is the delivery, which the
- * fork's own seed discharges.
- */
-export type UnitNeedsOf<Unit> =
-  Unit extends Module<never, never, infer N> ? Exclude<N, Scope | AmqpMessageInstance> : never;
+/** The needs a bound `unit.message` module still owes, less the delivery the fork's seed discharges. */
+export type UnitNeedsOf<Unit> = UnitNeedsOfModule<Unit, AmqpMessageInstance>;
 
 /**
  * The contract type `TypedAmqpWorker.create` accepts, extracted rather than

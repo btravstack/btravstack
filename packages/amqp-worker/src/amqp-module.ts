@@ -1,4 +1,5 @@
 import type { ConfigInvalid, Env } from "@btravstack/config";
+import type { AnyUnitModule, UnitGate } from "@btravstack/core";
 import {
   Module,
   type AnyModule,
@@ -15,11 +16,9 @@ import {
   type AmqpConfig,
   type AmqpTuning,
   type AnyAmqpContract,
-  type AnyUnitModule,
   type HandlersInstanceOf,
   type UnitNeedsOf,
 } from "./amqp-runtime.js";
-import type { UnitGate } from "./unit.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
 type AmqpStarter<

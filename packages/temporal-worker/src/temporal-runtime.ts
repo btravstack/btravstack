@@ -10,6 +10,8 @@ import {
   type RuntimeHost,
   type Serving,
   type Settle,
+  type AnyUnitModule,
+  type UnitNeedsOf as UnitNeedsOfModule,
 } from "@btravstack/core";
 import {
   Module,
@@ -94,24 +96,8 @@ export class TemporalUnreachable extends TaggedError("TemporalUnreachable")<{
 /** The runtime's port: what `temporal()` provides, and what the module `start` boots must export. */
 export class TemporalRuntime extends RuntimePort<Runtime<never, TemporalInfo>> {}
 
-/**
- * A module `unit.activity` may bind, as the upper bound `temporal()`
- * constrains its own `Unit` type parameter to. `Module`'s `_exports` channel
- * is contravariant, so `Exports = never` — never `unknown` — is what makes a
- * REAL module's own (necessarily narrower) export type assignable to this
- * bound: `(x: Concrete) => void` is assignable to `(x: never) => void`, not
- * to `(x: unknown) => void`.
- */
-export type AnyUnitModule = Module<never, never, unknown>;
-
-/**
- * The needs a bound `unit.activity` module still owes, or `never` when none is
- * bound. `Scope` is excluded, since nothing can ever provide it — the same
- * exemption `NeedsGate` itself carries — and so is the activity input, which
- * the fork's own seed discharges.
- */
-export type UnitNeedsOf<Unit> =
-  Unit extends Module<never, never, infer N> ? Exclude<N, Scope | ActivityInputInstance> : never;
+/** The needs a bound `unit.activity` module still owes, less the input the fork's seed discharges. */
+export type UnitNeedsOf<Unit> = UnitNeedsOfModule<Unit, ActivityInputInstance>;
 
 /**
  * The activity implementations `declareActivitiesHandler` takes for `C`.

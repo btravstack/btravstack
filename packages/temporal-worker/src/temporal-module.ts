@@ -1,4 +1,5 @@
 import type { ConfigInvalid, Env } from "@btravstack/config";
+import type { AnyUnitModule, UnitGate, UnitRecordOf } from "@btravstack/core";
 import {
   Module,
   Provider,
@@ -19,7 +20,6 @@ import {
   type ActivitiesInstanceOf,
   type ActivitiesOf,
   type ActivitiesPortOf,
-  type AnyUnitModule,
   type TemporalConfig,
   type TemporalConnection,
   type TemporalTuning,
@@ -27,7 +27,7 @@ import {
   type UnitNeedsOf,
   type WorkflowSource,
 } from "./temporal-runtime.js";
-import { withUnit, type UnitGate, type UnitRecordOf } from "./unit.js";
+import { withUnit } from "./unit.js";
 import {
   WORKFLOW_ACTIVITIES_PREFIX,
   type ActivitiesKeyOf,

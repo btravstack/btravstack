@@ -5,7 +5,16 @@ description: Runtime, RuntimeHost, UnitHost, RunUnit, Serving, RuntimePort and R
 
 <!-- doctest: prelude
 import type { AsyncResult } from "unthrown";
-import type { UnitMeta, UnitRecord, UnitWork } from "@btravstack/core";
+import type {
+  AnyUnitModule,
+  Operation,
+  RuntimeHost,
+  Settle,
+  UnitMeta,
+  UnitRecord,
+  UnitWork,
+} from "@btravstack/core";
+import type { AnyPort, Module } from "@btravstack/di";
 -->
 
 # The `Runtime` contract
@@ -270,6 +279,45 @@ Racing work against a **timeout** is a different primitive and belongs on
 [`Clock`](#clock-and-systemclock) — the kernel's own drain uses `clock.sleep`
 for exactly that, so a fake clock can control it. The two look alike and must
 not be folded together.
+
+## A worker's unit plumbing
+
+<!-- doctest: signature=@btravstack/core -->
+
+```ts
+type AnyUnitModule = Module<never, never, unknown>;
+const dispatchUnit: <T, E>(dispatch: {
+  readonly host: RuntimeHost<never>;
+  readonly observers: readonly ((operation: Operation) => Settle)[];
+  readonly operation: Operation;
+  readonly meta: UnitMeta;
+  readonly unit: AnyUnitModule | undefined;
+  readonly seed: readonly [AnyPort, unknown];
+  readonly next: (overrides?: never) => AsyncResult<T, E>;
+}) => AsyncResult<T, E>;
+const withUnitRecord: (
+  record: Readonly<Record<string, AnyPort>>,
+  implementation: (helpers: never, input: never) => unknown,
+) => (
+  helpers: { readonly context?: Readonly<Record<string | symbol, unknown>> },
+  input: never,
+) => unknown;
+```
+
+What `@btravstack/amqp-worker` and `@btravstack/temporal-worker` share, for a
+runtime whose work callback is a library's middleware `next()`. `dispatchUnit`
+is the middleware's body: it observes `operation`, opens one unit, forks `unit`
+seeded with `seed` when one is bound, and hands `next` the forked context.
+`withUnitRecord` wraps one `(helpers, input)` implementation so it reads its
+piece's declared record off `helpers.context.unit`, resolved lazily out of that
+fork — empty when no unit module is bound. The two meet under a symbol only
+this module knows, so neither worker carries the key.
+
+`AnyUnitModule` is the bound every starter's `unit` option constrains its type
+parameter to. Beside it, `UnitNeedsOf<Unit, Seeded>` is what a bound module
+still owes less `Scope` and the seeded port, `UnitRecordOf<U>` the record a
+piece reads, and `UnitGate<Unit, Declared>` the `"UNIT DOES NOT PROVIDE — …"`
+refusal a worker's sugar rides on its options.
 
 ## Units of work
 

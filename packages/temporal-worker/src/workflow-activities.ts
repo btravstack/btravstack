@@ -1,3 +1,4 @@
+import type { UnitRecordOf } from "@btravstack/core";
 import {
   Port,
   Provider,
@@ -10,7 +11,7 @@ import type { ContractDefinition } from "@temporal-contract/contract";
 import type { EmptyContext } from "@temporal-contract/worker/activity";
 
 import type { ActivitiesOf } from "./temporal-runtime.js";
-import { withUnit, type UnitRecordOf } from "./unit.js";
+import { withUnit } from "./unit.js";
 
 /**
  * `ActivitiesOf<C, …>` is a `NoInfer`-wrapped conditional TypeScript refuses to

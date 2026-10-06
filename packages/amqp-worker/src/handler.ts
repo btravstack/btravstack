@@ -1,4 +1,5 @@
 import type { WorkerInferHandlers } from "@amqp-contract/worker";
+import type { UnitRecordOf } from "@btravstack/core";
 import {
   Port,
   Provider,
@@ -9,7 +10,7 @@ import {
 } from "@btravstack/di";
 
 import type { AnyAmqpContract } from "./amqp-runtime.js";
-import { withUnit, type UnitRecordOf } from "./unit.js";
+import { withUnit } from "./unit.js";
 
 /** The consumer and rpc names `C` declares — the keys of its handlers record. */
 export type HandlerKeyOf<C extends AnyAmqpContract> = keyof WorkerInferHandlers<C> & string;

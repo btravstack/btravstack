@@ -34,3 +34,11 @@ export { start } from "./start.js";
 export type { ExitReport, RunningApp, StartGate, StartOptions, TeardownError } from "./start.js";
 export { currentUnit } from "./units.js";
 export type { UnitMeta, UnitRecord, UnitRegistry, UnitWork } from "./units.js";
+export { dispatchUnit, withUnitRecord } from "./unit-record.js";
+export type {
+  AnyUnitModule,
+  UnitExportsOf,
+  UnitGate,
+  UnitNeedsOf,
+  UnitRecordOf,
+} from "./unit-record.js";

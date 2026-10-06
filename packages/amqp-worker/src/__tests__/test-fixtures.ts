@@ -13,6 +13,7 @@ import type { ConfigInvalid, Environment } from "@btravstack/config";
 import {
   Observers,
   currentUnit,
+  type AnyUnitModule,
   type Attributes,
   type Operation,
   type RunningApp,
@@ -31,7 +32,6 @@ import {
   AmqpHandlers,
   type AmqpConnectionOptions,
   type AmqpInfo,
-  type AnyUnitModule,
   type HandlersPortOf,
 } from "../amqp-runtime.js";
 import { AmqpHandler, AmqpMessage } from "../handler.js";

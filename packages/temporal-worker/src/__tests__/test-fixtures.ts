@@ -5,6 +5,7 @@ import type { ConfigInvalid, Environment } from "@btravstack/config";
 import {
   Observers,
   currentUnit,
+  type AnyUnitModule,
   type Attributes,
   type Operation,
   type RunningApp,
@@ -34,7 +35,6 @@ import { TemporalActivities, TemporalModule } from "../temporal-module.js";
 import { poll } from "../temporal-runtime.js";
 import {
   TemporalConfig,
-  type AnyUnitModule,
   type TemporalInfo,
   type TemporalUnreachable,
   type WorkflowSource,
