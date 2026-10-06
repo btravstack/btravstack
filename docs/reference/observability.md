@@ -257,9 +257,29 @@ Three rules:
   would render the line that exists to carry a failure as `{}` — the same rule,
   and the same reason, as the kernel's `stderrSink`.
 
+The fields, every one at the top level of one object:
+
+| Field            | Value                                                                       |
+| ---------------- | --------------------------------------------------------------------------- |
+| _the attributes_ | the line's own and its logger's `with` layers, by their own names           |
+| `time`           | ISO 8601, UTC, to the millisecond                                           |
+| `level`          | `trace`, `debug`, `info`, `warn`, `error` or `fatal`, as text               |
+| `message`        | the message                                                                 |
+| `unitId`         | inside a unit only                                                          |
+| `traceId`        | inside a unit only                                                          |
+| `tenantId`       | inside a unit that has one                                                  |
+| `cause`          | when one was passed — `{ name, message, stack, cause }` for an `Error`      |
+| `unserialisable` | only on a fallback line: the names of the fields that could not be rendered |
+
+The shape is this package's own — neither ECS, nor the OpenTelemetry log data
+model, nor pino's (whose numeric `level` and `msg` are what
+[`pinoSink`](#pinosink-logger) writes). The names are the ones above and
+change only with a changeset.
+
 A payload `JSON.stringify` refuses outright — a circular value reaching in
-through `cause` is the plausible one — falls back to the time, level, message
-and `cause: "[unserialisable]"` rather than costing the line.
+through `cause`, or a `BigInt` passed as an attribute — does not cost the
+line: every field that renders is kept, the unit's ids included, and
+`unserialisable` names the ones that did not (`["total"]`).
 
 ## `observability(options?)`
 

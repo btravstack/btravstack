@@ -98,7 +98,31 @@ describe("the JSON sink", () => {
       time: "1970-01-01T00:00:00.000Z",
       level: "warn",
       message: "kept",
-      cause: "[unserialisable]",
+      unserialisable: ["cause"],
+    });
+  });
+
+  it("names the attribute that could not be serialised, and keeps the rest", ({ written }) => {
+    // GIVEN a BigInt attribute — what `JSON.stringify` refuses — inside a unit
+    jsonSink(written)({
+      level: "info",
+      message: "counted",
+      attributes: { orderId: "o-1", total: 10n as never },
+      cause: undefined,
+      time: 0,
+      unit: { unitId: "u-1", traceId: "t-1" },
+    });
+
+    // WHEN the line is read back
+    // THEN only the culprit is dropped, and it is the one named
+    expect(lineOf(written)).toEqual({
+      orderId: "o-1",
+      time: "1970-01-01T00:00:00.000Z",
+      level: "info",
+      message: "counted",
+      unitId: "u-1",
+      traceId: "t-1",
+      unserialisable: ["total"],
     });
   });
 

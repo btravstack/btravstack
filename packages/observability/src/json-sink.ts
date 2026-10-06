@@ -45,17 +45,26 @@ export const jsonSink =
     stream.write(`${safeStringify(rendered)}\n`);
   };
 
-// A payload `JSON.stringify` refuses must not cost the line: the message and
-// its severity survive, and the part that could not be rendered says so.
+const serialises = (value: unknown): boolean => {
+  try {
+    JSON.stringify(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// A payload `JSON.stringify` refuses must not cost the line: every field that
+// renders survives — the unit's ids included — and `unserialisable` names the
+// ones that did not, last so no attribute can rewrite it.
 const safeStringify = (rendered: Record<string, unknown>): string => {
   try {
     return JSON.stringify(rendered);
   } catch {
+    const kept = Object.entries(rendered).filter(([, value]) => serialises(value));
     return JSON.stringify({
-      time: rendered["time"],
-      level: rendered["level"],
-      message: rendered["message"],
-      cause: "[unserialisable]",
+      ...Object.fromEntries(kept),
+      unserialisable: Object.keys(rendered).filter((key) => !serialises(rendered[key])),
     });
   }
 };
