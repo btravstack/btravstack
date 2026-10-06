@@ -1,0 +1,117 @@
+# AGENTS.md — @btravstack/outbox
+
+The transactional outbox's relay: the loop that reads committed facts out of a
+table and publishes them, the claim that keeps replicas from publishing the
+same one, and the table shape it reads. The root `AGENTS.md` is the
+authoritative spec; thesis #2 is why this package exists — the outbox plus a
+saga is this stack's answer to cross-store atomicity, so the half of it every
+application would otherwise copy is a framework concern.
+
+## Public surface
+
+The exports are `src/index.ts` and `src/prisma.ts` (`@btravstack/outbox/prisma`),
+each with its TSDoc; `docs/reference/outbox.md` is the reader's page.
+
+## What is the application's, and stays so
+
+- **The write.** The business row and its outbox row commit in ONE
+  transaction, and that transaction is the adapter's, spelled at the call
+  (thesis #2). There is no `append` port for a Prisma application: the row is
+  written with the application's own ORM, inside the transaction it already
+  opens, and a port would have to reach into that transaction to be any use.
+  `memoryOutboxStore().append` exists because an in-process store has no
+  transaction to write inside.
+- **What "publish" means.** `OutboxPublisher` is a port the application
+  provides — the transport, the contract and the payload's decoding are all
+  its own. That is what keeps the relay transport-neutral: an AMQP publisher,
+  an HTTP webhook and a Kafka producer are three providers of one port, and the
+  loop above them does not change.
+- **The table, declared in the application's contract.** Prisma 8 has no way
+  for a package to contribute a model, and a client is typed by the
+  application's emitted contract anyway (`@btravstack/prisma`'s `client`
+  argument says why). So the shape is documented — `docs/reference/outbox.md`
+  carries the PSL block — and `prismaOutboxStore` reads it in raw SQL.
+
+## The claim is per tenant, and that is a choice of three
+
+Three shapes were on the table, and the one shipped is the only one that keeps
+both promises at once:
+
+1. **`FOR UPDATE SKIP LOCKED` on rows** stops two replicas taking one row, and
+   lets them take a tenant's rows 1–32 and 33–64 at the same moment — so the
+   second batch can reach the broker first, and a subject's tombstone can
+   overtake its create.
+2. **A lease column** (`claimedUntil`) has the same reordering, adds a
+   migration, and duplicates the moment a batch publishes slower than the
+   lease is long.
+3. **A per-tenant advisory lock, held by the claiming transaction** — what
+   ships. `pg_try_advisory_xact_lock(hashtext(table), hashtext(tenant))`: a
+   relay that does not get it skips the tenant rather than waiting, and the
+   lock dies with the transaction, so a crashed relay frees it with its
+   connection. One tenant is published by one relay at a time, which is both
+   "never twice at once" and "in order", and throughput scales across tenants.
+
+The two-key form namespaces by table, so two outbox tables never contend and
+a lock some other code takes on a single bigint never collides. A `hashtext`
+collision between two tenants only serialises them.
+
+**The cost is stated, not hidden**: the claim, the publishes and the mark run
+in one transaction, so a relay holds one pooled connection for one batch's
+publishes. That is an interactive transaction — the shape thesis #2 refuses for
+a unit — and it is accepted here because it is ONE connection per relay, bounded
+by a 32-message batch, rather than one per request. A database with
+`idle_in_transaction_session_timeout` shorter than a batch's publishes rolls the
+claim back, which re-publishes (at-least-once) rather than loses.
+
+**Measured, against the shared PostgreSQL** (`examples/order-infrastructure`'s
+`prisma-outbox.spec.ts`, "publishes every message exactly once across four
+racing relays"): four relays sweeping one tenant in batches of four published
+48 messages exactly 48 times, in write order. With the lock check disabled the
+same spec published them 132 times.
+
+## The loop
+
+- **A refused publish stops the tenant's batch.** Publishing the rest would
+  let a later fact overtake the refused one. The price is head-of-line
+  blocking — a message the publisher refuses forever holds its tenant — which
+  is what the health check exists to surface: `outbox` reports unhealthy,
+  naming the tenant, once its oldest pending message is older than
+  `maxLagMs`.
+- **Back-off doubles from the poll interval to 30 s** after any failed sweep,
+  and resets on a clean one. A full batch sweeps again at once, so a backlog
+  drains at the publisher's speed rather than 32 per poll.
+- **The sleep is the kernel's `Clock`**, aborted by the relay's own stop
+  signal, so `release` returns as soon as the in-flight batch has, an idle
+  relay pins nothing (`systemClock`'s timer is unref'ed), and a spec drives the
+  loop with `createFakeClock`. There is no `Clock` PORT in the kernel, so the
+  clock is an option rather than an injection.
+- **Started by `acquire`, stopped by `release`** — so it publishes before the
+  runtime accepts anything, and is stopped after the runtime has drained and
+  before anything it depends on (the publisher's client) is released, which is
+  di's reverse-acquisition order and no code of this package's.
+- **No logger.** A claim and a publish are each an `Observers` operation; the
+  claim is `traced: false`, since a span per tenant per poll would bury the
+  publishes. The tenant is an attribute — the relay is told its tenants, so it
+  is bounded — and the outbox id and subject are details.
+
+## Why tenants are configuration
+
+The relay runs outside any unit, so there is no tenant to read off anything,
+and sweeping "whatever is in the table" is how one deployment broadcasts
+another's facts. `OUTBOX_TENANTS` has no default for that reason, and naming
+them is also how relays are sharded. A single-tenant application names one.
+
+## Deliberately not here
+
+- **Exactly-once.** A crash between a publish and its mark re-publishes; a
+  subscriber dedupes on the subject and `occurredAt`. No outbox can do better
+  without the broker joining the database's transaction.
+- **A second store adapter.** `OutboxStore` is two methods, and the reasons
+  `@btravstack/prisma` is the only persistence starter (root **Persistence**)
+  hold here too.
+- **Retention.** Published rows stay. Deleting them is an operational choice —
+  some teams keep the log — and the `DELETE` that prunes them belongs to
+  whoever owns the database's housekeeping.
+- **A partial index.** The store's queries filter on `tenantId` and
+  `publishedAt IS NULL` and order by `id`; an index for that is the
+  application's migration, sized by its own table.
