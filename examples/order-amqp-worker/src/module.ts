@@ -7,6 +7,8 @@ import { smtpMailer } from "@btravstack/mailer/smtp";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { OutboxStore, outbox } from "@btravstack/outbox";
+import { pinoSink } from "@btravstack/observability/pino";
+import pino from "pino";
 
 import { MessageUnitModule } from "./message-unit.js";
 import { orderAmqpClient, orderPublisher } from "./outbox-publisher.js";
@@ -22,6 +24,14 @@ import { NotificationsSlice } from "./slices/notifications/module.js";
  * defect at build.
  */
 export const orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit]);
+
+/**
+ * Where this deployment's lines go: pino, for its throughput, at `trace` —
+ * the level filter stays `LOG_LEVEL`'s, decided before a line reaches a sink.
+ * One instance for the process, shared by the graph's `Logger` and by
+ * `main.ts`'s kernel events, so both halves land in one stream.
+ */
+export const logSink = pinoSink(pino({ level: "trace" }));
 
 /**
  * The composition root of the broadcast deployment: a list of slices plus what
@@ -62,7 +72,7 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     NotificationsSlice,
     AuditSlice,
     mailer({ adapter: smtpMailer() }),
-    observability(),
+    observability({ sink: logSink }),
     otel(),
     outbox(),
   ],

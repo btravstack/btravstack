@@ -31,6 +31,7 @@
     "@btravstack/outbox": "workspace:*",
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/sdk-node": "catalog:",
+    "pino": "catalog:",
     "unthrown": "catalog:"
   },
   "devDependencies": {

@@ -224,7 +224,7 @@ that shows up in a profile, `pino` is an **optional** peer behind a subpath:
 pnpm add pino
 ```
 
-<!-- doctest: skip — needs `pino`, which no example workspace installs; held by packages/observability/src/pino.spec.ts instead -->
+<!-- doctest: skip — needs `pino`, which only examples/order-amqp-worker installs, and this page compiles in order-api's group; held by packages/observability/src/pino.spec.ts and composed for real by examples/order-amqp-worker/src/module.ts -->
 
 ```ts
 import pino from "pino";
@@ -240,6 +240,11 @@ below `LOG_LEVEL` never reaches a sink — so there is one filter in the
 process, and it is the one validated at startup. The attributes and the unit's
 ids ride as pino fields; the cause goes over as `err`, which pino's own
 serialiser renders with the stack.
+
+`examples/order-amqp-worker` is the worked deployment: its root composes
+`observability({ sink: logSink })` over one pino instance, and its `main.ts`
+hands the kernel's events to that same sink, so the process writes one
+stream.
 
 ## Put the kernel's events in the same stream
 
@@ -275,8 +280,9 @@ is watching would have nothing to write the two events that matter most with.
 It reads no `LOG_LEVEL` for the same reason, and logs at the default `info`.
 :::
 
-`examples/order-api/src/main.ts` wires exactly this; the other two example
-`main.ts` files stay a single line, because the kernel's stderr sink is a fine
+`examples/order-api/src/main.ts` wires exactly this over the JSON sink, and
+`examples/order-amqp-worker/src/main.ts` over pino; the temporal worker's
+`main.ts` stays a single line, because the kernel's stderr sink is a fine
 default and this is the upgrade, not the requirement.
 
 ## Provide your own `Logger`

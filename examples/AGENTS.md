@@ -277,3 +277,11 @@ each deployment's `src/main.ts` carry their own.
   as `Env` once, the one place an example does; everything after it reads
   through `Config`. The sweep needs no clock port: the cutoff is computed in
   the workflow, where `Date.now()` is the recorded workflow-task time.
+- **`order-amqp-worker` is the `pinoSink` deployment.** `src/module.ts` mints
+  one `logSink = pinoSink(pino({ level: "trace" }))` and composes
+  `observability({ sink: logSink })`; `src/main.ts` hands the kernel's events
+  to the same sink through `kernelEvents(createLogger(logSink))`, so the
+  process writes one stream. It is exported from the root's file rather than
+  built in `main.ts` because the root is where `observability()` is composed,
+  and a constant root cannot take it as an argument. The specs never reach it:
+  their fixture overrides the `Logger` provider with a recorder.

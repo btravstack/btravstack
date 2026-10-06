@@ -283,16 +283,19 @@ The root is now a list of slices plus what no slice owns: the outbox store and
 the one Prisma client behind it (`OrderPersistenceModule` — the relay's own,
 not either subscriber's), the starter over `orderHandlers`,
 [`observability()`](/reference/observability) for the `Logger` every
-subscriber writes to — `LOG_LEVEL`, JSON per line on stdout, every consumer
-line correlated with the delivery's own unit — the relay, and the publisher it
+subscriber writes to — `LOG_LEVEL`, one line per call, every consumer line
+correlated with the delivery's own unit — the relay, and the publisher it
 relays through: both halves of the outbox pattern in one graph.
 `MessageUnitModule` is the per-delivery fork: it names
 `AmqpMessage(orderContract)` in its `needs`, which the worker seeds, and turns
 the envelope's `tenantId` into `Tenant` once, so both handlers read
 `context.unit.tenant` rather than the payload. The exports are what the fork
 and the specs read out of the application scope; `PlaceOrder` is not among
-them, because nothing at the root can build a tenant-bound repository.
-`main.ts` is `await runMain(OrderAmqpWorker);`.
+them, because nothing at the root can build a tenant-bound repository. The real
+root passes `observability({ sink: logSink })`, where `logSink` is `pinoSink`
+over one pino instance, and `main.ts` hands the kernel's own events to the
+same sink:
+`await runMain(OrderAmqpWorker, { onEvent: kernelEvents(createLogger(logSink)) });`.
 
 ## Retry and dead-letter live in the contract
 

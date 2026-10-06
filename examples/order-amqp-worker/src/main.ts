@@ -1,6 +1,7 @@
 import { runMain } from "@btravstack/core";
+import { createLogger, kernelEvents } from "@btravstack/observability";
 
-import { OrderAmqpWorker } from "./module.js";
+import { logSink, OrderAmqpWorker } from "./module.js";
 
 /**
  * The broadcast process — the whole of it. The graph reads its own
@@ -12,7 +13,11 @@ import { OrderAmqpWorker } from "./module.js";
  * lease, so there is nothing to open before `start` and nothing to close after
  * it.
  *
+ * `onEvent` puts the kernel's own lifecycle events on the same pino sink the
+ * graph's `Logger` writes to — built by hand, because `building` is emitted
+ * before there is a graph to resolve a logger from.
+ *
  * Typechecked by the gate, not executed by it — the example packages are
  * source-only, and every spec drives `start` directly.
  */
-await runMain(OrderAmqpWorker);
+await runMain(OrderAmqpWorker, { onEvent: kernelEvents(createLogger(logSink)) });

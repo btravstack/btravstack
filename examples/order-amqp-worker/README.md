@@ -18,8 +18,8 @@ src/slices/audit/handler.ts           the auditor: orderAudit, one piece on the 
 src/slices/audit/module.ts            AuditSlice — same shape as NotificationsSlice
 src/message-unit.ts    MessageUnitModule — forked per delivery, seeded with the validated message; Tenant from the envelope
 src/outbox-publisher.ts   what publishing an outbox row means: orderAmqpClient (a resourceful TypedAmqpClient) and orderPublisher, the OutboxPublisher @btravstack/outbox relays through
-src/module.ts          orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit]); OrderAmqpWorker — the composition root, an AmqpModule importing both slices, observability() and outbox(), a constant
-src/main.ts            the process: runMain(OrderAmqpWorker), and nothing else
+src/module.ts          orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit]); OrderAmqpWorker — the composition root, an AmqpModule importing both slices, observability({ sink: logSink }) and outbox(), a constant; logSink — one pino instance for the process
+src/main.ts            the process: runMain(OrderAmqpWorker), with the kernel's events on the same pino sink
 src/__tests__/test-fixtures.ts   boot / serve / tapped / writer, as Vitest fixtures, against a real RabbitMQ — boot and tapped from @btravstack/testing
 ```
 
@@ -117,7 +117,9 @@ exports `AmqpRuntime` for `start` to resolve. Its `imports` also names
 because that is the only way di's `flatten` discovers the two pieces at all
 (see "Two subscribers, not one" above). It also imports
 `observability()`, the starter that provides the `Logger` every subscriber
-writes to — `LOG_LEVEL` from the environment, JSON on stdout, and every
+writes to — `LOG_LEVEL` from the environment, one pino line per call through
+`@btravstack/observability/pino`'s `pinoSink` (`logSink`, shared with
+`main.ts`'s kernel events so the process writes one stream), and every
 consumer line carrying its own delivery's unit. There is no `needs`, no
 `context.ctx.get(...)`, and no port declared here over `RuntimePort` — the
 package ships it.
@@ -148,7 +150,7 @@ next boot. `drain` stays the consumer's alone — draining means "stop taking ne
 work", and the relay's work is outbound.
 
 Configuration is read inside the graph, so the composition root is a
-**constant**: `main.ts` is `await runMain(OrderAmqpWorker)`, and the specs boot
+**constant**: `main.ts` is `await runMain(OrderAmqpWorker, { onEvent })`, and the specs boot
 the same value with `env: { AMQP_URL: <this test's vhost>, DATABASE_URL,
 OUTBOX_POLL_MS: "25", OUTBOX_TENANTS: <this test's tenant> }`.
 The compile-time half (`src/needs-gate.test-d.ts`) also pins that a **slice
