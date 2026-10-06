@@ -246,9 +246,11 @@ connection either, since `@amqp-contract/core` pools by URL and
 reference-counts leases. Nothing resolves `OutboxRelay`, and nothing needs to:
 a resourceful provider exists to be started and stopped. The loop is
 **at-least-once** by design — a crash between publish and `markPublished`
-re-publishes on the next sweep — and it triages all three channels per event:
-published → mark; a `MessageValidationError` → left pending, logged; a defect
-(broker down mid-flight) → left pending, retried next sweep.
+re-publishes on the next sweep — and it triages every outcome per event:
+published → mark; a `MessageValidationError` → left pending, logged; a
+`PublishError` (the broker down, nacking or closing the channel mid-flight) →
+left pending, a warning, retried next sweep; a defect (a failure the client
+could not classify) → left pending, logged.
 
 The ordering is worth stating: the relay starts **before** the consumer (as
 the graph builds) and stops **after** it (when the scope closes, not inside

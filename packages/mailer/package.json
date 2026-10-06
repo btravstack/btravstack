@@ -83,7 +83,7 @@
     "@btravstack/config": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",
-    "nodemailer": "^9.0.0",
+    "nodemailer": "^10.0.6",
     "unthrown": "^5.0.0"
   },
   "peerDependenciesMeta": {
