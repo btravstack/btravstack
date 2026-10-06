@@ -9,33 +9,15 @@ import {
 } from "@btravstack/di";
 import type { AsyncResult } from "unthrown";
 
-import { authenticatorPort, type AuthenticatorService } from "./auth.js";
+import { schemeDeps, schemeServices, type AuthenticatorService } from "./auth.js";
 import type { FragmentInputSchema, ParamsOf } from "./fragments.js";
 import type { Html } from "./html.js";
-import type { ScopesIn, SchemePortsOf, SchemesIn } from "./orpc.js";
+import type { RequiresGate, SchemePortsOf } from "./orpc.js";
 import type { Principal, SchemesOf } from "./principal.js";
 import type { KindOf, UnitFor } from "./unit.js";
 
 /** The prefix a piece's port id carries, ahead of its own method and path. */
-export const FRAGMENT_PREFIX = "HtmxFragment:";
-
-/** Every scope string `R` names for scheme `K` — `orpc.ts`'s `ScopesIn`, fed directly since `requires` already IS a requirements union, not a tree to walk. */
-type UngrantableIn<R, Vocab> = {
-  [K in SchemesIn<R>]: K extends keyof Vocab ? Exclude<ScopesIn<R, K>, Vocab[K]> : never;
-}[SchemesIn<R>];
-
-/**
- * `orpc.ts`'s `ScopeGate` with the contract fold removed: `requires` is data,
- * not a tree, so there is nothing to walk before checking it.
- */
-type RequiresGate<R, Vocab> = [UngrantableIn<R, Vocab>] extends [never]
-  ? unknown
-  : {
-      readonly "UNGRANTABLE SCOPE — its scheme's authenticator cannot grant it": UngrantableIn<
-        R,
-        Vocab
-      >;
-    };
+const FRAGMENT_PREFIX = "HtmxFragment:";
 
 /** What a route's own schema infers, or the raw decoded form when it declares none. */
 type InputOfSchema<S extends FragmentInputSchema | undefined> = S extends undefined
@@ -242,21 +224,14 @@ export class HtmxFragmentsPort extends Port("HtmxFragments")<{
   readonly principals: Readonly<Record<string, AnyPort>>;
 }> {}
 
-// Namespaced so a scheme's key cannot collide with a route name the caller wrote.
-const AUTHENTICATOR = "@btravstack/http-server/fragment-authenticator:";
-
 /**
  * Every scheme any route's `requires` names, walked directly over the raw
  * data — a route's `requires` is `Requirements` data, read straight off
  * `piece.route`, never a marker `isAuthenticated` could resolve.
  */
-const schemesInRoutes = (routes: readonly AnyRoutePiece[]): readonly string[] => {
-  const found = new Set<string>();
-  for (const piece of routes)
-    for (const requirement of piece.route.requires ?? [])
-      for (const scheme of Object.keys(requirement)) found.add(scheme);
-  return [...found];
-};
+const schemesInRoutes = (routes: readonly AnyRoutePiece[]): readonly string[] => [
+  ...new Set(routes.flatMap((piece) => (piece.route.requires ?? []).flatMap(Object.keys))),
+];
 
 /**
  * `HtmxFragments`: every route composed from an array of `HtmxGet`/`HtmxPost`
@@ -285,9 +260,7 @@ export const htmxFragmentsFor =
     const schemes = schemesInRoutes(routes);
     const deps: Record<string, AnyPort> = {
       ...Object.fromEntries(routeEntries),
-      ...Object.fromEntries(
-        schemes.map((scheme) => [`${AUTHENTICATOR}${scheme}`, authenticatorPort(scheme)]),
-      ),
+      ...schemeDeps(schemes),
     };
     const sync = (
       services: Record<string, unknown>,
@@ -300,9 +273,7 @@ export const htmxFragmentsFor =
         unit: piece.unit,
         handle: services[`route:${index}`] as FragmentAnswer["handle"],
       })),
-      authenticators: Object.fromEntries(
-        schemes.map((scheme) => [scheme, services[`${AUTHENTICATOR}${scheme}`]]),
-      ) as Readonly<Record<string, AuthenticatorService<unknown>>>,
+      authenticators: schemeServices(schemes, services),
       principals,
     });
     return Object.assign(Provider(HtmxFragmentsPort)({ inject: deps, sync } as never), {

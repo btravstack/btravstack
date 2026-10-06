@@ -7,9 +7,9 @@ import {
   type AuthenticatorService,
 } from "./auth.js";
 import { controllerFor } from "./controller.js";
+import { cookieScheme } from "./cookie.js";
 import { htmxFragmentsFor, htmxRouteFor } from "./htmx-route.js";
 import { routerFor } from "./orpc.js";
-import { cookieScheme } from "./session.js";
 import type { Kinds, UnitsOf } from "./unit.js";
 
 /** The authenticators an application declares, keyed by scheme name. */
@@ -25,7 +25,7 @@ export type SchemesFrom<A extends Authenticators> = { readonly [K in keyof A]: A
  * `SchemesFrom` because they answer different questions at different call
  * sites: the principal types the handler, the vocabulary checks the contract.
  */
-export type VocabFrom<A extends Authenticators> = { readonly [K in keyof A]: A[K]["scope"] };
+type VocabFrom<A extends Authenticators> = { readonly [K in keyof A]: A[K]["scope"] };
 
 /**
  * One di provider per scheme, on the port whose id carries that scheme's name,

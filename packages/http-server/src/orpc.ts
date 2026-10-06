@@ -39,13 +39,23 @@ import {
 import { RPC_DEFAULT_ALLOW_METHODS } from "@orpc/server/standard";
 import "@unthrown/orpc/extensions/result";
 
-import { authenticatorPort, principalMiddleware, type AuthenticatorService } from "./auth.js";
-import { CONTROLLER_PREFIX, type ControllerKeyOf, type ControllerPortOf } from "./controller.js";
+import {
+  principalMiddleware,
+  schemeDeps,
+  schemeServices,
+  type AuthenticatorService,
+} from "./auth.js";
+import {
+  CONTROLLER_PREFIX,
+  type ControllerKeyOf,
+  type ControllerPortOf,
+  type PathsOf,
+} from "./controller.js";
+import { CookieSchemes, csrfOn } from "./cookie.js";
 import { HttpHandler } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
-import { HttpUnit, type AnyUnitModule } from "./http-runtime.js";
-import type { Principal, SchemesOf } from "./principal.js";
-import { CookieSchemes, csrfOn } from "./session.js";
+import { HttpUnit } from "./http-runtime.js";
+import type { IsUnion, Principal, SchemesOf } from "./principal.js";
 import { unitScope } from "./unit-scope.js";
 import type { KindOf, UnitFor } from "./unit.js";
 
@@ -320,42 +330,79 @@ export const routerFor =
     ): Built<Auth, InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<C>>, Units>;
     function build(depsOrPieces: unknown): unknown {
       const schemes = schemesOf(contract);
-      const own = (services: Record<string, unknown>): Record<string, unknown> =>
-        Object.fromEntries(
-          Object.entries(services).filter(
-            ([key]) => key !== UNIT && !key.startsWith(AUTHENTICATOR),
-          ),
-        );
-      const withSchemes = (deps: Record<string, AnyPort>): Record<string, AnyPort> => ({
-        ...deps,
-        ...Object.fromEntries(
-          schemes.map((scheme) => [`${AUTHENTICATOR}${scheme}`, authenticatorPort(scheme)]),
-        ),
-        [UNIT]: HttpUnit,
-      });
-      const routerFrom = (
-        implementation: Record<string, unknown>,
-        services: Record<string, unknown>,
+
+      // The caller's own deps, plus one per scheme and the router's own
+      // `HttpUnit`; `sync` hands the caller back only the keys it declared.
+      const provide = (
+        deps: Record<string, AnyPort>,
+        implementationOf: (own: Record<string, unknown>) => Record<string, unknown>,
         records: ReadonlyMap<string, Readonly<Record<string, AnyPort>>>,
-      ): Router<Record<never, never>> =>
-        os.router(
-          routerOf(
-            os,
-            implementation,
-            contract,
-            isAuthenticated(contract),
+      ): unknown => {
+        const sync = (services: Record<string, unknown>): Router<Record<never, never>> => {
+          const own = Object.fromEntries(Object.keys(deps).map((key) => [key, services[key]]));
+          const authenticated = schemeServices(schemes, services);
+          const units = (services[UNIT] as ServiceOf<HttpUnit> | undefined) ?? {};
+          // Walks the implementation record next to the implementer and the
+          // contract: a function is a procedure, anything else a nested router.
+          // `inherited` carries a marked record's requirements down to its
+          // procedures, as `Inherit<T, R>` does in the types. `.use` must come
+          // BEFORE `.result`: `.result` returns an `ImplementedProcedure`, whose
+          // own `.use` has no `.result` left.
+          const routerOf = (
+            implementer: Record<string, unknown>,
+            implementation: Record<string, unknown>,
+            node: Record<string, unknown>,
+            inherited: Requirements | undefined,
+            path: string,
+          ): Record<string, unknown> =>
             Object.fromEntries(
-              schemes.map((scheme) => [
-                scheme,
-                services[`${AUTHENTICATOR}${scheme}`] as AuthenticatorService<unknown>,
-              ]),
-            ),
-            (services[UNIT] as ServiceOf<HttpUnit> | undefined) ?? {},
-            principals,
-            records,
-            "",
-          ),
+              Object.entries(implementation).flatMap(([key, value]) => {
+                const target = implementer[key] as ChainableImplementer | undefined;
+                if (target === undefined) return [];
+                const child = node[key];
+                const declared =
+                  typeof child === "object" && child !== null ? isAuthenticated(child) : undefined;
+                const effective = declared ?? inherited;
+                const here = path === "" ? key : `${path}.${key}`;
+                if (typeof value !== "function")
+                  return [
+                    [
+                      key,
+                      routerOf(
+                        target,
+                        value as Record<string, unknown>,
+                        (child ?? {}) as Record<string, unknown>,
+                        effective,
+                        here,
+                      ),
+                    ],
+                  ];
+                const guarded =
+                  effective === undefined
+                    ? target
+                    : target.use(principalMiddleware(effective, authenticated));
+                return [
+                  [
+                    key,
+                    guarded
+                      .use(unitScope(units, principals, recordAt(records, here)))
+                      .result(value),
+                  ],
+                ];
+              }),
+            );
+          return os.router(
+            routerOf(os, implementationOf(own), contract, isAuthenticated(contract), ""),
+          );
+        };
+        return Object.assign(
+          Provider(OrpcRouterPort)({
+            inject: { ...deps, ...schemeDeps(schemes), [UNIT]: HttpUnit },
+            sync,
+          } as never),
+          { authenticators },
         );
+      };
 
       // An array is never a valid `Provider(port)` call — its one argument is
       // a record — so `Array.isArray` alone identifies the composing arm.
@@ -367,17 +414,12 @@ export const routerFor =
         // Each piece is declared under the dotted path its port id carries;
         // `nest` folds those paths back into the contract's own tree before
         // the `routerOf` walk.
-        const deps = Object.fromEntries(
-          pieces.map((piece) => [piece.port.portId.slice(CONTROLLER_PREFIX.length), piece.port]),
-        );
-        const records = new Map(
-          pieces.map((piece) => [piece.port.portId.slice(CONTROLLER_PREFIX.length), piece.unit]),
-        );
-        const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
-          routerFrom(nest(own(services)), services, records);
-        return Object.assign(
-          Provider(OrpcRouterPort)({ inject: withSchemes(deps), sync } as never),
-          { authenticators },
+        const pathOf = (piece: (typeof pieces)[number]): string =>
+          piece.port.portId.slice(CONTROLLER_PREFIX.length);
+        return provide(
+          Object.fromEntries(pieces.map((piece) => [pathOf(piece), piece.port])),
+          nest,
+          new Map(pieces.map((piece) => [pathOf(piece), piece.unit])),
         );
       }
 
@@ -386,24 +428,18 @@ export const routerFor =
         readonly unit?: Readonly<Record<string, AnyPort>>;
         readonly sync: (s: Record<string, unknown>) => unknown;
       };
-      const wholeRecords = new Map([["", supplied.unit ?? {}]]);
-      const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
-        routerFrom(supplied.sync(own(services)) as Record<string, unknown>, services, wholeRecords);
-      return Object.assign(
-        Provider(OrpcRouterPort)({ inject: withSchemes(supplied.inject), sync } as never),
-        { authenticators },
+      return provide(
+        supplied.inject,
+        (own) => supplied.sync(own) as Record<string, unknown>,
+        new Map([["", supplied.unit ?? {}]]),
       );
     }
 
     return build;
   };
 
-// Namespaced so a scheme's key cannot collide with one the caller wrote. The
-// trailing colon is part of the prefix: the scheme name follows it.
-const AUTHENTICATOR = "@btravstack/http-server/authenticator:";
-
-// Namespaced for the same reason: the router's own `HttpUnit` dependency,
-// stripped by `own` before an application's `sync` sees its services.
+// Namespaced so it cannot collide with a key the caller wrote: the router's
+// own `HttpUnit` dependency, which the caller's `sync` never sees.
 const UNIT = "@btravstack/http-server/unit";
 
 // A piece's dotted path becomes the nesting the contract already has, so
@@ -469,19 +505,7 @@ type KeyOfPiece<P> = P extends {
   : never;
 
 /** Every path to a PROCEDURE — the leaves a cover must partition. */
-type LeafPathsOf<C, P extends string = ""> =
-  C extends ProcedureContract<infer _I, infer _O, infer _E>
-    ? P
-    : // The same TS2589 guard `ControllerKeyOf` needs: an index-signature
-      // record short-circuits to `string` rather than recursing over its keys.
-      string extends keyof C
-      ? string
-      : {
-          [K in Exclude<keyof C, PrincipalKey> & string]: LeafPathsOf<
-            C[K],
-            P extends "" ? K : `${P}.${K}`
-          >;
-        }[Exclude<keyof C, PrincipalKey> & string];
+type LeafPathsOf<C> = PathsOf<C, never, false>;
 
 /** Whether leaf `L` sits at, or under, piece path `P`. */
 type CoveredBy<L extends string, P extends string> = L extends P | `${P}.${string}` ? true : false;
@@ -525,9 +549,6 @@ type Erroneous<T extends readonly unknown[]> = true extends {
 }[number]
   ? true
   : false;
-
-/** The standard union test: `T` distributes, the naked `U` does not. */
-type IsUnion<T, U = T> = T extends unknown ? ([U] extends [T] ? false : true) : never;
 
 /**
  * A piece path nested inside another piece's path. Both would implement the
@@ -634,16 +655,13 @@ type AllRequirementsOf<C> =
         }[Exclude<keyof C, PrincipalKey>]);
 
 /**
- * Distributes `SchemesOf` over the union of requirement tuples a walk
- * collected. Exported for `htmx-route.ts`, which feeds it a route's own
- * `requires` directly — data read off one piece, never a contract to walk —
- * both at a route's own mint (`RequiresGate`) and over the array arm's union
- * of pieces (`RequiresOfPiece`).
+ * Distributes `SchemesOf` over a union of requirement tuples — the ones a
+ * contract walk collected, or a route's own `requires`, which is already one.
  */
-export type SchemesIn<R> = R extends Requirements ? SchemesOf<R> : never;
+type SchemesIn<R> = R extends Requirements ? SchemesOf<R> : never;
 
-/** Every scope string the contract names for scheme `K`, across every requirement. */
-export type ScopesIn<R, K extends string> = R extends Requirements
+/** Every scope string `R` names for scheme `K`, across every requirement. */
+type ScopesIn<R, K extends string> = R extends Requirements
   ? {
       // `K extends keyof R[I]` first, never `R[I][K & keyof R[I]]`: indexing a
       // requirement that does not name `K` gives `never`, and inferring `S`
@@ -657,29 +675,31 @@ export type ScopesIn<R, K extends string> = R extends Requirements
     }[number]
   : never;
 
-/** A scope the contract names that its scheme's authenticator cannot grant. */
-type Ungrantable<C, Vocab> = {
+/** A scope `R` names that its scheme's authenticator cannot grant. */
+type UngrantableIn<R, Vocab> = {
   // A scheme the registry does not know is di's to report, not this gate's:
   // treating it as an empty vocabulary turns a misspelled SCHEME into a scope
   // complaint, the wrong diagnostic and earlier than the right one.
-  [K in SchemesIn<AllRequirementsOf<C>>]: K extends keyof Vocab
-    ? Exclude<ScopesIn<AllRequirementsOf<C>, K>, Vocab[K]>
-    : never;
-}[SchemesIn<AllRequirementsOf<C>>];
+  [K in SchemesIn<R>]: K extends keyof Vocab ? Exclude<ScopesIn<R, K>, Vocab[K]> : never;
+}[SchemesIn<R>];
 
 /**
- * The scope half of what `routerFor` checks. It rides an intersection on the
- * `contract` parameter, and its failure branch is an object with one required
+ * The scope check over a requirements union. It rides an intersection on the
+ * parameter it checks, and its failure branch is an object with one required
  * property, which is what makes the diagnostic name the offending scope.
+ * Exported for `htmx-route.ts`, whose `requires` already IS such a union.
  */
-type ScopeGate<C, Vocab> = [Ungrantable<C, Vocab>] extends [never]
+export type RequiresGate<R, Vocab> = [UngrantableIn<R, Vocab>] extends [never]
   ? unknown
   : {
-      readonly "UNGRANTABLE SCOPE — its scheme's authenticator cannot grant it": Ungrantable<
-        C,
+      readonly "UNGRANTABLE SCOPE — its scheme's authenticator cannot grant it": UngrantableIn<
+        R,
         Vocab
       >;
     };
+
+/** What `routerFor` checks: `RequiresGate` over every requirement the contract carries. */
+type ScopeGate<C, Vocab> = RequiresGate<AllRequirementsOf<C>, Vocab>;
 
 /**
  * One port instance per scheme named anywhere in `R`, a union of requirement
@@ -700,7 +720,7 @@ export type SchemePortsOf<R> =
  * Every scheme the contract names, anywhere — the router's scheme
  * dependencies. The type side is `SchemePortsOf<R>`; these two must agree.
  */
-export const schemesOf = (contract: unknown): readonly string[] => {
+const schemesOf = (contract: unknown): readonly string[] => {
   const found = new Set<string>();
   const walk = (node: unknown, seen: WeakSet<object>): void => {
     if (typeof node !== "object" || node === null || seen.has(node)) return;
@@ -718,11 +738,6 @@ export const schemesOf = (contract: unknown): readonly string[] => {
   return [...found];
 };
 
-// Walks the implementation record next to the implementer and the contract: a
-// function is a procedure, anything else a nested router. `inherited` carries a
-// marked record's requirements down to its procedures, as `Inherit<T, R>` does
-// in the types. `.use` must come BEFORE `.result`: `.result` returns an
-// `ImplementedProcedure`, whose own `.use` has no `.result` left.
 /**
  * A node of `implement(contract)`'s own tree, as far as the walk uses it:
  * `.use` returns the SAME shape, so two chained calls — `principalMiddleware`
@@ -748,48 +763,3 @@ const recordAt = (
   }
   return records.get("") ?? {};
 };
-
-const routerOf = (
-  implementer: Record<string, unknown>,
-  implementation: Record<string, unknown>,
-  contract: Record<string, unknown>,
-  inherited: Requirements | undefined,
-  authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
-  units: Readonly<Record<string, AnyUnitModule>>,
-  principals: Readonly<Record<string, AnyPort>>,
-  records: ReadonlyMap<string, Readonly<Record<string, AnyPort>>>,
-  path: string,
-): Record<string, unknown> =>
-  Object.fromEntries(
-    Object.entries(implementation).flatMap(([key, value]) => {
-      const node = implementer[key] as ChainableImplementer | undefined;
-      if (node === undefined) return [];
-      const child = contract[key];
-      const declared =
-        typeof child === "object" && child !== null ? isAuthenticated(child) : undefined;
-      const effective = declared ?? inherited;
-      const here = path === "" ? key : `${path}.${key}`;
-      if (typeof value === "function") {
-        const guarded =
-          effective === undefined ? node : node.use(principalMiddleware(effective, authenticators));
-        const target = guarded.use(unitScope(units, principals, recordAt(records, here)));
-        return [[key, target.result(value)]];
-      }
-      return [
-        [
-          key,
-          routerOf(
-            node,
-            value as Record<string, unknown>,
-            (child ?? {}) as Record<string, unknown>,
-            effective,
-            authenticators,
-            units,
-            principals,
-            records,
-            here,
-          ),
-        ],
-      ];
-    }),
-  );

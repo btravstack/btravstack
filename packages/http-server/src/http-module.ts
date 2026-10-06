@@ -11,6 +11,7 @@ import {
   type Provider,
 } from "@btravstack/di";
 
+import type { CookieSchemes } from "./cookie.js";
 import { HttpHandler } from "./handler.js";
 import type { HtmxFragmentsPort } from "./htmx-route.js";
 import { htmx } from "./htmx.js";
@@ -24,7 +25,6 @@ import {
   type UnitsNeedsOf,
 } from "./http-runtime.js";
 import { orpc, type OrpcRouterPort } from "./orpc.js";
-import type { CookieSchemes } from "./session.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
 type HttpStarter<Units> = Module<
@@ -302,15 +302,7 @@ export const HttpModule =
         ...(router === undefined ? [] : [router, orpc(options)]),
         ...(fragments === undefined
           ? []
-          : [
-              fragments,
-              htmx({
-                ...(options.fragmentsPrefix === undefined
-                  ? {}
-                  : { prefix: options.fragmentsPrefix }),
-                ...(options.fragmentsLogin === undefined ? {} : { login: options.fragmentsLogin }),
-              }),
-            ]),
+          : [fragments, htmx({ prefix: options.fragmentsPrefix, login: options.fragmentsLogin })]),
         ...authenticators,
         ...provides,
       ] as unknown as Provides<P, Router, Fragments>,

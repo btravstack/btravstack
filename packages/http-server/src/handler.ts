@@ -1,4 +1,4 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingMessage, OutgoingHttpHeaders, ServerResponse } from "node:http";
 
 import type { UnitHost } from "@btravstack/core";
 import { Port } from "@btravstack/di";
@@ -54,3 +54,30 @@ export type HttpAnswerer = {
  * `HttpModule` adds it to `exports` so an application never lists it.
  */
 export class HttpHandler extends Port.many("HttpHandler")<HttpAnswerer> {}
+
+/**
+ * A bodiless answer — a refusal owes the caller nothing beyond its status, and
+ * a redirect's body is never read.
+ */
+export const send = (
+  response: ServerResponse,
+  status: number,
+  headers: OutgoingHttpHeaders = {},
+): void => {
+  response.writeHead(status, headers);
+  response.end();
+};
+
+/**
+ * The request target's path relative to a mount, `/` when it is the mount
+ * itself. Read with `URL.parse`, not by splitting on `?`: the target is
+ * origin-form from a browser and absolute-form (`GET http://host/rpc/x`) from
+ * some forward proxies, and the split leaves the second matching no mount.
+ * `URL.parse` rather than `new URL`, because a target no parser accepts must
+ * not throw out of the request callback, where the kernel's uncaught handler
+ * would read it as the whole application failing; it reads as `/`.
+ */
+export const pathUnder = (url: string | undefined, prefix: string): string => {
+  const path = URL.parse(url ?? "/", "http://x")?.pathname ?? "/";
+  return path.slice(prefix.replace(/\/+$/, "").length) || "/";
+};

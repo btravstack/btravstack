@@ -736,13 +736,14 @@ authenticator cannot grant it": "order:export"`). `VocabFrom<A>` reads the
 
   For every scheme `schemesOf(contract)` found, that scheme's port joins the
   provider's `inject` record under the **namespaced**
-  key the `AUTHENTICATOR` constant builds — `"@btravstack/http-server/authenticator"`
+  key `auth.ts`'s `AUTHENTICATOR` constant builds — `"@btravstack/http-server/authenticator"`
   plus a trailing colon, then the scheme name — namespaced for the same reason
   `tapped`'s port id is, since every other key on that record is a name the
   caller chose and these must not be able to collide with a dependency
-  somebody called `user`; `sync` reads them off the services record into the
-  record `principalMiddleware` takes and
-  hands the caller's own `sync` the rest — and all three `build` overloads add
+  somebody called `user`. `schemeDeps` writes those keys and `schemeServices`
+  reads them back into the record `principalMiddleware` takes — the same pair
+  `HtmxFragments` uses for its routes' schemes, so the key is spelled once —
+  and the caller's own `sync` is handed only the keys it declared. All three `build` overloads add
   `SchemePortsOf<C>` to the needs channel
   plus `readonly authenticators` to the result.
   A router naming a scheme nobody implements is therefore an

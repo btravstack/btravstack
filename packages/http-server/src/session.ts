@@ -1,10 +1,12 @@
 import { Config, ConfigInvalid, Env } from "@btravstack/config";
-import { Port, Provider, type AnyProvider } from "@btravstack/di";
+import { Port, Provider } from "@btravstack/di";
 import { CompactEncrypt, compactDecrypt } from "jose";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
-import { HttpAuthenticator, Unauthenticated, granted, type Authenticator } from "./auth.js";
+import { HttpAuthenticator, Unauthenticated, grantOf, type Authenticator } from "./auth.js";
 import { cookieValue } from "./cookie.js";
+
+export { CookieSchemes, cookieScheme, csrfOn } from "./cookie.js";
 
 /**
  * What the cookie carries: the application's own principal, and when the
@@ -75,39 +77,6 @@ export type SessionCodecService = {
 
 export class SessionCodec extends Port("HttpSessionCodec")<SessionCodecService> {}
 
-/**
- * One member per composed scheme, `true` when that scheme reads a cookie — the
- * graph fact `csrf`'s default is computed from. `httpServer` contributes the
- * `false` member that keeps the set from being the empty dependency di refuses,
- * so a graph composing no scheme at all still starts.
- *
- * A set port rather than a marker `HttpModule` folds: `http()` never sees an
- * application's authenticators — the root composes them itself — so a signal
- * read off the options record would leave that surface silently unprotected.
- * A `ctx.get` at start could not answer it either: di's `Context` has no `has`.
- *
- * A member is owed by anything that READS OR WRITES a cookie, which is wider
- * than "an authenticator": `oidc()` is not a scheme and contributes one.
- */
-export class CookieSchemes extends Port.many("HttpCookieSchemes")<boolean> {}
-
-/**
- * What every cookie surface contributes — `defineHttp` for a scheme whose
- * description says it reads one, and `oidc()` for itself, which is not a scheme
- * at all but reads `__Host-oidc` and serves a state-changing `POST /logout`.
- *
- * "Whatever touches a cookie contributes" is the rule, not "whatever
- * authenticates": the narrower reading left a root composing `oidc()` and
- * `sessionCodec()` without `sessionAuthenticator` serving that logout with CSRF
- * off.
- */
-export const cookieScheme = (): AnyProvider =>
-  Provider.member(CookieSchemes)({ inject: {}, value: true });
-
-/** `csrf` unset is on exactly when a composed surface reads a cookie. */
-export const csrfOn = (option: boolean | undefined, schemes: readonly boolean[]): boolean =>
-  option ?? schemes.some(Boolean);
-
 /** Twelve hours, fixed: there is no sliding re-seal, so this is the whole session. */
 export const DEFAULT_TTL_SEC = 43_200;
 
@@ -151,48 +120,49 @@ const decodeKey = (value: string): Uint8Array | undefined => {
 const scopesOf = (value: unknown): boolean =>
   Array.isArray(value) && value.every((scope) => typeof scope === "string");
 
-// The plaintext is authenticated, not validated: a key this codec holds could
-// have sealed anything, so what it is and what shape it has are both checked
-// before it is trusted as a session — a `null` one used to defect on `.exp`, a
-// string `exp` used to coerce its way past the lifetime, and a string `scopes`
+// What `seal` stamps, checked before anything else is trusted: the PURPOSE,
+// and a numeric lifetime still running. The plaintext is authenticated, not
+// validated — a key this codec holds could have sealed anything — so a `null`
+// one used to defect on `.exp`, and a string `exp` used to coerce its way past
+// the lifetime.
+const stamped = (
+  decoded: unknown,
+  typ: string,
+  now: number,
+): (Record<string, unknown> & { readonly exp: number }) | undefined =>
+  typeof decoded === "object" &&
+  decoded !== null &&
+  "typ" in decoded &&
+  decoded.typ === typ &&
+  "iat" in decoded &&
+  typeof decoded.iat === "number" &&
+  "exp" in decoded &&
+  typeof decoded.exp === "number" &&
+  decoded.exp > now
+    ? (decoded as Record<string, unknown> & { readonly exp: number })
+    : undefined;
+
+// A session's own shape, past the stamp: a principal, and a string `scopes`
 // would defect on the `Set` a scheme builds from it.
-const sessionOf = (plaintext: Uint8Array): Session<unknown> | undefined => {
-  const decoded: unknown = JSON.parse(new TextDecoder().decode(plaintext));
-  return typeof decoded === "object" &&
-    decoded !== null &&
-    "typ" in decoded &&
-    decoded.typ === TYP &&
-    "principal" in decoded &&
-    "iat" in decoded &&
-    typeof decoded.iat === "number" &&
-    "exp" in decoded &&
-    typeof decoded.exp === "number" &&
-    (!("sid" in decoded) || typeof decoded.sid === "string") &&
-    (!("scopes" in decoded) || scopesOf(decoded.scopes))
-    ? (decoded as Session<unknown>)
+const sessionOf = (decoded: unknown, now: number): Session<unknown> | undefined => {
+  const session = stamped(decoded, TYP, now);
+  return session !== undefined &&
+    "principal" in session &&
+    (!("sid" in session) || typeof session["sid"] === "string") &&
+    (!("scopes" in session) || scopesOf(session["scopes"]))
+    ? (session as unknown as Session<unknown>)
     : undefined;
 };
 
-// The transient's own shape guard: the login's marker, a numeric lifetime, and
-// every other property a string — it is flow state, not a principal.
+// The transient's own shape, past the stamp: every other property a string —
+// it is flow state, not a principal.
 const transientOf = (
-  plaintext: Uint8Array,
+  decoded: unknown,
   now: number,
 ): Readonly<Record<string, string>> | undefined => {
-  const decoded: unknown = JSON.parse(new TextDecoder().decode(plaintext));
-  if (
-    typeof decoded !== "object" ||
-    decoded === null ||
-    !("typ" in decoded) ||
-    decoded.typ !== TRANSIENT_TYP ||
-    !("iat" in decoded) ||
-    typeof decoded.iat !== "number" ||
-    !("exp" in decoded) ||
-    typeof decoded.exp !== "number" ||
-    decoded.exp <= now
-  )
-    return undefined;
-  const state = Object.entries(decoded).filter(([key]) => !STAMPED.has(key));
+  const transient = stamped(decoded, TRANSIENT_TYP, now);
+  if (transient === undefined) return undefined;
+  const state = Object.entries(transient).filter(([key]) => !STAMPED.has(key));
   return state.every(([, value]) => typeof value === "string")
     ? (Object.fromEntries(state) as Readonly<Record<string, string>>)
     : undefined;
@@ -203,7 +173,7 @@ const transientOf = (
 const open = <T>(
   keys: readonly Uint8Array[],
   cookie: string | undefined,
-  live: (plaintext: Uint8Array, now: number) => T | undefined,
+  live: (decoded: unknown, now: number) => T | undefined,
 ): AsyncResult<T | undefined, never> =>
   cookie === undefined
     ? OkAsync(undefined)
@@ -212,7 +182,7 @@ const open = <T>(
           const now = Math.floor(Date.now() / 1000);
           for (const key of keys) {
             const value = await compactDecrypt(cookie, key, ALGORITHMS)
-              .then(({ plaintext }) => live(plaintext, now))
+              .then(({ plaintext }) => live(JSON.parse(new TextDecoder().decode(plaintext)), now))
               .catch(() => undefined);
             if (value !== undefined) return value;
           }
@@ -248,11 +218,7 @@ const codec = (
     seal: ({ principal, sid, scopes }) =>
       // `JSON.stringify` drops an absent `sid`, so nothing spreads it in.
       sealed(sealing, ttlSec, (iat, exp) => ({ typ: TYP, principal, sid, scopes, iat, exp })),
-    unseal: (cookie) =>
-      open(keys, cookie, (plaintext, now) => {
-        const session = sessionOf(plaintext);
-        return session !== undefined && session.exp > now ? session : undefined;
-      }),
+    unseal: (cookie) => open(keys, cookie, sessionOf),
     transient: {
       // The markers last, so state a caller spelled `typ` cannot become one.
       seal: (state) =>
@@ -385,14 +351,7 @@ export const sessionAuthenticator =
               if (session === undefined) return ErrAsync(new Unauthenticated());
               const principal = principalOf(session);
               if (principal === undefined) return ErrAsync(new Unauthenticated());
-              if (vocabulary === undefined) return OkAsync(principal as never);
-              const held = new Set(session.scopes);
-              return OkAsync(
-                granted(
-                  principal,
-                  vocabulary.filter((scope) => held.has(scope)),
-                ) as never,
-              );
+              return OkAsync(grantOf(principal, vocabulary, session.scopes) as never);
             }),
       }),
       cookie: true as const,
