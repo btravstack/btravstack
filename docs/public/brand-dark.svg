@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none" role="img" aria-label="btravstack ecosystem">
+  <path d="M64 41C46 41 31 27 32 12c18-1 32 12 32 29ZM66 35C66 20 77 9 94 10c-1 15-11 25-28 25Z" fill="#77BE86"/>
+  <path d="M64 39C37 33 19 48 21 69c2 22 19 35 36 46l7 7 7-7c17-11 34-24 36-46 2-21-16-36-43-30Z" fill="#E875AB"/>
+  <g color="#15131A" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="m42 62 22-9 22 9-22 9Z" fill="currentColor" stroke="none"/><path d="m42 76 22 9 22-9M42 90l22 9 22-9"/></g>
+</svg>

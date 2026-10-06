@@ -8,8 +8,9 @@ hero:
   text: "A backend framework for Node.js and TypeScript"
   tagline: Write the business code. The framework proves the wiring at compile time, keeps errors as values instead of exceptions, and shuts down the way Kubernetes expects.
   image:
-    src: /logo.png
-    alt: btravstack beetroot mascot on three teal layers
+    light: /logo-light.svg
+    dark: /logo-dark.svg
+    alt: btravstack framework logo
   actions:
     - theme: brand
       text: Get Started

@@ -283,7 +283,7 @@ export default defineConfig({
   },
 
   themeConfig: {
-    logo: { src: "/logo.png", alt: "" },
+    logo: { light: "/logo-light.svg", dark: "/logo-dark.svg", alt: "" },
     nav: [
       // The guide is organised by the four Diátaxis modes; the dropdown links
       // the entry page of each. See the sidebar for the full contents.
@@ -373,7 +373,7 @@ export default defineConfig({
   },
 
   head: [
-    ["link", { rel: "icon", type: "image/png", href: `${BASE}logo.png` }],
+    ["link", { rel: "icon", type: "image/svg+xml", href: `${BASE}favicon.svg` }],
     ["meta", { name: "author", content: "Benoit TRAVERS" }],
     ["meta", { name: "application-name", content: "btravstack" }],
     [
@@ -396,7 +396,7 @@ export default defineConfig({
       {
         property: "og:image:alt",
         content:
-          "btravstack — A backend framework for Node.js and TypeScript, with the beetroot mascot on three teal layers.",
+          "btravstack — Your application, composed. Your process, taken care of. Cyan beetroot framework mark with composed blocks.",
       },
     ],
     ["meta", { name: "twitter:card", content: "summary_large_image" }],
@@ -406,7 +406,7 @@ export default defineConfig({
       {
         name: "twitter:image:alt",
         content:
-          "btravstack — A backend framework for Node.js and TypeScript, with the beetroot mascot on three teal layers.",
+          "btravstack — Your application, composed. Your process, taken care of. Cyan beetroot framework mark with composed blocks.",
       },
     ],
   ],

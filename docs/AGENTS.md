@@ -147,16 +147,14 @@ the old repository.
 ## Visual identity
 
 The framework uses the shared theme's beet-pink accent in
-`.vitepress/theme/custom.css`, with `public/logo.png` in the navigation,
-homepage and favicon. The decorative stack in `.vitepress/theme/hero-glyph.svg`
-is a CSS mask tinted by the same accent; it is hidden on narrow screens and
-does not intercept input.
+`.vitepress/theme/custom.css`. Navigation and homepage choose
+`public/logo-light.svg` or `public/logo-dark.svg` for the surface; the favicon
+is `public/favicon.svg`. The cyan framework mark shares the ecosystem's
+beetroot silhouette and carries composed blocks. `public/logo.png` remains a
+raster fallback for existing links. The decorative stack in
+`.vitepress/theme/hero-glyph.svg` remains a CSS mask tinted by the theme accent.
 
-`public/og-btravstack.png` is the social preview, linked by absolute URLs in
-the Open Graph and Twitter metadata. Its editable source is
-`branding/social-card.html`: open it locally with dependencies installed,
-wait for the Geist and JetBrains Mono fonts and logo to load, then capture
-the viewport at **1200 × 630 CSS pixels with device scale factor 1**. Allow
-local-file access when rendering the SVG mask. Keep the image dimensions and
-alt text in `.vitepress/config.ts` consistent with the exported card. The
-source is a standalone design asset, not a documentation route.
+`public/og-btravstack.png` is the 1200 × 630 social preview, linked by absolute
+URLs in Open Graph and Twitter metadata. Its local editable source is
+`branding/social-card.html`; wait for its fonts and images to load and capture
+at device scale factor 1. Logo provenance is in `branding/README.md`.
