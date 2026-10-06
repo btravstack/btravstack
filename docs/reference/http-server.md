@@ -1814,7 +1814,7 @@ they exist because the transport is proven against a bare listener.
 "Failed" covers only a rejected promise or a synchronous throw out of a
 hand-written `HttpAnswerer.handle`, never a promise this package's own
 answerers hand back: `htmx()`'s own fork failure writes its `500` directly,
-through the same `refuse` every other htmx refusal uses.
+through the same `send` every other htmx refusal uses.
 
 `Result` → HTTP status is deliberately **not** in the table: it is the
 router's `.result()` triage, at the one place that decides what a client sees.

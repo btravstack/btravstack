@@ -21,7 +21,7 @@ import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 import { CookieSchemes, csrfOn } from "./cookie.js";
-import { HttpHandler, type HttpAnswerer } from "./handler.js";
+import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
 import { DEFAULT_BODY_LIMIT, orpc, type OrpcRouterPort, type OrpcOptions } from "./orpc.js";
 import type { AnyUnitModule, UnitsNeedsOf } from "./unit.js";
@@ -83,19 +83,7 @@ export type HttpOptions = OrpcOptions & {
 };
 
 /** What `httpServer` pins on the config it binds — everything but the router's own. */
-type SocketOptions = Pick<
-  HttpOptions,
-  | "port"
-  | "hostname"
-  | "headersTimeoutMs"
-  | "requestTimeoutMs"
-  | "cors"
-  | "bodyLimit"
-  | "compression"
-  | "securityHeaders"
-  | "csrf"
-  | "unit"
->;
+type SocketOptions = Omit<HttpOptions, "prefix" | "plugins">;
 
 /** How long a client may take to send its headers by default: Node's own default, stated rather than inherited. */
 export const DEFAULT_HEADERS_TIMEOUT_MS = 60_000;
@@ -145,19 +133,10 @@ const crossSite = (request: IncomingMessage): boolean => {
   // No metadata and no `Origin` is refused rather than waved through: the
   // request carries a cookie, so something is presenting ambient authority
   // with nothing at all saying where from.
-  const origin = hostOf(request.headers.origin);
+  // `Origin: null` — a sandboxed frame, a cross-origin redirect — and a
+  // malformed value both fail to parse, and neither is the request's own host.
+  const origin = URL.parse(request.headers.origin ?? "")?.host;
   return origin === undefined || origin !== request.headers.host;
-};
-
-// `Origin: null` — a sandboxed frame, a cross-origin redirect — and a malformed
-// value both throw here, and neither is the request's own host.
-const hostOf = (origin: string | undefined): string | undefined => {
-  if (origin === undefined) return undefined;
-  try {
-    return new URL(origin).host;
-  } catch {
-    return undefined;
-  }
 };
 
 /**
@@ -373,15 +352,6 @@ const routesOf = (
 // answerers. The root normalises to `""`, which every path starts with.
 const normalize = (prefix: string): string => prefix.replace(/\/+$/, "");
 
-// The request TARGET, which is origin-form for a browser and absolute-form
-// (`GET http://host/rpc/x`) from some forward proxies — splitting on `?` would
-// leave the second matching no mount and taking the runtime's own 404.
-// `URL.parse` rather than `new URL`: a target no parser accepts must not throw
-// out of the request callback, where the kernel's uncaught handler would read
-// it as the whole application failing.
-const pathOf = (url: string | undefined): string =>
-  URL.parse(url ?? "/", "http://x")?.pathname ?? "/";
-
 /**
  * The answerer a path belongs to: the longest prefix it sits at or under.
  * `/rpc` owns `/rpc` and `/rpc/orders` and NOT `/rpcx`, which is the difference
@@ -391,7 +361,7 @@ const answererFor = (
   routes: readonly HttpAnswerer[],
   url: string | undefined,
 ): HttpAnswerer | undefined => {
-  const path = pathOf(url);
+  const path = pathUnder(url, "/");
   return routes.find(({ prefix }) => {
     const mount = normalize(prefix);
     return path === mount || path.startsWith(`${mount}/`);
@@ -493,8 +463,7 @@ const listen = (
               // to. AFTER the tracking above, so a refusal is an answer the RED
               // observers count and the drain knows about, like every other.
               if (csrf && crossSite(request)) {
-                response.writeHead(403);
-                response.end();
+                send(response, 403);
                 return;
               }
               if (draining) retire(response);

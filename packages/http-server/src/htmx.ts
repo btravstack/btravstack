@@ -1,18 +1,16 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import type { UnitHost } from "@btravstack/core";
-import { Provider, type AnyPort, type Context } from "@btravstack/di";
+import { Provider } from "@btravstack/di";
 import { Err, Ok, P, fromExecutor, type AsyncResult } from "unthrown";
 
-import { principalOf, resolveScheme, type AuthenticatorService, type Resolved } from "./auth.js";
+import { principalOf, resolveScheme, type Resolved } from "./auth.js";
 import { matchPath } from "./fragments.js";
-import { HttpHandler } from "./handler.js";
+import { HttpHandler, send } from "./handler.js";
 import { HtmxFragmentsPort, type FragmentAnswer } from "./htmx-route.js";
 import { HttpConfig } from "./http-config.js";
-import { HttpUnit, type AnyUnitModule } from "./http-runtime.js";
+import { HttpUnit } from "./http-runtime.js";
 import { forLocation, returnTo } from "./redirect.js";
-import { seedOf } from "./unit-scope.js";
-import { unitRecordOf } from "./unit.js";
+import { forkUnit } from "./unit-scope.js";
 
 export type HtmxOptions = {
   /** Where fragments are mounted. Default `/`. */
@@ -48,21 +46,95 @@ export const htmx = (options: HtmxOptions = {}) => {
   const prefix = options.prefix ?? "/";
   return Provider.member(HttpHandler)({
     inject: { fragments: HtmxFragmentsPort, config: HttpConfig, unit: HttpUnit },
-    sync: ({ fragments, config, unit }) => ({
+    sync: ({ fragments, config, unit: units }) => ({
       prefix,
-      handle: (request, response, _signal, host) =>
-        respond(
+      handle: async (request, response, _signal, host) => {
+        const matched = matchRoute(
           fragments.routes,
-          fragments.authenticators,
-          config.bodyLimit,
-          prefix,
-          options.login,
-          request,
-          response,
-          host,
-          unit,
-          fragments.principals,
-        ),
+          request.method,
+          relativePath(request.url, prefix),
+        );
+        // No route claims this request: resolve unwritten so the runtime's own
+        // 404 answers, rather than stealing it from an answerer mounted deeper.
+        if (matched === undefined) return;
+        const { route, params } = matched;
+
+        let principal: unknown;
+        let authenticated: Resolved | undefined;
+        if (route.requirements !== undefined) {
+          // Exhaustive on `resolveScheme`'s Err union: a third case added there
+          // fails this compile rather than silently falling through to 401.
+          const resolved = await resolveScheme(
+            route.requirements,
+            fragments.authenticators,
+            request.headers,
+          ).mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("Unauthenticated"), (): Refusal => refusalOf(options.login, request.url))
+              // Never sent to log in: a caller who IS logged in and lacks the
+              // scope would come straight back to the same 403.
+              .with(P.tag("UnderScoped"), (): Refusal => ({ status: 403 })),
+          );
+          if (resolved.isDefect()) {
+            // oxlint-disable-next-line unthrown/no-throw -- the only way to hand a defect back to the runtime's own 500 fallback; `handle` has no returned-error channel to carry it
+            throw resolved.cause;
+          }
+          if (resolved.isErr()) {
+            refuseAuth(request, response, resolved.error);
+            return;
+          }
+          authenticated = resolved.value;
+          principal = principalOf(route.requirements, resolved.value);
+        }
+
+        let input: unknown = {};
+        if (request.method === "POST") {
+          const read = await readBody(request, config.bodyLimit);
+          if (read.isDefect()) {
+            // oxlint-disable-next-line unthrown/no-throw -- same as above: a genuine stream fault, not a modeled outcome
+            throw read.cause;
+          }
+          if (read.isErr()) {
+            send(response, 413);
+            return;
+          }
+          const decoded = Object.fromEntries(new URLSearchParams(read.value));
+          if (route.input === undefined) {
+            input = decoded;
+          } else {
+            const validated = await route.input["~standard"].validate(decoded);
+            if (validated.issues !== undefined) {
+              send(response, 422);
+              return;
+            }
+            input = validated.value;
+          }
+        }
+
+        // Forked here — after authentication has succeeded and the body has
+        // validated, immediately before the handler — so a refused or malformed
+        // request never opens a scope: the same point in the request's life
+        // oRPC's own `unitScope` forks at, since `principalMiddleware`
+        // short-circuits without calling `next()` on a refusal, and `unitScope`
+        // sits inside it.
+        const unit = await forkUnit(host, units, fragments.principals, authenticated, route.unit);
+        if (unit.isDefect()) {
+          send(response, 500);
+          return;
+        }
+
+        const rendered = await route.handle({ principal, unit: unit.get() }, params, input).get();
+        // Unconditional, not keyed on `route.requirements`: a public route can
+        // still render caller- or resource-scoped HTML (a path parameter alone
+        // is enough), and this package has no way to know a route is safe to
+        // cache. A shared cache heuristically stores a bare 200 GET with no
+        // directive.
+        response.writeHead(200, {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        response.end(rendered.value);
+      },
     }),
   });
 };
@@ -104,7 +176,7 @@ const relativePath = (url: string | undefined, prefix: `/${string}`): string => 
  * it, since it is a bug in the transport rather than an oversized caller.
  *
  * `request` may already be destroyed or ended by the time this subscribes —
- * `respond` reaches here only after `await`ing authentication first for a
+ * `handle` reaches here only after `await`ing authentication first for a
  * marked route, and a client that aborts during that await leaves Node's own
  * `abortIncoming` destroying the stream with no `'error'` listener attached
  * to hear it, which SUPPRESSES the emit entirely (measured against Node's
@@ -139,12 +211,6 @@ const readBody = (request: IncomingMessage, limit: number): AsyncResult<string, 
     request.on("close", () => settle(defect(new Error("the request closed before it ended"))));
   });
 
-// No body on a refusal: it owes the caller nothing beyond the status.
-const refuse = (response: ServerResponse, status: number): void => {
-  response.writeHead(status);
-  response.end();
-};
-
 /** A refused caller's answer: a bare status, or where to send one with no session. */
 type Refusal = { readonly status: 401 | 403 } | { readonly login: string };
 
@@ -161,7 +227,7 @@ const refusalOf = (login: `/${string}` | undefined, url: string | undefined): Re
 
 const refuseAuth = (request: IncomingMessage, response: ServerResponse, refusal: Refusal): void => {
   if ("status" in refusal) {
-    refuse(response, refusal.status);
+    send(response, refusal.status);
     return;
   }
   // htmx follows a redirect inside the XHR and swaps the login page into
@@ -170,119 +236,12 @@ const refuseAuth = (request: IncomingMessage, response: ServerResponse, refusal:
   // refused, and only the browser's own navigation is a redirect. `"true"`
   // exactly: htmx sends that literal on every request it makes.
   if (request.headers["hx-request"] === "true") {
-    response.writeHead(401, { "hx-redirect": refusal.login });
-    response.end();
+    send(response, 401, { "hx-redirect": refusal.login });
     return;
   }
   // 303, not 302: `requires` is an option on `HtmxPost` too, and RFC 9110
   // §15.4.3 leaves a 302's POST-to-GET change a MAY — a strict client would
   // re-POST a form body at the login route. §15.4.4's 303 specifies the
   // retrieval request instead.
-  response.writeHead(303, { location: refusal.login });
-  response.end();
-};
-
-const respond = async (
-  routes: readonly FragmentAnswer[],
-  authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
-  bodyLimit: number,
-  prefix: `/${string}`,
-  login: `/${string}` | undefined,
-  request: IncomingMessage,
-  response: ServerResponse,
-  host: UnitHost<never>,
-  units: Readonly<Record<string, AnyUnitModule>>,
-  principals: Readonly<Record<string, AnyPort>>,
-): Promise<void> => {
-  const matched = matchRoute(routes, request.method, relativePath(request.url, prefix));
-  // No route claims this request: resolve unwritten so the runtime's own 404
-  // answers, rather than stealing it from an answerer mounted deeper.
-  if (matched === undefined) return;
-  const { route, params } = matched;
-
-  let principal: unknown;
-  let authenticated: Resolved | undefined;
-  if (route.requirements !== undefined) {
-    // Exhaustive on `resolveScheme`'s Err union: a third case added there
-    // fails this compile rather than silently falling through to 401.
-    const resolved = await resolveScheme(
-      route.requirements,
-      authenticators,
-      request.headers,
-    ).mapErrCases((matcher) =>
-      matcher
-        .with(P.tag("Unauthenticated"), (): Refusal => refusalOf(login, request.url))
-        // Never sent to log in: a caller who IS logged in and lacks the scope
-        // would come straight back to the same 403.
-        .with(P.tag("UnderScoped"), (): Refusal => ({ status: 403 })),
-    );
-    if (resolved.isDefect()) {
-      // oxlint-disable-next-line unthrown/no-throw -- the only way to hand a defect back to the runtime's own 500 fallback; `handle` has no returned-error channel to carry it
-      throw resolved.cause;
-    }
-    if (resolved.isErr()) {
-      refuseAuth(request, response, resolved.error);
-      return;
-    }
-    authenticated = resolved.value;
-    principal = principalOf(route.requirements, resolved.value);
-  }
-
-  let input: unknown = {};
-  if (request.method === "POST") {
-    const read = await readBody(request, bodyLimit);
-    if (read.isDefect()) {
-      // oxlint-disable-next-line unthrown/no-throw -- same as above: a genuine stream fault, not a modeled outcome
-      throw read.cause;
-    }
-    if (read.isErr()) {
-      refuse(response, 413);
-      return;
-    }
-    const decoded = Object.fromEntries(new URLSearchParams(read.value));
-    if (route.input === undefined) {
-      input = decoded;
-    } else {
-      const validated = await route.input["~standard"].validate(decoded);
-      if (validated.issues !== undefined) {
-        refuse(response, 422);
-        return;
-      }
-      input = validated.value;
-    }
-  }
-
-  // Forked here — after authentication has succeeded and the body has
-  // validated, immediately before the handler — so a refused or malformed
-  // request never opens a scope: the same point in the request's life oRPC's
-  // own `unitScope` forks at, since `principalMiddleware` short-circuits
-  // without calling `next()` on a refusal, and `unitScope` sits inside it.
-  const module = units[authenticated?.scheme ?? "anonymous"] ?? units["anonymous"];
-  // Nothing forked is an empty record rather than an absent one: `UnitFor`
-  // hides every name in that case, so a handler has nothing to read anyway.
-  let unit: Readonly<Record<string, unknown>> = {};
-  if (module !== undefined) {
-    // `as never` on both: see `unit-scope.ts`'s own comment on the identical
-    // pair of casts — `AnyUnitModule` erases the module's Needs to `unknown`,
-    // which `fork`'s `DependencyGate` can never clear on its own, and the seed
-    // is keyed by a runtime scheme name. The check already ran once, at the
-    // `Units`-generic call site that bound this module.
-    const scope = await host.fork(module as never, seedOf(principals, authenticated) as never);
-    if (scope.isDefect()) {
-      refuse(response, 500);
-      return;
-    }
-    unit = unitRecordOf(scope.get() as Context<never>, route.unit);
-  }
-
-  const rendered = await route.handle({ principal, unit }, params, input).get();
-  // Unconditional, not keyed on `route.requirements`: a public route can
-  // still render caller- or resource-scoped HTML (a path parameter alone is
-  // enough), and this package has no way to know a route is safe to cache.
-  // A shared cache heuristically stores a bare 200 GET with no directive.
-  response.writeHead(200, {
-    "content-type": "text/html; charset=utf-8",
-    "cache-control": "no-store",
-  });
-  response.end(rendered.value);
+  send(response, 303, { location: refusal.login });
 };

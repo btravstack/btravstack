@@ -618,7 +618,7 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   fork (below) failing to build never lands here: oRPC catches a middleware
   throw itself and collapses it to its own `INTERNAL_SERVER_ERROR`, before
   `recoverDefect` or even `answer` ever sees it, and `htmx()` writes its own
-  `500` directly, through `refuse`.
+  `500` directly, through `send`.
 - **oRPC decides an `ORPCError`'s wire STATUS from its `code`, and this
   package pins no map for it.** `orpc()` builds its `RPCHandler` with no
   `errorStatusMap`, so `@orpc/server` falls back to its own
@@ -689,7 +689,7 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   answerers fork exactly once dispatch has cleared every guard. A fork's own
   defect answers `500` through the path each answerer already had for any
   other defect: oRPC's own `INTERNAL_SERVER_ERROR` collapse for a throw out of
-  `unitScope`, `refuse(response, 500)` for htmx — never `recoverDefect`, which
+  `unitScope`, `send(response, 500)` for htmx — never `recoverDefect`, which
   sees only a bare answerer's own synchronous throw (above). **The runtime's own
   `404` never forks** — the
   behaviour change from the kernel forking a `StartOptions.unit` module around
@@ -912,14 +912,14 @@ URLSearchParams(...))`, which keeps only the LAST value for a repeated key.**
   there is no cheaper signal than "never store" to key the header on.
 
   **A route always answers `200` on success, and cannot set a header or a
-  status of its own.** `respond`'s success path is unconditional: `HX-Redirect`,
+  status of its own.** The handler's success path is unconditional: `HX-Redirect`,
   `HX-Trigger`, `HX-Retarget` and `HX-Reswap` — htmx's own response mechanics —
   are unreachable, and a route cannot answer its own `404` or `422`; "not
   found" is rendered markup (`orderRowFragment`'s own triage in the how-to),
   never a status. A defensible scope decision, not an oversight.
 
   **A refusal (`401`/`403`/`413`/`422`) carries no body**, where the runtime's
-  own `404`/`500` fallback carries `application/json` — `refuse` owes the
+  own `404`/`500` fallback carries `application/json` — `send` owes the
   caller nothing beyond the status.
 
 ### Unit kinds: `auth.principals` and `auth.units<…>()`
@@ -1030,11 +1030,11 @@ api.OrpcController(contract, "orders")({
   there; and under a plain `defineHttp()` api, where the bindable set carries no
   kinds, `UnitFor` filters out **every** declared name (`ModuleOf` resolves to
   `never`, so `InAll` is `false` for each), which makes the read a compile
-  error rather than a runtime one. It
-  lives in `unit.ts` rather than in either answerer because `unit-scope.ts`
-  and `htmx.ts` fork at their own sites and must agree on the record's shape:
-  two copies of a lazy getter is exactly the drift `seedOf` was extracted to
-  prevent one seam earlier.
+  error rather than a runtime one. Both answerers reach it through one
+  `forkUnit` in `unit-scope.ts` — the kind, the seed, the fork and this
+  record — because they fork at their own sites and must agree on all four:
+  oRPC's `unitScope` `.get()`s it, rethrowing a defect into oRPC's own
+  collapse, and `htmx()` answers a defect `500`.
 - **The record is per PIECE, and a leaf takes its nearest one.** The
   `{ inject, sync }` arm registers one record under `""` and every leaf gets
   it; the array arm builds a `Map<piecePath, record>` off each minted piece's
@@ -1298,12 +1298,17 @@ changes with it.
 
 **Routing is by longest matching prefix, and there is no chain.** `/rpc` owns
 `/rpc` and everything under it; a `/` fragment answerer takes the rest. The
-path is read with `URL.parse(request.url, "http://x")`, not by splitting on
+path is read with `URL.parse(request.url, "http://x")` (`handler.ts`'s
+`pathUnder`, which `oidc()` routes its own mount with too), not by splitting on
 `?`: the request target is origin-form from a browser and **absolute-form**
 (`GET http://host/rpc/x`) from some forward proxies, and the split left the
 second matching no mount at all. `URL.parse` rather than `new URL` because a
 target no parser accepts must not throw out of the request callback, where the
-kernel's `uncaughtException` handler would read it as the application failing. Nesting
+kernel's `uncaughtException` handler would read it as the application failing.
+`htmx()` still matches its ROUTES against the raw target split on `?`, and
+that difference is pinned rather than overlooked: the parser rewrites
+`/\evil.com` to `/`, so the crafted-target spec that proves the `returnTo`
+guard would stop reaching it. Nesting
 is the expected shape rather than a conflict, so ordering never has to be
 decided — which is the whole reason this beat #174's own option (2), where a
 chain of "answer or decline" would have made ordering a property of provider

@@ -1,4 +1,4 @@
-import type { IncomingMessage, OutgoingHttpHeaders, ServerResponse } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import { Observers, observe, type Operation, type Settle } from "@btravstack/core";
@@ -22,7 +22,7 @@ import { ErrAsync, TaggedError, fromPromise, type AsyncResult } from "unthrown";
 
 import { cleartext, cleartextRefused } from "./cleartext.js";
 import { clearCookie, cookieScheme, cookieValue, setCookie } from "./cookie.js";
-import { HttpHandler, type HttpAnswerer } from "./handler.js";
+import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
 import { forLocation, returnTo } from "./redirect.js";
 import {
   SESSION_COOKIE,
@@ -121,23 +121,6 @@ const TRANSIENT_COOKIE = "__Host-oidc";
 // reads this one: every URL built from the request is used for its path and
 // query alone, and the grant's own is built from the REGISTERED redirect URI.
 const RELATIVE = "http://request.invalid";
-
-// No body on any of these: a refusal owes the caller nothing beyond the status,
-// and a redirect's body is never read.
-const send = (
-  response: ServerResponse,
-  status: number,
-  headers: OutgoingHttpHeaders = {},
-): void => {
-  response.writeHead(status, headers);
-  response.end();
-};
-
-/** The request's path relative to the mount. */
-const pathOf = (target: URL, prefix: string): string => {
-  const rest = target.pathname.slice(prefix.replace(/\/+$/, "").length);
-  return rest === "" ? "/" : rest;
-};
 
 /** Everything the routes close over, decided once at boot. */
 type Bound<P> = {
@@ -382,8 +365,10 @@ const discover = (
 const handlerFor =
   <P>(bound: Bound<P>, prefix: `/${string}`, codec: SessionCodecService): HttpAnswerer["handle"] =>
   async (request, response) => {
-    const target = new URL(request.url ?? "/", RELATIVE);
-    const route = `${request.method ?? ""} ${pathOf(target, prefix)}`;
+    const route = `${request.method ?? ""} ${pathUnder(request.url, prefix)}`;
+    // Parsed again for its query, and asserted: a target no parser accepts
+    // reads as the mount itself, which names no route, so none reads this.
+    const target = URL.parse(request.url ?? "/", RELATIVE) as URL;
     if (route === "GET /login") await login(target, response, bound, codec);
     else if (route === "GET /callback") await callback(target, request, response, bound, codec);
     else if (route === "POST /logout") logout(response, bound);
