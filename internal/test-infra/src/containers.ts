@@ -83,7 +83,7 @@ export const ensureDatabase = (postgres: StartedTestContainer, database: string)
 
 /**
  * A libpq URL for one database on the shared server, as
- * `@prisma/adapter-pg` and `prisma migrate deploy` both take it.
+ * the Prisma 8 client and `prisma db migrate` both take it.
  *
  * Defaults to the bootstrap superuser, which is what applies the migrations.
  * The example application connects as {@link ORDERS_APP_USER} instead — pass

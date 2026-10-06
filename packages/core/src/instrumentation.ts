@@ -6,10 +6,10 @@ import { Port } from "@btravstack/di";
  * **Async, and answers `undefined` rather than failing, because the package
  * supplying the instrumentation is an OPTIONAL peer.** A starter cannot know at
  * composition time whether the consumer installed it, so it contributes the
- * ATTEMPT and the collector drops what did not load — which is what lets
- * `@btravstack/prisma` declare engine tracing without making every consumer
- * install `@prisma/instrumentation`. A contributor that wants to say why its
- * load answered nothing logs that itself; it is the one that knows.
+ * ATTEMPT and the collector drops what did not load — which is what lets a
+ * starter declare an instrumentation without making every consumer install the
+ * package that supplies it. A contributor that wants to say why its load
+ * answered nothing logs that itself; it is the one that knows.
  *
  * The instrumentation is `unknown` on purpose. Naming OpenTelemetry's
  * `Instrumentation` would put the vendor in the package every other one peers

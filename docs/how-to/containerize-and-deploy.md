@@ -51,11 +51,11 @@ USER node
 # No entry point: each Deployment names the one it boots.
 
 # The migration image is the BUILD stage, which still has the Prisma CLI and
-# the schema — a `migrate deploy` needs both, and neither belongs in the image
-# that serves traffic.
+# the migrations — `prisma db migrate` needs both, and neither belongs in the
+# image that serves traffic.
 FROM build AS migrate
 WORKDIR /app
-CMD ["npx", "prisma", "migrate", "deploy"]
+CMD ["npx", "prisma", "db", "migrate"]
 ```
 
 ::: tip
@@ -183,9 +183,9 @@ spec:
       restartPolicy: Never
       containers:
         - name: migrate
-          # The `migrate` target, not the runtime one: `migrate deploy` needs
-          # the Prisma CLI and the schema, and neither is in the image that
-          # serves traffic.
+          # The `migrate` target, not the runtime one: `prisma db migrate`
+          # needs the Prisma CLI and the migrations, and neither is in the
+          # image that serves traffic.
           image: registry.example.com/orders:1.4.0-migrate
           env:
             - name: DATABASE_URL
@@ -218,7 +218,7 @@ kubectl apply -f deployment.yaml
 
 ::: warning
 An `initContainer` looks like the tidier answer and is not: it runs **once per
-pod**, so three replicas is three concurrent `migrate deploy` invocations
+pod**, so three replicas is three concurrent `prisma db migrate` invocations
 against one database, and a rolling update runs them again on every new pod.
 Use it only for a single-replica deployment.
 :::

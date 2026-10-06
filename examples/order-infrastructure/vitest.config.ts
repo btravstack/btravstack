@@ -5,7 +5,7 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.spec.ts"],
     setupFiles: ["@unthrown/vitest"],
-    // The shared PostgreSQL server, and `prisma migrate deploy` against the
+    // The shared PostgreSQL server, and `prisma db migrate` against the
     // application's database — once for the whole repository, not once per
     // workspace. Tests separate by tenant, not by database.
     globalSetup: ["./src/global-setup.ts"],
