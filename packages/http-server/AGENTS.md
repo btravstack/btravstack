@@ -98,7 +98,8 @@ PortInstance<…> }`) rather than the class's own type because a class
   guard by `strayRouter` (the same implementation with an undeclared key,
   cast past the types).
 - **`api.OrpcRouter(contract)([piece, …])` — the composing form** (`orpc.ts`, a
-  third overload of `build`, declared **last**) — for
+  third overload of `build`, declared **last**, its gates the types in
+  `orpc-gates.ts`) — for
   `contract: Record<string, RouterContract>`, an **array of pieces** instead of
   `{ inject, sync }`, each an `OrpcController(contract, path)` over one node
   of the contract tree, at any depth — the same shape as
@@ -364,7 +365,7 @@ not cover"` marker, and what the marker names is a procedure path
   path (`` `HtmxFragment:${method} ${path}` ``, `FRAGMENT_PREFIX` in
   `htmx-route.ts`) — two routes on one method and path are one port id, di's
   duplicate-provider defect. `options.requires` is any `Requirements`,
-  intersected with `RequiresGate<R, Vocab>` — `orpc.ts`'s `ScopeGate` with the
+  intersected with `RequiresGate<R, Vocab>` — `orpc-gates.ts`'s `ScopeGate` with the
   contract fold removed, since `requires` is data rather than a tree to walk
   — so a scope the scheme's authenticator cannot grant is refused at the mint
   against the same `"UNGRANTABLE SCOPE — its scheme's authenticator cannot
