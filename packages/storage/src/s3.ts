@@ -19,7 +19,7 @@ import {
 } from "./storage.js";
 
 /** What the graph bound from the environment for the S3 adapter. */
-export class StorageConfig extends Port("StorageConfig")<{
+class StorageConfig extends Port("StorageConfig")<{
   readonly endpoint: string;
   readonly region: string;
   readonly bucket: string;
@@ -36,7 +36,7 @@ export class StorageConfig extends Port("StorageConfig")<{
  * on — every self-hosted store requires it and AWS accepts it, so it is a value
  * that never changes.
  */
-export const s3Schema = Config.object({
+const s3Schema = Config.object({
   endpoint: Config.string("STORAGE_S3_ENDPOINT"),
   region: Config.string("STORAGE_S3_REGION", { default: "us-east-1" }),
   bucket: Config.string("STORAGE_S3_BUCKET"),

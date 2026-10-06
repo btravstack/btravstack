@@ -43,14 +43,14 @@ export class CacheConnectionFailed extends TaggedError("CacheConnectionFailed")<
 const CONNECT_ATTEMPTS = 5;
 
 /** What the graph bound from the environment for the Redis adapter. */
-export class CacheConfig extends Port("CacheConfig")<{ readonly url: string }> {}
+class CacheConfig extends Port("CacheConfig")<{ readonly url: string }> {}
 
 /**
  * `REDIS_URL`, required. No default: a cache quietly pointed at `localhost`
  * would look like it was working. An unset variable is a `ConfigInvalid` naming
  * it, at graph build.
  */
-export const redisSchema = Config.object({ url: Config.string("REDIS_URL") });
+const redisSchema = Config.object({ url: Config.string("REDIS_URL") });
 
 /**
  * The connection, as a port of its own: a resourceful provider hands `release`
@@ -83,7 +83,7 @@ const encoded = (value: unknown): string => {
  * cannot take is a **defect**, not a `CacheUnavailable`: a bug in the caller,
  * and an arm no correct program could reach.
  */
-export const redisCacheBackend = (client: RedisClientType): CacheBackendService => ({
+const redisCacheBackend = (client: RedisClientType): CacheBackendService => ({
   get: (key) =>
     fromPromise(client.get(key), () => new CacheUnavailable({ operation: "get", key })).flatMap(
       (raw): ReturnType<CacheBackendService["get"]> =>

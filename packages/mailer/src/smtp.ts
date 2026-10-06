@@ -19,14 +19,14 @@ const HEALTH_TIMEOUT_MS = 5_000;
 import { MailNotSent, MailerBackend, type MailerService } from "./mailer.js";
 
 /** What the graph bound from the environment for the SMTP adapter. */
-export class MailerConfig extends Port("MailerConfig")<{ readonly url: string }> {}
+class MailerConfig extends Port("MailerConfig")<{ readonly url: string }> {}
 
 /**
  * `SMTP_URL`, required. One URL rather than a host/port/user/password quartet:
  * it is what the transport takes and what a deployment already stores as one
  * secret. An unset variable is a `ConfigInvalid` naming it, at graph build.
  */
-export const smtpSchema = Config.object({ url: Config.string("SMTP_URL") });
+const smtpSchema = Config.object({ url: Config.string("SMTP_URL") });
 
 /**
  * The transport, as a port of its own: a resourceful provider is handed back the
