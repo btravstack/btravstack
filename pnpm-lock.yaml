@@ -339,8 +339,8 @@ catalogs:
       specifier: 6.2.1
       version: 6.2.1
     testcontainers:
-      specifier: 12.1.0
-      version: 12.1.0
+      specifier: 12.2.0
+      version: 12.2.0
     tsdown:
       specifier: 0.23.0
       version: 0.23.0
@@ -1069,7 +1069,7 @@ importers:
         version: 6.8.8
       testcontainers:
         specifier: 'catalog:'
-        version: 12.1.0(supports-color@8.1.1)
+        version: 12.2.0(supports-color@8.1.1)
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -6207,10 +6207,6 @@ packages:
 
   devlop@1.1.0:
     resolution: {integrity: sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA==}
-
-  docker-compose@1.4.2:
-    resolution: {integrity: sha512-rPHigTKGaEHpkUmfd69QgaOp+Os5vGJwG/Ry8lcr8W/382AmI+z/D7qoa9BybKIkqNppaIbs8RYeHSevdQjWww==}
-    engines: {node: '>= 6.0.0'}
 
   docker-compose@1.5.0:
     resolution: {integrity: sha512-O+eD6c63+BJORUWddXA7uAlI6H1KLDPd/aS14k73nXYpFliM48C3xrrKB3sXsR1Fp/rHUZQe7+fJ+QA7+jepyw==}
@@ -12918,10 +12914,6 @@ snapshots:
     dependencies:
       dequal: 2.0.3
 
-  docker-compose@1.4.2:
-    dependencies:
-      yaml: 2.9.0
-
   docker-compose@1.5.0:
     dependencies:
       yaml: 2.9.0
@@ -15045,7 +15037,7 @@ snapshots:
       async-lock: 1.4.1
       byline: 5.0.0
       debug: 4.4.3(supports-color@8.1.1)
-      docker-compose: 1.4.2
+      docker-compose: 1.5.0
       dockerode: 5.0.1(supports-color@8.1.1)
       get-port: 5.1.1
       proper-lockfile: 4.1.2
@@ -15059,6 +15051,7 @@ snapshots:
       - bare-buffer
       - react-native-b4a
       - supports-color
+    optional: true
 
   testcontainers@12.2.0(supports-color@8.1.1):
     dependencies:
