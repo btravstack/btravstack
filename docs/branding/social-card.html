@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1200" />
+    <title>btravstack social card</title>
+    <link rel="stylesheet" href="../node_modules/@btravstack/theme/dist/fonts.css" />
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        background: #080709;
+        color: #f1eff2;
+        font-family: "Geist", sans-serif;
+      }
+      main { position: relative; width: 100%; height: 100%; padding: 76px; isolation: isolate; }
+      main::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(ellipse at 79% 50%, #e0589a15, transparent 50%);
+        z-index: -1;
+      }
+      .glyph {
+        position: absolute;
+        width: 920px;
+        height: 552px;
+        right: -160px;
+        top: 38px;
+        background: #e0589a;
+        mask: url("../.vitepress/theme/hero-glyph.svg") center / contain no-repeat;
+        opacity: 0.13;
+        z-index: -1;
+      }
+      .eyebrow { margin: 0 0 52px; color: #aaa1ab; font-size: 15px; font-weight: 500; letter-spacing: 0.13em; text-transform: uppercase; }
+      h1 { margin: 0; color: #e0589a; font-size: 84px; font-weight: 800; line-height: 1.05; letter-spacing: -0.045em; }
+      .description { margin: 26px 0 0; font-size: 36px; font-weight: 500; line-height: 1.3; letter-spacing: -0.025em; }
+      .details { margin: 30px 0 0; color: #aaa1ab; font-size: 18px; line-height: 1.6; }
+      .logo { position: absolute; width: 410px; height: 410px; object-fit: contain; right: 28px; top: 99px; }
+      footer { position: absolute; left: 76px; right: 76px; bottom: 48px; padding-top: 22px; border-top: 1px solid #ffffff1a; color: #aaa1ab; font-family: "JetBrains Mono", monospace; font-size: 17px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="glyph" aria-hidden="true"></div>
+      <p class="eyebrow">The TypeScript backend framework</p>
+      <h1>btravstack</h1>
+      <p class="description">A foundation for your<br />Node.js applications.</p>
+      <p class="details">Typed composition. Errors as values.<br />Graceful shutdown, built in.</p>
+      <img class="logo" src="../public/logo.png" alt="Beetroot mascot on three teal layers" />
+      <footer>btravstack.github.io/btravstack</footer>
+    </main>
+  </body>
+</html>
