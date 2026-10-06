@@ -32,7 +32,8 @@
     "markdownlint-cli2": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
-    "turbo": "catalog:"
+    "turbo": "catalog:",
+    "vite": "catalog:"
   },
   "engines": {
     "node": ">=22.22"
