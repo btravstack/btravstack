@@ -1,4 +1,4 @@
-import { Ok } from "unthrown";
+import { Err, Ok } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -35,6 +35,32 @@ describe("the unit module", () => {
     // and observed the SAME unit — teardown happens while the unit is still
     // open, which is what gives a teardown log line the request's trace id
     expect(seen).toEqual({ build: expect.any(String), stop: seen.build });
+  });
+
+  it("tells the unit's own teardown that its work settled ok", async ({ unitApp }) => {
+    // GIVEN a serving application whose unit module reads unitOutcome() on stop
+    const { runtime, outcomes } = unitApp;
+
+    // WHEN one unit settles Ok
+    const unit = runtime.submit<string>();
+    unit.settle(Ok("x"));
+    (await unit.result).get();
+
+    // THEN the teardown saw the outcome — the work had settled before it ran
+    expect(outcomes).toEqual(["ok"]);
+  });
+
+  it("tells the unit's own teardown that its work failed", async ({ unitApp }) => {
+    // GIVEN a serving application whose unit module reads unitOutcome() on stop
+    const { runtime, outcomes } = unitApp;
+
+    // WHEN one unit settles Err
+    const unit = runtime.submit<string, "boom">();
+    unit.settle(Err("boom"));
+    await unit.result;
+
+    // THEN the teardown saw the failure, which is what marks a unit's span
+    expect(outcomes).toEqual(["error"]);
   });
 
   it("reports a failing unit teardown as an event and keeps it off the exit report", async ({

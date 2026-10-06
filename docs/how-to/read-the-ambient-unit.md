@@ -26,7 +26,7 @@ continuation, `undefined` outside one.
 
 ```ts
 type UnitRecord = {
-  readonly unitId: string; // minted per unit by the kernel, always unique
+  readonly unitId: string; // a UUID minted per unit by the kernel, always unique
   readonly traceId: string; // the correlation id — `UnitMeta.traceId`, defaulting to `UnitMeta.id`
   readonly tenantId: string | undefined; // `UnitMeta.tenantId`, if the runtime supplied one
   readonly signal: AbortSignal; // the unit's own — the very one the work callback is handed

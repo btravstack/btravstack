@@ -257,9 +257,29 @@ Three rules:
   would render the line that exists to carry a failure as `{}` — the same rule,
   and the same reason, as the kernel's `stderrSink`.
 
+The fields, every one at the top level of one object:
+
+| Field            | Value                                                                       |
+| ---------------- | --------------------------------------------------------------------------- |
+| _the attributes_ | the line's own and its logger's `with` layers, by their own names           |
+| `time`           | ISO 8601, UTC, to the millisecond                                           |
+| `level`          | `trace`, `debug`, `info`, `warn`, `error` or `fatal`, as text               |
+| `message`        | the message                                                                 |
+| `unitId`         | inside a unit only                                                          |
+| `traceId`        | inside a unit only                                                          |
+| `tenantId`       | inside a unit that has one                                                  |
+| `cause`          | when one was passed — `{ name, message, stack, cause }` for an `Error`      |
+| `unserialisable` | only on a fallback line: the names of the fields that could not be rendered |
+
+The shape is this package's own — neither ECS, nor the OpenTelemetry log data
+model, nor pino's (whose numeric `level` and `msg` are what
+[`pinoSink`](#pinosink-logger) writes). The names are the ones above and
+change only with a changeset.
+
 A payload `JSON.stringify` refuses outright — a circular value reaching in
-through `cause` is the plausible one — falls back to the time, level, message
-and `cause: "[unserialisable]"` rather than costing the line.
+through `cause`, or a `BigInt` passed as an attribute — does not cost the
+line: every field that renders is kept, the unit's ids included, and
+`unserialisable` names the ones that did not (`["total"]`).
 
 ## `observability(options?)`
 
@@ -459,13 +479,71 @@ activity: UnitSpanModule }` — and the runtime forks around every unit it
 opens: a span opens when the fork is built and `onStop` ends it on every path
 out, with the ambient record's
 `unitId`, `traceId` and `tenantId` as attributes — a span joins the same
-query the logger's lines answer. The remote W3C **parent is deliberately not
+query the logger's lines answer. A unit the kernel **aborted** ends with an
+error status and the message `aborted`; one whose work **failed** — an `Err`,
+a `Defect` or a throw, read through the kernel's `unitOutcome()` — ends with an
+error status, and so does one whose unit module failed to build — a sibling
+provider that threw tears the span down before the work has settled at all.
+That is the kernel's outcome, not the transport's: an HTTP unit
+that answered a `500` delivered its response and is not marked, while the
+runtime's own `http.request` span is.
+
+**An operation observed inside the unit is that span's child.** A cache read,
+a stored object, a sent mail or a query opens its span under the unit's, and
+stamps the same three ids (`btravstack.unit_id`, `btravstack.trace_id`,
+`btravstack.tenant_id`) read from `currentUnit()` per operation. The observer
+`otel()` contributes still injects nothing: it finds the unit's span by the
+ambient record it was opened for. That holds whatever order the unit module
+lists its imports in: an operation that starts before `UnitSpanModule` has
+built its span — a sibling provider di constructed first — opens its span
+later, back-dated to its start and ended at its own end, under the unit's. One
+that even SETTLES during that provider's construction waits a microtask: di
+builds `UnitSpanModule`, whose one dependency comes from the parent scope, in
+the fork's first level, in the same synchronous pass. Without `UnitSpanModule` bound, an
+operation inside a unit carries the ids and parents on whatever OTel context is
+active. The runtime's own operation — `http.request`, `amqp.delivery`,
+`temporal.attempt` — is observed AROUND the unit rather than inside it, so it
+carries neither the parent nor the ids.
+
+The remote W3C **parent is deliberately not
 reconstructed**: `UnitMeta.traceId` carries the inbound trace id alone, so
 correlation is by attribute, never a parent-child edge the record cannot
 prove. Inbound, `@btravstack/http-server` and `@btravstack/amqp-worker` honour a W3C
 `traceparent` (trace-id field only; it outranks `x-request-id` and
 `messageId` respectively); `@btravstack/temporal-worker` keeps the workflow id as
 its correlation, which is what that transport's retries and replays preserve.
+
+### What `otel()` records, and where it departs from semconv
+
+Every operation a starter reports to `Observers` becomes one span and two
+instruments, named from the operation so nothing had to become uniform to be
+shared:
+
+| Signal    | Name                                | Notes                                                                              |
+| --------- | ----------------------------------- | ---------------------------------------------------------------------------------- |
+| span      | `<component>.<name>`                | `cache.get`, `http.request`, `amqp.delivery`; error status when it settled `error` |
+| span      | `unit`                              | one per unit, from `UnitSpanModule`; the parent of every operation inside it       |
+| counter   | `btravstack.<component>.operations` | the operation's dimensions plus `outcome`                                          |
+| histogram | `btravstack.<component>.duration`   | **seconds**, on the semantic conventions' bucket boundaries (`0.005` … `10`)       |
+
+Durations follow the OpenTelemetry semantic conventions — seconds, with their
+buckets. The rest deliberately does not, and the deviations are these:
+
+- **Span names are `<component>.<name>`**, not semconv's. An HTTP server span
+  is `http.request` rather than `GET`, because one observer names every
+  component's span the same way; the method is the `method` attribute, and the
+  route is absent on purpose (its cardinality).
+- **No span sets a `SpanKind`**, so every one is `INTERNAL` — `unit` included.
+  The kernel's `Tracer` port takes a name and nothing else, and an operation
+  does not say which side of a call it is on; a backend that draws a service
+  map from `SERVER`/`CLIENT` edges draws none from these.
+- **Attributes and metric names are the starters' own** — `method`, `status`,
+  `btravstack.http.duration` — not `http.request.method` or
+  `http.server.request.duration`. Borrowing a semconv name would promise a
+  series shape these do not have.
+
+A deployment that needs the semconv shapes gets them from
+auto-instrumentation, below, which emits them for the libraries it patches.
 
 **Auto-instrumentation cannot live here**:
 `@opentelemetry/auto-instrumentations-node/register` must be preloaded

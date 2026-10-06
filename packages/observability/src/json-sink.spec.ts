@@ -98,8 +98,67 @@ describe("the JSON sink", () => {
       time: "1970-01-01T00:00:00.000Z",
       level: "warn",
       message: "kept",
-      cause: "[unserialisable]",
+      unserialisable: ["cause"],
     });
+  });
+
+  it("names the attribute that could not be serialised, and keeps the rest", ({ written }) => {
+    // GIVEN a BigInt attribute — what `JSON.stringify` refuses — inside a unit
+    jsonSink(written)({
+      level: "info",
+      message: "counted",
+      attributes: { orderId: "o-1", total: 10n as never },
+      cause: undefined,
+      time: 0,
+      unit: { unitId: "u-1", traceId: "t-1" },
+    });
+
+    // WHEN the line is read back
+    // THEN only the culprit is dropped, and it is the one named
+    expect(lineOf(written)).toEqual({
+      orderId: "o-1",
+      time: "1970-01-01T00:00:00.000Z",
+      level: "info",
+      message: "counted",
+      unitId: "u-1",
+      traceId: "t-1",
+      unserialisable: ["total"],
+    });
+  });
+
+  it("tests a field under its own key, so a key-dependent toJSON cannot cost the line", ({
+    written,
+  }) => {
+    // GIVEN a cause whose toJSON refuses only when rendered as `cause`
+    const keyed = {
+      toJSON: (key: string) => {
+        // oxlint-disable-next-line unthrown/no-throw -- the subject under test: a toJSON that throws for one property key only
+        if (key === "cause") throw new Error("not as a cause");
+        return "fine elsewhere";
+      },
+    };
+
+    // WHEN it is written
+    jsonSink(written)({
+      level: "warn",
+      message: "kept",
+      attributes: {},
+      cause: keyed,
+      time: 0,
+      unit: { unitId: "u-1", traceId: "t-1" },
+    });
+
+    // THEN the line is written with the culprit named, rather than lost
+    expect(written.chunks().map((chunk) => JSON.parse(chunk) as unknown)).toEqual([
+      {
+        time: "1970-01-01T00:00:00.000Z",
+        level: "warn",
+        message: "kept",
+        unitId: "u-1",
+        traceId: "t-1",
+        unserialisable: ["cause"],
+      },
+    ]);
   });
 
   it("defaults to stdout, so a process that configures nothing still logs", () => {

@@ -48,8 +48,9 @@ stale the next time a case is added (#192):
   tenant a runtime supplied.
 - `json-sink.spec.ts` — the line shape and the trailing newline, an
   `Error`'s `message`/`stack`/`cause` chain surviving, a caller's attribute not
-  rewriting `level`/`message`/`traceId`, a circular payload falling back to
-  `[unserialisable]`, and the default stream being `process.stdout` (captured
+  rewriting `level`/`message`/`traceId`, a circular cause, a BigInt
+  attribute and a `toJSON` that refuses only under its own key each dropped and named in `unserialisable` while the rest of the
+  line — the unit's ids included — survives, and the default stream being `process.stdout` (captured
   with a spy — read `mock.calls` **before** `mockRestore`, which clears them).
 - `observability.spec.ts` — the level bound from the environment and
   filtering the graph's own logger, `ConfigInvalid` for a level outside the
@@ -61,8 +62,11 @@ stale the next time a case is added (#192):
   failed operation written as a line, a successful one written nowhere (that is
   what the metric is for), and the cause travelling with it.
 - `otel.spec.ts` — the SDK half, behind the subpath: a span per unit flushed on
-  the scope's close, an unattributed span outside a unit, OTel's own meter
-  handed back ready to count, and an instrumentation a starter contributed
+  the scope's close, a failed unit's span, an aborted one's and one whose
+  fork failed to build marked as errors, an operation inside a unit parented on that unit's span and carrying
+  its ids, and parented on it too when a sibling provider built first started
+  it — or started and settled it inside its own sync factory — an unattributed span outside a unit, a duration recorded in
+  seconds on seconds buckets, OTel's own meter handed back ready to count, and an instrumentation a starter contributed
   being registered.
 - `pino.spec.ts` — fields pino can index, the `err` serialiser, and every
   level mapping onto pino's own numeric severity (`10`…`60`), so no level of
@@ -145,7 +149,10 @@ with an operation are here, and they are the reason a starter holds no `Logger`,
 - **`otel()` contributes the SPAN and the INSTRUMENTS**:
   `component.name` as the span, `btravstack.<component>.operations` and
   `btravstack.<component>.duration` as the pair, both minted per component and
-  cached. Names derived from the operation, so nothing had to become uniform to
+  cached. The duration is in **seconds** on semconv's bucket boundaries —
+  passed as `advice`, since the SDK's default buckets were drawn for
+  milliseconds; the other semconv deviations are stated on the reference
+  page. Names derived from the operation, so nothing had to become uniform to
   be shared.
 
 **`otel()`'s member injects nothing, and that is load-bearing.** Depending on
@@ -153,3 +160,23 @@ with an operation are here, and they are the reason a starter holds no `Logger`,
 a starter's contribution may read `Observers`, and the member closes the loop
 back onto the SDK. The examples' integration tests caught it as
 `[di] dependency cycle among ports: OrderDatabase, HealthChecks, Instrumentations, …`.
+
+So the member PARENTS an operation without injecting `UnitSpan` either:
+`UnitSpanModule` files its span in a module-private `WeakMap` keyed by the
+ambient record it was opened for, and the member reads `currentUnit()` per
+operation and looks it up. An operation that starts before the span is
+filed — a sibling provider di built first, since a module's providers at one
+level construct in import order — opens its span later instead, back-dated
+with `startTime` and ended at its own end time, so the edge does not depend on
+the order an application lists its imports in. At the settle if the unit span
+exists by then; otherwise a microtask later, which is sound because
+`UnitSpanModule`'s only dependency is the PARENT's `Tracer`, so di builds it
+in the fork's first level, in the one synchronous pass every earlier sibling
+constructs in — a finisher called synchronously inside a sibling's factory
+cannot outrun it. Unbound, the microtask opens the span with no unit parent
+rather than never. Nothing is lost by opening late: the member
+never makes an operation span active, so it parents nothing. That is an adapter reading the record (thesis #2's
+legitimate reader), not a service riding it — the record itself is unchanged.
+Making the unit span OTel's ACTIVE context was the alternative and cannot be
+done from a provider: activating a context means wrapping the work in
+`context.with(...)`, and a unit module only builds a service.

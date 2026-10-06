@@ -212,10 +212,10 @@ framework that owns the unit lifecycle gets them for free — and an observer is
 what turns a report into a measurement. Reporting always happens; **collection
 happens when `otel()` is composed**, and not before:
 
-| Instrument                 | Kind           | Dimensions                                |
-| -------------------------- | -------------- | ----------------------------------------- |
-| `btravstack.http.requests` | counter        | `method`, `answerer`, `status`, `aborted` |
-| `btravstack.http.duration` | histogram (ms) | the same four                             |
+| Instrument                   | Kind          | Dimensions                                |
+| ---------------------------- | ------------- | ----------------------------------------- |
+| `btravstack.http.operations` | counter       | `method`, `answerer`, `status`, `aborted` |
+| `btravstack.http.duration`   | histogram (s) | the same four                             |
 
 `instrumented` is gone. Every unit is handed to `Observers`, and this module
 contributes a no-op member of its own — so a graph composing no observability

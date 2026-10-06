@@ -32,8 +32,8 @@ export { RuntimePort, RuntimeStartFailed, releasedBy, traceIdOfTraceparent } fro
 export type { RunUnit, Runtime, RuntimeHost, RuntimeInfoOf, Serving, UnitHost } from "./runtime.js";
 export { start } from "./start.js";
 export type { ExitReport, RunningApp, StartGate, StartOptions, TeardownError } from "./start.js";
-export { currentUnit } from "./units.js";
-export type { UnitMeta, UnitRecord, UnitRegistry, UnitWork } from "./units.js";
+export { currentUnit, unitOutcome } from "./units.js";
+export type { UnitMeta, UnitOutcome, UnitRecord, UnitRegistry, UnitWork } from "./units.js";
 export { dispatchUnit, withUnitRecord } from "./unit-record.js";
 export type {
   AnyUnitModule,

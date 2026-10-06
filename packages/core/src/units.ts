@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { randomUUID } from "node:crypto";
 
 import { OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
@@ -25,6 +26,29 @@ export const runWithUnit = <T>(record: UnitRecord, fn: () => T): T => storage.ru
 
 export const currentUnit = (): UnitRecord | undefined => storage.getStore();
 
+/** How a unit's work settled: `ok`, or `error` for an `Err`, a `Defect` and a throw alike. */
+export type UnitOutcome = "ok" | "error";
+
+const outcomes = new WeakMap<UnitRecord, UnitOutcome>();
+
+export const settleUnit = (record: UnitRecord, outcome: UnitOutcome): void => {
+  outcomes.set(record, outcome);
+};
+
+/**
+ * How the current unit's work settled, for the code that runs AFTER it: a
+ * unit module's `onStop`, which tears down inside the record but is handed
+ * only its own service. `undefined` outside a unit and while the work is still
+ * running. Whether the unit was aborted is the record's own `signal`.
+ *
+ * It is the kernel's outcome, not the transport's: an HTTP unit that answered
+ * a `500` still settled `ok`, since the kernel never maps a status.
+ */
+export const unitOutcome = (): UnitOutcome | undefined => {
+  const unit = currentUnit();
+  return unit === undefined ? undefined : outcomes.get(unit);
+};
+
 /**
  * What a runtime says about one piece of work as it submits it. `kind` is the
  * category (`"http"`, `"tick"`, `"job"`); `id` identifies **this** unit.
@@ -36,7 +60,8 @@ export const currentUnit = (): UnitRecord | undefined => storage.getStore();
  * silently defeats the ambient record. A route template is a `kind`.
  *
  * The kernel cannot check this, so uniqueness is the runtime's to guarantee.
- * What it does guarantee is {@link UnitRecord}'s `unitId`, minted per unit;
+ * What it does guarantee is {@link UnitRecord}'s `unitId`, a UUID minted per
+ * unit, so no two units share one across replicas either;
  * `traceId` is the CORRELATION id, which is why it is the one a runtime may
  * supply — it carries an id from outside the process.
  */
@@ -62,13 +87,6 @@ export type UnitRegistry = {
   readonly awaitIdle: () => AsyncResult<void, never>;
 };
 
-let counter = 0;
-
-const nextId = (): string => {
-  counter += 1;
-  return `u${counter}`;
-};
-
 export const createUnitRegistry = (): UnitRegistry => {
   const open = new Set<AbortController>();
   const idleWaiters = new Set<() => void>();
@@ -86,7 +104,7 @@ export const createUnitRegistry = (): UnitRegistry => {
       open.add(controller);
 
       const record: UnitRecord = {
-        unitId: nextId(),
+        unitId: randomUUID(),
         traceId: meta.traceId ?? meta.id,
         tenantId: meta.tenantId,
         // The very signal `work` is handed below: one abort, two ways to reach

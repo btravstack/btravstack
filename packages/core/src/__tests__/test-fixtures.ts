@@ -18,7 +18,7 @@ import type { Operation, Settle, Settled } from "../observation.js";
 import { runMain } from "../run-main.js";
 import type { Runtime } from "../runtime.js";
 import { start, type RunningApp } from "../start.js";
-import { currentUnit } from "../units.js";
+import { currentUnit, unitOutcome, type UnitOutcome } from "../units.js";
 
 class Parent extends Port("UnitFixtureParent")<{ readonly mark: () => void }> {}
 class Span extends Port("UnitFixtureSpan")<{ readonly openedIn: string | undefined }> {}
@@ -90,6 +90,8 @@ export type UnitApp = {
   readonly counts: { parentBuilds: number; spanBuilds: number; spanStops: number };
   /** What `currentUnit()` answered inside the unit provider's build and stop. */
   readonly seen: { build: string | undefined; stop: string | undefined };
+  /** What `unitOutcome()` answered inside each unit's onStop, in order. */
+  readonly outcomes: readonly (UnitOutcome | undefined)[];
   /** Every kernel event the application emitted, in order. */
   readonly events: readonly KernelEvent[];
   /** Holds every subsequent unit teardown open until the returned `release` is called. */
@@ -230,6 +232,7 @@ export const it = test.extend<{
       build: undefined,
       stop: undefined,
     };
+    const outcomes: (UnitOutcome | undefined)[] = [];
     const events: KernelEvent[] = [];
     let teardown: () => Promise<void> | undefined = () => undefined;
     const holdTeardown = (): { readonly release: () => void } => {
@@ -259,6 +262,7 @@ export const it = test.extend<{
           onStop: () => {
             counts.spanStops += 1;
             seen.stop = currentUnit()?.unitId;
+            outcomes.push(unitOutcome());
             return teardown();
           },
         }),
@@ -334,6 +338,7 @@ export const it = test.extend<{
       app,
       counts,
       seen,
+      outcomes,
       events,
       holdTeardown,
       failTeardown,
