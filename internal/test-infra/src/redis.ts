@@ -14,15 +14,11 @@ declare module "vitest" {
  * One URL, because that is the whole of what `redisCache()` reads out of the
  * environment.
  */
-export default async ({ provide }: TestProject): Promise<() => void> => {
+export default async ({ provide }: TestProject): Promise<void> => {
   const redis = await sharedRedis();
 
   provide(
     "__TESTCONTAINERS_REDIS_URL__",
     `redis://${redis.getHost()}:${redis.getMappedPort(6379)}`,
   );
-
-  // Nothing to tear down: the container is reused, so stopping it here would
-  // pull it out from under whichever workspace's run is still going.
-  return () => {};
 };

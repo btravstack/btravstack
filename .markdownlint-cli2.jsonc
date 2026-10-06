@@ -15,8 +15,6 @@
   // covered by the file that already decides what is not part of the repo.
   "gitignore": true,
   "config": {
-    "default": true,
-
     // oxfmt owns markdown width — its `**/*.md` override sets `printWidth: 80`.
     // Two tools arguing over one property is how a gate starts fighting itself.
     "MD013": false,

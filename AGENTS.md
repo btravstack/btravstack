@@ -89,8 +89,8 @@ holds two more, neither of them either: `test-infra` owns the containers the
 whole gate shares, and `consumer-check` answers from OUTSIDE the workspace a
 question two gates here answer from inside — it packs every published package,
 installs the tarballs into a throwaway project and compiles a file that
-re-exports what a library consumer exports, under `typescript-consumer` and
-`declaration: true`. Both are documented in their own READMEs.
+re-exports what a library consumer exports, under the TypeScript a consumer
+realistically has and `declaration: true`. Both are documented in their own READMEs.
 
 **That second one exists because `examples/di-hexagonal`'s emit guard covers
 only a di port**, and the three example deployments sit on

@@ -204,3 +204,32 @@ export const headlessLogin = async (options: {
 
   return followRedirects(new URL(verifier), ORY_REDIRECT_URI);
 };
+
+const pairsOf = (response: Response): string[] =>
+  response.headers.getSetCookie().map((set) => set.split(";")[0] ?? "");
+
+/**
+ * A browser's whole login against a served application: its `/auth/login`,
+ * {@link headlessLogin} through the provider, and its `/auth/callback` with the
+ * transient cookies the first hop set. Answers the `__Host-session=…` pair the
+ * callback sealed, ready for a `cookie` header.
+ */
+export const browserLogin = async (origin: string, user: OryUser): Promise<string> => {
+  const started = await fetch(`${origin}/auth/login`, { redirect: "manual" });
+  const location =
+    started.headers.get("location") ??
+    fail(`${origin}/auth/login answered ${started.status} and no Location`);
+
+  // Only the QUERY travels: the provider answers a callback on the port it has
+  // registered, and the app may bind another.
+  const back = await headlessLogin({ authorizationUrl: new URL(location), user });
+  const finished = await fetch(`${origin}/auth/callback${back.search}`, {
+    redirect: "manual",
+    headers: { cookie: pairsOf(started).join("; ") },
+  });
+
+  return (
+    pairsOf(finished).find((pair) => pair.startsWith("__Host-session=")) ??
+    fail(`${origin}/auth/callback answered ${finished.status} and sealed no session`)
+  );
+};

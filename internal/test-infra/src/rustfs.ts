@@ -14,7 +14,7 @@ declare module "vitest" {
 }
 
 /** The four values `s3Storage()` reads out of the environment, minus the region, which has a default. */
-export default async ({ provide }: TestProject): Promise<() => void> => {
+export default async ({ provide }: TestProject): Promise<void> => {
   const rustfs = await sharedRustFs();
 
   provide(
@@ -24,8 +24,4 @@ export default async ({ provide }: TestProject): Promise<() => void> => {
   provide("__TESTCONTAINERS_S3_BUCKET__", RUSTFS_BUCKET);
   provide("__TESTCONTAINERS_S3_ACCESS_KEY__", RUSTFS_ACCESS_KEY);
   provide("__TESTCONTAINERS_S3_SECRET_KEY__", RUSTFS_SECRET_KEY);
-
-  // Nothing to tear down: the container is reused, so stopping it here would
-  // pull it out from under whichever workspace's run is still going.
-  return () => {};
 };

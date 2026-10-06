@@ -125,15 +125,15 @@ break.
 
 ## Entry points
 
-| Import                                       | What it is                                                                                                                                                                                             |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@btravstack/internal-test-infra/rabbitmq`   | a vitest `globalSetup` providing `@amqp-contract/testing`'s inject keys                                                                                                                                |
-| `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@temporal-contract/testing`'s                                                                                                                                        |
-| `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal` / `sharedRedis` / `sharedMailpit` / `sharedRustFs`, plus `postgresUrl`, `provisionApplicationRole` and the credentials each one is started with |
-| `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                                                                                                                                                     |
-| `@btravstack/internal-test-infra/ory`        | `sharedOry` / `provisionOry` / `createIdentity` / `registerRedirectUri`, the issuer and client constants, and `ORY_USERS`                                                                              |
-| `@btravstack/internal-test-infra/ory-login`  | `oryClient()`, `headlessLogin({ authorizationUrl, user })` and `followRedirects(from, until)`                                                                                                          |
-| `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                                                                                                                                                  |
+| Import                                       | What it is                                                                                                                                                                                                              |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@btravstack/internal-test-infra/rabbitmq`   | a vitest `globalSetup` providing `@amqp-contract/testing`'s inject keys                                                                                                                                                 |
+| `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@temporal-contract/testing`'s                                                                                                                                                         |
+| `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal` / `sharedRedis` / `sharedMailpit` / `sharedRustFs`, plus `postgresUrl`, `provisionApplicationRole`, `migrateOrders` and the credentials each one is started with |
+| `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                                                                                                                                                                      |
+| `@btravstack/internal-test-infra/ory`        | `sharedOry` / `provisionOry` / `createIdentity` / `registerRedirectUri`, the issuer and client constants, and `ORY_USERS`                                                                                               |
+| `@btravstack/internal-test-infra/ory-login`  | `oryClient()`, `headlessLogin({ authorizationUrl, user })`, `browserLogin(origin, user)` and `followRedirects(from, until)`                                                                                             |
+| `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                                                                                                                                                                   |
 
 ## The dev issuer
 
@@ -398,9 +398,9 @@ needs `order-api` running too, since the login route and the callback it
 walks are the application's own.
 
 **`pnpm dev:login`** (`src/dev-login.ts`) is `dev:token`'s browser sibling: it
-drives the same walk the specs do — the login route, the provider's own
-flow (which `headlessLogin` drives), the callback — against the running
-`order-api`, and prints
+drives the walk `order-api`'s specs do, `browserLogin`: the login route, the
+provider's own flow (which `headlessLogin` drives), the callback — against the
+running `order-api`, and prints
 the `__Host-session` cookie header on stdout. It exists because the gate's
 Kratos has no login UI, on purpose (`config/kratos.yml`'s `ui_url`s are
 deliberately dead, above), so a real browser cannot complete the round trip on

@@ -228,7 +228,6 @@ export default defineConfig({
   title: "btravstack",
   description: SITE_DESCRIPTION,
   base: BASE,
-  lang: "en-US",
   cleanUrls: true,
 
   // `docs/superpowers/` holds gitignored working files (plans, specs). VitePress
@@ -262,10 +261,9 @@ export default defineConfig({
     pageData.frontmatter ??= {};
     pageData.frontmatter.head ??= [];
 
-    // The /api/ pages (except the hand-written overview) are TypeDoc output copied
-    // in at build time — they have no source file in the repo, so "Edit this page"
-    // would 404. docs/api/index.md is the one committed file there.
-    if (pageData.relativePath.startsWith("api/") && pageData.relativePath !== "api/index.md") {
+    // The /api/ pages are TypeDoc output generated at build time — they have no
+    // source file in the repo, so "Edit this page" would 404.
+    if (pageData.relativePath.startsWith("api/")) {
       pageData.frontmatter.editLink = false;
     }
 
@@ -375,7 +373,6 @@ export default defineConfig({
 
   head: [
     ["meta", { name: "author", content: "Benoit TRAVERS" }],
-    ["meta", { name: "robots", content: "index, follow" }],
     ["meta", { name: "application-name", content: "btravstack" }],
     [
       "meta",

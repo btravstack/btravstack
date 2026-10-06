@@ -1,15 +1,8 @@
-import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 
 import {
-  ORDERS_APP_PASSWORD,
-  ORDERS_APP_USER,
-  ORDERS_DATABASE,
-  postgresUrl,
-  provisionApplicationRole,
+  migrateOrders,
   sharedPostgres,
   sharedRabbitMq,
   RUSTFS_ACCESS_KEY,
@@ -30,23 +23,12 @@ import {
   sharedOry,
 } from "./ory.js";
 
-const run = promisify(execFile);
 /**
  * Stays a `URL` all the way to `writeFile`, which accepts one: round-tripping it
  * through a path string works on POSIX and is wrong in general — a Windows path,
  * or a checkout under a directory with a space or a `#`, is mis-parsed.
  */
 const envFile = new URL("../../../.env.dev", import.meta.url);
-/**
- * The one workspace this script knows by path: it owns the schema and the
- * `prisma` CLI. The same `prisma db migrate` under the same lock as its own
- * `globalSetup`, because the dev loop and the gate share one database and
- * neither may assume it ran first.
- */
-const infrastructure = fileURLToPath(
-  new URL("../../../examples/order-infrastructure", import.meta.url),
-);
-
 const sessionKeysFile = new URL("../../../.cache/dev-session/keys", import.meta.url);
 
 /**
@@ -82,7 +64,6 @@ const devSessionKeys = (): Promise<string> =>
  */
 const main = async (): Promise<void> => {
   const postgres = await sharedPostgres();
-  const ownerUrl = postgresUrl(postgres, ORDERS_DATABASE);
 
   const { publicJwk } = await devKeyPair();
   const [rabbitmq, temporal, redis, mailpit, rustfs, jwks, , sessionKeys] = await Promise.all([
@@ -96,20 +77,7 @@ const main = async (): Promise<void> => {
     devSessionKeys(),
   ]);
 
-  await withLock("orders-migrate", () =>
-    run("pnpm", ["exec", "prisma", "db", "migrate"], {
-      cwd: infrastructure,
-      env: { ...process.env, DATABASE_URL: ownerUrl },
-    }),
-  );
-
-  // The owner migrates; the examples connect as the application role, which is
-  // a non-superuser so that row security applies to it.
-  await provisionApplicationRole(postgres);
-  const databaseUrl = postgresUrl(postgres, ORDERS_DATABASE, {
-    user: ORDERS_APP_USER,
-    password: ORDERS_APP_PASSWORD,
-  });
+  const databaseUrl = await migrateOrders(postgres);
 
   const env = [
     "# Written by `pnpm dev` (internal/test-infra's dev:env). Not committed:",

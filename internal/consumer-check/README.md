@@ -20,8 +20,10 @@ CI job rather than asking another repository for a new one.
    not answer it either.
 
    `src/consumer.ts` is that file, compiled under `declaration: true`,
-   `moduleResolution: node16`, and `typescript-consumer` — the TypeScript
-   version a consumer realistically holds, not the repository's own.
+   `moduleResolution: node16`, and TypeScript 5.9.3 — the version a consumer
+   realistically holds, not the repository's own — installed into the
+   throwaway project beside the tarballs, so this workspace depends on no
+   copy of it.
 
 2. **The tarballs are well formed.** `publint` on each, plus
    `@arethetypeswrong/cli --pack`, which is what caught that the

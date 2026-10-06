@@ -13,8 +13,7 @@
 // copy of a slugify can disagree with the renderer that ships. markdownlint's
 // MD051 is that copy — measured against this site, it misses the real dead
 // anchor (correct under GitHub's rules) and flags working ones.
-import { readFileSync } from "node:fs";
-import { globSync } from "node:fs";
+import { globSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,21 +29,18 @@ const DIST = fileURLToPath(new URL("../.vitepress/dist", import.meta.url));
  * the failure mode this whole script exists to remove, so the base is read
  * from the config rather than assumed.
  */
-const BASE = /base:\s*BASE/.test(
-  readFileSync(fileURLToPath(new URL("../.vitepress/config.ts", import.meta.url)), "utf8"),
-)
-  ? (/const BASE = "([^"]+)"/.exec(
-      readFileSync(fileURLToPath(new URL("../.vitepress/config.ts", import.meta.url)), "utf8"),
-    )?.[1] ?? "/")
-  : "/";
+const BASE =
+  /const BASE = "([^"]+)"/.exec(
+    readFileSync(fileURLToPath(new URL("../.vitepress/config.ts", import.meta.url)), "utf8"),
+  )?.[1] ?? "/";
 
 /** Every `id="…"` the page carries — what a fragment may name. */
 const idsOf = (html: string): ReadonlySet<string> =>
   new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]!));
 
-/** Every `href` carrying a fragment, with the page it sits on. */
-const fragmentsOf = (html: string): readonly { readonly href: string }[] =>
-  [...html.matchAll(/\shref="([^"]*#[^"]*)"/g)].map((match) => ({ href: match[1]! }));
+/** Every `href` on the page carrying a fragment. */
+const fragmentsOf = (html: string): readonly string[] =>
+  [...html.matchAll(/\shref="([^"]*#[^"]*)"/g)].map((match) => match[1]!);
 
 const pages = globSync(join(DIST, "**/*.html"));
 const idsByFile = new Map<string, ReadonlySet<string>>();
@@ -64,7 +60,7 @@ let skipped = 0;
 for (const page of pages) {
   const html = readFileSync(page, "utf8");
   idsByFile.set(page, idsOf(html));
-  for (const { href } of fragmentsOf(html)) {
+  for (const href of fragmentsOf(html)) {
     // An external link's fragment belongs to somebody else's page.
     if (/^[a-z]+:/i.test(href)) continue;
     const [path, fragment] = href.split("#");

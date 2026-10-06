@@ -15,7 +15,6 @@
     "@types/node": "catalog:",
     "publint": "catalog:",
     "tsx": "catalog:",
-    "typescript": "catalog:",
-    "typescript-consumer": "catalog:"
+    "typescript": "catalog:"
   }
 }
