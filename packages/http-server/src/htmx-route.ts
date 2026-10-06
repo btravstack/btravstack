@@ -12,7 +12,8 @@ import type { AsyncResult } from "unthrown";
 import { schemeDeps, schemeServices, type AuthenticatorService } from "./auth.js";
 import type { FragmentInputSchema, ParamsOf } from "./fragments.js";
 import type { Html } from "./html.js";
-import type { RequiresGate, SchemePortsOf } from "./orpc.js";
+import type { RequiresGate } from "./orpc-gates.js";
+import type { SchemePortsOf } from "./orpc.js";
 import type { Principal, SchemesOf } from "./principal.js";
 import type { KindOf, UnitFor } from "./unit.js";
 

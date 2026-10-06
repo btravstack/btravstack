@@ -11,6 +11,7 @@ class B extends Port("BB")<{ readonly v: string }> {}
 class C extends Port("BC")<{ readonly v: string }> {}
 
 test("providers construct in dependency order, not declaration order", async () => {
+  // GIVEN
   const order: string[] = [];
   const mod = Module("Ordered")({
     provides: [
@@ -39,12 +40,15 @@ test("providers construct in dependency order, not declaration order", async () 
     exports: [C],
   });
 
+  // WHEN
   const built = await Module.build(mod);
+  // THEN
   expect(order).toEqual(["A", "B", "C"]);
   expect(built).toBeOk();
 });
 
 test("a port shared by two branches constructs exactly once", async () => {
+  // GIVEN
   const made = vi.fn(() => ({ v: "A" }));
   const shared = Module("Shared")({
     provides: [Provider(A)({ inject: {}, sync: made })],
@@ -62,11 +66,14 @@ test("a port shared by two branches constructs exactly once", async () => {
   });
   const app = Module("App")({ imports: [left, right], exports: [left, right] });
 
+  // WHEN
   await Module.build(app);
+  // THEN
   expect(made).toHaveBeenCalledTimes(1);
 });
 
 test("a cycle within one module is a defect, reported before any factory runs", async () => {
+  // GIVEN
   const ran = vi.fn();
   const cyclic = Module("Cyclic")({
     provides: [
@@ -75,23 +82,29 @@ test("a cycle within one module is a defect, reported before any factory runs", 
     ],
     exports: [A],
   });
+  // WHEN
   const built = await Module.build(cyclic);
+  // THEN
   expect(built).toBeDefect();
   expect(ran).not.toHaveBeenCalled();
 });
 
 test("two distinct providers for one port are a defect, before any factory runs", async () => {
+  // GIVEN
   const ran = vi.fn(() => ({ v: "A" }));
   const dup = Module("Dup")({
     provides: [Provider(A)({ inject: {}, sync: ran }), Provider(A)({ inject: {}, sync: ran })],
     exports: [A],
   });
+  // WHEN
   const built = await Module.build(dup);
+  // THEN
   expect(built).toBeDefect();
   expect(ran).not.toHaveBeenCalled();
 });
 
 test("the error from a parallel level is the first in declaration order", async () => {
+  // GIVEN
   const slowFailure = Module("Slow")({
     provides: [
       Provider(A)({
@@ -102,7 +115,9 @@ test("the error from a parallel level is the first in declaration order", async 
     ],
     exports: [A, B],
   });
+  // WHEN
   const built = await Module.build(slowFailure);
+  // THEN
   // B lands first in wall-clock terms; A wins because it is declared first.
   expect(built).toBeErrTagged("AError");
 });
@@ -111,6 +126,7 @@ test(
   "two providers at the same level construct concurrently, not one after another",
   { timeout: 5000 },
   async () => {
+    // GIVEN
     // The one guarantee in the design doc's "Independent providers construct
     // in parallel" section with no repo coverage until now. Written as a
     // deadlock rather than with timers, so it cannot pass or fail on timing:
@@ -149,7 +165,9 @@ test(
       exports: [A, B],
     });
 
+    // WHEN
     const built = await Module.build(concurrent);
+    // THEN
     expect(built).toBeOk();
     // Both genuinely ran; asserted as a set, since *which* order two
     // concurrent factories announce themselves in is not what this test is
@@ -160,6 +178,7 @@ test(
 );
 
 test("a dependency no provider supplies is a defect, before any factory runs", async () => {
+  // GIVEN
   const sibling = vi.fn(() => ({ v: "A" }));
   const dependent = vi.fn(() => ({ v: "C" }));
   const orphan = Module("Orphan")({
@@ -174,12 +193,14 @@ test("a dependency no provider supplies is a defect, before any factory runs", a
     exports: [A, C],
   });
 
+  // WHEN
   // `Module.build`'s type-level gate catches this first — `orphan`'s `Needs`
   // is `B`, so the honest call is an arity error. Cast past it to reach the
   // runtime path a JavaScript consumer, or a `Needs` laundered through a
   // widening annotation, actually takes.
   const built = await Module.build<never, never, never>(orphan as never);
 
+  // THEN
   expect(built).toBeDefect();
   // The point of moving the check into `plan`: `A` is perfectly constructible
   // and sits in an earlier level than `C`, so before the fix it had already
@@ -195,11 +216,14 @@ test("a dependency no provider supplies is a defect, before any factory runs", a
 });
 
 test("a built context resolves an exported port", async () => {
+  // GIVEN
   const mod = Module("Exported")({
     provides: [Provider(A)({ inject: {}, value: { v: "A" } })],
     exports: [A],
   });
+  // WHEN
   const built = await Module.build(mod);
+  // THEN
   expect(built.isOk() && built.value.get(A).v).toBe("A");
 });
 

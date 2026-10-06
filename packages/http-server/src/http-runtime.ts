@@ -20,7 +20,7 @@ import {
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
-import { CookieSchemes, csrfOn } from "./cookie.js";
+import { CookieSchemes, crossSite, csrfOn } from "./cookie.js";
 import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
 import { DEFAULT_BODY_LIMIT, orpc, type OrpcRouterPort, type OrpcOptions } from "./orpc.js";
@@ -100,43 +100,6 @@ const DEFAULT_SECURITY_HEADERS: Readonly<Record<string, string>> = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
   "referrer-policy": "no-referrer",
-};
-
-/** The methods a browser can be made to send cross-site carrying ambient credentials. */
-const STATE_CHANGING: ReadonlySet<string> = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-
-/**
- * Whether a state-changing request carrying cookies came from another site.
- *
- * The rule is "a request that carries COOKIES must be same-site", not "a
- * request carrying our session cookie": the runtime does not know the scheme's
- * cookie name, and a check independent of that configuration is both the
- * standard fetch-metadata recommendation and the one a second cookie-reading
- * scheme cannot silently widen. A request with no cookie is left alone — a
- * caller presenting a header credential rides no ambient authority.
- *
- * Fetch metadata first, `Origin` only when the browser sent none. The `Origin`
- * comparison is HOST against the request's own `Host`, deliberately not scheme:
- * behind a TLS-terminating proxy the connection this process accepted is
- * `http` while the browser's `Origin` says `https`, so a scheme comparison
- * would refuse every real deployment. `__Host-session` is `Secure`, which is
- * what keeps the cookie off the plaintext scheme instead.
- */
-const crossSite = (request: IncomingMessage): boolean => {
-  if (!STATE_CHANGING.has(request.method ?? "")) return false;
-  if (request.headers.cookie === undefined) return false;
-  const site = request.headers["sec-fetch-site"];
-  if (typeof site === "string") {
-    const value = site.toLowerCase();
-    return value !== "same-origin" && value !== "same-site";
-  }
-  // No metadata and no `Origin` is refused rather than waved through: the
-  // request carries a cookie, so something is presenting ambient authority
-  // with nothing at all saying where from.
-  // `Origin: null` — a sandboxed frame, a cross-origin redirect — and a
-  // malformed value both fail to parse, and neither is the request's own host.
-  const origin = URL.parse(request.headers.origin ?? "")?.host;
-  return origin === undefined || origin !== request.headers.host;
 };
 
 /**

@@ -12,23 +12,34 @@ const record = {
 
 describe("ambient unit record", () => {
   it("is undefined outside a unit", () => {
+    // GIVEN no unit open
+    // WHEN the record is read
+    // THEN
     expect(currentUnit()).toBeUndefined();
   });
 
   it("is readable inside a unit", () => {
+    // GIVEN a unit opened with a record
+    // WHEN the record is read inside it
     const seen = runWithUnit(record, () => currentUnit());
+    // THEN
     expect(seen).toEqual(record);
   });
 
   it("survives an await boundary", async () => {
+    // GIVEN a unit opened with a record
+    // WHEN its work reads the record after an await
     const seen = await runWithUnit(record, async () => {
       await Promise.resolve();
       return currentUnit();
     });
+    // THEN
     expect(seen?.unitId).toBe("u-1");
   });
 
   it("does not leak between concurrent units", async () => {
+    // GIVEN two units open at once
+    // WHEN each reads its record after an await
     const [a, b] = await Promise.all([
       runWithUnit({ ...record, unitId: "a" }, async () => {
         await Promise.resolve();
@@ -40,6 +51,7 @@ describe("ambient unit record", () => {
       }),
     ]);
 
+    // THEN
     expect([a, b]).toEqual(["a", "b"]);
   });
 });
@@ -48,37 +60,51 @@ const meta = { kind: "test", id: "1" };
 
 describe("createUnitRegistry", () => {
   it("returns the work's result unchanged", async () => {
+    // GIVEN
     const registry = createUnitRegistry();
+    // WHEN a unit's work succeeds
+    // THEN
     await expect(registry.run(meta, () => OkAsync(42))).toBeOkWith(42);
   });
 
   it("passes the error channel through", async () => {
+    // GIVEN
     const registry = createUnitRegistry();
+    // WHEN a unit's work fails
+    // THEN
     await expect(registry.run(meta, () => ErrAsync("nope" as const))).toBeErrWith("nope");
   });
 
   it("counts a unit as in flight until it settles", async () => {
+    // GIVEN
     const registry = createUnitRegistry();
     let release = (): void => {};
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
 
+    // WHEN a unit is held open
     const running = registry.run(meta, async () => {
       await held;
       return Ok("done");
     });
 
+    // THEN it is in flight
     expect(registry.inFlight()).toBe(1);
+    // WHEN it is released
     release();
     await running;
+    // THEN it no longer is
     expect(registry.inFlight()).toBe(0);
   });
 
   it("decrements even when the work throws", async () => {
+    // GIVEN
     const registry = createUnitRegistry();
     const boom = new Error("boom");
 
+    // WHEN the work throws
+    // THEN
     // Asserted with the cause, not a bare `toBeDefect()`: the thrown value is
     // known here, and a bare assertion would also pass on a defect the
     // registry minted for some other reason entirely.
@@ -92,10 +118,13 @@ describe("createUnitRegistry", () => {
   });
 
   it("exposes the ambient record to the work", async () => {
+    // GIVEN
     const registry = createUnitRegistry();
 
+    // WHEN
     const seen = await registry.run({ ...meta, tenantId: "acme" }, () => OkAsync(currentUnit()));
 
+    // THEN
     expect(seen).toBeOkWith(expect.objectContaining({ tenantId: "acme" }));
   });
 
@@ -125,10 +154,12 @@ describe("createUnitRegistry", () => {
   });
 
   it("nests correctly through the registry", async () => {
+    // GIVEN
     const registry = createUnitRegistry();
 
     const outerSeen: unknown[] = [];
 
+    // WHEN
     const running = registry.run({ kind: "outer", id: "o" }, async () => {
       outerSeen.push(currentUnit());
 
@@ -143,6 +174,7 @@ describe("createUnitRegistry", () => {
 
     const result = await running;
 
+    // THEN
     expect(result).toBeOkWith(expect.objectContaining({ traceId: "i" }));
     expect(outerSeen).toHaveLength(2);
     expect(outerSeen[0]).toEqual(outerSeen[1]);
@@ -150,6 +182,7 @@ describe("createUnitRegistry", () => {
   });
 
   it("aborts every open unit on abortAll", async () => {
+    // GIVEN
     const registry = createUnitRegistry();
     let abortedA = false;
     let abortedB = false;
@@ -169,18 +202,24 @@ describe("createUnitRegistry", () => {
       return Ok("done");
     });
 
+    // WHEN
     registry.abortAll();
     await Promise.all([runA, runB]);
+    // THEN
     expect(abortedA).toBe(true);
     expect(abortedB).toBe(true);
   });
 
   it("awaitIdle resolves immediately when nothing is in flight", async () => {
+    // GIVEN
     const registry = createUnitRegistry();
+    // WHEN nothing is in flight
+    // THEN
     await expect(registry.awaitIdle()).toBeOkWith(undefined);
   });
 
   it("awaitIdle resolves once the last unit settles", async () => {
+    // GIVEN
     const registry = createUnitRegistry();
     let releaseA = (): void => {};
     let releaseB = (): void => {};
@@ -199,20 +238,26 @@ describe("createUnitRegistry", () => {
       return Ok("done");
     });
 
+    // WHEN idleness is awaited with two units open
     let idle = false;
     void registry.awaitIdle().then(() => {
       idle = true;
     });
 
+    // THEN it is pending
     expect(idle).toBe(false);
+    // WHEN the first settles
     releaseA();
     await runA;
     await Promise.resolve();
+    // THEN it is still pending
     expect(idle).toBe(false);
 
+    // WHEN the last settles
     releaseB();
     await runB;
     await Promise.resolve();
+    // THEN it resolves
     expect(idle).toBe(true);
   });
 });

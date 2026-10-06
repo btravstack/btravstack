@@ -4,6 +4,7 @@ import { safeSink, stderrSink } from "./events.js";
 
 describe("safeSink", () => {
   it("forwards events to the wrapped sink", () => {
+    // GIVEN
     const calls: unknown[] = [];
     const sink = safeSink((event) => calls.push(event));
 
@@ -13,27 +14,35 @@ describe("safeSink", () => {
       info: { port: 3000 },
       probePort: 9000,
     } as const;
+    // WHEN
     sink(event);
 
+    // THEN
     expect(calls).toEqual([event]);
   });
 
   it("swallows a throwing sink", () => {
+    // GIVEN
     const sink = safeSink(() => {
       // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test: `safeSink` exists to stop a throwing sink taking the process down mid-shutdown
       throw new Error("broken reporter");
     });
 
+    // WHEN an event is written
+    // THEN
     expect(() => sink({ type: "building" })).not.toThrow();
   });
 });
 
 describe("stderrSink", () => {
   it("writes one JSON line per event", () => {
+    // GIVEN
     const write = vi.spyOn(process.stderr, "write").mockReturnValue(true);
 
+    // WHEN
     stderrSink({ type: "draining", inFlight: 2 });
 
+    // THEN
     expect(write).toHaveBeenCalledWith('{"type":"draining","inFlight":2}\n');
     write.mockRestore();
   });

@@ -35,16 +35,21 @@ const quiet = { signals: false as const, probes: false as const, onEvent: () => 
 
 describe("runMain", () => {
   it("exits 0 on a clean report", async () => {
+    // GIVEN
     const codes: number[] = [];
 
+    // WHEN
     await awaitExit(appWith(OkAsync(clean)), (code) => codes.push(code));
 
+    // THEN
     expect(codes).toEqual([0]);
   });
 
   it("exits 0 when the drain finished with nothing abandoned", async () => {
+    // GIVEN
     const codes: number[] = [];
 
+    // WHEN
     await awaitExit(
       appWith(
         OkAsync({
@@ -55,12 +60,15 @@ describe("runMain", () => {
       (code) => codes.push(code),
     );
 
+    // THEN
     expect(codes).toEqual([0]);
   });
 
   it("exits 2 when work was abandoned", async () => {
+    // GIVEN
     const codes: number[] = [];
 
+    // WHEN
     await awaitExit(
       appWith(
         OkAsync({
@@ -71,6 +79,7 @@ describe("runMain", () => {
       (code) => codes.push(code),
     );
 
+    // THEN
     expect(codes).toEqual([2]);
   });
 
@@ -98,19 +107,24 @@ describe("runMain", () => {
   });
 
   it("exits 70 when an uncaught exception stopped the application", async () => {
+    // GIVEN
     const codes: number[] = [];
 
+    // WHEN
     // Installing an `uncaughtException` handler suppresses Node's own default
     // exit code of 1, so without this row a crashed process would report
     // success to its orchestrator.
     await awaitExit(appWith(OkAsync({ ...clean, reason: "uncaught" })), (code) => codes.push(code));
 
+    // THEN
     expect(codes).toEqual([70]);
   });
 
   it("lets an uncaught reason outrank abandoned work", async () => {
+    // GIVEN
     const codes: number[] = [];
 
+    // WHEN
     // The uncaught path skips the drain, so a report carrying both is not
     // reachable today — the precedence is asserted so it stays deliberate
     // rather than an accident of the order the conditions happen to be in.
@@ -125,20 +139,26 @@ describe("runMain", () => {
       (code) => codes.push(code),
     );
 
+    // THEN
     expect(codes).toEqual([70]);
   });
 
   it("exits 1 on a startup failure", async () => {
+    // GIVEN
     const codes: number[] = [];
 
+    // WHEN
     await awaitExit(appWith(ErrAsync("no-config")), (code) => codes.push(code));
 
+    // THEN
     expect(codes).toEqual([1]);
   });
 
   it("exits 70 on a defect", async () => {
+    // GIVEN
     const codes: number[] = [];
 
+    // WHEN
     await awaitExit(
       appWith(
         OkAsync(clean).map(() => {
@@ -149,6 +169,7 @@ describe("runMain", () => {
       (code) => codes.push(code),
     );
 
+    // THEN
     expect(codes).toEqual([70]);
   });
 
@@ -200,6 +221,7 @@ describe("runMain", () => {
   // `RunningApp` to drive the drain, which is exactly the case `start` +
   // `awaitExit` exist for.
   it("yields 2 from a real application whose drain abandoned work", async () => {
+    // GIVEN
     const codes: number[] = [];
     const clock = createFakeClock();
     const runtime = testRuntime();
@@ -213,12 +235,14 @@ describe("runMain", () => {
     await runtime.untilStarted();
     runtime.submit<string>();
 
+    // WHEN
     app.requestDrain();
     await clock.advance(5_000);
     await clock.advance(20_000);
 
     await awaitExit(app, (code) => codes.push(code));
 
+    // THEN
     expect(await app.exited).toBeOkWith(
       expect.objectContaining({ drain: { inFlightAtStart: 1, completed: 0, abandoned: 1 } }),
     );

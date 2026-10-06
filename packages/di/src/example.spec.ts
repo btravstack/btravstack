@@ -145,18 +145,21 @@ const makeAppModule = <E, N extends Scope>(persistence: Module<OrderRepository, 
 };
 
 test("the production graph resolves a use case through its ports, and releases what it acquired", async () => {
+  // GIVEN
   const released: string[] = [];
   const teardownErrors: (readonly [string, unknown])[] = [];
   const options: ScopedOptions = {
     onTeardownError: (portId, cause) => void teardownErrors.push([portId, cause]),
   };
 
+  // WHEN
   const outcome = await Module.scoped(
     makeAppModule(makePersistenceModule(released)),
     (ctx) => ctx.get(GetOrder).execute("o-1"),
     options,
   );
 
+  // THEN
   expect(outcome).toBeOkWith({ id: "o-1", total: 10 });
   // The `Database` connection opened by `acquire` was closed by `release`
   // once `use` settled — proof the resourceful arm's teardown actually ran,
@@ -166,6 +169,7 @@ test("the production graph resolves a use case through its ports, and releases w
 });
 
 test("the same app module builds against an in-memory adapter, with no Scope required", async () => {
+  // GIVEN
   // `Module.build` — not `.scoped` — is the point: `InMemoryPersistenceModule`
   // has no resourceful provider, so `makeAppModule`'s `Needs` collapses to
   // `never` for this instantiation, and `Module.build`'s compile-time gate
@@ -173,7 +177,9 @@ test("the same app module builds against an in-memory adapter, with no Scope req
   // `makePersistenceModule` here — the resourceful adapter — is a compile
   // error, not a runtime surprise: its `Needs` is `Scope`, which only
   // `Module.scoped` discharges.
+  // WHEN
   const built = await Module.build(makeAppModule(InMemoryPersistenceModule));
+  // THEN
   expect(built).toBeOk();
   const order = built.isOk() ? await built.value.get(GetOrder).execute("anything") : undefined;
   expect(order).toBeOkWith({ id: "anything", total: 99 });

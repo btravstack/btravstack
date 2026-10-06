@@ -6,13 +6,19 @@ import { Context, Port } from "./index.js";
 class Logger extends Port("CtxLogger")<{ readonly log: () => string }> {}
 
 test("a service added to a context is readable from it", () => {
+  // GIVEN an empty context
+  // WHEN a service is added to it
   const ctx = unsafeAdd(Context.empty(), Logger, { log: () => "hi" });
+  // THEN
   expect((ctx as Context<Logger>).get(Logger).log()).toBe("hi");
 });
 
 test("adding does not mutate the context it was derived from", () => {
+  // GIVEN
   const empty = Context.empty();
+  // WHEN
   unsafeAdd(empty, Logger, { log: () => "hi" });
+  // THEN
   expect(() => (empty as unknown as Context<Logger>).get(Logger)).toThrow(/no service/u);
 });
 
@@ -21,8 +27,11 @@ test("adding does not mutate the context it was derived from", () => {
 // module-private `WeakMap`. Unreachable through the build pipeline, which is
 // why they need a test of their own.
 test("reads a forged context as empty rather than throwing", () => {
+  // GIVEN
   const forged = {} as Context<never>;
 
+  // WHEN it is read and added to
+  // THEN
   expect({
     keys: [...unsafeKeys(forged)],
     added: unsafeAdd(forged, Logger, { log: () => "hi" }) !== undefined,

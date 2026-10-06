@@ -76,6 +76,7 @@ describe("load-bearing invariants", () => {
   //    and inside `drainApp` by `drain.spec.ts`.
 
   it("2. in-flight units complete when the drain has time for them", async ({ boot }) => {
+    // GIVEN
     const clock = createFakeClock();
     const runtime = testRuntime();
 
@@ -83,12 +84,14 @@ describe("load-bearing invariants", () => {
     await runtime.untilStarted();
     const unit = runtime.submit<string>();
 
+    // WHEN
     app.requestDrain();
     await clock.advance(5_000);
 
     unit.settle(Ok("done"));
     await unit.result;
 
+    // THEN
     const report = await app.exited;
 
     // `drain.spec.ts` proves the accounting inside `drainApp`; what this adds is
@@ -103,6 +106,7 @@ describe("load-bearing invariants", () => {
   });
 
   it("3. units still open at the deadline are counted as abandoned", async ({ boot }) => {
+    // GIVEN
     const clock = createFakeClock();
     const runtime = testRuntime();
 
@@ -110,10 +114,12 @@ describe("load-bearing invariants", () => {
     await runtime.untilStarted();
     runtime.submit<string>();
 
+    // WHEN
     app.requestDrain();
     await clock.advance(5_000);
     await clock.advance(20_000);
 
+    // THEN
     const report = await app.exited;
 
     expect(report).toBeOkWith(
@@ -122,6 +128,7 @@ describe("load-bearing invariants", () => {
   });
 
   it("4. the unit AbortSignal fires at the drain deadline", async ({ boot }) => {
+    // GIVEN
     const clock = createFakeClock();
     const runtime = testRuntime();
     let aborted = false;
@@ -133,6 +140,7 @@ describe("load-bearing invariants", () => {
       aborted = true;
     });
 
+    // WHEN
     app.requestDrain();
     await clock.advance(5_000);
     const afterPreDrain = aborted;
@@ -140,6 +148,7 @@ describe("load-bearing invariants", () => {
     await clock.advance(20_000);
     await app.exited;
 
+    // THEN
     // The abort comes from `registry.abortAll()` at the deadline, not from the
     // runtime honouring `Serving.drain(signal)` — `testRuntime` ignores that
     // signal, which is what makes this a test of the kernel.
@@ -150,6 +159,7 @@ describe("load-bearing invariants", () => {
   });
 
   it("5. the application scope closes on a startup failure", async () => {
+    // GIVEN
     const released: string[] = [];
     const broken = {
       ...testRuntime(),
@@ -169,11 +179,13 @@ describe("load-bearing invariants", () => {
       exports: [Greeting, TestRuntimePort],
     });
 
+    // WHEN
     const app = start(Half, {
       signals: false,
       probes: false,
       onEvent: () => {},
     });
+    // THEN
     await expect(app.exited).toBeErrTagged(
       "RuntimeStartFailed",
       expect.objectContaining({ runtime: "broken" }),
@@ -188,6 +200,7 @@ describe("load-bearing invariants", () => {
   //    SIGTERM and skips the drain on a second signal", against real handlers.
 
   it("7. teardown errors are collected without masking the exit reason", async () => {
+    // GIVEN
     const boom = new Error("release failed");
     const runtime = testRuntime();
     const Leaky = Module("Leaky")({
@@ -210,10 +223,12 @@ describe("load-bearing invariants", () => {
       onEvent: () => {},
     });
 
+    // WHEN
     await runtime.untilStarted();
     app.requestDrain();
     await clock.advance(5_000);
 
+    // THEN
     // `start.spec.ts` proves they are collected; what this adds is the other
     // half — a failing finaliser does not turn the exit into a failure, nor
     // rewrite the reason the application stopped.
@@ -227,20 +242,25 @@ describe("load-bearing invariants", () => {
   });
 
   it("8. start neither throws nor calls process.exit", async ({ boot }) => {
+    // GIVEN
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
     const runtime = testRuntime();
 
+    // WHEN it boots
     const app = boot(runtime.module);
     await runtime.untilStarted();
+    // THEN it is running
     // `untilStarted` resolves from inside `Runtime.start`, before the kernel's
     // own continuation advances the tracker — so the live phase here is
     // `"starting"` or `"serving"`, never a terminal one.
     expect(app.phase()).not.toBe("exited");
     expect(runtime.started()).toBe(true);
 
+    // WHEN it is stopped
     app.stop();
     await app.exited;
 
+    // THEN nothing called process.exit
     expect(exitSpy).not.toHaveBeenCalled();
     exitSpy.mockRestore();
   });
@@ -252,6 +272,7 @@ describe("load-bearing invariants", () => {
 
 describe("probe wiring", () => {
   it("readiness is false while the graph is still building", async () => {
+    // GIVEN
     const gate = Promise.withResolvers<void>();
     const inner = testRuntime();
     const stalled = {
@@ -260,6 +281,7 @@ describe("probe wiring", () => {
         fromSafePromise(gate.promise).flatMap(() => inner.start(host)),
     };
 
+    // WHEN
     const app = start(runtimeModule(stalled), {
       signals: false,
       probes: { port: 0, host: "127.0.0.1" },
@@ -267,6 +289,7 @@ describe("probe wiring", () => {
     });
 
     const port = await boundPort(app);
+    // THEN
     expect(app.phase()).not.toBe("serving");
     expect(await get(port, "/readyz")).toEqual({ status: 503, body: "unavailable" });
 
@@ -277,6 +300,7 @@ describe("probe wiring", () => {
   });
 
   it("liveness is true from building onward", async () => {
+    // GIVEN
     const gate = Promise.withResolvers<void>();
     const inner = testRuntime();
     const stalled = {
@@ -285,6 +309,7 @@ describe("probe wiring", () => {
         fromSafePromise(gate.promise).flatMap(() => inner.start(host)),
     };
 
+    // WHEN
     const app = start(runtimeModule(stalled), {
       signals: false,
       probes: { port: 0, host: "127.0.0.1" },
@@ -292,6 +317,7 @@ describe("probe wiring", () => {
     });
 
     const port = await boundPort(app);
+    // THEN
     expect(app.phase()).not.toBe("serving");
     expect(await get(port, "/livez")).toEqual({ status: 200, body: "ok" });
 
@@ -302,6 +328,7 @@ describe("probe wiring", () => {
   });
 
   it("the drain flips readiness false before the runtime stops accepting", async () => {
+    // GIVEN
     const clock = createFakeClock();
     const runtime = testRuntime();
     const app = start(runtime.module, {
@@ -315,8 +342,10 @@ describe("probe wiring", () => {
     const port = await boundPort(app);
     expect(await get(port, "/readyz")).toEqual({ status: 200, body: "ready" });
 
+    // WHEN a drain is requested
     app.requestDrain();
 
+    // THEN
     // A `fetch` is a macrotask, so the drain's first beat has run by the time
     // this lands, while its pre-drain delay is still pending on the fake clock:
     // readiness goes false strictly first, which is the point of the delay.
@@ -327,13 +356,16 @@ describe("probe wiring", () => {
     expect((await get(port, "/readyz")).status).toBe(503);
     expect(runtime.accepting()).toBe(true);
 
+    // WHEN the pre-drain delay elapses
     await clock.advance(5_000);
+    // THEN
     expect(runtime.accepting()).toBe(false);
 
     await app.exited;
   });
 
   it("an uncaught exception forces readiness false while the phase is still serving", async () => {
+    // GIVEN
     const stopGate = Promise.withResolvers<void>();
     const inner = testRuntime();
     const held = {
@@ -356,8 +388,10 @@ describe("probe wiring", () => {
     const port = await boundPort(app);
     expect(await get(port, "/readyz")).toEqual({ status: 200, body: "ready" });
 
+    // WHEN
     process.emit("uncaughtException", new Error("boom"));
 
+    // THEN
     // Read in the same synchronous turn as the handler: the tracker has not
     // moved off `"serving"`, so a `ready()` consulting the phase alone would
     // still answer true. This single tick is the entire reason the
@@ -373,6 +407,7 @@ describe("probe wiring", () => {
   });
 
   it("readiness never returns to 200 once forced false", async () => {
+    // GIVEN
     const clock = createFakeClock();
     const stopGate = Promise.withResolvers<void>();
     const inner = testRuntime();
@@ -400,12 +435,16 @@ describe("probe wiring", () => {
     const port = await boundPort(app);
     expect((await get(port, "/readyz")).status).toBe(200);
 
+    // WHEN a drain is requested
     app.requestDrain();
+    // THEN
     expect((await get(port, "/readyz")).status).toBe(503);
 
+    // WHEN the drain runs past its deadline into stopping
     await clock.advance(5_000);
     await clock.advance(20_000);
 
+    // THEN
     // Through the whole drain and into `stopping`, with the socket still open
     // because `stop` is held: nothing anywhere resets the latch.
     expect(app.phase()).toBe("stopping");
@@ -417,6 +456,7 @@ describe("probe wiring", () => {
   });
 
   it("both dispose sites close the probe socket", async () => {
+    // GIVEN
     const runtime = testRuntime();
     const app = start(runtime.module, {
       signals: false,
@@ -426,17 +466,21 @@ describe("probe wiring", () => {
 
     await runtime.untilStarted();
     const cleanPort = await boundPort(app);
+    // WHEN it stops cleanly
     app.stop();
     await app.exited;
 
+    // THEN
     await expect(get(cleanPort, "/livez")).rejects.toThrow();
 
+    // GIVEN
     // The other site: `Module.scoped`'s `tapFailure`, reached when the runtime
     // refuses to start after the probe server is already up.
     const broken = {
       ...testRuntime(),
       start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "nope" })),
     };
+    // WHEN it refuses to start after the probe server is up
     const failing = start(runtimeModule(broken), {
       signals: false,
       probes: { port: 0, host: "127.0.0.1" },
@@ -444,6 +488,7 @@ describe("probe wiring", () => {
     });
 
     const failedPort = await boundPort(failing);
+    // THEN
     await expect(failing.exited).toBeErrTagged(
       "RuntimeStartFailed",
       expect.objectContaining({ runtime: "broken" }),
@@ -480,6 +525,7 @@ describe("probe wiring", () => {
   });
 
   it("a bind failure stops the graph being built and still disposes the handlers", async () => {
+    // GIVEN
     const blocker = await occupy(0);
     const before = handlerCounts();
     let built = false;
@@ -497,11 +543,13 @@ describe("probe wiring", () => {
       exports: [Greeting, TestRuntimePort],
     });
 
+    // WHEN
     const app = start(Watched, {
       probes: { port: blocker.port, host: "127.0.0.1" },
       onEvent: () => {},
     });
 
+    // THEN
     // Installed synchronously by `start`, before the bind is attempted.
     // Asserting the rise is what makes the fall below mean something: a `start`
     // that never installed one would satisfy "back to baseline" on its own.
