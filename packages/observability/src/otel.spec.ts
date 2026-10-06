@@ -1,4 +1,11 @@
-import { Instrumentations, Meter, Observers, Tracer, observed } from "@btravstack/core";
+import {
+  Instrumentations,
+  Meter,
+  Observers,
+  SPAN_STATUS,
+  Tracer,
+  observed,
+} from "@btravstack/core";
 import { Module, Provider, type Context } from "@btravstack/di";
 import {
   TestRuntimePort,
@@ -9,7 +16,7 @@ import {
 } from "@btravstack/testing";
 import { metrics, trace } from "@opentelemetry/api";
 import { BatchSpanProcessor, type ReadableSpan, type SpanExporter } from "@opentelemetry/sdk-trace";
-import { Ok, OkAsync } from "unthrown";
+import { Err, Ok, OkAsync } from "unthrown";
 import { describe, expect, test } from "vitest";
 
 import { UnitSpan, UnitSpanModule, otel } from "./otel.js";
@@ -88,6 +95,57 @@ describe("otel", () => {
       traceCorrelated: typeof span.attributes["btravstack.trace_id"] === "string",
     }));
     expect(exported).toEqual([{ name: "unit", unitCorrelated: true, traceCorrelated: true }]);
+  });
+
+  it("marks the span of a unit whose work failed", async ({ boot, spans }) => {
+    // GIVEN a serving app whose unit module opens a span
+    const runtime = testRuntime("test", { unit: UnitSpanModule });
+    const App = Module("OtelFailedApp")({
+      imports: [batchedOtel(spans), runtime.module],
+      exports: [TestRuntimePort, Tracer],
+    });
+    const clock = createFakeClock();
+    const app = boot(App, { clock });
+    await runtime.untilStarted();
+
+    // WHEN a unit settles Err and the app exits, flushing the span
+    const unit = runtime.submit<string, "declined">();
+    unit.settle(Err("declined"));
+    await unit.result;
+    app.requestDrain();
+    await clock.advance(5_000);
+    await app.exited;
+
+    // THEN the unit's span says it failed
+    expect(spans.seen().map((span) => ({ name: span.name, status: span.status }))).toEqual([
+      { name: "unit", status: { code: SPAN_STATUS.error } },
+    ]);
+  });
+
+  it("marks the span of a unit the kernel aborted", async ({ boot, spans }) => {
+    // GIVEN a serving app whose unit module opens a span, with one unit open
+    const runtime = testRuntime("test", { unit: UnitSpanModule });
+    const App = Module("OtelAbortedApp")({
+      imports: [batchedOtel(spans), runtime.module],
+      exports: [TestRuntimePort, Tracer],
+    });
+    const clock = createFakeClock();
+    const app = boot(App, { clock });
+    await runtime.untilStarted();
+    const unit = runtime.submit<string>();
+    unit.signal.addEventListener("abort", () => unit.settle(Ok("late")), { once: true });
+
+    // WHEN a drain runs out its deadline — which aborts the open unit — and
+    // the work answers the abort by finishing anyway
+    app.requestDrain();
+    await clock.advance(5_000);
+    await clock.advance(20_000);
+    await app.exited;
+
+    // THEN the unit's span says it was aborted, whatever the work answered
+    expect(spans.seen().map((span) => ({ name: span.name, status: span.status }))).toEqual([
+      { name: "unit", status: { code: SPAN_STATUS.error, message: "aborted" } },
+    ]);
   });
 
   it("parents an operation inside a unit on that unit's span", async ({ boot, spans }) => {

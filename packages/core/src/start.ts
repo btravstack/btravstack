@@ -27,7 +27,7 @@ import {
   type Serving,
   type UnitHost,
 } from "./runtime.js";
-import { createUnitRegistry } from "./units.js";
+import { createUnitRegistry, currentUnit, settleUnit, type UnitOutcome } from "./units.js";
 
 export type TeardownError = { readonly port: string; readonly cause: unknown };
 
@@ -643,10 +643,17 @@ export const start = <X, E, N>(
               return fromSafePromise(ready.promise) as never;
             };
 
+            const record = currentUnit();
             const outcome = (async () => {
+              let settledAs: UnitOutcome = "error";
               try {
-                return await work({ ctx: runtimeCtx, fork }, signal);
+                const result = await work({ ctx: runtimeCtx, fork }, signal);
+                if (result.isOk()) settledAs = "ok";
+                return result;
               } finally {
+                // Before `settled` resolves: that is what starts the fork's
+                // teardown, and the teardown is what reads it.
+                if (record !== undefined) settleUnit(record, settledAs);
                 hasSettled = true;
                 settled.resolve();
                 if (closing !== undefined) await closing;

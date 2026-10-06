@@ -1,7 +1,7 @@
 import { ErrAsync, Ok, OkAsync, type Result } from "unthrown";
 import { describe, expect, it } from "vitest";
 
-import { createUnitRegistry, currentUnit, runWithUnit } from "./units.js";
+import { createUnitRegistry, currentUnit, runWithUnit, unitOutcome } from "./units.js";
 
 const record = {
   unitId: "u-1",
@@ -13,6 +13,10 @@ const record = {
 describe("ambient unit record", () => {
   it("is undefined outside a unit", () => {
     expect(currentUnit()).toBeUndefined();
+  });
+
+  it("has no outcome outside a unit", () => {
+    expect(unitOutcome()).toBeUndefined();
   });
 
   it("is readable inside a unit", () => {

@@ -26,6 +26,29 @@ export const runWithUnit = <T>(record: UnitRecord, fn: () => T): T => storage.ru
 
 export const currentUnit = (): UnitRecord | undefined => storage.getStore();
 
+/** How a unit's work settled: `ok`, or `error` for an `Err`, a `Defect` and a throw alike. */
+export type UnitOutcome = "ok" | "error";
+
+const outcomes = new WeakMap<UnitRecord, UnitOutcome>();
+
+export const settleUnit = (record: UnitRecord, outcome: UnitOutcome): void => {
+  outcomes.set(record, outcome);
+};
+
+/**
+ * How the current unit's work settled, for the code that runs AFTER it: a
+ * unit module's `onStop`, which tears down inside the record but is handed
+ * only its own service. `undefined` outside a unit and while the work is still
+ * running. Whether the unit was aborted is the record's own `signal`.
+ *
+ * It is the kernel's outcome, not the transport's: an HTTP unit that answered
+ * a `500` still settled `ok`, since the kernel never maps a status.
+ */
+export const unitOutcome = (): UnitOutcome | undefined => {
+  const unit = currentUnit();
+  return unit === undefined ? undefined : outcomes.get(unit);
+};
+
 /**
  * What a runtime says about one piece of work as it submits it. `kind` is the
  * category (`"http"`, `"tick"`, `"job"`); `id` identifies **this** unit.

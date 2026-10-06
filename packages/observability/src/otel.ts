@@ -5,6 +5,7 @@ import {
   SPAN_STATUS,
   Tracer,
   currentUnit,
+  unitOutcome,
   type Attributes,
   type Counter,
   type Histogram,
@@ -225,7 +226,16 @@ export const UnitSpanModule = Module("UnitSpan")({
         if (unit !== undefined && "spanContext" in span) unitSpans.set(unit, span as OtelSpan);
         return span;
       },
-      onStop: (span) => span.end(),
+      // Teardown runs inside the record, after the work settled: aborted wins,
+      // since a unit the kernel stopped waiting for may still have settled ok.
+      onStop: (span) => {
+        if (currentUnit()?.signal.aborted === true) {
+          span.setStatus({ code: SPAN_STATUS.error, message: "aborted" });
+        } else if (unitOutcome() === "error") {
+          span.setStatus({ code: SPAN_STATUS.error });
+        }
+        span.end();
+      },
     }),
   ],
   exports: [UnitSpan],

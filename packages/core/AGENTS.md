@@ -595,6 +595,16 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   the library's `next()`). Do not mirror the record's `signal` onto a second
   controller: the identity is what the guard asserts.
 
+- **`unitOutcome()` is settled BEFORE the fork's teardown runs.** `run`'s
+  wrapper in `start.ts` records the work's outcome (`settleUnit`, keyed by the
+  record in a `WeakMap`, so the record itself stays the fixed four fields) in
+  the same `finally` that resolves `settled`, synchronously and before it
+  awaits `closing` — a unit module's `onStop` is what reads it
+  (`@btravstack/observability`'s `UnitSpanModule` marks a failed unit's span
+  by it), so recording it after the teardown would answer `undefined` to the
+  one reader it exists for. `unit-module.spec.ts` → _"tells the unit's own
+  teardown that its work settled ok"_ and _"… that its work failed"_.
+
 - **`units.ts` uses `fromSafePromise`, not `fromPromise`.** The promise cannot
   reject — the work's own throw is caught by `flatMap`'s throw-to-defect net once
   the inner `Result` is unwrapped — and there is no cause a `qualify` could

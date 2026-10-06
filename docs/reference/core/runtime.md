@@ -1,6 +1,6 @@
 ---
 title: The Runtime contract
-description: Runtime, RuntimeHost, UnitHost, RunUnit, Serving, RuntimePort and RuntimeStartFailed, the unit-of-work types, currentUnit, Clock — and the contracts a runtime owes that the kernel cannot check.
+description: Runtime, RuntimeHost, UnitHost, RunUnit, Serving, RuntimePort and RuntimeStartFailed, the unit-of-work types, currentUnit, unitOutcome, Clock — and the contracts a runtime owes that the kernel cannot check.
 ---
 
 <!-- doctest: prelude
@@ -11,6 +11,7 @@ import type {
   RuntimeHost,
   Settle,
   UnitMeta,
+  UnitOutcome,
   UnitRecord,
   UnitWork,
 } from "@btravstack/core";
@@ -381,15 +382,20 @@ type UnitRecord = {
 };
 
 const currentUnit: () => UnitRecord | undefined;
+
+type UnitOutcome = "ok" | "error";
+
+const unitOutcome: () => UnitOutcome | undefined;
 ```
 
-| Name            | Semantics                                                                                                                                                                                                                                                                     |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `UnitMeta`      | What a runtime says about one unit as it submits it. `kind` is the category (`"http"`, `"tick"`, `"job"`); `id` identifies **this** unit. `traceId` defaults to `id`.                                                                                                         |
-| `UnitWork`      | The work callback. The `Promise<Result>` arm exists to accept a caller's `async` handler — the one place the package accepts a bare `Promise` on purpose. Whatever `Result` it settles is what `run` hands back; a throw becomes a `Defect`.                                  |
-| `UnitRegistry`  | The kernel's own accounting, exposed as a type. `closed()` is monotonic; `awaitIdle()` answers about the registry at the instant it is called and is what beat 3 of the drain races.                                                                                          |
-| `UnitRecord`    | The ambient record, opened in an `AsyncLocalStorage` store for the unit's whole extent. `unitId` is a UUID minted per unit, so it is unique across replicas too; `traceId` is the correlation id; `signal` is the **same** `AbortSignal` `UnitWork` receives as its argument. |
-| `currentUnit()` | The ambient read; `undefined` outside a unit. Its legitimate readers are infrastructure adapters (a logger, an OTel exporter, a database adapter) — see [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit). Not enforced by lint today.                   |
+| Name            | Semantics                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UnitMeta`      | What a runtime says about one unit as it submits it. `kind` is the category (`"http"`, `"tick"`, `"job"`); `id` identifies **this** unit. `traceId` defaults to `id`.                                                                                                                                                                                                                                                                         |
+| `UnitWork`      | The work callback. The `Promise<Result>` arm exists to accept a caller's `async` handler — the one place the package accepts a bare `Promise` on purpose. Whatever `Result` it settles is what `run` hands back; a throw becomes a `Defect`.                                                                                                                                                                                                  |
+| `UnitRegistry`  | The kernel's own accounting, exposed as a type. `closed()` is monotonic; `awaitIdle()` answers about the registry at the instant it is called and is what beat 3 of the drain races.                                                                                                                                                                                                                                                          |
+| `UnitRecord`    | The ambient record, opened in an `AsyncLocalStorage` store for the unit's whole extent. `unitId` is a UUID minted per unit, so it is unique across replicas too; `traceId` is the correlation id; `signal` is the **same** `AbortSignal` `UnitWork` receives as its argument.                                                                                                                                                                 |
+| `currentUnit()` | The ambient read; `undefined` outside a unit. Its legitimate readers are infrastructure adapters (a logger, an OTel exporter, a database adapter) — see [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit). Not enforced by lint today.                                                                                                                                                                                   |
+| `unitOutcome()` | How the current unit's work settled — `error` for an `Err`, a `Defect` and a throw alike — for the code that runs after it: a unit module's `onStop`, which tears down inside the record but is handed only its own service. `undefined` outside a unit and while the work runs. It is the **kernel's** outcome, not the transport's: an HTTP unit that answered a `500` settled `ok`. Whether the unit was aborted is the record's `signal`. |
 
 ## `Clock` and `systemClock`
 

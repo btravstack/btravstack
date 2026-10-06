@@ -459,7 +459,12 @@ activity: UnitSpanModule }` — and the runtime forks around every unit it
 opens: a span opens when the fork is built and `onStop` ends it on every path
 out, with the ambient record's
 `unitId`, `traceId` and `tenantId` as attributes — a span joins the same
-query the logger's lines answer.
+query the logger's lines answer. A unit the kernel **aborted** ends with an
+error status and the message `aborted`; one whose work **failed** — an `Err`,
+a `Defect` or a throw, read through the kernel's `unitOutcome()` — ends with an
+error status. That is the kernel's outcome, not the transport's: an HTTP unit
+that answered a `500` delivered its response and is not marked, while the
+runtime's own `http.request` span is.
 
 **An operation observed inside the unit is that span's child.** A cache read,
 a stored object, a sent mail or a query opens its span under the unit's, and
