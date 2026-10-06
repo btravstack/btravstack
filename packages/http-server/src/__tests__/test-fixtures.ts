@@ -78,6 +78,8 @@ import { HttpConfig } from "../http-config.js";
 import { HttpModule } from "../http-module.js";
 import {
   HttpRuntime,
+  DEFAULT_HEADERS_TIMEOUT_MS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
   HttpUnit,
   _internal_httpRuntime,
   http,
@@ -134,7 +136,15 @@ const appOnUncheckedPort = (port: number) =>
     provides: [
       Provider(HttpConfig)({
         inject: {},
-        value: { port, hostname: "127.0.0.1", bodyLimit: 0, corsOrigin: "", compression: false },
+        value: {
+          port,
+          hostname: "127.0.0.1",
+          bodyLimit: 0,
+          corsOrigin: "",
+          compression: false,
+          headersTimeoutMs: DEFAULT_HEADERS_TIMEOUT_MS,
+          requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+        },
       }),
       Provider.member(Observers)({ inject: {}, value: noObserver }),
       Provider(HttpRuntime)({
@@ -1444,11 +1454,17 @@ const rpcPolicyAppOf = (options: PolicyOptions) =>
     ...options,
   });
 
+/** What a `configured` spec may pin on the starter. */
+type ConfiguredOptions = Pick<
+  HttpOptions,
+  "port" | "hostname" | "headersTimeoutMs" | "requestTimeoutMs"
+>;
+
 /** Whatever `HttpConfig` the graph bound, captured by a provider that depends on it. */
 class BoundConfig extends Port("BoundConfig")<{ readonly value: ServiceOf<HttpConfig> }> {}
 
 /** The starter left to configure itself — from the environment, plus whatever `options` pins. */
-const configuredAppOf = (options: { readonly port?: number; readonly hostname?: string }) => {
+const configuredAppOf = (options: ConfiguredOptions) => {
   let bound: ServiceOf<HttpConfig> | undefined;
   return {
     module: Module("ConfiguredApp")({
@@ -1712,6 +1728,8 @@ const htmxAnswererOf = (): AsyncResult<HttpAnswerer, never> =>
             bodyLimit: 0,
             corsOrigin: "",
             compression: false,
+            headersTimeoutMs: DEFAULT_HEADERS_TIMEOUT_MS,
+            requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
           },
         }),
         Provider(HttpUnit)({ inject: {}, value: {} }),
@@ -1753,11 +1771,17 @@ export type HttpFixtures = {
    */
   readonly configured: (
     env: Environment,
-    options?: { readonly port?: number; readonly hostname?: string },
+    options?: ConfiguredOptions,
   ) => {
     readonly app: RunningApp<ConfigInvalid, HttpInfo>;
     readonly config: () => ServiceOf<HttpConfig> | undefined;
   };
+  /**
+   * Opens a raw connection to `app`, sends a request line and one header, then
+   * goes quiet — answering the first status line the server wrote before it
+   * closed the socket, or `""` when it wrote none.
+   */
+  readonly stall: (app: App) => Promise<string>;
   /**
    * The starter proper — `HttpModule` over a router provider — on an
    * ephemeral port, with a typed oRPC client pointed at it. Shut down by the
@@ -2268,6 +2292,23 @@ export const it = test.extend<HttpFixtures>({
     await use((env, options = {}) => {
       const { module, config } = configuredAppOf(options);
       return { app: boot(module, { env }), config };
+    });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  stall: async ({}, use) => {
+    await use(async (app) => {
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const socket = connect(info.port, "127.0.0.1");
+      await once(socket, "connect");
+      socket.write("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n");
+      let answered = "";
+      socket.on("data", (chunk: Buffer) => {
+        answered += chunk.toString();
+      });
+      await once(socket, "close");
+      return answered.split("\r\n")[0] ?? "";
     });
   },
 

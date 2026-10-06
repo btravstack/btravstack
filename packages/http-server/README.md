@@ -257,21 +257,23 @@ at the call. Neither `http()` nor `htmx()` takes its answerer's provider as an
 option — each **needs** its own port, which is how the composition root
 supplies it:
 
-| Option            | What it is                                                                                                             |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `router`          | the router provider — what `api.OrpcRouter(contract)(...)` returns                                                     |
-| `fragments`       | the fragments provider — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces          |
-| `prefix`          | where the RPC endpoint is mounted (default `/rpc`)                                                                     |
-| `fragmentsPrefix` | where htmx fragments are mounted (default `/`, `htmx()`'s own default)                                                 |
-| `port`            | pins `PORT`                                                                                                            |
-| `hostname`        | pins `HOST`                                                                                                            |
-| `cors`            | pins `HTTP_CORS_ORIGIN` — `true` for oRPC's defaults, or its `CORSHandlerPluginOptions` (off); oRPC-only               |
-| `bodyLimit`       | pins `HTTP_BODY_LIMIT` — the largest body a procedure or a fragment POST reads, in bytes (1 MiB; `false` is unbounded) |
-| `compression`     | pins `HTTP_COMPRESSION` — response compression, `true` for oRPC's defaults or its options record; oRPC-only            |
-| `plugins`         | any other oRPC handler plugin, forwarded to `RPCHandler`                                                               |
-| `securityHeaders` | response headers set on the raw listener, before dispatch (default on)                                                 |
-| `csrf`            | refuse a cross-site state change carrying cookies, before dispatch (default: on once a scheme reads a cookie)          |
-| `unit`            | kind → module: `anonymous`, or a scheme — both answerers fork the kind that authenticated the request                  |
+| Option             | What it is                                                                                                             |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `router`           | the router provider — what `api.OrpcRouter(contract)(...)` returns                                                     |
+| `fragments`        | the fragments provider — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces          |
+| `prefix`           | where the RPC endpoint is mounted (default `/rpc`)                                                                     |
+| `fragmentsPrefix`  | where htmx fragments are mounted (default `/`, `htmx()`'s own default)                                                 |
+| `port`             | pins `PORT`                                                                                                            |
+| `hostname`         | pins `HOST`                                                                                                            |
+| `headersTimeoutMs` | pins `HTTP_HEADERS_TIMEOUT_MS` — how long a client may take to send its headers before a `408` (60 s)                  |
+| `requestTimeoutMs` | pins `HTTP_REQUEST_TIMEOUT_MS` — how long a client may take to send a whole request (300 s)                            |
+| `cors`             | pins `HTTP_CORS_ORIGIN` — `true` for oRPC's defaults, or its `CORSHandlerPluginOptions` (off); oRPC-only               |
+| `bodyLimit`        | pins `HTTP_BODY_LIMIT` — the largest body a procedure or a fragment POST reads, in bytes (1 MiB; `false` is unbounded) |
+| `compression`      | pins `HTTP_COMPRESSION` — response compression, `true` for oRPC's defaults or its options record; oRPC-only            |
+| `plugins`          | any other oRPC handler plugin, forwarded to `RPCHandler`                                                               |
+| `securityHeaders`  | response headers set on the raw listener, before dispatch (default on)                                                 |
+| `csrf`             | refuse a cross-site state change carrying cookies, before dispatch (default: on once a scheme reads a cookie)          |
+| `unit`             | kind → module: `anonymous`, or a scheme — both answerers fork the kind that authenticated the request                  |
 
 `cors`, `bodyLimit` and `compression` **pin** a field of `HttpConfig` that is
 otherwise bound from the environment — explicit beats environment beats

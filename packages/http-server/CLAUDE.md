@@ -479,6 +479,21 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   stays in `plugins`: inflating a body before the limit measures it is an
   application's decision to make in the open.
 
+- **`headersTimeoutMs`, `requestTimeoutMs`** — the listener's own bounds on
+  what a CLIENT sends, set on `createServer`, so they hold for every answerer.
+  The defaults are Node's (60 s, 300 s), stated so a Node release cannot move
+  them under a deployment. Three things are load-bearing:
+  - **The floor is `1`, never `0`.** Node reads `0` as "no bound", and slow work
+    gets a larger bound here, never none.
+  - **A headers bound above the request bound is held to it, not refused.**
+    Node throws `ERR_OUT_OF_RANGE` from `createServer` for that pair (measured
+    on 22, 24 and 26). `Config` has no cross-field rule, and the request bound
+    already bounds the headers, since they are part of the request.
+  - **`connectionsCheckingInterval` follows the tighter bound**, capped at
+    Node's 30 s. Node checks both only on that tick, so at its default a
+    200 ms bound fires after up to 30 s, and a 60 s one after up to 90.
+    `requestTimeout` bounds the request, never the response, which is why a
+    long-lived `text/event-stream` is not cut by it.
 - **`csrf`** — a state-changing request that carries cookies must be
   same-site, refused with a bodyless `403` **before dispatch**, in the
   listener beside `securityHeaders` so it covers every answerer rather than

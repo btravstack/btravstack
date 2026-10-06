@@ -1199,6 +1199,7 @@ A sixth rule is about production code that tests keep honest:
    origin with whoever is calling, a body limit with what the endpoint
    accepts — all in the manifest, none in the image. So `PRE_DRAIN_DELAY_MS`,
    `DRAIN_TIMEOUT_MS`, `STOP_TIMEOUT_MS`, `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
+   `HTTP_HEADERS_TIMEOUT_MS`, `HTTP_REQUEST_TIMEOUT_MS`,
    `TEMPORAL_GRACE_PERIOD_MS`, `TEMPORAL_FORCE_AFTER_MS` and
    `AMQP_CONNECT_TIMEOUT_MS` are fields beside `PORT`, `HOST`,
    `TEMPORAL_ADDRESS` and `AMQP_URL`, each **pinned** by the matching option:

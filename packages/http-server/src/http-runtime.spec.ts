@@ -117,6 +117,8 @@ describe("httpRuntime", () => {
         bodyLimit: 1_048_576,
         corsOrigin: "",
         compression: false,
+        headersTimeoutMs: 60_000,
+        requestTimeoutMs: 300_000,
       },
       listening: true,
     });
@@ -138,7 +140,44 @@ describe("httpRuntime", () => {
       bodyLimit: 1_048_576,
       corsOrigin: "",
       compression: false,
+      headersTimeoutMs: 60_000,
+      requestTimeoutMs: 300_000,
     });
+  });
+
+  it("answers 408 and closes a connection that stalls before its headers end", async ({
+    configured,
+    stall,
+  }) => {
+    // GIVEN a listener whose headers bound is pinned short
+    const { app } = configured({ PORT: "0", HOST: "127.0.0.1" }, { headersTimeoutMs: 200 });
+
+    // WHEN a client sends a request line and one header, then nothing more
+    const answered = await stall(app);
+
+    // THEN the listener does not wait on it: the slow-header bound is a bound
+    expect(answered).toBe("HTTP/1.1 408 Request Timeout");
+  });
+
+  it("holds the headers to the request bound when the environment sets it lower", async ({
+    configured,
+    stall,
+  }) => {
+    // GIVEN a headers bound ABOVE the request bound — a pair Node refuses by
+    // throwing from `createServer` — both read from the environment
+    const { app } = configured({
+      PORT: "0",
+      HOST: "127.0.0.1",
+      HTTP_HEADERS_TIMEOUT_MS: "60000",
+      HTTP_REQUEST_TIMEOUT_MS: "200",
+    });
+
+    // WHEN a client stalls mid-headers
+    const answered = await stall(app);
+
+    // THEN the listener booted, and the request bound is what cut the client
+    // off — the bound the headers already lived under
+    expect(answered).toBe("HTTP/1.1 408 Request Timeout");
   });
 
   it("fails startup with ConfigInvalid for HttpConfig when PORT is not a port", async ({

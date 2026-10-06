@@ -48,6 +48,21 @@ export type HttpOptions = OrpcOptions & {
   /** Pins `HttpConfig.hostname` instead of reading `HOST`. */
   readonly hostname?: string;
   /**
+   * Pins `HttpConfig.headersTimeoutMs` instead of reading
+   * `HTTP_HEADERS_TIMEOUT_MS` (default {@link DEFAULT_HEADERS_TIMEOUT_MS}): how
+   * long a client may take to send a request's headers before the listener
+   * answers `408` and closes the socket — the slow-header attack's bound.
+   */
+  readonly headersTimeoutMs?: number;
+  /**
+   * Pins `HttpConfig.requestTimeoutMs` instead of reading
+   * `HTTP_REQUEST_TIMEOUT_MS` (default {@link DEFAULT_REQUEST_TIMEOUT_MS}): how
+   * long a client may take to send a WHOLE request, body included. It bounds
+   * what the client sends, never the response, so a long-lived event stream is
+   * not cut by it.
+   */
+  readonly requestTimeoutMs?: number;
+  /**
    * Headers set on every response, before dispatch. `true` (default) applies
    * {@link DEFAULT_SECURITY_HEADERS}; `false` disables the feature; a record
    * replaces the defaults outright.
@@ -70,8 +85,23 @@ export type HttpOptions = OrpcOptions & {
 /** What `httpServer` pins on the config it binds — everything but the router's own. */
 type SocketOptions = Pick<
   HttpOptions,
-  "port" | "hostname" | "cors" | "bodyLimit" | "compression" | "securityHeaders" | "csrf" | "unit"
+  | "port"
+  | "hostname"
+  | "headersTimeoutMs"
+  | "requestTimeoutMs"
+  | "cors"
+  | "bodyLimit"
+  | "compression"
+  | "securityHeaders"
+  | "csrf"
+  | "unit"
 >;
+
+/** How long a client may take to send its headers by default: Node's own default, stated rather than inherited. */
+export const DEFAULT_HEADERS_TIMEOUT_MS = 60_000;
+
+/** How long a client may take to send a whole request by default: Node's own default, stated rather than inherited. */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 300_000;
 
 /**
  * Set before dispatch, so they also cover the runtime's own `404` and `500` —
@@ -202,11 +232,30 @@ export const httpServer = <
   ConfigInvalid,
   Env | UnitsNeedsOf<Units>
 > => {
-  const { port, hostname, cors, bodyLimit, compression, securityHeaders } = options;
+  const {
+    port,
+    hostname,
+    headersTimeoutMs,
+    requestTimeoutMs,
+    cors,
+    bodyLimit,
+    compression,
+    securityHeaders,
+  } = options;
   const config = Config.provider(HttpConfig)(
     Config.object({
       port: Config.pinned(port, Config.port("PORT", { default: 3000 })),
       hostname: Config.pinned(hostname, Config.string("HOST", { default: "0.0.0.0" })),
+      // A floor of 1, never 0: Node reads 0 as "no bound", and slow work gets a
+      // larger bound here, never none.
+      headersTimeoutMs: Config.pinned(
+        headersTimeoutMs,
+        Config.integer("HTTP_HEADERS_TIMEOUT_MS", { default: DEFAULT_HEADERS_TIMEOUT_MS, min: 1 }),
+      ),
+      requestTimeoutMs: Config.pinned(
+        requestTimeoutMs,
+        Config.integer("HTTP_REQUEST_TIMEOUT_MS", { default: DEFAULT_REQUEST_TIMEOUT_MS, min: 1 }),
+      ),
       bodyLimit: Config.pinned(
         bodyLimit === false ? 0 : bodyLimit,
         Config.integer("HTTP_BODY_LIMIT", { default: DEFAULT_BODY_LIMIT, min: 0 }),
@@ -402,81 +451,93 @@ const listen = (
             response.once("finish", () => void socket?.end());
           };
 
-          const server: Server = createServer((request, response) => {
-            // FIRST, before dispatch: covers the runtime's own 404/500 and a
-            // drained response alike, not only what oRPC matched.
-            for (const [name, value] of headers) response.setHeader(name, value);
-            open.add(response);
-            response.once("close", () => open.delete(response));
-            const answerer = answererFor(routes, request.url);
-            // Settled on `'close'`, not when the unit settles: the unit's own
-            // contract is that the response is flushed inside it, so `'close'`
-            // is the one event that has seen the final status — a 500 written
-            // by the `recoverDefect` arm below included, and a `403` written
-            // by the refusal below it.
-            const settle = observe(
-              observers,
-              requestOperation(request.method ?? "", answerer?.prefix ?? ""),
-            );
-            response.once("close", () => {
-              // `statusCode` defaults to `200` and is only ever what we MEANT
-              // to send, so a socket destroyed mid-handler — by the client, or
-              // by the drain retiring a stream — closes reading `ok 200`
-              // unless the flush is what decides. `writableFinished` is that:
-              // true once the last byte is handed to the socket.
-              const aborted = !response.writableFinished;
-              settle({
-                outcome: aborted || response.statusCode >= 500 ? "error" : "ok",
-                attributes: { status: response.statusCode, aborted },
+          // Node refuses `headersTimeout > requestTimeout` by throwing, and the
+          // smaller of the two is the bound the headers already live under.
+          // It checks both only every `connectionsCheckingInterval`, so that
+          // interval follows the tighter bound or the cut lands up to 30 s late.
+          const headersTimeout = Math.min(options.headersTimeoutMs, options.requestTimeoutMs);
+          const server: Server = createServer(
+            {
+              headersTimeout,
+              requestTimeout: options.requestTimeoutMs,
+              connectionsCheckingInterval: Math.min(30_000, headersTimeout),
+            },
+            (request, response) => {
+              // FIRST, before dispatch: covers the runtime's own 404/500 and a
+              // drained response alike, not only what oRPC matched.
+              for (const [name, value] of headers) response.setHeader(name, value);
+              open.add(response);
+              response.once("close", () => open.delete(response));
+              const answerer = answererFor(routes, request.url);
+              // Settled on `'close'`, not when the unit settles: the unit's own
+              // contract is that the response is flushed inside it, so `'close'`
+              // is the one event that has seen the final status — a 500 written
+              // by the `recoverDefect` arm below included, and a `403` written
+              // by the refusal below it.
+              const settle = observe(
+                observers,
+                requestOperation(request.method ?? "", answerer?.prefix ?? ""),
+              );
+              response.once("close", () => {
+                // `statusCode` defaults to `200` and is only ever what we MEANT
+                // to send, so a socket destroyed mid-handler — by the client, or
+                // by the drain retiring a stream — closes reading `ok 200`
+                // unless the flush is what decides. `writableFinished` is that:
+                // true once the last byte is handed to the socket.
+                const aborted = !response.writableFinished;
+                settle({
+                  outcome: aborted || response.statusCode >= 500 ? "error" : "ok",
+                  attributes: { status: response.statusCode, aborted },
+                });
               });
-            });
-            // Before dispatch, so no answerer — and no unit — ever sees it. No
-            // body: a refusal tells a cross-site caller nothing it is entitled
-            // to. AFTER the tracking above, so a refusal is an answer the RED
-            // observers count and the drain knows about, like every other.
-            if (csrf && crossSite(request)) {
-              response.writeHead(403);
-              response.end();
-              return;
-            }
-            if (draining) retire(response);
-            // `recoverDefect`, not `match`: `E` is statically `never` here, so an
-            // `errCases` arm would be a dead branch with no case to name.
-            void host
-              .run(metaFor(request), (unit, signal) => {
-                // No answerer owns this path: the runtime's own `404`, written
-                // here rather than after an await, so nothing is in flight.
-                // Deliberately no fork here — the fork is the answerer's, for
-                // a request it handles.
-                if (answerer === undefined) {
-                  end(response, 404, "NotFound");
+              // Before dispatch, so no answerer — and no unit — ever sees it. No
+              // body: a refusal tells a cross-site caller nothing it is entitled
+              // to. AFTER the tracking above, so a refusal is an answer the RED
+              // observers count and the drain knows about, like every other.
+              if (csrf && crossSite(request)) {
+                response.writeHead(403);
+                response.end();
+                return;
+              }
+              if (draining) retire(response);
+              // `recoverDefect`, not `match`: `E` is statically `never` here, so an
+              // `errCases` arm would be a dead branch with no case to name.
+              void host
+                .run(metaFor(request), (unit, signal) => {
+                  // No answerer owns this path: the runtime's own `404`, written
+                  // here rather than after an await, so nothing is in flight.
+                  // Deliberately no fork here — the fork is the answerer's, for
+                  // a request it handles.
+                  if (answerer === undefined) {
+                    end(response, 404, "NotFound");
+                    return closedOf(response);
+                  }
+                  void answer(answerer.handle(request, response, signal, unit), response);
+                  // The unit's lifetime IS the response's, which is what makes the
+                  // kernel's "flush inside the unit" contract structural here.
                   return closedOf(response);
-                }
-                void answer(answerer.handle(request, response, signal, unit), response);
-                // The unit's lifetime IS the response's, which is what makes the
-                // kernel's "flush inside the unit" contract structural here.
-                return closedOf(response);
-              })
-              .recoverDefect((cause) => {
-                // The unit failed outside `answer`'s reach — a synchronous throw
-                // from a bare `HttpAnswerer.handle` before it ever returns a
-                // promise. Neither an oRPC fork failure nor a synchronous throw
-                // inside it lands here: oRPC catches a middleware throw itself
-                // and collapses it to its own `INTERNAL_SERVER_ERROR`, the same
-                // path a procedure's own defect takes, before `answer` or this
-                // callback ever sees it. Guarded, because
-                // `recoverDefect` would wrap a throw here into a fresh defect that
-                // the `void` below drops.
-                try {
-                  end(response, 500, "InternalError");
-                  if (!response.writableEnded)
-                    response.destroy(cause instanceof Error ? cause : undefined);
-                } catch {
-                  // nothing left to try; the socket is already unusable
-                }
-                return OkAsync();
-              });
-          });
+                })
+                .recoverDefect((cause) => {
+                  // The unit failed outside `answer`'s reach — a synchronous throw
+                  // from a bare `HttpAnswerer.handle` before it ever returns a
+                  // promise. Neither an oRPC fork failure nor a synchronous throw
+                  // inside it lands here: oRPC catches a middleware throw itself
+                  // and collapses it to its own `INTERNAL_SERVER_ERROR`, the same
+                  // path a procedure's own defect takes, before `answer` or this
+                  // callback ever sees it. Guarded, because
+                  // `recoverDefect` would wrap a throw here into a fresh defect that
+                  // the `void` below drops.
+                  try {
+                    end(response, 500, "InternalError");
+                    if (!response.writableEnded)
+                      response.destroy(cause instanceof Error ? cause : undefined);
+                  } catch {
+                    // nothing left to try; the socket is already unusable
+                  }
+                  return OkAsync();
+                });
+            },
+          );
 
           server.on("connection", (socket) => {
             sockets.add(socket);
