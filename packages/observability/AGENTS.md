@@ -62,8 +62,8 @@ stale the next time a case is added (#192):
   failed operation written as a line, a successful one written nowhere (that is
   what the metric is for), and the cause travelling with it.
 - `otel.spec.ts` — the SDK half, behind the subpath: a span per unit flushed on
-  the scope's close, a failed unit's span and an aborted one's marked as
-  errors, an operation inside a unit parented on that unit's span and carrying
+  the scope's close, a failed unit's span, an aborted one's and one whose
+  fork failed to build marked as errors, an operation inside a unit parented on that unit's span and carrying
   its ids, and parented on it too when a sibling provider built first started
   it, an unattributed span outside a unit, a duration recorded in
   seconds on seconds buckets, OTel's own meter handed back ready to count, and an instrumentation a starter contributed

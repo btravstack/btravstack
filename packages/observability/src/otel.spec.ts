@@ -149,6 +149,44 @@ describe("otel", () => {
     ]);
   });
 
+  it("marks the span of a unit whose scope failed to build", async ({ boot, spans }) => {
+    // GIVEN a unit module whose sibling provider throws once the span is open
+    class Doomed extends Port("OtelSpecDoomed")<string> {}
+    const DoomedUnit = Module("OtelSpecDoomedUnit")({
+      imports: [UnitSpanModule],
+      provides: [
+        Provider(Doomed)({
+          inject: { span: UnitSpan },
+          sync: () => {
+            // oxlint-disable-next-line unthrown/no-throw -- the subject under test: a fork whose construction fails after the unit span opened
+            throw new Error("construction-boom");
+          },
+        }),
+      ],
+      exports: [Doomed],
+    });
+    const runtime = testRuntime("test", { unit: DoomedUnit });
+    const App = Module("OtelDoomedApp")({
+      imports: [batchedOtel(spans), runtime.module],
+      exports: [TestRuntimePort, Tracer],
+    });
+    const clock = createFakeClock();
+    const app = boot(App, { clock });
+    await runtime.untilStarted();
+
+    // WHEN a unit's fork fails to build — its partial scope is torn down
+    // before the work has settled — and the app exits, flushing the span
+    await runtime.submit<string>().result;
+    app.requestDrain();
+    await clock.advance(5_000);
+    await app.exited;
+
+    // THEN the unit's span says it failed, rather than ending unmarked
+    expect(spans.seen().map((span) => ({ name: span.name, status: span.status }))).toEqual([
+      { name: "unit", status: { code: SPAN_STATUS.error } },
+    ]);
+  });
+
   it("parents an operation started before the unit span on it, whatever the import order", async ({
     boot,
     spans,

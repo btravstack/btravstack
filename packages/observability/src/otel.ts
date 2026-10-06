@@ -242,10 +242,13 @@ export const UnitSpanModule = Module("UnitSpan")({
       },
       // Teardown runs inside the record, after the work settled: aborted wins,
       // since a unit the kernel stopped waiting for may still have settled ok.
+      // A teardown inside a unit whose work has NOT settled is a fork that
+      // failed to build: the kernel holds a built fork open until it settles.
       onStop: (span) => {
-        if (currentUnit()?.signal.aborted === true) {
+        const unit = currentUnit();
+        if (unit?.signal.aborted === true) {
           span.setStatus({ code: SPAN_STATUS.error, message: "aborted" });
-        } else if (unitOutcome() === "error") {
+        } else if (unit !== undefined && unitOutcome() !== "ok") {
           span.setStatus({ code: SPAN_STATUS.error });
         }
         span.end();

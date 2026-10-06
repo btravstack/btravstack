@@ -482,7 +482,9 @@ out, with the ambient record's
 query the logger's lines answer. A unit the kernel **aborted** ends with an
 error status and the message `aborted`; one whose work **failed** — an `Err`,
 a `Defect` or a throw, read through the kernel's `unitOutcome()` — ends with an
-error status. That is the kernel's outcome, not the transport's: an HTTP unit
+error status, and so does one whose unit module failed to build — a sibling
+provider that threw tears the span down before the work has settled at all.
+That is the kernel's outcome, not the transport's: an HTTP unit
 that answered a `500` delivered its response and is not marked, while the
 runtime's own `http.request` span is.
 
