@@ -7,6 +7,19 @@ engineStrict: true
 # everything listed there, so what this actually guards is `pnpm add` and
 # `pnpm dlx` — the two commands that reach for `latest` without a review.
 minimumReleaseAge: 4320
+# First-party releases taken inside the window on purpose, each pinned to the
+# exact version reviewed. Drop an entry once it is older than three days.
+minimumReleaseAgeExclude:
+  - "@btravstack/entity@0.9.0"
+  - unthrown@5.12.0
+  - "@unthrown/oxlint@5.12.0"
+  - "@unthrown/standard-schema@5.12.0"
+  - "@unthrown/vitest@5.12.0"
+  - "@amqp-contract/client@3.0.0-beta.11"
+  - "@amqp-contract/contract@3.0.0-beta.11"
+  - "@amqp-contract/core@3.0.0-beta.11"
+  - "@amqp-contract/testing@3.0.0-beta.11"
+  - "@amqp-contract/worker@3.0.0-beta.11"
 saveExact: true
 strictPeerDependencies: true
 
@@ -19,7 +32,7 @@ packages:
 catalog:
   # `@amqp-contract/{contract,testing,worker}` v3 are still in beta and their
   # `latest` dist-tag is the 2.4.0 line, which peers on `unthrown@^4` while
-  # this repo pins 5.8.0. The exact beta is the contract until v3 goes stable;
+  # this repo pins 5.12.0. The exact beta is the contract until v3 goes stable;
   # raise it deliberately, not on a bot bump.
   # RustFS is pre-1.0 and its `latest` tag moves; the gate pins the exact
   # release candidate it was measured against (put, get with content type,
@@ -27,12 +40,12 @@ catalog:
   # written). Raise it deliberately, not on a bot bump.
   "@aws-sdk/client-s3": 3.1127.0
   "@aws-sdk/s3-request-presigner": 3.1127.0
-  "@amqp-contract/client": 3.0.0-beta.7
-  "@amqp-contract/contract": 3.0.0-beta.7
-  "@amqp-contract/testing": 3.0.0-beta.7
-  "@amqp-contract/worker": 3.0.0-beta.7
+  "@amqp-contract/client": 3.0.0-beta.11
+  "@amqp-contract/contract": 3.0.0-beta.11
+  "@amqp-contract/testing": 3.0.0-beta.11
+  "@amqp-contract/worker": 3.0.0-beta.11
   "@btravstack/commitlint": 0.1.0
-  "@btravstack/entity": 0.7.0
+  "@btravstack/entity": 0.9.0
   "@btravstack/lefthook": 0.1.1
   "@btravstack/oxlint": 0.2.1
   "@btravstack/theme": 2.0.0
@@ -77,13 +90,13 @@ catalog:
   "@prisma/orm-postgres": 8.0.0-rc.11
   "@tanstack/query-core": 5.102.8
   # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
-  # 7.x line, which peers on `unthrown@^4` while this repo pins 5.8.0. 8.x also
+  # 7.x line, which peers on `unthrown@^4` while this repo pins 5.12.0. 8.x also
   # ships the `test-rig` / `workflow-bundle` subpaths the Temporal example's
   # specs are built on. The exact beta is the contract until v8 goes stable.
-  "@temporal-contract/client": 8.0.0-beta.9
-  "@temporal-contract/contract": 8.0.0-beta.9
-  "@temporal-contract/testing": 8.0.0-beta.9
-  "@temporal-contract/worker": 8.0.0-beta.9
+  "@temporal-contract/client": 8.0.0-beta.11
+  "@temporal-contract/contract": 8.0.0-beta.11
+  "@temporal-contract/testing": 8.0.0-beta.11
+  "@temporal-contract/worker": 8.0.0-beta.11
   "@temporalio/activity": 1.23.0
   "@temporalio/client": 1.23.0
   "@temporalio/common": 1.23.0
@@ -92,10 +105,10 @@ catalog:
   "@temporalio/workflow": 1.23.0
   "@types/nodemailer": 8.0.1
   "@types/node": 26.4.1
-  "@unthrown/oxlint": 5.8.0
+  "@unthrown/oxlint": 5.12.0
   "@unthrown/orpc": 0.2.0
-  "@unthrown/standard-schema": 5.8.0
-  "@unthrown/vitest": 5.8.0
+  "@unthrown/standard-schema": 5.12.0
+  "@unthrown/vitest": 5.12.0
   jose: 6.2.12
   knip: 6.34.0
   markdownlint-cli2: 0.23.2
@@ -127,10 +140,10 @@ catalog:
   # by anything: they are invoked as binaries, once per package, from a script.
   publint: 0.3.15
   "@arethetypeswrong/cli": 0.18.5
-  unthrown: 5.8.0
-  "@vitest/coverage-v8": 4.1.11
+  unthrown: 5.12.0
+  "@vitest/coverage-v8": 5.0.3
   vitepress: 1.6.4
-  vitest: 4.1.11
+  vitest: 5.0.3
   zod: 4.5.4
 
 catalogs:
