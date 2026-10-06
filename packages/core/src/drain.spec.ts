@@ -1,7 +1,8 @@
+import { createFakeClock } from "@btravstack/testing";
 import { Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 import { describe, expect, it, vi } from "vitest";
 
-import { systemClock, type Clock } from "./clock.js";
+import type { Clock } from "./clock.js";
 import { drainApp } from "./drain.js";
 import type { Serving } from "./runtime.js";
 import { createUnitRegistry, type UnitRegistry } from "./units.js";
@@ -82,9 +83,11 @@ const openUnit = (registry: UnitRegistry): void => {
 
 describe("drainApp", () => {
   it("flips readiness false, waits preDrainDelayMs, then tells the runtime to stop accepting — in that order", async () => {
+    // GIVEN
     const order: string[] = [];
     const { serving } = servingStub();
 
+    // WHEN
     await drainApp({
       serving: {
         drain: (signal) => {
@@ -107,6 +110,7 @@ describe("drainApp", () => {
       onUnready: () => order.push("ready:false"),
     });
 
+    // THEN
     // The pre-drain delay's sleep, and the runtime being told to stop
     // accepting, land between readiness flipping and the deadline race — in
     // that order. The fourth entry is the drain-timeout sleep being armed as
@@ -116,9 +120,11 @@ describe("drainApp", () => {
   });
 
   it("waits preDrainDelayMs before stopping acceptance", async () => {
+    // GIVEN
     const sleep = vi.fn(() => OkAsync());
     const { serving } = servingStub();
 
+    // WHEN
     await drainApp({
       serving,
       registry: createUnitRegistry(),
@@ -129,10 +135,12 @@ describe("drainApp", () => {
       onUnready: () => {},
     });
 
+    // THEN
     expect(sleep).toHaveBeenCalledWith(5_000, expect.any(AbortSignal));
   });
 
   it("counts a unit still open at the deadline as abandoned", async () => {
+    // GIVEN
     const registry = createUnitRegistry();
     const { serving } = servingStub();
     let aborted = false;
@@ -145,6 +153,7 @@ describe("drainApp", () => {
       return Ok("never");
     });
 
+    // WHEN
     const report = await drainApp({
       serving,
       registry,
@@ -155,11 +164,13 @@ describe("drainApp", () => {
       onUnready: () => {},
     });
 
+    // THEN
     expect(report).toBeOkWith({ inFlightAtStart: 1, completed: 0, abandoned: 1 });
     expect(aborted).toBe(true);
   });
 
   it("counts a unit that settles before the deadline as completed, alongside one left open", async () => {
+    // GIVEN
     const registry = createUnitRegistry();
     const { serving } = servingStub();
     const { clock, sleeps } = controlledClock();
@@ -177,6 +188,7 @@ describe("drainApp", () => {
       return Ok("never");
     });
 
+    // WHEN
     const report = drainApp({
       serving,
       registry,
@@ -201,14 +213,17 @@ describe("drainApp", () => {
     // race.
     sleeps[1]?.();
 
+    // THEN
     expect(await report).toBeOkWith({ inFlightAtStart: 2, completed: 1, abandoned: 1 });
   });
 
   it("does not let a unit that starts after inFlightAtStart is sampled drive completed negative", async () => {
+    // GIVEN
     const registry = createUnitRegistry();
     const { serving } = servingStub();
     const { clock, sleeps } = controlledClock();
 
+    // WHEN
     const report = drainApp({
       serving,
       registry,
@@ -242,6 +257,7 @@ describe("drainApp", () => {
     await settle();
     sleeps[1]?.();
 
+    // THEN
     const result = await report;
     expect(result).toBeOkWith({ inFlightAtStart: 0, completed: 0, abandoned: 1 });
   });
@@ -298,49 +314,50 @@ describe("drainApp", () => {
   });
 
   it("resolves both sleeps immediately when skip is already aborted", async () => {
+    // GIVEN
     const registry = createUnitRegistry();
     const { serving } = servingStub();
     const controller = new AbortController();
     controller.abort();
 
-    const startedAt = Date.now();
+    // WHEN the clock never moves, so only an honoured `skip` lets either sleep resolve
     const report = await drainApp({
       serving,
       registry,
-      clock: systemClock,
+      clock: createFakeClock(),
       preDrainDelayMs: 30_000,
       drainTimeoutMs: 30_000,
       skip: controller.signal,
       onUnready: () => {},
     });
 
-    expect(Date.now() - startedAt).toBeLessThan(1_000);
+    // THEN
     expect(report).toBeOkWith({ inFlightAtStart: 0, completed: 0, abandoned: 0 });
   });
 
   it("cuts the current wait short when skip is aborted mid-drain", async () => {
+    // GIVEN a drain parked in its pre-drain sleep, with the clock never reaching it
     const registry = createUnitRegistry();
     const { serving } = servingStub();
     const controller = new AbortController();
+    const clock = createFakeClock();
 
-    const startedAt = Date.now();
     const report = drainApp({
       serving,
       registry,
-      clock: systemClock,
+      clock,
       preDrainDelayMs: 30_000,
       drainTimeoutMs: 30_000,
       skip: controller.signal,
       onUnready: () => {},
     });
+    await clock.advance(10);
 
-    // Let the real pre-drain-delay timer actually get scheduled before
-    // aborting mid-flight, rather than pre-aborting like the test above.
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // WHEN
     controller.abort();
 
+    // THEN
     expect(await report).toBeOkWith({ inFlightAtStart: 0, completed: 0, abandoned: 0 });
-    expect(Date.now() - startedAt).toBeLessThan(1_000);
   });
 
   // The four below all guard one rule: every `Result` the drain awaits is
@@ -348,9 +365,11 @@ describe("drainApp", () => {
   // that a `Defect` cannot be there — dropping one would report a clean
   // shutdown that did not happen.
   it("propagates a Defect from the pre-drain sleep, without telling the runtime to stop accepting", async () => {
+    // GIVEN
     const { serving } = servingStub();
     const drain = vi.fn(serving.drain);
 
+    // WHEN
     const report = await drainApp({
       serving: { drain, stop: serving.stop },
       registry: createUnitRegistry(),
@@ -363,11 +382,13 @@ describe("drainApp", () => {
       onUnready: () => {},
     });
 
+    // THEN
     expect(report).toBeDefectWith(boom);
     expect(drain).not.toHaveBeenCalled();
   });
 
   it("propagates a Defect from the drain-timeout sleep", async () => {
+    // GIVEN
     const registry = createUnitRegistry();
     const { serving } = servingStub();
 
@@ -375,6 +396,7 @@ describe("drainApp", () => {
     // race that can settle it.
     openUnit(registry);
 
+    // WHEN
     const report = await drainApp({
       serving,
       registry,
@@ -385,12 +407,15 @@ describe("drainApp", () => {
       onUnready: () => {},
     });
 
+    // THEN
     expect(report).toBeDefectWith(boom);
   });
 
   it("propagates a Defect from the runtime's drain", async () => {
+    // GIVEN
     const { serving } = servingStub();
 
+    // WHEN
     const report = await drainApp({
       serving: { drain: defecting, stop: serving.stop },
       registry: createUnitRegistry(),
@@ -401,12 +426,15 @@ describe("drainApp", () => {
       onUnready: () => {},
     });
 
+    // THEN
     expect(report).toBeDefectWith(boom);
   });
 
   it("propagates a Defect from the registry going idle", async () => {
+    // GIVEN
     const { serving } = servingStub();
 
+    // WHEN
     const report = await drainApp({
       serving,
       registry: { ...createUnitRegistry(), awaitIdle: defecting },
@@ -417,6 +445,7 @@ describe("drainApp", () => {
       onUnready: () => {},
     });
 
+    // THEN
     expect(report).toBeDefectWith(boom);
   });
 });
