@@ -12,7 +12,7 @@ served by `@btravstack/http-server`; the contract lives in
 binding its own queue to the `orders` exchange needs it and needs none of this.
 
 ```text
-src/slices/notifications/handler.ts   the notifier: orderNotifications, one piece on the "orderNotifications" consumer, built by AmqpHandler from Logger
+src/slices/notifications/handler.ts   the notifier: orderNotifications, one piece on the "orderNotifications" consumer, built by AmqpHandler from Logger, Mailer and Storage — stores the invoice, presigns it, mails the link
 src/slices/notifications/module.ts    NotificationsSlice — provides the piece, exports only it
 src/slices/audit/handler.ts           the auditor: orderAudit, one piece on the "orderAudit" consumer, built by AmqpHandler from Logger
 src/slices/audit/module.ts            AuditSlice — same shape as NotificationsSlice
@@ -190,15 +190,19 @@ the outbox, the broker and the queue, and comes back as the notifier's own
 notification — commit order preserved, outbox drained, a cancellation
 arriving as a tombstone behind its placement, one event landing on both
 subscribers' queues, and the same event delivered to a subscriber this
-contract never heard of, on a third, foreign queue.
+contract never heard of, on a third, foreign queue. The notifier's mail is
+read back out of the shared Mailpit, and its presigned link is followed with
+a bare `fetch` to the invoice it stored on the shared RustFS — and when that
+invoice has been deleted, the withdrawal mail goes out without a link, which
+is the `ObjectNotFound` arm.
 
 ```bash
 pnpm --filter @btravstack/example-order-amqp-worker test        # broadcast e2e
 pnpm --filter @btravstack/example-order-amqp-worker typecheck   # the needs gate
 ```
 
-The suite needs a **Docker daemon**: a RabbitMQ and a PostgreSQL, both shared
-by the whole repository ([`internal/test-infra`](../../internal/test-infra/README.md)).
+The suite needs a **Docker daemon**: a RabbitMQ, a PostgreSQL, a Mailpit and
+an S3-compatible RustFS, all shared by the whole repository ([`internal/test-infra`](../../internal/test-infra/README.md)).
 Nothing is started per workspace and nothing is cleaned up between tests — each
 test gets a **vhost** of its own from `@amqp-contract/testing`'s `it` extension
 and a **tenant** of its own on the one migrated database.

@@ -14,6 +14,7 @@ import { TenantId } from "@btravstack/example-order-domain";
 import { OrderDatabase, OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
 import { LoggerConfig, createLogger, type Line } from "@btravstack/observability";
 import { OutboxStore } from "@btravstack/outbox";
+import { Storage } from "@btravstack/storage";
 import { bootFixture, overridden, tapped, type Boot } from "@btravstack/testing";
 import type { AsyncResult } from "unthrown";
 import { uuidv7 } from "uuidv7";
@@ -57,13 +58,13 @@ const tappedAmqp = () => {
       sync: ({ config }) => createLogger((line) => lines.push(line), config.level),
     }),
   ]);
-  const tap = tapped(recording, [OrderDatabase, Logger, OutboxStore]);
+  const tap = tapped(recording, [OrderDatabase, Logger, OutboxStore, Storage]);
   return {
     module: tap.module,
     lines: (): readonly Line[] => lines,
     services: () => {
-      const [, , outbox] = tap.services();
-      return { outbox };
+      const [, , outbox, invoices] = tap.services();
+      return { outbox, invoices };
     },
     /**
      * A writer's scope over the running app's own client, for one tenant: the
@@ -87,12 +88,17 @@ const tappedAmqp = () => {
 };
 
 /** What a Mailpit message looks like, narrowed to what this suite reads. */
-type Delivered = { readonly To: readonly { readonly Address: string }[]; readonly Subject: string };
+type Delivered = {
+  readonly To: readonly { readonly Address: string }[];
+  readonly Subject: string;
+  readonly Text: string;
+};
 
 export type AmqpFixtures = {
   /**
-   * What the shared Mailpit received for a tenant, so a spec can prove the
-   * notification LEFT the process rather than that a stub was called.
+   * What the shared Mailpit received for a tenant, oldest first, so a spec
+   * can prove the notification LEFT the process rather than that a stub was
+   * called.
    */
   readonly delivered: (tenantId: string) => Promise<readonly Delivered[]>;
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
@@ -131,8 +137,16 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     await use(async (tenantId) => {
       const to = `tenant-${tenantId}@example.test`;
       const response = await fetch(`${api}/api/v1/search?query=${encodeURIComponent(`to:${to}`)}`);
-      const body = (await response.json()) as { readonly messages: readonly Delivered[] };
-      return body.messages;
+      const body = (await response.json()) as { readonly messages: readonly { ID: string }[] };
+      // The search answers summaries, newest first; the text is on the message.
+      return Promise.all(
+        body.messages
+          .toReversed()
+          .map(
+            async ({ ID }) =>
+              (await (await fetch(`${api}/api/v1/message/${ID}`)).json()) as Delivered,
+          ),
+      );
     });
   },
   boot: bootFixture(),
@@ -151,6 +165,12 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
       AMQP_URL: amqpConnectionUrl,
       DATABASE_URL: inject("__ORDERS_DATABASE_URL__"),
       SMTP_URL: inject("__TESTCONTAINERS_SMTP_URL__"),
+      // The shared RustFS; the tenant in every invoice key is what separates
+      // this test's objects from the rest of the bucket.
+      STORAGE_S3_ENDPOINT: inject("__TESTCONTAINERS_S3_ENDPOINT__"),
+      STORAGE_S3_BUCKET: inject("__TESTCONTAINERS_S3_BUCKET__"),
+      STORAGE_S3_ACCESS_KEY_ID: inject("__TESTCONTAINERS_S3_ACCESS_KEY__"),
+      STORAGE_S3_SECRET_ACCESS_KEY: inject("__TESTCONTAINERS_S3_SECRET_KEY__"),
       OUTBOX_POLL_MS: "25",
       OUTBOX_TENANTS: tenant,
       // The real root composes otel(); a spec run stands up no collector, so

@@ -29,6 +29,7 @@
     "@btravstack/mailer": "workspace:*",
     "@btravstack/observability": "workspace:*",
     "@btravstack/outbox": "workspace:*",
+    "@btravstack/storage": "workspace:*",
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/sdk-node": "catalog:",
     "pino": "catalog:",

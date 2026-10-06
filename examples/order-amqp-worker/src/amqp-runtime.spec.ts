@@ -236,3 +236,103 @@ describe("the broadcast deployment", () => {
     ).toEqual(["order placed — notifying", "recording an order change"]);
   });
 });
+
+describe("the invoice a notification links", () => {
+  it("is stored, presigned and served to whoever follows the mailed link", async ({
+    tenant,
+    serve,
+    tapped,
+    writer,
+    delivered,
+  }) => {
+    // GIVEN the worker serving, its invoices on the shared store
+    await serve(tapped.module);
+
+    // WHEN an order is placed and its notification has left the process, and
+    // the link in it is followed with no credentials at all
+    const placed = await writer((ctx) =>
+      ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-00000000c001", 3),
+    );
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
+    const [mail] = await delivered(tenant);
+    const invoice = await fetch(mail?.Text.match(/https?:\/\/\S+/)?.[0] ?? "");
+
+    // THEN the store answers the invoice the handler rendered — storage
+    // threaded into the mailer, and the bytes never in the mail
+    expect({ placed: placed.isOk(), status: invoice.status, body: await invoice.text() }).toEqual({
+      placed: true,
+      status: 200,
+      body: "Invoice for order 0199a1e0-0000-7000-8000-00000000c001: 3 items.",
+    });
+  });
+
+  it("is linked again when the order is withdrawn", async ({
+    tenant,
+    serve,
+    tapped,
+    writer,
+    delivered,
+  }) => {
+    // GIVEN a served app and a placed order whose notification has arrived
+    await serve(tapped.module);
+    const placed = await writer((ctx) =>
+      ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-00000000c002", 2),
+    );
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
+
+    // WHEN the order is withdrawn, and the withdrawal's link is followed
+    const removed = await writer((ctx) =>
+      ctx.get(OrderRepository).remove("0199a1e0-0000-7000-8000-00000000c002"),
+    );
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 2, { timeout: 10_000 });
+    const [, withdrawal] = await delivered(tenant);
+    const invoice = await fetch(withdrawal?.Text.match(/https?:\/\/\S+/)?.[0] ?? "");
+
+    // THEN it is the invoice the placement issued — read before it was
+    // presigned, because a presign asks the store nothing
+    expect({
+      written: placed.isOk() && removed.isOk(),
+      subject: withdrawal?.Subject,
+      body: await invoice.text(),
+    }).toEqual({
+      written: true,
+      subject: "order 0199a1e0-0000-7000-8000-00000000c002 withdrawn",
+      body: "Invoice for order 0199a1e0-0000-7000-8000-00000000c002: 2 items.",
+    });
+  });
+
+  it("is left out of the withdrawal once it is gone: ObjectNotFound is an answer", async ({
+    tenant,
+    serve,
+    tapped,
+    writer,
+    delivered,
+  }) => {
+    // GIVEN a placed order whose invoice a retention rule has since reaped
+    await serve(tapped.module);
+    const placed = await writer((ctx) =>
+      ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-00000000c003", 1),
+    );
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
+    const reaped = await tapped
+      .services()
+      .invoices.delete(`invoices/${tenant}/0199a1e0-0000-7000-8000-00000000c003.txt`);
+
+    // WHEN the order is withdrawn
+    const removed = await writer((ctx) =>
+      ctx.get(OrderRepository).remove("0199a1e0-0000-7000-8000-00000000c003"),
+    );
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 2, { timeout: 10_000 });
+    const [, withdrawal] = await delivered(tenant);
+
+    // THEN the mail still goes out, without a link that would 404 — the
+    // missing object was triaged, not retried and not dead-lettered
+    expect({
+      written: placed.isOk() && reaped.isOk() && removed.isOk(),
+      text: withdrawal?.Text.trim(),
+    }).toEqual({
+      written: true,
+      text: "Order 0199a1e0-0000-7000-8000-00000000c003 is no longer with us.",
+    });
+  });
+});

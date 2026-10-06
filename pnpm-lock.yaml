@@ -734,6 +734,9 @@ importers:
       '@btravstack/outbox':
         specifier: workspace:*
         version: link:../../packages/outbox
+      '@btravstack/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1

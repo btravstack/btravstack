@@ -12,8 +12,10 @@ export default mergeConfig(
       // extension, so isolation costs nothing per test.
       globalSetup: [
         "@btravstack/internal-test-infra/rabbitmq",
-        // The shared Mailpit the notifications slice sends through.
+        // The shared Mailpit the notifications slice sends through, and the
+        // shared RustFS its invoices are stored in.
         "@btravstack/internal-test-infra/mailpit",
+        "@btravstack/internal-test-infra/rustfs",
         "@btravstack/example-order-infrastructure/global-setup",
       ],
       // The image pull dominates a cold run.

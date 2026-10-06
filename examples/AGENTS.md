@@ -285,3 +285,11 @@ each deployment's `src/main.ts` carry their own.
   built in `main.ts` because the root is where `observability()` is composed,
   and a constant root cannot take it as an argument. The specs never reach it:
   their fixture overrides the `Logger` provider with a recorder.
+- **`order-amqp-worker`'s notifier threads `Storage` into `Mailer`.** A
+  placement stores the invoice it renders and mails a presigned link; a
+  withdrawal `get`s the invoice before presigning it, because a presign asks
+  the store nothing, and triages `ObjectNotFound` by name into a mail without a
+  link. Isolation on the shared RustFS is the tenant in the key
+  (`invoices/{tenantId}/{orderId}.txt`), rule 7's boundary rather than a bucket
+  per test; the root exports `Storage` only so a spec can reap an invoice
+  through the running app's own store.

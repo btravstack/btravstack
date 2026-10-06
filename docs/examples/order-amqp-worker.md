@@ -151,6 +151,21 @@ signal through and the ambient record is the only route to it. Answering a
 the next worker rather than this one finishing work nobody is waiting for.
 See [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit).
 
+**The notifier also threads [storage](/reference/storage) into
+[the mailer](/reference/mailer)** — the excerpt above shows only its first
+half. A placement renders the order's invoice, `put`s it under
+`invoices/{tenantId}/{orderId}.txt`, presigns it for a week (the longest a
+SigV4 URL may live) and mails the link, so the bytes never travel in the mail.
+A withdrawal links the same invoice, and has to `get` it first: presigning
+asks the store nothing, so a URL for a missing key is minted happily and
+`404`s when followed. `ObjectNotFound` is therefore an ordinary answer there —
+an invoice a retention rule reaped — triaged by name into a mail without a
+link, while `StorageUnavailable` and `MailNotSent` become `RetryableError`s
+and `PresignNotSupported` a `NonRetryableError`, in one exhaustive
+`mapErrCases`. The specs follow the mailed link with a bare `fetch` against
+the shared RustFS and read the invoice back, and delete it before a
+withdrawal to prove the mail still goes out.
+
 ## The relay: the package's, and the one half it cannot own
 
 The loop, the claim and the table are [`@btravstack/outbox`](/reference/outbox)'s.
