@@ -1,4 +1,4 @@
-import type { IncomingHttpHeaders, Server } from "node:http";
+import type { IncomingHttpHeaders, Server, ServerResponse } from "node:http";
 
 import { vi } from "vitest";
 
@@ -22,7 +22,7 @@ vi.mock("node:http", async (importOriginal) => {
 
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { createServer, request as httpRequest } from "node:http";
+import { Agent, createServer, request as httpRequest } from "node:http";
 import { connect, type Socket } from "node:net";
 
 import { Env, type ConfigInvalid, type Environment } from "@btravstack/config";
@@ -1507,6 +1507,51 @@ const mountedAppOf = (prefixes: readonly `/${string}`[]) =>
     exports: [HttpRuntime, HttpHandler],
   });
 
+/**
+ * One answerer under `/app`, so a path outside it reaches the runtime's own
+ * `404`: `/app/ok` is served, `/app/abort` flushes a first chunk and holds
+ * until the client drops it, and anything else is declined.
+ */
+const churnAppOf = () =>
+  Module("ChurnApp")({
+    imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+    provides: [
+      answering((request, response) => {
+        if (request.url === "/app/ok") {
+          return new Promise<void>((done) => response.end("ok", () => done()));
+        }
+        if (request.url === "/app/abort") {
+          response.writeHead(200, { "content-type": "text/plain" });
+          response.write("partial");
+          return once(response, "close");
+        }
+        return Promise.resolve();
+      }, "/app"),
+    ],
+    exports: [HttpRuntime, HttpHandler],
+  });
+
+const CHURN_PATHS = ["/app/ok", "/app/missing", "/nowhere", "/app/abort"] as const;
+
+/** One request, settled once its body ended — or, for `/app/abort`, once its first chunk arrived and the client dropped it. */
+const churnCall = (agent: Agent, origin: string, path: string): Promise<void> =>
+  new Promise<void>((done) => {
+    const request = httpRequest(`${origin}${path}`, { agent }, (response) => {
+      response.on("error", () => {});
+      if (path === "/app/abort") {
+        response.once("data", () => {
+          request.destroy();
+          done();
+        });
+        return;
+      }
+      response.resume();
+      response.once("end", () => done());
+    });
+    request.on("error", () => done());
+    request.end();
+  });
+
 const noop: Handler = (_request, response, _signal) =>
   new Promise<void>((done) => response.end("ok", () => done()));
 
@@ -1860,6 +1905,15 @@ export type HttpFixtures = {
   /** The same, over a hand-provided `HttpConfig` — no `Config` rule in the way. */
   readonly appOnUncheckedPort: (port: number) => App;
   readonly occupied: { readonly appOnTakenPort: App };
+  /**
+   * `churnAppOf` driven through `count` requests over a pooled keep-alive
+   * agent, cycling `CHURN_PATHS`, and every response the server handed out.
+   * Shut down by the fixture.
+   */
+  readonly churn: (count: number) => Promise<{
+    readonly app: App;
+    readonly responses: () => readonly ServerResponse[];
+  }>;
   /** The `http.Server` the runtime just created. Asserted here so a test body cannot pass on an empty capture. */
   readonly boundServer: () => Server;
   /** A handler held open until `release()`, so a test can observe a unit in flight. */
@@ -2568,6 +2622,29 @@ export const it = test.extend<HttpFixtures>({
     await use({ appOnTakenPort: appOnPort(port) });
 
     blocker.close();
+  },
+
+  churn: async ({ boot }, use) => {
+    const agent = new Agent({ keepAlive: true, maxSockets: 32 });
+    await use(async (count) => {
+      const app = boot(churnAppOf());
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const server = capturedServers.at(-1);
+      assert.ok(server !== undefined, "the node:http mock did not intercept createServer");
+      const responses: ServerResponse[] = [];
+      server.on("request", (_request, response: ServerResponse) => responses.push(response));
+      const origin = `http://127.0.0.1:${info.port}`;
+      for (let sent = 0; sent < count; sent += 50) {
+        await Promise.all(
+          Array.from({ length: Math.min(50, count - sent) }, (_, index) =>
+            churnCall(agent, origin, CHURN_PATHS[(sent + index) % CHURN_PATHS.length]!),
+          ),
+        );
+      }
+      return { app, responses: () => responses };
+    });
+    agent.destroy();
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above
