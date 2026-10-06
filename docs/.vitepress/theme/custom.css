@@ -1,15 +1,60 @@
-/* start accent — beet crimson. The kernel is the process's flag-drop and
- * chequered flag: it starts the run and calls it, so the accent sits in the
- * signal register on purpose, where unthrown's deliberately does not. There is
- * no --pkg-start in @btravstack/theme yet; the theme derives every accent
- * shade (deep/hover/soft/washes/hero glow/AA text) from this one token. */
 :root {
-  --accent: #a83a5f;
+  --accent: #e0589a;
 }
 
-/* Hero name in the package accent — the BtravStack multi-accent rule: the
- * canvas stays neutral, the product glows in its own color (AA via
- * --text-accent, which darkens on light). */
 :root:root {
   --vp-home-hero-name-color: var(--text-accent);
+  --vp-button-brand-hover-text: #fff;
+  --vp-button-brand-active-text: #fff;
+}
+
+.VPHome {
+  isolation: isolate;
+  --btv-col: 1152px;
+  --btv-gutter: max(0px, calc((100% - var(--btv-col)) / 2));
+}
+
+.VPHome::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: var(--btv-gutter);
+  right: var(--btv-gutter);
+  aspect-ratio: 500 / 300;
+  background-color: var(--accent);
+  -webkit-mask: url("./hero-glyph.svg") no-repeat top center / contain;
+  mask: url("./hero-glyph.svg") no-repeat top center / contain;
+  opacity: 0.12;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@media (max-width: 768px) {
+  .VPHome::after {
+    display: none;
+  }
+}
+
+@media (max-width: 959px) {
+  .VPNavBar .menu,
+  .VPNavBar .translations,
+  .VPNavBar .appearance,
+  .VPNavBar .social-links,
+  .VPNavBar .extra {
+    display: none;
+  }
+
+  .VPNavBar .hamburger {
+    display: flex;
+  }
+
+  .VPNav .VPNavScreen {
+    display: block;
+  }
+
+  .VPHero .image-src {
+    width: min(208px, 62vw);
+    height: min(208px, 62vw);
+    object-fit: contain;
+  }
 }

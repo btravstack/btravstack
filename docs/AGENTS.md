@@ -143,3 +143,20 @@ the old repository.
   `/api/` is skipped, since TypeDoc's cross-references are its own output —
   the same carve-out `ignoreDeadLinks` makes, and the skipped count is printed
   so the exemption stays visible rather than reading as coverage.
+
+## Visual identity
+
+The framework uses the shared theme's beet-pink accent in
+`.vitepress/theme/custom.css`, with `public/logo.png` in the navigation,
+homepage and favicon. The decorative stack in `.vitepress/theme/hero-glyph.svg`
+is a CSS mask tinted by the same accent; it is hidden on narrow screens and
+does not intercept input.
+
+`public/og-btravstack.png` is the social preview, linked by absolute URLs in
+the Open Graph and Twitter metadata. Its editable source is
+`branding/social-card.html`: open it locally with dependencies installed,
+wait for the Geist and JetBrains Mono fonts and logo to load, then capture
+the viewport at **1200 × 630 CSS pixels with device scale factor 1**. Allow
+local-file access when rendering the SVG mask. Keep the image dimensions and
+alt text in `.vitepress/config.ts` consistent with the exported card. The
+source is a standalone design asset, not a documentation route.
