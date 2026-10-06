@@ -3,8 +3,9 @@ import { Port } from "@btravstack/di";
 /**
  * What the transport is bound and configured with, as a service: `http()`
  * binds it from `PORT` (default `3000`; `0` lets the OS pick), `HOST` (default
- * `0.0.0.0`), `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN` and `HTTP_COMPRESSION`, each pinned by
- * the matching option, and anything else in the graph may read it.
+ * `0.0.0.0`), `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
+ * `HTTP_HEADERS_TIMEOUT_MS` and `HTTP_REQUEST_TIMEOUT_MS`, each pinned by the
+ * matching option, and anything else in the graph may read it.
  */
 export class HttpConfig extends Port("HttpConfig")<{
   readonly port: number;
@@ -14,4 +15,8 @@ export class HttpConfig extends Port("HttpConfig")<{
   /** Comma-separated allowed origins, or `*`. Empty is "the deployment said nothing". */
   readonly corsOrigin: string;
   readonly compression: boolean;
+  /** How long a client may take to send a request's headers, in ms; the listener answers `408` past it. */
+  readonly headersTimeoutMs: number;
+  /** How long a client may take to send a whole request, headers and body, in ms; `408` past it. */
+  readonly requestTimeoutMs: number;
 }> {}
