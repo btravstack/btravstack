@@ -14,7 +14,7 @@ import { forkUnit } from "./unit-scope.js";
 
 export type HtmxOptions = {
   /** Where fragments are mounted. Default `/`. */
-  readonly prefix?: `/${string}`;
+  readonly prefix?: `/${string}` | undefined;
   /**
    * The login ROUTE — the path the login answerer serves, `/auth/login` for an
    * `oidc({ prefix: "/auth" })`, not the prefix it is mounted under. Set it and
@@ -23,7 +23,7 @@ export type HtmxOptions = {
    * HX-Redirect` for a request htmx made. Unset, that route answers a bare
    * `401`, and an under-scoped caller answers `403` either way.
    */
-  readonly login?: `/${string}`;
+  readonly login?: `/${string}` | undefined;
 };
 
 /**

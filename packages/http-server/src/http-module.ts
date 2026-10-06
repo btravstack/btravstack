@@ -302,15 +302,7 @@ export const HttpModule =
         ...(router === undefined ? [] : [router, orpc(options)]),
         ...(fragments === undefined
           ? []
-          : [
-              fragments,
-              htmx({
-                ...(options.fragmentsPrefix === undefined
-                  ? {}
-                  : { prefix: options.fragmentsPrefix }),
-                ...(options.fragmentsLogin === undefined ? {} : { login: options.fragmentsLogin }),
-              }),
-            ]),
+          : [fragments, htmx({ prefix: options.fragmentsPrefix, login: options.fragmentsLogin })]),
         ...authenticators,
         ...provides,
       ] as unknown as Provides<P, Router, Fragments>,
