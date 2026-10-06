@@ -547,6 +547,13 @@ instead of a tenant filter, the ORM's cursor call and the decoding of a
 caller's cursor into `MalformedCursor` — three decisions this application owns,
 none of which a supertype could have made for it.
 
+**A listing is bounded in space, the way every phase is bounded in time.** It
+is paginated or it is streamed, never an unbounded array, and its order is
+mastered rather than whatever the store answers: a page is a bound only over
+an order somebody chose. That is why sorting ships as a convention of the
+page rather than waiting on the contract tier's "written twice" rule —
+`packages/contract/CLAUDE.md` carries the rule and the shape.
+
 **Pagination is expressible once, and `@btravstack/contract`'s `keyset` is
 where.** `keyset(request)` answers one object carrying both halves of a keyset
 page — `take` (the page plus one row, so the extra row proves the next page

@@ -14,7 +14,7 @@ import {
 } from "@btravstack/example-order-domain";
 import type { AsyncResult } from "unthrown";
 
-import type { MalformedCursor } from "./pagination.js";
+import type { CursorSortMismatch, MalformedCursor } from "./pagination.js";
 import {
   CustomerRepository,
   FindCustomer,
@@ -75,7 +75,7 @@ class ListOrdersInteractor {
     this.#repository = repository;
   }
 
-  execute(query: OrderQuery): AsyncResult<Page<Order>, MalformedCursor> {
+  execute(query: OrderQuery): AsyncResult<Page<Order>, MalformedCursor | CursorSortMismatch> {
     return this.#repository.list(query);
   }
 }

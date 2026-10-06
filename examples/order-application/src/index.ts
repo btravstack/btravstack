@@ -1,5 +1,5 @@
 export { CustomerApplicationModule, OrderApplicationModule, tenantOf } from "./module.js";
-export { MalformedCursor } from "./pagination.js";
+export { CursorSortMismatch, MalformedCursor } from "./pagination.js";
 export {
   CustomerRepository,
   FindCustomer,

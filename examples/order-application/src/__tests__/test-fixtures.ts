@@ -18,6 +18,7 @@ import { test } from "vitest";
 import {
   CustomerApplicationModule,
   CustomerRepository,
+  CursorSortMismatch,
   FindCustomer,
   FindOrder,
   ListOrders,
@@ -31,6 +32,38 @@ import {
 
 /** Every tenant's rows in one map, keyed the way the real schema's composite unique key is. */
 type Store = Map<string, Order>;
+
+/** A sort value this stub can order: what a text or numeric key reads as. */
+type SortValue = number | string;
+
+/**
+ * What a sortable field reads off a row, and how its cursor value is written
+ * and read back — the same exhaustive map the Prisma adapter keeps, so a key
+ * the application declares sortable with no entry here is a compile error
+ * rather than a page ordered by something else.
+ */
+const sortKeys: {
+  readonly [F in OrderQuery["sort"]["field"]]: {
+    readonly read: (order: Order) => SortValue;
+    readonly encode: (value: SortValue) => string;
+    readonly decode: (raw: string) => SortValue | undefined;
+  };
+} = {
+  quantity: {
+    read: (order) => order.quantity,
+    encode: String,
+    decode: (raw) => {
+      const value = Number(raw);
+      return Number.isSafeInteger(value) ? value : undefined;
+    },
+  },
+};
+
+/** A row's place in a sorted listing: its sort value, then the id that breaks ties. */
+type Position = readonly [value: SortValue, id: string];
+
+const ascending = (a: Position, b: Position): number =>
+  (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0) || a[1].localeCompare(b[1]);
 
 /**
  * The whole point of the layer split: the use cases run against a stub
@@ -66,24 +99,48 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
             ? ErrAsync(new OrderNotFound({ id: id as OrderId }))
             : OkAsync(row);
         },
-        // Insertion-ordered, cursor = the order id. What this stub owes is the
-        // SEEK — walk the direction asked for, resume strictly after the cursor,
-        // answer at most `take` — and `keyset` does the rest, exactly as it does
-        // for the Prisma adapter. Two stores, one arithmetic.
+        // What this stub owes is the SEEK — walk the direction and sort asked
+        // for, resume strictly after the cursor, answer at most `take` — and
+        // `keyset` does the rest, exactly as it does for the Prisma adapter.
+        // Two stores, one arithmetic.
         list: ({ minQuantity, ...request }: OrderQuery) => {
           const scoped = mine().filter(
             (order) => minQuantity === undefined || order.quantity >= minQuantity,
           );
           const keys = keyset(request);
-          const walked = keys.backward ? [...scoped].reverse() : scoped;
-          // A cursor naming no row is `MalformedCursor`, exactly as the Prisma
-          // adapter answers: `findIndex` would otherwise return -1 and page from
-          // the start, so a stub that skipped this would let a spec pass on a
-          // cursor the listing never issued.
-          const at = keys.cursor === undefined ? -1 : walked.findIndex((o) => o.id === keys.cursor);
-          if (keys.cursor !== undefined && at === -1)
-            return ErrAsync(new MalformedCursor({ cursor: keys.cursor }));
-          return OkAsync(keys.page(walked.slice(at + 1, at + 1 + keys.take), (order) => order.id));
+          if (!keys.resumable)
+            return ErrAsync(
+              keys.reason === "malformed"
+                ? new MalformedCursor({ cursor: keys.cursor })
+                : new CursorSortMismatch({ cursor: keys.cursor }),
+            );
+          // One comparator orders the walk and seeks it: the sort key, then the
+          // id that breaks its ties — without which rows sharing a quantity have
+          // no defined order and the page below skips or repeats them — flipped
+          // as a whole when the sort or the direction of travel runs downward.
+          const key = sortKeys[keys.sort.field];
+          const at = (order: Order): Position => [key.read(order), order.id];
+          const sign = (keys.sort.direction === "desc") === keys.backward ? 1 : -1;
+          const walk = (a: Position, b: Position) => sign * ascending(a, b);
+          const walked = [...scoped].sort((a, b) => walk(at(a), at(b)));
+          // The seek is by the cursor's VALUES, as Postgres's is: every row
+          // strictly past that position, whether or not the row the cursor was
+          // minted from still exists. A value the key cannot read back is
+          // `MalformedCursor`, as the Prisma adapter answers.
+          const resume = keys.cursor;
+          const value = resume === undefined ? undefined : key.decode(resume[0]);
+          if (resume !== undefined && value === undefined)
+            return ErrAsync(new MalformedCursor({ cursor: resume.join("|") }));
+          const start: Position | undefined =
+            resume === undefined || value === undefined ? undefined : [value, resume[1]];
+          return OkAsync(
+            keys.page(
+              walked
+                .filter((order) => start === undefined || walk(at(order), start) > 0)
+                .slice(0, keys.take),
+              (order) => [key.encode(key.read(order)), order.id],
+            ),
+          );
         },
         remove: (id: string) =>
           rows.delete(key(id)) ? OkAsync() : ErrAsync(new OrderNotFound({ id: id as OrderId })),
@@ -136,7 +193,7 @@ const scopeWith = (rows: Store, sink: Sink) => (tenantId: TenantId) =>
       stubCustomerRepository,
       Provider(Env)({ inject: {}, value: {} }),
     ],
-    exports: [PlaceOrder, FindOrder, ListOrders, FindCustomer],
+    exports: [PlaceOrder, FindOrder, ListOrders, FindCustomer, OrderRepository],
   });
 
 /** A sink that keeps what it was given, so a spec asserts on the line's fields rather than on a string. */
