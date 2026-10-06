@@ -166,3 +166,6 @@ the viewport at **1200 × 630 CSS pixels with device scale factor 1**. Allow
 local-file access when rendering the SVG mask. Keep the image dimensions and
 alt text in `.vitepress/config.ts` consistent with the exported card. The
 source is a standalone design asset, not a documentation route.
+Entity guide and API pages use `public/entity/og-entity-btravstack.png` at 1280 × 640;
+`transformPageData` selects one image per page so the framework card does not
+compete with the entity card in social metadata.

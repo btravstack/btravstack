@@ -338,17 +338,23 @@ export default defineConfig({
       ["meta", { name: "twitter:title", content: pageTitle }],
       ["meta", { name: "twitter:description", content: pageDescription }],
     );
-    if (
+    const isEntity =
       pageData.relativePath.startsWith("entity/") ||
-      pageData.relativePath.startsWith("api/entity/")
-    ) {
-      const image = "https://btravstack.github.io/btravstack/entity/og-entity.png";
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:image", content: image }],
-        ["meta", { name: "twitter:card", content: "summary_large_image" }],
-        ["meta", { name: "twitter:image", content: image }],
-      );
-    }
+      pageData.relativePath.startsWith("api/entity/");
+    const image = `${SITE_URL}${isEntity ? "entity/og-entity-btravstack.png" : "og-btravstack.png"}`;
+    const imageAlt = isEntity
+      ? "entity — a domain-entity builder for TypeScript, with the beetroot glyph."
+      : "btravstack — A backend framework for Node.js and TypeScript, with the beetroot mascot on three teal layers.";
+    pageData.frontmatter.head.push(
+      ["meta", { property: "og:image", content: image }],
+      ["meta", { property: "og:image:type", content: "image/png" }],
+      ["meta", { property: "og:image:width", content: isEntity ? "1280" : "1200" }],
+      ["meta", { property: "og:image:height", content: isEntity ? "640" : "630" }],
+      ["meta", { property: "og:image:alt", content: imageAlt }],
+      ["meta", { name: "twitter:card", content: "summary_large_image" }],
+      ["meta", { name: "twitter:image", content: image }],
+      ["meta", { name: "twitter:image:alt", content: imageAlt }],
+    );
   },
 
   themeConfig: {
@@ -464,27 +470,5 @@ export default defineConfig({
     ["meta", { property: "og:type", content: "website" }],
     ["meta", { property: "og:site_name", content: "btravstack" }],
     ["meta", { property: "og:locale", content: "en_US" }],
-    ["meta", { property: "og:image", content: `${SITE_URL}og-btravstack.png` }],
-    ["meta", { property: "og:image:type", content: "image/png" }],
-    ["meta", { property: "og:image:width", content: "1200" }],
-    ["meta", { property: "og:image:height", content: "630" }],
-    [
-      "meta",
-      {
-        property: "og:image:alt",
-        content:
-          "btravstack — A backend framework for Node.js and TypeScript, with the beetroot mascot on three teal layers.",
-      },
-    ],
-    ["meta", { name: "twitter:card", content: "summary_large_image" }],
-    ["meta", { name: "twitter:image", content: `${SITE_URL}og-btravstack.png` }],
-    [
-      "meta",
-      {
-        name: "twitter:image:alt",
-        content:
-          "btravstack — A backend framework for Node.js and TypeScript, with the beetroot mascot on three teal layers.",
-      },
-    ],
   ],
 });
