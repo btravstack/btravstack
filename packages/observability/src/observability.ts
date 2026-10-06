@@ -9,7 +9,7 @@ import {
 } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 
-import { loggerSchema, type LoggerSettings } from "./config.js";
+import { logLevel, type LoggerSettings } from "./config.js";
 import { jsonSink } from "./json-sink.js";
 import { createLogger, type Sink } from "./logger.js";
 
@@ -46,7 +46,9 @@ export const observability = (
   Module("Observability")({
     needs: [Env],
     provides: [
-      Config.provider(LoggerConfig)(loggerSchema(options.level)),
+      Config.provider(LoggerConfig)(
+        Config.object({ level: Config.pinned(options.level, logLevel()) }),
+      ),
       Provider(Logger)({
         inject: { config: LoggerConfig },
         sync: ({ config }) => createLogger(options.sink ?? jsonSink(), config.level),

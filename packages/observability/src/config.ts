@@ -30,7 +30,3 @@ export const logLevel = (options: { readonly default?: Level } = {}): ConfigFiel
 
 /** What `observability()` binds from the environment. */
 export type LoggerSettings = { readonly level: Level };
-
-/** The schema `observability()` binds `LoggerConfig` through — one field today, and the place a second one lands. */
-export const loggerSchema = (level: Level | undefined) =>
-  Config.object({ level: Config.pinned(level, logLevel()) });
