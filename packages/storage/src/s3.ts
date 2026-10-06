@@ -8,7 +8,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import type { Scope } from "@btravstack/di";
 import { Module, Port, Provider } from "@btravstack/di";
-import { fromPromise, fromSafePromise } from "unthrown";
+import { Ok, fromPromise } from "unthrown";
 
 import {
   ObjectNotFound,
@@ -19,7 +19,7 @@ import {
 } from "./storage.js";
 
 /** What the graph bound from the environment for the S3 adapter. */
-export class StorageConfig extends Port("StorageConfig")<{
+class StorageConfig extends Port("StorageConfig")<{
   readonly endpoint: string;
   readonly region: string;
   readonly bucket: string;
@@ -36,7 +36,7 @@ export class StorageConfig extends Port("StorageConfig")<{
  * on — every self-hosted store requires it and AWS accepts it, so it is a value
  * that never changes.
  */
-export const s3Schema = Config.object({
+const s3Schema = Config.object({
   endpoint: Config.string("STORAGE_S3_ENDPOINT"),
   region: Config.string("STORAGE_S3_REGION", { default: "us-east-1" }),
   bucket: Config.string("STORAGE_S3_BUCKET"),
@@ -148,20 +148,18 @@ export const s3Storage = (): Module<StorageBackend, ConfigInvalid, Env | Scope> 
       Provider(S3Connection)({
         inject: { config: StorageConfig },
         acquire: ({ config }) =>
-          fromSafePromise(
-            Promise.resolve({
-              client: new S3Client({
-                endpoint: config.endpoint,
-                region: config.region,
-                forcePathStyle: true,
-                credentials: {
-                  accessKeyId: config.accessKeyId,
-                  secretAccessKey: config.secretAccessKey,
-                },
-              }),
-              bucket: config.bucket,
+          Ok({
+            client: new S3Client({
+              endpoint: config.endpoint,
+              region: config.region,
+              forcePathStyle: true,
+              credentials: {
+                accessKeyId: config.accessKeyId,
+                secretAccessKey: config.secretAccessKey,
+              },
             }),
-          ),
+            bucket: config.bucket,
+          }),
         release: ({ client }) => {
           client.destroy();
         },

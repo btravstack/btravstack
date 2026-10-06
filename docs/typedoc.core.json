@@ -4,5 +4,11 @@
   "entryPoints": ["../packages/core/src/index.ts"],
   "tsconfig": "../packages/core/tsconfig.json",
   "out": "api/core",
-  "intentionallyNotExported": ["RuntimeInstance", "RuntimeResolvesOf", "RuntimeOf"]
+  "intentionallyNotExported": [
+    "EntryWrapper",
+    "PieceOptions",
+    "RuntimeInstance",
+    "RuntimeResolvesOf",
+    "RuntimeOf"
+  ]
 }

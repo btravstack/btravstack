@@ -1,12 +1,19 @@
 import type { ConfigInvalid, Env } from "@btravstack/config";
 import {
+  composeByPrefix,
+  type AnyUnitModule,
+  type Refuse,
+  type UnitGate,
+  type UnitRecordOf,
+} from "@btravstack/core";
+import {
   Module,
-  Provider,
   type AnyModule,
   type AnyPort,
   type AnyProvider,
   type Exportable,
   type NeedsGate,
+  type Provider,
   type Scope,
   type ServiceOf,
 } from "@btravstack/di";
@@ -19,7 +26,6 @@ import {
   type ActivitiesInstanceOf,
   type ActivitiesOf,
   type ActivitiesPortOf,
-  type AnyUnitModule,
   type TemporalConfig,
   type TemporalConnection,
   type TemporalTuning,
@@ -27,7 +33,7 @@ import {
   type UnitNeedsOf,
   type WorkflowSource,
 } from "./temporal-runtime.js";
-import { withUnit, type UnitGate, type UnitRecordOf } from "./unit.js";
+import { withUnit } from "./unit.js";
 import {
   WORKFLOW_ACTIVITIES_PREFIX,
   type ActivitiesKeyOf,
@@ -188,25 +194,6 @@ type Uncovered<C extends ContractDefinition, T extends readonly PieceOf<C>[]> = 
 >;
 
 /**
- * A refused array: as long as the array the caller wrote, its head the caller's
- * own elements — which match — and its LAST element the marker paired with what
- * is wrong.
- *
- * TypeScript compares two equal-length tuples element by element, so the extra
- * diagnostic it reports lands on the trailing element and carries both the
- * sentence and the missing key. A fixed two-element tuple named the key only
- * when the array happened to be two elements long; every other arity was a
- * length mismatch, and the developer diffed the contract against the array by
- * hand.
- */
-type Refuse<T extends readonly unknown[], Marker extends string, Detail> = T extends readonly [
-  ...infer Head,
-  unknown,
-]
-  ? readonly [...Head, readonly [Marker, Detail]]
-  : readonly [readonly [Marker, Detail]];
-
-/**
  * The record arm: the whole activities record from one `sync`, with one `unit:`
  * record shared by every entry in it.
  *
@@ -275,38 +262,5 @@ export const TemporalActivities = <C extends ContractDefinition>(
   contract: C,
 ): Whole<C> & Compose<C> => {
   void contract;
-  const build = Provider(TemporalActivitiesPort as ActivitiesPortOf<C>);
-  const compose = (pieces: readonly { readonly port: { readonly portId: string } }[]): unknown =>
-    build({
-      inject: Object.fromEntries(
-        pieces.map((piece) => [
-          piece.port.portId.slice(WORKFLOW_ACTIVITIES_PREFIX.length),
-          piece.port,
-        ]),
-      ),
-      sync: (services: unknown) => services,
-    } as never);
-  const whole = (options: {
-    readonly inject: Readonly<Record<string, AnyPort>>;
-    readonly unit?: Readonly<Record<string, AnyPort>>;
-    readonly sync: (services: never) => Readonly<Record<string, unknown>>;
-  }): unknown => {
-    const record = options.unit ?? {};
-    return build({
-      inject: options.inject,
-      sync: (services: never) =>
-        Object.fromEntries(
-          Object.entries(options.sync(services)).map(([key, entry]) => [
-            key,
-            withUnit(record, entry),
-          ]),
-        ),
-    } as never);
-  };
-  // An array is never a valid record call — its one argument is a record — so
-  // `Array.isArray` alone identifies the composing arm.
-  return ((first: unknown) =>
-    Array.isArray(first)
-      ? compose(first as readonly { readonly port: { readonly portId: string } }[])
-      : whole(first as Parameters<typeof whole>[0])) as never;
+  return composeByPrefix(TemporalActivitiesPort, WORKFLOW_ACTIVITIES_PREFIX, withUnit) as never;
 };

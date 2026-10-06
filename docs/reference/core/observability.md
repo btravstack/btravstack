@@ -209,12 +209,13 @@ operations to this port and holds no `Logger`, `Meter` or `Tracer` of its own.
 Composing [`observability()`](/reference/observability) writes the failures as
 lines; composing `otel()` beside it opens the spans and mints the instruments.
 A graph that composes neither owes nothing: each module that reads the port
-contributed one `noObserver`, so an operation costs one inert call per such
-module and nothing else.
+contributed `noObserverMember`, one shared provider di de-duplicates by
+reference, so an operation costs one inert call and nothing else.
 
-**A module that reads the port contributes `noObserver` itself.** A collector
-depending on a set port nothing provides is an unmet dependency, so the no-op
-member is what makes the empty case empty rather than missing.
+**A module that reads the port contributes `noObserverMember` itself** — the
+ready-made `Provider.member(Observers)({ inject: {}, value: noObserver })`. A
+collector depending on a set port nothing provides is an unmet dependency, so
+the no-op member is what makes the empty case empty rather than missing.
 
 **The observer is called at the START and answers a finisher**, which is what
 lets it open a span before the work and end it after: a span reconstructed

@@ -400,7 +400,7 @@ const orderActivities = TemporalActivities(orderContract)([
 
 ## `temporal(options)`
 
-<!-- doctest: skip — the quoted signature names `AnyUnitModule` and `UnitNeedsOf`, which this package declares for its own `Unit` type parameter and does not re-export, so there is nothing a signature check could name them by -->
+<!-- doctest: skip — the quoted signature names `UnitNeedsOf`, which this package declares for its own `Unit` type parameter and does not re-export, so there is nothing a signature check could name them by -->
 
 ```ts
 const temporal: <C extends ContractDefinition, Unit extends AnyUnitModule | undefined = undefined>(

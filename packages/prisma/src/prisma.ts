@@ -3,7 +3,7 @@ import {
   HealthCheckFailed,
   HealthChecks,
   Observers,
-  noObserver,
+  noObserverMember,
   type Operation,
   type Settle,
 } from "@btravstack/core";
@@ -190,15 +190,7 @@ export const prismaDatabase =
     // `cache({ adapter })` already makes.
     const database = Module(name)({
       needs: [Env],
-      provides: [
-        config,
-        // The no-op member, so the set this module reads is never the empty
-        // dependency di refuses: a graph composing no observability still
-        // starts.
-        Provider.member(Observers)({ inject: {}, value: noObserver }),
-        clientProvider,
-        healthCheck,
-      ],
+      provides: [config, noObserverMember, clientProvider, healthCheck],
       exports: [DatabasePort, HealthChecks],
     });
 

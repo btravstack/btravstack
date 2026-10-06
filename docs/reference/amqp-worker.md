@@ -324,7 +324,7 @@ const orderHandlers = AmqpHandlers(orderContract)([
 
 ## `amqp(options)`
 
-<!-- doctest: skip — the quoted signature names `AnyAmqpContract`, `AnyUnitModule` and `UnitNeedsOf`, which this package declares for its own type parameters and does not re-export, so there is nothing a signature check could name them by -->
+<!-- doctest: skip — the quoted signature names `AnyAmqpContract` and `UnitNeedsOf`, which this package declares for its own type parameters and does not re-export, so there is nothing a signature check could name them by -->
 
 ```ts
 const amqp: <TContract extends AnyAmqpContract, Unit extends AnyUnitModule | undefined = undefined>(

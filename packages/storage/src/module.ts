@@ -1,4 +1,4 @@
-import { HealthCheckFailed, HealthChecks, Observers, noObserver } from "@btravstack/core";
+import { HealthCheckFailed, HealthChecks, Observers, noObserverMember } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import { Err, Ok, P } from "unthrown";
 
@@ -57,9 +57,7 @@ export const storage = <E, N>({
   return Module("Storage")({
     imports: [adapter],
     provides: [
-      // The no-op member, so the set this module reads is never the empty
-      // dependency di refuses: a graph composing no observability still starts.
-      Provider.member(Observers)({ inject: {}, value: noObserver }),
+      noObserverMember,
       Provider(Storage)({
         inject: { backend: StorageBackend, observers: Observers },
         sync: ({ backend, observers }) => instrument(backend, observers),
@@ -67,5 +65,5 @@ export const storage = <E, N>({
       healthCheck,
     ],
     exports: [Storage, HealthChecks],
-  } as never) as unknown as Module<Storage | HealthChecks, E, N>;
+  });
 };

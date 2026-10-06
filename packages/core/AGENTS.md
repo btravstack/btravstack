@@ -36,6 +36,17 @@ PORTS`, a correct diagnosis of the second mistake that reads as a wrong one
   parser is two places for the all-zero rule to be forgotten. Its semantics are
   `docs/reference/core/runtime.md`'s.
 
+- **`dispatchUnit` / `withUnitRecord` and the unit types** (`unit-record.ts`)
+  — hoisted for the same reason: `@btravstack/amqp-worker` and
+  `@btravstack/temporal-worker` each carried the same middleware body, the same
+  record wrapper and the same `UnitGate` word for word, and `AnyUnitModule` was
+  declared again by every package taking a `unit` option. The symbol the two halves meet under stays private to
+  the file, so no package can reach into the context it rides. Each worker
+  keeps only its own entry shape (`handler | [handler, options]`, a function or
+  a record of them) and its own seeded port. Its semantics are
+  `docs/reference/core/runtime.md`'s; `unit-record.spec.ts` pins the forked
+  record, the empty record with nothing bound, and the error settlement.
+
 - **`releasedBy(signal, running)`** — its semantics are
   `docs/reference/core/runtime.md`'s; it races `running` against a private
   `whenAborted(signal)`. Hoisted here in #24, where it was duplicated verbatim

@@ -1853,8 +1853,8 @@ request, torn down when the unit closes, after the response is flushed — every
 bound module's own unmet needs join the composition root's, exactly as any
 other `needs` does, since it is forked over the application context.
 
-`AnyUnitModule` is `Module<never, never, unknown>` — not exported from the
-package, reached the same way `OrpcRouterPort` is, never by name. `never`,
+`AnyUnitModule` is `Module<never, never, unknown>` — `@btravstack/core`'s, not
+re-exported from this package. `never`,
 not `unknown`, in the **first** position: `Module`'s `_exports` channel is
 contravariant, so `Module<unknown, …>` is a bound no real module can ever
 satisfy, and `unknown` in the **third** (Needs) position is what lets a

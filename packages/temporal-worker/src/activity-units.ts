@@ -1,5 +1,6 @@
 import {
-  observe,
+  dispatchUnit,
+  type AnyUnitModule,
   type Operation,
   type RuntimeHost,
   type Settle,
@@ -8,8 +9,6 @@ import {
 import type { ActivityMiddleware } from "@temporal-contract/worker/activity";
 import { activityInfo } from "@temporalio/activity";
 
-import type { AnyUnitModule } from "./temporal-runtime.js";
-import { UNIT_SCOPE } from "./unit.js";
 import { ActivityInputPort } from "./workflow-activities.js";
 
 /**
@@ -21,9 +20,8 @@ import { ActivityInputPort } from "./workflow-activities.js";
  * bound, `next()` runs unchanged, so the ambient `currentUnit()` record is what
  * an adapter reads.
  *
- * The forked context rides the invocation's context under {@link UNIT_SCOPE},
- * where each piece's own wrapper turns it into the typed `context.unit` record
- * that piece declared — the records live with the pieces, so a hand-composed
+ * The forked context rides the invocation's context, where each piece's own
+ * wrapper turns it into the typed `context.unit` record that piece declared — the records live with the pieces, so a hand-composed
  * `temporal()` gets them without threading a second option through the starter,
  * and the middleware never has to map Temporal's FLAT activity name back to the
  * workflow key its piece was minted under.
@@ -42,41 +40,24 @@ export const activityUnits =
     observers: readonly ((operation: Operation) => Settle)[],
     unit: AnyUnitModule | undefined,
   ): ActivityMiddleware =>
-  (invocation, next) => {
-    const settle = observe(observers, {
-      component: "temporal",
-      // Per ATTEMPT, not per activity: an activity is retried under the same
-      // execution, so a count per activity would hide exactly the retries worth
-      // alerting on. The workflow id is not a dimension and must not be — it is
-      // unbounded, and it is already the unit's `traceId`.
-      name: "attempt",
-      attributes: { activity: activityInfo().activityType },
+  (invocation, next) =>
+    dispatchUnit({
+      host,
+      observers,
+      operation: {
+        component: "temporal",
+        // Per ATTEMPT, not per activity: an activity is retried under the same
+        // execution, so a count per activity would hide exactly the retries
+        // worth alerting on. The workflow id is not a dimension and must not be
+        // — it is unbounded, and it is already the unit's `traceId`.
+        name: "attempt",
+        attributes: { activity: activityInfo().activityType },
+      },
+      meta: metaFor(),
+      unit,
+      seed: [ActivityInputPort, invocation.input],
+      next,
     });
-    return host
-      .run(metaFor(), (scope) =>
-        unit === undefined
-          ? next()
-          : // `as never`: `AnyUnitModule` erases a module's Needs to `unknown` —
-            // the only bound a module with real needs can infer against — so
-            // `fork`'s own `DependencyGate` sees `Exclude<unknown, Scope>`,
-            // still `unknown`, and never clears on its own. The needs were
-            // already checked once, at the `Unit`-generic call site that bound
-            // this module (`temporal()`'s own type parameter, proven by
-            // `examples/order-temporal-worker/src/needs-gate.test-d.ts`'s
-            // positive/negative pair) — this reasserts that proof rather than
-            // bypassing it.
-            scope
-              .fork(unit as never, [[ActivityInputPort, invocation.input]] as never)
-              .flatMap((forked) => next({ context: { [UNIT_SCOPE]: forked } } as never)),
-      )
-      .tap(() => settle({ outcome: "ok" }))
-      .tapFailure((failure) =>
-        settle({
-          outcome: "error",
-          cause: failure.tag === "Err" ? failure.error : failure.cause,
-        }),
-      );
-  };
 
 /**
  * `UnitMeta.id` must be unique per unit, and a workflow id is **not** one: an

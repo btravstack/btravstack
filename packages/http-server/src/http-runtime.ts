@@ -7,7 +7,7 @@ import {
   Observers,
   RuntimePort,
   RuntimeStartFailed,
-  noObserver,
+  noObserverMember,
   observe,
   traceIdOfTraceparent,
   type Operation,
@@ -277,9 +277,7 @@ export const httpServer = <
     needs: [Env],
     provides: [
       config,
-      // The no-op member, so the set this module reads is never the empty
-      // dependency di refuses: a graph composing no observability still starts.
-      Provider.member(Observers)({ inject: {}, value: noObserver }),
+      noObserverMember,
       // The same no-op-member move, for the same reason: a root composing no
       // cookie scheme leaves this set with only this `false` in it.
       Provider.member(CookieSchemes)({ inject: {}, value: false }),

@@ -131,7 +131,7 @@ TemporalActivities(pinContract)([otherEcho, shout, audit]);
 // Positive: a piece declaring `unit:` reads those ports off `context.unit`,
 // typed by the record it declared — one kind, so no narrowing to apply; what a
 // name resolves to is the port's own service.
-const scoped = TemporalWorkflowActivities(
+TemporalWorkflowActivities(
   pinContract,
   "runEcho",
 )({
@@ -145,7 +145,6 @@ const scoped = TemporalWorkflowActivities(
     },
   }),
 });
-void scoped.unit.tenant;
 
 // Negative: a name the piece did not declare is not on the record at all, so
 // reading it is TypeScript's own "property does not exist".

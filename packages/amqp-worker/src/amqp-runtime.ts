@@ -8,13 +8,18 @@ import {
   Observers,
   RuntimePort,
   RuntimeStartFailed,
-  noObserver,
+  composeByPrefix,
+  noObserverMember,
   releasedBy,
   type Operation,
   type Runtime,
   type RuntimeHost,
   type Serving,
   type Settle,
+  type AnyUnitModule,
+  type Refuse,
+  type UnitNeedsOf as UnitNeedsOfModule,
+  type UnitRecordOf,
 } from "@btravstack/core";
 import {
   Module,
@@ -23,7 +28,6 @@ import {
   type AnyPort,
   type PortClassOf,
   type PortInstance,
-  type Scope,
   type ServiceOf,
 } from "@btravstack/di";
 import { P, type AsyncResult } from "unthrown";
@@ -36,7 +40,7 @@ import {
   type HandlerPortOf,
 } from "./handler.js";
 import { messageUnits } from "./message-units.js";
-import { withUnit, type UnitRecordOf } from "./unit.js";
+import { withUnit } from "./unit.js";
 
 /** What the worker publishes once it is consuming, read back through `RunningApp.runtimeInfo()`. */
 export type AmqpInfo = { readonly queues: readonly string[] };
@@ -63,24 +67,8 @@ const DEFAULT_CONNECT_TIMEOUT_MS = 5_000;
 /** The runtime's port: what `amqp()` provides, and what the module `start` boots must export. */
 export class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}
 
-/**
- * A module `unit.message` may bind, as the upper bound `amqp()` constrains its
- * own `Unit` type parameter to. `Module`'s `_exports` channel is contravariant,
- * so `Exports = never` — never `unknown` — is what makes a REAL module's own
- * (necessarily narrower) export type assignable to this bound: `(x: Concrete)
- * => void` is assignable to `(x: never) => void`, not to `(x: unknown) =>
- * void`.
- */
-export type AnyUnitModule = Module<never, never, unknown>;
-
-/**
- * The needs a bound `unit.message` module still owes, or `never` when none is
- * bound. `Scope` is excluded, since nothing can ever provide it — the same
- * exemption `NeedsGate` itself carries — and so is the delivery, which the
- * fork's own seed discharges.
- */
-export type UnitNeedsOf<Unit> =
-  Unit extends Module<never, never, infer N> ? Exclude<N, Scope | AmqpMessageInstance> : never;
+/** The needs a bound `unit.message` module still owes, less the delivery the fork's seed discharges. */
+export type UnitNeedsOf<Unit> = UnitNeedsOfModule<Unit, AmqpMessageInstance>;
 
 /**
  * The contract type `TypedAmqpWorker.create` accepts, extracted rather than
@@ -195,9 +183,7 @@ export const amqp = <
     needs: [Env, AmqpHandlersPort as HandlersPortOf<TContract>],
     provides: [
       config,
-      // The no-op member, so the set this module reads is never the empty
-      // dependency di refuses: a graph composing no observability still starts.
-      Provider.member(Observers)({ inject: {}, value: noObserver }),
+      noObserverMember,
       Provider(AmqpRuntime)({
         inject: {
           config: AmqpConfig,
@@ -250,25 +236,6 @@ type Uncovered<C extends AnyAmqpContract, T extends readonly PieceOf<C>[]> = Exc
   HandlerKeyOf<C>,
   KeyOfPiece<T[number]>
 >;
-
-/**
- * A refused array: as long as the array the caller wrote, its head the caller's
- * own elements — which match — and its LAST element the marker paired with what
- * is wrong.
- *
- * TypeScript compares two equal-length tuples element by element, so the extra
- * diagnostic it reports lands on the trailing element and carries both the
- * sentence and the missing key. A fixed two-element tuple named the key only
- * when the array happened to be two elements long; every other arity was a
- * length mismatch, and the developer diffed the contract against the array by
- * hand.
- */
-type Refuse<T extends readonly unknown[], Marker extends string, Detail> = T extends readonly [
-  ...infer Head,
-  unknown,
-]
-  ? readonly [...Head, readonly [Marker, Detail]]
-  : readonly [readonly [Marker, Detail]];
 
 /**
  * The record arm: the whole handlers record from one `sync`, with one `unit:`
@@ -337,37 +304,7 @@ type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]
  */
 export const AmqpHandlers = <C extends AnyAmqpContract>(contract: C): Whole<C> & Compose<C> => {
   void contract;
-  const build = Provider(AmqpHandlersPort as HandlersPortOf<C>);
-  const compose = (pieces: readonly { readonly port: { readonly portId: string } }[]): unknown =>
-    build({
-      inject: Object.fromEntries(
-        pieces.map((piece) => [piece.port.portId.slice(HANDLER_PREFIX.length), piece.port]),
-      ),
-      sync: (services: unknown) => services,
-    } as never);
-  const whole = (options: {
-    readonly inject: Readonly<Record<string, AnyPort>>;
-    readonly unit?: Readonly<Record<string, AnyPort>>;
-    readonly sync: (services: never) => Readonly<Record<string, unknown>>;
-  }): unknown => {
-    const record = options.unit ?? {};
-    return build({
-      inject: options.inject,
-      sync: (services: never) =>
-        Object.fromEntries(
-          Object.entries(options.sync(services)).map(([key, entry]) => [
-            key,
-            withUnit(record, entry),
-          ]),
-        ),
-    } as never);
-  };
-  // An array is never a valid record call — its one argument is a record — so
-  // `Array.isArray` alone identifies the composing arm.
-  return ((first: unknown) =>
-    Array.isArray(first)
-      ? compose(first as readonly { readonly port: { readonly portId: string } }[])
-      : whole(first as Parameters<typeof whole>[0])) as never;
+  return composeByPrefix(AmqpHandlersPort, HANDLER_PREFIX, withUnit) as never;
 };
 
 const startFailed = (cause: unknown): RuntimeStartFailed =>

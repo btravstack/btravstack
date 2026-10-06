@@ -42,7 +42,7 @@ export const mailRecorder = (): MailRecorder => {
  * own; a configurable failure mode would put a policy in a fixture whose whole
  * value is having none.
  */
-export const recordingMailerBackend = (recorder: MailRecorder): MailerService => ({
+const recordingMailerBackend = (recorder: MailRecorder): MailerService => ({
   send: (mail) => {
     recorder.record(mail);
     return OkAsync();
