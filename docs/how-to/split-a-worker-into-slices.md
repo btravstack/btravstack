@@ -347,6 +347,8 @@ much as its transport gives it to own.
 
 ## See also
 
+- [Add a slice by copying a sibling](/how-to/add-a-slice) — the three places
+  a new slice touches, on any transport.
 - [Split a router into controllers](/how-to/split-a-router-into-controllers) —
   the same idea over a nested contract, where a piece's path can go more than
   one level deep.

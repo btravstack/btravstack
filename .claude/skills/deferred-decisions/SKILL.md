@@ -231,3 +231,15 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   what does reach runtime is a `WiringDefect` naming it. A REPL against a
   booted application is a test booting the real root. The trigger would be a
   wiring failure that reaches runtime without naming its port.
+
+- **No resident CLI and no per-slice generator** (issue #59). A slice is
+  byte-shaped the same on all three transports — one transport file minting a
+  piece from `(contract, key)` and one `module.ts` — so the sibling directory
+  is the template (`docs/how-to/add-a-slice.md`). The two arguments for a
+  generator are gone: the wiring mistake it was to prevent (a slice on disk
+  the root forgot to import) is already a compile error naming the port, and
+  the edit no template collapses — the contract key lives in another package —
+  is the source of truth staying where a client can take it. A `turbo gen`
+  config would cost a commitment to turborepo as the blessed project shape,
+  which was not made. A one-shot new-app initialiser (`npm create btravstack`)
+  is untouched by any of this and would be its own issue if wanted.

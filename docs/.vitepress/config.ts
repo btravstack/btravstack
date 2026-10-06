@@ -84,6 +84,7 @@ const GUIDE_SIDEBAR = [
           { text: "Consume AMQP messages", link: "/how-to/consume-amqp-messages" },
           { text: "Publish a message", link: "/how-to/publish-a-message" },
           { text: "Split a worker into slices", link: "/how-to/split-a-worker-into-slices" },
+          { text: "Add a slice by copying a sibling", link: "/how-to/add-a-slice" },
         ],
       },
       {
