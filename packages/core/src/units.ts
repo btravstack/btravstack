@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { randomUUID } from "node:crypto";
 
 import { OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
@@ -36,7 +37,8 @@ export const currentUnit = (): UnitRecord | undefined => storage.getStore();
  * silently defeats the ambient record. A route template is a `kind`.
  *
  * The kernel cannot check this, so uniqueness is the runtime's to guarantee.
- * What it does guarantee is {@link UnitRecord}'s `unitId`, minted per unit;
+ * What it does guarantee is {@link UnitRecord}'s `unitId`, a UUID minted per
+ * unit, so no two units share one across replicas either;
  * `traceId` is the CORRELATION id, which is why it is the one a runtime may
  * supply — it carries an id from outside the process.
  */
@@ -62,13 +64,6 @@ export type UnitRegistry = {
   readonly awaitIdle: () => AsyncResult<void, never>;
 };
 
-let counter = 0;
-
-const nextId = (): string => {
-  counter += 1;
-  return `u${counter}`;
-};
-
 export const createUnitRegistry = (): UnitRegistry => {
   const open = new Set<AbortController>();
   const idleWaiters = new Set<() => void>();
@@ -86,7 +81,7 @@ export const createUnitRegistry = (): UnitRegistry => {
       open.add(controller);
 
       const record: UnitRecord = {
-        unitId: nextId(),
+        unitId: randomUUID(),
         traceId: meta.traceId ?? meta.id,
         tenantId: meta.tenantId,
         // The very signal `work` is handed below: one abort, two ways to reach

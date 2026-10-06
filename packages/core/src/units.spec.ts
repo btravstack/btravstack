@@ -45,6 +45,7 @@ describe("ambient unit record", () => {
 });
 
 const meta = { kind: "test", id: "1" };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 describe("createUnitRegistry", () => {
   it("returns the work's result unchanged", async () => {
@@ -97,6 +98,24 @@ describe("createUnitRegistry", () => {
     const seen = await registry.run({ ...meta, tenantId: "acme" }, () => OkAsync(currentUnit()));
 
     expect(seen).toBeOkWith(expect.objectContaining({ tenantId: "acme" }));
+  });
+
+  it("mints a UUID unitId, distinct even across fresh registries", async () => {
+    // GIVEN two registries, as two replicas would each hold one
+    const replicas = [createUnitRegistry(), createUnitRegistry()];
+
+    // WHEN each opens its first unit
+    const ids = await Promise.all(
+      replicas.map(async (registry) =>
+        (await registry.run(meta, () => OkAsync(currentUnit()?.unitId))).get(),
+      ),
+    );
+
+    // THEN neither is a per-process ordinal, and they differ
+    expect({ distinct: new Set(ids).size, ids }).toEqual({
+      distinct: 2,
+      ids: [expect.stringMatching(UUID), expect.stringMatching(UUID)],
+    });
   });
 
   it("carries the work's own AbortSignal on the ambient record", async () => {
