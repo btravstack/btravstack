@@ -51,7 +51,7 @@ catalog:
   "@btravstack/theme": 2.0.0
   "@btravstack/tsconfig": 0.4.0
   "@btravstack/typedoc": 0.1.0
-  "@changesets/cli": 3.0.2
+  "@changesets/cli": 3.0.3
   "@commitlint/cli": 21.2.3
   # `@amqp-contract/core`'s telemetry module (pulled in by
   # `@amqp-contract/worker`) has a static, unconditional `import
@@ -110,9 +110,9 @@ catalog:
   "@unthrown/standard-schema": 5.12.0
   "@unthrown/vitest": 5.12.0
   jose: 6.2.12
-  knip: 6.34.0
+  knip: 6.39.0
   markdownlint-cli2: 0.23.3
-  lefthook: 2.1.12
+  lefthook: 2.1.16
   oxfmt: 0.71.0
   oxlint: 1.86.0
   pino: 10.3.1
@@ -122,8 +122,8 @@ catalog:
   uuidv7: 1.2.1
   redis: 6.2.1
   tsdown: 0.23.0
-  tsx: 4.23.13
-  turbo: 2.10.12
+  tsx: 4.23.15
+  turbo: 2.11.7
   typedoc: 0.28.20
   typedoc-plugin-markdown: 4.13.1
   testcontainers: 12.2.0
