@@ -8,7 +8,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import type { Scope } from "@btravstack/di";
 import { Module, Port, Provider } from "@btravstack/di";
-import { fromPromise, fromSafePromise } from "unthrown";
+import { Ok, fromPromise } from "unthrown";
 
 import {
   ObjectNotFound,
@@ -148,20 +148,18 @@ export const s3Storage = (): Module<StorageBackend, ConfigInvalid, Env | Scope> 
       Provider(S3Connection)({
         inject: { config: StorageConfig },
         acquire: ({ config }) =>
-          fromSafePromise(
-            Promise.resolve({
-              client: new S3Client({
-                endpoint: config.endpoint,
-                region: config.region,
-                forcePathStyle: true,
-                credentials: {
-                  accessKeyId: config.accessKeyId,
-                  secretAccessKey: config.secretAccessKey,
-                },
-              }),
-              bucket: config.bucket,
+          Ok({
+            client: new S3Client({
+              endpoint: config.endpoint,
+              region: config.region,
+              forcePathStyle: true,
+              credentials: {
+                accessKeyId: config.accessKeyId,
+                secretAccessKey: config.secretAccessKey,
+              },
             }),
-          ),
+            bucket: config.bucket,
+          }),
         release: ({ client }) => {
           client.destroy();
         },

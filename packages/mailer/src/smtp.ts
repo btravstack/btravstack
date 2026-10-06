@@ -3,7 +3,7 @@ import { HealthCheckFailed, HealthChecks } from "@btravstack/core";
 import type { Scope } from "@btravstack/di";
 import { Module, Port, Provider } from "@btravstack/di";
 import { createTransport, type Transporter } from "nodemailer";
-import { fromPromise, fromSafePromise } from "unthrown";
+import { Ok, fromPromise } from "unthrown";
 
 /**
  * How long the relay gets to answer before the check is called unhealthy.
@@ -95,7 +95,7 @@ export const smtpMailer = (): Module<MailerBackend | HealthChecks, ConfigInvalid
       Config.provider(MailerConfig)(smtpSchema),
       Provider(SmtpTransport)({
         inject: { config: MailerConfig },
-        acquire: ({ config }) => fromSafePromise(Promise.resolve(createTransport(config.url))),
+        acquire: ({ config }) => Ok(createTransport(config.url)),
         release: (transport) => {
           transport.close();
         },
