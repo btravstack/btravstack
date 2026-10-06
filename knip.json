@@ -39,7 +39,7 @@
     },
     "internal/consumer-check": {
       "ignore": ["src/consumer.ts"],
-      "ignoreDependencies": ["@arethetypeswrong/cli", "publint", "typescript-consumer"]
+      "ignoreDependencies": ["@arethetypeswrong/cli", "publint"]
     },
     "packages/core": {
       "ignoreDependencies": ["@btravstack/testing"]

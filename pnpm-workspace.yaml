@@ -1,5 +1,4 @@
 autoInstallPeers: false
-dedupePeerDependents: true
 engineStrict: true
 # Three days. A compromised release is usually yanked within hours of being
 # noticed, and the window between publish and discovery is the one a lockfile
@@ -34,16 +33,12 @@ catalog:
   # `latest` dist-tag is the 2.4.0 line, which peers on `unthrown@^4` while
   # this repo pins 5.12.0. The exact beta is the contract until v3 goes stable;
   # raise it deliberately, not on a bot bump.
-  # RustFS is pre-1.0 and its `latest` tag moves; the gate pins the exact
-  # release candidate it was measured against (put, get with content type,
-  # presigned GET, idempotent delete — all verified before the port was
-  # written). Raise it deliberately, not on a bot bump.
-  "@aws-sdk/client-s3": 3.1146.0
-  "@aws-sdk/s3-request-presigner": 3.1146.0
   "@amqp-contract/client": 3.0.0-beta.11
   "@amqp-contract/contract": 3.0.0-beta.11
   "@amqp-contract/testing": 3.0.0-beta.11
   "@amqp-contract/worker": 3.0.0-beta.11
+  "@aws-sdk/client-s3": 3.1146.0
+  "@aws-sdk/s3-request-presigner": 3.1146.0
   "@btravstack/commitlint": 0.1.0
   "@btravstack/entity": 0.9.0
   "@btravstack/lefthook": 0.1.1
@@ -171,15 +166,6 @@ overrides:
   # because an override rewrites PEER ranges too: unscoped, it turned vitest
   # 5's `vite` peer (`^6.4.0 || ^7 || ^8`) into exactly 6.4.3.
   "vitepress>vite@<6.4.3": "6.4.3"
-  # GHSA-7w5x-hrqm-74c2: smol-toml denial of service on a malformed TOML
-  # document. Reaches us via markdownlint-cli2 > smol-toml, which reads a
-  # `.markdownlint-cli2.toml` this repository does not have — the config here is
-  # `.markdownlint-cli2.jsonc`, so the parser is never handed a document at all,
-  # and nothing published depends on it. markdownlint-cli2@0.23.2 is latest and
-  # pins smol-toml at 1.7.0, one below the advisory's first patched 1.7.1, so
-  # there is nothing upstream to take; lift the line to 1.8.0. Drop this when
-  # markdownlint-cli2 ships a release that takes 1.7.1 or later.
-  "smol-toml@<1.7.1": "1.8.0"
   # GHSA-3f6p-5ww8-9rcr: mysql2 lets a hostile server downgrade authentication to
   # `mysql_clear_password`, which sends the password in plaintext. It used to
   # reach us through the Prisma 7 CLI bundling a driver per datasource; on
@@ -217,9 +203,6 @@ overrides:
   "lodash@<4.18.1": "4.18.1"
   # GHSA: valibot's `record()` issue paths make `flatten()` throw.
   "valibot@<1.4.2": "1.5.0"
-  # GHSA-5gmw-xhrv-c9v3, GHSA-85c8-ppgw-ccpr: tinypool prototype pollution to
-  # RCE via worker options. Via oxfmt, which pins tinypool 2.1.0 exactly.
-  "tinypool@<2.1.2": "2.2.0"
   # GHSA-pqg4-j6r4-53mv: shell-quote `quote()` command injection. Via
   # @changesets/cli > launch-editor, which only runs on an interactive edit.
   "shell-quote@>=1.8.4 <1.11.0": "1.12.0"
@@ -271,11 +254,6 @@ allowBuilds:
 
 peerDependencyRules:
   ignoreMissing:
-    # React peers of `@prisma/studio-core`, pulled in transitively by the
-    # `prisma` CLI (v7 bundles Prisma Studio). We never run `prisma studio`.
-    - react
-    - react-dom
-    - "@types/react"
     # Optional peer of `@docsearch/react`, pulled in transitively by vitepress.
     - search-insights
   # All five arrive through `prisma` > `@prisma/composer-cli` > `@prisma/composer`
