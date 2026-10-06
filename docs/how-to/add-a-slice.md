@@ -58,8 +58,9 @@ The file to copy is named for its transport, and so is the call inside it:
 
 A Temporal workflow's **body** is the one part that does not live in the
 slice: it runs in Temporal's workflow sandbox, bundled from the deployment's
-`workflows.ts`, so the workflow itself is added there and only its activities
-are the slice's.
+`workflows.ts`, so the workflow itself — its `declareWorkflow` export — is added
+there and only its activities are the slice's. **It is also the one step the
+compiler does not check** (step 4 says what does).
 
 ## 3. Add it to the root
 
@@ -74,8 +75,9 @@ the slice module in `imports`:
 
 ## 4. Let the compiler name what you missed
 
-Run `pnpm typecheck`. Every step above has its own error, at the place that
-step lives, so a forgotten one is named rather than discovered at boot:
+Run `pnpm typecheck`. Every step above but one has its own error, at the
+place that step lives, so a forgotten one is named rather than discovered at
+boot:
 
 | Forgot                         | What `pnpm typecheck` reports                                         |
 | ------------------------------ | --------------------------------------------------------------------- |
@@ -85,7 +87,20 @@ step lives, so a forgotten one is named rather than discovered at boot:
 | the new slice's own `needs`    | the slice module has an `UNDECLARED NEEDS` naming the port it reads   |
 
 [Read a wiring error](/how-to/read-a-wiring-error) says where in each message
-the name is. Then copy the sibling's spec the same way: a deployment's specs
+the name is.
+
+**The exception is a Temporal workflow's `declareWorkflow` export.**
+`TemporalActivities` checks that every activity is covered, but the worker
+takes `workflows.ts` as a bundle **path**, which no type reaches. Forget the
+export and `pnpm typecheck` stays green, the worker boots with the workflows it
+already had, and the new one fails only when it is invoked: its workflow task
+fails for a type the bundle never registered, and Temporal retries the task, so
+the execution never completes. What catches it is a spec that runs the new
+workflow end to end through the real worker — `client.executeWorkflow("…", …)`,
+as `examples/order-temporal-worker/src/temporal-runtime.spec.ts` does for
+`fulfillOrder` — which then times out instead of passing.
+
+Then copy the sibling's spec the same way: a deployment's specs
 drive it through the real root on its `test-fixtures.ts`, so a new case is a
 new `it` on fixtures that already exist.
 
