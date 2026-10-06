@@ -22,6 +22,8 @@ declare const OrderPersistenceModule: Module<never, never, never>;
 
 <div align="center">
 
+<img src="docs/public/logo.png" alt="btravstack" width="128" height="128" />
+
 # btravstack
 
 **A backend framework for [Node.js](https://nodejs.org/) and
@@ -31,6 +33,7 @@ shuts down the way Kubernetes expects.**
 
 [![CI](https://github.com/btravstack/btravstack/actions/workflows/ci.yml/badge.svg)](https://github.com/btravstack/btravstack/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/%40btravstack%2Fcore.svg?logo=npm)](https://www.npmjs.com/package/@btravstack/core)
+[![npm downloads](https://img.shields.io/npm/dm/%40btravstack%2Fcore.svg)](https://www.npmjs.com/package/@btravstack/core)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
