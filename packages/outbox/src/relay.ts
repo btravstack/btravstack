@@ -56,7 +56,11 @@ type Observer = (operation: Operation) => Settle;
 const publishing = (message: OutboxMessage): Operation => ({
   component: "outbox",
   name: "publish",
-  attributes: { kind: message.kind, "btravstack.tenant_id": message.tenantId },
+  attributes: {
+    operation: "publish",
+    kind: message.kind,
+    "btravstack.tenant_id": message.tenantId,
+  },
   details: { "btravstack.outbox.id": message.id, "btravstack.outbox.subject": message.subjectId },
 });
 
@@ -64,7 +68,7 @@ const publishing = (message: OutboxMessage): Operation => ({
 const claiming = (tenantId: string): Operation => ({
   component: "outbox",
   name: "claim",
-  attributes: { "btravstack.tenant_id": tenantId },
+  attributes: { operation: "claim", "btravstack.tenant_id": tenantId },
   traced: false,
 });
 

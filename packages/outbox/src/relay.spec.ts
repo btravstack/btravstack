@@ -206,7 +206,7 @@ describe("outbox", () => {
       {
         component: "outbox",
         name: "publish",
-        attributes: { kind: "order", "btravstack.tenant_id": "acme" },
+        attributes: { operation: "publish", kind: "order", "btravstack.tenant_id": "acme" },
         details: { "btravstack.outbox.id": 1, "btravstack.outbox.subject": "a" },
         outcome: "ok",
         traced: true,
@@ -214,7 +214,7 @@ describe("outbox", () => {
       {
         component: "outbox",
         name: "claim",
-        attributes: { "btravstack.tenant_id": "acme" },
+        attributes: { operation: "claim", "btravstack.tenant_id": "acme" },
         details: {},
         outcome: "ok",
         traced: false,
