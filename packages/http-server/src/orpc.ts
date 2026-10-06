@@ -45,7 +45,12 @@ import {
   schemeServices,
   type AuthenticatorService,
 } from "./auth.js";
-import { CONTROLLER_PREFIX, type ControllerKeyOf, type ControllerPortOf } from "./controller.js";
+import {
+  CONTROLLER_PREFIX,
+  type ControllerKeyOf,
+  type ControllerPortOf,
+  type PathsOf,
+} from "./controller.js";
 import { CookieSchemes, csrfOn } from "./cookie.js";
 import { HttpHandler } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
@@ -500,19 +505,7 @@ type KeyOfPiece<P> = P extends {
   : never;
 
 /** Every path to a PROCEDURE — the leaves a cover must partition. */
-type LeafPathsOf<C, P extends string = ""> =
-  C extends ProcedureContract<infer _I, infer _O, infer _E>
-    ? P
-    : // The same TS2589 guard `ControllerKeyOf` needs: an index-signature
-      // record short-circuits to `string` rather than recursing over its keys.
-      string extends keyof C
-      ? string
-      : {
-          [K in Exclude<keyof C, PrincipalKey> & string]: LeafPathsOf<
-            C[K],
-            P extends "" ? K : `${P}.${K}`
-          >;
-        }[Exclude<keyof C, PrincipalKey> & string];
+type LeafPathsOf<C> = PathsOf<C, never, false>;
 
 /** Whether leaf `L` sits at, or under, piece path `P`. */
 type CoveredBy<L extends string, P extends string> = L extends P | `${P}.${string}` ? true : false;

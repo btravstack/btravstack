@@ -5,15 +5,11 @@ import type { ProcedureContract, RouterContract } from "@orpc/contract";
 import type { Effective, Implementation, Inherit } from "./orpc.js";
 
 /**
- * The keys of one contract node a piece path can name: its own, less any
- * carrying a literal dot. A path is joined and split on `.`, so a dotted key is
- * indistinguishable from the nesting it would encode — see `Unsliceable` in
- * `orpc.ts` for the other half of the refusal.
+ * The one walk over the contract tree: every dotted path to a procedure, and
+ * to every fragment too when `Fragments` is `true`, skipping any key matching
+ * `Dropped` — less the marker's phantom key either way.
  */
-type Nameable<C> = Exclude<Exclude<keyof C, PrincipalKey> & string, `${string}.${string}`>;
-
-/** Every path into the contract tree — a fragment or a procedure, at any depth. */
-export type ControllerKeyOf<C, P extends string = ""> =
+export type PathsOf<C, Dropped extends string, Fragments extends boolean, P extends string = ""> =
   C extends ProcedureContract<infer _I, infer _O, infer _E>
     ? P
     : // An index-signature record is only ever a GENERIC's constraint
@@ -23,10 +19,23 @@ export type ControllerKeyOf<C, P extends string = ""> =
       string extends keyof C
       ? string
       :
-          | (P extends "" ? never : P)
+          | (Fragments extends true ? (P extends "" ? never : P) : never)
           | {
-              [K in Nameable<C>]: ControllerKeyOf<C[K], P extends "" ? K : `${P}.${K}`>;
-            }[Nameable<C>];
+              [K in Exclude<Exclude<keyof C, PrincipalKey> & string, Dropped>]: PathsOf<
+                C[K],
+                Dropped,
+                Fragments,
+                P extends "" ? K : `${P}.${K}`
+              >;
+            }[Exclude<Exclude<keyof C, PrincipalKey> & string, Dropped>];
+
+/**
+ * Every path into the contract tree — a fragment or a procedure, at any depth —
+ * less any key carrying a literal dot. A path is joined and split on `.`, so a
+ * dotted key is indistinguishable from the nesting it would encode — see
+ * `Unsliceable` in `orpc.ts` for the other half of the refusal.
+ */
+export type ControllerKeyOf<C, P extends string = ""> = PathsOf<C, `${string}.${string}`, true, P>;
 
 /**
  * Every path into the tree, dotted keys INCLUDED — what `ControllerKeyOf` would
@@ -37,19 +46,7 @@ export type ControllerKeyOf<C, P extends string = ""> =
  * `not assignable to parameter of type '"plain"'` — a typo hint, which is the
  * wrong thing to send a reader hunting for.
  */
-type AnyKeyOf<C, P extends string = ""> =
-  C extends ProcedureContract<infer _I, infer _O, infer _E>
-    ? P
-    : string extends keyof C
-      ? string
-      :
-          | (P extends "" ? never : P)
-          | {
-              [K in Exclude<keyof C, PrincipalKey> & string]: AnyKeyOf<
-                C[K],
-                P extends "" ? K : `${P}.${K}`
-              >;
-            }[Exclude<keyof C, PrincipalKey> & string];
+type AnyKeyOf<C> = PathsOf<C, never, true>;
 
 /**
  * Intersected onto `key`, the way `ScopeGate` rides `contract`: `unknown` for a
