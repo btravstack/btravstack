@@ -139,6 +139,20 @@ the old repository.
   dropping the range from the root README's line fails the docs build with
   `README.md:116  @orpc/server`.
 
+- **`scripts/check-export-coverage.ts` refuses an export nothing imports.**
+  Every name a published entry point exports must be imported by an example,
+  a compiled doc sample, a spec or a sibling package, or — for anything with a
+  type side — be named in a type position of the published source. The rules
+  and why each one counts are the script's header; an export that stays
+  without a consumer goes in its `allowed` record with a reason, and an entry
+  whose reason stopped holding fails the run too.
+
+  **It reads imports, not words.** A word match would count `start` in every
+  sentence, so a fence that USES a name its page prelude imports is reached
+  through the prelude, which is why preludes are read alongside fences.
+  Regression-proved: appending an unused `export const` to
+  `packages/cache/src/index.ts` fails the docs build naming it.
+
 - Pages carry frontmatter `title` and `description`, open with the quadrant
   blockquote (`> **How-to.** …`), and link root-relative (`/reference/core/start`).
   The house style is `unthrown`'s; read a page there before writing one here.

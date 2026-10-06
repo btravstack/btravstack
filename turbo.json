@@ -78,6 +78,8 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "../packages/*/src/**",
+        "../packages/*/package.json",
+        "../examples/*/src/**",
         "../pnpm-workspace.yaml",
         "../README.md",
         "../packages/*/README.md",

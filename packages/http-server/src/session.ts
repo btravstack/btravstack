@@ -6,7 +6,7 @@ import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { HttpAuthenticator, Unauthenticated, grantOf, type Authenticator } from "./auth.js";
 import { cookieValue } from "./cookie.js";
 
-export { CookieSchemes, cookieScheme, csrfOn } from "./cookie.js";
+export { CookieSchemes, cookieScheme } from "./cookie.js";
 
 /**
  * What the cookie carries: the application's own principal, and when the
