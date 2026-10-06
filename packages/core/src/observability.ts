@@ -31,7 +31,6 @@ export type Attributes = Readonly<Record<string, string | number | boolean | und
  * failure with nothing else to say.
  */
 export type LoggerService = {
-  readonly log: (level: Level, message: string, attributes?: Attributes, cause?: unknown) => void;
   readonly trace: (message: string, attributes?: Attributes, cause?: unknown) => void;
   readonly debug: (message: string, attributes?: Attributes, cause?: unknown) => void;
   readonly info: (message: string, attributes?: Attributes, cause?: unknown) => void;

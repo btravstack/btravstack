@@ -65,12 +65,6 @@ Standard Schema.
 class Logger extends Port("Logger")<LoggerService> {}
 
 type LoggerService = {
-  readonly log: (
-    level: Level,
-    message: string,
-    attributes?: Attributes,
-    cause?: unknown,
-  ) => void;
   readonly trace: (
     message: string,
     attributes?: Attributes,

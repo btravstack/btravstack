@@ -73,7 +73,6 @@ export const createLogger = (sink: Sink, level: Level = "info"): LoggerService =
     };
 
     return {
-      log: (lineLevel, message, attributes, cause) => write(lineLevel, message, attributes, cause),
       trace: (message, attributes, cause) => write("trace", message, attributes, cause),
       debug: (message, attributes, cause) => write("debug", message, attributes, cause),
       info: (message, attributes, cause) => write("info", message, attributes, cause),

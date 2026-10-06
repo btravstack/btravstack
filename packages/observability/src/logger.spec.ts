@@ -131,7 +131,7 @@ describe("the logger", () => {
 
     // WHEN it writes
     // THEN the call returns: a logging fault is not an outage
-    expect(() => logger.log("fatal", "still fine")).not.toThrow();
+    expect(() => logger.fatal("still fine")).not.toThrow();
   });
 
   it("carries the unit's tenant when the runtime supplied one, and omits it otherwise", ({
