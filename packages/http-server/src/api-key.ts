@@ -35,7 +35,7 @@ export type ApiKeyOptions<P, Keys extends readonly ApiKey<P>[]> = {
  * optional property on the constraint and answers `string` for a scheme with no
  * scopes at all — a vocabulary of every string, which is worse than none.
  */
-export type ScopesOf<Keys extends readonly ApiKey<unknown>[]> = Keys[number] extends infer Key
+type ScopesOf<Keys extends readonly ApiKey<unknown>[]> = Keys[number] extends infer Key
   ? Key extends { readonly scopes: infer S extends readonly string[] }
     ? S[number]
     : never

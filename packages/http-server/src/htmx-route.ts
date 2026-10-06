@@ -17,7 +17,7 @@ import type { Principal, SchemesOf } from "./principal.js";
 import type { KindOf, UnitFor } from "./unit.js";
 
 /** The prefix a piece's port id carries, ahead of its own method and path. */
-export const FRAGMENT_PREFIX = "HtmxFragment:";
+const FRAGMENT_PREFIX = "HtmxFragment:";
 
 /** What a route's own schema infers, or the raw decoded form when it declares none. */
 type InputOfSchema<S extends FragmentInputSchema | undefined> = S extends undefined

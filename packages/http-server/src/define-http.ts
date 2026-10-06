@@ -25,7 +25,7 @@ export type SchemesFrom<A extends Authenticators> = { readonly [K in keyof A]: A
  * `SchemesFrom` because they answer different questions at different call
  * sites: the principal types the handler, the vocabulary checks the contract.
  */
-export type VocabFrom<A extends Authenticators> = { readonly [K in keyof A]: A[K]["scope"] };
+type VocabFrom<A extends Authenticators> = { readonly [K in keyof A]: A[K]["scope"] };
 
 /**
  * One di provider per scheme, on the port whose id carries that scheme's name,

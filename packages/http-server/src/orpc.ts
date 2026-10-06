@@ -55,7 +55,7 @@ import { CookieSchemes, csrfOn } from "./cookie.js";
 import { HttpHandler } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
 import { HttpUnit } from "./http-runtime.js";
-import type { Principal, SchemesOf } from "./principal.js";
+import type { IsUnion, Principal, SchemesOf } from "./principal.js";
 import { unitScope } from "./unit-scope.js";
 import type { KindOf, UnitFor } from "./unit.js";
 
@@ -550,9 +550,6 @@ type Erroneous<T extends readonly unknown[]> = true extends {
   ? true
   : false;
 
-/** The standard union test: `T` distributes, the naked `U` does not. */
-type IsUnion<T, U = T> = T extends unknown ? ([U] extends [T] ? false : true) : never;
-
 /**
  * A piece path nested inside another piece's path. Both would implement the
  * same procedures, and — unlike two pieces under ONE path, which are one port
@@ -723,7 +720,7 @@ export type SchemePortsOf<R> =
  * Every scheme the contract names, anywhere — the router's scheme
  * dependencies. The type side is `SchemePortsOf<R>`; these two must agree.
  */
-export const schemesOf = (contract: unknown): readonly string[] => {
+const schemesOf = (contract: unknown): readonly string[] => {
   const found = new Set<string>();
   const walk = (node: unknown, seen: WeakSet<object>): void => {
     if (typeof node !== "object" || node === null || seen.has(node)) return;

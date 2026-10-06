@@ -4,17 +4,17 @@ import type { AnyPort, Context, Module, PortInstance, ServiceOf } from "@btravst
 
 import type { SchemesOf } from "./principal.js";
 
-export type { AnyUnitModule, UnitNeedsOf };
+export type { AnyUnitModule };
 
 /** What a bound unit module exports — the port instances a leaf of that kind may read. */
-export type UnitExportsOf<M> = M extends Module<infer X, never, unknown> ? X : never;
+type UnitExportsOf<M> = M extends Module<infer X, never, unknown> ? X : never;
 
 /**
  * Any scheme's principal port, as it appears in a needs union. The seed is what
  * discharges it — a unit module naming one owes the composition root nothing —
  * so it is subtracted from what a bound kind's module still needs.
  */
-export type PrincipalInstance = PortInstance<`HttpPrincipal:${string}`, unknown>;
+type PrincipalInstance = PortInstance<`HttpPrincipal:${string}`, unknown>;
 
 /**
  * What a record of bound kinds still owes the composition root: every bound
@@ -49,7 +49,7 @@ type ModuleOf<Units, K extends string> = [NonNullable<Units[K & keyof Units]>] e
   : NonNullable<Units[K & keyof Units]>;
 
 /** True when port instance `P` is exported by the module of EVERY kind in `K`. */
-export type InAll<P, Units, K extends string> = [K] extends [never]
+type InAll<P, Units, K extends string> = [K] extends [never]
   ? false
   : (
         K extends unknown ? (P extends UnitExportsOf<ModuleOf<Units, K>> ? true : false) : never

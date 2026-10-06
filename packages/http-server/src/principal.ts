@@ -18,7 +18,7 @@ export type IsUnion<T, U = T> = [T] extends [never]
     : never;
 
 /** One arm per scheme, tagged by its name so a handler can switch on it. */
-export type Tagged<S extends keyof Schemes & string, Schemes> = S extends S
+type Tagged<S extends keyof Schemes & string, Schemes> = S extends S
   ? { readonly scheme: S; readonly identity: Schemes[S] }
   : never;
 
