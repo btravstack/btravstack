@@ -9,6 +9,7 @@ import {
   WORKFLOW_VALIDATION_ERROR_TAG,
 } from "@temporal-contract/client";
 import { P } from "unthrown";
+import { uuidv7 } from "uuidv7";
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -272,5 +273,47 @@ describe("the billing saga", () => {
     await expect(charged).toBeOkWith({
       authorizationId: "auth-0199a1e0-0000-7000-8000-00000000a001",
     });
+  });
+});
+
+describe("the stale-order sweep", () => {
+  it("withdraws what outlived the retention window and keeps the rest", async ({
+    tenant,
+    serve,
+    fulfilling,
+  }) => {
+    // GIVEN the same composition, and two orders to sweep: one whose UUIDv7
+    // says it was placed in 2025, and one placed now
+    const { client } = await serve(fulfilling.module);
+    const fresh = uuidv7();
+
+    // WHEN both are fulfilled, and the workflow a schedule fires runs with a
+    // thirty-day window
+    const swept = await client
+      .executeWorkflow("fulfillOrder", {
+        workflowId: "wf-sweep-stale",
+        args: { tenantId: tenant, orderId: "0199a1e0-0000-7000-8000-00000000b001", quantity: 1 },
+      })
+      .flatMap(() =>
+        client.executeWorkflow("fulfillOrder", {
+          workflowId: "wf-sweep-fresh",
+          args: { tenantId: tenant, orderId: fresh, quantity: 1 },
+        }),
+      )
+      .flatMap(() =>
+        client.executeWorkflow("sweepStaleOrders", {
+          workflowId: "wf-sweep",
+          args: { tenantId: tenant, olderThanDays: 30 },
+        }),
+      )
+      .flatMap((outcome) =>
+        fulfilling
+          .reader(tenant)
+          .list({ limit: 10, sort: { field: "quantity", direction: "asc" } })
+          .map((page) => ({ outcome, remaining: page.items.map((order) => order.id) })),
+      );
+
+    // THEN the old one is gone and the fresh one stays
+    expect(swept).toBeOkWith({ outcome: { withdrawn: 1 }, remaining: [fresh] });
   });
 });

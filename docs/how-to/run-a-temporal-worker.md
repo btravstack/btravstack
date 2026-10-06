@@ -41,12 +41,15 @@ never a service to resolve — and each `mapErrCases` names every domain error t
 contract declares:
 
 A single record covers **every** workflow the contract declares — `orderContract`
-has two, `fulfillOrder` and `chargeOrder`:
+has three, `fulfillOrder`, `chargeOrder` and the scheduled `sweepStaleOrders`
+(whose one activity is the example's `withdrawStale`, see
+[Run something on a schedule](/how-to/run-something-on-a-schedule)):
 
 <!-- doctest: prelude
 import { start } from "@btravstack/core";
 import { FulfillmentModule } from "../../fulfillment.js";
 import { BillingModule } from "../../billing.js";
+import { withdrawStale } from "../../slices/sweep/activities.js";
 -->
 
 ```ts
@@ -127,6 +130,10 @@ export const orderActivities = TemporalActivities(orderContract)({
         payments.capture(input.authorizationId, idempotencyKey),
       refundPayment: ({ idempotencyKey, input }) =>
         payments.refund(input.authorizationId, idempotencyKey),
+    },
+    sweepStaleOrders: {
+      withdrawStaleOrders: ({ context, input }) =>
+        withdrawStale(context.unit.repository, input.placedBefore),
     },
   }),
 });

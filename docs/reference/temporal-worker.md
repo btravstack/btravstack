@@ -36,6 +36,7 @@ import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 import { BillingModule } from "../../billing.js";
 import { FulfillmentModule } from "../../fulfillment.js";
+import { withdrawStale } from "../../slices/sweep/activities.js";
 -->
 
 # @btravstack/temporal-worker
@@ -190,13 +191,14 @@ is resolved at call time.
 
 Expanded, the monolithic form looks like this — not a call site inside
 `examples/order-temporal-worker` any more, since `orderContract` now declares
-**two** workflows and its own worker composes this record from two pieces
+**three** workflows and its own worker composes this record from three pieces
 instead (see the composing form below and
 [Split a worker into slices](/how-to/split-a-worker-into-slices)), but the
 form itself is unchanged and still what [Run a Temporal
 worker](/how-to/run-a-temporal-worker) teaches for a worker with one saga. A
 single record covers **every** workflow the contract declares, so this one
-carries `chargeOrder` too, not `fulfillOrder` alone:
+carries `chargeOrder` and the scheduled `sweepStaleOrders` too, not
+`fulfillOrder` alone:
 
 ```ts
 export const orderActivities = TemporalActivities(orderContract)({
@@ -263,11 +265,15 @@ export const orderActivities = TemporalActivities(orderContract)({
       refundPayment: ({ idempotencyKey, input }) =>
         payments.refund(input.authorizationId, idempotencyKey),
     },
+    sweepStaleOrders: {
+      withdrawStaleOrders: ({ context, input }) =>
+        withdrawStale(context.unit.repository, input.placedBefore),
+    },
   }),
 });
 ```
 
-One record, one `sync`, both sagas' services in its `inject` — which is exactly
+One record, one `sync`, every workflow's services in its `inject` — which is exactly
 the shape that stops scaling once a worker owns enough workflows, and why the
 composing form below exists.
 
@@ -390,11 +396,12 @@ const orderBilling = TemporalWorkflowActivities(
   }),
 });
 
-// orderContract declares both workflows, so the composing call must cover
-// both — one piece short and it is refused at the call.
+// orderContract declares three workflows, so the composing call must cover
+// all three — one piece short and it is refused at the call.
 const orderActivities = TemporalActivities(orderContract)([
   orderFulfillment,
   orderBilling,
+  sweepStaleOrders,
 ]);
 ```
 

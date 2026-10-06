@@ -51,6 +51,7 @@ import { FulfillmentModule } from "../fulfillment.js";
 import { orderActivities } from "../module.js";
 import { chargeOrder } from "../slices/billing/activities.js";
 import { fulfillOrder } from "../slices/fulfillment/activities.js";
+import { sweepStaleOrders } from "../slices/sweep/activities.js";
 
 /**
  * One Temporal server for the whole repository, with a namespace of this spec
@@ -208,6 +209,12 @@ export type TemporalFixtures = {
    * through `boot` — so its shutdown is the fixture's, on every exit path.
    */
   readonly serve: Serve;
+  /**
+   * The schedule ids this file's namespace holds for a tenant. Read through
+   * Temporal's visibility store, which is eventually consistent — so a spec
+   * waits on it rather than reading it once.
+   */
+  readonly scheduled: (tenant: TenantId) => Promise<readonly string[]>;
   readonly fulfilling: ReturnType<typeof fulfillingTemporal>;
   readonly outOfStock: ReturnType<typeof outOfStockTemporal>;
   readonly noShipping: ReturnType<typeof noShippingTemporal>;
@@ -276,7 +283,7 @@ export const it = test.extend<TemporalFixtures>({
             }),
           }),
         ],
-        provides: [fulfillOrder, chargeOrder],
+        provides: [fulfillOrder, chargeOrder, sweepStaleOrders],
       });
 
       const app = boot(worker, {
@@ -308,6 +315,18 @@ export const it = test.extend<TemporalFixtures>({
 
     await use(serve);
     for (const connection of connections) await connection.close();
+  },
+
+  scheduled: async ({ server }, use) => {
+    const connection = await Connection.connect({ address: server.address });
+    const client = new Client({ connection, namespace: server.namespace });
+    await use(async (tenant) => {
+      const ids: string[] = [];
+      for await (const schedule of client.schedule.list())
+        if (schedule.scheduleId.includes(tenant)) ids.push(schedule.scheduleId);
+      return ids;
+    });
+    await connection.close();
   },
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture

@@ -183,6 +183,36 @@ const chargeOrder = defineWorkflow({
 });
 
 /**
+ * The housekeeping step: withdraw every order placed before `placedBefore`,
+ * epoch milliseconds the workflow computed from its own clock. No `errors`
+ * map, for the compensations' reason: a sweep that could answer "no" would
+ * leave the backlog it exists to clear, so whatever it hits is retried.
+ */
+const withdrawStaleOrders = defineActivity({
+  input: tenanted.extend({ placedBefore: z.number().int() }),
+  output: z.object({ withdrawn: z.number().int() }),
+  activityOptions: {
+    startToCloseTimeout: "5 minutes",
+    retry: { maximumAttempts: 5, initialInterval: "1 second" },
+  },
+});
+
+/**
+ * The third workflow, and the one nobody calls: a Temporal Schedule fires it,
+ * registered per tenant by `order-temporal-worker`'s `deploy:schedules`. It is
+ * on the same queue as the sagas because a schedule's action is an ordinary
+ * workflow start — the cron is the platform's, the work is this contract's.
+ */
+const sweepStaleOrders = defineWorkflow({
+  input: tenanted.extend({ olderThanDays: z.number().int().positive() }),
+  output: z.object({ withdrawn: z.number().int() }),
+  // Every scheduled run is started under an id the schedule mints from its
+  // own and the fire time, so there is no id for a policy to guard here.
+  startPolicy: "allow-duplicate",
+  activities: { withdrawStaleOrders },
+});
+
+/**
  * The contract, declared before any implementation exists.
  *
  * `taskQueue` is part of it because a Temporal worker's identity IS its task
@@ -191,7 +221,7 @@ const chargeOrder = defineWorkflow({
  */
 export const orderContract = defineContract({
   taskQueue: "orders",
-  workflows: { fulfillOrder, chargeOrder },
+  workflows: { fulfillOrder, chargeOrder, sweepStaleOrders },
 });
 
 export type OrderContract = typeof orderContract;

@@ -64,10 +64,10 @@ import { TypedClient } from "@temporal-contract/client";
 
 const typed = (await TypedClient.create({ client })).get();
 
-const registered = await ensureSchedule(typed.for(orderContract).schedule, "fulfillOrder", {
-  scheduleId: "nightly-fulfillment-sweep",
+const registered = await ensureSchedule(typed.for(orderContract).schedule, "sweepStaleOrders", {
+  scheduleId: "sweep-stale-orders-0199a1e0-0000-7000-8000-000000009000",
   spec: { cronExpressions: ["0 3 * * *"] },
-  args: { tenantId: "acme", orderId: "sweep", quantity: 1 },
+  args: { tenantId: "0199a1e0-0000-7000-8000-000000009000", olderThanDays: 30 },
 });
 
 // Errors are values here, so a deploy that ignores this exits 0 with no
@@ -115,6 +115,20 @@ registers them once per replica, and the point of `ensureSchedule` is that this
 is harmless, not that it is a good idea: it makes N replicas write the same
 schedule N times on every rollout, and it couples "the worker can start" to "the
 Temporal namespace accepts a write".
+
+**The worked example is `examples/order-temporal-worker`'s
+`pnpm deploy:schedules`.** `src/deploy-schedules.ts` is the one-shot: it hands
+`process.env` over once, reads `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE` and
+`SWEEP_TENANTS` through `Config` — so a missing tenant list is a
+`ConfigInvalid` naming the variable — and exits non-zero on any failure.
+`src/schedules.ts` registers one `sweepStaleOrders` schedule per tenant under
+an id **derived from the tenant**, which is what makes a second deploy an
+update rather than a second schedule, inside a `Module.scoped` graph whose
+client connection is released on every path. `src/schedules.spec.ts` runs it
+twice against the shared Temporal server, on a namespace of its own, and
+asserts `created` then `updated` and exactly one schedule left behind. The
+workflow it fires is on
+[the example's page](/examples/order-temporal-worker#the-stale-order-sweep-on-a-schedule).
 
 ## What is deliberately not here
 

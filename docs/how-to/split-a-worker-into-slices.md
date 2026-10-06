@@ -180,6 +180,7 @@ export const orderHandlers = AmqpHandlers(orderContract)([
 export const orderActivities = TemporalActivities(orderContract)([
   fulfillOrder,
   chargeOrder,
+  sweepStaleOrders,
 ]);
 ```
 

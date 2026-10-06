@@ -268,3 +268,12 @@ each deployment's `src/main.ts` carry their own.
   `btravstack.http.duration` dimensioned by method, answerer, status and
   whether the response was aborted, none of which a request scope can see from
   inside itself.
+- **`order-temporal-worker`'s `pnpm deploy:schedules` is the scheduling
+  position, executable** (`src/schedules.ts`, `src/deploy-schedules.ts`): one
+  `ensureSchedule` per `SWEEP_TENANTS` entry for the `sweepStaleOrders`
+  workflow, under an id derived from the tenant — which is the whole of the
+  idempotence — inside a `Module.scoped` graph of its own, because a deploy is
+  a one-shot with no runtime to `start`. The script hands `process.env` over
+  as `Env` once, the one place an example does; everything after it reads
+  through `Config`. The sweep needs no clock port: the cutoff is computed in
+  the workflow, where `Date.now()` is the recorded workflow-task time.

@@ -48,6 +48,7 @@ import { OrderTemporalWorker, orderActivities } from "./module.js";
 import { BillingSlice } from "./slices/billing/module.js";
 import { fulfillOrder } from "./slices/fulfillment/activities.js";
 import { FulfillmentSlice } from "./slices/fulfillment/module.js";
+import { SweepSlice } from "./slices/sweep/module.js";
 
 const options = { signals: false, probes: false } as const;
 
@@ -62,7 +63,7 @@ const _wired = start(OrderTemporalWorker, options);
 // otherwise, and a module failing two gates at once elaborates the other one.
 const RuntimelessTemporal = Module("RuntimelessTemporal")({
   needs: [Env],
-  imports: [FulfillmentSlice, BillingSlice, observability()],
+  imports: [FulfillmentSlice, BillingSlice, SweepSlice, observability()],
   provides: [orderActivities],
   exports: [orderActivities.port],
 });
@@ -123,7 +124,7 @@ const FulfillmentlessTemporal = TemporalModule("FulfillmentlessTemporal")({
   activities: orderActivities,
   workflows: { workflowsPath: "./workflows.js" },
   unit: { activity: ActivityUnitModule },
-  imports: [DeclaredFulfillmentless, BillingSlice],
+  imports: [DeclaredFulfillmentless, BillingSlice, SweepSlice],
 });
 
 // Negative: `start` accepts a module whose outstanding needs are `Scope` and
@@ -146,7 +147,7 @@ const _unboundUnit = TemporalModule("UnboundUnit")({
   contract: orderContract,
   activities: orderActivities,
   workflows: { workflowsPath: "./workflows.js" },
-  imports: [DeclaredFulfillmentless, BillingSlice],
+  imports: [DeclaredFulfillmentless, BillingSlice, SweepSlice],
 });
 
 void _unboundUnit;
@@ -174,6 +175,7 @@ const unitGateActivities = TemporalActivities(orderContract)({
       capturePayment: () => OkAsync(undefined),
       refundPayment: () => OkAsync(undefined),
     },
+    sweepStaleOrders: { withdrawStaleOrders: () => OkAsync({ withdrawn: 0 }) },
   }),
 });
 

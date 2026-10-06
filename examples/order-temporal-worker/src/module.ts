@@ -13,6 +13,8 @@ import { chargeOrder } from "./slices/billing/activities.js";
 import { BillingSlice } from "./slices/billing/module.js";
 import { fulfillOrder } from "./slices/fulfillment/activities.js";
 import { FulfillmentSlice } from "./slices/fulfillment/module.js";
+import { sweepStaleOrders } from "./slices/sweep/activities.js";
+import { SweepSlice } from "./slices/sweep/module.js";
 
 /**
  * The activities record, composed from each slice's own piece — keyed by the
@@ -20,7 +22,11 @@ import { FulfillmentSlice } from "./slices/fulfillment/module.js";
  * error and two pieces claiming one key are di's duplicate-provider defect at
  * build.
  */
-export const orderActivities = TemporalActivities(orderContract)([fulfillOrder, chargeOrder]);
+export const orderActivities = TemporalActivities(orderContract)([
+  fulfillOrder,
+  chargeOrder,
+  sweepStaleOrders,
+]);
 
 /**
  * The composition root of the orchestration deployment: a list of slices plus
@@ -47,6 +53,7 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   imports: [
     FulfillmentSlice,
     BillingSlice,
+    SweepSlice,
     OrderPersistenceModule,
     storage({ adapter: s3Storage() }),
     observability(),
