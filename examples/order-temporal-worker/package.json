@@ -13,7 +13,7 @@
     "dev": "PROBE_PORT=0 tsx watch --env-file=../../.env.dev src/main.ts",
     "generate": "node ../../docs/scripts/extract-doc-samples.ts --group order-temporal-worker --out src/generated/doc-samples",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit -p tsconfig.test-d.json"
   },
   "dependencies": {
     "@btravstack/config": "workspace:*",
@@ -46,6 +46,7 @@
     "@unthrown/vitest": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
+    "typescript-consumer": "catalog:",
     "uuidv7": "catalog:",
     "vitest": "catalog:",
     "zod": "catalog:"
