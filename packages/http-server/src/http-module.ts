@@ -11,6 +11,7 @@ import {
   type Provider,
 } from "@btravstack/di";
 
+import type { CookieSchemes } from "./cookie.js";
 import { HttpHandler } from "./handler.js";
 import type { HtmxFragmentsPort } from "./htmx-route.js";
 import { htmx } from "./htmx.js";
@@ -24,7 +25,6 @@ import {
   type UnitsNeedsOf,
 } from "./http-runtime.js";
 import { orpc, type OrpcRouterPort } from "./orpc.js";
-import type { CookieSchemes } from "./session.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
 type HttpStarter<Units> = Module<

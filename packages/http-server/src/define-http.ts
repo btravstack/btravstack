@@ -7,9 +7,9 @@ import {
   type AuthenticatorService,
 } from "./auth.js";
 import { controllerFor } from "./controller.js";
+import { cookieScheme } from "./cookie.js";
 import { htmxFragmentsFor, htmxRouteFor } from "./htmx-route.js";
 import { routerFor } from "./orpc.js";
-import { cookieScheme } from "./session.js";
 import type { Kinds, UnitsOf } from "./unit.js";
 
 /** The authenticators an application declares, keyed by scheme name. */

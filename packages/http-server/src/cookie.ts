@@ -1,3 +1,5 @@
+import { Port, Provider, type AnyProvider } from "@btravstack/di";
+
 /**
  * One cookie out of the `cookie` header, which `node:http` delivers as ONE
  * string. The name is matched EXACTLY, so `__Host-session-x` is not
@@ -29,3 +31,36 @@ export const setCookie = (name: string, value: string, maxAgeSec: number): strin
 
 /** Clearing is the same cookie with no value and no lifetime. */
 export const clearCookie = (name: string): string => setCookie(name, "", 0);
+
+/**
+ * One member per composed scheme, `true` when that scheme reads a cookie — the
+ * graph fact `csrf`'s default is computed from. `httpServer` contributes the
+ * `false` member that keeps the set from being the empty dependency di refuses,
+ * so a graph composing no scheme at all still starts.
+ *
+ * A set port rather than a marker `HttpModule` folds: `http()` never sees an
+ * application's authenticators — the root composes them itself — so a signal
+ * read off the options record would leave that surface silently unprotected.
+ * A `ctx.get` at start could not answer it either: di's `Context` has no `has`.
+ *
+ * A member is owed by anything that READS OR WRITES a cookie, which is wider
+ * than "an authenticator": `oidc()` is not a scheme and contributes one.
+ */
+export class CookieSchemes extends Port.many("HttpCookieSchemes")<boolean> {}
+
+/**
+ * What every cookie surface contributes — `defineHttp` for a scheme whose
+ * description says it reads one, and `oidc()` for itself, which is not a scheme
+ * at all but reads `__Host-oidc` and serves a state-changing `POST /logout`.
+ *
+ * "Whatever touches a cookie contributes" is the rule, not "whatever
+ * authenticates": the narrower reading left a root composing `oidc()` and
+ * `sessionCodec()` without `sessionAuthenticator` serving that logout with CSRF
+ * off.
+ */
+export const cookieScheme = (): AnyProvider =>
+  Provider.member(CookieSchemes)({ inject: {}, value: true });
+
+/** `csrf` unset is on exactly when a composed surface reads a cookie. */
+export const csrfOn = (option: boolean | undefined, schemes: readonly boolean[]): boolean =>
+  option ?? schemes.some(Boolean);

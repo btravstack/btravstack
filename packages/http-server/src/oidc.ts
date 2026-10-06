@@ -21,14 +21,13 @@ import {
 import { ErrAsync, TaggedError, fromPromise, type AsyncResult } from "unthrown";
 
 import { cleartext, cleartextRefused } from "./cleartext.js";
-import { clearCookie, cookieValue, setCookie } from "./cookie.js";
+import { clearCookie, cookieScheme, cookieValue, setCookie } from "./cookie.js";
 import { HttpHandler, type HttpAnswerer } from "./handler.js";
 import { forLocation, returnTo } from "./redirect.js";
 import {
   SESSION_COOKIE,
   SessionCodec,
   TRANSIENT_TTL_SEC,
-  cookieScheme,
   type SessionCodecService,
 } from "./session.js";
 
