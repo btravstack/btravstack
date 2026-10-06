@@ -120,48 +120,49 @@ const decodeKey = (value: string): Uint8Array | undefined => {
 const scopesOf = (value: unknown): boolean =>
   Array.isArray(value) && value.every((scope) => typeof scope === "string");
 
-// The plaintext is authenticated, not validated: a key this codec holds could
-// have sealed anything, so what it is and what shape it has are both checked
-// before it is trusted as a session — a `null` one used to defect on `.exp`, a
-// string `exp` used to coerce its way past the lifetime, and a string `scopes`
+// What `seal` stamps, checked before anything else is trusted: the PURPOSE,
+// and a numeric lifetime still running. The plaintext is authenticated, not
+// validated — a key this codec holds could have sealed anything — so a `null`
+// one used to defect on `.exp`, and a string `exp` used to coerce its way past
+// the lifetime.
+const stamped = (
+  decoded: unknown,
+  typ: string,
+  now: number,
+): (Record<string, unknown> & { readonly exp: number }) | undefined =>
+  typeof decoded === "object" &&
+  decoded !== null &&
+  "typ" in decoded &&
+  decoded.typ === typ &&
+  "iat" in decoded &&
+  typeof decoded.iat === "number" &&
+  "exp" in decoded &&
+  typeof decoded.exp === "number" &&
+  decoded.exp > now
+    ? (decoded as Record<string, unknown> & { readonly exp: number })
+    : undefined;
+
+// A session's own shape, past the stamp: a principal, and a string `scopes`
 // would defect on the `Set` a scheme builds from it.
-const sessionOf = (plaintext: Uint8Array): Session<unknown> | undefined => {
-  const decoded: unknown = JSON.parse(new TextDecoder().decode(plaintext));
-  return typeof decoded === "object" &&
-    decoded !== null &&
-    "typ" in decoded &&
-    decoded.typ === TYP &&
-    "principal" in decoded &&
-    "iat" in decoded &&
-    typeof decoded.iat === "number" &&
-    "exp" in decoded &&
-    typeof decoded.exp === "number" &&
-    (!("sid" in decoded) || typeof decoded.sid === "string") &&
-    (!("scopes" in decoded) || scopesOf(decoded.scopes))
-    ? (decoded as Session<unknown>)
+const sessionOf = (decoded: unknown, now: number): Session<unknown> | undefined => {
+  const session = stamped(decoded, TYP, now);
+  return session !== undefined &&
+    "principal" in session &&
+    (!("sid" in session) || typeof session["sid"] === "string") &&
+    (!("scopes" in session) || scopesOf(session["scopes"]))
+    ? (session as unknown as Session<unknown>)
     : undefined;
 };
 
-// The transient's own shape guard: the login's marker, a numeric lifetime, and
-// every other property a string — it is flow state, not a principal.
+// The transient's own shape, past the stamp: every other property a string —
+// it is flow state, not a principal.
 const transientOf = (
-  plaintext: Uint8Array,
+  decoded: unknown,
   now: number,
 ): Readonly<Record<string, string>> | undefined => {
-  const decoded: unknown = JSON.parse(new TextDecoder().decode(plaintext));
-  if (
-    typeof decoded !== "object" ||
-    decoded === null ||
-    !("typ" in decoded) ||
-    decoded.typ !== TRANSIENT_TYP ||
-    !("iat" in decoded) ||
-    typeof decoded.iat !== "number" ||
-    !("exp" in decoded) ||
-    typeof decoded.exp !== "number" ||
-    decoded.exp <= now
-  )
-    return undefined;
-  const state = Object.entries(decoded).filter(([key]) => !STAMPED.has(key));
+  const transient = stamped(decoded, TRANSIENT_TYP, now);
+  if (transient === undefined) return undefined;
+  const state = Object.entries(transient).filter(([key]) => !STAMPED.has(key));
   return state.every(([, value]) => typeof value === "string")
     ? (Object.fromEntries(state) as Readonly<Record<string, string>>)
     : undefined;
@@ -172,7 +173,7 @@ const transientOf = (
 const open = <T>(
   keys: readonly Uint8Array[],
   cookie: string | undefined,
-  live: (plaintext: Uint8Array, now: number) => T | undefined,
+  live: (decoded: unknown, now: number) => T | undefined,
 ): AsyncResult<T | undefined, never> =>
   cookie === undefined
     ? OkAsync(undefined)
@@ -181,7 +182,7 @@ const open = <T>(
           const now = Math.floor(Date.now() / 1000);
           for (const key of keys) {
             const value = await compactDecrypt(cookie, key, ALGORITHMS)
-              .then(({ plaintext }) => live(plaintext, now))
+              .then(({ plaintext }) => live(JSON.parse(new TextDecoder().decode(plaintext)), now))
               .catch(() => undefined);
             if (value !== undefined) return value;
           }
@@ -217,11 +218,7 @@ const codec = (
     seal: ({ principal, sid, scopes }) =>
       // `JSON.stringify` drops an absent `sid`, so nothing spreads it in.
       sealed(sealing, ttlSec, (iat, exp) => ({ typ: TYP, principal, sid, scopes, iat, exp })),
-    unseal: (cookie) =>
-      open(keys, cookie, (plaintext, now) => {
-        const session = sessionOf(plaintext);
-        return session !== undefined && session.exp > now ? session : undefined;
-      }),
+    unseal: (cookie) => open(keys, cookie, sessionOf),
     transient: {
       // The markers last, so state a caller spelled `typ` cannot become one.
       seal: (state) =>
