@@ -107,8 +107,10 @@ sets.
 
   **That rule is about the PRELOAD, not about instrumentations generally.** An
   instrumentation that patches nothing — one whose `enable()` sets a helper the
-  instrumented library reads per call, as `@prisma/instrumentation` does — has
-  no ordering requirement a provider cannot meet, and `otel()` registers those.
+  instrumented library reads per call — has no ordering requirement a provider
+  cannot meet, and `otel()` registers those. Prisma 7's
+  `@prisma/instrumentation` was the case that shaped this; no starter
+  contributes one on Prisma 8.
   A package contributes one to `@btravstack/core`'s `Instrumentations` set port;
   `otel()` loads every contribution and hands it to the `NodeSDK`. The test is
   whether the instrumentation patches module loading, not whether it is OTel.

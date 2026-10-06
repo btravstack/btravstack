@@ -513,8 +513,10 @@ installs nothing — which is why `load` is async and answers `undefined` rather
 than failing: the package supplying it is an optional peer the consumer may not
 have installed, and the contributor logs that skip itself.
 
-`@btravstack/prisma` is the worked example: composing it alone gives you a
-counted, logged client, and adding `otel()` is what brings engine spans.
+No starter contributes one today. `@btravstack/prisma` did on Prisma 7, for
+`@prisma/instrumentation`'s engine spans; Prisma 8 has no engine and ships no
+tracer, so its query middleware reports to `Observers` and opens the only
+database span there is.
 
 ## `pinoSink(logger)`
 
