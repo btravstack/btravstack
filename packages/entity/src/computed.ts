@@ -1,0 +1,44 @@
+import type { z } from "zod";
+
+import type { OnlyNominal } from "./shape.js";
+
+/** One derived field: its schema, and the function that produces it. */
+export type ComputedField<T extends z.core.$ZodType, D> = {
+  readonly schema: T;
+  // `z.input`, not `z.infer`: the produced value goes straight to this
+  // schema's own parser on every construction path, so demanding the branded
+  // output only forced an `as` cast the parse then re-proved. The input form
+  // is castless and still rejects a wrong type; a branded return still
+  // assigns (brand ⊂ unbranded input), so pre-existing casts keep compiling.
+  readonly from: (d: D) => z.input<T>;
+};
+
+/**
+ * Declares one derived field:
+ *
+ * ```ts
+ * computed: {
+ *   fullName: computed(FullName, (d) => `${d.first} ${d.last}`),
+ *   initials: computed(Initials, (d) => `${d.first[0]}${d.last[0]}`),
+ * }
+ * ```
+ *
+ * `from` reads the declared fields and re-runs on every construction, so a
+ * derived value cannot go stale against its sources. `D` is fixed by the
+ * expected type at the call site, so `d` needs no annotation, and the return
+ * type is checked against *this* field's schema — a wrong type reports on the
+ * field that produced it rather than on the whole map.
+ *
+ * A deriver may call the entity's **own** statics, given an explicit return
+ * annotation — `(d): boolean => Doc.isActive(d.tags)`. The unannotated form is
+ * TS2506: the options object sits in the `extends` clause, and inferring the
+ * arrow's return resolves the class mid-declaration; the annotation preempts
+ * that, and is still checked against both the body and the schema. Pinned in
+ * `computed.test-d.ts`.
+ */
+export function computed<T extends z.core.$ZodType, D>(
+  schema: T & OnlyNominal<{ value: T }>["value"],
+  from: (d: D) => z.input<T>,
+): ComputedField<T, D> {
+  return { schema: schema as T, from };
+}
