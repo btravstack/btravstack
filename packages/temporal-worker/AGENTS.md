@@ -20,8 +20,8 @@ page, never this file.
   `TemporalModule` also takes **`needs`**, forwarded to di's own — what this
   root's OWN providers expect from outside. The starter's `Env` is not among them: the
   starter is an import, and an import's needs travel without being restated. A
-  root that provides a config provider of its own does declare it —
-  `examples/order-amqp-worker` says `needs: [Env]` for `relayConfig`. The sugar
+  root that provides a config provider of its own does declare it, as
+  `needs: [Env]`, since that provider is the root's own. The sugar
   **re-declares di's `NeedsGate`** over its augmented tuples, so a root whose
   own provider owes a port it does not name is refused at THIS call rather than
   slipping past into `start`; see `packages/di/AGENTS.md`'s **Module

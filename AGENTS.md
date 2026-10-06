@@ -32,7 +32,7 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds fourteen published packages,
+pnpm workspace + turbo monorepo. `packages/` holds fifteen published packages,
 `entity` (optional domain modelling on Zod; sealed entities and aggregates, derived schemas, and Result-returning construction), `contract` (the contract tier: markers and normed shapes a client and the
 server that implements it both need — the `authenticated` marker and a cursor
 page, with the page's schema behind a `/zod` subpath so the root keeps its
@@ -46,17 +46,20 @@ adapter behind its own subpath; it IMPLEMENTS the `Logger`, `Tracer` and
 `Meter` ports rather than declaring them, which is `core`'s job), `cache`
 `mailer` and `storage` (the three application-service ports of issue #62, on
 one shape — a port, a real adapter, an in-process adapter, and one
-composition function), and the three
+composition function), `outbox` (the transactional outbox's relay — the poll
+loop, a per-tenant claim, a lag health check and a Prisma 8 store behind a
+`/prisma` subpath; the application keeps the transaction that writes the row
+and says what publishing means), and the three
 **servers**, each named for the half it implements: `http-server` (oRPC over
 `node:http`), `temporal-worker` and `amqp-worker`. `di` was its own repository until it was merged here
 **with its history**; it, `contract` and `entity` are the three packages that depend on
 nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
-back, with `testing`, `observability`, the three application-service ports
-and the three servers on `core`. Its own spec is `packages/di/AGENTS.md`; `contract`'s is
+back, with `testing`, `observability`, the three application-service ports,
+`outbox` and the three servers on `core`. Its own spec is `packages/di/AGENTS.md`; `contract`'s is
 `packages/contract/AGENTS.md`; the harness's is
 `packages/testing/AGENTS.md`; the logging starter's is
-`packages/observability/AGENTS.md`.
+`packages/observability/AGENTS.md`; the relay's is `packages/outbox/AGENTS.md`.
 `examples/` holds fourteen private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 three runtimes (`order-api`, `order-temporal-worker`, `order-amqp-worker`),
@@ -132,9 +135,9 @@ pnpm dev              # the three example deployments, one process each, watchin
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
-## Versioning: all fourteen packages move as one
+## Versioning: all fifteen packages move as one
 
-The fourteen published packages share **one version number**, enforced by a
+The fifteen published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. **Do not downgrade `@changesets/cli`
 below 3.0.0** — on 2.x the next `pnpm run version` silently ships a major. The
 measurements behind both rules are in `.changeset/AGENTS.md`.
@@ -307,7 +310,21 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    commit boundary and its tenant boundary are one call.
    Nothing is hand-rolling a missing framework feature there.
    Cross-store atomicity is the **outbox** plus a **saga**, which is what the
-   three examples are built on. Three reasons a unit-scoped transaction is
+   three examples are built on — and the outbox's relay ships, as
+   `@btravstack/outbox`, because an answer every application would otherwise
+   copy is the framework's to own. What it owns is the half that is the same
+   everywhere: the loop (publish in outbox order, stop a tenant's batch at the
+   first refusal, back off) and the **claim**, a transaction-scoped advisory
+   lock per tenant. That claim is the guarantee worth stating: delivery is
+   at-least-once (a crash between a publish and its mark re-publishes), but
+   **N replicas never publish one row at once**, and a tenant's facts keep
+   their order across replicas, because one relay holds a tenant at a time
+   and the rest skip it. The write stays the adapter's, by the rule above,
+   and what publishing means stays the application's, as an
+   `OutboxPublisher` it provides. The claim does hold one interactive
+   transaction across a batch's publishes — one per relay and bounded by the
+   batch, never one per request, which is the trade
+   `packages/outbox/AGENTS.md` weighs. Three reasons a unit-scoped transaction is
    the wrong shape: it makes every request an **interactive** transaction,
    which Prisma's own documentation says to reach for last; the unit does not
    close until the response is **flushed** (the first contract a runtime
@@ -546,10 +563,12 @@ those three in sync.
 
 A starter that owns a dependency declares a health check; the kernel folds every
 one into `GET /healthz`. `@btravstack/cache`, `@btravstack/storage`,
-`@btravstack/prisma` and `@btravstack/mailer` each contribute one, named for
-the component — the mailer's on its SMTP **adapter** rather than on the
-composition, since the recording adapter sends nowhere and would report healthy
-for free; a starter an
+`@btravstack/prisma`, `@btravstack/mailer` and `@btravstack/outbox` each
+contribute one, named for the component — the mailer's on its SMTP **adapter**
+rather than on the composition, since the recording adapter sends nowhere and
+would report healthy for free, and the outbox's on its LAG rather than on its
+store, since a reachable table whose oldest pending row is an hour old is the
+failure an operator needs to see; a starter an
 application never composed contributes nothing, and a set port with no
 contributors is empty rather than missing.
 
@@ -732,6 +751,7 @@ copy with no gate is the copy that lies.
 | `@btravstack/mailer`          | `packages/mailer/AGENTS.md`                                                  | `/reference/mailer`          |
 | `@btravstack/storage`         | `packages/storage/AGENTS.md`                                                 | `/reference/storage`         |
 | `@btravstack/prisma`          | `packages/prisma/AGENTS.md`                                                  | `/reference/prisma`          |
+| `@btravstack/outbox`          | `packages/outbox/AGENTS.md`                                                  | `/reference/outbox`          |
 | `@btravstack/http-server`     | `packages/http-server/AGENTS.md` (auth half: `packages/http-server/AUTH.md`) | `/reference/http-server`     |
 | `@btravstack/temporal-worker` | `packages/temporal-worker/AGENTS.md`                                         | `/reference/temporal-worker` |
 | `@btravstack/amqp-worker`     | `packages/amqp-worker/AGENTS.md`                                             | `/reference/amqp-worker`     |
@@ -939,7 +959,7 @@ in its place.
 - **`packages/core`'s specs use `@btravstack/testing` without depending on
   it** — that would be a package-graph cycle turbo refuses — so four configs
   carry the wiring and move together: see `packages/testing/AGENTS.md`.
-- `declarationMap: false` on all fourteen published packages — the published
+- `declarationMap: false` on all fifteen published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **A deployment extends `@btravstack/tsconfig/app.json`; everything that
   exports something keeps `base.json`.** The two differ in one thing,
@@ -966,7 +986,7 @@ in its place.
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- All fourteen published packages claim `engines: { node: ">=22" }` while the root
+- All fifteen published packages claim `engines: { node: ">=22" }` while the root
   claims `>=22.22`. The divergence is **deliberate**: the root floor is the dev
   toolchain's, a package's is a compatibility promise to consumers. Do not
   align them for tidiness — raising a published floor is a breaking change,
@@ -1274,14 +1294,15 @@ A sixth rule is about production code that tests keep honest:
    accepts — all in the manifest, none in the image. So `PRE_DRAIN_DELAY_MS`,
    `DRAIN_TIMEOUT_MS`, `STOP_TIMEOUT_MS`, `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
    `HTTP_HEADERS_TIMEOUT_MS`, `HTTP_REQUEST_TIMEOUT_MS`,
-   `TEMPORAL_GRACE_PERIOD_MS`, `TEMPORAL_FORCE_AFTER_MS` and
-   `AMQP_CONNECT_TIMEOUT_MS` are fields beside `PORT`, `HOST`,
-   `TEMPORAL_ADDRESS` and `AMQP_URL`, each **pinned** by the matching option:
+   `TEMPORAL_GRACE_PERIOD_MS`, `TEMPORAL_FORCE_AFTER_MS`,
+   `AMQP_CONNECT_TIMEOUT_MS`, `OUTBOX_POLL_MS` and `OUTBOX_MAX_LAG_MS` are
+   fields beside `PORT`, `HOST`, `TEMPORAL_ADDRESS`, `AMQP_URL` and
+   `OUTBOX_TENANTS`, each **pinned** by the matching option:
    the option is what a test or a settled decision fixes, the variable what a
    deployment sets, and `Config.pinned` decides between them per field.
 
    **A variable carries its starter's prefix** — `HTTP_`, `TEMPORAL_`, `AMQP_`,
-   `STORAGE_S3_` — because several starters share one process (an HTTP
+   `STORAGE_S3_`, `OUTBOX_` — because several starters share one process (an HTTP
    deployment that publishes to AMQP and reads a database composes three), and
    a bare name like `BODY_LIMIT` is one the next starter would also want. The
    exceptions are names the **ecosystem** already owns and a platform injects

@@ -74,26 +74,13 @@ export const Persistence = Module("Persistence")({
 output — `{ url: string; poolSize: number }` — and hands back the provider
 carrying it as `databaseConfig.port`. **That is the shape for a slice one
 application owns**: nothing else ever needs to name the port, so no class line
-names it twice. `examples/order-amqp-worker/src/outbox-relay.ts` uses exactly
-this:
+names it twice.
 
-```ts
-export const relayConfig = Config.provider("RelayConfig")(
-  Config.object({
-    pollMs: Config.integer("OUTBOX_POLL_MS", {
-      min: 1,
-      max: 60_000,
-      default: 200,
-    }),
-    tenants: Config.string("OUTBOX_TENANTS"),
-  }),
-);
-```
-
-`tenants` has **no default**, and that is the interesting half: the relay
-sweeps outside any unit, so there is no ambient record to read a tenant from,
-and "whatever is in the table" is how one deployment starts broadcasting
-another's facts. A required variable is what makes an operator say whose.
+A variable with **no default** is a statement too. `@btravstack/outbox`'s
+`OUTBOX_TENANTS` is required because the relay sweeps outside any unit, so
+there is no ambient record to read a tenant from, and "whatever is in the
+table" is how one deployment starts broadcasting another's facts. A required
+variable is what makes an operator say whose.
 
 ## A port other packages name
 
@@ -236,6 +223,9 @@ composition root.
 | `TEMPORAL_FORCE_AFTER_MS`  | `15000`                 | `temporal()` — `shutdownForceTime`                                                                                                                                 |
 | `AMQP_URL`                 | `amqp://127.0.0.1:5672` | [`amqp()`](/reference/amqp-worker)                                                                                                                                 |
 | `AMQP_CONNECT_TIMEOUT_MS`  | `5000`                  | `amqp()`                                                                                                                                                           |
+| `OUTBOX_TENANTS`           | required                | [`outbox()`](/reference/outbox) — the tenants this relay serves, comma-separated; pinned by `tenants`                                                              |
+| `OUTBOX_POLL_MS`           | `200`                   | `outbox()` — the idle sleep between sweeps; pinned by `pollMs`                                                                                                     |
+| `OUTBOX_MAX_LAG_MS`        | `60000`                 | `outbox()` — the oldest pending age its health check tolerates; pinned by `maxLagMs`                                                                               |
 | `LOG_LEVEL`                | `info`                  | [`observability()`](/reference/observability)                                                                                                                      |
 | `DATABASE_URL`             | required                | [`prismaDatabase()`](/reference/prisma) — the **application role's** credentials, not the owner's, where row security is on: `prisma db migrate` runs as the owner |
 | `REDIS_URL`                | required                | [`cache()` over Redis](/reference/cache)                                                                                                                           |
@@ -244,8 +234,8 @@ composition root.
 
 **A variable carries its starter's prefix**, so two starters in one process
 cannot collide — an HTTP deployment that also publishes to AMQP and reads a
-database composes three of them. `HTTP_`, `TEMPORAL_`, `AMQP_`, `STORAGE_S3_`
-are the namespaces; the exceptions are names the ecosystem already owns and
+database composes three of them. `HTTP_`, `TEMPORAL_`, `AMQP_`, `OUTBOX_`,
+`STORAGE_S3_` are the namespaces; the exceptions are names the ecosystem already owns and
 that a platform injects for you (`PORT`, `HOST`, `DATABASE_URL`, `REDIS_URL`,
 `SMTP_URL`, `LOG_LEVEL`), where a prefix would break the convention rather than
 protect it. The kernel's own are unprefixed because there is exactly one

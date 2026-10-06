@@ -295,8 +295,7 @@ not cover"` marker, and what the marker names is a procedure path
   the port type printable. The piece does no oRPC work: it is a plain record;
   `OrpcRouter`'s `routerOf` walk is what wraps a leaf in `.result(...)`, at
   composition. A slice's module exports `controller.port` rather than naming
-  a port of its own — the shape `Config.provider("RelayConfig")(schema)`
-  already uses in this repo. Covered by `controller.spec.ts`'s `controllers`
+  a port of its own — the shape `Config.provider(name)(schema)` has too. Covered by `controller.spec.ts`'s `controllers`
   fixture (the key-minted port and declared deps a piece carries) and by
   every gate in `controller.test-d.ts` above. `controller.ts` imports
   `Effective`/`Implementation`/`Inherit` from `orpc.ts` with `import type` —

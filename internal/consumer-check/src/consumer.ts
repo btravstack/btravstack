@@ -17,6 +17,7 @@ import { RuntimePort, type Runtime } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { Entity } from "@btravstack/entity";
 import { HttpModule, defineHttp } from "@btravstack/http-server";
+import { OutboxPublisher, outbox } from "@btravstack/outbox";
 import { oc } from "@orpc/contract";
 import { OkAsync } from "unthrown";
 import { z } from "zod";
@@ -81,3 +82,12 @@ export class ConsumerAccount extends Entity("ConsumerAccount")({
   id: Entity.field(z.string().brand("ConsumerAccountId"), { identity: true }),
   name: Entity.field(z.string().min(1), { unbranded: true }),
 }) {}
+
+// 7. An outbox relay composed with the application's own publisher, exported
+//    as a slice: the shape whose type reaches `outbox()`'s unexported config
+//    and relay ports.
+export const RelaySlice = Module("RelaySlice")({
+  imports: [outbox({ tenants: ["acme"] })],
+  provides: [Provider(OutboxPublisher)({ inject: {}, value: { publish: () => OkAsync() } })],
+  exports: [OutboxPublisher],
+});

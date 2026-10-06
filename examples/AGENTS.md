@@ -198,13 +198,12 @@ is the index of the workspaces themselves.
   and `UserModule` hands it on uncast;
   `ActivityUnitModule`'s `TenantId(input.tenantId)`;
   `MessageUnitModule`'s `TenantId(message.payload.tenantId)` — plus the
-  customers controller's `TenantId(input.tenantId)` and the relay's
-  `tenantsOf`, which brands the `OUTBOX_TENANTS` list once at the config
-  boundary. No activity and no handler casts any more: each reads a `Tenant`
-  or a use case off `context.unit`, so there is no boundary left inside a leaf
-  to claim. `prisma-outbox.ts` is the
-  one **read-back** — a row becoming an `OrderEvent` — and so the one place
-  the brand is re-applied rather than carried.
+  customers controller's `TenantId(input.tenantId)`. No activity and no
+  handler casts any more: each reads a `Tenant` or a use case off
+  `context.unit`, so there is no boundary left inside a leaf to claim. The
+  outbox's read side claims no brand at all: `@btravstack/outbox` speaks plain
+  strings, and the publisher hands the row's `tenantId` to a contract envelope
+  that carries a string.
 
   **Every id beside it is a UUIDv7**, declared once on the entity
   (`OrderId`, `CustomerId`) and again on each contract's own schema, so a
@@ -243,12 +242,13 @@ is the index of the workspaces themselves.
   can express neither — and the test that proves the read-through reads under
   a tenant of its own for exactly that reason.
 
-  `Outbox.pending(tenantId, limit)` is the case that shows ambient could not
-  have covered this anyway: the relay reading it is a background sweep with no
+  `OutboxStore.claim(tenantId, …)` is the case that shows ambient could not
+  have covered this anyway: the relay calling it is a background sweep with no
   request, delivery or activity behind it, so there is no unit to read a
   tenant from, ambient or injected. Which tenants it serves is deployment
-  configuration (`OUTBOX_TENANTS`), and it sweeps tenant by tenant so one
-  tenant's backlog cannot starve another's.
+  configuration (`OUTBOX_TENANTS`, read by `@btravstack/outbox`'s `outbox()`),
+  and it sweeps tenant by tenant so one tenant's backlog cannot starve
+  another's.
 
 ## What each deployment consumes
 
@@ -260,8 +260,9 @@ says why it is shaped the way it is; the slice modules, the unit modules and
 each deployment's `src/main.ts` carry their own.
 
 - Each metric an application mints sits at an adapter seam, never in the
-  application layer — the outbox relay's per-tenant `relayed` counter, the
-  billing stand-in's `authorized` counter — and nothing in this application
+  application layer — the billing stand-in's `authorized` counter; the outbox
+  relay's publishes are reported to `Observers` by `@btravstack/outbox`
+  itself, per tenant — and nothing in this application
   measures a request at all: `@btravstack/http-server` reports every one to
   `Observers` at the unit seam, where `otel()`'s member mints
   `btravstack.http.duration` dimensioned by method, answerer, status and

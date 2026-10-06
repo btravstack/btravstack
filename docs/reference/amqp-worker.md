@@ -6,15 +6,14 @@ description: The AMQP starter — AmqpModule, AmqpHandlers, amqp(), AmqpRuntime,
 <!-- doctest: prelude
 import { Logger, Tracer } from "@btravstack/core";
 import { AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp-worker";
-import { Env } from "@btravstack/config";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { OkAsync } from "unthrown";
-import { Outbox } from "@btravstack/example-order-application";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { MessageUnitModule } from "../../message-unit.js";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
-import { outboxRelay, relayConfig } from "../../outbox-relay.js";
+import { OutboxStore, outbox } from "@btravstack/outbox";
+import { orderAmqpClient, orderPublisher } from "../../outbox-publisher.js";
 import { AuditSlice } from "../../slices/audit/module.js";
 import { NotificationsSlice } from "../../slices/notifications/module.js";
 -->
@@ -104,7 +103,6 @@ The worked composition root, from `examples/order-amqp-worker/src/module.ts`:
 
 ```ts
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
-  needs: [Env],
   contract: orderContract,
   handlers: orderHandlers,
   imports: [
@@ -113,13 +111,15 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     AuditSlice,
     observability(),
     otel(),
+    outbox(),
   ],
-  provides: [relayConfig, outboxRelay],
+  provides: [orderAmqpClient, orderPublisher],
   // Forked per delivery, after the message is validated: where the envelope's
   // `tenantId` becomes the fork's `Tenant`.
   unit: { message: MessageUnitModule },
-  // Everything the fork and the relay read out of the application scope.
-  exports: [Outbox, OrderDatabase, Logger, Tracer],
+  // Everything the fork reads out of the application scope, and the store a
+  // spec reads the outbox back through.
+  exports: [OutboxStore, OrderDatabase, Logger, Tracer],
 });
 ```
 
@@ -131,7 +131,7 @@ discovers a provider only through a module's `imports` / `provides`, never
 through another provider's `deps`.
 
 [`observability()`](/reference/observability) is a second starter, not this
-package's business: it brings the `Logger` the handlers and the relay write
+package's business: it brings the `Logger` the handlers write
 to, bound from `LOG_LEVEL`, JSON per line on stdout, every line carrying the
 delivery's own unit.
 
@@ -529,8 +529,9 @@ type its own tests. Node `>=22`.
   `retry: { mode: "ttl-backoff", maxRetries: 3 }` means **four** total
   attempts, not the three Temporal's `maximumAttempts: 3` names.
 - **A publisher.** The starter runs a consumer; publishing is
-  `@amqp-contract/client`'s job (the worked example's outbox relay creates
-  its own client from the same `AmqpConfig`).
+  `@amqp-contract/client`'s job (the worked example's outbox publisher creates
+  its own client from the same `AmqpConfig`, and
+  [`@btravstack/outbox`](/reference/outbox) relays through it).
 - **A context channel.** A handler reads nothing out of a context; what it
   needs, its provider declares.
 

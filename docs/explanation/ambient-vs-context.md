@@ -186,7 +186,7 @@ export class OrderRepository extends Port("OrderRepository")<{
 
 `TenantId` is a branded `string` the domain owns, and each transport claims
 the brand once, where a validated value arrives — the authenticator, an
-activity's input, the message envelope, the relay's own configuration. Where a
+activity's input, the message envelope. Where a
 unit HAS one to give, the transport provides `Tenant` inside the module it
 binds, so the repository a call reaches was already built for it; where it
 does not — an unmarked procedure, opening an anonymous unit with no principal

@@ -17,8 +17,8 @@ src/slices/notifications/module.ts    NotificationsSlice — provides the piece,
 src/slices/audit/handler.ts           the auditor: orderAudit, one piece on the "orderAudit" consumer, built by AmqpHandler from Logger
 src/slices/audit/module.ts            AuditSlice — same shape as NotificationsSlice
 src/message-unit.ts    MessageUnitModule — forked per delivery, seeded with the validated message; Tenant from the envelope
-src/outbox-relay.ts    the publishing half: sweep the outbox, publish, mark sent — a resourceful provider
-src/module.ts          orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit]); OrderAmqpWorker — the composition root, an AmqpModule importing both slices and observability(), a constant
+src/outbox-publisher.ts   what publishing an outbox row means: orderAmqpClient (a resourceful TypedAmqpClient) and orderPublisher, the OutboxPublisher @btravstack/outbox relays through
+src/module.ts          orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit]); OrderAmqpWorker — the composition root, an AmqpModule importing both slices, observability() and outbox(), a constant
 src/main.ts            the process: runMain(OrderAmqpWorker), and nothing else
 src/__tests__/test-fixtures.ts   boot / serve / tapped / writer, as Vitest fixtures, against a real RabbitMQ — boot and tapped from @btravstack/testing
 ```
@@ -50,8 +50,8 @@ declare `unit: { tenant: Tenant }` and read `context.unit.tenant`, which
 `MessageUnitModule` claimed once from the envelope they are already handed.
 
 `OrderPersistenceModule` in the root's own `imports` belongs to the
-**relay**, the publishing half, not to either subscriber: the outbox it
-sweeps, and the one Prisma client behind it. The orders vertical is in
+**relay**, the publishing half, not to either subscriber: the `OutboxStore` it
+claims from, and the one Prisma client behind it. The orders vertical is in
 neither — nothing here places an order off a message.
 
 A wiring rule worth stating because the reason isn't obvious: `orderHandlers`'s
@@ -72,12 +72,16 @@ row and its `OutboxMessage` row commit in one `db.transaction`. There is no
 the fact of it is lost — the failure mode the naive `save(); publish();`
 sequence carries by construction.
 
-**The relay** is `src/outbox-relay.ts`: an infinite sweep — pull pending rows
-in commit order, `publish("orderChanged", …)` each to the `orders` exchange,
-mark what the broker confirmed. It is deliberately **at-least-once**: a crash
-between publish and mark re-publishes on the next sweep, a broker outage
-leaves rows pending and the sweep after the outage drains them. What is never
-possible is the inverse — a committed order whose event evaporated.
+**The relay** is [`@btravstack/outbox`](../../packages/outbox)'s `outbox()`:
+claim each tenant's pending rows in commit order, hand each to
+`src/outbox-publisher.ts`'s `orderPublisher` — `publish("orderChanged", …)` to
+the `orders` exchange — and mark what the broker confirmed. It is deliberately
+**at-least-once**: a crash between publish and mark re-publishes on the next
+claim, a broker outage leaves rows pending and the sweep after the outage
+drains them. What is never possible is the inverse — a committed order whose
+event evaporated — and what the claim rules out is the other source of
+repeats: a tenant is published by one replica at a time, so running several
+adds no duplicates and keeps each tenant's facts in order.
 
 **The two subscribers** are one plain function each, on the contract's
 `order-notifications` and `order-audit` queues, each reacting to the same
@@ -115,23 +119,26 @@ consumer line carrying its own delivery's unit. There is no `needs`, no
 `context.ctx.get(...)`, and no port declared here over `RuntimePort` — the
 package ships it.
 
-The **relay** is a provider too, a resourceful one: `OutboxRelay` is acquired
-as the graph builds — from `Outbox`, `Logger`, the `AmqpConfig` the starter
-bound and its own `relayConfig.port` (`RelayConfig`, `OUTBOX_POLL_MS`, minted
-by `Config.provider("RelayConfig")(schema)` since the slice is this
-deployment's own) — and released when the application scope closes. Nothing resolves it, and nothing needs to; di
-constructs every provider in the tree, and a resourceful one exists to be
-started and stopped. It creates its own `TypedAmqpClient` rather than
-receiving one as a port, because a transport connection is the transport's
-own — and it is not a second connection either: `@amqp-contract/core` pools by
-URL and reference-counts leases, so the relay's client and the consumer's
-worker share one TCP connection, and `close()` releases a lease rather than
-the socket.
+The **relay** is a provider too, a resourceful one, and it is
+`@btravstack/outbox`'s: `outbox()` acquires it as the graph builds — over the
+`OutboxStore` `OrderPersistenceModule` provides and the `OutboxPublisher` this
+deployment provides, reading `OUTBOX_TENANTS` and `OUTBOX_POLL_MS` itself — and
+releases it when the application scope closes. It contributes an `outbox`
+health check, unhealthy once a tenant's oldest pending row is older than
+`OUTBOX_MAX_LAG_MS`, and reports every claim and publish to `Observers`.
+What this deployment writes is the half the package cannot: `orderAmqpClient`,
+a `TypedAmqpClient` of its own contract created rather than received as a
+port, because a transport connection is the transport's own — and not a second
+connection either: `@amqp-contract/core` pools by URL and reference-counts
+leases, so the publisher's client and the consumer's worker share one TCP
+connection, and `close()` releases a lease rather than the socket — and
+`orderPublisher`, which turns an outbox row into the contract's envelope.
 
 That ordering is worth stating. The relay now starts **before** the consumer —
 as the graph builds, where a broker it cannot reach fails startup, as it
 always did — and stops **after** it, when the scope closes rather than inside
-the runtime's `stop`. That is fine: the relay's client holds its own lease, so
+the runtime's `stop`, and before the client it publishes through, which di
+releases in reverse order of acquisition. That is fine: the client holds its own lease, so
 the consumer's close does not pull the connection from under it, and pending
 rows published during the drain window are safer out than abandoned to the
 next boot. `drain` stays the consumer's alone — draining means "stop taking new
@@ -154,14 +161,15 @@ the sugar cannot leave the handlers out).
 
 ## The environment
 
-| Variable         | Default                 | What it is                                    |
-| ---------------- | ----------------------- | --------------------------------------------- |
-| `AMQP_URL`       | `amqp://127.0.0.1:5672` | the broker (`AmqpConfig`), consumer and relay |
-| `PROBE_PORT`     | `9000`                  | `/livez` / `/readyz`                          |
-| `OUTBOX_POLL_MS` | `200`                   | the relay's idle sleep (`RelayConfig`)        |
-| `OUTBOX_TENANTS` | _(required)_            | the tenants the relay sweeps, comma-separated |
-| `DATABASE_URL`   | _(required)_            | the orders database (`DatabaseConfig`)        |
-| `LOG_LEVEL`      | `info`                  | the `Logger`'s floor (`LoggerConfig`)         |
+| Variable            | Default                 | What it is                                                 |
+| ------------------- | ----------------------- | ---------------------------------------------------------- |
+| `AMQP_URL`          | `amqp://127.0.0.1:5672` | the broker (`AmqpConfig`), consumer and relay              |
+| `PROBE_PORT`        | `9000`                  | `/livez` / `/readyz`                                       |
+| `OUTBOX_POLL_MS`    | `200`                   | the relay's idle sleep (`outbox()`)                        |
+| `OUTBOX_TENANTS`    | _(required)_            | the tenants the relay sweeps, comma-separated              |
+| `OUTBOX_MAX_LAG_MS` | `60000`                 | the oldest pending age the `outbox` health check tolerates |
+| `DATABASE_URL`      | _(required)_            | the orders database (`DatabaseConfig`)                     |
+| `LOG_LEVEL`         | `info`                  | the `Logger`'s floor (`LoggerConfig`)                      |
 
 `OUTBOX_POLL_MS=0` is rejected at boot — a relay that never sleeps is a busy
 loop — and so is anything above `60000`. A bad value, or an empty one, is a
@@ -192,7 +200,7 @@ and a **tenant** of its own on the one migrated database.
 
 Tenancy crosses the broker here, which the other two deployments do not have to
 do: a broadcast leaves the process. The **contract** carries it — `tenantId` is
-a field on the envelope — so the relay reads it off the outbox row, puts it on
+a field on the envelope — so the publisher reads it off the outbox row, puts it on
 the event, and the worker seeds the per-delivery fork with that very message.
 `MessageUnitModule` turns it into `Tenant` once, and both handlers read it off
 `context.unit` rather than destructuring the payload again.
@@ -208,7 +216,7 @@ broadcasting another's facts.
 The fixtures are [`@btravstack/testing`](../../packages/testing)'s: `serve`
 boots the worker against the test's own vhost through the `boot` fixture, so
 it is stopped when the test ends, and `tapped` hands back the very
-`Outbox` and Prisma client the running app was built with. `writer` composes
+`OutboxStore` and Prisma client the running app was built with. `writer` composes
 a scope over that client for the test's own tenant — `tenantOf` plus
 `OrderTenantPersistence` plus the orders vertical, the shape a unit module
 has — so the writer the spec places orders through commits to the very rows

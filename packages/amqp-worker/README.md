@@ -1,7 +1,7 @@
 # @btravstack/amqp-worker
 
 > The **consuming half** of AMQP for [`@btravstack/core`](../core) — publishing
-> belongs to `@amqp-contract/client`, which the outbox relay in
+> belongs to `@amqp-contract/client`, which the outbox publisher in
 > `examples/order-amqp-worker` uses directly. An
 > [`amqp-contract`](https://github.com/btravstack/amqp-contract) worker under
 > the kernel's lifecycle — one unit per delivery, and a drain with exactly one

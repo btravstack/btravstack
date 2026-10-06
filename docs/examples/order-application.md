@@ -176,9 +176,7 @@ refuse it. The ids stay `string`
 here — they are `OrderId`/`CustomerId` on the entity, and a pair need differ
 in one position.
 
-Beside it: `Outbox` (the read side of the transactional outbox — `pending`
-and `markPublished`, both `E = never`, because a database that will not
-answer is a defect, not a domain outcome), `StockService` and
+Beside it: `StockService` and
 `ShippingService` (the two fulfillment ports the orders saga orchestrates),
 `PaymentService` (the billing saga's own port — `authorize` answers with the
 domain's permanent `PaymentDeclined`, `capture` and `refund` promise `never`,
@@ -263,7 +261,8 @@ to it — so the port carries exactly the client the repositories will hold.
 module, and one provider reference behind all of them — so the verticals share
 one connection whatever the tree looks like. What crosses the boundary of
 `CustomerPersistenceModule` is `CustomerRepository`, and of
-`OrderPersistenceModule`, `Outbox` and `OrderDatabaseModule` itself: the
+`OrderPersistenceModule`, `@btravstack/outbox`'s `OutboxStore` and
+`OrderDatabaseModule` itself: the
 client is re-exported deliberately, because `OrderTenantPersistence` is
 composed inside a **unit** and reads it from the application scope through
 `needs` rather than importing the database module — a fork constructs every
@@ -314,9 +313,13 @@ subscriber that learned an order exists also learns it is gone. Prisma 8
 answers `null` for a delete that matched nothing rather than throwing, so
 "there was nothing to remove" is a branch that returns the domain's
 `OrderNotFound` before the tombstone is written, which rolls the transaction
-back. `prisma-outbox.ts` is the read side: `pending` ordered by `id` so the
-relay publishes in commit order, filtered on `publishedAt` being null so a
-crash between publish and mark re-delivers rather than loses.
+back. The read side is not this application's at all: `OrderPersistenceModule`
+provides [`@btravstack/outbox`](/reference/outbox)'s `OutboxStore` over the
+table, `prismaOutboxStore(db, { schema: "orders" })`, which claims a tenant's
+rows in `id` order under a per-tenant lock, so the relay publishes in commit
+order and two replicas never publish one row at once, and marks them in the
+same transaction, so a crash between publish and mark re-delivers rather than
+loses.
 
 The specs pin the claims that matter: a real `UNIQUE` index raising a real
 `P2002` becomes `DuplicateOrder`; a corrupt row surfaces as a defect, not an
