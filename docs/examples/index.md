@@ -150,8 +150,8 @@ real RabbitMQ container per run.
 The container alone: a `Module` composed and asserted, never booted — ports
 named by the domain, a private connection pool beside a public repository,
 and one application built against a production adapter and an in-memory one.
-It is also the one workspace that compiles twice, once under the catalog's
-TypeScript and once under the stable consumer line.
+It is also the one workspace that emits its declarations twice, once under
+the catalog's TypeScript and once under the stable consumer line.
 
 ## Why these are part of the gate
 

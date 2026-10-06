@@ -88,7 +88,7 @@
     "build": "tsdown src/index.ts src/jwt.ts src/oidc.ts src/openapi.ts src/session.ts --format cjs,esm --dts --clean",
     "dev": "tsdown src/index.ts src/jwt.ts src/oidc.ts src/openapi.ts src/session.ts --format cjs,esm --dts --watch",
     "test": "vitest run --coverage",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit -p tsconfig.test-d.json"
   },
   "devDependencies": {
     "@btravstack/config": "workspace:*",
@@ -111,6 +111,7 @@
     "openid-client": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
+    "typescript-consumer": "catalog:",
     "unthrown": "catalog:",
     "vitest": "catalog:",
     "zod": "catalog:"

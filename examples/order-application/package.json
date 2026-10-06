@@ -11,7 +11,7 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit -p tsconfig.test-d.json"
   },
   "dependencies": {
     "@btravstack/contract": "workspace:*",
@@ -27,6 +27,7 @@
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
     "typescript": "catalog:",
+    "typescript-consumer": "catalog:",
     "vitest": "catalog:"
   }
 }

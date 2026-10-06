@@ -74,11 +74,11 @@ deleted.** The example half is di used alone — ports named by the
 application, a production adapter and an in-memory one. The other half,
 `src/emit-guards.ts` with `tsconfig.emit.json`, is the repository's **only**
 check that a consumer which exports a port can emit its own declarations: its
-`typecheck` runs five passes, emitting `.d.ts` under the repo's TypeScript and
-again under `typescript-consumer` (the version a consumer realistically has),
-then re-checking the emitted output under that second compiler. It is the only
-workspace here that compiles twice, and the only reason that catalog entry
-exists. It was added because the `TS4020` class of bug had already shipped —
+`typecheck` emits `.d.ts` under the repo's TypeScript and again under
+`typescript-consumer` (the version a consumer realistically has), then
+re-checks the emitted output under that second compiler. It is the only
+workspace here that EMITS twice — the type tests' second pass (see
+**Toolchain & conventions**) checks, it does not emit. It was added because the `TS4020` class of bug had already shipped —
 every consumer exporting a port failed to emit, while the repo stayed green
 because the examples carried `declaration: false` — which is the sharpest
 version of "green gate, no consumer can build" this repo has met. Do not
@@ -1044,7 +1044,21 @@ in its place.
   `createFakeClock`, never a real `setTimeout` — a kernel whose own tests are
   slow gets tested badly. `*.test-d.ts` files are excluded from the build, from
   oxlint and from knip; they are checked by `tsc -p tsconfig.test-d.json`, which
-  `pnpm typecheck` runs. Every one of those files is two lines over
+  `pnpm typecheck` runs. **Every workspace whose type tests pin a marker
+  sentence runs them twice**, the second time under `typescript-consumer`
+  (`node ./node_modules/typescript-consumer/bin/tsc --noEmit -p
+tsconfig.test-d.json`, the alias a devDependency), because a consumer
+  compiles with the stable line and several markers rest on compiler
+  heuristics rather than type semantics — the last overload's failure being
+  the one reported, the equal-length refusal tuple, the alias-variance fast
+  path — any of which a second compiler may do differently. A marker that
+  stops erroring fails as `TS2578`, an unused `@ts-expect-error`. The pass
+  covers the generated doc samples too, since they are the code a consumer
+  copies. A directive proves only that SOME error is there, not that it is
+  the marker, so when the pass was added the directives were disarmed and
+  both compilers' diagnostics compared: every marker sentence, and the name
+  it carries, appeared under both. A workspace that starts pinning a marker
+  adds the pass. Every one of those files is two lines over
   `@btravstack/tsconfig/test-d.json` — the preset carries the reason
   (`noUnusedLocals` and `noUnusedParameters` off, because an assertion binding
   is never read) and each workspace states only its own globs. The preset goes

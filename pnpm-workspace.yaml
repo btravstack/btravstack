@@ -125,10 +125,11 @@ catalog:
   typescript: 7.0.2
   # The TypeScript a *consumer* is realistically on, for the second
   # declaration-emit pass in `examples/di-hexagonal`
-  # (`tsconfig.emit.json`, compiled once by each version). 7.0.2 is the native
-  # port and the one this repo builds with; a published package has to be
-  # readable by the stable line too, and the two emitters do not agree on
-  # everything. Aliased because one `package.json` cannot name `typescript`
+  # (`tsconfig.emit.json`, compiled once by each version), and for the second
+  # pass over the type-level tests in every workspace whose `*.test-d.ts` pin
+  # a marker sentence. 7.0.2 is the native port and the one this repo builds
+  # with; a published package has to be readable by the stable line too, and
+  # the two compilers do not agree on everything. Aliased because one `package.json` cannot name `typescript`
   # twice.
   typescript-consumer: "npm:typescript@5.9.3"
   # The two tarball linters `internal/consumer-check` runs. Neither is imported

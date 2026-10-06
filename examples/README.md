@@ -179,7 +179,7 @@ surface, and one application module composed against a production adapter and an
 in-memory one.
 
 It is here for a second reason, and that one is load-bearing: it is the only
-workspace in the repository that compiles **twice**. Its `typecheck` emits
+workspace in the repository that **emits** declarations twice. Its `typecheck` emits
 declarations under the catalog's `typescript` and re-checks them under
 `typescript-consumer` (5.9.3), because a published package has to be readable by
 the stable line and the two emitters do not agree on everything.
