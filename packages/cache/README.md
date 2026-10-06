@@ -127,7 +127,7 @@ unreachable cache runs your loader and a failed write is not your error. There
 is no stampede protection, no eviction on the memory adapter, and no namespace
 parameter — each reason is on
 [the reference page](https://btravstack.github.io/btravstack/reference/cache),
-and the same reasoning is in [`CLAUDE.md`](./CLAUDE.md) for contributors.
+and the same reasoning is in [`AGENTS.md`](./AGENTS.md) for contributors.
 
 ## License
 

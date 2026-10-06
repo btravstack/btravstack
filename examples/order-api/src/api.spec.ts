@@ -760,7 +760,7 @@ describe("order-api", () => {
     });
 
     // THEN a custom error code outside oRPC's COMMON_ERROR_STATUS_MAP falls back
-    // to DEFAULT_ERROR_STATUS — see packages/http-server/CLAUDE.md for why this
+    // to DEFAULT_ERROR_STATUS — see packages/http-server/AGENTS.md for why this
     // is a documented defect, not the intended status
     expect(response.status).toBe(500);
   });

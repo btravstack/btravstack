@@ -115,7 +115,7 @@ describe("Module algebra", () => {
 
   test("only an import's own exports discharge a need", () => {
     // The rule the module algebra states about visibility, and the one the
-    // root `CLAUDE.md`'s slices rest on: `Needs` subtracts `Available` —
+    // root `AGENTS.md`'s slices rest on: `Needs` subtracts `Available` —
     // what this module provides, plus what its imports EXPORT — and nothing
     // else. `Holder` imports the module that exports `AppConfig` and
     // re-exports nothing, so `AppConfig` is available inside `Holder` and

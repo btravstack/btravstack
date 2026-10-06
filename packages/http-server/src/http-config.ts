@@ -15,7 +15,11 @@ export class HttpConfig extends Port("HttpConfig")<{
   /** Comma-separated allowed origins, or `*`. Empty is "the deployment said nothing". */
   readonly corsOrigin: string;
   readonly compression: boolean;
-  /** How long a client may take to send a request's headers, in ms; the listener answers `408` past it. */
+  /**
+   * How long a client may take to send a request's headers, in ms; the listener
+   * answers `408` past it. As configured: a value above `requestTimeoutMs` is held
+   * to it by the listener, so the effective bound is the smaller of the two.
+   */
   readonly headersTimeoutMs: number;
   /** How long a client may take to send a whole request, headers and body, in ms; `408` past it. */
   readonly requestTimeoutMs: number;

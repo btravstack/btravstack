@@ -55,7 +55,9 @@ USER node
 # image that serves traffic.
 FROM build AS migrate
 WORKDIR /app
-CMD ["npx", "prisma", "db", "migrate"]
+# `--filter … exec` runs in the application's own workspace, where its
+# `prisma.config.ts` is — from `/app`, the CLI would find no config.
+CMD ["pnpm", "--filter", "@acme/orders", "exec", "prisma", "db", "migrate"]
 ```
 
 ::: tip

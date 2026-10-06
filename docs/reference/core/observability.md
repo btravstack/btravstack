@@ -242,6 +242,7 @@ reports a missing object as an ordinary answer). One line per method, and the
 once.
 
 `traced: false` declines the span for a component whose spans come from
-somewhere better — `@btravstack/prisma` says so, because
-an engine-level tracer would trace below the client and a client-level span
-would carry strictly less beside it.
+somewhere better — a vendor tracer reaching below what the contributor can
+see, where a second span would carry strictly less. No starter passes it
+today: `@btravstack/prisma` did while Prisma 7's engine tracer existed, and
+Prisma 8's query middleware is now the only span there is.

@@ -5,15 +5,15 @@ The authentication half of this package's public surface. It governs
 marker; **read it before changing any of those.** The rest of the surface —
 the router, the controller, `HttpModule` and the runtime — is in
 `docs/reference/http-server.md`, its decisions and gotchas in
-`packages/http-server/CLAUDE.md`, and the repository-wide theses are in
-the root `CLAUDE.md`.
+`packages/http-server/AGENTS.md`, and the repository-wide theses are in
+the root `AGENTS.md`.
 
 The two rules this half exists to state, before the detail:
 
 - **The contract says WHICH SCHEMES protect a route, and which scopes each
   must grant; the application's `defineHttp({ authenticators })` says WHAT
   each scheme resolves to.**
-- **An unmarked procedure is public, and nothing fails if the marker is
+- **A procedure with no mark on it or above it is public, and nothing fails if the marker is
   forgotten.** The contract is the only statement of intent there is. Do not
   describe an unmarked procedure as checked.
 
@@ -342,7 +342,7 @@ The two rules this half exists to state, before the detail:
   `typ: "oidc"` and a fixed `TRANSIENT_TTL_SEC` of five minutes. A scheme reads
   `typ: "session"` only, so a client replaying its transient under the session
   cookie's name is anonymous, and the mirror holds too — which is what lets one
-  key list serve both purposes. See `packages/http-server/CLAUDE.md` for why
+  key list serve both purposes. See `packages/http-server/AGENTS.md` for why
   the pair is on the codec rather than a provider of its own.
 
   **Composing it turns CSRF on**, which is the one thing this scheme does that
@@ -352,7 +352,7 @@ The two rules this half exists to state, before the detail:
   carrying cookies with a bodyless `403` before any answerer sees it. Nothing
   is written at the composition root, and `csrf: false` on `http()` /
   `HttpModule` is what turns it back off — see `csrf` in
-  `packages/http-server/CLAUDE.md`. The other two shipped schemes read a
+  `packages/http-server/AGENTS.md`. The other two shipped schemes read a
   header, and a caller presenting a header credential is not a CSRF target, so
   neither sets the marker.
 
@@ -554,7 +554,7 @@ The two rules this half exists to state, before the detail:
   `auth.principals.<scheme>` in its `needs`, so folding the kinds into
   `defineHttp` itself would make `auth` reference its own type — TS7022. The
   reasoning and the `UnitsOf` weak-type rule are in
-  `packages/http-server/CLAUDE.md`.
+  `packages/http-server/AGENTS.md`.
   At runtime the call binds one provider per scheme —
   `Provider(authenticatorPort(scheme))(options)`, the very options object
   `HttpAuthenticator` held on to — and hands them to
@@ -731,7 +731,7 @@ authenticator cannot grant it": "order:export"`). `VocabFrom<A>` reads the
   `relayConfig`. The sugar
   **re-declares di's `NeedsGate`** over its augmented tuples, so a root whose
   own provider owes a port it does not name is refused at THIS call rather than
-  slipping past into `start`; see `packages/di/CLAUDE.md`'s **Module
+  slipping past into `start`; see `packages/di/AGENTS.md`'s **Module
   visibility**.
 
   For every scheme `schemesOf(contract)` found, that scheme's port joins the

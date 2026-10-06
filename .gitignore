@@ -16,7 +16,7 @@ coverage/
 .superpowers/
 
 # Planning documents. They were tracked while the kernel was being built from a
-# committed spec; CLAUDE.md is the authoritative one now and the plans it
+# committed spec; AGENTS.md is the authoritative one now and the plans it
 # outlived live in git history. Ignored so they cannot grow back.
 docs/superpowers/
 
@@ -52,7 +52,7 @@ examples/order-infrastructure/.migrate.db
 **/src/generated/doc-samples/
 
 # `.claude/` is local agent state — worktrees, transcripts, per-machine
-# settings. `skills/` is the exception: a skill is spec that `CLAUDE.md` points
+# settings. `skills/` is the exception: a skill is spec that `AGENTS.md` points
 # at, so it has to travel with the repo or the pointer resolves to nothing on
 # every machine but this one. It also puts the skill back on the markdown gate,
 # which reads this file since `gitignore: true`. This has to be `.claude/*`

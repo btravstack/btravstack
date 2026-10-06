@@ -637,7 +637,7 @@ as the bearer token on the very mistake the UUIDv7 check exists to catch.
 
 ## The marker is legibility, not enforcement
 
-**An unmarked procedure is public, and nothing fails if the marker is
+**A procedure with no mark on it or above it is public, and nothing fails if the marker is
 forgotten.** There is no deny-by-default: a new procedure added to an unmarked
 record is served to anyone, no compile error, no startup failure, no warning.
 What the contract buys is that a protected route is _visible_ — one call in the

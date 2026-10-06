@@ -1227,7 +1227,7 @@ would let a broken verifier silently promote every caller to the next scheme.
 
 ### The marker is legibility, not enforcement
 
-An unmarked procedure is public, and **nothing fails if the marker is
+A procedure with no mark on it or above it is public, and **nothing fails if the marker is
 forgotten** — no compile error, no startup failure. There is no
 deny-by-default here; the contract makes a protected route visible to both
 sides, and that is all it claims. See
@@ -1773,7 +1773,7 @@ An answerer outside an oRPC contract carries its **own** authentication.
 `@btravstack/contract`'s marker is what says which scheme protects a procedure,
 and a GraphQL operation or an HTML fragment has no such statement — so its
 routes are public unless the answerer brings authentication itself, exactly as
-an unmarked procedure is public, and with the same absence of a gate for "you
+a procedure with no mark on it or above it is public, and with the same absence of a gate for "you
 forgot".
 :::
 

@@ -37,7 +37,7 @@
     "MD033": false,
     "MD041": false,
 
-    // The spec files number a rule set across intervening prose — `CLAUDE.md`'s
+    // The spec files number a rule set across intervening prose — `AGENTS.md`'s
     // test conventions run 1-5, then "A sixth rule is…", then 6 and 7. Each
     // continuation reads as a fresh list starting at 6, which no `ol-prefix`
     // style can express, and the numbers carry meaning.

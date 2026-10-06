@@ -127,7 +127,7 @@
     "@unthrown/orpc": "^0.2.0",
     "jose": "^6",
     "openid-client": "^6",
-    "unthrown": "^5.0.0"
+    "unthrown": "^5.7.0"
   },
   "peerDependenciesMeta": {
     "@orpc/json-schema": {

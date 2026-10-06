@@ -6,7 +6,7 @@ const read = (path: string) => readFileSync(fileURLToPath(new URL(path, root)), 
 
 // A catalog entry pinned to a PRERELEASE is a package whose `latest` dist-tag
 // points at an older major, so an unversioned install line resolves the wrong
-// one — the trap the root CLAUDE.md documents for contributors and issue #206
+// one — the trap the root AGENTS.md documents for contributors and issue #206
 // found in the consumer-facing snippets. Derived from the catalog rather than
 // listed here, so a family that goes stable stops being checked by itself.
 const traps = new Map(
