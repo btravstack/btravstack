@@ -132,20 +132,25 @@ export const otel = (
             // The ambient record is read per operation too, since one observer
             // serves every unit.
             const unit = currentUnit();
-            const parent = unit === undefined ? undefined : unitSpans.get(unit);
-            const span =
-              traced === false
-                ? undefined
-                : tracer.startSpan(
-                    `${component}.${name}`,
-                    {},
-                    parent === undefined ? undefined : trace.setSpan(context.active(), parent),
-                  );
-            // Details ride the SPAN and not the instruments: a cache key or a
-            // URL is one more field on a span and one more time series on a
-            // metric.
-            span?.setAttributes({ ...attributes, ...details, ...unitAttributes(unit) });
             const startedAt = performance.now();
+            const open = (startTime?: number): OtelSpan => {
+              const parent = unit === undefined ? undefined : unitSpans.get(unit);
+              const opened = tracer.startSpan(
+                `${component}.${name}`,
+                startTime === undefined ? {} : { startTime },
+                parent === undefined ? undefined : trace.setSpan(context.active(), parent),
+              );
+              // Details ride the SPAN and not the instruments: a cache key or a
+              // URL is one more field on a span and one more time series on a
+              // metric.
+              opened.setAttributes({ ...attributes, ...details, ...unitAttributes(unit) });
+              return opened;
+            };
+            // Inside a unit whose span is not filed YET — a sibling provider di
+            // built before `UnitSpanModule` — the span opens at the settle,
+            // back-dated to the start, when the unit's span can parent it.
+            const deferred = traced !== false && unit !== undefined && !unitSpans.has(unit);
+            const started = traced === false || deferred ? undefined : open();
             const operations = instrument(counters, component, () =>
               meter.createCounter(`btravstack.${component}.operations`, {
                 description: `${component} operations, by operation and outcome`,
@@ -163,6 +168,7 @@ export const otel = (
               const all = { ...attributes, ...settled, outcome };
               operations.add(1, all);
               duration.record((performance.now() - startedAt) / 1000, all);
+              const span = deferred ? open(startedAt) : started;
               if (outcome === "error") span?.setStatus({ code: SPAN_STATUS.error });
               span?.end();
             };

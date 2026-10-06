@@ -64,7 +64,8 @@ stale the next time a case is added (#192):
 - `otel.spec.ts` — the SDK half, behind the subpath: a span per unit flushed on
   the scope's close, a failed unit's span and an aborted one's marked as
   errors, an operation inside a unit parented on that unit's span and carrying
-  its ids, an unattributed span outside a unit, a duration recorded in
+  its ids, and parented on it too when a sibling provider built first started
+  it, an unattributed span outside a unit, a duration recorded in
   seconds on seconds buckets, OTel's own meter handed back ready to count, and an instrumentation a starter contributed
   being registered.
 - `pino.spec.ts` — fields pino can index, the `err` serialiser, and every
@@ -163,7 +164,12 @@ back onto the SDK. The examples' integration tests caught it as
 So the member PARENTS an operation without injecting `UnitSpan` either:
 `UnitSpanModule` files its span in a module-private `WeakMap` keyed by the
 ambient record it was opened for, and the member reads `currentUnit()` per
-operation and looks it up. That is an adapter reading the record (thesis #2's
+operation and looks it up. An operation that starts before the span is
+filed — a sibling provider di built first, since a module's providers at one
+level construct in import order — opens its span at the settle instead,
+back-dated with `startTime`, so the edge does not depend on the order an
+application lists its imports in. Nothing is lost by opening late: the member
+never makes an operation span active, so it parents nothing. That is an adapter reading the record (thesis #2's
 legitimate reader), not a service riding it — the record itself is unchanged.
 Making the unit span OTel's ACTIVE context was the alternative and cannot be
 done from a provider: activating a context means wrapping the work in

@@ -6,7 +6,7 @@ import {
   Tracer,
   observed,
 } from "@btravstack/core";
-import { Module, Provider, type Context } from "@btravstack/di";
+import { Module, Port, Provider, type Context } from "@btravstack/di";
 import {
   TestRuntimePort,
   bootFixture,
@@ -147,6 +147,57 @@ describe("otel", () => {
     expect(spans.seen().map((span) => ({ name: span.name, status: span.status }))).toEqual([
       { name: "unit", status: { code: SPAN_STATUS.error, message: "aborted" } },
     ]);
+  });
+
+  it("parents an operation started before the unit span on it, whatever the import order", async ({
+    boot,
+    spans,
+  }) => {
+    // GIVEN a unit module importing a provider that reads the cache while it
+    // is built, listed BEFORE the span module — so di starts it first
+    class Warmed extends Port("OtelSpecWarmed")<string> {}
+    const Warmer = Module("OtelSpecWarmer")({
+      needs: [Observers],
+      provides: [
+        Provider(Warmed)({
+          inject: { observers: Observers },
+          make: ({ observers }) =>
+            observed(observers, { component: "cache", name: "get", attributes: {} }, () =>
+              fromSafePromise(Promise.resolve("hit")),
+            ),
+        }),
+      ],
+      exports: [Warmed],
+    });
+    const WarmUnit = Module("OtelSpecWarmUnit")({
+      imports: [Warmer, UnitSpanModule],
+      exports: [Warmed, UnitSpan],
+    });
+    const runtime = testRuntime("test", { unit: WarmUnit });
+    const App = Module("OtelWarmApp")({
+      imports: [batchedOtel(spans), runtime.module],
+      exports: [TestRuntimePort, Tracer, Observers],
+    });
+    const clock = createFakeClock();
+    const app = boot(App, { clock });
+    await runtime.untilStarted();
+
+    // WHEN a unit runs to completion and the app exits, flushing the spans
+    const unit = runtime.submit<string>();
+    unit.settle(Ok("done"));
+    await unit.result;
+    app.requestDrain();
+    await clock.advance(5_000);
+    await app.exited;
+
+    // THEN the read is still the unit span's child
+    const byName = new Map(spans.seen().map((span) => [span.name, span]));
+    expect({
+      names: [...byName.keys()].toSorted(),
+      childOfUnit:
+        byName.get("cache.get")?.parentSpanContext?.spanId ===
+        byName.get("unit")?.spanContext().spanId,
+    }).toEqual({ names: ["cache.get", "unit"], childOfUnit: true });
   });
 
   it("parents an operation inside a unit on that unit's span", async ({ boot, spans }) => {

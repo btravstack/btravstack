@@ -491,7 +491,10 @@ a stored object, a sent mail or a query opens its span under the unit's, and
 stamps the same three ids (`btravstack.unit_id`, `btravstack.trace_id`,
 `btravstack.tenant_id`) read from `currentUnit()` per operation. The observer
 `otel()` contributes still injects nothing: it finds the unit's span by the
-ambient record it was opened for. Without `UnitSpanModule` bound, an
+ambient record it was opened for. That holds whatever order the unit module
+lists its imports in: an operation that starts before `UnitSpanModule` has
+built its span — a sibling provider di constructed first — opens its span when
+it settles, back-dated to its start, under the unit's. Without `UnitSpanModule` bound, an
 operation inside a unit carries the ids and parents on whatever OTel context is
 active. The runtime's own operation — `http.request`, `amqp.delivery`,
 `temporal.attempt` — is observed AROUND the unit rather than inside it, so it
