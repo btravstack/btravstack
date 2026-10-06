@@ -1,4 +1,4 @@
-# CLAUDE.md — @btravstack/mailer
+# AGENTS.md — @btravstack/mailer
 
 The application-service port for sending mail: a `Mailer` an application
 depends on, adapters that provide the `MailerBackend` behind it, and one
@@ -6,7 +6,7 @@ composition function that binds them together, with every send reported to
 `Observers`.
 
 The second of issue #62's three ports, on `@btravstack/cache`'s shape exactly
-— read that package's `CLAUDE.md` for the two-port rationale; only what
+— read that package's `AGENTS.md` for the two-port rationale; only what
 differs is written out here.
 
 ## Public surface
@@ -47,7 +47,7 @@ try.
   and `MailAttachment`'s TSDoc in `src/mailer.ts` says why.
 - **No bulk send and no queue.** Sending many is the caller's loop, and
   scheduling one is `@btravstack/temporal-worker`'s job — the transport role map is
-  a decision, not an inventory (root `CLAUDE.md`, thesis #1).
+  a decision, not an inventory (root `AGENTS.md`, thesis #1).
 - **No address validation.** The transport rejects what it will not take, and
   a second opinion in a port would be a different, worse one.
 
@@ -59,4 +59,4 @@ The `MailNotSent` arm is therefore proved against a relay that is **not
 listening** (`smtp://127.0.0.1:1`), which is the failure a deployment actually
 meets and costs milliseconds.
 
-Observation: see the root `CLAUDE.md`, **Observability is a set port, never a flag**.
+Observation: see the root `AGENTS.md`, **Observability is a set port, never a flag**.

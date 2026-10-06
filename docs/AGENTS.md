@@ -2,7 +2,7 @@
 
 `@btravstack/docs` — the VitePress documentation site. The rule that a
 public-surface change must update this site in the same commit lives in the
-root `CLAUDE.md`; what follows is how the site itself is built.
+root `AGENTS.md`; what follows is how the site itself is built.
 
 `@btravstack/di`'s former standalone site was folded in here when the
 container was merged; nothing under `docs/reference/di/` should be edited in

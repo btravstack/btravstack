@@ -2,7 +2,7 @@
 
 The Temporal worker starter's decisions, gotchas and exclusions. Its surface —
 every export, option and default — is `docs/reference/temporal-worker.md`, and
-the root `CLAUDE.md` is the authoritative spec for the kernel and the
+the root `AGENTS.md` is the authoritative spec for the kernel and the
 conventions; this file holds what only matters when you are working under
 `packages/temporal-worker/`. Keep it in sync with the code in the same commit:
 the doc-samples gate compiles the `ts` fences of `README.md` and the reference
@@ -24,7 +24,7 @@ page, never this file.
   `examples/order-amqp-worker` says `needs: [Env]` for `relayConfig`. The sugar
   **re-declares di's `NeedsGate`** over its augmented tuples, so a root whose
   own provider owes a port it does not name is refused at THIS call rather than
-  slipping past into `start`; see `packages/di/CLAUDE.md`'s **Module
+  slipping past into `start`; see `packages/di/AGENTS.md`'s **Module
   visibility**.
 
 - **The `context.unit` record is built by a wrapper on the piece, not by the

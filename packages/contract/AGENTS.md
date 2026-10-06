@@ -1,6 +1,6 @@
 # packages/contract
 
-The contract package's public surface. The root `CLAUDE.md` is the
+The contract package's public surface. The root `AGENTS.md` is the
 authoritative spec for the kernel and the conventions; this file holds what
 only matters when you are working under `packages/contract/`. Keep it in
 sync with the code in the same commit, and with `README.md` — the doc-samples

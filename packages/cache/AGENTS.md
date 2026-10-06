@@ -1,4 +1,4 @@
-# CLAUDE.md — @btravstack/cache
+# AGENTS.md — @btravstack/cache
 
 The application-service port for caching: a `Cache` an application depends on,
 adapters that provide the `CacheBackend` behind it, and one composition
@@ -93,4 +93,4 @@ and a wrapper transparent to the `Result`.
   speculatively"). Tests need none of it: a UUID key prefix per test is the
   isolation boundary, and it needs no package support.
 
-Observation: see the root `CLAUDE.md`, **Observability is a set port, never a flag**.
+Observation: see the root `AGENTS.md`, **Observability is a set port, never a flag**.

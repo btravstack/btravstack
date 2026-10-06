@@ -1,6 +1,6 @@
 # packages/observability
 
-The observability package's public surface. The root `CLAUDE.md` is the
+The observability package's public surface. The root `AGENTS.md` is the
 authoritative spec for the kernel and the conventions; this file holds what
 only matters when you are working under `packages/observability/`. Keep it in
 sync with the code in the same commit, and with `README.md` — the doc-samples
@@ -30,7 +30,7 @@ _behaves_, edit here.
 ## Public surface
 
 `Logger`, `Tracer`, `Meter` and their service types are `@btravstack/core`'s
-(`packages/core/CLAUDE.md`) and are not re-exported. What this package exports
+(`packages/core/AGENTS.md`) and are not re-exported. What this package exports
 is `src/index.ts`, `src/pino.ts` and `src/otel.ts`, each with its TSDoc;
 `docs/reference/observability.md` is the reader's page, including the logger's
 argument order and the six differences from NestJS's `Logger`.
@@ -97,7 +97,7 @@ sets.
   Inbound `traceparent` is honoured by `@btravstack/http-server` (over
   `x-request-id`) and `@btravstack/amqp-worker` (over `messageId`), trace-id field
   only; `@btravstack/temporal-worker` deliberately keeps the workflow/activity id as
-  its correlation — see its own `CLAUDE.md`.
+  its correlation — see its own `AGENTS.md`.
 - **A constraint that will not go away**: OTel _auto_-instrumentation
   (`@opentelemetry/auto-instrumentations-node/register`) must be preloaded
   before the instrumented libraries are imported, so it cannot be DI-provided.
@@ -139,7 +139,7 @@ with an operation are here, and they are the reason a starter holds no `Logger`,
 `Meter` or `Tracer` of its own.
 
 - **`observability()` contributes the LINE**, and only for a failure — the root
-  `CLAUDE.md`'s **Observability is a set port, never a flag** says why.
+  `AGENTS.md`'s **Observability is a set port, never a flag** says why.
 - **`otel()` contributes the SPAN and the INSTRUMENTS**:
   `component.name` as the span, `btravstack.<component>.operations` and
   `btravstack.<component>.duration` as the pair, both minted per component and

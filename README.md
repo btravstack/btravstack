@@ -284,7 +284,7 @@ Redis **key prefix** per test, a **recipient** per test, and an object-store
 `docker rm -f $(docker ps -aq --filter label=com.btravstack.test-infra)`.
 
 Commits follow Conventional Commits; user-facing changes carry a changeset.
-[`CLAUDE.md`](./CLAUDE.md) is the authoritative spec — the theses, the public
+[`AGENTS.md`](./AGENTS.md) is the authoritative spec — the theses, the public
 surface and the conventions, with the reasoning behind each.
 
 ## License

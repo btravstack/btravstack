@@ -1,4 +1,4 @@
-# CLAUDE.md — @btravstack/storage
+# AGENTS.md — @btravstack/storage
 
 The application-service port for object storage: a `Storage` an application
 depends on, adapters that provide the `StorageBackend` behind it, and one
@@ -6,7 +6,7 @@ composition function that binds them together, with every operation reported
 to `Observers`.
 
 The third of issue #62's three ports, on `@btravstack/cache`'s shape exactly —
-read that package's `CLAUDE.md` for the two-port rationale; only what differs
+read that package's `AGENTS.md` for the two-port rationale; only what differs
 is written out here.
 
 ## Public surface
@@ -88,4 +88,4 @@ The upload arm is proved end to end rather than by inspecting a URL: a plain
 then read back through the port. Its sibling proves the binding by sending
 four bytes at a URL signed for one — `403`, and nothing stored.
 
-Observation: see the root `CLAUDE.md`, **Observability is a set port, never a flag**.
+Observation: see the root `AGENTS.md`, **Observability is a set port, never a flag**.

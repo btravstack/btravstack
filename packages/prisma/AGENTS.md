@@ -1,6 +1,6 @@
 # packages/prisma
 
-The Prisma starter's public surface. The root `CLAUDE.md` is the authoritative
+The Prisma starter's public surface. The root `AGENTS.md` is the authoritative
 spec for the kernel and the conventions; this file holds what only matters when
 you are working under `packages/prisma/`.
 

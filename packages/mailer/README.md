@@ -137,7 +137,7 @@ owns it. `Mail` carries the whole envelope — `cc`, `bcc`, `attachments` and
 `headers` beside `to`, `subject` and the two bodies — but there is no
 templating, no bulk send and no address validation — each reason is on
 [the reference page](https://btravstack.github.io/btravstack/reference/mailer),
-and the same reasoning is in [`CLAUDE.md`](./CLAUDE.md) for contributors.
+and the same reasoning is in [`AGENTS.md`](./AGENTS.md) for contributors.
 
 ## License
 

@@ -1,7 +1,7 @@
 # packages/http-server
 
 The HTTP starter's decisions, gotchas and deliberate exclusions. The root
-`CLAUDE.md` is the authoritative spec for the kernel and the conventions; this
+`AGENTS.md` is the authoritative spec for the kernel and the conventions; this
 file holds what only matters when you are working under `packages/http-server/`.
 The surface itself — every signature, option, export and inject — is
 `docs/reference/http-server.md` and the source TSDoc behind it; the doc-samples
@@ -352,7 +352,7 @@ not cover"` marker, and what the marker names is a procedure path
   _type_, yet declaring it in this package would mean a client-only package
   importing it purely for the fragment shape also peers on this package's
   whole oRPC server stack — exactly what "a client must be able to take a
-  contract without the server" (root `CLAUDE.md`, thesis #1) exists to
+  contract without the server" (root `AGENTS.md`, thesis #1) exists to
   prevent. `examples/order-api-contract` carries no such peer: with no
   contract shape here, there is nothing to import it for.
 
@@ -793,7 +793,7 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   (`getHeader`), so a future streaming answerer must set its `content-type`
   through `setHeader` rather than `writeHead` alone, or it is invisible to
   `isEventStream` and gets ended instead of reset. The position and its
-  survey are in the root `CLAUDE.md`, thesis #5.
+  survey are in the root `AGENTS.md`, thesis #5.
 - **GET, for streams only**: the RPC handler's `allowMethods` admits `GET`
   when the matched procedure declares an event-iterator output
   (`getAsyncIteratorObjectSchemaDetails` on its `outputSchemas`) and keeps

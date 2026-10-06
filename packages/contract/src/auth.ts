@@ -65,7 +65,7 @@ const marked = (store[KEY] ??= new WeakMap<object, Requirements>());
  * Applied to a record it is the default for every procedure beneath it;
  * applied to a procedure it replaces that default for itself. Nearest mark
  * wins. Returns the node unchanged and applies after a builder chain, never
- * inside one. See `packages/contract/CLAUDE.md`.
+ * inside one. See `packages/contract/AGENTS.md`.
  */
 export const authenticated =
   <const R extends Requirements & { readonly [I in keyof R]: OneScheme<R[I]> }>(

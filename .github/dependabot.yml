@@ -77,7 +77,7 @@ updates:
     ignore:
       # Three families are pinned to an exact beta because their `latest`
       # dist-tag is an older major that fails `strictPeerDependencies`. The
-      # root CLAUDE.md says of each: "raise it deliberately, not on a bot
+      # root AGENTS.md says of each: "raise it deliberately, not on a bot
       # bump." Lift the entry when the line goes stable.
       - dependency-name: "@orpc/*"
       - dependency-name: "@amqp-contract/*"

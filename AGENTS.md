@@ -1,9 +1,10 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with
-code in this repository. It is the authoritative spec — the rules _and_ the
-reasoning behind them. Keep it in sync with the code as the package evolves
-(describe what _is_, not what was planned).
+This file provides guidance to any coding agent working in this repository.
+Claude Code reads it through `CLAUDE.md`'s one-line `@AGENTS.md` import, so
+there is one spec and no copy of it to drift. It is the authoritative spec —
+the rules _and_ the reasoning behind them. Keep it in sync with the code as
+the package evolves (describe what _is_, not what was planned).
 
 ## What this is
 
@@ -41,10 +42,10 @@ composition function), and the three
 nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
 back, with `testing`, `observability`, the three application-service ports
-and the three servers on `core`. Its own spec is `packages/di/CLAUDE.md`; `contract`'s is
-`packages/contract/CLAUDE.md`; the harness's is
-`packages/testing/CLAUDE.md`; the logging starter's is
-`packages/observability/CLAUDE.md`.
+and the three servers on `core`. Its own spec is `packages/di/AGENTS.md`; `contract`'s is
+`packages/contract/AGENTS.md`; the harness's is
+`packages/testing/AGENTS.md`; the logging starter's is
+`packages/observability/AGENTS.md`.
 `examples/` holds ten private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 three runtimes (`order-api`, `order-temporal-worker`, `order-amqp-worker`),
@@ -124,7 +125,7 @@ hook). User-facing changes need a changeset.
 The thirteen published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. **Do not downgrade `@changesets/cli`
 below 3.0.0** — on 2.x the next `pnpm run version` silently ships a major. The
-measurements behind both rules are in `.changeset/CLAUDE.md`.
+measurements behind both rules are in `.changeset/AGENTS.md`.
 
 ## Thesis (do not drift from these)
 
@@ -162,7 +163,7 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    **The local loop is the production shape, not an exception to it**:
    `pnpm dev` is one process per deployment, never one process booting all
    three. The declined alternative is in the `deferred-decisions` skill, the
-   mechanics in `examples/CLAUDE.md`.
+   mechanics in `examples/AGENTS.md`.
 
    **One runtime does not mean one protocol.** A graph holds exactly one
    runtime, and that is what bounds the process — not what bounds HTTP itself.
@@ -183,7 +184,7 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    answerer shares, and a protocol with no contract declares its requirements
    as data on the route, gated by `RequiresGate` — so a GraphQL answerer
    inherits the seam rather than redesigning it. The surfaces are
-   `packages/http-server/CLAUDE.md` and `AUTH.md`; the worked browser consumer
+   `packages/http-server/AGENTS.md` and `AUTH.md`; the worked browser consumer
    is `examples/order-api` (`docs/how-to/log-a-browser-in.md`).
 
    **The transport role map is a decision, not an inventory** (issues #61 and
@@ -202,7 +203,7 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    Scheduling stands by Temporal Schedules. The floor that costs — a cluster
    for one nightly job — is stated in `docs/how-to/run-something-on-a-schedule.md`,
    and `ensureSchedule` (a subpath rather than a client package, because it is
-   a deployment operation) is in `packages/temporal-worker/CLAUDE.md`.
+   a deployment operation) is in `packages/temporal-worker/AGENTS.md`.
 
    **Each transport package is named for the HALF it implements** —
    `http-server`, `temporal-worker`, `amqp-worker` — and a client will be a
@@ -300,7 +301,7 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    deliberately — `Result` → activity failure to `@btravstack/temporal-worker`, likewise. `@btravstack/amqp-worker`
    declines it too: `Result` → ack/nack/DLQ is a three-way split between
    `amqp-contract`'s dispatch and the handler, and a `Defect` skips the retry
-   budget (`packages/amqp-worker/CLAUDE.md`). The claim that survives across all three transports
+   budget (`packages/amqp-worker/AGENTS.md`). The claim that survives across all three transports
    is only that the _kernel_ maps nothing; what each transport's own mapping
    looks like is the transport's own business, sometimes split further still.
    `RunUnit` is
@@ -332,7 +333,7 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    the doc-samples gate, so they sit in the same failure list — and the AMQP
    worker is deliberately not a third: a subscriber reacts to a committed
    fact, so a placement's `Err` never reaches it, and the ack/retry/DLQ split
-   its `CLAUDE.md` describes triages the handler's OWN failures, a different
+   its `AGENTS.md` describes triages the handler's OWN failures, a different
    class. A cross-transport triage helper was sketched and declined: the
    destinations' types are each contract's own (`errors.CONFLICT` is oRPC's
    constructor, `errors.OrderAlreadyPlaced` temporal-contract's), so a shared
@@ -390,7 +391,7 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    `text/event-stream` response when `Serving.drain` is called, so the client
    reconnects to a replica that is staying. That is transport semantics inside
    the runtime's `drain` — the kernel stays three beats. Why a reset rather
-   than a clean end is in `packages/http-server/CLAUDE.md`.
+   than a clean end is in `packages/http-server/AGENTS.md`.
 
 6. **Every async API returns an `AsyncResult`, never a bare `Promise`.** Not
    only the fallible ones: `AsyncResult<T, never>` is this package's spelling of
@@ -439,13 +440,13 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
 
 ## Kernel internals
 
-Two sections live in `packages/core/CLAUDE.md`, which loads only when you work
+Two sections live in `packages/core/AGENTS.md`, which loads only when you work
 under that directory: **Load-bearing runtime invariants (tests must guard
 these)** — each invariant with the test that guards it — and **Internal design
 (don't break these)**. Read them before changing anything in
 `packages/core/src/`, and update them in the same commit as the code.
 
-The container's internals are in `packages/di/CLAUDE.md`, on the same terms.
+The container's internals are in `packages/di/AGENTS.md`, on the same terms.
 Read it before changing anything in `packages/di/src/` — its comments are
 regression guards measured against a specific TypeScript version, and it is the
 one package here whose type-level behaviour is the product.
@@ -534,7 +535,7 @@ ordinary migration operations. What the starter still owns is the pin —
 `set_config(…, true)` is local to. Two halves stay the deployment's and both
 fail quietly: Prisma 8 authors no `GRANT`s, and it cannot express `FORCE ROW
 LEVEL SECURITY`, so a deployment must connect as a role that is neither the
-table's owner nor a superuser. `packages/prisma/CLAUDE.md` carries both.
+table's owner nor a superuser. `packages/prisma/AGENTS.md` carries both.
 
 **A repository base class would smuggle a persistence shape into the
 application's ports**, which is the coupling the hexagonal examples exist to
@@ -552,7 +553,7 @@ is paginated or it is streamed, never an unbounded array, and its order is
 mastered rather than whatever the store answers: a page is a bound only over
 an order somebody chose. That is why sorting ships as a convention of the
 page rather than waiting on the contract tier's "written twice" rule —
-`packages/contract/CLAUDE.md` carries the rule and the shape.
+`packages/contract/AGENTS.md` carries the rule and the shape.
 
 **Pagination is expressible once, and `@btravstack/contract`'s `keyset` is
 where.** `keyset(request)` answers one object carrying both halves of a keyset
@@ -584,7 +585,7 @@ why all of it lives in the contract tier. No persistence type reaches a port.
 
 **A flag and its cursor are ONE fact, at both ends of the wire** — why
 `Page<T>` is an intersection of two unions while the contract's schema is a
-union of four `strictObject` arms is in `packages/contract/CLAUDE.md`.
+union of four `strictObject` arms is in `packages/contract/AGENTS.md`.
 
 **The filter is a field, never a query object.** `OrderQuery` is
 `PageRequest & { minQuantity? }`. A port taking a predicate or a `where` record
@@ -663,31 +664,31 @@ scheme contributes to, so the default is a fact about the graph rather than a
 line somebody remembered to write. The check itself is stateless: a
 state-changing request carrying cookies must be same-site by fetch metadata,
 or carry an `Origin` matching the request's own host, and is refused with
-`403` before dispatch. Rate limiting is a stated non-goal. The full reasoning is in `packages/http-server/CLAUDE.md`.
+`403` before dispatch. Rate limiting is a stated non-goal. The full reasoning is in `packages/http-server/AGENTS.md`.
 
 ## Public surface
 
 Each package's surface is stated **once**, in `docs/reference/*` — compiled by
 the doc-samples gate — and in the source TSDoc behind it. A package's
-`CLAUDE.md` keeps only what neither can say: its decisions, its gotchas and
+`AGENTS.md` keeps only what neither can say: its decisions, its gotchas and
 what it deliberately leaves out. The surface is not restated there or here: a
 copy with no gate is the copy that lies.
 
 | Package                       | Decisions and gotchas                                                        | Reference page               |
 | ----------------------------- | ---------------------------------------------------------------------------- | ---------------------------- |
-| `@btravstack/contract`        | `packages/contract/CLAUDE.md`                                                | `/reference/contract`        |
-| `@btravstack/di`              | `packages/di/CLAUDE.md`                                                      | `/reference/di/`             |
-| `@btravstack/config`          | `packages/config/CLAUDE.md`                                                  | `/reference/config`          |
-| `@btravstack/core`            | `packages/core/CLAUDE.md`                                                    | `/reference/core/`           |
-| `@btravstack/testing`         | `packages/testing/CLAUDE.md`                                                 | `/reference/testing`         |
-| `@btravstack/observability`   | `packages/observability/CLAUDE.md`                                           | `/reference/observability`   |
-| `@btravstack/cache`           | `packages/cache/CLAUDE.md`                                                   | `/reference/cache`           |
-| `@btravstack/mailer`          | `packages/mailer/CLAUDE.md`                                                  | `/reference/mailer`          |
-| `@btravstack/storage`         | `packages/storage/CLAUDE.md`                                                 | `/reference/storage`         |
-| `@btravstack/prisma`          | `packages/prisma/CLAUDE.md`                                                  | `/reference/prisma`          |
-| `@btravstack/http-server`     | `packages/http-server/CLAUDE.md` (auth half: `packages/http-server/AUTH.md`) | `/reference/http-server`     |
-| `@btravstack/temporal-worker` | `packages/temporal-worker/CLAUDE.md`                                         | `/reference/temporal-worker` |
-| `@btravstack/amqp-worker`     | `packages/amqp-worker/CLAUDE.md`                                             | `/reference/amqp-worker`     |
+| `@btravstack/contract`        | `packages/contract/AGENTS.md`                                                | `/reference/contract`        |
+| `@btravstack/di`              | `packages/di/AGENTS.md`                                                      | `/reference/di/`             |
+| `@btravstack/config`          | `packages/config/AGENTS.md`                                                  | `/reference/config`          |
+| `@btravstack/core`            | `packages/core/AGENTS.md`                                                    | `/reference/core/`           |
+| `@btravstack/testing`         | `packages/testing/AGENTS.md`                                                 | `/reference/testing`         |
+| `@btravstack/observability`   | `packages/observability/AGENTS.md`                                           | `/reference/observability`   |
+| `@btravstack/cache`           | `packages/cache/AGENTS.md`                                                   | `/reference/cache`           |
+| `@btravstack/mailer`          | `packages/mailer/AGENTS.md`                                                  | `/reference/mailer`          |
+| `@btravstack/storage`         | `packages/storage/AGENTS.md`                                                 | `/reference/storage`         |
+| `@btravstack/prisma`          | `packages/prisma/AGENTS.md`                                                  | `/reference/prisma`          |
+| `@btravstack/http-server`     | `packages/http-server/AGENTS.md` (auth half: `packages/http-server/AUTH.md`) | `/reference/http-server`     |
+| `@btravstack/temporal-worker` | `packages/temporal-worker/AGENTS.md`                                         | `/reference/temporal-worker` |
+| `@btravstack/amqp-worker`     | `packages/amqp-worker/AGENTS.md`                                             | `/reference/amqp-worker`     |
 
 **Four ports are declared in `@btravstack/core` and implemented elsewhere:
 `Logger`, `Tracer`, `Meter` and `Observers`.** That is the one place the table's
@@ -783,7 +784,7 @@ in its place.
 - **`examples/` is part of the gate, not a folder of illustrations.** All ten
   workspaces run under the same six commands as the kernel, and an example that
   stops compiling fails CI exactly as `packages/core` would. The type-level gates
-  they pin, and the `pnpm dev` local loop, are in `examples/CLAUDE.md`.
+  they pin, and the `pnpm dev` local loop, are in `examples/AGENTS.md`.
 - **The whole gate runs on shared containers, and `internal/test-infra` owns
   them** — started once per machine and reused by every workspace's vitest run
   and by `pnpm dev`. Its README lists them, why each exists, the reuse lock and
@@ -795,7 +796,7 @@ in its place.
   it declares, provided by each deployment's unit module from what the unit was
   opened for, with the repository bound to it inside that fork; no starter
   reads a tenant off anything and no orders port names one. The full rule and
-  the id branding are in `examples/CLAUDE.md`; what keeps a tenant parameter
+  the id branding are in `examples/AGENTS.md`; what keeps a tenant parameter
   is the header of `examples/order-application/src/tenant.test-d.ts`, and the
   Prisma generation step is in `examples/order-infrastructure/README.md`.
 - **An integration test may boot its real dependency with Docker and
@@ -818,7 +819,7 @@ in its place.
   root**, in `needs`: `AuditSlice` is `needs: [Logger]` because its handler
   reads one, `OrdersSlice` is `needs: [Logger]` because its controller does,
   and a slice whose provider owed a port and named none does not compile (#50,
-  di's `NeedsGate` — the full rule is in `packages/di/CLAUDE.md`). An
+  di's `NeedsGate` — the full rule is in `packages/di/AGENTS.md`). An
   **import's** needs are not restated: `OrdersSlice` says nothing about `Env`,
   because the module that reads `DATABASE_URL` is `DatabaseModule` and it says
   so there. That is what makes a slice directory readable on its own — which
@@ -828,7 +829,7 @@ in its place.
   from the contract path it serves — `api` being the application's one
   `defineHttp(...)` binding; the root composes every slice's piece into one
   router with `api.OrpcRouter(contract)([...])`, an array whose paths must
-  partition the contract's procedures (see `packages/http-server/CLAUDE.md`).
+  partition the contract's procedures (see `packages/http-server/AGENTS.md`).
   **A fragment is itself a valid contract**,
   so a slice lifts out of the modulith into a process of its own without its
   controller changing at all: the lifted root is
@@ -854,7 +855,7 @@ in its place.
   call — the `UNCOVERED …` marker sits at the tail of the `TS2769`'s third
   line — a leaf discharged twice is di's duplicate-provider defect, and HTTP's
   nested key space adds `OVERLAPPING CONTROLLERS`. HTTP's gates are in
-  `packages/http-server/CLAUDE.md`; the worker side is
+  `packages/http-server/AGENTS.md`; the worker side is
   `docs/how-to/split-a-worker-into-slices.md`.
 
 - **`examples/order-api` consumes `@btravstack/http-server`**, `order-temporal-worker`
@@ -887,7 +888,7 @@ in its place.
   inventory.
 - **`packages/core`'s specs use `@btravstack/testing` without depending on
   it** — that would be a package-graph cycle turbo refuses — so four configs
-  carry the wiring and move together: see `packages/testing/CLAUDE.md`.
+  carry the wiring and move together: see `packages/testing/AGENTS.md`.
 - `declarationMap: false` on all thirteen published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **A deployment extends `@btravstack/tsconfig/app.json`; everything that
@@ -1023,7 +1024,7 @@ in its place.
   read on purpose rather than scrolled past, and this one is gated by review
   instead of drifting silently. Prose that argues for a design belongs in a
   thesis above; prose that explains a package's surface belongs in that
-  package's own `CLAUDE.md` and its reference page.
+  package's own `AGENTS.md` and its reference page.
 
 - Test mechanics: `@unthrown/vitest`'s matchers are registered via `setupFiles`
   (`toBeOk`, `toBeOkWith`, `toBeErrTagged`, …). Timing is asserted through
@@ -1060,7 +1061,7 @@ in its place.
   the deploy gate holds them) — **and**
   `docs-examples.test-d.ts` in the same commit — and when
   the change is to `packages/core/src/` internals or the invariants guarding
-  them, `packages/core/CLAUDE.md` too — and the `CLAUDE.md` of any package
+  them, `packages/core/AGENTS.md` too — and the `AGENTS.md` of any package
   whose decisions or gotchas the change touches. Naming the wrong one is how
   the last drift happened.
 
@@ -1068,7 +1069,7 @@ in its place.
 
 `docs/` is `@btravstack/docs`, the VitePress site published to
 <https://btravstack.github.io/btravstack/>. Its build, the TypeDoc wiring, the
-doc-samples gate and the link checker are documented in `docs/CLAUDE.md`.
+doc-samples gate and the link checker are documented in `docs/AGENTS.md`.
 
 ## Test conventions
 

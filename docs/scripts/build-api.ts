@@ -1,6 +1,6 @@
 // Generate the per-package API reference into `api/<name>/`, one TypeDoc run
 // per `typedoc.<name>.json`, concurrently. TypeDoc lives here rather than in
-// each package because it needs its own TypeScript — see the root CLAUDE.md.
+// each package because it needs its own TypeScript — see the root AGENTS.md.
 import { execFile } from "node:child_process";
 import { globSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";

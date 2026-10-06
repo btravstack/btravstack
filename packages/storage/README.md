@@ -129,7 +129,7 @@ says so instead of minting a URL that would fail only in production.
 fail your request, or how long a link should live. There is no streaming, no
 listing and no bucket management — each reason is on
 [the reference page](https://btravstack.github.io/btravstack/reference/storage),
-and the same reasoning is in [`CLAUDE.md`](./CLAUDE.md) for contributors.
+and the same reasoning is in [`AGENTS.md`](./AGENTS.md) for contributors.
 
 ## License
 

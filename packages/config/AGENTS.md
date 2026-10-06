@@ -1,6 +1,6 @@
 # packages/config
 
-Configuration. The root `CLAUDE.md` is the authoritative spec, and the surface
+Configuration. The root `AGENTS.md` is the authoritative spec, and the surface
 is `docs/reference/config.md`; this file holds what only matters under
 `packages/config/`. Keep it in sync with the code and `README.md` in the same
 commit.

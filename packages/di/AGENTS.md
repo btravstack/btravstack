@@ -1,6 +1,6 @@
 # packages/di
 
-The container. The root `CLAUDE.md` owns the framework's thesis and the
+The container. The root `AGENTS.md` owns the framework's thesis and the
 conventions, and this file holds what only matters when you are working under
 `packages/di/`. Keep it in sync with the code in the same commit.
 
@@ -143,7 +143,7 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
 ### The one example that came with it
 
 `examples/di-hexagonal` is the one that survived the merge, on the
-declaration-emit guard the root `CLAUDE.md` describes. If a set-port or
+declaration-emit guard the root `AGENTS.md` describes. If a set-port or
 forked-scope example is ever wanted again, write it from `src/many.spec.ts`
 and `src/fork.spec.ts` rather than restoring a workspace whose tests were
 duplicates.

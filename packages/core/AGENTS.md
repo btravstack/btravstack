@@ -1,7 +1,7 @@
 # packages/core
 
 The kernel's internals, and the reasoning behind its public surface — the
-surface itself is `docs/reference/core/`. The root `CLAUDE.md` carries the
+surface itself is `docs/reference/core/`. The root `AGENTS.md` carries the
 thesis and the conventions. The sections below are load-bearing: keep them in
 sync with the code in the same commit.
 
@@ -639,7 +639,7 @@ fork }` and never opens a second scope, zero overhead beyond the `fork`
   racing a signal — cannot rewrite the reason an application stopped.
 
 `Observers` (`src/observation.ts`), the set port every starter reports
-through: the reasoning is the root `CLAUDE.md`'s _Observability is a set port,
+through: the reasoning is the root `AGENTS.md`'s _Observability is a set port,
 never a flag_, and the surface is `docs/reference/core/observability.md`.
 `observed(observers, operation, call, settled?)` is `observe` wrapped around
 one `() => AsyncResult<T, E>`, settling from whichever channel the call comes

@@ -1,7 +1,7 @@
 # examples/
 
 Guidance for the ten example workspaces. The repository-wide theses, the
-gate commands and the test conventions live in the root `CLAUDE.md`; what
+gate commands and the test conventions live in the root `AGENTS.md`; what
 follows is what is true of `examples/` specifically. `examples/README.md`
 is the index of the workspaces themselves.
 
@@ -41,7 +41,7 @@ is the index of the workspaces themselves.
   **The contract says WHICH SCHEMES protect a route, and which
   scopes each must grant; the application's `defineHttp({ authenticators })`
   says WHAT each scheme resolves to.**
-  The argument is `packages/contract/CLAUDE.md`'s.
+  The argument is `packages/contract/AGENTS.md`'s.
   **Both schemes are the starter's own:** `user`
   is `jwtAuthenticator` with nothing pinned, so `HTTP_JWT_JWKS_URI`,
   `HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE` are a deployment's and an unset one

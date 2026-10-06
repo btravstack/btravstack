@@ -35,7 +35,7 @@ trigger, the answer is no.
   for the PRELOAD alone:
   the preload cannot be DI-provided, so the package ships the graph-owned
   half and the `--import` line stays the deployment's. Surfaces in
-  `packages/observability/CLAUDE.md`.
+  `packages/observability/AGENTS.md`.
 - ~~A `docs-examples.test-d.ts` for `@btravstack/temporal-worker`, `@btravstack/amqp-worker`
   and `@btravstack/observability`.~~ **Closed by the doc-samples gate**
   (issue #94): `docs/scripts/extract-doc-samples.ts` now compiles every `ts`
@@ -85,7 +85,7 @@ dependencies by name`; a positional array is refused as
   shared signal instead of three real ones. A dev loop that misrepresents
   failure isolation teaches the wrong lesson about the very thesis it sits
   under. So `pnpm dev` is `turbo run dev --filter=./examples/*`: one process
-  per deployment, `tsx watch` on each, output prefixed by workspace — the mechanics are in `examples/CLAUDE.md`.
+  per deployment, `tsx watch` on each, output prefixed by workspace — the mechanics are in `examples/AGENTS.md`.
 - **"HTML" here means fragments, and only fragments** (#179's open question).
   Four things were being called HTML support: a template engine's rendered
   pages, an endpoint answering `text/html` for a partial, static assets with
@@ -188,4 +188,4 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   vocabulary is already public in the emitted document), and a mismatch is
   refused with `reason: "sort-mismatch"`, told apart from an unreadable
   cursor's `"malformed"`. The full position is
-  `packages/contract/CLAUDE.md`'s.
+  `packages/contract/AGENTS.md`'s.

@@ -1,7 +1,7 @@
 # .changeset/
 
 Release and versioning policy. The gate commands and the package inventory
-live in the root `CLAUDE.md`.
+live in the root `AGENTS.md`.
 
 A release bumps every one of the thirteen published packages, whether or not
 it changed — Spring Boot's model, and the reason is the same:

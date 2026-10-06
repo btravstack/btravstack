@@ -6,7 +6,7 @@ reviews:
   path_instructions:
     - path: "**/*.ts"
       instructions: |
-        When the same diff also changes a `CLAUDE.md`, an `AGENTS.md` or a
+        When the same diff also changes an `AGENTS.md` or a
         README, check what it now claims against this code. A sentence that
         counts call sites, names "the one such site" or describes a signature is
         a claim that goes stale silently, and one already had.
@@ -36,7 +36,7 @@ reviews:
         "simplification", stating a symbol's contract in TSDoc on a public
         surface, carrying a directive with a reason, or marking a test phase.
         Do not ask for more comments, and do not ask for TSDoc on a private
-        symbol. Rationale lives in `CLAUDE.md`, which is read on purpose.
+        symbol. Rationale lives in `AGENTS.md`, which is read on purpose.
 
         `type` not `interface`, `unknown` not `any`, and every relative import
         carries `.js` — `moduleResolution: NodeNext`, so `from "./units"` does
@@ -67,7 +67,7 @@ reviews:
     - path: "packages/*/src/**"
       instructions: |
         A change to a package's public surface must update that package's own
-        `CLAUDE.md`, its page under `docs/`, and its `README.md` in the same
+        `AGENTS.md`, its page under `docs/`, and its `README.md` in the same
         commit. Say so when a diff changes the surface and touches none of
         them — documentation drift is the failure this repository has met most
         often, and the copy with no gate is the one that lies.

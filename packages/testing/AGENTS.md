@@ -1,6 +1,6 @@
 # packages/testing
 
-The test harness. The root `CLAUDE.md` is the authoritative spec, and the
+The test harness. The root `AGENTS.md` is the authoritative spec, and the
 surface is `docs/reference/testing.md`; this file holds what only matters under
 `packages/testing/`. Keep it in sync with the code and `README.md` in the same
 commit.
@@ -31,7 +31,7 @@ commit.
 
 The kernel invariants this package's specs hold — _"No `Result` is produced
 and left unexamined"_ and the abort-from-`registry.abortAll()` one — are listed
-in `packages/core/CLAUDE.md`, pointing here.
+in `packages/core/AGENTS.md`, pointing here.
 
 ## How the kernel's own specs reach this package
 
