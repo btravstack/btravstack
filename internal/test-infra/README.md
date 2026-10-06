@@ -71,7 +71,7 @@ role every `order-infrastructure` spec, both worker examples' fixtures and
 `DATABASE_URL` carry its credentials, and `DATABASE_URL` stays the one variable:
 the owner's URL never leaves the setup that migrates with it.
 
-It runs **after** `prisma migrate deploy`, because `ON ALL TABLES` covers only
+It runs **after** `prisma db migrate`, because `ON ALL TABLES` covers only
 what already exists; `ALTER DEFAULT PRIVILEGES` is what covers a table or
 sequence a later migration adds. The grant on **sequences** is the one that
 looks optional and is not: `Order.id` is `autoincrement()`, so without it every
@@ -388,7 +388,7 @@ so a container carrying an older registration converges.
 None of them is an entry point. `pnpm dev:env`
 (`src/dev-env.ts`) is the one the repository's `pnpm dev` runs first. It starts
 the same containers, applies the example application's migrations with
-`prisma migrate deploy` under the same `withLock` its vitest `globalSetup`
+`prisma db migrate` under the same `withLock` its vitest `globalSetup`
 uses, and writes the repository root's `.env.dev` — the addresses each example
 process reads through Node's `--env-file`, the `HTTP_JWT_*` three the dev
 issuer above supplies included. Same containers, attached to rather than

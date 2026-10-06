@@ -137,7 +137,7 @@ list lives.
 `order-api`, `order-amqp-worker` and `order-temporal-worker`. None of them
 starts a server of its own, and none cleans up after a test — isolation is the
 boundary each system already has, minted in setup: a **vhost** per test, a
-**namespace** per spec file, a **tenant** per test. One `prisma migrate deploy`
+**namespace** per spec file, a **tenant** per test. One `prisma db migrate`
 runs for the whole gate.
 
 A real broker in particular is the only

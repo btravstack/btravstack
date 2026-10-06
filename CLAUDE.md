@@ -646,10 +646,10 @@ able to assert. A component with a success worth an operator's attention writes
 that line itself, in its own words; `@btravstack/mailer` lost its "mail sent"
 on those terms.
 
-The one `Logger` a starter still holds is `@btravstack/prisma`'s, for the
-`debug` line saying engine tracing is off because the optional peer is absent.
-That is a STARTUP fact rather than an operation, so there is nothing for an
-observer to settle.
+No starter holds a `Logger`. The last one was `@btravstack/prisma`'s, for a
+startup line about engine tracing, and it went with the Prisma 7 engine;
+`@btravstack/amqp-worker` routes even its library's own diagnostics through
+`Observers`.
 
 ## Cross-cutting concerns: configuration, not a middleware slot
 
