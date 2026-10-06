@@ -29,6 +29,7 @@ const TYPEDOC = join(
 // `/api/` sidebar in `.vitepress/config.ts`.
 const packages: readonly string[] = [
   "contract",
+  "entity",
   "di",
   "config",
   "core",

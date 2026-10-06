@@ -32,8 +32,8 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds thirteen published packages,
-`contract` (the contract tier: markers and normed shapes a client and the
+pnpm workspace + turbo monorepo. `packages/` holds fourteen published packages,
+`entity` (optional domain modelling on Zod; sealed entities and aggregates, derived schemas, and Result-returning construction), `contract` (the contract tier: markers and normed shapes a client and the
 server that implements it both need — the `authenticated` marker and a cursor
 page, with the page's schema behind a `/zod` subpath so the root keeps its
 zero dependencies and zero required peers), `di` (the container), `config`
@@ -49,7 +49,7 @@ one shape — a port, a real adapter, an in-process adapter, and one
 composition function), and the three
 **servers**, each named for the half it implements: `http-server` (oRPC over
 `node:http`), `temporal-worker` and `amqp-worker`. `di` was its own repository until it was merged here
-**with its history**; it and `contract` are the two packages that depend on
+**with its history**; it, `contract` and `entity` are the three packages that depend on
 nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
 back, with `testing`, `observability`, the three application-service ports
@@ -57,13 +57,14 @@ and the three servers on `core`. Its own spec is `packages/di/AGENTS.md`; `contr
 `packages/contract/AGENTS.md`; the harness's is
 `packages/testing/AGENTS.md`; the logging starter's is
 `packages/observability/AGENTS.md`.
-`examples/` holds ten private ones — a clean-architecture application
+`examples/` holds fourteen private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 three runtimes (`order-api`, `order-temporal-worker`, `order-amqp-worker`),
 each doing what its transport is for — answering, orchestrating,
 broadcasting — with each transport's contract in a package of its own
 (`order-api-contract`, `order-temporal-contract`, `order-amqp-contract`)
-because a client must be able to take a contract without the server, plus the
+because a client must be able to take a contract without the server, plus four entity billing examples (`entity-billing-domain`, `entity-billing-api`,
+`entity-billing-persistence`, `entity-billing-relational`) and the
 container's own `di-hexagonal`, which composes a `Module` and never
 calls `start`. They are
 consumers, not fixtures: they are part of the gate, and `examples/README.md`
@@ -131,9 +132,9 @@ pnpm dev              # the three example deployments, one process each, watchin
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
-## Versioning: all thirteen packages move as one
+## Versioning: all fourteen packages move as one
 
-The thirteen published packages share **one version number**, enforced by a
+The fourteen published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. **Do not downgrade `@changesets/cli`
 below 3.0.0** — on 2.x the next `pnpm run version` silently ships a major. The
 measurements behind both rules are in `.changeset/AGENTS.md`.
@@ -689,6 +690,7 @@ copy with no gate is the copy that lies.
 
 | Package                       | Decisions and gotchas                                                        | Reference page               |
 | ----------------------------- | ---------------------------------------------------------------------------- | ---------------------------- |
+| `@btravstack/entity`          | `packages/entity/AGENTS.md`                                                  | `/entity/`                   |
 | `@btravstack/contract`        | `packages/contract/AGENTS.md`                                                | `/reference/contract`        |
 | `@btravstack/di`              | `packages/di/AGENTS.md`                                                      | `/reference/di/`             |
 | `@btravstack/config`          | `packages/config/AGENTS.md`                                                  | `/reference/config`          |
@@ -763,7 +765,7 @@ in its place.
 
   The coverage block is stated ONCE, as `vitest.shared.ts`'s `covered()`,
   which every published package merges over the shared config — it used to
-  be thirteen copies, and `@btravstack/cache` shipped with its copy one
+  be fourteen copies, and `@btravstack/cache` shipped with its copy one
   exclusion short, counting a type test as uncovered source. A package with
   more to exclude names only the extra file
   (`covered({}, "src/test-workflows.ts")`).
@@ -794,7 +796,7 @@ in its place.
   the hop out of `__tests__/` rides the name (`"../workflows"`) rather than
   the URL.
 
-- **`examples/` is part of the gate, not a folder of illustrations.** All ten
+- **`examples/` is part of the gate, not a folder of illustrations.** All fourteen
   workspaces run under the same six commands as the kernel, and an example that
   stops compiling fails CI exactly as `packages/core` would. The type-level gates
   they pin, and the `pnpm dev` local loop, are in `examples/AGENTS.md`.
@@ -902,7 +904,7 @@ in its place.
 - **`packages/core`'s specs use `@btravstack/testing` without depending on
   it** — that would be a package-graph cycle turbo refuses — so four configs
   carry the wiring and move together: see `packages/testing/AGENTS.md`.
-- `declarationMap: false` on all thirteen published packages — the published
+- `declarationMap: false` on all fourteen published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **A deployment extends `@btravstack/tsconfig/app.json`; everything that
   exports something keeps `base.json`.** The two differ in one thing,
@@ -929,7 +931,7 @@ in its place.
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- All thirteen published packages claim `engines: { node: ">=22" }` while the root
+- All fourteen published packages claim `engines: { node: ">=22" }` while the root
   claims `>=22.22`. The divergence is **deliberate**: the root floor is the dev
   toolchain's, a package's is a compatibility promise to consumers. Do not
   align them for tidiness — raising a published floor is a breaking change,

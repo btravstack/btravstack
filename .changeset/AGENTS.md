@@ -3,14 +3,14 @@
 Release and versioning policy. The gate commands and the package inventory
 live in the root `AGENTS.md`.
 
-A release bumps every one of the thirteen published packages, whether or not
+A release bumps every one of the fourteen published packages, whether or not
 it changed — Spring Boot's model, and the reason is the same:
 an application installs a kernel and two or three starters together, and
 "which version of `@btravstack/http-server` goes with `@btravstack/core@0.4.1`" is a
 question nobody should have to answer.
 
 **A minor no longer forces 1.0.0 — `@changesets/cli@3.0.0` fixed it.** Every
-package here peer-depends on `@btravstack/di` and most on `@btravstack/config`
+package except `entity` peer-depends on `@btravstack/di` and most on `@btravstack/config`
 and `@btravstack/core`, and changesets 2.x majored any package whose _peer_
 dependency was bumped by a minor or major; from 0.x a major is `1.0.0`, so one
 `minor` changeset took the whole group there. Re-measured on **3.0.0**, twice,

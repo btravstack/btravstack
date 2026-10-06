@@ -209,6 +209,64 @@ const GUIDE_SIDEBAR = [
   },
 ];
 
+const ENTITY_SIDEBAR = [
+  {
+    text: "Tutorial",
+    items: [{ text: "Getting started", link: "/entity/tutorial/getting-started" }],
+  },
+  {
+    text: "How-to guides",
+    items: [
+      { text: "Expose an HTTP contract", link: "/entity/how-to/http-contract" },
+      { text: "Persist and rehydrate", link: "/entity/how-to/persist-and-rehydrate" },
+      { text: "Evolve an entity", link: "/entity/how-to/evolve-an-entity" },
+      { text: "Add a stricter rule", link: "/entity/how-to/add-a-stricter-rule" },
+      { text: "Model an aggregate", link: "/entity/how-to/model-an-aggregate" },
+      { text: "Persist an aggregate relationally", link: "/entity/how-to/persist-relationally" },
+      { text: "Number without gaps", link: "/entity/how-to/number-without-gaps" },
+      { text: "Enforce a uniqueness rule", link: "/entity/how-to/enforce-uniqueness" },
+      { text: "Write commands and events", link: "/entity/how-to/write-commands" },
+      {
+        text: "Model an event-driven aggregate",
+        link: "/entity/how-to/model-an-event-driven-aggregate",
+      },
+      { text: "Test domain logic", link: "/entity/how-to/test-domain-logic" },
+    ],
+  },
+  {
+    text: "Reference",
+    items: [
+      { text: "Declaring an entity", link: "/entity/reference/declaration" },
+      { text: "Schema members", link: "/entity/reference/schemas" },
+      { text: "Entry points", link: "/entity/reference/entry-points" },
+      { text: "Errors", link: "/entity/reference/errors" },
+      { text: "Helper types", link: "/entity/reference/types" },
+      { text: "Guarantees and compatibility", link: "/entity/reference/guarantees" },
+      { text: "API reference", link: "/api/entity/" },
+    ],
+  },
+  {
+    text: "Explanation",
+    items: [
+      { text: "Why entity?", link: "/entity/explanation/why-entity" },
+      { text: "Compared with zod and Effect", link: "/entity/explanation/compared" },
+      { text: "Branded fields", link: "/entity/explanation/branded-fields" },
+      { text: "No I/O, by design", link: "/entity/explanation/no-io" },
+      { text: "Sealed construction", link: "/entity/explanation/sealed-construction" },
+      { text: "Immutability", link: "/entity/explanation/immutability" },
+      { text: "Why computed re-derives", link: "/entity/explanation/computed-fields" },
+      { text: "Tags and identity", link: "/entity/explanation/tags-and-identity" },
+      { text: "Unions and roots", link: "/entity/explanation/unions-and-roots" },
+      {
+        text: "Invariants and transitions",
+        link: "/entity/explanation/invariants-and-transitions",
+      },
+      { text: "Errors are values", link: "/entity/explanation/errors-are-values" },
+      { text: "Peer dependencies", link: "/entity/explanation/peer-dependencies" },
+    ],
+  },
+];
+
 const EXAMPLES_SIDEBAR = [
   {
     text: "Examples",
@@ -280,6 +338,23 @@ export default defineConfig({
       ["meta", { name: "twitter:title", content: pageTitle }],
       ["meta", { name: "twitter:description", content: pageDescription }],
     );
+    const isEntity =
+      pageData.relativePath.startsWith("entity/") ||
+      pageData.relativePath.startsWith("api/entity/");
+    const image = `${SITE_URL}${isEntity ? "entity/og-entity-btravstack.png" : "og-btravstack.png"}`;
+    const imageAlt = isEntity
+      ? "entity — a domain-entity builder for TypeScript, with the beetroot glyph."
+      : "btravstack — A backend framework for Node.js and TypeScript, with the beetroot mascot on three teal layers.";
+    pageData.frontmatter.head.push(
+      ["meta", { property: "og:image", content: image }],
+      ["meta", { property: "og:image:type", content: "image/png" }],
+      ["meta", { property: "og:image:width", content: isEntity ? "1280" : "1200" }],
+      ["meta", { property: "og:image:height", content: isEntity ? "640" : "630" }],
+      ["meta", { property: "og:image:alt", content: imageAlt }],
+      ["meta", { name: "twitter:card", content: "summary_large_image" }],
+      ["meta", { name: "twitter:image", content: image }],
+      ["meta", { name: "twitter:image:alt", content: imageAlt }],
+    );
   },
 
   themeConfig: {
@@ -296,7 +371,13 @@ export default defineConfig({
           { text: "Explanation", link: "/explanation/why-btravstack" },
         ],
       },
-      { text: "Packages", link: "/reference/packages" },
+      {
+        text: "Packages",
+        items: [
+          { text: "All packages", link: "/reference/packages" },
+          { text: "Entity guide", link: "/entity/" },
+        ],
+      },
       { text: "API", link: "/api/" },
       { text: "Examples", link: "/examples/" },
       {
@@ -316,12 +397,14 @@ export default defineConfig({
           GUIDE_SIDEBAR,
         ]),
       ),
+      "/entity/": ENTITY_SIDEBAR,
       "/api/": [
         {
           text: "API Reference",
           items: [
             { text: "Overview", link: "/api/" },
             { text: "@btravstack/contract", link: "/api/contract/" },
+            { text: "@btravstack/entity", link: "/api/entity/" },
             { text: "@btravstack/di", link: "/api/di/" },
             { text: "@btravstack/config", link: "/api/config/" },
             { text: "@btravstack/core", link: "/api/core/" },
@@ -387,27 +470,5 @@ export default defineConfig({
     ["meta", { property: "og:type", content: "website" }],
     ["meta", { property: "og:site_name", content: "btravstack" }],
     ["meta", { property: "og:locale", content: "en_US" }],
-    ["meta", { property: "og:image", content: `${SITE_URL}og-btravstack.png` }],
-    ["meta", { property: "og:image:type", content: "image/png" }],
-    ["meta", { property: "og:image:width", content: "1200" }],
-    ["meta", { property: "og:image:height", content: "630" }],
-    [
-      "meta",
-      {
-        property: "og:image:alt",
-        content:
-          "btravstack — A backend framework for Node.js and TypeScript, with the beetroot mascot on three teal layers.",
-      },
-    ],
-    ["meta", { name: "twitter:card", content: "summary_large_image" }],
-    ["meta", { name: "twitter:image", content: `${SITE_URL}og-btravstack.png` }],
-    [
-      "meta",
-      {
-        name: "twitter:image:alt",
-        content:
-          "btravstack — A backend framework for Node.js and TypeScript, with the beetroot mascot on three teal layers.",
-      },
-    ],
   ],
 });
