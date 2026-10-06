@@ -14,11 +14,16 @@ import { fileURLToPath } from "node:url";
 const HERE = resolve(fileURLToPath(import.meta.url), "..", "..");
 const ROOT = resolve(HERE, "..", "..");
 
-/** The version this workspace's catalog pins `name` at, so the gate installs what the repository builds against. */
+/**
+ * The version the DEFAULT catalog pins `name` at — the block `catalog:` opens
+ * and the next top-level key closes, at its own two-space indent — so a name
+ * that also appears under `catalogs:` or `overrides:` is never read from there.
+ */
 const catalogVersion = (name: string): string | undefined => {
-  const catalog = readFileSync(join(ROOT, "pnpm-workspace.yaml"), "utf8");
+  const workspace = readFileSync(join(ROOT, "pnpm-workspace.yaml"), "utf8");
+  const block = /^catalog:\n((?:(?: .*)?\n)*)/m.exec(workspace)?.[1] ?? "";
   const escaped = name.replaceAll(/[.*+?^${}()|[\]\\/]/g, "\\$&");
-  return new RegExp(`^ +"?${escaped}"?: "?([^"\\s]+)"?$`, "m").exec(catalog)?.[1];
+  return new RegExp(`^  "?${escaped}"?: "?([^"\\s]+)"?$`, "m").exec(block)?.[1];
 };
 
 /** The peers a consumer installs beside the tarballs, and the compiler it realistically has (catalogued under an alias). */
@@ -53,10 +58,6 @@ const run = (command: string, args: readonly string[], cwd: string): string =>
   execFileSync(command, [...args], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
 
 const main = (): void => {
-  const dirs = published();
-  const work = mkdtempSync(join(tmpdir(), "btravstack-consumer-"));
-  const failures: string[] = [];
-
   const peers = consumerPeers();
   if (peers === undefined) {
     process.stderr.write(
@@ -65,6 +66,10 @@ const main = (): void => {
     process.exitCode = 1;
     return;
   }
+
+  const dirs = published();
+  const work = mkdtempSync(join(tmpdir(), "btravstack-consumer-"));
+  const failures: string[] = [];
 
   try {
     // Turbo's graph orders the builds before this, and its entry names each
