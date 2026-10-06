@@ -100,6 +100,10 @@ const GUIDE_SIDEBAR = [
         items: [
           { text: "Tune the drain for Kubernetes", link: "/how-to/tune-the-drain-for-kubernetes" },
           { text: "Containerize and deploy", link: "/how-to/containerize-and-deploy" },
+          {
+            text: "Configure a Kubernetes deployment",
+            link: "/how-to/configure-a-kubernetes-deployment",
+          },
           { text: "Embed without runMain", link: "/how-to/embed-without-run-main" },
           {
             text: "Run several deployments locally",

@@ -255,6 +255,28 @@ A **shape** is never a variable: a plugin list, a CORS record's allowed
 headers, a set of security headers. An environment carries strings, so what it
 carries here is scalars.
 
+## Profiles, files, secrets and refresh are the platform's
+
+The framework reads **the process environment, once, at boot**, and nothing
+else — no `dev`/`prod` profile selector, no file it loads itself, no
+secret-store client, no reload. Each is something the platform already does:
+
+- **Profiles** are an overlay per environment in the deployment's manifests,
+  so the difference between staging and production is a file somebody
+  reviews, and a variable one overlay forgot is a `78` at boot rather than a
+  default meant for somewhere else.
+- **Files** are read by the runtime before the process starts —
+  `node --env-file=.env`, which is what `pnpm dev` does — so what was
+  validated and what was in the environment are one surface.
+- **Secrets** reach the pod as environment variables from a Secret, which a
+  secret store (Vault, AWS Secrets Manager, SSM) syncs into.
+- **Refresh is a restart.** A live-reloaded configuration is a consistency
+  problem at every reader; a restart drains in three beats and revalidates,
+  and a bad value fails the new pod's boot while the old ones keep serving.
+
+[Configure a Kubernetes deployment](/how-to/configure-a-kubernetes-deployment)
+is all four, concretely.
+
 ## Any Standard Schema
 
 `Config.object` produces a Standard Schema, and `Config.provider` accepts any
@@ -297,6 +319,8 @@ and `unthrown/no-throw` bans it; the provider is what validates.
 ## See also
 
 - [`@btravstack/config`](/reference/config) — every field, option and error.
+- [Configure a Kubernetes deployment](/how-to/configure-a-kubernetes-deployment) —
+  ConfigMap, Secret, an overlay per environment, and rotating a value.
 - [runMain and exit codes](/reference/core/exit-codes) — where `78` sits among the others.
 - [Serve an oRPC contract over HTTP](/how-to/serve-orpc-over-http) — `PORT`/`HOST` bound by a starter.
 - [Test an application](/how-to/test-an-application) — `env` and the other options a test forces.

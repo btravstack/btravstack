@@ -210,3 +210,12 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   shared connection registry, which would be N registries. The trigger that
   would reopen it is a client-to-server stream a request cannot carry. The
   position is the root `AGENTS.md`'s, thesis #1.
+
+- **Configuration profiles, file layering, a secrets provider and live
+  refresh are declined** (issue #167): the process reads its environment once
+  at boot, and the four around it are the platform's — an overlay per
+  environment, `node --env-file`, a secret store synced into a Kubernetes
+  Secret, and a rolling restart that drains. The reasons are
+  `packages/config/AGENTS.md`'s; the Kubernetes shape is
+  `docs/how-to/configure-a-kubernetes-deployment.md`. A trigger would be a
+  value that must change faster than a rollout can replace a pod.
