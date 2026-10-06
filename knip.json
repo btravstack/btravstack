@@ -4,7 +4,6 @@
   "ignore": ["**/*.test-d.ts", "**/type-assert.ts", "vitest.shared.ts"],
   "ignoreDependencies": [
     "@btravstack/lefthook",
-    "@btravstack/oxlint",
     "@btravstack/typedoc",
     "typedoc",
     "typedoc-plugin-markdown",
@@ -16,6 +15,10 @@
       "project": ["scripts/**/*.ts"]
     },
     "examples/di-hexagonal": {
+      "entry": ["src/emit-guards.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "examples/entity-billing-domain": {
       "entry": ["src/emit-guards.ts"],
       "project": ["src/**/*.ts"]
     },

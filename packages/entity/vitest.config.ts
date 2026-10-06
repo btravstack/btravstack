@@ -1,9 +1,5 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, mergeConfig } from "vitest/config";
 
-export default defineConfig({
-  test: {
-    environment: "node",
-    include: ["src/**/*.spec.ts"],
-    setupFiles: ["@unthrown/vitest"],
-  },
-});
+import shared, { covered } from "../../vitest.shared.js";
+
+export default mergeConfig(shared, defineConfig({ test: { coverage: covered() } }));

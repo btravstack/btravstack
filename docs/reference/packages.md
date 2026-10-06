@@ -1,27 +1,28 @@
 ---
 title: Packages and install
-description: The thirteen published packages grouped by the job each does, who peers on what, and one install command per kind of deployment.
+description: The fourteen published packages grouped by the job each does, who peers on what, and one install command per kind of deployment.
 ---
 
 # Packages and install
 
-> **Reference.** The thirteen published packages, grouped by the job each does,
+> **Reference.** The fourteen published packages, grouped by the job each does,
 > their peer-dependency matrix and the install command for each kind of
 > deployment. For _why_ everything is a peer
 > dependency, see [Peer dependencies](/explanation/peer-dependencies); for what
 > a starter is, see [Starters](/explanation/starters).
 
-## Four groups, and what to install first
+## Five groups, and what to install first
 
 The names carry the grouping, so a package's job is legible before you open
 its page:
 
-| Group                                          | Packages                                        | When you install one                                                           |
-| ---------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------ |
-| **The kernel and its plumbing**                | `core`, `di`, `config`, `contract`              | Always — `core` boots the process, and the other three are what it boots.      |
-| **Servers**, one per transport                 | `http-server`, `temporal-worker`, `amqp-worker` | One, and exactly one: a process boots a single runtime.                        |
-| **Capability ports**, a contract plus adapters | `observability`, `cache`, `mailer`, `storage`   | When the application needs that capability. Each is independent of the others. |
-| **The harness**                                | `testing`                                       | As a dev dependency, always.                                                   |
+| Group                                          | Packages                                        | When you install one                                                                  |
+| ---------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **Domain modelling**                           | `entity`                                        | When the application benefits from validated domain entities and aggregate decisions. |
+| **The kernel and its plumbing**                | `core`, `di`, `config`, `contract`              | Always — `core` boots the process, and the other three are what it boots.             |
+| **Servers**, one per transport                 | `http-server`, `temporal-worker`, `amqp-worker` | One, and exactly one: a process boots a single runtime.                               |
+| **Capability ports**, a contract plus adapters | `observability`, `cache`, `mailer`, `storage`   | When the application needs that capability. Each is independent of the others.        |
+| **The harness**                                | `testing`                                       | As a dev dependency, always.                                                          |
 
 **The shortest real application is `core` + `di` + `config` + one server.**
 Everything else arrives when something needs it.
@@ -38,6 +39,7 @@ at all.
 
 | Package                       | What it is                                                                                                                                                                                                                       | Reference                                                                                                                                                                                        |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@btravstack/entity`          | A Zod-based domain model with sealed construction, derived request and response schemas, and Result-returning entry points. It has no dependency on the kernel.                                                                  | [Entity guide](/entity/) and [API](/api/entity/)                                                                                                                                                 |
 | `@btravstack/contract`        | The contract tier a client and a server share: `authenticated` says a procedure needs a principal, and a cursor page is one shape rather than two copies. The root depends on nothing; `zod` is optional, behind `/zod`.         | [@btravstack/contract](/reference/contract)                                                                                                                                                      |
 | `@btravstack/di`              | The container: ports as the vocabulary, providers bound at one edge, modules that declare their imports and exports. Depends on nothing.                                                                                         | [Ports](/reference/di/ports), [Providers](/reference/di/providers), [Modules](/reference/di/modules), [Entry points](/reference/di/entry-points), [Wiring defects](/reference/di/wiring-defects) |
 | `@btravstack/config`          | Configuration the twelve-factor way: `Env` as a port, typed fields bound from it through a schema, `ConfigInvalid` naming every fault.                                                                                           | [@btravstack/config](/reference/config)                                                                                                                                                          |
@@ -51,6 +53,8 @@ at all.
 | `@btravstack/temporal-worker` | The Temporal starter: a Worker as the runtime, one unit per activity attempt, a drain that honours the kernel's deadline.                                                                                                        | [@btravstack/temporal-worker](/reference/temporal-worker)                                                                                                                                        |
 | `@btravstack/amqp-worker`     | The AMQP starter: the handlers as a port, one unit per delivery, ack/nack/dead-letter routed by the contract.                                                                                                                    | [@btravstack/amqp-worker](/reference/amqp-worker)                                                                                                                                                |
 | `@btravstack/testing`         | The test harness, a **dev dependency**: `bootFixture` boots and stops inside a vitest fixture, `tapped` reaches a running service, plus `testRuntime` and `createFakeClock`.                                                     | [@btravstack/testing](/reference/testing)                                                                                                                                                        |
+
+`entity` is an optional domain-modelling library; applications can use it without the kernel, and the kernel never requires it.
 
 The dependency direction is **`core` → `config` → `di`**, never back. `di`
 depends on nothing in this workspace; `config` peers on `di`; `core` peers on
@@ -75,6 +79,7 @@ single copy.
 
 | Package                       | Peers on                                                                                                                                                                                                    |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@btravstack/entity`          | `zod`, `unthrown`, `@unthrown/standard-schema`                                                                                                                                                              |
 | `@btravstack/di`              | `unthrown`                                                                                                                                                                                                  |
 | `@btravstack/config`          | `@btravstack/di`, `unthrown`                                                                                                                                                                                |
 | `@btravstack/core`            | `@btravstack/config`, `@btravstack/di`, `unthrown`                                                                                                                                                          |

@@ -4,6 +4,8 @@
 public-surface change must update this site in the same commit lives in the
 root `AGENTS.md`; what follows is how the site itself is built.
 
+`docs/entity/` carries the entity guide migrated from its standalone site. Its pages use `/entity/` routes, while the generated API stays at `/api/entity/`; the four billing workspaces are under `examples/entity-billing-*`. Keep the guide links, TypeDoc config and navigation in step with changes to that package.
+
 `@btravstack/di`'s former standalone site was folded in here when the
 container was merged; nothing under `docs/reference/di/` should be edited in
 the old repository.
@@ -21,8 +23,12 @@ the old repository.
 - **Deployed by `.github/workflows/deploy-docs.yml`**, unversioned: `main`
   deploys alone to the root. `unthrown`'s stable/beta split (`DOCS_BASE`,
   `DOCS_VERSIONS`) is the shape to adopt once a stable tag exists.
-- **Every `ts` fence on the site, in the root README and in the package
-  READMEs is compiled by `pnpm typecheck`, continuously.**
+- **Every `ts` fence in the original site directories, in the root README and
+  in the package READMEs is compiled by `pnpm typecheck`, continuously.**
+  The migrated `docs/entity/` guide currently retains its former site's
+  review-checked excerpts, not this site's doctest coverage. Its runnable
+  `examples/entity-billing-*` workspaces do compile and test in the gate.
+  Extend the extractor's groups before claiming guide-wide snippet coverage.
   The markers, the groups and how a page becomes one module are
   `scripts/extract-doc-samples.ts`'s header.
   A page whose fences import a package its group's workspace does not have

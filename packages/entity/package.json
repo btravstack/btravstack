@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/entity",
-  "version": "0.9.0",
+  "version": "0.17.0",
   "description": "A domain-entity builder on zod v4: branded fields, immutable data, sealed construction, and Result instead of throws",
   "keywords": [
     "ddd",
@@ -12,15 +12,15 @@
     "unthrown",
     "zod"
   ],
-  "homepage": "https://github.com/btravstack/entity#readme",
+  "homepage": "https://btravstack.github.io/btravstack/entity/",
   "bugs": {
-    "url": "https://github.com/btravstack/entity/issues"
+    "url": "https://github.com/btravstack/btravstack/issues"
   },
   "license": "MIT",
   "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/btravstack/entity.git",
+    "url": "https://github.com/btravstack/btravstack.git",
     "directory": "packages/entity"
   },
   "files": [
@@ -47,7 +47,7 @@
   "scripts": {
     "build": "tsdown src/index.ts --format cjs,esm --dts --clean",
     "dev": "tsdown src/index.ts --format cjs,esm --dts --watch",
-    "test": "vitest run",
+    "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
   },
   "devDependencies": {
@@ -69,6 +69,6 @@
     "zod": "^4.3.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   }
 }

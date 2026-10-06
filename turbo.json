@@ -30,6 +30,7 @@
         "@btravstack/cache#build",
         "@btravstack/config#build",
         "@btravstack/contract#build",
+        "@btravstack/entity#build",
         "@btravstack/core#build",
         "@btravstack/di#build",
         "@btravstack/http-server#build",
@@ -60,6 +61,7 @@
     "@btravstack/docs#build": {
       "dependsOn": [
         "@btravstack/contract#build",
+        "@btravstack/entity#build",
         "@btravstack/di#build",
         "@btravstack/config#build",
         "@btravstack/core#build",

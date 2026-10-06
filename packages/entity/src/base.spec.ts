@@ -318,3 +318,15 @@ test("a variant redefining one computed key overrides that entry only", () => {
   expect(l.shout).toBe("ADA!");
   expect(Object.keys(Louder.output.shape).toSorted()).toEqual(["id", "label", "note", "shout"]);
 });
+
+test("an extend method detached from its declaration does not inherit the old fields", () => {
+  // GIVEN a receiver with no recorded declaration
+  const receiver = { prototype: {} };
+  const detached = Reflect.apply(AccountBase.extend, receiver, ["Detached"]) as (fields: {
+    readonly note: typeof Label;
+  }) => { readonly input: { readonly shape: Record<string, unknown> } };
+  // WHEN the method builds an entity on that receiver
+  const Model = detached({ note: Label });
+  // THEN only the supplied fields belong to the new declaration
+  expect(Object.keys(Model.input.shape)).toEqual(["note"]);
+});

@@ -11,6 +11,7 @@
       "@btravstack/contract",
       "@btravstack/di",
       "@btravstack/config",
+      "@btravstack/entity",
       "@btravstack/core",
       "@btravstack/testing",
       "@btravstack/observability",

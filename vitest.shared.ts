@@ -23,8 +23,8 @@ export default defineConfig({
  * untested arms, in the package that owns authentication, CSRF and redirects.
  *
  * **It is a RATCHET, and every number is the one that package measured.** `90`
- * is the default because eleven of the thirteen clear it; the two that do not
- * pass their own, with the arms named where they are set. A threshold is
+ * is the default; a package that does not clear it passes its own, with the
+ * arms named where they are set. A threshold is
  * raised by testing arms and is never lowered to fit code that regressed:
  * a number that moves down to accommodate its subject is a report, not a gate.
  */

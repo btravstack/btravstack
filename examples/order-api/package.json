@@ -39,7 +39,7 @@
   },
   "devDependencies": {
     "@btravstack/contract": "workspace:^",
-    "@btravstack/entity": "catalog:",
+    "@btravstack/entity": "workspace:*",
     "@btravstack/internal-test-infra": "workspace:*",
     "@btravstack/prisma": "workspace:*",
     "@btravstack/testing": "workspace:*",

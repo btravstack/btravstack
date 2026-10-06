@@ -55,6 +55,28 @@ test("an unknown discriminant fails with the key and the options", () => {
   expect(issues[0]).toContain('"service_account"');
 });
 
+test("a union used as a schema rejects an unknown discriminant", () => {
+  // GIVEN a row with no registered member
+  const row = { ...userRow, kind: "nope" };
+  // WHEN zod parses through the union schema
+  const result = z.array(Member).safeParse([row]);
+  // THEN the parse fails instead of constructing an arbitrary member
+  expect(result.success).toBe(false);
+});
+
+test("a member with no nameable discriminant does not capture unknown rows", () => {
+  // GIVEN a malformed declaration with a free string discriminant
+  class Unnamed extends Entity("Unnamed")({
+    kind: Entity.field(z.string(), { unbranded: true }),
+    id: UserId,
+  }) {}
+  const Mixed = Entity.union("kind", [User, Unnamed]);
+  // WHEN a row names no registered discriminant
+  const result = Mixed.make({ ...userRow, kind: "other" });
+  // THEN it remains invalid instead of routing to the malformed member
+  expect(result.isErr()).toBe(true);
+});
+
 test("a member's own validation failure reports only that member's issues", () => {
   // dispatching on the discriminant is what keeps this from reporting every
   // branch's complaints, which is what a plain z.union would do

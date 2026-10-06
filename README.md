@@ -53,6 +53,7 @@ it replaces is the `main.ts` every backend writes by hand and gets subtly wrong.
 | ------------------------ | ----------------------------------------------------------------------------------------------- |
 | **Dependency injection** | Plain values — no decorators, no `reflect-metadata`. An unmet dependency is a compile error.    |
 | **Errors as values**     | Every fallible call returns a `Result`, so the compiler makes you handle failure.               |
+| **Domain modelling**     | Optional `@btravstack/entity`: sealed entities, aggregate decisions, and Zod schemas.           |
 | **Configuration**        | Environment variables validated once at boot into typed values; a bad one exits `78` naming it. |
 | **Three transports**     | HTTP (contract-first, over oRPC), Temporal workers, AMQP consumers.                             |
 | **Observability**        | Structured logs correlated per request, OpenTelemetry traces and metrics.                       |
@@ -106,6 +107,8 @@ btravstack is for teams that already chose TypeScript for the type safety and
 want the framework to honour that choice rather than opt out of it. See
 [Why btravstack?](https://btravstack.github.io/btravstack/explanation/why-btravstack)
 for the design argument and what it is not.
+
+The [entity guide](https://btravstack.github.io/btravstack/entity/) shows how to model the domain used by the examples. It is usable without the process framework.
 
 ## Install
 

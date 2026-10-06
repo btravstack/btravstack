@@ -139,6 +139,15 @@ test("a throwing handler is a defect", () => {
   expect(channel(brittle.emit({ type: "Broke" }))).toBe("defect");
 });
 
+test("an aggregate method called on an unconstructed object defects", () => {
+  // GIVEN an object that bypassed every aggregate constructor
+  const fake = {};
+  // WHEN its method is invoked with a valid event
+  const result = Reflect.apply(Cart.prototype.emit, fake, [{ type: "CartCheckedOut" }]);
+  // THEN the missing decision history is a defect
+  expect(channel(result as Result<unknown, never>)).toBe("defect");
+});
+
 test("start refuses a non-opening event as a defect", () => {
   expect(channel(Cart.start({ type: "CartCheckedOut" } as never))).toBe("defect");
 });
@@ -156,6 +165,56 @@ test("replay folds a stored stream into the same state, and emits nothing", () =
   expect(replayed).toBeInstanceOf(Cart);
   expect(replayed.toJSON()).toEqual(second.state.toJSON());
   expect(Object.keys(replayed)).not.toContain("events");
+});
+
+test("replay preserves a schema defect in a stored event", () => {
+  // GIVEN a schema whose Standard Schema validator defects synchronously
+  const events = z.discriminatedUnion("type", [
+    z.object({ type: z.literal("Opened"), id: z.uuid() }),
+    z.object({ type: z.literal("Closed") }),
+  ]);
+  Object.defineProperty(events, "~standard", {
+    value: {
+      validate: () => {
+        // oxlint-disable-next-line unthrown/no-throw -- a defective validator is the subject under test
+        throw new Error("broken validator");
+      },
+    },
+  });
+  class BrokenSchema extends Entity.aggregate("BrokenSchema")({
+    id: Entity.field(CartId, { identity: true }),
+  })({
+    events,
+    opens: { Opened: (e) => ({ id: e.id }) },
+    evolve: { Closed: (r) => r },
+  }) {}
+  // WHEN the event is replayed
+  const result = BrokenSchema.replay([{ type: "Opened", id }]);
+  // THEN parsing's defect stays separate from InvalidEntity
+  expect(channel(result)).toBe("defect");
+});
+
+test("replay reports a throwing evolution handler as a defect", () => {
+  // GIVEN a valid stream whose evolution handler fails
+  class BrittleReplay extends Entity.aggregate("BrittleReplay")({
+    id: Entity.field(CartId, { identity: true }),
+  })({
+    events: z.discriminatedUnion("type", [
+      z.object({ type: z.literal("Opened"), id: z.uuid() }),
+      z.object({ type: z.literal("Broke") }),
+    ]),
+    opens: { Opened: (e) => ({ id: e.id }) },
+    evolve: {
+      Broke: () => {
+        // oxlint-disable-next-line unthrown/no-throw -- a defective handler is the subject under test
+        throw new Error("boom");
+      },
+    },
+  }) {}
+  // WHEN replay invokes the handler
+  const result = BrittleReplay.replay([{ type: "Opened", id }, { type: "Broke" }]);
+  // THEN the exception stays on the defect channel
+  expect(channel(result)).toBe("defect");
 });
 
 test("make rehydrates a snapshot, and an aggregate has no update and no factory", () => {

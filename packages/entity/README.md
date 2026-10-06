@@ -18,6 +18,8 @@ typechecks, emits declarations and passes its runtime assertions on 4.3.0.
 Nothing here needs a later minor, and monorepos commonly pin one zod across
 every package, so the range is kept as wide as it is true.
 
+<!-- doctest: skip — illustrative application wiring uses caller-owned ids, clock and repository -->
+
 ```ts
 import { z } from "zod";
 import { Entity } from "@btravstack/entity";
@@ -69,7 +71,7 @@ const renamed = loaded.update({ name: next }).getOrThrow(); // a NEW entity
 The four are building blocks, not a public API. A route picks from them by
 allowlist, so an internal field stays internal and a new one stays out until
 someone adds it: see [Expose an HTTP
-contract](https://btravstack.github.io/entity/how-to/http-contract).
+contract](https://btravstack.github.io/btravstack/entity/how-to/http-contract).
 
 `generated`, `immutable`, `identity` and `unbranded` are **flags on the
 field**, written with `Entity.field(schema, flags)`; a field carrying none is a
@@ -79,6 +81,8 @@ bare schema.
 An entity is **final**. Fields and behaviour shared by several entities go on a
 root, `Entity.abstract(name)(fields)`, and extension lives there; a union of
 entities is a value you name:
+
+<!-- doctest: skip — variants and their schemas are defined by the consuming application -->
 
 ```ts
 abstract class AccountBase extends Entity.abstract("Account")({
@@ -113,6 +117,8 @@ class's instance type cannot be a union at all (`TS2509`).
 An aggregate root changes only through events. `Entity.aggregate` declares the
 fields, then the events and one handler per event. It has no `update()`: every
 command checks its business rules and returns a sealed decision.
+
+<!-- doctest: skip — aggregate events and repository are defined by the consuming application -->
 
 ```ts
 class Subscription extends Entity.aggregate("Subscription")({
@@ -152,18 +158,18 @@ events that were folded and checked against every invariant. Load with
 state or as events without touching its declaration. Use `Entity` for
 everything inside the boundary, and for simple models where a public `update()`
 costs nothing. See [Model an event-driven
-aggregate](https://btravstack.github.io/entity/how-to/model-an-event-driven-aggregate).
+aggregate](https://btravstack.github.io/btravstack/entity/how-to/model-an-event-driven-aggregate).
 
 ## Documentation
 
-**[btravstack.github.io/entity](https://btravstack.github.io/entity/)**
+**[Entity guide](https://btravstack.github.io/btravstack/entity/)**
 
-- [Guarantees and compatibility](https://btravstack.github.io/entity/reference/guarantees) — what is enforced, what is left to you, supported Node/TypeScript/zod versions
-- [Compared with zod and Effect](https://btravstack.github.io/entity/explanation/compared) — one model, three ways
-- [Getting started](https://btravstack.github.io/entity/tutorial/getting-started) — from nothing to a working entity
-- [Reference](https://btravstack.github.io/entity/reference/declaration) — every member, option and type
-- [Explanation](https://btravstack.github.io/entity/explanation/why-entity) — why it is built this way
-- How-to: [HTTP contract](https://btravstack.github.io/entity/how-to/http-contract) · [persist and rehydrate](https://btravstack.github.io/entity/how-to/persist-and-rehydrate) · [model an aggregate](https://btravstack.github.io/entity/how-to/model-an-aggregate) · [model an event-driven aggregate](https://btravstack.github.io/entity/how-to/model-an-event-driven-aggregate) · [test domain logic](https://btravstack.github.io/entity/how-to/test-domain-logic)
+- [Guarantees and compatibility](https://btravstack.github.io/btravstack/entity/reference/guarantees) — what is enforced, what is left to you, supported Node/TypeScript/zod versions
+- [Compared with zod and Effect](https://btravstack.github.io/btravstack/entity/explanation/compared) — one model, three ways
+- [Getting started](https://btravstack.github.io/btravstack/entity/tutorial/getting-started) — from nothing to a working entity
+- [Reference](https://btravstack.github.io/btravstack/entity/reference/declaration) — every member, option and type
+- [Explanation](https://btravstack.github.io/btravstack/entity/explanation/why-entity) — why it is built this way
+- How-to: [HTTP contract](https://btravstack.github.io/btravstack/entity/how-to/http-contract) · [persist and rehydrate](https://btravstack.github.io/btravstack/entity/how-to/persist-and-rehydrate) · [model an aggregate](https://btravstack.github.io/btravstack/entity/how-to/model-an-aggregate) · [model an event-driven aggregate](https://btravstack.github.io/btravstack/entity/how-to/model-an-event-driven-aggregate) · [test domain logic](https://btravstack.github.io/btravstack/entity/how-to/test-domain-logic)
 
 ## License
 

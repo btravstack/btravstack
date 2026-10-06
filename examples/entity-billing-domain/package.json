@@ -1,0 +1,33 @@
+{
+  "name": "@btravstack/entity-example-billing-domain",
+  "private": true,
+  "description": "A small billing domain, modelled with @btravstack/entity",
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./order": "./src/order.ts",
+    "./subscription": "./src/subscription.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.emit.json && node ./node_modules/typescript-consumer/bin/tsc -p tsconfig.emit.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit --strict --module nodenext --moduleResolution nodenext --target es2022 node_modules/.emit-check/index.d.ts node_modules/.emit-check/emit-guards.d.ts node_modules/.emit-check/index.spec.d.ts node_modules/.emit-check/order.d.ts node_modules/.emit-check/subscription.d.ts"
+  },
+  "dependencies": {
+    "@btravstack/entity": "workspace:*",
+    "unthrown": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@btravstack/tsconfig": "catalog:",
+    "@types/node": "catalog:",
+    "@unthrown/standard-schema": "catalog:",
+    "@unthrown/vitest": "catalog:",
+    "effect": "catalog:",
+    "typescript": "catalog:",
+    "typescript-consumer": "catalog:",
+    "vitest": "catalog:"
+  }
+}

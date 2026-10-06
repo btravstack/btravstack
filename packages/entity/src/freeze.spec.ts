@@ -203,6 +203,29 @@ test("a z.custom behind a pipe is recognised through the out side", () => {
   expect(Object.isFrozen(caller)).toBe(false);
 });
 
+test("a lazy schema still protects the caller's nested custom value", () => {
+  // GIVEN a lazily resolved custom field
+  const schema = z.object({ cfg: z.lazy(() => CfgSchema) });
+  const caller = cfg();
+  // WHEN the parsed wrapper is frozen
+  deepFreeze({ cfg: caller }, undefined, schema);
+  // THEN the caller-owned value remains writable
+  expect(Object.isFrozen(caller)).toBe(false);
+});
+
+test("ambiguous union branches preserve a caller-owned nested value", () => {
+  // GIVEN two object branches that could describe the same key
+  const schema = z.union([
+    z.object({ cfg: CfgSchema }),
+    z.object({ cfg: z.object({ retries: z.number() }) }),
+  ]);
+  const caller = cfg();
+  // WHEN the wrapper is frozen with both schema candidates
+  deepFreeze({ cfg: caller }, undefined, schema);
+  // THEN the custom branch prevents freezing the caller's value
+  expect(Object.isFrozen(caller)).toBe(false);
+});
+
 test("an intersection whose side is passthrough leaves the value alone", () => {
   const schema = z.object({
     wrap: z.intersection(

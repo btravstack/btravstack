@@ -201,6 +201,6 @@ want the framework to honour that choice rather than opt out of it.
 - **[Coming from NestJS](/explanation/coming-from-nestjs)** — a side-by-side, including what Nest does better.
 - **[Coming from Spring Boot](/explanation/coming-from-spring-boot)** — what starters, constructor injection and graceful shutdown map to, and the four things that do not.
 - **[Coming from AdonisJS](/explanation/coming-from-adonisjs)** — the three words that mean something else here, and what has no equivalent at all.
-- **[Packages and install](/reference/packages)** — the thirteen packages and one install command per kind of deployment.
+- **[Packages and install](/reference/packages)** — the fourteen packages and one install command per kind of deployment.
 
 <CompileErrorDemo />
