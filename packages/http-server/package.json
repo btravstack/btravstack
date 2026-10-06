@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/http-server",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "The HTTP starter for @btravstack/core: oRPC over node:http, one unit per request, and a drain that actually stops accepting",
   "keywords": [
     "graceful-shutdown",
@@ -124,7 +124,7 @@
     "@orpc/json-schema": "^2.0.0-beta",
     "@orpc/openapi": "^2.0.0-beta",
     "@orpc/server": "^2.0.0-beta",
-    "@unthrown/orpc": "^0.1.0",
+    "@unthrown/orpc": "^0.2.0",
     "jose": "^6",
     "openid-client": "^6",
     "unthrown": "^5.0.0"

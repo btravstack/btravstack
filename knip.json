@@ -7,7 +7,8 @@
     "@btravstack/oxlint",
     "@btravstack/typedoc",
     "typedoc",
-    "typedoc-plugin-markdown"
+    "typedoc-plugin-markdown",
+    "vite"
   ],
   "workspaces": {
     "docs": {

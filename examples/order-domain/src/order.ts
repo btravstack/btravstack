@@ -27,10 +27,12 @@ export class Order extends Entity("Order")(
   },
   {
     invariants: [
-      Entity.invariant(
-        (d) => d.quantity > 0,
-        (d) => `order ${d.id} asks for ${d.quantity} items, which is not a positive quantity`,
-      ),
+      Entity.invariant({
+        code: "NON_POSITIVE_QUANTITY",
+        ensure: (d) => d.quantity > 0,
+        message: (d) =>
+          `order ${d.id} asks for ${d.quantity} items, which is not a positive quantity`,
+      }),
     ],
   },
 ) {}

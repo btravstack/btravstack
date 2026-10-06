@@ -135,20 +135,28 @@ const startOutboxRelay = (
                     relayed.add(1, { "btravstack.tenant_id": event.tenantId });
                   },
                   errCases: (matcher) =>
-                    matcher.with(P.tag("@amqp-contract/MessageValidationError"), (error) => {
-                      logger.error(
-                        "an outbox event does not fit the contract; left pending",
-                        { eventId: event.id },
-                        error,
-                      );
-                    }),
+                    matcher
+                      .with(P.tag("@amqp-contract/MessageValidationError"), (error) => {
+                        logger.error(
+                          "an outbox event does not fit the contract; left pending",
+                          { eventId: event.id },
+                          error,
+                        );
+                      })
+                      .with(P.tag("@amqp-contract/PublishError"), (error) => {
+                        // `warn`, not `error`: the broker refusing a publish is
+                        // retryable and the next sweep takes it — and a warning
+                        // carries its cause like any other line, which is what the
+                        // uniform `(message, attributes, cause)` is for.
+                        logger.warn(
+                          "publishing an outbox event failed, will retry",
+                          { eventId: event.id },
+                          error,
+                        );
+                      }),
                   defect: (cause) => {
-                    // `warn`, not `error`: the broker refusing a publish is
-                    // retryable and the next sweep takes it — and a warning
-                    // carries its cause like any other line, which is what the
-                    // uniform `(message, attributes, cause)` is for.
-                    logger.warn(
-                      "publishing an outbox event failed, will retry",
+                    logger.error(
+                      "publishing an outbox event failed unexpectedly; left pending",
                       { eventId: event.id },
                       cause,
                     );

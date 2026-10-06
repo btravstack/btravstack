@@ -136,10 +136,13 @@ const relay = (
     // and mark it so the sweep stops seeing it — which is the one case where
     // "leave it pending" is the wrong answer.
     .recoverErrCases((matcher) =>
-      matcher.with({ _tag: "@amqp-contract/MessageValidationError" }, () => undefined),
+      matcher
+        .with({ _tag: "@amqp-contract/MessageValidationError" }, () => undefined)
+        // A broker that refused is a different story: the row stays pending and
+        // the next sweep takes it, which is why this arm marks nothing.
+        .with({ _tag: "@amqp-contract/PublishError" }, () => undefined),
     )
-    // A broker that refused is a different story: the row stays pending and
-    // the next sweep takes it, which is why this arm marks nothing.
+    // A failure the client could not classify stays pending the same way.
     .recoverDefect(() => OkAsync());
 ```
 

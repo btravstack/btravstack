@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/mailer",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "A Mailer port for @btravstack/core: a recording adapter a spec asserts against, an SMTP adapter, and a composition that spans, counts and logs every send",
   "keywords": [
     "dependency-injection",
@@ -83,7 +83,7 @@
     "@btravstack/config": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",
-    "nodemailer": "^9.0.0",
+    "nodemailer": "^10.0.6",
     "unthrown": "^5.0.0"
   },
   "peerDependenciesMeta": {
