@@ -450,6 +450,23 @@ describe("keyset, sorted", () => {
     expect(keys).toEqual({ resumable: false, cursor, reason: "malformed" });
   });
 
+  it("ranks an undecodable part ahead of the sort comparison", () => {
+    // GIVEN a cursor whose head names ANOTHER sort, and whose value will not
+    // decode either
+    const cursor = "quantity:asc|%zz|1";
+
+    // WHEN it is replayed under the declared sort
+    const keys = keyset({
+      limit: 2,
+      after: cursor,
+      sort: { field: "quantity", direction: "desc" },
+    });
+
+    // THEN it is malformed rather than a mismatch: "start again from page one"
+    // is advice for a token that could be read, and this one cannot
+    expect(keys).toEqual({ resumable: false, cursor, reason: "malformed" });
+  });
+
   it("refuses a cursor whose head field carries an invalid escape as malformed, not a mismatch", () => {
     // GIVEN the same corruption in the field the head names
     const cursor = "%zz:desc|9|1";

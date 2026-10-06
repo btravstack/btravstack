@@ -31,29 +31,54 @@ const hydrate = (row: OrderRow): Result<Order, never> =>
     matcher.with(P.tag("InvalidEntity"), (invalid) => defect(invalid)),
   );
 
+/** The `Order` columns a listing may sort on, typed as stored. `id` is the tiebreak and `tenantId` the policy's, so neither is one. */
+type SortColumns = { readonly orderId: string; readonly quantity: number };
+
 /**
- * Which column a sortable field is stored in, exhaustive over the listing's own
- * vocabulary: a key the application declares sortable with no column here is a
- * compile error, never a page quietly ordered by something else.
+ * A sortable field's column, and how its cursor value is written and read
+ * back. The column must STORE what the field holds, so a field mapped to a
+ * column of another type does not compile — and the codec is the column's
+ * own, so a text or timestamp key brings its own reading rather than meeting
+ * a numeric parse every key shared.
  */
-const sortColumn: Record<OrderQuery["sort"]["field"], "quantity"> = { quantity: "quantity" };
+type SortKey<Value> = {
+  [C in keyof SortColumns]: Value extends SortColumns[C]
+    ? {
+        readonly column: C;
+        readonly encode: (value: SortColumns[C]) => string;
+        readonly decode: (raw: string) => SortColumns[C] | undefined;
+      }
+    : never;
+}[keyof SortColumns];
+
+const integer = (raw: string): number | undefined => {
+  const value = Number(raw);
+  return Number.isSafeInteger(value) ? value : undefined;
+};
+
+/**
+ * Exhaustive over the listing's own vocabulary: a key the application declares
+ * sortable with no entry here is a compile error, never a page quietly ordered
+ * by something else.
+ */
+const sortKeys: { readonly [F in OrderQuery["sort"]["field"]]: SortKey<Order[F]> } = {
+  quantity: { column: "quantity", encode: String, decode: integer },
+};
 
 /**
  * A cursor carries the sort key's value and the surrogate `id` that breaks its
- * ties, as two strings on the wire.
- *
- * Opaque to the caller and numeric underneath, which is the one place this
- * adapter's storage shows through — so decoding is where a caller's garbage
- * becomes the application's `MalformedCursor` rather than a `NaN` that pages
- * from nowhere.
+ * ties, as two strings on the wire — which is the one place this adapter's
+ * storage shows through, so decoding is where a caller's garbage becomes the
+ * application's `MalformedCursor` rather than a `NaN` that pages from nowhere.
  */
-const decodeCursor = (
+const decodeCursor = <Value>(
   cursor: readonly [string, string],
-): Result<{ readonly value: number; readonly id: number }, MalformedCursor> => {
-  const [value, id] = [Number(cursor[0]), Number(cursor[1])];
-  return Number.isSafeInteger(value) && Number.isSafeInteger(id)
-    ? Ok({ value, id })
-    : Err(new MalformedCursor({ cursor: cursor.join("|") }));
+  decode: (raw: string) => Value | undefined,
+): Result<{ readonly value: Value; readonly id: number }, MalformedCursor> => {
+  const [value, id] = [decode(cursor[0]), integer(cursor[1])];
+  return value === undefined || id === undefined
+    ? Err(new MalformedCursor({ cursor: cursor.join("|") }))
+    : Ok({ value, id });
 };
 
 /**
@@ -142,8 +167,8 @@ export const prismaOrderRepository = (
         return keys.reason === "malformed"
           ? ErrAsync(new MalformedCursor({ cursor: keys.cursor }))
           : ErrAsync(new CursorSortMismatch({ cursor: keys.cursor }));
-      const column = sortColumn[keys.sort.field];
-      const start = keys.cursor === undefined ? Ok(undefined) : decodeCursor(keys.cursor);
+      const { column, encode, decode } = sortKeys[keys.sort.field];
+      const start = keys.cursor === undefined ? Ok(undefined) : decodeCursor(keys.cursor, decode);
       return start.toAsync().flatMap((cursor) =>
         pinned(async (tx) => {
           // No `tenantId` filter: the policy on `Order` holds it, and a filter
@@ -183,7 +208,7 @@ export const prismaOrderRepository = (
             all(fetched.map((row) => hydrate(row).map((order) => ({ row, order })))).map((rows) =>
               keys.page(
                 rows,
-                ({ row }) => [String(row[column]), String(row.id)],
+                ({ row }) => [encode(row[column]), String(row.id)],
                 ({ order }) => order,
               ),
             ),
