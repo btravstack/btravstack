@@ -41,4 +41,4 @@ export const mailer = <E, N>({ adapter }: MailerOptions<E, N>): Module<Mailer, E
       }),
     ],
     exports: [Mailer],
-  } as never) as unknown as Module<Mailer, E, N>;
+  });

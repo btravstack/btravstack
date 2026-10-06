@@ -59,8 +59,6 @@ export const cache = <E, N>({
     }),
   });
 
-  // The two arms build different graphs from one signature, so the cast is how
-  // a value-level branch reports the type-level one above.
   return Module("Cache")({
     imports: [adapter],
     provides: [
@@ -72,5 +70,5 @@ export const cache = <E, N>({
       healthCheck,
     ],
     exports: [Cache, HealthChecks],
-  } as never) as unknown as Module<Cache | HealthChecks, E, N>;
+  });
 };

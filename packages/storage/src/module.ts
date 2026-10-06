@@ -65,5 +65,5 @@ export const storage = <E, N>({
       healthCheck,
     ],
     exports: [Storage, HealthChecks],
-  } as never) as unknown as Module<Storage | HealthChecks, E, N>;
+  });
 };
