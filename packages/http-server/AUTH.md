@@ -13,7 +13,7 @@ The two rules this half exists to state, before the detail:
 - **The contract says WHICH SCHEMES protect a route, and which scopes each
   must grant; the application's `defineHttp({ authenticators })` says WHAT
   each scheme resolves to.**
-- **An unmarked procedure is public, and nothing fails if the marker is
+- **A procedure with no mark on it or above it is public, and nothing fails if the marker is
   forgotten.** The contract is the only statement of intent there is. Do not
   describe an unmarked procedure as checked.
 

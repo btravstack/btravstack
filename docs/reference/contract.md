@@ -207,7 +207,7 @@ a bypass. No oRPC builder has to know the marker exists.
 
 ## What it does not do
 
-- **It does not enforce anything.** An unmarked node is public, and forgetting
+- **It does not enforce anything.** A node with no mark on it or above it is public, and forgetting
   the marker fails nothing — the contract makes a protected route _legible_,
   not mandatory. Opt-in by construction; see
   [Protect a procedure](/how-to/protect-a-procedure).

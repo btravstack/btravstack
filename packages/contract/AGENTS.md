@@ -153,7 +153,7 @@ marked node still satisfies the plain shape, a plain one does not satisfy the
 marked shape, and `RequirementsOf` reads the exact requirements back for a
 marked node and is `never` for an unmarked one.
 
-## Marking is opt-in, and an unmarked node is public
+## Marking is opt-in, and a node with no mark on it or above it is public
 
 `authenticated(...requirements)(node)` marks; `isAuthenticated(node)` reads the
 node's **own** mark and answers `undefined` when it has none. There is no

@@ -90,7 +90,7 @@ export const contract = {
 };
 ```
 
-`hello` stays public — an unmarked procedure is public, and nothing warns if
+`hello` stays public — a procedure with no mark on it or above it is public, and nothing warns if
 you forget a mark; the contract is the only statement of intent there is
 ([the reasoning](/how-to/protect-a-procedure)).
 

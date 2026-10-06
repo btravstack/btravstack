@@ -308,7 +308,7 @@ not cover"` marker, and what the marker names is a procedure path
   before changing `auth.ts`, `principal.ts`, `define-http.ts` or the contract
   marker. In short: the contract says WHICH SCHEMES protect a route and which
   scopes each must grant, `defineHttp({ authenticators })` says WHAT each
-  scheme resolves to, and an unmarked procedure is public with nothing failing
+  scheme resolves to, and a procedure with no mark on it or above it is public with nothing failing
   if the marker is forgotten. `AUTH.md` also covers the shipped authenticators
   (`apiKeyAuthenticator`, `jwtAuthenticator`), the session scheme and `oidc()`.
 
@@ -1317,7 +1317,7 @@ checks that it did.** `@btravstack/contract`'s marker is what says which scheme
 protects an oRPC procedure, and `defineHttp({ authenticators })` is what
 resolves it. A fragment or GraphQL answerer has no such statement of intent, so
 its routes are **public** unless it brings authentication of its own — the same
-way an unmarked procedure is public, and with the same absence of a gate for
+way a procedure with no mark on it or above it is public, and with the same absence of a gate for
 "you forgot". Do not describe a non-oRPC answerer as protected by the
 contract's marker. What it brings is declared as data on the route — `requires`
 on `api.HtmxGet`/`api.HtmxPost`, checked at the mint by `RequiresGate` and
@@ -1338,7 +1338,7 @@ transport's hands.
   ingress or gateway is where a request count is counted once. An application
   that wants one anyway writes a plugin and passes it through `plugins` —
   which is the escape hatch doing its job, not a gap.
-- **An unmarked procedure is public, and nothing fails if the marker is
+- **A procedure with no mark on it or above it is public, and nothing fails if the marker is
   forgotten.** `@btravstack/contract`'s marker makes the requirement
   **legible** in the contract and makes the principal's type reach the
   handler; it does not detect a procedure that should have been marked. There

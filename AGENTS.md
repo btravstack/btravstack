@@ -1,9 +1,13 @@
 # AGENTS.md
 
 This file provides guidance to any coding agent working in this repository.
-Claude Code reads it through `CLAUDE.md`'s one-line `@AGENTS.md` import, so
-there is one spec and no copy of it to drift. It is the authoritative spec —
-the rules _and_ the reasoning behind them. Keep it in sync with the code as
+Every `CLAUDE.md` is a **symlink** to the `AGENTS.md` beside it, so Claude Code
+reads the same file every other agent does and there is no copy to drift. Not
+an `@AGENTS.md` import: Claude Code expands an import only in the launch
+directory's own `CLAUDE.md`, never in an ancestor's (anthropics/claude-code#78697,
+reproduced on 2.1.291), so a session started inside a package would silently
+lose this file. It is the authoritative spec — the rules _and_ the reasoning
+behind them. Keep it in sync with the code as
 the package evolves (describe what _is_, not what was planned).
 
 ## What this is
