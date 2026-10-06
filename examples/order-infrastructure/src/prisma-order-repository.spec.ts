@@ -201,7 +201,7 @@ describe("OrderPersistenceModule", () => {
         repository.list({
           limit: 2,
           sort,
-          ...(page.hasNextPage ? { after: page.nextCursor } : {}),
+          after: page.hasNextPage ? page.nextCursor : "no next cursor",
         }),
       );
 
@@ -231,14 +231,14 @@ describe("OrderPersistenceModule", () => {
         repository.list({
           limit: 2,
           sort,
-          ...(page.hasNextPage ? { after: page.nextCursor } : {}),
+          after: page.hasNextPage ? page.nextCursor : "no next cursor",
         }),
       )
       .flatMap((page) =>
         repository.list({
           limit: 2,
           sort,
-          ...(page.hasPreviousPage ? { before: page.previousCursor } : {}),
+          before: page.hasPreviousPage ? page.previousCursor : "no previous cursor",
         }),
       );
 
@@ -347,14 +347,14 @@ describe("OrderPersistenceModule", () => {
           .list({
             limit: 2,
             sort,
-            ...(first.hasNextPage ? { after: first.nextCursor } : {}),
+            after: first.hasNextPage ? first.nextCursor : "no next cursor",
           })
           .flatMap((second) =>
             repository
               .list({
                 limit: 2,
                 sort,
-                ...(second.hasPreviousPage ? { before: second.previousCursor } : {}),
+                before: second.hasPreviousPage ? second.previousCursor : "no previous cursor",
               })
               .map((back) => ({
                 forward: [...first.items, ...second.items].map((order) => order.id),

@@ -610,16 +610,18 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   `COMMON_ERROR_STATUS_MAP` — a fixed dictionary of the standard codes — and a
   **custom** code outside it resolves to `DEFAULT_ERROR_STATUS`, `500`. The
   contract's own `status` field (an OpenAPI-handler concept) is never read by
-  this handler. `INVALID_QUANTITY` and `CURSOR_SORT_MISMATCH` are the codes
-  in the running examples that hit this today, both declared client-input
-  errors that therefore answer `500` rather than a `4xx`, tripping any
-  5xx-keyed retry or circuit breaker a caller has — and
-  `examples/order-api/src/api.spec.ts`'s
-  `"pins — does not endorse — the wire status CURSOR_SORT_MISMATCH gets today: 500"`
+  this handler. `INVALID_QUANTITY` is the code in the running examples that
+  hits this today, a declared client-input error that therefore answers `500`
+  rather than a `4xx`, tripping any 5xx-keyed retry or circuit breaker a
+  caller has — and `examples/order-api/src/api.spec.ts`'s
+  `"pins — does not endorse — the wire status INVALID_QUANTITY gets today: 500"`
   test holds the current behaviour in place rather than the intended one. The
   fix is an `errorStatusMap` passed to `orpc()`'s `RPCHandler`: a
   starter-level decision, since it changes the status of every already-shipped
-  custom code for every consumer, and has not been taken.
+  custom code for every consumer, and has not been taken. Until then, a
+  refusal that must reach the wire as a `4xx` rides a standard code and says
+  which refusal it is in its payload — `orders.list`'s cursor refusals are one
+  `BAD_REQUEST` with a `reason`, `"malformed"` or `"sort-mismatch"`.
 - **The guarantee**: the unit's lifetime **is** the response's — it does not
   close until the response's `'close'` event fires, and closes at once if that
   event already fired before the work ran — so

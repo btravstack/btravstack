@@ -80,6 +80,9 @@ const ordersContract = authenticated({ user: [] })({
   // cursor is the only part of the input that did not come from the caller's
   // own vocabulary, which is why `BAD_REQUEST` is declared here.
   //
+  // Two refusals, one status, told apart by the payload: a cursor that will not
+  // read and one issued under a different sort are both the caller's input,
+  // and `reason` is what tells a client to give up or to restart from page one.
   list: oc
     .input(
       pageRequestOf(
@@ -92,8 +95,9 @@ const ordersContract = authenticated({ user: [] })({
     )
     .output(pageOf(orderView))
     .errors({
-      BAD_REQUEST: { data: z.object({ cursor: z.string() }) },
-      CURSOR_SORT_MISMATCH: { data: z.object({ cursor: z.string() }) },
+      BAD_REQUEST: {
+        data: z.object({ cursor: z.string(), reason: z.enum(["malformed", "sort-mismatch"]) }),
+      },
     }),
 
   // Overrides the group default for itself: a service token may export too,

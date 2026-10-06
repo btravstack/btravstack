@@ -561,7 +561,7 @@ describe("order-api", () => {
     const second = await client.orders.list({ limit: 1 }).flatMap((page) =>
       client.orders.list({
         limit: 1,
-        ...(page.hasNextPage ? { after: page.nextCursor } : {}),
+        after: page.hasNextPage ? page.nextCursor : "no next cursor",
       }),
     );
 
@@ -624,13 +624,13 @@ describe("order-api", () => {
       .flatMap((page) =>
         client.orders.list({
           limit: 1,
-          ...(page.hasNextPage ? { after: page.nextCursor } : {}),
+          after: page.hasNextPage ? page.nextCursor : "no next cursor",
         }),
       )
       .flatMap((page) =>
         client.orders.list({
           limit: 1,
-          ...(page.hasPreviousPage ? { before: page.previousCursor } : {}),
+          before: page.hasPreviousPage ? page.previousCursor : "no previous cursor",
         }),
       );
 
@@ -687,12 +687,12 @@ describe("order-api", () => {
         constructor: ORPCError,
         code: "BAD_REQUEST",
         inferable: true,
-        data: { cursor: "not-a-cursor" },
+        data: { cursor: "not-a-cursor", reason: "malformed" },
       }),
     );
   });
 
-  it("answers a cursor from another sort with its own error rather than a bad request", async ({
+  it("refuses a cursor from another sort as a BAD_REQUEST whose reason says to restart", async ({
     serve,
     clientFor,
     stubbed,
@@ -703,18 +703,19 @@ describe("order-api", () => {
     // WHEN it is replayed
     const refused = await client.orders.list({ limit: 1, after: "sort-mismatch" });
 
-    // THEN the caller is told to re-issue, told apart from a corrupt token
+    // THEN the caller is told to re-issue, told apart from a corrupt token by
+    // the payload rather than by a code of its own
     expect(refused).toBeErrWith(
       expect.objectContaining({
         constructor: ORPCError,
-        code: "CURSOR_SORT_MISMATCH",
+        code: "BAD_REQUEST",
         inferable: true,
-        data: { cursor: "sort-mismatch" },
+        data: { cursor: "sort-mismatch", reason: "sort-mismatch" },
       }),
     );
   });
 
-  it("pins — does not endorse — the wire status CURSOR_SORT_MISMATCH gets today: 500", async ({
+  it("answers a cursor from another sort with a 400 on the wire", async ({
     serve,
     originFor,
     stubbed,
@@ -732,6 +733,30 @@ describe("order-api", () => {
         "content-type": "application/json",
       },
       body: JSON.stringify({ json: { limit: 1, after: "sort-mismatch" } }),
+    });
+
+    // THEN it is a client error a 5xx-keyed retry leaves alone, because the
+    // refusal rides a code oRPC's status map already knows
+    expect(response.status).toBe(400);
+  });
+
+  it("pins — does not endorse — the wire status INVALID_QUANTITY gets today: 500", async ({
+    serve,
+    originFor,
+    api,
+    tokenFor,
+  }) => {
+    // GIVEN the real root on the raw transport surface
+    const origin = await originFor(serve(api));
+
+    // WHEN a quantity the domain rejects is placed
+    const response = await fetch(`${origin}/rpc/orders/place`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${await tokenFor()}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ json: { id: "0199a1e0-0000-7000-8000-000000000003", quantity: 0 } }),
     });
 
     // THEN a custom error code outside oRPC's COMMON_ERROR_STATUS_MAP falls back

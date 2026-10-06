@@ -250,8 +250,12 @@ const shapeOf = (
     key === undefined
   )
     return undefined;
-  const [value, tiebreak] = [decoded(sortValue), decoded(key)];
-  return value === undefined || tiebreak === undefined
+  const [field, value, tiebreak] = [
+    decoded(head.slice(0, head.indexOf(":"))),
+    decoded(sortValue),
+    decoded(key),
+  ];
+  return field === undefined || value === undefined || tiebreak === undefined
     ? undefined
     : { head, sortValue: value, key: tiebreak };
 };

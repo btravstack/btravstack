@@ -89,13 +89,13 @@ export const ordersController = api.OrpcController(
             .with(P.tag("MalformedCursor"), (error) =>
               errors.BAD_REQUEST({
                 message: "the cursor could not be read",
-                data: { cursor: error.cursor },
+                data: { cursor: error.cursor, reason: "malformed" },
               }),
             )
             .with(P.tag("CursorSortMismatch"), (error) =>
-              errors.CURSOR_SORT_MISMATCH({
+              errors.BAD_REQUEST({
                 message: "this cursor was issued under a different sort; start from the first page",
-                data: { cursor: error.cursor },
+                data: { cursor: error.cursor, reason: "sort-mismatch" },
               }),
             ),
         ),

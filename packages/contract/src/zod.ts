@@ -60,17 +60,21 @@ export const pageOf = <Item extends z.ZodType>(item: Item) => {
 };
 
 /**
- * The keys of `item` that a keyset may sort on: every key whose schema is
- * neither optional nor nullable.
+ * The keys of `item` that a keyset may sort on: every key whose parsed value
+ * can be neither `null` nor `undefined`.
  *
  * A null in a sort key breaks a keyset — the comparison that walks the page
  * goes null and the page comes back empty — so a nullable key is refused here
- * rather than handled in every adapter.
+ * rather than handled in every adapter. The OUTPUT is what is read, not the
+ * wrapper: a union with `z.null()` or a transform answering `undefined` is as
+ * nullable as `.nullable()`.
  */
 type SortableKeys<Shape extends z.ZodRawShape> = {
-  readonly [K in keyof Shape]: Shape[K] extends z.ZodOptional<z.ZodType> | z.ZodNullable<z.ZodType>
+  readonly [K in keyof Shape]: null extends z.output<Shape[K]>
     ? never
-    : K;
+    : undefined extends z.output<Shape[K]>
+      ? never
+      : K;
 }[keyof Shape] &
   string;
 

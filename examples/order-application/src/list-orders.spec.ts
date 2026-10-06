@@ -55,7 +55,7 @@ describe("ListOrders", () => {
           ctx.get(ListOrders).execute({
             limit: 2,
             sort: SORT,
-            ...(page.hasNextPage ? { after: page.nextCursor } : {}),
+            after: page.hasNextPage ? page.nextCursor : "no next cursor",
           }),
         ),
     );
@@ -85,14 +85,14 @@ describe("ListOrders", () => {
           ctx.get(ListOrders).execute({
             limit: 2,
             sort: SORT,
-            ...(page.hasNextPage ? { after: page.nextCursor } : {}),
+            after: page.hasNextPage ? page.nextCursor : "no next cursor",
           }),
         )
         .flatMap((page) =>
           ctx.get(ListOrders).execute({
             limit: 2,
             sort: SORT,
-            ...(page.hasPreviousPage ? { before: page.previousCursor } : {}),
+            before: page.hasPreviousPage ? page.previousCursor : "no previous cursor",
           }),
         ),
     );
@@ -213,7 +213,7 @@ describe("ListOrders", () => {
             .execute({
               limit: 2,
               sort,
-              ...(first.hasNextPage ? { after: first.nextCursor } : {}),
+              after: first.hasNextPage ? first.nextCursor : "no next cursor",
             })
             .map((second) => [...first.items, ...second.items].map((order) => order.id)),
         ),

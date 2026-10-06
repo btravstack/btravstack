@@ -98,6 +98,8 @@ const view = z.object({
   quantity: z.number(),
   cancelledAt: z.string().nullable(),
   note: z.string().optional(),
+  shippedAt: z.union([z.string(), z.null()]),
+  label: z.string().transform((value) => (value === "" ? undefined : value)),
 });
 
 // A declared key must be a key of the item's own shape.
@@ -111,6 +113,14 @@ sortableBy(view, ["cancelledAt"]);
 // An optional key is refused for the same reason.
 // @ts-expect-error -- `note` is optional
 sortableBy(view, ["note"]);
+
+// The gate reads what the key PARSES TO, not the wrapper it is spelled with:
+// a union with null and a transform that can answer undefined are as nullable
+// as `.nullable()` and `.optional()`.
+// @ts-expect-error -- `shippedAt` can be null
+sortableBy(view, ["shippedAt"]);
+// @ts-expect-error -- `label` can be undefined
+sortableBy(view, ["label"]);
 
 const sortable = sortableBy(view, ["quantity"]);
 expectTypeOf(sortable).toEqualTypeOf<readonly ["quantity"]>();

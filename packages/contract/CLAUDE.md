@@ -26,10 +26,19 @@ The test is deliberately narrow, because the name promises a tier and the
 package is what stops that promise from being a slogan. A filter LANGUAGE is
 the next candidate and is **not** here — a listing's own filter fields ride
 `pageRequestOf` and always have, which is a different thing entirely, and
-**Deferred, deliberately** below states that position. A sort is admitted on
-the same terms as a filter field: `sortableBy` and `Sort<F>` are the page's
-own vocabulary riding `pageRequestOf`, not a second shape beside it — see
-**The page, and what it deliberately is not** below.
+**Deferred, deliberately** below states that position.
+
+**A sort is not admitted by that rule at all: it is a convention, and the
+page's own.** This stack bounds everything in time and in space. In space, a
+listing is never unbounded — it is paginated, or it is streamed — and a page
+is only a bound if the order it cuts is mastered: a `limit` over an order
+nobody chose returns _some_ rows, and a cursor over it resumes somewhere
+nobody can name. So the framework does not wait for a second listing to
+write a sort twice, the way it waited for `keyset`; it imposes one —
+`defaultSort` required beside `sortableBy`, a tiebreak the compiler demands,
+and a cursor refused under any sort but its own. `sortableBy` and `Sort<F>`
+ride `pageRequestOf` rather than standing beside it — see **The page, and
+what it deliberately is not** below.
 
 `keyset` is the rule's own second clause firing: the page's ARITHMETIC had
 been written twice, by `examples/order-infrastructure`'s Prisma adapter and by
