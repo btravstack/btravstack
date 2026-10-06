@@ -158,21 +158,14 @@ function PortDeclaration<const Id extends string>(id: Id): PortClass<Id> {
 }
 
 /**
- * `Port.many` mirrors `PortDeclaration` exactly, except the returned class
- * also carries a `many: true` static field — the runtime discriminant
- * `build.ts`'s `plan`/`constructLevel` read to decide a port accumulates
- * contributions instead of colliding on the second provider. See
- * `ManyPortClass`'s own doc comment above for why this is a *static* field
+ * `Port.many` is `PortDeclaration` plus a `many: true` static field — the
+ * runtime discriminant `build.ts`'s `plan`/`constructLevel` read to decide a
+ * port accumulates contributions instead of colliding on the second provider.
+ * See `ManyPortClass`'s own doc comment above for why this is a *static* field
  * (readable at runtime off the class) rather than the `[MANY]` brand (a
  * type-level-only marker on the never-instantiated instance type).
  */
 export const Port = Object.assign(PortDeclaration, {
-  many: <const Id extends string>(id: Id): ManyPortClass<Id> => {
-    warnOnDuplicateId(id);
-    // oxlint-disable-next-line typescript/no-extraneous-class max-classes-per-file
-    return class {
-      static readonly portId = id;
-      static readonly many = true;
-    } as unknown as ManyPortClass<Id>;
-  },
+  many: <const Id extends string>(id: Id): ManyPortClass<Id> =>
+    Object.assign(PortDeclaration(id), { many: true as const }) as unknown as ManyPortClass<Id>,
 });

@@ -88,7 +88,6 @@ const plan = (
   seedKeys: ReadonlySet<string>,
 ): readonly (readonly AnyProvider[])[] => {
   providers = resolveOverrides(providers);
-  const byPort = new Map<string, AnyProvider>();
   const totalByPort = new Map<string, number>();
   const classOf = new Map<string, AnyPort>();
 
@@ -123,23 +122,18 @@ const plan = (
       // oxlint-disable-next-line unthrown/no-throw -- see the duplicate-provider throw below
       throw new WiringDefect(`[di] Scope cannot be provided; open one with Module.scoped instead`);
     }
-    const isMany = provider.port.many === true;
-    totalByPort.set(id, (totalByPort.get(id) ?? 0) + 1);
+    const total = totalByPort.get(id) ?? 0;
     // Members accumulate; several providers for one set port are not a
     // collision. Keyed on `many === true` — the static field `Port.many`
-    // attaches — so an ordinary port is never accidentally exempted.
-    if (isMany) {
-      byPort.set(id, provider);
-      continue;
-    }
-    const existing = byPort.get(id);
-    if (existing !== undefined && existing !== provider) {
+    // attaches — so an ordinary port is never accidentally exempted. `flatten`
+    // dedupes by reference, so an earlier provider for the id is another one.
+    if (provider.port.many !== true && total > 0) {
       // Deliberate: a wiring bug, not a modeled failure. Thrown so `run`'s
       // `.map` callback converts it to a `Defect`.
       // oxlint-disable-next-line unthrown/no-throw
       throw new WiringDefect(`[di] two providers registered for port ${JSON.stringify(id)}`);
     }
-    byPort.set(id, provider);
+    totalByPort.set(id, total + 1);
   }
 
   // Every port the graph names, provided or depended on. The dep side is the
@@ -157,7 +151,7 @@ const plan = (
   // for checking, which is the split this pass introduces.
   for (const provider of providers) {
     for (const dep of provider.deps) {
-      if (byPort.has(dep.portId) || seedKeys.has(dep.portId)) continue;
+      if (totalByPort.has(dep.portId) || seedKeys.has(dep.portId)) continue;
       // oxlint-disable-next-line unthrown/no-throw -- same channel as above
       throw new WiringDefect(
         `[di] no provider for port ${JSON.stringify(dep.portId)}, required by ${JSON.stringify(provider.port.portId)}`,
@@ -176,7 +170,7 @@ const plan = (
   // `Module`'s `Needs` channel's problem, and `Module.forkScope` legitimately
   // depends on ports the built parent context carries.
   const isSatisfied = (portId: string): boolean =>
-    !byPort.has(portId) || placedCountByPort.get(portId) === totalByPort.get(portId);
+    !totalByPort.has(portId) || placedCountByPort.get(portId) === totalByPort.get(portId);
 
   while (remaining.length > 0) {
     const ready = remaining.filter((p) => p.deps.every((d) => isSatisfied(d.portId)));

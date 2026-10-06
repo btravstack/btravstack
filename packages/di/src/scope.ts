@@ -1,17 +1,12 @@
-/** Internal: only `createScope` (this file) and `ClosableFinalisers` below need the shape. */
 type Finaliser = () => void | Promise<void>;
 
 /** Reports a finaliser failure during close: which port's release rejected, and why. */
 export type TeardownReporter = (portId: string, cause: unknown) => void;
 
-/** Internal: `ClosableFinalisers` below is the shape callers actually see. */
-type Finalisers = {
-  readonly onStop: (portId: string, f: Finaliser) => void;
-};
-
 export type ClosableFinalisers = {
+  readonly onStop: (portId: string, f: Finaliser) => void;
   readonly close: () => Promise<void>;
-} & Finalisers;
+};
 
 /**
  * Finalisers run in reverse acquisition order, so a resource is always released
