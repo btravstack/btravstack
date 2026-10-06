@@ -44,12 +44,23 @@ export const mailHtml = (
 ): Markup => ({ markup: String.raw({ raw: strings }, ...values.map(escaped)) });
 ```
 
-It is **context-blind**, like `@btravstack/http-server`'s own `html`: safe in
-element content and in a **quoted** attribute, not in an unquoted one, a
-`<style>` or `<script>` block, or an `href` that takes a caller's URL — check
-the scheme of a link before it reaches the template. It lives in your
-application rather than coming from the HTTP server because a mailer has no
-business depending on one.
+It is **context-blind**, like `@btravstack/http-server`'s own `html`, so its
+guarantee covers two places only: **element text**, and the **quoted** value of
+an ordinary attribute that is neither a URL nor code — `class`, `title`, `alt`,
+`id`. Everything else is out of scope:
+
+- an **unquoted** attribute, where a space ends the value;
+- an **executable or nested** attribute — an `on*` handler, `style`, `srcdoc` —
+  because the parser decodes the character references this escaper writes
+  **before** JavaScript, CSS or the nested document reads the value, so the
+  input stays live without ever leaving its quotes;
+- a **URL** attribute — `href`, `src` — where `javascript:` needs no escaping
+  to run: check the scheme of a caller's link before it reaches the template;
+- a `<style>` or `<script>` block.
+
+Keep caller data out of those places rather than escaping it into them. The
+helper lives in your application rather than coming from the HTTP server
+because a mailer has no business depending on one.
 
 ## 2. A render function per mail
 
