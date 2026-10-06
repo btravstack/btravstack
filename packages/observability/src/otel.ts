@@ -40,6 +40,13 @@ type SdkInstrumentations = NodeSDKConfiguration["instrumentations"];
 class OtelSdk extends Port("OtelSdk")<NodeSDK> {}
 
 /**
+ * OTel semantic conventions' duration buckets, in seconds. The SDK's default
+ * boundaries were drawn for milliseconds and would put every operation under a
+ * second into the first bucket.
+ */
+const SECONDS_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10];
+
+/**
  * Each open unit's span, by the record it was opened for — so an operation
  * inside the unit parents on it while the observer still injects nothing.
  * Weak, so an ended unit costs nothing once its record is gone.
@@ -147,14 +154,15 @@ export const otel = (
             const duration = instrument(durations, component, () =>
               meter.createHistogram(`btravstack.${component}.duration`, {
                 description: `${component} operation duration`,
-                unit: "ms",
+                unit: "s",
+                advice: { explicitBucketBoundaries: SECONDS_BUCKETS },
               }),
             );
 
             return ({ outcome, attributes: settled }) => {
               const all = { ...attributes, ...settled, outcome };
               operations.add(1, all);
-              duration.record(performance.now() - startedAt, all);
+              duration.record((performance.now() - startedAt) / 1000, all);
               if (outcome === "error") span?.setStatus({ code: SPAN_STATUS.error });
               span?.end();
             };

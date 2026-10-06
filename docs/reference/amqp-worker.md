@@ -142,10 +142,10 @@ framework that owns the unit lifecycle gets them for free — and an observer is
 what turns a report into a measurement. Reporting always happens; **collection
 happens when `otel()` is composed**, and not before:
 
-| Instrument                   | Kind           | Dimensions           |
-| ---------------------------- | -------------- | -------------------- |
-| `btravstack.amqp.operations` | counter        | `handler`, `outcome` |
-| `btravstack.amqp.duration`   | histogram (ms) | the same two         |
+| Instrument                   | Kind          | Dimensions           |
+| ---------------------------- | ------------- | -------------------- |
+| `btravstack.amqp.operations` | counter       | `handler`, `outcome` |
+| `btravstack.amqp.duration`   | histogram (s) | the same two         |
 
 `instrumented` is gone. Every unit is handed to `Observers`, and this module
 contributes a no-op member of its own — so a graph composing no observability

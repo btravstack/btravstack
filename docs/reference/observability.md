@@ -485,6 +485,38 @@ prove. Inbound, `@btravstack/http-server` and `@btravstack/amqp-worker` honour a
 `messageId` respectively); `@btravstack/temporal-worker` keeps the workflow id as
 its correlation, which is what that transport's retries and replays preserve.
 
+### What `otel()` records, and where it departs from semconv
+
+Every operation a starter reports to `Observers` becomes one span and two
+instruments, named from the operation so nothing had to become uniform to be
+shared:
+
+| Signal    | Name                                | Notes                                                                              |
+| --------- | ----------------------------------- | ---------------------------------------------------------------------------------- |
+| span      | `<component>.<name>`                | `cache.get`, `http.request`, `amqp.delivery`; error status when it settled `error` |
+| span      | `unit`                              | one per unit, from `UnitSpanModule`; the parent of every operation inside it       |
+| counter   | `btravstack.<component>.operations` | the operation's dimensions plus `outcome`                                          |
+| histogram | `btravstack.<component>.duration`   | **seconds**, on the semantic conventions' bucket boundaries (`0.005` … `10`)       |
+
+Durations follow the OpenTelemetry semantic conventions — seconds, with their
+buckets. The rest deliberately does not, and the deviations are these:
+
+- **Span names are `<component>.<name>`**, not semconv's. An HTTP server span
+  is `http.request` rather than `GET`, because one observer names every
+  component's span the same way; the method is the `method` attribute, and the
+  route is absent on purpose (its cardinality).
+- **No span sets a `SpanKind`**, so every one is `INTERNAL` — `unit` included.
+  The kernel's `Tracer` port takes a name and nothing else, and an operation
+  does not say which side of a call it is on; a backend that draws a service
+  map from `SERVER`/`CLIENT` edges draws none from these.
+- **Attributes and metric names are the starters' own** — `method`, `status`,
+  `btravstack.http.duration` — not `http.request.method` or
+  `http.server.request.duration`. Borrowing a semconv name would promise a
+  series shape these do not have.
+
+A deployment that needs the semconv shapes gets them from
+auto-instrumentation, below, which emits them for the libraries it patches.
+
 **Auto-instrumentation cannot live here**:
 `@opentelemetry/auto-instrumentations-node/register` must be preloaded
 (`node --import`) before the instrumented libraries load, which no DI

@@ -63,8 +63,8 @@ stale the next time a case is added (#192):
 - `otel.spec.ts` — the SDK half, behind the subpath: a span per unit flushed on
   the scope's close, a failed unit's span and an aborted one's marked as
   errors, an operation inside a unit parented on that unit's span and carrying
-  its ids, an unattributed span outside a unit, OTel's own meter
-  handed back ready to count, and an instrumentation a starter contributed
+  its ids, an unattributed span outside a unit, a duration recorded in
+  seconds on seconds buckets, OTel's own meter handed back ready to count, and an instrumentation a starter contributed
   being registered.
 - `pino.spec.ts` — fields pino can index, the `err` serialiser, and every
   level mapping onto pino's own numeric severity (`10`…`60`), so no level of
@@ -147,7 +147,10 @@ with an operation are here, and they are the reason a starter holds no `Logger`,
 - **`otel()` contributes the SPAN and the INSTRUMENTS**:
   `component.name` as the span, `btravstack.<component>.operations` and
   `btravstack.<component>.duration` as the pair, both minted per component and
-  cached. Names derived from the operation, so nothing had to become uniform to
+  cached. The duration is in **seconds** on semconv's bucket boundaries —
+  passed as `advice`, since the SDK's default buckets were drawn for
+  milliseconds; the other semconv deviations are stated on the reference
+  page. Names derived from the operation, so nothing had to become uniform to
   be shared.
 
 **`otel()`'s member injects nothing, and that is load-bearing.** Depending on

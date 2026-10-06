@@ -15,8 +15,9 @@ import {
   type Boot,
 } from "@btravstack/testing";
 import { metrics, trace } from "@opentelemetry/api";
+import { metrics as sdkMetrics } from "@opentelemetry/sdk-node";
 import { BatchSpanProcessor, type ReadableSpan, type SpanExporter } from "@opentelemetry/sdk-trace";
-import { Err, Ok, OkAsync } from "unthrown";
+import { Err, Ok, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, test } from "vitest";
 
 import { UnitSpan, UnitSpanModule, otel } from "./otel.js";
@@ -231,6 +232,44 @@ describe("otel", () => {
 
     // THEN the meter accepted the count without a throw
     expect(counted).toBeOkWith("counted");
+  });
+
+  it("records an operation's duration in seconds, on seconds buckets", async ({ spans }) => {
+    // GIVEN the otel module collecting metrics through a reader the test owns
+    const reader = new (class extends sdkMetrics.MetricReader {
+      protected onShutdown = (): Promise<void> => Promise.resolve();
+      protected onForceFlush = (): Promise<void> => Promise.resolve();
+    })();
+
+    // WHEN an operation is observed and the meter collected
+    const collected = await Module.scoped(
+      otel({
+        spanProcessors: [new BatchSpanProcessor({ exporter: spans.exporter })],
+        metricReaders: [reader],
+      }),
+      (ctx) =>
+        observed(ctx.get(Observers), { component: "cache", name: "get", attributes: {} }, () =>
+          OkAsync("hit"),
+        ).flatMap(() => fromSafePromise(reader.collect())),
+    );
+
+    // THEN the histogram is in seconds, bucketed for seconds, and an instant
+    // operation lands under a second
+    const histogram = collected
+      .map(({ resourceMetrics }) =>
+        resourceMetrics.scopeMetrics
+          .flatMap((scope) => scope.metrics)
+          .find((metric) => metric.descriptor.name === "btravstack.cache.duration"),
+      )
+      .map((metric) => {
+        const point = metric?.dataPoints[0]?.value as sdkMetrics.Histogram | undefined;
+        return {
+          unit: metric?.descriptor.unit,
+          firstBoundary: point?.buckets.boundaries[0],
+          underASecond: (point?.sum ?? Infinity) < 1,
+        };
+      });
+    expect(histogram).toBeOkWith({ unit: "s", firstBoundary: 0.005, underASecond: true });
   });
 
   it("registers an instrumentation a starter contributed", async ({ spans }) => {
