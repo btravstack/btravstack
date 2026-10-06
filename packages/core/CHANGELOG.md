@@ -1,5 +1,22 @@
 # @btravstack/core
 
+## 0.17.0
+
+### Minor Changes
+
+- acbb93a: **New: `noObserverMember`**, the ready-made no-op `Observers` member a module reading that set port provides so a graph composing no observability still starts. Every starter reading the port spelled `Provider.member(Observers)({ inject: {}, value: noObserver })` by hand; they now share this one provider, which di de-duplicates by reference, so a graph composing several of them pays one inert call per operation instead of one per starter.
+- f050da2: **New in `@btravstack/core`: `mintPiece`, `composeByPrefix` and the `Refuse` type** — the runtime halves of a worker's piece factory and composing provider, which `AmqpHandler` / `AmqpHandlers` and `TemporalWorkflowActivities` / `TemporalActivities` each carried a copy of. A minted handler or activities piece no longer carries a runtime `unit` property: nothing read it, since the record travels with the piece's own wrapper. The `UNCOVERED …` refusals are unchanged.
+- 3538048: **New in `@btravstack/core`: `dispatchUnit`, `withUnitRecord`, and the `AnyUnitModule`, `UnitNeedsOf`, `UnitExportsOf`, `UnitRecordOf` and `UnitGate` types.** The AMQP and Temporal workers each carried the same middleware body and the same `context.unit` wrapper, and every package taking a `unit` option declared `AnyUnitModule` again. They now share one copy. Nothing changes for an application: the workers behave exactly as before, and the gates report the same sentences.
+- c0b9e08: **Removed: `LoggerService.log(level, …)` and `runHealthChecks`' second argument.** Neither had a caller.
+
+  - `LoggerService` keeps one method per level (`logger.fatal("…")` where `logger.log("fatal", "…")` was written), and `createLogger` no longer returns `log`.
+  - `runHealthChecks(checks)` takes no options. Each check is held to its own `timeoutMs`, or to `DEFAULT_HEALTH_TIMEOUT_MS` (`800`) when it declares none. That is what `/healthz` already did, since the kernel never passed the option.
+
+### Patch Changes
+
+- @btravstack/config@0.17.0
+  - @btravstack/di@0.17.0
+
 ## 0.16.0
 
 ### Patch Changes

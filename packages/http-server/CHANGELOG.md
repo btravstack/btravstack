@@ -1,5 +1,40 @@
 # @btravstack/http-server
 
+## 0.17.0
+
+### Minor Changes
+
+- c790c0c: **New: `headersTimeoutMs` and `requestTimeoutMs`, read from `HTTP_HEADERS_TIMEOUT_MS` and `HTTP_REQUEST_TIMEOUT_MS`.** The listener never set either, so Node's defaults applied silently and nothing tested them. Both are now stated and pinnable, like `bodyLimit`.
+
+  A client that is still sending its headers past the first bound, or its whole request past the second, gets `408 Request Timeout` and a closed socket. The defaults are Node's own (60 s and 300 s), so nothing changes for a deployment that sets neither. Each must be at least `1`, because `0` would mean no bound.
+
+  The request bound covers what the client sends, never the response, so a long-lived event stream is not cut. A headers bound set above the request bound is held to the request bound. Node would otherwise refuse that pair at boot.
+
+  Node only checks these bounds periodically. The check now runs at least as often as the tighter bound, so a short bound fires on time instead of up to 30 s late.
+
+- 10ee418: Peer ranges now name versions each package can actually be installed and tested with. Both bumps are `minor` because they narrow a peer: on `0.x`, a patch would land inside consumers' `^0.16.0` ranges and fail a strict-peer install they never opted into.
+
+  - `@btravstack/http-server`:
+    - `@unthrown/orpc` is `^0.2.0`. It said `^0.1.0`, which on a `0.x` line excludes the 0.2.0 this package is built against, so a consumer installing both under `strictPeerDependencies` was refused.
+    - `unthrown` is `^5.7.0`. It said `^5.0.0`, but `@unthrown/orpc@0.2.0` itself requires `unthrown ^5.7.0`, so every `unthrown` 5.0–5.6 the old range admitted could not be installed beside it.
+  - `@btravstack/mailer`: `nodemailer` is `^10.0.14`. It said `^9.0.0`, which excluded the 10.x line the package runs on and admitted the releases GHSA-v53p-9fqp-m79j and GHSA-prgh-xp8r-p3m5 cover. 10.0.14 is the release this is built and tested against; 10.0.6 through 10.0.14 each fix a linear-time parsing or SMTP denial-of-service issue. An application on an earlier nodemailer must move to 10.0.14 or later.
+
+### Patch Changes
+
+- 85a3ff5: **The root entry point no longer requires `jose`.** `jose` is an optional peer, needed only by the `/jwt` and `/session` subpaths, but the root `@btravstack/http-server` imported `CookieSchemes`, `cookieScheme` and `csrfOn` from the session module, which imports `jose` at its top level. So an application that never verified a token or logged a browser in, and therefore never installed `jose`, failed to load the package at all with `ERR_MODULE_NOT_FOUND`.
+
+  Those three now live in a module that does not touch `jose`, and `/session` still exports them, so no import changes. A spec walks every runtime import reachable from the root entry and fails if any of them is an optional peer.
+
+- Updated dependencies [6a06eae]
+- Updated dependencies [acbb93a]
+- Updated dependencies [f050da2]
+- Updated dependencies [3538048]
+- Updated dependencies [c0b9e08]
+  - @btravstack/contract@0.17.0
+  - @btravstack/core@0.17.0
+  - @btravstack/config@0.17.0
+  - @btravstack/di@0.17.0
+
 ## 0.16.0
 
 ### Minor Changes
