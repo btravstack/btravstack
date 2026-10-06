@@ -1,5 +1,5 @@
-import { Instrumentations, Meter, Tracer } from "@btravstack/core";
-import { Module, Provider } from "@btravstack/di";
+import { Instrumentations, Meter, Observers, Tracer, observed } from "@btravstack/core";
+import { Module, Provider, type Context } from "@btravstack/di";
 import {
   TestRuntimePort,
   bootFixture,
@@ -88,6 +88,54 @@ describe("otel", () => {
       traceCorrelated: typeof span.attributes["btravstack.trace_id"] === "string",
     }));
     expect(exported).toEqual([{ name: "unit", unitCorrelated: true, traceCorrelated: true }]);
+  });
+
+  it("parents an operation inside a unit on that unit's span", async ({ boot, spans }) => {
+    // GIVEN a serving app with the SDK composed, and a unit that forks the
+    // span module and then runs a cache read the way `@btravstack/cache` does
+    const runtime = testRuntime("test");
+    const App = Module("OtelParentApp")({
+      imports: [batchedOtel(spans), runtime.module],
+      exports: [TestRuntimePort, Tracer, Observers],
+    });
+    const clock = createFakeClock();
+    const app = boot(App, { clock });
+    await runtime.untilStarted();
+    const observers = (runtime.host().ctx as unknown as Context<Observers>).get(Observers);
+
+    // WHEN the unit runs to completion and the app exits, flushing the spans
+    await runtime
+      .host()
+      .run({ kind: "test", id: "parented" }, (unit) =>
+        unit
+          .fork(UnitSpanModule as never, [])
+          .flatMap(() =>
+            observed(observers, { component: "cache", name: "get", attributes: {} }, () =>
+              OkAsync("hit"),
+            ),
+          ),
+      );
+    app.requestDrain();
+    await clock.advance(5_000);
+    await app.exited;
+
+    // THEN the read is the unit span's child, in its trace, carrying its ids
+    const byName = new Map(spans.seen().map((span) => [span.name, span]));
+    const read = byName.get("cache.get");
+    const unit = byName.get("unit");
+    expect({
+      names: [...byName.keys()].toSorted(),
+      childOfUnit: read?.parentSpanContext?.spanId === unit?.spanContext().spanId,
+      sameTrace: read?.spanContext().traceId === unit?.spanContext().traceId,
+      unitId: read?.attributes["btravstack.unit_id"],
+      sameUnit: read?.attributes["btravstack.unit_id"] === unit?.attributes["btravstack.unit_id"],
+    }).toEqual({
+      names: ["cache.get", "unit"],
+      childOfUnit: true,
+      sameTrace: true,
+      unitId: expect.any(String),
+      sameUnit: true,
+    });
   });
 
   it("opens an unattributed span when no ambient unit is present", async ({ spans }) => {

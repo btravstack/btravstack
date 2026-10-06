@@ -5,12 +5,14 @@ import {
   SPAN_STATUS,
   Tracer,
   currentUnit,
+  type Attributes,
   type Counter,
   type Histogram,
   type Span,
+  type UnitRecord,
 } from "@btravstack/core";
 import { Module, Port, Provider, type Scope } from "@btravstack/di";
-import { metrics, trace } from "@opentelemetry/api";
+import { context, metrics, trace, type Span as OtelSpan } from "@opentelemetry/api";
 import { NodeSDK, type NodeSDKConfiguration } from "@opentelemetry/sdk-node";
 import { fromSafePromise } from "unthrown";
 
@@ -35,6 +37,22 @@ import { fromSafePromise } from "unthrown";
 type SdkInstrumentations = NodeSDKConfiguration["instrumentations"];
 
 class OtelSdk extends Port("OtelSdk")<NodeSDK> {}
+
+/**
+ * Each open unit's span, by the record it was opened for — so an operation
+ * inside the unit parents on it while the observer still injects nothing.
+ * Weak, so an ended unit costs nothing once its record is gone.
+ */
+const unitSpans = new WeakMap<UnitRecord, OtelSpan>();
+
+const unitAttributes = (unit: UnitRecord | undefined): Attributes =>
+  unit === undefined
+    ? {}
+    : {
+        "btravstack.unit_id": unit.unitId,
+        "btravstack.trace_id": unit.traceId,
+        ...(unit.tenantId === undefined ? {} : { "btravstack.tenant_id": unit.tenantId }),
+      };
 
 /**
  * The OTel starter: a module providing `Tracer` and `Meter` over a `NodeSDK`
@@ -103,11 +121,22 @@ export const otel = (
             // returns the no-op meter and keeps it forever. The instruments it
             // mints are still cached, which is the part worth doing once.
             const meter = metrics.getMeter("@btravstack/observability");
-            const span = traced === false ? undefined : tracer.startSpan(`${component}.${name}`);
+            // The ambient record is read per operation too, since one observer
+            // serves every unit.
+            const unit = currentUnit();
+            const parent = unit === undefined ? undefined : unitSpans.get(unit);
+            const span =
+              traced === false
+                ? undefined
+                : tracer.startSpan(
+                    `${component}.${name}`,
+                    {},
+                    parent === undefined ? undefined : trace.setSpan(context.active(), parent),
+                  );
             // Details ride the SPAN and not the instruments: a cache key or a
             // URL is one more field on a span and one more time series on a
             // metric.
-            span?.setAttributes({ ...attributes, ...details });
+            span?.setAttributes({ ...attributes, ...details, ...unitAttributes(unit) });
             const startedAt = performance.now();
             const operations = instrument(counters, component, () =>
               meter.createCounter(`btravstack.${component}.operations`, {
@@ -172,7 +201,9 @@ export class UnitSpan extends Port("UnitSpan")<Span> {}
  * and `onStop` ends it on every path out.
  *
  * The correlation is the ambient record's own, carried as attributes so a span
- * joins the same query the logger's lines answer. The remote PARENT is
+ * joins the same query the logger's lines answer. Every operation observed
+ * inside the unit — a cache read, a stored object, a sent mail — is this
+ * span's CHILD and carries the same attributes. The remote PARENT is
  * deliberately not reconstructed: `UnitMeta.traceId` carries the inbound trace
  * id alone, so this correlates by attribute rather than pretending to a W3C
  * parent-child edge it cannot prove.
@@ -188,13 +219,10 @@ export const UnitSpanModule = Module("UnitSpan")({
       sync: ({ tracer }) => {
         const unit = currentUnit();
         const span = tracer.startSpan("unit");
-        if (unit !== undefined) {
-          span.setAttributes({
-            "btravstack.unit_id": unit.unitId,
-            "btravstack.trace_id": unit.traceId,
-            ...(unit.tenantId === undefined ? {} : { "btravstack.tenant_id": unit.tenantId }),
-          });
-        }
+        span.setAttributes(unitAttributes(unit));
+        // Only an OTel span can parent another; a hand-bound `Tracer` that is
+        // not OTel's still gets its unit span, just no children.
+        if (unit !== undefined && "spanContext" in span) unitSpans.set(unit, span as OtelSpan);
         return span;
       },
       onStop: (span) => span.end(),

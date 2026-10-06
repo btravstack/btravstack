@@ -61,7 +61,8 @@ stale the next time a case is added (#192):
   failed operation written as a line, a successful one written nowhere (that is
   what the metric is for), and the cause travelling with it.
 - `otel.spec.ts` — the SDK half, behind the subpath: a span per unit flushed on
-  the scope's close, an unattributed span outside a unit, OTel's own meter
+  the scope's close, an operation inside a unit parented on that unit's span
+  and carrying its ids, an unattributed span outside a unit, OTel's own meter
   handed back ready to count, and an instrumentation a starter contributed
   being registered.
 - `pino.spec.ts` — fields pino can index, the `err` serialiser, and every
@@ -153,3 +154,12 @@ with an operation are here, and they are the reason a starter holds no `Logger`,
 a starter's contribution may read `Observers`, and the member closes the loop
 back onto the SDK. The examples' integration tests caught it as
 `[di] dependency cycle among ports: OrderDatabase, HealthChecks, Instrumentations, …`.
+
+So the member PARENTS an operation without injecting `UnitSpan` either:
+`UnitSpanModule` files its span in a module-private `WeakMap` keyed by the
+ambient record it was opened for, and the member reads `currentUnit()` per
+operation and looks it up. That is an adapter reading the record (thesis #2's
+legitimate reader), not a service riding it — the record itself is unchanged.
+Making the unit span OTel's ACTIVE context was the alternative and cannot be
+done from a provider: activating a context means wrapping the work in
+`context.with(...)`, and a unit module only builds a service.

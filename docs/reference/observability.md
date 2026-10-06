@@ -459,7 +459,20 @@ activity: UnitSpanModule }` — and the runtime forks around every unit it
 opens: a span opens when the fork is built and `onStop` ends it on every path
 out, with the ambient record's
 `unitId`, `traceId` and `tenantId` as attributes — a span joins the same
-query the logger's lines answer. The remote W3C **parent is deliberately not
+query the logger's lines answer.
+
+**An operation observed inside the unit is that span's child.** A cache read,
+a stored object, a sent mail or a query opens its span under the unit's, and
+stamps the same three ids (`btravstack.unit_id`, `btravstack.trace_id`,
+`btravstack.tenant_id`) read from `currentUnit()` per operation. The observer
+`otel()` contributes still injects nothing: it finds the unit's span by the
+ambient record it was opened for. Without `UnitSpanModule` bound, an
+operation inside a unit carries the ids and parents on whatever OTel context is
+active. The runtime's own operation — `http.request`, `amqp.delivery`,
+`temporal.attempt` — is observed AROUND the unit rather than inside it, so it
+carries neither the parent nor the ids.
+
+The remote W3C **parent is deliberately not
 reconstructed**: `UnitMeta.traceId` carries the inbound trace id alone, so
 correlation is by attribute, never a parent-child edge the record cannot
 prove. Inbound, `@btravstack/http-server` and `@btravstack/amqp-worker` honour a W3C
