@@ -120,7 +120,7 @@ catalog:
   openid-client: 6.8.8
   prisma: 8.0.0-rc.15
   uuidv7: 1.2.1
-  redis: 6.2.1
+  redis: 6.3.0
   tsdown: 0.23.0
   tsx: 4.23.15
   turbo: 2.11.7

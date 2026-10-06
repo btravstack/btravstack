@@ -131,7 +131,7 @@ describe("redisCache, when it cannot connect at all", () => {
   }) => {
     // GIVEN a `REDIS_URL` that is not one. `Config.string` only asks that it is
     // present, so the value reaches `createClient` — which parses it
-    // SYNCHRONOUSLY and throws `TypeError: Invalid protocol` here
+    // SYNCHRONOUSLY and throws a `TypeError` naming the protocol here
     // WHEN the graph is built
     const built = connectingTo("http://localhost:6379");
 
@@ -140,7 +140,7 @@ describe("redisCache, when it cannot connect at all", () => {
     // reached, so the `fromPromise` guarding that call could not see it.
     await expect(built).toBeErrTagged(
       "CacheConnectionFailed",
-      expect.objectContaining({ reason: expect.stringContaining("Invalid protocol") }),
+      expect.objectContaining({ reason: expect.stringMatching(/protocol/i) }),
     );
   });
 });
