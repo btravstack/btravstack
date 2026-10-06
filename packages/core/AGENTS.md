@@ -651,7 +651,9 @@ fork }` and never opens a second scope, zero overhead beyond the `fork`
   `[]` and pays one empty `Map` — synchronously ahead of `runtime.start`, in the
   callback di runs inside a `flatMap`,
   so a kind the runtime's `units` does not bind, a port that kind's module
-  does not provide, or a module bound under two kinds is the boot's `Defect`
+  does not provide, two overrides for one port in one kind (di's own
+  duplicate-override rule, which would otherwise fire only at the first
+  fork), or a module bound under two kinds is the boot's `Defect`
   before the runtime is started (`unit-overrides.spec.ts`). The fork then
   swaps `substitutes.get(module) ?? module`; the map is filled before
   `runtime.start` runs, so no fork can read it empty. `provides` is the same

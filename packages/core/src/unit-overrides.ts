@@ -54,13 +54,22 @@ export const unitSubstitutes = (
         `[core] unit override for kind "${kind}", whose module kind "${shared}" binds too — an override cannot reach one without the other`,
       );
     }
-    for (const provider of providers)
+    const seen = new Set<string>();
+    for (const provider of providers) {
+      if (seen.has(provider.port.portId)) {
+        // oxlint-disable-next-line unthrown/no-throw -- see above
+        throw new Error(
+          `[core] two unit overrides registered for port ${JSON.stringify(provider.port.portId)} in kind "${kind}"`,
+        );
+      }
+      seen.add(provider.port.portId);
       if (!provides(module, provider.port.portId)) {
         // oxlint-disable-next-line unthrown/no-throw -- see above
         throw new Error(
           `[core] unit override for port ${JSON.stringify(provider.port.portId)} in kind "${kind}" with nothing to override — its module no longer provides it`,
         );
       }
+    }
     substitutes.set(
       module,
       Module("UnitOverridden")({

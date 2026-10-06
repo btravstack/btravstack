@@ -281,9 +281,11 @@ fires there, as a `Defect`, exactly when a root-level one would:
 ```text
 [core] unit override for kind "user", which runtime "http" binds no module for
 [core] unit override for port "OrderRepository" in kind "user" with nothing to override — its module no longer provides it
+[core] two unit overrides registered for port "OrderRepository" in kind "user"
 ```
 
-Both are **boot-time, not compile-time**. A root's type carries neither the
+The last is for nested `overridden` calls naming one port in one kind, which
+di alone would only refuse at the first fork. All three are **boot-time, not compile-time**. A root's type carries neither the
 kinds it binds nor what each kind's module provides — `HttpUnit`'s service is a
 `Record<string, …>` — so a compile-time refusal would mean threading the kind
 record through every starter's return type, changing diagnostics this

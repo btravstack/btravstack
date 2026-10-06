@@ -359,16 +359,19 @@ kernel maps each kind onto the module `Runtime.units` binds for it and wraps
 that module so its overrides replace their bases when the unit is forked; a
 fork of any other module is untouched.
 
-Three `Defect`s at boot, all before the runtime starts, which is where a
+Four `Defect`s at boot, all before the runtime starts, which is where a
 root-level override's `WiringDefect` lands too:
 
 ```text
 [core] unit override for kind "user", which runtime "http" binds no module for
 [core] unit override for port "OrderRepository" in kind "user" with nothing to override — its module no longer provides it
+[core] two unit overrides registered for port "OrderRepository" in kind "user"
 [core] unit override for kind "user", whose module kind "session" binds too — an override cannot reach one without the other
 ```
 
-The third exists because `UnitHost.fork` is handed a module, never a kind: the
+The third is di's own duplicate-override rule, checked here so that nested
+`overridden` calls naming one port in one kind fail at boot rather than at
+the first fork. The fourth exists because `UnitHost.fork` is handed a module, never a kind: the
 substitution is keyed by module identity, so one module bound under two kinds
 could not be overridden under one alone.
 

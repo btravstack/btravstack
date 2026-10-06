@@ -109,6 +109,31 @@ describe("unit overrides", () => {
     );
   });
 
+  test("refuses two overrides for one port in one kind at boot, not at the first fork", async () => {
+    // GIVEN two nested overrides substituting the same port inside one kind
+    const runtime = testRuntime("test", { unit: kindOf([]) });
+
+    // WHEN the root is started
+    const app = start(
+      overridden(
+        overridden(rootOver(runtime), [], {
+          unit: { test: [stubbing([], Greeter, "first")] },
+        }),
+        [],
+        { unit: { test: [stubbing([], Greeter, "second")] } },
+      ),
+      quiet,
+    );
+
+    // THEN the boot is a defect naming the port and the kind
+    await expect(app.exited).toBeDefectWith(
+      expect.objectContaining({
+        message:
+          '[core] two unit overrides registered for port "UnitOverrideGreeter" in kind "test"',
+      }),
+    );
+  });
+
   test("refuses a module bound under two kinds, since a fork cannot tell them apart", async () => {
     // GIVEN a runtime binding one module under two kinds
     const kind = kindOf([]);

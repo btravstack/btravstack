@@ -30,8 +30,9 @@ type UnitProviderFor = Provider<never, never, unknown>;
  * kind the root binds them under (`{ user: [...] }`, `{ message: [...] }`):
  * a unit module is forked per unit, after the root is built, so a root-level
  * override cannot see its providers. The kernel applies these at boot, and a
- * kind the runtime binds no module for, or a port that kind's module does not
- * provide, is a defect there — the same drift gate, at the same moment.
+ * kind the runtime binds no module for, a port that kind's module does not
+ * provide, or two overrides for one port in one kind is a defect there — the
+ * same drift gate, at the same moment.
  *
  * It replaces ONE provider, never a subsystem: the replaced provider's siblings
  * still construct, so swapping a whole adapter stack remains a different module

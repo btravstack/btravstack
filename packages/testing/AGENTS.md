@@ -38,11 +38,14 @@ commit.
   `Runtime.units` binds, wraps it with the overrides, and forks the wrapper in
   its place. Keyed by module identity because `UnitHost.fork` is handed a
   module and never a kind; that is why a module bound under two kinds is
-  refused. The check is at boot, before `runtime.start`, so the drift gate
-  lands where a root-level one does. Compile time was not reachable without
-  threading each kind's module through every starter's return type, which
-  would have changed pinned diagnostics; the one compile-time half is that a
-  unit override's error channel must be `never`, as a fork's is.
+  refused. Two overrides for one port in one kind (nested `overridden` calls)
+  are refused there too, rather than left to di's duplicate-override check,
+  which would only fire at the first fork. The check is at boot, before
+  `runtime.start`, so the drift gate lands where a root-level one does.
+  Compile time was not reachable without threading each kind's module
+  through every starter's return type, which would have changed pinned
+  diagnostics; the one compile-time half is that a unit override's error
+  channel must be `never`, as a fork's is.
   `testRuntime` declares `units: { test: unit }`, which is what this package's
   own spec boots against.
 
