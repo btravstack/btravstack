@@ -16,6 +16,7 @@ class First extends Port("SFirst")<{ readonly n: 1 }> {}
 class Second extends Port("SSecond")<{ readonly n: 2 }> {}
 
 test("resources release in reverse acquisition order after use", async () => {
+  // GIVEN
   const released: string[] = [];
   const mod = Module("Two")({
     provides: [
@@ -33,11 +34,14 @@ test("resources release in reverse acquisition order after use", async () => {
     exports: [First, Second],
   });
 
+  // WHEN
   await Module.scoped(mod, () => OkAsync("done"));
+  // THEN
   expect(released).toEqual(["second", "first"]);
 });
 
 test("a mid-graph failure releases everything already acquired", async () => {
+  // GIVEN
   const released: string[] = [];
   const mod = Module("Failing")({
     provides: [
@@ -58,12 +62,15 @@ test("a mid-graph failure releases everything already acquired", async () => {
     exports: [First, Second],
   });
 
+  // WHEN
   const result = await Module.scoped(mod, () => OkAsync("unreachable"));
+  // THEN
   expect(result).toBeErrTagged("OpenError");
   expect(released).toEqual(["first"]);
 });
 
 test("a rejecting release neither masks the failure nor stops the unwind", async () => {
+  // GIVEN
   const released: string[] = [];
   const onTeardownError = vi.fn();
   const mod = Module("BadRelease")({
@@ -82,16 +89,19 @@ test("a rejecting release neither masks the failure nor stops the unwind", async
     exports: [First, Second],
   });
 
+  // WHEN
   const result = await Module.scoped(mod, () => ErrAsync(new OpenError({ which: "use" })), {
     onTeardownError,
   });
 
+  // THEN
   expect(result).toBeErrTagged("OpenError");
   expect(released).toEqual(["first"]);
   expect(onTeardownError).toHaveBeenCalledWith("SSecond", expect.any(Error));
 });
 
 test("a throwing onTeardownError does not abandon the unwind or mask the original failure", async () => {
+  // GIVEN
   const released: string[] = [];
   // A reporter that itself throws — the failure mode a rejecting release
   // already covers is "the thing being reported fails"; this covers "the
@@ -121,10 +131,12 @@ test("a throwing onTeardownError does not abandon the unwind or mask the origina
     exports: [First, Second],
   });
 
+  // WHEN
   const result = await Module.scoped(mod, () => ErrAsync(openError), {
     onTeardownError,
   });
 
+  // THEN
   // Not just `toBeErrTagged`: identity, not merely shape, proves the
   // reporter's own throw never got laundered into the result (e.g. as a
   // `Defect` replacing the original `Err`).
@@ -136,6 +148,7 @@ test("a throwing onTeardownError does not abandon the unwind or mask the origina
 });
 
 test("Scope is not on the package's runtime export surface", async () => {
+  // GIVEN
   // The first line of defence behind the two defect tests below: consumers
   // need `Scope` only in type positions, so the class value is withheld from
   // `index.ts` (`export type { Scope }`). Asserted on the real module
@@ -143,7 +156,9 @@ test("Scope is not on the package's runtime export surface", async () => {
   // is precisely one that leaves no trace in the type of the import — the
   // erasure *is* the property under test, and only the runtime surface can
   // observe it. If someone re-adds `Scope` to the value exports, this fails.
+  // WHEN its runtime namespace is read
   const index: Record<string, unknown> = await import("./index.js");
+  // THEN
   expect(Object.keys(index)).not.toContain("Scope");
   // Control: the value exports that are supposed to be there still are, so
   // this cannot pass by the import silently resolving to nothing.
@@ -153,6 +168,7 @@ test("Scope is not on the package's runtime export surface", async () => {
 });
 
 test("providing Scope directly is a wiring defect, not a satisfied dependency", async () => {
+  // GIVEN
   const ran = vi.fn();
   const mod = Module("ProvidesScopeDirect")({
     // `Scope`'s own service shape is `never`, so nothing can genuinely
@@ -162,12 +178,15 @@ test("providing Scope directly is a wiring defect, not a satisfied dependency", 
     provides: [Provider(Scope)({ inject: {}, sync: ran as never })],
   });
 
+  // WHEN
   const built = await Module.build(mod);
+  // THEN
   expect(built).toBeDefect();
   expect(ran).not.toHaveBeenCalled();
 });
 
 test("providing Scope through a widened AnyPort alias is still a wiring defect", async () => {
+  // GIVEN
   // The bypass a type-level guard on `Provider`'s own port parameter could
   // not catch: one widening annotation erases which concrete port class
   // `widened` statically is, so any conditional keyed on that static type
@@ -180,7 +199,9 @@ test("providing Scope through a widened AnyPort alias is still a wiring defect",
     provides: [Provider(widened)({ inject: {}, sync: ran as never })],
   });
 
+  // WHEN
   const built = await Module.build(mod);
+  // THEN
   expect(built).toBeDefect();
   expect(ran).not.toHaveBeenCalled();
 });
@@ -189,13 +210,16 @@ test("providing Scope through a widened AnyPort alias is still a wiring defect",
 // fallback — the only thing standing between a failed finaliser and silence —
 // was never exercised.
 test("reports a failed finaliser on the console when no reporter is given", async () => {
+  // GIVEN
   const error = vi.spyOn(console, "error").mockImplementation(() => {});
   const scope = createScope();
   const cause = new Error("finaliser blew up");
   scope.onStop("Doomed", () => Promise.reject(cause));
 
+  // WHEN
   await scope.close();
 
+  // THEN
   expect(error).toHaveBeenCalledWith(
     expect.stringContaining("finaliser for Doomed failed during close"),
     cause,

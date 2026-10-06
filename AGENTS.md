@@ -1105,12 +1105,21 @@ shipped invariants — restructuring them buys consistency while risking exactly
 the weakening rules 4 and 5 exist to prevent. A **new or rewritten** kernel spec
 follows all five; an untouched one is not churned for it.
 
-That split was measured, not assumed. An audit of the kernel's specs found the
-substantive rules already kept and the structural ones not: the one conditional
-assertion it turned up was a redundant `isOk()` block re-checking a field the
-preceding deep `toBeOkWith` had already pinned exactly, since deleted, and the
-kernel's expects-per-test sat well under what the examples carried before their
-sweep. Optional chaining survives in exactly one shape and it is not an
+That split was measured, not assumed, and what holds in the kernel's and the
+container's specs today is this. Rule 4 holds: the markers were swept into
+every `packages/core` and `packages/di` test without touching an assertion, and
+where an older test walks more than one action it carries a `// WHEN` /
+`// THEN` pair per action rather than one marker hiding the rest — the shape
+rule 4 says usually means a test is testing more than one thing, left visible
+rather than rewritten. Rule 5's guard against an assertion that can decline to
+run holds: the one conditional assertion an audit turned up was a redundant
+`isOk()` block re-checking a field the preceding deep `toBeOkWith` had already
+pinned, since deleted, and di's `expect(built.isOk() && …)` puts the narrowing
+INSIDE the compared value, so a false one compares `false` and fails. Rule 5's
+one-deep-`expect` half does not hold across those older specs — several carry a
+scatter of assertions — and collapsing them is exactly the restructuring the
+paragraph above declines; a new or rewritten spec follows it. Optional chaining
+survives in exactly one shape and it is not an
 assertion declining to run: `units.spec.ts` reads `seen?.unitId` where `seen` is
 what `currentUnit()` answered **inside** the unit, so a `?.` that found nothing
 would compare `undefined` against `"u-1"` and fail. The rule is about a guard

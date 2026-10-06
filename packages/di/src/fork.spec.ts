@@ -7,6 +7,7 @@ class Pool extends Port("FPool")<{ readonly id: string }> {}
 class Txn extends Port("FTxn")<{ readonly id: string }> {}
 
 test("a fork releases only its own resources and leaves the parent up", async () => {
+  // GIVEN
   const released: string[] = [];
   const app = Module("App")({
     provides: [
@@ -32,6 +33,7 @@ test("a fork releases only its own resources and leaves the parent up", async ()
     exports: [Txn],
   });
 
+  // WHEN two sibling forks run in turn, each checked as it unwinds
   const outcome = await Module.scoped(app, (appCtx) =>
     Module.forkScope(appCtx, request, (ctx) => OkAsync(ctx.get(Txn).id))
       // Checkpoint after the first fork unwinds: only its own "txn" release
@@ -48,6 +50,7 @@ test("a fork releases only its own resources and leaves the parent up", async ()
       ),
   );
 
+  // THEN
   expect(outcome).toBeOk();
   expect(released).toEqual(["txn", "txn", "pool"]);
 });

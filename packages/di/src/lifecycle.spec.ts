@@ -9,6 +9,7 @@ class Worker extends Port("LWorker")<{ readonly name: string }> {}
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 test("onStart runs after the whole graph is built, in declaration order", async () => {
+  // GIVEN
   const events: string[] = [];
   const mod = Module("Lifecycle")({
     provides: [
@@ -26,11 +27,14 @@ test("onStart runs after the whole graph is built, in declaration order", async 
     exports: [Server, Worker],
   });
 
+  // WHEN
   await Module.scoped(mod, () => OkAsync("ran"));
+  // THEN
   expect(events).toEqual(["start-server-8080", "start-w"]);
 });
 
 test("onStop runs in reverse declaration order during teardown", async () => {
+  // GIVEN
   const events: string[] = [];
   const mod = Module("Lifecycle")({
     provides: [
@@ -48,11 +52,14 @@ test("onStop runs in reverse declaration order during teardown", async () => {
     exports: [Server, Worker],
   });
 
+  // WHEN
   await Module.scoped(mod, () => OkAsync("ran"));
+  // THEN
   expect(events).toEqual(["stop-worker", "stop-server"]);
 });
 
 test("Module.scoped runs an onStop registered with no acquire/release at all", async () => {
+  // GIVEN
   let stopped = false;
   const mod = Module("OnStopOnly")({
     provides: [
@@ -67,11 +74,14 @@ test("Module.scoped runs an onStop registered with no acquire/release at all", a
     exports: [Server],
   });
 
+  // WHEN
   await Module.scoped(mod, () => OkAsync("ran"));
+  // THEN
   expect(stopped).toBe(true);
 });
 
 test("release and onStop interleave in one combined LIFO unwind, not two separate passes", async () => {
+  // GIVEN
   const events: string[] = [];
   const mod = Module("Lifecycle")({
     provides: [
@@ -90,7 +100,9 @@ test("release and onStop interleave in one combined LIFO unwind, not two separat
     exports: [Server, Worker],
   });
 
+  // WHEN
   await Module.scoped(mod, () => OkAsync("ran"));
+  // THEN
   // Worker (built second) unwinds before Server (built first); within
   // Worker, its own `onStop` and `release` are adjacent — `onStop` first,
   // since it is registered on the scope right after `release` and the scope
@@ -101,6 +113,7 @@ test("release and onStop interleave in one combined LIFO unwind, not two separat
 });
 
 test("an async onStart is genuinely awaited before use runs", async () => {
+  // GIVEN
   const events: string[] = [];
   const mod = Module("Lifecycle")({
     provides: [
@@ -116,10 +129,12 @@ test("an async onStart is genuinely awaited before use runs", async () => {
     exports: [Server],
   });
 
+  // WHEN
   await Module.scoped(mod, () => {
     events.push("use");
     return OkAsync("ran");
   });
+  // THEN
   // If `onStart`'s promise were discarded (`void provider.onStart!(service)`
   // on a value that happens to be a `Promise`) rather than awaited, `use`
   // would run on the very next microtask — before the 10ms delay resolves —
@@ -128,6 +143,7 @@ test("an async onStart is genuinely awaited before use runs", async () => {
 });
 
 test("a throwing onStart surfaces as a Defect, use is skipped, and teardown still runs", async () => {
+  // GIVEN
   const events: string[] = [];
   const useRan = vi.fn();
   const mod = Module("Lifecycle")({
@@ -153,11 +169,13 @@ test("a throwing onStart surfaces as a Defect, use is skipped, and teardown stil
     exports: [Server],
   });
 
+  // WHEN
   const result = await Module.scoped(mod, () => {
     useRan();
     return OkAsync("ran");
   });
 
+  // THEN
   expect(result).toBeDefect();
   expect(useRan).not.toHaveBeenCalled();
   // `runStartHooks` fires only after the whole graph is built, so `release`
@@ -167,6 +185,7 @@ test("a throwing onStart surfaces as a Defect, use is skipped, and teardown stil
 });
 
 test("declaration order holds even when an earlier same-level provider resolves later", async () => {
+  // GIVEN
   const events: string[] = [];
   const mod = Module("Lifecycle")({
     provides: [
@@ -191,6 +210,8 @@ test("declaration order holds even when an earlier same-level provider resolves 
     exports: [Server, Worker],
   });
 
+  // WHEN
   await Module.scoped(mod, () => OkAsync("ran"));
+  // THEN
   expect(events).toEqual(["server", "worker"]);
 });

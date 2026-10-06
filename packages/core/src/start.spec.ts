@@ -15,6 +15,7 @@ const isStoppedWaiting = (event: KernelEvent): boolean => event.type === "stoppe
 
 describe("start", () => {
   it("builds the graph, serves, and exits cleanly when stopped", async () => {
+    // GIVEN
     const runtime = testRuntime();
     const app = start(runtime.module, { signals: false, probes: false });
 
@@ -23,7 +24,9 @@ describe("start", () => {
       settledEarly = true;
     });
 
+    // WHEN it reaches serving
     await runtime.untilStarted();
+    // THEN it is serving and exited is still pending
     expect(runtime.started()).toBe(true);
 
     // A full macrotask turn after the runtime is serving: `exited` must still
@@ -33,8 +36,10 @@ describe("start", () => {
     expect(settledEarly).toBe(false);
     expect(app.phase()).toBe("serving");
 
+    // WHEN it is stopped
     app.stop();
 
+    // THEN
     const report = await app.exited;
     expect(report).toBeOkWith(
       expect.objectContaining({ reason: "runtimeStopped", teardownErrors: [] }),
@@ -108,25 +113,31 @@ describe("start", () => {
   });
 
   it("reports a construction failure without wrapping the module's own error", async () => {
+    // GIVEN
     const Failing = Module("Failing")({
       imports: [testRuntime().module],
       provides: [Provider(Greeting)({ inject: {}, make: () => ErrAsync("no-config" as const) })],
       exports: [Greeting, TestRuntimePort],
     });
 
+    // WHEN
     const app = start(Failing, { signals: false, probes: false });
 
+    // THEN
     await expect(app.exited).toBeErrWith("no-config");
   });
 
   it("reports a runtime that refuses to start", async () => {
+    // GIVEN
     const broken = {
       ...testRuntime(),
       start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })),
     };
 
+    // WHEN
     const app = start(runtimeModule(broken), { signals: false, probes: false });
 
+    // THEN
     await expect(app.exited).toBeErrTagged(
       "RuntimeStartFailed",
       expect.objectContaining({ runtime: "broken" }),
@@ -134,6 +145,7 @@ describe("start", () => {
   });
 
   it("closes the application scope on a clean stop", async () => {
+    // GIVEN
     const released: string[] = [];
     const runtime = testRuntime();
     const Resourceful = Module("Resourceful")({
@@ -150,21 +162,25 @@ describe("start", () => {
       exports: [Greeting, TestRuntimePort],
     });
 
+    // WHEN
     const app = start(Resourceful, { signals: false, probes: false });
     await runtime.untilStarted();
     app.stop();
     await app.exited;
 
+    // THEN
     expect(released).toEqual(["greeting"]);
   });
 
   it("reaches the exited phase when the runtime refuses to start", async () => {
+    // GIVEN
     const events: KernelEvent["type"][] = [];
     const broken = {
       ...testRuntime(),
       start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })),
     };
 
+    // WHEN
     const app = start(runtimeModule(broken), {
       signals: false,
       probes: false,
@@ -173,6 +189,7 @@ describe("start", () => {
 
     await app.exited;
 
+    // THEN
     expect(app.phase()).toBe("exited");
     expect(events).toEqual(["building", "startFailed", "stopping", "exited"]);
   });
@@ -236,6 +253,7 @@ describe("start", () => {
   });
 
   it("surfaces a failing release in the exit report's teardown errors", async () => {
+    // GIVEN
     const boom = new Error("release failed");
     const runtime = testRuntime();
     const Leaky = Module("Leaky")({
@@ -250,10 +268,12 @@ describe("start", () => {
       exports: [Greeting, TestRuntimePort],
     });
 
+    // WHEN
     const app = start(Leaky, { signals: false, probes: false, onEvent: () => {} });
     await runtime.untilStarted();
     app.stop();
 
+    // THEN
     // The report is built before di closes the scope, so this only holds
     // because `ExitReport.teardownErrors` aliases the live array.
     expect(await app.exited).toBeOkWith(
@@ -423,6 +443,7 @@ describe("start", () => {
   });
 
   it("drains on SIGTERM and skips the drain on a second signal", async () => {
+    // GIVEN
     const listenerCount = (): number =>
       process.listenerCount("SIGTERM") + process.listenerCount("SIGINT");
     const before = listenerCount();
@@ -433,15 +454,21 @@ describe("start", () => {
       preDrainDelayMs: 60_000,
       drainTimeoutMs: 60_000,
     });
+    // WHEN it reaches serving
     await runtime.untilStarted();
+    // THEN its signal listeners are installed
     expect(listenerCount()).toBe(before + 2);
 
+    // WHEN a first SIGTERM lands
     process.emit("SIGTERM");
     await new Promise((resolve) => setTimeout(resolve, 0));
+    // THEN it drains
     expect(app.phase()).toBe("draining");
 
+    // WHEN a second one lands
     process.emit("SIGTERM");
 
+    // THEN it exits without waiting out the drain, and removes its listeners
     const report = await app.exited;
     expect(report).toBeOkWith(expect.objectContaining({ reason: "signal" }));
     // Load-bearing: a leaked listener from this app would fire into (and
@@ -450,17 +477,22 @@ describe("start", () => {
   });
 
   it("skips the drain and marks itself unready on an uncaught exception", async () => {
+    // GIVEN
     const uncaughtListenerCount = (): number =>
       process.listenerCount("uncaughtException") + process.listenerCount("unhandledRejection");
     const before = uncaughtListenerCount();
 
     const runtime = testRuntime();
     const app = start(runtime.module, { probes: false, preDrainDelayMs: 60_000 });
+    // WHEN it reaches serving
     await runtime.untilStarted();
+    // THEN its uncaught handlers are installed
     expect(uncaughtListenerCount()).toBe(before + 2);
 
+    // WHEN an uncaught exception lands
     process.emit("uncaughtException", new Error("boom"));
 
+    // THEN it skips the drain, and removes its handlers
     const report = await app.exited;
     expect(report).toBeOkWith(expect.objectContaining({ reason: "uncaught", drain: undefined }));
     // Load-bearing for the same reason as the signal test above: a leaked
@@ -472,9 +504,12 @@ describe("start", () => {
 
 describe("runtimeInfo", () => {
   it("hands back what a serving runtime published about itself", async () => {
+    // GIVEN
     const runtime = testRuntime("greeter");
     const app = start(runtime.module, { signals: false, probes: false });
 
+    // WHEN its runtime info is asked for
+    // THEN
     await expect(app.runtimeInfo()).toBeOkWith({ name: "greeter" });
 
     app.stop();
@@ -482,6 +517,7 @@ describe("runtimeInfo", () => {
   });
 
   it("resolves undefined for a runtime that publishes nothing", async () => {
+    // GIVEN
     // Publishing is optional: this runtime declares no `Info` at all and omits
     // `Serving.info`, which is the whole point of the default.
     const silent: Runtime<never> = {
@@ -491,6 +527,8 @@ describe("runtimeInfo", () => {
     };
     const app = start(runtimeModule(silent), { signals: false, probes: false });
 
+    // WHEN its runtime info is asked for
+    // THEN
     await expect(app.runtimeInfo()).toBeOkWith(undefined);
 
     app.stop();
@@ -498,6 +536,7 @@ describe("runtimeInfo", () => {
   });
 
   it("stays pending until the runtime is serving", async () => {
+    // GIVEN
     const gate = Promise.withResolvers<void>();
     const inner = testRuntime();
     const stalled = {
@@ -507,6 +546,7 @@ describe("runtimeInfo", () => {
     };
     const app = start(runtimeModule(stalled), { signals: false, probes: false });
 
+    // WHEN its runtime info is asked for before the runtime serves
     // Asked for before the runtime is anywhere near serving — the deferred is
     // what lets this be read at any point rather than only after a hook fires.
     const info = app.runtimeInfo();
@@ -515,11 +555,14 @@ describe("runtimeInfo", () => {
       settled = true;
     });
 
+    // THEN it stays pending
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(settled).toBe(false);
     expect(app.phase()).not.toBe("serving");
 
+    // WHEN the runtime starts serving
     gate.resolve(undefined);
+    // THEN it resolves
     await expect(info).toBeOkWith({ name: "test" });
 
     app.stop();
@@ -527,16 +570,19 @@ describe("runtimeInfo", () => {
   });
 
   it("resolves undefined when the runtime never serves, so a caller cannot hang", async () => {
+    // GIVEN
     const broken = {
       ...testRuntime(),
       start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "nope" })),
     };
+    // WHEN
     const app = start(runtimeModule(broken), {
       signals: false,
       probes: false,
       onEvent: () => {},
     });
 
+    // THEN
     await expect(app.exited).toBeErrTagged(
       "RuntimeStartFailed",
       expect.objectContaining({ runtime: "broken" }),

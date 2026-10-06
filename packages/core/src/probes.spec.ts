@@ -85,14 +85,19 @@ describe("startProbeServer", () => {
   });
 
   it("serves liveness and readiness from the supplied predicates", async () => {
+    // GIVEN a probe server whose readiness predicate answers false
     let ready = false;
     const started = await probeServer({ ready: () => ready });
     const server = started.getOrThrow();
 
+    // WHEN both probes are asked
+    // THEN it is alive but not ready
     expect(await get(server.port, "/livez")).toEqual({ status: 200, body: "ok" });
     expect((await get(server.port, "/readyz")).status).toBe(503);
 
+    // WHEN the predicate turns true
     ready = true;
+    // THEN readiness answers 200
     expect(await get(server.port, "/readyz")).toEqual({ status: 200, body: "ready" });
 
     await server.close();
@@ -116,19 +121,25 @@ describe("startProbeServer", () => {
   });
 
   it("404s an unknown path", async () => {
+    // GIVEN
     const started = await probeServer({});
     const server = started.getOrThrow();
 
+    // WHEN an unknown path is asked
+    // THEN
     expect((await get(server.port, "/nope")).status).toBe(404);
 
     await server.close();
   });
 
   it("reports a port it cannot bind", async () => {
+    // GIVEN
     const first = (await probeServer({})).getOrThrow();
 
+    // WHEN
     const second = await probeServer({ port: first.port });
 
+    // THEN
     expect(second).toBeErrTagged(
       "RuntimeStartFailed",
       expect.objectContaining({ runtime: "probes" }),
@@ -180,9 +191,10 @@ describe("startProbeServer", () => {
     const started = await probeServer({});
     const server = started.getOrThrow();
 
-    // WHEN one is emitted, and THEN it is absorbed. Unhandled, it would reach
-    // the kernel's `uncaughtException` handler and tear the whole application
-    // down over a transient fault in its health endpoint.
+    // WHEN one is emitted
+    // THEN it is absorbed. Unhandled, it would reach the kernel's
+    // `uncaughtException` handler and tear the whole application down over a
+    // transient fault in its health endpoint.
     expect(() => lastCreatedServer().emit("error", new Error("accept"))).not.toThrow();
 
     await server.close();

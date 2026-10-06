@@ -8,6 +8,7 @@ class HealthChecks extends Port.many("MyHealthChecks")<{
 }> {}
 
 test("contributions accumulate across module boundaries", async () => {
+  // GIVEN
   const dbModule = Module("Db")({
     provides: [
       Provider(Db)({ inject: {}, value: { name: "pg" } }),
@@ -27,7 +28,9 @@ test("contributions accumulate across module boundaries", async () => {
     exports: [dbModule, cacheModule],
   });
 
+  // WHEN
   const built = await Module.build(app);
+  // THEN
   expect(
     built.isOk() &&
       built.value
@@ -38,6 +41,7 @@ test("contributions accumulate across module boundaries", async () => {
 });
 
 test("several members of one set port are not a collision", async () => {
+  // GIVEN
   const mod = Module("Many")({
     provides: [
       Provider.member(HealthChecks)({ inject: {}, value: { check: () => "a" } }),
@@ -45,6 +49,8 @@ test("several members of one set port are not a collision", async () => {
     ],
     exports: [HealthChecks],
   });
+  // WHEN the graph is built
+  // THEN
   await expect(Module.build(mod)).resolves.toBeOk();
 });
 
@@ -58,6 +64,7 @@ class SingleCheck extends Port("MySingleCheck")<{ readonly check: () => string }
 class ManyCheck extends Port.many("MyManyCheck")<{ readonly check: () => string }> {}
 
 test("a set port and an ordinary port of the same service shape do not interfere", async () => {
+  // GIVEN
   const mod = Module("Mixed")({
     provides: [
       Provider(SingleCheck)({ inject: {}, value: { check: () => "single" } }),
@@ -66,7 +73,9 @@ test("a set port and an ordinary port of the same service shape do not interfere
     ],
     exports: [SingleCheck, ManyCheck],
   });
+  // WHEN
   const built = await Module.build(mod);
+  // THEN
   expect(built.isOk() && built.value.get(SingleCheck).check()).toBe("single");
   expect(
     built.isOk() &&
@@ -78,6 +87,7 @@ test("a set port and an ordinary port of the same service shape do not interfere
 });
 
 test("two providers for an ordinary port are still a defect after the many-port exemption", async () => {
+  // GIVEN
   const dup = Module("StillDup")({
     provides: [
       Provider(SingleCheck)({ inject: {}, value: { check: () => "a" } }),
@@ -85,7 +95,9 @@ test("two providers for an ordinary port are still a defect after the many-port 
     ],
     exports: [SingleCheck],
   });
+  // WHEN
   const built = await Module.build(dup);
+  // THEN
   expect(built).toBeDefect();
 });
 
@@ -122,11 +134,14 @@ class NoContributors extends Port.many("MyNoContributors")<{ readonly n: string 
 // are the same state in the backing map — `get` is the only place they can be
 // told apart, and a starter an application did not compose contributes nothing.
 test("a set port nobody contributed to resolves to an empty list", async () => {
+  // GIVEN a module nobody contributed a member to
+  // WHEN it is built and the set port is read
   // The cast is how a KERNEL reads a set port it declares but the application
   // may never have contributed to — exporting a port nothing provides is not
   // expressible in `Exports`, so this is the only shape that reaches `get`.
   const built = await Module.build(Module("Empty")({}));
 
+  // THEN
   expect(
     built.map((ctx) => (ctx as unknown as Context<NoContributors>).get(NoContributors)),
   ).toBeOkWith([]);
