@@ -147,8 +147,8 @@ export const otel = (
               return opened;
             };
             // Inside a unit whose span is not filed YET — a sibling provider di
-            // built before `UnitSpanModule` — the span opens at the settle,
-            // back-dated to the start, when the unit's span can parent it.
+            // built before `UnitSpanModule` — the span opens later, back-dated
+            // to the start, once the unit's span can parent it.
             const deferred = traced !== false && unit !== undefined && !unitSpans.has(unit);
             const started = traced === false || deferred ? undefined : open();
             const operations = instrument(counters, component, () =>
@@ -167,10 +167,19 @@ export const otel = (
             return ({ outcome, attributes: settled }) => {
               const all = { ...attributes, ...settled, outcome };
               operations.add(1, all);
-              duration.record((performance.now() - startedAt) / 1000, all);
-              const span = deferred ? open(startedAt) : started;
-              if (outcome === "error") span?.setStatus({ code: SPAN_STATUS.error });
-              span?.end();
+              const endedAt = performance.now();
+              duration.record((endedAt - startedAt) / 1000, all);
+              const finish = (span: OtelSpan | undefined): void => {
+                if (outcome === "error") span?.setStatus({ code: SPAN_STATUS.error });
+                span?.end(endedAt);
+              };
+              if (!deferred) finish(started);
+              else if (unitSpans.has(unit)) finish(open(startedAt));
+              // Settled in the same synchronous pass that is still building the
+              // fork: `UnitSpanModule` needs only the parent's `Tracer`, so di
+              // builds it in that first level before any microtask runs. Unbound,
+              // the span opens then without a unit parent rather than never.
+              else queueMicrotask(() => finish(open(startedAt)));
             };
           };
         },

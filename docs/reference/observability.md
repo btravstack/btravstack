@@ -495,8 +495,11 @@ stamps the same three ids (`btravstack.unit_id`, `btravstack.trace_id`,
 `otel()` contributes still injects nothing: it finds the unit's span by the
 ambient record it was opened for. That holds whatever order the unit module
 lists its imports in: an operation that starts before `UnitSpanModule` has
-built its span — a sibling provider di constructed first — opens its span when
-it settles, back-dated to its start, under the unit's. Without `UnitSpanModule` bound, an
+built its span — a sibling provider di constructed first — opens its span
+later, back-dated to its start and ended at its own end, under the unit's. One
+that even SETTLES during that provider's construction waits a microtask: di
+builds `UnitSpanModule`, whose one dependency comes from the parent scope, in
+the fork's first level, in the same synchronous pass. Without `UnitSpanModule` bound, an
 operation inside a unit carries the ids and parents on whatever OTel context is
 active. The runtime's own operation — `http.request`, `amqp.delivery`,
 `temporal.attempt` — is observed AROUND the unit rather than inside it, so it

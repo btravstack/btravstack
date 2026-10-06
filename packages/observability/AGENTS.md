@@ -65,7 +65,7 @@ stale the next time a case is added (#192):
   the scope's close, a failed unit's span, an aborted one's and one whose
   fork failed to build marked as errors, an operation inside a unit parented on that unit's span and carrying
   its ids, and parented on it too when a sibling provider built first started
-  it, an unattributed span outside a unit, a duration recorded in
+  it — or started and settled it inside its own sync factory — an unattributed span outside a unit, a duration recorded in
   seconds on seconds buckets, OTel's own meter handed back ready to count, and an instrumentation a starter contributed
   being registered.
 - `pino.spec.ts` — fields pino can index, the `err` serialiser, and every
@@ -166,9 +166,15 @@ So the member PARENTS an operation without injecting `UnitSpan` either:
 ambient record it was opened for, and the member reads `currentUnit()` per
 operation and looks it up. An operation that starts before the span is
 filed — a sibling provider di built first, since a module's providers at one
-level construct in import order — opens its span at the settle instead,
-back-dated with `startTime`, so the edge does not depend on the order an
-application lists its imports in. Nothing is lost by opening late: the member
+level construct in import order — opens its span later instead, back-dated
+with `startTime` and ended at its own end time, so the edge does not depend on
+the order an application lists its imports in. At the settle if the unit span
+exists by then; otherwise a microtask later, which is sound because
+`UnitSpanModule`'s only dependency is the PARENT's `Tracer`, so di builds it
+in the fork's first level, in the one synchronous pass every earlier sibling
+constructs in — a finisher called synchronously inside a sibling's factory
+cannot outrun it. Unbound, the microtask opens the span with no unit parent
+rather than never. Nothing is lost by opening late: the member
 never makes an operation span active, so it parents nothing. That is an adapter reading the record (thesis #2's
 legitimate reader), not a service riding it — the record itself is unchanged.
 Making the unit span OTel's ACTIVE context was the alternative and cannot be

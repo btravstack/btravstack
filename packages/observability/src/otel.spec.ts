@@ -4,6 +4,7 @@ import {
   Observers,
   SPAN_STATUS,
   Tracer,
+  observe,
   observed,
 } from "@btravstack/core";
 import { Module, Port, Provider, type Context } from "@btravstack/di";
@@ -229,6 +230,60 @@ describe("otel", () => {
     await app.exited;
 
     // THEN the read is still the unit span's child
+    const byName = new Map(spans.seen().map((span) => [span.name, span]));
+    expect({
+      names: [...byName.keys()].toSorted(),
+      childOfUnit:
+        byName.get("cache.get")?.parentSpanContext?.spanId ===
+        byName.get("unit")?.spanContext().spanId,
+    }).toEqual({ names: ["cache.get", "unit"], childOfUnit: true });
+  });
+
+  it("parents an operation settled synchronously by a provider built before the unit span", async ({
+    boot,
+    spans,
+  }) => {
+    // GIVEN a unit module importing a provider that starts AND settles an
+    // operation inside its own sync factory, listed before the span module
+    class Primed extends Port("OtelSpecPrimed")<string> {}
+    const Primer = Module("OtelSpecPrimer")({
+      needs: [Observers],
+      provides: [
+        Provider(Primed)({
+          inject: { observers: Observers },
+          sync: ({ observers }) => {
+            observe(observers, { component: "cache", name: "get", attributes: {} })({
+              outcome: "ok",
+            });
+            return "primed";
+          },
+        }),
+      ],
+      exports: [Primed],
+    });
+    const PrimedUnit = Module("OtelSpecPrimedUnit")({
+      imports: [Primer, UnitSpanModule],
+      exports: [Primed, UnitSpan],
+    });
+    const runtime = testRuntime("test", { unit: PrimedUnit });
+    const App = Module("OtelPrimedApp")({
+      imports: [batchedOtel(spans), runtime.module],
+      exports: [TestRuntimePort, Tracer, Observers],
+    });
+    const clock = createFakeClock();
+    const app = boot(App, { clock });
+    await runtime.untilStarted();
+
+    // WHEN a unit runs to completion and the app exits, flushing the spans
+    const unit = runtime.submit<string>();
+    unit.settle(Ok("done"));
+    await unit.result;
+    app.requestDrain();
+    await clock.advance(5_000);
+    await app.exited;
+
+    // THEN the read is the unit span's child even though it had ended before
+    // the unit span existed
     const byName = new Map(spans.seen().map((span) => [span.name, span]));
     expect({
       names: [...byName.keys()].toSorted(),
