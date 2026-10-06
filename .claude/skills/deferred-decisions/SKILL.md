@@ -92,7 +92,12 @@ dependencies by name`; a positional array is refused as
   an SPA fallback, and JSX/SSR with a component model. `htmx()` is the second
   — the one closest to a procedure and hardest to tell apart from one, which
   is why it sharpened the second-answerer question rather than dodging it. The
-  first and fourth are #166's rendering layer; the third is **declined**
+  first and fourth are **the application's** (#166), with i18n beside them:
+  each is a library choice with no wiring problem underneath, and choosing one
+  would put an untyped template body or a second escaping model in the
+  framework. Mail stays string-in for the same reason —
+  `docs/how-to/send-a-formatted-email.md` is the pattern, and the position is
+  the root `AGENTS.md`'s, thesis #1. The third is **declined**
   (#161): the ingress or a CDN serves assets, and with no SPA left the asset
   set is htmx plus a stylesheet. The narrower option — a minimal asset
   route so `pnpm dev` needs no ingress — was the development loop's argument,

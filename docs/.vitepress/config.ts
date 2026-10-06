@@ -38,6 +38,7 @@ const GUIDE_SIDEBAR = [
           { text: "Talk to a database", link: "/how-to/talk-to-the-database" },
           { text: "Cache a read", link: "/how-to/cache-a-read" },
           { text: "Send an email", link: "/how-to/send-an-email" },
+          { text: "Send a formatted email", link: "/how-to/send-a-formatted-email" },
           { text: "Keep a port private", link: "/how-to/keep-a-port-private" },
           { text: "Build a plugin registry", link: "/how-to/build-a-plugin-registry" },
           {

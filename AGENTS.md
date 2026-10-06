@@ -192,6 +192,18 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    **"HTML" here means fragments, and only fragments** — what that excludes,
    and which issues hold the rest, is in the `deferred-decisions` skill.
 
+   **Views beyond htmx fragments, and i18n, are the application's** (#166).
+   A template engine, JSX/SSR with a component model, a message catalogue
+   and locale resolution are each a library choice with no wiring problem
+   underneath — the one wiring question, which locale a unit serves, is a
+   port the application declares the way it declares `Tenant`. Choosing one
+   would put an untyped template body or a second escaping model in the
+   framework's newest surface. **Mail stays string-in**: `Mail.html` is a
+   string, and what rendered it is the application's — a render seam on
+   `@btravstack/mailer` would make the mailer pick the escaping model, and an
+   escaper shared with `@btravstack/http-server` would make it depend on the
+   HTTP server. `docs/how-to/send-a-formatted-email.md` is the pattern.
+
    **The auth seam is protocol-neutral.** `resolvePrincipal` is one walk every
    answerer shares, and a protocol with no contract declares its requirements
    as data on the route, gated by `RequiresGate` — so a GraphQL answerer
