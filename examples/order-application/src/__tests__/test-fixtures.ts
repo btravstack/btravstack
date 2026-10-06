@@ -101,21 +101,22 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
           );
           const ordered = keys.sort.direction === "desc" ? [...sorted].reverse() : sorted;
           const walked = keys.backward ? [...ordered].reverse() : ordered;
-          // A cursor naming no row is `MalformedCursor`, exactly as the Prisma
-          // adapter answers: `findIndex` would otherwise return -1 and page from
-          // the start, so a stub that skipped this would let a spec pass on a
-          // cursor the listing never issued.
+          // The seek is by the cursor's VALUES, as Postgres's is: every row
+          // strictly past that position in the walk, whether or not the row
+          // the cursor was minted from still exists. A sort value that is not
+          // a number is `MalformedCursor`, as the Prisma adapter answers.
           const resume = keys.cursor;
-          const at =
-            resume === undefined
-              ? -1
-              : walked.findIndex(
-                  (order) => String(value(order)) === resume[0] && order.id === resume[1],
-                );
-          if (resume !== undefined && at === -1)
+          const from = resume === undefined ? undefined : Number(resume[0]);
+          if (resume !== undefined && !Number.isFinite(from))
             return ErrAsync(new MalformedCursor({ cursor: resume.join("|") }));
+          const ascending = (keys.sort.direction === "desc") === keys.backward;
+          const past = (order: Order) =>
+            resume === undefined ||
+            (ascending ? 1 : -1) *
+              (value(order) - Number(from) || order.id.localeCompare(resume[1])) >
+              0;
           return OkAsync(
-            keys.page(walked.slice(at + 1, at + 1 + keys.take), (order) => [
+            keys.page(walked.filter(past).slice(0, keys.take), (order) => [
               String(value(order)),
               order.id,
             ]),
@@ -172,7 +173,7 @@ const scopeWith = (rows: Store, sink: Sink) => (tenantId: TenantId) =>
       stubCustomerRepository,
       Provider(Env)({ inject: {}, value: {} }),
     ],
-    exports: [PlaceOrder, FindOrder, ListOrders, FindCustomer],
+    exports: [PlaceOrder, FindOrder, ListOrders, FindCustomer, OrderRepository],
   });
 
 /** A sink that keeps what it was given, so a spec asserts on the line's fields rather than on a string. */

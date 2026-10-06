@@ -3,7 +3,7 @@ import { TenantId } from "@btravstack/example-order-domain";
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { ListOrders, PlaceOrder } from "./index.js";
+import { ListOrders, OrderRepository, PlaceOrder } from "./index.js";
 
 const ACME = TenantId("acme");
 const OTHER = TenantId("other");
@@ -63,6 +63,42 @@ describe("ListOrders", () => {
     // THEN there is no `nextCursor` field to follow, rather than a cursor that
     // would return nothing — the flag and the cursor are one fact. C (9) is the
     // last order in ascending quantity order, so it is what remains
+    expect(result).toBeOkWith({
+      items: [expect.objectContaining({ id: C })],
+      previousCursor: expect.any(String),
+      hasPreviousPage: true,
+      hasNextPage: false,
+    });
+  });
+
+  it("resumes after a cursor whose own row is gone", async ({ scopeFor }) => {
+    // GIVEN three orders, a first page of two, and the row its cursor was
+    // minted from removed before the next page is asked for
+    // WHEN the page after that cursor is asked for
+    const result = await Module.scoped(scopeFor(ACME), (ctx) =>
+      ctx
+        .get(PlaceOrder)
+        .execute(A, 1)
+        .flatMap(() => ctx.get(PlaceOrder).execute(B, 5))
+        .flatMap(() => ctx.get(PlaceOrder).execute(C, 9))
+        .flatMap(() => ctx.get(ListOrders).execute({ limit: 2, sort: SORT }))
+        .flatMap((page) =>
+          ctx
+            .get(OrderRepository)
+            .remove(B)
+            .map(() => page),
+        )
+        .flatMap((page) =>
+          ctx.get(ListOrders).execute({
+            limit: 2,
+            sort: SORT,
+            after: page.hasNextPage ? page.nextCursor : "no next cursor",
+          }),
+        ),
+    );
+
+    // THEN the listing carries on from the cursor's VALUES — a keyset seeks
+    // past a position, it does not look a row up — so the rest arrives
     expect(result).toBeOkWith({
       items: [expect.objectContaining({ id: C })],
       previousCursor: expect.any(String),
@@ -152,9 +188,9 @@ describe("ListOrders", () => {
     });
   });
 
-  it("refuses a cursor naming no order", async ({ scopeFor }) => {
+  it("answers an empty page past the last order, not a refusal", async ({ scopeFor }) => {
     // GIVEN one order placed, and a cursor shaped for the declared sort but
-    // naming a row that was never placed
+    // positioned past every row there is
     const cursor = "quantity:asc|999|0199a1e0-0000-7000-8000-00000000000f";
 
     // WHEN a page is asked for after that cursor
@@ -165,12 +201,9 @@ describe("ListOrders", () => {
         .flatMap(() => ctx.get(ListOrders).execute({ limit: 2, sort: SORT, after: cursor })),
     );
 
-    // THEN it is the modeled error carrying the parsed cursor, not the first
-    // page — the stub answers what the Prisma adapter answers, so a spec cannot
-    // pass here and fail against Postgres
-    expect(result).toBeErrTagged("MalformedCursor", {
-      cursor: "999|0199a1e0-0000-7000-8000-00000000000f",
-    });
+    // THEN a seek past the end finds nothing, and says so — a cursor is a
+    // position, so one whose row was never placed is still a readable one
+    expect(result).toBeOkWith({ items: [], hasPreviousPage: false, hasNextPage: false });
   });
 
   it("refuses a cursor with no sort-shaped head to parse", async ({ scopeFor }) => {

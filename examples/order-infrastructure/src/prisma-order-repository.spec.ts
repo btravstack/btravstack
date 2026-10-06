@@ -216,6 +216,36 @@ describe("OrderPersistenceModule", () => {
     });
   });
 
+  it("resumes after a cursor whose own row is gone", async ({ repository, anOrder }) => {
+    // GIVEN three orders, a first page of two, and the row its cursor was
+    // minted from removed before the next page is asked for
+    const sort = { field: "quantity", direction: "asc" } as const;
+
+    // WHEN the page after that cursor is asked for
+    const second = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000101", 1))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000102", 5)))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000103", 9)))
+      .flatMap(() => repository.list({ limit: 2, sort }))
+      .flatMap((page) => repository.remove("0199a1e0-0000-7000-8000-000000000102").map(() => page))
+      .flatMap((page) =>
+        repository.list({
+          limit: 2,
+          sort,
+          after: page.hasNextPage ? page.nextCursor : "no next cursor",
+        }),
+      );
+
+    // THEN the listing carries on from the cursor's VALUES — a keyset seeks
+    // past a position, it does not look a row up — so the rest arrives
+    expect(second).toBeOkWith({
+      items: [expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000103" })],
+      previousCursor: expect.any(String),
+      hasPreviousPage: true,
+      hasNextPage: false,
+    });
+  });
+
   it("pages backward from the cursor a page handed back", async ({ repository, anOrder }) => {
     // GIVEN three orders under this test's own tenant, and the LAST page taken
     // by following the cursors forward
