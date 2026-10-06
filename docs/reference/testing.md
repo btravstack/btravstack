@@ -365,7 +365,6 @@ the subpath installs nothing extra.
 type LocalIssuerOptions = {
   readonly issuer: string;
   readonly audience: string;
-  readonly algorithm?: "RS256" | "RS384" | "RS512" | "ES256" | "ES384";
 };
 
 type SignOptions = {
@@ -398,14 +397,13 @@ which is what makes the three refusals testable from one issuer:
 mints a token with **no `exp` claim at all** — the case a verifier must refuse
 because `jose` validates `exp` only when it is present.
 
-The algorithms are asymmetric-only, the same list `jwtAuthenticator` accepts,
-and `kid` is fixed at `"k1"`.
+The key is RS256 and its `kid` is fixed at `"k1"`.
 
 **Use a `{ scope: "file" }` fixture.** Every call generates a key pair and
 binds a listener, and a spec file's tests do not each need their own — which is
 the shape [Protect a procedure](/how-to/protect-a-procedure#testing-it) shows,
 and `examples/order-api/src/__tests__/test-fixtures.ts` writes. A test that
-wants a different `algorithm`, or that closes the issuer itself, mints its own.
+closes the issuer itself mints its own.
 
 **The subpath needs Node ≥22.12 under CommonJS.** `jose` is ESM-only, so the
 CJS build's `require("jose")` depends on `require(esm)`, which Node enables by

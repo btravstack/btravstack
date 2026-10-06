@@ -126,8 +126,7 @@ pair, a `node:http` listener answering its public key as a JWKS, and a
 `sign(claims?, options?)` closing over the private key — a real fetch against
 a real JWKS document, for a test that wants the verifying library's own
 behaviour rather than a double's. `sign`'s `expiresIn: false` mints a token
-with no `exp` claim; `localIssuer`'s `algorithm` picks the asymmetric algorithm
-(default `"RS256"`). The subpath needs Node ≥22.12 under CommonJS — `jose` is
+with no `exp` claim, and the key is RS256. The subpath needs Node ≥22.12 under CommonJS — `jose` is
 ESM-only, so the CJS build's `require("jose")` depends on `require(esm)`;
 ESM consumers, and anyone who never imports the subpath, are unaffected.
 

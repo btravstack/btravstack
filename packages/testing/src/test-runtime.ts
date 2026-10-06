@@ -82,23 +82,13 @@ export const testRuntime = <Unit extends AnyUnitModule | undefined = undefined>(
   let accepting = false;
   let serving: Serving<TestRuntimeInfo> | undefined;
   let submitted = 0;
-  let onStarted!: () => void;
-  const started = new Promise<void>((resolve) => {
-    onStarted = resolve;
-  });
-
-  const make = (): Serving<TestRuntimeInfo> => ({
-    info: { name },
-    drain: (signal) => {
-      accepting = false;
-      void signal;
-      return OkAsync();
-    },
-    stop: () => {
-      accepting = false;
-      return OkAsync();
-    },
-  });
+  const started = Promise.withResolvers<void>();
+  // Ignores `drain`'s deadline signal on purpose: the kernel's own abort is
+  // what a test of the drain observes.
+  const stopAccepting = (): AsyncResult<void, never> => {
+    accepting = false;
+    return OkAsync();
+  };
 
   const runtime: TestRuntime<Unit> = {
     name,
@@ -111,12 +101,12 @@ export const testRuntime = <Unit extends AnyUnitModule | undefined = undefined>(
     start: (h: RuntimeHost<never>) => {
       host = h;
       accepting = true;
-      serving = make();
-      onStarted();
+      serving = { info: { name }, drain: stopAccepting, stop: stopAccepting };
+      started.resolve();
       return OkAsync(serving);
     },
     started: () => serving !== undefined,
-    untilStarted: () => fromSafePromise(started),
+    untilStarted: () => fromSafePromise(started.promise),
     accepting: () => accepting,
     serving: () => {
       if (serving === undefined) {
@@ -139,10 +129,7 @@ export const testRuntime = <Unit extends AnyUnitModule | undefined = undefined>(
       }
 
       submitted += 1;
-      let settle!: (result: Result<T, E>) => void;
-      const held = new Promise<Result<T, E>>((resolve) => {
-        settle = resolve;
-      });
+      const held = Promise.withResolvers<Result<T, E>>();
       // Forwarded rather than captured: the work runs only once the fork is
       // built, so a captured signal would be `undefined` for a caller reading
       // it right after `submit()`.
@@ -152,16 +139,18 @@ export const testRuntime = <Unit extends AnyUnitModule | undefined = undefined>(
         if (signal.aborted) forwarded.abort(signal.reason);
         else signal.addEventListener("abort", () => forwarded.abort(signal.reason), { once: true });
         return unit === undefined
-          ? held
+          ? held.promise
           : // `as never`: the same cast `@btravstack/http-server`'s `htmx.ts`
             // carries. `AnyUnitModule` erases Needs to `unknown`, which
             // `fork`'s own `DependencyGate` can never clear; what the module
             // owes rides `TestRuntime.module`'s Needs channel instead, where
             // `start` checks it against the composition root.
-            unitHost.fork(unit as never, []).flatMap(() => fromSafePromise(held).flatMap((r) => r));
+            unitHost
+              .fork(unit as never, [])
+              .flatMap(() => fromSafePromise(held.promise).flatMap((r) => r));
       });
 
-      return { settle, result, signal: forwarded.signal };
+      return { settle: held.resolve, result, signal: forwarded.signal };
     },
   };
 

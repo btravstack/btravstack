@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, decodeJwt, decodeProtectedHeader, jwtVerify } from "jose";
+import { createRemoteJWKSet, decodeJwt, jwtVerify } from "jose";
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -49,37 +49,6 @@ describe("localIssuer", () => {
       aud: "another-api",
       exp: undefined,
     });
-  });
-
-  it("signs with the algorithm it was asked for", async () => {
-    // GIVEN an issuer minted with the ES256 algorithm, not the shared fixture's default
-    const built = await localIssuer({
-      issuer: "https://issuer.test",
-      audience: "orders-api",
-      algorithm: "ES256",
-    }).get();
-    const token = await built.sign().get();
-    await built.close();
-
-    // WHEN the token's own header is read
-    // THEN it names the algorithm this issuer was asked for
-    expect(decodeProtectedHeader(token)).toEqual(expect.objectContaining({ alg: "ES256" }));
-  });
-
-  it("publishes the key of the algorithm it was asked for", async () => {
-    // GIVEN an issuer minted with the ES256 algorithm
-    const built = await localIssuer({
-      issuer: "https://issuer.test",
-      audience: "orders-api",
-      algorithm: "ES256",
-    }).get();
-
-    // WHEN the JWKS it serves is fetched
-    const served: unknown = await (await fetch(built.jwks)).json();
-    await built.close();
-
-    // THEN the document carries one EC key advertising ES256
-    expect(served).toEqual({ keys: [expect.objectContaining({ alg: "ES256", kty: "EC" })] });
   });
 
   it("answers Ok when its listener closes", async () => {
