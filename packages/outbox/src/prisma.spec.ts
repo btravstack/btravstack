@@ -5,7 +5,7 @@ import { it, type StubRow } from "./__tests__/test-fixtures.js";
 import { prismaOutboxStore } from "./prisma.js";
 
 const row: StubRow = {
-  id: 7,
+  id: 7n,
   tenantId: "acme",
   kind: "order",
   subjectId: "a",
@@ -13,7 +13,8 @@ const row: StubRow = {
   occurredAt: "2026-10-06T21:00:00.123456+00:00",
 };
 
-const LOCK = "SELECT pg_try_advisory_xact_lock(hashtext(?), hashtext(?))::text AS locked";
+const LOCK =
+  "SELECT set_config('idle_in_transaction_session_timeout', '0', true) AS lifted, pg_try_advisory_xact_lock(hashtext(?), hashtext(?))::text AS locked";
 const SELECT = (table: string) =>
   `SELECT "id", "tenantId", "kind", "subjectId", "payload", to_json("occurredAt") #>> '{}' AS "occurredAt" FROM ${table} WHERE "tenantId" = ? AND "publishedAt" IS NULL ORDER BY "id" LIMIT ?::int`;
 
@@ -35,7 +36,7 @@ describe("prismaOutboxStore", () => {
       { sql: LOCK, values: ["orders.outboxMessage", "acme"], tx: 1 },
       { sql: SELECT(`"orders"."outboxMessage"`), values: ["acme", "32"], tx: 1 },
       {
-        sql: `UPDATE "orders"."outboxMessage" SET "publishedAt" = now() WHERE "id" = ANY(string_to_array(?, ',')::int[])`,
+        sql: `UPDATE "orders"."outboxMessage" SET "publishedAt" = now() WHERE "id" = ANY(string_to_array(?, ',')::bigint[])`,
         values: ["7"],
         tx: 1,
       },
@@ -80,8 +81,25 @@ describe("prismaOutboxStore", () => {
 
     // THEN the ISO text became a Date
     expect(pending).toBeOkWith([
-      { ...row, occurredAt: new Date("2026-10-06T21:00:00.123456+00:00") },
+      { ...row, id: 7, occurredAt: new Date("2026-10-06T21:00:00.123456+00:00") },
     ]);
+  });
+
+  it("refuses an id past 2^53 rather than rounding it onto another row's", async ({ stub }) => {
+    // GIVEN a row whose int8 id no JS number names exactly
+    const db = stub({ rows: [{ ...row, id: 2n ** 53n + 1n }] });
+
+    // WHEN it is read
+    const pending = await prismaOutboxStore(db).pending("acme", 1);
+
+    // THEN it is the defect an impossible row is, not a rounded id that would
+    // mark — and deduplicate on — a neighbour
+    expect(pending).toBeDefectWith(
+      expect.objectContaining({
+        constructor: RangeError,
+        message: expect.stringContaining("2^53"),
+      }),
+    );
   });
 
   it("reads every tenant's oldest pending time in one statement", async ({ stub }) => {

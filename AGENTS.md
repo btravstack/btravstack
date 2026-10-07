@@ -315,11 +315,13 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    copy is the framework's to own. What it owns is the half that is the same
    everywhere: the loop (publish in outbox order, stop a tenant's batch at the
    first refusal, back off) and the **claim**, a transaction-scoped advisory
-   lock per tenant. That claim is the guarantee worth stating: delivery is
-   at-least-once (a crash between a publish and its mark re-publishes), but
-   **N replicas never publish one row at once**, because one relay holds a
-   tenant at a time and the rest skip it — so no relay reorders what the
-   others can see. What it cannot order is what nobody can see yet: outbox
+   lock per tenant. That claim is the guarantee worth stating: **one relay
+   holds a tenant while its claiming session lives**, and the rest skip it —
+   so replicas take turns rather than race for its rows, and no relay
+   reorders what the others can see. Delivery stays at-least-once: a crash
+   between a publish and its mark, or a session the database ends mid-batch,
+   re-publishes, and a subscriber deduplicates on the outbox id (`eventId` in
+   the example). What it cannot order is what nobody can see yet: outbox
    ids are allocated before commit, so two write transactions in flight
    together can surface out of id order, and the later-numbered fact goes out
    first. Per-subject order therefore rests on the subject's own row

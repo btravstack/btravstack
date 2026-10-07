@@ -52,7 +52,10 @@ export type Relaying = <T, E>(
 ) => AsyncResult<T, E | ConfigInvalid>;
 
 /** A batch of rows the stub client answers for a `SELECT`, as the raw lane decodes them. */
-export type StubRow = Omit<OutboxMessage, "occurredAt"> & { readonly occurredAt: string };
+export type StubRow = Omit<OutboxMessage, "id" | "occurredAt"> & {
+  readonly id: bigint;
+  readonly occurredAt: string;
+};
 
 /** One statement the stub ran. */
 export type Ran = {

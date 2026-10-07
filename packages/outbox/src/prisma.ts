@@ -43,12 +43,24 @@ type Raw = {
 type Queryable = { readonly query: (plan: unknown) => PromiseLike<unknown> };
 
 type Row = {
-  readonly id: number;
+  readonly id: bigint;
   readonly tenantId: string;
   readonly kind: string;
   readonly subjectId: string;
   readonly payload: string | null;
   readonly occurredAt: string;
+};
+
+/**
+ * An `int8` id as the number the port speaks, refused rather than rounded past
+ * 2^53 — a row whose id cannot be named exactly would be marked, and
+ * deduplicated on, as some other row.
+ */
+const safe = (id: bigint): number => {
+  const value = Number(id);
+  // oxlint-disable-next-line unthrown/no-throw -- the transaction callback is a Promise, and a rejection is the defect channel this store reports an impossible row on
+  if (!Number.isSafeInteger(value)) throw new RangeError(`outbox id ${String(id)} exceeds 2^53`);
+  return value;
 };
 
 const identifier = (name: string): string => `"${name.replaceAll('"', '""')}"`;
@@ -69,9 +81,18 @@ const statement = (...parts: readonly string[]): TemplateStringsArray =>
  * commits leaves its rows pending rather than lost. The cost is a pooled
  * connection held for the length of one batch's publishes.
  *
+ * **One relay per tenant holds while its claiming session lives.** The claim
+ * lifts `idle_in_transaction_session_timeout` for its own transaction, so a
+ * configured timeout cannot end it mid-batch; a session the server ends any
+ * other way (a terminated backend, a failover) frees the lock while the relay
+ * is still publishing, and another relay may publish the same rows — which is
+ * at-least-once delivery, deduplicated on the id.
+ *
+ * The table's `id` is a `BigInt` — an `Int` runs out at 2^31 — read through
+ * `pg/int8@1` and refused, as a defect, past 2^53 rather than rounded.
  * `occurredAt` is read through `to_json`, which answers ISO 8601 whatever the
  * column's codec or the server's `DateStyle`, so the store needs no codec
- * beyond `pg/text@1` and `pg/int4@1` — both of which the table itself uses.
+ * beyond `pg/text@1` and `pg/int8@1` — both of which the table itself uses.
  */
 export const prismaOutboxStore = <Tx>(
   db: OutboxDatabase<Tx>,
@@ -82,9 +103,12 @@ export const prismaOutboxStore = <Tx>(
   const qualified = `${identifier(schema)}.${identifier(table)}`;
   const { sql } = (db as unknown as Raw).raw;
 
+  // `idle_in_transaction_session_timeout` is lifted for this transaction alone:
+  // the claim sits idle while the publisher works, and a server that ended the
+  // session there would free the lock mid-batch for another relay to take.
   const lock = (tenantId: string) =>
-    sql`SELECT pg_try_advisory_xact_lock(hashtext(${`${schema}.${table}`}), hashtext(${tenantId}))::text AS locked`
-      .returnsRow({ locked: "pg/text@1" })
+    sql`SELECT set_config('idle_in_transaction_session_timeout', '0', true) AS lifted, pg_try_advisory_xact_lock(hashtext(${`${schema}.${table}`}), hashtext(${tenantId}))::text AS locked`
+      .returnsRow({ lifted: "pg/text@1", locked: "pg/text@1" })
       .build();
 
   const select = (tenantId: string, limit: number) =>
@@ -98,7 +122,7 @@ export const prismaOutboxStore = <Tx>(
       String(limit),
     )
       .returnsRow({
-        id: "pg/int4@1",
+        id: "pg/int8@1",
         tenantId: "pg/text@1",
         kind: "pg/text@1",
         subjectId: "pg/text@1",
@@ -124,7 +148,7 @@ export const prismaOutboxStore = <Tx>(
     sql(
       statement(
         `UPDATE ${qualified} SET "publishedAt" = now() WHERE "id" = ANY(string_to_array(`,
-        ", ',')::int[])",
+        ", ',')::bigint[])",
       ),
       ids.join(","),
     )
@@ -134,6 +158,7 @@ export const prismaOutboxStore = <Tx>(
   const read = async (tx: Queryable, tenantId: string, limit: number) =>
     ((await tx.query(select(tenantId, limit))) as readonly Row[]).map((row): OutboxMessage => ({
       ...row,
+      id: safe(row.id),
       occurredAt: new Date(row.occurredAt),
     }));
 

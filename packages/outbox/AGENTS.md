@@ -96,9 +96,28 @@ collision between two tenants only serialises them.
 in one transaction, so a relay holds one pooled connection for one batch's
 publishes. That is an interactive transaction — the shape thesis #2 refuses for
 a unit — and it is accepted here because it is ONE connection per relay, bounded
-by a 32-message batch, rather than one per request. A database with
-`idle_in_transaction_session_timeout` shorter than a batch's publishes rolls the
-claim back, which re-publishes (at-least-once) rather than loses.
+by a 32-message batch, rather than one per request.
+
+**One relay per tenant holds while its claiming session lives, and no
+longer.** The lock is the session's: if the database ends that session
+mid-batch, the lock is freed while the relay is still publishing, and another
+relay can claim the same unmarked rows. The configurable case is closed — the
+claim sets `idle_in_transaction_session_timeout` to `0` for its own
+transaction (`set_config(…, true)`, a user-settable parameter), since the
+transaction sits idle while the publisher works; `prisma-outbox.spec.ts`'s
+"keeps its claim through a publish slower than the server's
+idle-in-transaction timeout" runs a pool whose sessions time out at 200 ms and
+fails without it. The rest — a terminated backend, a failover — is delivery
+being at-least-once, which the outbox id deduplicates. Probing the session's
+liveness between publishes was declined: it narrows the window without
+closing it, at a round trip per message.
+
+**The id is a `BigInt`.** An `int4` sequence ends at 2^31 − 1, under a month at
+a thousand facts a second; `int8` read as a JS number is exact to 2^53, past
+which the store defects rather than round an id onto a neighbour's — a
+rounded id would be marked, and deduplicated on, as some other row. Widening
+an existing table takes the column and its `SERIAL` sequence both, which is
+why the example's migration alters the sequence too.
 
 **Measured, against the shared PostgreSQL** (`examples/order-infrastructure`'s
 `prisma-outbox.spec.ts`, "publishes every message exactly once across four

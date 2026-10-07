@@ -316,8 +316,8 @@ answers `null` for a delete that matched nothing rather than throwing, so
 back. The read side is not this application's at all: `OrderPersistenceModule`
 provides [`@btravstack/outbox`](/reference/outbox)'s `OutboxStore` over the
 table, `prismaOutboxStore(db, { schema: "orders" })`, which claims a tenant's
-rows in `id` order under a per-tenant lock, so the relay publishes in commit
-order and two replicas never publish one row at once, and marks them in the
+rows in `id` order under a per-tenant lock, so replicas take turns on a tenant
+while each claiming session lives, and marks them in the
 same transaction, so a crash between publish and mark re-delivers rather than
 loses.
 

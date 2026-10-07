@@ -35,8 +35,8 @@ The transactional outbox has two halves. **The write is yours**: the business
 row and its outbox row commit in one transaction, spelled by your adapter at
 the call — the framework never opens a transaction around a unit. **The relay
 is this package's**: reading what is pending, publishing it in outbox order, marking
-it published, backing off, and making sure two replicas never publish the same
-row at once.
+it published, backing off, and making replicas take turns on a tenant rather
+than race for its rows.
 
 Between the two sit the two ports the relay needs and cannot provide itself:
 
@@ -154,18 +154,20 @@ export const swept = Module.scoped(Tested, () =>
 ## The claim, and what it guarantees
 
 **Delivery is at-least-once.** A relay that crashes between a publish and the
-commit of its mark publishes that message again on the next claim, so a
-subscriber must tolerate a repeat. **Put the message's `id` on the wire and
+commit of its mark publishes that message again on the next claim, and so does
+a relay whose claiming session the database ends mid-batch, so a subscriber
+must tolerate a repeat. **Put the message's `id` on the wire and
 deduplicate on it**: it is the one value that names a single fact. `subjectId`
 names a subject with many facts, and `occurredAt` is shared by every fact one
 transaction writes at one `now()`.
 
-**What the claim rules out is the other source of repeats: replicas.** One
-relay holds a tenant at a time, and every other relay that reaches the tenant
-meanwhile **skips it** rather than waiting. So:
+**What the claim rules out is the other source of repeats: replicas racing.**
+One relay holds a tenant **while its claiming session lives**, and every other
+relay that reaches the tenant meanwhile **skips it** rather than waiting. So:
 
-- N replicas sweeping one table **never publish one row at once** — the
-  duplicate rate does not grow with the replica count;
+- N replicas sweeping one table take turns rather than race for a tenant's
+  rows — the duplicate rate does not grow with the replica count, and a repeat
+  comes only from a lost session or a crash, deduplicated like any other;
 - no two batches of one tenant are ever in flight together, so a tenant's
   committed facts go out in outbox order;
 - throughput scales across tenants, not within one.
@@ -200,9 +202,15 @@ transaction that reads, publishes and marks the batch.** A relay that does not
 get the lock skips the tenant. The lock dies with the transaction, so a relay
 that crashes frees it with its connection, and a mark that never commits
 leaves its rows pending rather than lost. The cost is one pooled connection
-held for the length of one batch's publishes; a database whose
-`idle_in_transaction_session_timeout` is shorter than that rolls the claim back,
-which re-publishes rather than loses.
+held for the length of one batch's publishes.
+
+**The claim lifts `idle_in_transaction_session_timeout` for its own
+transaction**, since it sits idle while the publisher works and a configured
+timeout would otherwise end the session — and free the lock — mid-batch. A
+session ended any other way (a terminated backend, a failover) still frees the
+lock while the relay publishes, and another relay may then publish the same
+rows: that is the "while its claiming session lives" above, and the reason to
+deduplicate on the id.
 
 ### The table
 
@@ -213,7 +221,7 @@ migration as you would any other:
 ```prisma
 namespace orders {
   model OutboxMessage {
-    id          Int                @id @default(autoincrement())
+    id          BigInt             @id @default(autoincrement())
     tenantId    String
     kind        String
     subjectId   String
@@ -228,6 +236,15 @@ It carries **no `@@rls`**: the relay runs outside any unit, on a connection
 nothing pinned, and a policy would deny it every row — `tenantId` is what holds
 the tenant, in the store's own `WHERE`. `occurredAt` is read through `to_json`,
 so `Timestamptz` works as well as `TimestamptzString`.
+
+**`id` is a `BigInt`, not an `Int`.** An `int4` sequence stops at 2^31 − 1 —
+under a month at a thousand facts a second. The store reads it through
+`pg/int8@1` and hands the port a `number`, refusing as a defect an id past
+2^53 (some 285,000 years at that rate) rather than rounding it onto another
+row's. A table created with an `Int` id needs its column **and** its sequence
+widened: `ALTER COLUMN … TYPE int8` leaves a `SERIAL`'s sequence `AS integer`,
+still stopping at 2^31 − 1, which is why the example's widening migration
+alters the sequence beside the column.
 
 Writing a row is your adapter's, inside the transaction it already opens:
 

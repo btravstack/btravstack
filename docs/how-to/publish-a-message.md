@@ -124,13 +124,15 @@ startup `Err` and exit `1` — an operator can act on that.
 Four properties worth naming, because a subscriber has to live with them:
 
 **At-least-once, deliberately.** A crash between a publish and its mark
-re-publishes on the next claim. A subscriber therefore has to be idempotent —
-which it has to be anyway, since a broker redelivers an un-acked message.
+re-publishes on the next claim, and so does a claiming session the database
+ends mid-batch. A subscriber therefore has to be idempotent, keyed by
+`eventId` — which it has to be anyway, since a broker redelivers an un-acked
+message.
 
-**Never twice at once.** Every replica of the deployment runs a relay over the
-same table, and a tenant is claimed by one of them at a time — a
-transaction-scoped advisory lock, skipped rather than waited on by the rest —
-so the replica count adds no duplicates of its own.
+**Replicas take turns.** Every replica of the deployment runs a relay over the
+same table, and a tenant is held by one of them while its claiming session
+lives — a transaction-scoped advisory lock, skipped rather than waited on by
+the rest — so replicas do not race for the same rows.
 
 **A refusal holds its tenant.** Any `Err` from `publish` leaves the row
 pending and stops that tenant's batch, so a later fact never overtakes it;

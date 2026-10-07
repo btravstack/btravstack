@@ -154,11 +154,11 @@ const startRelay = (
  * outbox({ tenants: ["acme"] });
  * ```
  *
- * **At-least-once, and never twice at once.** A crash between a publish and
- * its mark re-publishes on the next claim, so a subscriber must tolerate a
- * repeat, keyed by the outbox id. What the claim rules out is the other source
- * of repeats: N replicas sweeping one table each publishing the same row. A
- * tenant is claimed by one relay at a time and skipped by the rest, so its
+ * **At-least-once, with replicas taking turns.** A crash between a publish and
+ * its mark re-publishes on the next claim, and so does a claiming session the
+ * database ends mid-batch, so a subscriber must tolerate a repeat, keyed by the
+ * outbox id. What the claim rules out is replicas racing: a tenant is held by
+ * one relay while its claiming session lives and skipped by the rest, so its
  * committed facts go out in outbox order — which is not commit order: an id
  * still in an open transaction surfaces after a higher one that committed.
  *

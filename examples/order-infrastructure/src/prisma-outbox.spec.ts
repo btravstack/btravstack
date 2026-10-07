@@ -1,3 +1,5 @@
+import { setTimeout as delay } from "node:timers/promises";
+
 import type { DuplicateOrder } from "@btravstack/example-order-domain";
 import type { OutboxMessage } from "@btravstack/outbox";
 import { OkAsync, P, fromSafePromise, type AsyncResult } from "unthrown";
@@ -261,6 +263,70 @@ describe("the transactional outbox", () => {
     // a row before it commits, which is why per-subject order rests on the
     // subject's own row serialising its writers
     expect(swept).toBeOkWith(["second", "first"]);
+  });
+
+  it("keeps its claim through a publish slower than the server's idle-in-transaction timeout", async ({
+    tenant,
+    repository,
+    outbox,
+    impatientOutbox,
+    anOrder,
+  }) => {
+    // GIVEN a pending event, a relay on sessions the server ends after 200 ms
+    // idle in a transaction, and a publisher that takes longer than that — a
+    // real wait, because the timeout being outlived is the server's own clock
+    const seenBySecond: (readonly OutboxMessage[])[] = [];
+    const slowly = (ids: readonly number[]) =>
+      fromSafePromise(delay(600)).flatMap(() =>
+        outbox
+          .claim(tenant, 10, (second) => {
+            seenBySecond.push(second);
+            return OkAsync(second.map(({ id }) => id));
+          })
+          .map(() => ids),
+      );
+
+    // WHEN the slow relay claims, and a second relay tries the tenant once the
+    // timeout has passed
+    const claimed = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000051", 1))
+      .flatMap(() =>
+        impatientOutbox.claim(tenant, 10, (batch) => slowly(batch.map(({ id }) => id))),
+      )
+      .flatMap(() => outbox.pending(tenant, 10))
+      .map((pending) => ({ pending, seenBySecond }));
+
+    // THEN the first relay still held the tenant and marked its row: the
+    // second was handed nothing, and nothing is left to publish twice
+    expect(claimed).toBeOkWith({ pending: [], seenBySecond: [] });
+  });
+
+  it("round-trips an outbox id past 2^31", async ({ db, tenant, outbox }) => {
+    // GIVEN a pending row numbered beyond what an `int4` id could hold
+    const id = 2 ** 31 + Math.floor(Math.random() * 2 ** 40);
+    const handed: number[] = [];
+
+    // WHEN it is claimed and published
+    const swept = await fromSafePromise(
+      db.orm.orders.OutboxMessage.create({
+        id: BigInt(id),
+        tenantId: tenant,
+        kind: "order",
+        subjectId: "0199a1e0-0000-7000-8000-000000000061",
+        payload: null,
+      }),
+    )
+      .flatMap(() =>
+        outbox.claim(tenant, 10, (batch) => {
+          handed.push(...batch.map((message) => message.id));
+          return OkAsync(batch.map((message) => message.id));
+        }),
+      )
+      .flatMap(() => outbox.pending(tenant, 10))
+      .map((pending) => ({ handed, pending }));
+
+    // THEN the relay was handed the exact id, and the mark found the row by it
+    expect(swept).toBeOkWith({ handed: [id], pending: [] });
   });
 
   it("appends a tombstone when the order is removed", async ({

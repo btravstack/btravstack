@@ -1,8 +1,9 @@
 # @btravstack/outbox
 
 > The transactional outbox relay for [`@btravstack/core`](../core): a poll loop
-> that publishes committed facts in the order they were written, a per-tenant
-> claim so replicas never publish the same row twice, and a Prisma 8 store.
+> that publishes committed facts in outbox order, a per-tenant
+> claim so replicas take turns rather than race for the same rows, and a Prisma
+> 8 store.
 
 📖 **[Documentation](https://btravstack.github.io/btravstack/reference/outbox)** ·
 [API Reference](https://btravstack.github.io/btravstack/api/outbox/)
@@ -84,9 +85,11 @@ which is this list's one detailed home.
 ## What it decides, and what it does not
 
 **It decides** that delivery is at-least-once, that one relay publishes a
-tenant at a time — so N replicas never publish one row twice at once, and a
-tenant's committed facts go out in outbox order (which is not commit order:
-the reference page says what that means for a subject) — that a refused
+tenant at a time while its claiming session lives — so replicas take turns
+rather than race for a tenant's rows, and a tenant's committed facts go out in
+outbox order (which is not commit order: the reference page says what that
+means for a subject); a session lost mid-batch, like a crash between a publish
+and its mark, re-publishes — that a refused
 publish stops its tenant's batch and backs that tenant off, and that a tenant
 falling behind is unhealthy on `/healthz`. A subscriber deduplicates on the
 outbox id, which the publisher puts on the wire.

@@ -80,8 +80,8 @@ the `orders` exchange — and mark what the broker confirmed. It is deliberately
 claim, a broker outage leaves rows pending and the sweep after the outage
 drains them. What is never possible is the inverse — a committed order whose
 event evaporated — and what the claim rules out is the other source of
-repeats: a tenant is published by one replica at a time, so running several
-adds no duplicates. Each tenant's committed facts go out in outbox order; an
+repeats: a tenant is published by one replica while its claiming session
+lives, so replicas take turns rather than race. Each tenant's committed facts go out in outbox order; an
 order's own facts stay in order because each write about it conflicts on its
 row, and `eventId` — the outbox row's id — is what a subscriber deduplicates a
 re-delivery on.

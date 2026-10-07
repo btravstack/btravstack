@@ -233,10 +233,11 @@ say — turns the `outbox` component of `/healthz` unhealthy once its oldest
 pending row is older than `OUTBOX_MAX_LAG_MS`.
 
 The relay is **at-least-once**: a crash between a publish and its mark
-re-publishes on the next claim. What it rules out is the other source of
-repeats — two replicas sweeping one table each publishing the same row. A
-tenant is claimed by one relay at a time, under a transaction-scoped advisory
-lock, and skipped by the rest, so a tenant's committed facts go out in outbox
+re-publishes on the next claim, as does a claiming session the database ends
+mid-batch. What it rules out is replicas racing for one table's rows: a tenant
+is held by one relay while its claiming session lives, under a
+transaction-scoped advisory lock, and skipped by the rest, so a tenant's
+committed facts go out in outbox
 order. Outbox order is not commit order, so a subject's order rests on its own
 row: `save` writes the outbox row after the insert and `remove` after the
 delete, and a second write about one order cannot take its id until the first
