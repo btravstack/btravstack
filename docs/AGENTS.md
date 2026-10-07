@@ -47,8 +47,15 @@ the old repository.
   with a link to the open release PR in the window above, `vX` once the release
   PR's merge commit (which consumes the changesets and bumps the version)
   deploys. That last label can lead npm by the length of the publish job, which
-  runs from the same commit in parallel. The tutorial's install step and the
-  `Support and upgrades` section of `reference/packages.md` point at the menu.
+  runs from the same commit in parallel — and for longer if that job fails,
+  until it is rerun, since the merge already consumed the changesets. The menu
+  therefore links npm's version list beside the label. Asking npm at build
+  time was declined: the gate's build would depend on the network, and turbo's
+  cache cannot hash a registry's answer. Chaining the deploy off the Release
+  workflow was declined too: the `head_sha` a run of Release reports is the
+  branch tip it was triggered on, not necessarily the commit CI tested. The
+  tutorial's install step and the `Support and upgrades` section of
+  `reference/packages.md` point at the menu.
 
 - **Every `ts` fence in the framework, DI and entity guide directories, in the
   root README and in the package READMEs is compiled by `pnpm typecheck`,

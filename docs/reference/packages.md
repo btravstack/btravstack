@@ -195,8 +195,9 @@ This is the whole maintenance commitment, stated before you adopt:
   [GitHub release](https://github.com/btravstack/btravstack/releases).
 
 This site is built from `main`, which can be ahead of npm; the version menu in
-the navigation bar says which release it describes and whether unreleased
-changes are on it.
+the navigation bar names the version this tree carries, says whether
+unreleased changes are on it, and links npm's published versions to compare
+against.
 
 ## Entry points
 

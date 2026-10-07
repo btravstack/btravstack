@@ -461,6 +461,10 @@ export default defineConfig({
             ? [{ text: "Unreleased: not on npm yet", link: `${RELEASE_PRS}+is%3Aopen` }]
             : []),
           { text: "Release notes", link: `${RELEASE_PRS}+is%3Amerged` },
+          {
+            text: "Versions published on npm",
+            link: "https://www.npmjs.com/package/@btravstack/core?activeTab=versions",
+          },
           { text: "Support and upgrades", link: "/reference/packages#support-and-upgrades" },
         ],
       },
