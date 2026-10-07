@@ -24,6 +24,7 @@ import { CookieSchemes, crossSite, csrfOn } from "./cookie.js";
 import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
 import { DEFAULT_BODY_LIMIT, orpc, type OrpcRouterPort, type OrpcOptions } from "./orpc.js";
+import { HttpSchemes, withFallback } from "./unit-scope.js";
 import type { AnyUnitModule, UnitsNeedsOf } from "./unit.js";
 
 export type { AnyUnitModule, UnitsNeedsOf } from "./unit.js";
@@ -240,7 +241,12 @@ export const httpServer = <
           units,
         }),
       }),
-      Provider(HttpUnit)({ inject: {}, value: options.unit ?? {} }),
+      // A root declaring no scheme leaves this set with only this `[]` in it.
+      Provider.member(HttpSchemes)({ inject: {}, value: [] }),
+      Provider(HttpUnit)({
+        inject: { schemes: HttpSchemes },
+        sync: ({ schemes }) => withFallback(options.unit ?? {}, schemes),
+      }),
     ],
     // `Observers` is exported so a SIBLING provider in the root can report to
     // the same set — `oidc()` is the first — without every such provider

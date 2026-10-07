@@ -295,7 +295,10 @@ channel: a fork is `Module<…, never, …>`, so a unit override is
 
 The substitution is keyed by module identity, since a fork is handed a module
 and never a kind; a module the root binds under two kinds is therefore refused
-too rather than overridden under both (see
+too rather than overridden under both. On HTTP that includes the fallback: a
+scheme that binds no module of its own forks `anonymous`'s, so overriding
+either kind is refused while the other shares it — bind the scheme a module of
+its own to override it alone (see
 [`UnitOverrides`](/reference/core/runtime#unitoverrides)). The rest of the
 section above holds unchanged: one provider, never a subsystem, and the
 override's own deps resolve from the fork — the unit's seed, its siblings and
