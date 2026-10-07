@@ -451,6 +451,7 @@ options are the third:
 | `events`     | yes      | a zod discriminated union on `type`: every event the aggregate produces                       |
 | `opens`      | yes      | one handler per **creation** event: `(event) => record`                                       |
 | `evolve`     | yes      | one handler per **other** event: `(record, event) => record`; all of them, or a compile error |
+| `ends`       | no       | the **terminal** events, by `type`: once one is decided, the decision `isTerminal`            |
 | `invariants` | no       | as on `Entity`                                                                                |
 | `computed`   | no       | as on `Entity`                                                                                |
 

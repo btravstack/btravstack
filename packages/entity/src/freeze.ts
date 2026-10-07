@@ -187,6 +187,11 @@ const freezeInto = (value: object, schema: Schema | undefined, seen: WeakSet<obj
 
   if (!isPlainObject(value)) return;
 
+  // the canonical form `toJSON()` promises: an absent optional key is omitted,
+  // never `undefined` — zod keeps an explicit `undefined` it was handed
+  for (const [key, property] of Object.entries(value)) {
+    if (property === undefined) Reflect.deleteProperty(value, key);
+  }
   Object.freeze(value);
   for (const [key, property] of Object.entries(value)) {
     if (isObject(property)) freezeInto(property, childSchema(schema, key), seen);

@@ -267,9 +267,11 @@ reasoning is [Invariants and transitions](/entity/explanation/invariants-and-tra
 
 `Subscription` (`src/subscription.ts`) is an `Entity.aggregate`: it has no
 `update()`, and its state changes only through `SubscriptionStarted`,
-`SeatsChanged` and `SubscriptionCancelled`. `changeSeats` and `cancel` check
-their business rules, return a typed error when one fails, and otherwise call
-`this.emit(...)`, which returns the events together with the verified state.
+`SeatsChanged`, `SubscriptionCancelled` and `SubscriptionErased`. `changeSeats`
+and `cancel` check their business rules, return a typed error when one fails,
+and otherwise call `this.emit(...)`, which returns the events together with the
+verified state. `SubscriptionErased` is declared in `ends`, so `erase()`
+returns a terminal decision.
 The persistence example stores those decisions as state rows and as an event
 stream without changing this file. See
 [Model an event-driven aggregate](/entity/how-to/model-an-event-driven-aggregate).

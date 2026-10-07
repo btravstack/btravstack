@@ -198,7 +198,9 @@ export function Entity<Tag extends string>(tag: Tag) {
      */
     const project = (self: object): OutputShape => {
       const source = self as Record<keyof OutputShape, unknown>;
-      return Object.fromEntries(dataKeys.map((k) => [k, source[k]])) as OutputShape;
+      return Object.fromEntries(
+        dataKeys.filter((k) => source[k] !== undefined).map((k) => [k, source[k]]),
+      ) as OutputShape;
     };
 
     const parseInput = fromSchema(construction);
@@ -347,7 +349,9 @@ export function Entity<Tag extends string>(tag: Tag) {
             // `entity.spec.ts`).
             value: data[k as PropertyKey],
             writable: false,
-            enumerable: true,
+            // an absent optional stays locked but out of `Object.keys`, so a
+            // nested entity omits it exactly as `toJSON()` does
+            enumerable: data[k as PropertyKey] !== undefined,
           });
         }
         // non-enumerable, so it is absent from Object.keys, spread,
@@ -567,14 +571,16 @@ type AggregateInstanceSrc<
   A extends Schemas,
   Ev extends Events,
   O extends string,
-> = AggregateInstance<S, A, Ev, O>;
+  End extends string = never,
+> = AggregateInstance<S, A, Ev, O, End>;
 type AggregateStaticSrc<
   Tag extends string,
   S extends Fields,
   A extends Schemas,
   Ev extends Events,
   O extends string,
-> = AggregateStatic<Tag, S, A, Ev, O>;
+  End extends string = never,
+> = AggregateStatic<Tag, S, A, Ev, O, End>;
 type EntityUnionSrc<K extends string, M extends readonly UnionMember[]> = EntityUnion<K, M>;
 type ConstructionKeySrc = ConstructionKey;
 type SealedSrc<D> = Sealed<D>;
@@ -631,14 +637,16 @@ export declare namespace Entity {
     A extends Schemas,
     Ev extends Events,
     O extends string,
-  > = AggregateStaticSrc<Tag, S, A, Ev, O>;
+    End extends string = never,
+  > = AggregateStaticSrc<Tag, S, A, Ev, O, End>;
   // Exported only so a consumer's emitted declarations can name them.
   export type AggregateInstance<
     S extends Fields,
     A extends Schemas,
     Ev extends Events,
     O extends string,
-  > = AggregateInstanceSrc<S, A, Ev, O>;
+    End extends string = never,
+  > = AggregateInstanceSrc<S, A, Ev, O, End>;
   export type DecisionKey = DecisionKeySrc;
 
   // `InvalidEntity` is a class, so it needs both meanings under `Entity`: the

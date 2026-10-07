@@ -80,6 +80,22 @@ for (const [style, repository] of styles) {
       "ConcurrentModification",
     );
   });
+
+  test(`${style}: an erased subscription is deleted, so it loads as not found`, () => {
+    // GIVEN a stored subscription
+    const repo = repository();
+    const started = startSubscription(organizationId, 3).get();
+    const { id } = started.state;
+    // WHEN it is loaded, erased and saved — a terminal decision
+    const reloaded = repo
+      .save(started)
+      .flatMap(() => repo.load(id))
+      .flatMap((subscription) => subscription.erase())
+      .flatMap((decision) => repo.save(decision))
+      .flatMap(() => repo.load(id));
+    // THEN the store holds nothing for it
+    expect(reloaded).toBeErrTagged("SubscriptionNotFound");
+  });
 }
 
 test("state-based: the decision's events reach the outbox with the state", () => {

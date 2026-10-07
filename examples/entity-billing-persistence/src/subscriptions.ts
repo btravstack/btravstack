@@ -14,7 +14,8 @@
  *
  * The decision carries the version its aggregate was loaded at, so `save`
  * takes the decision and nothing else: there is no version to forget or mix
- * up between the load and the save.
+ * up between the load and the save. A terminal decision — an erasure — says
+ * so in `isTerminal`, and both delete rather than write.
  *
  * Both implement one port, and `changeSeats` below runs against either: the
  * switch is infrastructure, not a domain rewrite. Both stores are in memory
@@ -70,7 +71,8 @@ export class StateBasedSubscriptions implements SubscriptionRepository {
     // One synchronous block stands in for one transaction: the row and the
     // outbox move together or not at all.
     const version = current + 1;
-    this.#rows.set(id, { state: stored(decision.state.toJSON()), version });
+    if (decision.isTerminal) this.#rows.delete(id);
+    else this.#rows.set(id, { state: stored(decision.state.toJSON()), version });
     this.outbox.push(...decision.events.map((event) => stored({ aggregateId: id, event })));
     return Ok(version);
   }
@@ -92,7 +94,8 @@ export class EventSourcedSubscriptions implements SubscriptionRepository {
     const stream = this.#streams.get(id) ?? [];
     if (stream.length !== expected) return Err(new ConcurrentModification({ id, expected }));
     const next = [...stream, ...decision.events.map(stored)];
-    this.#streams.set(id, next);
+    if (decision.isTerminal) this.#streams.delete(id);
+    else this.#streams.set(id, next);
     return Ok(next.length);
   }
 }

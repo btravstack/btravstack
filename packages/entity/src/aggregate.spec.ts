@@ -315,3 +315,84 @@ test("make without a version is a defect: a loaded aggregate must say what it wa
     "defect",
   );
 });
+
+/* ── Terminal events ───────────────────────────────────────────────── */
+
+class Doc extends Entity.aggregate("Doc")({ id: Entity.field(CartId, { identity: true }) })({
+  events: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("Opened"), id: z.uuid() }),
+    z.object({ type: z.literal("Touched") }),
+    z.object({ type: z.literal("Removed") }),
+  ]),
+  opens: { Opened: (e) => ({ id: e.id }) },
+  evolve: { Touched: (r) => r, Removed: (r) => r },
+  ends: ["Removed"],
+}) {}
+
+const openedDoc = () => Doc.start({ type: "Opened", id }).get();
+
+test("a decision says whether it ended the aggregate", () => {
+  // GIVEN an open document
+  const doc = openedDoc().state;
+  // WHEN one command changes it and another removes it
+  const touched = doc.emit({ type: "Touched" }).get();
+  const removed = doc.emit({ type: "Removed" }).get();
+  // THEN only the removal is terminal, and opening never is
+  expect({
+    opened: openedDoc().isTerminal,
+    touched: touched.isTerminal,
+    removed: removed.isTerminal,
+  }).toEqual({ opened: false, touched: false, removed: true });
+});
+
+test("a chain ending in a terminal event is one terminal decision", () => {
+  // GIVEN an open document
+  const doc = openedDoc().state;
+  // WHEN one emit touches it, then removes it
+  const removed = doc.emit({ type: "Touched" }, { type: "Removed" }).get();
+  // THEN the decision holds every event and says the aggregate ended
+  expect({ isTerminal: removed.isTerminal, events: removed.events.map((e) => e.type) }).toEqual({
+    isTerminal: true,
+    events: ["Opened", "Touched", "Removed"],
+  });
+});
+
+test("nothing can be decided on an ended aggregate", () => {
+  // GIVEN a removed document
+  const removed = openedDoc().state.emit({ type: "Removed" }).get().state;
+  // WHEN a command emits on it anyway
+  const result = removed.emit({ type: "Touched" });
+  // THEN it is a defect, never a decision to persist
+  expect(result).toBeDefect();
+});
+
+test("an event after a terminal one in the same emit is a defect", () => {
+  // GIVEN an open document
+  const doc = openedDoc().state;
+  // WHEN an untyped caller emits past the end
+  const result = doc.emit(...([{ type: "Removed" }, { type: "Touched" }] as never[]));
+  // THEN it is a defect
+  expect(result).toBeDefect();
+});
+
+test("replay refuses a stream that continues after its terminal event, at that index", () => {
+  // GIVEN a stored stream with an event after the removal
+  const stream = [{ type: "Opened", id }, { type: "Removed" }, { type: "Touched" }];
+  // WHEN it is replayed
+  const result = Doc.replay(stream);
+  // THEN the event past the end is an InvalidEntity at its index
+  expect(result).toBeErrWith(
+    expect.objectContaining({
+      issues: [{ message: "a stream ends at its terminal event", path: [2, "type"] }],
+    }),
+  );
+});
+
+test("a stream ending at its terminal event replays to an aggregate nothing can decide on", () => {
+  // GIVEN a stream ending with a removal
+  const replayed = Doc.replay([{ type: "Opened", id }, { type: "Removed" }]).getOrThrow();
+  // WHEN a command emits on the replayed state
+  const result = replayed.emit({ type: "Touched" });
+  // THEN it is a defect
+  expect(result).toBeDefect();
+});

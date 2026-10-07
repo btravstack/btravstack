@@ -120,3 +120,64 @@ test("a nested entity is not re-frozen into uselessness", () => {
   expect(typeof order.customer.toJSON).toBe("function");
   expect(order.customer.toJSON()).toEqual({ id: cid, name: "ada", shout: "ADA" });
 });
+
+/* ── toJSON's canonical form ───────────────────────────────────────── */
+
+const Label = z.string().min(1).brand("Label");
+class Contact extends Entity("Contact")({ id: CustomerId, nickname: Name.optional() }) {}
+class Account extends Entity("Account")({
+  id: OrderId,
+  label: Name.optional(),
+  owner: Contact,
+  backup: z.optional(Contact),
+  members: z.array(Contact),
+  meta: z.object({ label: Label.optional() }).brand("Meta"),
+}) {}
+
+/** Each depth's own enumerable keys: what a deep-equality diff, a driver and `JSON.stringify` see. */
+const keysAt = (account: Account) => {
+  const json = account.toJSON();
+  return {
+    top: Object.keys(json),
+    owner: Object.keys(json.owner),
+    members: json.members.map((m) => Object.keys(m)),
+    meta: Object.keys(json.meta),
+  };
+};
+
+test.each([
+  ["absent", { id: oid, owner: { id: cid }, members: [{ id: cid2 }], meta: {} }],
+  [
+    "explicitly undefined",
+    {
+      id: oid,
+      label: undefined,
+      owner: { id: cid, nickname: undefined },
+      backup: undefined,
+      members: [{ id: cid2, nickname: undefined }],
+      meta: { label: undefined },
+    },
+  ],
+])("toJSON omits an optional field that is %s, at every depth", (_, row) => {
+  // GIVEN a row whose optional fields are not set
+  // WHEN it is made and projected
+  const keys = Account.make(row).map(keysAt);
+  // THEN no depth carries a key for them
+  expect(keys).toBeOkWith({
+    top: ["id", "owner", "members", "meta"],
+    owner: ["id"],
+    members: [["id"]],
+    meta: [],
+  });
+});
+
+test("an absent optional field is still locked", () => {
+  // GIVEN an account without a label
+  const account = Account.make({ id: oid, owner: { id: cid }, members: [], meta: {} }).getOrThrow();
+  // WHEN a caller assigns one
+  const assign = () => {
+    (account as { label?: unknown }).label = "x";
+  };
+  // THEN the binding refuses
+  expect(assign).toThrow(TypeError);
+});

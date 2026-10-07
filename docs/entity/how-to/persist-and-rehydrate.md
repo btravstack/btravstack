@@ -68,6 +68,27 @@ instance's own frozen references, so mutating one would throw. A driver that
 insists on mutating its argument gets a structural clone
 (`structuredClone(org.toJSON())`), not a cast.
 
+### Diff two projections for a partial write
+
+An optional field that is not set is omitted at every depth, never written as
+`undefined`, however the state was built. So equal states project the same key
+set, and an adapter that writes only what changed can compare what it loaded
+against what was decided:
+
+```ts
+import { isDeepStrictEqual } from "node:util";
+
+const before: Record<string, unknown> = Subscription.make(row, { version }).getOrThrow().toJSON();
+const after: Record<string, unknown> = decision.state.toJSON();
+
+const set = Object.keys(after).filter((k) => !isDeepStrictEqual(before[k], after[k]));
+const unset = Object.keys(before).filter((k) => !(k in after)); // cleared, not set to undefined
+```
+
+The package ships no change set and no diff helper: what a change means to a
+store (`$set`, `$unset`, `$push`, an `UPDATE … SET`) is the adapter's, as the
+write is.
+
 ## Read with `make()`
 
 <!-- doctest: isolate

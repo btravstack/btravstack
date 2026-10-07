@@ -31,12 +31,15 @@ type Event = { readonly type: string };
  * loaded at, and every event decided since. Kept beside the instance rather
  * than on it, so no field name is reserved and nothing reaches `toJSON()`.
  * Every instance an aggregate hands out has an entry: `make` and `replay` set
- * one with nothing pending, `start` and `emit` carry one forward.
+ * one with nothing pending, `start` and `emit` carry one forward. `ended` is
+ * whether a terminal event is behind this state, pending or replayed.
  */
-const unsaved = new WeakMap<
-  object,
-  { readonly version: number; readonly pending: readonly Event[] }
->();
+type Unsaved = {
+  readonly version: number;
+  readonly pending: readonly Event[];
+  readonly ended: boolean;
+};
+const unsaved = new WeakMap<object, Unsaved>();
 type Handlers = Record<string, (...args: never[]) => unknown>;
 
 /**
@@ -75,11 +78,14 @@ export const createAggregate =
     Ev extends Events,
     O extends z.output<Ev>["type"],
     A extends Schemas = Record<never, never>,
+    End extends Exclude<z.output<Ev>["type"], O> = never,
   >(options: {
     /** every event this aggregate can produce, as one discriminated union on `type` */
     readonly events: Ev;
     /** the creation events, each to the first record */
     readonly opens: { readonly [K in O]: (event: EventNamed<Ev, K>) => RecordOf<S> };
+    /** the terminal events: once one is decided, the aggregate is over */
+    readonly ends?: readonly End[];
     /** every other event, each folding one record into the next — all of them, or it does not compile */
     readonly evolve: {
       readonly [K in Exclude<z.output<Ev>["type"], O>]: (
@@ -89,7 +95,7 @@ export const createAggregate =
     };
     readonly computed?: { [K in keyof A]: ComputedField<A[K], InputOf<S>> };
     readonly invariants?: readonly Invariant<InputOf<S>>[];
-  }): AggregateStatic<Tag, S, A, Ev, O> => {
+  }): AggregateStatic<Tag, S, A, Ev, O, End> => {
     // The same rule at runtime, for a caller the types did not reach — the
     // precedent is a root's redeclared field: a compile error, and a defect
     // while the declaration is on the stack.
@@ -103,7 +109,7 @@ export const createAggregate =
         `${tag}: an aggregate root needs an identity — flag at least one field \`identity: true\`.`,
       );
     }
-    const { events, opens, evolve, ...entityOptions } = options;
+    const { events, opens, evolve, ends = [], ...entityOptions } = options;
     const Base = buildEntity(tag)(fields as Fields, entityOptions) as Record<string, unknown> & {
       readonly prototype: Record<string, unknown>;
       readonly input: z.ZodObject;
@@ -119,6 +125,8 @@ export const createAggregate =
     Reflect.deleteProperty(Base, "factoryAsync");
 
     const parseEvent = fromSchema(events);
+    const terminal = new Set<string>(ends);
+    const isTerminal = (e: Event) => terminal.has(e.type);
     const openers = opens as unknown as Handlers;
     const folders = evolve as unknown as Handlers;
     const recordKeys = Object.keys(Base.input.shape);
@@ -139,16 +147,12 @@ export const createAggregate =
     const bug = (detail: string) => new Error(`${tag}: ${detail}`);
 
     /**
-     * The decision: the verified state, every event since the load, and the
-     * version the store must still be at. The new state inherits both, so a
-     * chained command's decision still saves the earlier events.
+     * The decision: the verified state, every event since the load, the
+     * version the store must still be at, and whether the aggregate ended. The
+     * new state inherits all of it, so a chained command's decision still
+     * saves the earlier events.
      */
-    const decide = (
-      Ctor: object,
-      record: unknown,
-      decided: readonly Event[],
-      from: { readonly version: number; readonly pending: readonly Event[] },
-    ) =>
+    const decide = (Ctor: object, record: unknown, decided: readonly Event[], from: Unsaved) =>
       verify
         .call(Ctor, record)
         .mapErrCases((m, defect) =>
@@ -158,8 +162,14 @@ export const createAggregate =
         )
         .map((state) => {
           const pending = Object.freeze([...from.pending, ...decided]);
-          unsaved.set(state, { version: from.version, pending });
-          return Object.freeze({ state, events: pending, expectedVersion: from.version });
+          const ended = from.ended || decided.some(isTerminal);
+          unsaved.set(state, { version: from.version, pending, ended });
+          return Object.freeze({
+            state,
+            events: pending,
+            expectedVersion: from.version,
+            isTerminal: ended,
+          });
         });
 
     /** Events from domain code: a schema failure is a bug in the command, so a defect. */
@@ -196,6 +206,11 @@ export const createAggregate =
               // oxlint-disable-next-line unthrown/no-throw
               throw bug("an aggregate built outside make, replay, start and emit cannot decide");
             }
+            const end = decided.findIndex(isTerminal);
+            if (from.ended || (end !== -1 && end < decided.length - 1)) {
+              // oxlint-disable-next-line unthrown/no-throw
+              throw bug("nothing can be decided after a terminal event");
+            }
             return fold(recordOf(this), decided);
           },
           (cause, defect) => defect(cause),
@@ -216,7 +231,9 @@ export const createAggregate =
             return (opener as (e: Event) => unknown)(event);
           },
           (cause, defect) => defect(cause),
-        )().flatMap((record) => decide(this, record, decided, { version: 0, pending: [] }));
+        )().flatMap((record) =>
+          decide(this, record, decided, { version: 0, pending: [], ended: false }),
+        );
       });
     }
 
@@ -232,7 +249,7 @@ export const createAggregate =
           // oxlint-disable-next-line unthrown/no-throw
           throw bug("make needs the version the row was loaded at: make(row, { version })");
         }
-        unsaved.set(instance, { version, pending: [] });
+        unsaved.set(instance, { version, pending: [], ended: false });
         return instance;
       });
     }
@@ -244,7 +261,8 @@ export const createAggregate =
      * handed to `make`, so every one is parsed and a bad one is an
      * `InvalidEntity` at its index. Upcasting an old event version is the
      * adapter's job, before this. The final `make` is strict: a stream that
-     * breaks a rule added since is refused like a row would be (#71).
+     * breaks a rule added since is refused like a row would be (#71). A stream
+     * stops at a terminal event, and the aggregate it replays to has ended.
      */
     function replay(this: object, raw: unknown): Result<object, InvalidEntity> {
       if (!Array.isArray(raw) || raw.length === 0) {
@@ -280,6 +298,12 @@ export const createAggregate =
             { message: "an opening event can only start a stream", path: [reopened + 1, "type"] },
           ]);
         }
+        const end = rest.findIndex(isTerminal);
+        if (end !== -1 && end < rest.length - 1) {
+          return invalid([
+            { message: "a stream ends at its terminal event", path: [end + 2, "type"] },
+          ]);
+        }
         return fromThrowable(
           () => fold((openers[opening.type] as (e: Event) => unknown)(opening), rest),
           (cause, defect) => defect(cause),
@@ -287,7 +311,7 @@ export const createAggregate =
           .flatMap((record) => verify.call(this, record))
           .map((state) => {
             // a stream's version is its length
-            unsaved.set(state, { version: raw.length, pending: [] });
+            unsaved.set(state, { version: raw.length, pending: [], ended: end !== -1 });
             return state;
           });
       }) as Result<object, InvalidEntity>;
@@ -300,5 +324,5 @@ export const createAggregate =
       Object.defineProperty(Base, key, { value, writable: true, configurable: true });
     }
 
-    return Base as unknown as AggregateStatic<Tag, S, A, Ev, O>;
+    return Base as unknown as AggregateStatic<Tag, S, A, Ev, O, End>;
   };

@@ -34,6 +34,7 @@ export const SubscriptionEvent = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("SeatsChanged"), seats: z.number().int().positive() }),
   z.object({ type: z.literal("SubscriptionCancelled"), at: z.iso.datetime() }),
+  z.object({ type: z.literal("SubscriptionErased") }),
 ]);
 export type SubscriptionEvent = z.output<typeof SubscriptionEvent>;
 
@@ -73,7 +74,9 @@ export class Subscription extends Entity.aggregate("Subscription")({
   evolve: {
     SeatsChanged: (r, e) => ({ ...r, seats: e.seats }),
     SubscriptionCancelled: (r, e) => ({ ...r, status: "CANCELLED", cancelledAt: e.at }),
+    SubscriptionErased: (r) => r,
   },
+  ends: ["SubscriptionErased"],
 }) {
   changeSeats(
     seats: number,
@@ -95,6 +98,11 @@ export class Subscription extends Entity.aggregate("Subscription")({
       return Err(new SubscriptionIsCancelled({ subscriptionId: this.id }));
     }
     return this.emit({ type: "SubscriptionCancelled", at });
+  }
+
+  /** The end of the subscription: its decision is terminal, so a repository deletes it. */
+  erase(): Result<Entity.Decision<Subscription, SubscriptionEvent>, never> {
+    return this.emit({ type: "SubscriptionErased" });
   }
 }
 

@@ -606,6 +606,13 @@ export type Events = z.ZodType<{ readonly type: string }>;
 export type EventNamed<Ev extends Events, K> = Extract<z.output<Ev>, { readonly type: K }>;
 
 /**
+ * What a command hands `emit` or `start` for the event whose `type` is `K`:
+ * the event's **input**, since both parse it against the union before the
+ * fold. An event carrying a nested part's `input` schema takes plain values.
+ */
+export type EventInput<Ev extends Events, K> = Extract<z.input<Ev>, { readonly type: K }>;
+
+/**
  * What an event handler folds over and returns: the declared fields as the
  * plain, **unbranded** input shape, because nothing has validated it yet. The
  * one `make` at the end of a fold is what turns it into an aggregate.
@@ -634,11 +641,16 @@ export declare class DecisionKey {
  * store must still be at: `0` for a new aggregate, the stream length after
  * `replay`, the row's version after `make`. The package carries it and never
  * interprets it.
+ *
+ * `isTerminal` is true once a decided event is one of the aggregate's `ends`:
+ * the aggregate is over, so a state-based repository deletes its row rather
+ * than updating it, and nothing more can be decided on that state.
  */
 export type Decision<A, E> = {
   readonly state: A;
   readonly events: readonly E[];
   readonly expectedVersion: number;
+  readonly isTerminal: boolean;
   // The property name is the diagnostic, as with `Sealed`.
   readonly __onlyEmitOrStartMakeADecision: DecisionKey;
 };
@@ -654,6 +666,7 @@ export interface AggregateInstance<
   A extends Schemas,
   Ev extends Events,
   O extends string,
+  End extends string = never,
 > {
   toJSON(): DeepReadonly<OutputOf<S, A>>;
   readonly sameIdentityAs: [IdentityKeys<S>] extends [never]
@@ -667,11 +680,21 @@ export interface AggregateInstance<
    *
    * A creation event (`O`, the keys of `opens`) is excluded: an aggregate that
    * exists cannot be created again, so emitting one is a compile error, as
-   * passing a non-creation event to `start` is. The decision's events stay
-   * typed as the whole union, the type a repository or an outbox stores.
+   * passing a non-creation event to `start` is. A terminal event (`End`, the
+   * entries of `ends`) only compiles last. Events are typed by the union's
+   * input, since each is parsed before the fold; the decision's events are its
+   * output, the type a repository or an outbox stores.
    */
   emit(
-    ...events: readonly Exclude<z.output<Ev>, { readonly type: O }>[]
+    // without `ends`, the plain array alone, so a refusal does not name a `never` tuple
+    ...events: [End] extends [never]
+      ? readonly EventInput<Ev, Exclude<z.output<Ev>["type"], O>>[]
+      :
+          | readonly EventInput<Ev, Exclude<z.output<Ev>["type"], O | End>>[]
+          | readonly [
+              ...EventInput<Ev, Exclude<z.output<Ev>["type"], O | End>>[],
+              EventInput<Ev, End>,
+            ]
   ): Result<Decision<this, z.output<Ev>>, never>;
 }
 
@@ -681,7 +704,8 @@ type ConstructedAggregate<
   A extends Schemas,
   Ev extends Events,
   O extends string,
-> = AggregateInstance<S, A, Ev, O> & DeepReadonly<OutputOf<S, A>> & { readonly _tag: Tag };
+  End extends string,
+> = AggregateInstance<S, A, Ev, O, End> & DeepReadonly<OutputOf<S, A>> & { readonly _tag: Tag };
 
 /**
  * What `Entity.aggregate(tag)(fields, options)` returns. Deliberately not an
@@ -692,7 +716,8 @@ type ConstructedAggregate<
  *
  * `O` is the opening event types — a literal union of event names, so it costs
  * a few characters in a consumer's declarations, unlike the field-key unions
- * the dead-end ledger in `GeneratedKeys` warns about.
+ * the dead-end ledger in `GeneratedKeys` warns about. `End`, the terminal
+ * event types, is the same kind of union.
  */
 export type AggregateStatic<
   Tag extends string,
@@ -700,8 +725,9 @@ export type AggregateStatic<
   A extends Schemas,
   Ev extends Events,
   O extends string,
+  End extends string = never,
 > = {
-  new (d: Sealed<OutputOf<S, A>>): ConstructedAggregate<Tag, S, A, Ev, O>;
+  new (d: Sealed<OutputOf<S, A>>): ConstructedAggregate<Tag, S, A, Ev, O, End>;
   readonly entityName: Tag;
   readonly input: z.ZodObject<PlainOf<S, "input">>;
   readonly output: z.ZodObject<PlainOf<S, "output"> & A>;
@@ -711,7 +737,7 @@ export type AggregateStatic<
   readonly __output: OutputOf<S, A>;
   /** the event union, read by `Entity.Event` */
   readonly __event: z.output<Ev>;
-  readonly __instance: ConstructedAggregate<Tag, S, A, Ev, O>;
+  readonly __instance: ConstructedAggregate<Tag, S, A, Ev, O, End>;
   /**
    * a snapshot or a state-based row → aggregate; emits nothing. The version is
    * required: it is what the aggregate's next decision tells the store to
@@ -726,7 +752,7 @@ export type AggregateStatic<
   /** an opening event → the decision that creates the aggregate */
   start<T>(
     this: new (d: Sealed<OutputOf<S, A>>) => T,
-    event: EventNamed<Ev, O>,
+    event: EventInput<Ev, O>,
   ): Result<Decision<T, z.output<Ev>>, never>;
   /** a stored stream → aggregate: parse every event, fold, one `make`; emits nothing */
   replay<T>(this: new (d: Sealed<OutputOf<S, A>>) => T, events: unknown): Result<T, InvalidEntity>;
