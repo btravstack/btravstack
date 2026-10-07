@@ -1,0 +1,71 @@
+name: Mutation
+
+# StrykerJS over `packages/core` and `packages/di`, weekly. The kernel's specs
+# are called "mutation-verified" in AGENTS.md, and this is what keeps that a
+# recomputed number rather than prose: the score is in the job log and the
+# full report is the run's artifact.
+#
+# Report-only. A score below a threshold never fails the run; a broken run
+# (Stryker itself erroring) still does. Not on the gate, because a pass takes
+# minutes where the suites take a second. `http-server` is out on purpose:
+# real listeners and a JWKS per file make every mutant a network round trip.
+#
+# Three settings in the package configs carry a reason JSON cannot hold:
+#
+# - `inPlace`: the vitest configs reach `../../vitest.shared.ts` (and core
+#   `../testing/src`) by relative path, which a sandbox copy one directory
+#   deeper would break.
+# - `vitest.related: false`: vitest's related-file analysis misses the specs
+#   that reach `src` through the `@btravstack/testing` alias, so their kills
+#   went uncounted.
+# - core's `concurrency: 1`: `invariants.spec.ts` binds the probe server's
+#   default port 9000 on purpose, and two runners doing it at once would fail
+#   a test for a reason no mutant caused — a kill that is a lie.
+#
+# `patches/@stryker-mutator__vitest-runner@10.0.0.patch` makes the runner name
+# a test the way vitest 5 does (`suite > test`). Without it every test inside
+# a `describe` is filtered out of every mutant run and survives everything.
+
+on:
+  schedule:
+    - cron: "41 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutate:
+    name: Mutate ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [core, di]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      # The specs import the workspace packages below this one as built
+      # `dist`, exactly as `pnpm test` does.
+      - name: Build what the specs import
+        run: pnpm turbo run build --filter=@btravstack/${{ matrix.package }}^...
+
+      - name: Mutate
+        run: pnpm --filter @btravstack/${{ matrix.package }} run mutate
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-${{ matrix.package }}
+          path: packages/${{ matrix.package }}/reports/mutation/
+          if-no-files-found: ignore

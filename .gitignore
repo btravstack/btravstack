@@ -3,6 +3,10 @@ node_modules/
 *.tsbuildinfo
 coverage/
 *.lcov
+# StrykerJS's report and its in-place backup (`pnpm --filter … mutate`).
+**/reports/mutation/
+**/stryker-setup-*.js
+.stryker-tmp/
 .turbo/
 *.log
 .env

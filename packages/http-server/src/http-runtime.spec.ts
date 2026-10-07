@@ -101,6 +101,40 @@ describe("httpRuntime", () => {
     );
   });
 
+  it("closes every response it opened across a thousand mixed requests", async ({ churn }) => {
+    // GIVEN a thousand requests — served, declined by the answerer, outside
+    // every answerer, and dropped by the client mid-body
+    const { responses } = await churn(1_000);
+
+    // WHEN the server has seen each one through. `vi.waitUntil` synchronises
+    // rather than asserts; a response that never closes times it out.
+    await vi.waitUntil(() => responses().every(({ closed }) => closed));
+
+    // THEN every one reached the runtime and closed, which is the event that
+    // takes it out of the drain's `open` set
+    expect({
+      seen: responses().length,
+      open: responses().filter(({ closed }) => !closed).length,
+    }).toEqual({ seen: 1_000, open: 0 });
+  });
+
+  it("leaves no unit in flight after a thousand mixed requests", async ({ churn }) => {
+    // GIVEN the same thousand requests, every response closed
+    const { app, responses } = await churn(1_000);
+    await vi.waitUntil(() => responses().every(({ closed }) => closed));
+
+    // WHEN the drain samples the kernel's unit registry
+    app.requestDrain();
+
+    // THEN nothing was in flight: a unit waiting on a `'close'` that already
+    // fired — the `closedOf` class — would be counted here and abandoned
+    await expect(app.exited).toBeOkWith(
+      expect.objectContaining({
+        drain: { inFlightAtStart: 0, completed: 0, abandoned: 0 },
+      }),
+    );
+  });
+
   it("binds PORT and HOST from the environment when nothing is pinned", async ({ configured }) => {
     // GIVEN a starter left to configure itself, and an environment naming the socket
     const { app, config } = configured({ PORT: "0", HOST: "127.0.0.1" });

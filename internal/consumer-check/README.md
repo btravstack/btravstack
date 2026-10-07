@@ -30,6 +30,17 @@ CI job rather than asking another repository for a new one.
    `@btravstack/http-server` subpaths resolve no types under legacy `node10`
    resolution. See **The node10 decision** below.
 
+3. **No tarball grew by half since its last release.** Each packed package's
+   contents are summed and compared against `npm view <name> dist.unpackedSize`;
+   above `BUDGET` (1.5×) the check fails. CI's Bundle Size job comes from the
+   reusable workflow and only reports `du`, so the budget rides here, beside the
+   packing it needs. The ratio's reason is `BUDGET`'s TSDoc: features move a
+   package by a few percent, a mistake in what ships doubles it. Growth that is
+   meant goes in `accepted` with its reason until the next release makes it the
+   baseline, and an entry for a package back under budget fails as stale, so an
+   exemption cannot outlive the growth it was for; a package npm has never seen
+   has no baseline and is skipped.
+
 ## How it works
 
 `pnpm pack` every published package into a temporary directory, `pnpm init` a

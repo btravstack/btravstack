@@ -1178,7 +1178,8 @@ preference.
 **Rules 1 to 3 are structural and bind `examples/`**, the teaching surface,
 where the shape of a spec is itself read as advice. Most of the kernel's specs
 predate them and are
-**deliberately not swept**: they are mutation-verified, hold
+**deliberately not swept**: they are mutation-verified — weekly, by
+`.github/workflows/mutation.yml`, whose run log carries the current score — hold
 the package at 100% line and function coverage, and are the tests guarding the
 shipped invariants — restructuring them buys consistency while risking exactly
 the weakening rules 4 and 5 exist to prevent. A **new or rewritten** kernel spec

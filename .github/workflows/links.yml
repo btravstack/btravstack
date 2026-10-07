@@ -1,0 +1,77 @@
+name: Links
+
+# Every external link in the docs and the READMEs, weekly. Not on the gate: a
+# link rots on someone else's server, so a PR that touched nothing would go
+# red for it. The site's own links are already gated — relative ones by
+# `extract-doc-samples.ts`, `#fragment`s by `check-anchors.ts`, root-relative
+# ones by VitePress itself — which is why only `http(s)` is checked here.
+#
+# It opens an issue rather than staying report-only: a rotted link is work for
+# somebody, and a red scheduled run nobody watches is not. One issue at a
+# time — a later run comments on the open one instead of filing another.
+
+on:
+  schedule:
+    - cron: "29 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: External links
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Code fences are skipped (lychee's default), so the `https://evil.com`
+      # and `https://issuer.test` a sample needs never reach the network; the
+      # excludes cover the same reserved names in prose.
+      #
+      # `--root-dir` is what keeps the site's root-relative links
+      # (`/reference/core/start`) out of the report: without one lychee errors
+      # on every such link before `--scheme` can filter it, and the issue
+      # would be filed with every external URL healthy. With one they resolve
+      # to `file://` and `--scheme` drops them unchecked.
+      - name: Check
+        id: lychee
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          fail: false
+          args: >-
+            --no-progress
+            --root-dir ${{ github.workspace }}/docs
+            --scheme https --scheme http
+            --exclude-path node_modules
+            --exclude-path docs/api/
+            --exclude-loopback
+            --exclude '\.(test|example|invalid|localhost)([/:]|$)'
+            --exclude '^https?://evil\.com'
+            README.md
+            'packages/*/README.md'
+            'examples/**/README.md'
+            'internal/*/README.md'
+            'docs/**/*.md'
+
+      - name: File or update the issue
+        if: steps.lychee.outputs.exit_code != 0
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: Broken external links
+        run: |
+          existing=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file lychee/out.md
+          else
+            gh issue create --title "$TITLE" --body-file lychee/out.md
+          fi
