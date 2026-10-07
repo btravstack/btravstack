@@ -1,5 +1,22 @@
 # @btravstack/prisma
 
+## 0.19.0
+
+### Minor Changes
+
+- 4244b60: Align the affected starters' Node floors with their required dependencies and publish Temporal as ESM only. Bound cleanup after failed construction, preserve canonical entity projections and source compatibility with TypeScript 5.9, and document Prisma's first-use pool requirement.
+
+### Patch Changes
+
+- Updated dependencies [8e0461b]
+- Updated dependencies [a525ecb]
+- Updated dependencies [fb06cd9]
+- Updated dependencies [a3ce035]
+- Updated dependencies [4244b60]
+  - @btravstack/core@0.19.0
+  - @btravstack/di@0.19.0
+  - @btravstack/config@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes

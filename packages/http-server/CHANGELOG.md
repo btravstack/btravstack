@@ -1,5 +1,41 @@
 # @btravstack/http-server
 
+## 0.19.0
+
+### Minor Changes
+
+- a3ce035: **`overridden` reaches inside a unit module, so a composition root stays a constant.** `overridden(root, providers, { unit: { user: [Provider(OrderRepository)(…)] } })` substitutes a provider inside the module a root binds for a unit kind — `user` or any HTTP scheme, `message` on AMQP, `activity` on Temporal — where a root-level override could not see it, since a unit module is forked per unit after the root is built. An application no longer writes its root as a factory over its kinds for a spec's sake.
+
+  The kernel applies the overrides at boot, before the runtime starts, and the drift gate fires there as a `Defect`: a kind the runtime binds no module for, a port that kind's module no longer provides, two overrides for one port in one kind, or one module bound under two kinds. A unit override's error channel must be `never`, as a fork's is — refused at compile time.
+
+  `@btravstack/core` exports the `UnitOverrides` set port `overridden` contributes to, and `Runtime` gains an optional `units` record — the modules a runtime forks, by kind — which the three shipped runtimes and `testRuntime` now declare. A hand-rolled runtime that omits it refuses every unit override at boot rather than ignoring it.
+
+  `overridden(root, [])` also no longer widens the error channel to `unknown`.
+
+- c268e03: Peer ranges now start at a version that installs. The consumer check installs each package alone with its required peers at the lowest version each range admits, and three ranges admitted releases that could not be installed or loaded:
+
+  - `@btravstack/amqp-worker` and `@btravstack/temporal-worker`: `unthrown` is `^5.7.0`. It said `^5.0.0`, but `@amqp-contract/worker` and `@temporal-contract/worker` depend on `@unthrown/standard-schema` and `@unthrown/saga`, which require `unthrown ^5.7.0`, so a strict-peer install of any 5.0–5.6 was refused.
+  - `@btravstack/http-server`: the `@orpc/*` peers are `^2.0.0-beta.28`. They said `^2.0.0-beta`, which admitted betas without the `@orpc/server/plugins` export the package imports, so it did not load. 2.0.0-beta.28 is the beta it is built and tested against.
+
+  These narrow peer ranges, so they ship as `minor`: on 0.x, a patch would land inside consumers' `^0.x` ranges and fail a strict-peer install.
+
+- 4244b60: Align the affected starters' Node floors with their required dependencies and publish Temporal as ESM only. Bound cleanup after failed construction, preserve canonical entity projections and source compatibility with TypeScript 5.9, and document Prisma's first-use pool requirement.
+- 3ed93a4: **Breaking: `csrfOn` is no longer exported from `@btravstack/http-server/session`.** It is the runtime's own decision of whether `csrf` defaults on, re-exported by the session subpath with no user in code, tests, examples or docs. Set `csrf` on `http()` / `HttpModule`, or contribute `cookieScheme()`, as before.
+
+### Patch Changes
+
+- 23a1262: A handler that rejects after flushing its headers now has its socket reset, as a synchronous throw already did, instead of leaving the client and the unit open until shutdown. A bound unit module is now discharged only of its own scheme's principal — `anonymous`'s of none — so a root whose module needs a principal its kind is never seeded with is refused at `start` instead of answering `500`.
+- 87d9814: `HttpModule` now refuses a root that leaves a request-scope kind unbound. When the router or the fragments come from `auth.units<…>()`, every declared kind the root serves must appear on `unit` — a missing kind is `Property '<kind>' is missing`, and a root with no `unit` at all is refused against `"UNBOUND UNIT KINDS — units<…>() declared them, so bind each on unit"`. Such a root used to compile and then fork `anonymous`'s module, or nothing, under a leaf reading `context.unit`, answering `500`. To migrate, bind each kind the compiler names, with the module you passed to `units<…>()` for it. A declared kind none of the root's answerers serves stays optional.
+- Updated dependencies [8e0461b]
+- Updated dependencies [a525ecb]
+- Updated dependencies [fb06cd9]
+- Updated dependencies [a3ce035]
+- Updated dependencies [4244b60]
+  - @btravstack/core@0.19.0
+  - @btravstack/di@0.19.0
+  - @btravstack/config@0.19.0
+  - @btravstack/contract@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes
