@@ -1689,11 +1689,11 @@ reported as `/`. Those two clauses are one shared `returnTo`, the same function
 [`oidc()`](#the-login-answerer) applies when it seals the value and again when
 it follows it, and the value is DECODED EXACTLY ONCE on the way through — a
 second `decodeURIComponent` would turn `%255C` back into `\`. That guard is not
-belt-and-braces: a route whose first segment is a parameter
-(`api.HtmxGet("/:slug", { requires })`) matches the crafted target
-`/\evil.com`, and `new URL("/\\evil.com", base)` resolves to
+belt-and-braces: `new URL("/\\evil.com", base)` resolves to
 `https://evil.com/` — the WHATWG parser reads `\` as `/` in relative-slash
-state. Whether a header can CARRY the result is a separate question and not the
+state. The shared pathname parser rejects that raw target before an htmx
+fragment route can mint a return; `returnTo` also guards a value handed through
+another path. Whether a header can CARRY the result is a separate question and not the
 guard's: the mount goes through `forLocation` where it becomes a `Location`,
 which leaves an already-encoded `%` alone, because
 Node's header validator refuses every code point above U+00FF as well as every

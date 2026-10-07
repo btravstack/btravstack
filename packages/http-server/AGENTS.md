@@ -943,14 +943,12 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   the callback, where it is decoded exactly once. They are what the guard is
   FOR: whether a HEADER can carry the result is a separate question, answered
   by `forLocation` at the `Location` rather than by a third clause here.
-  A protocol-relative target is manufacturable through a route that looks
-  nothing like one: a route whose FIRST segment is a parameter
-  (`api.HtmxGet("/:slug", { requires })`) matches the crafted target
-  `/\evil.com` — one non-empty segment, so `matchPath` is satisfied and the
-  runtime's mount gate is too — and `new URL("/\\evil.com", base)` resolves
-  to `https://evil.com/`, the WHATWG parser reading `\` as `/` in
-  relative-slash state. Minting it and trusting the login answerer to reject
-  it would put the check one package away from the fact that produced it, and
+  The shared pathname parser now normalizes a crafted `/\evil.com` target to
+  `/` before `htmx()` matches `/:slug`, so that request gets `404`.
+  `new URL("/\\evil.com", base)` still resolves to `https://evil.com/`, the
+  WHATWG parser reading `\` as `/` in relative-slash state. Trusting only the
+  login answerer to reject such a value would put the check one package away
+  from the fact that produced it, and
   a login answerer is not the only thing that will ever read a `return`. What
   stays the consumer's is the rest of the open-redirect question, at the point
   the value is about to be followed.
@@ -1421,11 +1419,11 @@ path is read with `URL.parse(request.url, "http://x")` (`handler.ts`'s
 second matching no mount at all. `URL.parse` rather than `new URL` because a
 target no parser accepts must not throw out of the request callback, where the
 kernel's `uncaughtException` handler would read it as the application failing.
-`htmx()` still matches its ROUTES against the raw target split on `?`, and
-that difference is pinned rather than overlooked: the parser rewrites
-`/\evil.com` to `/`, so the crafted-target spec that proves the `returnTo`
-guard would stop reaching it. Nesting
-is the expected shape rather than a conflict, so ordering never has to be
+`htmx()` matches its routes through the same `pathUnder`, so an absolute-form
+target reaches its fragment and a crafted `/\evil.com` normalizes to `/`
+before any route can mint a return. The crafted-target spec pins the resulting
+`404` and the separate `returnTo` guard. Nesting is the expected shape rather
+than a conflict, so ordering never has to be
 decided — which is the whole reason this beat #174's own option (2), where a
 chain of "answer or decline" would have made ordering a property of provider
 registration across modules and visible in no single line. A path no mount

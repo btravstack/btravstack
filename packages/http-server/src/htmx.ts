@@ -5,7 +5,7 @@ import { Err, Ok, P, fromExecutor, type AsyncResult } from "unthrown";
 
 import { principalOf, resolveScheme, type Resolved } from "./auth.js";
 import { matchPath } from "./fragments.js";
-import { HttpHandler, send } from "./handler.js";
+import { HttpHandler, pathUnder, send } from "./handler.js";
 import { HtmxFragmentsPort, type FragmentAnswer } from "./htmx-route.js";
 import { HttpConfig } from "./http-config.js";
 import { HttpUnit } from "./http-runtime.js";
@@ -52,7 +52,7 @@ export const htmx = (options: HtmxOptions = {}) => {
         const matched = matchRoute(
           fragments.routes,
           request.method,
-          relativePath(request.url, prefix),
+          pathUnder(request.url, prefix),
         );
         // No route claims this request: resolve unwritten so the runtime's own
         // 404 answers, rather than stealing it from an answerer mounted deeper.
@@ -156,14 +156,6 @@ const matchRoute = (
     if (params !== undefined) return { route, params };
   }
   return undefined;
-};
-
-/** `request.url` relative to the mount, query string dropped. */
-const relativePath = (url: string | undefined, prefix: `/${string}`): string => {
-  const full = (url ?? "/").split("?")[0] ?? "/";
-  const mount = prefix.replace(/\/+$/, "");
-  const rest = full.slice(mount.length);
-  return rest === "" ? "/" : rest;
 };
 
 /**
