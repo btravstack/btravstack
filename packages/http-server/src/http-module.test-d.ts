@@ -312,6 +312,47 @@ const _unboundKinds = { router: gatedUserRouter, port: 0 } as const;
 // @ts-expect-error — UNBOUND UNIT KINDS: the router serves kinds `units<…>()` declared
 void HttpModule("GatedUnbound")(_unboundKinds);
 
+// `anonymous` is required only when a request here forks it: a public leaf, or
+// a served scheme that declared no module of its own and falls back to it. A
+// root whose every leaf is authenticated binds its schemes and nothing else.
+void HttpModule("GatedAuthenticatedOnly")({
+  router: gatedUserRouter,
+  port: 0,
+  unit: { user: UserUnit },
+});
+
+const gatedMixedRouter = gated.OrpcRouter({ ...userContract, open: { hello: oc } })({
+  inject: {},
+  sync: () => ({ me: { hello: () => OkAsync("hi") }, open: { hello: () => OkAsync("hi") } }),
+});
+const _publicLeafUnbound = {
+  router: gatedMixedRouter,
+  port: 0,
+  unit: { user: UserUnit },
+} as const;
+// @ts-expect-error — Property 'anonymous' is missing: `open.hello` is public
+void HttpModule("GatedPublicLeafUnbound")(_publicLeafUnbound);
+
+const anonymousOnly = withUser.units<{ anonymous: typeof AnonymousUnit }>();
+const fallbackRouter = anonymousOnly.OrpcRouter(userContract)({
+  inject: {},
+  sync: () => ({ me: { hello: () => OkAsync("hi") } }),
+});
+const _fallbackUnbound = { router: fallbackRouter, port: 0 } as const;
+// @ts-expect-error — UNBOUND UNIT KINDS: `user` declared no module, so it forks `anonymous`'s
+void HttpModule("GatedFallbackUnbound")(_fallbackUnbound);
+
+const gatedUserRow = gated.HtmxGet("/me", { requires: [{ user: [] }] })({
+  inject: {},
+  sync: () => () => OkAsync(html`<p>me</p>`),
+});
+void HttpModule("GatedFragmentsAuthenticatedOnly")({
+  fragments: gated.HtmxFragments([gatedUserRow]),
+  port: 0,
+  provides: [gatedUserRow],
+  unit: { user: UserUnit },
+});
+
 const _fragmentsUnbound = { fragments: gatedFragments, port: 0, provides: [gatedRow] } as const;
 // @ts-expect-error — UNBOUND UNIT KINDS: the fragments serve `anonymous`, which was declared
 void HttpModule("GatedFragmentsUnbound")(_fragmentsUnbound);

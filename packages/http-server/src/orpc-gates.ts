@@ -1,4 +1,4 @@
-import type { PrincipalKey, Requirements, RequirementsOf } from "@btravstack/contract";
+import type { IsMarked, PrincipalKey, Requirements, RequirementsOf } from "@btravstack/contract";
 import type { PortClassOf, PortInstance, Provider } from "@btravstack/di";
 import type { ProcedureContract, RouterContract } from "@orpc/contract";
 import type { Router } from "@orpc/server";
@@ -31,8 +31,25 @@ export type Refuse<
   ? readonly [...Head, readonly [Marker, Detail]]
   : readonly [readonly [Marker, Detail]];
 
+/**
+ * `"anonymous"` when some procedure of `C` carries no requirement once marks
+ * are inherited — a request the runtime opens with no caller — else `never`.
+ * A router whose every leaf is marked never forks the `anonymous` module.
+ */
+export type PublicIn<C, R = never> =
+  C extends ProcedureContract<infer _I, infer _O, infer _E>
+    ? [IsMarked<C> extends true ? RequirementsOf<C> : R] extends [never]
+      ? "anonymous"
+      : never
+    : {
+        readonly [K in Exclude<keyof C, PrincipalKey>]: PublicIn<
+          C[K],
+          IsMarked<C> extends true ? RequirementsOf<C> : R
+        >;
+      }[Exclude<keyof C, PrincipalKey>];
+
 /** What every `OrpcRouter` arm returns; only the needs channel `N` differs. */
-export type Built<Auth, N, Units> = Provider<
+export type Built<Auth, N, Units, Public = "anonymous"> = Provider<
   PortInstance<"OrpcRouter", Router<Record<never, never>>>,
   never,
   N
@@ -45,6 +62,8 @@ export type Built<Auth, N, Units> = Provider<
   readonly authenticators: readonly Auth[];
   /** Phantom: the kinds bound at `units<…>()`, read by `HttpModule`, never at runtime. */
   readonly _units?: Units;
+  /** Phantom: `"anonymous"` when a leaf is public, read by `HttpModule`, never at runtime. */
+  readonly _public?: Public;
 };
 
 /**

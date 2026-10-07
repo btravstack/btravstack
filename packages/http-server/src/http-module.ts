@@ -112,21 +112,52 @@ type BindableKinds<Router, Fragments> = [keyof DeclaredUnits<Router, Fragments>]
   ? ServedKinds<Router, Fragments>
   : keyof DeclaredUnits<Router, Fragments>;
 
-/** `anonymous` and every scheme the answerers serve — the kinds a request here can open under. */
+/** `anonymous` and every scheme the answerers serve — the kinds a root may name. */
 type ServedKinds<Router, Fragments> =
   | "anonymous"
   | SchemesOfAnswerer<Router>
   | SchemesOfAnswerer<Fragments>;
 
 /**
+ * `"anonymous"` when an answerer has a public leaf. A provider carrying no
+ * `_public` phantom is assumed to have one; an omitted answerer has none.
+ */
+type PublicOf<T> = [T] extends [undefined]
+  ? never
+  : T extends { readonly _public?: infer P }
+    ? unknown extends P
+      ? "anonymous"
+      : P
+    : "anonymous";
+
+/**
+ * The kinds a request to THIS root really forks under: every served scheme,
+ * and `anonymous` when a leaf is public or when a served scheme declared no
+ * module of its own — the fallback is a fork of `anonymous`'s module too.
+ */
+type ReachableKinds<Router, Fragments> =
+  | SchemesOfAnswerer<Router>
+  | SchemesOfAnswerer<Fragments>
+  | PublicOf<Router>
+  | PublicOf<Fragments>
+  | ([
+      Exclude<
+        SchemesOfAnswerer<Router> | SchemesOfAnswerer<Fragments>,
+        keyof DeclaredUnits<Router, Fragments>
+      >,
+    ] extends [never]
+      ? never
+      : "anonymous");
+
+/**
  * The declared kinds a request to THIS root can open under, which the root must
  * bind: a leaf under one is typed by the module `units<…>()` named, and left
  * unbound it would fork `anonymous`'s — or nothing — at runtime. A declared
- * kind none of the answerers serves stays optional, as an authenticator a
- * router never reaches is not one more thing to bind.
+ * kind no request here forks under stays optional, `anonymous` included when
+ * every leaf is authenticated.
  */
 type RequiredKinds<Router, Fragments> = keyof DeclaredUnits<Router, Fragments> &
-  ServedKinds<Router, Fragments>;
+  ReachableKinds<Router, Fragments>;
 
 /**
  * A bound kind no request can ever open under. A record whose keys are not

@@ -2034,10 +2034,10 @@ The `anonymous` fallback makes a typo silent: `unit: { usre: M }` would fork
 `anonymous` on every request and diagnose nothing. So `HttpModule` **gates**
 what a root binds, in two cases:
 
-| The answerers                    | Bindable kinds                                    | Required kinds                         | Each value must be                 |
-| -------------------------------- | ------------------------------------------------- | -------------------------------------- | ---------------------------------- |
-| come from `auth.units<…>()`      | exactly the kinds that call declared              | the declared kinds the answerers serve | the module type that kind declared |
-| come from a plain `defineHttp()` | `anonymous` plus every scheme the answerers serve | none                                   | any unit module                    |
+| The answerers                    | Bindable kinds                                    | Required kinds                          | Each value must be                 |
+| -------------------------------- | ------------------------------------------------- | --------------------------------------- | ---------------------------------- |
+| come from `auth.units<…>()`      | exactly the kinds that call declared              | the declared kinds a request here forks | the module type that kind declared |
+| come from a plain `defineHttp()` | `anonymous` plus every scheme the answerers serve | none                                    | any unit module                    |
 
 An undeclared kind is refused against an
 `"UNDECLARED UNIT KIND — no request opens under it, so it would silently fall back to anonymous"`
@@ -2053,9 +2053,11 @@ reads a port only the declared one provides: a `500` on the first request. A
 missing kind is TypeScript's own `Property 'user' is missing`; a missing
 record is refused against
 `"UNBOUND UNIT KINDS — units<…>() declared them, so bind each on unit"`,
-naming the kinds. A declared kind no answerer here serves — `session` under a
-router whose contract marks only `user` and `service` — stays optional, so a
-lifted slice binds what it serves and no more.
+naming the kinds. A declared kind no request here forks under stays optional,
+so a lifted slice binds what it serves and no more: `session` under a router
+whose contract marks only `user` and `service`, and `anonymous` under one whose
+every leaf is marked. `anonymous` is required when a leaf is public, or when a
+served scheme declared no module of its own and so falls back to it.
 
 The second case's set comes from the answerers' own needs channel — a router
 already owes one authenticator port per scheme its contract marks, and a
