@@ -649,6 +649,108 @@ describe("start", () => {
     });
   });
 
+  it("reports an uncaught exception raised while a finaliser runs as uncaught", async () => {
+    // GIVEN a stop already decided, whose release announces that it has begun
+    // and waits — with the kernel's uncaught handler still installed, which
+    // has suppressed Node's own exit code
+    const releasing = Promise.withResolvers<void>();
+    const released = Promise.withResolvers<void>();
+    const runtime = testRuntime();
+    const Releasing = Module("CrashesWhileReleasing")({
+      imports: [runtime.module],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            releasing.resolve();
+            return released.promise;
+          },
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Releasing, { clock: createFakeClock(), probes: false, onEvent: () => {} });
+    await runtime.untilStarted();
+    app.stop();
+    await releasing.promise;
+
+    // WHEN something crashes before the release returns
+    process.emit("uncaughtException", new Error("boom"));
+    released.resolve();
+
+    // THEN the report says so, which is what `runMain` reads exit 70 off
+    expect(await app.exited).toBeOkWith(expect.objectContaining({ reason: "uncaught" }));
+  });
+
+  it("gives up on a refused start's cleanup when something crashes during it", async () => {
+    // GIVEN a runtime that refused to start, over a release that announces
+    // that it has begun and never settles
+    const releasing = Promise.withResolvers<void>();
+    const broken = {
+      ...testRuntime(),
+      start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })),
+    };
+    const Wedged = Module("CrashesWhileReleasingAfterStartFailed")({
+      imports: [runtimeModule(broken)],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            releasing.resolve();
+            return new Promise<void>(() => {});
+          },
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Wedged, { clock: createFakeClock(), probes: false, onEvent: () => {} });
+    await releasing.promise;
+
+    // WHEN something crashes during that cleanup
+    process.emit("uncaughtException", new Error("boom"));
+
+    // THEN it is a crash mid-build, as it always was: reported, and exit 70
+    expect(await app.exited).toBeOkWith(
+      expect.objectContaining({ reason: "uncaught", abandonedAt: "build" }),
+    );
+  });
+
+  it("counts the finalisers in the uptime it reports", async () => {
+    // GIVEN a stop whose release announces that it has begun and takes a
+    // second of the clock to finish
+    const clock = createFakeClock();
+    const releasing = Promise.withResolvers<void>();
+    const released = Promise.withResolvers<void>();
+    const runtime = testRuntime();
+    const Slow = Module("SlowRelease")({
+      imports: [runtime.module],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            releasing.resolve();
+            return released.promise;
+          },
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Slow, { clock, signals: false, probes: false, stopTimeoutMs: 5_000 });
+    await runtime.untilStarted();
+    app.stop();
+    await releasing.promise;
+
+    // WHEN the release finishes a second later, inside the deadline
+    await clock.advance(1_000);
+    released.resolve();
+
+    // THEN
+    expect(await app.exited).toBeOkWith(expect.objectContaining({ uptimeMs: 1_000 }));
+  });
+
   it("reports an uncaught exception raised while the graph is still building", async () => {
     // GIVEN a provider that never resolves, so the application never serves —
     // and an uncaught exception, whose handler has already suppressed Node's

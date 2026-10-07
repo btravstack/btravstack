@@ -249,7 +249,23 @@ Beyond the nine:
   late"_ and _"keeps a teardown failure that lands after the report on the
   report, not the event stream"_.
 
-  **A construction `Err` is the remaining gap**: di releases what
+  **A crash during `stopping` still reports as one.** The uncaught handler
+  now outlives `finish`, so a crash can land after the reason is decided, and
+  `requestShutdown` cannot rewrite it: `crashed` overrides the reason in
+  `reportOf`, and a crash during a refused start's cleanup abandons it as the
+  build it was (`startupFailing`, set where the failure is tapped) — so it
+  stays exit `70` rather than the `0` the suppressed Node exit would leave.
+  The report is built when `Module.scoped` settles (or the deadline gives up),
+  never when `Serving.stop` returns, so `uptimeMs` counts the finalisers.
+  Guarded by _"reports an uncaught exception raised while a finaliser runs as
+  uncaught"_, _"gives up on a refused start's cleanup when something crashes
+  during it"_ and _"counts the finalisers in the uptime it reports"_. A
+  `unit` fork's `onTeardownError` writes to `sink`, past the `exited` latch: a
+  unit a stop or a drain deadline stopped waiting for can close after the
+  report, and that event is its only channel (`unit-module.spec.ts` → _"still
+  reports a unit teardown that fails after the application has exited"_).
+
+  **A construction failure — an `Err` or a defect — is the remaining gap**: di releases what
   it acquired inside `Module.scoped` before anything the kernel holds sees the
   failure, so only a second signal or an uncaught exception (the abandoned
   build) cuts a release wedged there short. Closing it needs a hook in di's
@@ -539,11 +555,12 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   calls `process.exit()`.
 
 - **The `teardownErrors` aliasing is load-bearing.** The array put on the
-  `ExitReport` is the **same mutable array** `onTeardownError` pushes into. di
-  closes the scope after `use` settles but before its own result settles, so
-  every finaliser failure lands in the array after the object is built and
-  before the caller can observe it. A defensive copy anywhere on that path would
-  silently drop every teardown error.
+  `ExitReport` is the **same mutable array** `onTeardownError` pushes into. On
+  the ordinary path the report is built once the scope has closed, but on the
+  abandoned-stop path the close is still running, so a finaliser that fails
+  late lands in the array after a reader has the report — and the `exited`
+  latch keeps it off the event stream, so the array is its only channel. A
+  defensive copy anywhere on that path would silently drop it.
 
 - **`ready()` is `phase === "serving" && !forcedUnready`, and the two terms do
   not contribute equally.** On the drain path the phase term alone answers

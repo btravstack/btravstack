@@ -201,6 +201,7 @@ probe bind failure — emits `startFailed`, moves the phase to `stopping` then
 `exited`, and lands in `exited`'s error channel. Once the graph is built, the
 finalisers a failure runs get `stopTimeoutMs` too: past it the kernel emits
 `stoppedWaiting` and `exited` still settles with the startup failure, not an
-`ExitReport`. A construction `Err` is the exception — di releases what it had
+`ExitReport`. A construction failure — an `Err` or a defect while the graph is
+built — is the exception: di releases what it had
 acquired before the kernel can see the failure, so only a second signal or an
 uncaught exception cuts a release wedged there short.
