@@ -135,6 +135,10 @@ Two things it deliberately does not do:
   file rather than being silently recovered into a schedule nobody registered.
   Both arms are covered by `schedule.spec.ts`, reached past the types.
 
+The worked consumer is `examples/order-temporal-worker`'s
+`pnpm deploy:schedules`, whose spec runs the deploy twice on a namespace of
+its own and finds one schedule.
+
 Why a subpath rather than a `-client` package, against the naming thesis: that
 rule exists because peers are per-package and a caller must not install the
 serving half. This is not the calling half of a contract — it starts no

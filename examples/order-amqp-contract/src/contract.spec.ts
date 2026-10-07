@@ -16,7 +16,12 @@ describe("orderContract", () => {
         deadLetter: expect.objectContaining({
           exchange: expect.objectContaining({ name: "orders-dlx" }),
         }),
-        retry: expect.objectContaining({ mode: "ttl-backoff", maxRetries: 3, initialDelayMs: 10 }),
+        retry: expect.objectContaining({
+          mode: "ttl-backoff",
+          maxRetries: 6,
+          initialDelayMs: 100,
+          maxDelayMs: 2_000,
+        }),
       }),
     );
   });
@@ -39,6 +44,7 @@ describe("orderContract", () => {
       kind: "order",
       id: "0199a1e0-0000-7000-8000-000000000001",
       occurredAt: "2026-08-13T22:00:00.000Z",
+      placedAt: "2026-08-13T21:00:00.000Z",
       payload: { quantity: 2 },
     };
 
@@ -57,6 +63,7 @@ describe("orderContract", () => {
       kind: "order",
       id: "0199a1e0-0000-7000-8000-000000000001",
       occurredAt: "2026-08-13T22:00:00.000Z",
+      placedAt: "2026-08-13T21:00:00.000Z",
       payload: null,
     };
 
@@ -79,6 +86,7 @@ describe("orderContract", () => {
         kind: "order",
         id: "0199a1e0-0000-7000-8000-000000000001",
         occurredAt: "2026-08-13T22:00:00.000Z",
+        placedAt: "2026-08-13T21:00:00.000Z",
         payload: { quantity: "two" },
       }),
     ).toBeErrWith([expect.objectContaining({ path: ["payload", "quantity"] })]);
@@ -92,6 +100,7 @@ describe("orderContract", () => {
       kind: "order",
       id: "o-1",
       occurredAt: "2026-08-13T22:00:00.000Z",
+      placedAt: "2026-08-13T21:00:00.000Z",
       payload: { quantity: 2 },
     };
 

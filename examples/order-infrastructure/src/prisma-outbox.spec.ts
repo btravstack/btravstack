@@ -10,6 +10,7 @@ import { it } from "./__tests__/test-fixtures.js";
 
 describe("the transactional outbox", () => {
   it("appends an event in the same write as the order", async ({
+    decoded,
     tenant,
     repository,
     outbox,
@@ -19,23 +20,31 @@ describe("the transactional outbox", () => {
     // WHEN an order is saved
     const events = await repository
       .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
-      .flatMap(() => outbox.pending(tenant, 10));
+      .flatMap(() => outbox.pending(tenant, 10))
+      .map((pending) =>
+        pending.map(({ payload, ...message }) => ({ ...message, payload: decoded(payload) })),
+      );
 
     // THEN the fact of the write is already in the outbox — no second call,
-    // no second chance to forget — carrying a payload, which is what makes it
+    // no second chance to forget — carrying the order, which is what makes it
     // a create-or-replace for its subject
     expect(events).toBeOkWith([
       expect.objectContaining({
         tenantId: tenant,
         kind: "order",
         subjectId: "0199a1e0-0000-7000-8000-000000000001",
-        payload: JSON.stringify({ quantity: 3 }),
+        payload: {
+          placedAt: expect.any(String),
+          placementId: expect.any(Number),
+          order: { quantity: 3 },
+        },
         occurredAt: expect.any(Date),
       }),
     ]);
   });
 
   it("leaves no event behind when the write rolls back", async ({
+    decoded,
     tenant,
     repository,
     outbox,
@@ -48,15 +57,15 @@ describe("the transactional outbox", () => {
       .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 1))
       .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000001", 2)))
       .recoverErrCases((matcher) => matcher.with(P.tag("DuplicateOrder"), () => undefined))
-      .flatMap(() => outbox.pending(tenant, 10));
+      .flatMap(() => outbox.pending(tenant, 10))
+      .map((pending) =>
+        pending.map(({ subjectId, payload }) => ({ subjectId, order: decoded(payload).order })),
+      );
 
     // THEN only the first placement's event exists — the duplicate's outbox
     // row rolled back with its order row
     expect(events).toBeOkWith([
-      expect.objectContaining({
-        subjectId: "0199a1e0-0000-7000-8000-000000000001",
-        payload: JSON.stringify({ quantity: 1 }),
-      }),
+      { subjectId: "0199a1e0-0000-7000-8000-000000000001", order: { quantity: 1 } },
     ]);
   });
 
@@ -330,6 +339,7 @@ describe("the transactional outbox", () => {
   });
 
   it("appends a tombstone when the order is removed", async ({
+    decoded,
     tenant,
     repository,
     outbox,
@@ -340,17 +350,17 @@ describe("the transactional outbox", () => {
     const events = await repository
       .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
       .flatMap(() => repository.remove("0199a1e0-0000-7000-8000-000000000001"))
-      .flatMap(() => outbox.pending(tenant, 10));
+      .flatMap(() => outbox.pending(tenant, 10))
+      .map((pending) =>
+        pending.map(({ subjectId, payload }) => ({ subjectId, order: decoded(payload).order })),
+      );
 
     // THEN the log carries both words about the subject, in order: what it
-    // was, then that it is gone. A null payload IS the deletion — a reader
-    // that keeps its own copy drops it here, and needs no second event type
+    // was, then that it is gone. A null order IS the deletion — a reader that
+    // keeps its own copy drops it here, and needs no second event type
     expect(events).toBeOkWith([
-      expect.objectContaining({
-        subjectId: "0199a1e0-0000-7000-8000-000000000001",
-        payload: JSON.stringify({ quantity: 3 }),
-      }),
-      expect.objectContaining({ subjectId: "0199a1e0-0000-7000-8000-000000000001", payload: null }),
+      { subjectId: "0199a1e0-0000-7000-8000-000000000001", order: { quantity: 3 } },
+      { subjectId: "0199a1e0-0000-7000-8000-000000000001", order: null },
     ]);
   });
 
@@ -371,6 +381,68 @@ describe("the transactional outbox", () => {
     // the tombstone rolled back with it. A compensation that ran twice cannot
     // tell the world twice.
     expect(events).toBeOkWith([]);
+  });
+
+  it("leaves an order placed at or after a removal's cutoff, and announces nothing", async ({
+    decoded,
+    tenant,
+    repository,
+    outbox,
+    anOrder,
+  }) => {
+    // GIVEN a placed order
+    // WHEN it is removed only if it was placed before the epoch — a cutoff it
+    // cannot meet, the shape of an id placed again since a sweep listed it
+    const events = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000601", 1))
+      .flatMap(() =>
+        repository
+          .remove("0199a1e0-0000-7000-8000-000000000601", { placedBefore: new Date(0) })
+          .recoverErrCases((matcher) => matcher.with(P.tag("OrderNotFound"), () => undefined)),
+      )
+      .flatMap(() => repository.find("0199a1e0-0000-7000-8000-000000000601"))
+      .flatMap((kept) =>
+        outbox.pending(tenant, 10).map((pending) => ({
+          kept,
+          orders: pending.map(({ payload }) => decoded(payload).order),
+        })),
+      );
+
+    // THEN the order is still there and the only event is its placement: the
+    // cutoff rode the delete itself, so no tombstone was written for it
+    expect(events).toBeOkWith({
+      kept: expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000601" }),
+      orders: [{ quantity: 1 }],
+    });
+  });
+
+  it("stamps the tombstone with the placement time of the order it removed", async ({
+    decoded,
+    tenant,
+    repository,
+    outbox,
+    anOrder,
+  }) => {
+    // GIVEN a placed order
+    // WHEN it is removed with a cutoff it meets
+    const events = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000602", 1))
+      .flatMap(() =>
+        repository.remove("0199a1e0-0000-7000-8000-000000000602", {
+          placedBefore: new Date(Date.now() + 3_600_000),
+        }),
+      )
+      .flatMap(() => outbox.pending(tenant, 10))
+      .map((pending) => pending.map(({ payload }) => decoded(payload)));
+
+    // THEN both words about the subject name the same life of it — what lets
+    // a reader tell this order from a later one under the same id
+    expect(
+      events.map(([placed, gone]) => ({
+        same: placed !== undefined && placed.placedAt === gone?.placedAt,
+        tombstone: gone?.order,
+      })),
+    ).toBeOkWith({ same: true, tombstone: null });
   });
 
   it("does not hand one tenant another's pending events", async ({

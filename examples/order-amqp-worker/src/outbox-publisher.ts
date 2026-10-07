@@ -2,6 +2,7 @@ import { TypedAmqpClient } from "@amqp-contract/client";
 import { AmqpConfig } from "@btravstack/amqp-worker";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
+import { decodeOrderPayload } from "@btravstack/example-order-infrastructure";
 import { OutboxPublisher } from "@btravstack/outbox";
 import { OkAsync, P, TaggedError } from "unthrown";
 
@@ -45,8 +46,13 @@ export const orderAmqpClient = Provider(OrderAmqpClient)({
 /**
  * What "publish" means for this application — the one half of the outbox
  * `@btravstack/outbox` cannot own. An outbox row becomes the contract's
- * `orderChanged` envelope; the payload is the JSON `prismaOrderRepository`
- * wrote, and `null` stays the tombstone on the wire. The row's id rides as
+ * `orderChanged` envelope; the payload is the `OrderPayload` JSON
+ * `prismaOrderRepository` wrote — the life of the order it is about, which
+ * rides as `placementId` and `placedAt`, and the order, whose `null` stays the
+ * tombstone on the wire. A row still pending from before that encoding carries
+ * the bare order, or `NULL` for a tombstone, and publishes without the two:
+ * `decodeOrderPayload` reads both shapes, so such a row never blocks its
+ * tenant. The row's id rides as
  * `eventId`, the key a subscriber deduplicates a re-delivery on.
  *
  * A message the contract refuses is an `Err` like a broker that refuses it:
@@ -61,19 +67,17 @@ export const orderPublisher = Provider(OutboxPublisher)({
       // fail, and if it somehow does, the throw is this message's defect rather
       // than one escaping the relay's call.
       OkAsync()
-        .map(() =>
-          message.payload === null
-            ? null
-            : (JSON.parse(message.payload) as { readonly quantity: number }),
-        )
-        .flatMap((payload) =>
+        .map(() => decodeOrderPayload(message.payload))
+        .flatMap(({ placedAt, placementId, order }) =>
           client.publish("orderChanged", {
             eventId: message.id,
             tenantId: message.tenantId,
             kind: message.kind as "order",
             id: message.subjectId,
             occurredAt: message.occurredAt.toISOString(),
-            payload,
+            placedAt,
+            placementId,
+            payload: order,
           }),
         ),
   }),

@@ -81,7 +81,11 @@ is the index of the workspaces themselves.
     carry `.js` (`moduleResolution: NodeNext`) and Node's own type stripping
     does not remap `./module.js` to `./module.ts` — measured, it is an
     `ERR_MODULE_NOT_FOUND`. `tsx` was already in the catalog for `docs`; it is
-    a devDependency of the three example workspaces, and no new dependency.
+    a devDependency of the example workspaces, and no new dependency — except
+    in `order-temporal-worker` and `order-amqp-worker`, where it is a
+    dependency, because `deploy:schedules` and `deploy:invoice-retention` are
+    the entry points documented as release `Job`s, and a Job runs from a
+    production install.
   - **`.env.dev` is generated, never committed.** The `dev` task depends on
     `@btravstack/internal-test-infra#dev:env`, which attaches to the **same
     shared containers the specs use** (`withReuse()` — a second set
@@ -268,3 +272,71 @@ each deployment's `src/main.ts` carry their own.
   `btravstack.http.duration` dimensioned by method, answerer, status and
   whether the response was aborted, none of which a request scope can see from
   inside itself.
+- **`order-temporal-worker`'s `pnpm deploy:schedules` is the scheduling
+  position, executable** (`src/schedules.ts`, `src/deploy-schedules.ts`): one
+  `ensureSchedule` per `SWEEP_TENANTS` entry for the `sweepStaleOrders`
+  workflow, under an id derived from the tenant — which is the whole of the
+  idempotence — then deletes every `sweep-stale-orders-*` schedule for a
+  tenant no longer listed, inside a `Module.scoped` graph of its own, because
+  a deploy is a one-shot with no runtime to `start`. The script hands `process.env` over
+  as `Env` once, the one place an example does; everything after it reads
+  through `Config`. The sweep needs no clock port: the cutoff is computed in
+  the workflow, where `Date.now()` is the recorded workflow-task time. It
+  deletes by `Order.placedAt`, a column the database defaults — and the
+  migration that adds it backfills each existing order from its latest
+  surviving placement outbox row, an earlier one being a previous life of a
+  reused id; only an order with none keeps the migration time — never by the
+  order id's UUIDv7 timestamp — the caller mints that id, so its timestamp
+  would let a client backdate an order into the next sweep. It works a batch
+  at a time from the first page of what is still stale, checks the unit's
+  signal between batches, and answers no count, since a retried attempt
+  cannot see what the first one removed. It removes with
+  `remove(id, { placedBefore })` — the cutoff a FIELD on the call, checked by
+  the store in the same delete that writes the tombstone — so an order
+  compensated away and placed again under the same id between the listing
+  and the removal is left alone, and nothing is announced for it.
+- **`order-amqp-worker` is the `pinoSink` deployment.** `src/module.ts` mints
+  one `logSink = pinoSink(pino({ level: "trace" }))` and composes
+  `observability({ sink: logSink })`; `src/main.ts` hands the kernel's events
+  to the same sink through `kernelEvents(createLogger(logSink))`, so the
+  process writes one stream. It is exported from the root's file rather than
+  built in `main.ts` because the root is where `observability()` is composed,
+  and a constant root cannot take it as an argument. The specs never reach it:
+  their fixture overrides the `Logger` provider with a recorder.
+- **`order-amqp-worker`'s notifier threads `Storage` into `Mailer`.** A
+  placement stores the invoice it renders and mails a presigned link; a
+  withdrawal `get`s the invoice before presigning it, because a presign asks
+  the store nothing. The key is
+  `invoices/{tenantId}/{orderId}/{placementId}.txt`: every event carries the
+  order's `placementId` — the order row's own id, which a sequence never hands
+  out twice, so it names one life of the order where a placement time (whose
+  milliseconds two lives can share) would not — and its `placedAt`, the
+  tombstone too, so a reused id never links the invoice of the order placed
+  under it since. Retention is the bucket's: `pnpm deploy:invoice-retention`
+  (`src/invoice-retention.ts`, also run ahead of `pnpm dev`) installs an S3
+  lifecycle rule expiring `invoices/` after `INVOICE_RETENTION_DAYS`, the
+  same constant the handler waits within — measured on the pinned RustFS,
+  whose scanner expired a past-dated rule's object within thirty seconds and
+  left an object outside the prefix alone. An absent invoice is read by
+  the order's age: inside the store's retention it is one the placement has
+  not written yet — deliveries are concurrent, and one replica's withdrawal
+  can overtake another's placement — so the handler answers a
+  `RetryableError` and the queue's retry budget redelivers, until the attempt
+  that spends that budget (`x-retry-count` on the raw delivery, against the
+  contract's own `maxRetries`) mails without a link rather than failing — a
+  missing invoice delays a withdrawal and never parks it; past retention, the
+  invoice was retained away and the mail goes out without a link at once.
+  `placedAt` and `placementId` are optional on the wire so an envelope queued
+  before they existed is still read: an event without a `placementId` is a
+  legacy order, with no invoice, and its withdrawal is mailed without a link on
+  its first delivery. The publisher reads both payload shapes the outbox has
+  held — `decodeOrderPayload` — so a row pending from before the encoding
+  changed publishes rather than blocking its tenant. Serialising
+  the consumer would not have held across replicas. It checks the unit's
+  signal again once the store has answered and before it sends: a deadline
+  that passed while an invoice was in flight would otherwise mail on behalf of
+  an abandoned delivery, and the retry would mail again. Isolation on the
+  shared RustFS is the tenant in the key, rule 7's boundary rather than a
+  bucket per test. The specs put the out-of-order and out-of-retention cases
+  on the wire with `announce`, which publishes an `orderChanged` fact past the
+  outbox.

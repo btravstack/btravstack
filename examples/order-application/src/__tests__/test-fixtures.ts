@@ -33,6 +33,17 @@ import {
 /** Every tenant's rows in one map, keyed the way the real schema's composite unique key is. */
 type Store = Map<string, Order>;
 
+/**
+ * When `save` stored a row — the stub's own clock, as the real schema's
+ * `placedAt` default is the database's. A row seeded straight into a `Store`
+ * has none, so no `placedBefore` matches it.
+ */
+const placedAt = new WeakMap<Order, Date>();
+
+const placedPrior = (order: Order, cutoff: Date | undefined): boolean =>
+  cutoff === undefined ||
+  (placedAt.get(order)?.getTime() ?? Number.POSITIVE_INFINITY) < cutoff.getTime();
+
 /** A sort value this stub can order: what a text or numeric key reads as. */
 type SortValue = number | string;
 
@@ -91,6 +102,7 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
         save: (order: Order) => {
           if (rows.has(key(order.id))) return ErrAsync(new DuplicateOrder({ id: order.id }));
           rows.set(key(order.id), order);
+          placedAt.set(order, new Date());
           return OkAsync(order);
         },
         find: (id: string) => {
@@ -103,9 +115,11 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
         // for, resume strictly after the cursor, answer at most `take` — and
         // `keyset` does the rest, exactly as it does for the Prisma adapter.
         // Two stores, one arithmetic.
-        list: ({ minQuantity, ...request }: OrderQuery) => {
+        list: ({ minQuantity, placedBefore, ...request }: OrderQuery) => {
           const scoped = mine().filter(
-            (order) => minQuantity === undefined || order.quantity >= minQuantity,
+            (order) =>
+              (minQuantity === undefined || order.quantity >= minQuantity) &&
+              placedPrior(order, placedBefore),
           );
           const keys = keyset(request);
           if (!keys.resumable)
@@ -142,8 +156,15 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
             ),
           );
         },
-        remove: (id: string) =>
-          rows.delete(key(id)) ? OkAsync() : ErrAsync(new OrderNotFound({ id: id as OrderId })),
+        remove: (
+          id: string,
+          { placedBefore }: { readonly placedBefore?: Date | undefined } = {},
+        ) => {
+          const row = rows.get(key(id));
+          return row !== undefined && placedPrior(row, placedBefore) && rows.delete(key(id))
+            ? OkAsync()
+            : ErrAsync(new OrderNotFound({ id: id as OrderId }));
+        },
       };
     },
   });

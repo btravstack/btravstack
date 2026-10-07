@@ -10,7 +10,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "dev": "PROBE_PORT=0 tsx watch --env-file=../../.env.dev src/main.ts",
+    "deploy:invoice-retention": "tsx --env-file-if-exists=../../.env.dev src/deploy-invoice-retention.ts",
+    "dev": "pnpm deploy:invoice-retention && PROBE_PORT=0 tsx watch --env-file=../../.env.dev src/main.ts",
     "generate": "node ../../docs/scripts/extract-doc-samples.ts --group order-amqp-worker --out src/generated/doc-samples",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit -p tsconfig.test-d.json"
@@ -18,6 +19,7 @@
   "dependencies": {
     "@amqp-contract/client": "catalog:",
     "@amqp-contract/worker": "catalog:",
+    "@aws-sdk/client-s3": "catalog:",
     "@btravstack/amqp-worker": "workspace:*",
     "@btravstack/config": "workspace:*",
     "@btravstack/core": "workspace:*",
@@ -29,8 +31,11 @@
     "@btravstack/mailer": "workspace:*",
     "@btravstack/observability": "workspace:*",
     "@btravstack/outbox": "workspace:*",
+    "@btravstack/storage": "workspace:*",
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/sdk-node": "catalog:",
+    "pino": "catalog:",
+    "tsx": "catalog:",
     "unthrown": "catalog:"
   },
   "devDependencies": {
@@ -41,7 +46,6 @@
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
-    "tsx": "catalog:",
     "typescript": "catalog:",
     "typescript-consumer": "catalog:",
     "uuidv7": "catalog:",

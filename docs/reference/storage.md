@@ -113,7 +113,11 @@ adapter only computes the signature over that decision. See
 computation and asks the store nothing, so a URL for an absent key is minted
 happily and `404`s when it is followed. Checking would cost a HEAD request per
 call, bought for something the caller usually does not want. Both halves were
-measured against RustFS before the port was written.
+measured against RustFS before the port was written. A caller that must not
+hand out a dead link reads first: `examples/order-amqp-worker`'s notifier
+`get`s an invoice before presigning it into a withdrawal mail, retries an
+`ObjectNotFound` while the invoice may still be on its way, and folds one past
+the store's retention into a mail without a link.
 
 ## Adapters
 

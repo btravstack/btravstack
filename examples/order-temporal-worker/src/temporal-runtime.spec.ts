@@ -274,3 +274,69 @@ describe("the billing saga", () => {
     });
   });
 });
+
+describe("the stale-order sweep", () => {
+  it("keeps an order placed now, however old its id claims to be", async ({
+    tenant,
+    serve,
+    fulfilling,
+  }) => {
+    // GIVEN the same composition, and an order placed now under an id whose
+    // UUIDv7 timestamp says 2025 — the caller chose it, so it proves nothing
+    const { client } = await serve(fulfilling.module);
+
+    // WHEN the workflow a schedule fires runs with a thirty-day window
+    const swept = await client
+      .executeWorkflow("fulfillOrder", {
+        workflowId: "wf-sweep-backdated",
+        args: { tenantId: tenant, orderId: "0199a1e0-0000-7000-8000-00000000b001", quantity: 1 },
+      })
+      .flatMap(() =>
+        client.executeWorkflow("sweepStaleOrders", {
+          workflowId: "wf-sweep-thirty",
+          args: { tenantId: tenant, olderThanDays: 30 },
+        }),
+      )
+      .flatMap(() =>
+        fulfilling
+          .reader(tenant)
+          .list({ limit: 10, sort: { field: "quantity", direction: "asc" } })
+          .map((page) => page.items.map((order) => order.id)),
+      );
+
+    // THEN it stays: the window is measured from when the store placed it
+    expect(swept).toBeOkWith(["0199a1e0-0000-7000-8000-00000000b001"]);
+  });
+
+  it("withdraws what the store placed before the window, however new its id claims to be", async ({
+    tenant,
+    serve,
+    fulfilling,
+  }) => {
+    // GIVEN an order under an id dated centuries ahead, and a window of zero
+    // days — everything placed before the sweep ran is stale
+    const { client } = await serve(fulfilling.module);
+
+    // WHEN it is placed, and then swept
+    const swept = await client
+      .executeWorkflow("fulfillOrder", {
+        workflowId: "wf-sweep-future-dated",
+        args: { tenantId: tenant, orderId: "0fff0000-0000-7000-8000-00000000b002", quantity: 1 },
+      })
+      .flatMap(() =>
+        client.executeWorkflow("sweepStaleOrders", {
+          workflowId: "wf-sweep-zero",
+          args: { tenantId: tenant, olderThanDays: 0 },
+        }),
+      )
+      .flatMap(() =>
+        fulfilling
+          .reader(tenant)
+          .list({ limit: 10, sort: { field: "quantity", direction: "asc" } })
+          .map((page) => page.items.map((order) => order.id)),
+      );
+
+    // THEN it is gone
+    expect(swept).toBeOkWith([]);
+  });
+});

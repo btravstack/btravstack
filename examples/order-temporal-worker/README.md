@@ -6,7 +6,9 @@ stock, arrange the shipping, walking a later refusal back through the earlier
 steps — and `chargeOrder` — authorize the payment, then capture it, refunding
 if the capture fails. Both are orchestration, and a durable workflow is the
 one place either journey exists as code and survives the process that started
-it. The worker is served by
+it. A third workflow, `sweepStaleOrders`, is what this deployment does on a
+**schedule**: nobody calls it, a Temporal Schedule fires it nightly per tenant,
+and `pnpm deploy:schedules` is what registers those schedules. The worker is served by
 [`@btravstack/temporal-worker`](../../packages/temporal-worker) the way
 `order-api` is served by `@btravstack/http-server`; the contract lives in
 [`order-temporal-contract`](../order-temporal-contract), because a client that
@@ -22,10 +24,14 @@ src/activity-unit.ts                ActivityUnitModule — forked per attempt, s
                                      Tenant from input.tenantId, and the orders vertical composed over it
 src/slices/billing/activities.ts    chargeOrder's three activities, one piece on the "chargeOrder" key, built from PaymentService
 src/slices/billing/module.ts        BillingSlice — imports BillingModule alone, exports the piece
+src/slices/sweep/activities.ts      sweepStaleOrders's one activity: withdraw, a batch at a time, every order the store placed before the cutoff
+src/slices/sweep/module.ts          SweepSlice — imports nothing, exports the piece
+src/schedules.ts                    deploySchedules(env) — one ensureSchedule per SWEEP_TENANTS entry, idempotent; retires unlisted tenants' sweeps
+src/deploy-schedules.ts             the one-shot: pnpm deploy:schedules, exit 1 if any schedule was not ensured
 src/fulfillment.ts                  FulfillmentModule — the two external fulfillment services, as stand-ins
 src/billing.ts                      BillingModule — the payment provider, as a stand-in
-src/module.ts                       orderActivities = TemporalActivities(orderContract)([fulfillOrder, chargeOrder]);
-                                     OrderTemporalWorker — the composition root, importing both slices
+src/module.ts                       orderActivities = TemporalActivities(orderContract)([fulfillOrder, chargeOrder, sweepStaleOrders]);
+                                     OrderTemporalWorker — the composition root, importing every slice
 src/main.ts                         the process: runMain(OrderTemporalWorker)
 src/__tests__/test-fixtures.ts                boot / serve / server / tenant / fulfilling / outOfStock / noShipping, against the shared Temporal server
 ```
@@ -84,6 +90,7 @@ needs, keyed by the contract's own workflow names:
 export const orderActivities = TemporalActivities(orderContract)([
   fulfillOrder,
   chargeOrder,
+  sweepStaleOrders,
 ]);
 
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
@@ -92,7 +99,7 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   workflows: {
     workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
   },
-  imports: [FulfillmentSlice, BillingSlice, observability()],
+  imports: [FulfillmentSlice, BillingSlice, SweepSlice, observability()],
 });
 ```
 
@@ -142,6 +149,43 @@ activity that exhausted its retries unmodelled, or was cancelled) are handed
 back as-is and re-raised, and compensation deliberately does **not** run for
 them: a step that died mid-flight left unknown state, and un-deciding what you
 cannot see is a second bug, not a remedy.
+
+## The stale-order sweep, on a schedule
+
+```text
+schedule (03:00, per tenant) ──▶ sweepStaleOrders ──▶ withdrawStaleOrders, a batch at a time, until none is left
+```
+
+The workflow computes the cutoff from its own clock — the workflow task's
+recorded time, so a replay sees the same one — and its one activity withdraws
+every order the **store** recorded as placed before it: `Order.placedAt`,
+defaulted by the database, never the id's own UUIDv7 timestamp, which is
+whatever the caller chose. It takes the first page of what is still stale,
+removes it and asks again, so it holds one batch at a time and needs no
+cursor; it checks the unit's signal between batches and fails as a defect
+once it aborts, and it answers no count, which a retried attempt could not
+reproduce. Each withdrawal leaves
+a tombstone in the outbox, so `order-amqp-worker` broadcasts it like any other
+write. The activity declares no errors, for the compensations' reason: a sweep
+that could answer "no" would leave the backlog it exists to clear.
+
+`pnpm deploy:schedules` registers one schedule per tenant in `SWEEP_TENANTS`
+through `@btravstack/temporal-worker/schedule`'s `ensureSchedule`, under the id
+`sweep-stale-orders-<tenant>`. Deriving the id from the tenant is the whole
+of the idempotence: the next release's deploy names the same schedule and
+updates it. It then deletes every `sweep-stale-orders-*` schedule for a
+tenant no longer listed, so a destructive nightly job does not outlive the
+configuration that asked for it. It is a one-shot for a release's `Job`,
+never part of the worker's boot, which would write the same schedules once
+per replica. Locally it reads `.env.dev` if there is one —
+`--env-file-if-exists`, so a variable already set wins — and `dev:env`
+writes a `SWEEP_TENANTS` there.
+
+| Variable             | Default          | What it is                        |
+| -------------------- | ---------------- | --------------------------------- |
+| `TEMPORAL_ADDRESS`   | `127.0.0.1:7233` | the Temporal service              |
+| `TEMPORAL_NAMESPACE` | `default`        | where the schedules live          |
+| `SWEEP_TENANTS`      | _(required)_     | who gets a sweep, comma-separated |
 
 ## One subtlety worth stealing
 
@@ -201,7 +245,11 @@ The
 fulfillment saga fulfills, both refusals compensate, the duplicate-order
 answer arrives at the client as a typed contract error it can branch on by
 name, and the billing saga answers on the same task queue as the fulfillment
-one — proving every piece was mounted under its own key.
+one — proving every piece was mounted under its own key. The sweep keeps an
+order placed now under an id backdated to 2025 and withdraws one placed before
+a zero-day window under an id dated centuries ahead; `schedules.spec.ts` runs
+the deploy twice on its own namespace — `created`, then `updated`, one
+schedule left — and retires a tenant the next deploy stops listing.
 
 ```bash
 pnpm --filter @btravstack/example-order-temporal-worker test        # the saga specs

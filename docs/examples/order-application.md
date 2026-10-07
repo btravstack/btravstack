@@ -282,12 +282,18 @@ becomes the domain's:
 // nothing wraps it a second time.
 save: (order) =>
   pinned(async (tx) => {
-    await tx.orm.orders.Order.create({ tenantId, orderId: order.id, quantity: order.quantity });
+    const placed = await tx.orm.orders.Order.create({
+      tenantId,
+      orderId: order.id,
+      quantity: order.quantity,
+    });
     await tx.orm.orders.OutboxMessage.create({
       tenantId,
       kind: "order",
       subjectId: order.id,
-      payload: JSON.stringify({ quantity: order.quantity }),
+      // `{ placedAt, placementId, order }`: which life of the order this is
+      // rides the payload, the tombstone's too, so a reused id's two lives stay apart
+      payload: orderPayload(placed, { quantity: order.quantity }),
     });
   })
     .mapErrCases((matcher, defect) =>

@@ -701,6 +701,9 @@ importers:
       '@amqp-contract/worker':
         specifier: 'catalog:'
         version: 3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.0)
+      '@aws-sdk/client-s3':
+        specifier: 'catalog:'
+        version: 3.1146.0
       '@btravstack/amqp-worker':
         specifier: workspace:*
         version: link:../../packages/amqp-worker
@@ -734,12 +737,21 @@ importers:
       '@btravstack/outbox':
         specifier: workspace:*
         version: link:../../packages/outbox
+      '@btravstack/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1
       '@opentelemetry/sdk-node':
         specifier: 'catalog:'
         version: 0.222.0(@opentelemetry/api@1.9.1)(supports-color@8.1.1)
+      pino:
+        specifier: 'catalog:'
+        version: 10.4.0
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.15
       unthrown:
         specifier: 'catalog:'
         version: 5.12.0
@@ -765,9 +777,6 @@ importers:
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
-      tsx:
-        specifier: 'catalog:'
-        version: 4.23.15
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -1158,6 +1167,9 @@ importers:
       '@temporalio/workflow':
         specifier: 'catalog:'
         version: 1.24.0
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.15
       unthrown:
         specifier: 'catalog:'
         version: 5.12.0
@@ -1186,9 +1198,6 @@ importers:
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
-      tsx:
-        specifier: 'catalog:'
-        version: 4.23.15
       typescript:
         specifier: 'catalog:'
         version: 7.0.2

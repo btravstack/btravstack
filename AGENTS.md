@@ -658,7 +658,8 @@ why all of it lives in the contract tier. No persistence type reaches a port.
 union of four `strictObject` arms is in `packages/contract/AGENTS.md`.
 
 **The filter is a field, never a query object.** `OrderQuery` is
-`PageRequest & { minQuantity? }`. A port taking a predicate or a `where` record
+`PageRequest & { minQuantity?, placedBefore? }`, and `remove`'s cutoff is a
+field on the call too. A port taking a predicate or a `where` record
 would be the application speaking the adapter's language, and the next store
 would have to implement it.
 

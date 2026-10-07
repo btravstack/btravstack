@@ -1,6 +1,6 @@
 # `@btravstack/core` example: the order Temporal contract
 
-The Temporal contract — one **task queue**, two saga workflows, and the errors
+The Temporal contract — one **task queue**, two saga workflows and a scheduled sweep, and the errors
 a caller may branch on — in a package of its own, depending on
 `@temporal-contract/contract` and `zod`.
 
@@ -18,6 +18,12 @@ step that could answer "no" would leave it stuck half-done, so whatever
 infrastructure trouble a compensation hits stays undeclared and Temporal
 retries it until it works. `refundPayment` follows the same rule for the same
 reason `releaseStock` does — there is nothing saga-specific about it.
+
+`sweepStaleOrders` is the third workflow and not a saga: one activity,
+`withdrawStaleOrders`, with no errors declared for the compensations' own
+reason, fired by a Temporal Schedule rather than by any caller. It is still
+the contract's because a schedule's action is an ordinary workflow start, read
+off the same task queue and validated against the same input schema.
 
 ```text
 src/contract.ts        the contract: schemas, declared errors, activity options, task queue

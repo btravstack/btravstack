@@ -17,9 +17,10 @@ import { OrderApi } from "./module.js";
  * rather than the kernel's default JSON on stderr. The logger is built by hand
  * rather than resolved, and has to be: `building` is emitted while the graph is
  * still being constructed, so a sink resolved from that context would have
- * nothing to write the two events that matter most with. Shown here once — the
- * other two `main.ts` files stay a single line, because the stderr sink is a
- * fine default and this is the upgrade, not the requirement.
+ * nothing to write the two events that matter most with. Shown here and in
+ * `order-amqp-worker`'s (over pino) — the temporal worker's stays a single
+ * line, because the stderr sink is a fine default and this is the upgrade,
+ * not the requirement.
  *
  * Typechecked by the gate, not executed by it.
  */

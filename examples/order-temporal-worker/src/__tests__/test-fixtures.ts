@@ -7,9 +7,11 @@ import {
   type OrderRepository,
 } from "@btravstack/example-order-application";
 import {
+  OrderNotFound,
   OutOfStock,
   ShippingUnavailable,
   TenantId,
+  placeOrder,
   type OrderId,
 } from "@btravstack/example-order-domain";
 import {
@@ -51,6 +53,7 @@ import { FulfillmentModule } from "../fulfillment.js";
 import { orderActivities } from "../module.js";
 import { chargeOrder } from "../slices/billing/activities.js";
 import { fulfillOrder } from "../slices/fulfillment/activities.js";
+import { sweepStaleOrders } from "../slices/sweep/activities.js";
 
 /**
  * One Temporal server for the whole repository, with a namespace of this spec
@@ -190,7 +193,64 @@ const noShippingTemporal = () => {
   return { ...base, released: (): readonly string[] => released };
 };
 
+/**
+ * A repository holding two stale orders and recording what it is asked to
+ * remove — for the sweep's own logic, which needs no worker to be driven.
+ * `list` answers whatever is still held, so a sweep that removes it all is
+ * answered an empty page next.
+ */
+const staleStoreOf = (onFirstList: (replace: (id: string) => void) => void = () => undefined) => {
+  const ids = ["0199a1e0-0000-7000-8000-00000000d001", "0199a1e0-0000-7000-8000-00000000d002"];
+  const longAgo = new Date("2025-01-01T00:00:00.000Z");
+  const rows = new Map(
+    ids.map((id) => [id, { order: placeOrder(id, 1).getOrThrow(), placedAt: longAgo }]),
+  );
+  const tombstones: string[] = [];
+  let listed = false;
+  const replace = (id: string) => {
+    rows.set(id, {
+      order: placeOrder(id, 1).getOrThrow(),
+      placedAt: new Date(Date.now() + 3_600_000),
+    });
+  };
+  const repository: ServiceOf<OrderRepository> = {
+    save: (order) => OkAsync(order),
+    find: (id) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
+    list: ({ placedBefore }) => {
+      const items = [...rows.values()]
+        .filter((row) => placedBefore === undefined || row.placedAt < placedBefore)
+        .map((row) => row.order);
+      if (!listed) {
+        listed = true;
+        onFirstList(replace);
+      }
+      return OkAsync({ items, hasPreviousPage: false, hasNextPage: false });
+    },
+    remove: (id, { placedBefore } = {}) => {
+      const row = rows.get(id);
+      if (row === undefined || (placedBefore !== undefined && row.placedAt >= placedBefore))
+        return ErrAsync(new OrderNotFound({ id: id as OrderId }));
+      rows.delete(id);
+      tombstones.push(id);
+      return OkAsync();
+    },
+  };
+  return {
+    repository,
+    /** The ids a tombstone was written for — what a removal leaves in the outbox. */
+    removed: (): readonly string[] => tombstones,
+    held: (): readonly string[] => [...rows.keys()],
+  };
+};
+
 export type TemporalFixtures = {
+  /** Two stale orders in memory, and the ids a sweep removed from them. */
+  readonly staleStore: ReturnType<typeof staleStoreOf>;
+  /**
+   * The same store, where the first stale order is compensated away and its
+   * id placed again — freshly — between the sweep's listing and its removal.
+   */
+  readonly racedStore: ReturnType<typeof staleStoreOf>;
   /** Where the shared server is, and the namespace this spec file owns on it. */
   readonly server: Server;
   /**
@@ -208,6 +268,12 @@ export type TemporalFixtures = {
    * through `boot` — so its shutdown is the fixture's, on every exit path.
    */
   readonly serve: Serve;
+  /**
+   * The schedule ids this file's namespace holds for a tenant. Read through
+   * Temporal's visibility store, which is eventually consistent — so a spec
+   * waits on it rather than reading it once.
+   */
+  readonly scheduled: (tenant: TenantId) => Promise<readonly string[]>;
   readonly fulfilling: ReturnType<typeof fulfillingTemporal>;
   readonly outOfStock: ReturnType<typeof outOfStockTemporal>;
   readonly noShipping: ReturnType<typeof noShippingTemporal>;
@@ -276,7 +342,7 @@ export const it = test.extend<TemporalFixtures>({
             }),
           }),
         ],
-        provides: [fulfillOrder, chargeOrder],
+        provides: [fulfillOrder, chargeOrder, sweepStaleOrders],
       });
 
       const app = boot(worker, {
@@ -308,6 +374,28 @@ export const it = test.extend<TemporalFixtures>({
 
     await use(serve);
     for (const connection of connections) await connection.close();
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  staleStore: async ({}, use) => {
+    await use(staleStoreOf());
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  racedStore: async ({}, use) => {
+    await use(staleStoreOf((replace) => replace("0199a1e0-0000-7000-8000-00000000d001")));
+  },
+
+  scheduled: async ({ server }, use) => {
+    const connection = await Connection.connect({ address: server.address });
+    const client = new Client({ connection, namespace: server.namespace });
+    await use(async (tenant) => {
+      const ids: string[] = [];
+      for await (const schedule of client.schedule.list())
+        if (schedule.scheduleId.includes(tenant)) ids.push(schedule.scheduleId);
+      return ids;
+    });
+    await connection.close();
   },
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture

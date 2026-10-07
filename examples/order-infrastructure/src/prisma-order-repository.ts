@@ -21,6 +21,43 @@ import type { OrderDatabaseClient, OrderTransaction } from "./database.js";
 type OrderRow = { readonly orderId: string; readonly quantity: number };
 
 /**
+ * What an order's outbox row carries: which life of the order it is about —
+ * `placementId`, the order row's own surrogate id, which a sequence never hands
+ * out twice, so a reused order id's two lives never share one — when that
+ * life was placed, and the order itself, `null` once it is gone. The outbox
+ * table is `@btravstack/outbox`'s shape and its payload this application's own
+ * encoding, so all of it rides here rather than in a column.
+ *
+ * `placedAt` and `placementId` are absent on a row written before they
+ * existed: a placement then carried the bare order, and a tombstone a `NULL`.
+ */
+export type OrderPayload = {
+  readonly placedAt?: string;
+  readonly placementId?: number;
+  readonly order: { readonly quantity: number } | null;
+};
+
+const orderPayload = (
+  placed: { readonly id: number; readonly placedAt: string },
+  order: OrderPayload["order"],
+): string =>
+  JSON.stringify({
+    placedAt: new Date(placed.placedAt).toISOString(),
+    placementId: placed.id,
+    order,
+  } satisfies OrderPayload);
+
+/**
+ * An outbox row's payload, in either shape this application has written:
+ * `OrderPayload`, or — on a row still pending from before it — the bare order,
+ * or `NULL` for a tombstone.
+ */
+export const decodeOrderPayload = (payload: string | null): OrderPayload => {
+  const parsed = JSON.parse(payload ?? "null") as OrderPayload | OrderPayload["order"];
+  return parsed !== null && "order" in parsed ? parsed : { order: parsed };
+};
+
+/**
  * Rebuilding the entity re-runs its invariants, so a stored row that violates
  * them cannot become an `Order`. Not a domain outcome — nothing the caller did
  * produced it — so it goes to the defect channel, which is why `find` can
@@ -117,7 +154,7 @@ export const prismaOrderRepository = (
     // is what `tenantPinned` exists to guarantee.
     save: (order) =>
       pinned(async (tx) => {
-        await tx.orm.orders.Order.create({
+        const placed = await tx.orm.orders.Order.create({
           tenantId,
           orderId: order.id,
           quantity: order.quantity,
@@ -126,7 +163,7 @@ export const prismaOrderRepository = (
           tenantId,
           kind: "order",
           subjectId: order.id,
-          payload: JSON.stringify({ quantity: order.quantity }),
+          payload: orderPayload(placed, { quantity: order.quantity }),
         });
       })
         .mapErrCases((matcher, defect) =>
@@ -161,7 +198,7 @@ export const prismaOrderRepository = (
      * is the same arithmetic against every store, and it is where the
      * off-by-ones live.
      */
-    list: ({ minQuantity, ...request }) => {
+    list: ({ minQuantity, placedBefore, ...request }) => {
       const keys = keyset(request);
       if (!keys.resumable)
         return keys.reason === "malformed"
@@ -173,10 +210,14 @@ export const prismaOrderRepository = (
         pinned(async (tx) => {
           // No `tenantId` filter: the policy on `Order` holds it, and a filter
           // here would hide whether it does.
-          const base =
+          const floored =
             minQuantity === undefined
               ? tx.orm.orders.Order
               : tx.orm.orders.Order.where((order) => order.quantity.gte(minQuantity));
+          const base =
+            placedBefore === undefined
+              ? floored
+              : floored.where((order) => order.placedAt.lt(placedBefore.toISOString()));
           // A backward page walks the index the other way, so the direction is
           // the caller's sort flipped by the direction of travel — and BOTH
           // columns flip together, or the tiebreak disagrees with the key it
@@ -228,16 +269,25 @@ export const prismaOrderRepository = (
      * nothing to delete: the `Err` is returned before the insert, which rolls
      * the transaction back, so a re-run of `cancelPlacement` cannot append a
      * second tombstone.
+     *
+     * `placedBefore` rides the SAME delete statement, so the row a sweep
+     * listed and the row it deletes cannot be two lives of one reused id: a
+     * row placed since is not matched, and nothing is written for it.
      */
-    remove: (id) =>
+    remove: (id, { placedBefore } = {}) =>
       pinned(async (tx) => {
-        const deleted = await tx.orm.orders.Order.where({ tenantId, orderId: id }).delete();
+        const named = tx.orm.orders.Order.where({ tenantId, orderId: id });
+        const deleted = await (
+          placedBefore === undefined
+            ? named
+            : named.where((row) => row.placedAt.lt(placedBefore.toISOString()))
+        ).delete();
         if (deleted === null) return false;
         await tx.orm.orders.OutboxMessage.create({
           tenantId,
           kind: "order",
           subjectId: id,
-          payload: null,
+          payload: orderPayload(deleted, null),
         });
         return true;
       })

@@ -4,6 +4,7 @@ import type { OutboxMessage } from "@btravstack/outbox";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
+import { INVOICE_RETENTION_DAYS, ensureInvoiceRetention } from "./invoice-retention.js";
 
 /**
  * The notification lines as `{ message, ...attributes }` — what the consumer
@@ -130,9 +131,11 @@ describe("the broadcast deployment", () => {
 
     // THEN the subscriber hears both words about the subject, in order: what
     // it was, then that it is gone. Without the tombstone a reader keeping its
-    // own copy would hold a cancelled order forever.
+    // own copy would hold a cancelled order forever. The tombstone may be
+    // heard more than once — it is redelivered while the placement's invoice
+    // is still being stored — so only the first two words are the claim.
     await expect
-      .poll(() => notifications(tapped.lines()), { timeout: 5_000 })
+      .poll(() => notifications(tapped.lines()).slice(0, 2), { timeout: 5_000 })
       .toEqual([
         {
           message: "order placed — notifying",
@@ -170,6 +173,8 @@ describe("the broadcast deployment", () => {
       kind: "order",
       id: "0199a1e0-0000-7000-8000-000000000005",
       occurredAt: expect.any(String),
+      placedAt: expect.any(String),
+      placementId: expect.any(Number),
       payload: { quantity: 4 },
     });
   });
@@ -234,5 +239,484 @@ describe("the broadcast deployment", () => {
         .map((line) => line.message)
         .sort(),
     ).toEqual(["order placed — notifying", "recording an order change"]);
+  });
+});
+
+describe("the invoice a notification links", () => {
+  it("is stored, presigned and served to whoever follows the mailed link", async ({
+    tenant,
+    serve,
+    tapped,
+    writer,
+    delivered,
+  }) => {
+    // GIVEN the worker serving, its invoices on the shared store
+    await serve(tapped.module);
+
+    // WHEN an order is placed and its notification has left the process, and
+    // the link in it is followed with no credentials at all
+    const placed = await writer((ctx) =>
+      ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-00000000c001", 3),
+    );
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
+    const [mail] = await delivered(tenant);
+    const invoice = await fetch(mail?.Text.match(/https?:\/\/\S+/)?.[0] ?? "");
+
+    // THEN the store answers the invoice the handler rendered — storage
+    // threaded into the mailer, and the bytes never in the mail
+    expect({ placed: placed.isOk(), status: invoice.status, body: await invoice.text() }).toEqual({
+      placed: true,
+      status: 200,
+      body: "Invoice for order 0199a1e0-0000-7000-8000-00000000c001: 3 items.",
+    });
+  });
+
+  it("is linked again when the order is withdrawn", async ({
+    tenant,
+    serve,
+    tapped,
+    writer,
+    delivered,
+  }) => {
+    // GIVEN a served app and a placed order whose notification has arrived
+    await serve(tapped.module);
+    const placed = await writer((ctx) =>
+      ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-00000000c002", 2),
+    );
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
+
+    // WHEN the order is withdrawn, and the withdrawal's link is followed
+    const removed = await writer((ctx) =>
+      ctx.get(OrderRepository).remove("0199a1e0-0000-7000-8000-00000000c002"),
+    );
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 2, { timeout: 10_000 });
+    const [, withdrawal] = await delivered(tenant);
+    const invoice = await fetch(withdrawal?.Text.match(/https?:\/\/\S+/)?.[0] ?? "");
+
+    // THEN it is the invoice the placement issued — read before it was
+    // presigned, because a presign asks the store nothing
+    expect({
+      written: placed.isOk() && removed.isOk(),
+      subject: withdrawal?.Subject,
+      body: await invoice.text(),
+    }).toEqual({
+      written: true,
+      subject: "order 0199a1e0-0000-7000-8000-00000000c002 withdrawn",
+      body: "Invoice for order 0199a1e0-0000-7000-8000-00000000c002: 2 items.",
+    });
+  });
+
+  it("is still linked when the store takes a second to write it and the withdrawal arrives first", async ({
+    tenant,
+    serve,
+    slowInvoices,
+    announce,
+    delivered,
+  }) => {
+    // GIVEN the worker serving over a store whose every write takes a second
+    await serve(slowInvoices.module);
+
+    // WHEN an order's placement and its withdrawal arrive back to back, so the
+    // withdrawal finds no invoice while the placement is still writing it
+    const placedAt = new Date().toISOString();
+    const announced = await announce({
+      eventId: 101,
+      tenantId: tenant,
+      kind: "order",
+      id: "0199a1e0-0000-7000-8000-00000000c007",
+      occurredAt: placedAt,
+      placedAt,
+      placementId: 7001,
+      payload: { quantity: 1 },
+    }).flatMap(() =>
+      announce({
+        eventId: 102,
+        tenantId: tenant,
+        kind: "order",
+        id: "0199a1e0-0000-7000-8000-00000000c007",
+        occurredAt: new Date().toISOString(),
+        placedAt,
+        placementId: 7001,
+        payload: null,
+      }),
+    );
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 2, { timeout: 20_000 });
+    const withdrawal = (await delivered(tenant)).find((mail) => mail.Subject.endsWith("withdrawn"));
+
+    // THEN the retry budget outlasted the write: the withdrawal was redelivered
+    // until the invoice existed, and links it rather than being parked
+    expect({
+      announced: announced.isOk(),
+      linked: /Its invoice: https?:\/\//.test(withdrawal?.Text ?? ""),
+    }).toEqual({ announced: true, linked: true });
+  });
+
+  it("is mailed without a link, and at once, for a withdrawal that carries no placement time", async ({
+    tenant,
+    serve,
+    tapped,
+    announce,
+    delivered,
+  }) => {
+    // GIVEN the worker serving, and a withdrawal published before envelopes
+    // carried `placedAt` — a legacy order, whose invoice nobody keyed by one
+    await serve(tapped.module);
+
+    // WHEN it arrives
+    const announced = await announce({
+      eventId: 201,
+      tenantId: tenant,
+      kind: "order",
+      id: "0199a1e0-0000-7000-8000-00000000c008",
+      occurredAt: new Date().toISOString(),
+      payload: null,
+    });
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
+    const [withdrawal] = await delivered(tenant);
+
+    // THEN it is read rather than parked, mailed without a link on its first
+    // delivery, never retried
+    expect({
+      announced: announced.isOk(),
+      text: withdrawal?.Text.trim(),
+      attempts: tapped
+        .lines()
+        .filter(
+          (line) =>
+            line.message === "order gone — notifying" &&
+            line.attributes["orderId"] === "0199a1e0-0000-7000-8000-00000000c008",
+        ).length,
+    }).toEqual({
+      announced: true,
+      text: "Order 0199a1e0-0000-7000-8000-00000000c008 is no longer with us.",
+      attempts: 1,
+    });
+  });
+
+  it("is mailed without a link once the retry budget is spent and no invoice ever appeared", async ({
+    tenant,
+    serve,
+    tapped,
+    announce,
+    delivered,
+  }) => {
+    // GIVEN the worker serving, and a withdrawal for an order placed a moment
+    // ago whose invoice will never be written
+    await serve(tapped.module);
+
+    // WHEN it arrives, and every redelivery still finds no invoice
+    const announced = await announce({
+      eventId: 202,
+      tenantId: tenant,
+      kind: "order",
+      id: "0199a1e0-0000-7000-8000-00000000c009",
+      occurredAt: new Date().toISOString(),
+      placedAt: new Date().toISOString(),
+      placementId: 7009,
+      payload: null,
+    });
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 20_000 });
+    const [withdrawal] = await delivered(tenant);
+
+    // THEN the attempt that spent the budget mailed without a link instead of
+    // failing, so nothing was dead-lettered: one delivery plus every retry
+    expect({
+      announced: announced.isOk(),
+      text: withdrawal?.Text.trim(),
+      attempts: tapped
+        .lines()
+        .filter(
+          (line) =>
+            line.message === "order gone — notifying" &&
+            line.attributes["orderId"] === "0199a1e0-0000-7000-8000-00000000c009",
+        ).length,
+    }).toEqual({
+      announced: true,
+      text: "Order 0199a1e0-0000-7000-8000-00000000c009 is no longer with us.",
+      attempts: 7,
+    });
+  });
+
+  it("is waited for when a withdrawal overtakes the placement that stores it", async ({
+    tenant,
+    serve,
+    tapped,
+    announce,
+    delivered,
+  }) => {
+    // GIVEN the worker serving, and an order placed a moment ago whose
+    // invoice no placement notification has stored yet
+    await serve(tapped.module);
+
+    // WHEN its withdrawal arrives first, and has been delivered more than once
+    const announced = await announce({
+      eventId: 1,
+      tenantId: tenant,
+      kind: "order",
+      id: "0199a1e0-0000-7000-8000-00000000c003",
+      occurredAt: new Date().toISOString(),
+      placedAt: new Date().toISOString(),
+      placementId: 7003,
+      payload: null,
+    });
+    await vi.waitUntil(
+      () =>
+        tapped
+          .lines()
+          .filter(
+            (line) =>
+              line.message === "order gone — notifying" &&
+              line.attributes["orderId"] === "0199a1e0-0000-7000-8000-00000000c003",
+          ).length > 1,
+      { timeout: 10_000 },
+    );
+
+    // THEN the delivery was retried rather than answered: no mail went out
+    // claiming the order had no invoice
+    expect({ announced: announced.isOk(), mails: await delivered(tenant) }).toEqual({
+      announced: true,
+      mails: [],
+    });
+  });
+
+  it("is left out of a withdrawal once the order is past the store's retention", async ({
+    tenant,
+    serve,
+    tapped,
+    announce,
+    delivered,
+  }) => {
+    // GIVEN the worker serving, and an order placed long before the store's
+    // retention, whose invoice is gone
+    await serve(tapped.module);
+
+    // WHEN its withdrawal arrives
+    const announced = await announce({
+      eventId: 2,
+      tenantId: tenant,
+      kind: "order",
+      id: "0199a1e0-0000-7000-8000-00000000c005",
+      occurredAt: new Date().toISOString(),
+      placedAt: "2025-01-01T00:00:00.000Z",
+      placementId: 7005,
+      payload: null,
+    });
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
+    const [withdrawal] = await delivered(tenant);
+
+    // THEN the mail goes out without a link: an absence past retention is
+    // the invoice retained away, an ordinary answer
+    expect({ announced: announced.isOk(), text: withdrawal?.Text.trim() }).toEqual({
+      announced: true,
+      text: "Order 0199a1e0-0000-7000-8000-00000000c005 is no longer with us.",
+    });
+  });
+
+  it("is never the invoice of an order placed since under the same id", async ({
+    tenant,
+    serve,
+    tapped,
+    announce,
+    delivered,
+  }) => {
+    // GIVEN the worker serving, and an id placed again today — its invoice
+    // stored — after an order of 2025 held it
+    await serve(tapped.module);
+    const replaced = await announce({
+      eventId: 3,
+      tenantId: tenant,
+      kind: "order",
+      id: "0199a1e0-0000-7000-8000-00000000c006",
+      occurredAt: new Date().toISOString(),
+      placedAt: new Date().toISOString(),
+      placementId: 7062,
+      payload: { quantity: 2 },
+    });
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
+
+    // WHEN the old order's withdrawal arrives
+    const withdrawn = await announce({
+      eventId: 4,
+      tenantId: tenant,
+      kind: "order",
+      id: "0199a1e0-0000-7000-8000-00000000c006",
+      occurredAt: new Date().toISOString(),
+      placedAt: "2025-01-01T00:00:00.000Z",
+      placementId: 7061,
+      payload: null,
+    });
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 2, { timeout: 10_000 });
+    const [, withdrawal] = await delivered(tenant);
+
+    // THEN it links nothing: its own invoice is long gone, and the one under
+    // the same id belongs to the replacement
+    expect({
+      announced: replaced.isOk() && withdrawn.isOk(),
+      text: withdrawal?.Text.trim(),
+    }).toEqual({
+      announced: true,
+      text: "Order 0199a1e0-0000-7000-8000-00000000c006 is no longer with us.",
+    });
+  });
+
+  it("is not mailed once the drain deadline passed while it was being stored", async ({
+    tenant,
+    serve,
+    stalled,
+  }) => {
+    // GIVEN a worker with no drain time to give, whose store holds an
+    // invoice until the kernel stops waiting for the delivery it belongs to
+    const app = await serve(stalled.module, { drainTimeoutMs: 0, preDrainDelayMs: 0 });
+    const placed = await stalled.place(tenant, "0199a1e0-0000-7000-8000-00000000c004", 1);
+    await vi.waitUntil(() => stalled.reached(), { timeout: 10_000 });
+
+    // WHEN the drain starts, and its deadline passes with the invoice in flight
+    app.requestDrain();
+    await app.exited;
+
+    // THEN the store answering late did not send a notification on behalf
+    // of a delivery this process had already abandoned
+    expect({ placed: placed.isOk(), sent: stalled.sent() }).toEqual({ placed: true, sent: [] });
+  });
+
+  it("belongs to one life of an order, even when two lives were placed in the same millisecond", async ({
+    tenant,
+    serve,
+    tapped,
+    announce,
+    delivered,
+  }) => {
+    // GIVEN the worker serving, and one order id placed twice — two lives —
+    // whose placement times fall in the same millisecond
+    await serve(tapped.module);
+    const placedAt = new Date().toISOString();
+    const life = (eventId: number, placementId: number, payload: { quantity: number } | null) =>
+      announce({
+        eventId,
+        tenantId: tenant,
+        kind: "order",
+        id: "0199a1e0-0000-7000-8000-00000000c00a",
+        occurredAt: placedAt,
+        placedAt,
+        placementId,
+        payload,
+      });
+    const placed = await life(301, 8001, { quantity: 1 });
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
+    const replaced = await life(302, 8002, { quantity: 5 });
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 2, { timeout: 10_000 });
+
+    // WHEN the first life is withdrawn, and its link is followed
+    const withdrawn = await life(303, 8001, null);
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 3, { timeout: 10_000 });
+    const withdrawal = (await delivered(tenant)).find((mail) => mail.Subject.endsWith("withdrawn"));
+    const invoice = await fetch(withdrawal?.Text.match(/https?:\/\/\S+/)?.[0] ?? "");
+
+    // THEN it is the first life's invoice: the key names the placement, not a
+    // timestamp two lives can share
+    expect({
+      announced: placed.isOk() && replaced.isOk() && withdrawn.isOk(),
+      body: await invoice.text(),
+    }).toEqual({
+      announced: true,
+      body: "Invoice for order 0199a1e0-0000-7000-8000-00000000c00a: 1 items.",
+    });
+  });
+});
+
+describe("the invoice store's retention", () => {
+  it("expires every invoice after the window the notifier waits within", async ({
+    s3Env,
+    bucketRules,
+  }) => {
+    // GIVEN the bucket the deployment stores its invoices in
+    // WHEN the deploy step installs the retention, twice — what every release
+    // after the first does
+    const ensured = await ensureInvoiceRetention(s3Env).flatMap(() =>
+      ensureInvoiceRetention(s3Env),
+    );
+    const rules = await bucketRules();
+
+    // THEN the bucket holds one rule expiring everything under `invoices/`
+    // after `INVOICE_RETENTION_DAYS` — the very value the notifier reads
+    expect({
+      ensured: ensured.isOk(),
+      rules: rules.filter((rule) => rule.ID === "expire-invoices"),
+    }).toEqual({
+      ensured: true,
+      rules: [
+        expect.objectContaining({
+          Status: "Enabled",
+          Filter: expect.objectContaining({ Prefix: "invoices/" }),
+          Expiration: expect.objectContaining({ Days: INVOICE_RETENTION_DAYS }),
+        }),
+      ],
+    });
+  });
+});
+
+describe("the outbox written before an event carried its placement", () => {
+  it("still publishes, so a pending legacy row never blocks its tenant", async ({
+    tenant,
+    serve,
+    tapped,
+    initConsumer,
+  }) => {
+    // GIVEN the worker serving, a subscriber of its own on the exchange, and
+    // two rows still pending in the shape the outbox held before the upgrade:
+    // a placement carrying the bare order, and a tombstone carrying `NULL`
+    await serve(tapped.module);
+    const waitForMessages = await initConsumer("orders", "order.changed");
+    const { db, outbox } = tapped.services();
+    await db.orm.orders.OutboxMessage.create({
+      tenantId: tenant,
+      kind: "order",
+      subjectId: "0199a1e0-0000-7000-8000-00000000c00b",
+      payload: JSON.stringify({ quantity: 2 }),
+    });
+    await db.orm.orders.OutboxMessage.create({
+      tenantId: tenant,
+      kind: "order",
+      subjectId: "0199a1e0-0000-7000-8000-00000000c00b",
+      payload: null,
+    });
+
+    // WHEN the relay has swept them
+    const messages = await waitForMessages({ count: 2, timeoutMs: 10_000 });
+    await vi.waitUntil(
+      async () => (await outbox.pending(tenant, 10)).getOr(undefined)?.length === 0,
+      { timeout: 5_000 },
+    );
+
+    // THEN both went out, without the placement fields nobody recorded, and
+    // nothing is left pending behind them
+    expect({
+      published: messages.map((message) => {
+        const { id, placedAt, placementId, payload } = JSON.parse(String(message.content)) as {
+          readonly id: string;
+          readonly placedAt?: string;
+          readonly placementId?: number;
+          readonly payload: unknown;
+        };
+        return { id, placedAt, placementId, payload };
+      }),
+      pending: (await outbox.pending(tenant, 10)).getOr(undefined),
+    }).toEqual({
+      published: [
+        {
+          id: "0199a1e0-0000-7000-8000-00000000c00b",
+          placedAt: undefined,
+          placementId: undefined,
+          payload: { quantity: 2 },
+        },
+        {
+          id: "0199a1e0-0000-7000-8000-00000000c00b",
+          placedAt: undefined,
+          placementId: undefined,
+          payload: null,
+        },
+      ],
+      pending: [],
+    });
   });
 });

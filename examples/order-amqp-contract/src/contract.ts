@@ -29,6 +29,13 @@ const parked = defineExchange("orders-dlx", { type: "direct" });
  * delivery is at-least-once, and neither `id` (one subject has many facts) nor
  * `occurredAt` (one transaction writes several facts at one `now()`) names a
  * single fact.
+ *
+ * An order id can be reused once its order is gone, so two fields name one
+ * life of an order, on its tombstone too: `placementId` — the order row's own
+ * id, which no later life of the same order id is ever given — and `placedAt`,
+ * when that life was placed. Both are optional on the wire, and every publisher
+ * here still sends them: an envelope queued before they existed must still be
+ * read, as a legacy order whose placement nobody recorded.
  */
 const orderChanged = defineMessage(
   z.object({
@@ -37,6 +44,8 @@ const orderChanged = defineMessage(
     kind: z.literal("order"),
     id: z.uuidv7(),
     occurredAt: z.string(),
+    placedAt: z.iso.datetime().optional(),
+    placementId: z.number().int().positive().optional(),
     payload: z.object({ quantity: z.number() }).nullable(),
   }),
 );
@@ -59,10 +68,17 @@ const orderChangedEvent = defineEventPublisher(orders, orderChanged, {
  * `defineContract`'s routability check rejects a DLX nothing binds to, which
  * would otherwise be the silent message loss it exists to catch. This contract
  * has no consumer for `orders-dlx`, because parking is the point.
+ *
+ * Its budget is sized for a withdrawal that overtakes its placement: the
+ * notifier answers retryable until the invoice the placement is writing
+ * exists, so the retries have to outlast a realistic store write. 100 ms
+ * doubling to a 2 s ceiling over six retries waits about five seconds in all
+ * (jitter spreads it between roughly half and one and a half times that),
+ * bounded, before the delivery is parked.
  */
 const notifications = defineQueue("order-notifications", {
   deadLetter: { exchange: parked, externalConsumers: true },
-  retry: { mode: "ttl-backoff", maxRetries: 3, initialDelayMs: 10 },
+  retry: { mode: "ttl-backoff", maxRetries: 6, initialDelayMs: 100, maxDelayMs: 2_000 },
 });
 
 /**

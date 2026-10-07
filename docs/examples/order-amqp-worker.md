@@ -13,7 +13,7 @@ import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { OutboxPublisher, OutboxStore, outbox } from "@btravstack/outbox";
 import { ErrAsync, OkAsync, P, TaggedError } from "unthrown";
-import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { OrderDatabase, OrderPersistenceModule, decodeOrderPayload } from "@btravstack/example-order-infrastructure";
 import { MessageUnitModule } from "../../message-unit.js";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { orderAudit } from "../../slices/audit/handler.js";
@@ -151,6 +151,29 @@ signal through and the ambient record is the only route to it. Answering a
 the next worker rather than this one finishing work nobody is waiting for.
 See [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit).
 
+**The notifier also threads [storage](/reference/storage) into
+[the mailer](/reference/mailer)** — the excerpt above shows only its first
+half. A placement renders the order's invoice, `put`s it under
+`invoices/{tenantId}/{orderId}/{placementId}.txt`, presigns it for a week (the
+longest a SigV4 URL may live) and mails the link, so the bytes never travel in
+the mail. Every event carries the order's `placementId` — the order row's own
+id, so one per life of the order — and its `placedAt`, its tombstone too, so a
+reused id never links the invoice of the order placed under it since. The
+bucket expires `invoices/` after `INVOICE_RETENTION_DAYS` through an S3
+lifecycle rule `pnpm deploy:invoice-retention` installs, the same value the
+notifier waits within.
+A withdrawal links the same invoice, and has to `get` it first: presigning
+asks the store nothing, so a URL for a missing key is minted happily and
+`404`s when followed. `ObjectNotFound` means two things by the order's age:
+inside the store's retention, an invoice the placement has not written yet —
+deliveries are concurrent, so a withdrawal can overtake its placement — and the
+delivery is retried; past it, an invoice retained away, and the mail goes out
+without a link. `StorageUnavailable` and `MailNotSent` become `RetryableError`s
+and `PresignNotSupported` a `NonRetryableError`, in one exhaustive
+`mapErrCases`. The specs follow the mailed link with a bare `fetch` against
+the shared RustFS and read the invoice back, and publish the out-of-order and
+out-of-retention withdrawals straight onto the exchange.
+
 ## The relay: the package's, and the one half it cannot own
 
 The loop, the claim and the table are [`@btravstack/outbox`](/reference/outbox)'s.
@@ -204,19 +227,17 @@ export const orderPublisher = Provider(OutboxPublisher)({
   sync: ({ client }): ServiceOf<OutboxPublisher> => ({
     publish: (message) =>
       OkAsync()
-        .map(() =>
-          message.payload === null
-            ? null
-            : (JSON.parse(message.payload) as { readonly quantity: number }),
-        )
-        .flatMap((payload) =>
+        .map(() => decodeOrderPayload(message.payload))
+        .flatMap(({ placedAt, placementId, order }) =>
           client.publish("orderChanged", {
             eventId: message.id,
             tenantId: message.tenantId,
             kind: message.kind as "order",
             id: message.subjectId,
             occurredAt: message.occurredAt.toISOString(),
-            payload,
+            placedAt,
+            placementId,
+            payload: order,
           }),
         ),
   }),
@@ -283,16 +304,19 @@ The root is now a list of slices plus what no slice owns: the outbox store and
 the one Prisma client behind it (`OrderPersistenceModule` — the relay's own,
 not either subscriber's), the starter over `orderHandlers`,
 [`observability()`](/reference/observability) for the `Logger` every
-subscriber writes to — `LOG_LEVEL`, JSON per line on stdout, every consumer
-line correlated with the delivery's own unit — the relay, and the publisher it
+subscriber writes to — `LOG_LEVEL`, one line per call, every consumer line
+correlated with the delivery's own unit — the relay, and the publisher it
 relays through: both halves of the outbox pattern in one graph.
 `MessageUnitModule` is the per-delivery fork: it names
 `AmqpMessage(orderContract)` in its `needs`, which the worker seeds, and turns
 the envelope's `tenantId` into `Tenant` once, so both handlers read
 `context.unit.tenant` rather than the payload. The exports are what the fork
 and the specs read out of the application scope; `PlaceOrder` is not among
-them, because nothing at the root can build a tenant-bound repository.
-`main.ts` is `await runMain(OrderAmqpWorker);`.
+them, because nothing at the root can build a tenant-bound repository. The real
+root passes `observability({ sink: logSink })`, where `logSink` is `pinoSink`
+over one pino instance, and `main.ts` hands the kernel's own events to the
+same sink:
+`await runMain(OrderAmqpWorker, { onEvent: kernelEvents(createLogger(logSink)) });`.
 
 ## Retry and dead-letter live in the contract
 
@@ -304,7 +328,7 @@ broker enforces it:
 ```ts
 const notifications = defineQueue("order-notifications", {
   deadLetter: { exchange: parked, externalConsumers: true },
-  retry: { mode: "ttl-backoff", maxRetries: 3, initialDelayMs: 10 },
+  retry: { mode: "ttl-backoff", maxRetries: 6, initialDelayMs: 100, maxDelayMs: 2_000 },
 });
 
 const audit = defineQueue("order-audit", {
@@ -316,15 +340,18 @@ const audit = defineQueue("order-audit", {
 Naming a failure decides what the platform does next — the sharper form of
 the claim the Temporal contract makes with `nonRetryable`. Two things to keep
 straight, both from [`@btravstack/amqp-worker`](/reference/amqp-worker): `maxRetries: 3` is
-**four** total attempts, not Temporal's three; and a handler's `Defect` is
+**four** total attempts, not Temporal's three (and the notifications queue's
+`6`, seven); and a handler's `Defect` is
 nacked once, straight to the dead-letter exchange, never touching that budget
 — so a handler that wants "infrastructure comes back" recovers its own
 defects into a `RetryableError`. `externalConsumers: true` on the dead letter
 is required, not decorative: the contract's routability check rejects a DLX
 nothing binds to, and parking is the point for both queues. Each queue's
-policy is its own — they carry the same values today, but nothing ties them
-together; a slower or more critical subscriber could tune its own
-independently.
+policy is its own, and the two differ for a reason: the notifier answers
+retryable while a withdrawal's invoice is still being written, so its budget —
+100 ms doubling to a 2 s ceiling, six retries, about five seconds in all — has
+to outlast a realistic store write, where the auditor's three quick retries
+only cover a blip.
 
 ## The specs: against a real broker
 
@@ -373,9 +400,13 @@ event too:
 ```ts
 const [message] = await waitForMessages({ count: 1, timeoutMs: 5_000 });
 expect(JSON.parse(String(message?.content))).toEqual({
+  eventId: expect.any(Number),
+  tenantId: tenant,
   kind: "order",
   id: "0199a1e0-0000-7000-8000-000000000005",
   occurredAt: expect.any(String),
+  placedAt: expect.any(String),
+  placementId: expect.any(Number),
   payload: { quantity: 4 },
 });
 ```

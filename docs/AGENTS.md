@@ -36,9 +36,10 @@ the old repository.
   `knip.json` — `examples/order-api` carries `@btravstack/prisma` and
   `@prisma/orm-postgres` for `how-to/talk-to-the-database.md` on exactly those
   terms, the way `examples/order-temporal-worker` already carried `zod`. The
-  one sample that cannot compile anywhere is `pinoSink`'s — no example
-  workspace installs `pino` — held by `packages/observability/src/pino.spec.ts`
-  and skipped with that reason.
+  `pinoSink`'s samples are skipped: the pages that show them compile in
+  `order-api`'s group and only `examples/order-amqp-worker` installs `pino` —
+  held by `packages/observability/src/pino.spec.ts` and composed for real by
+  that example's root.
 
   **A prelude may import the real artifact a page describes; it may NOT import
   a private workspace** (issue #193). The generated module lives inside an

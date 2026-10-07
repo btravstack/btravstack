@@ -1,6 +1,6 @@
 ---
 title: Order Temporal worker example
-description: The orchestration deployment — two saga slices, FulfillmentSlice and BillingSlice, composed by TemporalActivities over one task queue, a chargeOrder saga compensating with a refund, mapErrCases making a domain Err a nonRetryable contract error, a namespace per spec file on the shared Temporal server, and a drain that honours the kernel's deadline.
+description: The orchestration deployment — two saga slices, FulfillmentSlice and BillingSlice, composed by TemporalActivities over one task queue beside a scheduled stale-order sweep registered by ensureSchedule, a chargeOrder saga compensating with a refund, mapErrCases making a domain Err a nonRetryable contract error, a namespace per spec file on the shared Temporal server, and a drain that honours the kernel's deadline.
 ---
 
 <!-- doctest: prelude
@@ -18,6 +18,8 @@ import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 import { fulfillOrder } from "../../slices/fulfillment/activities.js";
 import { FulfillmentSlice } from "../../slices/fulfillment/module.js";
 import { BillingSlice } from "../../slices/billing/module.js";
+import { sweepStaleOrders } from "../../slices/sweep/activities.js";
+import { SweepSlice } from "../../slices/sweep/module.js";
 -->
 
 # Order Temporal worker
@@ -47,8 +49,9 @@ the one that needs the **network** on a cold cache.
 
 ## Two sagas, two verticals, one queue
 
-`order-temporal-contract` declares two workflows on the one `orders` task
-queue: `fulfillOrder`, the orders saga this example started with, and
+`order-temporal-contract` declares two sagas on the one `orders` task
+queue (and a third, scheduled workflow — see
+[the stale-order sweep](#the-stale-order-sweep-on-a-schedule)): `fulfillOrder`, the orders saga this example started with, and
 `chargeOrder`, a second saga — a second **vertical**, since taking the money
 is not part of placing, reserving or shipping the order. This worker is a
 modulith of two slices, `src/slices/fulfillment/` and `src/slices/billing/`,
@@ -141,6 +144,7 @@ needs, keyed by the contract's own workflow names:
 export const orderActivities = TemporalActivities(orderContract)([
   fulfillOrder,
   chargeOrder,
+  sweepStaleOrders,
 ]);
 
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
@@ -152,6 +156,7 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   imports: [
     FulfillmentSlice,
     BillingSlice,
+    SweepSlice,
     OrderPersistenceModule,
     observability(),
     otel(),
@@ -165,11 +170,10 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
 ```
 
 A wiring rule worth stating because the reason isn't obvious:
-`orderActivities`'s own `deps` are the two pieces' **ports**, and di's
+`orderActivities`'s own `deps` are the pieces' **ports**, and di's
 `flatten` discovers providers only from a module's `imports` and `provides` —
-never from a provider's own `deps`. The root **must** import both
-`FulfillmentSlice` and `BillingSlice`, even though nothing in it names
-`fulfillOrder` or `chargeOrder` directly. Forgetting one still fails to
+never from a provider's own `deps`. The root **must** import every slice, even though nothing in it names
+`fulfillOrder`, `chargeOrder` or `sweepStaleOrders` directly. Forgetting one still fails to
 compile: `TemporalActivities` declares each piece's port as one of its own
 `deps`, so a missing import is an undeclared need at the
 `TemporalModule(...)` call, refused with the exact port named — `pnpm
@@ -354,6 +358,38 @@ A policy that can be opted out of per workflow would erase the default's value,
 so the boundary is that the two spellings coexist — reach for the saga when a
 declared error is what earns the walk-back.
 
+## The stale-order sweep, on a schedule
+
+The contract's third workflow, `sweepStaleOrders`, is the one nobody calls:
+a [Temporal Schedule](/how-to/run-something-on-a-schedule) fires it every
+night for each tenant, and its one activity withdraws every order the store
+placed more than `olderThanDays` ago — by `Order.placedAt`, which the database
+defaults, never by the order id: a caller chooses its UUIDv7, timestamp
+included. It removes the first page of what is still stale and asks again, so
+it holds one batch and no cursor, stops as a defect once the unit's signal
+aborts, and answers no count a retry could not reproduce. Each withdrawal
+leaves a tombstone in the outbox,
+so [the broadcast deployment](/examples/order-amqp-worker) tells every
+subscriber; housekeeping is just another write. The cutoff is computed in the
+**workflow**, where `Date.now()` is the workflow task's recorded time, so a
+replay and a retried activity both see the same one.
+
+`src/slices/sweep/` is a slice like the other two, importing nothing: the
+repository it removes through is built per attempt by `ActivityUnitModule`,
+over the tenant the schedule's own arguments name.
+
+The schedules are registered by `pnpm deploy:schedules`
+(`src/deploy-schedules.ts`), a one-shot a release runs beside rolling the
+worker out — never by the worker's own boot, which would write them once per
+replica. It reads `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE` and `SWEEP_TENANTS`
+through `Config`, and calls
+[`ensureSchedule`](/reference/temporal-worker) once per tenant under an id
+derived from the tenant, so the second deploy updates what the first
+created, then deletes the sweep of any tenant it no longer lists.
+`src/schedules.spec.ts` runs it against the shared server, on the spec file's
+own namespace: `created` then `updated`, exactly one schedule left behind, and
+a dropped tenant's schedule retired.
+
 ## One subtlety worth stealing
 
 An `AsyncResult` is **eager**: building a step starts its activity. So a
@@ -429,13 +465,13 @@ const worker = TemporalModule("StubTemporalWorker")({
   activities: orderActivities,
   workflows: { workflowBundle },
   imports: [module, BillingModule],
-  provides: [fulfillOrder, chargeOrder],
+  provides: [fulfillOrder, chargeOrder, sweepStaleOrders],
 });
 ```
 
-`provides: [fulfillOrder, chargeOrder]` is there for the same wiring reason
-the root's own `imports` list both slices: the composed `orderActivities`'s
-own needs are the two pieces' ports, and nothing else in this graph discharges
+`provides: [fulfillOrder, chargeOrder, sweepStaleOrders]` is there for the same wiring reason
+the root's own `imports` list every slice: the composed `orderActivities`'s
+own needs are the pieces' ports, and nothing else in this graph discharges
 them.
 
 The stub deployments (`fulfilling`, `outOfStock`, `noShipping`) are each a

@@ -592,7 +592,7 @@ database span there is.
 
 ## `pinoSink(logger)`
 
-<!-- doctest: skip — needs `pino`, which no example workspace installs; held by packages/observability/src/pino.spec.ts instead -->
+<!-- doctest: skip — needs `pino`, which only examples/order-amqp-worker installs, and this page compiles in order-api's group; held by packages/observability/src/pino.spec.ts and composed for real by examples/order-amqp-worker/src/module.ts -->
 
 ```ts
 import { pinoSink } from "@btravstack/observability/pino";
@@ -603,7 +603,7 @@ pinoSink(logger: import("pino").Logger): Sink;
 A `Sink` over a pino logger, behind a subpath so `pino` can be an **optional**
 peer: a consumer that never imports it never installs it.
 
-<!-- doctest: skip — needs `pino`, which no example workspace installs; held by packages/observability/src/pino.spec.ts instead -->
+<!-- doctest: skip — needs `pino`, which only examples/order-amqp-worker installs, and this page compiles in order-api's group; held by packages/observability/src/pino.spec.ts and composed for real by examples/order-amqp-worker/src/module.ts -->
 
 ```ts
 import pino from "pino";

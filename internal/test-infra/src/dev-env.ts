@@ -116,6 +116,7 @@ const main = async (): Promise<void> => {
     `HTTP_OIDC_REDIRECT_URI=${ORY_REDIRECT_URI}`,
     `HTTP_SESSION_KEYS=${sessionKeys}`,
     "OUTBOX_TENANTS=0199a1e0-0000-7000-8000-000000000001",
+    "SWEEP_TENANTS=0199a1e0-0000-7000-8000-000000000001",
     "LOG_LEVEL=debug",
     "",
   ].join("\n");

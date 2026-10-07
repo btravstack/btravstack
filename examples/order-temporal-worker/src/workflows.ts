@@ -127,3 +127,24 @@ export const chargeOrder = declareWorkflow({
         ),
     ),
 });
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The scheduled sweep: withdraw what has outlived the retention window. The
+ * cutoff is computed HERE rather than in the activity because `Date.now()`
+ * inside the sandbox is the workflow task's own time — recorded in the
+ * history, so a replay computes the same cutoff and a retried activity is
+ * handed the same one.
+ */
+export const sweepStaleOrders = declareWorkflow({
+  workflowName: "sweepStaleOrders",
+  contract: orderContract,
+  implementation: (context, args) =>
+    propagateFailure(
+      context.activities.withdrawStaleOrders({
+        tenantId: args.tenantId,
+        placedBefore: Date.now() - args.olderThanDays * DAY_MS,
+      }),
+    ),
+});

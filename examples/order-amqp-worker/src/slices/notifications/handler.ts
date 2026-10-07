@@ -1,10 +1,76 @@
-import { RetryableError } from "@amqp-contract/worker";
+import { NonRetryableError, RetryableError } from "@amqp-contract/worker";
 import { AmqpHandler } from "@btravstack/amqp-worker";
 import { currentUnit, Logger } from "@btravstack/core";
+import type { ServiceOf } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { Tenant } from "@btravstack/example-order-application";
 import { Mailer } from "@btravstack/mailer";
-import { ErrAsync, P } from "unthrown";
+import { Storage, type PresignNotSupported, type StorageUnavailable } from "@btravstack/storage";
+import { ErrAsync, OkAsync, P, TaggedError, type AsyncResult } from "unthrown";
+
+import { INVOICE_RETENTION_DAYS, invoiceKey } from "../../invoice-retention.js";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// A week: the longest a SigV4 presigned URL may live.
+const LINK_TTL_MS = 7 * DAY_MS;
+
+// The store's lifecycle rule expires invoices after this; inside it, an absent
+// invoice is one the placement's notification may not have written yet.
+const INVOICE_RETENTION_MS = INVOICE_RETENTION_DAYS * DAY_MS;
+
+class InvoiceNotYetStored extends TaggedError("InvoiceNotYetStored")<{
+  readonly key: string;
+}> {}
+
+// The queue's own budget: the attempt that has spent it mails without a link
+// rather than failing, so a missing invoice delays a withdrawal and never
+// parks it.
+const notificationsRetry = orderContract.queues["order-notifications"].retry;
+const MAX_RETRIES = notificationsRetry.mode === "ttl-backoff" ? notificationsRetry.maxRetries : 0;
+
+const invoiceLink = (
+  storage: ServiceOf<Storage>,
+  tenantId: string,
+  id: string,
+  placementId: number,
+  placedAt: string | undefined,
+  payload: { readonly quantity: number } | null,
+  lastAttempt: boolean,
+): AsyncResult<
+  string | undefined,
+  StorageUnavailable | PresignNotSupported | InvoiceNotYetStored
+> => {
+  const key = invoiceKey(tenantId, id, placementId);
+  const issued =
+    payload === null
+      ? // Read before presigning: a presign asks the store nothing, so a URL
+        // for a key nobody holds is minted happily and 404s when followed.
+        storage
+          .get(key)
+          .map((): string | undefined => key)
+          .flatMapErrCases((matcher) =>
+            matcher
+              .with(P.tag("ObjectNotFound"), () =>
+                !lastAttempt &&
+                placedAt !== undefined &&
+                Date.now() - Date.parse(placedAt) < INVOICE_RETENTION_MS
+                  ? ErrAsync(new InvoiceNotYetStored({ key }))
+                  : OkAsync(undefined),
+              )
+              .with(P.tag("StorageUnavailable"), (error) => ErrAsync(error)),
+          )
+      : storage
+          .put(
+            key,
+            new TextEncoder().encode(`Invoice for order ${id}: ${payload.quantity} items.`),
+            { contentType: "text/plain" },
+          )
+          .map((): string | undefined => key);
+  return issued.flatMap((found) =>
+    found === undefined ? OkAsync(undefined) : storage.presignedUrl(found, { ttlMs: LINK_TTL_MS }),
+  );
+};
 
 /**
  * The notifying subscriber: one consumer of the broadcast, as a provider on a
@@ -13,15 +79,29 @@ import { ErrAsync, P } from "unthrown";
  * the handler is typed by the one consumer it implements — an envelope that
  * drifted is a compile error in this file rather than at the composition root.
  *
- * It declares only what it calls: `Logger` and `Mailer`, and nothing the
- * audit slice needs. The tenant comes off `context.unit`, where
- * `MessageUnitModule` claimed it from the very envelope this handler is
- * reading — the same fact, claimed once.
+ * It declares only what it calls: `Logger`, `Mailer` and the `Storage` the
+ * invoice lives in, and nothing the audit slice needs. The tenant comes off
+ * `context.unit`, where `MessageUnitModule` claimed it from the very envelope
+ * this handler is reading — the same fact, claimed once.
  *
- * The mail is what the slice is for, and its failure arm is the interesting
- * half: a `MailNotSent` becomes a `RetryableError`, so the BROKER's retry
- * budget owns redelivery — thesis #3 one layer out, with the transport
- * mapping an outcome the thing that produced it declined to.
+ * The mail carries a link to the invoice rather than the invoice: a placement
+ * renders it, `put`s it under a path keyed by tenant, order id and placement
+ * id — one per life of the order — and presigns it; a withdrawal links the same one. An invoice that is
+ * absent means two different things by the order's age: younger than the
+ * store's retention it is one the placement may not have written yet —
+ * deliveries are concurrent, and one replica's withdrawal can overtake
+ * another's placement — so the delivery is retried, until the attempt that
+ * spends the queue's retry budget mails without a link rather than failing;
+ * older, it was retained away, and the mail goes out without a link at once.
+ * An event with no `placementId` is about a legacy order: no invoice, and a
+ * withdrawal mailed without a link at once.
+ *
+ * Its failure arms are the interesting half: a `MailNotSent` or a store that
+ * would not answer becomes a `RetryableError`, so the BROKER's retry budget
+ * owns redelivery — thesis #3 one layer out, with the transport mapping an
+ * outcome the thing that produced it declined to. A store that cannot presign
+ * at all is a `NonRetryableError`: no redelivery teaches it to, so the
+ * message is parked.
  *
  * The `payload === null` branch is the whole point of the envelope: one
  * handler, one stream, and a reader that keeps its own copy of a subject
@@ -29,57 +109,95 @@ import { ErrAsync, P } from "unthrown";
  *
  * It also honours the kernel's deadline. `currentUnit()?.signal` is aborted
  * when the drain runs out of time, and a delivery this process is no longer
- * waiting for should not have a notification sent on its behalf: answering a
- * `RetryableError` hands the message to the next worker. Note what that COSTS
- * — `@amqp-contract/worker` acks the original and republishes a copy carrying
- * `x-retry-count + 1`, rather than leaving it un-acked — so a rollout spends
- * one attempt per in-flight message, and `maxRetries` has to have room for it.
+ * waiting for should not have a notification sent on its behalf — checked on
+ * arrival and again once the invoice is stored, since the deadline can pass
+ * while the store is answering. Answering a `RetryableError` hands the message
+ * to the next worker. Note what that COSTS — `@amqp-contract/worker` acks the
+ * original and republishes a copy carrying `x-retry-count + 1`, rather than
+ * leaving it un-acked — so a rollout spends one attempt per in-flight message,
+ * and `maxRetries` has to have room for it.
  */
 export const orderNotifications = AmqpHandler(
   orderContract,
   "orderNotifications",
 )({
-  inject: { logger: Logger, mailer: Mailer },
+  inject: { logger: Logger, mailer: Mailer, storage: Storage },
   unit: { tenant: Tenant },
   sync:
-    ({ logger, mailer }) =>
+    ({ logger, mailer, storage }) =>
     ({
       context,
+      raw,
       input: {
-        payload: { id, payload },
+        payload: { id, placementId, placedAt, payload },
       },
     }) => {
       const tenantId = context.unit.tenant;
-      if (currentUnit()?.signal.aborted === true) {
-        return ErrAsync(
-          new RetryableError(`the drain deadline passed before order ${id} was notified`),
-        );
-      }
+      const signal = currentUnit()?.signal;
+      const abandoned = () =>
+        ErrAsync(new RetryableError(`the drain deadline passed before order ${id} was notified`));
+      if (signal?.aborted === true) return abandoned();
       logger.info(payload === null ? "order gone — notifying" : "order placed — notifying", {
         tenantId,
         orderId: id,
         ...(payload === null ? {} : { quantity: payload.quantity }),
       });
 
-      return mailer
-        .send({
-          from: "orders@example.test",
-          // A real application looks the address up; this one derives it,
-          // because who a tenant notifies is its own business and not this
-          // example's subject.
-          to: [`tenant-${tenantId}@example.test`],
-          subject: payload === null ? `order ${id} withdrawn` : `order ${id} placed`,
-          text:
-            payload === null
-              ? `Order ${id} is no longer with us.`
-              : `Order ${id} is placed, for ${payload.quantity} items.`,
-        })
+      const lastAttempt = Number(raw.properties.headers?.["x-retry-count"] ?? 0) >= MAX_RETRIES;
+      // An event with no placement id is about an order from before the field
+      // existed: no invoice was ever keyed by one, so there is none to store,
+      // wait for or link.
+      const link =
+        placementId === undefined
+          ? OkAsync(undefined)
+          : invoiceLink(storage, tenantId, id, placementId, placedAt, payload, lastAttempt);
+
+      return link
         .mapErrCases((matcher) =>
-          matcher.with(
-            P.tag("MailNotSent"),
-            (error) =>
-              new RetryableError(`the notification for order ${id} was not sent: ${error.reason}`),
-          ),
+          matcher
+            .with(
+              P.tag("InvoiceNotYetStored"),
+              () =>
+                new RetryableError(
+                  `the invoice for order ${id} is not stored yet; its placement may still be in flight`,
+                ),
+            )
+            .with(
+              P.tag("StorageUnavailable"),
+              (error) =>
+                new RetryableError(`the invoice for order ${id} is out of reach: ${error.reason}`),
+            )
+            .with(
+              P.tag("PresignNotSupported"),
+              () => new NonRetryableError(`the invoice store cannot link order ${id}'s invoice`),
+            ),
+        )
+        .flatMap((link) =>
+          signal?.aborted === true
+            ? abandoned()
+            : mailer
+                .send({
+                  from: "orders@example.test",
+                  // A real application looks the address up; this one derives
+                  // it, because who a tenant notifies is its own business and
+                  // not this example's subject.
+                  to: [`tenant-${tenantId}@example.test`],
+                  subject: payload === null ? `order ${id} withdrawn` : `order ${id} placed`,
+                  text:
+                    (payload === null
+                      ? `Order ${id} is no longer with us.`
+                      : `Order ${id} is placed, for ${payload.quantity} items.`) +
+                    (link === undefined ? "" : ` Its invoice: ${link}`),
+                })
+                .mapErrCases((matcher) =>
+                  matcher.with(
+                    P.tag("MailNotSent"),
+                    (error) =>
+                      new RetryableError(
+                        `the notification for order ${id} was not sent: ${error.reason}`,
+                      ),
+                  ),
+                ),
         );
     },
 });
