@@ -52,6 +52,16 @@
         "default": "./dist/openapi.cjs"
       }
     },
+    "./graphql": {
+      "import": {
+        "types": "./dist/graphql.d.mts",
+        "default": "./dist/graphql.mjs"
+      },
+      "require": {
+        "types": "./dist/graphql.d.cts",
+        "default": "./dist/graphql.cjs"
+      }
+    },
     "./package.json": "./package.json",
     "./jwt": {
       "import": {
@@ -85,8 +95,8 @@
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts src/jwt.ts src/oidc.ts src/openapi.ts src/session.ts --format cjs,esm --dts --clean",
-    "dev": "tsdown src/index.ts src/jwt.ts src/oidc.ts src/openapi.ts src/session.ts --format cjs,esm --dts --watch",
+    "build": "tsdown src/index.ts src/jwt.ts src/oidc.ts src/openapi.ts src/graphql.ts src/session.ts --format cjs,esm --dts --clean",
+    "dev": "tsdown src/index.ts src/jwt.ts src/oidc.ts src/openapi.ts src/graphql.ts src/session.ts --format cjs,esm --dts --watch",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit -p tsconfig.test-d.json"
   },
@@ -107,6 +117,8 @@
     "@unthrown/orpc": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "graphql": "catalog:",
+    "graphql-yoga": "catalog:",
     "jose": "catalog:",
     "openid-client": "catalog:",
     "tsdown": "catalog:",
@@ -126,6 +138,8 @@
     "@orpc/openapi": "^2.0.0-beta.28",
     "@orpc/server": "^2.0.0-beta.28",
     "@unthrown/orpc": "^0.2.0",
+    "graphql": "^17.0.0",
+    "graphql-yoga": "^5.24.1",
     "jose": "^6",
     "openid-client": "^6",
     "unthrown": "^5.7.0"
@@ -135,6 +149,12 @@
       "optional": true
     },
     "@orpc/openapi": {
+      "optional": true
+    },
+    "graphql": {
+      "optional": true
+    },
+    "graphql-yoga": {
       "optional": true
     },
     "jose": {

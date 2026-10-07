@@ -1,8 +1,8 @@
 # Examples
 
-Fourteen small packages, none of them published, all of them in the gate.
+Fifteen small packages, none of them published, all of them in the gate.
 
-The **`order-*` nine** are one application booted three ways: a clean
+The **`order-*` ten** are one application booted three ways: a clean
 architecture split across four layers, deployed once as an oRPC API, once as a
 Temporal worker and once as an AMQP consumer, with each transport's contract in a
 package of its own — and, at the same time, exercising `@btravstack/core` end to
@@ -18,6 +18,7 @@ calls `start`.
 | [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and one module per vertical whose repository — and, for orders, `Logger` and the unit's `Tenant` — is deliberately an **unmet need**.                                                                                                                      |
 | [`order-infrastructure`](./order-infrastructure)       | adapters  | Prisma-backed repositories over a multi-tenant PostgreSQL schema, translating P-codes into the domain's vocabulary and closing the application's repository needs.                                                                                                                                    |
 | [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                                                                                                                                                                   |
+| [`order-graphql-contract`](./order-graphql-contract)   | contract  | The generated GraphQL SDL on its own — clients can run codegen and schema checks without installing Yoga or the HTTP server.                                                                                                                                                                          |
 | [`order-api`](./order-api)                             | runtime   | The first deployment: a two-slice modulith — a controller per contract fragment, composed into one oRPC router — served by `http()`, and `Result` → `ORPCError`.                                                                                                                                      |
 | [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — two sagas and a scheduled sweep, each forward step's permanent answers declared `nonRetryable` — read by the worker, the sandbox and the client.                                                                                                                   |
 | [`order-temporal-worker`](./order-temporal-worker)     | runtime   | The **orchestration** deployment: two saga slices on `@btravstack/temporal-worker` — `fulfillOrder` places, reserves and ships with compensation in reverse; `chargeOrder` authorizes and refunds a payment — and a nightly stale-order sweep its `deploy:schedules` registers with `ensureSchedule`. |

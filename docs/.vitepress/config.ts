@@ -95,6 +95,7 @@ const GUIDE_SIDEBAR = [
           { text: "Protect a procedure", link: "/how-to/protect-a-procedure" },
           { text: "Authorize a request", link: "/how-to/authorize-a-request" },
           { text: "Serve htmx fragments", link: "/how-to/serve-htmx-fragments" },
+          { text: "Serve GraphQL", link: "/how-to/serve-graphql" },
           { text: "Log a browser in", link: "/how-to/log-a-browser-in" },
           {
             text: "Stream with server-sent events",

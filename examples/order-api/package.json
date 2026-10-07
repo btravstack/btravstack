@@ -12,6 +12,7 @@
   "scripts": {
     "dev": "PORT=3000 PROBE_PORT=0 tsx watch --env-file=../../.env.dev src/main.ts",
     "generate": "node ../../docs/scripts/extract-doc-samples.ts --group order-api --out src/generated/doc-samples",
+    "graphql:schema": "tsx src/print-graphql-schema.ts > ../order-graphql-contract/schema.graphql",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit -p tsconfig.test-d.json"
   },
@@ -32,7 +33,10 @@
     "@orpc/contract": "catalog:",
     "@orpc/json-schema": "catalog:",
     "@orpc/openapi": "catalog:",
+    "@pothos/core": "catalog:",
     "@unthrown/orpc": "catalog:",
+    "graphql": "catalog:",
+    "graphql-yoga": "catalog:",
     "jose": "catalog:",
     "openid-client": "catalog:",
     "unthrown": "catalog:"

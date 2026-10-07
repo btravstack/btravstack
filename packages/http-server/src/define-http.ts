@@ -67,6 +67,8 @@ export type Http<A extends Authenticators, Units extends UnitsOf<A> = Record<nev
    * example needs it — `HttpModule` carries the bound providers on the router.
    */
   readonly authenticators: A;
+  /** Bound scheme providers for answerers composed without `HttpModule`. */
+  readonly providers: readonly SchemeProviders<A>[];
   /**
    * One port per scheme carrying that scheme's principal, for a unit module to
    * name in `needs` and inject.
@@ -135,6 +137,7 @@ export const defineHttp = <const A extends Authenticators = Record<never, never>
     HtmxGet: routes.HtmxGet,
     HtmxPost: routes.HtmxPost,
     authenticators: declared as A,
+    providers: providers as never,
     principals: principals as Principals<A>,
     units: () => http as never,
   };

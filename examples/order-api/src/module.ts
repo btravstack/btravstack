@@ -2,14 +2,17 @@ import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
 import { Logger, Meter, Tracer } from "@btravstack/core";
 import { contract } from "@btravstack/example-order-api-contract";
+import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpModule } from "@btravstack/http-server";
+import { graphql } from "@btravstack/http-server/graphql";
 import { oidc } from "@btravstack/http-server/oidc";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 
 import { api, principal } from "./auth.js";
+import { orderGraphqlSchema } from "./graphql-schema.js";
 import { RequestModule, ServiceModule, SessionModule, UserModule } from "./request-scope.js";
 import { customersController } from "./slices/customers/controller.js";
 import { CustomersSlice } from "./slices/customers/module.js";
@@ -67,7 +70,15 @@ export const OrderApi = HttpModule("OrderApi")({
   // The session cookie's codec and the login answerer that seals it: the
   // scheme reading the cookie rides `fragments` like the other two ride
   // `router`, and the codec is what ties the two halves to one key list.
-  provides: [sessionCodec(), ...oidc({ principal, scope: "openid orders:export" })],
+  provides: [
+    graphql(api, {
+      schema: orderGraphqlSchema,
+      requires: [{ user: [] }],
+      unit: { find: FindOrder, place: PlaceOrder },
+    }),
+    sessionCodec(),
+    ...oidc({ principal, scope: "openid orders:export" }),
+  ],
   // Everything a forked kind reads out of the application scope: the three
   // observability ports and the one database client every request's
   // repository is built over.

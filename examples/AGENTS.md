@@ -1,6 +1,6 @@
 # examples/
 
-Guidance for the ten example workspaces. The repository-wide theses, the
+Guidance for the fifteen example workspaces. The repository-wide theses, the
 gate commands and the test conventions live in the root `AGENTS.md`; what
 follows is what is true of `examples/` specifically. `examples/README.md`
 is the index of the workspaces themselves.

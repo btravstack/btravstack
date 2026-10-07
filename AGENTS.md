@@ -59,12 +59,12 @@ back, with `testing`, `observability`, the three application-service ports,
 `packages/contract/AGENTS.md`; the harness's is
 `packages/testing/AGENTS.md`; the logging starter's is
 `packages/observability/AGENTS.md`; the relay's is `packages/outbox/AGENTS.md`.
-`examples/` holds fourteen private ones — a clean-architecture application
+`examples/` holds fifteen private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 three runtimes (`order-api`, `order-temporal-worker`, `order-amqp-worker`),
 each doing what its transport is for — answering, orchestrating,
 broadcasting — with each transport's contract in a package of its own
-(`order-api-contract`, `order-temporal-contract`, `order-amqp-contract`)
+(`order-api-contract`, `order-graphql-contract`, `order-temporal-contract`, `order-amqp-contract`)
 because a client must be able to take a contract without the server, plus four entity billing examples (`entity-billing-domain`, `entity-billing-api`,
 `entity-billing-persistence`, `entity-billing-relational`) and the
 container's own `di-hexagonal`, which composes a `Module` and never
@@ -189,13 +189,14 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    **One runtime does not mean one protocol.** A graph holds exactly one
    runtime, and that is what bounds the process — not what bounds HTTP itself.
    `@btravstack/http-server`'s `HttpHandler` is a **set port** of
-   `{ prefix, handle }`, and four answerers ship: oRPC (`orpc()`, from
+   `{ prefix, handle }`, and five answerers ship: oRPC (`orpc()`, from
    `http()`), oRPC's conventional OpenAPI routes (`openApiRoutes()`, opt-in),
    htmx fragments (`htmx()`, serving `Html` — an object escaped by
-   default) and the login (`oidc()`, from `@btravstack/http-server/oidc`,
+   default), GraphQL Yoga (`graphql()`, from the optional `/graphql` subpath)
+   and the login (`oidc()`, from `@btravstack/http-server/oidc`,
    which walks a browser through the authorization-code flow and seals the
-   session cookie). GraphQL is what the package is being extended for next
-   (#179).
+   session cookie). The application builds its GraphQL schema with Pothos and
+   exports the generated SDL separately for clients (#179, #435).
    Every member is an answerer under one runtime, routed by longest matching
    prefix, because three runtimes is the one thing this thesis forbids.
 
@@ -869,7 +870,7 @@ in its place.
   the hop out of `__tests__/` rides the name (`"../workflows"`) rather than
   the URL.
 
-- **`examples/` is part of the gate, not a folder of illustrations.** All fourteen
+- **`examples/` is part of the gate, not a folder of illustrations.** All fifteen
   workspaces run under the same six commands as the kernel, and an example that
   stops compiling fails CI exactly as `packages/core` would. The type-level gates
   they pin, and the `pnpm dev` local loop, are in `examples/AGENTS.md`.

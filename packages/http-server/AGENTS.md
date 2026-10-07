@@ -58,6 +58,17 @@ is `AUTH.md`. Keep this file in sync with the code in the same commit.
   `{ readonly "SERVES NOTHING — supply a router, fragments, or both": true }`
   — booting a listener with no answerer behind it is refused here rather than
   left to `start`'s own runtime gate.
+- **`graphql(api, { schema, prefix?, requires?, unit? })`** (`graphql.ts`) is
+  the optional `/graphql` answerer. It installs Yoga on the existing
+  `HttpHandler` set port, forks one unit after mount-wide authentication, and
+  gives resolvers `{ principal, unit, signal }`. `requires` uses the same
+  `RequiresGate` and `resolveScheme` as fragment routes; absent requirements
+  mean the entire schema is public. `api.providers` carries the bound
+  authenticator and scheme providers for a hand-rolled root. The order API
+  example builds the schema with Pothos and checks its separately packaged
+  SDL against the printed schema. GraphQL execution errors stay Yoga's wire
+  envelope; application resolvers own modeled error mapping. `graphql` and
+  `graphql-yoga` are optional peers behind this subpath.
 - **`OrpcRouterPort`** (`orpc.ts`, exported from the file for the package's
   own tests, **not** from `index.ts`) — the router's port, one id, the
   starter's own: `Port("OrpcRouter")` cast to di's `PortClassOf<"OrpcRouter",

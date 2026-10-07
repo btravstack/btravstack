@@ -1,0 +1,12 @@
+type Mutation {
+  placeOrder(id: String!, quantity: Int!): Order
+}
+
+type Order {
+  id: String
+  quantity: Int
+}
+
+type Query {
+  order(id: String!): Order
+}

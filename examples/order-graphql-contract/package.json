@@ -1,0 +1,10 @@
+{
+  "name": "@btravstack/example-order-graphql-contract",
+  "private": true,
+  "description": "Client-consumable GraphQL SDL for the order API example",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./schema.graphql": "./schema.graphql"
+  }
+}

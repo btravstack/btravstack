@@ -1806,6 +1806,16 @@ mount point is an error, and it is a `RuntimeStartFailed` at `listen` rather
 than a coin toss. A trailing slash is the same mount, so `/rpc` and `/rpc/`
 collide.
 
+`graphql(api, { schema, prefix?, requires?, unit? })` from the optional
+`@btravstack/http-server/graphql` subpath contributes a Yoga answerer. `schema`
+is any `GraphQLSchema` (the example builds one with Pothos); `prefix` defaults
+to `/graphql`. `requires` gates the whole mount through `RequiresGate` and the
+shared principal resolver. Resolver context carries `principal`, `unit`, and
+`signal`. The response remains one HTTP unit through completion and drain.
+Install the optional `graphql` and `graphql-yoga` peers only for this subpath.
+See [Serve GraphQL](/how-to/serve-graphql) for the code-first example, SDL
+artifact, and error boundary.
+
 The runtime reads the members through `Runtime.resolves` rather than through
 di, because a member contributed by a **sibling** module is not visible from
 inside the starter's own. That is why `HttpRuntime` resolves `HttpHandler` and
