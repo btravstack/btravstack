@@ -27,8 +27,11 @@ holding it.
 exists: a missing provider, a private port reached across a module boundary, a
 runtime whose ports the root does not export — each is a compile error at the
 call site (see [Compile errors, not
-surprises](/explanation/compile-time-wiring)). By the time `start` sees a
-module there is nothing left to discover about it.
+surprises](/explanation/compile-time-wiring)). What the types cannot see — a
+dependency cycle, two providers for one port in modules that never see each
+other — is a [wiring defect](/reference/di/wiring-defects), found when the
+graph is assembled and before any factory runs. By the time a factory runs,
+there is nothing left to discover about the wiring.
 
 So **`@btravstack/core` does not wire**. It decides when the already-proven graph is
 constructed and when it is torn down. Construction is `Module.scoped`; teardown
@@ -50,10 +53,13 @@ array is what buys the compile-time checking.
 **Not Effect's runtime.** Effect owns how your code _runs_: fibers,
 interruption, `Layer`, a program written as `Effect` values and interpreted by
 a runtime. btravstack owns none of that. A use case here is a plain function
-returning an `unthrown` `Result`; the kernel never sees inside it. What the
-kernel owns is the _process_ around your code — signals, readiness, the
-drain, the exit code — which is precisely the part an effect system leaves to
-you.
+returning an `unthrown` `Result`; the kernel never sees inside it. Effect also
+owns the process edge: its Node
+[`runMain`](https://effect.website/docs/v4/platform/runtime) interrupts on a
+signal, runs teardown, reports the failure and sets the exit code. What the
+kernel adds to that edge is Kubernetes-shaped — readiness probes from the
+lifecycle state, a pre-drain delay, a deadline-bounded drain that counts and
+reports its units — around code that is not written as `Effect` values.
 
 **Not a framework.** There is no router, no ORM, no validation layer, no
 logger, no middleware chain **in the kernel**. Everything of that kind arrives
@@ -142,19 +148,20 @@ see [Peer dependencies](/explanation/peer-dependencies).
 
 ## Side by side
 
-|                    | NestJS                                       | Effect                                 | hand-rolled `main.ts`    | btravstack                                                |
-| ------------------ | -------------------------------------------- | -------------------------------------- | ------------------------ | --------------------------------------------------------- |
-| Wiring checked     | at boot, from decorator metadata             | at compile time, through `Layer` types | not at all               | at compile time, at the `Module` and `start` call         |
-| Missing dependency | boot-time exception                          | compile error                          | `undefined` at call time | compile error                                             |
-| Failures           | thrown, caught by filters                    | typed error channel of `Effect`        | thrown                   | `unthrown` `Result`; the kernel never throws              |
-| Stop on SIGTERM    | `enableShutdownHooks()` + `app.close()`      | fiber interruption, `Scope` release    | `server.close()`         | readiness off, pre-drain delay, deadline, abandoned count |
-| Probes             | `@nestjs/terminus`, on the app's HTTP routes | none                                   | a route you write        | the kernel's own server, from the state machine           |
-| Exit code          | not set                                      | non-zero on failure                    | `process.exit(0)`        | `runMain`'s table, via `process.exitCode`                 |
-| Transport          | built in (Express/Fastify adapters)          | `@effect/platform`                     | whatever you import      | a starter module providing a `Runtime` port               |
-| Per-request scope  | request-scoped providers bubble up the chain | `Layer` per request, by hand           | closures                 | a bound `unit` module, forked by the runtime              |
+|                    | NestJS                                       | Effect                                         | hand-rolled `main.ts`                                          | btravstack                                                |
+| ------------------ | -------------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------- |
+| Wiring checked     | at boot, from decorator metadata             | at compile time, through `Layer` types         | each call's own signature                                      | at compile time, at the `Module` and `start` call         |
+| Missing dependency | boot-time exception                          | compile error                                  | compile error at a typed call; scopes and visibility unchecked | compile error                                             |
+| Failures           | thrown, caught by filters                    | typed error channel of `Effect`                | thrown                                                         | `unthrown` `Result`; the kernel never throws              |
+| Stop on SIGTERM    | `enableShutdownHooks()` + `app.close()`      | `runMain`: fiber interruption, `Scope` release | `server.close()`                                               | readiness off, pre-drain delay, deadline, abandoned count |
+| Probes             | `@nestjs/terminus`, on the app's HTTP routes | none                                           | a route you write                                              | the kernel's own server, from the state machine           |
+| Exit code          | not set                                      | `runMain`: `1` on failure                      | `process.exit(0)`                                              | `runMain`'s table, via `process.exitCode`                 |
+| Transport          | built in (Express/Fastify adapters)          | `@effect/platform`                             | whatever you import                                            | a starter module providing a `Runtime` port               |
+| Per-request scope  | request-scoped providers bubble up the chain | `Layer` per request, by hand                   | closures                                                       | a bound `unit` module, forked by the runtime              |
 
 The row that matters most is the first: everything else the kernel does is
-only safe because nothing about the graph is left to find out at boot.
+only safe because what the types cannot prove about the graph is found before
+any factory runs, not halfway through construction.
 
 ## Where to go next
 

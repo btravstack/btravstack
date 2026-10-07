@@ -27,6 +27,36 @@ the old repository.
 - **Deployed by `.github/workflows/deploy-docs.yml`**, unversioned: `main`
   deploys alone to the root. `unthrown`'s stable/beta split (`DOCS_BASE`,
   `DOCS_VERSIONS`) is the shape to adopt once a stable tag exists.
+
+  **The site runs ahead of npm, and says so** (issue #381). Deploy and release
+  both chain off the same green CI run and check out its `head_sha`, but only a
+  merged release PR publishes: an API change merged with its changeset deploys
+  at once, while npm still serves the previous version until
+  `changeset-release/main` merges. Coupling the deploy to publication was
+  declined — a docs-only fix carries no changeset, so it would wait for an
+  unrelated release. Instead `config.ts` reads, at build time, the version in
+  `packages/core/package.json`, the ref and commit (`DOCS_REF` /
+  `DOCS_COMMIT`, else `git rev-parse`), and whether a pending changeset names
+  a package (an empty `---\n---` one releases nothing), and the navigation's
+  version menu shows them; a manual dispatch from a branch names that branch
+  rather than claiming `main`. All of it is in the turbo task's hash (`env`,
+  `../.changeset/*.md`, `../packages/*/package.json`): CI restores `.turbo`
+  from earlier SHAs, and a commit touching only `.github/` would otherwise
+  replay the previous commit's HTML. `deploy-docs.yml` sets both from the
+  ref and `head_sha` it checked out. The menu reads `vX + unreleased`
+  with a link to the open release PR in the window above, `vX` once the release
+  PR's merge commit (which consumes the changesets and bumps the version)
+  deploys. That last label can lead npm by the length of the publish job, which
+  runs from the same commit in parallel — and for longer if that job fails,
+  until it is rerun, since the merge already consumed the changesets. The menu
+  therefore links npm's version list beside the label. Asking npm at build
+  time was declined: the gate's build would depend on the network, and turbo's
+  cache cannot hash a registry's answer. Chaining the deploy off the Release
+  workflow was declined too: the `head_sha` a run of Release reports is the
+  branch tip it was triggered on, not necessarily the commit CI tested. The
+  tutorial's install step and the `Support and upgrades` section of
+  `reference/packages.md` point at the menu.
+
 - **Every `ts` fence in the framework, DI and entity guide directories, in the
   root README and in the package READMEs is compiled by `pnpm typecheck`,
   continuously.**

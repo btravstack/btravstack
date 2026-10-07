@@ -127,6 +127,14 @@ here), and `@types/node` types the Node APIs both use. The pnpm line's
 `--allow-build=esbuild` lets the bundler `tsx` runs on execute its install
 script, which recent pnpm refuses to do until someone approves it.
 
+::: info Which version this site describes
+This site is built from `main`, which can be ahead of npm. The version menu in
+the navigation bar names the release and commit it was built from, and says
+when `main` carries changes npm does not have yet. Before adopting, read
+[Support and upgrades](/reference/packages#support-and-upgrades): pre-1.0
+minors may break, and fixes land on the latest release only.
+:::
+
 ## Step 2 — Declare a service
 
 A service is a **port** — a name with a service type — and a **provider** that

@@ -26,7 +26,7 @@ features:
   - title: Wiring proven at compile time
     details: A module that forgets a provider is a compile error naming the missing port — not a stack trace at boot. No decorators, no reflect-metadata.
   - title: Nothing throws
-    details: Every async surface returns a Result. A failure is a value with a type, so the compiler makes you handle it and no error escapes unnoticed.
+    details: Every async surface returns a Result. A failure is a value with a type; a triage written with mapErrCases fails to compile when a new error case arrives, and a Result dropped unread is unthrown's lint rule to catch.
   - title: HTTP, Temporal and AMQP
     details: One process runs one runtime. The same application module boots as an API, a workflow worker or a queue consumer — three deployments, one codebase.
   - title: Built for Kubernetes
@@ -49,7 +49,7 @@ It is the layer between your business logic and the process it runs in.
 |                          |                                                                                                          |
 | ------------------------ | -------------------------------------------------------------------------------------------------------- |
 | **Dependency injection** | Plain values, no decorators or `reflect-metadata`. Unmet dependencies are compile errors.                |
-| **Errors as values**     | Every fallible call returns a `Result`. Domain errors are typed and exhaustively matched.                |
+| **Errors as values**     | Every fallible call returns a `Result`. Domain errors are typed; a `mapErrCases` triage is exhaustive.   |
 | **Configuration**        | Environment variables validated once, at boot, into typed values. A bad value exits `78` and says which. |
 | **Three transports**     | HTTP (contract-first, over oRPC), Temporal workers, AMQP consumers.                                      |
 | **Observability**        | Structured logs correlated per request, OpenTelemetry traces and metrics.                                |
@@ -181,14 +181,28 @@ runtime is a service of the module rather than an argument to a factory.
 
 ## How it compares
 
-|                      | btravstack      | NestJS                | AdonisJS              | Hand-rolled       |
-| -------------------- | --------------- | --------------------- | --------------------- | ----------------- |
-| Wiring checked       | at compile time | at boot               | at boot               | never             |
-| Dependency injection | plain values    | decorators + metadata | decorators + metadata | by hand           |
-| Errors               | values, typed   | exceptions + filters  | exceptions + handlers | your choice       |
-| Graceful shutdown    | default         | opt-in hooks          | opt-in hooks          | write it yourself |
-| Ecosystem            | small, growing  | very large            | large                 | none              |
-| Full-stack           | no              | no                    | yes                   | —                 |
+|                      | btravstack                                                            | NestJS                          | AdonisJS                                    | Hand-rolled               |
+| -------------------- | --------------------------------------------------------------------- | ------------------------------- | ------------------------------------------- | ------------------------- |
+| Wiring checked       | at compile time, across modules: visibility, scopes, transitive needs | at boot                         | at boot                                     | each call's own signature |
+| Dependency injection | plain values                                                          | decorators + metadata           | decorators + metadata                       | by hand                   |
+| Errors               | values, typed                                                         | exceptions + filters            | exceptions + handlers                       | your choice               |
+| Graceful shutdown    | on SIGTERM by default, with a Kubernetes pre-drain delay              | opt-in, `enableShutdownHooks()` | on SIGTERM, through providers' `shutdown()` | write it yourself         |
+| Ecosystem            | small, growing                                                        | very large                      | large                                       | none                      |
+| Full-stack           | no                                                                    | no                              | yes                                         | —                         |
+
+Every framework in that table manages its lifecycle, and so do
+[Spring Boot](https://docs.spring.io/spring-boot/reference/web/graceful-shutdown.html)
+(graceful shutdown on by default), the
+[.NET Generic Host](https://learn.microsoft.com/en-us/dotnet/core/extensions/generic-host)
+and Effect's [`runMain`](https://effect.website/docs/v4/platform/runtime). The
+difference is narrower. The compiler checks the composition (module
+visibility, scopes and transitive needs, not only a constructor's arguments),
+and what it cannot see is a defect before any factory runs. The pre-drain
+delay, the drain's deadlines and its unit accounting are defaults rather than
+deployment work. The AdonisJS row is from
+its [v6 lifecycle](https://v6-docs.adonisjs.com/guides/concepts/application-lifecycle)
+and [service providers](https://docs.adonisjs.com/guides/concepts/service-providers)
+pages.
 
 **NestJS has far more packages, integrations and hiring pool**, and decorators
 are more concise to write. If that trade matters more than compile-time

@@ -1,3 +1,6 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync, readdirSync } from "node:fs";
+
 import { defineConfig } from "vitepress";
 
 const SITE_DESCRIPTION =
@@ -5,6 +8,33 @@ const SITE_DESCRIPTION =
 
 const BASE = "/btravstack/";
 const SITE_URL = `https://btravstack.github.io${BASE}`;
+const REPO = "https://github.com/btravstack/btravstack";
+const RELEASE_PRS = `${REPO}/pulls?q=is%3Apr+head%3Achangeset-release%2Fmain`;
+
+// The site deploys from `main`, which runs ahead of npm until the release pull
+// request merges: a pending changeset naming a package is exactly "on main, not
+// yet published". An empty one (`---\n---`) releases nothing.
+const ROOT = new URL("../../", import.meta.url);
+const CHANGESETS = new URL(".changeset/", ROOT);
+const VERSION: string = JSON.parse(
+  readFileSync(new URL("packages/core/package.json", ROOT), "utf8"),
+).version;
+// `DOCS_COMMIT` and `DOCS_REF` are declared in the task's turbo `env`, so a
+// cached build is never replayed under another commit or ref.
+const REF =
+  process.env.DOCS_REF ??
+  execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf8" }).trim();
+const COMMIT =
+  process.env.DOCS_COMMIT ??
+  execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+const UNRELEASED = readdirSync(CHANGESETS)
+  .filter((name) => name.endsWith(".md"))
+  .some((name) => {
+    const releases = /^---\r?\n([\s\S]*?)\r?\n?---/.exec(
+      readFileSync(new URL(name, CHANGESETS), "utf8"),
+    )?.[1];
+    return /\S/.test(releases ?? "");
+  });
 
 // The guide is structured by the four Diátaxis modes (https://diataxis.fr/): a
 // learning-oriented Tutorial, task-oriented How-to guides, information-oriented
@@ -424,8 +454,19 @@ export default defineConfig({
       { text: "API", link: "/api/" },
       { text: "Examples", link: "/examples/" },
       {
-        text: "Changelog",
-        link: "https://github.com/btravstack/btravstack/releases",
+        text: UNRELEASED ? `v${VERSION} + unreleased` : `v${VERSION}`,
+        items: [
+          { text: `Built from ${REF} at ${COMMIT.slice(0, 7)}`, link: `${REPO}/commit/${COMMIT}` },
+          ...(UNRELEASED
+            ? [{ text: "Unreleased: not on npm yet", link: `${RELEASE_PRS}+is%3Aopen` }]
+            : []),
+          { text: "Release notes", link: `${RELEASE_PRS}+is%3Amerged` },
+          {
+            text: "Versions published on npm",
+            link: "https://www.npmjs.com/package/@btravstack/core?activeTab=versions",
+          },
+          { text: "Support and upgrades", link: "/reference/packages#support-and-upgrades" },
+        ],
       },
       // Back to the btravstack hub (links the docs up to the landing page).
       { text: "btravstack", link: "https://btravstack.github.io/" },
