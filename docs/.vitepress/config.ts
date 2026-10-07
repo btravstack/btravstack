@@ -85,6 +85,10 @@ const GUIDE_SIDEBAR = [
         items: [
           { text: "Serve an oRPC contract over HTTP", link: "/how-to/serve-orpc-over-http" },
           {
+            text: "Serve an oRPC contract as OpenAPI routes",
+            link: "/how-to/serve-an-openapi-contract",
+          },
+          {
             text: "Split a router into controllers",
             link: "/how-to/split-a-router-into-controllers",
           },

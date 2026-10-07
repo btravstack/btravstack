@@ -1410,6 +1410,18 @@ changes with it.
 `@orpc/zod` is needed: zod v4 is Standard Schema, and `@orpc/zod` publishes no
 `2.0.0-beta.28` to match the catalog's pin anyway.
 
+`openApiRoutes()` is the OpenAPI wire answerer on this same optional subpath.
+It injects the already-built `OrpcRouterPort` and contributes one `HttpHandler`
+member under `/api` by default; `orpc()` remains under `/rpc`. Both use the
+same handler policy builder, so CORS, body limit, compression, and the GET CSRF
+plugin do not diverge. The runtime still owns the unit and cookie-based CSRF
+check. A document is generated separately through `openApiDocument()`; no
+spec or UI route is mounted by default. The installed oRPC reference plugin
+can serve one, but its raw generator would omit this package's authentication
+marker fold, so supply `openApiDocument()` as its `spec` callback. The current
+`2.0.0-beta.28` plugin has no `allow` option: a private document needs an
+ingress gate or another application-owned serving path.
+
 ## Several answerers, one runtime
 
 **Routing is by longest matching prefix, and there is no chain.** `/rpc` owns

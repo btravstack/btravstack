@@ -1,8 +1,39 @@
 import { isAuthenticated, type Requirements } from "@btravstack/contract";
+import { Provider } from "@btravstack/di";
 import type { RouterContract } from "@orpc/contract";
 import { StandardJsonSchemaConverter } from "@orpc/json-schema";
 import { OpenAPIGenerator, getOpenAPIMeta } from "@orpc/openapi";
+import { OpenAPIHandler } from "@orpc/openapi/node";
 import { fromSafePromise, type AsyncResult } from "unthrown";
+
+import { CookieSchemes, csrfOn } from "./cookie.js";
+import { HttpHandler } from "./handler.js";
+import { HttpConfig } from "./http-config.js";
+import { OrpcRouterPort, pluginsOf, type OrpcOptions } from "./orpc.js";
+
+/** Policies shared with the RPC answerer; only the mount has a different default. */
+export type OpenApiRoutesOptions = Omit<OrpcOptions, "prefix"> & {
+  /** Where ordinary method-and-path requests are served. Default `/api`. */
+  readonly prefix?: `/${string}`;
+};
+
+/** Serve a contract's OpenAPI routes through the same router and HTTP runtime as RPC. */
+export const openApiRoutes = (options: OpenApiRoutesOptions = {}) => {
+  const prefix = options.prefix ?? "/api";
+  return Provider.member(HttpHandler)({
+    inject: { router: OrpcRouterPort, config: HttpConfig, cookieSchemes: CookieSchemes },
+    sync: ({ router, config, cookieSchemes }) => {
+      const handler = new OpenAPIHandler(router, {
+        plugins: [...pluginsOf(options, config, csrfOn(options.csrf, cookieSchemes))],
+      });
+      return {
+        prefix,
+        handle: (request, response, _signal, host) =>
+          handler.handle(request, response, { prefix, context: { request, host } }),
+      };
+    },
+  });
+};
 
 /**
  * The OpenAPI document, as `@orpc/openapi` returns it.

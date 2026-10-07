@@ -144,7 +144,7 @@ const corsOf = (
 };
 
 /** The configured policies, ahead of whatever `plugins` the application added. */
-const pluginsOf = (
+export const pluginsOf = (
   options: OrpcOptions,
   config: ServiceOf<HttpConfig>,
   csrf: boolean,

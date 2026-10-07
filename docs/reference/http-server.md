@@ -113,7 +113,8 @@ types — `jose`), `@btravstack/http-server/session` (`sessionCodec`,
 `SessionCodecService` / `SessionOptions` types — `jose` again),
 `@btravstack/http-server/oidc` (`oidc`, `OidcUnreachable`, and the
 `OidcOptions` type — `openid-client`), and
-`@btravstack/http-server/openapi` (`openApiDocument` — `@orpc/openapi`). All
+`@btravstack/http-server/openapi` (`openApiDocument`, `openApiRoutes`, and
+`OpenApiRoutesOptions` — `@orpc/openapi`). All
 four have sections of their own below.
 
 ## `HttpModule(name)({...})`
@@ -2232,11 +2233,35 @@ requirement.
 `@orpc/openapi` and `@orpc/json-schema` are **optional peers** behind the
 subpath, so an application that never asks for a document installs neither.
 
-### Nothing serves it
+### Document publication is optional
 
-This package mounts no documentation route and ships no UI asset. A Swagger UI
-bundle inside a transport package would be a runtime dependency for every
-consumer, including the ones who never ask for a document — so an application
-serves the value from a route of its own. `examples/order-api/src/openapi.ts`
-is the whole recipe, and the same document is the route list:
+This package mounts no documentation route by default and ships no UI asset.
+`openApiRoutes()` serves the contract's ordinary HTTP routes, but does not
+publish its document. An application can write the document to a build artifact
+or pass it to oRPC's optional reference plugin. Use this package's
+`openApiDocument()` as that plugin's `spec` source so the security marker fold is
+retained. `examples/order-api/src/openapi.ts` shows the document options, and
+the same document is the route list:
 [List what a process serves](/how-to/list-what-a-process-serves).
+
+## `openApiRoutes()` — from `@btravstack/http-server/openapi`
+
+`openApiRoutes({ prefix?, cors?, bodyLimit?, compression?, csrf?, plugins? })`
+contributes one `HttpHandler` member under `/api` by default. It uses
+`@orpc/openapi/node`'s `OpenAPIHandler` over the same `OrpcRouterPort` as
+`orpc()`, so a contract can serve TypeScript RPC clients at `/rpc` and generic
+HTTP clients at `/api` in one process. Add it to `HttpModule`'s `provides`;
+no second runtime or router implementation is needed. It is opt-in, and the
+RPC-only composition remains unchanged.
+
+Methods and paths come from the contract's oRPC OpenAPI metadata. With no
+metadata, oRPC defaults to `POST` at the procedure path; the generator does
+not invent `GET /resources/{id}`. The output of `openApiDocument()` describes
+these OpenAPI routes, so the server must mount `openApiRoutes()` for that
+document to be a callable wire contract. The answerer shares `orpc()`'s policy
+builder and reads the same deployed `HTTP_CORS_ORIGIN`, `HTTP_BODY_LIMIT`, and
+`HTTP_COMPRESSION` values. Explicit per-answerer policy options belong on
+`openApiRoutes()` too; `HttpModule`'s `cors`, `compression`, and `plugins`
+options configure its RPC answerer. The HTTP runtime still owns cookie-based
+CSRF checks, the request unit, security headers, and drain. See
+[Serve an oRPC contract as OpenAPI routes](/how-to/serve-an-openapi-contract).
