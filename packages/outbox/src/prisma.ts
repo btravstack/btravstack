@@ -107,6 +107,19 @@ export const prismaOutboxStore = <Tx>(
       })
       .build();
 
+  // The tenants ride as one JSON array, so a tenant id carries no delimiter
+  // the statement could split on.
+  const oldest = (tenantIds: readonly string[]) =>
+    sql(
+      statement(
+        `SELECT "tenantId", to_json(min("occurredAt")) #>> '{}' AS "occurredAt" FROM ${qualified} WHERE "publishedAt" IS NULL AND "tenantId" IN (SELECT json_array_elements_text(`,
+        `::json)) GROUP BY "tenantId"`,
+      ),
+      JSON.stringify(tenantIds),
+    )
+      .returnsRow({ tenantId: "pg/text@1", occurredAt: "pg/text@1" })
+      .build();
+
   const mark = (ids: readonly number[]) =>
     sql(
       statement(
@@ -131,6 +144,15 @@ export const prismaOutboxStore = <Tx>(
 
   return {
     pending: (tenantId, limit) => transaction((tx) => read(tx, tenantId, limit)),
+    oldestPending: (tenantIds) =>
+      transaction(async (tx) =>
+        (
+          (await tx.query(oldest(tenantIds))) as readonly {
+            readonly tenantId: string;
+            readonly occurredAt: string;
+          }[]
+        ).map(({ tenantId, occurredAt }) => ({ tenantId, occurredAt: new Date(occurredAt) })),
+      ),
     claim: (tenantId, limit, relay) =>
       transaction(async (tx) => {
         const [held] = (await tx.query(lock(tenantId))) as readonly { readonly locked: string }[];

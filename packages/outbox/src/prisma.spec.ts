@@ -84,6 +84,29 @@ describe("prismaOutboxStore", () => {
     ]);
   });
 
+  it("reads every tenant's oldest pending time in one statement", async ({ stub }) => {
+    // GIVEN a client answering one tenant's oldest pending row
+    const db = stub({ rows: [row] });
+
+    // WHEN the oldest pending time of three tenants is asked for
+    const asked = await prismaOutboxStore(db)
+      .oldestPending(["acme", 'gl"obex', "initech"])
+      .map((oldest) => ({ oldest, ran: db.ran() }));
+
+    // THEN one statement carried all three as a JSON array, and the time came
+    // back a Date
+    expect(asked).toBeOkWith({
+      oldest: [{ tenantId: "acme", occurredAt: new Date(row.occurredAt) }],
+      ran: [
+        {
+          sql: `SELECT "tenantId", to_json(min("occurredAt")) #>> '{}' AS "occurredAt" FROM "public"."outboxMessage" WHERE "publishedAt" IS NULL AND "tenantId" IN (SELECT json_array_elements_text(?::json)) GROUP BY "tenantId"`,
+          values: ['["acme","gl\\"obex","initech"]'],
+          tx: 1,
+        },
+      ],
+    });
+  });
+
   it("quotes the identifiers it is given", async ({ stub }) => {
     // GIVEN a schema name carrying a quote
     const db = stub({});

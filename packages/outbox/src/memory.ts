@@ -32,6 +32,12 @@ export const memoryOutboxStore = (clock: Clock = systemClock): MemoryOutboxStore
       messages.push({ ...message, id: messages.length + 1, occurredAt: new Date(clock.now()) });
     },
     pending: (tenantId, limit) => OkAsync(pendingOf(tenantId, limit)),
+    oldestPending: (tenantIds) =>
+      OkAsync(
+        tenantIds.flatMap((tenantId) =>
+          pendingOf(tenantId, 1).map(({ occurredAt }) => ({ tenantId, occurredAt })),
+        ),
+      ),
     claim: (tenantId, limit, relay) => {
       if (claimed.has(tenantId)) return OkAsync();
       claimed.add(tenantId);

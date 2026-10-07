@@ -11,7 +11,7 @@ import {
   type Settle,
 } from "@btravstack/core";
 import { Module, Port, Provider, type Scope } from "@btravstack/di";
-import { ErrAsync, OkAsync, allAsync, fromSafePromise, type AsyncResult } from "unthrown";
+import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 import {
   OutboxPublisher,
@@ -112,18 +112,24 @@ const startRelay = (
     return claimed.isOk() ? swept : "failed";
   };
 
+  const backoff = (failures: number): number =>
+    Math.min(pollMs * 2 ** failures, Math.max(pollMs, MAX_BACKOFF_MS));
+
+  // Each tenant is due on its own clock — at once after a full batch, after
+  // `pollMs` when idle, after its own back-off when failing — so one tenant's
+  // refused message slows no other tenant.
   const running = (async () => {
-    let failures = 0;
+    const schedule = tenants.map((tenantId) => ({ tenantId, due: clock.now(), failures: 0 }));
     while (!signal.aborted) {
-      const swept: Swept[] = [];
-      for (const tenantId of tenants) {
+      for (const tenant of schedule) {
         if (signal.aborted) break;
-        swept.push(await sweep(tenantId));
+        if (tenant.due > clock.now()) continue;
+        const swept = await sweep(tenant.tenantId);
+        tenant.failures = swept === "failed" ? tenant.failures + 1 : 0;
+        tenant.due = clock.now() + (swept === "full" ? 0 : backoff(tenant.failures));
       }
-      failures = swept.includes("failed") ? failures + 1 : 0;
-      // A full batch means a backlog, so the next sweep starts at once.
-      if (failures === 0 && swept.includes("full")) continue;
-      await clock.sleep(Math.min(pollMs * 2 ** failures, Math.max(pollMs, MAX_BACKOFF_MS)), signal);
+      const wait = Math.min(...schedule.map(({ due }) => due)) - clock.now();
+      if (wait > 0) await clock.sleep(wait, signal);
     }
   })();
 
@@ -201,15 +207,13 @@ export const outbox = (
     sync: ({ store, config: { tenants, maxLagMs } }) => ({
       name: "outbox",
       check: () =>
-        allAsync(
-          tenants.map((tenantId) =>
-            store.pending(tenantId, 1).map(([oldest]) => ({
+        store.oldestPending(tenants).flatMap((oldest) => {
+          const behind = oldest
+            .map(({ tenantId, occurredAt }) => ({
               tenantId,
-              lagMs: oldest === undefined ? 0 : clock.now() - oldest.occurredAt.getTime(),
-            })),
-          ),
-        ).flatMap((lags) => {
-          const behind = lags.filter(({ lagMs }) => lagMs > maxLagMs);
+              lagMs: clock.now() - occurredAt.getTime(),
+            }))
+            .filter(({ lagMs }) => lagMs > maxLagMs);
           return behind.length === 0
             ? OkAsync()
             : ErrAsync(

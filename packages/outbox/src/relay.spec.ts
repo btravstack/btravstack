@@ -116,6 +116,29 @@ describe("outbox", () => {
     expect(swept).toBeOkWith(["ready"]);
   });
 
+  it("keeps one tenant's back-off from slowing another tenant's backlog", async ({
+    store,
+    publisher,
+    clock,
+    relaying,
+  }) => {
+    // GIVEN a fact one tenant's transport refuses forever, and another
+    // tenant's backlog of several full batches
+    store.append(order("acme", "poison"));
+    publisher.refuse("poison");
+    const ids = Array.from({ length: 100 }, (_, index) => `g-${String(index)}`);
+    for (const id of ids) store.append(order("globex", id));
+
+    // WHEN the relay starts, and no time passes
+    const swept = await relaying({ tenants: ["acme", "globex"] }, () =>
+      clock.advance(0).map(() => publisher.sent()),
+    );
+
+    // THEN the second tenant's whole backlog went out: the first tenant's
+    // back-off is its own
+    expect(swept).toBeOkWith(ids);
+  });
+
   it("never hands two relays over one store the same message", async ({
     store,
     publisher,
@@ -270,6 +293,37 @@ describe("outbox", () => {
       status: "healthy",
       components: [{ name: "outbox", status: "healthy" }],
     });
+  });
+
+  it("asks the store about every tenant in one call", async ({ store, clock, relaying }) => {
+    // GIVEN a store that counts what /healthz costs it
+    let calls = 0;
+    const counted = {
+      ...store,
+      pending: (...args: Parameters<typeof store.pending>) => {
+        calls += 1;
+        return store.pending(...args);
+      },
+      oldestPending: (...args: Parameters<typeof store.oldestPending>) => {
+        calls += 1;
+        return store.oldestPending(...args);
+      },
+    };
+
+    // WHEN /healthz asks, for three tenants
+    const asked = await relaying(
+      { tenants: ["acme", "globex", "initech"] },
+      (ctx) =>
+        clock
+          .advance(0)
+          .map(() => (calls = 0))
+          .flatMap(() => runHealthChecks(ctx.get(HealthChecks)))
+          .map(() => calls),
+      counted,
+    );
+
+    // THEN one round trip answered for all three, however many tenants there are
+    expect(asked).toBeOkWith(1);
   });
 
   it("reports the tenant whose oldest pending message is older than maxLagMs", async ({
