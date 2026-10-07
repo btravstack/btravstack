@@ -1,5 +1,14 @@
 # @btravstack/amqp-worker
 
+## 0.20.0
+
+### Patch Changes
+
+- Updated dependencies [94d088d]
+  - @btravstack/core@0.20.0
+  - @btravstack/config@0.20.0
+  - @btravstack/di@0.20.0
+
 ## 0.19.0
 
 ### Minor Changes

@@ -1,5 +1,15 @@
 # @btravstack/storage
 
+## 0.20.0
+
+### Patch Changes
+
+- d36fd5b: Correct the presigned upload contract: a URL can be replayed until expiry to replace an object, and signed type and length do not verify its bytes. Document a staging and confirmation boundary for applications that need stable accepted content.
+- Updated dependencies [94d088d]
+  - @btravstack/core@0.20.0
+  - @btravstack/config@0.20.0
+  - @btravstack/di@0.20.0
+
 ## 0.19.0
 
 ### Patch Changes
