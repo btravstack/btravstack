@@ -16,7 +16,12 @@ describe("orderContract", () => {
         deadLetter: expect.objectContaining({
           exchange: expect.objectContaining({ name: "orders-dlx" }),
         }),
-        retry: expect.objectContaining({ mode: "ttl-backoff", maxRetries: 3, initialDelayMs: 10 }),
+        retry: expect.objectContaining({
+          mode: "ttl-backoff",
+          maxRetries: 6,
+          initialDelayMs: 100,
+          maxDelayMs: 2_000,
+        }),
       }),
     );
   });

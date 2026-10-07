@@ -304,6 +304,49 @@ describe("the invoice a notification links", () => {
     });
   });
 
+  it("is still linked when the store takes a second to write it and the withdrawal arrives first", async ({
+    tenant,
+    serve,
+    slowInvoices,
+    announce,
+    delivered,
+  }) => {
+    // GIVEN the worker serving over a store whose every write takes a second
+    await serve(slowInvoices.module);
+
+    // WHEN an order's placement and its withdrawal arrive back to back, so the
+    // withdrawal finds no invoice while the placement is still writing it
+    const placedAt = new Date().toISOString();
+    const announced = await announce({
+      eventId: 101,
+      tenantId: tenant,
+      kind: "order",
+      id: "0199a1e0-0000-7000-8000-00000000c007",
+      occurredAt: placedAt,
+      placedAt,
+      payload: { quantity: 1 },
+    }).flatMap(() =>
+      announce({
+        eventId: 102,
+        tenantId: tenant,
+        kind: "order",
+        id: "0199a1e0-0000-7000-8000-00000000c007",
+        occurredAt: new Date().toISOString(),
+        placedAt,
+        payload: null,
+      }),
+    );
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 2, { timeout: 20_000 });
+    const withdrawal = (await delivered(tenant)).find((mail) => mail.Subject.endsWith("withdrawn"));
+
+    // THEN the retry budget outlasted the write: the withdrawal was redelivered
+    // until the invoice existed, and links it rather than being parked
+    expect({
+      announced: announced.isOk(),
+      linked: /Its invoice: https?:\/\//.test(withdrawal?.Text ?? ""),
+    }).toEqual({ announced: true, linked: true });
+  });
+
   it("is waited for when a withdrawal overtakes the placement that stores it", async ({
     tenant,
     serve,

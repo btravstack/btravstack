@@ -323,7 +323,7 @@ broker enforces it:
 ```ts
 const notifications = defineQueue("order-notifications", {
   deadLetter: { exchange: parked, externalConsumers: true },
-  retry: { mode: "ttl-backoff", maxRetries: 3, initialDelayMs: 10 },
+  retry: { mode: "ttl-backoff", maxRetries: 6, initialDelayMs: 100, maxDelayMs: 2_000 },
 });
 
 const audit = defineQueue("order-audit", {
@@ -335,15 +335,18 @@ const audit = defineQueue("order-audit", {
 Naming a failure decides what the platform does next — the sharper form of
 the claim the Temporal contract makes with `nonRetryable`. Two things to keep
 straight, both from [`@btravstack/amqp-worker`](/reference/amqp-worker): `maxRetries: 3` is
-**four** total attempts, not Temporal's three; and a handler's `Defect` is
+**four** total attempts, not Temporal's three (and the notifications queue's
+`6`, seven); and a handler's `Defect` is
 nacked once, straight to the dead-letter exchange, never touching that budget
 — so a handler that wants "infrastructure comes back" recovers its own
 defects into a `RetryableError`. `externalConsumers: true` on the dead letter
 is required, not decorative: the contract's routability check rejects a DLX
 nothing binds to, and parking is the point for both queues. Each queue's
-policy is its own — they carry the same values today, but nothing ties them
-together; a slower or more critical subscriber could tune its own
-independently.
+policy is its own, and the two differ for a reason: the notifier answers
+retryable while a withdrawal's invoice is still being written, so its budget —
+100 ms doubling to a 2 s ceiling, six retries, about five seconds in all — has
+to outlast a realistic store write, where the auditor's three quick retries
+only cover a blip.
 
 ## The specs: against a real broker
 

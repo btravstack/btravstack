@@ -1,3 +1,5 @@
+import { setTimeout as delay } from "node:timers/promises";
+
 import { TypedAmqpClient } from "@amqp-contract/client";
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
@@ -23,7 +25,7 @@ import { OrderDatabase, OrderTenantPersistence } from "@btravstack/example-order
 import { Mailer, type Mail } from "@btravstack/mailer";
 import { LoggerConfig, createLogger, type Line } from "@btravstack/observability";
 import { OutboxStore } from "@btravstack/outbox";
-import { Storage } from "@btravstack/storage";
+import { Storage, StorageBackend } from "@btravstack/storage";
 import { bootFixture, overridden, tapped, type Boot } from "@btravstack/testing";
 import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { uuidv7 } from "uuidv7";
@@ -59,14 +61,30 @@ type Serve = <E>(
  * `start` hands the application context to the runtime alone, so `tapped` is
  * what captures the very instances the running app uses.
  */
-const tappedAmqp = () => {
-  const lines: Line[] = [];
-  const recording = overridden(OrderAmqpWorker, [
-    Provider(Logger)({
-      inject: { config: LoggerConfig },
-      sync: ({ config }) => createLogger((line) => lines.push(line), config.level),
+/**
+ * The real invoice store, with every `put` held back `ms` first — a store
+ * slower to write than a withdrawal is to arrive.
+ */
+const slowStorage = (ms: number) =>
+  Provider(Storage)({
+    inject: { backend: StorageBackend },
+    sync: ({ backend }) => ({
+      ...backend,
+      put: (key, bytes, options) =>
+        fromSafePromise(delay(ms)).flatMap(() => backend.put(key, bytes, options)),
     }),
-  ]);
+  });
+
+const tappedAmqp = (slowPutMs?: number) => {
+  const lines: Line[] = [];
+  const recordingLogger = Provider(Logger)({
+    inject: { config: LoggerConfig },
+    sync: ({ config }) => createLogger((line) => lines.push(line), config.level),
+  });
+  const recording =
+    slowPutMs === undefined
+      ? overridden(OrderAmqpWorker, [recordingLogger])
+      : overridden(OrderAmqpWorker, [recordingLogger, slowStorage(slowPutMs)]);
   const tap = tapped(recording, [OrderDatabase, Logger, OutboxStore]);
   return {
     module: tap.module,
@@ -216,6 +234,8 @@ export type AmqpFixtures = {
   readonly tapped: ReturnType<typeof tappedAmqp>;
   /** The root with an invoice store that stalls until the unit aborts, and a recording mailer. */
   readonly stalled: ReturnType<typeof stalledAmqp>;
+  /** The composition root over an invoice store whose every write takes a second. */
+  readonly slowInvoices: ReturnType<typeof tappedAmqp>;
   /**
    * Runs `use` in a scope holding this test's tenant, the repository bound to
    * it and the use cases over both — built from the running app's own client,
@@ -299,6 +319,11 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   stalled: async ({}, use) => {
     await use(stalledAmqp());
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  slowInvoices: async ({}, use) => {
+    await use(tappedAmqp(1_000));
   },
 
   writer: async ({ tenant, tapped }, use) => {

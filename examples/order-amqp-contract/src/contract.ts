@@ -64,10 +64,17 @@ const orderChangedEvent = defineEventPublisher(orders, orderChanged, {
  * `defineContract`'s routability check rejects a DLX nothing binds to, which
  * would otherwise be the silent message loss it exists to catch. This contract
  * has no consumer for `orders-dlx`, because parking is the point.
+ *
+ * Its budget is sized for a withdrawal that overtakes its placement: the
+ * notifier answers retryable until the invoice the placement is writing
+ * exists, so the retries have to outlast a realistic store write. 100 ms
+ * doubling to a 2 s ceiling over six retries waits about five seconds in all
+ * (jitter spreads it between roughly half and one and a half times that),
+ * bounded, before the delivery is parked.
  */
 const notifications = defineQueue("order-notifications", {
   deadLetter: { exchange: parked, externalConsumers: true },
-  retry: { mode: "ttl-backoff", maxRetries: 3, initialDelayMs: 10 },
+  retry: { mode: "ttl-backoff", maxRetries: 6, initialDelayMs: 100, maxDelayMs: 2_000 },
 });
 
 /**
