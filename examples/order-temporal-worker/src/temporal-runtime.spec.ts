@@ -293,6 +293,55 @@ describe("the fulfillment saga", () => {
 
     expect(outcome).toBe("conflict:0199a1e0-0000-7000-8000-000000000004");
   });
+
+  it("refuses a later run under the same workflow id, rather than fulfilling twice", async ({
+    tenant,
+    serve,
+    fulfilling,
+  }) => {
+    // GIVEN an order fulfilled by a first execution
+    const { client } = await serve(fulfilling.module);
+    const start = {
+      workflowId: "wf-rerun-1",
+      args: { tenantId: tenant, orderId: "0199a1e0-0000-7000-8000-000000000006", quantity: 2 },
+    };
+
+    // WHEN the finished workflow id is started again — the contract's
+    // `allow-duplicate` start policy lets it, so the second run is a new
+    // execution with a run id of its own
+    const outcome = await client
+      .executeWorkflow("fulfillOrder", start)
+      .flatMap(() => client.executeWorkflow("fulfillOrder", start))
+      .match({
+        ok: () => "WRONGLY FULFILLED TWICE",
+        // THEN its placement is refused: the first run's order is not this
+        // run's own write, so stock and shipping are not asked a second time
+        errCases: (matcher) =>
+          matcher
+            .with({ errorName: "OrderAlreadyPlaced" }, (error) => `conflict:${error.data.id}`)
+            .with({ errorName: "InvalidQuantity" }, () => "WRONG ERROR")
+            .with({ errorName: "InvalidOrderId" }, () => "WRONG ERROR")
+            .with({ errorName: "OutOfStock" }, () => "WRONG ERROR")
+            .with({ errorName: "ShippingUnavailable" }, () => "WRONG ERROR")
+            .with(
+              P.tag(WORKFLOW_VALIDATION_ERROR_TAG),
+              P.tag(WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG),
+              P.tag(WORKFLOW_ALREADY_STARTED_ERROR_TAG),
+              (error) => `start:${error._tag}`,
+            )
+            .with(
+              P.tag(WORKFLOW_FAILED_ERROR_TAG),
+              P.tag(WORKFLOW_CANCELLED_ERROR_TAG),
+              P.tag(WORKFLOW_TERMINATED_ERROR_TAG),
+              P.tag(WORKFLOW_TIMEOUT_ERROR_TAG),
+              P.tag(WORKFLOW_EXECUTION_NOT_FOUND_ERROR_TAG),
+              (error) => `result:${error._tag}`,
+            ),
+        defect: () => "DEFECT",
+      });
+
+    expect(outcome).toBe("conflict:0199a1e0-0000-7000-8000-000000000006");
+  });
 });
 
 describe("the billing saga", () => {

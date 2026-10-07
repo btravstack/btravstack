@@ -28,9 +28,9 @@ import { P } from "unthrown";
  * attempt. So the use cases below come off `context.unit` already bound to
  * this attempt's tenant, and no activity claims the brand.
  *
- * `place` hands the use case the operation the workflow named, so a retry
- * after a commit whose completion was lost answers the order it already
- * stored; only a DIFFERENT operation's order is `OrderAlreadyPlaced`.
+ * `place` hands the use case the operation the workflow named — its run — so
+ * a retry after a commit whose completion was lost answers the order it
+ * already stored; any other run's order is `OrderAlreadyPlaced`.
  *
  * `cancelPlacement` absorbs `OrderNotFound` on purpose: undoing a placement that
  * never landed is the no-op a REPEATED compensation performs, and an activity

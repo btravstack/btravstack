@@ -43,7 +43,7 @@ export const fulfillOrder = declareWorkflow({
         .step(
           () =>
             context.activities
-              .place({ ...order, quantity: args.quantity, operationId: context.info.workflowId })
+              .place({ ...order, quantity: args.quantity, operationId: context.info.runId })
               .tap((placement) => {
                 placed = placement;
               }),

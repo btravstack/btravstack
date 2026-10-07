@@ -5,6 +5,7 @@ import { orderContract } from "../contract.js";
 
 type FulfillOrderInput = typeof orderContract.workflows.fulfillOrder.input;
 type ChargeOrderInput = typeof orderContract.workflows.chargeOrder.input;
+type PlaceInput = typeof orderContract.workflows.fulfillOrder.activities.place.input;
 
 export type ContractFixtures = {
   /**
@@ -15,6 +16,8 @@ export type ContractFixtures = {
   readonly validate: ReturnType<typeof fromSchema<FulfillOrderInput>>;
   /** The same, for the second workflow — a different vertical, its own schema. */
   readonly validateCharge: ReturnType<typeof fromSchema<ChargeOrderInput>>;
+  /** The `place` activity's own input schema — what a worker validates a task against. */
+  readonly validatePlace: ReturnType<typeof fromSchema<PlaceInput>>;
 };
 
 export const it: TestAPI<ContractFixtures> = test.extend<ContractFixtures>({
@@ -26,5 +29,9 @@ export const it: TestAPI<ContractFixtures> = test.extend<ContractFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   validateCharge: async ({}, use) => {
     await use(fromSchema(orderContract.workflows.chargeOrder.input));
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  validatePlace: async ({}, use) => {
+    await use(fromSchema(orderContract.workflows.fulfillOrder.activities.place.input));
   },
 });

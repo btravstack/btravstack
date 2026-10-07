@@ -38,15 +38,10 @@ const orderTarget = tenanted.extend({ orderId: z.uuidv7() });
  * permanent answer, so declaring it stops the retry policy asking the same
  * impossible thing again. Anything NOT declared is retried, which is the
  * treatment a `Defect` deserves — infrastructure comes back.
- *
- * `place` also carries the operation placing the order — the workflow's id,
- * which Temporal keeps across every retry of this activity — so an attempt
- * whose predecessor committed and then lost its completion recovers that
- * order rather than refusing it as `OrderAlreadyPlaced`. A different workflow
- * placing the same order id is still refused.
  */
 const place = defineActivity({
-  input: orderInput.extend({ operationId: z.string() }),
+  // Optional: a task the previous workflow version scheduled carries none.
+  input: orderInput.extend({ operationId: z.string().optional() }),
   output: orderView,
   errors: {
     InvalidQuantity: { data: orderRef, nonRetryable: true },

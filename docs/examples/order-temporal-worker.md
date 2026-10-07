@@ -227,7 +227,7 @@ export const fulfillOrder = declareWorkflow({
         .step(
           () =>
             context.activities
-              .place({ ...order, quantity: args.quantity, operationId: context.info.workflowId })
+              .place({ ...order, quantity: args.quantity, operationId: context.info.runId })
               .tap((placement) => {
                 placed = placement;
               }),
@@ -267,12 +267,22 @@ export const fulfillOrder = declareWorkflow({
 });
 ```
 
-`place` names its operation — the workflow's id, which every retry of the
-activity carries — and the repository stores it beside the order. A retry whose
-first attempt committed and then lost its completion finds its own row and
-answers it, with no second order and no second outbox event; only a
-**different** workflow placing the same order id is refused as
-`OrderAlreadyPlaced`.
+`place` names its operation — the workflow's **run** id, which every retry of
+the activity carries — and the repository stores it beside the order. A retry
+whose first attempt committed and then lost its completion finds its own row
+and answers it, with no second order and no second outbox event. Any other
+execution placing the same order id is refused as `OrderAlreadyPlaced` — a
+different workflow id, and a later run under the **same** one too, since
+`startPolicy: "allow-duplicate"` lets a finished workflow id be started again
+and neither stock nor shipping promises to be idempotent. The run id is the
+right scope because this workflow never continues-as-new; one that did would
+need a key that survives it.
+
+`operationId` is optional on the activity's input, and that is the rolling
+deploy: a `place` task the previous workflow version scheduled carries none,
+and the new worker must still accept it. Absent, the placement is insert-only,
+as it was — its retry still meets its own write as a duplicate, which is the
+gap this closes for every task scheduled from here on.
 
 The compensations declare no errors: compensation is the saga un-deciding, and
 a step that could answer "no" would leave it stuck half-done.

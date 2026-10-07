@@ -57,6 +57,20 @@ describe("orderContract", () => {
     });
   });
 
+  it("accepts a placement task scheduled before it named an operation", ({ validatePlace }) => {
+    // GIVEN a `place` input in the shape the previous workflow version
+    // scheduled — no `operationId`
+    const legacy = {
+      tenantId: "0199a1e0-0000-7000-8000-000000009000",
+      orderId: "0199a1e0-0000-7000-8000-000000000001",
+      quantity: 2,
+    };
+
+    // WHEN a worker on this contract validates it
+    // THEN it is accepted, so an in-flight fulfillment survives the deploy
+    expect(validatePlace(legacy)).toBeOkWith(legacy);
+  });
+
   it("refuses an id that is not a UUIDv7", ({ validate }) => {
     // GIVEN a payload whose order id is a plain string, not the contract's UUIDv7 shape
     const input = {
