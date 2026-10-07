@@ -32,7 +32,10 @@ const parked = defineExchange("orders-dlx", { type: "direct" });
  *
  * `placedAt` is when the subject was placed — on its tombstone too — because an
  * order id can be reused once its order is gone, and `(id, placedAt)` is what
- * names one life of an order to a reader keeping state about it.
+ * names one life of an order to a reader keeping state about it. It is
+ * optional on the wire, and every publisher here still sends it: an envelope
+ * queued before the field existed must still be read, as a legacy order whose
+ * placement nobody recorded.
  */
 const orderChanged = defineMessage(
   z.object({
@@ -41,7 +44,7 @@ const orderChanged = defineMessage(
     kind: z.literal("order"),
     id: z.uuidv7(),
     occurredAt: z.string(),
-    placedAt: z.iso.datetime(),
+    placedAt: z.iso.datetime().optional(),
     payload: z.object({ quantity: z.number() }).nullable(),
   }),
 );

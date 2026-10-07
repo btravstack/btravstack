@@ -26,12 +26,19 @@ class InvoiceNotYetStored extends TaggedError("InvoiceNotYetStored")<{
   readonly key: string;
 }> {}
 
+// The queue's own budget: the attempt that has spent it mails without a link
+// rather than failing, so a missing invoice delays a withdrawal and never
+// parks it.
+const notificationsRetry = orderContract.queues["order-notifications"].retry;
+const MAX_RETRIES = notificationsRetry.mode === "ttl-backoff" ? notificationsRetry.maxRetries : 0;
+
 const invoiceLink = (
   storage: ServiceOf<Storage>,
   tenantId: string,
   id: string,
   placedAt: string,
   payload: { readonly quantity: number } | null,
+  lastAttempt: boolean,
 ): AsyncResult<
   string | undefined,
   StorageUnavailable | PresignNotSupported | InvoiceNotYetStored
@@ -47,7 +54,7 @@ const invoiceLink = (
           .flatMapErrCases((matcher) =>
             matcher
               .with(P.tag("ObjectNotFound"), () =>
-                Date.now() - Date.parse(placedAt) < INVOICE_RETENTION_MS
+                !lastAttempt && Date.now() - Date.parse(placedAt) < INVOICE_RETENTION_MS
                   ? ErrAsync(new InvoiceNotYetStored({ key }))
                   : OkAsync(undefined),
               )
@@ -81,10 +88,12 @@ const invoiceLink = (
  * renders it, `put`s it under a path keyed by tenant, order id and placement
  * time, and presigns it; a withdrawal links the same one. An invoice that is
  * absent means two different things by the order's age: younger than the
- * store's retention it is one the placement has not written yet — deliveries
- * are concurrent, and one replica's withdrawal can overtake another's
- * placement — so the delivery is retried; older, it was retained away, and the
- * mail goes out without a link.
+ * store's retention it is one the placement may not have written yet —
+ * deliveries are concurrent, and one replica's withdrawal can overtake
+ * another's placement — so the delivery is retried, until the attempt that
+ * spends the queue's retry budget mails without a link rather than failing;
+ * older, it was retained away, and the mail goes out without a link at once.
+ * A withdrawal with no `placedAt` is a legacy order and never waits.
  *
  * Its failure arms are the interesting half: a `MailNotSent` or a store that
  * would not answer becomes a `RetryableError`, so the BROKER's retry budget
@@ -117,8 +126,9 @@ export const orderNotifications = AmqpHandler(
     ({ logger, mailer, storage }) =>
     ({
       context,
+      raw,
       input: {
-        payload: { id, placedAt, payload },
+        payload: { id, occurredAt, placedAt, payload },
       },
     }) => {
       const tenantId = context.unit.tenant;
@@ -132,7 +142,16 @@ export const orderNotifications = AmqpHandler(
         ...(payload === null ? {} : { quantity: payload.quantity }),
       });
 
-      return invoiceLink(storage, tenantId, id, placedAt, payload)
+      const lastAttempt = Number(raw.properties.headers?.["x-retry-count"] ?? 0) >= MAX_RETRIES;
+      // A withdrawal with no placement time is an order from before the field
+      // existed: its invoice was never keyed by one, so there is nothing to
+      // wait for. A placement without one was written in this very event.
+      const link =
+        placedAt === undefined && payload === null
+          ? OkAsync(undefined)
+          : invoiceLink(storage, tenantId, id, placedAt ?? occurredAt, payload, lastAttempt);
+
+      return link
         .mapErrCases((matcher) =>
           matcher
             .with(

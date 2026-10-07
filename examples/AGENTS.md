@@ -81,7 +81,10 @@ is the index of the workspaces themselves.
     carry `.js` (`moduleResolution: NodeNext`) and Node's own type stripping
     does not remap `./module.js` to `./module.ts` — measured, it is an
     `ERR_MODULE_NOT_FOUND`. `tsx` was already in the catalog for `docs`; it is
-    a devDependency of the three example workspaces, and no new dependency.
+    a devDependency of the example workspaces, and no new dependency — except
+    in `order-temporal-worker`, where it is a dependency, because
+    `deploy:schedules` is the one entry point documented as a release `Job`,
+    and that Job runs from a production install.
   - **`.env.dev` is generated, never committed.** The `dev` task depends on
     `@btravstack/internal-test-infra#dev:env`, which attaches to the **same
     shared containers the specs use** (`withReuse()` — a second set
@@ -278,7 +281,10 @@ each deployment's `src/main.ts` carry their own.
   as `Env` once, the one place an example does; everything after it reads
   through `Config`. The sweep needs no clock port: the cutoff is computed in
   the workflow, where `Date.now()` is the recorded workflow-task time. It
-  deletes by `Order.placedAt`, a column the database defaults, never by the
+  deletes by `Order.placedAt`, a column the database defaults — and the
+  migration that adds it backfills each existing order from its latest
+  surviving placement outbox row, an earlier one being a previous life of a
+  reused id; only an order with none keeps the migration time — never by the
   order id's UUIDv7 timestamp — the caller mints that id, so its timestamp
   would let a client backdate an order into the next sweep. It works a batch
   at a time from the first page of what is still stale, checks the unit's
@@ -306,8 +312,14 @@ each deployment's `src/main.ts` carry their own.
   the order's age: inside the store's retention it is one the placement has
   not written yet — deliveries are concurrent, and one replica's withdrawal
   can overtake another's placement — so the handler answers a
-  `RetryableError` and the queue's retry budget redelivers; past it, the
-  invoice was retained away and the mail goes out without a link. Serialising
+  `RetryableError` and the queue's retry budget redelivers, until the attempt
+  that spends that budget (`x-retry-count` on the raw delivery, against the
+  contract's own `maxRetries`) mails without a link rather than failing — a
+  missing invoice delays a withdrawal and never parks it; past retention, the
+  invoice was retained away and the mail goes out without a link at once.
+  `placedAt` is optional on the wire so an envelope queued before it existed
+  is still read: a withdrawal without one is a legacy order, mailed without a
+  link on its first delivery. Serialising
   the consumer would not have held across replicas. It checks the unit's
   signal again once the store has answered and before it sends: a deadline
   that passed while an invoice was in flight would otherwise mail on behalf of

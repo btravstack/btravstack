@@ -187,7 +187,7 @@ type Announced = {
   readonly kind: "order";
   readonly id: string;
   readonly occurredAt: string;
-  readonly placedAt: string;
+  readonly placedAt?: string;
   readonly payload: { readonly quantity: number } | null;
 };
 

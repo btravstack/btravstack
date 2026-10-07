@@ -347,6 +347,91 @@ describe("the invoice a notification links", () => {
     }).toEqual({ announced: true, linked: true });
   });
 
+  it("is mailed without a link, and at once, for a withdrawal that carries no placement time", async ({
+    tenant,
+    serve,
+    tapped,
+    announce,
+    delivered,
+  }) => {
+    // GIVEN the worker serving, and a withdrawal published before envelopes
+    // carried `placedAt` — a legacy order, whose invoice nobody keyed by one
+    await serve(tapped.module);
+
+    // WHEN it arrives
+    const announced = await announce({
+      eventId: 201,
+      tenantId: tenant,
+      kind: "order",
+      id: "0199a1e0-0000-7000-8000-00000000c008",
+      occurredAt: new Date().toISOString(),
+      payload: null,
+    });
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
+    const [withdrawal] = await delivered(tenant);
+
+    // THEN it is read rather than parked, mailed without a link on its first
+    // delivery, never retried
+    expect({
+      announced: announced.isOk(),
+      text: withdrawal?.Text.trim(),
+      attempts: tapped
+        .lines()
+        .filter(
+          (line) =>
+            line.message === "order gone — notifying" &&
+            line.attributes["orderId"] === "0199a1e0-0000-7000-8000-00000000c008",
+        ).length,
+    }).toEqual({
+      announced: true,
+      text: "Order 0199a1e0-0000-7000-8000-00000000c008 is no longer with us.",
+      attempts: 1,
+    });
+  });
+
+  it("is mailed without a link once the retry budget is spent and no invoice ever appeared", async ({
+    tenant,
+    serve,
+    tapped,
+    announce,
+    delivered,
+  }) => {
+    // GIVEN the worker serving, and a withdrawal for an order placed a moment
+    // ago whose invoice will never be written
+    await serve(tapped.module);
+
+    // WHEN it arrives, and every redelivery still finds no invoice
+    const announced = await announce({
+      eventId: 202,
+      tenantId: tenant,
+      kind: "order",
+      id: "0199a1e0-0000-7000-8000-00000000c009",
+      occurredAt: new Date().toISOString(),
+      placedAt: new Date().toISOString(),
+      payload: null,
+    });
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 20_000 });
+    const [withdrawal] = await delivered(tenant);
+
+    // THEN the attempt that spent the budget mailed without a link instead of
+    // failing, so nothing was dead-lettered: one delivery plus every retry
+    expect({
+      announced: announced.isOk(),
+      text: withdrawal?.Text.trim(),
+      attempts: tapped
+        .lines()
+        .filter(
+          (line) =>
+            line.message === "order gone — notifying" &&
+            line.attributes["orderId"] === "0199a1e0-0000-7000-8000-00000000c009",
+        ).length,
+    }).toEqual({
+      announced: true,
+      text: "Order 0199a1e0-0000-7000-8000-00000000c009 is no longer with us.",
+      attempts: 7,
+    });
+  });
+
   it("is waited for when a withdrawal overtakes the placement that stores it", async ({
     tenant,
     serve,
