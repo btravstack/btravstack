@@ -7,7 +7,15 @@ import {
   type PortInstance,
   type Scope,
 } from "@btravstack/di";
-import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
+import {
+  Err,
+  Ok,
+  OkAsync,
+  fromSafePromise,
+  type AsyncResult,
+  type FailureView,
+  type Result,
+} from "unthrown";
 
 import { systemClock, type Clock } from "./clock.js";
 import { drainApp, type DrainReport } from "./drain.js";
@@ -355,10 +363,12 @@ export const start = <X, E, N>(
           abandonBuild("uncaught");
         });
   let disposeProbes = (): void => {};
-  // One place, because three paths out now reach it: `finish`, the abandoned
-  // stop and the abandoned build. The order is load-bearing only in that the
-  // handlers go before `exited`, so a signal arriving during the last tick of
-  // a shutdown cannot re-enter a lifecycle that has already reported.
+  // One place, because three paths out reach it: `Module.scoped` settling, the
+  // abandoned stop and the abandoned build. Never earlier than the scope's
+  // close: a second signal during a blocked `release` is what abandons it. The
+  // order is load-bearing only in that the handlers go before `exited`, so a
+  // signal arriving during the last tick of a shutdown cannot re-enter a
+  // lifecycle that has already reported.
   const disposeAll = (): void => {
     disposeSignals();
     disposeUncaught();
@@ -389,8 +399,10 @@ export const start = <X, E, N>(
   const health = (): AsyncResult<HealthReport, never> => runHealthChecks(healthChecks);
   const probeBound = Promise.withResolvers<number | undefined>();
   const runtimePublished = Promise.withResolvers<Info | undefined>();
-  // Every route out of a half-built graph: the probe bind's `tapFailure`,
-  // `Module.scoped`'s and the abandoned build. `stopping` before `exited`
+  // Every route out of a half-built graph: the probe bind's `tapFailure`, the
+  // abandoned build and — through `leaveFailed`, which stops short of
+  // `disposeAll` so it can run ahead of the finalisers — `Module.scoped`'s.
+  // `stopping` before `exited`
   // because the tracker is monotonic and skipping it would drop the phase, and
   // its event, out of a lifecycle that documents both as reached on every
   // path; `runtimePublished` because `runtimeInfo()` promises `undefined` for
@@ -400,15 +412,24 @@ export const start = <X, E, N>(
     tracker.advanceTo("stopping");
     disposeAll();
   };
+  const leaveFailed = (failure: FailureView<unknown, unknown>): void => {
+    // Reaching here past `stopping` is a shutdown defect, not a startup one.
+    if (tracker.current() !== "stopping") {
+      emit({ type: "startFailed", cause: failure.tag === "Err" ? failure.error : failure.cause });
+    }
+    runtimePublished.resolve(undefined);
+    tracker.advanceTo("stopping");
+  };
 
   // The two phases with no deadline of their own, each as an arm of the race
   // that produces `exited` below. Both are CONSUMED there rather than floated,
   // and both are armed by a deferred that stays pending on the ordinary path —
   // so an application that stops cleanly starts neither timer.
-  const stopping = Promise.withResolvers<{
-    readonly reason: ExitReport["reason"];
-    readonly drain: DrainReport | undefined;
-  }>();
+  //
+  // It carries what `exited` says if the kernel stops waiting: a report from
+  // `finish`, or the startup failure itself, whose finalisers di runs before
+  // anything after `Module.scoped` can observe that it failed.
+  const stopping = Promise.withResolvers<() => AsyncResult<ExitReport, RuntimeStartFailed>>();
   // `Serving.stop` AND di's scope close, together: the close runs after
   // `finish` has returned, inside `Module.scoped`, so a race inside `finish`
   // could only ever have covered the first half — and the finalisers are the
@@ -417,8 +438,8 @@ export const start = <X, E, N>(
   // A THUNK, not a value, and both arms below match it: an `AsyncResult` is
   // eager, so constructing one here would start it beside the other two rather
   // than as part of the race that consumes it.
-  const stopAbandoned = (): AsyncResult<ExitReport, never> =>
-    fromSafePromise(stopping.promise).flatMap(({ reason, drain }) =>
+  const stopAbandoned = (): AsyncResult<ExitReport, RuntimeStartFailed> =>
+    fromSafePromise(stopping.promise).flatMap((abandoned) =>
       clock.sleep(stopTimeoutMs, stopSettled.signal).flatMap(() =>
         // `clock.sleep` RESOLVES when its signal aborts — that is how the
         // drain's two sleeps are cut short — and a settled lifecycle aborts
@@ -426,14 +447,13 @@ export const start = <X, E, N>(
         // `lifecycleSettled` is what tells a deadline from a shutdown that
         // completed, and reading the signal instead reported a timeout on
         // every clean stop (measured, by writing it that way first).
-        lifecycleSettled ? withdrawn<ExitReport>() : OkAsync(abandonStop(reason, drain)),
+        lifecycleSettled ? withdrawn<ExitReport>() : abandonStop(abandoned),
       ),
     );
 
   const abandonStop = (
-    reason: ExitReport["reason"],
-    drain: DrainReport | undefined,
-  ): ExitReport => {
+    abandoned: () => AsyncResult<ExitReport, RuntimeStartFailed>,
+  ): AsyncResult<ExitReport, RuntimeStartFailed> => {
     emit({
       type: "stoppedWaiting",
       phase: "stop",
@@ -442,7 +462,7 @@ export const start = <X, E, N>(
       afterMs: stopSettled.signal.aborted ? undefined : stopTimeoutMs,
     });
     disposeAll();
-    return reportOf(reason, drain, "stop");
+    return abandoned();
   };
 
   const abandoningBuild = Promise.withResolvers<ExitReport["reason"]>();
@@ -552,14 +572,12 @@ export const start = <X, E, N>(
       // Synchronous with the phase change, so the deadline covers the whole of
       // `stopping` — `serving.stop()` here and the finalisers di runs after
       // this callback returns.
-      stopping.resolve({ reason, drain: report });
+      stopping.resolve(() => OkAsync(reportOf(reason, report, "stop")));
 
-      // No `onLifecycleSettled` here, deliberately: di closes the scope after
-      // this callback returns, so the stop is only half over.
-      return serving.stop().map(() => {
-        disposeAll();
-        return reportOf(reason, report);
-      });
+      // No `onLifecycleSettled` and no `disposeAll` here, deliberately: di
+      // closes the scope after this callback returns, so the stop is only half
+      // over.
+      return serving.stop().map(() => reportOf(reason, report));
     });
   };
 
@@ -674,25 +692,34 @@ export const start = <X, E, N>(
 
         const host = { ctx: runtimeCtx, run };
 
-        return runtime.start(host).flatMap((serving: Serving<Info>) => {
-          servingInfo = serving.info;
-          tracker.advanceTo("serving");
-          runtimePublished.resolve(serving.info);
+        return runtime
+          .start(host)
+          .flatMap((serving: Serving<Info>) => {
+            servingInfo = serving.info;
+            tracker.advanceTo("serving");
+            runtimePublished.resolve(serving.info);
 
-          // A runtime that gave up on its own says so here, and the kernel
-          // treats it exactly like a `stop()` call: the lifecycle otherwise
-          // only ever moves on a signal or a caller, so a worker whose poll
-          // loop died left the process alive and `/readyz` answering 200 —
-          // a pod in a Service's endpoints, consuming nothing. The `Result`
-          // is dropped on purpose: whichever route reaches `requestShutdown`
-          // first decides the reason, and a runtime that stopped after a
-          // signal has nothing left to add.
-          void serving.stopped?.().map(() => {
-            requestShutdown("runtimeStopped");
+            // A runtime that gave up on its own says so here, and the kernel
+            // treats it exactly like a `stop()` call: the lifecycle otherwise
+            // only ever moves on a signal or a caller, so a worker whose poll
+            // loop died left the process alive and `/readyz` answering 200 —
+            // a pod in a Service's endpoints, consuming nothing. The `Result`
+            // is dropped on purpose: whichever route reaches `requestShutdown`
+            // first decides the reason, and a runtime that stopped after a
+            // signal has nothing left to add.
+            void serving.stopped?.().map(() => {
+              requestShutdown("runtimeStopped");
+            });
+
+            return fromSafePromise(shutdown.promise).flatMap((reason) => finish(serving, reason));
+          })
+          .tapFailure((failure) => {
+            // Here rather than after `Module.scoped`, which runs the finalisers
+            // first: a failure leaves startup, and arms the stop deadline, before
+            // a single `release` has run. Idempotent past `finish`.
+            leaveFailed(failure);
+            stopping.resolve(() => failure.toAsync());
           });
-
-          return fromSafePromise(shutdown.promise).flatMap((reason) => finish(serving, reason));
-        });
       },
       {
         onTeardownError: (port, cause) => {
@@ -702,15 +729,10 @@ export const start = <X, E, N>(
       },
     )
       .tapFailure((failure) => {
-        // Reaching here past `stopping` is a shutdown defect, not a startup one.
-        if (tracker.current() !== "stopping") {
-          emit({
-            type: "startFailed",
-            cause: failure.tag === "Err" ? failure.error : failure.cause,
-          });
-        }
-        leaveStartup();
+        leaveFailed(failure);
+        disposeAll();
       })
+      .tap(disposeAll)
       // Both channels, because either settling means the deadline has nothing
       // left to report: the arm withdraws rather than writing a line 5 s after
       // the process already said how it ended.
