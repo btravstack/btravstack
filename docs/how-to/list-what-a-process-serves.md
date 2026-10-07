@@ -5,6 +5,7 @@ description: Print every route an HTTP deployment answers — the oRPC procedure
 
 <!-- doctest: group=order-api -->
 <!-- doctest: prelude
+import { contract } from "@btravstack/example-order-api-contract";
 import { openApi } from "../../openapi.js";
 import { orderRowFragment } from "../../slices/orders/fragment.js";
 -->
@@ -29,40 +30,51 @@ a few lines over that document.
 `openApi()`. Every operation in it is a procedure the router answers — but the
 document describes an OpenAPI handler, and this deployment serves oRPC's
 **RPC** handler, so the methods are not read off it. They follow the runtime's
-two rules instead: every procedure is answered on `POST`, and one whose output
-is an event iterator — which the document marks with a `text/event-stream`
-response — is answered on `GET` as well, since a browser's `EventSource` can
-only GET:
+two rules instead: every procedure is answered on `POST`, and one whose
+declared output is an event iterator is answered on `GET` as well, since a
+browser's `EventSource` can only GET.
+
+The second rule is read from the **contract**, exactly where `orpc()` reads it
+— the procedure's own `outputSchemas` — and not from the document's response
+content, which an `openapi({ spec })` on the procedure can replace or strip
+while the runtime still admits the GET:
 
 ```ts
-const METHODS = new Set(["get", "put", "post", "patch", "delete"]);
+import {
+  getAsyncIteratorObjectSchemaDetails,
+  getContractRouter,
+  type AnyContractProcedure,
+  type AnyContractRouter,
+} from "@orpc/contract";
 
-type Operation = {
-  readonly responses?: Readonly<
-    Record<string, { readonly content?: Readonly<Record<string, unknown>> }>
-  >;
+const isProcedure = (node: AnyContractRouter | undefined): node is AnyContractProcedure =>
+  node !== undefined && "~orpc" in node;
+
+const streams = (segments: readonly string[]): boolean => {
+  const procedure = getContractRouter(contract, segments);
+  return (
+    isProcedure(procedure) &&
+    (procedure["~orpc"].outputSchemas ?? []).some(
+      (schema) => getAsyncIteratorObjectSchemaDetails(schema) !== undefined,
+    )
+  );
 };
 
-const streams = (operation: Operation) =>
-  Object.values(operation.responses ?? {}).some(
-    (response) => "text/event-stream" in (response.content ?? {}),
-  );
-
 export const procedures = openApi().map((document) =>
-  Object.entries(document.paths ?? {}).flatMap(([path, item]) =>
-    Object.entries(item as Readonly<Record<string, Operation>>)
-      .filter(([key]) => METHODS.has(key))
-      .flatMap(([, operation]) =>
-        streams(operation) ? [`POST /rpc${path}`, `GET /rpc${path}`] : [`POST /rpc${path}`],
-      ),
+  Object.keys(document.paths ?? {}).flatMap((path) =>
+    streams(path.slice(1).split("/"))
+      ? [`POST /rpc${path}`, `GET /rpc${path}`]
+      : [`POST /rpc${path}`],
   ),
 );
 ```
 
-`/rpc` is `http()`'s default `prefix`, the mount oRPC's answerer is routed
-under. The path after it is the procedure's — the document writes
-`/orders/place` for `orders.place`, and the RPC handler serves it at
-`/rpc/orders/place`.
+`contract` is the one the root composes its router from,
+`@btravstack/example-order-api-contract`'s. `/rpc` is `http()`'s default
+`prefix`, the mount oRPC's answerer is routed under. The path after it is the
+procedure's — the document writes `/orders/place` for `orders.place`, and the
+RPC handler serves it at `/rpc/orders/place` — which is also how a document
+path finds its procedure in the contract.
 
 **The recipe is scoped to a contract whose procedures keep their own paths.** A
 procedure that sets an OpenAPI path of its own (`openapi({ path })` or a
