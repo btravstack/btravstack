@@ -31,6 +31,39 @@ Every field of an entity must be **nominal** — a schema that carries a brand, 
 narrow literal union, a boolean, or another entity. A bare `z.string()` is a
 compile error.
 
+<!-- doctest: prelude
+import { z } from "zod";
+import { Entity } from "@btravstack/entity";
+const OrgId = z.uuid().brand("OrgId");
+const Slug = z.string().min(1).brand("Slug");
+const DisplayName = z.string().min(1).brand("DisplayName");
+const Instant = z.iso.datetime().brand("Instant");
+const slug = (value: string) => Slug.parse(value);
+const name = (value: string) => DisplayName.parse(value);
+const Upper = z.string().min(1).brand("Upper");
+class Organization extends Entity("Organization")(
+  {
+    id: Entity.field(OrgId, { identity: true, generated: true }),
+    slug: Entity.field(Slug, { immutable: true }),
+    name: DisplayName,
+    createdAt: Entity.field(Instant, { generated: true, immutable: true }),
+  },
+  {
+    computed: {
+      shout: Entity.computed(Upper, (d) => d.name.toUpperCase()),
+    },
+  },
+) {
+  get greeting(): string {
+    return `Welcome, ${this.name}`;
+  }
+}
+-->
+
+<!-- doctest: isolate
+import { z } from "zod";
+-->
+
 ```ts
 import { z } from "zod";
 
@@ -52,6 +85,15 @@ vocabulary it mints, for the two fields a caller supplies by hand later in this
 page.
 
 ## 2. Declare the entity
+
+<!-- doctest: isolate
+import { z } from "zod";
+import { Entity } from "@btravstack/entity";
+const OrgId = z.uuid().brand("OrgId");
+const Slug = z.string().min(1).brand("Slug");
+const DisplayName = z.string().min(1).brand("DisplayName");
+const Instant = z.iso.datetime().brand("Instant");
+-->
 
 ```ts
 import { Entity } from "@btravstack/entity";
@@ -83,6 +125,15 @@ differ.
 
 `id` and `createdAt` are not the caller's to supply, and never change once set.
 Declare that:
+
+<!-- doctest: isolate
+import { z } from "zod";
+import { Entity } from "@btravstack/entity";
+const OrgId = z.uuid().brand("OrgId");
+const Slug = z.string().min(1).brand("Slug");
+const DisplayName = z.string().min(1).brand("DisplayName");
+const Instant = z.iso.datetime().brand("Instant");
+-->
 
 ```ts
 class Organization extends Entity("Organization")({
@@ -205,6 +256,15 @@ values, and defects are separate](/entity/explanation/errors-are-values).)
 A single field's schema cannot express "these two fields must agree".
 `invariants` can:
 
+<!-- doctest: isolate
+import { z } from "zod";
+import { Entity } from "@btravstack/entity";
+const OrgId = z.uuid().brand("OrgId");
+const Slug = z.string().min(1).brand("Slug");
+const DisplayName = z.string().min(1).brand("DisplayName");
+const Instant = z.iso.datetime().brand("Instant");
+-->
+
 ```ts
 class Organization extends Entity("Organization")(
   {
@@ -235,6 +295,16 @@ Invariants re-run on every construction path, including `update`.
 ## 8. Derive a field, and add behaviour
 
 Two different things live in a class, and they go in two different places:
+
+<!-- doctest: isolate
+import { z } from "zod";
+import { Entity } from "@btravstack/entity";
+const OrgId = z.uuid().brand("OrgId");
+const Slug = z.string().min(1).brand("Slug");
+const DisplayName = z.string().min(1).brand("DisplayName");
+const Instant = z.iso.datetime().brand("Instant");
+declare const org: Organization;
+-->
 
 ```ts
 const Upper = z.string().min(1).brand("Upper");

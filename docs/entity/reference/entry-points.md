@@ -16,6 +16,36 @@ There is no other: `new SomeEntity(…)`
 > import { Entity } from "@btravstack/entity";
 > ```
 
+<!-- doctest: prelude
+import { Organization } from "../../organization.js";
+import { DisplayName, Instant, OrganizationId, Slug } from "../../vocabulary.js";
+const OrgId = OrganizationId;
+const NoteId = z.uuid().brand("NoteId");
+const Label = z.string().min(1).brand("Label");
+class Mission extends Entity("Mission")(
+  {
+    id: Entity.field(z.uuid().brand("MissionId"), { identity: true }),
+    status: z.enum(["SUCCEEDED", "FAILED"]),
+    failureReason: Label.optional(),
+  },
+  {
+    invariants: [
+      Entity.invariant({
+        code: "MISSING_FAILURE_REASON",
+        ensure: (d) => d.status !== "FAILED" || d.failureReason !== undefined,
+        message: "a failed mission records why",
+      }),
+    ],
+  },
+) {}
+declare const ids: { next(): string; nextFromSequence(): Promise<string> };
+declare const clock: { now(): string };
+declare const slug: z.infer<typeof Slug>;
+declare const name: string;
+declare const id: z.infer<typeof NoteId>;
+declare const label: z.infer<typeof Label>;
+-->
+
 ## `SomeEntity.factory(generators)` → `(input) => Result<SomeEntity, InvalidEntity>` {#someentity-factory-generators-input-result-someentity-invalidentity}
 
 Binds the sources of every field flagged `generated`. Generators are
@@ -58,7 +88,7 @@ A synchronous generator that **throws** under `factory` takes the same channel.
 ```ts
 const createOrgAsync = Organization.factoryAsync({
   id: () => ids.nextFromSequence(),
-  createdAt: () => clock.now(),
+  createdAt: async () => clock.now(),
 });
 (await createOrgAsync({ slug, name })).getOrThrow();
 ```
@@ -221,6 +251,12 @@ True when `other` is the **same business entity**: it belongs to the same
 identity scope, and every field flagged `identity` is equal by `Object.is`.
 Attributes are not compared, so a renamed organization is still the same
 organization:
+
+<!-- doctest: isolate
+import type { Organization } from "../../organization.js";
+const name = (value: string) => value;
+declare const org: Organization;
+-->
 
 ```ts
 const renamed = org.update({ name: name("Acme Corp") }).getOrThrow();

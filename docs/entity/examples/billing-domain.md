@@ -21,6 +21,18 @@ union over them, and the factories. The root sits in a module of its own on purp
 
 ## The vocabulary comes first
 
+<!-- doctest: prelude
+import { Entity } from "@btravstack/entity";
+import { z } from "zod";
+import { CreditNote, DraftInvoice, Invoice } from "../../index.js";
+import { Currency, DisplayLabel } from "../../vocabulary.js";
+declare const invoice: Invoice;
+declare const draft: DraftInvoice;
+declare const line: Parameters<DraftInvoice["addLine"]>[0];
+declare const number: Parameters<DraftInvoice["issue"]>[0]["number"];
+declare const at: Parameters<DraftInvoice["issue"]>[0]["at"];
+-->
+
 ```ts
 export const OrganizationId = z.uuid().brand("OrganizationId");
 export const Slug = z.string().min(1).max(40).brand("Slug");
@@ -105,6 +117,8 @@ An invoice and a credit note are siblings, not subtypes of one another: same
 counterparty and money, opposite direction, their own identities. What they
 share goes on an `Entity.abstract` root — tagless, with no `make` of its own,
 extended rather than instantiated:
+
+<!-- doctest: skip — `/* … status, dunningReasons, level */` elides fields the variant's invariants read -->
 
 ```ts
 // root.ts — exported, so entities in another module can extend it

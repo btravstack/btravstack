@@ -569,6 +569,9 @@ importers:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.4.0
+      '@orpc/zod':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)(zod@4.6.5)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -581,6 +584,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 3.22.2
+      kysely:
+        specifier: 'catalog:'
+        version: 0.29.6
       typescript:
         specifier: 'catalog:'
         version: 7.0.2

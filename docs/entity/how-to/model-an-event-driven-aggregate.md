@@ -28,6 +28,26 @@ through declared events, and every command returns a sealed `Decision`.
 > in the [persistence example](/entity/examples/billing-persistence). Every snippet
 > compiles there and is covered by a test.
 
+<!-- doctest: prelude
+import type {
+  Subscription as BillingSubscription,
+  SubscriptionEvent as BillingSubscriptionEvent,
+} from "../../subscription.js";
+import { Seats, SubscriptionId } from "../../subscription.js";
+import { Instant, OrganizationId } from "../../vocabulary.js";
+class SubscriptionNotFound extends TaggedError("SubscriptionNotFound")<{ id: string }> {}
+class ConcurrentModification extends TaggedError("ConcurrentModification")<{
+  id: string;
+  expected: number;
+}> {}
+type SubscriptionRepository = {
+  load(id: string): Result<BillingSubscription, SubscriptionNotFound | Entity.InvalidEntity>;
+  save(
+    decision: Entity.Decision<BillingSubscription, BillingSubscriptionEvent>,
+  ): Result<number, ConcurrentModification>;
+};
+-->
+
 ## Declare the events
 
 The events are one zod discriminated union on `type`. They are messages, so
@@ -114,6 +134,8 @@ does not compile, and `sameIdentityAs` is therefore always available. What an ag
 
 A command checks its business rules, then emits:
 
+<!-- doctest: skip — `changeSeats` is a method of `Subscription`, shown outside its class -->
+
 ```ts
 changeSeats(seats: number): Result<
   Entity.Decision<Subscription, SubscriptionEvent>,
@@ -175,6 +197,8 @@ above does not change.
 if the row is still at `decision.expectedVersion`, and write `decision.events`
 to an outbox in the same transaction.
 
+<!-- doctest: skip — two methods of the example's state-based repository, shown outside their class -->
+
 ```ts
 load(id: string) {
   const row = this.#rows.get(id);
@@ -194,6 +218,8 @@ save(decision: Decision): Result<number, ConcurrentModification> {
 
 **Event-sourced.** Load with `replay`, which takes the stream's length as the
 version. Append `decision.events` if the stream is still that long.
+
+<!-- doctest: skip — one method of the example's event-sourced repository, shown outside its class -->
 
 ```ts
 save(decision: Decision): Result<number, ConcurrentModification> {

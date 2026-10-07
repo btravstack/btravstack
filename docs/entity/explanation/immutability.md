@@ -12,9 +12,26 @@ rejected. The instance type is `DeepReadonly<…>`, not a shallow `Readonly<…>
 so mutation is a compile error first and a `TypeError` only if a consumer casts
 around the type system:
 
+<!-- doctest: prelude
+import { Entity } from "@btravstack/entity";
+import { z } from "zod";
+import type { Organization } from "../../organization.js";
+const Tag = z.string().min(1).brand("Tag");
+const Address = z.object({ city: z.string().min(1) }).brand("Address");
+class Team extends Entity("Team")({
+  id: Entity.field(z.uuid().brand("TeamId"), { identity: true }),
+  tags: z.array(Tag),
+  address: Address,
+}) {}
+declare const org: Organization;
+declare const otherSlug: Organization["slug"];
+declare const team: Team;
+declare const tag: z.infer<typeof Tag>;
+-->
+
 ```ts
 org.slug = otherSlug; // ✗ compile error — read-only property
-(org as never as Record<string, unknown>).slug = "hacked"; // TypeError
+(org as never as Record<string, unknown>)["slug"] = "hacked"; // TypeError
 
 // on a `Team` declared with `tags: z.array(Tag)` and `address: Address`
 team.tags.push(tag); // ✗ compile error — tags is `readonly Tag[]`

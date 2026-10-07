@@ -28,6 +28,16 @@ cannot express it, and you need to know where it goes instead.
 > [`examples/billing-persistence/src/uniqueness.ts`](https://github.com/btravstack/btravstack/blob/main/examples/entity-billing-persistence/src/uniqueness.ts),
 > with its spec beside it.
 
+<!-- doctest: prelude
+import { DisplayName, Instant, OrganizationId, Slug } from "../../vocabulary.js";
+import type { Result } from "unthrown";
+declare const createOrganization: (
+  input: Entity.CreateInput<typeof Organization>,
+) => Result<Organization, Entity.InvalidEntity>;
+declare const store: OrganizationStore;
+declare const input: Entity.CreateInput<typeof Organization>;
+-->
+
 ## Sort the rule into the right layer
 
 Three kinds of rule are easy to blur together. Each lives in a different place,
@@ -112,6 +122,8 @@ export type OrganizationStore = {
 
 A Postgres adapter's `insert` qualifies SQLSTATE `23505` and nothing else:
 
+<!-- doctest: skip — one property of an adapter object, over a driver the page leaves open -->
+
 ```ts
 insert: (organization) =>
   fromPromise(db.insert(organizations).values(toRow(organization)), (cause, defect) =>
@@ -122,6 +134,8 @@ insert: (organization) =>
 The example has no database, so its in-memory store plays the index's part the
 same way: the check and the write share one synchronous block, and a duplicate
 returns the error a real adapter would have qualified.
+
+<!-- doctest: skip — one method of the example's in-memory store, shown outside its class -->
 
 ```ts
 insert(organization: Organization): AsyncResult<void, UniqueViolation> {

@@ -18,7 +18,18 @@ modelled as a value; a bug in domain code goes down the separate defect channel.
 > Domain vocabulary — entities, brands, factories — is whatever your own
 > domain declares.
 
+<!-- doctest: prelude
+import { Organization } from "../../organization.js";
+declare const issue: Entity.InvalidEntity["issues"][number];
+declare const e: Entity.InvalidEntity;
+declare const row: unknown;
+declare const respond: (status: number, body?: unknown) => Response;
+declare const report: (cause: unknown) => void;
+-->
+
 ## `Entity.InvalidEntity`
+
+<!-- doctest: skip — a class declaration displayed as its signature; the signature gate reads only a `const` or an alias -->
 
 ```ts
 class InvalidEntity extends TaggedError("InvalidEntity")<{

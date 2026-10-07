@@ -209,13 +209,17 @@ const samplesOf = (text: string): readonly string[] => {
       skipped = false;
       continue;
     }
-    if (lines[i] !== "```ts" && lines[i] !== "```tsx") {
+    const quoted = lines[i] === "> ```ts";
+    if (lines[i] !== "```ts" && lines[i] !== "```tsx" && !quoted) {
       if (line !== "") skipped = false;
       continue;
     }
-    const compiled = lines[i] === "```ts" && !skipped;
+    const compiled = lines[i] !== "```tsx" && !skipped;
+    const close = quoted ? "> ```" : "```";
     const body: string[] = [];
-    for (i += 1; i < lines.length && lines[i] !== "```"; i += 1) body.push(lines[i]!);
+    for (i += 1; i < lines.length && lines[i] !== close; i += 1) {
+      body.push(quoted ? lines[i]!.replace(/^> ?/, "") : lines[i]!);
+    }
     if (compiled) samples.push(body.join("\n"));
     skipped = false;
   }
@@ -224,7 +228,7 @@ const samplesOf = (text: string): readonly string[] => {
 
 let samples = 0;
 for (const page of files([
-  "docs/{tutorial,how-to,reference,explanation,examples}/**/*.md",
+  "docs/{tutorial,how-to,reference,explanation,examples,entity}/**/*.md",
   "docs/index.md",
   "README.md",
   "packages/*/README.md",

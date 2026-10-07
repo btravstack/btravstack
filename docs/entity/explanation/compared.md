@@ -21,6 +21,13 @@ A customer has a generated, immutable `id`, an `email`, a `plan` and a `seats`
 count, under one rule that spans two fields: a free plan allows at most three
 seats. Callers create customers without an id and update everything but the id.
 
+<!-- doctest: prelude
+import { Entity } from "@btravstack/entity";
+import { Either, Schema } from "effect";
+import { z } from "zod";
+declare const nextId: () => string;
+-->
+
 ```ts
 const CustomerId = z.uuid().brand("CustomerId");
 const Email = z.email().brand("Email");

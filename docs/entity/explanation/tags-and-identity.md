@@ -8,6 +8,25 @@ description: Why every instance carries a runtime _tag that never reaches the wi
 Every instance carries a non-enumerable `_tag`, for pattern matching with
 `unthrown`'s `P.tag(...)`:
 
+<!-- doctest: prelude
+import { Entity } from "@btravstack/entity";
+import { P, match } from "unthrown";
+import { z } from "zod";
+import { DisplayName } from "../../vocabulary.js";
+const OrgId = z.uuid().brand("OrgId");
+const DocumentId = z.uuid().brand("DocumentId");
+const Title = z.string().min(1).brand("Title");
+const Email = z.email().brand("Email");
+const Label = z.string().min(1).brand("Label");
+class User extends Entity("User")({ email: Email }) {}
+class ServiceAccount extends Entity("ServiceAccount")({ label: Label }) {}
+declare const member: User | ServiceAccount;
+declare const org: Organization;
+declare const renamed: Organization;
+declare const draft: Draft;
+declare const published: Published;
+-->
+
 ```ts
 match(member)
   .with(P.tag("User"), (u) => u.email)

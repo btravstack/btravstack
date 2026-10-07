@@ -20,6 +20,14 @@ the same: do the old rows still validate?
 > Domain vocabulary — entities, brands, factories — is whatever your own
 > domain declares.
 
+<!-- doctest: prelude
+import { Slug } from "../../vocabulary.js";
+const OrgId = z.uuid().brand("OrgId");
+const Note = z.string().min(1).brand("Note");
+const DocId = z.uuid().brand("DocId");
+const Cents = z.number().int().brand("Cents");
+-->
+
 ## Add an optional field
 
 The safe default. Old rows lack the key, `.optional()` accepts its absence,
@@ -48,6 +56,13 @@ loudly at `make` instead of silently carrying a filler value.
 
 **Default at the schema.** When there is one correct value for every old row,
 put it on the field and skip the migration:
+
+<!-- doctest: isolate
+import { Entity } from "@btravstack/entity";
+import { z } from "zod";
+import { Slug } from "../../vocabulary.js";
+const OrgId = z.uuid().brand("OrgId");
+-->
 
 ```ts
 class Organization extends Entity("Organization")({

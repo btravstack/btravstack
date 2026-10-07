@@ -14,6 +14,18 @@ Every entity carries four plain `ZodObject`s as statics, plus the class itself.
 > import { Entity } from "@btravstack/entity";
 > ```
 
+<!-- doctest: prelude
+import { OrderId, OrderLine } from "../../order.js";
+import { Organization } from "../../organization.js";
+class Ledger extends Entity("Ledger")({
+  id: Entity.field(z.uuid().brand("LedgerId"), { identity: true }),
+  balance: z.bigint().brand("MinorUnits"),
+}) {}
+declare const order: Order;
+declare const row: unknown;
+declare const raw: unknown;
+-->
+
 ```ts
 Organization.input; // ZodObject — everything make() accepts
 Organization.output; // ZodObject — stored state, internal fields included

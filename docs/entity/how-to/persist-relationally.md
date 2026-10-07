@@ -31,6 +31,61 @@ that still load.
 > import type { Entity } from "@btravstack/entity";
 > ```
 
+<!-- doctest: prelude
+import type { ColumnType, Generated, Transaction } from "kysely";
+import { type Customer, Order } from "../../order.js";
+type Database = {
+  customers: { id: string; billing_name: string; billing_address: string };
+  orders: {
+    id: string;
+    customer_id: string;
+    currency: string;
+    status: string;
+    bill_to_name: string | null;
+    bill_to_address: string | null;
+    version: number;
+    schema_version: 1 | 2;
+  };
+  order_lines: {
+    order_id: string;
+    id: string;
+    position: number;
+    label: string;
+    quantity: number;
+    unit_price: string | null;
+    unit_price_amount: number | null;
+    unit_price_currency: string | null;
+  };
+  outbox: {
+    id: string;
+    aggregate_id: string;
+    type: string;
+    payload: ColumnType<unknown, string, string>;
+    delivered_at: ColumnType<Date | null, never, Date>;
+    position: Generated<number>;
+  };
+};
+type Stored = {
+  readonly order: Database["orders"];
+  readonly lines: readonly Database["order_lines"][];
+};
+type OrderId = Order["id"];
+type OrderEvent = { readonly eventId: string; readonly type: string } & Record<string, unknown>;
+const CURRENT_SCHEMA_VERSION = 2;
+declare const order: Order;
+declare const expectedVersion: number;
+declare const stored: Stored;
+declare const trx: Transaction<Database>;
+declare const events: readonly OrderEvent[];
+declare const orderRepository: (db: Kysely<Database>) => {
+  load(id: OrderId): AsyncResult<{ readonly order: Order; readonly version: number }, never>;
+  save(order: Order, expectedVersion: number, events: readonly OrderEvent[]): AsyncResult<void, never>;
+};
+declare const customerRepository: (db: Kysely<Database>) => {
+  load(id: Customer["id"]): AsyncResult<Customer, never>;
+};
+-->
+
 The single-table read and write are covered in
 [Persist and rehydrate](/entity/how-to/persist-and-rehydrate). This guide is what
 changes when one aggregate spans several tables.
@@ -171,6 +226,8 @@ saved separately, the stored order breaks a rule no instance ever broke.
 Carry the version you loaded beside the entity, and make it the first
 statement of the save:
 
+<!-- doctest: skip — the save's opening statement, cut out of the transaction callback its `return` belongs to -->
+
 ```ts
 type Loaded = { readonly order: Order; readonly version: number };
 
@@ -187,6 +244,8 @@ if (written === 0n) return false; // nothing written yet: committing is harmless
 
 Zero affected rows means someone else saved first. Turn it into a typed error
 outside the transaction, rather than a silent success:
+
+<!-- doctest: skip — `execute(/* … */)` elides the transaction callback the previous excerpt is from -->
 
 ```ts
 class ConcurrentModification extends TaggedError("ConcurrentModification")<{
@@ -315,6 +374,8 @@ migration lives in the adapter.
 A driver rejects with an exception. Bring it in through `fromPromise`, and
 decide per cause whether it is a typed error or a Defect. Parse the error's
 shape with zod rather than casting it:
+
+<!-- doctest: skip — the triage callback on its own; its parameters are typed by the `fromPromise` call it is handed to -->
 
 ```ts
 const PostgresError = z.object({

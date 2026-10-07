@@ -5,7 +5,7 @@
     "generate": {
       "inputs": [
         "$TURBO_DEFAULT$",
-        "../../docs/{tutorial,how-to,reference,explanation,examples,di}/**/*.md",
+        "../../docs/{tutorial,how-to,reference,explanation,examples,di,entity}/**/*.md",
         "../../docs/index.md",
         "../../docs/scripts/extract-doc-samples.ts",
         "../../README.md",

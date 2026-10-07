@@ -27,18 +27,41 @@ the old repository.
 - **Deployed by `.github/workflows/deploy-docs.yml`**, unversioned: `main`
   deploys alone to the root. `unthrown`'s stable/beta split (`DOCS_BASE`,
   `DOCS_VERSIONS`) is the shape to adopt once a stable tag exists.
-- **Every `ts` fence in the framework and DI guide directories, in the root
-  README and in the package READMEs is compiled by `pnpm typecheck`,
+- **Every `ts` fence in the framework, DI and entity guide directories, in the
+  root README and in the package READMEs is compiled by `pnpm typecheck`,
   continuously.**
-  The migrated `docs/entity/` guide currently retains its former site's
-  review-checked excerpts, not this site's doctest coverage. Its runnable
-  `examples/entity-billing-*` workspaces do compile and test in the gate.
-  Extend the extractor's groups before claiming guide-wide snippet coverage.
   The markers, the groups and how a page becomes one module are
   `scripts/extract-doc-samples.ts`'s header.
   The standalone DI tutorial under `docs/di/` compiles with the core group.
-  The imported entity guide remains outside the glob while its sample coverage
-  is tracked by issue #394.
+
+  **The entity guide is its own group, `entity`, placed by directory and
+  compiled in `examples/entity-billing-domain`** (issue #394). Its pages import
+  `zod`, which would otherwise send them to `order-api`, and they document a
+  library that stands without the framework. Hosting it beside the billing
+  domain is what lets a prelude import that example's real vocabulary by
+  relative path (`../../vocabulary.js`) — the real-artifact rule below — where
+  a page says it follows the billing example. `@orpc/zod` and `kysely` are
+  devDependencies there for `how-to/http-contract.md`,
+  `examples/billing-api.md` and `how-to/persist-relationally.md`, ignored in
+  `knip.json`.
+
+  Two spellings exist only because this guide was written for another site,
+  and the extractor reads both rather than the pages being rewritten. A fence
+  inside a blockquote (`> ```ts`) is a fence: the guide states each page's
+  imports in one. And a line commented `// ✗` claims a compile error unless it
+  says it `throws`, so it is emitted under a `@ts-expect-error` — the claim is
+  measured, and a line that starts compiling fails with `TS2578`.
+
+  What the guide skips is an **excerpt** in the narrow sense: a method or
+  repository member shown outside its class, an option shown outside its
+  declaration, a body that elides what it needs (`/* … as above … */`), or a
+  handler body whose `return` belongs to a function the page leaves out. Each
+  carries that reason; a fence that merely needs context gets a prelude.
+  Regression-proved: renaming `org.update` to `org.patch` in
+  `entity/tutorial/getting-started.md` fails the workspace's `typecheck` with
+  `TS2339`, and correcting the misspelled flag on a `// ✗` line of
+  `entity/reference/declaration.md` fails it with `TS2578`.
+
   A page whose fences import a package its group's workspace does not have
   needs that package as a **devDependency there**, ignored for it in
   `knip.json` — `examples/order-api` carries `@btravstack/prisma` and
@@ -166,8 +189,8 @@ the old repository.
   mangled aliases (`Cache as t`).
 
   **A sample counts only if `extract-doc-samples.ts` compiles it** — its page
-  set and its markers are mirrored, so a `skip`-marked fence, a `tsx` fence
-  and the uncompiled `docs/entity/` guide credit nothing.
+  set and its markers are mirrored, so a `skip`-marked fence and a `tsx` fence
+  credit nothing, and a blockquoted fence credits like any other.
 
   Regression-proved three ways: an unused `export const` appended to
   `packages/cache/src/index.ts` fails the build naming it; so does an unused

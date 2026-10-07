@@ -38,6 +38,14 @@ shows the self-healing read against a real table.
 A deriver may call the entity's own statics. The return annotation on the
 deriver is what makes it compile:
 
+<!-- doctest: prelude
+import { Entity } from "@btravstack/entity";
+import { z } from "zod";
+const Id = z.uuid().brand("Id");
+const Tag = z.enum(["DRAFT", "ARCHIVED"]);
+type Tags = readonly z.infer<typeof Tag>[];
+-->
+
 ```ts
 class Doc extends Entity("Doc")(
   { id: Entity.field(Id, { immutable: true }), tags: z.array(Tag) },

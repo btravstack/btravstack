@@ -8,6 +8,14 @@ description: Entity.Input, Entity.Output, Entity.CreateInput, Entity.Patch, Enti
 Every public type hangs off the merged `Entity` namespace, so one import covers
 the whole surface.
 
+<!-- doctest: prelude
+import { z } from "zod";
+import { Organization } from "../../organization.js";
+const AccountId = z.uuid().brand("AccountId");
+class Personal extends Entity("Personal")({ id: AccountId, kind: z.literal("personal") }) {}
+class Business extends Entity("Business")({ id: AccountId, kind: z.literal("business") }) {}
+-->
+
 ```ts
 import { Entity } from "@btravstack/entity";
 

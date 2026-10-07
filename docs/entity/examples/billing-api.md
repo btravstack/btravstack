@@ -26,6 +26,26 @@ is.
 
 ## The response is an allowlist
 
+<!-- doctest: prelude
+import { ZodToJsonSchemaConverter } from "@orpc/zod";
+import { z } from "zod";
+import { Order } from "../../order.js";
+import { Organization } from "../../organization.js";
+type OrganizationResponse = z.output<typeof OrganizationResponse>;
+type JsonSchema = ReturnType<ZodToJsonSchemaConverter["convert"]>[0];
+declare const jsonSchemaOf: (
+  schema: Parameters<ZodToJsonSchemaConverter["convert"]>[0],
+  direction: "input" | "output",
+) => JsonSchema;
+const orderPublicFields = {
+  id: true,
+  status: true,
+  currency: true,
+  lines: true,
+  total: true,
+} as const;
+-->
+
 ```ts
 export const organizationPublicFields = {
   id: true,

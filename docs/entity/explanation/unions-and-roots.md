@@ -8,6 +8,15 @@ description: Why a union is a value with no class form, why an abstract root car
 One declaration in this package is a class you extend, and one is a value you
 hold:
 
+<!-- doctest: prelude
+import { Entity } from "@btravstack/entity";
+import { z } from "zod";
+const AccountId = z.uuid().brand("AccountId");
+const Label = z.string().min(1).brand("Label");
+class Personal extends Entity("Personal")({ id: AccountId, kind: z.literal("personal") }) {}
+class Business extends Entity("Business")({ id: AccountId, kind: z.literal("business") }) {}
+-->
+
 ```ts
 abstract class AccountBase extends Entity.abstract("Account")({
   id: AccountId,
@@ -61,6 +70,14 @@ where the mistake is written.
 `export type Account = …` line beside the const is what puts it under the name a
 reader expects:
 
+<!-- doctest: isolate
+import { Entity } from "@btravstack/entity";
+import { z } from "zod";
+const AccountId = z.uuid().brand("AccountId");
+class Personal extends Entity("Personal")({ id: AccountId, kind: z.literal("personal") }) {}
+class Business extends Entity("Business")({ id: AccountId, kind: z.literal("business") }) {}
+-->
+
 ```ts
 export const Account = Entity.union("kind", [Personal, Business]);
 export type Account = Entity.Instance<typeof Account>; // Personal | Business
@@ -110,6 +127,13 @@ TS2425: … defines instance member property 'describe', but extended class
 Because the intersection is unmapped and its behaviour half is the root's real
 class type, TypeScript propagates abstractness through it. An `abstract` member
 on a root is a compiler-enforced obligation on every variant:
+
+<!-- doctest: isolate
+import { Entity } from "@btravstack/entity";
+import { z } from "zod";
+const AccountId = z.uuid().brand("AccountId");
+const Label = z.string().min(1).brand("Label");
+-->
 
 ```ts
 abstract class AccountBase extends Entity.abstract("Account")({

@@ -24,6 +24,19 @@ literature calls _primitive obsession_.
 
 A brand makes the type nominal:
 
+<!-- doctest: prelude
+import { Entity } from "@btravstack/entity";
+import { z } from "zod";
+import { DisplayName, Money, Slug } from "../../vocabulary.js";
+const OrgId = z.uuid().brand("OrgId");
+-->
+
+<!-- doctest: isolate
+import { z } from "zod";
+declare const slug: z.infer<typeof Slug>;
+declare const name: z.infer<typeof DisplayName>;
+-->
+
 ```ts
 const Slug = z.string().min(1).brand("Slug");
 const DisplayName = z.string().min(1).brand("DisplayName");
@@ -136,6 +149,8 @@ happens after the callback returns.
 
 So both positions are typed as the schema's **input**, not its branded output.
 A plain expression is already the right type:
+
+<!-- doctest: skip — a factory call beside one `computed` entry, shown outside its declaration -->
 
 ```ts
 const createOrg = Organization.factory({

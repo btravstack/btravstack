@@ -14,6 +14,16 @@ pnpm --filter @btravstack/entity-example-billing-persistence test
 
 ## The round trip
 
+<!-- doctest: prelude
+import type { Entity } from "@btravstack/entity";
+import { P, TaggedError, type Result } from "unthrown";
+import type { Organization } from "../../organization.js";
+class OrganizationNotFound extends TaggedError("OrganizationNotFound") {}
+declare const loaded: Result<Organization, Entity.InvalidEntity | OrganizationNotFound>;
+-->
+
+<!-- doctest: skip — one method of the example's repository, shown outside its class -->
+
 ```ts
 save(organization: Organization): void {
   this.#rows.set(organization.id, organization.toJSON());
@@ -25,6 +35,8 @@ shape. No mapper to keep in sync, and `_tag` never reaches a row — it is a
 non-enumerable instance property, so it survives neither `JSON.stringify` nor a
 spread. The spec asserts that explicitly, because it is the sort of thing that
 starts leaking quietly.
+
+<!-- doctest: skip — one method of the example's repository, shown outside its class -->
 
 ```ts
 byId(id): Result<Organization, InvalidEntity | OrganizationNotFound> {
