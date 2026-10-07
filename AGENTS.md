@@ -337,8 +337,9 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    spelled. The write stays the adapter's, by the rule above,
    and what publishing means stays the application's, as an
    `OutboxPublisher` it provides. The claim does hold one interactive
-   transaction across a batch's publishes — one per relay and bounded by the
-   batch, never one per request, which is the trade
+   transaction across a batch's publishes — one per active tenant per relay,
+   bounded by the batch and the configured tenants, never one per request,
+   which is the trade
    `packages/outbox/AGENTS.md` weighs. Three reasons a unit-scoped transaction is
    the wrong shape: it makes every request an **interactive** transaction,
    which Prisma's own documentation says to reach for last; the unit does not

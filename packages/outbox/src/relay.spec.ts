@@ -162,6 +162,33 @@ describe("outbox", () => {
     expect(swept).toBeOkWith(["ready"]);
   });
 
+  it("publishes another tenant while the first tenant's publisher is pending", async ({
+    store,
+    publisher,
+    relaying,
+  }) => {
+    store.append(order("acme", "stuck"));
+    store.append(order("globex", "ready"));
+    const held = publisher.hold("stuck");
+
+    const swept = await relaying({ tenants: ["acme", "globex"] }, () =>
+      fromSafePromise(
+        (async () => {
+          try {
+            await held.entered;
+            await vi.waitUntil(() => publisher.sent().includes("ready"));
+            return [...publisher.sent()];
+          } finally {
+            held.release();
+          }
+        })(),
+      ),
+    );
+
+    expect(swept).toBeOkWith(["ready"]);
+    expect(publisher.sent()).toEqual(["ready", "stuck"]);
+  });
+
   it("keeps one tenant's back-off from slowing another tenant's backlog", async ({
     store,
     publisher,

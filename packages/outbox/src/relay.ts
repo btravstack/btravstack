@@ -115,23 +115,22 @@ const startRelay = (
   const backoff = (failures: number): number =>
     Math.min(pollMs * 2 ** failures, Math.max(pollMs, MAX_BACKOFF_MS));
 
-  // Each tenant is due on its own clock — at once after a full batch, after
-  // `pollMs` when idle, after its own back-off when failing — so one tenant's
-  // refused message slows no other tenant.
-  const running = (async () => {
-    const schedule = tenants.map((tenantId) => ({ tenantId, due: clock.now(), failures: 0 }));
-    while (!signal.aborted) {
-      for (const tenant of schedule) {
+  // One loop per tenant keeps claims serial within a tenant while a slow
+  // publisher or claim cannot hold another tenant's due work.
+  const running = Promise.all(
+    tenants.map(async (tenantId) => {
+      let due = clock.now();
+      let failures = 0;
+      while (!signal.aborted) {
+        const wait = due - clock.now();
+        if (wait > 0) await clock.sleep(wait, signal);
         if (signal.aborted) break;
-        if (tenant.due > clock.now()) continue;
-        const swept = await sweep(tenant.tenantId);
-        tenant.failures = swept === "failed" ? tenant.failures + 1 : 0;
-        tenant.due = clock.now() + (swept === "full" ? 0 : backoff(tenant.failures));
+        const swept = await sweep(tenantId);
+        failures = swept === "failed" ? failures + 1 : 0;
+        due = clock.now() + (swept === "full" ? 0 : backoff(failures));
       }
-      const wait = Math.min(...schedule.map(({ due }) => due)) - clock.now();
-      if (wait > 0) await clock.sleep(wait, signal);
-    }
-  })();
+    }),
+  );
 
   return {
     stop: () =>
@@ -164,9 +163,10 @@ const startRelay = (
  *
  * **A refused publish stops the tenant's batch** and backs that tenant off,
  * doubling from the poll interval to 30 seconds, so a later fact never
- * overtakes an earlier one and no other tenant waits. A message the publisher refuses forever therefore holds its tenant's
- * outbox — which is what the health check is for: it reports a tenant whose
- * oldest pending message is older than `maxLagMs`.
+ * overtakes an earlier one. Each tenant has its own loop, so a pending claim
+ * or publish holds only that tenant. A message the publisher refuses forever
+ * therefore holds its tenant's outbox — which is what the health check is for:
+ * it reports a tenant whose oldest pending message is older than `maxLagMs`.
  *
  * Started as the graph builds, before the runtime accepts anything, and
  * stopped when the application scope closes, after the runtime has drained.
