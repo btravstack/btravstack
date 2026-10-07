@@ -133,6 +133,22 @@ class Thread extends Entity.aggregate("Thread")({
   }
 }
 Thread.start({ type: "ThreadOpened", id: "x", first: { id: "m", body: "hi" } });
+
+// A defaulted discriminator is still an input the commands accept, spelled or not.
+class Defaulted extends Entity.aggregate("Defaulted")({ id: Entity.field(Id, { identity: true }) })(
+  {
+    events: z.discriminatedUnion("type", [
+      z.object({ type: z.literal("Opened").default("Opened"), id: z.uuid() }),
+      z.object({ type: z.literal("Closed") }),
+    ]),
+    opens: { Opened: (e) => ({ id: e.id }) },
+    evolve: { Closed: (r) => r },
+  },
+) {}
+Defaulted.start({ type: "Opened", id: "x" });
+Defaulted.start({ id: "x" });
+// @ts-expect-error a defaulted discriminator still names only its own event
+Defaulted.start({ type: "Closed" });
 declare const thread: Thread;
 const added: readonly Entity.Event<typeof Thread>[] = thread.add("m", "hi").get().events;
 void added;

@@ -110,10 +110,17 @@ export const createAggregate =
       );
     }
     const { events, opens, evolve, ends = [], ...entityOptions } = options;
-    const openingEnd = ends.find((type) => Object.hasOwn(opens, type));
-    if (openingEnd !== undefined) {
-      // oxlint-disable-next-line unthrown/no-throw
-      throw new Error(`${tag}: "${openingEnd}" opens the aggregate, so it cannot end it.`);
+    // A terminal event is one `evolve` folds: not an opener, and not a name
+    // the union lacks, which would leave `isTerminal` silently false.
+    for (const type of ends) {
+      if (Object.hasOwn(opens, type)) {
+        // oxlint-disable-next-line unthrown/no-throw
+        throw new Error(`${tag}: "${type}" opens the aggregate, so it cannot end it.`);
+      }
+      if (!Object.hasOwn(evolve, type)) {
+        // oxlint-disable-next-line unthrown/no-throw
+        throw new Error(`${tag}: "${type}" in ends is not an event this aggregate folds.`);
+      }
     }
     const Base = buildEntity(tag)(fields as Fields, entityOptions) as Record<string, unknown> & {
       readonly prototype: Record<string, unknown>;

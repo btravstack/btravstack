@@ -348,6 +348,41 @@ test("an opening event listed in ends is refused while the declaration runs", ()
   expect(declaring).toThrow(/Instant: "CartOpened" opens the aggregate, so it cannot end it/u);
 });
 
+test("a terminal name the aggregate does not fold is refused while the declaration runs", () => {
+  // GIVEN a declaration the types would refuse, reached untyped
+  const declare = Entity.aggregate("Typo")({ id: Entity.field(CartId, { identity: true }) }) as (
+    options: object,
+  ) => unknown;
+  // WHEN it misspells its terminal event
+  const declaring = () =>
+    declare({
+      events: CartEvent,
+      opens: { CartOpened: (e: { cartId: string }) => ({ id: e.cartId }) },
+      evolve: { ItemAdded: (r: object) => r, CartCheckedOut: (r: object) => r },
+      ends: ["CartCheckdOut"],
+    });
+  // THEN it throws, naming the name
+  expect(declaring).toThrow(/Typo: "CartCheckdOut" in ends is not an event this aggregate folds/u);
+});
+
+test("an opening event whose discriminator is defaulted can be started without it", () => {
+  // GIVEN an aggregate whose opening event defaults its `type`
+  class Defaulted extends Entity.aggregate("Defaulted")({
+    id: Entity.field(CartId, { identity: true }),
+  })({
+    events: z.discriminatedUnion("type", [
+      z.object({ type: z.literal("Opened").default("Opened"), id: z.uuid() }),
+      z.object({ type: z.literal("Closed") }),
+    ]),
+    opens: { Opened: (e) => ({ id: e.id }) },
+    evolve: { Closed: (r) => r },
+  }) {}
+  // WHEN it is started from an input that leaves the type out
+  const decision = Defaulted.start({ id });
+  // THEN the decided event carries the parsed discriminator
+  expect(decision.map((d) => d.events)).toBeOkWith([{ type: "Opened", id }]);
+});
+
 test("a decision says whether it ended the aggregate", () => {
   // GIVEN an open document
   const doc = openedDoc().state;

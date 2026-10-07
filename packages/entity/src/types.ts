@@ -608,9 +608,13 @@ export type EventNamed<Ev extends Events, K> = Extract<z.output<Ev>, { readonly 
 /**
  * What a command hands `emit` or `start` for the event whose `type` is `K`:
  * the event's **input**, since both parse it against the union before the
- * fold. An event carrying a nested part's `input` schema takes plain values.
+ * fold. An event carrying a nested part's `input` schema takes plain values,
+ * and a defaulted discriminator (`z.literal("X").default("X")`) may be left out.
  */
-export type EventInput<Ev extends Events, K> = Extract<z.input<Ev>, { readonly type: K }>;
+export type EventInput<Ev extends Events, K> = Extract<
+  z.input<Ev>,
+  { readonly type?: K | undefined }
+>;
 
 /**
  * What an event handler folds over and returns: the declared fields as the

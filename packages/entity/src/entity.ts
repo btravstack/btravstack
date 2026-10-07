@@ -301,11 +301,15 @@ export function Entity<Tag extends string>(tag: Tag) {
       );
     };
 
-    /** The tail every entry point shares: check the invariants, then seal and construct. */
+    /**
+     * The tail every entry point shares: canonicalise, check the invariants on
+     * exactly what will be stored, then seal and construct.
+     */
     const construct = <T>(
       Ctor: new (d: Sealed<OutputShape>) => T,
-      d: OutputShape,
+      raw: OutputShape,
     ): Result<T, InvalidEntity> => {
+      const d = frozenFields(raw) as OutputShape;
       const broken = violationsOf(d);
       if (broken.length > 0) {
         return Err(new InvalidEntity({ entity: tag, issues: broken }));
@@ -460,12 +464,13 @@ export function Entity<Tag extends string>(tag: Tag) {
             m.with(P._, toInvalidEntity),
           )
           .flatMap(recompute)
-          .flatMap((d) =>
-            Ok({
-              data: Object.freeze(frozenFields(d)) as unknown as DeepReadonly<OutputShape>,
+          .flatMap((raw) => {
+            const d = frozenFields(raw) as OutputShape;
+            return Ok({
+              data: Object.freeze(d) as unknown as DeepReadonly<OutputShape>,
               violations: violationsOf(d),
-            }),
-          );
+            });
+          });
       }
 
       /** caller fields + domain-generated fields → entity */

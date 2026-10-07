@@ -93,6 +93,11 @@ const set = Object.keys(after).filter((k) => !isDeepStrictEqual(before[k], after
 const unset = Object.keys(before).filter((k) => !(k in after)); // cleared, not set to undefined
 ```
 
+A nested entity in a projection is the entity itself, so a structural compare
+also sees any field its class body declares. If a nested part carries
+class-body state, diff the JSON form (`JSON.parse(JSON.stringify(state))`)
+instead, which goes through each nested entity's own `toJSON()`.
+
 The package ships no change set and no diff helper: what a change means to a
 store (`$set`, `$unset`, `$push`, an `UPDATE … SET`) is the adapter's, as the
 write is.

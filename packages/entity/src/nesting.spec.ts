@@ -194,6 +194,28 @@ test("toJSON omits an explicitly undefined key inside an object zod already froz
   ).toBeOkWith({ keys: [[], [], []], frozen: true });
 });
 
+test("invariants see the canonical form that is stored", () => {
+  // GIVEN a rule that observes whether a nested key is present
+  class Tagged extends Entity("Tagged")(
+    { id: OrderId, meta: z.object({ label: Label.optional() }).brand("Meta") },
+    {
+      invariants: [
+        Entity.invariant({
+          code: "UNSET_LABEL_KEY",
+          ensure: (d) => !Object.hasOwn(d.meta, "label") || d.meta.label !== undefined,
+          message: "a label key carries a label",
+        }),
+      ],
+    },
+  ) {}
+  // WHEN a row spells its unset label as an explicit undefined
+  const made = Tagged.make({ id: oid, meta: { label: undefined } }).map((t) =>
+    Object.keys(t.toJSON().meta),
+  );
+  // THEN the rule passes on what is stored, which has no such key
+  expect(made).toBeOkWith([]);
+});
+
 test("an absent optional field is still locked", () => {
   // GIVEN an account without a label
   const account = Account.make({ id: oid, owner: { id: cid }, members: [], meta: {} }).getOrThrow();
