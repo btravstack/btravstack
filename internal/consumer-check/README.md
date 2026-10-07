@@ -93,8 +93,11 @@ CI job rather than asking another repository for a new one.
    with why — CJS consumers of `@btravstack/http-server` on Node below 22.12,
    since `@orpc/server` is ESM-only and `require(esm)` ships unflagged from
    there, and every CJS consumer of `@btravstack/temporal-worker`, since
-   `@temporal-contract/worker` exports `./activity` under `import` alone. An
-   entry that starts loading clean fails as stale, like `accepted`.
+   `@temporal-contract/worker` exports `./activity` under `import` alone.
+   Each gap names one entry point, one mode, one Node and the one error code
+   it excuses, so a sibling entry breaking, or the same entry failing some
+   other way, is still reported; a gap whose load stops failing with that code
+   fails as stale, like `accepted`.
 
    **What it does not prove**: that the code WORKS at the floors — a method
    added to a peer after its floor is called, not imported, and loading never

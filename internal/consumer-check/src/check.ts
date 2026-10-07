@@ -178,16 +178,29 @@ const nodeFloor = (manifests: readonly Manifest[]): string | { readonly failed: 
   return `${String(floor[1])}.${floor[2] ?? "0"}.${floor[3] ?? "0"}`;
 };
 
+type Gap = { readonly code: string; readonly why: string };
+
+const requireEsm: Gap = {
+  code: "ERR_REQUIRE_ESM",
+  why: "`@orpc/server` is ESM-only, so the CJS build needs `require(esm)`, unflagged from Node 22.12; a CJS consumer on 22.0-22.11 cannot load it",
+};
+const temporalCjs: Gap = {
+  code: "ERR_PACKAGE_PATH_NOT_EXPORTED",
+  why: "`@temporal-contract/worker` exports `./activity` under an `import` condition alone, so the CJS build's `require` of it resolves on no Node",
+};
+
 /**
  * Entry points that fail to load for a reason the package cannot fix on its
- * own, keyed `<package> <import|require> (<floor|current>)`, with why. Like
- * `accepted`, an entry fails as stale once that run loads clean.
+ * own, keyed `<specifier> <import|require> (<floor|current>)`, each excusing
+ * ONE error code with why — so a different failure of the same entry, or of
+ * a sibling entry, is still reported. Like `accepted`, an entry fails as
+ * stale once that load stops failing with that code.
  */
-const temporalCjs =
-  "`@temporal-contract/worker` exports `./activity` under an `import` condition alone, so the CJS build's `require` of it resolves on no Node";
-const gaps: Readonly<Record<string, string>> = {
-  "@btravstack/http-server require (floor)":
-    "`@orpc/server` is ESM-only, so the CJS build needs `require(esm)`, unflagged from Node 22.12; a CJS consumer on 22.0-22.11 cannot load it",
+const gaps: Readonly<Record<string, Gap>> = {
+  "@btravstack/http-server require (floor)": requireEsm,
+  "@btravstack/http-server/jwt require (floor)": requireEsm,
+  "@btravstack/http-server/session require (floor)": requireEsm,
+  "@btravstack/http-server/oidc require (floor)": requireEsm,
   "@btravstack/temporal-worker require (floor)": temporalCjs,
   "@btravstack/temporal-worker require (current)": temporalCjs,
 };
@@ -258,14 +271,14 @@ const install = (args: readonly string[], cwd: string): boolean => {
  * One package installed alone — its tarball, the tarballs of the
  * `@btravstack/*` peers it requires (transitively), and its other REQUIRED
  * peers at the floor of the range it advertises — then loaded on each Node.
- * Returns the failures, and the gap keys that ran.
+ * Returns the failures, and the gap keys a failure matched.
  */
 const isolated = (
   alone: string,
   subject: Packed,
   family: ReadonlyMap<string, Packed>,
   nodes: Readonly<Record<"current" | "floor", string>>,
-): { readonly failures: readonly string[]; readonly ran: readonly string[] } => {
+): { readonly failures: readonly string[]; readonly matched: readonly string[] } => {
   const { name } = subject.manifest;
   const dir = join(alone, name.replace("/", "+"));
   mkdirSync(dir, { recursive: true });
@@ -316,7 +329,7 @@ const isolated = (
   );
   writeFileSync(join(dir, "smoke.cjs"), SMOKE);
   if (!install(["install", "--ignore-scripts"], dir)) {
-    return { failures: [`isolated install: ${name} with only its required peers`], ran: [] };
+    return { failures: [`isolated install: ${name} with only its required peers`], matched: [] };
   }
 
   const entries = Object.entries(subject.manifest.exports ?? {})
@@ -326,7 +339,7 @@ const isolated = (
       cjs: typeof conditions === "object" && conditions !== null && "require" in conditions,
     }));
   const failures: string[] = [];
-  const ran: string[] = [];
+  const matched: string[] = [];
   for (const [label, node] of Object.entries(nodes)) {
     // Without `NODE_PATH`: pnpm's script shims point it at this workspace's
     // store, and `require` falls back to it — so an optional peer the install
@@ -338,25 +351,19 @@ const isolated = (
       env,
       stdio: ["ignore", "pipe", "inherit"],
     });
-    const failed = (JSON.parse(output) as readonly SmokeFailure[]).filter(
-      (failure) => !isOptionalAdapter(subject.manifest, failure),
-    );
-    for (const mode of ["import", "require"]) {
-      const key = `${name} ${mode} (${label})`;
-      const ofMode = failed.filter((failure) => failure.mode === mode);
-      if (gaps[key] !== undefined) {
-        ran.push(key);
-        if (ofMode.length === 0) failures.push(`smoke: ${key} loads clean — drop it from \`gaps\``);
+    for (const failure of JSON.parse(output) as readonly SmokeFailure[]) {
+      if (isOptionalAdapter(subject.manifest, failure)) continue;
+      const key = `${failure.specifier} ${failure.mode} (${label})`;
+      if (gaps[key]?.code === failure.code) {
+        matched.push(key);
         continue;
       }
-      for (const failure of ofMode) {
-        failures.push(
-          `smoke: ${failure.mode}("${failure.specifier}") on the ${label} Node — ${failure.code ?? "no code"}: ${failure.message}`,
-        );
-      }
+      failures.push(
+        `smoke: ${failure.mode}("${failure.specifier}") on the ${label} Node — ${failure.code ?? "no code"}: ${failure.message}`,
+      );
     }
   }
-  return { failures, ran };
+  return { failures, matched };
 };
 
 /** Every packed package installed alone and loaded on this Node and on the published floor. */
@@ -386,14 +393,16 @@ const smoke = (work: string, alone: string, tarballs: readonly string[]): readon
     `[consumer-check] installing each package alone, loading it on Node ${process.versions.node} and ${floor}\n`,
   );
   const failures: string[] = [];
-  const ran = new Set<string>();
+  const matched = new Set<string>();
   for (const subject of family.values()) {
     const result = isolated(alone, subject, family, nodes);
     failures.push(...result.failures);
-    for (const key of result.ran) ran.add(key);
+    for (const key of result.matched) matched.add(key);
   }
-  for (const key of Object.keys(gaps)) {
-    if (!ran.has(key)) failures.push(`smoke: ${key} is in \`gaps\` but never ran — drop it`);
+  for (const [key, { code }] of Object.entries(gaps)) {
+    if (!matched.has(key)) {
+      failures.push(`smoke: ${key} no longer fails with ${code} — drop it from \`gaps\``);
+    }
   }
   return failures;
 };
