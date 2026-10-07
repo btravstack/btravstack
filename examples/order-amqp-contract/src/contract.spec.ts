@@ -34,6 +34,7 @@ describe("orderContract", () => {
     // GIVEN the contract's own schema, and nothing else — no worker, no
     // connection, no broker
     const event = {
+      eventId: 1,
       tenantId: "0199a1e0-0000-7000-8000-000000009000",
       kind: "order",
       id: "0199a1e0-0000-7000-8000-000000000001",
@@ -51,6 +52,7 @@ describe("orderContract", () => {
   }) => {
     // GIVEN the same schema
     const tombstone = {
+      eventId: 1,
       tenantId: "0199a1e0-0000-7000-8000-000000009000",
       kind: "order",
       id: "0199a1e0-0000-7000-8000-000000000001",
@@ -72,6 +74,7 @@ describe("orderContract", () => {
     // executable, not documentation, and a caller can run it
     expect(
       validate({
+        eventId: 1,
         tenantId: "0199a1e0-0000-7000-8000-000000009000",
         kind: "order",
         id: "0199a1e0-0000-7000-8000-000000000001",
@@ -84,6 +87,7 @@ describe("orderContract", () => {
   it("refuses an id that is not a UUIDv7", ({ validate }) => {
     // GIVEN an event whose subject id is a plain string, not the wire's UUIDv7 shape
     const event = {
+      eventId: 1,
       tenantId: "0199a1e0-0000-7000-8000-000000009000",
       kind: "order",
       id: "o-1",

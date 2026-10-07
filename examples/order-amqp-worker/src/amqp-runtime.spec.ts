@@ -165,6 +165,7 @@ describe("the broadcast deployment", () => {
     // publisher addressed an exchange, never a consumer
     const [message] = await waitForMessages({ count: 1, timeoutMs: 5_000 });
     expect(JSON.parse(String(message?.content))).toEqual({
+      eventId: expect.any(Number),
       tenantId: tenant,
       kind: "order",
       id: "0199a1e0-0000-7000-8000-000000000005",

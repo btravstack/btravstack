@@ -46,7 +46,8 @@ export const orderAmqpClient = Provider(OrderAmqpClient)({
  * What "publish" means for this application — the one half of the outbox
  * `@btravstack/outbox` cannot own. An outbox row becomes the contract's
  * `orderChanged` envelope; the payload is the JSON `prismaOrderRepository`
- * wrote, and `null` stays the tombstone on the wire.
+ * wrote, and `null` stays the tombstone on the wire. The row's id rides as
+ * `eventId`, the key a subscriber deduplicates a re-delivery on.
  *
  * A message the contract refuses is an `Err` like a broker that refuses it:
  * the relay leaves it pending either way, and its health check names the
@@ -67,6 +68,7 @@ export const orderPublisher = Provider(OutboxPublisher)({
         )
         .flatMap((payload) =>
           client.publish("orderChanged", {
+            eventId: message.id,
             tenantId: message.tenantId,
             kind: message.kind as "order",
             id: message.subjectId,
