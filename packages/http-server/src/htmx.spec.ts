@@ -27,7 +27,10 @@ describe("htmx", () => {
   });
 
   it("serves a fragment from an absolute-form request target", async ({ htmxServer }) => {
+    // GIVEN a fragment route served through the HTTP runtime
     const { origin } = await htmxServer();
+
+    // WHEN a forward proxy sends an absolute-form request target
     const response = await new Promise<{ status: number; body: string }>((resolve, reject) => {
       const request = httpRequest(
         {
@@ -46,6 +49,7 @@ describe("htmx", () => {
       request.end();
     });
 
+    // THEN the route receives the parsed pathname and its path parameter
     expect(response).toEqual({ status: 200, body: '<tr id="row-42">row</tr>' });
   });
 
@@ -467,7 +471,17 @@ describe("htmx login", () => {
       status: 404,
       location: null,
     });
-    expect(returnTo("/\\evil.com")).toBe("/");
+  });
+
+  it("refuses a raw backslash target at the shared return guard", () => {
+    // GIVEN a target the URL parser would turn into an off-site URL
+    const target = "/\\evil.com";
+
+    // WHEN the shared return guard receives it directly
+    const returnPath = returnTo(target);
+
+    // THEN no redirect can leave this site
+    expect(returnPath).toBe("/");
   });
 
   it("keeps 403 for a session lacking the scope", async ({ loginServer }) => {
