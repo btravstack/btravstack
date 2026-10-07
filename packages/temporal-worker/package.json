@@ -94,7 +94,7 @@
     "@temporalio/activity": "^1.22.0",
     "@temporalio/common": "^1.22.0",
     "@temporalio/worker": "^1.22.0",
-    "unthrown": "^5.0.0"
+    "unthrown": "^5.7.0"
   },
   "peerDependenciesMeta": {
     "@temporal-contract/client": {

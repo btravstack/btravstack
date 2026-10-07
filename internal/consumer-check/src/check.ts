@@ -1,4 +1,5 @@
-// The consumer gate: pack, install, compile, lint the tarballs.
+// The consumer gate: pack, install, compile, lint the tarballs — then install
+// each one alone and load it, on this Node and on the published floor.
 //
 // It answers from OUTSIDE the workspace a question two existing gates answer
 // from inside, where the answer can differ — see this workspace's README. It
@@ -8,6 +9,7 @@
 import { execFileSync } from "node:child_process";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -16,7 +18,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = resolve(fileURLToPath(import.meta.url), "..", "..");
@@ -137,6 +139,307 @@ const overBudget = (
   };
 };
 
+type Manifest = {
+  readonly name: string;
+  readonly engines?: { readonly node?: string };
+  readonly exports?: Readonly<Record<string, unknown>>;
+  readonly peerDependencies?: Readonly<Record<string, string>>;
+  readonly peerDependenciesMeta?: Readonly<Record<string, { readonly optional?: boolean }>>;
+};
+
+type Packed = { readonly tarball: string; readonly manifest: Manifest };
+
+const packed = (tarball: string): Packed => ({
+  tarball,
+  manifest: JSON.parse(
+    run("tar", ["-xzOf", tarball, "package/package.json"], dirname(tarball)),
+  ) as Manifest,
+});
+
+const peersOf = (manifest: Manifest, optional: boolean): readonly (readonly [string, string])[] =>
+  Object.entries(manifest.peerDependencies ?? {}).filter(
+    ([name]) => (manifest.peerDependenciesMeta?.[name]?.optional === true) === optional,
+  );
+
+const nodeFloor = (manifests: readonly Manifest[]): string | { readonly failed: string } => {
+  const stated = [...new Set(manifests.map(({ engines }) => engines?.node))];
+  const floor =
+    stated.length === 1 ? /^>=(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(stated[0] ?? "") : null;
+  if (floor === null) {
+    return {
+      failed: `node floor: every package must state one \`engines.node\` of the form ">=x[.y[.z]]", found ${stated.map(String).join(", ")}`,
+    };
+  }
+  return `${String(floor[1])}.${floor[2] ?? "0"}.${floor[3] ?? "0"}`;
+};
+
+type Gap = { readonly code: string; readonly why: string };
+
+const requireEsm: Gap = {
+  code: "ERR_REQUIRE_ESM",
+  why: "`@orpc/server` is ESM-only, so the CJS build needs `require(esm)`, unflagged from Node 22.12; a CJS consumer on 22.0-22.11 cannot load it",
+};
+const temporalCjs: Gap = {
+  code: "ERR_PACKAGE_PATH_NOT_EXPORTED",
+  why: "`@temporal-contract/worker` exports `./activity` under an `import` condition alone, so the CJS build's `require` of it resolves on no Node",
+};
+
+const gaps: Readonly<Record<string, Gap>> = {
+  "@btravstack/http-server require (floor)": requireEsm,
+  "@btravstack/http-server/jwt require (floor)": requireEsm,
+  "@btravstack/http-server/session require (floor)": requireEsm,
+  "@btravstack/http-server/oidc require (floor)": requireEsm,
+  "@btravstack/temporal-worker require (floor)": temporalCjs,
+  "@btravstack/temporal-worker require (current)": temporalCjs,
+};
+
+// pnpm names only the first dependency it refuses, and which one comes first
+// varies between runs, so a gap lists every dependency that states the engine.
+type EngineGap = { readonly dependencies: readonly string[]; readonly why: string };
+
+const engineGaps: Readonly<Record<string, EngineGap>> = {
+  "@btravstack/amqp-worker": {
+    dependencies: ["@amqp-contract/contract", "@amqp-contract/core", "@amqp-contract/worker"],
+    why: "each states `engines.node >=22.22` at both the floor this package admits and the catalog's release",
+  },
+  "@btravstack/prisma": {
+    dependencies: ["@prisma/cli-engine"],
+    why: "a required peer of `@prisma/orm-toolchain`, which `@prisma/orm-postgres` pulls in, states `engines.node >=22.12.0`",
+  },
+  "@btravstack/temporal-worker": {
+    dependencies: ["@temporal-contract/contract", "@temporal-contract/worker"],
+    why: "each states `engines.node >=22.22.0` at both the floor this package admits and the catalog's release",
+  },
+};
+
+const SMOKE = `const entries = JSON.parse(process.argv[2]);
+(async () => {
+  const failed = [];
+  for (const { specifier, cjs } of entries) {
+    for (const mode of cjs ? ["import", "require"] : ["import"]) {
+      try {
+        if (mode === "import") await import(specifier);
+        else require(specifier);
+      } catch (error) {
+        failed.push({ specifier, mode, code: error?.code, message: String(error?.message ?? error).split("\\n")[0] });
+      }
+    }
+  }
+  process.stdout.write(JSON.stringify(failed));
+})();
+`;
+
+type SmokeFailure = {
+  readonly specifier: string;
+  readonly mode: "import" | "require";
+  readonly code?: string;
+  readonly message: string;
+};
+
+const adapters: Readonly<Record<string, readonly string[]>> = {
+  "@btravstack/cache/redis": ["redis"],
+  "@btravstack/contract/zod": ["zod"],
+  "@btravstack/http-server/jwt": ["jose"],
+  "@btravstack/http-server/oidc": ["jose", "openid-client"],
+  "@btravstack/http-server/openapi": ["@orpc/json-schema", "@orpc/openapi"],
+  "@btravstack/http-server/session": ["jose"],
+  "@btravstack/mailer/smtp": ["nodemailer"],
+  "@btravstack/observability/otel": ["@opentelemetry/api", "@opentelemetry/sdk-node"],
+  "@btravstack/storage/s3": ["@aws-sdk/client-s3", "@aws-sdk/s3-request-presigner"],
+  "@btravstack/temporal-worker/schedule": ["@temporal-contract/client"],
+  "@btravstack/testing/jwt": ["jose"],
+};
+
+const isOptionalAdapter = (manifest: Manifest, failure: SmokeFailure): boolean => {
+  const missing = /Cannot find (?:package|module) '((?:@[^/']+\/)?[^/']+)/.exec(
+    failure.message,
+  )?.[1];
+  return (
+    (failure.code === "ERR_MODULE_NOT_FOUND" || failure.code === "MODULE_NOT_FOUND") &&
+    // A table entry may only name a peer the manifest declares optional.
+    peersOf(manifest, true).some(([name]) => name === missing) &&
+    adapters[failure.specifier]?.includes(missing ?? "") === true
+  );
+};
+
+// pnpm splits an unmet peer and an unsupported engine across STDOUT and
+// STDERR, so both are captured; this answers them on failure.
+const install = (args: readonly string[], cwd: string): string | undefined => {
+  try {
+    execFileSync("pnpm", [...args, "--config.minimum-release-age=0"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return undefined;
+  } catch (cause) {
+    const { stdout, stderr } = cause as { stdout?: unknown; stderr?: unknown };
+    return `${String(stdout)}${String(stderr)}`;
+  }
+};
+
+// Settings, not `--config.*` flags: pnpm ignores `resolutionMode` as a flag.
+const settings = (floor: string, engineStrict: boolean): string =>
+  [
+    "resolutionMode: lowest-direct",
+    "strictPeerDependencies: true",
+    "autoInstallPeers: true",
+    "strictDepBuilds: false",
+    `engineStrict: ${String(engineStrict)}`,
+    // Engines are checked against the floor, not the Node running pnpm.
+    `nodeVersion: ${floor}`,
+    // A `file:` tarball satisfies no `^0.x` range; every other peer stays strict.
+    "peerDependencyRules:",
+    "  allowAny:",
+    '    - "@btravstack/*"',
+    "",
+  ].join("\n");
+
+const isolated = (
+  alone: string,
+  subject: Packed,
+  family: ReadonlyMap<string, Packed>,
+  nodes: Readonly<Record<"current" | "floor", string>>,
+  floor: string,
+): { readonly failures: readonly string[]; readonly matched: readonly string[] } => {
+  const { name } = subject.manifest;
+  if (subject.manifest.exports?.["."] === undefined) {
+    return {
+      failures: [`smoke: ${name} exports no "." — its root cannot be imported`],
+      matched: [],
+    };
+  }
+  const dir = join(alone, name.replace("/", "+"));
+  mkdirSync(dir, { recursive: true });
+  const dependencies = new Map<string, string>();
+  const visit = ({ tarball, manifest }: Packed): void => {
+    dependencies.set(manifest.name, `file:${tarball}`);
+    const required = peersOf(manifest, false);
+    // Ranges before recursion: a sibling's looser range must never stand in
+    // for the subject's own.
+    for (const [peer, range] of required) {
+      if (!family.has(peer) && !dependencies.has(peer)) dependencies.set(peer, range);
+    }
+    for (const [peer] of required) {
+      const local = family.get(peer);
+      if (local !== undefined && !dependencies.has(peer)) visit(local);
+    }
+  };
+  visit(subject);
+
+  writeFileSync(
+    join(dir, "package.json"),
+    `${JSON.stringify({ name: "isolated", private: true, dependencies: Object.fromEntries(dependencies) }, undefined, 2)}\n`,
+  );
+  writeFileSync(join(dir, "smoke.cjs"), SMOKE);
+  const failures: string[] = [];
+  const matched: string[] = [];
+  const engineGap = engineGaps[name];
+  if (engineGap !== undefined) {
+    // Refused for that dependency's engine, and then installed without the
+    // engine check so the loads below still run.
+    writeFileSync(join(dir, "pnpm-workspace.yaml"), settings(floor, true));
+    const refused = install(["install", "--ignore-scripts"], dir);
+    const refusedFor = /Unsupported engine for ((?:@[^/\s]+\/)?[^@\s]+)@/.exec(refused ?? "")?.[1];
+    if (refusedFor !== undefined && engineGap.dependencies.includes(refusedFor)) {
+      matched.push(name);
+    } else if (refused !== undefined) process.stderr.write(refused);
+  }
+  writeFileSync(join(dir, "pnpm-workspace.yaml"), settings(floor, engineGap === undefined));
+  const refused = install(["install", "--ignore-scripts"], dir);
+  if (refused !== undefined) {
+    process.stderr.write(refused);
+    return { failures: [`isolated install: ${name} with only its required peers`], matched };
+  }
+
+  const entries = Object.entries(subject.manifest.exports ?? {})
+    .filter(([path]) => path !== "./package.json")
+    .map(([path, conditions]) => ({
+      specifier: path === "." ? name : `${name}/${path.slice(2)}`,
+      cjs: typeof conditions === "object" && conditions !== null && "require" in conditions,
+    }));
+  for (const [label, node] of Object.entries(nodes)) {
+    // pnpm's shims point `NODE_PATH` at this workspace, and `require` would
+    // find a missing optional peer there.
+    const { NODE_PATH: _, ...env } = process.env;
+    const output = execFileSync(node, ["smoke.cjs", JSON.stringify(entries)], {
+      cwd: dir,
+      encoding: "utf8",
+      env,
+      stdio: ["ignore", "pipe", "inherit"],
+    });
+    const adapted = new Set<string>();
+    for (const failure of JSON.parse(output) as readonly SmokeFailure[]) {
+      const key = `${failure.specifier} ${failure.mode} (${label})`;
+      if (isOptionalAdapter(subject.manifest, failure)) {
+        adapted.add(key);
+        continue;
+      }
+      if (gaps[key]?.code === failure.code) {
+        // A gap fails before the adapter reaches its vendor.
+        adapted.add(key);
+        matched.push(key);
+        continue;
+      }
+      failures.push(
+        `smoke: ${failure.mode}("${failure.specifier}") on the ${label} Node — ${failure.code ?? "no code"}: ${failure.message}`,
+      );
+    }
+    for (const { specifier, cjs } of entries) {
+      if (adapters[specifier] === undefined) continue;
+      matched.push(specifier);
+      for (const mode of cjs ? ["import", "require"] : ["import"]) {
+        const key = `${specifier} ${mode} (${label})`;
+        if (!adapted.has(key)) {
+          failures.push(`smoke: ${key} loads without its optional peers — fix \`adapters\``);
+        }
+      }
+    }
+  }
+  return { failures, matched };
+};
+
+const smoke = (work: string, alone: string, tarballs: readonly string[]): readonly string[] => {
+  const family = new Map(
+    tarballs.map((name) => packed(join(work, name))).map((pkg) => [pkg.manifest.name, pkg]),
+  );
+  const floor = nodeFloor([...family.values()].map(({ manifest }) => manifest));
+  if (typeof floor !== "string") return [floor.failed];
+
+  process.stdout.write(`[consumer-check] fetching Node ${floor}, the published floor\n`);
+  const floorDir = join(alone, "node-floor");
+  mkdirSync(floorDir);
+  writeFileSync(
+    join(floorDir, "package.json"),
+    `${JSON.stringify({ name: "node-floor", private: true })}\n`,
+  );
+  const unfetched = install(["add", `node@runtime:${floor}`], floorDir);
+  if (unfetched !== undefined) {
+    process.stderr.write(unfetched);
+    return [`node floor: could not fetch Node ${floor}`];
+  }
+  const nodes = {
+    current: process.execPath,
+    floor: join(floorDir, "node_modules", ".bin", "node"),
+  };
+
+  process.stdout.write(
+    `[consumer-check] installing each package alone, loading it on Node ${process.versions.node} and ${floor}\n`,
+  );
+  const failures: string[] = [];
+  const matched = new Set<string>();
+  for (const subject of family.values()) {
+    const result = isolated(alone, subject, family, nodes, floor);
+    failures.push(...result.failures);
+    for (const key of result.matched) matched.add(key);
+  }
+  const unmatched = [...Object.keys(gaps), ...Object.keys(adapters), ...Object.keys(engineGaps)];
+  for (const key of unmatched.filter((key) => !matched.has(key))) {
+    failures.push(`smoke: ${key} names nothing that still fails that way — drop it`);
+  }
+  return failures;
+};
+
 const main = (): void => {
   const peers = consumerPeers();
   if (peers === undefined) {
@@ -149,6 +452,9 @@ const main = (): void => {
 
   const dirs = published();
   const work = mkdtempSync(join(tmpdir(), "btravstack-consumer-"));
+  // Beside `work`, never inside it: Node climbs directories to resolve, and
+  // would find in the full install whatever an isolated one lacks.
+  const alone = mkdtempSync(join(tmpdir(), "btravstack-alone-"));
   const failures: string[] = [];
 
   try {
@@ -287,8 +593,11 @@ const main = (): void => {
       if (typeof diagnostics === "string") process.stderr.write(diagnostics);
       failures.push("the consumer file did not emit declarations");
     }
+
+    failures.push(...smoke(work, alone, tarballs));
   } finally {
     rmSync(work, { recursive: true, force: true });
+    rmSync(alone, { recursive: true, force: true });
   }
 
   if (failures.length > 0) {
@@ -298,7 +607,7 @@ const main = (): void => {
     return;
   }
   process.stdout.write(
-    `[consumer-check] ${String(dirs.length)} packages pack, lint and compile as a consumer would\n`,
+    `[consumer-check] ${String(dirs.length)} packages pack, lint, compile and load as a consumer would\n`,
   );
 };
 

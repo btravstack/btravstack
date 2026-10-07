@@ -31,7 +31,9 @@ jobs:
       # the dev toolchain, and pnpm 11 needs `node:sqlite`, which Node 20 does
       # not have, so that line could never run here. The row is still 22.22
       # rather than 22.0 because `engineStrict` pins it to the toolchain's
-      # highest demand; 22.0-22.21 are covered by the major, not by a job.
+      # highest demand. 22.0 itself is the Type Check job's: the consumer
+      # check fetches it and loads every packed package on it, which needs
+      # no dev toolchain on that Node.
       node-versions: '["", "22.22", "24", "26"]'
       # The reusable default appends `--coverage`; packages/core already runs
       # `vitest run --coverage` (with 100% thresholds), and the root script is
