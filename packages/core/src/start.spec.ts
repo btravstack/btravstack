@@ -1098,6 +1098,7 @@ describe("runtimeInfo", () => {
   });
 
   it("stops the application when the runtime's stopped channel defects", async () => {
+    // GIVEN a serving runtime whose stopped channel can reject
     const gave = Promise.withResolvers<void>();
     const selfStopping: Runtime<never, { readonly name: string }> = {
       name: "selfStopping",
@@ -1112,14 +1113,24 @@ describe("runtimeInfo", () => {
     };
     const app = start(runtimeModule(selfStopping), { signals: false, probes: false });
     (await app.runtimeInfo()).get();
-    expect(app.ready()).toBe(true);
+    const readyBefore = app.ready();
 
+    // WHEN its stopped channel defects
     gave.reject(new Error("poll loop failed"));
+    const report = (await app.exited).getOrThrow();
 
-    await expect(app.exited).toBeOkWith(
-      expect.objectContaining({ reason: "runtimeStopped", drain: undefined }),
-    );
-    expect(app.ready()).toBe(false);
+    // THEN the application exits and withdraws readiness
+    expect({
+      readyBefore,
+      reason: report.reason,
+      drain: report.drain,
+      readyAfter: app.ready(),
+    }).toEqual({
+      readyBefore: true,
+      reason: "runtimeStopped",
+      drain: undefined,
+      readyAfter: false,
+    });
   });
 
   it("withdraws the stopped channel when the kernel is the one that asked", async () => {
