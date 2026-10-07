@@ -148,8 +148,8 @@ type Serving<Info = never> = {
 | `stopped` | Optional. Settles when the runtime has stopped serving **on its own account** — see below.                                                                                                                                                                                                                               |
 
 All three functions are typed `AsyncResult<void, never>`; `never` empties the
-error channel only, so a `drain` that throws internally arrives at the kernel as
-a `Defect` and is threaded, not dropped.
+error channel only. A `drain` that throws internally arrives at the kernel as a
+`Defect`. An `Ok` or `Defect` from `stopped` requests the same shutdown.
 
 ### When a runtime stops on its own
 

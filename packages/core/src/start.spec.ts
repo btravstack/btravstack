@@ -1097,6 +1097,31 @@ describe("runtimeInfo", () => {
     );
   });
 
+  it("stops the application when the runtime's stopped channel defects", async () => {
+    const gave = Promise.withResolvers<void>();
+    const selfStopping: Runtime<never, { readonly name: string }> = {
+      name: "selfStopping",
+      resolves: [],
+      start: () =>
+        OkAsync({
+          info: { name: "selfStopping" },
+          drain: () => OkAsync(),
+          stop: () => OkAsync(),
+          stopped: () => fromSafePromise(gave.promise),
+        }),
+    };
+    const app = start(runtimeModule(selfStopping), { signals: false, probes: false });
+    (await app.runtimeInfo()).get();
+    expect(app.ready()).toBe(true);
+
+    gave.reject(new Error("poll loop failed"));
+
+    await expect(app.exited).toBeOkWith(
+      expect.objectContaining({ reason: "runtimeStopped", drain: undefined }),
+    );
+    expect(app.ready()).toBe(false);
+  });
+
   it("withdraws the stopped channel when the kernel is the one that asked", async () => {
     // GIVEN a runtime whose `stopped` channel is wired the way a real one is:
     // it settles when the transport ends, and withdraws when the end was the

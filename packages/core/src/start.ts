@@ -725,12 +725,12 @@ export const start = <X, E, N>(
       // only ever moves on a signal or a caller, so a worker whose poll
       // loop died left the process alive and `/readyz` answering 200 —
       // a pod in a Service's endpoints, consuming nothing. The `Result`
-      // is dropped on purpose: whichever route reaches `requestShutdown`
-      // first decides the reason, and a runtime that stopped after a
-      // signal has nothing left to add.
-      void serving.stopped?.().map(() => {
-        requestShutdown("runtimeStopped");
-      });
+      // is dropped on purpose after both settlement channels request the same
+      // shutdown: whichever route gets there first decides the reason.
+      void serving
+        .stopped?.()
+        .tap(() => requestShutdown("runtimeStopped"))
+        .tapFailure(() => requestShutdown("runtimeStopped"));
 
       return fromSafePromise(shutdown.promise).flatMap((reason) => finish(serving, reason));
     });
