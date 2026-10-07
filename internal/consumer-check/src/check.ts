@@ -6,7 +6,15 @@
 // runs against whatever `pnpm build` just produced, and nothing is hand-kept.
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,6 +66,62 @@ const published = (): readonly string[] =>
 const run = (command: string, args: readonly string[], cwd: string): string =>
   execFileSync(command, [...args], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
 
+/**
+ * How much a package's packed contents may grow against its last published
+ * release. A release's worth of features moves a package here by a few
+ * percent; what moves one by half is a mistake in what ships — a dependency
+ * the bundler inlined instead of leaving external, a source map, a directory
+ * nobody meant to publish — and each of those at least doubles a package this
+ * size. Measured against `npm view <name> dist.unpackedSize`, which the sum of
+ * the packed files matches to within the rewritten `package.json`.
+ */
+const BUDGET = 1.5;
+
+/**
+ * Growth past the budget that is meant, with why. An entry holds only until
+ * the package is next published — it is then the baseline — so drop it with
+ * the release that carries it.
+ */
+const accepted: Readonly<Record<string, string>> = {};
+
+/**
+ * What the last published release of `name` unpacks to — or `"unpublished"`,
+ * for a package npm has never seen, or the registry's own complaint.
+ */
+const publishedSize = (name: string): number | "unpublished" | { readonly failed: string } => {
+  try {
+    return Number(
+      execFileSync("npm", ["view", name, "dist.unpackedSize"], {
+        cwd: HERE,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      }),
+    );
+  } catch (cause) {
+    const stderr = String((cause as { stderr?: unknown }).stderr);
+    return stderr.includes("E404") ? "unpublished" : { failed: stderr.trim() };
+  }
+};
+
+/** The budget's verdict on one package, or `undefined` when it holds. */
+const overBudget = (dir: string, packed: string): string | undefined => {
+  const { name, files } = JSON.parse(packed) as {
+    readonly name: string;
+    readonly files: readonly { readonly path: string }[];
+  };
+  const size = files.reduce((sum, { path }) => sum + statSync(join(dir, path)).size, 0);
+  const baseline = publishedSize(name);
+  if (baseline === "unpublished") {
+    process.stdout.write(`[consumer-check] ${name}: never published, no size baseline\n`);
+    return undefined;
+  }
+  if (typeof baseline !== "number") return `size: ${name}'s baseline: ${baseline.failed}`;
+  const ratio = size / baseline;
+  return ratio > BUDGET && accepted[name] === undefined
+    ? `size: ${name} unpacks to ${String(size)} bytes, ${ratio.toFixed(2)}× its last release's ${String(baseline)} (budget ${String(BUDGET)}×) — find what started shipping, or add it to \`accepted\` with the reason`
+    : undefined;
+};
+
 const main = (): void => {
   const peers = consumerPeers();
   if (peers === undefined) {
@@ -89,7 +153,11 @@ const main = (): void => {
 
     process.stdout.write(`[consumer-check] packing ${String(dirs.length)} packages\n`);
     for (const dir of dirs) {
-      run("pnpm", ["pack", "--pack-destination", work], dir);
+      const verdict = overBudget(
+        dir,
+        run("pnpm", ["pack", "--json", "--pack-destination", work], dir),
+      );
+      if (verdict !== undefined) failures.push(verdict);
 
       // Both run from HERE, with the package as an argument — never with the
       // package as the cwd. `publint` and `attw` are this workspace's
