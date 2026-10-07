@@ -215,6 +215,34 @@ test("live folds do not receive computed keys", () => {
   });
 });
 
+test("replay omits explicit undefined optionals between folds", () => {
+  const events = z.discriminatedUnion("type", [
+    z.object({ type: z.literal("Opened"), id: z.uuid() }),
+    z.object({ type: z.literal("Reset") }),
+    z.object({ type: z.literal("Checked") }),
+  ]);
+  class Presence extends Entity.aggregate("Presence")({
+    id: Entity.field(CartId, { identity: true }),
+    note: Entity.field(z.string().optional(), { unbranded: true }),
+    seen: z.boolean(),
+  })({
+    events,
+    opens: { Opened: (e) => ({ id: e.id, note: undefined, seen: false }) },
+    evolve: {
+      Reset: (r) => ({ ...r, note: undefined }),
+      Checked: (r) => ({ ...r, seen: Object.hasOwn(r, "note") }),
+    },
+  }) {}
+  const opened = Presence.start({ type: "Opened", id }).get();
+  const checked = opened.state.emit({ type: "Checked" }).get();
+  expect(Presence.replay(checked.events).getOrThrow().seen).toBe(checked.state.seen);
+  const reset = opened.state.emit({ type: "Reset" }).get();
+  const checkedAfterReset = reset.state.emit({ type: "Checked" }).get();
+  expect(Presence.replay(checkedAfterReset.events).getOrThrow().seen).toBe(
+    checkedAfterReset.state.seen,
+  );
+});
+
 test("replay preserves a schema defect in a stored event", () => {
   // GIVEN a schema whose Standard Schema validator defects synchronously
   const events = z.discriminatedUnion("type", [

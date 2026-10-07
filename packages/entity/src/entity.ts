@@ -459,17 +459,24 @@ export function Entity<Tag extends string>(tag: Tag) {
           .flatMap((d) => {
             // A required transform may erase its input. Check only that
             // field, so unrelated transforms do not run twice.
-            const issues = declaredKeys.flatMap((key) => {
-              if (optionalKeys.has(key) || d[key] !== undefined) return [];
+            const issues: SchemaIssues[number][] = [];
+            for (const key of declaredKeys) {
+              if (optionalKeys.has(key) || d[key] !== undefined) continue;
               const field = (construction.shape as Record<string, z.core.$ZodType>)[String(key)]!;
               const parsed = z.safeParse(field, undefined);
-              return parsed.success
-                ? []
-                : parsed.error.issues.map((issue) => ({
+              if (parsed.success) {
+                if (parsed.data !== undefined) {
+                  issues.push({ message: "required output does not rehydrate", path: [key] });
+                }
+              } else {
+                issues.push(
+                  ...parsed.error.issues.map((issue) => ({
                     ...issue,
                     path: [key, ...issue.path],
-                  }));
-            });
+                  })),
+                );
+              }
+            }
             return issues.length > 0
               ? Err(new InvalidEntityClass({ entity: tag, issues }))
               : construct(this, d);

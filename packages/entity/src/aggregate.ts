@@ -5,7 +5,7 @@ import type { z } from "zod";
 import type { ComputedField } from "./computed.js";
 import { InvalidEntity } from "./errors.js";
 import { isFieldSpec } from "./field.js";
-import { deepFreeze } from "./freeze.js";
+import { deepFreeze, omitsUndefined } from "./freeze.js";
 import type { Invariant } from "./invariant.js";
 import { keysOf, renderIssue } from "./issues.js";
 import type { OnlyNominal } from "./shape.js";
@@ -137,6 +137,7 @@ export const createAggregate =
     const Base = buildEntity(tag)(fields as Fields, entityOptions) as Record<string, unknown> & {
       readonly prototype: Record<string, unknown>;
       readonly input: z.ZodObject;
+      readonly output: z.ZodObject;
     };
 
     // The entity's own `make`, kept before the aggregate's replaces it: the
@@ -156,6 +157,19 @@ export const createAggregate =
     // The entity's own projection, never a subclass override of `toJSON`.
     const project = Base.prototype["toJSON"] as (this: object) => Record<string, unknown>;
     const declaredKeys = new Set(Object.keys(fields));
+    const outputShape = Base.output.shape as Record<string, z.ZodTypeAny>;
+
+    const canonicalRecord = (record: unknown): Record<string, unknown> => {
+      const seen = new WeakMap<object, object>();
+      return Object.fromEntries(
+        Object.entries(record as Record<string, unknown>)
+          .filter(
+            ([key, value]) =>
+              declaredKeys.has(key) && (value !== undefined || !omitsUndefined(outputShape[key])),
+          )
+          .map(([key, value]) => [key, deepFreeze(value, seen, outputShape[key])]),
+      );
+    };
 
     /**
      * The current state as a fresh, shallow record of the declared fields:
@@ -164,9 +178,7 @@ export const createAggregate =
      * and a `z.custom` instance survives the fold intact for `make` to check.
      */
     const recordOf = (self: object): Record<string, unknown> => {
-      return Object.fromEntries(
-        Object.entries(project.call(self)).filter(([key]) => declaredKeys.has(key)),
-      );
+      return canonicalRecord(project.call(self));
     };
 
     const bug = (detail: string) => new Error(`${tag}: ${detail}`);
@@ -225,7 +237,7 @@ export const createAggregate =
           // oxlint-disable-next-line unthrown/no-throw
           throw bug(`"${e.type}" opens an aggregate; it cannot be emitted by one`);
         }
-        return (handler as (r: unknown, e: Event) => unknown)(current, e);
+        return (handler as (r: unknown, e: Event) => unknown)(canonicalRecord(current), e);
       }, record);
 
     function emit(this: object, ...raw: unknown[]) {

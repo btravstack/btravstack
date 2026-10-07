@@ -289,3 +289,16 @@ test("a required undefined field does not rerun unrelated transforms", () => {
   expect(Transformed.make({ id: oid, result: undefined, note: "ok" }).isOk()).toBe(true);
   expect(parses).toBe(1);
 });
+
+test("a required undefined output must rehydrate to undefined", () => {
+  class Transformed extends Entity("Transformed")({
+    id: OrderId,
+    result: Entity.field(
+      z
+        .union([z.literal("erase"), z.undefined()])
+        .transform((value) => (value === "erase" ? undefined : "restored")),
+      { unbranded: true },
+    ),
+  }) {}
+  expect(Transformed.make({ id: oid, result: "erase" }).isErr()).toBe(true);
+});

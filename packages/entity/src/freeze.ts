@@ -203,7 +203,12 @@ const objectBranch = (
 /** What the walk has reached, mapped to what stands in for it: itself, or its canonical copy. */
 type Seen = WeakMap<object, object>;
 
-const freezeInto = (value: object, schema: Schema | undefined, seen: Seen): object => {
+const freezeInto = (
+  value: object,
+  schema: Schema | undefined,
+  seen: Seen,
+  exposed: WeakSet<object>,
+): object => {
   // Decided by the schema, never by the runtime shape: `z.custom` hands the
   // caller's own reference straight back, and a plain-object one is
   // indistinguishable from decoded data once it reaches here.
@@ -213,7 +218,10 @@ const freezeInto = (value: object, schema: Schema | undefined, seen: Seen): obje
   // `z.custom` field or a caller-supplied object can close a loop, and a
   // shared subtree would otherwise be walked once per reference.
   const reached = seen.get(value);
-  if (reached !== undefined) return reached;
+  if (reached !== undefined) {
+    if (reached !== value) exposed.add(value);
+    return reached;
+  }
   if (value instanceof Date) return Object.freeze(value);
 
   const array = Array.isArray(value);
@@ -239,14 +247,16 @@ const freezeInto = (value: object, schema: Schema | undefined, seen: Seen): obje
     if (array || property !== undefined || !omitsUndefined(childSchema(branch, key))) {
       kept.set(
         key,
-        isObject(property) ? freezeInto(property, childSchema(branch, key), seen) : property,
+        isObject(property)
+          ? freezeInto(property, childSchema(branch, key), seen, exposed)
+          : property,
       );
     }
   }
   const unchanged =
     kept.size === Object.keys(source).length &&
     [...kept].every(([key, property]) => source[key] === property);
-  if (unchanged) {
+  if (unchanged && !exposed.has(value)) {
     seen.set(value, value);
     return Object.freeze(value);
   }
@@ -287,4 +297,6 @@ const freezeInto = (value: object, schema: Schema | undefined, seen: Seen): obje
  * swallow a `seen` argument passed in the old position.
  */
 export const deepFreeze = <T>(value: T, seen?: Seen, schema?: unknown): T =>
-  isObject(value) ? (freezeInto(value, asSchema(schema), seen ?? new WeakMap()) as T) : value;
+  isObject(value)
+    ? (freezeInto(value, asSchema(schema), seen ?? new WeakMap(), new WeakSet()) as T)
+    : value;

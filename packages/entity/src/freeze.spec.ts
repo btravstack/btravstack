@@ -49,6 +49,14 @@ test("a canonical copy points its cycle at itself", () => {
   });
 });
 
+test("a sealed parent keeps a child backlink to its canonical copy", () => {
+  const child: { parent?: object } = {};
+  const parent = Object.seal({ child });
+  child.parent = parent;
+  const frozen = deepFreeze(parent);
+  expect(frozen.child.parent).toBe(frozen);
+});
+
 test("an optional undefined key with a non-configurable descriptor is omitted", () => {
   // GIVEN an extensible object whose optional key cannot be deleted
   const schema = z.object({ note: z.string().optional() });
