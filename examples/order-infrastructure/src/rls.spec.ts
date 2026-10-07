@@ -88,6 +88,7 @@ describe("the tenant_isolation policy on Order", () => {
     repository,
     outbox,
     anOrder,
+    decoded,
   }) => {
     // GIVEN nothing yet written for this tenant
     // WHEN `save` runs its one pinned transaction — the order row under the
@@ -95,7 +96,12 @@ describe("the tenant_isolation policy on Order", () => {
     const written = await repository
       .save(anOrder("0199a1e0-0000-7000-8000-000000000606", 3))
       .flatMap(() => tenantPinned(raw, tenant, (tx) => tx.orm.orders.Order.all().toArray()))
-      .flatMap((orders) => outbox.pending(tenant, 10).map((events) => ({ orders, events })));
+      .flatMap((orders) =>
+        outbox.pending(tenant, 10).map((events) => ({
+          orders,
+          events: events.map(({ payload, ...event }) => ({ ...event, payload: decoded(payload) })),
+        })),
+      );
 
     // THEN both halves are there: the pin reached the whole transaction, and
     // the mixed write still committed as one
@@ -105,7 +111,7 @@ describe("the tenant_isolation policy on Order", () => {
         expect.objectContaining({
           kind: "order",
           subjectId: "0199a1e0-0000-7000-8000-000000000606",
-          payload: JSON.stringify({ quantity: 3 }),
+          payload: { placedAt: expect.any(String), order: { quantity: 3 } },
         }),
       ],
     });
