@@ -321,7 +321,7 @@ export default defineConfig({
 
   // `docs/superpowers/` holds gitignored working files (plans, specs). VitePress
   // scans the whole of `docs/`, so without this it compiles them as pages.
-  srcExclude: ["superpowers/**", "AGENTS.md"],
+  srcExclude: ["superpowers/**", "AGENTS.md", "CLAUDE.md"],
 
   // TypeDoc resolves its own cross-references, which is what these three
   // RELATIVE patterns exempt. Do NOT add a root-relative one (`/^\/api\//`):

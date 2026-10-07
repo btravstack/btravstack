@@ -6,6 +6,11 @@ provider-neutral source of guidance. This is the authoritative spec — the
 rules _and_ the reasoning behind them. Keep it in sync with the code as the
 package evolves (describe what _is_, not what was planned).
 
+Configure your chosen agent locally to load this file and the relevant
+package's `AGENTS.md`. Provider-specific discovery aliases and instruction
+size settings belong in local configuration; automatic discovery is not
+guaranteed by this repository.
+
 **If your instructions stop before the last section, _Deferred, deliberately_,
 read this file in full — and the `AGENTS.md` of the package you are working in
 — before changing anything.** The specs are longer than some agents load by
