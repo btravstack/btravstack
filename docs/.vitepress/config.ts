@@ -19,8 +19,11 @@ const CHANGESETS = new URL(".changeset/", ROOT);
 const VERSION: string = JSON.parse(
   readFileSync(new URL("packages/core/package.json", ROOT), "utf8"),
 ).version;
-// `DOCS_COMMIT` is declared in the task's turbo `env`, so a cached build is
-// never replayed under another commit.
+// `DOCS_COMMIT` and `DOCS_REF` are declared in the task's turbo `env`, so a
+// cached build is never replayed under another commit or ref.
+const REF =
+  process.env.DOCS_REF ??
+  execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf8" }).trim();
 const COMMIT =
   process.env.DOCS_COMMIT ??
   execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
@@ -453,9 +456,9 @@ export default defineConfig({
       {
         text: UNRELEASED ? `v${VERSION} + unreleased` : `v${VERSION}`,
         items: [
-          { text: `Built from main at ${COMMIT.slice(0, 7)}`, link: `${REPO}/commit/${COMMIT}` },
+          { text: `Built from ${REF} at ${COMMIT.slice(0, 7)}`, link: `${REPO}/commit/${COMMIT}` },
           ...(UNRELEASED
-            ? [{ text: "Unreleased: on main, not on npm", link: `${RELEASE_PRS}+is%3Aopen` }]
+            ? [{ text: "Unreleased: not on npm yet", link: `${RELEASE_PRS}+is%3Aopen` }]
             : []),
           { text: "Release notes", link: `${RELEASE_PRS}+is%3Amerged` },
           { text: "Support and upgrades", link: "/reference/packages#support-and-upgrades" },

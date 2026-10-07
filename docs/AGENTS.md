@@ -35,14 +35,15 @@ the old repository.
   `changeset-release/main` merges. Coupling the deploy to publication was
   declined — a docs-only fix carries no changeset, so it would wait for an
   unrelated release. Instead `config.ts` reads, at build time, the version in
-  `packages/core/package.json`, the commit (`DOCS_COMMIT`, else
-  `git rev-parse HEAD`), and whether a pending changeset names a package — an
-  empty one (`---\n---`) releases nothing — and the navigation's version menu
-  shows them. All three are in the turbo task's hash (`env: ["DOCS_COMMIT"]`,
+  `packages/core/package.json`, the ref and commit (`DOCS_REF` /
+  `DOCS_COMMIT`, else `git rev-parse`), and whether a pending changeset names
+  a package (an empty `---\n---` one releases nothing), and the navigation's
+  version menu shows them; a manual dispatch from a branch names that branch
+  rather than claiming `main`. All of it is in the turbo task's hash (`env`,
   `../.changeset/*.md`, `../packages/*/package.json`): CI restores `.turbo`
   from earlier SHAs, and a commit touching only `.github/` would otherwise
-  replay the previous commit's HTML. `deploy-docs.yml` sets `DOCS_COMMIT` to
-  the `head_sha` it checked out. The menu reads `vX + unreleased`
+  replay the previous commit's HTML. `deploy-docs.yml` sets both from the
+  ref and `head_sha` it checked out. The menu reads `vX + unreleased`
   with a link to the open release PR in the window above, `vX` once the release
   PR's merge commit (which consumes the changesets and bumps the version)
   deploys. That last label can lead npm by the length of the publish job, which
