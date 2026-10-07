@@ -77,6 +77,52 @@ describe("outbox", () => {
     expect(swept).toBeOkWith({ early: [], late: ["a"] });
   });
 
+  it("delivers a placement refused once before the deletion behind it, on the next sweep", async ({
+    store,
+    publisher,
+    clock,
+    observations,
+    relaying,
+  }) => {
+    // GIVEN an order's placement and then its tombstone, the placement refused once
+    store.append(order("acme", "o-1"));
+    store.append({ ...order("acme", "o-1"), payload: null });
+    publisher.refuse("o-1", 1);
+    const marked: number[] = [];
+    const marking = {
+      ...store,
+      claim: (...[tenantId, limit, relay]: Parameters<typeof store.claim>) =>
+        store.claim(tenantId, limit, (batch) =>
+          relay(batch).tap((ids) => {
+            marked.push(...ids);
+          }),
+        ),
+    };
+
+    // WHEN the relay sweeps, backs off, and sweeps again
+    const swept = await relaying(
+      { tenants: ["acme"], pollMs: 100 },
+      () =>
+        clock.advance(200).map(() => ({
+          publishes: observations
+            .filter((o) => o.name === "publish")
+            .map((o) => ({ id: o.details["btravstack.outbox.id"], outcome: o.outcome })),
+          marked,
+        })),
+      marking,
+    );
+
+    // THEN the tombstone was never tried before its placement, and both were marked in order
+    expect(swept).toBeOkWith({
+      publishes: [
+        { id: 1, outcome: "error" },
+        { id: 1, outcome: "ok" },
+        { id: 2, outcome: "ok" },
+      ],
+      marked: [1, 2],
+    });
+  });
+
   it("sweeps again at once while a batch comes back full", async ({
     store,
     publisher,
