@@ -153,12 +153,20 @@ const pages = files([
 ]).filter((file) => !file.startsWith("docs/api/"));
 for (const page of pages) {
   const text = read(page);
-  for (const [, body] of [
-    ...text.matchAll(/^```(?:ts|typescript)\b[^\n]*\n([\s\S]*?)^```/gm),
-    ...text.matchAll(/^<!-- doctest: prelude\n([\s\S]*?)^-->/gm),
+  const preludes: string[] = [];
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!/^<!--\s*doctest:\s*(?:prelude|isolate)\s*$/.test(lines[i]!.trim())) continue;
+    const block: string[] = [];
+    for (i += 1; i < lines.length && lines[i]!.trim() !== "-->"; i += 1) block.push(lines[i]!);
+    preludes.push(block.join("\n"));
+  }
+  for (const body of [
+    ...[...text.matchAll(/^```(?:ts|typescript)\b[^\n]*\n([\s\S]*?)^```/gm)].map(([, b]) => b!),
+    ...preludes,
   ]) {
     samples += 1;
-    record(page, body!);
+    record(page, body);
   }
 }
 
