@@ -101,15 +101,18 @@ outage and does not retry an absence.
 S3's own behaviour rather than a fiction layered over it.
 
 **`presignedUpload` is how bytes get in.** It signs the key, the content type
-and the content length, so the URL grants exactly one write, of exactly that
-size, of exactly that type — a client sending anything else is refused by the
-store. `contentLength` is required for that reason: it is the only ceiling a
-presigned PUT can express, and an optional one would hand out an unbounded
-write. The S3 adapter names `content-type` in the signature explicitly,
+and the content length. The URL can be used repeatedly until expiry to replace
+the object at that key with different bytes of the signed size and type. Those
+headers do not prove the contents. `contentLength` is required: it is the only
+ceiling a presigned PUT can express, and an optional one would allow an
+unbounded single write. Replays can still multiply the total bytes transferred.
+The S3 adapter names `content-type` in the signature explicitly,
 because the AWS presigner leaves it unsigned by default even when the command
 sets it — an adapter of your own over that SDK must do the same, or the type
-is advisory. The application still decides who may write what and for how long; the
-adapter only computes the signature over that decision. See
+is advisory. The application still decides who may write what and for how long;
+the adapter only computes the signature over that decision. An application that
+needs to accept verified contents must validate a staging object and write
+the accepted bytes under a key the URL cannot target. See
 [Upload a file](/how-to/upload-a-file).
 
 **`presignedUrl` has no `ObjectNotFound` arm.** Presigning is a signature
