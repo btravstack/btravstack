@@ -14,5 +14,7 @@
     "!src/vitest.d.ts"
   ],
   "reporters": ["clear-text", "progress", "html", "json"],
+  "htmlReporter": { "fileName": "reports/mutation/mutation.html" },
+  "jsonReporter": { "fileName": "reports/mutation/mutation.json" },
   "thresholds": { "high": 90, "low": 80, "break": null }
 }
