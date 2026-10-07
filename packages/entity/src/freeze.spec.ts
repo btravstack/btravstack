@@ -69,6 +69,33 @@ test("a union keeps an undefined key required by one branch", () => {
   expect(Object.keys(deepFreeze(value, undefined, schema))).toEqual(["kind", "result"]);
 });
 
+test("a union omits an undefined key optional in the selected branch", () => {
+  const schema = z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("required"), result: z.undefined() }),
+    z.object({ kind: z.literal("optional"), result: z.string().optional() }),
+  ]);
+  const value = { kind: "optional", result: undefined };
+  expect(Object.keys(deepFreeze(value, undefined, schema))).toEqual(["kind"]);
+});
+
+test("an ambiguous union omits a key optional in every branch", () => {
+  const schema = z.union([
+    z.object({ result: z.string().optional() }),
+    z.object({ result: z.number().optional() }),
+  ]);
+  const value = { result: undefined };
+  expect(Object.keys(deepFreeze(value, undefined, schema))).toEqual([]);
+});
+
+test("a literal match does not override a branch without a discriminator", () => {
+  const schema = z.union([
+    z.object({ kind: z.literal("a"), payload: z.string(), result: z.string().optional() }),
+    z.object({ kind: z.string(), payload: z.number(), result: z.undefined() }),
+  ]);
+  const value = { kind: "a", payload: 1, result: undefined };
+  expect(Object.keys(deepFreeze(value, undefined, schema))).toEqual(["kind", "payload", "result"]);
+});
+
 test("a Date is frozen, but only against added properties", () => {
   const date = deepFreeze(new Date(0));
   expect(Object.isFrozen(date)).toBe(true);

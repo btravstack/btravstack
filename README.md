@@ -144,7 +144,8 @@ pnpm add @btravstack/http-server @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0
 
 Everything is a **peer dependency** — the application holds one copy of each,
 which is what keeps port identity and `isResult` honest across packages. The
-kernel and `@btravstack/config` depend on `node:` builtins only. Node `>=22`.
+kernel and `@btravstack/config` depend on `node:` builtins only. They require
+Node `>=22`; the HTTP starter above requires `>=22.12`.
 
 Every package shares one version, pre-1.0 minors may break, and security fixes
 land on the latest release only — read
@@ -299,7 +300,7 @@ pnpm lint             # oxlint, incl. every @unthrown/oxlint rule
 pnpm typecheck        # tsc, incl. the type-level *.test-d.ts files
 pnpm knip             # dead code / unused deps
 pnpm test             # vitest + v8 coverage (100% lines/functions on packages)
-pnpm build            # tsdown dual CJS/ESM + d.ts
+pnpm build            # tsdown CJS/ESM + d.ts (Temporal worker: ESM only)
 ```
 
 **The gate needs a running Docker daemon.** Every workspace that boots a real

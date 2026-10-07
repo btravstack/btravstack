@@ -21,7 +21,7 @@ builds an HTTP application with the full framework.
 
 ## Step 1 — Create the project
 
-You need Node `>=22`. Make an empty directory; by the end of the lesson it will
+You need Node `>=22.12`. Make an empty directory; by the end of the lesson it will
 hold this:
 
 ```text

@@ -114,6 +114,16 @@ test("computed fields see the canonical declared fields", () => {
   });
 });
 
+test("computed callbacks see only declared keys", () => {
+  class Visible extends Entity("Visible")(
+    { id: PersonId },
+    {
+      computed: { keys: Entity.computed(z.array(z.string().brand("Key")), (d) => Object.keys(d)) },
+    },
+  ) {}
+  expect(Visible.make({ id: raw.id }).map((value) => value.keys)).toBeOkWith(["id"]);
+});
+
 test("an invariant constrains a computed value through its sources", () => {
   // A rule reads the *declared* fields, never a computed one. Every computed
   // value is a function of declared data, so the rule is expressed over the

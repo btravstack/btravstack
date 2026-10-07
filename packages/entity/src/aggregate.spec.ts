@@ -193,6 +193,28 @@ test("a decision and replay agree on an absent optional key", () => {
   });
 });
 
+test("live folds do not receive computed keys", () => {
+  const events = z.discriminatedUnion("type", [
+    z.object({ type: z.literal("Opened"), id: z.uuid() }),
+    z.object({ type: z.literal("Checked") }),
+  ]);
+  class Presence extends Entity.aggregate("Presence")({
+    id: Entity.field(CartId, { identity: true }),
+    seen: z.boolean(),
+  })({
+    events,
+    opens: { Opened: (e) => ({ id: e.id, seen: false }) },
+    evolve: { Checked: (r) => ({ ...r, seen: Object.hasOwn(r, "derived") }) },
+    computed: { derived: Entity.computed(z.boolean(), () => true) },
+  }) {}
+  const live = Presence.start({ type: "Opened", id }).get().state.emit({ type: "Checked" }).get();
+  const replayed = Presence.replay(live.events).getOrThrow();
+  expect({ live: live.state.seen, replayed: replayed.seen }).toEqual({
+    live: false,
+    replayed: false,
+  });
+});
+
 test("replay preserves a schema defect in a stored event", () => {
   // GIVEN a schema whose Standard Schema validator defects synchronously
   const events = z.discriminatedUnion("type", [

@@ -118,7 +118,7 @@ pnpm lint             # oxlint (all eight @unthrown rules) + markdownlint-cli2
 pnpm typecheck        # tsc, incl. the type-level *.test-d.ts files
 pnpm knip             # dead code / unused deps
 pnpm test             # vitest + v8 coverage (100% lines/functions, 90% branches)
-pnpm build            # tsdown dual CJS/ESM + d.ts
+pnpm build            # tsdown CJS/ESM + d.ts (Temporal worker: ESM only)
 ```
 
 **`lint` runs two linters, and markdown rides it deliberately.** CI's jobs come

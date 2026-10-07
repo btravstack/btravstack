@@ -272,3 +272,20 @@ test("an unrehydratable required output is rejected", () => {
     }),
   ).toEqual(["result"]);
 });
+
+test("a required undefined field does not rerun unrelated transforms", () => {
+  let parses = 0;
+  class Transformed extends Entity("Transformed")({
+    id: OrderId,
+    result: Entity.field(z.undefined(), { unbranded: true }),
+    note: Entity.field(
+      z.string().transform((value) => {
+        parses += 1;
+        return value;
+      }),
+      { unbranded: true },
+    ),
+  }) {}
+  expect(Transformed.make({ id: oid, result: undefined, note: "ok" }).isOk()).toBe(true);
+  expect(parses).toBe(1);
+});

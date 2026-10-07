@@ -171,6 +171,35 @@ export const omitsUndefined = (schema: unknown): boolean => {
   return Array.isArray(options) && options.every(omitsUndefined);
 };
 
+/** Select a uniquely identified object branch without parsing its transforms again. */
+const objectBranch = (
+  schema: Schema | undefined,
+  value: Record<string, unknown>,
+): Schema | undefined => {
+  const def = defOf(unwrap(schema));
+  if (def?.type !== "union" || !Array.isArray(def["options"])) return schema;
+  const options = def["options"] as unknown[];
+  const discriminators = options.map((option) => {
+    const branch = asSchema(option);
+    const branchDef = defOf(unwrap(branch));
+    if (branchDef?.type !== "object" && branchDef?.type !== "interface") return undefined;
+    const shape = branchDef["shape"];
+    if (typeof shape !== "object" || shape === null) return undefined;
+    const literals = Object.entries(shape).filter(
+      ([, field]) => defOf(asSchema(field))?.type === "literal",
+    );
+    return literals.length > 0 ? literals : undefined;
+  });
+  if (discriminators.some((fields) => fields === undefined)) return schema;
+  const matched = options.filter((_, index) =>
+    discriminators[index]?.every(([key, field]) => {
+      const values = defOf(asSchema(field))?.["values"];
+      return Array.isArray(values) && values.some((candidate) => Object.is(candidate, value[key]));
+    }),
+  );
+  return matched.length === 1 ? asSchema(matched[0]) : schema;
+};
+
 /** What the walk has reached, mapped to what stands in for it: itself, or its canonical copy. */
 type Seen = WeakMap<object, object>;
 
@@ -193,23 +222,24 @@ const freezeInto = (value: object, schema: Schema | undefined, seen: Seen): obje
   // the canonical form `toJSON()` promises: an absent optional key is omitted,
   // never `undefined` — zod keeps an explicit `undefined` it was handed
   const source = value as Record<string, unknown>;
+  const branch = array ? schema : objectBranch(schema, source);
   const copyNeeded =
     !Object.isExtensible(value) ||
     Object.entries(source).some(
       ([key, property]) =>
         !array &&
         property === undefined &&
-        omitsUndefined(childSchema(schema, key)) &&
+        omitsUndefined(childSchema(branch, key)) &&
         Object.getOwnPropertyDescriptor(source, key)?.configurable === false,
     );
   const copy: object | undefined = copyNeeded ? (array ? [] : {}) : undefined;
   seen.set(value, copy ?? value);
   const kept = new Map<string, unknown>();
   for (const [key, property] of Object.entries(source)) {
-    if (array || property !== undefined || !omitsUndefined(childSchema(schema, key))) {
+    if (array || property !== undefined || !omitsUndefined(childSchema(branch, key))) {
       kept.set(
         key,
-        isObject(property) ? freezeInto(property, childSchema(schema, key), seen) : property,
+        isObject(property) ? freezeInto(property, childSchema(branch, key), seen) : property,
       );
     }
   }

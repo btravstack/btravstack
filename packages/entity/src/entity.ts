@@ -152,6 +152,9 @@ export function Entity<Tag extends string>(tag: Tag) {
     type InputShape = InputOf<S>;
 
     const dataKeys = Object.keys(output.shape) as unknown as readonly (keyof OutputShape)[];
+    const declaredKeys = Object.keys(
+      construction.shape,
+    ) as unknown as readonly (keyof OutputShape)[];
     const optionalKeys = new Set(
       dataKeys.filter((key) =>
         omitsUndefined((output.shape as Record<string, unknown>)[String(key)]),
@@ -246,7 +249,7 @@ export function Entity<Tag extends string>(tag: Tag) {
      * typed, so either is a bug rather than bad caller input.
      */
     const recompute = (base: InputShape): Result<OutputShape, InvalidEntity> => {
-      const canonical = frozenFields(base as unknown as OutputShape) as InputShape;
+      const canonical = frozenFields(base as unknown as OutputShape, declaredKeys) as InputShape;
       if (computedParsers.length === 0) return Ok({ ...canonical } as unknown as OutputShape);
       return all(
         computedParsers.map(([key, from, parse]) =>
@@ -295,11 +298,14 @@ export function Entity<Tag extends string>(tag: Tag) {
      * a subtree, and a per-field map would re-walk it once per field that
      * reaches it. See `deepFreeze`.
      */
-    const frozenFields = (d: OutputShape): Record<PropertyKey, unknown> => {
+    const frozenFields = (
+      d: OutputShape,
+      keys: readonly (keyof OutputShape)[] = dataKeys,
+    ): Record<PropertyKey, unknown> => {
       const source = d as unknown as Record<PropertyKey, unknown>;
       const seen = new WeakMap<object, object>();
       return Object.fromEntries(
-        dataKeys
+        keys
           .filter((k) => source[k as PropertyKey] !== undefined || !optionalKeys.has(k))
           .map((k) => [
             k,
@@ -443,27 +449,31 @@ export function Entity<Tag extends string>(tag: Tag) {
         this: new (d: Sealed<OutputShape>) => T,
         state: unknown,
       ): Result<T, InvalidEntity> {
-        return (
-          parseInput(state)
-            .mapErrCases((m) =>
-              // SchemaIssues is `readonly Issue[]` — a single non-union type, nothing to enumerate
-              // oxlint-disable-next-line unthrown/no-catch-all-pattern
-              m.with(P._, toInvalidEntity),
-            )
-            .flatMap(recompute)
-            // A required transform may erase its own input; refuse a value that
-            // `make(toJSON())` could never read back.
-            .flatMap((d) =>
-              dataKeys.some((key) => !optionalKeys.has(key) && d[key] === undefined)
-                ? parseInput(project(d))
-                    // SchemaIssues is one non-union type, as at make's first parse.
-                    // oxlint-disable-next-line unthrown/no-catch-all-pattern
-                    .mapErrCases((m) => m.with(P._, toInvalidEntity))
-                    .flatMap(() => Ok(d) as Result<OutputShape, InvalidEntity>)
-                : Ok(d),
-            )
-            .flatMap((d) => construct(this, d))
-        );
+        return parseInput(state)
+          .mapErrCases((m) =>
+            // SchemaIssues is `readonly Issue[]` — a single non-union type, nothing to enumerate
+            // oxlint-disable-next-line unthrown/no-catch-all-pattern
+            m.with(P._, toInvalidEntity),
+          )
+          .flatMap(recompute)
+          .flatMap((d) => {
+            // A required transform may erase its input. Check only that
+            // field, so unrelated transforms do not run twice.
+            const issues = declaredKeys.flatMap((key) => {
+              if (optionalKeys.has(key) || d[key] !== undefined) return [];
+              const field = (construction.shape as Record<string, z.core.$ZodType>)[String(key)]!;
+              const parsed = z.safeParse(field, undefined);
+              return parsed.success
+                ? []
+                : parsed.error.issues.map((issue) => ({
+                    ...issue,
+                    path: [key, ...issue.path],
+                  }));
+            });
+            return issues.length > 0
+              ? Err(new InvalidEntityClass({ entity: tag, issues }))
+              : construct(this, d);
+          });
       }
 
       /**

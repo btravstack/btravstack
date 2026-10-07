@@ -155,6 +155,7 @@ export const createAggregate =
     const folders = evolve as unknown as Handlers;
     // The entity's own projection, never a subclass override of `toJSON`.
     const project = Base.prototype["toJSON"] as (this: object) => Record<string, unknown>;
+    const declaredKeys = new Set(Object.keys(fields));
 
     /**
      * The current state as a fresh, shallow record of the declared fields:
@@ -163,7 +164,9 @@ export const createAggregate =
      * and a `z.custom` instance survives the fold intact for `make` to check.
      */
     const recordOf = (self: object): Record<string, unknown> => {
-      return { ...project.call(self) };
+      return Object.fromEntries(
+        Object.entries(project.call(self)).filter(([key]) => declaredKeys.has(key)),
+      );
     };
 
     const bug = (detail: string) => new Error(`${tag}: ${detail}`);

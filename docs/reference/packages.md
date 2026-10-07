@@ -165,10 +165,10 @@ pnpm add @btravstack/di unthrown
 
 :::
 
-Every published package claims `engines: { node: ">=22" }`. The repository's
-own development floor is higher (`>=22.22`); that is the toolchain's floor,
-not a promise made to consumers. The published floor was `>=20` until Node 20
-reached end of life on 2026-04-30.
+Most published packages require Node `>=22`; `http-server` and `prisma`
+require `>=22.12`, while `amqp-worker` and `temporal-worker` require
+`>=22.22`. Each floor is checked against that package's required peers. The
+repository's own development floor is `>=22.22`.
 
 ## Support and upgrades
 
@@ -231,5 +231,7 @@ Two of those keep no peer out and are subpaths for a different reason: the
 surface is separable and most graphs do not want it. `/session` is the cookie
 half of authentication, and `/rls` is a policy a deployment opts into.
 
-Every published package ships dual CJS/ESM builds with `.d.ts` files and no
-source maps — the tarball carries no `src/`, so a map would be a dead end.
+Published packages ship dual CJS/ESM builds with `.d.ts` files, except
+`temporal-worker`, which is ESM-only because its required contract peer has
+import-only subpaths. Tarballs carry no `src/`, so source maps would be a dead
+end.
