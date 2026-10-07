@@ -1682,8 +1682,10 @@ at the login route; §15.4.4's `303` specifies the retrieval request instead.
 scope would come straight back to the same `403`; only
 [`Unauthenticated`](#authentication) is a caller a login can help.
 
-`return` is the request's own path and query — `request.url` as it arrived —
-percent-encoded once with `encodeURIComponent`, **and only when it starts with
+`return` is the request's own path and query: the raw `request.url` for
+origin-form targets, or the parsed pathname plus query for absolute-form
+targets, with the authority discarded. It is percent-encoded once with
+`encodeURIComponent`, **and only when it starts with
 `/` and its second character is neither `/` nor `\`**; anything else is
 reported as `/`. Those two clauses are one shared `returnTo`, the same function
 [`oidc()`](#the-login-answerer) applies when it seals the value and again when

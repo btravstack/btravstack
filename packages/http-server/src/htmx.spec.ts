@@ -453,6 +453,22 @@ describe("htmx login", () => {
     });
   });
 
+  it("keeps the path and query of an absolute-form target in the login return", async ({
+    loginServer,
+  }) => {
+    // GIVEN a protected fragment and a configured login route
+    const { get } = await loginServer("/auth/login");
+
+    // WHEN a proxy sends an absolute-form target for an unauthenticated caller
+    const answer = await get("http://proxy.test/private?tab=1");
+
+    // THEN login returns to this site's requested path and query
+    expect({ status: answer.status, location: answer.location }).toEqual({
+      status: 303,
+      location: "/auth/login?return=%2Fprivate%3Ftab%3D1",
+    });
+  });
+
   it("declines a crafted target before a fragment route can mint a return", async ({
     loginServer,
   }) => {

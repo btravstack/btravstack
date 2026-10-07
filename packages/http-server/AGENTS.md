@@ -935,8 +935,10 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   compile.
 
   **The `return` value is GUARDED where it is minted, and that guard is not
-  belt-and-braces.** It is the request's own path and query, `request.url` as
-  it arrived, percent-encoded ONCE — but only when it starts with `/` and its
+  belt-and-braces.** It is the request's own path and query: `request.url` as
+  it arrived for origin-form targets; for absolute-form targets, `URL.parse`
+  discards the authority and keeps `pathname` plus `search`. It is
+  percent-encoded ONCE — but only when it starts with `/` and its
   second character is neither `/` nor `\`; anything else is reported as `/`.
   Those two clauses are the whole of `src/redirect.ts`'s `returnTo`, which
   `oidc()` calls as well — sealing the value at `/login` and following it at
