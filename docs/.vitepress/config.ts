@@ -12,16 +12,26 @@ const REPO = "https://github.com/btravstack/btravstack";
 const RELEASE_PRS = `${REPO}/pulls?q=is%3Apr+head%3Achangeset-release%2Fmain`;
 
 // The site deploys from `main`, which runs ahead of npm until the release pull
-// request merges: a pending changeset is exactly "on main, not yet published".
+// request merges: a pending changeset naming a package is exactly "on main, not
+// yet published". An empty one (`---\n---`) releases nothing.
 const ROOT = new URL("../../", import.meta.url);
+const CHANGESETS = new URL(".changeset/", ROOT);
 const VERSION: string = JSON.parse(
   readFileSync(new URL("packages/core/package.json", ROOT), "utf8"),
 ).version;
-const COMMIT = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-const UNRELEASED = readdirSync(new URL(".changeset/", ROOT)).some(
-  (name) =>
-    name.endsWith(".md") && !["README.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md"].includes(name),
-);
+// `DOCS_COMMIT` is declared in the task's turbo `env`, so a cached build is
+// never replayed under another commit.
+const COMMIT =
+  process.env.DOCS_COMMIT ??
+  execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+const UNRELEASED = readdirSync(CHANGESETS)
+  .filter((name) => name.endsWith(".md"))
+  .some((name) => {
+    const releases = /^---\r?\n([\s\S]*?)\r?\n?---/.exec(
+      readFileSync(new URL(name, CHANGESETS), "utf8"),
+    )?.[1];
+    return /\S/.test(releases ?? "");
+  });
 
 // The guide is structured by the four Diátaxis modes (https://diataxis.fr/): a
 // learning-oriented Tutorial, task-oriented How-to guides, information-oriented

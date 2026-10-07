@@ -26,7 +26,7 @@ features:
   - title: Wiring proven at compile time
     details: A module that forgets a provider is a compile error naming the missing port — not a stack trace at boot. No decorators, no reflect-metadata.
   - title: Nothing throws
-    details: Every async surface returns a Result. A failure is a value with a type, matched exhaustively — a new error case fails every match at compile time, and a Result dropped unread is unthrown's lint rule to catch.
+    details: Every async surface returns a Result. A failure is a value with a type; a triage written with mapErrCases fails to compile when a new error case arrives, and a Result dropped unread is unthrown's lint rule to catch.
   - title: HTTP, Temporal and AMQP
     details: One process runs one runtime. The same application module boots as an API, a workflow worker or a queue consumer — three deployments, one codebase.
   - title: Built for Kubernetes
@@ -49,7 +49,7 @@ It is the layer between your business logic and the process it runs in.
 |                          |                                                                                                          |
 | ------------------------ | -------------------------------------------------------------------------------------------------------- |
 | **Dependency injection** | Plain values, no decorators or `reflect-metadata`. Unmet dependencies are compile errors.                |
-| **Errors as values**     | Every fallible call returns a `Result`. Domain errors are typed and exhaustively matched.                |
+| **Errors as values**     | Every fallible call returns a `Result`. Domain errors are typed; a `mapErrCases` triage is exhaustive.   |
 | **Configuration**        | Environment variables validated once, at boot, into typed values. A bad value exits `78` and says which. |
 | **Three transports**     | HTTP (contract-first, over oRPC), Temporal workers, AMQP consumers.                                      |
 | **Observability**        | Structured logs correlated per request, OpenTelemetry traces and metrics.                                |

@@ -53,8 +53,12 @@ jobs:
       # to the docs package, so Turbo runs `@btravstack/docs#build` and only
       # what its `dependsOn` names — the six packages, built first so a
       # documented cross-package import resolves.
+      # DOCS_COMMIT is printed in the site's version menu and hashed by turbo
+      # (the task's `env`), so a cache hit is never another commit's HTML.
       - name: Build documentation
         run: pnpm turbo run build --filter=@btravstack/docs
+        env:
+          DOCS_COMMIT: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5

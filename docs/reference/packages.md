@@ -108,18 +108,17 @@ The HTTP, Temporal and AMQP starters peer on libraries whose next major is
 still a prerelease: `@orpc/*`, `@temporal-contract/*` and
 `@amqp-contract/worker`. Each library's `latest` dist-tag still points at its
 previous major while the adapters here need the new one, so an unpinned range
-resolves the old major and fails a strict peer check — which is why the
-commands below carry a `-beta` range.
+resolves the old major and fails a strict peer check.
 
-A prerelease can break between its own betas, so this repository pins each one
-**exactly** in its catalog, and an application should do the same and move
-them only together with a btravstack release.
+A prerelease can break between its own betas, so the commands below pin each
+one to the **exact** version this repository's catalog tests, and an
+application should keep them exact and move them only together with a
+btravstack release.
 
-**The versions are deliberately not written here.** They move, and a number in
-prose goes stale on a commit that never touched this page. `pnpm-workspace.yaml`
-is where they live; each entry carries its own comment, and the install
-snippets on this site are checked against it by the
-[install-pin gate](https://github.com/btravstack/btravstack/blob/main/docs/scripts/check-install-pins.ts).
+Those numbers cannot drift from what is tested: `pnpm-workspace.yaml` is where
+they live, each entry carrying its own comment, and the
+[install-pin gate](https://github.com/btravstack/btravstack/blob/main/docs/scripts/check-install-pins.ts)
+fails the docs build when a snippet's exact version differs from the catalog's.
 :::
 
 ## Install
@@ -132,18 +131,18 @@ does, the first package alone suffices.
 
 ```sh [HTTP API]
 pnpm add @btravstack/http-server @btravstack/core @btravstack/config @btravstack/di \
-  @btravstack/contract unthrown @orpc/server@^2.0.0-beta @orpc/contract@^2.0.0-beta @unthrown/orpc
+  @btravstack/contract unthrown @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @unthrown/orpc
 ```
 
 ```sh [Temporal worker]
 pnpm add @btravstack/temporal-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
   @temporalio/worker @temporalio/activity @temporalio/common \
-  @temporal-contract/worker@^8.0.0-beta @temporal-contract/contract@^8.0.0-beta
+  @temporal-contract/worker@8.0.0-beta.11 @temporal-contract/contract@8.0.0-beta.11
 ```
 
 ```sh [AMQP worker]
 pnpm add @btravstack/amqp-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
-  @amqp-contract/worker@^3.0.0-beta @opentelemetry/api
+  @amqp-contract/worker@3.0.0-beta.11 @opentelemetry/api
 ```
 
 ```sh [Kernel only]

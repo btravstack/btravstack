@@ -2,9 +2,12 @@
 
 ## Supported versions
 
-`@btravstack/core`, `@btravstack/di` and the runtime packages are released from this repository. Security fixes land on the
-**latest** published version; please upgrade to the latest release before
-reporting.
+Every `@btravstack/*` package published from this repository shares one
+version and releases together. Security fixes land on the **latest** published
+version only — there are no backports — so please upgrade every
+`@btravstack/*` package to the latest release before reporting. Before 1.0 a
+minor release may break; see
+[Support and upgrades](https://btravstack.github.io/btravstack/reference/packages#support-and-upgrades).
 
 ## Reporting a vulnerability
 

@@ -85,8 +85,10 @@
         "../pnpm-workspace.yaml",
         "../README.md",
         "../packages/*/README.md",
-        "../examples/**/README.md"
+        "../examples/**/README.md",
+        "../.changeset/*.md"
       ],
+      "env": ["DOCS_COMMIT"],
       "outputs": [".vitepress/dist/**", "api/*/**"]
     },
     "db:migrate": {

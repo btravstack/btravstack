@@ -55,16 +55,16 @@ it replaces is the `main.ts` every backend writes by hand and gets subtly wrong.
 
 ## What you get
 
-|                          |                                                                                                                                                                                         |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Dependency injection** | Plain values — no decorators, no `reflect-metadata`. An unmet dependency is a compile error.                                                                                            |
-| **Errors as values**     | Every fallible call returns a `Result`: the failure is in the type and matched exhaustively. Dropping one unread is a lint error (`unthrown/no-unhandled-result`), not a compile error. |
-| **Domain modelling**     | Optional `@btravstack/entity`: sealed entities, aggregate decisions, and Zod schemas.                                                                                                   |
-| **Configuration**        | Environment variables validated once at boot into typed values; a bad one exits `78` naming it.                                                                                         |
-| **Three transports**     | HTTP (contract-first, over oRPC), Temporal workers, AMQP consumers.                                                                                                                     |
-| **Observability**        | Structured logs correlated per request, OpenTelemetry traces and metrics.                                                                                                               |
-| **Lifecycle**            | Health probes, graceful drain, resource cleanup on every exit path.                                                                                                                     |
-| **Testing**              | A harness that boots the real graph and swaps one provider at a time.                                                                                                                   |
+|                          |                                                                                                                                                                                                                                    |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Dependency injection** | Plain values — no decorators, no `reflect-metadata`. An unmet dependency is a compile error.                                                                                                                                       |
+| **Errors as values**     | Every fallible call returns a `Result`: the failure is in the type, and a `mapErrCases` triage stops compiling when a new case arrives. Dropping one unread is a lint error (`unthrown/no-unhandled-result`), not a compile error. |
+| **Domain modelling**     | Optional `@btravstack/entity`: sealed entities, aggregate decisions, and Zod schemas.                                                                                                                                              |
+| **Configuration**        | Environment variables validated once at boot into typed values; a bad one exits `78` naming it.                                                                                                                                    |
+| **Three transports**     | HTTP (contract-first, over oRPC), Temporal workers, AMQP consumers.                                                                                                                                                                |
+| **Observability**        | Structured logs correlated per request, OpenTelemetry traces and metrics.                                                                                                                                                          |
+| **Lifecycle**            | Health probes, graceful drain, resource cleanup on every exit path.                                                                                                                                                                |
+| **Testing**              | A harness that boots the real graph and swaps one provider at a time.                                                                                                                                                              |
 
 ## Why btravstack?
 
@@ -139,7 +139,7 @@ pnpm add @btravstack/core @btravstack/config @btravstack/di unthrown
 For an HTTP API add the starter and its peers:
 
 ```sh
-pnpm add @btravstack/http-server @orpc/server@^2.0.0-beta @orpc/contract@^2.0.0-beta @unthrown/orpc
+pnpm add @btravstack/http-server @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @unthrown/orpc
 ```
 
 Everything is a **peer dependency** — the application holds one copy of each,
