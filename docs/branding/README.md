@@ -15,3 +15,8 @@ load logos from the ecosystem website at runtime.
 The integrated entity guide uses the canonical `entity` identity-card SVGs.
 Render `social-card.html?project=entity` at 1200 × 630 for its local preview;
 the card displays `btravstack.github.io/btravstack/entity`.
+
+DI reference and API pages use the canonical leafless beetroot in a syringe.
+Render `social-card.html?project=di` at 1200 × 630 for `../public/di/og-di.png`.
+All three cards use the shared large-mascot layout and short headlines; wait
+for fonts and images before exporting, and review at thumbnail size.
