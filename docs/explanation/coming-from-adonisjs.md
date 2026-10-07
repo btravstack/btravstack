@@ -6,15 +6,16 @@ description: "The three things that look like they map and do not — providers,
 # Coming from AdonisJS
 
 > **Explanation.** AdonisJS is a full-stack framework with a database layer, a
-> CLI, an auth module and a view engine. This one is a kernel plus starters and
-> has none of those. The useful half of this page is therefore what does
-> **not** map. For the design, start with
+> CLI, an auth module and a view engine. This framework ships transport
+> authentication, but no bundled account system, model layer, resident CLI or
+> view engine. The useful half of this page is what does **not** map. For the
+> design, start with
 > [Why btravstack?](/explanation/why-btravstack).
 
 Adonis gives you a working application on day one; the parts arrive together
 and agree with each other. This framework gives you a lifecycle, a container
-the compiler checks, and starters for transports — the database layer, the
-authentication policy and the views are yours to choose. That is the trade in
+the compiler checks, and starters for transports — the repository, account
+workflows and views are yours to choose. That is the trade in
 one line, and everything below is a consequence of it.
 
 ## Three things that look like they map
@@ -74,13 +75,24 @@ implementation as a provider. See
 
 ## What has no equivalent
 
-### No `ace`, no scaffolding, no `node ace make:controller`
+### No resident `ace` or per-slice generator
 
-There is no CLI. A slice is a handful of files you write, and there is no
-generator for them yet. The honest statement of the gap: for a first
-application this is real friction, and it is
-[an open question](https://github.com/btravstack/btravstack/issues/59) rather
-than a settled non-goal.
+The [current tooling decision](/explanation/deferred-decisions) declines a
+resident CLI and a per-slice generator
+([#59](https://github.com/btravstack/btravstack/issues/59)). Copy a sibling
+slice and add its contract key in the separate contract package; [Add a slice
+by copying a sibling](/how-to/add-a-slice) walks through both edits. Starting
+a new application is a separate gap: [a minimal external template is tracked
+in #437](https://github.com/btravstack/btravstack/issues/437).
+
+### No bundled account or identity system
+
+The HTTP starter authenticates API keys, JWTs and session cookies, and its OIDC
+answerer handles browser login. A contract declares which scheme and scopes a
+procedure accepts. Account registration, credential issuance, recovery and the
+identity store remain the application's responsibility. See
+[Protect a procedure](/how-to/protect-a-procedure) and
+[Log a browser in](/how-to/log-a-browser-in).
 
 ### No Bouncer, no policies, no `@can`
 

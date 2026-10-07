@@ -273,7 +273,7 @@ deployments.
 | [`@btravstack/outbox`](./packages/outbox)                   | The transactional outbox relay: publishes committed facts in outbox order through a publisher you provide, with a per-tenant claim so replicas take turns rather than race for the same rows, and a Prisma 8 store. |
 | [`@btravstack/cache`](./packages/cache)                     | A `Cache` port with an in-memory adapter and a Redis one, reporting every call through `Observers`.                                                                                                                 |
 | [`@btravstack/mailer`](./packages/mailer)                   | A `Mailer` port with a recording adapter and an SMTP one, reporting every send through `Observers`.                                                                                                                 |
-| [`@btravstack/storage`](./packages/storage)                 | A `Storage` port with an in-memory adapter and an S3-compatible one with presigned reads.                                                                                                                           |
+| [`@btravstack/storage`](./packages/storage)                 | A `Storage` port with an in-memory adapter and an S3-compatible one with presigned reads and uploads (upload URLs can be reused until expiry).                                                                      |
 
 ## Examples
 
