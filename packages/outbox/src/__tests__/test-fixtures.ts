@@ -42,6 +42,11 @@ export type Publisher = OutboxPublisherService & {
   readonly refuse: (subjectId: string, times?: number) => void;
   /** Make every publish wait one real macrotask, so two relays overlap. */
   readonly slow: () => void;
+  /** Hold one publish until the test releases it. */
+  readonly hold: (subjectId: string) => {
+    readonly entered: Promise<void>;
+    readonly release: () => void;
+  };
 };
 
 /** A graph around `outbox(options)`, over the fixtures' store, publisher and observers. */
@@ -116,12 +121,18 @@ export const it = test.extend<OutboxFixtures>({
   publisher: async ({}, use) => {
     const sent: string[] = [];
     const refusals = new Map<string, number>();
+    const holds = new Map<string, { readonly enter: () => void; readonly resume: Promise<void> }>();
     let slow = false;
     await use({
       publish: (message) =>
         fromSafePromise(
           (async () => {
             if (slow) await delay(1);
+            const hold = holds.get(message.subjectId);
+            if (hold) {
+              hold.enter();
+              await hold.resume;
+            }
             const left = refusals.get(message.subjectId) ?? 0;
             if (left > 0) {
               refusals.set(message.subjectId, left - 1);
@@ -137,6 +148,18 @@ export const it = test.extend<OutboxFixtures>({
       },
       slow: () => {
         slow = true;
+      },
+      hold: (subjectId) => {
+        let enter!: () => void;
+        let release!: () => void;
+        const entered = new Promise<void>((resolve) => {
+          enter = resolve;
+        });
+        const resume = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        holds.set(subjectId, { enter, resume });
+        return { entered, release };
       },
     });
   },

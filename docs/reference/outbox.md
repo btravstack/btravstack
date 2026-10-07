@@ -115,8 +115,9 @@ application names its one.
 
 ## The loop
 
-Every sweep visits each tenant in turn and claims at most 32 of its oldest
-pending messages:
+Each tenant has its own loop and claims at most 32 of its oldest pending
+messages per sweep. A pending claim or publish for one tenant does not stop
+another tenant's loop:
 
 - **They are published in outbox order, and a refusal stops the batch.** An
   `Err` from `publish` — or a defect — leaves that message and everything after
@@ -125,8 +126,8 @@ pending messages:
 - **Each tenant keeps its own schedule.** A failed sweep backs that tenant off,
   doubling from `pollMs` up to 30 seconds, and a clean one resets it; a full
   batch makes it due again at once, so a backlog drains at the publisher's
-  speed rather than 32 messages per poll. One tenant's refused message slows
-  no other tenant.
+  speed rather than 32 messages per poll. One tenant's refused or pending
+  message slows no other tenant.
 - **The sleep is the `clock`'s, aborted on stop**, so `release` returns as soon
   as the batch in flight has, an idle relay never holds the process open, and
   a test drives the loop with `createFakeClock`:
@@ -201,8 +202,10 @@ lane and `transaction` — and reads the table in raw SQL:
 transaction that reads, publishes and marks the batch.** A relay that does not
 get the lock skips the tenant. The lock dies with the transaction, so a relay
 that crashes frees it with its connection, and a mark that never commits
-leaves its rows pending rather than lost. The cost is one pooled connection
-held for the length of one batch's publishes.
+leaves its rows pending rather than lost. A relay can hold one pooled
+connection per active tenant for the length of that tenant's batch. The pool
+needs capacity for concurrent claims; a pool exhausted by stalled publishers
+still makes other tenants wait for a connection.
 
 **The claim lifts `idle_in_transaction_session_timeout` for its own
 transaction**, since it sits idle while the publisher works and a configured

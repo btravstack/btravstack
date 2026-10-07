@@ -93,10 +93,12 @@ a lock some other code takes on a single bigint never collides. A `hashtext`
 collision between two tenants only serialises them.
 
 **The cost is stated, not hidden**: the claim, the publishes and the mark run
-in one transaction, so a relay holds one pooled connection for one batch's
-publishes. That is an interactive transaction — the shape thesis #2 refuses for
-a unit — and it is accepted here because it is ONE connection per relay, bounded
-by a 32-message batch, rather than one per request.
+in one transaction, so a relay holds one pooled connection per active tenant
+for that tenant's batch. A deployment's pool needs room for concurrent claims;
+if all its connections are pinned by stalled publishers, other tenants wait at
+the pool. That is an interactive transaction — the shape thesis #2 refuses for
+a unit — and it is accepted here because concurrency is bounded by the
+configured tenants and each 32-message batch, rather than by requests.
 
 **One relay per tenant holds while its claiming session lives, and no
 longer.** The lock is the session's: if the database ends that session
@@ -144,7 +146,9 @@ same spec published them 132 times.
   full batch it is due again at once, so a backlog drains at the publisher's
   speed rather than 32 per poll; when idle it waits `pollMs`. One counter for
   the whole sweep was the first shape, and it let one tenant's poison message
-  hold every other tenant to its back-off.
+  hold every other tenant to its back-off. Each tenant has its own loop, so a
+  pending claim or publish holds that tenant alone; one loop for all tenants
+  left later tenants waiting for the first pending publisher.
 - **The health check is one round trip** — `OutboxStore.oldestPending` over
   every tenant at once. A read per tenant per `/healthz` queues the pool behind
   the probe that is meant to report it, and outlives the kernel's health
