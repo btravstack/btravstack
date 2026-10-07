@@ -288,6 +288,55 @@ describe("httpRuntime", () => {
     await expect(fetch(origin).then((response) => response.text())).rejects.toThrow();
   });
 
+  it("resets the connection when the handler rejects with headers already on the wire", async ({
+    serve,
+  }) => {
+    // GIVEN a handler that flushes its headers and then rejects — the
+    // asynchronous twin of the case above, which lands in `answer` instead
+    const { origin } = await serve(async (_request, response) => {
+      response.writeHead(200, { "content-length": "2" });
+      response.flushHeaders();
+      await Promise.resolve();
+      // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test
+      throw new Error("boom");
+    });
+
+    // WHEN a request arrives, bounded so a hang fails as a timeout
+    const body = fetch(origin, { signal: AbortSignal.timeout(2_000) }).then((response) =>
+      response.text(),
+    );
+
+    // THEN the socket is reset at once: undici's `TypeError: terminated`, not
+    // the caller's own `TimeoutError`
+    await expect(body).rejects.toMatchObject({ name: "TypeError" });
+  });
+
+  it("completes the unit when the handler rejects with headers already on the wire", async ({
+    serve,
+  }) => {
+    // GIVEN the same rejecting handler, its request already reset
+    const { app, origin } = await serve(async (_request, response) => {
+      response.writeHead(200, { "content-length": "2" });
+      response.flushHeaders();
+      await Promise.resolve();
+      // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test
+      throw new Error("boom");
+    });
+    await fetch(origin, { signal: AbortSignal.timeout(2_000) })
+      .then((response) => response.text())
+      .catch(() => undefined);
+
+    // WHEN the drain samples the kernel's unit registry
+    app.requestDrain();
+
+    // THEN nothing was left in flight for the drain to wait on or abandon
+    await expect(app.exited).toBeOkWith(
+      expect.objectContaining({
+        drain: { inFlightAtStart: 0, completed: 0, abandoned: 0 },
+      }),
+    );
+  });
+
   it("adopts a non-blank x-request-id as the trace id", async ({ serve, traced }) => {
     // GIVEN a caller that supplies a correlation id
     const { origin } = await serve(traced.handler);

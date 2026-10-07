@@ -471,9 +471,7 @@ const listen = (
                   // `recoverDefect` would wrap a throw here into a fresh defect that
                   // the `void` below drops.
                   try {
-                    end(response, 500, "InternalError");
-                    if (!response.writableEnded)
-                      response.destroy(cause instanceof Error ? cause : undefined);
+                    fail(response, cause);
                   } catch {
                     // nothing left to try; the socket is already unusable
                   }
@@ -603,16 +601,23 @@ const answer = async (handled: PromiseLike<unknown>, response: ServerResponse): 
   try {
     await handled;
     end(response, 404, "NotFound");
-  } catch {
+  } catch (cause) {
     // Guarded so a throw here cannot reject `answer`'s own promise: the call
     // site drops it with `void`, and an unhandled rejection is the
     // whole-application teardown the permanent `'error'` listener prevents.
     try {
-      end(response, 500, "InternalError");
+      fail(response, cause);
     } catch {
       // nothing left to try; the response is already unusable
     }
   }
+};
+
+// Once headers are out there is no status left to write, so the socket is
+// destroyed — or the client waits on a body that never comes, and the unit with it.
+const fail = (response: ServerResponse, cause: unknown): void => {
+  end(response, 500, "InternalError");
+  if (!response.writableEnded) response.destroy(cause instanceof Error ? cause : undefined);
 };
 
 // Silent when the handler has already started writing: there is no status left
