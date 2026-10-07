@@ -119,31 +119,31 @@ type ServedKinds<Router, Fragments> =
   | SchemesOfAnswerer<Fragments>;
 
 /**
- * `"anonymous"` when an answerer has a public leaf. A provider carrying no
- * `_public` phantom is assumed to have one; an omitted answerer has none.
+ * The kinds a request to one answerer opens under, off its `_kinds` phantom —
+ * the EFFECTIVE marks, not the needs channel, which keeps shadowed ones. A
+ * provider carrying no phantom is read as public plus every scheme it owes,
+ * the conservative reading; an omitted answerer opens none.
  */
-type PublicOf<T> = [T] extends [undefined]
+type KindsOf<T> = [T] extends [undefined]
   ? never
-  : T extends { readonly _public?: infer P }
-    ? unknown extends P
-      ? "anonymous"
+  : T extends { readonly _kinds?: infer P }
+    ? string extends P
+      ? "anonymous" | SchemesOfAnswerer<T>
       : P
-    : "anonymous";
+    : "anonymous" | SchemesOfAnswerer<T>;
 
 /**
- * The kinds a request to THIS root really forks under: every served scheme,
- * and `anonymous` when a leaf is public or when a served scheme declared no
- * module of its own — the fallback is a fork of `anonymous`'s module too.
+ * The kinds a request to THIS root really forks under: the answerers' own,
+ * and `anonymous` too when one of their schemes declared no module and falls
+ * back to it — the runtime's `units[kind] ?? units.anonymous`.
  */
 type ReachableKinds<Router, Fragments> =
-  | SchemesOfAnswerer<Router>
-  | SchemesOfAnswerer<Fragments>
-  | PublicOf<Router>
-  | PublicOf<Fragments>
+  | KindsOf<Router>
+  | KindsOf<Fragments>
   | ([
       Exclude<
-        SchemesOfAnswerer<Router> | SchemesOfAnswerer<Fragments>,
-        keyof DeclaredUnits<Router, Fragments>
+        KindsOf<Router> | KindsOf<Fragments>,
+        "anonymous" | keyof DeclaredUnits<Router, Fragments>
       >,
     ] extends [never]
       ? never

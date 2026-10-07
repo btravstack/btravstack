@@ -353,6 +353,26 @@ void HttpModule("GatedFragmentsAuthenticatedOnly")({
   unit: { user: UserUnit },
 });
 
+// The kinds are read off the EFFECTIVE marks: a `user` mark every procedure
+// below it overrides with `service` opens no `user` unit, so `user` stays
+// optional though the router still owes its authenticator.
+const shadowed = withTwo.units<{ user: typeof AnonymousUnit; service: typeof ServiceOnlyUnit }>();
+const shadowedRouter = shadowed.OrpcRouter(
+  authenticated({ user: [] })({ ops: authenticated({ service: [] })({ ping: oc }) }),
+)({
+  inject: {},
+  sync: () => ({ ops: { ping: () => OkAsync("pong") } }),
+});
+void HttpModule("ShadowedMarkOptional")({
+  router: shadowedRouter,
+  port: 0,
+  unit: { service: ServiceOnlyUnit },
+});
+
+const _shadowedUnbound = { router: shadowedRouter, port: 0 } as const;
+// @ts-expect-error — UNBOUND UNIT KINDS: the effective `service` mark still opens a unit
+void HttpModule("ShadowedMarkUnbound")(_shadowedUnbound);
+
 const _fragmentsUnbound = { fragments: gatedFragments, port: 0, provides: [gatedRow] } as const;
 // @ts-expect-error — UNBOUND UNIT KINDS: the fragments serve `anonymous`, which was declared
 void HttpModule("GatedFragmentsUnbound")(_fragmentsUnbound);

@@ -12,7 +12,7 @@ import type { AsyncResult } from "unthrown";
 import { schemeDeps, schemeServices, type AuthenticatorService } from "./auth.js";
 import type { FragmentInputSchema, ParamsOf } from "./fragments.js";
 import type { Html } from "./html.js";
-import type { RequiresGate } from "./orpc-gates.js";
+import type { RequiresGate, SchemesIn } from "./orpc-gates.js";
 import type { SchemePortsOf } from "./orpc.js";
 import type { Principal, SchemesOf } from "./principal.js";
 import type { KindOf, UnitFor } from "./unit.js";
@@ -105,11 +105,11 @@ type RequiresOfPiece<P> = P extends {
   ? R
   : never;
 
-/** `"anonymous"` when some piece requires nothing — a route opened with no caller. */
-type PublicRoutes<P> = P extends unknown
+/** The kinds a request to these pieces opens under: `"anonymous"` for a public one. */
+type KindsOfRoutes<P> = P extends unknown
   ? [RequiresOfPiece<P>] extends [never]
     ? "anonymous"
-    : never
+    : SchemesIn<RequiresOfPiece<P>>
   : never;
 
 /**
@@ -263,8 +263,8 @@ export const htmxFragmentsFor =
     readonly authenticators: readonly Auth[];
     /** Phantom: the kinds bound at `units<…>()`, read by `HttpModule`, never at runtime. */
     readonly _units?: Units;
-    /** Phantom: `"anonymous"` when a route is public, read by `HttpModule`, never at runtime. */
-    readonly _public?: PublicRoutes<T[number]>;
+    /** Phantom: the kinds a request here opens under, read by `HttpModule`, never at runtime. */
+    readonly _kinds?: KindsOfRoutes<T[number]>;
   } => {
     const routeEntries = routes.map((piece, index) => [`route:${index}`, piece.port] as const);
     const schemes = schemesInRoutes(routes);

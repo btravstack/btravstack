@@ -57,7 +57,7 @@ import type {
   KeyOfPiece,
   Overlapping,
   PieceOf,
-  PublicIn,
+  KindsIn,
   Refuse,
   SchemesIn,
   ScopeGate,
@@ -276,7 +276,7 @@ export const routerFor =
       Auth,
       InstanceType<D[keyof D]> | SchemePortsOf<AllRequirementsOf<C>>,
       Units,
-      PublicIn<C>
+      KindsIn<C>
     >;
     // Declared LAST on purpose: TypeScript reports the last overload's
     // failure, so a bad array is refused against the markers below rather than
@@ -310,7 +310,7 @@ export const routerFor =
       Auth,
       InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<C>>,
       Units,
-      PublicIn<C>
+      KindsIn<C>
     >;
     function build(depsOrPieces: unknown): unknown {
       const schemes = schemesOf(contract);

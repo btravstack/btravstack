@@ -794,17 +794,20 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   joined `examples/order-api`, every doc root composing the example's router
   without restating the kinds was such a root, and the gate found them all.
   `RequiredKinds` is the declared kinds intersected with the kinds this root
-  really forks under (`ReachableKinds`): every scheme the answerers serve
-  (`SchemesOfAnswerer`, the same reading case 2 uses), and `anonymous` only
-  when a leaf is public or a served scheme declared no module and falls back
-  to it — the runtime's own `units[kind] ?? units.anonymous`. Whether a leaf
-  is public rides a `_public` phantom beside `_units`: `PublicIn<C>` folds
-  the contract's marks the way `routerOf` inherits them, and the fragments
-  read each route's `requires`. So a declared kind no request here forks
-  under — `session` under a router marking only `user` and `service`, or
-  `anonymous` under one whose every leaf is marked — stays optional, which is
-  what lets a lifted slice bind what it serves. A provider carrying no
-  `_public` is assumed to have a public leaf, the conservative reading. A missing kind is
+  really forks under (`ReachableKinds`), read off a `_kinds` phantom beside
+  `_units`: `KindsIn<C>` folds the contract's marks the way `routerOf`
+  inherits them — nearest mark wins, so a `user` mark every child overrides
+  with `service` opens no `user` unit — and the fragments read each route's
+  `requires`. The needs channel (`SchemesOfAnswerer`) cannot stand in: it is
+  built from `AllRequirementsOf`, which keeps shadowed marks on purpose, since
+  the router still owes that scheme's authenticator. `anonymous` is reachable
+  for a public leaf, or when a served scheme declared no module and falls back
+  to it — the runtime's own `units[kind] ?? units.anonymous`. So a declared
+  kind no request here forks under — `session` under a router marking only
+  `user` and `service`, `anonymous` under one whose every leaf is marked, a
+  fully shadowed mark — stays optional, which is what lets a lifted slice
+  bind what it serves. A provider carrying no `_kinds` is read as public plus
+  every scheme it owes, the conservative reading. A missing kind is
   TypeScript's own `Property 'user' is missing`; an omitted `unit` is
   `UnboundGate`'s `"UNBOUND UNIT KINDS — …"` marker rather than a required
   `unit` property, because intersecting a required `unit` with the option's
@@ -812,8 +815,8 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   (measured, both compilers). `http-module.test-d.ts` pins the optional
   served-nothing kind, the omitted kind, the omitted record off the router
   and off the fragments, `anonymous` optional on an authenticated-only router
-  and fragment set, and `anonymous` required for a public leaf and for a
-  served scheme that falls back.
+  and fragment set, `anonymous` required for a public leaf and for a served
+  scheme that falls back, and a fully shadowed mark left optional.
 
   **The two cases treat a record whose keys are NOT literal — one built by
   `Object.fromEntries`, as the runtime fixtures do — differently, because they
