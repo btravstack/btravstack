@@ -110,11 +110,13 @@ const documentApp = HttpModule("OpenApiDocument")({
 
 describe("OpenAPI routes", () => {
   it("does not expose resource paths from a document alone", async ({ boot }) => {
+    // Given an HTTP module without the OpenAPI answerer.
     const running = boot(rpcOnlyApp);
     const info = (await running.runtimeInfo()).get();
     expect(info).toBeDefined();
     const origin = `http://127.0.0.1:${info!.port}`;
 
+    // When clients request the contract's resource paths.
     const get = await fetch(`${origin}/api/items/42`);
     const post = await fetch(`${origin}/api/items`, {
       method: "POST",
@@ -122,17 +124,20 @@ describe("OpenAPI routes", () => {
       body: JSON.stringify({ name: "second" }),
     });
 
+    // Then neither path is served.
     expect([get.status, post.status]).toEqual([404, 404]);
   });
 
   it("serves conventional GET and POST requests described by the same contract", async ({
     boot,
   }) => {
+    // Given one contract mounted for RPC and OpenAPI routes.
     const running = boot(app);
     const info = (await running.runtimeInfo()).get();
     expect(info).toBeDefined();
     const origin = `http://127.0.0.1:${info!.port}`;
 
+    // When clients use both routes and generate the OpenAPI document.
     const before = await fetch(`${origin}/api/items/42`);
     const created = await fetch(`${origin}/api/items`, {
       method: "POST",
@@ -144,6 +149,7 @@ describe("OpenAPI routes", () => {
     );
     const document = (await openApiDocument(contract)).get();
 
+    // Then the routes and document describe the same operations.
     expect({
       get: [before.status, await before.json()],
       post: [created.status, await created.json()],
@@ -163,36 +169,43 @@ describe("OpenAPI routes", () => {
   });
 
   it("honors a body limit disabled on the OpenAPI answerer", async ({ boot }) => {
+    // Given an answerer with its local body limit disabled.
     const running = boot(localPolicyApp);
     const info = (await running.runtimeInfo()).get();
     expect(info).toBeDefined();
     const name = "x".repeat(1_100_000);
 
+    // When a request exceeds the module's default limit.
     const response = await fetch(`http://127.0.0.1:${info!.port}/api/items`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name }),
     });
 
+    // Then the answerer accepts the full body.
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ id: "42", name });
   });
 
   it("honors response compression enabled on the OpenAPI answerer", async ({ boot }) => {
+    // Given an answerer with local compression enabled.
     const running = boot(localPolicyApp);
     const info = (await running.runtimeInfo()).get();
     expect(info).toBeDefined();
 
+    // When the client accepts gzip for a compressible response.
     const response = await fetch(`http://127.0.0.1:${info!.port}/api/items`, {
       method: "POST",
       headers: { "content-type": "application/json", "accept-encoding": "gzip" },
       body: JSON.stringify({ name: "x".repeat(2048) }),
     });
 
+    // Then the response is compressed.
     expect([response.status, response.headers.get("content-encoding")]).toEqual([200, "gzip"]);
   });
 
   it("keeps authentication and CSRF checks on the OpenAPI wire", async ({ boot }) => {
+    // Given protected OpenAPI routes.
     const running = boot(protectedApp);
     const info = (await running.runtimeInfo()).get();
     expect(info).toBeDefined();
@@ -200,6 +213,7 @@ describe("OpenAPI routes", () => {
     const body = JSON.stringify({ name: "second" });
     const headers = { "content-type": "application/json", authorization: "Bearer good" };
 
+    // When requests omit credentials, cross sites, or meet both checks.
     const missing = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -212,6 +226,7 @@ describe("OpenAPI routes", () => {
     });
     const accepted = await fetch(url, { method: "POST", headers, body });
 
+    // Then only the authorized same-site request succeeds.
     expect([missing.status, crossSite.status, accepted.status, await accepted.json()]).toEqual([
       401,
       403,
@@ -223,13 +238,16 @@ describe("OpenAPI routes", () => {
   it("serves an explicitly mounted spec with the contract's security requirements", async ({
     boot,
   }) => {
+    // Given a spec explicitly mounted from the protected contract.
     const running = boot(documentApp);
     const info = (await running.runtimeInfo()).get();
     expect(info).toBeDefined();
 
+    // When a client requests the spec.
     const response = await fetch(`http://127.0.0.1:${info!.port}/api/spec.json`);
     const document = (await response.json()) as OpenApiDocument;
 
+    // Then the document carries the contract's security requirements.
     expect({
       status: response.status,
       security: document.paths?.["/items"]?.post?.security,
