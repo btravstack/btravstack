@@ -210,9 +210,11 @@ Entity uses the illustrated identity-card mark in `public/entity/logo*.svg`.
 Its preview is rendered from `branding/social-card.html?project=entity`,
 which displays the integrated `/btravstack/entity` documentation address.
 
-The standalone `entity` and `di` guides share this deployment. DI's landing
-page, tutorial and existing reference pages use one sidebar, while the
-framework homepage links to both independent libraries in a compact section.
+The standalone `entity` and `di` guides share this deployment. DI's home
+layout links to the tutorial, reference, API and example; VitePress does not
+render a sidebar on home layouts. The tutorial and existing reference pages use
+one DI sidebar, while the framework homepage links to both independent libraries
+in a compact section.
 DI guide, reference and API pages use `public/di/og-di.png`, rendered from
 `branding/social-card.html?project=di`. Its local syringe mascot is
 `public/di/logo-dark.svg`, with a light variant in `public/di/logo-light.svg`.
