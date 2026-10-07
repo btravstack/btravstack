@@ -105,7 +105,10 @@ and the content length, so the URL grants exactly one write, of exactly that
 size, of exactly that type — a client sending anything else is refused by the
 store. `contentLength` is required for that reason: it is the only ceiling a
 presigned PUT can express, and an optional one would hand out an unbounded
-write. The application still decides who may write what and for how long; the
+write. The S3 adapter names `content-type` in the signature explicitly,
+because the AWS presigner leaves it unsigned by default even when the command
+sets it — an adapter of your own over that SDK must do the same, or the type
+is advisory. The application still decides who may write what and for how long; the
 adapter only computes the signature over that decision. See
 [Upload a file](/how-to/upload-a-file).
 
