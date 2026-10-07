@@ -362,7 +362,39 @@ test("a terminal name the aggregate does not fold is refused while the declarati
       ends: ["CartCheckdOut"],
     });
   // THEN it throws, naming the name
-  expect(declaring).toThrow(/Typo: "CartCheckdOut" in ends is not an event this aggregate folds/u);
+  expect(declaring).toThrow(
+    /Typo: "CartCheckdOut" in ends is not a declared event this aggregate folds/u,
+  );
+});
+
+test("a terminal name the union lacks is refused even with a handler for it", () => {
+  // GIVEN an untyped declaration with a stray handler matching its misspelled end
+  const declare = Entity.aggregate("Stray")({ id: Entity.field(CartId, { identity: true }) }) as (
+    options: object,
+  ) => unknown;
+  // WHEN it is declared
+  const declaring = () =>
+    declare({
+      events: CartEvent,
+      opens: { CartOpened: (e: { cartId: string }) => ({ id: e.cartId }) },
+      evolve: {
+        ItemAdded: (r: object) => r,
+        CartCheckedOut: (r: object) => r,
+        CartCheckdOut: (r: object) => r,
+      },
+      ends: ["CartCheckdOut"],
+    });
+  // THEN the union, not the handler map, decides
+  expect(declaring).toThrow(/Stray: "CartCheckdOut" in ends is not a declared event/u);
+});
+
+test("a decided event is frozen, so its type cannot drift from isTerminal", () => {
+  // GIVEN an open document
+  const doc = openedDoc().state;
+  // WHEN it decides an event
+  const events = doc.emit({ type: "Touched" }).map((d) => d.events);
+  // THEN every event it carries is frozen
+  expect(events.map((all) => all.every((e) => Object.isFrozen(e)))).toBeOkWith(true);
 });
 
 test("an opening event whose discriminator is defaulted can be started without it", () => {

@@ -194,6 +194,23 @@ test("toJSON omits an explicitly undefined key inside an object zod already froz
   ).toBeOkWith({ keys: [[], [], []], frozen: true });
 });
 
+test("an explicitly undefined key inside an object a transform sealed is omitted", () => {
+  // GIVEN a field whose transform hands back a sealed object
+  class Sealed extends Entity("Sealed")({
+    id: OrderId,
+    meta: z
+      .object({ label: Label.optional() })
+      .transform((o) => Object.seal({ label: o.label }))
+      .brand("SealedMeta"),
+  }) {}
+  // WHEN a row with an explicit undefined inside it is inspected, a single walk
+  const keys = Sealed.inspect({ id: oid, meta: { label: undefined } }).map(({ data }) =>
+    Object.keys(data.meta),
+  );
+  // THEN the sealed key is gone from the data
+  expect(keys).toBeOkWith([]);
+});
+
 test("invariants see the canonical form that is stored", () => {
   // GIVEN a rule that observes whether a nested key is present
   class Tagged extends Entity("Tagged")(

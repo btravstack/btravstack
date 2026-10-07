@@ -198,8 +198,8 @@ const freezeInto = (value: object, schema: Schema | undefined, seen: Seen): obje
     [...kept].every(([key, property]) => source[key] === property);
   if (unchanged) return Object.freeze(value);
 
-  // `.readonly()` hands over an object zod already froze: canonicalise a copy
-  if (Object.isFrozen(value)) {
+  // an object zod already froze (`.readonly()`) or a transform sealed cannot drop a key: canonicalise a copy
+  if (!Object.isExtensible(value)) {
     const copy = array ? [...kept.values()] : Object.fromEntries(kept);
     seen.set(value, copy);
     return Object.freeze(copy);

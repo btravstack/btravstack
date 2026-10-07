@@ -5,6 +5,7 @@ import type { z } from "zod";
 import type { ComputedField } from "./computed.js";
 import { InvalidEntity } from "./errors.js";
 import { isFieldSpec } from "./field.js";
+import { deepFreeze } from "./freeze.js";
 import type { Invariant } from "./invariant.js";
 import { keysOf, renderIssue } from "./issues.js";
 import type { OnlyNominal } from "./shape.js";
@@ -110,16 +111,24 @@ export const createAggregate =
       );
     }
     const { events, opens, evolve, ends = [], ...entityOptions } = options;
-    // A terminal event is one `evolve` folds: not an opener, and not a name
-    // the union lacks, which would leave `isTerminal` silently false.
+    // A terminal event is one `evolve` folds and the union declares: not an
+    // opener, and not a name it lacks, which would leave `isTerminal`
+    // silently false. A discriminated union's `options` are checked directly.
+    const { options: members } = events as { readonly options?: unknown };
+    const declares = (type: string) =>
+      !Array.isArray(members) ||
+      members.some(
+        (m: { readonly shape?: { readonly type?: z.ZodType } }) =>
+          m.shape?.type?.safeParse(type).success === true,
+      );
     for (const type of ends) {
       if (Object.hasOwn(opens, type)) {
         // oxlint-disable-next-line unthrown/no-throw
         throw new Error(`${tag}: "${type}" opens the aggregate, so it cannot end it.`);
       }
-      if (!Object.hasOwn(evolve, type)) {
+      if (!Object.hasOwn(evolve, type) || !declares(type)) {
         // oxlint-disable-next-line unthrown/no-throw
-        throw new Error(`${tag}: "${type}" in ends is not an event this aggregate folds.`);
+        throw new Error(`${tag}: "${type}" in ends is not a declared event this aggregate folds.`);
       }
     }
     const Base = buildEntity(tag)(fields as Fields, entityOptions) as Record<string, unknown> & {
@@ -186,7 +195,13 @@ export const createAggregate =
 
     /** Events from domain code: a schema failure is a bug in the command, so a defect. */
     const parseDecided = (raw: readonly unknown[]) =>
-      all(raw.map((e) => parseEvent(e) as Result<Event, SchemaIssues>)).mapErrCases((m, defect) =>
+      all(
+        raw.map((e) =>
+          (parseEvent(e) as Result<Event, SchemaIssues>).map((ev) =>
+            deepFreeze(ev, undefined, events),
+          ),
+        ),
+      ).mapErrCases((m, defect) =>
         // SchemaIssues is `readonly Issue[]` — a single non-union type, nothing to enumerate
         // oxlint-disable-next-line unthrown/no-catch-all-pattern
         m.with(P._, (issues) =>
