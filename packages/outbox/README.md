@@ -52,6 +52,7 @@ const publisher = Provider(OutboxPublisher)({
   sync: ({ broker }) => ({
     publish: (message) =>
       broker.send(`${message.kind}.changed`, {
+        eventId: message.id,
         tenantId: message.tenantId,
         id: message.subjectId,
         payload: message.payload === null ? null : JSON.parse(message.payload),
@@ -84,9 +85,11 @@ which is this list's one detailed home.
 
 **It decides** that delivery is at-least-once, that one relay publishes a
 tenant at a time — so N replicas never publish one row twice at once, and a
-tenant's facts keep their order — that a refused publish stops its tenant's
-batch and backs off, and that a tenant falling behind is unhealthy on
-`/healthz`.
+tenant's committed facts go out in outbox order (which is not commit order:
+the reference page says what that means for a subject) — that a refused
+publish stops its tenant's batch and backs that tenant off, and that a tenant
+falling behind is unhealthy on `/healthz`. A subscriber deduplicates on the
+outbox id, which the publisher puts on the wire.
 
 **It does not decide** what a publish is, which transport it rides or how the
 payload is encoded — that is your `OutboxPublisher` — nor the transaction that

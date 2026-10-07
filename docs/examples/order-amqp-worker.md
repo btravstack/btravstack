@@ -211,6 +211,7 @@ export const orderPublisher = Provider(OutboxPublisher)({
         )
         .flatMap((payload) =>
           client.publish("orderChanged", {
+            eventId: message.id,
             tenantId: message.tenantId,
             kind: message.kind as "order",
             id: message.subjectId,
@@ -235,8 +236,12 @@ The relay is **at-least-once**: a crash between a publish and its mark
 re-publishes on the next claim. What it rules out is the other source of
 repeats — two replicas sweeping one table each publishing the same row. A
 tenant is claimed by one relay at a time, under a transaction-scoped advisory
-lock, and skipped by the rest, which also keeps a tenant's facts in commit
-order across replicas.
+lock, and skipped by the rest, so a tenant's committed facts go out in outbox
+order. Outbox order is not commit order, so a subject's order rests on its own
+row: `save` writes the outbox row after the insert and `remove` after the
+delete, and a second write about one order cannot take its id until the first
+has committed. A subscriber deduplicates a re-delivery on `eventId`, the outbox
+row's id.
 
 `OUTBOX_TENANTS` has **no default**, deliberately: the relay runs outside any
 unit, so there is no tenant to read off anything, and "whatever is in the

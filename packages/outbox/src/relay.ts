@@ -156,14 +156,15 @@ const startRelay = (
  *
  * **At-least-once, and never twice at once.** A crash between a publish and
  * its mark re-publishes on the next claim, so a subscriber must tolerate a
- * repeat. What the claim rules out is the other source of repeats: N replicas
- * sweeping one table each publishing the same row. A tenant is claimed by one
- * relay at a time and skipped by the rest, which also keeps a tenant's facts in
- * order across replicas.
+ * repeat, keyed by the outbox id. What the claim rules out is the other source
+ * of repeats: N replicas sweeping one table each publishing the same row. A
+ * tenant is claimed by one relay at a time and skipped by the rest, so its
+ * committed facts go out in outbox order — which is not commit order: an id
+ * still in an open transaction surfaces after a higher one that committed.
  *
- * **A refused publish stops the tenant's batch** and backs off, doubling from
- * the poll interval to 30 seconds, so a later fact never overtakes an earlier
- * one. A message the publisher refuses forever therefore holds its tenant's
+ * **A refused publish stops the tenant's batch** and backs that tenant off,
+ * doubling from the poll interval to 30 seconds, so a later fact never
+ * overtakes an earlier one and no other tenant waits. A message the publisher refuses forever therefore holds its tenant's
  * outbox — which is what the health check is for: it reports a tenant whose
  * oldest pending message is older than `maxLagMs`.
  *

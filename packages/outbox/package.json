@@ -1,7 +1,7 @@
 {
   "name": "@btravstack/outbox",
-  "version": "0.16.0",
-  "description": "The transactional outbox relay for @btravstack/core: a poll loop that publishes committed facts in order, a per-tenant claim so replicas never publish the same row twice, and a Prisma 8 store",
+  "version": "0.17.0",
+  "description": "The transactional outbox relay for @btravstack/core: a poll loop that publishes committed facts in outbox order, a per-tenant claim so replicas never publish the same row twice, and a Prisma 8 store",
   "keywords": [
     "dependency-injection",
     "outbox",

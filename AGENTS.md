@@ -317,9 +317,15 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    first refusal, back off) and the **claim**, a transaction-scoped advisory
    lock per tenant. That claim is the guarantee worth stating: delivery is
    at-least-once (a crash between a publish and its mark re-publishes), but
-   **N replicas never publish one row at once**, and a tenant's facts keep
-   their order across replicas, because one relay holds a tenant at a time
-   and the rest skip it. The write stays the adapter's, by the rule above,
+   **N replicas never publish one row at once**, because one relay holds a
+   tenant at a time and the rest skip it — so no relay reorders what the
+   others can see. What it cannot order is what nobody can see yet: outbox
+   ids are allocated before commit, so two write transactions in flight
+   together can surface out of id order, and the later-numbered fact goes out
+   first. Per-subject order therefore rests on the subject's own row
+   serialising its writers, with the outbox row written after the statement
+   that takes that row — which is how the example's `save` and `remove` are
+   spelled. The write stays the adapter's, by the rule above,
    and what publishing means stays the application's, as an
    `OutboxPublisher` it provides. The claim does hold one interactive
    transaction across a batch's publishes — one per relay and bounded by the

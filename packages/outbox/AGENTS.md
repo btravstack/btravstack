@@ -48,8 +48,45 @@ both promises at once:
    ships. `pg_try_advisory_xact_lock(hashtext(table), hashtext(tenant))`: a
    relay that does not get it skips the tenant rather than waiting, and the
    lock dies with the transaction, so a crashed relay frees it with its
-   connection. One tenant is published by one relay at a time, which is both
-   "never twice at once" and "in order", and throughput scales across tenants.
+   connection. One tenant is published by one relay at a time, so no two
+   batches of one tenant are ever in flight together, and throughput scales
+   across tenants.
+
+## What the claim orders, and what it cannot
+
+**The claim orders what is visible; it cannot order what has not committed.**
+An outbox id is allocated when the row is inserted, not when its transaction
+commits, so transaction A can hold id 1 open while B commits id 2 — and the
+relay, seeing only id 2, publishes it first (`prisma-outbox.spec.ts`, "publishes
+what has committed, so a lower id still in flight goes out after a higher one",
+pins exactly that). The guarantee is therefore: a tenant's committed facts go
+out in outbox order, one relay at a time — never outbox order as a promise of
+commit order.
+
+**Per-subject order rests on the subject's own row**, and that is where it
+belongs: two writes about one subject conflict on that subject's business
+row, so the second cannot take its outbox id until the first has committed,
+provided the outbox row is written AFTER the statement that takes the row.
+`prismaOrderRepository` is spelled that way — `create` then the outbox row;
+`delete` then the tombstone, which cannot even see a create that has not
+committed. A write that inserts its outbox row first gives this up.
+
+**Coordinating writers with the relay was measured against this and
+declined.** The shape: every writer takes `pg_advisory_xact_lock_shared` on the
+relay's (table, tenant) key, and the relay takes the exclusive key briefly to
+read a watermark below which nothing is in flight. A blocking barrier queues
+every new writer of the tenant behind the oldest in-flight write, so one
+transaction left idle turns into a tenant-wide write outage; a non-blocking
+one never fires for a tenant written continuously, and the relay starves. And
+every writer of the table must remember the lock — one that forgets silently
+reopens the gap — which is a burden on the very transaction thesis #2 leaves
+to the adapter. Per-subject order through the business row costs nothing and
+cannot be forgotten by a writer that writes the row.
+
+**A subscriber deduplicates on the outbox id**, which the publisher must put
+on the wire — `examples/order-amqp-worker` sends it as `eventId`. Neither the
+subject (many facts per subject) nor `occurredAt` (every fact one transaction
+writes shares one `now()`) names a single fact.
 
 The two-key form namespaces by table, so two outbox tables never contend and
 a lock some other code takes on a single bigint never collides. A `hashtext`
@@ -77,9 +114,16 @@ same spec published them 132 times.
   is what the health check exists to surface: `outbox` reports unhealthy,
   naming the tenant, once its oldest pending message is older than
   `maxLagMs`.
-- **Back-off doubles from the poll interval to 30 s** after any failed sweep,
-  and resets on a clean one. A full batch sweeps again at once, so a backlog
-  drains at the publisher's speed rather than 32 per poll.
+- **Each tenant keeps its own clock.** After a failed sweep its back-off
+  doubles from the poll interval to 30 s and resets on a clean one; after a
+  full batch it is due again at once, so a backlog drains at the publisher's
+  speed rather than 32 per poll; when idle it waits `pollMs`. One counter for
+  the whole sweep was the first shape, and it let one tenant's poison message
+  hold every other tenant to its back-off.
+- **The health check is one round trip** — `OutboxStore.oldestPending` over
+  every tenant at once. A read per tenant per `/healthz` queues the pool behind
+  the probe that is meant to report it, and outlives the kernel's health
+  deadline with queries nothing can cancel.
 - **The sleep is the kernel's `Clock`**, aborted by the relay's own stop
   signal, so `release` returns as soon as the in-flight batch has, an idle
   relay pins nothing (`systemClock`'s timer is unref'ed), and a spec drives the
@@ -104,9 +148,9 @@ them is also how relays are sharded. A single-tenant application names one.
 ## Deliberately not here
 
 - **Exactly-once.** A crash between a publish and its mark re-publishes; a
-  subscriber dedupes on the subject and `occurredAt`. No outbox can do better
-  without the broker joining the database's transaction.
-- **A second store adapter.** `OutboxStore` is two methods, and the reasons
+  subscriber dedupes on the outbox id. No outbox can do better without the
+  broker joining the database's transaction.
+- **A second store adapter.** `OutboxStore` is three methods, and the reasons
   `@btravstack/prisma` is the only persistence starter (root **Persistence**)
   hold here too.
 - **Retention.** Published rows stay. Deleting them is an operational choice —

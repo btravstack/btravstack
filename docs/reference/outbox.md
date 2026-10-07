@@ -34,16 +34,16 @@ class Broker extends Port("ReferenceBroker")<{
 The transactional outbox has two halves. **The write is yours**: the business
 row and its outbox row commit in one transaction, spelled by your adapter at
 the call — the framework never opens a transaction around a unit. **The relay
-is this package's**: reading what is pending, publishing it in order, marking
+is this package's**: reading what is pending, publishing it in outbox order, marking
 it published, backing off, and making sure two replicas never publish the same
 row at once.
 
 Between the two sit the two ports the relay needs and cannot provide itself:
 
-| Port              | What it answers                                                             | Who provides it                                               |
-| ----------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `OutboxStore`     | `pending(tenantId, limit)` and `claim(tenantId, limit, relay)`              | `prismaOutboxStore`, `memoryOutboxStore`, or your own adapter |
-| `OutboxPublisher` | `publish(message)` → `AsyncResult<void, PublishRefused>` — any tagged error | you: the transport, the contract and the payload's decoding   |
+| Port              | What it answers                                                                            | Who provides it                                               |
+| ----------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| `OutboxStore`     | `pending(tenantId, limit)`, `oldestPending(tenantIds)` and `claim(tenantId, limit, relay)` | `prismaOutboxStore`, `memoryOutboxStore`, or your own adapter |
+| `OutboxPublisher` | `publish(message)` → `AsyncResult<void, PublishRefused>` — any tagged error                | you: the transport, the contract and the payload's decoding   |
 
 ```ts
 export const store = Provider(OutboxStore)({
@@ -56,6 +56,8 @@ export const publisher = Provider(OutboxPublisher)({
   sync: ({ broker }) => ({
     publish: (message) =>
       broker.send(`${message.kind}.changed`, {
+        // The key a subscriber deduplicates a re-delivery on.
+        eventId: message.id,
         tenantId: message.tenantId,
         id: message.subjectId,
         occurredAt: message.occurredAt.toISOString(),
@@ -119,11 +121,12 @@ pending messages:
 - **They are published in outbox order, and a refusal stops the batch.** An
   `Err` from `publish` — or a defect — leaves that message and everything after
   it pending, because publishing the rest would let a later fact about a
-  subject overtake the one still waiting. Other tenants are unaffected.
-- **A failed sweep backs off**, doubling from `pollMs` up to 30 seconds, and a
-  clean one resets it.
-- **A full batch sweeps again at once**, so a backlog drains at the
-  publisher's speed rather than 32 messages per poll.
+  subject overtake the one still waiting.
+- **Each tenant keeps its own schedule.** A failed sweep backs that tenant off,
+  doubling from `pollMs` up to 30 seconds, and a clean one resets it; a full
+  batch makes it due again at once, so a backlog drains at the publisher's
+  speed rather than 32 messages per poll. One tenant's refused message slows
+  no other tenant.
 - **The sleep is the `clock`'s, aborted on stop**, so `release` returns as soon
   as the batch in flight has, an idle relay never holds the process open, and
   a test drives the loop with `createFakeClock`:
@@ -152,7 +155,10 @@ export const swept = Module.scoped(Tested, () =>
 
 **Delivery is at-least-once.** A relay that crashes between a publish and the
 commit of its mark publishes that message again on the next claim, so a
-subscriber must tolerate a repeat — keyed by `subjectId` and `occurredAt`.
+subscriber must tolerate a repeat. **Put the message's `id` on the wire and
+deduplicate on it**: it is the one value that names a single fact. `subjectId`
+names a subject with many facts, and `occurredAt` is shared by every fact one
+transaction writes at one `now()`.
 
 **What the claim rules out is the other source of repeats: replicas.** One
 relay holds a tenant at a time, and every other relay that reaches the tenant
@@ -160,9 +166,18 @@ meanwhile **skips it** rather than waiting. So:
 
 - N replicas sweeping one table **never publish one row at once** — the
   duplicate rate does not grow with the replica count;
-- a tenant's facts keep their **order** across replicas, since no two batches
-  of one tenant are ever in flight together;
+- no two batches of one tenant are ever in flight together, so a tenant's
+  committed facts go out in outbox order;
 - throughput scales across tenants, not within one.
+
+**Outbox order is not commit order.** An id is allocated when the row is
+inserted, so a transaction can hold id 1 open while another commits id 2; the
+relay sees only id 2, and publishes it first. No claim can order a row nobody
+can see yet. Per-subject order holds where the subject's writes conflict on
+the subject's own row and the outbox row is written **after** the statement
+that takes it — the second writer cannot take its outbox id until the first
+has committed. Write a create's outbox row after the insert, and a tombstone
+after the delete; that is how the example's repository is spelled.
 
 `claim(tenantId, limit, relay)` is that contract, and it is what an adapter of
 your own must keep: claim the tenant or skip it, hand the batch to `relay`,
@@ -241,8 +256,10 @@ instance behave as two replicas over one table do.
 ## The health check
 
 `outbox()` contributes one member to `HealthChecks`, named `outbox`: it reads
-each tenant's oldest pending message and reports **unhealthy, naming every
-tenant that is behind**, once that message is older than `maxLagMs`. It
+every tenant's oldest pending time in **one** `oldestPending` round trip —
+never a query per tenant, which would queue the pool behind the probe — and
+reports **unhealthy, naming every tenant that is behind**, once that time is
+older than `maxLagMs`. It
 reports lag rather than reachability because the failure an operator needs to
 see is a publisher refusing one message forever — the store answers, the
 table is fine, and one tenant's outbox has stopped moving. Like every health

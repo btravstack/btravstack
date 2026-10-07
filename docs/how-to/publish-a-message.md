@@ -104,6 +104,7 @@ const publisher = Provider(OutboxPublisher)({
         )
         .flatMap((payload) =>
           client.publish("orderChanged", {
+            eventId: message.id,
             tenantId: message.tenantId,
             kind: message.kind as "order",
             id: message.subjectId,
@@ -140,7 +141,11 @@ every attempt therefore blocks its tenant, and the `outbox` component of
 answers `Ok` for a row it decides to park, and the relay marks it.
 
 **Order is per tenant, and then only as far as one queue and one consumer.**
-The claim keeps a tenant's facts in commit order across replicas. AMQP orders
+The claim publishes a tenant's committed facts in outbox order, one relay at a
+time. Outbox order is not commit order — an id still in an open transaction
+surfaces after a higher one that committed — so a subject's order rests on its
+writes conflicting on its own row, with the outbox row written after the
+statement that takes it. AMQP orders
 messages within a queue, so what a subscriber sees in order is what arrived on
 **its** queue and was consumed sequentially — a prefetch above one with
 concurrent handlers gives that up, and so does a second queue. Using one
