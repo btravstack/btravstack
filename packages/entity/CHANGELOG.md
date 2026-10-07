@@ -1,5 +1,20 @@
 # @btravstack/entity
 
+## 0.19.0
+
+### Minor Changes
+
+- a037ea6: **Aggregate events: input-typed commands, terminal events and a canonical `toJSON()`.**
+
+  - `emit` and `start` take each event's `z.input`, since both already parse it: an event can carry a nested part through the part's own `input` schema and still be built from plain values. The decision's `events` stay the union's output.
+  - `Entity.aggregate`'s new `ends: [...]` option declares the terminal events. `Decision.isTerminal` is `true` once one is decided, so a repository can stop loading the aggregate (keeping its version as a tombstone) without matching a `type` string. `emit` with an event after a terminal one does not compile, emitting on an ended state is a defect, and `replay` refuses a stream that continues past a terminal event with an `InvalidEntity` at that index.
+  - `toJSON()` omits an unset optional field at every depth (top level, plain objects, nested entities, entities in arrays) instead of carrying it as `undefined`, whatever built the state, so diffing two projections is supported. **Observable change:** `Object.keys(toJSON())` and `Object.keys(entity)` no longer list unset optional fields; the field still reads `undefined` and still cannot be assigned.
+
+### Patch Changes
+
+- 479293f: Show brands imported from one shared vocabulary in the README, and lead its aggregate section with an entity root whose commands return optional events; `Entity.aggregate` is presented as the event-driven option.
+- 4244b60: Align the affected starters' Node floors with their required dependencies and publish Temporal as ESM only. Bound cleanup after failed construction, preserve canonical entity projections and source compatibility with TypeScript 5.9, and document Prisma's first-use pool requirement.
+
 ## 0.18.0
 
 ### Patch Changes

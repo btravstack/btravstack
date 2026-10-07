@@ -1,5 +1,18 @@
 # @btravstack/mailer
 
+## 0.19.0
+
+### Patch Changes
+
+- Updated dependencies [8e0461b]
+- Updated dependencies [a525ecb]
+- Updated dependencies [fb06cd9]
+- Updated dependencies [a3ce035]
+- Updated dependencies [4244b60]
+  - @btravstack/core@0.19.0
+  - @btravstack/di@0.19.0
+  - @btravstack/config@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes

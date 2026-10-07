@@ -1,5 +1,15 @@
 # @btravstack/config
 
+## 0.19.0
+
+### Patch Changes
+
+- a525ecb: `Context.get` now reads back a service registered as `undefined` instead of reporting the port as missing. An ordinary `Provider(...)` on a set port no longer compiles; it used to type-check against the whole array and land it as one nested member. Contribute through `Provider.member`, as the refusal's marker says. `Config.provider(SetPort)(schema)` is refused the same way, through the newly exported `SetPortGate`.
+- Updated dependencies [a525ecb]
+- Updated dependencies [fb06cd9]
+- Updated dependencies [4244b60]
+  - @btravstack/di@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes

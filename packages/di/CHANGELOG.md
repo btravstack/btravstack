@@ -1,5 +1,13 @@
 # @btravstack/di
 
+## 0.19.0
+
+### Patch Changes
+
+- a525ecb: `Context.get` now reads back a service registered as `undefined` instead of reporting the port as missing. An ordinary `Provider(...)` on a set port no longer compiles; it used to type-check against the whole array and land it as one nested member. Contribute through `Provider.member`, as the refusal's marker says. `Config.provider(SetPort)(schema)` is refused the same way, through the newly exported `SetPortGate`.
+- fb06cd9: Point the published DI README to its independent guide and getting-started tutorial.
+- 4244b60: Align the affected starters' Node floors with their required dependencies and publish Temporal as ESM only. Bound cleanup after failed construction, preserve canonical entity projections and source compatibility with TypeScript 5.9, and document Prisma's first-use pool requirement.
+
 ## 0.18.0
 
 No changes in this release.

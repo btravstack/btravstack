@@ -1,5 +1,19 @@
 # @btravstack/storage
 
+## 0.19.0
+
+### Patch Changes
+
+- 76448b0: `presignedUpload` on the S3 adapter now signs the content type. The AWS presigner leaves `content-type` unsigned by default even when the command sets it, so a URL minted for one type accepted a same-length write under any other; it is now named in `signableHeaders`, and the store refuses the mismatch with `403`.
+- Updated dependencies [8e0461b]
+- Updated dependencies [a525ecb]
+- Updated dependencies [fb06cd9]
+- Updated dependencies [a3ce035]
+- Updated dependencies [4244b60]
+  - @btravstack/core@0.19.0
+  - @btravstack/di@0.19.0
+  - @btravstack/config@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes
