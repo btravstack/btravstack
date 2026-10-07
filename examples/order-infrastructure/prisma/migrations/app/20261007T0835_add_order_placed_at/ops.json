@@ -32,5 +32,37 @@
         "params": ["orders", "order", "placedAt"]
       }
     ]
+  },
+  {
+    "id": "backfill.order.placedAt",
+    "label": "Backfill \"order\".\"placedAt\" from each order's latest surviving placement outbox row; orders with none keep the migration time",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "orders",
+        "objectType": "column",
+        "name": "placedAt",
+        "table": "order"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure \"order\".\"placedAt\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 FROM \"information_schema\".\"columns\" WHERE \"table_schema\" = 'orders' AND \"table_name\" = 'order' AND \"column_name\" = 'placedAt') AS \"result\""
+      }
+    ],
+    "execute": [
+      {
+        "description": "copy each order's latest placement time out of the outbox",
+        "sql": "UPDATE \"orders\".\"order\" AS o SET \"placedAt\" = placed.\"occurredAt\" FROM (SELECT \"tenantId\", \"subjectId\", max(\"occurredAt\") AS \"occurredAt\" FROM \"orders\".\"outboxMessage\" WHERE \"kind\" = 'order' AND \"payload\" IS NOT NULL GROUP BY \"tenantId\", \"subjectId\") AS placed WHERE placed.\"tenantId\" = o.\"tenantId\" AND placed.\"subjectId\" = o.\"orderId\""
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify no order with a surviving placement row kept the migration time",
+        "sql": "SELECT NOT EXISTS (SELECT 1 FROM \"orders\".\"order\" AS o JOIN (SELECT \"tenantId\", \"subjectId\", max(\"occurredAt\") AS \"occurredAt\" FROM \"orders\".\"outboxMessage\" WHERE \"kind\" = 'order' AND \"payload\" IS NOT NULL GROUP BY \"tenantId\", \"subjectId\") AS placed ON placed.\"tenantId\" = o.\"tenantId\" AND placed.\"subjectId\" = o.\"orderId\" WHERE o.\"placedAt\" <> placed.\"occurredAt\") AS \"result\""
+      }
+    ]
   }
 ]
