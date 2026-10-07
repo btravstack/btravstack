@@ -1,5 +1,13 @@
 # @btravstack/core
 
+## 0.20.0
+
+### Patch Changes
+
+- 94d088d: Stop the application when a runtime's `Serving.stopped` channel defects, instead of leaving it ready after the runtime has failed.
+- @btravstack/config@0.20.0
+  - @btravstack/di@0.20.0
+
 ## 0.19.0
 
 ### Minor Changes

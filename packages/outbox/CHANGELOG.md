@@ -1,5 +1,15 @@
 # @btravstack/outbox
 
+## 0.20.0
+
+### Patch Changes
+
+- a59b346: Run each configured tenant's relay loop independently so a pending claim or publish for one tenant does not block another tenant's due messages. Keep publication serial within each tenant and wait for in-flight work on stop.
+- Updated dependencies [94d088d]
+  - @btravstack/core@0.20.0
+  - @btravstack/config@0.20.0
+  - @btravstack/di@0.20.0
+
 ## 0.19.0
 
 ### Minor Changes
