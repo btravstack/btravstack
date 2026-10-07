@@ -153,19 +153,23 @@ the old repository.
 ## Visual identity
 
 The framework uses the shared theme's beet-pink accent in
-`.vitepress/theme/custom.css`, with `public/logo.png` in the navigation,
-homepage and favicon. The decorative stack in `.vitepress/theme/hero-glyph.svg`
-is a CSS mask tinted by the same accent; it is hidden on narrow screens and
-does not intercept input.
+`.vitepress/theme/custom.css`. Navigation and homepage choose
+`public/logo-light.svg` or `public/logo-dark.svg` for the surface; the favicon
+is `public/favicon.svg`. The illustrated framework mascot is a
+smiling beetroot atop three teal layers. The SVGs are native vector paths;
+`public/logo.png` preserves the approved raster illustration unchanged as a
+fallback for existing links. The decorative stack in
+`.vitepress/theme/hero-glyph.svg` remains a CSS mask tinted by the theme accent.
 
-`public/og-btravstack.png` is the social preview, linked by absolute URLs in
-the Open Graph and Twitter metadata. Its editable source is
-`branding/social-card.html`: open it locally with dependencies installed,
-wait for the Geist and JetBrains Mono fonts and logo to load, then capture
-the viewport at **1200 × 630 CSS pixels with device scale factor 1**. Allow
-local-file access when rendering the SVG mask. Keep the image dimensions and
-alt text in `.vitepress/config.ts` consistent with the exported card. The
-source is a standalone design asset, not a documentation route.
-Entity guide and API pages use `public/entity/og-entity-btravstack.png` at 1280 × 640;
+`public/og-btravstack.png` is the 1200 × 630 social preview, linked by absolute
+URLs in Open Graph and Twitter metadata. Its local editable source is
+`branding/social-card.html`; wait for its fonts and images to load and capture
+at device scale factor 1. Logo provenance is in `branding/README.md`.
+
+Entity guide and API pages use `public/entity/og-entity-btravstack.png` at 1200 × 630;
 `transformPageData` selects one image per page so the framework card does not
 compete with the entity card in social metadata.
+
+Entity uses the illustrated identity-card mark in `public/entity/logo*.svg`.
+Its preview is rendered from `branding/social-card.html?project=entity`,
+which displays the integrated `/btravstack/entity` documentation address.

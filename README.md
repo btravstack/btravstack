@@ -22,7 +22,10 @@ declare const OrderPersistenceModule: Module<never, never, never>;
 
 <div align="center">
 
-<img src="docs/public/logo.png" alt="btravstack" width="128" height="128" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/public/logo-dark.svg" />
+  <img src="docs/public/logo-light.svg" alt="btravstack framework" width="128" height="128" />
+</picture>
 
 # btravstack
 

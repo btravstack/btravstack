@@ -350,13 +350,13 @@ export default defineConfig({
       pageData.relativePath.startsWith("api/entity/");
     const image = `${SITE_URL}${isEntity ? "entity/og-entity-btravstack.png" : "og-btravstack.png"}`;
     const imageAlt = isEntity
-      ? "entity — a domain-entity builder for TypeScript, with the beetroot glyph."
-      : "btravstack — A backend framework for Node.js and TypeScript, with the beetroot mascot on three teal layers.";
+      ? "entity — Your domain, declared once. Validated at the boundary. Identity card with a smiling beetroot portrait."
+      : "btravstack — Your application, composed. Your process, taken care of. Smiling beetroot mascot on three teal layers.";
     pageData.frontmatter.head.push(
       ["meta", { property: "og:image", content: image }],
       ["meta", { property: "og:image:type", content: "image/png" }],
-      ["meta", { property: "og:image:width", content: isEntity ? "1280" : "1200" }],
-      ["meta", { property: "og:image:height", content: isEntity ? "640" : "630" }],
+      ["meta", { property: "og:image:width", content: "1200" }],
+      ["meta", { property: "og:image:height", content: "630" }],
       ["meta", { property: "og:image:alt", content: imageAlt }],
       ["meta", { name: "twitter:card", content: "summary_large_image" }],
       ["meta", { name: "twitter:image", content: image }],
@@ -365,7 +365,7 @@ export default defineConfig({
   },
 
   themeConfig: {
-    logo: { src: "/logo.png", alt: "" },
+    logo: { light: "/logo-light.svg", dark: "/logo-dark.svg", alt: "" },
     nav: [
       // The guide is organised by the four Diátaxis modes; the dropdown links
       // the entry page of each. See the sidebar for the full contents.
@@ -463,7 +463,7 @@ export default defineConfig({
   },
 
   head: [
-    ["link", { rel: "icon", type: "image/png", href: `${BASE}logo.png` }],
+    ["link", { rel: "icon", type: "image/svg+xml", href: `${BASE}favicon.svg` }],
     ["meta", { name: "author", content: "Benoit TRAVERS" }],
     ["meta", { name: "application-name", content: "btravstack" }],
     [
