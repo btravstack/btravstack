@@ -5,6 +5,7 @@ description: Mint a route with api.HtmxGet or api.HtmxPost, compose it with api.
 
 <!-- doctest: prelude
 import { api } from "../../auth.js";
+import { RequestModule, UserModule } from "../../request-scope.js";
 -->
 
 # Serve htmx fragments
@@ -154,17 +155,21 @@ unmarked route whose path could also match its requests.
 import { HttpModule } from "@btravstack/http-server";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { OrderApplicationModule } from "@btravstack/example-order-application";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
-import { Logger } from "@btravstack/core";
+import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { Logger, Meter, Tracer } from "@btravstack/core";
 import { observability } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 
 export const OrderFragmentsApi = HttpModule("OrderFragmentsApi")({
   fragments: orderFragments,
   // The login ROUTE a refused caller is sent to — see "Behind a scheme" below.
   fragmentsLogin: "/auth/login",
+  // The route requires `user`, so the request scope that kind forks is bound
+  // here — the module that turns the caller's principal into a tenant.
+  unit: { anonymous: RequestModule, user: UserModule },
   provides: [orderRowFragment, sessionCodec()],
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
-  exports: [Logger],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability(), otel()],
+  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 

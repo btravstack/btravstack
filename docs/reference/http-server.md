@@ -167,8 +167,11 @@ import { HttpModule } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { sessionCodec } from "@btravstack/http-server/session";
+import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { oidc } from "@btravstack/http-server/oidc";
+import { principal } from "../../auth.js";
 import { orderRouter, orderFragments } from "../../module.js";
-import { RequestModule } from "../../request-scope.js";
+import { RequestModule, ServiceModule, SessionModule, UserModule } from "../../request-scope.js";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";
 -->
@@ -177,16 +180,23 @@ import { OrdersSlice } from "../../slices/orders/module.js";
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
   fragments: orderFragments,
-  unit: { anonymous: RequestModule },
+  fragmentsLogin: "/auth/login",
+  unit: {
+    anonymous: RequestModule,
+    user: UserModule,
+    service: ServiceModule,
+    session: SessionModule,
+  },
   imports: [
     OrdersSlice,
     CustomersSlice,
+    OrderPersistenceModule,
     cache({ adapter: redisCache() }),
     observability(),
     otel(),
   ],
-  provides: [sessionCodec()],
-  exports: [Logger, Tracer, Meter],
+  provides: [sessionCodec(), ...oidc({ principal, scope: "openid orders:export" })],
+  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 
@@ -1428,7 +1438,12 @@ sees at the composition root:
 <!-- doctest: isolate
 import { HttpModule } from "@btravstack/http-server";
 import { sessionCodec } from "@btravstack/http-server/session";
+import { Logger, Meter, Tracer } from "@btravstack/core";
+import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { observability } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 import { orderRouter } from "../../module.js";
+import { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";
 -->
@@ -1436,8 +1451,10 @@ import { OrdersSlice } from "../../slices/orders/module.js";
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
+  unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule },
   provides: [sessionCodec()],
-  imports: [OrdersSlice, CustomersSlice],
+  imports: [OrdersSlice, CustomersSlice, OrderPersistenceModule, observability(), otel()],
+  exports: [Logger, Tracer, Meter, OrderDatabase],
   cors: { origin: "https://orders.example", credentials: true },
   bodyLimit: 5_000_000,
   compression: true,
@@ -2017,10 +2034,10 @@ The `anonymous` fallback makes a typo silent: `unit: { usre: M }` would fork
 `anonymous` on every request and diagnose nothing. So `HttpModule` **gates**
 what a root binds, in two cases:
 
-| The answerers                    | Bindable kinds                                    | Each value must be                 |
-| -------------------------------- | ------------------------------------------------- | ---------------------------------- |
-| come from `auth.units<…>()`      | exactly the kinds that call declared              | the module type that kind declared |
-| come from a plain `defineHttp()` | `anonymous` plus every scheme the answerers serve | any unit module                    |
+| The answerers                    | Bindable kinds                                    | Required kinds                         | Each value must be                 |
+| -------------------------------- | ------------------------------------------------- | -------------------------------------- | ---------------------------------- |
+| come from `auth.units<…>()`      | exactly the kinds that call declared              | the declared kinds the answerers serve | the module type that kind declared |
+| come from a plain `defineHttp()` | `anonymous` plus every scheme the answerers serve | none                                   | any unit module                    |
 
 An undeclared kind is refused against an
 `"UNDECLARED UNIT KIND — no request opens under it, so it would silently fall back to anonymous"`
@@ -2028,6 +2045,17 @@ marker, rather than by excess-property checking — which cannot see one, since
 the record's type is inferred **from** the value. A declared kind bound to the
 wrong module is ordinary assignability, and the diagnostic naming the kind and
 both modules is better than any marker.
+
+**A declared kind the root serves must be bound.** Its leaves are typed by the
+module `units<…>()` named for it, so leaving it out — or omitting `unit`
+altogether — would fork `anonymous`'s module, or nothing, under a leaf that
+reads a port only the declared one provides: a `500` on the first request. A
+missing kind is TypeScript's own `Property 'user' is missing`; a missing
+record is refused against
+`"UNBOUND UNIT KINDS — units<…>() declared them, so bind each on unit"`,
+naming the kinds. A declared kind no answerer here serves — `session` under a
+router whose contract marks only `user` and `service` — stays optional, so a
+lifted slice binds what it serves and no more.
 
 The second case's set comes from the answerers' own needs channel — a router
 already owes one authenticator port per scheme its contract marks, and a

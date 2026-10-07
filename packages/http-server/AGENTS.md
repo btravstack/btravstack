@@ -784,6 +784,28 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   the way its siblings here do — `"UNIT DOES NOT PROVIDE — …"`,
   `"SERVES NOTHING — …"` — in a diagnostic that is already quoting a type.
 
+  **Case 1 also gates the other direction: a declared kind the root SERVES
+  must be bound** (#384). The leaves under it are typed by the module
+  `units<…>()` named, so a root that bound `{ anonymous }` alone — or no
+  `unit` at all — type-checked and then forked `anonymous`'s module, or
+  nothing, under a `user` leaf reading `context.unit.tenant`: di's
+  `no service registered`, a `500` on the first request. That was the cost of
+  stating the binding twice, and it had already been paid: when `session`
+  joined `examples/order-api`, every doc root composing the example's router
+  without restating the kinds was such a root, and the gate found them all.
+  `RequiredKinds` is the declared kinds intersected with `anonymous` plus the
+  schemes the answerers serve (`SchemesOfAnswerer`, the same reading case 2
+  uses), so a declared kind no leaf of this root can open under — `session`
+  under a router marking only `user` and `service` — stays optional, which is
+  what lets a lifted slice bind what it serves. A missing kind is
+  TypeScript's own `Property 'user' is missing`; an omitted `unit` is
+  `UnboundGate`'s `"UNBOUND UNIT KINDS — …"` marker rather than a required
+  `unit` property, because intersecting a required `unit` with the option's
+  optional one reduced the whole parameter to `never` and named nothing
+  (measured, both compilers). `http-module.test-d.ts` pins the optional
+  served-nothing kind, the omitted kind, and the omitted record off the router
+  and off the fragments.
+
   **The two cases treat a record whose keys are NOT literal — one built by
   `Object.fromEntries`, as the runtime fixtures do — differently, because they
   check against different things.** `UndeclaredKind` bails to `never` on
@@ -980,6 +1002,42 @@ export const api = auth.units<{ anonymous: typeof Anonymous; user: typeof User }
   (`define-http.spec.ts` pins the identity), so the factories on it are the
   ones the first step built. Do not fold `Units` into `defineHttp`'s own type
   parameters.
+- **Binding the modules as VALUES on that second step was measured and
+  declined (#384).** The shape was `auth.withRequestScopes({ anonymous, user })`,
+  carrying the record on the router and the fragments so `HttpModule` needs no
+  `unit:`. A prototype over the real `examples/order-api` held every guarantee
+  the types can state, under both compilers: a carried module's unmet need
+  refused at `start`, the per-kind principal subtraction, a public leaf unable
+  to read an authenticated-only port, a two-scheme leaf keeping only what both
+  modules export, an undeclared kind refused at the binding, and a router and
+  fragments minted from two differently-typed bindings refused against a
+  marker. Declarations emitted and re-checked under the repository's
+  TypeScript and `typescript-consumer` for both shapes, and a scope module
+  importing a piece minted from the same api is TS7022 in both shapes alike.
+  Three costs decided it:
+  - **The binding is a value import, and the scope modules import `auth` as a
+    value**, so the call cannot sit in `auth.ts`. Measured: the compile is
+    clean, and loading `module.ts`, `request-scope.ts` or `auth.ts` dies with
+    `Cannot access 'auth' before initialization` (or `'RequestModule'`). A
+    third file is mandatory and nothing tells the developer so; today's
+    `import type` makes that cycle unreachable.
+  - **Two bindings whose module TYPES agree but whose values differ are
+    invisible to the types**, and `HttpModule` is synchronous and throw-free,
+    so the one runtime refusal on offer is a duplicate provider on the
+    internal `HttpUnit` port — a defect naming a port the application never
+    sees. Without it the first binding silently wins.
+  - **It removes no spelling.** `http()` and `httpServer()` take the router as
+    a need, never a value, so they keep `unit:`, and `HttpModule` would have
+    to refuse `unit:` beside a carried binding.
+
+  What it would buy is the root's restatement of the record, and the case-1
+  gate's served-kinds arm (above) now refuses that restatement drifting. It
+  reopens if a root that must bind its kinds stops being one the gate can
+  see — a hand-rolled `http()` root becoming the common shape.
+  `context.unit` keeps its name for the same leaf-shape reason the
+  `deferred-decisions` skill gives: it is one record on all three transports,
+  and the guides say "request-scoped services" before they say "unit".
+
 - **`UnitsOf<A>` alone does NOT refuse an undeclared kind — the exactness arm
   on `units` does.** `UnitsOf<A>` is
   `Partial<Record<Kinds<A>, AnyUnitModule>>`, and a type argument gets no

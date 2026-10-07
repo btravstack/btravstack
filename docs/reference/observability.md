@@ -15,7 +15,8 @@ import { redisCache } from "@btravstack/cache/redis";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";
 import { orderRouter } from "../../module.js";
-import { RequestModule } from "../../request-scope.js";
+import { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
+import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 -->
 
 # @btravstack/observability
@@ -305,15 +306,17 @@ bound `unit` module, a test:
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
+  unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule },
   imports: [
     OrdersSlice,
     CustomersSlice,
+    OrderPersistenceModule,
     cache({ adapter: redisCache() }),
     observability(),
     otel(),
   ],
   provides: [sessionCodec()],
-  exports: [Logger, Tracer, Meter],
+  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 

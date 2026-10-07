@@ -4,14 +4,15 @@ description: Give each slice of a large API its own contract fragment and contro
 ---
 
 <!-- doctest: prelude
-import { Logger } from "@btravstack/core";
+import { Logger, Meter, Tracer } from "@btravstack/core";
+import { otel } from "@btravstack/observability/otel";
 import { Module } from "@btravstack/di";
 import { HttpModule } from "@btravstack/http-server";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
 import { P } from "unthrown";
 import type { Order } from "@btravstack/example-order-domain";
-import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
+import { FindOrder, ListOrders, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { api } from "../../auth.js";
 import { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
@@ -284,20 +285,26 @@ controller built:
 ```ts
 export const ordersRouter = api.OrpcRouter(contract.orders)({
   inject: { implementation: ordersController.port },
+  unit: { place: PlaceOrder, find: FindOrder, list: ListOrders },
   sync: ({ implementation }) => implementation,
 });
 
 export const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
+  unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule },
   provides: [sessionCodec()],
-  imports: [OrdersSlice, observability()],
+  imports: [OrdersSlice, OrderPersistenceModule, observability(), otel()],
+  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 
 `api` here is `auth.ts`'s too — the lifted fragment carries its marker, so the
 lifted root owes the same schemes the modulith did, and the router brings the
 authenticators for them from that same call. Extraction adds no line about
-identity at all.
+identity at all. What it does restate is the request scope, twice: the
+controller's `unit:` record on the router arm, since the injected port's
+service type does not carry it, and the kinds on `unit`, since a root whose
+router serves a kind `auth.units<…>()` declared must bind it.
 
 `OrdersSlice` is the very module the modulith imported and `ordersController`
 the very provider it composed — not a copy, not a rewritten `sync`. Extraction

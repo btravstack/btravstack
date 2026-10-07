@@ -10,7 +10,9 @@ import { OrderApi } from "../../module.js";
 # Open a per-request scope
 
 > **How-to.** Give a service the lifetime of one request, job or delivery,
-> layered over the application scope the kernel opened once. For the option's
+> layered over the application scope the kernel opened once. New to the idea?
+> Start with [Use request-scoped services](/how-to/use-request-scoped-services),
+> which builds one scope before naming the machinery. For the option's
 > full contract, see [start and StartOptions](/reference/core/start); for
 > _why_ a scope is forked rather than reopened, see
 > [Scopes and resource safety](/explanation/scopes-and-resources).

@@ -284,6 +284,38 @@ const _fragmentsUndeclaredKind = {
 // @ts-expect-error — UNDECLARED UNIT KIND: `units<…>()` declared no `service`
 void HttpModule("GatedFragmentsUndeclaredKind")(_fragmentsUndeclaredKind);
 
+// Case 1 the other way round: a declared kind the root SERVES must be bound.
+// Its leaves are typed by the module `units<…>()` named, and an unbound kind
+// forks `anonymous`'s — or nothing — so leaving it out is a leaf reading a
+// port its fork never built. A declared kind no answerer serves stays
+// optional: `gatedRouter` marks nothing, so it binds `anonymous` alone.
+const gatedUserRouter = gated.OrpcRouter(userContract)({
+  inject: {},
+  sync: () => ({ me: { hello: () => OkAsync("hi") } }),
+});
+
+void HttpModule("GatedServedOnly")({
+  router: gatedRouter,
+  port: 0,
+  unit: { anonymous: AnonymousUnit },
+});
+
+const _omittedKind = {
+  router: gatedUserRouter,
+  port: 0,
+  unit: { anonymous: AnonymousUnit },
+} as const;
+// @ts-expect-error — Property 'user' is missing: the router serves a kind `units<…>()` declared
+void HttpModule("GatedOmittedKind")(_omittedKind);
+
+const _unboundKinds = { router: gatedUserRouter, port: 0 } as const;
+// @ts-expect-error — UNBOUND UNIT KINDS: the router serves kinds `units<…>()` declared
+void HttpModule("GatedUnbound")(_unboundKinds);
+
+const _fragmentsUnbound = { fragments: gatedFragments, port: 0, provides: [gatedRow] } as const;
+// @ts-expect-error — UNBOUND UNIT KINDS: the fragments serve `anonymous`, which was declared
+void HttpModule("GatedFragmentsUnbound")(_fragmentsUnbound);
+
 // Case 2: a plain `defineHttp` api declares no kinds, so the bindable set is
 // `anonymous` plus every scheme the answerers serve — which is what keeps
 // `examples/order-api`'s `unit: { anonymous }` compiling while refusing a typo.
