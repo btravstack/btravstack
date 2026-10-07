@@ -170,9 +170,17 @@ Identical to `Provider(...)` in every respect — same arms, same hooks, same
 `inject` checking, same channels, same typed `port` — except the arm constructs
 one `Member`, not the port's whole `readonly Member[]`. `Provider.member` on
 an ordinary port does not compile: its member shape is `never`, so no arm can
-be satisfied. The reverse — `Provider(...)` on a set port — type-checks
-against the whole array and lands it as **one member** at runtime; contribute
-to a set port through `Provider.member` only.
+be satisfied. The reverse — `Provider(...)` on a set port — does not compile
+either: the runtime lands whatever it builds as **one member**, so qualifying it
+against the whole array would hand back a nested one. The options are refused
+with a marker naming the fix,
+`Property '"SET PORT — contribute one member with Provider.member"' is missing`.
+An ordinary port whose service is an array is unaffected.
+
+`SetPortGate<P>` is that marker, exported for a wrapper that forwards a
+caller's port to `Provider`: a port widened to `AnyPort` passes the gate, so
+the wrapper intersects it onto its own parameter, the way
+`Config.provider(Port)(schema)` does on its schema.
 
 ## The channels
 

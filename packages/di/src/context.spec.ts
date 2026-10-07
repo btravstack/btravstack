@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 
 import { unsafeAdd, unsafeKeys } from "./context.js";
-import { Context, Port } from "./index.js";
+import { Context, Module, Port, Provider } from "./index.js";
 
 class Logger extends Port("CtxLogger")<{ readonly log: () => string }> {}
 
@@ -20,6 +20,19 @@ test("adding does not mutate the context it was derived from", () => {
   unsafeAdd(empty, Logger, { log: () => "hi" });
   // THEN
   expect(() => (empty as unknown as Context<Logger>).get(Logger)).toThrow(/no service/u);
+});
+
+test("a service registered as undefined is read back, not reported missing", async () => {
+  // GIVEN a port whose service may be undefined, provided as undefined
+  class Optional extends Port("CtxOptional")<string | undefined> {}
+  const module = Module("Optional")({
+    provides: [Provider(Optional)({ inject: {}, value: undefined })],
+    exports: [Optional],
+  });
+  // WHEN
+  const read = await Module.build(module).map((ctx) => ({ value: ctx.get(Optional) }));
+  // THEN
+  expect(read).toBeOkWith({ value: undefined });
 });
 
 // The nullish fallbacks in `unsafeAdd` and `unsafeKeys` guard a value that did

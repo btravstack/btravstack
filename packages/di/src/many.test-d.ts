@@ -115,3 +115,25 @@ describe("Provider.member", () => {
     Provider.member(Tags)({ inject: {}, value: "a" });
   });
 });
+
+describe("Provider on a set port", () => {
+  test("an ordinary Provider is refused on a set port, naming Provider.member", () => {
+    // @ts-expect-error SET PORT — contribute one member with Provider.member
+    Provider(Handlers)({ inject: {}, value: [{ run: () => {} }] });
+  });
+
+  test("a union that may be a set port is refused too", () => {
+    const selected = null as unknown as typeof Db | typeof Handlers;
+    // @ts-expect-error SET PORT — one member of the union is a set port
+    Provider(selected)({ inject: {}, value: { name: "db" } });
+  });
+
+  test("an ordinary Provider still accepts an ordinary port whose service is an array", () => {
+    class Tags extends Port("MDProviderTags")<readonly string[]> {}
+    const p = Provider(Tags)({ inject: {}, value: ["a", "b"] });
+
+    type Channels = ChannelsOf<typeof p>;
+    const portIsTags: Equal<Channels[0], Tags> = true;
+    void portIsTags;
+  });
+});

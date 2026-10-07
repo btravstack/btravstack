@@ -209,20 +209,38 @@ export const overrideProvider = <P, E, N>(provider: Provider<P, E, N>): Provider
 /** Package-private (not in `index.ts`): `build.ts`'s plan resolves with it. */
 export const isOverride = (provider: object): boolean => OVERRIDE in provider;
 
-// `S` is a second, defaulted type parameter rather than `ServiceOf<P>` inline,
-// so `Provider.member` can instantiate it as `MemberOf<P>` — one contribution's
-// shape, not the `readonly Member[]` the set port resolves to.
-function ProviderDeclaration<P extends AnyPort, S = ServiceOf<P>>(port: P) {
+/**
+ * `unknown` unless `P` is, or includes, a set port, and a marker naming
+ * `Provider.member` otherwise. A wrapper forwarding a caller's port to
+ * `Provider` intersects it onto its own parameter, since a widened port passes.
+ */
+export type SetPortGate<P> = [Extract<P, { readonly many: true }>] extends [never]
+  ? unknown
+  : {
+      readonly "SET PORT — contribute one member with Provider.member": Extract<
+        P,
+        { readonly many: true }
+      >;
+    };
+
+// `S` and `Gate` are type parameters rather than inline, so `Provider.member`
+// can instantiate `S` as `MemberOf<P>` — one contribution's shape, not the
+// `readonly Member[]` the set port resolves to — and leave the gate open.
+function declare<P extends AnyPort, S, Gate>(port: P) {
   // `& { readonly port: P }` carries the port class typed, so a provider a
   // helper hands back on a port the caller never spelled is the one value an
   // application needs to hold. Purely additive.
   function build<const D extends Deps, O extends Qualification<readonly [ServicesOf<D>], S>>(
-    options: { readonly inject: D } & O,
+    options: { readonly inject: D } & O & Gate,
   ): Provider<InstanceType<P>, ErrorOf<O>, NeedsOf<D> | ScopeOf<O>> & { readonly port: P } {
     const { inject, ...arm } = options as { readonly inject: Deps } & Record<string, unknown>;
     return descriptor(port, Object.entries(inject), arm) as never;
   }
   return build;
+}
+
+function ProviderDeclaration<P extends AnyPort>(port: P) {
+  return declare<P, ServiceOf<P>, SetPortGate<P>>(port);
 }
 
 /**
@@ -237,5 +255,5 @@ function ProviderDeclaration<P extends AnyPort, S = ServiceOf<P>>(port: P) {
  * `context.ts`'s `unsafeAddAll` is what turns a member into an array entry.
  */
 export const Provider = Object.assign(ProviderDeclaration, {
-  member: <P extends AnyPort>(port: P) => ProviderDeclaration<P, MemberOf<P>>(port),
+  member: <P extends AnyPort>(port: P) => declare<P, MemberOf<P>, unknown>(port),
 });

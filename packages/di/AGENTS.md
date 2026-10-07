@@ -29,6 +29,26 @@ All runtime code lives in `packages/di/src`, one concept per file:
   `Provider.member` are `docs/reference/di/providers.md`'s. Arm exclusivity is
   enforced by giving each arm the other keys as optional `never`.
 
+  **An ordinary `Provider` on a set port is refused** (issue #375), by a
+  `SetPortGate` marker intersected onto the OPTIONS parameter, never the port
+  one. The runtime cannot tell the two entry points apart, so it lands whatever
+  a set port's provider builds as one member, and `Provider(SetPort)` qualified
+  against the whole `readonly Member[]` handed back a nested array. On the port
+  parameter the gate broke `scoped.test-d.ts`'s port-generic `wrap` (measured):
+  a deferred conditional is not assignable from an unresolved `P`, which is the
+  same false positive `Scope`'s rejected guard hit. On the options it costs a
+  generic helper nothing, since every one that calls the builder already casts
+  its options. It is deliberately NOT distributive: a port union with one set
+  port in it would distribute to `unknown | marker`, which is `unknown`, and
+  pass (`many.test-d.ts`, _"a union that may be a set port is refused too"_).
+  A wrapper that widens a caller's port to `AnyPort` before calling `Provider`
+  loses the gate, so it is exported and re-stated on the wrapper's own
+  parameter — `@btravstack/config`'s `Config.provider(Port)(schema)` carries it
+  on the schema, not the port, because a refused port argument falls through
+  to the string overload and reports that one's mismatch instead (measured:
+  `TS2769 … The last overload gave the following error … not assignable to
+parameter of type 'string'`).
+
   **`inject` rides in the same options object, and it is REQUIRED** (issue
   #227). One signature, one runtime path reading one key: the two overloads
   discriminated by argument count are gone, and with them the comment
