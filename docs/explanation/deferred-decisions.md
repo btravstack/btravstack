@@ -141,11 +141,9 @@ dependencies by name`; a positional array is refused as
   carrying everything the invocation has — the input included — and that input
   repeated as a second positional parameter.**
 
-  ```text
-  place:   ({ errors, context, input })      => …   // HTTP, oRPC's own shape
-  place:   ({ errors, context, input })      => …   // Temporal
-  process: ({ errors, context, raw, input }) => …   // AMQP
-  ```
+  Schematically, HTTP and Temporal use
+  `place: ({ errors, context, input }) => …`; AMQP also carries `raw` in
+  `process: ({ errors, context, raw, input }) => …`.
 
   **oRPC is the reference because it is the most widely used of the three**,
   not because the shape is inherently better: a developer arriving here is more
