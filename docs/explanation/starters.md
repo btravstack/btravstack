@@ -4,7 +4,10 @@ description: The Spring Boot idea applied to this kernel — a module that bring
 ---
 
 <!-- doctest: prelude
-import { Logger } from "@btravstack/core";
+import { Logger, Meter, Tracer } from "@btravstack/core";
+import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { otel } from "@btravstack/observability/otel";
+import { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
 import { HttpModule } from "@btravstack/http-server";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
@@ -105,9 +108,10 @@ spelled once. From [`examples/order-api`](/examples/order-api):
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
+  unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule },
   provides: [sessionCodec()],
-  imports: [OrdersSlice, CustomersSlice, observability()],
-  exports: [Logger],
+  imports: [OrdersSlice, CustomersSlice, OrderPersistenceModule, observability(), otel()],
+  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 

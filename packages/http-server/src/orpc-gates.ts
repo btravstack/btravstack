@@ -1,4 +1,4 @@
-import type { PrincipalKey, Requirements, RequirementsOf } from "@btravstack/contract";
+import type { IsMarked, PrincipalKey, Requirements, RequirementsOf } from "@btravstack/contract";
 import type { PortClassOf, PortInstance, Provider } from "@btravstack/di";
 import type { ProcedureContract, RouterContract } from "@orpc/contract";
 import type { Router } from "@orpc/server";
@@ -31,8 +31,27 @@ export type Refuse<
   ? readonly [...Head, readonly [Marker, Detail]]
   : readonly [readonly [Marker, Detail]];
 
+/**
+ * The kinds a request to `C` opens under, read off each procedure's EFFECTIVE
+ * requirement — nearest mark wins, as `routerOf` inherits it — so a mark every
+ * child overrides contributes nothing: `"anonymous"` for a procedure with no
+ * requirement, else the schemes it accepts. `AllRequirementsOf` keeps shadowed
+ * marks on purpose, for the authenticators; this must not.
+ */
+export type KindsIn<C, R = never> =
+  C extends ProcedureContract<infer _I, infer _O, infer _E>
+    ? [IsMarked<C> extends true ? RequirementsOf<C> : R] extends [never]
+      ? "anonymous"
+      : SchemesIn<IsMarked<C> extends true ? RequirementsOf<C> : R>
+    : {
+        readonly [K in Exclude<keyof C, PrincipalKey>]: KindsIn<
+          C[K],
+          IsMarked<C> extends true ? RequirementsOf<C> : R
+        >;
+      }[Exclude<keyof C, PrincipalKey>];
+
 /** What every `OrpcRouter` arm returns; only the needs channel `N` differs. */
-export type Built<Auth, N, Units> = Provider<
+export type Built<Auth, N, Units, Kinds = string> = Provider<
   PortInstance<"OrpcRouter", Router<Record<never, never>>>,
   never,
   N
@@ -45,6 +64,8 @@ export type Built<Auth, N, Units> = Provider<
   readonly authenticators: readonly Auth[];
   /** Phantom: the kinds bound at `units<…>()`, read by `HttpModule`, never at runtime. */
   readonly _units?: Units;
+  /** Phantom: the kinds a request here opens under, read by `HttpModule`, never at runtime. */
+  readonly _kinds?: Kinds;
 };
 
 /**

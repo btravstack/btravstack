@@ -304,15 +304,17 @@ const lines: Line[] = [];
 
 const RecordingApi = HttpModule("RecordingApi")({
   router: orderRouter,
+  unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule },
   imports: [
     OrdersSlice,
     CustomersSlice,
+    OrderPersistenceModule,
     cache({ adapter: redisCache() }),
     observability({ sink: (line) => lines.push(line), level: "trace" }),
     otel(),
   ],
   provides: [sessionCodec()],
-  exports: [Logger],
+  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 

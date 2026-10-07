@@ -63,6 +63,7 @@ const GUIDE_SIDEBAR = [
             link: "/how-to/configure-from-the-environment",
           },
           { text: "Log and correlate", link: "/how-to/log-and-correlate" },
+          { text: "Use request-scoped services", link: "/how-to/use-request-scoped-services" },
           { text: "Open a per-request scope", link: "/how-to/open-a-per-request-scope" },
           { text: "Manage a resource's lifetime", link: "/how-to/manage-a-resource" },
           { text: "Talk to a database", link: "/how-to/talk-to-the-database" },

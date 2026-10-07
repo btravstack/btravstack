@@ -554,7 +554,8 @@ The two rules this half exists to state, before the detail:
   the authenticators — since a seed needs the port object, not only its type. The two steps exist because a unit module names
   `auth.principals.<scheme>` in its `needs`, so folding the kinds into
   `defineHttp` itself would make `auth` reference its own type — TS7022. The
-  reasoning and the `UnitsOf` weak-type rule are in
+  reasoning, the `UnitsOf` weak-type rule, and why that second call takes the
+  modules as a type argument rather than as values (#384, measured) are in
   `packages/http-server/AGENTS.md`.
   At runtime the call binds one provider per scheme —
   `Provider(authenticatorPort(scheme))(options)`, the very options object

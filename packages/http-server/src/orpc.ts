@@ -57,6 +57,7 @@ import type {
   KeyOfPiece,
   Overlapping,
   PieceOf,
+  KindsIn,
   Refuse,
   SchemesIn,
   ScopeGate,
@@ -271,7 +272,12 @@ export const routerFor =
       readonly sync: (services: {
         readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
       }) => Implementation<C, Schemes, never, Units, U>;
-    }): Built<Auth, InstanceType<D[keyof D]> | SchemePortsOf<AllRequirementsOf<C>>, Units>;
+    }): Built<
+      Auth,
+      InstanceType<D[keyof D]> | SchemePortsOf<AllRequirementsOf<C>>,
+      Units,
+      KindsIn<C>
+    >;
     // Declared LAST on purpose: TypeScript reports the last overload's
     // failure, so a bad array is refused against the markers below rather than
     // degrading to di's `Qualification`, which names nothing (measured in
@@ -300,7 +306,12 @@ export const routerFor =
               "UNSLICEABLE CONTRACT KEY — a top-level key contains a dot, which a piece path cannot encode; serve this contract with the { inject, sync } form instead",
               Unsliceable<C>
             >,
-    ): Built<Auth, InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<C>>, Units>;
+    ): Built<
+      Auth,
+      InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<C>>,
+      Units,
+      KindsIn<C>
+    >;
     function build(depsOrPieces: unknown): unknown {
       const schemes = schemesOf(contract);
 

@@ -1,6 +1,6 @@
 ---
 name: deferred-decisions
-description: Decisions this repository deliberately deferred, declined or has already closed. Read BEFORE proposing a feature, a package, a lint rule or a gate that sounds new — it may be a settled "no", or already shipped. Covers container reaping, the currentUnit() lint rule, traces/metrics in observability, the doc-samples gate, the one-process dev runner, HTML-means-fragments, transport package naming, the one leaf shape, filtering on a cursor page (declined), sorting on a cursor page (shipped), static files and an SPA fallback (declined), server push over SSE and WebSocket (declined), views and i18n (the application's), config profiles, file layering, secrets and refresh (the platform's), introspection — the route list, a graph dump, a REPL — scaffolding and slice generators (declined), and declared-versus-reachable authenticators.
+description: Decisions this repository deliberately deferred, declined or has already closed. Read BEFORE proposing a feature, a package, a lint rule or a gate that sounds new — it may be a settled "no", or already shipped. Covers container reaping, the currentUnit() lint rule, traces/metrics in observability, the doc-samples gate, the one-process dev runner, HTML-means-fragments, transport package naming, the one leaf shape, filtering on a cursor page (declined), sorting on a cursor page (shipped), static files and an SPA fallback (declined), server push over SSE and WebSocket (declined), views and i18n (the application's), config profiles, file layering, secrets and refresh (the platform's), introspection — the route list, a graph dump, a REPL — scaffolding and slice generators (declined), declared-versus-reachable authenticators, and binding HTTP request scopes as values (declined).
 ---
 
 # Deferred, deliberately
@@ -252,3 +252,23 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   provides `sessionCodec()` for a scheme it never reaches — is accepted and
   stated in `packages/http-server/AUTH.md`. The trigger would be a deployment
   that cannot satisfy a declared scheme's needs at all.
+
+- **Binding HTTP request scopes as values is declined; the record stays
+  stated twice and is gated both ways** (issue #384). The proposal was a
+  value-bearing second stage, `auth.withRequestScopes({ anonymous, user })`,
+  carrying the modules on the router so `HttpModule` names no `unit:`. A
+  prototype over `examples/order-api` held every guarantee the types can state,
+  emitted declarations under both compilers and had today's TS7022 profile —
+  and lost on three measured costs: the value import makes `auth.ts` ↔ the
+  scope modules a runtime cycle that compiles clean and dies at load
+  (`Cannot access 'auth' before initialization`), so a third file is
+  mandatory with no diagnostic; two bindings with equal types and different
+  modules can be refused only through a duplicate provider on an internal
+  port; and `http()`/`httpServer()` keep `unit:` anyway. What the duplicate
+  record had actually cost — a root binding fewer kinds than `units<…>()`
+  declared, compiling and answering `500` — is closed by the gate instead: a
+  declared kind the root serves must be bound. The measurements are
+  `packages/http-server/AGENTS.md`'s; the teaching half shipped as
+  `docs/how-to/use-request-scoped-services.md`. The trigger would be a root
+  that must bind its kinds where the gate cannot see it — a hand-rolled
+  `http()` root becoming the common shape.

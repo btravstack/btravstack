@@ -284,6 +284,121 @@ const _fragmentsUndeclaredKind = {
 // @ts-expect-error — UNDECLARED UNIT KIND: `units<…>()` declared no `service`
 void HttpModule("GatedFragmentsUndeclaredKind")(_fragmentsUndeclaredKind);
 
+// Case 1 the other way round: a declared kind the root SERVES must be bound.
+// Its leaves are typed by the module `units<…>()` named, and an unbound kind
+// forks `anonymous`'s — or nothing — so leaving it out is a leaf reading a
+// port its fork never built. A declared kind no answerer serves stays
+// optional: `gatedRouter` marks nothing, so it binds `anonymous` alone.
+const gatedUserRouter = gated.OrpcRouter(userContract)({
+  inject: {},
+  sync: () => ({ me: { hello: () => OkAsync("hi") } }),
+});
+
+void HttpModule("GatedServedOnly")({
+  router: gatedRouter,
+  port: 0,
+  unit: { anonymous: AnonymousUnit },
+});
+
+const _omittedKind = {
+  router: gatedUserRouter,
+  port: 0,
+  unit: { anonymous: AnonymousUnit },
+} as const;
+// @ts-expect-error — Property 'user' is missing: the router serves a kind `units<…>()` declared
+void HttpModule("GatedOmittedKind")(_omittedKind);
+
+const _unboundKinds = { router: gatedUserRouter, port: 0 } as const;
+// @ts-expect-error — UNBOUND UNIT KINDS: the router serves kinds `units<…>()` declared
+void HttpModule("GatedUnbound")(_unboundKinds);
+
+// `anonymous` is required only when a request here forks it: a public leaf, or
+// a served scheme that declared no module of its own and falls back to it. A
+// root whose every leaf is authenticated binds its schemes and nothing else.
+void HttpModule("GatedAuthenticatedOnly")({
+  router: gatedUserRouter,
+  port: 0,
+  unit: { user: UserUnit },
+});
+
+const gatedMixedRouter = gated.OrpcRouter({ ...userContract, open: { hello: oc } })({
+  inject: {},
+  sync: () => ({ me: { hello: () => OkAsync("hi") }, open: { hello: () => OkAsync("hi") } }),
+});
+const _publicLeafUnbound = {
+  router: gatedMixedRouter,
+  port: 0,
+  unit: { user: UserUnit },
+} as const;
+// @ts-expect-error — Property 'anonymous' is missing: `open.hello` is public
+void HttpModule("GatedPublicLeafUnbound")(_publicLeafUnbound);
+
+const anonymousOnly = withUser.units<{ anonymous: typeof AnonymousUnit }>();
+const fallbackRouter = anonymousOnly.OrpcRouter(userContract)({
+  inject: {},
+  sync: () => ({ me: { hello: () => OkAsync("hi") } }),
+});
+const _fallbackUnbound = { router: fallbackRouter, port: 0 } as const;
+// @ts-expect-error — UNBOUND UNIT KINDS: `user` declared no module, so it forks `anonymous`'s
+void HttpModule("GatedFallbackUnbound")(_fallbackUnbound);
+
+const gatedUserRow = gated.HtmxGet("/me", { requires: [{ user: [] }] })({
+  inject: {},
+  sync: () => () => OkAsync(html`<p>me</p>`),
+});
+void HttpModule("GatedFragmentsAuthenticatedOnly")({
+  fragments: gated.HtmxFragments([gatedUserRow]),
+  port: 0,
+  provides: [gatedUserRow],
+  unit: { user: UserUnit },
+});
+
+// The kinds are read off the EFFECTIVE marks: a `user` mark every procedure
+// below it overrides with `service` opens no `user` unit, so `user` stays
+// optional though the router still owes its authenticator.
+const shadowed = withTwo.units<{ user: typeof AnonymousUnit; service: typeof ServiceOnlyUnit }>();
+const shadowedRouter = shadowed.OrpcRouter(
+  authenticated({ user: [] })({ ops: authenticated({ service: [] })({ ping: oc }) }),
+)({
+  inject: {},
+  sync: () => ({ ops: { ping: () => OkAsync("pong") } }),
+});
+void HttpModule("ShadowedMarkOptional")({
+  router: shadowedRouter,
+  port: 0,
+  unit: { service: ServiceOnlyUnit },
+});
+
+const _shadowedUnbound = { router: shadowedRouter, port: 0 } as const;
+// @ts-expect-error — UNBOUND UNIT KINDS: the effective `service` mark still opens a unit
+void HttpModule("ShadowedMarkUnbound")(_shadowedUnbound);
+
+// A router and fragments from two `units<…>()` calls declaring different kinds
+// cannot share one binding: `fallbackRouter` types its `user` leaf against
+// `anonymous`'s module, and binding `user` for the fragments would fork
+// `UserUnit` under it. Refused; one declaration for both composes.
+const _divergent = {
+  router: fallbackRouter,
+  fragments: gated.HtmxFragments([gatedUserRow]),
+  port: 0,
+  provides: [gatedUserRow],
+  unit: { anonymous: AnonymousUnit, user: UserUnit },
+} as const;
+// @ts-expect-error — DIVERGENT UNIT KINDS: `fallbackRouter`'s declaration has no `user`
+void HttpModule("DivergentDeclarations")(_divergent);
+
+void HttpModule("OneDeclaration")({
+  router: gatedUserRouter,
+  fragments: gated.HtmxFragments([gatedUserRow]),
+  port: 0,
+  provides: [gatedUserRow],
+  unit: { user: UserUnit },
+});
+
+const _fragmentsUnbound = { fragments: gatedFragments, port: 0, provides: [gatedRow] } as const;
+// @ts-expect-error — UNBOUND UNIT KINDS: the fragments serve `anonymous`, which was declared
+void HttpModule("GatedFragmentsUnbound")(_fragmentsUnbound);
+
 // Case 2: a plain `defineHttp` api declares no kinds, so the bindable set is
 // `anonymous` plus every scheme the answerers serve — which is what keeps
 // `examples/order-api`'s `unit: { anonymous }` compiling while refusing a typo.

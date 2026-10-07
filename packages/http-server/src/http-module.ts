@@ -109,8 +109,55 @@ type SchemesOfAnswerer<T> = T extends { readonly _needs: () => infer N }
  * nothing.
  */
 type BindableKinds<Router, Fragments> = [keyof DeclaredUnits<Router, Fragments>] extends [never]
-  ? "anonymous" | SchemesOfAnswerer<Router> | SchemesOfAnswerer<Fragments>
+  ? ServedKinds<Router, Fragments>
   : keyof DeclaredUnits<Router, Fragments>;
+
+/** `anonymous` and every scheme the answerers serve — the kinds a root may name. */
+type ServedKinds<Router, Fragments> =
+  | "anonymous"
+  | SchemesOfAnswerer<Router>
+  | SchemesOfAnswerer<Fragments>;
+
+/**
+ * The kinds a request to one answerer opens under, off its `_kinds` phantom —
+ * the EFFECTIVE marks, not the needs channel, which keeps shadowed ones. A
+ * provider carrying no phantom is read as public plus every scheme it owes,
+ * the conservative reading; an omitted answerer opens none.
+ */
+type KindsOf<T> = [T] extends [undefined]
+  ? never
+  : T extends { readonly _kinds?: infer P }
+    ? string extends P
+      ? "anonymous" | SchemesOfAnswerer<T>
+      : P
+    : "anonymous" | SchemesOfAnswerer<T>;
+
+/**
+ * The kinds a request to THIS root really forks under: the answerers' own,
+ * and `anonymous` too when one of their schemes declared no module and falls
+ * back to it — the runtime's `units[kind] ?? units.anonymous`.
+ */
+type ReachableKinds<Router, Fragments> =
+  | KindsOf<Router>
+  | KindsOf<Fragments>
+  | ([
+      Exclude<
+        KindsOf<Router> | KindsOf<Fragments>,
+        "anonymous" | keyof DeclaredUnits<Router, Fragments>
+      >,
+    ] extends [never]
+      ? never
+      : "anonymous");
+
+/**
+ * The declared kinds a request to THIS root can open under, which the root must
+ * bind: a leaf under one is typed by the module `units<…>()` named, and left
+ * unbound it would fork `anonymous`'s — or nothing — at runtime. A declared
+ * kind no request here forks under stays optional, `anonymous` included when
+ * every leaf is authenticated.
+ */
+type RequiredKinds<Router, Fragments> = keyof DeclaredUnits<Router, Fragments> &
+  ReachableKinds<Router, Fragments>;
 
 /**
  * A bound kind no request can ever open under. A record whose keys are not
@@ -127,14 +174,16 @@ type UndeclaredKind<Units, Router, Fragments> = string extends keyof Units
  * excess-property check cannot see one, since the key is part of the very type
  * it inferred. A declared kind bound to the wrong module is refused by ordinary
  * assignability against the module type `units<…>()` named, which is the
- * diagnostic worth having.
+ * diagnostic worth having — and so is a required kind left unbound, which is
+ * TypeScript's own `Property 'user' is missing`.
  */
 type UnitGate<Units, Router, Fragments> = [UndeclaredKind<Units, Router, Fragments>] extends [never]
   ? {
-      readonly [K in keyof Units & keyof DeclaredUnits<Router, Fragments>]: DeclaredUnits<
-        Router,
-        Fragments
-      >[K];
+      readonly [
+        K in
+          | (keyof Units & keyof DeclaredUnits<Router, Fragments>)
+          | RequiredKinds<Router, Fragments>
+      ]: DeclaredUnits<Router, Fragments>[K];
     }
   : {
       readonly "UNDECLARED UNIT KIND — no request opens under it, so it would silently fall back to anonymous": UndeclaredKind<
@@ -157,6 +206,47 @@ type ServesNothingGate<Router, Fragments> = [Router] extends [undefined]
     : unknown
   : unknown;
 
+/**
+ * The kinds one answerer's `units<…>()` declared and the other's did not, when
+ * both declared some. No binding serves both: the answerer missing a kind types
+ * its leaves under it against `anonymous`'s module, while the root binding the
+ * kind for the other forks that module under them too.
+ */
+type DivergentKinds<Router, Fragments> = [keyof UnitsOfAnswerer<Router>] extends [never]
+  ? never
+  : [keyof UnitsOfAnswerer<Fragments>] extends [never]
+    ? never
+    :
+        | Exclude<keyof UnitsOfAnswerer<Router>, keyof UnitsOfAnswerer<Fragments>>
+        | Exclude<keyof UnitsOfAnswerer<Fragments>, keyof UnitsOfAnswerer<Router>>;
+
+type DivergentGate<Router, Fragments> = [DivergentKinds<Router, Fragments>] extends [never]
+  ? unknown
+  : {
+      readonly "DIVERGENT UNIT KINDS — the router and the fragments come from units<…>() calls declaring different kinds, so mint both from one": DivergentKinds<
+        Router,
+        Fragments
+      >;
+    };
+
+/**
+ * An answerer from `units<…>()` makes `unit` required once it serves a kind
+ * that call declared: with no record bound, every leaf typed by that kind's
+ * module would fork nothing at runtime. A marker rather than a required `unit`
+ * property, which would collide with the option's own optional one and reduce
+ * the whole parameter to `never`.
+ */
+type UnboundGate<Units, Router, Fragments> = [Units] extends [undefined]
+  ? [RequiredKinds<Router, Fragments>] extends [never]
+    ? unknown
+    : {
+        readonly "UNBOUND UNIT KINDS — units<…>() declared them, so bind each on unit": RequiredKinds<
+          Router,
+          Fragments
+        >;
+      }
+  : unknown;
+
 export type HttpModuleOptions<
   Router extends AnyRouterProvider | undefined,
   Fragments extends AnyFragmentsProvider | undefined,
@@ -176,6 +266,7 @@ export type HttpModuleOptions<
    * The kinds are gated against the answerers: the ones `units<…>()` declared,
    * carried by the router or the fragments alike, or — for a plain
    * `defineHttp()` api — `anonymous` and every scheme the answerers serve.
+   * Under `units<…>()`, every declared kind the answerers serve must be bound.
    */
   readonly unit?: Units & UnitGate<Units, Router, Fragments>;
   /**
@@ -225,7 +316,9 @@ export type HttpModuleOptions<
    */
   readonly needs?: N;
 } & NeedsGate<Imports<I, Units>, Provides<P, Router, Fragments>, EnvAnd<N>> &
-  ServesNothingGate<Router, Fragments>;
+  ServesNothingGate<Router, Fragments> &
+  UnboundGate<Units, Router, Fragments> &
+  DivergentGate<Router, Fragments>;
 
 /**
  * The declared needs plus `Env`. di's `needs` array is type-level only —
