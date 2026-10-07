@@ -97,6 +97,35 @@ describe("s3Storage", () => {
     ).toBeOkWith({ status: 200, bytes: document.bytes, contentType: "application/json" });
   });
 
+  it("allows a signed upload url to replace the object until it expires", async ({
+    s3,
+    keyPrefix,
+  }) => {
+    const key = `${keyPrefix}replayed.json`;
+    const first = aDocument();
+    const second = new TextEncoder().encode(`{"ok":null}`);
+    expect(second.byteLength).toBe(first.bytes.byteLength);
+    const url = (
+      await s3.presignedUpload(key, {
+        ttlMs: 60_000,
+        contentType: first.contentType,
+        contentLength: first.bytes.byteLength,
+      })
+    ).getOrThrow();
+
+    const upload = (bytes: Uint8Array) =>
+      fetch(url, {
+        method: "PUT",
+        headers: { "content-type": first.contentType },
+        body: bytes,
+      });
+    const firstResponse = await upload(first.bytes);
+    const secondResponse = await upload(second);
+
+    expect([firstResponse.status, secondResponse.status]).toEqual([200, 200]);
+    await expect(s3.get(key)).toBeOkWith({ bytes: second, contentType: first.contentType });
+  });
+
   it("refuses a write whose size is not the one it signed", async ({ s3, keyPrefix }) => {
     // GIVEN a url signed for a one-byte object
     const url = await s3.presignedUpload(`${keyPrefix}short.bin`, {

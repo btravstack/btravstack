@@ -1,6 +1,6 @@
 ---
 title: Upload a file
-description: Hand the client a presigned URL and let it write straight to the store — the bytes never pass through your process, and the signature is what makes the write safe.
+description: Hand the client a presigned URL to write straight to the store, then decide whether and how your application accepts the uploaded bytes.
 ---
 
 <!-- doctest: group=order-temporal-worker -->
@@ -20,14 +20,14 @@ class UnsupportedType extends TaggedError("UnsupportedType")<{
 
 # Upload a file
 
-> **How-to.** Accept a file from a client without the bytes going through your
-> process, and read one back the same way. For the port's surface, see
-> [`@btravstack/storage`](/reference/storage).
+> **How-to.** Let a client upload a file directly to the store, then decide
+> whether the application needs to validate and accept it. For the port's
+> surface, see [`@btravstack/storage`](/reference/storage).
 
 ## The three steps
 
 1. The client tells you what it wants to write — the type, and how many bytes.
-2. You decide whether it may, and hand back a URL good for exactly that write.
+2. You decide whether it may, and hand back a URL for that key, type and size.
 3. The client `PUT`s straight at the store, then tells you it is done.
 
 Nothing in step 3 goes through your process, which is the point: an upload that
@@ -35,7 +35,7 @@ transits the application is a request held open for the length of a transfer, a
 unit the drain has to wait on, and a copy of every byte in a process sized for
 JSON. `@btravstack/storage` therefore has no multipart parsing and no streaming
 request body — the store already accepts writes directly, and a presigned URL
-is your permission for one, written down.
+is your time-limited permission to write a key.
 
 ## 1. Compose the starter
 
@@ -60,16 +60,14 @@ through the `@btravstack/storage/s3` subpath.
 
 ## 2. Minting the URL
 
-`presignedUpload` signs the key, the content type and the content length. All
-three are part of the signature, so the URL grants a write of exactly that many
-bytes, of exactly that type, at exactly that key — a client that sends anything
-else is refused by the store, not by you.
+`presignedUpload` signs the key, the content type and the content length. A
+request with a different key, declared type or length is refused by the store.
+The signature does not constrain which bytes fill that length.
 
 It is **time-limited, not single-use**: until `ttlMs` runs out, the same URL
-can `PUT` that key again and replace the object. Where one-shot really matters,
-mint the key per attempt and record completion in your own state — the
-signature bounds _what_ may be written, and your application bounds _how many
-times_.
+can `PUT` that key again and replace the object with different bytes of the
+same size and type. The signature does not bind the bytes or prove that any
+upload happened.
 
 ```ts
 class Attachments extends Port("Attachments")<{
@@ -161,19 +159,24 @@ curl -X PUT --upload-file avatar.png \
   "$URL"
 ```
 
-## There is nothing to verify afterwards
+## Accepting the upload
 
-The step people expect next is a check that the client uploaded what it said it
-would. There is none to write, because the signature already did it: the only
-object the URL could have produced is one of that type and that exact size, at
-that exact key. A client that lied gets a `403` and stores nothing.
+The example signs the final key directly. Use that shape only when another
+write before the URL expires is acceptable, such as a replaceable attachment.
+A client's "done" call does not prove that an object exists or that its bytes
+are the ones you intend to accept.
 
-What is still unknown is whether the write happened **at all** — a client can
-take a URL and walk away. So step 3 is a call into your own application that
-records the attachment against the order, the profile, whatever owns it, and
-the object being absent later is an ordinary `ObjectNotFound` on the read. Do
-not model "pending upload" as a state the store is asked about; model it as a
-row you already have.
+When the contents or final state matter, mint the URL for a unique staging key
+per attempt. On confirmation, `get` that key, validate the actual bytes, then
+`put` those same bytes under a final key for which no upload URL was issued.
+Record acceptance in your application's state only after that write succeeds.
+A replay can change the staging object, but not the accepted final object
+through its URL. A missing staging object is `ObjectNotFound`; signed length
+and type alone do not validate its contents.
+
+This confirmation moves the bytes through your process once. For files too
+large for that, use a store-native copy or another upload protocol in your
+application's infrastructure. The storage port does not choose that policy.
 
 ## Reading it back
 

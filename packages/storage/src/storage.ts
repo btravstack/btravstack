@@ -52,9 +52,10 @@ export type StorageService = {
    *
    * **`contentType` and `contentLength` are signed, not advisory.** They are
    * part of the signature, so a client sending different ones is refused by the
-   * store: the URL grants exactly one write, of exactly that many bytes, of
-   * exactly that type. `contentLength` is therefore required — an unsigned
-   * length would hand out an unbounded write, and there is no ceiling a
+   * store. The same URL can write the key repeatedly until expiry, replacing
+   * the previous object with different bytes of that size and type. Neither
+   * signed header proves the bytes. `contentLength` is required — an unsigned
+   * length would allow an unbounded single write, and there is no ceiling a
    * presigned PUT can express other than the exact number.
    *
    * The application still decides every input: whether this caller may write
