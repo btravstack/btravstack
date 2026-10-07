@@ -161,7 +161,7 @@ export const prismaOrderRepository = (
      * is the same arithmetic against every store, and it is where the
      * off-by-ones live.
      */
-    list: ({ minQuantity, ...request }) => {
+    list: ({ minQuantity, placedBefore, ...request }) => {
       const keys = keyset(request);
       if (!keys.resumable)
         return keys.reason === "malformed"
@@ -173,10 +173,14 @@ export const prismaOrderRepository = (
         pinned(async (tx) => {
           // No `tenantId` filter: the policy on `Order` holds it, and a filter
           // here would hide whether it does.
-          const base =
+          const floored =
             minQuantity === undefined
               ? tx.orm.orders.Order
               : tx.orm.orders.Order.where((order) => order.quantity.gte(minQuantity));
+          const base =
+            placedBefore === undefined
+              ? floored
+              : floored.where((order) => order.placedAt.lt(placedBefore.toISOString()));
           // A backward page walks the index the other way, so the direction is
           // the caller's sort flipped by the direction of travel — and BOTH
           // columns flip together, or the tiebreak disagrees with the key it

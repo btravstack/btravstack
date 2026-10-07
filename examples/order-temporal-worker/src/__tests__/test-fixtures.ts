@@ -7,9 +7,11 @@ import {
   type OrderRepository,
 } from "@btravstack/example-order-application";
 import {
+  OrderNotFound,
   OutOfStock,
   ShippingUnavailable,
   TenantId,
+  placeOrder,
   type OrderId,
 } from "@btravstack/example-order-domain";
 import {
@@ -191,7 +193,32 @@ const noShippingTemporal = () => {
   return { ...base, released: (): readonly string[] => released };
 };
 
+/**
+ * A repository holding two stale orders and recording what it is asked to
+ * remove — for the sweep's own logic, which needs no worker to be driven.
+ * `list` answers whatever is still held, so a sweep that removes it all is
+ * answered an empty page next.
+ */
+const staleStoreOf = () => {
+  const ids = ["0199a1e0-0000-7000-8000-00000000d001", "0199a1e0-0000-7000-8000-00000000d002"];
+  const rows = new Map(ids.map((id) => [id, placeOrder(id, 1).getOrThrow()]));
+  const removed: string[] = [];
+  const repository: ServiceOf<OrderRepository> = {
+    save: (order) => OkAsync(order),
+    find: (id) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
+    list: () => OkAsync({ items: [...rows.values()], hasPreviousPage: false, hasNextPage: false }),
+    remove: (id) => {
+      rows.delete(id);
+      removed.push(id);
+      return OkAsync();
+    },
+  };
+  return { repository, removed: (): readonly string[] => removed };
+};
+
 export type TemporalFixtures = {
+  /** Two stale orders in memory, and the ids a sweep removed from them. */
+  readonly staleStore: ReturnType<typeof staleStoreOf>;
   /** Where the shared server is, and the namespace this spec file owns on it. */
   readonly server: Server;
   /**
@@ -315,6 +342,11 @@ export const it = test.extend<TemporalFixtures>({
 
     await use(serve);
     for (const connection of connections) await connection.close();
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  staleStore: async ({}, use) => {
+    await use(staleStoreOf());
   },
 
   scheduled: async ({ server }, use) => {

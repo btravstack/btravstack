@@ -175,7 +175,7 @@ const unitGateActivities = TemporalActivities(orderContract)({
       capturePayment: () => OkAsync(undefined),
       refundPayment: () => OkAsync(undefined),
     },
-    sweepStaleOrders: { withdrawStaleOrders: () => OkAsync({ withdrawn: 0 }) },
+    sweepStaleOrders: { withdrawStaleOrders: () => OkAsync(undefined) },
   }),
 });
 

@@ -37,6 +37,7 @@ import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 import { BillingModule } from "../../billing.js";
 import { FulfillmentModule } from "../../fulfillment.js";
 import { withdrawStale } from "../../slices/sweep/activities.js";
+import { currentUnit } from "@btravstack/core";
 -->
 
 # @btravstack/temporal-worker
@@ -267,7 +268,11 @@ export const orderActivities = TemporalActivities(orderContract)({
     },
     sweepStaleOrders: {
       withdrawStaleOrders: ({ context, input }) =>
-        withdrawStale(context.unit.repository, input.placedBefore),
+        withdrawStale(
+          context.unit.repository,
+          new Date(input.placedBefore),
+          currentUnit()?.signal,
+        ),
     },
   }),
 });

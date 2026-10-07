@@ -50,6 +50,7 @@ import { start } from "@btravstack/core";
 import { FulfillmentModule } from "../../fulfillment.js";
 import { BillingModule } from "../../billing.js";
 import { withdrawStale } from "../../slices/sweep/activities.js";
+import { currentUnit } from "@btravstack/core";
 -->
 
 ```ts
@@ -133,7 +134,11 @@ export const orderActivities = TemporalActivities(orderContract)({
     },
     sweepStaleOrders: {
       withdrawStaleOrders: ({ context, input }) =>
-        withdrawStale(context.unit.repository, input.placedBefore),
+        withdrawStale(
+          context.unit.repository,
+          new Date(input.placedBefore),
+          currentUnit()?.signal,
+        ),
     },
   }),
 });

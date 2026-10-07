@@ -37,11 +37,16 @@
 // model unqualified, and `target = orders.Order` from the top level fails emit
 // with `PSL_INVALID_EXTENSION_BLOCK_MEMBER`.
 namespace orders {
+  // `placedAt` is stamped by the DATABASE, never by a caller: `orderId` is a
+  // caller's UUIDv7, so its timestamp says whatever the caller wanted, and the
+  // retention sweep deletes by this column. `TimestamptzString` for the
+  // outbox's reason below.
   model Order {
-    id       Int    @id @default(autoincrement())
+    id       Int               @id @default(autoincrement())
     tenantId String
     orderId  String
     quantity Int
+    placedAt TimestamptzString @default(now())
 
     @@unique([tenantId, orderId])
     @@rls

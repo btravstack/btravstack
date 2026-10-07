@@ -47,14 +47,18 @@ export class OrderRepository extends Port("OrderRepository")<{
 }> {}
 
 /**
- * A page of orders, sorted by quantity, plus the one filter this listing
- * supports.
+ * A page of orders, sorted by quantity, plus the two filters this listing
+ * supports: a quantity floor, and orders the STORE recorded as placed before
+ * an instant — never an id's own timestamp, which is whatever its caller chose.
  *
- * The filter is a FIELD rather than a free-form predicate: a port that took a
+ * Each filter is a FIELD rather than a free-form predicate: a port that took a
  * query object would be asking the application layer to speak the adapter's
  * query language, and every store would then have to answer it.
  */
-export type OrderQuery = PageRequest<"quantity"> & { readonly minQuantity?: number | undefined };
+export type OrderQuery = PageRequest<"quantity"> & {
+  readonly minQuantity?: number | undefined;
+  readonly placedBefore?: Date | undefined;
+};
 
 /**
  * The customers slice's own port. Its tenant stays a parameter: the unmarked

@@ -1,70 +1,60 @@
+import { currentUnit } from "@btravstack/core";
 import type { ServiceOf } from "@btravstack/di";
 import { OrderRepository } from "@btravstack/example-order-application";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { TemporalWorkflowActivities } from "@btravstack/temporal-worker";
-import { OkAsync, P, type AsyncResult } from "unthrown";
+import { OkAsync, P, fromSafePromise, type AsyncResult } from "unthrown";
 
-/** When an order was placed, read off its id: a UUIDv7's first 48 bits are its Unix milliseconds. */
-const placedAt = (id: string): number => Number.parseInt(id.replaceAll("-", "").slice(0, 12), 16);
-
-const PAGE = 100;
+const BATCH = 100;
 
 /**
- * Every stale id, collected BEFORE anything is removed: a keyset walk resumes
- * from a row on the previous page, so deleting while walking would pull that
- * row out from under the next seek.
- */
-const staleOrders = (
-  repository: ServiceOf<OrderRepository>,
-  placedBefore: number,
-  after?: string,
-): AsyncResult<readonly string[], never> =>
-  repository
-    .list({ limit: PAGE, sort: { field: "quantity", direction: "asc" }, after })
-    // Both cursors were minted by this store one page ago, so a refusal is a
-    // bug rather than an answer — and a defect is what Temporal retries.
-    .mapErrCases((matcher, defect) =>
-      matcher.with(P.tag("MalformedCursor"), P.tag("CursorSortMismatch"), (error) => defect(error)),
-    )
-    .flatMap((page) => {
-      const stale = page.items.map((order) => order.id).filter((id) => placedAt(id) < placedBefore);
-      return page.hasNextPage
-        ? staleOrders(repository, placedBefore, page.nextCursor).map((rest) => [...stale, ...rest])
-        : OkAsync(stale);
-    });
-
-/**
- * Withdraw every order placed before `placedBefore`, answering how many. Each
- * removal leaves its tombstone in the outbox, so the broadcast deployment
- * tells every subscriber the order is gone — housekeeping is just another
- * write.
+ * Withdraw every order the store recorded as placed before `placedBefore`, a
+ * batch at a time. Each removal leaves its tombstone in the outbox, so the
+ * broadcast deployment tells every subscriber the order is gone.
  *
- * `OrderNotFound` is absorbed for `cancelPlacement`'s reason: a retried sweep
- * meets the orders its first attempt already removed, and has to answer the
- * same both times.
+ * It answers nothing: a count would not survive a retried attempt, whose scan
+ * no longer sees what the first attempt removed. `signal` is the unit's own —
+ * once it aborts, the sweep stops before the next batch and fails as a
+ * defect, so Temporal retries the attempt elsewhere rather than this process
+ * deleting past the deadline it was given.
  */
 export const withdrawStale = (
   repository: ServiceOf<OrderRepository>,
-  placedBefore: number,
-): AsyncResult<{ readonly withdrawn: number }, never> =>
-  staleOrders(repository, placedBefore).flatMap((ids) =>
-    ids
-      .reduce<AsyncResult<void, never>>(
-        (removed, id) =>
-          removed.flatMap(() =>
-            repository
-              .remove(id)
-              .recoverErrCases((matcher) => matcher.with(P.tag("OrderNotFound"), () => undefined)),
-          ),
-        OkAsync(),
+  placedBefore: Date,
+  signal: AbortSignal | undefined,
+): AsyncResult<void, never> =>
+  signal?.aborted === true
+    ? fromSafePromise(
+        Promise.reject(new Error("the drain deadline passed before the sweep finished")),
       )
-      .map(() => ({ withdrawn: ids.length })),
-  );
+    : repository
+        // Always the FIRST page of what is still stale: each batch removes
+        // what the previous one answered, so there is no cursor to outlive.
+        .list({ limit: BATCH, sort: { field: "quantity", direction: "asc" }, placedBefore })
+        .mapErrCases((matcher, defect) =>
+          matcher.with(P.tag("MalformedCursor"), P.tag("CursorSortMismatch"), (error) =>
+            defect(error),
+          ),
+        )
+        .flatMap((page) =>
+          page.items.length === 0
+            ? OkAsync()
+            : page.items
+                .reduce<AsyncResult<void, never>>(
+                  (removed, order) =>
+                    removed.flatMap(() =>
+                      repository
+                        .remove(order.id)
+                        .recoverErrCases((matcher) =>
+                          matcher.with(P.tag("OrderNotFound"), () => undefined),
+                        ),
+                    ),
+                  OkAsync(),
+                )
+                .flatMap(() => withdrawStale(repository, placedBefore, signal)),
+        );
 
-/**
- * The sweep's one activity, over the repository the attempt's fork bound to
- * the tenant the schedule named.
- */
+/** The sweep's one activity, over the repository the attempt's fork bound to the schedule's tenant. */
 export const sweepStaleOrders = TemporalWorkflowActivities(
   orderContract,
   "sweepStaleOrders",
@@ -73,6 +63,6 @@ export const sweepStaleOrders = TemporalWorkflowActivities(
   unit: { repository: OrderRepository },
   sync: () => ({
     withdrawStaleOrders: ({ context, input }) =>
-      withdrawStale(context.unit.repository, input.placedBefore),
+      withdrawStale(context.unit.repository, new Date(input.placedBefore), currentUnit()?.signal),
   }),
 });

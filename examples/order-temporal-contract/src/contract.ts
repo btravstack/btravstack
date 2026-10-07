@@ -183,14 +183,15 @@ const chargeOrder = defineWorkflow({
 });
 
 /**
- * The housekeeping step: withdraw every order placed before `placedBefore`,
- * epoch milliseconds the workflow computed from its own clock. No `errors`
- * map, for the compensations' reason: a sweep that could answer "no" would
- * leave the backlog it exists to clear, so whatever it hits is retried.
+ * The housekeeping step: withdraw every order the store recorded as placed
+ * before `placedBefore`, epoch milliseconds the workflow computed from its own
+ * clock. No `errors` map, for the compensations' reason: a sweep that could
+ * answer "no" would leave the backlog it exists to clear, so whatever it hits
+ * is retried. No count either: one would not survive a retried attempt.
  */
 const withdrawStaleOrders = defineActivity({
   input: tenanted.extend({ placedBefore: z.number().int() }),
-  output: z.object({ withdrawn: z.number().int() }),
+  output: z.void(),
   activityOptions: {
     startToCloseTimeout: "5 minutes",
     retry: { maximumAttempts: 5, initialInterval: "1 second" },
@@ -204,8 +205,8 @@ const withdrawStaleOrders = defineActivity({
  * workflow start — the cron is the platform's, the work is this contract's.
  */
 const sweepStaleOrders = defineWorkflow({
-  input: tenanted.extend({ olderThanDays: z.number().int().positive() }),
-  output: z.object({ withdrawn: z.number().int() }),
+  input: tenanted.extend({ olderThanDays: z.number().int().nonnegative() }),
+  output: z.void(),
   // Every scheduled run is started under an id the schedule mints from its
   // own and the fire time, so there is no id for a policy to guard here.
   startPolicy: "allow-duplicate",
