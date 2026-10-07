@@ -115,6 +115,35 @@ describe("the Prisma OrderRepository", () => {
     });
   });
 
+  it("answers the stored order when the same operation saves its id again", async ({
+    repository,
+    anOrder,
+  }) => {
+    // GIVEN an order stored under an operation — an attempt that committed,
+    // then lost its completion
+    // WHEN that operation saves the id again
+    const retried = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 1), "wf-1")
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000001", 9), "wf-1"));
+
+    // THEN the answer is the row the first save stored, read back rather than
+    // refused — its quantity, not the repeat's
+    expect(retried).toBeOkWith({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 1 });
+  });
+
+  it("still refuses the id under another operation", async ({ repository, anOrder }) => {
+    // GIVEN an order stored under one operation
+    // WHEN a different operation saves the same id
+    const duplicate = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 1), "wf-1")
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000001", 1), "wf-2"));
+
+    // THEN it is a genuine duplicate
+    expect(duplicate).toBeErrTagged("DuplicateOrder", {
+      id: "0199a1e0-0000-7000-8000-000000000001",
+    });
+  });
+
   it("returns the domain's OrderNotFound for an unknown id", async ({ repository }) => {
     // GIVEN a tenant with nothing in it
     // WHEN an unknown id is looked up

@@ -338,6 +338,25 @@ describe("the transactional outbox", () => {
     expect(swept).toBeOkWith({ handed: [id], pending: [] });
   });
 
+  it("leaves one event for a placement its operation saved twice", async ({
+    tenant,
+    repository,
+    outbox,
+    anOrder,
+  }) => {
+    // GIVEN an order saved under an operation
+    // WHEN the same operation saves it again, as a retried attempt does
+    const events = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000001", 3), "wf-1")
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000001", 3), "wf-1"))
+      .flatMap(() => outbox.pending(tenant, 10))
+      .map((pending) => pending.map(({ subjectId }) => subjectId));
+
+    // THEN the recovery wrote nothing: the failed insert's outbox row rolled
+    // back with it, so a subscriber hears of the placement once
+    expect(events).toBeOkWith(["0199a1e0-0000-7000-8000-000000000001"]);
+  });
+
   it("appends a tombstone when the order is removed", async ({
     decoded,
     tenant,

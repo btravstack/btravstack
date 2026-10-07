@@ -28,6 +28,10 @@ import { P } from "unthrown";
  * attempt. So the use cases below come off `context.unit` already bound to
  * this attempt's tenant, and no activity claims the brand.
  *
+ * `place` hands the use case the operation the workflow named, so a retry
+ * after a commit whose completion was lost answers the order it already
+ * stored; only a DIFFERENT operation's order is `OrderAlreadyPlaced`.
+ *
  * `cancelPlacement` absorbs `OrderNotFound` on purpose: undoing a placement that
  * never landed is the no-op a REPEATED compensation performs, and an activity
  * Temporal may re-run has to answer the same both times.
@@ -51,7 +55,7 @@ export const fulfillOrder = TemporalWorkflowActivities(
   sync: ({ stock, shipping, storage }) => ({
     place: ({ errors, context, input }) =>
       context.unit.place
-        .execute(input.orderId, input.quantity)
+        .execute(input.orderId, input.quantity, input.operationId)
         .map((order) => ({ id: order.id, quantity: order.quantity }))
         .mapErrCases((matcher) =>
           matcher

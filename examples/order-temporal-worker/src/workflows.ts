@@ -42,9 +42,11 @@ export const fulfillOrder = declareWorkflow({
         .saga()
         .step(
           () =>
-            context.activities.place({ ...order, quantity: args.quantity }).tap((placement) => {
-              placed = placement;
-            }),
+            context.activities
+              .place({ ...order, quantity: args.quantity, operationId: context.info.workflowId })
+              .tap((placement) => {
+                placed = placement;
+              }),
           () => context.activities.cancelPlacement(order),
         )
         .step(

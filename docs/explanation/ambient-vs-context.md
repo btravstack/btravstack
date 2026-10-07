@@ -178,7 +178,7 @@ whatever opened the unit, injected like any other capability:
 export class Tenant extends Port("Tenant")<TenantId> {}
 
 export class OrderRepository extends Port("OrderRepository")<{
-  readonly save: (order: Order) => AsyncResult<Order, DuplicateOrder>;
+  readonly save: (order: Order, operation?: string) => AsyncResult<Order, DuplicateOrder>;
   readonly find: (id: string) => AsyncResult<Order, OrderNotFound>;
   readonly remove: (id: string) => AsyncResult<void, OrderNotFound>;
 }> {}

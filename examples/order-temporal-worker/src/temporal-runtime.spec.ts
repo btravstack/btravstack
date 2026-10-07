@@ -197,6 +197,45 @@ describe("the fulfillment saga", () => {
     });
   });
 
+  it("recovers a placement whose completion was lost: one order, one placement event", async ({
+    tenant,
+    serve,
+    lostCompletion,
+  }) => {
+    // GIVEN a placement attempt that commits and then loses its completion, so
+    // Temporal retries an activity whose write already landed
+    const { client } = await serve(lostCompletion.module, lostCompletion.activity);
+
+    // WHEN the workflow runs, and its read-back follows
+    const outcome = await client
+      .executeWorkflow("fulfillOrder", {
+        workflowId: "wf-lost-1",
+        args: { tenantId: tenant, orderId: "0199a1e0-0000-7000-8000-000000000005", quantity: 2 },
+      })
+      .flatMap((placed) =>
+        lostCompletion
+          .reader(tenant)
+          .list({ limit: 10, sort: { field: "quantity", direction: "asc" } })
+          .flatMap((page) =>
+            lostCompletion.events(tenant, "0199a1e0-0000-7000-8000-000000000005").map((events) => ({
+              placed,
+              orders: page.items.map((order) => order.id),
+              events: events.length,
+              lost: lostCompletion.lost(),
+            })),
+          ),
+      );
+
+    // THEN the retry recovered its own write rather than refusing it, the saga
+    // ran to the end, and nothing was placed or announced twice
+    expect(outcome).toBeOkWith({
+      placed: { id: "0199a1e0-0000-7000-8000-000000000005", quantity: 2 },
+      orders: ["0199a1e0-0000-7000-8000-000000000005"],
+      events: 1,
+      lost: 1,
+    });
+  });
+
   it("hands the client the OrderAlreadyPlaced the API answers CONFLICT for, as a typed contract error", async ({
     tenant,
     serve,

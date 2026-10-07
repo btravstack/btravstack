@@ -227,7 +227,7 @@ export const fulfillOrder = declareWorkflow({
         .step(
           () =>
             context.activities
-              .place({ ...order, quantity: args.quantity })
+              .place({ ...order, quantity: args.quantity, operationId: context.info.workflowId })
               .tap((placement) => {
                 placed = placement;
               }),
@@ -266,6 +266,13 @@ export const fulfillOrder = declareWorkflow({
   },
 });
 ```
+
+`place` names its operation — the workflow's id, which every retry of the
+activity carries — and the repository stores it beside the order. A retry whose
+first attempt committed and then lost its completion finds its own row and
+answers it, with no second order and no second outbox event; only a
+**different** workflow placing the same order id is refused as
+`OrderAlreadyPlaced`.
 
 The compensations declare no errors: compensation is the saga un-deciding, and
 a step that could answer "no" would leave it stuck half-done.

@@ -37,6 +37,12 @@ export class Tenant extends Port("Tenant")<TenantId> {}
  * can never miss either. Deleting what does not exist is `OrderNotFound`, a
  * value, so a duplicate compensation is inert.
  *
+ * `save`'s `operation` names the operation doing the saving. A second save of
+ * an id under the SAME operation answers the order the first one stored, and
+ * writes nothing — a retried attempt whose first try committed is recovering
+ * its own write, not placing a duplicate. Under any other operation, or none,
+ * it is still `DuplicateOrder`.
+ *
  * `remove`'s `placedBefore` is a condition the STORE checks in the same
  * statement that deletes: a row placed at or after it is left alone, no
  * tombstone is written, and the answer is `OrderNotFound`. That is what lets
@@ -44,7 +50,7 @@ export class Tenant extends Port("Tenant")<TenantId> {}
  * under the same id since.
  */
 export class OrderRepository extends Port("OrderRepository")<{
-  readonly save: (order: Order) => AsyncResult<Order, DuplicateOrder>;
+  readonly save: (order: Order, operation?: string) => AsyncResult<Order, DuplicateOrder>;
   readonly find: (id: string) => AsyncResult<Order, OrderNotFound>;
   readonly list: (
     query: OrderQuery,
@@ -110,10 +116,16 @@ export class PaymentService extends Port("PaymentService")<{
   readonly refund: (authorizationId: string, idempotencyKey: string) => AsyncResult<void, never>;
 }> {}
 
+/**
+ * `operation` is handed to `OrderRepository.save` as it is: a caller that may
+ * run the same placement more than once — an activity Temporal retries — names
+ * it, so the repeat answers the order rather than `DuplicateOrder`.
+ */
 export class PlaceOrder extends Port("PlaceOrder")<{
   readonly execute: (
     id: string,
     quantity: number,
+    operation?: string,
   ) => AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder>;
 }> {}
 

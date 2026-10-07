@@ -1,0 +1,36 @@
+[
+  {
+    "id": "column.orders.order.operationId",
+    "label": "Add column \"operationId\" to \"order\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "orders",
+        "objectType": "column",
+        "name": "operationId",
+        "table": "order"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"operationId\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": ["orders", "order", "operationId"]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"operationId\"",
+        "sql": "ALTER TABLE \"orders\".\"order\" ADD COLUMN \"operationId\" text"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"operationId\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": ["orders", "order", "operationId"]
+      }
+    ]
+  }
+]

@@ -149,7 +149,7 @@ what the use cases have to handle:
 export class Tenant extends Port("Tenant")<TenantId> {}
 
 export class OrderRepository extends Port("OrderRepository")<{
-  readonly save: (order: Order) => AsyncResult<Order, DuplicateOrder>;
+  readonly save: (order: Order, operation?: string) => AsyncResult<Order, DuplicateOrder>;
   readonly find: (id: string) => AsyncResult<Order, OrderNotFound>;
   readonly remove: (id: string) => AsyncResult<void, OrderNotFound>;
 }> {}
@@ -280,12 +280,13 @@ becomes the domain's:
 // `tenantPinned(db, tenantId, work)` — one transaction, with the row-security
 // setting pinned on its own connection first, answering a `Result` already so
 // nothing wraps it a second time.
-save: (order) =>
+save: (order, operation) =>
   pinned(async (tx) => {
     const placed = await tx.orm.orders.Order.create({
       tenantId,
       orderId: order.id,
       quantity: order.quantity,
+      operationId: operation ?? null,
     });
     await tx.orm.orders.OutboxMessage.create({
       tenantId,
@@ -312,6 +313,13 @@ and `NotAuthorized` (`42501`) is the row-security policy refusing a write —
 which an adapter bound to one tenant cannot legitimately provoke. Both are the
 defect channel, not `E`. Adding a fourth arm upstream breaks this file and
 nothing downstream.
+
+The full method goes one step further: a `DuplicateOrder` raised under the
+caller's own `operation` reads the row back, in a transaction of its own since
+the violation aborted the first, and answers the stored order. The failed
+insert took its outbox row down with it, so a retried placement that recovers
+its own write announces nothing twice; any other operation, or none, is still
+the duplicate.
 
 `remove` is the same shape in the other direction: a delete then a
 **tombstone** — an outbox row with a `null` payload — in one transaction, so a

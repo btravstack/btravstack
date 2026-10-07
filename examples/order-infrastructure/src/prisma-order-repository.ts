@@ -152,12 +152,18 @@ export const prismaOrderRepository = (
     // event to miss. The payload is what makes it a create-or-replace; its
     // tombstone twin is in `remove`. The pin rides the SAME transaction, which
     // is what `tenantPinned` exists to guarantee.
-    save: (order) =>
+    //
+    // A duplicate under the caller's own `operation` is read back in a
+    // transaction of its own — the violation aborted the first — and answers
+    // the stored order. The failed insert rolled its outbox row back with it,
+    // so a recovered retry announces nothing twice.
+    save: (order, operation) =>
       pinned(async (tx) => {
         const placed = await tx.orm.orders.Order.create({
           tenantId,
           orderId: order.id,
           quantity: order.quantity,
+          operationId: operation ?? null,
         });
         await tx.orm.orders.OutboxMessage.create({
           tenantId,
@@ -172,7 +178,29 @@ export const prismaOrderRepository = (
             .with(P.tag("ForeignKeyViolation"), (violation) => defect(violation))
             .with(P.tag("NotAuthorized"), (refused) => defect(refused)),
         )
-        .map(() => order),
+        .map(() => order)
+        .flatMapErrCases((matcher) =>
+          matcher.with(P.tag("DuplicateOrder"), (duplicate) =>
+            operation === undefined
+              ? ErrAsync(duplicate)
+              : pinned((tx) =>
+                  tx.orm.orders.Order.where({
+                    tenantId,
+                    orderId: order.id,
+                    operationId: operation,
+                  }).first(),
+                )
+                  .mapErrCases((matcher, defect) =>
+                    matcher.with(
+                      P.tag("UniqueConstraintViolation"),
+                      P.tag("ForeignKeyViolation"),
+                      P.tag("NotAuthorized"),
+                      (e) => defect(e),
+                    ),
+                  )
+                  .flatMap((row) => (row === null ? Err(duplicate) : hydrate(row))),
+          ),
+        ),
 
     find: (id) =>
       pinned((tx) => tx.orm.orders.Order.where({ tenantId, orderId: id }).first())

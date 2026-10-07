@@ -41,12 +41,19 @@ namespace orders {
   // caller's UUIDv7, so its timestamp says whatever the caller wanted, and the
   // retention sweep deletes by this column. `TimestamptzString` for the
   // outbox's reason below.
+  //
+  // `operationId` names the operation that placed the row — a workflow, for
+  // the Temporal deployment — so a retried attempt whose first try committed
+  // can recognise its own write rather than read it as somebody else's
+  // duplicate. `NULL` for a placement that named none, which no retry
+  // recovers.
   model Order {
-    id       Int               @id @default(autoincrement())
-    tenantId String
-    orderId  String
-    quantity Int
-    placedAt TimestamptzString @default(now())
+    id          Int               @id @default(autoincrement())
+    tenantId    String
+    orderId     String
+    quantity    Int
+    placedAt    TimestamptzString @default(now())
+    operationId String?
 
     @@unique([tenantId, orderId])
     @@rls
