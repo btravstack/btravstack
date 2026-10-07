@@ -55,16 +55,16 @@ it replaces is the `main.ts` every backend writes by hand and gets subtly wrong.
 
 ## What you get
 
-|                          |                                                                                                 |
-| ------------------------ | ----------------------------------------------------------------------------------------------- |
-| **Dependency injection** | Plain values — no decorators, no `reflect-metadata`. An unmet dependency is a compile error.    |
-| **Errors as values**     | Every fallible call returns a `Result`, so the compiler makes you handle failure.               |
-| **Domain modelling**     | Optional `@btravstack/entity`: sealed entities, aggregate decisions, and Zod schemas.           |
-| **Configuration**        | Environment variables validated once at boot into typed values; a bad one exits `78` naming it. |
-| **Three transports**     | HTTP (contract-first, over oRPC), Temporal workers, AMQP consumers.                             |
-| **Observability**        | Structured logs correlated per request, OpenTelemetry traces and metrics.                       |
-| **Lifecycle**            | Health probes, graceful drain, resource cleanup on every exit path.                             |
-| **Testing**              | A harness that boots the real graph and swaps one provider at a time.                           |
+|                          |                                                                                                                                                                                         |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Dependency injection** | Plain values — no decorators, no `reflect-metadata`. An unmet dependency is a compile error.                                                                                            |
+| **Errors as values**     | Every fallible call returns a `Result`: the failure is in the type and matched exhaustively. Dropping one unread is a lint error (`unthrown/no-unhandled-result`), not a compile error. |
+| **Domain modelling**     | Optional `@btravstack/entity`: sealed entities, aggregate decisions, and Zod schemas.                                                                                                   |
+| **Configuration**        | Environment variables validated once at boot into typed values; a bad one exits `78` naming it.                                                                                         |
+| **Three transports**     | HTTP (contract-first, over oRPC), Temporal workers, AMQP consumers.                                                                                                                     |
+| **Observability**        | Structured logs correlated per request, OpenTelemetry traces and metrics.                                                                                                               |
+| **Lifecycle**            | Health probes, graceful drain, resource cleanup on every exit path.                                                                                                                     |
+| **Testing**              | A harness that boots the real graph and swaps one provider at a time.                                                                                                                   |
 
 ## Why btravstack?
 
@@ -94,14 +94,28 @@ btravstack gets them right once, as defaults.
 
 ## How it compares
 
-|                      | btravstack      | NestJS                | AdonisJS              | Hand-rolled       |
-| -------------------- | --------------- | --------------------- | --------------------- | ----------------- |
-| Wiring checked       | at compile time | at boot               | at boot               | never             |
-| Dependency injection | plain values    | decorators + metadata | decorators + metadata | by hand           |
-| Errors               | values, typed   | exceptions + filters  | exceptions + handlers | your choice       |
-| Graceful shutdown    | default         | opt-in hooks          | opt-in hooks          | write it yourself |
-| Ecosystem            | small, growing  | very large            | large                 | none              |
-| Full-stack           | no              | no                    | yes                   | —                 |
+|                      | btravstack                                                            | NestJS                          | AdonisJS                                    | Hand-rolled               |
+| -------------------- | --------------------------------------------------------------------- | ------------------------------- | ------------------------------------------- | ------------------------- |
+| Wiring checked       | at compile time, across modules: visibility, scopes, transitive needs | at boot                         | at boot                                     | each call's own signature |
+| Dependency injection | plain values                                                          | decorators + metadata           | decorators + metadata                       | by hand                   |
+| Errors               | values, typed                                                         | exceptions + filters            | exceptions + handlers                       | your choice               |
+| Graceful shutdown    | on SIGTERM by default, with a Kubernetes pre-drain delay              | opt-in, `enableShutdownHooks()` | on SIGTERM, through providers' `shutdown()` | write it yourself         |
+| Ecosystem            | small, growing                                                        | very large                      | large                                       | none                      |
+| Full-stack           | no                                                                    | no                              | yes                                         | —                         |
+
+Every framework in that table manages its lifecycle, and so do
+[Spring Boot](https://docs.spring.io/spring-boot/reference/web/graceful-shutdown.html)
+(graceful shutdown on by default), the
+[.NET Generic Host](https://learn.microsoft.com/en-us/dotnet/core/extensions/generic-host)
+and Effect's [`runMain`](https://effect.website/docs/v4/platform/runtime). The
+difference is narrower. The compiler checks the composition (module
+visibility, scopes and transitive needs, not only a constructor's arguments),
+and what it cannot see is a defect before any factory runs. The pre-drain
+delay, the drain's deadlines and its unit accounting are defaults rather than
+deployment work. The AdonisJS row is from
+its [v6 lifecycle](https://v6-docs.adonisjs.com/guides/concepts/application-lifecycle)
+and [service providers](https://docs.adonisjs.com/guides/concepts/service-providers)
+pages.
 
 **NestJS has far more packages, integrations and hiring pool**, and decorators
 are more concise to write. If that trade matters more than compile-time
@@ -131,6 +145,12 @@ pnpm add @btravstack/http-server @orpc/server@^2.0.0-beta @orpc/contract@^2.0.0-
 Everything is a **peer dependency** — the application holds one copy of each,
 which is what keeps port identity and `isResult` honest across packages. The
 kernel and `@btravstack/config` depend on `node:` builtins only. Node `>=22`.
+
+Every package shares one version, pre-1.0 minors may break, and security fixes
+land on the latest release only — read
+[Support and upgrades](https://btravstack.github.io/btravstack/reference/packages#support-and-upgrades)
+before adopting. Each release's notes, migration steps included, are on its
+[release pull request](https://github.com/btravstack/btravstack/pulls?q=is%3Apr+is%3Amerged+head%3Achangeset-release%2Fmain).
 
 ## Quick example
 

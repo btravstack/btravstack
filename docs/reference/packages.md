@@ -103,15 +103,17 @@ dependencies** beyond `node:` builtins — the default log sink is
 `@opentelemetry/api` because `@amqp-contract/worker` imports it
 unconditionally; `@amqp-contract/contract` is deliberately not in its list.
 
-::: warning Two exact-beta pins
-`@orpc/{client,contract,server}` and `@temporal-contract/*` are pinned to an
-**exact** beta in this repository's catalog, and an application should pin the
-same ones until they go stable.
+::: warning Prerelease peers
+The HTTP, Temporal and AMQP starters peer on libraries whose next major is
+still a prerelease: `@orpc/*`, `@temporal-contract/*` and
+`@amqp-contract/worker`. Each library's `latest` dist-tag still points at its
+previous major while the adapters here need the new one, so an unpinned range
+resolves the old major and fails a strict peer check — which is why the
+commands below carry a `-beta` range.
 
-The reason is the same for both: each library's `latest` dist-tag still points
-at its previous major — oRPC's at 1.x, temporal-contract's at 7.x — while the
-adapters here peer on the beta line, so an unpinned range resolves the old
-major and fails a strict peer check.
+A prerelease can break between its own betas, so this repository pins each one
+**exactly** in its catalog, and an application should do the same and move
+them only together with a btravstack release.
 
 **The versions are deliberately not written here.** They move, and a number in
 prose goes stale on a commit that never touched this page. `pnpm-workspace.yaml`
@@ -168,6 +170,34 @@ Every published package claims `engines: { node: ">=22" }`. The repository's
 own development floor is higher (`>=22.22`); that is the toolchain's floor,
 not a promise made to consumers. The published floor was `>=20` until Node 20
 reached end of life on 2026-04-30.
+
+## Support and upgrades
+
+This is the whole maintenance commitment, stated before you adopt:
+
+- **Security fixes land on the latest published release only.** There are no
+  backports, no long-term-support line and no commercial support — see the
+  [security policy](https://github.com/btravstack/btravstack/blob/main/SECURITY.md).
+- **Every published package shares one version number** and releases with the
+  rest, changed or not, so `@btravstack/core@X` goes with every other package
+  at `X`. Upgrade them together; never mix versions in one application.
+- **Before 1.0, a minor release may break.** A patch is meant not to. Together
+  with the two rules above, taking a security fix can mean moving the whole
+  family through a breaking minor, prerelease peers included.
+- **A release's notes are one page: its release pull request.** Each release
+  is cut by merging a pull request that collects every package's changelog
+  entry for that version — the
+  [merged ones](https://github.com/btravstack/btravstack/pulls?q=is%3Apr+is%3Amerged+head%3Achangeset-release%2Fmain)
+  are the release history, migration steps included, and the
+  [open one](https://github.com/btravstack/btravstack/pulls?q=is%3Apr+is%3Aopen+head%3Achangeset-release%2Fmain)
+  is what `main` carries that npm does not have yet. An entry sits under the
+  package the change touched, so read the whole release, not only the packages
+  you import. The same entries are in each package's `CHANGELOG.md` and its
+  [GitHub release](https://github.com/btravstack/btravstack/releases).
+
+This site is built from `main`, which can be ahead of npm; the version menu in
+the navigation bar says which release it describes and whether unreleased
+changes are on it.
 
 ## Entry points
 

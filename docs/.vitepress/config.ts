@@ -1,3 +1,6 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync, readdirSync } from "node:fs";
+
 import { defineConfig } from "vitepress";
 
 const SITE_DESCRIPTION =
@@ -5,6 +8,20 @@ const SITE_DESCRIPTION =
 
 const BASE = "/btravstack/";
 const SITE_URL = `https://btravstack.github.io${BASE}`;
+const REPO = "https://github.com/btravstack/btravstack";
+const RELEASE_PRS = `${REPO}/pulls?q=is%3Apr+head%3Achangeset-release%2Fmain`;
+
+// The site deploys from `main`, which runs ahead of npm until the release pull
+// request merges: a pending changeset is exactly "on main, not yet published".
+const ROOT = new URL("../../", import.meta.url);
+const VERSION: string = JSON.parse(
+  readFileSync(new URL("packages/core/package.json", ROOT), "utf8"),
+).version;
+const COMMIT = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+const UNRELEASED = readdirSync(new URL(".changeset/", ROOT)).some(
+  (name) =>
+    name.endsWith(".md") && !["README.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md"].includes(name),
+);
 
 // The guide is structured by the four Diátaxis modes (https://diataxis.fr/): a
 // learning-oriented Tutorial, task-oriented How-to guides, information-oriented
@@ -424,8 +441,15 @@ export default defineConfig({
       { text: "API", link: "/api/" },
       { text: "Examples", link: "/examples/" },
       {
-        text: "Changelog",
-        link: "https://github.com/btravstack/btravstack/releases",
+        text: UNRELEASED ? `v${VERSION} + unreleased` : `v${VERSION}`,
+        items: [
+          { text: `Built from main at ${COMMIT.slice(0, 7)}`, link: `${REPO}/commit/${COMMIT}` },
+          ...(UNRELEASED
+            ? [{ text: "Unreleased: on main, not on npm", link: `${RELEASE_PRS}+is%3Aopen` }]
+            : []),
+          { text: "Release notes", link: `${RELEASE_PRS}+is%3Amerged` },
+          { text: "Support and upgrades", link: "/reference/packages#support-and-upgrades" },
+        ],
       },
       // Back to the btravstack hub (links the docs up to the landing page).
       { text: "btravstack", link: "https://btravstack.github.io/" },

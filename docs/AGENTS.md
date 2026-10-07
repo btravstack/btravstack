@@ -27,6 +27,22 @@ the old repository.
 - **Deployed by `.github/workflows/deploy-docs.yml`**, unversioned: `main`
   deploys alone to the root. `unthrown`'s stable/beta split (`DOCS_BASE`,
   `DOCS_VERSIONS`) is the shape to adopt once a stable tag exists.
+
+  **The site runs ahead of npm, and says so** (issue #381). Deploy and release
+  both chain off the same green CI run and check out its `head_sha`, but only a
+  merged release PR publishes: an API change merged with its changeset deploys
+  at once, while npm still serves the previous version until
+  `changeset-release/main` merges. Coupling the deploy to publication was
+  declined — a docs-only fix carries no changeset, so it would wait for an
+  unrelated release. Instead `config.ts` reads, at build time, the version in
+  `packages/core/package.json`, `git rev-parse HEAD`, and whether any changeset
+  is pending, and the navigation's version menu shows them — `vX + unreleased`
+  with a link to the open release PR in the window above, `vX` once the release
+  PR's merge commit (which consumes the changesets and bumps the version)
+  deploys. That last label can lead npm by the length of the publish job, which
+  runs from the same commit in parallel. The tutorial's install step and the
+  `Support and upgrades` section of `reference/packages.md` point at the menu.
+
 - **Every `ts` fence in the framework, DI and entity guide directories, in the
   root README and in the package READMEs is compiled by `pnpm typecheck`,
   continuously.**
