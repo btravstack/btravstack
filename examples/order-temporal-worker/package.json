@@ -10,7 +10,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "deploy:schedules": "tsx src/deploy-schedules.ts",
+    "deploy:schedules": "tsx --env-file-if-exists=../../.env.dev src/deploy-schedules.ts",
     "dev": "PROBE_PORT=0 tsx watch --env-file=../../.env.dev src/main.ts",
     "generate": "node ../../docs/scripts/extract-doc-samples.ts --group order-temporal-worker --out src/generated/doc-samples",
     "test": "vitest run",

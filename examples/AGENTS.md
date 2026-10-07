@@ -272,11 +272,18 @@ each deployment's `src/main.ts` carry their own.
   position, executable** (`src/schedules.ts`, `src/deploy-schedules.ts`): one
   `ensureSchedule` per `SWEEP_TENANTS` entry for the `sweepStaleOrders`
   workflow, under an id derived from the tenant — which is the whole of the
-  idempotence — inside a `Module.scoped` graph of its own, because a deploy is
-  a one-shot with no runtime to `start`. The script hands `process.env` over
+  idempotence — then deletes every `sweep-stale-orders-*` schedule for a
+  tenant no longer listed, inside a `Module.scoped` graph of its own, because
+  a deploy is a one-shot with no runtime to `start`. The script hands `process.env` over
   as `Env` once, the one place an example does; everything after it reads
   through `Config`. The sweep needs no clock port: the cutoff is computed in
-  the workflow, where `Date.now()` is the recorded workflow-task time.
+  the workflow, where `Date.now()` is the recorded workflow-task time. It
+  deletes by `Order.placedAt`, a column the database defaults, never by the
+  order id's UUIDv7 timestamp — the caller mints that id, so its timestamp
+  would let a client backdate an order into the next sweep. It works a batch
+  at a time from the first page of what is still stale, checks the unit's
+  signal between batches, and answers no count, since a retried attempt
+  cannot see what the first one removed.
 - **`order-amqp-worker` is the `pinoSink` deployment.** `src/module.ts` mints
   one `logSink = pinoSink(pino({ level: "trace" }))` and composes
   `observability({ sink: logSink })`; `src/main.ts` hands the kernel's events
@@ -289,7 +296,10 @@ each deployment's `src/main.ts` carry their own.
   placement stores the invoice it renders and mails a presigned link; a
   withdrawal `get`s the invoice before presigning it, because a presign asks
   the store nothing, and triages `ObjectNotFound` by name into a mail without a
-  link. Isolation on the shared RustFS is the tenant in the key
+  link. It checks the unit's signal again once the store has answered and
+  before it sends: a deadline that passed while an invoice was in flight would
+  otherwise mail on behalf of an abandoned delivery, and the retry would mail
+  again. Isolation on the shared RustFS is the tenant in the key
   (`invoices/{tenantId}/{orderId}.txt`), rule 7's boundary rather than a bucket
   per test; the root exports `Storage` only so a spec can reap an invoice
   through the running app's own store.

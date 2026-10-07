@@ -362,9 +362,13 @@ declared error is what earns the walk-back.
 
 The contract's third workflow, `sweepStaleOrders`, is the one nobody calls:
 a [Temporal Schedule](/how-to/run-something-on-a-schedule) fires it every
-night for each tenant, and its one activity withdraws every order placed more
-than `olderThanDays` ago — read off the order id, since a UUIDv7's first 48
-bits are its creation time. Each withdrawal leaves a tombstone in the outbox,
+night for each tenant, and its one activity withdraws every order the store
+placed more than `olderThanDays` ago — by `Order.placedAt`, which the database
+defaults, never by the order id: a caller chooses its UUIDv7, timestamp
+included. It removes the first page of what is still stale and asks again, so
+it holds one batch and no cursor, stops as a defect once the unit's signal
+aborts, and answers no count a retry could not reproduce. Each withdrawal
+leaves a tombstone in the outbox,
 so [the broadcast deployment](/examples/order-amqp-worker) tells every
 subscriber; housekeeping is just another write. The cutoff is computed in the
 **workflow**, where `Date.now()` is the workflow task's recorded time, so a
@@ -381,9 +385,10 @@ replica. It reads `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE` and `SWEEP_TENANTS`
 through `Config`, and calls
 [`ensureSchedule`](/reference/temporal-worker) once per tenant under an id
 derived from the tenant, so the second deploy updates what the first
-created. `src/schedules.spec.ts` runs it twice against the shared server, on
-the spec file's own namespace, and asserts both halves: `created` then
-`updated`, and exactly one schedule left behind.
+created, then deletes the sweep of any tenant it no longer lists.
+`src/schedules.spec.ts` runs it against the shared server, on the spec file's
+own namespace: `created` then `updated`, exactly one schedule left behind, and
+a dropped tenant's schedule retired.
 
 ## One subtlety worth stealing
 

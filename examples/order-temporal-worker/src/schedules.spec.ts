@@ -1,3 +1,5 @@
+import { TenantId } from "@btravstack/example-order-domain";
+import { uuidv7 } from "uuidv7";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -17,7 +19,7 @@ describe("deploy:schedules", () => {
 
     // WHEN the deploy runs twice — what every release after the first is
     const outcomes = await deploySchedules(env).flatMap((first) =>
-      deploySchedules(env).map((second) => [first, second]),
+      deploySchedules(env).map((second) => [first.ensured, second.ensured]),
     );
 
     // THEN the second run found the first one's schedule and brought it up to
@@ -48,5 +50,36 @@ describe("deploy:schedules", () => {
       deployed: true,
       scheduled: [`sweep-stale-orders-${tenant}`],
     });
+  });
+
+  it("retires the sweep of a tenant the deploy no longer lists", async ({
+    server,
+    tenant,
+    scheduled,
+  }) => {
+    // GIVEN a release that swept two tenants, both visible on the namespace
+    const moved = TenantId(uuidv7());
+    const env = (tenants: readonly string[]) => ({
+      TEMPORAL_ADDRESS: server.address,
+      TEMPORAL_NAMESPACE: server.namespace,
+      SWEEP_TENANTS: tenants.join(","),
+    });
+    const first = await deploySchedules(env([tenant, moved]));
+    await vi.waitUntil(async () => !first.isOk() || (await scheduled(moved)).length > 0, {
+      timeout: 10_000,
+    });
+
+    // WHEN the next release lists only one of them
+    const second = await deploySchedules(env([tenant]));
+
+    // THEN the other tenant's destructive sweep was deleted, and the listed
+    // one kept
+    expect(
+      second.map(({ ensured, retired }) => ({
+        ensured,
+        movedRetired: retired.includes(`sweep-stale-orders-${moved}`),
+        keptRetired: retired.includes(`sweep-stale-orders-${tenant}`),
+      })),
+    ).toBeOkWith({ ensured: ["updated"], movedRetired: true, keptRetired: false });
   });
 });

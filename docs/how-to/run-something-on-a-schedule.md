@@ -124,9 +124,13 @@ Temporal namespace accepts a write".
 `src/schedules.ts` registers one `sweepStaleOrders` schedule per tenant under
 an id **derived from the tenant**, which is what makes a second deploy an
 update rather than a second schedule, inside a `Module.scoped` graph whose
-client connection is released on every path. `src/schedules.spec.ts` runs it
-twice against the shared Temporal server, on a namespace of its own, and
-asserts `created` then `updated` and exactly one schedule left behind. The
+client connection is released on every path. It then **retires** every
+schedule under its own prefix for a tenant the list no longer names —
+`ensureSchedule` only ever creates or updates, so a deploy that should stop a
+job has to delete it itself. `src/schedules.spec.ts` runs it against the
+shared Temporal server, on a namespace of its own, and asserts `created` then
+`updated`, exactly one schedule left behind, and a dropped tenant's schedule
+deleted. The
 workflow it fires is on
 [the example's page](/examples/order-temporal-worker#the-stale-order-sweep-on-a-schedule).
 
