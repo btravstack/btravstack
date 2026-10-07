@@ -1,3 +1,5 @@
+import { generateKeyPairSync, randomUUID } from "node:crypto";
+
 import { withLock } from "./lock.js";
 
 /**
@@ -59,9 +61,13 @@ export type OryIdentity = {
   readonly status: Outcome;
 };
 
+/** The two key sets Hydra signs with, and generates inside a request when they are missing. */
+type SigningKeySet = "hydra.openid.id-token" | "hydra.jwt.access-token";
+
 export type OryProvisioned = {
   readonly identities: Record<keyof typeof ORY_USERS, Outcome>;
   readonly client: Outcome;
+  readonly keys: Record<SigningKeySet, Outcome>;
 };
 
 const send = async (
@@ -133,6 +139,38 @@ const client = async (): Promise<Outcome> => {
 };
 
 /**
+ * A key set Hydra has not generated yet, imported rather than generated.
+ *
+ * Hydra mints a missing set lazily, as a 4096-bit RSA key, inside the first
+ * request that signs with it — and on a loaded runner that outlasts its 10s
+ * write timeout, so the request dies as `other side closed`. A 2048-bit key
+ * generated here takes milliseconds and no request waits on it.
+ */
+const signingKeys = async (set: SigningKeySet): Promise<Outcome> => {
+  const found = await send(`${HYDRA_ADMIN}/keys/${set}`);
+  if (found.status === 200) return "existing";
+
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const key = {
+    ...privateKey.export({ format: "jwk" }),
+    kid: randomUUID(),
+    alg: "RS256",
+    use: "sig",
+  };
+  const imported = await send(`${HYDRA_ADMIN}/keys/${set}`, {
+    method: "PUT",
+    body: { keys: [key] },
+  });
+  if (imported.status !== 200)
+    // oxlint-disable-next-line unthrown/no-throw -- a vitest fixture reports failure by rejecting; there is no Result channel here
+    throw new Error(
+      `Could not import the '${set}' key set: ${imported.status} ${JSON.stringify(imported.body)}`,
+    );
+
+  return "created";
+};
+
+/**
  * Add a redirect URI to the one client, idempotent by union.
  *
  * `ORY_REDIRECT_URI` is fixed at `:3000` because a redirect protocol needs its
@@ -164,20 +202,28 @@ export const registerRedirectUri = (uri: string): Promise<void> =>
   });
 
 /**
- * The two identities and the one client, idempotent by lookup-then-create:
- * neither admin API has an upsert.
+ * The signing keys, the two identities and the one client, idempotent by
+ * lookup-then-create: neither admin API has an upsert. The keys come first, so
+ * no login anywhere reaches Hydra before they exist.
  *
- * Run on every attach rather than once, because both DSNs are `memory` — a
- * container that is restarted rather than attached to has forgotten every
- * identity, client and signing key.
+ * Run on every attach rather than once, because a fresh runner's database is
+ * empty, and a wiped local one is too.
  */
 export const provisionOry = (): Promise<OryProvisioned> =>
   withLock("ory-provision", async () => {
+    const [idToken, accessToken] = await Promise.all([
+      signingKeys("hydra.openid.id-token"),
+      signingKeys("hydra.jwt.access-token"),
+    ]);
     const [alice, bob] = await Promise.all([
       createIdentity(ORY_USERS.alice),
       createIdentity(ORY_USERS.bob),
     ]);
     const status = await client();
     await registerRedirectUri(ORY_REDIRECT_URI);
-    return { identities: { alice: alice.status, bob: bob.status }, client: status };
+    return {
+      identities: { alice: alice.status, bob: bob.status },
+      client: status,
+      keys: { "hydra.openid.id-token": idToken, "hydra.jwt.access-token": accessToken },
+    };
   });

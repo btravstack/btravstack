@@ -55,10 +55,12 @@ describe("the ory containers", () => {
       await provisionOry();
 
       // WHEN the next attach provisions again, as every attach does
-      // THEN the lookup finds all three, so nothing is created twice
+      // THEN the lookup finds every one, so nothing is created twice — the
+      // signing keys included, which a login must never be the one to mint
       await expect(provisionOry()).resolves.toEqual({
         identities: { alice: "existing", bob: "existing" },
         client: "existing",
+        keys: { "hydra.openid.id-token": "existing", "hydra.jwt.access-token": "existing" },
       });
     },
     START_UP,
