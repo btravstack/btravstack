@@ -130,9 +130,11 @@ describe("the broadcast deployment", () => {
 
     // THEN the subscriber hears both words about the subject, in order: what
     // it was, then that it is gone. Without the tombstone a reader keeping its
-    // own copy would hold a cancelled order forever.
+    // own copy would hold a cancelled order forever. The tombstone may be
+    // heard more than once — it is redelivered while the placement's invoice
+    // is still being stored — so only the first two words are the claim.
     await expect
-      .poll(() => notifications(tapped.lines()), { timeout: 5_000 })
+      .poll(() => notifications(tapped.lines()).slice(0, 2), { timeout: 5_000 })
       .toEqual([
         {
           message: "order placed — notifying",
@@ -170,6 +172,7 @@ describe("the broadcast deployment", () => {
       kind: "order",
       id: "0199a1e0-0000-7000-8000-000000000005",
       occurredAt: expect.any(String),
+      placedAt: expect.any(String),
       payload: { quantity: 4 },
     });
   });
@@ -301,38 +304,121 @@ describe("the invoice a notification links", () => {
     });
   });
 
-  it("is left out of the withdrawal once it is gone: ObjectNotFound is an answer", async ({
+  it("is waited for when a withdrawal overtakes the placement that stores it", async ({
     tenant,
     serve,
     tapped,
-    writer,
+    announce,
     delivered,
   }) => {
-    // GIVEN a placed order whose invoice a retention rule has since reaped
+    // GIVEN the worker serving, and an order placed a moment ago whose
+    // invoice no placement notification has stored yet
     await serve(tapped.module);
-    const placed = await writer((ctx) =>
-      ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-00000000c003", 1),
-    );
-    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
-    const reaped = await tapped
-      .services()
-      .invoices.delete(`invoices/${tenant}/0199a1e0-0000-7000-8000-00000000c003.txt`);
 
-    // WHEN the order is withdrawn
-    const removed = await writer((ctx) =>
-      ctx.get(OrderRepository).remove("0199a1e0-0000-7000-8000-00000000c003"),
+    // WHEN its withdrawal arrives first, and has been delivered more than once
+    const announced = await announce({
+      eventId: 1,
+      tenantId: tenant,
+      kind: "order",
+      id: "0199a1e0-0000-7000-8000-00000000c003",
+      occurredAt: new Date().toISOString(),
+      placedAt: new Date().toISOString(),
+      payload: null,
+    });
+    await vi.waitUntil(
+      () =>
+        tapped
+          .lines()
+          .filter(
+            (line) =>
+              line.message === "order gone — notifying" &&
+              line.attributes["orderId"] === "0199a1e0-0000-7000-8000-00000000c003",
+          ).length > 1,
+      { timeout: 10_000 },
     );
+
+    // THEN the delivery was retried rather than answered: no mail went out
+    // claiming the order had no invoice
+    expect({ announced: announced.isOk(), mails: await delivered(tenant) }).toEqual({
+      announced: true,
+      mails: [],
+    });
+  });
+
+  it("is left out of a withdrawal once the order is past the store's retention", async ({
+    tenant,
+    serve,
+    tapped,
+    announce,
+    delivered,
+  }) => {
+    // GIVEN the worker serving, and an order placed long before the store's
+    // retention, whose invoice is gone
+    await serve(tapped.module);
+
+    // WHEN its withdrawal arrives
+    const announced = await announce({
+      eventId: 2,
+      tenantId: tenant,
+      kind: "order",
+      id: "0199a1e0-0000-7000-8000-00000000c005",
+      occurredAt: new Date().toISOString(),
+      placedAt: "2025-01-01T00:00:00.000Z",
+      payload: null,
+    });
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
+    const [withdrawal] = await delivered(tenant);
+
+    // THEN the mail goes out without a link: an absence past retention is
+    // the invoice retained away, an ordinary answer
+    expect({ announced: announced.isOk(), text: withdrawal?.Text.trim() }).toEqual({
+      announced: true,
+      text: "Order 0199a1e0-0000-7000-8000-00000000c005 is no longer with us.",
+    });
+  });
+
+  it("is never the invoice of an order placed since under the same id", async ({
+    tenant,
+    serve,
+    tapped,
+    announce,
+    delivered,
+  }) => {
+    // GIVEN the worker serving, and an id placed again today — its invoice
+    // stored — after an order of 2025 held it
+    await serve(tapped.module);
+    const replaced = await announce({
+      eventId: 3,
+      tenantId: tenant,
+      kind: "order",
+      id: "0199a1e0-0000-7000-8000-00000000c006",
+      occurredAt: new Date().toISOString(),
+      placedAt: new Date().toISOString(),
+      payload: { quantity: 2 },
+    });
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
+
+    // WHEN the old order's withdrawal arrives
+    const withdrawn = await announce({
+      eventId: 4,
+      tenantId: tenant,
+      kind: "order",
+      id: "0199a1e0-0000-7000-8000-00000000c006",
+      occurredAt: new Date().toISOString(),
+      placedAt: "2025-01-01T00:00:00.000Z",
+      payload: null,
+    });
     await vi.waitUntil(async () => (await delivered(tenant)).length === 2, { timeout: 10_000 });
     const [, withdrawal] = await delivered(tenant);
 
-    // THEN the mail still goes out, without a link that would 404 — the
-    // missing object was triaged, not retried and not dead-lettered
+    // THEN it links nothing: its own invoice is long gone, and the one under
+    // the same id belongs to the replacement
     expect({
-      written: placed.isOk() && reaped.isOk() && removed.isOk(),
+      announced: replaced.isOk() && withdrawn.isOk(),
       text: withdrawal?.Text.trim(),
     }).toEqual({
-      written: true,
-      text: "Order 0199a1e0-0000-7000-8000-00000000c003 is no longer with us.",
+      announced: true,
+      text: "Order 0199a1e0-0000-7000-8000-00000000c006 is no longer with us.",
     });
   });
 

@@ -13,7 +13,7 @@ import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { OutboxPublisher, OutboxStore, outbox } from "@btravstack/outbox";
 import { ErrAsync, OkAsync, P, TaggedError } from "unthrown";
-import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { OrderDatabase, OrderPersistenceModule, type OrderPayload } from "@btravstack/example-order-infrastructure";
 import { MessageUnitModule } from "../../message-unit.js";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { orderAudit } from "../../slices/audit/handler.js";
@@ -154,17 +154,21 @@ See [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit).
 **The notifier also threads [storage](/reference/storage) into
 [the mailer](/reference/mailer)** — the excerpt above shows only its first
 half. A placement renders the order's invoice, `put`s it under
-`invoices/{tenantId}/{orderId}.txt`, presigns it for a week (the longest a
-SigV4 URL may live) and mails the link, so the bytes never travel in the mail.
+`invoices/{tenantId}/{orderId}/{placedAt}.txt`, presigns it for a week (the
+longest a SigV4 URL may live) and mails the link, so the bytes never travel in
+the mail. Every event carries the order's `placedAt`, its tombstone too, so a
+reused id never links the invoice of the order placed under it since.
 A withdrawal links the same invoice, and has to `get` it first: presigning
 asks the store nothing, so a URL for a missing key is minted happily and
-`404`s when followed. `ObjectNotFound` is therefore an ordinary answer there —
-an invoice a retention rule reaped — triaged by name into a mail without a
-link, while `StorageUnavailable` and `MailNotSent` become `RetryableError`s
+`404`s when followed. `ObjectNotFound` means two things by the order's age:
+inside the store's retention, an invoice the placement has not written yet —
+deliveries are concurrent, so a withdrawal can overtake its placement — and the
+delivery is retried; past it, an invoice retained away, and the mail goes out
+without a link. `StorageUnavailable` and `MailNotSent` become `RetryableError`s
 and `PresignNotSupported` a `NonRetryableError`, in one exhaustive
 `mapErrCases`. The specs follow the mailed link with a bare `fetch` against
-the shared RustFS and read the invoice back, and delete it before a
-withdrawal to prove the mail still goes out.
+the shared RustFS and read the invoice back, and publish the out-of-order and
+out-of-retention withdrawals straight onto the exchange.
 
 ## The relay: the package's, and the one half it cannot own
 
@@ -219,19 +223,16 @@ export const orderPublisher = Provider(OutboxPublisher)({
   sync: ({ client }): ServiceOf<OutboxPublisher> => ({
     publish: (message) =>
       OkAsync()
-        .map(() =>
-          message.payload === null
-            ? null
-            : (JSON.parse(message.payload) as { readonly quantity: number }),
-        )
-        .flatMap((payload) =>
+        .map(() => JSON.parse(message.payload ?? "null") as OrderPayload)
+        .flatMap(({ placedAt, order }) =>
           client.publish("orderChanged", {
             eventId: message.id,
             tenantId: message.tenantId,
             kind: message.kind as "order",
             id: message.subjectId,
             occurredAt: message.occurredAt.toISOString(),
-            payload,
+            placedAt,
+            payload: order,
           }),
         ),
   }),
@@ -391,9 +392,12 @@ event too:
 ```ts
 const [message] = await waitForMessages({ count: 1, timeoutMs: 5_000 });
 expect(JSON.parse(String(message?.content))).toEqual({
+  eventId: expect.any(Number),
+  tenantId: tenant,
   kind: "order",
   id: "0199a1e0-0000-7000-8000-000000000005",
   occurredAt: expect.any(String),
+  placedAt: expect.any(String),
   payload: { quantity: 4 },
 });
 ```

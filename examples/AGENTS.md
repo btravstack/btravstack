@@ -283,7 +283,11 @@ each deployment's `src/main.ts` carry their own.
   would let a client backdate an order into the next sweep. It works a batch
   at a time from the first page of what is still stale, checks the unit's
   signal between batches, and answers no count, since a retried attempt
-  cannot see what the first one removed.
+  cannot see what the first one removed. It removes with
+  `remove(id, { placedBefore })` — the cutoff a FIELD on the call, checked by
+  the store in the same delete that writes the tombstone — so an order
+  compensated away and placed again under the same id between the listing
+  and the removal is left alone, and nothing is announced for it.
 - **`order-amqp-worker` is the `pinoSink` deployment.** `src/module.ts` mints
   one `logSink = pinoSink(pino({ level: "trace" }))` and composes
   `observability({ sink: logSink })`; `src/main.ts` hands the kernel's events
@@ -295,11 +299,20 @@ each deployment's `src/main.ts` carry their own.
 - **`order-amqp-worker`'s notifier threads `Storage` into `Mailer`.** A
   placement stores the invoice it renders and mails a presigned link; a
   withdrawal `get`s the invoice before presigning it, because a presign asks
-  the store nothing, and triages `ObjectNotFound` by name into a mail without a
-  link. It checks the unit's signal again once the store has answered and
-  before it sends: a deadline that passed while an invoice was in flight would
-  otherwise mail on behalf of an abandoned delivery, and the retry would mail
-  again. Isolation on the shared RustFS is the tenant in the key
-  (`invoices/{tenantId}/{orderId}.txt`), rule 7's boundary rather than a bucket
-  per test; the root exports `Storage` only so a spec can reap an invoice
-  through the running app's own store.
+  the store nothing. The key is
+  `invoices/{tenantId}/{orderId}/{placedAt}.txt`: every event carries the
+  order's `placedAt`, its tombstone too, so a reused id never links the
+  invoice of the order placed under it since. An absent invoice is read by
+  the order's age: inside the store's retention it is one the placement has
+  not written yet — deliveries are concurrent, and one replica's withdrawal
+  can overtake another's placement — so the handler answers a
+  `RetryableError` and the queue's retry budget redelivers; past it, the
+  invoice was retained away and the mail goes out without a link. Serialising
+  the consumer would not have held across replicas. It checks the unit's
+  signal again once the store has answered and before it sends: a deadline
+  that passed while an invoice was in flight would otherwise mail on behalf of
+  an abandoned delivery, and the retry would mail again. Isolation on the
+  shared RustFS is the tenant in the key, rule 7's boundary rather than a
+  bucket per test. The specs put the out-of-order and out-of-retention cases
+  on the wire with `announce`, which publishes an `orderChanged` fact past the
+  outbox.

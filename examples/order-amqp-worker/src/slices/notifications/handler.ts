@@ -6,21 +6,37 @@ import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { Tenant } from "@btravstack/example-order-application";
 import { Mailer } from "@btravstack/mailer";
 import { Storage, type PresignNotSupported, type StorageUnavailable } from "@btravstack/storage";
-import { ErrAsync, OkAsync, P, type AsyncResult } from "unthrown";
+import { ErrAsync, OkAsync, P, TaggedError, type AsyncResult } from "unthrown";
 
-const invoiceKey = (tenantId: string, orderId: string): string =>
-  `invoices/${tenantId}/${orderId}.txt`;
+// The placement time is in the key so a reused order id never links the
+// invoice of the order placed under it since.
+const invoiceKey = (tenantId: string, orderId: string, placedAt: string): string =>
+  `invoices/${tenantId}/${orderId}/${Date.parse(placedAt)}.txt`;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // A week: the longest a SigV4 presigned URL may live.
-const LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const LINK_TTL_MS = 7 * DAY_MS;
+
+// How long the store keeps an invoice. Inside it, an absent invoice is one
+// the placement's notification has not written yet.
+const INVOICE_RETENTION_MS = 30 * DAY_MS;
+
+class InvoiceNotYetStored extends TaggedError("InvoiceNotYetStored")<{
+  readonly key: string;
+}> {}
 
 const invoiceLink = (
   storage: ServiceOf<Storage>,
   tenantId: string,
   id: string,
+  placedAt: string,
   payload: { readonly quantity: number } | null,
-): AsyncResult<string | undefined, StorageUnavailable | PresignNotSupported> => {
-  const key = invoiceKey(tenantId, id);
+): AsyncResult<
+  string | undefined,
+  StorageUnavailable | PresignNotSupported | InvoiceNotYetStored
+> => {
+  const key = invoiceKey(tenantId, id, placedAt);
   const issued =
     payload === null
       ? // Read before presigning: a presign asks the store nothing, so a URL
@@ -30,7 +46,11 @@ const invoiceLink = (
           .map((): string | undefined => key)
           .flatMapErrCases((matcher) =>
             matcher
-              .with(P.tag("ObjectNotFound"), () => OkAsync(undefined))
+              .with(P.tag("ObjectNotFound"), () =>
+                Date.now() - Date.parse(placedAt) < INVOICE_RETENTION_MS
+                  ? ErrAsync(new InvoiceNotYetStored({ key }))
+                  : OkAsync(undefined),
+              )
               .with(P.tag("StorageUnavailable"), (error) => ErrAsync(error)),
           )
       : storage
@@ -58,9 +78,13 @@ const invoiceLink = (
  * this handler is reading — the same fact, claimed once.
  *
  * The mail carries a link to the invoice rather than the invoice: a placement
- * renders it, `put`s it under a tenant-keyed path and presigns it; a
- * withdrawal links the same one, and an invoice that is gone
- * (`ObjectNotFound`) is an ordinary answer — the mail goes out without a link.
+ * renders it, `put`s it under a path keyed by tenant, order id and placement
+ * time, and presigns it; a withdrawal links the same one. An invoice that is
+ * absent means two different things by the order's age: younger than the
+ * store's retention it is one the placement has not written yet — deliveries
+ * are concurrent, and one replica's withdrawal can overtake another's
+ * placement — so the delivery is retried; older, it was retained away, and the
+ * mail goes out without a link.
  *
  * Its failure arms are the interesting half: a `MailNotSent` or a store that
  * would not answer becomes a `RetryableError`, so the BROKER's retry budget
@@ -94,7 +118,7 @@ export const orderNotifications = AmqpHandler(
     ({
       context,
       input: {
-        payload: { id, payload },
+        payload: { id, placedAt, payload },
       },
     }) => {
       const tenantId = context.unit.tenant;
@@ -108,9 +132,16 @@ export const orderNotifications = AmqpHandler(
         ...(payload === null ? {} : { quantity: payload.quantity }),
       });
 
-      return invoiceLink(storage, tenantId, id, payload)
+      return invoiceLink(storage, tenantId, id, placedAt, payload)
         .mapErrCases((matcher) =>
           matcher
+            .with(
+              P.tag("InvoiceNotYetStored"),
+              () =>
+                new RetryableError(
+                  `the invoice for order ${id} is not stored yet; its placement may still be in flight`,
+                ),
+            )
             .with(
               P.tag("StorageUnavailable"),
               (error) =>

@@ -7,7 +7,7 @@ description: "Broadcast a committed fact over AMQP — why the write and the row
 <!-- doctest: prelude
 import { TypedAmqpClient } from "@amqp-contract/client";
 import { Module, Port, Provider } from "@btravstack/di";
-import { OrderDatabase } from "@btravstack/example-order-infrastructure";
+import { OrderDatabase, type OrderPayload } from "@btravstack/example-order-infrastructure";
 import type { AsyncResult } from "unthrown";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 
@@ -57,12 +57,17 @@ spelled at the call — `examples/order-infrastructure`'s
 ```ts
 save: (order) =>
   pinned(async (tx) => {
-    await tx.orm.orders.Order.create({ tenantId, orderId: order.id, quantity: order.quantity });
+    const placed = await tx.orm.orders.Order.create({
+      tenantId,
+      orderId: order.id,
+      quantity: order.quantity,
+    });
     await tx.orm.orders.OutboxMessage.create({
       tenantId,
       kind: "order",
       subjectId: order.id,
-      payload: JSON.stringify({ quantity: order.quantity }),
+      // `{ placedAt, order }` — the payload is the application's own encoding
+      payload: orderPayload(placed.placedAt, { quantity: order.quantity }),
     });
   }),
 ```
@@ -97,19 +102,16 @@ const publisher = Provider(OutboxPublisher)({
   sync: ({ client }) => ({
     publish: (message) =>
       OkAsync()
-        .map(() =>
-          message.payload === null
-            ? null
-            : (JSON.parse(message.payload) as { readonly quantity: number }),
-        )
-        .flatMap((payload) =>
+        .map(() => JSON.parse(message.payload ?? "null") as OrderPayload)
+        .flatMap(({ placedAt, order }) =>
           client.publish("orderChanged", {
             eventId: message.id,
             tenantId: message.tenantId,
             kind: message.kind as "order",
             id: message.subjectId,
             occurredAt: message.occurredAt.toISOString(),
-            payload,
+            placedAt,
+            payload: order,
           }),
         ),
   }),

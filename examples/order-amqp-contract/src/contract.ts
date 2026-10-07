@@ -29,6 +29,10 @@ const parked = defineExchange("orders-dlx", { type: "direct" });
  * delivery is at-least-once, and neither `id` (one subject has many facts) nor
  * `occurredAt` (one transaction writes several facts at one `now()`) names a
  * single fact.
+ *
+ * `placedAt` is when the subject was placed — on its tombstone too — because an
+ * order id can be reused once its order is gone, and `(id, placedAt)` is what
+ * names one life of an order to a reader keeping state about it.
  */
 const orderChanged = defineMessage(
   z.object({
@@ -37,6 +41,7 @@ const orderChanged = defineMessage(
     kind: z.literal("order"),
     id: z.uuidv7(),
     occurredAt: z.string(),
+    placedAt: z.iso.datetime(),
     payload: z.object({ quantity: z.number() }).nullable(),
   }),
 );

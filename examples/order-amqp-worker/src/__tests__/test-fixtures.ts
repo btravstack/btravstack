@@ -1,3 +1,4 @@
+import { TypedAmqpClient } from "@amqp-contract/client";
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import type { AmqpInfo, AmqpRuntime } from "@btravstack/amqp-worker";
@@ -10,6 +11,7 @@ import {
   type Tracer,
 } from "@btravstack/core";
 import { Module, Provider, type Context, type Scope } from "@btravstack/di";
+import { orderContract } from "@btravstack/example-order-amqp-contract";
 import {
   OrderApplicationModule,
   OrderRepository,
@@ -65,13 +67,13 @@ const tappedAmqp = () => {
       sync: ({ config }) => createLogger((line) => lines.push(line), config.level),
     }),
   ]);
-  const tap = tapped(recording, [OrderDatabase, Logger, OutboxStore, Storage]);
+  const tap = tapped(recording, [OrderDatabase, Logger, OutboxStore]);
   return {
     module: tap.module,
     lines: (): readonly Line[] => lines,
     services: () => {
-      const [, , outbox, invoices] = tap.services();
-      return { outbox, invoices };
+      const [, , outbox] = tap.services();
+      return { outbox };
     },
     /**
      * A writer's scope over the running app's own client, for one tenant: the
@@ -160,6 +162,22 @@ const stalledAmqp = () => {
   };
 };
 
+/** One `orderChanged` envelope, as the wire carries it. */
+type Announced = {
+  readonly eventId: number;
+  readonly tenantId: string;
+  readonly kind: "order";
+  readonly id: string;
+  readonly occurredAt: string;
+  readonly placedAt: string;
+  readonly payload: { readonly quantity: number } | null;
+};
+
+const announcing = (url: string) => (event: Announced) =>
+  TypedAmqpClient.create({ contract: orderContract, urls: [url] }).flatMap((client) =>
+    client.publish("orderChanged", event).flatMap(() => client.close()),
+  );
+
 /** What a Mailpit message looks like, narrowed to what this suite reads. */
 type Delivered = {
   readonly To: readonly { readonly Address: string }[];
@@ -174,6 +192,13 @@ export type AmqpFixtures = {
    * called.
    */
   readonly delivered: (tenantId: string) => Promise<readonly Delivered[]>;
+  /**
+   * Publishes one `orderChanged` fact straight onto this test's vhost, past the
+   * outbox — how a spec puts a delivery the relay would never produce in front
+   * of the subscribers: a withdrawal overtaking its placement, or a placement
+   * time no database default could give.
+   */
+  readonly announce: ReturnType<typeof announcing>;
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
   /**
@@ -206,6 +231,10 @@ export type AmqpFixtures = {
 // since `AmqpTestFixtures` reaches back into amqplib's `Channel` /
 // `ChannelModel` / `ConsumeMessage` / `Options.Publish`.
 export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFixtures>({
+  announce: async ({ amqpConnectionUrl }, use) => {
+    await use(announcing(amqpConnectionUrl));
+  },
+
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   delivered: async ({}, use) => {
     const api = inject("__TESTCONTAINERS_MAILPIT_API__");

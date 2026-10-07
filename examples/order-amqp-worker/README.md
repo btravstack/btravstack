@@ -192,9 +192,11 @@ arriving as a tombstone behind its placement, one event landing on both
 subscribers' queues, and the same event delivered to a subscriber this
 contract never heard of, on a third, foreign queue. The notifier's mail is
 read back out of the shared Mailpit, and its presigned link is followed with
-a bare `fetch` to the invoice it stored on the shared RustFS — and when that
-invoice has been deleted, the withdrawal mail goes out without a link, which
-is the `ObjectNotFound` arm.
+a bare `fetch` to the invoice it stored on the shared RustFS. A withdrawal
+that overtakes its placement's invoice is redelivered rather than answered; one
+for an order past the store's retention goes out without a link; and an old
+order's withdrawal never links the invoice of an order placed since under the
+same id.
 
 ```bash
 pnpm --filter @btravstack/example-order-amqp-worker test        # broadcast e2e

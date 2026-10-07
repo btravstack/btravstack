@@ -8,7 +8,7 @@ import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { pinoSink } from "@btravstack/observability/pino";
 import { OutboxStore, outbox } from "@btravstack/outbox";
-import { Storage, storage } from "@btravstack/storage";
+import { storage } from "@btravstack/storage";
 import { s3Storage } from "@btravstack/storage/s3";
 import pino from "pino";
 
@@ -83,8 +83,7 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   // The worker forks this once per delivery, after the message is validated —
   // which is where the envelope's `tenantId` becomes the fork's `Tenant`.
   unit: { message: MessageUnitModule },
-  // Everything the fork reads out of the application scope, the store a spec
-  // reads the outbox back through, and the invoice store a spec reads back
-  // through.
-  exports: [OutboxStore, OrderDatabase, Logger, Tracer, Storage],
+  // Everything the fork reads out of the application scope, and the store a
+  // spec reads the outbox back through.
+  exports: [OutboxStore, OrderDatabase, Logger, Tracer],
 });
