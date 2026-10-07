@@ -1365,7 +1365,10 @@ transport's hands.
   `securityHeaders` sets no `content-security-policy` because a policy right
   for an RPC endpoint is a live constraint on a page — htmx's `hx-*`
   attributes and any inline `<script>` meet it at once — so a deployment that
-  serves fragments passes a `securityHeaders` record carrying its own policy.
+  serves fragments passes a `securityHeaders` record carrying its own policy
+  AND the three defaults: a record replaces `DEFAULT_SECURITY_HEADERS`
+  verbatim, and that constant is not exported, so the reference page's sample
+  restates the three headers.
 - **A procedure with no mark on it or above it is public, and nothing fails if the marker is
   forgotten.** `@btravstack/contract`'s marker makes the requirement
   **legible** in the contract and makes the principal's type reach the

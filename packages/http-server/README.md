@@ -393,7 +393,10 @@ Each of these is a decision with a reason, and the reasons are on
   is N pods; the ingress counts a request once.
 - **Static files and an SPA fallback** — the ingress or a CDN serves assets;
   with htmx fragments the asset set is htmx plus a stylesheet. The CSP for an
-  HTML response is the deployment's: pass a `securityHeaders` record.
+  HTML response is the deployment's: pass a `securityHeaders` record carrying
+  your policy **and** `x-content-type-options`, `x-frame-options` and
+  `referrer-policy`, since a record replaces the defaults rather than adding
+  to them.
 - **Resource-dependent authorization** — a scope is checked here because it is
   a property of the credential; "is this caller the order's owner" needs the
   order, so it stays in the handler.

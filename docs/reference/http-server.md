@@ -1531,6 +1531,24 @@ small: a default that has to be right for every deployment cannot include a
 CSP, an HSTS max-age or a permissions policy, all of which are a deployment's
 own decision — pass a record when you have made those.
 
+**A record replaces the defaults; it does not add to them.** A record holding
+only a `content-security-policy` serves no `nosniff`, no `x-frame-options` and
+no `referrer-policy`. The defaults are not exported, so a record that keeps
+them names all three beside its own:
+
+<!-- doctest: isolate -->
+
+```ts
+import type { HttpOptions } from "@btravstack/http-server";
+
+export const securityHeaders: HttpOptions["securityHeaders"] = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+  "content-security-policy": "default-src 'self'; frame-ancestors 'none'",
+};
+```
+
 ### `csrf`
 
 `boolean`, and **unset is not a default value but a question about the graph**:
@@ -2109,8 +2127,9 @@ fine on any Node 22.
   which a CDN serves and a layout can vendor. **The CSP for an HTML response is
   the deployment's**: [`securityHeaders`](#securityheaders) sets none by
   default, because htmx's `hx-*` attributes and any inline `<script>` meet a
-  policy at once — pass a record carrying your own policy beside the three
-  defaults, since a record replaces them.
+  policy at once — pass a record carrying your own policy **and** the three
+  defaults, since a record replaces them
+  ([the record](#securityheaders) shows one).
 - **HTTPS, HTTP/2.** `node:http` only; terminate TLS at the ingress.
 
 ## `openApiDocument()` — from `@btravstack/http-server/openapi`
