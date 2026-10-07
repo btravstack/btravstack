@@ -86,7 +86,10 @@ import { z } from "zod";
 const greet = defineActivity({
   input: z.object({ name: z.string() }),
   output: z.object({ message: z.string() }),
-  activityOptions: { startToCloseTimeout: "1 minute" },
+  activityOptions: {
+    startToCloseTimeout: "1 minute",
+    retry: { maximumAttempts: 3 },
+  },
 });
 
 const greeting = defineWorkflow({
@@ -104,6 +107,11 @@ export const greetingContract = defineContract({
 
 `taskQueue` is part of the contract because a worker's identity _is_ its task
 queue — the starter reads it from here rather than taking it as an option.
+
+`retry: { maximumAttempts: 3 }` is required, not decoration: `declareWorkflow`
+refuses an activity with no total bound — a finite number of attempts or a
+`scheduleToCloseTimeout` — so a failing one cannot retry forever, and without
+it the workflow fails its first task instead of calling `greet`.
 
 ## Step 3 — Implement the activity
 
@@ -154,7 +162,10 @@ import { z } from "zod";
 const greet = defineActivity({
   input: z.object({ name: z.string() }),
   output: z.object({ message: z.string() }),
-  activityOptions: { startToCloseTimeout: "1 minute" },
+  activityOptions: {
+    startToCloseTimeout: "1 minute",
+    retry: { maximumAttempts: 3 },
+  },
 });
 const greetingContract = defineContract({
   taskQueue: "greetings",
@@ -198,6 +209,8 @@ code lives, imports the Temporal starter, and exports `TemporalRuntime`:
 **`worker.ts`**
 
 ```ts
+import { extname } from "node:path";
+
 import { TemporalModule } from "@btravstack/temporal-worker";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
@@ -209,11 +222,21 @@ export const Worker = TemporalModule("Worker")({
   contract: greetingContract,
   activities: greetingActivities,
   workflows: {
-    workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
+    workflowsPath: workflowsPathFromURL(
+      import.meta.url,
+      `./workflows${extname(import.meta.url)}`,
+    ),
   },
   imports: [GreetingModule],
 });
 ```
+
+`workflowsPath` is a **file on disk**, not an import. Temporal's bundler reads
+the workflow file itself, so the `.js` you write on every relative import does
+not apply here: nothing remaps it to `.ts`, and `./workflows.js` names a file
+that does not exist while you run the source. Giving it this module's own
+extension names the file that is actually beside it — `workflows.ts` when `tsx`
+runs `worker.ts`, `workflows.js` once a build has compiled both to `dist/`.
 
 Compare it with `app.ts` from lesson one. `imports: [GreetingModule]` is the
 same line; what changed is the starter around it. And the same gate holds:

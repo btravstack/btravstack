@@ -60,6 +60,15 @@ WORKDIR /app
 CMD ["pnpm", "--filter", "@acme/orders", "exec", "prisma", "db", "migrate"]
 ```
 
+**Build each image by its target.** `migrate` is the file's last stage, so a
+`docker build` that names no target produces the migration image, not the one
+that serves traffic:
+
+```sh
+docker build --target runtime -t registry.example.com/orders:1.4.0 .
+docker build --target migrate -t registry.example.com/orders:1.4.0-migrate .
+```
+
 ::: tip
 `runMain` sets `process.exitCode` and lets Node exit on its own, so **no
 `--init` and no `tini` is needed** to make the process reap correctly — but
@@ -201,22 +210,47 @@ version: each release applies a _new_ Job rather than trying to update a
 completed one. (`generateName` is the alternative when a release has no version
 string to hang it on.) In a pipeline: apply the Job, wait for it, then apply the
 Deployment — waiting on **both** conditions, since `kubectl wait` defaults to
-30 seconds and only ever watches the one you name:
+30 seconds and only ever watches the one you name. The script is **bash 5.1 or
+later**, for `wait -n -p`, which says which watch returned first:
 
-```sh
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+job=job/orders-migrate-1.4.0
+
 kubectl apply -f migrate-job.yaml
 
 # Whichever lands first wins; without the `failed` watch, a Job that died in
 # ten seconds is only noticed when the timeout expires — and a slow image pull
 # looks identical to it.
-kubectl wait --for=condition=complete --timeout=10m job/orders-migrate-1.4.0 &
+kubectl wait --for=condition=complete --timeout=10m "$job" &
 complete=$!
-kubectl wait --for=condition=failed --timeout=10m job/orders-migrate-1.4.0 && exit 1 &
+kubectl wait --for=condition=failed --timeout=10m "$job" &
 failed=$!
-wait -n "$complete" "$failed"
+
+status=0
+wait -n -p first "$complete" "$failed" || status=$?
+
+# Stop the watch that lost, and reap it.
+kill "$complete" "$failed" 2>/dev/null || true
+wait "$complete" "$failed" 2>/dev/null || true
+
+if [[ $first != "$complete" ]] || ((status != 0)); then
+  echo "migration did not complete; not deploying" >&2
+  exit 1
+fi
 
 kubectl apply -f deployment.yaml
 ```
+
+The Deployment is applied only when the `complete` watch is the one that
+returned **and** it returned success. A failed Job, a timeout and a watch that
+errored all exit `1` before the rollout, and `set -e` stops a Job that could
+not be submitted at all. Branching explicitly is the point: a watch that runs
+in the background is its own shell, so an `exit` inside it ends the watch and
+not the script, and `wait -n` alone would hand the rollout a failed Job's
+status to ignore.
 
 ::: warning
 An `initContainer` looks like the tidier answer and is not: it runs **once per

@@ -27,6 +27,17 @@ error TS2769: No overload matches this call.
 The first two lines are boilerplate. The third line's **tail** is the whole
 message.
 
+That is the TypeScript 7 compiler's output. **TypeScript 5.9 — what most
+applications still build with — lists every overload instead**, in
+declaration order, so a call that also has another authoring form prints
+that form's refusal _first_: `Overload 1 of 2 … is missing the following
+properties …: inject, sync`. That arm is not your mistake, and following it
+sends you to rewrite the call in a form you did not mean to use. Skip to the
+**last** `Overload N of N` block and read its last line from the end, exactly
+as above — or search the output for the marker's first word (`UNCOVERED`,
+`OVERLAPPING`, `UNSATISFIED`), which lands on the actionable line under
+either compiler.
+
 **The width is not fixable from inside the packages.** It is in the type
 _arguments_ — your contract, expanded — not in a name any package could alias,
 which is why the marker is a whole sentence rather than a label: it is the part
@@ -95,11 +106,48 @@ about the one nearest the cause. The fix is a provider, never an export.
 
 ## An uncovered piece
 
+A contract with two fragments, and a router composed from only one of their
+controllers:
+
+<!-- doctest: skip — a deliberately broken composition; the gate that refuses it is pinned by packages/http-server/src/controller.test-d.ts -->
+
+```ts
+const contract = { orders: { find: oc }, customers: { find: oc } };
+
+const ordersController = api.OrpcController(
+  contract,
+  "orders",
+)({ inject: {}, sync: () => ({ find: () => OkAsync("order") }) });
+
+export const router = api.OrpcRouter(contract)([ordersController]);
+```
+
+TypeScript 5.9 prints both of `OrpcRouter`'s overloads. The first is the
+`{ inject, sync }` form, which an array was never going to be — skip it:
+
+```text
+error TS2769: No overload matches this call.
+  Overload 1 of 2, '(options: { readonly inject: Readonly<Record<string, AnyPort>>; readonly unit?: Record<never, never>; readonly sync: (services: { readonly [x: string]: any; }) => { readonly orders: { ...; }; readonly customers: { ...; }; }; }): Built<...>', gave the following error.
+    Argument of type 'Minted<{ orders: { find: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }, "orders", SchemesFrom<Record<never, never>>, never, Record<...>>[]' is not assignable to parameter of type '{ readonly inject: Readonly<Record<string, AnyPort>>; readonly unit?: Record<never, never>; readonly sync: (services: { readonly [x: string]: any; }) => { readonly orders: { readonly find: ResultHandler<...>; }; readonly customers: { ...; }; }; }'.
+      Type 'Minted<{ orders: { find: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }, "orders", SchemesFrom<Record<never, never>>, never, Record<...>>[]' is missing the following properties from type '{ readonly inject: Readonly<Record<string, AnyPort>>; readonly unit?: Record<never, never>; readonly sync: (services: { readonly [x: string]: any; }) => { readonly orders: { readonly find: ResultHandler<...>; }; readonly customers: { ...; }; }; }': inject, sync
+  Overload 2 of 2, '(pieces: readonly [readonly ["UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover", "customers.find"]]): Built<never, PortInstance<"OrpcController:orders", { readonly find: ResultHandler<Omit<...> & ... 1 more ... & { ...; }, unknown, unknown, AnyORPCError, object>; }>, Record<...>>', gave the following error.
+    Type 'Minted<{ orders: { find: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }, "orders", SchemesFrom<Record<never, never>>, never, Record<...>>' is not assignable to type 'readonly ["UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover", "customers.find"]'.
+```
+
+TypeScript 7 prints only the second, which is the one to read either way:
+
 ```text
 error TS2769: No overload matches this call.
   The last overload gave the following error.
-    Type 'Minted<…, "orders", …>' is not assignable to type 'readonly ["UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover", "billing.pay" | "users.find"]'.
+    Type 'Minted<{ orders: { find: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }, "orders", SchemesFrom<Record<never, never>>, never, Record<...>>' is not assignable to type 'readonly ["UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover", "customers.find"]'.
 ```
+
+Search for `UNCOVERED`; the string after the marker is the procedure no piece
+implements — `"customers.find"` — or a union of them. The fix goes in the
+array: mint a controller for the fragment that holds it,
+`api.OrpcController(contract, "customers")({ … })`, and add it beside
+`ordersController`. Do not reach for `inject` and `sync`; that is the other
+overload's vocabulary, not a missing field.
 
 The marker and the missing leaves arrive together, whatever the array's length:
 the refusal is a tuple **as long as the array you wrote** — its head your own
