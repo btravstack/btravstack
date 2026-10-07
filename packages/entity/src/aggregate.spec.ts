@@ -367,6 +367,51 @@ test("a terminal name the aggregate does not fold is refused while the declarati
   );
 });
 
+test("a terminal event declared in a nested union is accepted, and ends the aggregate", () => {
+  // GIVEN an aggregate whose `Removed` variants are a union of their own
+  class Nested extends Entity.aggregate("Nested")({ id: Entity.field(CartId, { identity: true }) })(
+    {
+      events: z.discriminatedUnion("type", [
+        z.object({ type: z.literal("Opened"), id: z.uuid() }),
+        z.discriminatedUnion("reason", [
+          z.object({ type: z.literal("Removed"), reason: z.literal("spam") }),
+          z.object({ type: z.literal("Removed"), reason: z.literal("request") }),
+        ]),
+      ]),
+      opens: { Opened: (e) => ({ id: e.id }) },
+      evolve: { Removed: (r) => r },
+      ends: ["Removed"],
+    },
+  ) {}
+  // WHEN it is opened and removed
+  const removed = Nested.start({ type: "Opened", id })
+    .flatMap((d) => d.state.emit({ type: "Removed", reason: "spam" }))
+    .map((d) => d.isTerminal);
+  // THEN the declaration held, and the removal is terminal
+  expect(removed).toBeOkWith(true);
+});
+
+test("an events schema it cannot inspect leaves ends to the evolve check", () => {
+  // GIVEN events behind `z.lazy`, which exposes no members to walk
+  class Lazy extends Entity.aggregate("Lazy")({ id: Entity.field(CartId, { identity: true }) })({
+    events: z.lazy(() =>
+      z.discriminatedUnion("type", [
+        z.object({ type: z.literal("Opened"), id: z.uuid() }),
+        z.object({ type: z.literal("Removed") }),
+      ]),
+    ),
+    opens: { Opened: (e) => ({ id: e.id }) },
+    evolve: { Removed: (r) => r },
+    ends: ["Removed"],
+  }) {}
+  // WHEN it is opened and removed
+  const removed = Lazy.start({ type: "Opened", id })
+    .flatMap((d) => d.state.emit({ type: "Removed" }))
+    .map((d) => d.isTerminal);
+  // THEN the declaration held, and the removal is terminal
+  expect(removed).toBeOkWith(true);
+});
+
 test("a terminal name the union lacks is refused even with a handler for it", () => {
   // GIVEN an untyped declaration with a stray handler matching its misspelled end
   const declare = Entity.aggregate("Stray")({ id: Entity.field(CartId, { identity: true }) }) as (

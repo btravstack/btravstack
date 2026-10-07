@@ -113,14 +113,17 @@ export const createAggregate =
     const { events, opens, evolve, ends = [], ...entityOptions } = options;
     // A terminal event is one `evolve` folds and the union declares: not an
     // opener, and not a name it lacks, which would leave `isTerminal`
-    // silently false. A discriminated union's `options` are checked directly.
-    const { options: members } = events as { readonly options?: unknown };
-    const declares = (type: string) =>
-      !Array.isArray(members) ||
-      members.some(
-        (m: { readonly shape?: { readonly type?: z.ZodType } }) =>
-          m.shape?.type?.safeParse(type).success === true,
-      );
+    // silently false. A union's public `options` are walked, nested ones
+    // included; a schema shape this cannot inspect leaves the `evolve` check.
+    type Member = { readonly shape?: { readonly type?: z.ZodType }; readonly options?: unknown };
+    const declaredBy = (schema: Member, type: string): boolean => {
+      if (schema.shape?.type !== undefined) return schema.shape.type.safeParse(type).success;
+      if (Array.isArray(schema.options)) {
+        return schema.options.some((option: Member) => declaredBy(option, type));
+      }
+      return true;
+    };
+    const declares = (type: string) => declaredBy(events as Member, type);
     for (const type of ends) {
       if (Object.hasOwn(opens, type)) {
         // oxlint-disable-next-line unthrown/no-throw
