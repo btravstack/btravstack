@@ -147,7 +147,6 @@ type Manifest = {
   readonly peerDependenciesMeta?: Readonly<Record<string, { readonly optional?: boolean }>>;
 };
 
-/** A tarball and the manifest `pnpm pack` wrote into it — `workspace:` and `catalog:` already rewritten to the ranges a consumer is told. */
 type Packed = { readonly tarball: string; readonly manifest: Manifest };
 
 const packed = (tarball: string): Packed => ({
@@ -162,10 +161,6 @@ const peersOf = (manifest: Manifest, optional: boolean): readonly (readonly [str
     ([name]) => (manifest.peerDependenciesMeta?.[name]?.optional === true) === optional,
   );
 
-/**
- * The Node every published `engines.node` promises — `>=22` is `22.0.0` — or
- * why there is none. One floor for the family, because they install together.
- */
 const nodeFloor = (manifests: readonly Manifest[]): string | { readonly failed: string } => {
   const stated = [...new Set(manifests.map(({ engines }) => engines?.node))];
   const floor =
@@ -189,13 +184,6 @@ const temporalCjs: Gap = {
   why: "`@temporal-contract/worker` exports `./activity` under an `import` condition alone, so the CJS build's `require` of it resolves on no Node",
 };
 
-/**
- * Entry points that fail to load for a reason the package cannot fix on its
- * own, keyed `<specifier> <import|require> (<floor|current>)`, each excusing
- * ONE error code with why — so a different failure of the same entry, or of
- * a sibling entry, is still reported. Like `accepted`, an entry fails as
- * stale once that load stops failing with that code.
- */
 const gaps: Readonly<Record<string, Gap>> = {
   "@btravstack/http-server require (floor)": requireEsm,
   "@btravstack/http-server/jwt require (floor)": requireEsm,
@@ -205,11 +193,6 @@ const gaps: Readonly<Record<string, Gap>> = {
   "@btravstack/temporal-worker require (current)": temporalCjs,
 };
 
-/**
- * Loads each entry point with `import()` and, where the package publishes a
- * `require` condition, `require()` — from INSIDE the install, so both resolve
- * through its own `node_modules` — and prints what failed and with which code.
- */
 const SMOKE = `const entries = JSON.parse(process.argv[2]);
 (async () => {
   const failed = [];
@@ -234,45 +217,30 @@ type SmokeFailure = {
   readonly message: string;
 };
 
-/**
- * The one failure an entry point is allowed: a SUBPATH that cannot find one
- * of its package's own optional peers. The root is never allowed it — that is
- * the optional adapter staying optional — and a missing package nobody
- * declared is a dependency the manifest forgot.
- */
 const isOptionalAdapter = (manifest: Manifest, failure: SmokeFailure): boolean => {
   const missing = /Cannot find (?:package|module) '((?:@[^/']+\/)?[^/']+)/.exec(
     failure.message,
   )?.[1];
   return (
+    // Never the root: a root that needs an optional peer makes it required.
     failure.specifier !== manifest.name &&
     (failure.code === "ERR_MODULE_NOT_FOUND" || failure.code === "MODULE_NOT_FOUND") &&
     peersOf(manifest, true).some(([name]) => name === missing)
   );
 };
 
-/**
- * A pnpm install, relaying what pnpm printed when it fails — it reports an
- * unmet peer on STDOUT, which `run` pipes, so without this the failure says
- * only that there was one.
- */
 const install = (args: readonly string[], cwd: string): boolean => {
   try {
     run("pnpm", [...args, "--config.minimum-release-age=0"], cwd);
     return true;
   } catch (cause) {
+    // pnpm reports an unmet peer on STDOUT, which `run` pipes.
     const output: unknown = (cause as { stdout?: unknown }).stdout;
     if (typeof output === "string") process.stderr.write(output);
     return false;
   }
 };
 
-/**
- * One package installed alone — its tarball, the tarballs of the
- * `@btravstack/*` peers it requires (transitively), and its other REQUIRED
- * peers at the floor of the range it advertises — then loaded on each Node.
- * Returns the failures, and the gap keys a failure matched.
- */
 const isolated = (
   alone: string,
   subject: Packed,
@@ -286,9 +254,8 @@ const isolated = (
   const visit = ({ tarball, manifest }: Packed): void => {
     dependencies.set(manifest.name, `file:${tarball}`);
     const required = peersOf(manifest, false);
-    // Ranges before recursion, so the subject's own range for a peer wins: a
-    // sibling's stricter one then fails the strict peer check, which is the
-    // point, and a looser one never stands in for the subject's.
+    // Ranges before recursion: a sibling's looser range must never stand in
+    // for the subject's own.
     for (const [peer, range] of required) {
       if (!family.has(peer) && !dependencies.has(peer)) dependencies.set(peer, range);
     }
@@ -303,24 +270,15 @@ const isolated = (
     join(dir, "package.json"),
     `${JSON.stringify({ name: "isolated", private: true, dependencies: Object.fromEntries(dependencies) }, undefined, 2)}\n`,
   );
-  // Settings, not `--config.*` flags: pnpm ignores `resolutionMode` as a flag
-  // and resolves the highest version instead.
+  // Settings, not `--config.*` flags: pnpm ignores `resolutionMode` as a flag.
   writeFileSync(
     join(dir, "pnpm-workspace.yaml"),
     [
-      // The advertised floor, not the catalog: each peer above resolves to
-      // the lowest version its range admits.
       "resolutionMode: lowest-direct",
       "strictPeerDependencies: true",
-      // What npm and pnpm both do for a consumer, and it never installs an
-      // OPTIONAL peer — so the subject still gets only the peers listed above,
-      // and a third party's own required peer (`@prisma/orm-toolchain`'s
-      // `@prisma/cli-engine`) is not this package's to declare.
       "autoInstallPeers: true",
       "strictDepBuilds: false",
-      // A tarball's version reads as its `file:` path, which no `^0.x` range
-      // admits, so strict peers would refuse every sibling tarball. They are
-      // the same commit by construction; every other peer stays strict.
+      // A `file:` tarball satisfies no `^0.x` range; every other peer stays strict.
       "peerDependencyRules:",
       "  allowAny:",
       '    - "@btravstack/*"',
@@ -341,9 +299,8 @@ const isolated = (
   const failures: string[] = [];
   const matched: string[] = [];
   for (const [label, node] of Object.entries(nodes)) {
-    // Without `NODE_PATH`: pnpm's script shims point it at this workspace's
-    // store, and `require` falls back to it — so an optional peer the install
-    // lacks would be found in the repository instead.
+    // pnpm's shims point `NODE_PATH` at this workspace, and `require` would
+    // find a missing optional peer there.
     const { NODE_PATH: _, ...env } = process.env;
     const output = execFileSync(node, ["smoke.cjs", JSON.stringify(entries)], {
       cwd: dir,
@@ -366,7 +323,6 @@ const isolated = (
   return { failures, matched };
 };
 
-/** Every packed package installed alone and loaded on this Node and on the published floor. */
 const smoke = (work: string, alone: string, tarballs: readonly string[]): readonly string[] => {
   const family = new Map(
     tarballs.map((name) => packed(join(work, name))).map((pkg) => [pkg.manifest.name, pkg]),
@@ -419,9 +375,8 @@ const main = (): void => {
 
   const dirs = published();
   const work = mkdtempSync(join(tmpdir(), "btravstack-consumer-"));
-  // Beside `work`, never inside it: Node resolves a bare specifier by
-  // climbing directories, so an install nested under the full one would find
-  // every package the full one has, and nothing would be missing from it.
+  // Beside `work`, never inside it: Node climbs directories to resolve, and
+  // would find in the full install whatever an isolated one lacks.
   const alone = mkdtempSync(join(tmpdir(), "btravstack-alone-"));
   const failures: string[] = [];
 

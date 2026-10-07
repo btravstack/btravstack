@@ -52,11 +52,17 @@ CI job rather than asking another repository for a new one.
      its other non-optional peers — read off the PACKED manifest, so the
      ranges are the ones `pnpm pack` rewrote, which a consumer is told.
      Nothing optional is installed: `autoInstallPeers` is on, as it is for an
-     npm or pnpm consumer, and it never installs an optional peer.
+     npm or pnpm consumer, and it never installs an optional peer. What it
+     does install is a third party's own required peer —
+     `@prisma/orm-toolchain`'s `@prisma/cli-engine` — which is not this
+     package's to declare.
    - **Strict peer validation.** `strictPeerDependencies: true`, so a peer
      range no installed version satisfies — the package's own, or one a
-     dependency of its peers states — fails the install. The one relaxation is
-     `@btravstack/*` among themselves: a tarball's version reads as its
+     dependency of its peers states — fails the install. Where the package
+     and a `@btravstack/*` peer it requires both name a range for one peer,
+     the package's own is the one installed, so a sibling's looser range never
+     stands in for it and a stricter one fails the check. The one relaxation
+     is `@btravstack/*` among themselves: a tarball's version reads as its
      `file:` path, which no `^0.x` range admits, and they are the same commit
      by construction.
    - **At the floors it advertises.** `resolutionMode: lowest-direct`
