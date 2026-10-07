@@ -120,6 +120,31 @@ describe("s3Storage", () => {
       stored: false,
     });
   });
+
+  it("refuses a write whose type is not the one it signed", async ({ s3, keyPrefix }) => {
+    // GIVEN a url signed for a JSON document
+    const document = aDocument();
+    const url = await s3.presignedUpload(`${keyPrefix}typed.json`, {
+      ttlMs: 60_000,
+      contentType: document.contentType,
+      contentLength: document.bytes.byteLength,
+    });
+
+    // WHEN a client PUTs exactly that many bytes under another type
+    const response = await fetch(url.getOrThrow(), {
+      method: "PUT",
+      headers: { "content-type": "text/html" },
+      body: document.bytes,
+    });
+
+    // THEN the store rejects it and stored nothing — the size alone would have
+    // passed, so only the signed type can have refused it
+    const stored = await s3.get(`${keyPrefix}typed.json`);
+    expect({ status: response.status, stored: stored.isOk() }).toEqual({
+      status: 403,
+      stored: false,
+    });
+  });
 });
 
 describe("s3Storage, when the store cannot be reached", () => {

@@ -31,14 +31,18 @@ mint a url"` where a missing object's says `"the object was not there"`,
   reading the latter would go hunting for nothing. The `result` separates
   ordinary from faulty; the `reason` has to say what actually happened.
 - **`presignedUpload` signs the content type and the content length, and
-  `contentLength` is therefore required.** Both are set on the command, so both
-  are in the signature and a client sending different ones is refused by the
-  store — the URL grants exactly one write, of exactly that size, of exactly
-  that type. That is the only ceiling a presigned PUT can express: S3 has no
-  "at most n bytes" for this shape, so an optional length would quietly hand
-  out an unbounded write. Naming the two in `getSignedUrl`'s `signableHeaders`
-  changes nothing — measured against RustFS by removing it, which left the
-  mismatched write still refused with `403`. A presigned POST policy WOULD
+  `contentLength` is therefore required.** Both are in the signature, so a
+  client sending different ones is refused by the store — the URL grants
+  exactly one write, of exactly that size, of exactly that type. That is the
+  only ceiling a presigned PUT can express: S3 has no "at most n bytes" for
+  this shape, so an optional length would quietly hand out an unbounded write.
+  Setting both on the command is NOT enough: the presigner signs
+  `content-length` by default but lists `content-type` among the headers it
+  leaves unsigned, so `content-type` is named in `getSignedUrl`'s
+  `signableHeaders`. Without it the URL's `X-Amz-SignedHeaders` was
+  `content-length;host`, and a same-length write under another type was taken
+  with `200` (#369) — the size test alone could not have shown it, since the
+  length was always signed. A presigned POST policy WOULD
   express a range, at the cost of a third optional peer and a form-encoded
   return shape; it is not here because nothing has asked for a range.
 - **There is no `stat`/HEAD, and the presigned flow does not need one.** The
@@ -85,7 +89,8 @@ unreachable endpoint.
 
 The upload arm is proved end to end rather than by inspecting a URL: a plain
 `fetch` `PUT`s at the minted URL carrying no credentials, and the object is
-then read back through the port. Its sibling proves the binding by sending
-four bytes at a URL signed for one — `403`, and nothing stored.
+then read back through the port. Two siblings prove the binding, one per
+signed header: four bytes at a URL signed for one, and the right number of
+bytes under another content type — each `403`, and nothing stored.
 
 Observation: see the root `AGENTS.md`, **Observability is a set port, never a flag**.

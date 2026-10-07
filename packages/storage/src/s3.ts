@@ -125,10 +125,13 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
           ContentType: options.contentType,
           ContentLength: options.contentLength,
         }),
-        // `ContentType` and `ContentLength` are signed because they are set on
-        // the command, so a client sending different ones is refused. Naming
-        // them in `signableHeaders` changes nothing (measured against RustFS).
-        { expiresIn: Math.ceil(options.ttlMs / 1_000) },
+        // The presigner leaves `content-type` unsigned by default even when it
+        // is set on the command; without naming it here a client could PUT any
+        // type at a URL minted for one.
+        {
+          expiresIn: Math.ceil(options.ttlMs / 1_000),
+          signableHeaders: new Set(["content-type"]),
+        },
       ),
       (cause) => unavailable("presignedUpload", key, cause),
     ),
