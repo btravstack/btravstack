@@ -11,7 +11,7 @@
  * And its SECOND character may be neither `/` nor `\`: `//evil.example` is
  * protocol-relative, and `new URL("/\\evil.com", base)` resolves to
  * `https://evil.com/` — the WHATWG parser reads `\` as `/` in relative-slash
- * state, so a route whose first segment is a parameter can mint one.
+ * state, so a caller handing this value to a redirect could leave the site.
  *
  * **What a HEADER accepts is the header's business, not this function's.**
  * Node's validator is `/[^\t\x20-\x7e\x80-\xff]/`: it refuses control

@@ -5,7 +5,7 @@ import { Err, Ok, P, fromExecutor, type AsyncResult } from "unthrown";
 
 import { principalOf, resolveScheme, type Resolved } from "./auth.js";
 import { matchPath } from "./fragments.js";
-import { HttpHandler, send } from "./handler.js";
+import { HttpHandler, pathUnder, send } from "./handler.js";
 import { HtmxFragmentsPort, type FragmentAnswer } from "./htmx-route.js";
 import { HttpConfig } from "./http-config.js";
 import { HttpUnit } from "./http-runtime.js";
@@ -52,7 +52,7 @@ export const htmx = (options: HtmxOptions = {}) => {
         const matched = matchRoute(
           fragments.routes,
           request.method,
-          relativePath(request.url, prefix),
+          pathUnder(request.url, prefix),
         );
         // No route claims this request: resolve unwritten so the runtime's own
         // 404 answers, rather than stealing it from an answerer mounted deeper.
@@ -158,14 +158,6 @@ const matchRoute = (
   return undefined;
 };
 
-/** `request.url` relative to the mount, query string dropped. */
-const relativePath = (url: string | undefined, prefix: `/${string}`): string => {
-  const full = (url ?? "/").split("?")[0] ?? "/";
-  const mount = prefix.replace(/\/+$/, "");
-  const rest = full.slice(mount.length);
-  return rest === "" ? "/" : rest;
-};
-
 /**
  * The body, read while enforcing `limit` as bytes arrive rather than after
  * buffering it whole — the only shape that actually bounds memory. `0` is
@@ -214,16 +206,24 @@ const readBody = (request: IncomingMessage, limit: number): AsyncResult<string, 
 /** A refused caller's answer: a bare status, or where to send one with no session. */
 type Refusal = { readonly status: 401 | 403 } | { readonly login: string };
 
-const refusalOf = (login: `/${string}` | undefined, url: string | undefined): Refusal =>
-  login === undefined
-    ? { status: 401 }
-    : // `forLocation` on the mount, `encodeURIComponent` on the value: Node's
-      // header validator refuses every code point above U+00FF, so an
-      // application whose login route is not Latin-1 would `ERR_INVALID_CHAR`
-      // its own refusal. `forLocation` leaves `?`, `=` and an already-encoded
-      // `%` alone, which is why the query is built after it rather than run
-      // through it.
-      { login: `${forLocation(login)}?return=${encodeURIComponent(returnTo(url))}` };
+const refusalOf = (login: `/${string}` | undefined, url: string | undefined): Refusal => {
+  if (login === undefined) return { status: 401 };
+  // Absolute-form targets carry an authority that must not become a return
+  // destination. Keep only their path and query; leave origin-form targets raw
+  // so `returnTo` still rejects a leading slash followed by a backslash.
+  const parsed = URL.parse(url ?? "");
+  const target =
+    parsed?.protocol === "http:" || parsed?.protocol === "https:"
+      ? `${parsed.pathname}${parsed.search}`
+      : url;
+  // `forLocation` on the mount, `encodeURIComponent` on the value: Node's
+  // header validator refuses every code point above U+00FF, so an
+  // application whose login route is not Latin-1 would `ERR_INVALID_CHAR`
+  // its own refusal. `forLocation` leaves `?`, `=` and an already-encoded
+  // `%` alone, which is why the query is built after it rather than run
+  // through it.
+  return { login: `${forLocation(login)}?return=${encodeURIComponent(returnTo(target))}` };
+};
 
 const refuseAuth = (request: IncomingMessage, response: ServerResponse, refusal: Refusal): void => {
   if ("status" in refusal) {

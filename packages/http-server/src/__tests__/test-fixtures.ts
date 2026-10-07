@@ -494,8 +494,8 @@ const loginExportsFragment = loginApi.HtmxGet("/exports", {
 
 /**
  * A route whose FIRST segment is a parameter, declared LAST so the two named
- * routes above still win. It is what lets a crafted request-target reach the
- * refusal: `/\evil.com` is one non-empty segment, so this route matches it.
+ * routes above still win. A crafted `/\evil.com` target must not reach this
+ * route after the shared pathname parser normalizes it to `/`.
  */
 const loginSlugFragment = loginApi.HtmxGet("/:slug", { requires: [{ session: [] }] })({
   inject: {},

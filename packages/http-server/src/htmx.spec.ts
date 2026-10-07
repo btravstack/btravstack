@@ -9,6 +9,7 @@ import { describe, expect, vi } from "vitest";
 import { it } from "./__tests__/test-fixtures.js";
 import { defineHttp } from "./define-http.js";
 import { html } from "./html.js";
+import { returnTo } from "./redirect.js";
 
 describe("htmx", () => {
   it("serves a GET fragment with its path parameter bound", async ({ htmxServer }) => {
@@ -23,6 +24,33 @@ describe("htmx", () => {
       status: 200,
       body: '<tr id="row-42">row</tr>',
     });
+  });
+
+  it("serves a fragment from an absolute-form request target", async ({ htmxServer }) => {
+    // GIVEN a fragment route served through the HTTP runtime
+    const { origin } = await htmxServer();
+
+    // WHEN a forward proxy sends an absolute-form request target
+    const response = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const request = httpRequest(
+        {
+          host: "127.0.0.1",
+          port: Number(new URL(origin).port),
+          path: "http://proxy.test/orders/42/row?tab=open",
+        },
+        (answer) => {
+          let body = "";
+          answer.setEncoding("utf8");
+          answer.on("data", (chunk: string) => (body += chunk));
+          answer.on("end", () => resolve({ status: answer.statusCode ?? 0, body }));
+        },
+      );
+      request.on("error", reject);
+      request.end();
+    });
+
+    // THEN the route receives the parsed pathname and its path parameter
+    expect(response).toEqual({ status: 200, body: '<tr id="row-42">row</tr>' });
   });
 
   it("answers with an HTML content-type", async ({ htmxServer }) => {
@@ -425,21 +453,51 @@ describe("htmx login", () => {
     });
   });
 
-  it("declines to carry a return a crafted target manufactured", async ({ loginServer }) => {
-    // GIVEN a deployment whose fragments include a route with a LEADING
-    // parameter, which matches a target that is one crafted segment
+  it("keeps the path and query of an absolute-form target in the login return", async ({
+    loginServer,
+  }) => {
+    // GIVEN a protected fragment and a configured login route
+    const { get } = await loginServer("/auth/login");
+
+    // WHEN a proxy sends an absolute-form target for an unauthenticated caller
+    const answer = await get("http://proxy.test/private?tab=1");
+
+    // THEN login returns to this site's requested path and query
+    expect({ status: answer.status, location: answer.location }).toEqual({
+      status: 303,
+      location: "/auth/login?return=%2Fprivate%3Ftab%3D1",
+    });
+  });
+
+  it("declines a crafted target before a fragment route can mint a return", async ({
+    loginServer,
+  }) => {
+    // GIVEN a deployment whose fragments include a route with a leading
+    // parameter, which would match the raw crafted segment
     const { get } = await loginServer("/auth/login");
 
     // WHEN the target is `/\evil.com` — sent verbatim, since `new URL` would
     // resolve that very string against the site's own origin to `https://evil.com/`
     const answer = await get("/\\evil.com");
 
-    // THEN the caller still reaches login, pointed back at the root rather than
-    // off-site: the return is refused where it is minted
+    // THEN URL parsing leaves `/`, which the parameter route does not claim.
+    // No off-site Location is minted; the shared return guard still rejects
+    // that exact raw value if another caller hands it one.
     expect({ status: answer.status, location: answer.location }).toEqual({
-      status: 303,
-      location: "/auth/login?return=%2F",
+      status: 404,
+      location: null,
     });
+  });
+
+  it("refuses a raw backslash target at the shared return guard", () => {
+    // GIVEN a target the URL parser would turn into an off-site URL
+    const target = "/\\evil.com";
+
+    // WHEN the shared return guard receives it directly
+    const returnPath = returnTo(target);
+
+    // THEN no redirect can leave this site
+    expect(returnPath).toBe("/");
   });
 
   it("keeps 403 for a session lacking the scope", async ({ loginServer }) => {
