@@ -45,6 +45,12 @@ const app = HttpModule("OpenApiRoutes")({
   hostname: "127.0.0.1",
   provides: [openApiRoutes()],
 });
+const localPolicyApp = HttpModule("OpenApiLocalPolicy")({
+  router,
+  port: 0,
+  hostname: "127.0.0.1",
+  provides: [openApiRoutes({ bodyLimit: false, compression: true })],
+});
 const rpcOnlyApp = HttpModule("RpcOnly")({
   router,
   port: 0,
@@ -154,6 +160,36 @@ describe("OpenAPI routes", () => {
       paths: ["/items/{id}", "/items"],
       methods: [["get"], ["post"]],
     });
+  });
+
+  it("honors a body limit disabled on the OpenAPI answerer", async ({ boot }) => {
+    const running = boot(localPolicyApp);
+    const info = (await running.runtimeInfo()).get();
+    expect(info).toBeDefined();
+    const name = "x".repeat(1_100_000);
+
+    const response = await fetch(`http://127.0.0.1:${info!.port}/api/items`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ id: "42", name });
+  });
+
+  it("honors response compression enabled on the OpenAPI answerer", async ({ boot }) => {
+    const running = boot(localPolicyApp);
+    const info = (await running.runtimeInfo()).get();
+    expect(info).toBeDefined();
+
+    const response = await fetch(`http://127.0.0.1:${info!.port}/api/items`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "accept-encoding": "gzip" },
+      body: JSON.stringify({ name: "x".repeat(2048) }),
+    });
+
+    expect([response.status, response.headers.get("content-encoding")]).toEqual([200, "gzip"]);
   });
 
   it("keeps authentication and CSRF checks on the OpenAPI wire", async ({ boot }) => {

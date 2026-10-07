@@ -466,7 +466,9 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   `orpc.ts`'s `pluginsOf(options, config, csrf)` is where the two meet, and the oRPC
   handler provider therefore declares `HttpConfig` as a dependency — which is
   why `orpc()`'s `HttpConfig` dependency is discharged by `httpServer()`
-  rather than owed by `http()`'s own needs channel.
+  rather than owed by `http()`'s own needs channel. An answerer-local
+  `bodyLimit` or `compression` overrides that shared config for its own plugin;
+  an omitted option inherits the deployment's configured value.
 
   Precedence, spelled once in `corsOf`: a record naming `origin` wins,
   `HTTP_CORS_ORIGIN` next, oRPC's own default (reflect the request's origin) last.

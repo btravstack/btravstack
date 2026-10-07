@@ -154,16 +154,17 @@ export const pluginsOf = (
     options.compression === undefined || typeof options.compression === "boolean"
       ? {}
       : options.compression;
+  const bodyLimit = options.bodyLimit === false ? 0 : (options.bodyLimit ?? config.bodyLimit);
+  const compressionEnabled =
+    options.compression === undefined ? config.compression : options.compression !== false;
   return [
     // The runtime's own check covers the state-changing methods and never sees
     // a GET; this plugin covers the GET oRPC allows for a streaming procedure,
     // which a browser can be navigated to. Disjoint, so nothing is refused twice.
     ...(csrf ? [new GetMethodCsrfProtectionHandlerPlugin()] : []),
     ...(cors === undefined ? [] : [new CORSHandlerPlugin(cors)]),
-    ...(config.bodyLimit === 0
-      ? []
-      : [new RequestLimitHandlerPlugin({ maxBodySize: config.bodyLimit })]),
-    ...(config.compression ? [new ResponseCompressionHandlerPlugin(compression)] : []),
+    ...(bodyLimit === 0 ? [] : [new RequestLimitHandlerPlugin({ maxBodySize: bodyLimit })]),
+    ...(compressionEnabled ? [new ResponseCompressionHandlerPlugin(compression)] : []),
     ...(options.plugins ?? []),
   ];
 };
