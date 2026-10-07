@@ -82,10 +82,13 @@ CI job rather than asking another repository for a new one.
      An ESM load proves every named import a peer is asked for exists at the
      floor; a CJS load proves only that the module graph resolves.
    - **An optional adapter stays optional.** The root entry must load. A
-     subpath may fail only by not finding one of its package's OWN optional
-     peers — which is what an adapter subpath does when its vendor is absent —
-     and any other failure, a missing package nobody declared included, fails
-     the check.
+     subpath may fail only by not finding a peer `adapters` names for THAT
+     subpath, and only one its package declares optional — which is what an
+     adapter subpath does when its vendor is absent. Any other failure fails
+     the check: a missing package nobody declared, and one adapter reaching
+     for another adapter's vendor alike. The manifest does not say which
+     subpath needs which optional peer, so `adapters` does, and an entry
+     whose subpath starts loading without its peers fails as stale.
    - **On the Node it promises.** Every package states one `engines.node`
      (`>=22`), and the check reads its floor off the manifests (`22.0.0`),
      fetches that Node with pnpm's `node@runtime:` protocol and runs every

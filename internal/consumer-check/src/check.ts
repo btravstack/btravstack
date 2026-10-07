@@ -217,15 +217,29 @@ type SmokeFailure = {
   readonly message: string;
 };
 
+const adapters: Readonly<Record<string, readonly string[]>> = {
+  "@btravstack/cache/redis": ["redis"],
+  "@btravstack/contract/zod": ["zod"],
+  "@btravstack/http-server/jwt": ["jose"],
+  "@btravstack/http-server/oidc": ["jose", "openid-client"],
+  "@btravstack/http-server/openapi": ["@orpc/json-schema", "@orpc/openapi"],
+  "@btravstack/http-server/session": ["jose"],
+  "@btravstack/mailer/smtp": ["nodemailer"],
+  "@btravstack/observability/otel": ["@opentelemetry/api", "@opentelemetry/sdk-node"],
+  "@btravstack/storage/s3": ["@aws-sdk/client-s3", "@aws-sdk/s3-request-presigner"],
+  "@btravstack/temporal-worker/schedule": ["@temporal-contract/client"],
+  "@btravstack/testing/jwt": ["jose"],
+};
+
 const isOptionalAdapter = (manifest: Manifest, failure: SmokeFailure): boolean => {
   const missing = /Cannot find (?:package|module) '((?:@[^/']+\/)?[^/']+)/.exec(
     failure.message,
   )?.[1];
   return (
-    // Never the root: a root that needs an optional peer makes it required.
-    failure.specifier !== manifest.name &&
     (failure.code === "ERR_MODULE_NOT_FOUND" || failure.code === "MODULE_NOT_FOUND") &&
-    peersOf(manifest, true).some(([name]) => name === missing)
+    // A table entry may only name a peer the manifest declares optional.
+    peersOf(manifest, true).some(([name]) => name === missing) &&
+    adapters[failure.specifier]?.includes(missing ?? "") === true
   );
 };
 
@@ -309,7 +323,10 @@ const isolated = (
       stdio: ["ignore", "pipe", "inherit"],
     });
     for (const failure of JSON.parse(output) as readonly SmokeFailure[]) {
-      if (isOptionalAdapter(subject.manifest, failure)) continue;
+      if (isOptionalAdapter(subject.manifest, failure)) {
+        matched.push(failure.specifier);
+        continue;
+      }
       const key = `${failure.specifier} ${failure.mode} (${label})`;
       if (gaps[key]?.code === failure.code) {
         matched.push(key);
@@ -358,6 +375,13 @@ const smoke = (work: string, alone: string, tarballs: readonly string[]): readon
   for (const [key, { code }] of Object.entries(gaps)) {
     if (!matched.has(key)) {
       failures.push(`smoke: ${key} no longer fails with ${code} — drop it from \`gaps\``);
+    }
+  }
+  for (const specifier of Object.keys(adapters)) {
+    if (!matched.has(specifier)) {
+      failures.push(
+        `smoke: ${specifier} loads without its optional peers — drop it from \`adapters\``,
+      );
     }
   }
   return failures;
