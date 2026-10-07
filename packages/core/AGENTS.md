@@ -61,15 +61,16 @@ PORTS`, a correct diagnosis of the second mistake that reads as a wrong one
 - **`Serving.stopped`** — the channel a runtime says "nobody asked me to" on.
   Its semantics are `docs/reference/core/runtime.md`'s; what belongs here is
   why the kernel treats it the way it does. It is raced against `shutdown`
-  and reaches `requestShutdown("runtimeStopped")`, and the `Result` is
-  **dropped**: whichever route gets there first decides the reason, and
+  and reaches `requestShutdown("runtimeStopped")` on both `Ok` and `Defect`;
+  the result is then **dropped**: whichever route gets there first decides the reason, and
   `Promise.withResolvers`' `resolve` is idempotent, so a runtime that stopped
   after a signal cannot rewrite it. Optional, so no shipped runtime had to
   change and `testRuntime` still satisfies the contract. The obligation it
   puts on a runtime that DOES implement it is the one a test must guard:
   **withdraw after a stop the kernel asked for** — an arm that settles on the
   ordinary path races every clean shutdown. `start.spec.ts` → _"stops the
-  application when the runtime says it has stopped serving"_ and _"does not
+  application when the runtime says it has stopped serving"_, _"stops the
+  application when the runtime's stopped channel defects"_ and _"does not
   report runtimeStopped when the runtime stopped because it was asked"_;
   `@btravstack/temporal-worker`'s `temporal-runtime.spec.ts` pins the same
   pair against a stub worker, since a real one cannot be made to fail without
@@ -349,6 +350,7 @@ Beyond the nine:
   the **error** channel only; a `Defect` can still be there, and a `Serving`
   written by a third party is where one comes from. `drain.spec.ts`'s four
   _"propagates a Defect from …"_ tests guard the drain;
+  `start.spec.ts` guards the stopped channel's Defect through to shutdown;
   `packages/testing/src/boot-fixture.spec.ts` → _"fails the test on a shutdown
   defect, and only on a defect"_ the fixture. The three
   survivors are `start.ts`'s `void server.close()` (our own `fromSafePromise`
