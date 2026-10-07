@@ -275,6 +275,28 @@ const ENTITY_SIDEBAR = [
   },
 ];
 
+const DI_SIDEBAR = [
+  {
+    text: "Tutorial",
+    items: [{ text: "Getting started", link: "/di/tutorial/getting-started" }],
+  },
+  {
+    text: "Reference",
+    items: [
+      { text: "Ports", link: "/reference/di/ports" },
+      { text: "Providers", link: "/reference/di/providers" },
+      { text: "Modules", link: "/reference/di/modules" },
+      { text: "Entry points", link: "/reference/di/entry-points" },
+      { text: "Wiring defects", link: "/reference/di/wiring-defects" },
+      { text: "API reference", link: "/api/di/" },
+    ],
+  },
+  {
+    text: "Example",
+    items: [{ text: "Hexagonal (di alone)", link: "/examples/di-hexagonal" }],
+  },
+];
+
 const EXAMPLES_SIDEBAR = [
   {
     text: "Examples",
@@ -350,6 +372,7 @@ export default defineConfig({
       pageData.relativePath.startsWith("entity/") ||
       pageData.relativePath.startsWith("api/entity/");
     const isDi =
+      pageData.relativePath.startsWith("di/") ||
       pageData.relativePath.startsWith("reference/di/") ||
       pageData.relativePath.startsWith("api/di/");
     const imagePath = isEntity
@@ -394,6 +417,7 @@ export default defineConfig({
         items: [
           { text: "All packages", link: "/reference/packages" },
           { text: "Entity guide", link: "/entity/" },
+          { text: "DI guide", link: "/di/" },
         ],
       },
       { text: "API", link: "/api/" },
@@ -416,6 +440,8 @@ export default defineConfig({
         ]),
       ),
       "/entity/": ENTITY_SIDEBAR,
+      "/di/": DI_SIDEBAR,
+      "/reference/di/": DI_SIDEBAR,
       "/api/": [
         {
           text: "API Reference",

@@ -14,6 +14,11 @@ By the end you will have a process that serves one oRPC procedure, reads its
 port from the environment inside the graph, and drains cleanly when it is told
 to stop. It takes about ten minutes.
 
+::: tip Only need one library?
+[entity](/entity/) and [di](/di/) each have a standalone guide. This tutorial
+builds an HTTP application with the full framework.
+:::
+
 ## Step 1 — Install
 
 ::: code-group
