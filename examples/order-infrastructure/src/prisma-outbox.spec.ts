@@ -194,6 +194,75 @@ describe("the transactional outbox", () => {
     expect(swept).toBeOkWith(ids);
   });
 
+  it("answers every tenant's oldest pending time in one call", async ({
+    tenant,
+    otherTenant,
+    repository,
+    outbox,
+    anOrder,
+  }) => {
+    // GIVEN two pending events for this tenant and none for the other
+    // WHEN the oldest pending time is asked for both
+    const oldest = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000041", 1))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000042", 1)))
+      .flatMap(() => outbox.oldestPending([tenant, otherTenant]));
+
+    // THEN only the tenant with something pending is named, once
+    expect(oldest).toBeOkWith([{ tenantId: tenant, occurredAt: expect.any(Date) }]);
+  });
+
+  it("publishes what has committed, so a lower id still in flight goes out after a higher one", async ({
+    db,
+    tenant,
+    outbox,
+  }) => {
+    // GIVEN a write transaction holding the lower outbox id open while a second
+    // write, numbered after it, commits
+    const fact = (subjectId: string) => ({
+      tenantId: tenant,
+      kind: "order",
+      subjectId,
+      payload: null,
+    });
+    let release = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let allocated = (): void => {};
+    const inFlight = new Promise<void>((resolve) => {
+      allocated = resolve;
+    });
+    const first = db.transaction(async (tx) => {
+      await tx.orm.orders.OutboxMessage.create(fact("first"));
+      allocated();
+      await held;
+    });
+    const published: string[] = [];
+    const relay = () =>
+      outbox.claim(tenant, 10, (batch) => {
+        published.push(...batch.map(({ subjectId }) => subjectId));
+        return OkAsync(batch.map(({ id }) => id));
+      });
+
+    // WHEN the relay sweeps while the first is in flight, and again once it
+    // has committed
+    const swept = await fromSafePromise(inFlight)
+      .flatMap(() => fromSafePromise(db.orm.orders.OutboxMessage.create(fact("second"))))
+      .flatMap(() => relay())
+      .flatMap(() => {
+        release();
+        return fromSafePromise(first);
+      })
+      .flatMap(() => relay())
+      .map(() => published);
+
+    // THEN the relay published in COMMIT order, not id order: no claim can see
+    // a row before it commits, which is why per-subject order rests on the
+    // subject's own row serialising its writers
+    expect(swept).toBeOkWith(["second", "first"]);
+  });
+
   it("appends a tombstone when the order is removed", async ({
     tenant,
     repository,
