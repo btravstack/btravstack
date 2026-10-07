@@ -109,38 +109,64 @@ export const loginRoutes = [
 ];
 ```
 
-The runtime's own `404` covers every other path, and the probes are on their
-own port.
+The runtime's own `404` covers every other path on this listener.
 
-## 3. Print it
+## 3. The probe listener: the kernel's own routes
 
-As a script beside the root, run with `tsx`:
+The process answers on a **second** port too. `runMain` (and `start`) runs the
+kernel's probe server on `PROBE_PORT` — `9000` by default, ephemeral under
+`pnpm dev`, which sets it to `0` — unless the root is started with
+`probes: false`:
 
 ```ts
+export const probeRoutes = ["GET /livez", "GET /readyz", "GET /healthz"];
+```
+
+They are on their own listener so that the Service routing traffic to the pod
+never exposes them; what each answers in each phase is
+[Probes](/reference/core/probes).
+
+## 4. Print it
+
+As a script beside the root, run with `tsx` — one block per listener:
+
+```ts
+console.log("on PORT:");
 for (const line of [...(await procedures).get(), ...fragmentRoutes, ...loginRoutes]) {
-  console.log(line);
+  console.log(`  ${line}`);
 }
+console.log("on PROBE_PORT:");
+for (const line of probeRoutes) console.log(`  ${line}`);
 ```
 
 ```text
-POST /rpc/orders/place
-POST /rpc/orders/find
-POST /rpc/orders/list
-POST /rpc/orders/export
-POST /rpc/customers/find
-GET /orders/:id/row
-GET /auth/login
-GET /auth/callback
-POST /auth/logout
+on PORT:
+  POST /rpc/orders/place
+  POST /rpc/orders/find
+  POST /rpc/orders/list
+  POST /rpc/orders/export
+  POST /rpc/customers/find
+  GET /orders/:id/row
+  GET /auth/login
+  GET /auth/callback
+  POST /auth/logout
+on PROBE_PORT:
+  GET /livez
+  GET /readyz
+  GET /healthz
 ```
 
 No procedure here streams, so no `GET /rpc/…` line appears; a procedure served
 as in [Stream with server-sent events](/how-to/stream-with-server-sent-events)
 would print both of its methods.
 
-`examples/order-api/src/openapi.spec.ts` pins the same document path by path,
-so a procedure that drops out of the composed router fails a test rather than
-this list.
+**What makes the document's list the router's list is the compiler, not a
+test.** `openApi()` is built from the contract alone and never sees the router,
+so `examples/order-api/src/openapi.spec.ts` pins the document and nothing about
+coverage. The coverage guarantee is `api.OrpcRouter(contract)([...])`'s: a
+controller dropped from that array, or a contract procedure no controller
+serves, is an `UNCOVERED CONTROLLERS` compile error at the root — so every
+procedure the contract declares is one the composed router answers.
 
 ## What the graph resolved to: ask the compiler
 
