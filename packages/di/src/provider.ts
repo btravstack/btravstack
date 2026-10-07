@@ -214,12 +214,17 @@ export const isOverride = (provider: object): boolean => OVERRIDE in provider;
  * provider for a set port builds as ONE member, so qualifying it against the
  * whole `readonly Member[]` would hand back a nested array. It rides the
  * options, never the port parameter, so a port-generic helper that only holds
- * `Provider(port)` still compiles; distributive, so `never` and a union of
- * ordinary ports pass.
+ * `Provider(port)` still compiles. Not distributive: a union with one set port
+ * in it distributes to `unknown | marker`, which is `unknown`, and would pass.
  */
-type SetPortGate<P> = P extends { readonly many: true }
-  ? { readonly "SET PORT — contribute one member with Provider.member": P }
-  : unknown;
+type SetPortGate<P> = [Extract<P, { readonly many: true }>] extends [never]
+  ? unknown
+  : {
+      readonly "SET PORT — contribute one member with Provider.member": Extract<
+        P,
+        { readonly many: true }
+      >;
+    };
 
 // `S` and `Gate` are type parameters rather than inline, so `Provider.member`
 // can instantiate `S` as `MemberOf<P>` — one contribution's shape, not the

@@ -122,6 +122,12 @@ describe("Provider on a set port", () => {
     Provider(Handlers)({ inject: {}, value: [{ run: () => {} }] });
   });
 
+  test("a union that may be a set port is refused too", () => {
+    const selected = null as unknown as typeof Db | typeof Handlers;
+    // @ts-expect-error SET PORT — one member of the union is a set port
+    Provider(selected)({ inject: {}, value: { name: "db" } });
+  });
+
   test("an ordinary Provider still accepts an ordinary port whose service is an array", () => {
     class Tags extends Port("MDProviderTags")<readonly string[]> {}
     const p = Provider(Tags)({ inject: {}, value: ["a", "b"] });

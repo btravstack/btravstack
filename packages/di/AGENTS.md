@@ -38,7 +38,9 @@ All runtime code lives in `packages/di/src`, one concept per file:
   a deferred conditional is not assignable from an unresolved `P`, which is the
   same false positive `Scope`'s rejected guard hit. On the options it costs a
   generic helper nothing, since every one that calls the builder already casts
-  its options.
+  its options. It is deliberately NOT distributive: a port union with one set
+  port in it would distribute to `unknown | marker`, which is `unknown`, and
+  pass (`many.test-d.ts`, _"a union that may be a set port is refused too"_).
 
   **`inject` rides in the same options object, and it is REQUIRED** (issue
   #227). One signature, one runtime path reading one key: the two overloads
