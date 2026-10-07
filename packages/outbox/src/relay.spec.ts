@@ -167,26 +167,29 @@ describe("outbox", () => {
     publisher,
     relaying,
   }) => {
+    // GIVEN two tenants, with the first publish held open
     store.append(order("acme", "stuck"));
     store.append(order("globex", "ready"));
     const held = publisher.hold("stuck");
 
+    // WHEN the other tenant's fact appears before releasing the first
     const swept = await relaying({ tenants: ["acme", "globex"] }, () =>
       fromSafePromise(
         (async () => {
-          try {
-            await held.entered;
-            await vi.waitUntil(() => publisher.sent().includes("ready"));
-            return [...publisher.sent()];
-          } finally {
-            held.release();
-          }
+          await held.entered;
+          await vi.waitUntil(() => publisher.sent().includes("ready"));
+          return [...publisher.sent()];
         })(),
-      ),
+      )
+        .tap(() => held.release())
+        .tapFailure(() => held.release()),
     );
 
-    expect(swept).toBeOkWith(["ready"]);
-    expect(publisher.sent()).toEqual(["ready", "stuck"]);
+    // THEN the second tenant made progress while the first waited, and both finish
+    expect({ beforeRelease: swept.getOrThrow(), afterRelease: publisher.sent() }).toEqual({
+      beforeRelease: ["ready"],
+      afterRelease: ["ready", "stuck"],
+    });
   });
 
   it("keeps one tenant's back-off from slowing another tenant's backlog", async ({
