@@ -48,7 +48,7 @@ class PlaceOrderInteractor {
   execute(
     id: string,
     quantity: number,
-    operation?: string,
+    { operation }: { readonly operation?: string | undefined } = {},
   ): AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder> {
     this.#logger.info("placing an order", { tenantId: this.#tenant, orderId: id, quantity });
     return placeOrder(id, quantity)

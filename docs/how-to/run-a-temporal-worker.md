@@ -79,7 +79,7 @@ export const orderActivities = TemporalActivities(orderContract)({
     fulfillOrder: {
       place: ({ errors, context, input }) =>
         context.unit.place
-          .execute(input.orderId, input.quantity, input.operationId)
+          .execute(input.orderId, input.quantity, { operation: input.operationId })
           .map((order) => ({ id: order.id, quantity: order.quantity }))
           .mapErrCases((matcher) =>
             matcher

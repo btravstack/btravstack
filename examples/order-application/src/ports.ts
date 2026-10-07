@@ -119,13 +119,15 @@ export class PaymentService extends Port("PaymentService")<{
 /**
  * `operation` is handed to `OrderRepository.save` as it is: a caller that may
  * run the same placement more than once — an activity Temporal retries — names
- * it, so the repeat answers the order rather than `DuplicateOrder`.
+ * it, so the repeat answers the order rather than `DuplicateOrder`. A named
+ * field rather than a third positional `string`, so it cannot trade places
+ * with the order id.
  */
 export class PlaceOrder extends Port("PlaceOrder")<{
   readonly execute: (
     id: string,
     quantity: number,
-    operation?: string,
+    options?: { readonly operation?: string | undefined },
   ) => AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder>;
 }> {}
 

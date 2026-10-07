@@ -29,8 +29,9 @@ these terms, and no database code can widen what the use cases have to handle.
 under the **same** operation answers the stored order rather than
 `DuplicateOrder` — an activity Temporal retried after its first attempt
 committed is recovering its own write — and under any other operation, or
-none, it is still the duplicate. `PlaceOrder.execute` takes the same
-argument and hands it straight on.
+none, it is still the duplicate. `PlaceOrder.execute` takes it as a named
+`{ operation }` and hands it straight on — named, because a third positional
+`string` after `(id, quantity)` could trade places with the id unnoticed.
 
 No method names a tenant, and that is the layer's own design rather than the
 framework's: `Tenant` is a port the unit provides, so the repository a call

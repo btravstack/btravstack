@@ -44,8 +44,10 @@ describe("PlaceOrder", () => {
     const result = await Module.scoped(scopeFor(ACME), (ctx) => {
       const placeOrder = ctx.get(PlaceOrder);
       return placeOrder
-        .execute("0199a1e0-0000-7000-8000-000000000001", 2, "wf-1")
-        .flatMap(() => placeOrder.execute("0199a1e0-0000-7000-8000-000000000001", 2, "wf-1"));
+        .execute("0199a1e0-0000-7000-8000-000000000001", 2, { operation: "wf-1" })
+        .flatMap(() =>
+          placeOrder.execute("0199a1e0-0000-7000-8000-000000000001", 2, { operation: "wf-1" }),
+        );
     });
 
     // THEN the retry recovers its own write rather than reading it as a duplicate
@@ -58,8 +60,10 @@ describe("PlaceOrder", () => {
     const result = await Module.scoped(scopeFor(ACME), (ctx) => {
       const placeOrder = ctx.get(PlaceOrder);
       return placeOrder
-        .execute("0199a1e0-0000-7000-8000-000000000001", 2, "wf-1")
-        .flatMap(() => placeOrder.execute("0199a1e0-0000-7000-8000-000000000001", 2, "wf-2"));
+        .execute("0199a1e0-0000-7000-8000-000000000001", 2, { operation: "wf-1" })
+        .flatMap(() =>
+          placeOrder.execute("0199a1e0-0000-7000-8000-000000000001", 2, { operation: "wf-2" }),
+        );
     });
 
     // THEN it is a genuine duplicate
