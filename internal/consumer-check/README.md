@@ -41,14 +41,79 @@ CI job rather than asking another repository for a new one.
    exemption cannot outlive the growth it was for; a package npm has never seen
    has no baseline and is skipped.
 
+4. **Each package loads alone, with only its required peers, at the floors it
+   advertises, on the Node it promises.** Checks 1 to 3 compile and lint; none
+   of them executes a line. This one installs every package in a project of
+   its own and runs its built code with `node`, and each clause is one
+   property:
+
+   - **Only its required peers.** The project holds the package's tarball,
+     the tarballs of the `@btravstack/*` peers it requires (transitively), and
+     its other non-optional peers — read off the PACKED manifest, so the
+     ranges are the ones `pnpm pack` rewrote, which a consumer is told.
+     Nothing optional is installed: `autoInstallPeers` is on, as it is for an
+     npm or pnpm consumer, and it never installs an optional peer.
+   - **Strict peer validation.** `strictPeerDependencies: true`, so a peer
+     range no installed version satisfies — the package's own, or one a
+     dependency of its peers states — fails the install. The one relaxation is
+     `@btravstack/*` among themselves: a tarball's version reads as its
+     `file:` path, which no `^0.x` range admits, and they are the same commit
+     by construction.
+   - **At the floors it advertises.** `resolutionMode: lowest-direct`
+     resolves each of those peers to the LOWEST version its range admits,
+     not the catalog's. That is the lower-bound check, and it is targeted by
+     construction: it covers exactly the peers a package requires, each at the
+     one version its range names as enough, and adds no install — the
+     catalog's versions are what the rest of the gate already runs on. It is
+     what found `@btravstack/amqp-worker` and `@btravstack/temporal-worker`
+     admitting `unthrown` releases their own required peers refuse, and
+     `@btravstack/http-server` admitting oRPC betas that lack an export it
+     imports.
+   - **Every entry point, both ways.** Each subpath in `exports` is loaded by
+     `import()`, and by `require()` where it publishes a `require` condition —
+     from inside the project, with `NODE_PATH` cleared, because pnpm's script
+     shims point it at this workspace's store and `require` falls back to it.
+     An ESM load proves every named import a peer is asked for exists at the
+     floor; a CJS load proves only that the module graph resolves.
+   - **An optional adapter stays optional.** The root entry must load. A
+     subpath may fail only by not finding one of its package's OWN optional
+     peers — which is what an adapter subpath does when its vendor is absent —
+     and any other failure, a missing package nobody declared included, fails
+     the check.
+   - **On the Node it promises.** Every package states one `engines.node`
+     (`>=22`), and the check reads its floor off the manifests (`22.0.0`),
+     fetches that Node with pnpm's `node@runtime:` protocol and runs every
+     load on it as well as on the Node running the check. That is
+     independent of the repository's own floor, which `engineStrict` pins to
+     the dev toolchain's highest demand, and it needs no matrix row: the
+     Tests job's matrix comes from the reusable workflow, and this rides the
+     Type Check job like the rest of this workspace.
+
+   What fails for a reason the package cannot fix on its own is in `gaps`,
+   with why — CJS consumers of `@btravstack/http-server` on Node below 22.12,
+   since `@orpc/server` is ESM-only and `require(esm)` ships unflagged from
+   there, and every CJS consumer of `@btravstack/temporal-worker`, since
+   `@temporal-contract/worker` exports `./activity` under `import` alone. An
+   entry that starts loading clean fails as stale, like `accepted`.
+
+   **What it does not prove**: that the code WORKS at the floors — a method
+   added to a peer after its floor is called, not imported, and loading never
+   calls it — that an adapter subpath loads with its optional peer installed,
+   or anything at a version between a floor and the catalog's.
+
 ## How it works
 
 `pnpm pack` every published package into a temporary directory, `pnpm init` a
 throwaway project there, `pnpm add` the tarballs plus the peers they need, and
-compile. Nothing is cached and nothing is hand-listed: the package list comes
-from the workspace, and the compile runs against whatever was just built.
+compile. Then, in a second temporary directory beside it — never inside it,
+since Node resolves a bare specifier by climbing directories and would find
+the first project's packages — one project per package for check 4. Nothing is
+cached and nothing is hand-listed: the package list comes from the workspace,
+and the compile and the loads run against whatever was just built.
 
-The cost is about two CI minutes, inside the existing Type Check job.
+The cost is a few CI minutes, inside the existing Type Check job. Check 4 adds
+one small install per package, mostly from the store the first install filled
+— only a floor the catalog does not pin is downloaded — plus one Node download.
 
 ## The node10 decision
 

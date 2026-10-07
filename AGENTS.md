@@ -93,14 +93,20 @@ whole gate shares, and `consumer-check` answers from OUTSIDE the workspace a
 question two gates here answer from inside — it packs every published package,
 installs the tarballs into a throwaway project and compiles a file that
 re-exports what a library consumer exports, under the TypeScript a consumer
-realistically has and `declaration: true`. Both are documented in their own READMEs.
+realistically has and `declaration: true`; then installs each package ALONE,
+with only its required peers at the floors it advertises, and loads every
+entry point by `import` and `require` on this Node and on the published
+`engines` floor. Both are documented in their own READMEs.
 
 **That second one exists because `examples/di-hexagonal`'s emit guard covers
 only a di port**, and the three example deployments sit on
 `@btravstack/tsconfig/app.json` (`declaration: false`) precisely so they never
 meet TS4023 — so nothing compiled `defineHttp(...)`'s `api`, an `HttpModule` or
 a `Config.provider` the way a consumer does. It rides the existing Type Check
-job, the same move that put `markdownlint` on `lint`.
+job, the same move that put `markdownlint` on `lint` — and so does its run on
+the published Node floor, which fetches that Node rather than asking the
+reusable workflow for a matrix row: the `22.22` Tests row is the dev
+toolchain's floor, not the consumer's.
 
 ## Commands
 
