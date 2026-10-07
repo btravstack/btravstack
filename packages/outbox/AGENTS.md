@@ -107,7 +107,13 @@ transaction (`set_config(…, true)`, a user-settable parameter), since the
 transaction sits idle while the publisher works; `prisma-outbox.spec.ts`'s
 "keeps its claim through a publish slower than the server's
 idle-in-transaction timeout" runs a pool whose sessions time out at 200 ms and
-fails without it. The rest — a terminated backend, a failover — is delivery
+fails without it. The lift is the claim's first statement, so the timeout
+still runs between `BEGIN` and it — and a fresh Prisma 8 client's first query
+verifies its contract marker there, over a second connection. A timeout
+shorter than that ends the session before the lock is taken: the sweep fails
+and backs off, and nothing is published twice. That spec's fixture issues one
+query outside a transaction first, for exactly this reason. The rest — a
+terminated backend, a failover — is delivery
 being at-least-once, which the outbox id deduplicates. Probing the session's
 liveness between publishes was declined: it narrows the window without
 closing it, at a round trip per message.

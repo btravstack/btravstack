@@ -120,6 +120,9 @@ export const it = test.extend<PersistenceFixtures>({
     const url = new URL(inject("__ORDERS_DATABASE_URL__"));
     url.searchParams.set("options", "-c idle_in_transaction_session_timeout=200");
     const db = (await openDatabase(url.toString())).get();
+    // Outside a transaction: a fresh client verifies its contract marker on first use, over
+    // a second connection, and a claim paying for that idles past the timeout before its lift.
+    await db.runtime().query(db.raw.sql`SELECT 1 AS one`.returnsRow({ one: "pg/int4@1" }).build());
     await use(prismaOutboxStore(db, { schema: "orders" }));
     await db.runtime().close();
   },
