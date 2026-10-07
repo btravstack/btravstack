@@ -288,6 +288,19 @@ idempotent by lookup-then-create — neither admin API has an upsert — and cos
 about a third of a second, so running it unconditionally is the honest default:
 a fresh CI runner's database is empty, and a wiped local one is too.
 
+**Provisioning imports Hydra's two signing key sets, and that was measured
+rather than preferred.** Left alone, Hydra mints `hydra.openid.id-token` and
+`hydra.jwt.access-token` lazily — a 4096-bit RSA key each, generated inside the
+first request that signs — and its HTTP servers have a 10s write timeout. On a
+loaded CI runner the generation outlasted it: the first login after a cold
+start failed as `fetch failed` / `other side closed` on port 4444 (or, when the
+dying request was an application's code exchange, as `401 grant_failed`), and
+every later one passed, which is why a re-run always went green (#398). A
+Hydra throttled to a tenth of a CPU reproduces it on any machine. `provisionOry`
+now looks each set up and, when it is missing, `PUT`s a 2048-bit key it
+generated itself in milliseconds, before any identity or client exists — so no
+login anywhere is the one that pays for a key.
+
 Two gotchas worth not rediscovering: Kratos's admin API lives under an `/admin`
 prefix, so `/health/ready` on 4434 is a **307** and the wait strategy must ask
 for `/admin/health/ready`; and `config/kratos.yml`'s `ui_url`s are deliberately
