@@ -1,10 +1,10 @@
 # AGENTS.md
 
 This file provides guidance to any coding agent working in this repository.
-`AGENTS.md` files and shared skills under `.agents/skills/` are the
-provider-neutral source of guidance. This is the authoritative spec — the
-rules _and_ the reasoning behind them. Keep it in sync with the code as the
-package evolves (describe what _is_, not what was planned).
+`AGENTS.md` files are the provider-neutral source of guidance. This is the
+authoritative spec — the rules _and_ the reasoning behind them. Keep it in
+sync with the code as the package evolves (describe what _is_, not what was
+planned).
 
 Configure your chosen agent locally to load this file and the relevant
 package's `AGENTS.md`. Provider-specific discovery aliases and instruction
@@ -182,8 +182,9 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
 
    **The local loop is the production shape, not an exception to it**:
    `pnpm dev` is one process per deployment, never one process booting all
-   three. The declined alternative is in the `deferred-decisions` skill, the
-   mechanics in `examples/AGENTS.md`.
+   three. The declined alternative is in
+   `docs/explanation/deferred-decisions.md`, the mechanics in
+   `examples/AGENTS.md`.
 
    **One runtime does not mean one protocol.** A graph holds exactly one
    runtime, and that is what bounds the process — not what bounds HTTP itself.
@@ -198,7 +199,8 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    prefix, because three runtimes is the one thing this thesis forbids.
 
    **"HTML" here means fragments, and only fragments** — what that excludes,
-   and which issues hold the rest, is in the `deferred-decisions` skill.
+   and which issues hold the rest, is in
+   `docs/explanation/deferred-decisions.md`.
 
    **Views beyond htmx fragments, and i18n, are the application's** (#166).
    A template engine, JSX/SSR with a component model, a message catalogue
@@ -260,7 +262,7 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    `http-server`, `temporal-worker`, `amqp-worker` — and a client will be a
    separate `-client` PACKAGE, never a subpath: peers are per-package, so a
    subpath would drag the serving half into a consumer that only calls. Why
-   these spellings is in the `deferred-decisions` skill.
+   these spellings is in `docs/explanation/deferred-decisions.md`.
 
 2. **Ambient carries DATA. The DI `Context` carries CAPABILITIES.** The kernel
    opens one `AsyncLocalStorage` store per unit holding a small, fixed record —
@@ -929,7 +931,7 @@ in its place.
   **The LEAF is one shape on all three transports**, oRPC's: one record
   carrying everything the invocation has, `input` included, and that input
   repeated as a second positional parameter. Why oRPC's, and the naming
-  asymmetry still undecided, are in the `deferred-decisions` skill.
+  asymmetry still undecided, are in `docs/explanation/deferred-decisions.md`.
 
   **All three starters share one shape**: mint a piece from a contract key
   (`api.OrpcController(contract, path)`, `AmqpHandler(contract, key)`,
@@ -1371,10 +1373,8 @@ And a seventh, about the infrastructure a suite runs against:
 
 The register of what this repository has declined, deferred or already closed —
 container reaping, the `currentUnit()` lint rule, traces and metrics in
-`@btravstack/observability`, the doc-samples gate — is the
-`deferred-decisions` skill (`.agents/skills/deferred-decisions/SKILL.md`). It
-loads on invocation rather than in every session, because it is read when a
-feature is being PROPOSED, not while code is being written. Read it before
-proposing a feature, a package, a lint rule or a gate that sounds new: a
+`@btravstack/observability`, the doc-samples gate — is
+`docs/explanation/deferred-decisions.md`. Read it before proposing a feature,
+a package, a lint rule or a gate that sounds new: a
 struck-through entry there has already shipped, and an open one names the
 trigger that would reopen it.

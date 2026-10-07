@@ -1059,8 +1059,9 @@ export const api = auth.units<{ anonymous: typeof Anonymous; user: typeof User }
   reopens if a root that must bind its kinds stops being one the gate can
   see — a hand-rolled `http()` root becoming the common shape.
   `context.unit` keeps its name for the same leaf-shape reason the
-  `deferred-decisions` skill gives: it is one record on all three transports,
-  and the guides say "request-scoped services" before they say "unit".
+  `docs/explanation/deferred-decisions.md` gives: it is one record on all
+  three transports, and the guides say "request-scoped services" before they
+  say "unit".
 
 - **`UnitsOf<A>` alone does NOT refuse an undeclared kind — the exactness arm
   on `units` does.** `UnitsOf<A>` is
