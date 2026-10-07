@@ -2,7 +2,13 @@ import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import type { AmqpInfo, AmqpRuntime } from "@btravstack/amqp-worker";
 import type { Env } from "@btravstack/config";
-import { type RunningApp, Logger, type Tracer } from "@btravstack/core";
+import {
+  currentUnit,
+  Logger,
+  type RunningApp,
+  type StartOptions,
+  type Tracer,
+} from "@btravstack/core";
 import { Module, Provider, type Context, type Scope } from "@btravstack/di";
 import {
   OrderApplicationModule,
@@ -12,11 +18,12 @@ import {
 } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
 import { OrderDatabase, OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
+import { Mailer, type Mail } from "@btravstack/mailer";
 import { LoggerConfig, createLogger, type Line } from "@btravstack/observability";
 import { OutboxStore } from "@btravstack/outbox";
 import { Storage } from "@btravstack/storage";
 import { bootFixture, overridden, tapped, type Boot } from "@btravstack/testing";
-import type { AsyncResult } from "unthrown";
+import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { uuidv7 } from "uuidv7";
 import { inject, type TestAPI } from "vitest";
 
@@ -24,7 +31,7 @@ import { OrderAmqpWorker } from "../module.js";
 
 type App<E> = RunningApp<E, AmqpInfo>;
 
-type ServeOptions = { readonly drainTimeoutMs: number };
+type ServeOptions = Pick<StartOptions, "drainTimeoutMs" | "preDrainDelayMs">;
 
 /**
  * `X` is pinned rather than left generic: `start`'s gate is proven at the call
@@ -87,6 +94,72 @@ const tappedAmqp = () => {
   };
 };
 
+/**
+ * The real root over a store whose `put` holds the invoice until the unit it
+ * runs in is aborted, and a mailer that records instead of sending — so a
+ * spec can let the drain deadline pass while an invoice is in flight and see
+ * what the handler does next.
+ */
+const stalledAmqp = () => {
+  const sent: Mail[] = [];
+  let reached = false;
+  const tap = tapped(
+    overridden(OrderAmqpWorker, [
+      Provider(Logger)({
+        inject: { config: LoggerConfig },
+        sync: ({ config }) => createLogger(() => undefined, config.level),
+      }),
+      Provider(Storage)({
+        inject: {},
+        value: {
+          put: () => {
+            reached = true;
+            const signal = currentUnit()?.signal;
+            return fromSafePromise(
+              new Promise<void>((resolve) =>
+                signal?.addEventListener("abort", () => resolve(), { once: true }),
+              ),
+            );
+          },
+          get: () => OkAsync({ bytes: new Uint8Array(), contentType: "text/plain" }),
+          delete: () => OkAsync(),
+          presignedUrl: () => OkAsync("http://invoices.test/stalled"),
+          presignedUpload: () => OkAsync("http://invoices.test/stalled"),
+        },
+      }),
+      Provider(Mailer)({
+        inject: {},
+        value: {
+          send: (mail) => {
+            sent.push(mail);
+            return OkAsync();
+          },
+        },
+      }),
+    ]),
+    [OrderDatabase, Logger],
+  );
+  return {
+    module: tap.module,
+    reached: (): boolean => reached,
+    sent: (): readonly Mail[] => sent,
+    place: (tenant: TenantId, id: string, quantity: number) => {
+      const [db, logger] = tap.services();
+      return Module.scoped(
+        Module("Writer")({
+          imports: [tenantOf(tenant), OrderTenantPersistence, OrderApplicationModule],
+          provides: [
+            Provider(OrderDatabase)({ inject: {}, value: db }),
+            Provider(Logger)({ inject: {}, value: logger }),
+          ],
+          exports: [PlaceOrder],
+        }),
+        (ctx) => ctx.get(PlaceOrder).execute(id, quantity),
+      );
+    },
+  };
+};
+
 /** What a Mailpit message looks like, narrowed to what this suite reads. */
 type Delivered = {
   readonly To: readonly { readonly Address: string }[];
@@ -116,6 +189,8 @@ export type AmqpFixtures = {
    * and every line its logger wrote, pointed at this test's own vhost.
    */
   readonly tapped: ReturnType<typeof tappedAmqp>;
+  /** The root with an invoice store that stalls until the unit aborts, and a recording mailer. */
+  readonly stalled: ReturnType<typeof stalledAmqp>;
   /**
    * Runs `use` in a scope holding this test's tenant, the repository bound to
    * it and the use cases over both — built from the running app's own client,
@@ -190,6 +265,11 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   tapped: async ({}, use) => {
     await use(tappedAmqp());
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  stalled: async ({}, use) => {
+    await use(stalledAmqp());
   },
 
   writer: async ({ tenant, tapped }, use) => {

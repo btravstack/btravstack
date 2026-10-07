@@ -335,4 +335,24 @@ describe("the invoice a notification links", () => {
       text: "Order 0199a1e0-0000-7000-8000-00000000c003 is no longer with us.",
     });
   });
+
+  it("is not mailed once the drain deadline passed while it was being stored", async ({
+    tenant,
+    serve,
+    stalled,
+  }) => {
+    // GIVEN a worker with no drain time to give, whose store holds an
+    // invoice until the kernel stops waiting for the delivery it belongs to
+    const app = await serve(stalled.module, { drainTimeoutMs: 0, preDrainDelayMs: 0 });
+    const placed = await stalled.place(tenant, "0199a1e0-0000-7000-8000-00000000c004", 1);
+    await vi.waitUntil(() => stalled.reached(), { timeout: 10_000 });
+
+    // WHEN the drain starts, and its deadline passes with the invoice in flight
+    app.requestDrain();
+    await app.exited;
+
+    // THEN the store answering late did not send a notification on behalf
+    // of a delivery this process had already abandoned
+    expect({ placed: placed.isOk(), sent: stalled.sent() }).toEqual({ placed: true, sent: [] });
+  });
 });
