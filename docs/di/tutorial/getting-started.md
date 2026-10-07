@@ -11,14 +11,14 @@ description: Build a small TypeScript application with a port, provider, and mod
 
 ## Install
 
-In a new project with Node.js 22 or later:
+In a new project with Node.js 22.6 or later (for the built-in TypeScript runner):
 
 ```sh
 mkdir di-hello
 cd di-hello
 pnpm init
 pnpm add @btravstack/di unthrown
-pnpm add -D typescript tsx @types/node
+pnpm add -D typescript @types/node
 ```
 
 Set `"type": "module"` in `package.json`. Create `tsconfig.json` with strict
@@ -64,7 +64,9 @@ else console.error(result);
 ```
 
 Run `pnpm exec tsc --noEmit` to check the wiring, then
-`pnpm exec tsx index.ts` to print `Hello, Ada!`.
+`node --experimental-strip-types index.ts` to print `Hello, Ada!`. Node
+strips the types to run this example; it does not check them, so keep the
+`tsc` step.
 
 `Greeting` is a [port](/reference/di/ports): the application names what it
 needs. `greeting` is a [provider](/reference/di/providers): its `inject`
