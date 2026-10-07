@@ -92,6 +92,38 @@ test("toJSON round-trips through make", () => {
   expect(Person.make(p.toJSON()).getOrThrow().fullName).toBe("Ada Lovelace");
 });
 
+test("computed fields see the canonical declared fields", () => {
+  // GIVEN an optional nested key whose presence determines a computed value
+  class Tagged extends Entity("Tagged")(
+    { id: PersonId, meta: z.object({ note: z.string().optional() }).brand("Meta") },
+    {
+      computed: {
+        hasNote: Entity.computed(z.boolean(), (d) => Object.hasOwn(d.meta, "note")),
+      },
+    },
+  ) {}
+  // WHEN the input contains an explicit undefined key
+  const made = Tagged.make({ id: raw.id, meta: { note: undefined } }).map((t) => ({
+    first: t.toJSON(),
+    roundTrip: Tagged.make(t.toJSON()).getOrThrow().toJSON(),
+  }));
+  // THEN derivation and stored data agree across the round trip
+  expect(made).toBeOkWith({
+    first: { id: raw.id, meta: {}, hasNote: false },
+    roundTrip: { id: raw.id, meta: {}, hasNote: false },
+  });
+});
+
+test("computed callbacks see only declared keys", () => {
+  class Visible extends Entity("Visible")(
+    { id: PersonId },
+    {
+      computed: { keys: Entity.computed(z.array(z.string().brand("Key")), (d) => Object.keys(d)) },
+    },
+  ) {}
+  expect(Visible.make({ id: raw.id }).map((value) => value.keys)).toBeOkWith(["id"]);
+});
+
 test("an invariant constrains a computed value through its sources", () => {
   // A rule reads the *declared* fields, never a computed one. Every computed
   // value is a function of declared data, so the rule is expressed over the

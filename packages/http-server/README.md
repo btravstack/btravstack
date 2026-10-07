@@ -16,11 +16,11 @@
 
 ```sh
 pnpm add @btravstack/http-server @btravstack/core @btravstack/config @btravstack/di \
-  @btravstack/contract unthrown @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @unthrown/orpc
+  @btravstack/contract unthrown @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @unthrown/orpc@^0.2.0
 ```
 
 All of those are peer dependencies — install every one, so the application
-holds a single copy of each. Node `>=22`, and
+holds a single copy of each. Node `>=22.12`, and
 `"moduleResolution": "node16"` or `"nodenext"`: the subpaths below publish no
 `typesVersions` shim, so the legacy `"node"` algorithm — which ignores
 `exports` entirely — resolves no types for them. That is a decision rather than
@@ -241,8 +241,8 @@ writing it per application is how CVEs happen. Each is an ordinary
   a root composing it without `sessionCodec()` is an unmet dependency naming
   the port.
 
-The `/jwt` subpath needs Node ≥22.12 under CommonJS: `jose` is ESM-only, so the
-CJS build's `require` depends on `require(esm)`. ESM consumers are unaffected.
+The CommonJS build needs Node ≥22.12: oRPC and `jose` are ESM-only, so its
+`require` depends on `require(esm)`.
 
 Password hashing and credential issuing are out of scope — all three above
 are on the verifying side. Details:

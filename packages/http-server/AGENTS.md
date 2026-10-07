@@ -10,6 +10,10 @@ is `AUTH.md`. Keep this file in sync with the code in the same commit.
 
 ## Decisions and gotchas, by surface
 
+- The Node floor is `>=22.12`: the CommonJS build loads ESM-only oRPC, and
+  unflagged `require(esm)` starts there. The same applies to the optional
+  authentication subpaths that load `jose`.
+
 - **`HttpModule(name)({...})`** (`http-module.ts`) — THE way an application
   declares an HTTP deployment. What it takes, what it adds to `imports`,
   `provides` and `exports`, and which providers `router` and `fragments`

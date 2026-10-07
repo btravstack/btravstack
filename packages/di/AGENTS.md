@@ -133,6 +133,10 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   `WiringDefect` inside a `.map` callback on purpose: unthrown converts the throw
   into its `Defect` channel, which is where wiring bugs (vs. modeled failures)
   belong.
+  `runScoped` calls `onConstructionFailure` before closing acquired resources
+  when construction fails, so a caller can arm its cleanup deadline while the
+  original failure is still available. A successful build leaves that hook
+  untouched, even when `use` fails.
 - **`index.ts`** — the deliberate public surface. `Scope` is exported as a _type
   only_ (the class value would let consumers provide or alias it);
   `PortClass`/`ManyPortClass` are exported so declaration emit **names** what

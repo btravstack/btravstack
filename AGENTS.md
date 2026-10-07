@@ -118,7 +118,7 @@ pnpm lint             # oxlint (all eight @unthrown rules) + markdownlint-cli2
 pnpm typecheck        # tsc, incl. the type-level *.test-d.ts files
 pnpm knip             # dead code / unused deps
 pnpm test             # vitest + v8 coverage (100% lines/functions, 90% branches)
-pnpm build            # tsdown dual CJS/ESM + d.ts
+pnpm build            # tsdown CJS/ESM + d.ts (Temporal worker: ESM only)
 ```
 
 **`lint` runs two linters, and markdown rides it deliberately.** CI's jobs come
@@ -1000,10 +1000,13 @@ in its place.
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- All fifteen published packages claim `engines: { node: ">=22" }` while the root
-  claims `>=22.22`. The divergence is **deliberate**: the root floor is the dev
-  toolchain's, a package's is a compatibility promise to consumers. Do not
-  align them for tidiness — raising a published floor is a breaking change,
+- Published packages state the lowest Node version their required dependencies
+  and entry points support: most claim `>=22`, while `http-server` and `prisma`
+  claim `>=22.12`, and `amqp-worker` and `temporal-worker` claim `>=22.22`.
+  The root claims `>=22.22` for the dev toolchain. A package's floor is a
+  compatibility promise to consumers; the consumer check tests each package
+  on its own floor. Do not align them for tidiness — raising a published floor
+  is a breaking change,
   where raising the root's is a maintenance decision the toolchain forces:
   `engineStrict: true` makes the root floor the highest floor any dev
   dependency declares, so a bump that raises one (`testcontainers@12.1.0`

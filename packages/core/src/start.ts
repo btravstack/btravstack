@@ -452,7 +452,7 @@ export const start = <X, E, N>(
   // It carries what `exited` says if the kernel stops waiting: a report from
   // `finish`, or the startup failure itself, whose finalisers di runs before
   // anything after `Module.scoped` can observe that it failed.
-  const stopping = Promise.withResolvers<() => AsyncResult<Stopped, RuntimeStartFailed>>();
+  const stopping = Promise.withResolvers<() => AsyncResult<Stopped, E | RuntimeStartFailed>>();
   // `Serving.stop` AND di's scope close, together: the close runs after
   // `finish` has returned, inside `Module.scoped`, so a race inside `finish`
   // could only ever have covered the first half — and the finalisers are the
@@ -461,7 +461,7 @@ export const start = <X, E, N>(
   // A THUNK, not a value, and both arms below match it: an `AsyncResult` is
   // eager, so constructing one here would start it beside the other two rather
   // than as part of the race that consumes it.
-  const stopAbandoned = (): AsyncResult<ExitReport, RuntimeStartFailed> =>
+  const stopAbandoned = (): AsyncResult<ExitReport, E | RuntimeStartFailed> =>
     fromSafePromise(stopping.promise).flatMap((abandoned) =>
       clock.sleep(stopTimeoutMs, stopSettled.signal).flatMap(() =>
         // `clock.sleep` RESOLVES when its signal aborts — that is how the
@@ -475,8 +475,8 @@ export const start = <X, E, N>(
     );
 
   const abandonStop = (
-    abandoned: () => AsyncResult<Stopped, RuntimeStartFailed>,
-  ): AsyncResult<ExitReport, RuntimeStartFailed> => {
+    abandoned: () => AsyncResult<Stopped, E | RuntimeStartFailed>,
+  ): AsyncResult<ExitReport, E | RuntimeStartFailed> => {
     emit({
       type: "stoppedWaiting",
       phase: "stop",
@@ -754,6 +754,11 @@ export const start = <X, E, N>(
             stopping.resolve(() => failure.toAsync());
           }),
       {
+        onConstructionFailure: (failure) => {
+          startupFailing = true;
+          leaveFailed(failure);
+          stopping.resolve(() => failure.toAsync() as AsyncResult<Stopped, E | RuntimeStartFailed>);
+        },
         onTeardownError: (port, cause) => {
           teardownErrors.push({ port, cause });
           emit({ type: "teardownError", port, cause });

@@ -16,7 +16,7 @@ pnpm add @btravstack/temporal-worker @btravstack/core @btravstack/config @btravs
   @temporal-contract/worker@^8.0.0-beta.7 @temporal-contract/contract@^8.0.0-beta.7
 ```
 
-All nine are peer dependencies — install them. Node `>=22`.
+All nine are peer dependencies — install them. Node `>=22.22`. This package is ESM-only.
 
 ## A worked example
 
@@ -69,7 +69,7 @@ const contract = defineContract({
             InvalidOrderId: { data: z.object({ id: z.string() }), nonRetryable: true },
             InvalidQuantity: { data: z.object({ id: z.uuidv7() }), nonRetryable: true },
           },
-          activityOptions: { startToCloseTimeout: "30 seconds" },
+          activityOptions: { startToCloseTimeout: "30 seconds", retry: { maximumAttempts: 3 } },
         }),
       },
     }),

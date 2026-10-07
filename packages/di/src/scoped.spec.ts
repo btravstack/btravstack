@@ -69,6 +69,36 @@ test("a mid-graph failure releases everything already acquired", async () => {
   expect(released).toEqual(["first"]);
 });
 
+test("construction failure is reported before releasing acquired resources", async () => {
+  // GIVEN a later provider that fails after an earlier resource was acquired
+  const order: string[] = [];
+  const mod = Module("FailureBeforeRelease")({
+    provides: [
+      Provider(First)({
+        inject: {},
+        acquire: () => Ok({ n: 1 as const }),
+        release: () => void order.push("release"),
+      }),
+      Provider(Second)({
+        inject: { first: First },
+        make: () => Err(new OpenError({ which: "second" })),
+      }),
+    ],
+    exports: [First],
+  });
+
+  // WHEN the scope fails to build
+  const result = await Module.scoped(mod, () => OkAsync("unreachable"), {
+    onConstructionFailure: () => void order.push("failure"),
+  });
+
+  // THEN the hook can arm a deadline before release begins
+  expect({ result, order }).toEqual({
+    result: expect.toBeErrTagged("OpenError"),
+    order: ["failure", "release"],
+  });
+});
+
 test("a rejecting release neither masks the failure nor stops the unwind", async () => {
   // GIVEN
   const released: string[] = [];

@@ -40,7 +40,10 @@ const isPlainObject = (value: object): boolean => {
 };
 
 type Def = { readonly type: string } & Record<string, unknown>;
-type Schema = { readonly _zod: { readonly def: Def } };
+type Schema = {
+  readonly _zod: { readonly def: Def; readonly optout?: string };
+  readonly safeParse?: (value: unknown) => { readonly success: boolean };
+};
 
 const defOf = (schema: Schema | undefined): Def | undefined => schema?._zod.def;
 
@@ -160,10 +163,52 @@ const childSchema = (schema: Schema | undefined, key: string | number): Schema |
   }
 };
 
+export const omitsUndefined = (schema: unknown): boolean => {
+  const field = asSchema(schema);
+  if (field === undefined) return true;
+  if (field.safeParse !== undefined) return field._zod.optout === "optional";
+  const options = field._zod.def["options"];
+  return Array.isArray(options) && options.every(omitsUndefined);
+};
+
+/** Select a uniquely identified object branch without parsing its transforms again. */
+const objectBranch = (
+  schema: Schema | undefined,
+  value: Record<string, unknown>,
+): Schema | undefined => {
+  const def = defOf(unwrap(schema));
+  if (def?.type !== "union" || !Array.isArray(def["options"])) return schema;
+  const options = def["options"] as unknown[];
+  const discriminators = options.map((option) => {
+    const branch = asSchema(option);
+    const branchDef = defOf(unwrap(branch));
+    if (branchDef?.type !== "object" && branchDef?.type !== "interface") return undefined;
+    const shape = branchDef["shape"];
+    if (typeof shape !== "object" || shape === null) return undefined;
+    const literals = Object.entries(shape).filter(
+      ([, field]) => defOf(asSchema(field))?.type === "literal",
+    );
+    return literals.length > 0 ? literals : undefined;
+  });
+  if (discriminators.some((fields) => fields === undefined)) return schema;
+  const matched = options.filter((_, index) =>
+    discriminators[index]?.every(([key, field]) => {
+      const values = defOf(asSchema(field))?.["values"];
+      return Array.isArray(values) && values.some((candidate) => Object.is(candidate, value[key]));
+    }),
+  );
+  return matched.length === 1 ? asSchema(matched[0]) : schema;
+};
+
 /** What the walk has reached, mapped to what stands in for it: itself, or its canonical copy. */
 type Seen = WeakMap<object, object>;
 
-const freezeInto = (value: object, schema: Schema | undefined, seen: Seen): object => {
+const freezeInto = (
+  value: object,
+  schema: Schema | undefined,
+  seen: Seen,
+  exposed: WeakSet<object>,
+): object => {
   // Decided by the schema, never by the runtime shape: `z.custom` hands the
   // caller's own reference straight back, and a plain-object one is
   // indistinguishable from decoded data once it reaches here.
@@ -173,9 +218,10 @@ const freezeInto = (value: object, schema: Schema | undefined, seen: Seen): obje
   // `z.custom` field or a caller-supplied object can close a loop, and a
   // shared subtree would otherwise be walked once per reference.
   const reached = seen.get(value);
-  if (reached !== undefined) return reached;
-  seen.set(value, value);
-
+  if (reached !== undefined) {
+    if (reached !== value) exposed.add(value);
+    return reached;
+  }
   if (value instanceof Date) return Object.freeze(value);
 
   const array = Array.isArray(value);
@@ -184,24 +230,40 @@ const freezeInto = (value: object, schema: Schema | undefined, seen: Seen): obje
   // the canonical form `toJSON()` promises: an absent optional key is omitted,
   // never `undefined` — zod keeps an explicit `undefined` it was handed
   const source = value as Record<string, unknown>;
+  const branch = array ? schema : objectBranch(schema, source);
+  const copyNeeded =
+    !Object.isExtensible(value) ||
+    Object.entries(source).some(
+      ([key, property]) =>
+        !array &&
+        property === undefined &&
+        omitsUndefined(childSchema(branch, key)) &&
+        Object.getOwnPropertyDescriptor(source, key)?.configurable === false,
+    );
+  const copy: object | undefined = copyNeeded ? (array ? [] : {}) : undefined;
+  seen.set(value, copy ?? value);
   const kept = new Map<string, unknown>();
   for (const [key, property] of Object.entries(source)) {
-    if (array || property !== undefined) {
+    if (array || property !== undefined || !omitsUndefined(childSchema(branch, key))) {
       kept.set(
         key,
-        isObject(property) ? freezeInto(property, childSchema(schema, key), seen) : property,
+        isObject(property)
+          ? freezeInto(property, childSchema(branch, key), seen, exposed)
+          : property,
       );
     }
   }
   const unchanged =
     kept.size === Object.keys(source).length &&
     [...kept].every(([key, property]) => source[key] === property);
-  if (unchanged) return Object.freeze(value);
+  if (unchanged && !exposed.has(value)) {
+    seen.set(value, value);
+    return Object.freeze(value);
+  }
 
   // an object zod already froze (`.readonly()`) or a transform sealed cannot drop a key: canonicalise a copy
-  if (!Object.isExtensible(value)) {
-    const copy = array ? [...kept.values()] : Object.fromEntries(kept);
-    seen.set(value, copy);
+  if (copy !== undefined) {
+    Object.assign(copy, Object.fromEntries(kept));
     return Object.freeze(copy);
   }
   for (const key of Object.keys(source)) {
@@ -235,4 +297,6 @@ const freezeInto = (value: object, schema: Schema | undefined, seen: Seen): obje
  * swallow a `seen` argument passed in the old position.
  */
 export const deepFreeze = <T>(value: T, seen?: Seen, schema?: unknown): T =>
-  isObject(value) ? (freezeInto(value, asSchema(schema), seen ?? new WeakMap()) as T) : value;
+  isObject(value)
+    ? (freezeInto(value, asSchema(schema), seen ?? new WeakMap(), new WeakSet()) as T)
+    : value;

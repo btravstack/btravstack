@@ -92,12 +92,11 @@ CI job rather than asking another repository for a new one.
      subpath needs which optional peer, so `adapters` does — and every
      subpath it names must still fail that way in every load it gets, each
      mode on each Node, so a build that starts bundling its vendor in one of
-     them fails as stale. A load a `gaps` entry excuses counts, since it
-     fails before the adapter reaches its vendor.
-   - **On the Node it promises.** Every package states one `engines.node`
-     (`>=22`), and the check reads its floor off the manifests (`22.0.0`),
-     fetches that Node with pnpm's `node@runtime:` protocol and runs every
-     load on it as well as on the Node running the check. That is
+     them fails as stale.
+   - **On the Node it promises.** The check reads each package's `engines.node`
+     floor from its manifest, fetches each distinct Node with pnpm's
+     `node@runtime:` protocol, and runs every load on its floor as well as on
+     the Node running the check. That is
      independent of the repository's own floor, which `engineStrict` pins to
      the dev toolchain's highest demand, and it needs no matrix row: the
      Tests job's matrix comes from the reusable workflow, and this rides the
@@ -105,25 +104,8 @@ CI job rather than asking another repository for a new one.
    - **Installable on that Node.** pnpm runs under the dev Node, so each
      install sets `engineStrict: true` with `nodeVersion` at the floor: a
      dependency whose own `engines.node` excludes the floor is refused, as it
-     is for a consumer on that Node who enables engine checks. A package that
-     cannot pass this for a reason outside it is in `engineGaps`, naming the
-     dependencies that state the engine. It is installed twice: once to
-     prove the refusal still happens, and once without the check so its loads
-     still run — npm and pnpm only warn on an engine by default. Those are
-     `@btravstack/amqp-worker` and `@btravstack/temporal-worker`, whose
-     contract libraries state `>=22.22`, and `@btravstack/prisma`, whose
-     toolchain pulls in a `@prisma/cli-engine` stating `>=22.12.0`. A gap
-     whose install stops being refused that way fails as stale.
-
-   What fails for a reason the package cannot fix on its own is in `gaps`,
-   with why — CJS consumers of `@btravstack/http-server` on Node below 22.12,
-   since `@orpc/server` is ESM-only and `require(esm)` ships unflagged from
-   there, and every CJS consumer of `@btravstack/temporal-worker`, since
-   `@temporal-contract/worker` exports `./activity` under `import` alone.
-   Each gap names one entry point, one mode, one Node and the one error code
-   it excuses, so a sibling entry breaking, or the same entry failing some
-   other way, is still reported; a gap whose load stops failing with that code
-   fails as stale, like `accepted`.
+     is for a consumer on that Node who enables engine checks. No engine or
+     load failures are exempted.
 
    **What it does not prove**: that the code WORKS at the floors — a method
    added to a peer after its floor is called, not imported, and loading never
@@ -161,5 +143,6 @@ stack at all: every relative import here carries a `.js` suffix because
 first step.
 
 So the requirement is **`node16`/`nodenext` consumers**, stated in the
-package README rather than shimmed around. The check fails on a `node16`,
-`bundler` or ESM/CJS regression and ignores `node10`.
+package README rather than shimmed around. The check uses attw's `node16`
+profile for dual-format packages and `esm-only` for a package with no `require`
+export. It checks each advertised module format and ignores `node10`.

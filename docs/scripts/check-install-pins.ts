@@ -47,6 +47,11 @@ for (const file of files) {
     .split("\n")
     .forEach((line, index) => {
       if (!isInstallLine(line)) return;
+      if (/(?:^|\s)@unthrown\/orpc(?=\s|$)/.test(line)) {
+        unpinned.push(
+          `${file}:${index + 1}  @unthrown/orpc (no version) \u2192 write @unthrown/orpc@^${catalog.get("@unthrown/orpc")}`,
+        );
+      }
       for (const [, name, spec] of line.matchAll(/(?:^|\s)(@?[\w.-]+(?:\/[\w.-]+)?)@(\S+)/g)) {
         const version = catalog.get(name!);
         if (version === undefined) continue;

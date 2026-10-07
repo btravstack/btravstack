@@ -161,55 +161,15 @@ const peersOf = (manifest: Manifest, optional: boolean): readonly (readonly [str
     ([name]) => (manifest.peerDependenciesMeta?.[name]?.optional === true) === optional,
   );
 
-const nodeFloor = (manifests: readonly Manifest[]): string | { readonly failed: string } => {
-  const stated = [...new Set(manifests.map(({ engines }) => engines?.node))];
-  const floor =
-    stated.length === 1 ? /^>=(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(stated[0] ?? "") : null;
+const nodeFloor = (manifest: Manifest): string | { readonly failed: string } => {
+  const stated = manifest.engines?.node;
+  const floor = /^>=(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(stated ?? "");
   if (floor === null) {
     return {
-      failed: `node floor: every package must state one \`engines.node\` of the form ">=x[.y[.z]]", found ${stated.map(String).join(", ")}`,
+      failed: `node floor: ${manifest.name} must state \`engines.node\` as ">=x[.y[.z]]", found ${String(stated)}`,
     };
   }
   return `${String(floor[1])}.${floor[2] ?? "0"}.${floor[3] ?? "0"}`;
-};
-
-type Gap = { readonly code: string; readonly why: string };
-
-const requireEsm: Gap = {
-  code: "ERR_REQUIRE_ESM",
-  why: "`@orpc/server` is ESM-only, so the CJS build needs `require(esm)`, unflagged from Node 22.12; a CJS consumer on 22.0-22.11 cannot load it",
-};
-const temporalCjs: Gap = {
-  code: "ERR_PACKAGE_PATH_NOT_EXPORTED",
-  why: "`@temporal-contract/worker` exports `./activity` under an `import` condition alone, so the CJS build's `require` of it resolves on no Node",
-};
-
-const gaps: Readonly<Record<string, Gap>> = {
-  "@btravstack/http-server require (floor)": requireEsm,
-  "@btravstack/http-server/jwt require (floor)": requireEsm,
-  "@btravstack/http-server/session require (floor)": requireEsm,
-  "@btravstack/http-server/oidc require (floor)": requireEsm,
-  "@btravstack/temporal-worker require (floor)": temporalCjs,
-  "@btravstack/temporal-worker require (current)": temporalCjs,
-};
-
-// pnpm names only the first dependency it refuses, and which one comes first
-// varies between runs, so a gap lists every dependency that states the engine.
-type EngineGap = { readonly dependencies: readonly string[]; readonly why: string };
-
-const engineGaps: Readonly<Record<string, EngineGap>> = {
-  "@btravstack/amqp-worker": {
-    dependencies: ["@amqp-contract/contract", "@amqp-contract/core", "@amqp-contract/worker"],
-    why: "each states `engines.node >=22.22` at both the floor this package admits and the catalog's release",
-  },
-  "@btravstack/prisma": {
-    dependencies: ["@prisma/cli-engine"],
-    why: "a required peer of `@prisma/orm-toolchain`, which `@prisma/orm-postgres` pulls in, states `engines.node >=22.12.0`",
-  },
-  "@btravstack/temporal-worker": {
-    dependencies: ["@temporal-contract/contract", "@temporal-contract/worker"],
-    why: "each states `engines.node >=22.22.0` at both the floor this package admits and the catalog's release",
-  },
 };
 
 const SMOKE = `const entries = JSON.parse(process.argv[2]);
@@ -279,13 +239,13 @@ const install = (args: readonly string[], cwd: string): string | undefined => {
 };
 
 // Settings, not `--config.*` flags: pnpm ignores `resolutionMode` as a flag.
-const settings = (floor: string, engineStrict: boolean): string =>
+const settings = (floor: string): string =>
   [
     "resolutionMode: lowest-direct",
     "strictPeerDependencies: true",
     "autoInstallPeers: true",
     "strictDepBuilds: false",
-    `engineStrict: ${String(engineStrict)}`,
+    "engineStrict: true",
     // Engines are checked against the floor, not the Node running pnpm.
     `nodeVersion: ${floor}`,
     // A `file:` tarball satisfies no `^0.x` range; every other peer stays strict.
@@ -334,18 +294,7 @@ const isolated = (
   writeFileSync(join(dir, "smoke.cjs"), SMOKE);
   const failures: string[] = [];
   const matched: string[] = [];
-  const engineGap = engineGaps[name];
-  if (engineGap !== undefined) {
-    // Refused for that dependency's engine, and then installed without the
-    // engine check so the loads below still run.
-    writeFileSync(join(dir, "pnpm-workspace.yaml"), settings(floor, true));
-    const refused = install(["install", "--ignore-scripts"], dir);
-    const refusedFor = /Unsupported engine for ((?:@[^/\s]+\/)?[^@\s]+)@/.exec(refused ?? "")?.[1];
-    if (refusedFor !== undefined && engineGap.dependencies.includes(refusedFor)) {
-      matched.push(name);
-    } else if (refused !== undefined) process.stderr.write(refused);
-  }
-  writeFileSync(join(dir, "pnpm-workspace.yaml"), settings(floor, engineGap === undefined));
+  writeFileSync(join(dir, "pnpm-workspace.yaml"), settings(floor));
   const refused = install(["install", "--ignore-scripts"], dir);
   if (refused !== undefined) {
     process.stderr.write(refused);
@@ -375,12 +324,6 @@ const isolated = (
         adapted.add(key);
         continue;
       }
-      if (gaps[key]?.code === failure.code) {
-        // A gap fails before the adapter reaches its vendor.
-        adapted.add(key);
-        matched.push(key);
-        continue;
-      }
       failures.push(
         `smoke: ${failure.mode}("${failure.specifier}") on the ${label} Node — ${failure.code ?? "no code"}: ${failure.message}`,
       );
@@ -403,37 +346,42 @@ const smoke = (work: string, alone: string, tarballs: readonly string[]): readon
   const family = new Map(
     tarballs.map((name) => packed(join(work, name))).map((pkg) => [pkg.manifest.name, pkg]),
   );
-  const floor = nodeFloor([...family.values()].map(({ manifest }) => manifest));
-  if (typeof floor !== "string") return [floor.failed];
-
-  process.stdout.write(`[consumer-check] fetching Node ${floor}, the published floor\n`);
-  const floorDir = join(alone, "node-floor");
-  mkdirSync(floorDir);
-  writeFileSync(
-    join(floorDir, "package.json"),
-    `${JSON.stringify({ name: "node-floor", private: true })}\n`,
-  );
-  const unfetched = install(["add", `node@runtime:${floor}`], floorDir);
-  if (unfetched !== undefined) {
-    process.stderr.write(unfetched);
-    return [`node floor: could not fetch Node ${floor}`];
+  const floors = new Map<string, string>();
+  for (const { manifest } of family.values()) {
+    const floor = nodeFloor(manifest);
+    if (typeof floor !== "string") return [floor.failed];
+    floors.set(manifest.name, floor);
   }
-  const nodes = {
-    current: process.execPath,
-    floor: join(floorDir, "node_modules", ".bin", "node"),
-  };
+  const runtimes = new Map<string, string>();
+  for (const floor of new Set(floors.values())) {
+    process.stdout.write(`[consumer-check] fetching Node ${floor}\n`);
+    const floorDir = join(alone, `node-floor-${floor}`);
+    mkdirSync(floorDir);
+    writeFileSync(
+      join(floorDir, "package.json"),
+      `${JSON.stringify({ name: "node-floor", private: true })}\n`,
+    );
+    const unfetched = install(["add", `node@runtime:${floor}`], floorDir);
+    if (unfetched !== undefined) {
+      process.stderr.write(unfetched);
+      return [`node floor: could not fetch Node ${floor}`];
+    }
+    runtimes.set(floor, join(floorDir, "node_modules", ".bin", "node"));
+  }
 
   process.stdout.write(
-    `[consumer-check] installing each package alone, loading it on Node ${process.versions.node} and ${floor}\n`,
+    `[consumer-check] installing each package alone, loading it on Node ${process.versions.node} and its published floor\n`,
   );
   const failures: string[] = [];
   const matched = new Set<string>();
   for (const subject of family.values()) {
+    const floor = floors.get(subject.manifest.name)!;
+    const nodes = { current: process.execPath, floor: runtimes.get(floor)! };
     const result = isolated(alone, subject, family, nodes, floor);
     failures.push(...result.failures);
     for (const key of result.matched) matched.add(key);
   }
-  const unmatched = [...Object.keys(gaps), ...Object.keys(adapters), ...Object.keys(engineGaps)];
+  const unmatched = Object.keys(adapters);
   for (const key of unmatched.filter((key) => !matched.has(key))) {
     failures.push(`smoke: ${key} names nothing that still fails that way — drop it`);
   }
@@ -496,14 +444,16 @@ const main = (): void => {
         failures.push(`publint: ${dir}`);
       }
 
-      // `--profile node16` is the node10 decision, expressed as a flag rather
-      // than as a filter over a report: the legacy `moduleResolution: "node"`
-      // ignores `exports` entirely, this package family publishes no
-      // `typesVersions` shim, and a consumer on that resolution cannot use the
-      // stack anyway — every relative import here carries a `.js` suffix
-      // because `nodenext` requires it. See this workspace's README.
+      // `esm-only` checks the ESM paths of a package that declares no require
+      // entry. Both profiles ignore node10, whose resolution ignores exports.
       try {
-        run("pnpm", ["exec", "attw", "--pack", dir, "--profile", "node16", "--quiet"], HERE);
+        const root = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as Manifest;
+        const entry = root.exports?.["."];
+        const profile =
+          typeof entry === "object" && entry !== null && !Object.hasOwn(entry, "require")
+            ? "esm-only"
+            : "node16";
+        run("pnpm", ["exec", "attw", "--pack", dir, "--profile", profile, "--quiet"], HERE);
       } catch {
         failures.push(`attw: ${dir}`);
       }

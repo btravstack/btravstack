@@ -34,6 +34,76 @@ test("a cyclic structure terminates instead of recursing forever", () => {
   expect(Object.isFrozen(node["child"])).toBe(true);
 });
 
+test("a canonical copy points its cycle at itself", () => {
+  // GIVEN a sealed object with an unset optional key and a self reference
+  const schema = z.object({ note: z.string().optional(), self: z.unknown() });
+  const value: Record<string, unknown> = { note: undefined };
+  value["self"] = value;
+  Object.seal(value);
+  // WHEN the object is canonicalised
+  const copy = deepFreeze(value, undefined, schema);
+  // THEN the omitted key cannot be reached through the cycle
+  expect({ keys: Object.keys(copy), self: copy["self"] === copy }).toEqual({
+    keys: ["self"],
+    self: true,
+  });
+});
+
+test("a sealed parent keeps a child backlink to its canonical copy", () => {
+  const child: { parent?: object } = {};
+  const parent = Object.seal({ child });
+  child.parent = parent;
+  const frozen = deepFreeze(parent);
+  expect(frozen.child.parent).toBe(frozen);
+});
+
+test("an optional undefined key with a non-configurable descriptor is omitted", () => {
+  // GIVEN an extensible object whose optional key cannot be deleted
+  const schema = z.object({ note: z.string().optional() });
+  const value = {} as { note?: string };
+  Object.defineProperty(value, "note", { value: undefined, enumerable: true });
+  // WHEN the object is canonicalised
+  const copy = deepFreeze(value, undefined, schema);
+  // THEN the projection omits the key
+  expect(Object.keys(copy)).toEqual([]);
+});
+
+test("a union keeps an undefined key required by one branch", () => {
+  const schema = z.union([
+    z.object({ kind: z.literal("required"), result: z.undefined() }),
+    z.object({ kind: z.literal("optional"), result: z.string().optional() }),
+  ]);
+  const value = { kind: "required", result: undefined };
+  expect(Object.keys(deepFreeze(value, undefined, schema))).toEqual(["kind", "result"]);
+});
+
+test("a union omits an undefined key optional in the selected branch", () => {
+  const schema = z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("required"), result: z.undefined() }),
+    z.object({ kind: z.literal("optional"), result: z.string().optional() }),
+  ]);
+  const value = { kind: "optional", result: undefined };
+  expect(Object.keys(deepFreeze(value, undefined, schema))).toEqual(["kind"]);
+});
+
+test("an ambiguous union omits a key optional in every branch", () => {
+  const schema = z.union([
+    z.object({ result: z.string().optional() }),
+    z.object({ result: z.number().optional() }),
+  ]);
+  const value = { result: undefined };
+  expect(Object.keys(deepFreeze(value, undefined, schema))).toEqual([]);
+});
+
+test("a literal match does not override a branch without a discriminator", () => {
+  const schema = z.union([
+    z.object({ kind: z.literal("a"), payload: z.string(), result: z.string().optional() }),
+    z.object({ kind: z.string(), payload: z.number(), result: z.undefined() }),
+  ]);
+  const value = { kind: "a", payload: 1, result: undefined };
+  expect(Object.keys(deepFreeze(value, undefined, schema))).toEqual(["kind", "payload", "result"]);
+});
+
 test("a Date is frozen, but only against added properties", () => {
   const date = deepFreeze(new Date(0));
   expect(Object.isFrozen(date)).toBe(true);

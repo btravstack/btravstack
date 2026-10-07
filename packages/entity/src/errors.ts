@@ -8,7 +8,7 @@ import { renderIssue } from "./issues.js";
  * a caller can key a field-level response off `path`. An `invariants`
  * violation has no `path` — that absence is what tells the two kinds apart.
  */
-export class InvalidEntity extends TaggedError("InvalidEntity")<{
+export class InvalidEntityClass extends TaggedError("InvalidEntity")<{
   readonly entity: string;
   readonly issues: SchemaIssues;
 }> {
@@ -18,3 +18,5 @@ export class InvalidEntity extends TaggedError("InvalidEntity")<{
   // their human spelling.
   override message = `${this.entity}: ${this.issues.map(renderIssue).join("; ")}`;
 }
+
+export { InvalidEntityClass as InvalidEntity };

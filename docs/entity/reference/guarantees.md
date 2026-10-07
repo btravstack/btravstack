@@ -40,13 +40,13 @@ package's own specs and `*.test-d.ts` files.
 
 ## Supported versions
 
-| Dependency                  | Declared          | Checked in CI                                                                                                                                          |
-| --------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Node                        | `engines: ">=20"` | 22.19, 24 and 26. **Node 20 is declared, not proven**: the dev toolchain cannot start on 20, and no consumer-side check installs the tarball there yet |
-| TypeScript                  | no peer range     | 7.0.2 builds and type-checks everything; 5.9.3 compiles a downstream library's declarations against the built package and type-checks what it emits    |
-| `zod`                       | peer `^4.3.0`     | 4.6.5. The 4.3.0 floor was measured once, when the range was widened, and is not re-run per change                                                     |
-| `unthrown`                  | peer `^5.0.0`     | 5.11.0                                                                                                                                                 |
-| `@unthrown/standard-schema` | peer `^5.0.0`     | 5.11.0                                                                                                                                                 |
+| Dependency                  | Declared          | Checked in CI                                                                                                                                       |
+| --------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node                        | `engines: ">=22"` | 22.22, 24 and 26 in CI; the consumer check also loads the tarball on the published Node 22 floor                                                    |
+| TypeScript                  | no peer range     | 7.0.2 builds and type-checks everything; 5.9.3 compiles a downstream library's declarations against the built package and type-checks what it emits |
+| `zod`                       | peer `^4.3.0`     | 4.6.5. The 4.3.0 floor was measured once, when the range was widened, and is not re-run per change                                                  |
+| `unthrown`                  | peer `^5.0.0`     | 5.11.0                                                                                                                                              |
+| `@unthrown/standard-schema` | peer `^5.0.0`     | 5.11.0                                                                                                                                              |
 
 TypeScript older than 5.9.3 is untested. The package ships both ESM and CJS
 builds. The three peers are peers so your copies are the ones in use; see

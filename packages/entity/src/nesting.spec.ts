@@ -243,3 +243,62 @@ test("an absent optional field is still locked", () => {
   // THEN the binding refuses
   expect(assign).toThrow(TypeError);
 });
+
+test("a required undefined field survives a toJSON round trip", () => {
+  class RequiredUndefined extends Entity("RequiredUndefined")({
+    id: OrderId,
+    result: Entity.field(z.undefined(), { unbranded: true }),
+  }) {}
+  const first = RequiredUndefined.make({ id: oid, result: undefined }).getOrThrow();
+  const stored = first.toJSON();
+  expect(Object.keys(stored)).toEqual(["id", "result"]);
+  expect(RequiredUndefined.make(stored).map((again) => again.toJSON())).toBeOkWith(stored);
+});
+
+test("an unrehydratable required output is rejected", () => {
+  class Transformed extends Entity("Transformed")({
+    id: OrderId,
+    result: Entity.field(
+      z.string().transform(() => undefined),
+      { unbranded: true },
+    ),
+  }) {}
+  const result = Transformed.make({ id: oid, result: "source" });
+  expect(
+    result.match({
+      ok: () => "ok",
+      errCases: (m) => m.with(P.tag("InvalidEntity"), (e) => e.issues[0]?.path),
+      defect: () => "defect",
+    }),
+  ).toEqual(["result"]);
+});
+
+test("a required undefined field does not rerun unrelated transforms", () => {
+  let parses = 0;
+  class Transformed extends Entity("Transformed")({
+    id: OrderId,
+    result: Entity.field(z.undefined(), { unbranded: true }),
+    note: Entity.field(
+      z.string().transform((value) => {
+        parses += 1;
+        return value;
+      }),
+      { unbranded: true },
+    ),
+  }) {}
+  expect(Transformed.make({ id: oid, result: undefined, note: "ok" }).isOk()).toBe(true);
+  expect(parses).toBe(1);
+});
+
+test("a required undefined output must rehydrate to undefined", () => {
+  class Transformed extends Entity("Transformed")({
+    id: OrderId,
+    result: Entity.field(
+      z
+        .union([z.literal("erase"), z.undefined()])
+        .transform((value) => (value === "erase" ? undefined : "restored")),
+      { unbranded: true },
+    ),
+  }) {}
+  expect(Transformed.make({ id: oid, result: "erase" }).isErr()).toBe(true);
+});
