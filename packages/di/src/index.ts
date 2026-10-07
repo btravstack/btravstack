@@ -25,6 +25,7 @@ export type {
 } from "./port.js";
 export { Context } from "./context.js";
 export { Provider } from "./provider.js";
+export type { SetPortGate } from "./provider.js";
 // Test-harness-facing: `@btravstack/testing`'s `overridden` is the intended
 // caller. Production composition swaps an adapter by composing a different
 // module.

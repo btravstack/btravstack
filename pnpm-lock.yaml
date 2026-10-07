@@ -1424,6 +1424,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      typescript-consumer:
+        specifier: 'catalog:'
+        version: typescript@5.9.3
       unthrown:
         specifier: 'catalog:'
         version: 5.12.0

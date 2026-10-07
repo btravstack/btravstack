@@ -228,7 +228,7 @@ first call names the port, the second says how it is bound.
 
 ```ts
 Config.provider<P extends AnyPort>(port: P):
-  (schema: ConfigSchema<Environment, ServiceOf<P>>) =>
+  (schema: ConfigSchema<Environment, ServiceOf<P>> & SetPortGate<P>) =>
     Provider<InstanceType<P>, ConfigInvalid, Env> & { readonly port: P };
 
 Config.provider<const Name extends string>(name: Name):
@@ -240,6 +240,10 @@ Config.provider<const Name extends string>(name: Name):
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `Config.provider(Port)(schema)`   | the port is public API another package names (`HttpConfig`); you declared it, and pass the class                         |
 | `Config.provider("Name")(schema)` | the slice is one application's own; the port is minted, typed by the schema's output, and handed back on `provider.port` |
+
+A set port is refused at the schema, with di's
+[`SetPortGate`](/reference/di/providers#provider-member-port-inject-options)
+marker: a set port takes members, which `Provider.member` contributes.
 
 The provider has dep `[Env]` and a `make` arm that awaits
 `schema["~standard"].validate(env)` inside `fromSafePromise` — an async or

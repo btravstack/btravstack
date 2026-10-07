@@ -5,6 +5,7 @@ import {
   type PortClassOf,
   type PortInstance,
   type ServiceOf,
+  type SetPortGate,
 } from "@btravstack/di";
 import {
   Err,
@@ -426,7 +427,7 @@ export const Config = {
 function configProvider<P extends AnyPort>(
   port: P,
 ): (
-  schema: ConfigSchema<Environment, ServiceOf<P>>,
+  schema: ConfigSchema<Environment, ServiceOf<P>> & SetPortGate<P>,
 ) => Provider<InstanceType<P>, ConfigInvalid, Env> & { readonly port: P };
 function configProvider<const Name extends string>(
   name: Name,

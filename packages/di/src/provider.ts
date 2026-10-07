@@ -210,14 +210,11 @@ export const overrideProvider = <P, E, N>(provider: Provider<P, E, N>): Provider
 export const isOverride = (provider: object): boolean => OVERRIDE in provider;
 
 /**
- * Refuses a set port at the ordinary entry point: the runtime lands whatever a
- * provider for a set port builds as ONE member, so qualifying it against the
- * whole `readonly Member[]` would hand back a nested array. It rides the
- * options, never the port parameter, so a port-generic helper that only holds
- * `Provider(port)` still compiles. Not distributive: a union with one set port
- * in it distributes to `unknown | marker`, which is `unknown`, and would pass.
+ * `unknown` unless `P` is, or includes, a set port, and a marker naming
+ * `Provider.member` otherwise. A wrapper forwarding a caller's port to
+ * `Provider` intersects it onto its own parameter, since a widened port passes.
  */
-type SetPortGate<P> = [Extract<P, { readonly many: true }>] extends [never]
+export type SetPortGate<P> = [Extract<P, { readonly many: true }>] extends [never]
   ? unknown
   : {
       readonly "SET PORT — contribute one member with Provider.member": Extract<

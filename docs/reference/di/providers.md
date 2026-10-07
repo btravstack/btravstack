@@ -177,6 +177,11 @@ with a marker naming the fix,
 `Property '"SET PORT — contribute one member with Provider.member"' is missing`.
 An ordinary port whose service is an array is unaffected.
 
+`SetPortGate<P>` is that marker, exported for a wrapper that forwards a
+caller's port to `Provider`: a port widened to `AnyPort` passes the gate, so
+the wrapper intersects it onto its own parameter, the way
+`Config.provider(Port)(schema)` does on its schema.
+
 ## The channels
 
 `Provider<P, E, N>` carries three phantom channels, which the containing

@@ -41,6 +41,13 @@ All runtime code lives in `packages/di/src`, one concept per file:
   its options. It is deliberately NOT distributive: a port union with one set
   port in it would distribute to `unknown | marker`, which is `unknown`, and
   pass (`many.test-d.ts`, _"a union that may be a set port is refused too"_).
+  A wrapper that widens a caller's port to `AnyPort` before calling `Provider`
+  loses the gate, so it is exported and re-stated on the wrapper's own
+  parameter — `@btravstack/config`'s `Config.provider(Port)(schema)` carries it
+  on the schema, not the port, because a refused port argument falls through
+  to the string overload and reports that one's mismatch instead (measured:
+  `TS2769 … The last overload gave the following error … not assignable to
+parameter of type 'string'`).
 
   **`inject` rides in the same options object, and it is REQUIRED** (issue
   #227). One signature, one runtime path reading one key: the two overloads
