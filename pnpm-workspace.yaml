@@ -98,6 +98,12 @@ catalog:
   "@temporalio/testing": 1.24.0
   "@temporalio/worker": 1.24.0
   "@temporalio/workflow": 1.24.0
+  # The weekly mutation run (`.github/workflows/mutation.yml`) over `core` and
+  # `di`. Never on the gate: a pass takes minutes where the suites take a
+  # second, so it recomputes the kernel's "mutation-verified" claim once a week
+  # instead of on every PR.
+  "@stryker-mutator/core": 10.0.0
+  "@stryker-mutator/vitest-runner": 10.0.0
   "@types/nodemailer": 8.0.2
   "@types/node": 26.6.4
   "@unthrown/oxlint": 5.12.0
@@ -271,3 +277,5 @@ peerDependencyRules:
     "@effect/sql-sqlite-do>effect": 4.0.0-rc.112
     "@effect/vitest>vitest": "5"
     "capnp-es>typescript": "7"
+patchedDependencies:
+  "@stryker-mutator/vitest-runner@10.0.0": patches/@stryker-mutator__vitest-runner@10.0.0.patch

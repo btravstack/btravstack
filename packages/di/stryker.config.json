@@ -1,0 +1,16 @@
+{
+  "testRunner": "vitest",
+  "plugins": ["@stryker-mutator/vitest-runner"],
+  "inPlace": true,
+  "coverageAnalysis": "perTest",
+  "vitest": { "related": false },
+  "mutate": [
+    "src/**/*.ts",
+    "!src/**/*.spec.ts",
+    "!src/**/*.test-d.ts",
+    "!src/__tests__/**",
+    "!src/vitest.d.ts"
+  ],
+  "reporters": ["clear-text", "progress", "html", "json"],
+  "thresholds": { "high": 90, "low": 80, "break": null }
+}

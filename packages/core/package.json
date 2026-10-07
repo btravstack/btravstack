@@ -48,6 +48,7 @@
     "build": "tsdown src/index.ts --format cjs,esm --dts --clean --tsconfig tsconfig.build.json",
     "dev": "tsdown src/index.ts --format cjs,esm --dts --watch --tsconfig tsconfig.build.json",
     "generate": "node ../../docs/scripts/extract-doc-samples.ts --group core --out src/generated/doc-samples",
+    "mutate": "stryker run",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit -p tsconfig.test-d.json"
   },
@@ -55,6 +56,8 @@
     "@btravstack/config": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
+    "@stryker-mutator/core": "catalog:",
+    "@stryker-mutator/vitest-runner": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
