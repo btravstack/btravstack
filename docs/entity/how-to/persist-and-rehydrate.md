@@ -75,6 +75,14 @@ An optional field that is not set is omitted at every depth, never written as
 set, and an adapter that writes only what changed can compare what it loaded
 against what was decided:
 
+<!-- doctest: isolate
+import type { Entity } from "@btravstack/entity";
+import { Subscription, type SubscriptionEvent } from "../../subscription.js";
+declare const row: unknown;
+declare const version: number;
+declare const decision: Entity.Decision<Subscription, SubscriptionEvent>;
+-->
+
 ```ts
 import { isDeepStrictEqual } from "node:util";
 

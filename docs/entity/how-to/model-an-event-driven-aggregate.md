@@ -66,6 +66,7 @@ export const SubscriptionEvent = z.discriminatedUnion("type", [
     seats: z.number().int().positive(),
   }),
   z.object({ type: z.literal("SubscriptionCancelled"), at: z.iso.datetime() }),
+  z.object({ type: z.literal("SubscriptionErased") }),
 ]);
 export type SubscriptionEvent = z.output<typeof SubscriptionEvent>;
 ```
@@ -73,15 +74,37 @@ export type SubscriptionEvent = z.output<typeof SubscriptionEvent>;
 `emit` and `start` take each event's **input** type, because they parse it
 against the union before folding. So an event can carry a whole nested part
 through that part's own `input` schema, and a command still builds it from
-plain values. A thread whose `MessageAdded` event carries a `Message` entity,
-a case the billing example does not have, is pinned by the package's
-`aggregate.test-d.ts`:
+plain values. Here is a thread whose `MessageAdded` event carries a `Message`
+entity, a case the billing example does not have:
+
+<!-- doctest: isolate
+import { z } from "zod";
+import { Entity } from "@btravstack/entity";
+-->
 
 ```ts
-z.object({ type: z.literal("MessageAdded"), message: Message.input });
+class Message extends Entity("Message")({
+  id: Entity.field(z.string().brand("MessageId"), { identity: true }),
+  body: Entity.field(z.string(), { unbranded: true }),
+}) {}
 
-addMessage(id: string, body: string) {
-  return this.emit({ type: "MessageAdded", message: { id, body } });
+class Thread extends Entity.aggregate("Thread")({
+  id: Entity.field(z.uuid().brand("ThreadId"), { identity: true }),
+  messages: z.array(Message),
+})({
+  events: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("ThreadOpened"), id: z.uuid() }),
+    z.object({ type: z.literal("MessageAdded"), message: Message.input }),
+  ]),
+  opens: { ThreadOpened: (e) => ({ id: e.id, messages: [] }) },
+  evolve: {
+    MessageAdded: (r, e) => ({ ...r, messages: [...r.messages, e.message] }),
+  },
+}) {
+  addMessage(id: string, body: string) {
+    // plain strings: `emit` brands the message's id when it parses the event
+    return this.emit({ type: "MessageAdded", message: { id, body } });
+  }
 }
 ```
 
@@ -126,7 +149,9 @@ export class Subscription extends Entity.aggregate("Subscription")({
       status: "CANCELLED",
       cancelledAt: e.at,
     }),
+    SubscriptionErased: (r) => r,
   },
+  ends: ["SubscriptionErased"],
 }) {}
 ```
 
@@ -207,7 +232,10 @@ to it.
 
 ## End with a terminal event
 
-Some events end an aggregate: an erasure, a removal. Name them in `ends`:
+Some events end an aggregate: an erasure, a removal. Name them in `ends`, as
+the declaration above does:
+
+<!-- doctest: skip — two options of `Subscription`'s declaration above, shown outside it -->
 
 ```ts
   evolve: {
@@ -225,6 +253,8 @@ terminal.
 The decision says the aggregate ended. `decision.isTerminal` is true once a
 terminal event is among its events, so a repository branches on it instead of
 matching the last event's `type`:
+
+<!-- doctest: skip — the write in the example's state-based repository `save`, shown outside its class -->
 
 ```ts
 if (decision.isTerminal) this.#rows.delete(id);
