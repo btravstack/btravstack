@@ -166,6 +166,10 @@ URLs in Open Graph and Twitter metadata. Its local editable source is
 `branding/social-card.html`; wait for its fonts and images to load and capture
 at device scale factor 1. Logo provenance is in `branding/README.md`.
 
-Entity guide and API pages use `public/entity/og-entity-btravstack.png` at 1280 × 640;
+Entity guide and API pages use `public/entity/og-entity-btravstack.png` at 1200 × 630;
 `transformPageData` selects one image per page so the framework card does not
 compete with the entity card in social metadata.
+
+Entity uses the illustrated identity-card mark in `public/entity/logo*.svg`.
+Its preview is rendered from `branding/social-card.html?project=entity`,
+which displays the integrated `/btravstack/entity` documentation address.

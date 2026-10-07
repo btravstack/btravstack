@@ -24,13 +24,16 @@
     <footer><span class="url"></span><span>TypeScript · Open source · MIT</span></footer>
   </main>
   <script>
-    const cards = { framework: ['btravstack', 'Your application, composed.<br>Your process, taken care of.', 'btravstack.github.io/btravstack'] };
+    const cards = {
+      framework: ['btravstack', 'Your application, composed.<br>Your process, taken care of.', 'btravstack.github.io/btravstack'],
+      entity: ['entity', 'Your domain, declared once.<br>Validated at the boundary.', 'btravstack.github.io/btravstack/entity'],
+    };
     const key = new URLSearchParams(location.search).get('project') || 'framework';
     const [name, description, url] = cards[key];
     document.querySelector('h1').textContent = name;
     document.querySelector('p').innerHTML = description;
     document.querySelector('.url').textContent = url;
-    document.querySelector('.mark').src = '../public/logo-dark.svg';
+    document.querySelector('.mark').src = key === 'entity' ? '../public/entity/logo-dark.svg' : '../public/logo-dark.svg';
     document.querySelector('.mark').alt = `${name} logo`;
   </script>
 </html>

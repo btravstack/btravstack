@@ -343,13 +343,13 @@ export default defineConfig({
       pageData.relativePath.startsWith("api/entity/");
     const image = `${SITE_URL}${isEntity ? "entity/og-entity-btravstack.png" : "og-btravstack.png"}`;
     const imageAlt = isEntity
-      ? "entity — a domain-entity builder for TypeScript, with the beetroot glyph."
+      ? "entity — Your domain, declared once. Validated at the boundary. Identity card with a smiling beetroot portrait."
       : "btravstack — Your application, composed. Your process, taken care of. Smiling beetroot mascot on three teal layers.";
     pageData.frontmatter.head.push(
       ["meta", { property: "og:image", content: image }],
       ["meta", { property: "og:image:type", content: "image/png" }],
-      ["meta", { property: "og:image:width", content: isEntity ? "1280" : "1200" }],
-      ["meta", { property: "og:image:height", content: isEntity ? "640" : "630" }],
+      ["meta", { property: "og:image:width", content: "1200" }],
+      ["meta", { property: "og:image:height", content: "630" }],
       ["meta", { property: "og:image:alt", content: imageAlt }],
       ["meta", { name: "twitter:card", content: "summary_large_image" }],
       ["meta", { name: "twitter:image", content: image }],

@@ -10,7 +10,7 @@ hero:
   image:
     light: /entity/logo-light.svg
     dark: /entity/logo-dark.svg
-    alt: entity
+    alt: entity identity card with a smiling beetroot portrait
   actions:
     - theme: brand
       text: Get Started
