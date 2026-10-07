@@ -33,6 +33,9 @@ import {
   noObserver,
   type Attributes,
   type Operation,
+  start,
+  type ExitReport,
+  type RuntimeStartFailed,
   type RunningApp,
   type Settle,
 } from "@btravstack/core";
@@ -48,7 +51,7 @@ import {
   type OryUser,
 } from "@btravstack/internal-test-infra/ory";
 import { headlessLogin } from "@btravstack/internal-test-infra/ory-login";
-import { bootFixture, type Boot } from "@btravstack/testing";
+import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import { localIssuer, type LocalIssuer } from "@btravstack/testing/jwt";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
@@ -1816,6 +1819,15 @@ export type HttpFixtures = {
    * whichever kinds `serve` names — the unit-kind selection, end to end. Shut
    * down by the fixture.
    */
+  /**
+   * Starts the kinded root with `anonymous` bound and `user` left to fall back
+   * to it, overriding the anonymous module's span inside `kind`, and answers
+   * how the boot ended. Stopped by the fixture, without failing on a defect —
+   * the boot defect is what a spec asserts.
+   */
+  readonly fallbackOverride: (
+    kind: "anonymous" | "user",
+  ) => AsyncResult<ExitReport, ConfigInvalid | RuntimeStartFailed>;
   readonly kindedRpc: {
     readonly serve: (kinds: readonly ("anonymous" | "user")[]) => Promise<{
       readonly clientWith: (token: string | undefined) => AuthedClient;
@@ -2397,6 +2409,36 @@ export const it = test.extend<HttpFixtures>({
         return { app, origin: `http://127.0.0.1:${info.port}`, counts: () => counts };
       },
     });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  fallbackOverride: async ({}, use) => {
+    const started: RunningApp<unknown, unknown>[] = [];
+    await use((kind) => {
+      const units = kindedUnitsOf(api.principals.user);
+      const app = start(
+        overridden(
+          HttpModule("FallbackOverrideApp")({
+            router: authedRouter,
+            port: 0,
+            hostname: "127.0.0.1",
+            unit: { anonymous: units.anonymous },
+            provides: [authedOrdersController, authedHealthController],
+          }),
+          [],
+          {
+            unit: { [kind]: [Provider(KindedAnonSpan)({ inject: {}, value: { at: -1 } })] },
+          },
+        ),
+        { signals: false, probes: false, onEvent: () => {} },
+      );
+      started.push(app);
+      return app.exited;
+    });
+    for (const app of started) {
+      app.stop();
+      await app.exited;
+    }
   },
 
   kindedRpc: async ({ boot }, use) => {

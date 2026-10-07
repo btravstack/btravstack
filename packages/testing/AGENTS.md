@@ -27,6 +27,28 @@ commit.
   package's own `engines` floor, a breaking change for the many to serve the
   few.
 
+- **`overridden`'s `unit` option is applied by the KERNEL, not here** (issue
+  #268). A unit module is forked per unit, after the root is built, so wrapping
+  the root cannot reach it, and the alternative an application had to write —
+  its root as a factory over its kinds, so a spec could pass
+  `overridden(UserModule, …)` in — was a test seam in a production file.
+  `overridden` contributes the kind-keyed record to `@btravstack/core`'s
+  `UnitOverrides` set port (always, `{}` when nothing is named, so there is no
+  conditional arm), and `start` maps each kind onto the module the runtime's
+  `Runtime.units` binds, wraps it with the overrides, and forks the wrapper in
+  its place. Keyed by module identity because `UnitHost.fork` is handed a
+  module and never a kind; that is why a module bound under two kinds is
+  refused. Two overrides for one port in one kind (nested `overridden` calls)
+  are refused there too, rather than left to di's duplicate-override check,
+  which would only fire at the first fork. The check is at boot, before
+  `runtime.start`, so the drift gate lands where a root-level one does.
+  Compile time was not reachable without threading each kind's module
+  through every starter's return type, which would have changed pinned
+  diagnostics; the one compile-time half is that a unit override's error
+  channel must be `never`, as a fork's is.
+  `testRuntime` declares `units: { test: unit }`, which is what this package's
+  own spec boots against.
+
 ## Tests
 
 The kernel invariants this package's specs hold — _"No `Result` is produced

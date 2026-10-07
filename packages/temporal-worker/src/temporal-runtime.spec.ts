@@ -340,6 +340,24 @@ describe("temporal", () => {
     expect(scoped.seen()).toEqual(["echo:acme", "audit:acme"]);
   });
 
+  it("forks the overridden provider in the activity kind's module, when a spec overrides it", async ({
+    serveScoped,
+    scoped,
+  }) => {
+    // GIVEN the same worker, with the `activity` kind's `Tenant` overridden
+    const { client, taskQueue } = await serveScoped(scoped, "stubbed");
+
+    // WHEN one workflow drives both activities
+    await client.workflow.execute("runAudited", {
+      taskQueue,
+      workflowId: `overridden-${taskQueue}`,
+      args: ["acme"],
+    });
+
+    // THEN both activities read the override, not the tenant the real provider derives
+    expect(scoped.seen()).toEqual(["echo:stubbed", "audit:stubbed"]);
+  });
+
   it("hands the whole-record arm the ports it declared, built from the seeded input", async ({
     serveScoped,
     wholeScoped,

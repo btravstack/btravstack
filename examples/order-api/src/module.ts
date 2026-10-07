@@ -43,48 +43,33 @@ export const orderFragments = api.HtmxFragments([orderRowFragment]);
  * browser holding the cookie the login answerer sealed, which is `user`'s own
  * shape over the other principal. Each is forked over this scope, so
  * every need they carry is discharged from what is exported below.
- *
- * A factory over the kind modules, not a constant, for one reason: a
- * spec has to substitute a provider INSIDE `UserModule`, and
- * `@btravstack/testing`'s `overridden` wraps the root while a unit module is
- * forked later, so this parameter is the only seam that reaches it. `OrderApi`
- * below is the real root — the factory applied to the real modules, with no
- * override anywhere in it. Configuration is still read inside the graph, so a
- * spec boots that module with `env: { PORT: "0" }`.
+ * Configuration is read inside the graph, so a spec boots this module with
+ * `env: { PORT: "0" }`.
  */
-export const orderApiOver = (unit: {
-  readonly anonymous: typeof RequestModule;
-  readonly user: typeof UserModule;
-  readonly service: typeof ServiceModule;
-  readonly session: typeof SessionModule;
-}) =>
-  HttpModule("OrderApi")({
-    router: orderRouter,
-    fragments: orderFragments,
-    fragmentsLogin: "/auth/login",
-    unit,
-    imports: [
-      OrdersSlice,
-      CustomersSlice,
-      OrderPersistenceModule,
-      cache({ adapter: redisCache() }),
-      observability(),
-      otel(),
-    ],
-    // The session cookie's codec and the login answerer that seals it: the
-    // scheme reading the cookie rides `fragments` like the other two ride
-    // `router`, and the codec is what ties the two halves to one key list.
-    provides: [sessionCodec(), ...oidc({ principal, scope: "openid orders:export" })],
-    // Everything a forked kind reads out of the application scope: the three
-    // observability ports and the one database client every request's
-    // repository is built over.
-    exports: [Logger, Tracer, Meter, OrderDatabase],
-  });
-
-/** The real one. A spec substitutes a stub inside a kind and composes the same root. */
-export const OrderApi = orderApiOver({
-  anonymous: RequestModule,
-  user: UserModule,
-  service: ServiceModule,
-  session: SessionModule,
+export const OrderApi = HttpModule("OrderApi")({
+  router: orderRouter,
+  fragments: orderFragments,
+  fragmentsLogin: "/auth/login",
+  unit: {
+    anonymous: RequestModule,
+    user: UserModule,
+    service: ServiceModule,
+    session: SessionModule,
+  },
+  imports: [
+    OrdersSlice,
+    CustomersSlice,
+    OrderPersistenceModule,
+    cache({ adapter: redisCache() }),
+    observability(),
+    otel(),
+  ],
+  // The session cookie's codec and the login answerer that seals it: the
+  // scheme reading the cookie rides `fragments` like the other two ride
+  // `router`, and the codec is what ties the two halves to one key list.
+  provides: [sessionCodec(), ...oidc({ principal, scope: "openid orders:export" })],
+  // Everything a forked kind reads out of the application scope: the three
+  // observability ports and the one database client every request's
+  // repository is built over.
+  exports: [Logger, Tracer, Meter, OrderDatabase],
 });

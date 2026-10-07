@@ -296,6 +296,34 @@ describe("unit kinds", () => {
     expect(answer).toEqual({ userId: "u-good" });
   });
 
+  it("refuses an override of the anonymous module a scheme falls back to", async ({
+    fallbackOverride,
+  }) => {
+    // GIVEN a root binding `anonymous` alone, so `user` units fork that module too
+    // WHEN the anonymous kind's module is overridden
+    // THEN the boot refuses it, since the override would reach `user` units as well
+    await expect(fallbackOverride("anonymous")).toBeDefectWith(
+      expect.objectContaining({
+        message:
+          '[core] unit override for kind "anonymous", whose module kind "user" binds too — an override cannot reach one without the other',
+      }),
+    );
+  });
+
+  it("names the fallback when a scheme with no module of its own is overridden", async ({
+    fallbackOverride,
+  }) => {
+    // GIVEN a root binding `anonymous` alone, so `user` units fork that module
+    // WHEN the `user` kind is overridden
+    // THEN the boot refuses it as the shared module it is, not as an unbound kind
+    await expect(fallbackOverride("user")).toBeDefectWith(
+      expect.objectContaining({
+        message:
+          '[core] unit override for kind "user", whose module kind "anonymous" binds too — an override cannot reach one without the other',
+      }),
+    );
+  });
+
   it("forks nothing when neither the scheme nor anonymous is bound", async ({ kindedRpc }) => {
     // GIVEN a router binding no kind at all
     const { clientWith, counts } = await kindedRpc.serve([]);

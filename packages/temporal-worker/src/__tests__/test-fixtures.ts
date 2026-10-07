@@ -15,7 +15,7 @@ import {
 } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
-import { bootFixture, type Boot } from "@btravstack/testing";
+import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import { TypedClient } from "@temporal-contract/client";
 import {
   defineActivity,
@@ -557,8 +557,13 @@ export type TemporalFixtures = {
   readonly scoped: ReturnType<typeof scopedOf>;
   /** The same seed read through the whole-record arm's own `unit:`, no piece involved. */
   readonly wholeScoped: ReturnType<typeof wholeScopedOf>;
+  /**
+   * Serves a scoped worker; given `stubTenant`, through `overridden` with the
+   * `activity` kind's `Tenant` replaced by one answering that id.
+   */
   readonly serveScoped: (
     scoped: ReturnType<typeof scopedOf> | ReturnType<typeof wholeScopedOf>,
+    stubTenant?: string,
   ) => Promise<{
     readonly app: App;
     readonly client: Client;
@@ -783,16 +788,22 @@ export const it = test.extend<TemporalFixtures>({
     await use(wholeScopedOf());
   },
   serveScoped: async ({ server, client, boot }, use) => {
-    await use(async (scoped) => {
+    await use(async (scoped, stubTenant) => {
       const taskQueue = nextTaskQueue();
       const app: App = boot(
-        TemporalModule("Scoped")({
-          contract: withTaskQueue(scopedContract, taskQueue),
-          activities: scoped.activities,
-          workflows: echoWorkflows,
-          provides: [...scoped.pieces],
-          unit: { activity: scoped.module },
-        }),
+        overridden(
+          TemporalModule("Scoped")({
+            contract: withTaskQueue(scopedContract, taskQueue),
+            activities: scoped.activities,
+            workflows: echoWorkflows,
+            provides: [...scoped.pieces],
+            unit: { activity: scoped.module },
+          }),
+          [],
+          stubTenant === undefined
+            ? {}
+            : { unit: { activity: [Provider(Tenant)({ inject: {}, value: { id: stubTenant } })] } },
+        ),
         { env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace } },
       );
       await app.runtimeInfo();

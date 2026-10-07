@@ -1,10 +1,33 @@
 import type { UnitHost } from "@btravstack/core";
-import type { AnyPort, Context } from "@btravstack/di";
+import { Port, type AnyPort, type Context } from "@btravstack/di";
 import { OkAsync, type AsyncResult } from "unthrown";
 
 import type { Resolved } from "./auth.js";
 import type { AnyUnitModule } from "./http-runtime.js";
 import { unitRecordOf } from "./unit.js";
+
+/**
+ * The scheme names a `defineHttp` registry declares, contributed beside its
+ * authenticators so a root composed with `http()` carries them as well as one
+ * composed with `HttpModule`.
+ */
+export class HttpSchemes extends Port.many("HttpSchemes")<readonly string[]> {}
+
+/**
+ * The bound record with every declared scheme that binds no module of its own
+ * mapped to `anonymous`'s — the module {@link forkUnit} falls back to — so the
+ * record the runtime publishes as `Runtime.units` names the module each
+ * kind's units really fork.
+ */
+export const withFallback = (
+  units: Readonly<Record<string, AnyUnitModule>>,
+  schemes: readonly (readonly string[])[],
+): Readonly<Record<string, AnyUnitModule>> => {
+  const anonymous = units["anonymous"];
+  if (anonymous === undefined) return units;
+  const fallbacks = schemes.flat().filter((scheme) => units[scheme] === undefined);
+  return { ...units, ...Object.fromEntries(fallbacks.map((scheme) => [scheme, anonymous])) };
+};
 
 /**
  * Forks the unit's scope for a request an answerer is about to handle, and

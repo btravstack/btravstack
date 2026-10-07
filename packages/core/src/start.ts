@@ -27,6 +27,7 @@ import {
   type Serving,
   type UnitHost,
 } from "./runtime.js";
+import { UnitOverrides, provides, unitSubstitutes } from "./unit-overrides.js";
 import { createUnitRegistry, currentUnit, settleUnit, type UnitOutcome } from "./units.js";
 
 export type TeardownError = { readonly port: string; readonly cause: unknown };
@@ -39,9 +40,7 @@ export type TeardownError = { readonly port: string; readonly cause: unknown };
  */
 const withdrawn = <T>(): AsyncResult<T, never> => fromSafePromise(new Promise<T>(() => {}));
 
-const providesEnv = (module: AnyModule): boolean =>
-  module.provides.some((provider) => provider.port.portId === Env.portId) ||
-  module.imports.some(providesEnv);
+const providesEnv = (module: AnyModule): boolean => provides(module, Env.portId);
 
 export type ExitReport = {
   readonly reason: "signal" | "runtimeStopped" | "uncaught";
@@ -586,6 +585,17 @@ export const start = <X, E, N>(
 
         const runtimeCtx = ctx as unknown as Context<InstanceType<Resolves>>;
 
+        // Before `runtime.start`, so a drifted override is a defect at boot
+        // rather than at the first unit of its kind. A throw here is one:
+        // this callback runs inside di's `flatMap`.
+        const substitutes = unitSubstitutes(
+          runtime.name,
+          runtime.units ?? {},
+          (ctx as unknown as Context<UnitOverrides>).get(
+            UnitOverrides as unknown as abstract new () => UnitOverrides,
+          ),
+        );
+
         // The fork sits INSIDE `registry.run` so unit teardown still sees the
         // ambient record and the unit is not counted closed until the scope is.
         const run: RunUnit<Resolves> = (meta, work) =>
@@ -620,7 +630,7 @@ export const start = <X, E, N>(
               // but the `fork` signature already proves it is `never`.
               const scope = Module.forkScope(
                 ctx as Context<never>,
-                module as never,
+                (substitutes.get(module as never) ?? module) as never,
                 (forked) => {
                   ready.resolve(forked);
                   return fromSafePromise(settled.promise);

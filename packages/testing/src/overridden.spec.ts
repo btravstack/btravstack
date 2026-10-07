@@ -1,8 +1,10 @@
 import { Module, Port, Provider } from "@btravstack/di";
 import { Ok } from "unthrown";
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { overridden } from "./overridden.js";
+import { testRuntime } from "./test-runtime.js";
 
 class Greeter extends Port("OverriddenGreeter")<{ readonly greet: () => string }> {}
 
@@ -68,4 +70,42 @@ test("an override may carry its own dependencies, resolved from the root's graph
 
   // THEN it was built from the root's own sibling service
   expect(served).toBeOkWith("recorded");
+});
+
+describe("an override inside a unit module", () => {
+  it("is what the fork builds, while its siblings still construct", async ({
+    boot,
+    unitKind: { built, kind, stub, rootOf },
+  }) => {
+    // GIVEN a unit module building a greeter and a sibling, with the greeter
+    // overridden inside the runtime's `test` kind
+    const runtime = testRuntime("test", { unit: kind });
+    boot(overridden(rootOf(runtime), [], { unit: { test: [stub("stub")] } }));
+    await runtime.untilStarted();
+
+    // WHEN one unit is forked and settled
+    const unit = runtime.submit();
+    unit.settle(Ok("done"));
+
+    // THEN the fork built the override in the greeter's place, and the sibling beside it
+    await expect(unit.result.map(() => built().toSorted())).toBeOkWith(["sibling", "stub"]);
+  });
+
+  it("an override the kind's module no longer backs is a defect at boot", async ({
+    unitKind: { unrelated, stub, rootOf, start },
+  }) => {
+    // GIVEN a unit module that does not provide the overridden port
+    const runtime = testRuntime("test", { unit: unrelated });
+
+    // WHEN the overridden root is started
+    const app = start(overridden(rootOf(runtime), [], { unit: { test: [stub("stub")] } }));
+
+    // THEN the boot failed, naming the port and the kind
+    await expect(app.exited).toBeDefectWith(
+      expect.objectContaining({
+        message:
+          '[core] unit override for port "UnitKindGreeter" in kind "test" with nothing to override — its module no longer provides it',
+      }),
+    );
+  });
 });

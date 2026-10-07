@@ -22,6 +22,8 @@ import { currentUnit, unitOutcome, type UnitOutcome } from "../units.js";
 
 class Parent extends Port("UnitFixtureParent")<{ readonly mark: () => void }> {}
 class Span extends Port("UnitFixtureSpan")<{ readonly openedIn: string | undefined }> {}
+class Greeter extends Port("UnitOverrideGreeter")<{ readonly text: string }> {}
+class Farewell extends Port("UnitOverrideFarewell")<{ readonly text: string }> {}
 
 /**
  * A wrapped or ad-hoc runtime as the module `start` boots — the shape
@@ -110,6 +112,45 @@ export type UnitApp = {
   readonly forkAfterSettled: () => AsyncResult<unknown, never>;
 };
 
+/** A provider for `port` that records `name` in `built` as it is constructed. */
+const recordingProvider = (built: string[], port: typeof Greeter | typeof Farewell, name: string) =>
+  Provider(port)({
+    inject: {},
+    sync: () => {
+      built.push(name);
+      return { text: name };
+    },
+  });
+
+/** A unit module providing a greeter and a farewell, each recording its build. */
+const greetingKind = (built: string[]) =>
+  Module("UnitOverrideKind")({
+    provides: [
+      recordingProvider(built, Greeter, "real greeter"),
+      recordingProvider(built, Farewell, "real farewell"),
+    ],
+    exports: [Greeter, Farewell],
+  });
+
+export type UnitOverrideKit = {
+  /** What the kit's providers recorded as they were built, in order. */
+  readonly built: () => readonly string[];
+  /** A unit module providing a greeter and a farewell, each recording its build. */
+  readonly kind: ReturnType<typeof greetingKind>;
+  /** A unit module providing neither port. */
+  readonly empty: Module<never, never, never>;
+  /** An override for one of `kind`'s two ports, recording `name` when it is built. */
+  readonly stub: (port: "greeter" | "farewell", name: string) => Provider<never, never, never>;
+  /** A root providing `runtime` on `TestRuntimePort` — `runtimeModule`, for a spec. */
+  readonly rootOf: typeof runtimeModule;
+  /**
+   * Starts a module with signals, probes and events off, and stops it when the
+   * test ends — without failing on a defect, since a boot defect is what these
+   * specs assert.
+   */
+  readonly start: Boot;
+};
+
 /** One observer that records every settlement it is handed, and the list it records into. */
 export type Recording = {
   readonly seen: readonly Settled[];
@@ -135,8 +176,34 @@ export const it = test.extend<{
    * `0.0.0.0` bind apart from a `127.0.0.1` one from outside the process.
    */
   nonLoopbackHost: () => string;
+  unitOverride: UnitOverrideKit;
 }>({
   boot: bootFixture(),
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  unitOverride: async ({}, use) => {
+    const built: string[] = [];
+    const started: RunningApp<unknown, unknown>[] = [];
+    await use({
+      built: () => built,
+      kind: greetingKind(built),
+      empty: Module("UnitOverrideEmpty")({ provides: [], exports: [] }),
+      stub: (port, name) => recordingProvider(built, port === "greeter" ? Greeter : Farewell, name),
+      rootOf: runtimeModule,
+      // The gate is proven at each call site and invisible here, as in `bootFixture`.
+      start: ((module: never) => {
+        const app = (
+          start as unknown as (module: never, options: object) => RunningApp<unknown, unknown>
+        )(module, { signals: false, probes: false, onEvent: () => {} });
+        started.push(app);
+        return app;
+      }) as unknown as Boot,
+    });
+    for (const app of started) {
+      app.stop();
+      await app.exited;
+    }
+  },
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   nonLoopbackHost: async ({}, use) => {

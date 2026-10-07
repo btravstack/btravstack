@@ -46,8 +46,7 @@ import { uuidv7 } from "uuidv7";
 import { inject, test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "../client.js";
-import { OrderApi, orderApiOver } from "../module.js";
-import { RequestModule, ServiceModule, SessionModule, UserModule } from "../request-scope.js";
+import { OrderApi } from "../module.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
 
@@ -78,16 +77,6 @@ const customersStub: ServiceOf<CustomerRepository> = {
 
 const stubCustomers = Provider(CustomerRepository)({ inject: {}, value: customersStub });
 
-/**
- * The orders repository is overridden INSIDE the `user` kind, because that is
- * where it is built: `overridden(UserModule, …)` replaces the provider
- * `OrderTenantPersistence` contributes, so the stub answers and no Prisma
- * repository is constructed. The real database still opens — an override
- * replaces one provider, never a subsystem.
- */
-const userKindOver = (repository: ServiceOf<OrderRepository>) =>
-  overridden(UserModule, [Provider(OrderRepository)({ inject: {}, value: repository })]);
-
 /** A sink that keeps what it was given, so a spec asserts on the line's fields rather than on a string. */
 const recorderOf = () => {
   const lines: Line[] = [];
@@ -95,22 +84,19 @@ const recorderOf = () => {
 };
 
 /**
- * The real root's own composition — `orderApiOver` is what `OrderApi` itself
- * calls — with the stub kind in place of the `user` one and the customers
- * repository and logger overridden at the root. Not a parallel root: one
- * definition, and an override the graph stops backing is a loud `WiringDefect`.
+ * The real root with the customers repository and logger overridden at the
+ * root, and the orders repository overridden INSIDE the `user` kind, because
+ * that is where it is built: the stub answers, no Prisma repository is
+ * constructed, and the real database still opens — an override replaces one
+ * provider, never a subsystem. Not a parallel root: one definition, and an
+ * override the graph or the kind stops backing is a loud defect at boot.
  *
  * The sink defaults to a no-op, since the real `jsonSink()` would put the
  * application's lines in the runner's own output.
  */
 const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) =>
   overridden(
-    orderApiOver({
-      anonymous: RequestModule,
-      user: userKindOver(repository),
-      service: ServiceModule,
-      session: SessionModule,
-    }),
+    OrderApi,
     [
       stubCustomers,
       Provider(Logger)({
@@ -118,6 +104,7 @@ const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) 
         sync: ({ config }) => createLogger(sink, config.level),
       }),
     ],
+    { unit: { user: [Provider(OrderRepository)({ inject: {}, value: repository })] } },
   );
 
 /**

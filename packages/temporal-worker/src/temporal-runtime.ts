@@ -272,6 +272,7 @@ export const temporal = <
         }): Runtime<never, TemporalInfo> => ({
           name: "temporal",
           resolves: [],
+          units: { activity: options.unit?.activity },
           start: (host) => createWorker(host, connection, bound, impls, options, observers),
         }),
       }),

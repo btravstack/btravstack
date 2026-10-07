@@ -11,6 +11,7 @@ import {
 } from "@btravstack/di";
 import { OkAsync, TaggedError, fromSafePromise, type AsyncResult } from "unthrown";
 
+import type { AnyUnitModule } from "./unit-record.js";
 import type { UnitMeta, UnitWork } from "./units.js";
 
 export class RuntimeStartFailed extends TaggedError("RuntimeStartFailed")<{
@@ -141,6 +142,14 @@ export type Runtime<Resolves extends AnyPort = never, Info = never> = {
   // inferable from the value.
   readonly resolves: readonly Resolves[];
   readonly start: (host: RuntimeHost<Resolves>) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
+  /**
+   * The unit modules this runtime forks, by kind — `{ message: … }`, or one
+   * per HTTP scheme. Optional, and read for one thing only: a test's
+   * `UnitOverrides` name a kind, `fork` is handed a module, and this is
+   * what maps one onto the other. A runtime that omits it refuses every unit
+   * override at boot rather than ignoring it.
+   */
+  readonly units?: Readonly<Record<string, AnyUnitModule | undefined>>;
 };
 
 /**

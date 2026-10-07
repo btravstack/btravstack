@@ -65,6 +65,7 @@ type Runtime<Resolves extends AnyPort = never, Info = never> = {
   readonly start: (
     host: RuntimeHost<Resolves>,
   ) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
+  readonly units?: Readonly<Record<string, AnyUnitModule | undefined>>;
 };
 ```
 

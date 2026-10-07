@@ -674,6 +674,21 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   `"runs each call in its own unit"` spec is what caught it. A silent
   regression loses to a name reading slightly oddly.
 
+  **The record `HttpUnit` carries — and the runtime publishes as
+  `Runtime.units` — has the fallback written in.** Every declared scheme with
+  no module of its own is mapped to `anonymous`'s (`withFallback`,
+  `unit-scope.ts`), so the kernel sees the module each kind's units really
+  fork. Without it a test's unit override was wrong both ways: overriding
+  `anonymous` silently reached every fallback scheme too, past the kernel's
+  "one module under two kinds" refusal, and overriding such a scheme was
+  refused as unbound although its units fork `anonymous`'s module. The scheme
+  names reach `httpServer` through `HttpSchemes`, a set port `defineHttp`
+  contributes one member to beside its authenticators — the `CookieSchemes`
+  move, for the same reason: `http()` never sees an application's
+  authenticators, so a fact `HttpModule` folded off `router.authenticators`
+  would hold for one composition and not the other. `httpServer` contributes
+  the `[]` member that keeps the set from being an empty dependency.
+
   The fork is SEEDED with `[[auth.principals[scheme], identity]]` whenever a
   scheme resolved — **regardless of which module ends up forked**, so the
   anonymous fallback carries the seed too and an unread entry is the whole
