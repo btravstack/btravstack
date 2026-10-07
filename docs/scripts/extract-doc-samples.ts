@@ -490,7 +490,7 @@ const main = (): void => {
     throw new Error("usage: extract-doc-samples.ts --group <name> --out <dir>");
   }
   const sources = [
-    ...globSync(join(DOCS_ROOT, "{tutorial,how-to,reference,explanation,examples}/**/*.md")),
+    ...globSync(join(DOCS_ROOT, "{tutorial,how-to,reference,explanation,examples,di}/**/*.md")),
     join(DOCS_ROOT, "index.md"),
     join(REPO_ROOT, "README.md"),
     ...globSync(join(REPO_ROOT, "packages/*/README.md")),

@@ -6,8 +6,8 @@
 > outside sees — and every wiring mistake the compiler can catch is a compile
 > error, not a runtime surprise.
 
-📖 **[Documentation](https://btravstack.github.io/btravstack/reference/di/ports)** ·
-[Getting started](https://btravstack.github.io/btravstack/tutorial/getting-started) ·
+📖 **[Documentation](https://btravstack.github.io/btravstack/di/)** ·
+[Getting started](https://btravstack.github.io/btravstack/di/tutorial/getting-started) ·
 [API Reference](https://btravstack.github.io/btravstack/api/di/)
 
 ```sh

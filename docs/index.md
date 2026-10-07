@@ -207,4 +207,10 @@ want the framework to honour that choice rather than opt out of it.
 - **[Coming from AdonisJS](/explanation/coming-from-adonisjs)** — the three words that mean something else here, and what has no equivalent at all.
 - **[Packages and install](/reference/packages)** — the fifteen packages and one install command per kind of deployment.
 
+## Use the libraries independently
+
+[entity](/entity/) models domain entities with Zod schemas and typed invariants.
+[di](/di/) composes type-safe ports, providers and modules without a framework
+runtime. Each has its own getting-started guide.
+
 <CompileErrorDemo />
