@@ -120,6 +120,7 @@ const GUIDE_SIDEBAR = [
     text: "Reference",
     items: [
       { text: "Packages and install", link: "/reference/packages" },
+      { text: "@btravstack/entity", link: "/reference/entity/declaration" },
       {
         text: "The kernel and its plumbing",
         collapsed: false,

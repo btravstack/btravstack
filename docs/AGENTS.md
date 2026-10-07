@@ -6,6 +6,10 @@ root `AGENTS.md`; what follows is how the site itself is built.
 
 `docs/entity/` carries the entity guide migrated from its standalone site. Its pages use `/entity/` routes, while the generated API stays at `/api/entity/`; the four billing workspaces are under `examples/entity-billing-*`. Keep the guide links, TypeDoc config and navigation in step with changes to that package.
 
+The `/reference/entity/` compatibility pages in `public/` redirect to the
+canonical `/entity/reference/` guide, preserving query strings and anchors.
+Keep the six aliases in step with the entity reference sidebar.
+
 `@btravstack/di`'s former standalone site was folded in here when the
 container was merged; nothing under `docs/reference/di/` should be edited in
 the old repository.
