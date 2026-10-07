@@ -57,7 +57,8 @@ export const sharedPostgres = async (): Promise<StartedTestContainer> => {
         POSTGRES_PASSWORD,
       })
       .withHealthCheck({
-        test: ["CMD-SHELL", `pg_isready -U ${POSTGRES_USER}`],
+        // Over TCP: the entrypoint's temporary init server answers the socket, then restarts.
+        test: ["CMD-SHELL", `pg_isready -h 127.0.0.1 -U ${POSTGRES_USER}`],
         interval: 1_000,
         retries: 30,
         startPeriod: 1_000,

@@ -90,6 +90,24 @@ touch it, so the DDL there ends with
 `REVOKE ALL ON "_prisma_migrations" FROM orders_app;`. The reference page's copy
 carries that line; see `docs/reference/prisma.md`.
 
+## Postgres is ready when it answers over TCP
+
+The image's entrypoint initialises a cold data directory on a **temporary**
+server started with `listen_addresses=''` — the Unix socket only — then stops
+it and `exec`s the real one. A healthcheck of plain `pg_isready` talks over
+that socket, so it can report healthy against the temporary server, and the
+first `psql` lands in the gap before the real one is up: `connection to server
+on socket "/var/run/postgresql/.s.PGSQL.5432" failed: No such file or
+directory`, every Ory test red at once. `pg_isready -h 127.0.0.1` asks over
+TCP, which only the real server listens on. Measured on a cold container held
+to a tenth of a CPU: the socket check reported healthy before TCP was up on
+every trial and the next `psql` failed on half of them; the TCP check had no
+failure.
+
+Changing the healthcheck changes the creation hash `withReuse()` fetches by,
+so a machine with the old container running starts a fresh one beside it; the
+command below removes the old one.
+
 ## Reuse, and what it costs
 
 `withReuse()` is what makes the second, third and fourth workspace attach to a
