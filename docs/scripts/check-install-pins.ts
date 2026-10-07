@@ -28,12 +28,37 @@ const files = globSync(
   },
 );
 
+// The default catalog: what the published packages are built and tested
+// against. A snippet that writes a version where a range would not hold — an
+// exact beta, or a 0.x caret, whose minor is its major — states a number, and
+// a number in prose drifts unless something recomputes it.
+const catalog = new Map(
+  [
+    ...(/^catalog:\n((?:(?: .*)?\n)*)/m.exec(read("pnpm-workspace.yaml"))?.[1] ?? "").matchAll(
+      /^ {2}"?([@\w./-]+)"?: "?(\d[^"\s]*)"?$/gm,
+    ),
+  ].map(([, name, version]) => [name!, version!] as const),
+);
+
 const unpinned: string[] = [];
+const drifted: string[] = [];
 for (const file of files) {
   read(file)
     .split("\n")
     .forEach((line, index) => {
       if (!isInstallLine(line)) return;
+      for (const [, name, spec] of line.matchAll(/(?:^|\s)(@?[\w.-]+(?:\/[\w.-]+)?)@(\S+)/g)) {
+        const version = catalog.get(name!);
+        if (version === undefined) continue;
+        const exact = /^\d+\.\d+\.\d+(?:-\S+)?$/.test(spec!);
+        const zeroMinor = /^\^0\.(\d+)/.exec(spec!)?.[1];
+        if (
+          (exact && spec !== version) ||
+          (zeroMinor !== undefined && !version.startsWith(`0.${zeroMinor}.`))
+        ) {
+          drifted.push(`${file}:${index + 1}  ${name}@${spec} \u2192 the catalog has ${version}`);
+        }
+      }
       for (const [name, major] of traps) {
         const at = line.indexOf(name);
         if (at === -1) continue;
@@ -54,6 +79,15 @@ for (const file of files) {
         }
       }
     });
+}
+
+if (drifted.length > 0) {
+  process.stderr.write(
+    `[docs] install snippets pin a version the catalog no longer has:\n` +
+      drifted.map((line) => `  ${line}\n`).join("") +
+      `A reader installs exactly what the snippet says, so it must be what the packages are built against.\n`,
+  );
+  process.exit(1);
 }
 
 if (unpinned.length > 0) {
