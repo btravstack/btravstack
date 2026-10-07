@@ -221,7 +221,10 @@ Beyond the nine:
   when `Serving.stop` returns: before, a second signal during a blocked
   `release` reached no handler and the phase already read `exited` while
   `exited` was pending. And a failure inside `use` (a runtime refusing to
-  start, a defect) is tapped there, before di runs a single finaliser —
+  start, a defect — including a synchronous throw from `runtime.start` or
+  `unitSubstitutes`, which is why `serve` is entered through
+  `OkAsync(ctx).flatMap(serve)` rather than handed to di directly) is tapped
+  there, before di runs a single finaliser —
   `leaveFailed` emits `startFailed`, moves to `stopping`, and arms the deadline
   with the failure itself, so an abandoned startup cleanup still settles
   `exited` with the startup error and adds a `stoppedWaiting` event rather
@@ -229,9 +232,24 @@ Beyond the nine:
   signal handlers and the stopping phase while a finaliser is still
   running"_, _"bounds the cleanup of a runtime that refused to start by
   stopTimeoutMs"_ (both hang against the pre-fix kernel, and both synchronise
-  on a barrier the `release` resolves on entry, never on a timer tick) and
+  on a barrier the `release` resolves on entry, never on a timer tick),
   _"releases the graph of a runtime that refused to start, naming no
-  deadline"_. **A construction `Err` is the remaining gap**: di releases what
+  deadline"_ and _"bounds the cleanup of a runtime whose start throws instead
+  of answering"_.
+
+  **`exited` is the last event, and the `emit` latch is what makes it so.**
+  The deadline stops waiting rather than cancelling, so the losing
+  `Module.scoped` branch still settles after the report: a finaliser that
+  rejects late reaches `onTeardownError`, and the outer `tapFailure` runs
+  `leaveFailed` again on a phase that already reads `exited`. Guarding each
+  site would be one guard per emitter, so `emit` drops everything once the
+  `exited` event has gone out; a late teardown failure still lands in
+  `ExitReport.teardownErrors`, which aliases the live array. Guarded by
+  _"emits nothing once exited, when a release it stopped waiting for fails
+  late"_ and _"keeps a teardown failure that lands after the report on the
+  report, not the event stream"_.
+
+  **A construction `Err` is the remaining gap**: di releases what
   it acquired inside `Module.scoped` before anything the kernel holds sees the
   failure, so only a second signal or an uncaught exception (the abandoned
   build) cuts a release wedged there short. Closing it needs a hook in di's

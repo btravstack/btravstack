@@ -1,7 +1,7 @@
 import { Module, Port, Provider } from "@btravstack/di";
 import { createFakeClock, testRuntime, TestRuntimePort } from "@btravstack/testing";
 import { ErrAsync, Ok, OkAsync, fromSafePromise } from "unthrown";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { runtimeModule } from "./__tests__/test-fixtures.js";
 import type { KernelEvent } from "./events.js";
@@ -508,6 +508,144 @@ describe("start", () => {
       ),
       released: ["greeting"],
       events: ["building", "startFailed", "stopping", "exited"],
+    });
+  });
+
+  it("emits nothing once exited, when a release it stopped waiting for fails late", async () => {
+    // GIVEN a runtime that refused to start, and a release the deadline gave
+    // up on that then rejects — which di reports, and which `Module.scoped`
+    // settling would otherwise report as a startup failure a second time
+    const clock = createFakeClock();
+    const releasing = Promise.withResolvers<void>();
+    const releaseFails = Promise.withResolvers<void>();
+    const events: KernelEvent["type"][] = [];
+    const broken = {
+      ...testRuntime(),
+      start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })),
+    };
+    const Wedged = Module("FailsLateAfterStartFailed")({
+      imports: [runtimeModule(broken)],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            releasing.resolve();
+            return releaseFails.promise;
+          },
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Wedged, {
+      clock,
+      signals: false,
+      probes: false,
+      stopTimeoutMs: 5_000,
+      onEvent: (event) => events.push(event.type),
+    });
+    await releasing.promise;
+    await clock.advance(5_000);
+    await app.exited;
+
+    // WHEN the abandoned release finally fails
+    releaseFails.reject(new Error("release failed late"));
+    await clock.advance(0);
+
+    // THEN `exited` is still the last thing the lifecycle said
+    expect(events).toEqual(["building", "startFailed", "stopping", "stoppedWaiting", "exited"]);
+  });
+
+  it("keeps a teardown failure that lands after the report on the report, not the event stream", async () => {
+    // GIVEN a stop the deadline gave up on, whose release then rejects
+    const clock = createFakeClock();
+    const releasing = Promise.withResolvers<void>();
+    const releaseFails = Promise.withResolvers<void>();
+    const boom = new Error("release failed late");
+    const runtime = testRuntime();
+    const events: KernelEvent["type"][] = [];
+    const Wedged = Module("FailsLateAfterStop")({
+      imports: [runtime.module],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            releasing.resolve();
+            return releaseFails.promise;
+          },
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Wedged, {
+      clock,
+      signals: false,
+      probes: false,
+      stopTimeoutMs: 5_000,
+      onEvent: (event) => events.push(event.type),
+    });
+    await runtime.untilStarted();
+    app.stop();
+    await releasing.promise;
+    await clock.advance(5_000);
+    const report = (await app.exited).getOrThrow();
+
+    // WHEN the abandoned release finally fails
+    releaseFails.reject(boom);
+    await vi.waitUntil(() => report.teardownErrors.length > 0);
+
+    // THEN the report's live array has it, and the stream still ends at `exited`
+    expect({ teardownErrors: report.teardownErrors, last: events.at(-1) }).toEqual({
+      teardownErrors: [{ port: "Greeting", cause: boom }],
+      last: "exited",
+    });
+  });
+
+  it("bounds the cleanup of a runtime whose start throws instead of answering", async () => {
+    // GIVEN a runtime whose `start` throws synchronously, so no `AsyncResult`
+    // exists to tap, over a graph whose release never settles
+    const clock = createFakeClock();
+    const releasing = Promise.withResolvers<void>();
+    const boom = new Error("start threw");
+    const events: KernelEvent["type"][] = [];
+    const throwing = {
+      ...testRuntime(),
+      start: () => {
+        // oxlint-disable-next-line unthrown/no-throw -- the synchronous throw is the subject under test
+        throw boom;
+      },
+    };
+    const Wedged = Module("WedgedAfterStartThrew")({
+      imports: [runtimeModule(throwing)],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            releasing.resolve();
+            return new Promise<void>(() => {});
+          },
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Wedged, {
+      clock,
+      signals: false,
+      probes: false,
+      stopTimeoutMs: 5_000,
+      onEvent: (event) => events.push(event.type),
+    });
+    await releasing.promise;
+
+    // WHEN the stop deadline passes with the release still running
+    await clock.advance(5_000);
+
+    // THEN the throw is reported as the defect it is, after the abandoned cleanup
+    expect({ exited: await app.exited, events }).toEqual({
+      exited: expect.toBeDefectWith(boom),
+      events: ["building", "startFailed", "stopping", "stoppedWaiting", "exited"],
     });
   });
 

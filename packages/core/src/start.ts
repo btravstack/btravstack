@@ -269,7 +269,18 @@ export const start = <X, E, N>(
   type Resolves = RuntimeResolvesOf<X>;
   const clock = options.clock ?? systemClock;
   const env = options.env ?? process.env;
-  const emit = safeSink(options.onEvent ?? stderrSink);
+  const sink = safeSink(options.onEvent ?? stderrSink);
+  // `exited` is the last event, and only this latch makes that true: the
+  // deadline stops waiting rather than cancelling, so a finaliser it gave up on
+  // can still settle — a late `teardownError`, a second `startFailed` — after
+  // the lifecycle has reported. A late teardown failure still reaches
+  // `ExitReport.teardownErrors`, which aliases the live array.
+  let exitedEmitted = false;
+  const emit: EventSink = (event) => {
+    if (exitedEmitted) return;
+    sink(event);
+    if (event.type === "exited") exitedEmitted = true;
+  };
   // Known only once the graph is built — the runtime is one of its services.
   let runtimeName = "";
   // Both are on the `serving` event so a `PORT=0` / `PROBE_PORT=0` boot says
@@ -581,146 +592,151 @@ export const start = <X, E, N>(
     });
   };
 
+  const serve = (ctx: Context<X>): AsyncResult<ExitReport, RuntimeStartFailed> => {
+    tracker.advanceTo("starting");
+
+    // Both casts restate, where the checker cannot see it, what the
+    // `StartGate` proved at the call site: a port with `RuntimePort`'s id
+    // is exported, and the exports cover what the runtime resolves.
+    const runtime = (ctx as unknown as Context<RuntimeInstance>).get(
+      RuntimePort as unknown as abstract new () => RuntimeInstance,
+    ) as Runtime<Resolves, Info>;
+    runtimeName = runtime.name;
+
+    // A set port with no contributors resolves to `[]`, so an application
+    // that composed no starter declaring a check needs no special case.
+    healthChecks = (ctx as unknown as Context<HealthChecks>).get(
+      HealthChecks as unknown as abstract new () => HealthChecks,
+    );
+
+    const runtimeCtx = ctx as unknown as Context<InstanceType<Resolves>>;
+
+    // Before `runtime.start`, so a drifted override is a defect at boot
+    // rather than at the first unit of its kind. A throw here is one:
+    // this callback runs inside di's `flatMap`.
+    const substitutes = unitSubstitutes(
+      runtime.name,
+      runtime.units ?? {},
+      (ctx as unknown as Context<UnitOverrides>).get(
+        UnitOverrides as unknown as abstract new () => UnitOverrides,
+      ),
+    );
+
+    // The fork sits INSIDE `registry.run` so unit teardown still sees the
+    // ambient record and the unit is not counted closed until the scope is.
+    const run: RunUnit<Resolves> = (meta, work) =>
+      registry.run(meta, (signal) => {
+        const settled = Promise.withResolvers<void>();
+        let closing: Promise<unknown> | undefined;
+        // Set in the SAME `finally` that resolves `settled`, not derived
+        // from it: a fork arriving after `work` has returned is not
+        // awaited by anything, so nothing supervises its scope or its
+        // `onStop` — unsupervised is unsupervised whether or not this
+        // unit ever forked at all, which is why this guard is separate
+        // from `closing`'s own "once" one below.
+        let hasSettled = false;
+
+        const fork: UnitHost<Resolves>["fork"] = (module, seed) => {
+          if (hasSettled) {
+            return fromSafePromise(
+              Promise.reject(new Error("a unit forks after it has already settled")),
+            ) as never;
+          }
+          if (closing !== undefined) {
+            return fromSafePromise(
+              Promise.reject(new Error("a unit forks its scope once")),
+            ) as never;
+          }
+          const ready = Promise.withResolvers<Context<never>>();
+          // `use` resolves the context to the caller and then holds the
+          // scope open until the unit settles; that is what keeps the
+          // teardown inside the unit rather than at the handler's return.
+          // Cast to `AsyncResult<void, never>`: `module as never` erases
+          // the modeled error channel from `forkScope`'s own inference,
+          // but the `fork` signature already proves it is `never`.
+          const scope = Module.forkScope(
+            ctx as Context<never>,
+            (substitutes.get(module as never) ?? module) as never,
+            (forked) => {
+              ready.resolve(forked);
+              return fromSafePromise(settled.promise);
+            },
+            {
+              seed: seed as never,
+              onTeardownError: (port, cause) => emit({ type: "teardownError", port, cause }),
+            },
+          ) as unknown as AsyncResult<void, never>;
+          // Construction failed before `use` ran: release the caller
+          // onto the defect path instead of leaving it waiting. The
+          // module's error channel is `never`, so a defect is the only
+          // failure a fork can have.
+          closing = scope
+            .recoverDefect((cause) => {
+              ready.reject(cause);
+              return Ok();
+            })
+            .get();
+          return fromSafePromise(ready.promise) as never;
+        };
+
+        const record = currentUnit();
+        const outcome = (async () => {
+          let settledAs: UnitOutcome = "error";
+          try {
+            const result = await work({ ctx: runtimeCtx, fork }, signal);
+            if (result.isOk()) settledAs = "ok";
+            return result;
+          } finally {
+            // Before `settled` resolves: that is what starts the fork's
+            // teardown, and the teardown is what reads it.
+            if (record !== undefined) settleUnit(record, settledAs);
+            hasSettled = true;
+            settled.resolve();
+            if (closing !== undefined) await closing;
+          }
+        })();
+        return fromSafePromise(outcome).flatMap((result) => result) as ReturnType<typeof work>;
+      });
+
+    const host = { ctx: runtimeCtx, run };
+
+    return runtime.start(host).flatMap((serving: Serving<Info>) => {
+      servingInfo = serving.info;
+      tracker.advanceTo("serving");
+      runtimePublished.resolve(serving.info);
+
+      // A runtime that gave up on its own says so here, and the kernel
+      // treats it exactly like a `stop()` call: the lifecycle otherwise
+      // only ever moves on a signal or a caller, so a worker whose poll
+      // loop died left the process alive and `/readyz` answering 200 —
+      // a pod in a Service's endpoints, consuming nothing. The `Result`
+      // is dropped on purpose: whichever route reaches `requestShutdown`
+      // first decides the reason, and a runtime that stopped after a
+      // signal has nothing left to add.
+      void serving.stopped?.().map(() => {
+        requestShutdown("runtimeStopped");
+      });
+
+      return fromSafePromise(shutdown.promise).flatMap((reason) => finish(serving, reason));
+    });
+  };
+
   const built = (): AsyncResult<ExitReport, E | RuntimeStartFailed> =>
     Module.scoped(
       root,
-      (ctx: Context<X>): AsyncResult<ExitReport, RuntimeStartFailed> => {
-        tracker.advanceTo("starting");
-
-        // Both casts restate, where the checker cannot see it, what the
-        // `StartGate` proved at the call site: a port with `RuntimePort`'s id
-        // is exported, and the exports cover what the runtime resolves.
-        const runtime = (ctx as unknown as Context<RuntimeInstance>).get(
-          RuntimePort as unknown as abstract new () => RuntimeInstance,
-        ) as Runtime<Resolves, Info>;
-        runtimeName = runtime.name;
-
-        // A set port with no contributors resolves to `[]`, so an application
-        // that composed no starter declaring a check needs no special case.
-        healthChecks = (ctx as unknown as Context<HealthChecks>).get(
-          HealthChecks as unknown as abstract new () => HealthChecks,
-        );
-
-        const runtimeCtx = ctx as unknown as Context<InstanceType<Resolves>>;
-
-        // Before `runtime.start`, so a drifted override is a defect at boot
-        // rather than at the first unit of its kind. A throw here is one:
-        // this callback runs inside di's `flatMap`.
-        const substitutes = unitSubstitutes(
-          runtime.name,
-          runtime.units ?? {},
-          (ctx as unknown as Context<UnitOverrides>).get(
-            UnitOverrides as unknown as abstract new () => UnitOverrides,
-          ),
-        );
-
-        // The fork sits INSIDE `registry.run` so unit teardown still sees the
-        // ambient record and the unit is not counted closed until the scope is.
-        const run: RunUnit<Resolves> = (meta, work) =>
-          registry.run(meta, (signal) => {
-            const settled = Promise.withResolvers<void>();
-            let closing: Promise<unknown> | undefined;
-            // Set in the SAME `finally` that resolves `settled`, not derived
-            // from it: a fork arriving after `work` has returned is not
-            // awaited by anything, so nothing supervises its scope or its
-            // `onStop` — unsupervised is unsupervised whether or not this
-            // unit ever forked at all, which is why this guard is separate
-            // from `closing`'s own "once" one below.
-            let hasSettled = false;
-
-            const fork: UnitHost<Resolves>["fork"] = (module, seed) => {
-              if (hasSettled) {
-                return fromSafePromise(
-                  Promise.reject(new Error("a unit forks after it has already settled")),
-                ) as never;
-              }
-              if (closing !== undefined) {
-                return fromSafePromise(
-                  Promise.reject(new Error("a unit forks its scope once")),
-                ) as never;
-              }
-              const ready = Promise.withResolvers<Context<never>>();
-              // `use` resolves the context to the caller and then holds the
-              // scope open until the unit settles; that is what keeps the
-              // teardown inside the unit rather than at the handler's return.
-              // Cast to `AsyncResult<void, never>`: `module as never` erases
-              // the modeled error channel from `forkScope`'s own inference,
-              // but the `fork` signature already proves it is `never`.
-              const scope = Module.forkScope(
-                ctx as Context<never>,
-                (substitutes.get(module as never) ?? module) as never,
-                (forked) => {
-                  ready.resolve(forked);
-                  return fromSafePromise(settled.promise);
-                },
-                {
-                  seed: seed as never,
-                  onTeardownError: (port, cause) => emit({ type: "teardownError", port, cause }),
-                },
-              ) as unknown as AsyncResult<void, never>;
-              // Construction failed before `use` ran: release the caller
-              // onto the defect path instead of leaving it waiting. The
-              // module's error channel is `never`, so a defect is the only
-              // failure a fork can have.
-              closing = scope
-                .recoverDefect((cause) => {
-                  ready.reject(cause);
-                  return Ok();
-                })
-                .get();
-              return fromSafePromise(ready.promise) as never;
-            };
-
-            const record = currentUnit();
-            const outcome = (async () => {
-              let settledAs: UnitOutcome = "error";
-              try {
-                const result = await work({ ctx: runtimeCtx, fork }, signal);
-                if (result.isOk()) settledAs = "ok";
-                return result;
-              } finally {
-                // Before `settled` resolves: that is what starts the fork's
-                // teardown, and the teardown is what reads it.
-                if (record !== undefined) settleUnit(record, settledAs);
-                hasSettled = true;
-                settled.resolve();
-                if (closing !== undefined) await closing;
-              }
-            })();
-            return fromSafePromise(outcome).flatMap((result) => result) as ReturnType<typeof work>;
-          });
-
-        const host = { ctx: runtimeCtx, run };
-
-        return runtime
-          .start(host)
-          .flatMap((serving: Serving<Info>) => {
-            servingInfo = serving.info;
-            tracker.advanceTo("serving");
-            runtimePublished.resolve(serving.info);
-
-            // A runtime that gave up on its own says so here, and the kernel
-            // treats it exactly like a `stop()` call: the lifecycle otherwise
-            // only ever moves on a signal or a caller, so a worker whose poll
-            // loop died left the process alive and `/readyz` answering 200 —
-            // a pod in a Service's endpoints, consuming nothing. The `Result`
-            // is dropped on purpose: whichever route reaches `requestShutdown`
-            // first decides the reason, and a runtime that stopped after a
-            // signal has nothing left to add.
-            void serving.stopped?.().map(() => {
-              requestShutdown("runtimeStopped");
-            });
-
-            return fromSafePromise(shutdown.promise).flatMap((reason) => finish(serving, reason));
-          })
+      // Wrapped rather than handed over directly: a throw anywhere in `serve`
+      // — `runtime.start` itself, `unitSubstitutes` — lands in this `flatMap`
+      // as a defect, so it is tapped too. Here rather than after
+      // `Module.scoped`, which runs the finalisers first: a failure leaves
+      // startup, and arms the stop deadline, before a single `release` has
+      // run. Idempotent past `finish`.
+      (ctx: Context<X>): AsyncResult<ExitReport, RuntimeStartFailed> =>
+        OkAsync(ctx)
+          .flatMap(serve)
           .tapFailure((failure) => {
-            // Here rather than after `Module.scoped`, which runs the finalisers
-            // first: a failure leaves startup, and arms the stop deadline, before
-            // a single `release` has run. Idempotent past `finish`.
             leaveFailed(failure);
             stopping.resolve(() => failure.toAsync());
-          });
-      },
+          }),
       {
         onTeardownError: (port, cause) => {
           teardownErrors.push({ port, cause });
