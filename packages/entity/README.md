@@ -157,12 +157,13 @@ aggregate](https://btravstack.github.io/btravstack/entity/how-to/model-an-aggreg
 and [Write commands and
 events](https://btravstack.github.io/btravstack/entity/how-to/write-commands).
 
-### Event-sourced roots
+### Event-driven roots
 
-When the events are the source of truth — the state is a fold of them, or you
-store an event stream — declare the root with `Entity.aggregate` instead. Its
-state changes only through events: it declares the events and one handler per
-event, it has no `update()`, and every command returns a sealed decision.
+When the root's state should change only through the events it declares,
+declare it with `Entity.aggregate` instead. It declares the events and one
+handler per event, it has no `update()`, and every successful command returns a
+sealed decision. You still choose the storage: the resulting state with an
+outbox, or the event stream itself.
 
 <!-- doctest: skip — aggregate events and repository are defined by the consuming application -->
 
