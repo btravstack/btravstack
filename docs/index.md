@@ -10,7 +10,7 @@ hero:
   image:
     light: /logo-light.svg
     dark: /logo-dark.svg
-    alt: btravstack framework logo
+    alt: btravstack smiling beetroot mascot on three teal layers
   actions:
     - theme: brand
       text: Get Started

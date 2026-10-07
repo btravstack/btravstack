@@ -149,9 +149,10 @@ the old repository.
 The framework uses the shared theme's beet-pink accent in
 `.vitepress/theme/custom.css`. Navigation and homepage choose
 `public/logo-light.svg` or `public/logo-dark.svg` for the surface; the favicon
-is `public/favicon.svg`. The cyan framework mark shares the ecosystem's
-beetroot silhouette and carries composed blocks. `public/logo.png` remains a
-raster fallback for existing links. The decorative stack in
+is `public/favicon.svg`. The illustrated framework mascot is a
+smiling beetroot atop three teal layers. The SVGs are native vector paths;
+`public/logo.png` preserves the approved raster illustration unchanged as a
+fallback for existing links. The decorative stack in
 `.vitepress/theme/hero-glyph.svg` remains a CSS mask tinted by the theme accent.
 
 `public/og-btravstack.png` is the 1200 × 630 social preview, linked by absolute

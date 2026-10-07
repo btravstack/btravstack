@@ -396,7 +396,7 @@ export default defineConfig({
       {
         property: "og:image:alt",
         content:
-          "btravstack — Your application, composed. Your process, taken care of. Cyan beetroot framework mark with composed blocks.",
+          "btravstack — Your application, composed. Your process, taken care of. Smiling beetroot mascot on three teal layers.",
       },
     ],
     ["meta", { name: "twitter:card", content: "summary_large_image" }],
@@ -406,7 +406,7 @@ export default defineConfig({
       {
         name: "twitter:image:alt",
         content:
-          "btravstack — Your application, composed. Your process, taken care of. Cyan beetroot framework mark with composed blocks.",
+          "btravstack — Your application, composed. Your process, taken care of. Smiling beetroot mascot on three teal layers.",
       },
     ],
   ],
