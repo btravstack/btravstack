@@ -15,6 +15,7 @@
 import { Config, Env } from "@btravstack/config";
 import { RuntimePort, type Runtime } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
+import { Entity } from "@btravstack/entity";
 import { HttpModule, defineHttp } from "@btravstack/http-server";
 import { oc } from "@orpc/contract";
 import { OkAsync } from "unthrown";
@@ -74,3 +75,9 @@ export const ConsumerApi = HttpModule("ConsumerApi")({
 // 5. A runtime port declared over `RuntimePort`, the shape every runtime
 //    package ships and a consumer writing its own transport repeats.
 export class ConsumerRuntime extends RuntimePort<Runtime<typeof Greeter>> {}
+
+// 6. An exported entity declaration must also emit against the packed package.
+export class ConsumerAccount extends Entity("ConsumerAccount")({
+  id: Entity.field(z.string().brand("ConsumerAccountId"), { identity: true }),
+  name: Entity.field(z.string().min(1), { unbranded: true }),
+}) {}

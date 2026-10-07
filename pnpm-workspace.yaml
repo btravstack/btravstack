@@ -9,7 +9,6 @@ minimumReleaseAge: 4320
 # First-party releases taken inside the window on purpose, each pinned to the
 # exact version reviewed. Drop an entry once it is older than three days.
 minimumReleaseAgeExclude:
-  - "@btravstack/entity@0.9.0"
   - unthrown@5.12.0
   - "@unthrown/oxlint@5.12.0"
   - "@unthrown/standard-schema@5.12.0"
@@ -38,9 +37,9 @@ catalog:
   "@amqp-contract/testing": 3.0.0-beta.11
   "@amqp-contract/worker": 3.0.0-beta.11
   "@aws-sdk/client-s3": 3.1146.0
+  "@electric-sql/pglite": 0.4.6
   "@aws-sdk/s3-request-presigner": 3.1146.0
   "@btravstack/commitlint": 0.1.0
-  "@btravstack/entity": 0.9.0
   "@btravstack/lefthook": 0.1.1
   "@btravstack/oxlint": 0.2.1
   "@btravstack/theme": 2.0.0
@@ -67,6 +66,7 @@ catalog:
   "@orpc/json-schema": 2.0.0-beta.28
   "@orpc/openapi": 2.0.0-beta.28
   "@orpc/server": 2.0.0-beta.28
+  "@orpc/zod": 2.0.0-beta.28
   "@orpc/tanstack-query": 2.0.0-beta.28
   # Prisma 8 is a different package family, not a version bump: the runtime is
   # `@prisma/orm-postgres` ("the one package a Postgres application installs")
@@ -104,7 +104,10 @@ catalog:
   "@unthrown/orpc": 0.2.0
   "@unthrown/standard-schema": 5.12.0
   "@unthrown/vitest": 5.12.0
+  effect: 3.22.2
   jose: 6.2.12
+  kysely: 0.29.6
+  kysely-pglite-dialect: 1.3.1
   knip: 6.39.0
   markdownlint-cli2: 0.23.3
   lefthook: 2.1.16

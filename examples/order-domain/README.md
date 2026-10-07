@@ -4,7 +4,7 @@ The innermost layer. It holds the vocabulary — an `Order`, a `Customer`, the
 rule that a quantity must be positive, and the failures the rest of the system
 names.
 The entity is modelled with
-[`@btravstack/entity`](https://github.com/btravstack/entity), which is the
+[`@btravstack/entity`](https://github.com/btravstack/btravstack/tree/main/packages/entity), which is the
 library built for exactly this layer.
 
 ```text
@@ -23,7 +23,7 @@ The `dependencies` block of `package.json` is the whole statement:
 
 ```json
 "dependencies": {
-  "@btravstack/entity": "catalog:",
+  "@btravstack/entity": "workspace:*",
   "unthrown": "catalog:",
   "zod": "catalog:"
 }

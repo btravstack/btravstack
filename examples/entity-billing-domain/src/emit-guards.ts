@@ -1,0 +1,169 @@
+/**
+ * NOT example code. Do not copy anything out of this file.
+ *
+ * It is a compile-time test that happens to live beside an example, because
+ * what it tests *is* what an example is: a downstream package that uses the
+ * library **and emits its own declarations**. It replaced
+ * `packages/entity/consumer/`.
+ *
+ * Three rules that are easy to destroy by tidying:
+ *
+ *  1. **An unused `@ts-expect-error` here is a failure, not noise.** A
+ *     namespace member emitted as a circular self-alias still *compiles*; the
+ *     type simply degenerates, and a directive going unused is the only
+ *     signal. Every member of `Entity` is therefore named below, so
+ *     declaration emit has to walk each one.
+ *
+ *  2. **The gate checks the emitted declarations, not only that emitting
+ *     succeeded.** `typecheck`'s last step feeds the emitted
+ *     `node_modules/.emit-check` back through the 5.9.3 compiler. Without it the
+ *     pass caught only emit-time diagnostics (`TS4020` and friends); a *dangling
+ *     type-parameter reference in the output* is not one, and one shipped —
+ *     `Omit<A, keyof A2> & A2` written inline at `extend`'s return type emitted
+ *     a bare `A2`, which failed a consumer with `TS2304`. The step names
+ *     `index.d.ts`, `emit-guards.d.ts` and `index.spec.d.ts` rather than
+ *     `index.d.ts` alone: a file is checked only if it is in the named set or
+ *     something in it imports the file, and **nothing imports this one**, so on
+ *     `index.d.ts` alone the emitted form of every namespace member below went
+ *     unchecked. `organization`/`root`/`vocabulary` need no naming — `index`
+ *     imports them. Never add `--skipLibCheck`: it turns off `.d.ts` checking
+ *     entirely and the run exits 0 on the broken output. Both measured.
+ *
+ *  3. **The widths in `vocabulary.ts` are load bearing.** `TS7056` is a
+ *     threshold on serialised *characters*, so `Invoice` — declared in
+ *     `index.ts`, built from those schemas — needs its full dunning
+ *     vocabulary, its branded timestamp and its six-member level union to stay
+ *     above it. Measured: trimming them put the old fixture back under the
+ *     ceiling, where it compiled happily and guarded nothing. Splitting the
+ *     declarations out of `index.ts` did *not* shrink them — the emitter
+ *     expands each schema in anonymous type-argument position rather than
+ *     naming the binding, so `Invoice_base` still carries all thirty members
+ *     inline.
+ *
+ * What went wrong when nothing checked this: `EntityStatic` was unexported, so
+ * TypeScript had no name to write for the builder's return type and serialised
+ * the entire static surface into every consumer's `.d.ts` — a one-field entity
+ * emitted 274,048 bytes, against 240 now. A wide enum then crossed the ceiling
+ * (`TS7056`, #31) and a branded object reached zod's module-private `$brand`
+ * through `DeepReadonly` (`TS4020`, #32). `Entity.union` had the same problem
+ * one type further along (`TS4023`), found while writing this example.
+ */
+import { Entity } from "@btravstack/entity";
+import type { z } from "zod";
+
+// `Organization` is imported as a value: the sealed-construction assertion
+// below needs the runtime binding to write `new Organization(...)` at all.
+// `Invoice` and `BillingDocument` are values for the `inspect` guards at the end.
+import { BillingDocument, Invoice, Organization } from "./index.js";
+import type { CreditNote, DisplayLabel, Money, Slug } from "./index.js";
+import { Order } from "./order.js";
+import { Subscription } from "./subscription.js";
+import type { Seats, SubscriptionEvent } from "./subscription.js";
+
+/* ── Construction stays sealed from outside the package ───────────────── */
+
+// @ts-expect-error `new` is a compile error: every instance comes through make, update or a factory
+void new Organization({ id: "x" as never, slug: "y" as never });
+
+// @ts-expect-error the construction key cannot be forged structurally
+const forged: Entity.ConstructionKey = {} as { seal: never };
+void forged;
+
+/* ── A branded object stays deep-readonly (issue #32) ─────────────────── */
+
+export const readTotal = (invoice: Invoice): number => invoice.total.amount;
+
+export const mutateTotal = (invoice: Invoice): void => {
+  // @ts-expect-error a branded object's members are readonly all the way down
+  invoice.total.amount = 1;
+};
+
+/* ── A contract derived from a nested aggregate (issue #72) ───────────── */
+
+// The four derived members embed a nested entity's own plain schema, not its
+// class, so a library exporting a contract over `Order` emits that schema
+// structurally: the nested `OrderLine` output, computed `subtotal` included.
+// Measured: this one export adds 1,466 bytes (43,986 → 45,452) to the emitted set, compiles on
+// 7.0.2 and 5.9.3, and checks clean afterwards. Before #72 it emitted
+// `z.ZodArray<typeof OrderLine>`, and the schema it named could not reach
+// JSON Schema at all.
+export const OrderSummary = Order.output.pick({ id: true, lines: true, total: true });
+
+/* ── Every namespace member, named so declaration emit walks it ───────── */
+
+export type Row = Entity.Output<typeof Organization>;
+export type Wire = Entity.Input<typeof Organization>;
+export type NewOrg = Entity.CreateInput<typeof Organization>;
+export type OrgPatch = Entity.Patch<typeof Organization>;
+export type Derived = Entity.ComputedField<typeof DisplayLabel, { slug: z.infer<typeof Slug> }>;
+export type Rule = Entity.Invariant<{ slug: z.infer<typeof Slug> }>;
+export type SealedRow = Entity.Sealed<Row>;
+export type Spec = Entity.FieldSpec<typeof Slug, { generated: false; immutable: true }>;
+export type Base = Entity.BaseInstance<{ slug: typeof Slug }, Record<never, never>>;
+// `B` defaults to `Record<never, never>` — written out anyway so declaration
+// emit walks the fourth argument too.
+export type Static = Entity.Static<
+  "Organization",
+  { slug: typeof Slug },
+  Record<never, never>,
+  Record<never, never>
+>;
+export type Members = Entity.Union<"kind", [typeof Invoice, typeof CreditNote]>;
+export type AnyDocument = Entity.Instance<typeof BillingDocument>;
+export type OneInvoice = Entity.Instance<typeof Invoice>;
+export type Root = Entity.Abstract<
+  "BillingDocument",
+  { total: typeof Money },
+  Record<never, never>
+>;
+export type Merged = Entity.MergedComputed<{ label: typeof DisplayLabel }, Record<never, never>>;
+// The `Record<never, never>` second argument is the shape that found the
+// dangling `A2` (`TS2304`): it is what the *omitted* side collapses to.
+export type MergedFieldMap = Entity.MergedFields<{ total: typeof Money }, Record<never, never>>;
+
+/** The error is reachable as both a value and a type. */
+export const isInvalid = (error: unknown): error is Entity.InvalidEntity =>
+  error instanceof Entity.InvalidEntity;
+
+/* ── `inspect`'s result, emitted without an annotation ────────────────── */
+
+// Left unannotated on purpose, so the emitter has to print the return type.
+// Measured on this fixture: with `Inspection` exported from the package these
+// two lines emit `import("@btravstack/entity").Inspection<…>` and cost 10,375
+// bytes; unexported, the alias expanded structurally and they cost 18,697. The
+// widest entity and a union are the two shapes worth printing.
+export const inspectInvoice = (row: unknown) => Invoice.inspect(row);
+export const inspectDocument = (row: unknown) => BillingDocument.inspect(row);
+export type Inspected = Entity.Inspection<Row>;
+
+/* ── An event-driven aggregate (issue #158) ────────────────────────────── */
+
+// Unannotated, so the emitter prints `AggregateStatic`'s members and the
+// `Decision` they return. Each name they reach (`AggregateStatic`,
+// `AggregateInstance`, `Decision`, `DecisionKey`) is a top-level export of the
+// package for this reason.
+export const startGuard = (organizationId: string) =>
+  Subscription.start({
+    type: "SubscriptionStarted",
+    subscriptionId: "0199b1f4-1b1e-7000-8000-000000000000",
+    organizationId,
+    seats: 1,
+  });
+export const emitGuard = (subscription: Subscription) =>
+  subscription.emit({ type: "SeatsChanged", seats: 2 });
+export const replayGuard = (stream: unknown) => Subscription.replay(stream);
+export type SubscriptionDecision = Entity.Decision<Subscription, Entity.Event<typeof Subscription>>;
+export type AggregateOf = Entity.Aggregate<
+  "Subscription",
+  { seats: typeof Seats },
+  Record<never, never>,
+  typeof SubscriptionEvent,
+  "SubscriptionStarted"
+>;
+
+// @ts-expect-error a decision cannot be forged downstream either: only `emit`/`start` build one
+export const forgedDecision: SubscriptionDecision = { state: {} as Subscription, events: [] };
+
+declare const subscription: Subscription;
+// @ts-expect-error an aggregate has no `update`, and that survives declaration emit
+void subscription.update;

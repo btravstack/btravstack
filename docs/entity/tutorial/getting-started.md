@@ -1,0 +1,320 @@
+---
+title: Getting started
+description: Build a working entity from nothing — declare it, create one, watch a bad value fail as a value, update it, and send it over the wire.
+---
+
+# Getting started
+
+By the end of this page you will have declared an entity, created one through a
+factory, seen a bad value come back as a `Result` instead of an exception,
+updated it into a new instance, and projected it to the shape you would store or
+respond with.
+
+The snippets build on one another, so follow along in a `.ts` file. Each step
+shows only what changed; the two lines marked `// ✗` are meant not to compile,
+and that is the point of them.
+
+## Install
+
+```sh
+pnpm add @btravstack/entity zod unthrown @unthrown/standard-schema
+```
+
+All four, because `zod`, `unthrown` and `@unthrown/standard-schema` are **peer**
+dependencies — the package hands you back _your_ copies of them rather than its
+own. ([Why](/entity/explanation/peer-dependencies).) Any zod `^4.3.0` works; the floor
+is measured, not guessed.
+
+## 1. Brand your fields
+
+Every field of an entity must be **nominal** — a schema that carries a brand, a
+narrow literal union, a boolean, or another entity. A bare `z.string()` is a
+compile error.
+
+```ts
+import { z } from "zod";
+
+const OrgId = z.uuid().brand("OrgId");
+const Slug = z.string().min(1).brand("Slug");
+const DisplayName = z.string().min(1).brand("DisplayName");
+const Instant = z.iso.datetime().brand("Instant");
+
+const slug = (value: string) => Slug.parse(value);
+const name = (value: string) => DisplayName.parse(value);
+```
+
+The reason is the one every domain modeller already knows: with plain strings,
+`findOrg(orgSlug, orgName)` type-checks with the arguments swapped. Branded, it
+does not. ([The full argument](/entity/explanation/branded-fields).)
+
+`slug` and `name` are **mint helpers** — a named `parse` declared beside the
+vocabulary it mints, for the two fields a caller supplies by hand later in this
+page.
+
+## 2. Declare the entity
+
+```ts
+import { Entity } from "@btravstack/entity";
+
+class Organization extends Entity("Organization")({
+  id: OrgId,
+  slug: Slug,
+  name: DisplayName,
+  createdAt: Instant,
+}) {}
+```
+
+That single declaration already gives you four validators and a class that is
+itself a zod schema:
+
+```ts
+Organization.input; // ZodObject — everything make() accepts
+Organization.output; // ZodObject — the stored shape
+Organization.createInput; // ZodObject — what a create may set
+Organization.updateInput; // ZodObject — what an update may change, partial
+```
+
+Right now `createInput` has the same shape as `input`, and `updateInput` is
+just `output` made partial — though each is its own object, so a registry keyed
+by schema identity keeps all four. The next step is what makes their shapes
+differ.
+
+## 3. Say which fields the domain owns
+
+`id` and `createdAt` are not the caller's to supply, and never change once set.
+Declare that:
+
+```ts
+class Organization extends Entity("Organization")({
+  id: Entity.field(OrgId, { identity: true, generated: true }),
+  slug: Entity.field(Slug, { immutable: true }),
+  name: DisplayName,
+  createdAt: Entity.field(Instant, { generated: true, immutable: true }),
+}) {}
+```
+
+`Entity.field(schema, flags)` wraps a field that carries modifiers; `name`,
+which carries none, stays a bare schema.
+
+- `generated` drops that field from `createInput` — a create request cannot
+  carry it.
+- `immutable` drops it from `updateInput` — and `update()` rejects it at
+  runtime even if something smuggles it past the type, so a change that
+  cannot happen is reported rather than quietly ignored.
+- `identity` says the field is what makes this organization _this_
+  organization. It implies `immutable`, and step 9 uses it.
+
+The flags sit on the field, so there is no second list to keep in step with the
+field names, and a misspelled flag (`imutable`) is a compile error rather than a
+silently-inert entry.
+
+## 4. Create one
+
+The package reads no clock and generates no id. Instead you bind the **sources**
+once — at your composition root, next to the ports you already have:
+
+```ts
+const createOrganization = Organization.factory({
+  id: () => crypto.randomUUID(),
+  createdAt: () => new Date().toISOString(),
+});
+```
+
+Now a create use case supplies only the caller's fields:
+
+```ts
+const created = createOrganization({
+  slug: slug("acme"),
+  name: name("Acme"),
+});
+
+const org = created.getOrThrow();
+org.name; // "Acme"
+org.id; // a fresh uuid
+```
+
+Generators are **functions**, called once per create — so a factory built at
+startup still yields a fresh id per entity. And a test can bind fixed generators
+instead of stubbing globals. ([Why no I/O](/entity/explanation/no-io).)
+
+Note the asymmetry between the two blocks. A generator hands its value to the
+entity, which validates it, so `crypto.randomUUID()` needs no brand of its own;
+a caller field is a branded value you are supplying, so it has to be minted —
+which is exactly what `slug` and `name`, declared in step 1, are for. Real code
+follows the same pattern for every piece of vocabulary written by hand.
+([Branded fields](/entity/explanation/branded-fields#everywhere-else-parse-through-a-mint-helper).)
+
+::: tip `getOrThrow()` is for a tutorial
+It is the shortest way to get at a value while you are exploring. Real code
+handles the `Result` — [step 6](#_6-handle-failure-as-a-value) does.
+:::
+
+## 5. Try to break it
+
+The entity is immutable in both halves — the binding is non-writable and the
+value is deep-frozen:
+
+```ts
+org.name = name("Other"); // ✗ compile error — read-only property
+```
+
+And you cannot sidestep the entry points:
+
+```ts
+new Organization(org.toJSON()); // ✗ does not compile — the constructor is sealed
+```
+
+The constructor takes a value no outside code can produce. That is what
+guarantees every instance in your program went through validation and the
+invariants. ([Sealed construction](/entity/explanation/sealed-construction).)
+
+## 6. Handle failure as a value
+
+Nothing throws. `make` is the general entry point — a database row, a folded
+event stream, an untrusted import all come in the same way — and it returns a
+`Result`:
+
+```ts
+import { P } from "unthrown";
+
+const outcome = Organization.make({
+  id: "not-a-uuid",
+  slug: "acme",
+  name: "Acme",
+  createdAt: "2026-01-01T00:00:00.000Z",
+}).match({
+  ok: (o) => `created ${o.slug}`,
+  errCases: (m) => m.with(P.tag("InvalidEntity"), (e) => e.issues),
+  defect: (cause) => {
+    console.error(cause);
+    return "bug";
+  },
+});
+```
+
+`outcome` is the issue list: `[{ path: ["id"], message: "Invalid UUID" }]`.
+Structured, exactly as the validator produced it — keying a field-level error
+response is a `path` lookup, not a string parse.
+
+The third branch is not decoration. `defect` is a separate channel for a bug in
+your own domain code, and it is never folded into `errCases`. ([Errors are
+values, and defects are separate](/entity/explanation/errors-are-values).)
+
+## 7. Add a rule that spans fields
+
+A single field's schema cannot express "these two fields must agree".
+`invariants` can:
+
+```ts
+class Organization extends Entity("Organization")(
+  {
+    id: Entity.field(OrgId, { identity: true, generated: true }),
+    slug: Entity.field(Slug, { immutable: true }),
+    name: DisplayName,
+    createdAt: Entity.field(Instant, { generated: true, immutable: true }),
+  },
+  {
+    invariants: [
+      Entity.invariant({
+        code: "NAME_TOO_LONG",
+        ensure: (d) => d.name.length <= 80,
+        message: "name must be at most 80 characters",
+      }),
+    ],
+  },
+) {}
+```
+
+`ensure` returning **true** means valid, so a rule reads as the assertion it
+makes. `d` is contextually typed — no annotation needed. Every failing rule
+reports, not just the first, and an invariant's issue carries no `path`: it is a
+complaint about the entity, not about one field.
+
+Invariants re-run on every construction path, including `update`.
+
+## 8. Derive a field, and add behaviour
+
+Two different things live in a class, and they go in two different places:
+
+```ts
+const Upper = z.string().min(1).brand("Upper");
+
+class Organization extends Entity("Organization")(
+  {
+    id: Entity.field(OrgId, { identity: true, generated: true }),
+    slug: Entity.field(Slug, { immutable: true }),
+    name: DisplayName,
+    createdAt: Entity.field(Instant, { generated: true, immutable: true }),
+  },
+  {
+    computed: {
+      shout: Entity.computed(Upper, (d) => d.name.toUpperCase()),
+    },
+  },
+) {
+  get greeting(): string {
+    return `Welcome, ${this.name}`;
+  }
+}
+
+org.shout; // "ACME" — data: in `output`, in toJSON(), in the JSON Schema
+org.greeting; // "Welcome, Acme" — behaviour: on the prototype, never serialised
+```
+
+A `computed` field is **data**. A getter is **behaviour**. If it belongs in the
+response body, it is `computed`. ([Why `computed`
+re-derives](/entity/explanation/computed-fields).)
+
+## 9. Update
+
+`update` returns a **new** entity — the original is untouched:
+
+```ts
+const renamed = org.update({ name: name("Acme Corp") }).getOrThrow();
+
+renamed.name; // "Acme Corp"
+renamed.shout; // "ACME CORP" — re-derived, never stale
+org.name; // "Acme" — the original is unchanged
+renamed.sameIdentityAs(org); // true — the same organization, in a new state
+```
+
+`org.update({ slug })` does not compile: `slug` is flagged `immutable`.
+
+## 10. Send it over the wire
+
+`toJSON()` projects exactly `output`'s keys — never `_tag`, never `greeting`,
+never anything your class body added:
+
+```ts
+console.log(renamed.toJSON());
+// { id, slug, name, createdAt, shout } — that object is what you store or respond with
+```
+
+And the four schema members are plain `ZodObject`s, so a contract layer converts
+them to JSON Schema in **both** directions:
+
+```ts
+z.toJSONSchema(Organization.createInput, { io: "input" }); // ✓
+z.toJSONSchema(Organization.output, { io: "output" }); // ✓
+z.toJSONSchema(Organization, { io: "output" }); // ✗ throws — by design
+```
+
+That last line is the rule the whole package turns on: **contracts compose the
+four plain `ZodObject`s; domain code composes the class itself.** The class
+carries a `.transform()` (that is what produces an instance), and a transform has
+no output representation.
+
+## Where to go next
+
+- [Expose an HTTP contract](/entity/how-to/http-contract) — the contract layer, worked
+  end to end.
+- [Persist and rehydrate](/entity/how-to/persist-and-rehydrate) — repositories, and why
+  computed columns heal themselves.
+- [Evolve an entity](/entity/how-to/evolve-an-entity) — changing the model once rows
+  are stored.
+- [Model an aggregate](/entity/how-to/model-an-aggregate) — entities nested in entities,
+  and `Entity.union`.
+- [Test domain logic](/entity/how-to/test-domain-logic) — deterministic tests with no
+  global stubbing.
+- [Reference](/entity/reference/declaration) — every member, option and type.
+- [Why entity?](/entity/explanation/why-entity) — the design, and what was measured.

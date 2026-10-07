@@ -30,6 +30,7 @@ const catalogVersion = (name: string): string | undefined => {
 const consumerPeers = (): readonly string[] | undefined => {
   const peers = [
     "@types/node",
+    "@unthrown/standard-schema",
     "unthrown",
     "zod",
     "@orpc/contract",

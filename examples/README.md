@@ -1,6 +1,6 @@
 # Examples
 
-Ten small packages, none of them published, all of them in the gate.
+Fourteen small packages, none of them published, all of them in the gate.
 
 The **`order-*` nine** are one application booted three ways: a clean
 architecture split across four layers, deployed once as an oRPC API, once as a
@@ -8,7 +8,7 @@ Temporal worker and once as an AMQP consumer, with each transport's contract in 
 package of its own — and, at the same time, exercising `@btravstack/core` end to
 end from a consumer's own workspace, `workspace:*` and all.
 
-The **tenth**, [`di-hexagonal`](#the-containers-one), came with
+The **container example**, [`di-hexagonal`](#the-containers-one), came with
 `@btravstack/di` and is the container's own: it composes a `Module` and never
 calls `start`.
 
@@ -23,6 +23,8 @@ calls `start`.
 | [`order-temporal-worker`](./order-temporal-worker)     | runtime   | The **orchestration** deployment: two saga slices on `@btravstack/temporal-worker` — `fulfillOrder` places, reserves and ships with compensation in reverse; `chargeOrder` authorizes and refunds a payment. |
 | [`order-amqp-contract`](./order-amqp-contract)         | contract  | The AMQP contract on its own — one exchange, one event, two subscriber queues each with its own retry/dead-letter policy — read by the relay and by any subscriber.                                          |
 | [`order-amqp-worker`](./order-amqp-worker)             | runtime   | The **broadcast** deployment: two subscriber slices over a transactional outbox relayed onto RabbitMQ by `@btravstack/amqp-worker`'s worker — every committed write becomes an event.                        |
+
+The four [`entity-billing-*`](../docs/entity/examples/) packages cover domain entities, an HTTP contract, a document-shaped adapter and relational persistence. `entity-billing-domain` also emits declarations with both the repository TypeScript and the stable consumer compiler, then checks the emitted files under that compiler.
 
 ## The layering, and which way the arrows point
 

@@ -2,7 +2,7 @@
 
 The framework keeps its approved illustrated mascot: a smiling beetroot atop
 three teal layers. The light/dark SVGs use native vector paths and gradients
-for the matching surface; the monochrome asset is for black-on-white print.
+for the matching surface; the grayscale asset is for grayscale print.
 `../public/logo.png` preserves the original approved raster illustration byte
 for byte. The SVGs are a vector interpretation of that illustration, not a
 pixel-identical replacement.
