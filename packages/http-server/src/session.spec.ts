@@ -180,7 +180,7 @@ describe("sessionCodec", () => {
     // WHEN a cookie sealed before the rotation arrives
     const opened = sealer.seal({ principal: { userId: "u-1" } }).flatMap(reader.unseal);
 
-    // THEN it still opens — which is what makes rotation prepend, deploy, drop
+    // THEN it still opens — which is what makes rotation append, promote, drop
     await expect(opened).toBeOkWith(expect.objectContaining({ principal: { userId: "u-1" } }));
   });
 

@@ -316,8 +316,9 @@ The two rules this half exists to state, before the detail:
   **The lifetime is the codec's, not the scheme's**, and there is no sliding
   re-seal: a scheme has HEADERS, not a response, so it has nowhere to put a
   `Set-Cookie`. The session ends when `sessionCodec`'s `ttlSec` says it does,
-  and the browser logs in again. Rotation is the codec's too — prepend,
-  deploy, drop.
+  and the browser logs in again. Rotation is the codec's too — append,
+  promote, drop, one rollout each, so a key is unsealable on every pod before
+  any pod seals with it.
 
   **The vocabulary is decided once at composition**, `apiKeyAuthenticator`'s
   own rule: `scopes` present makes the scheme scoped, so a session holding
@@ -572,6 +573,31 @@ The two rules this half exists to state, before the detail:
   authenticators, the no-argument call, an authenticator's own dependency
   riding through), by `auth.test-d.ts`'s arms 7–12, and at runtime by
   `auth.spec.ts`'s `rpcAuthed`, `rpcRootMarked` and `rpcVerified` fixtures.
+- **A root owes every DECLARED scheme, reachable or not, and that is the
+  decision** (#288). `api` carries every authenticator `defineHttp` was
+  given, `OrpcRouter` and `HtmxFragments` carry all of them onto the piece,
+  and `HttpModule` spreads them into `provides` — so each scheme's own needs
+  are needs of every root composing the router, including one whose pieces
+  reach no marked procedure. `sessionAuthenticator` injects `SessionCodec`,
+  so a root serving only public procedures still provides `sessionCodec()`
+  and its deployment still sets `HTTP_SESSION_KEYS`.
+  Narrowing to the **reachable** set — the schemes the composed pieces'
+  markers and `requires` actually name — was weighed and declined, because
+  the declared set is **stable**: a contract gaining a marker never silently
+  changes a root's `Needs`. The compile error stays at the root composing
+  what `defineHttp` declared, where narrowing would move it to whichever root
+  later composes the piece that grew a marker — later, and further from the
+  declaration — and `NeedsGate` would have to compute the same narrowing at
+  the type level.
+  **So a scheme is not free to add, and the bill is visible.** Declaring one
+  costs every root composing the application's router that scheme's needs —
+  a line in `provides`, a variable in the manifest — and costs every rule
+  over `Caller` a decision, since `Caller` is derived from the declared
+  schemes: `examples/order-api`'s `exportable` failed to compile until it
+  said whether a browser exports like a user or like a machine. A scheme
+  belongs in `defineHttp` when the application serves it; the site's
+  router-only samples compose `examples/order-api`'s router, so they carry
+  `sessionCodec()` for exactly this reason.
 - **`resolveScheme(requirements, authenticators, headers)` →
   `AsyncResult<{ scheme, identity }, Unauthenticated | UnderScoped>`**
   (`auth.ts`) — the authentication walk, protocol-neutral: headers in, the

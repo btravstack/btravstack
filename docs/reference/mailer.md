@@ -58,7 +58,8 @@ rather than a path or a stream, since a caller holding a file can read it and
 an adapter should not have to own a lifetime.
 
 There is no templating: `text` and `html` are strings, and what rendered them
-is a library you chose.
+is yours — [Send a formatted email](/how-to/send-a-formatted-email) renders
+one with an escaping template and a message catalogue.
 
 **`send` answers when the transport accepted the message**, which is not the
 same as delivered. Nothing this side of a mailbox can promise that; an
@@ -193,7 +194,9 @@ port does not model — `send` means accepted.
 ## What it deliberately does not do
 
 - **No templating and no i18n.** `text` and `html` are strings; what rendered
-  them is a library you chose. The envelope itself — `cc`, `bcc`,
+  them is the application's — a render seam here would make the mailer choose
+  an escaping model. [Send a formatted email](/how-to/send-a-formatted-email)
+  is the pattern. The envelope itself — `cc`, `bcc`,
   `attachments`, `headers` — is carried, because the second mail a service
   sends is an invoice.
 - **No bulk send and no scheduling.** Sending many is your loop; scheduling

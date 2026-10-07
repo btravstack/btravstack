@@ -307,10 +307,10 @@ request.
 pins one variable the same way — and `sessionAuthenticator` is the scheme that
 reads what it seals.
 
-| Option   | What it is                                                                                                                                                                               |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `keys`   | pins `HTTP_SESSION_KEYS` — a comma-separated list of 32-byte base64url keys (`A-Z a-z 0-9 - _`, no padding); the first seals and every one unseals, so rotation is prepend, deploy, drop |
-| `ttlSec` | how long a session lasts (default 12 h). Fixed: there is no sliding re-seal                                                                                                              |
+| Option   | What it is                                                                                                                                                                                                  |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `keys`   | pins `HTTP_SESSION_KEYS` — a comma-separated list of 32-byte base64url keys (`A-Z a-z 0-9 - _`, no padding); the first seals and every one unseals, so rotation is append, promote, drop — one rollout each |
+| `ttlSec` | how long a session lasts (default 12 h). Fixed: there is no sliding re-seal                                                                                                                                 |
 
 Mint one with
 `node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'`.
@@ -391,6 +391,12 @@ Each of these is a decision with a reason, and the reasons are on
 - **`Result` → HTTP status** — the router's `.result()` triage owns it.
 - **Rate limiting** — a per-process counter is the wrong unit when a deployment
   is N pods; the ingress counts a request once.
+- **Static files and an SPA fallback** — the ingress or a CDN serves assets;
+  with htmx fragments the asset set is htmx plus a stylesheet. The CSP for an
+  HTML response is the deployment's: pass a `securityHeaders` record carrying
+  your policy **and** `x-content-type-options`, `x-frame-options` and
+  `referrer-policy`, since a record replaces the defaults rather than adding
+  to them.
 - **Resource-dependent authorization** — a scope is checked here because it is
   a property of the credential; "is this caller the order's owner" needs the
   order, so it stays in the handler.

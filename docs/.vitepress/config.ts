@@ -38,6 +38,7 @@ const GUIDE_SIDEBAR = [
           { text: "Talk to a database", link: "/how-to/talk-to-the-database" },
           { text: "Cache a read", link: "/how-to/cache-a-read" },
           { text: "Send an email", link: "/how-to/send-an-email" },
+          { text: "Send a formatted email", link: "/how-to/send-a-formatted-email" },
           { text: "Keep a port private", link: "/how-to/keep-a-port-private" },
           { text: "Build a plugin registry", link: "/how-to/build-a-plugin-registry" },
           {
@@ -68,6 +69,7 @@ const GUIDE_SIDEBAR = [
             text: "Consume the contract from React",
             link: "/how-to/consume-the-contract-from-react",
           },
+          { text: "List what a process serves", link: "/how-to/list-what-a-process-serves" },
         ],
       },
       {
@@ -82,6 +84,7 @@ const GUIDE_SIDEBAR = [
           { text: "Consume AMQP messages", link: "/how-to/consume-amqp-messages" },
           { text: "Publish a message", link: "/how-to/publish-a-message" },
           { text: "Split a worker into slices", link: "/how-to/split-a-worker-into-slices" },
+          { text: "Add a slice by copying a sibling", link: "/how-to/add-a-slice" },
         ],
       },
       {
@@ -99,6 +102,10 @@ const GUIDE_SIDEBAR = [
         items: [
           { text: "Tune the drain for Kubernetes", link: "/how-to/tune-the-drain-for-kubernetes" },
           { text: "Containerize and deploy", link: "/how-to/containerize-and-deploy" },
+          {
+            text: "Configure a Kubernetes deployment",
+            link: "/how-to/configure-a-kubernetes-deployment",
+          },
           { text: "Embed without runMain", link: "/how-to/embed-without-run-main" },
           {
             text: "Run several deployments locally",

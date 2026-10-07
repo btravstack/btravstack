@@ -346,10 +346,14 @@ turns a cookie back into a `Session<unknown>` — or into nothing.
 `HTTP_SESSION_KEYS` is a comma-separated list of 32-byte **base64url** keys
 (`A-Z a-z 0-9 - _`, no padding — standard base64 is refused). Mint one with
 `node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'`.
-Rotation is **prepend, deploy, drop**: the first key seals and every key
-unseals, so a cookie sealed with a key that is gone is anonymous rather than an
-error — a browser holding a stale cookie logs in again, which is not a failed
-request. A key that is not 32 base64url bytes fails the boot with a
+Rotation is **append, promote, drop**, one rollout each: `old,new` so every
+pod can open the new key before any pod seals with it, then `new,old`, then —
+once the old key's sessions have expired — `new`. The first key seals and
+every key unseals, so during a rolling update, with old and new pods serving
+side by side, no pod meets a cookie it cannot open; prepending in one step
+would let the first new pod seal cookies the old pods reject. A cookie sealed
+with a key that is gone is anonymous rather than an error — a browser holding
+a stale cookie logs in again, which is not a failed request. A key that is not 32 base64url bytes fails the boot with a
 `ConfigInvalid` naming the variable and the **position** it refused, never the
 value.
 
@@ -365,7 +369,7 @@ other's sessions — a cookie minted by staging opens in production. That bindin
 is deliberately not here: what it would guard against is an operator copying a
 secret between environments, which the same operator can undo by copying it
 back, so it would be advice rather than a boundary — where a key list per
-deployment IS one. Rotation being prepend, deploy, drop is what makes minting a
+deployment IS one. Rotation being append, promote, drop is what makes minting a
 separate list cheap.
 
 **The sealed payload names what it is.** `seal` writes a type marker into the
@@ -1527,6 +1531,24 @@ small: a default that has to be right for every deployment cannot include a
 CSP, an HSTS max-age or a permissions policy, all of which are a deployment's
 own decision — pass a record when you have made those.
 
+**A record replaces the defaults; it does not add to them.** A record holding
+only a `content-security-policy` serves no `nosniff`, no `x-frame-options` and
+no `referrer-policy`. The defaults are not exported, so a record that keeps
+them names all three beside its own:
+
+<!-- doctest: isolate -->
+
+```ts
+import type { HttpOptions } from "@btravstack/http-server";
+
+export const securityHeaders: HttpOptions["securityHeaders"] = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+  "content-security-policy": "default-src 'self'; frame-ancestors 'none'",
+};
+```
+
 ### `csrf`
 
 `boolean`, and **unset is not a default value but a question about the graph**:
@@ -2096,6 +2118,18 @@ fine on any Node 22.
 - **OpenAPI document metadata.** A scheme's own definition — `type: http`,
   `bearerFormat`, an OAuth flow — belongs beside the contract, not in
   `defineHttp`.
+- **Static files and an SPA fallback**, a stated non-goal. The ingress or a
+  CDN serves assets — the deployment model already puts an ingress in front of
+  the pod, and one that routes the asset path to a bucket serves immutable
+  files with caching, compression and range requests better than a Node
+  process will. With [htmx fragments](#api-htmxget-path-options-and-api-htmxpost-path-options)
+  there is no SPA to fall back to: the asset set is htmx and a stylesheet,
+  which a CDN serves and a layout can vendor. **The CSP for an HTML response is
+  the deployment's**: [`securityHeaders`](#securityheaders) sets none by
+  default, because htmx's `hx-*` attributes and any inline `<script>` meet a
+  policy at once — pass a record carrying your own policy **and** the three
+  defaults, since a record replaces them
+  ([the record](#securityheaders) shows one).
 - **HTTPS, HTTP/2.** `node:http` only; terminate TLS at the ingress.
 
 ## `openApiDocument()` — from `@btravstack/http-server/openapi`
@@ -2164,4 +2198,5 @@ This package mounts no documentation route and ships no UI asset. A Swagger UI
 bundle inside a transport package would be a runtime dependency for every
 consumer, including the ones who never ask for a document — so an application
 serves the value from a route of its own. `examples/order-api/src/openapi.ts`
-is the whole recipe.
+is the whole recipe, and the same document is the route list:
+[List what a process serves](/how-to/list-what-a-process-serves).

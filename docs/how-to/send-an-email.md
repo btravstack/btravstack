@@ -42,6 +42,11 @@ class Notifier extends Port("Notifier")<{
 // carries the transport's own words, which is where the code is.
 const permanent = (reason: string) => /\b5\d\d\b/.test(reason);
 
+// An id is somebody's data like any other value, so it is escaped before it
+// meets markup. A real body is rendered: see "Send a formatted email".
+const escape = (value: string) =>
+  value.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+
 export const notifier = Provider(Notifier)({
   inject: { mailer: Mailer },
   sync: ({ mailer }) => ({
@@ -54,7 +59,7 @@ export const notifier = Provider(Notifier)({
           // `text` is required: a mail with only HTML is a mail some clients
           // cannot read.
           text: `Order ${order.id} is on its way.`,
-          html: `<p>Order <strong>${order.id}</strong> is on its way.</p>`,
+          html: `<p>Order <strong>${escape(order.id)}</strong> is on its way.</p>`,
         })
         .mapErrCases((matcher) =>
           matcher.with(P.tag("MailNotSent"), (error) =>
@@ -129,7 +134,8 @@ export const invoiceMail = (order: Order, pdf: Uint8Array) => ({
 An attachment is **bytes or a string**, never a path or a stream: a caller that
 has a file can read it, and neither the port nor an adapter should have to own
 a filesystem and a lifetime. Templating is not here — `text` and `html` are
-strings, and what rendered them is a library you chose.
+strings, and what rendered them is yours:
+[Send a formatted email](/how-to/send-a-formatted-email) is the pattern.
 
 ## 4. Assert on what would have been sent
 
@@ -151,6 +157,8 @@ failure mode would put a policy in a fixture whose whole value is having none.
 
 ## Where to go next
 
+- Rendering the body, escaped and localised:
+  [Send a formatted email](/how-to/send-a-formatted-email).
 - The port's surface: [`@btravstack/mailer`](/reference/mailer).
 - Where a notification usually belongs — reacting to a committed fact:
   [Consume AMQP messages](/how-to/consume-amqp-messages).

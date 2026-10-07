@@ -35,6 +35,9 @@ is `AUTH.md`. Keep this file in sync with the code in the same commit.
   carries `readonly authenticators: readonly Auth[]` — the per-scheme
   providers `defineHttp` bound — and the sugar spreads them into `provides`
   itself, so an application never lists one and cannot list the wrong one.
+  It carries the DECLARED set, not the reachable one, so a root owes every
+  scheme's needs whether its pieces reach the scheme or not — the decision
+  and its reason are `AUTH.md`'s (#288).
   `Provides<P, Router, Fragments>` is a union-element **array**, not a tuple —
   an authenticator union is one type per scheme, and a tuple takes one rest
   element, not two. Nothing downstream wants the arity — di reads
@@ -803,8 +806,9 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
 - **Not included, deliberately**: another ROUTER for oRPC's own answerer (there
   is no `handler` option on `http()`; a second protocol is a second answerer,
   not a swap of this one), a middleware
-  slot for application logic, `Result` → HTTP status, HTTPS, HTTP/2 — see the
-  package README's _"What it does not do"_ for why each is a non-goal.
+  slot for application logic, `Result` → HTTP status, static files and an SPA
+  fallback, HTTPS, HTTP/2 — see the package README's _"What it does not do"_
+  for why each is a non-goal.
 - **`httpServer(options)`** — the socket half: the runtime, its config, the
   kind → module record on `HttpUnit`, and no answerer. Its signature and what
   it provides and exports are in the reference page and `http-runtime.ts`.
@@ -1069,8 +1073,11 @@ verifies a token or logs a browser in from installing it.
 
 **The cookie is the session, so the key list is the one operational object.**
 `HTTP_SESSION_KEYS` is a `Config.list` of base64url 32-byte keys. The FIRST
-seals and EVERY one unseals, which is what makes rotation prepend, deploy, drop:
-a cookie sealed with a key the deploy dropped is **anonymous**, never an error,
+seals and EVERY one unseals, which is what makes rotation append, promote,
+drop — three rollouts (`old,new`, then `new,old`, then `new`), because a
+rolling update serves old and new pods side by side and a key must be
+unsealable everywhere before any pod seals with it. A cookie sealed with a key
+the last rollout dropped is **anonymous**, never an error,
 because a browser holding a stale cookie is a browser that logs in again and not
 a failed request.
 
@@ -1344,6 +1351,24 @@ transport's hands.
   ingress or gateway is where a request count is counted once. An application
   that wants one anyway writes a plugin and passes it through `plugins` —
   which is the escape hatch doing its job, not a gap.
+- **Static files and an SPA fallback are a stated non-goal** (#161). The
+  ingress or a CDN serves assets: thesis #1 already puts an ingress in front of
+  every `api` deployment, and one that routes `/assets` to a bucket and `/rpc`
+  to the pod serves immutable files with caching, compression and range
+  requests no Node process here should re-implement. Fragments removed the
+  case that would have forced the question — there is no SPA to fall back to,
+  and an htmx application's asset set is htmx plus a stylesheet, which a CDN
+  serves better than Node and a layout can simply vendor. If it ever ships, it
+  is one more answerer on the `HttpHandler` set, not an oRPC plugin and not an
+  option on `http()`.
+  **The CSP for an HTML response is the deployment's**, and stays so:
+  `securityHeaders` sets no `content-security-policy` because a policy right
+  for an RPC endpoint is a live constraint on a page — htmx's `hx-*`
+  attributes and any inline `<script>` meet it at once — so a deployment that
+  serves fragments passes a `securityHeaders` record carrying its own policy
+  AND the three defaults: a record replaces `DEFAULT_SECURITY_HEADERS`
+  verbatim, and that constant is not exported, so the reference page's sample
+  restates the three headers.
 - **A procedure with no mark on it or above it is public, and nothing fails if the marker is
   forgotten.** `@btravstack/contract`'s marker makes the requirement
   **legible** in the contract and makes the principal's type reach the

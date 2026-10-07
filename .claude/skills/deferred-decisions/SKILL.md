@@ -1,6 +1,6 @@
 ---
 name: deferred-decisions
-description: Decisions this repository deliberately deferred, declined or has already closed. Read BEFORE proposing a feature, a package, a lint rule or a gate that sounds new — it may be a settled "no", or already shipped. Covers container reaping, the currentUnit() lint rule, traces/metrics in observability, the doc-samples gate, the one-process dev runner, HTML-means-fragments, transport package naming, the one leaf shape, filtering on a cursor page (declined), and sorting on a cursor page (shipped).
+description: Decisions this repository deliberately deferred, declined or has already closed. Read BEFORE proposing a feature, a package, a lint rule or a gate that sounds new — it may be a settled "no", or already shipped. Covers container reaping, the currentUnit() lint rule, traces/metrics in observability, the doc-samples gate, the one-process dev runner, HTML-means-fragments, transport package naming, the one leaf shape, filtering on a cursor page (declined), sorting on a cursor page (shipped), static files and an SPA fallback (declined), server push over SSE and WebSocket (declined), views and i18n (the application's), config profiles, file layering, secrets and refresh (the platform's), introspection — the route list, a graph dump, a REPL — scaffolding and slice generators (declined), and declared-versus-reachable authenticators.
 ---
 
 # Deferred, deliberately
@@ -92,8 +92,19 @@ dependencies by name`; a positional array is refused as
   an SPA fallback, and JSX/SSR with a component model. `htmx()` is the second
   — the one closest to a procedure and hardest to tell apart from one, which
   is why it sharpened the second-answerer question rather than dodging it. The
-  first and fourth are #166's rendering layer; the third is #161, and its own
-  counter-argument (that it may still be the ingress's job) stands.
+  first and fourth are **the application's** (#166), with i18n beside them:
+  each is a library choice with no wiring problem underneath, and choosing one
+  would put an untyped template body or a second escaping model in the
+  framework. Mail stays string-in for the same reason —
+  `docs/how-to/send-a-formatted-email.md` is the pattern, and the position is
+  the root `AGENTS.md`'s, thesis #1. The third is **declined**
+  (#161): the ingress or a CDN serves assets, and with no SPA left the asset
+  set is htmx plus a stylesheet. The narrower option — a minimal asset
+  route so `pnpm dev` needs no ingress — was the development loop's argument,
+  not production's, and two files a layout can link from a CDN or vendor
+  inline do not carry it. The reasoning, and the CSP that stays
+  the deployment's, is in `packages/http-server/AGENTS.md`'s cross-cutting
+  section.
 - **Each transport package is named for the HALF it implements, and the
   other half's name is reserved.** `http-server`, `temporal-worker` and
   `amqp-worker` — not `http`, `temporal`, `amqp`, which claimed a whole
@@ -189,3 +200,55 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   refused with `reason: "sort-mismatch"`, told apart from an unreadable
   cursor's `"malformed"`. The full position is
   `packages/contract/AGENTS.md`'s.
+
+- **Server push is answering's, over SSE; WebSocket is declined for now**
+  (issue #162). SSE already ships and drains (#137), so the role map stays
+  three roles. An upgrade path would be a second protocol on a connection that
+  is no longer a request, and a push runtime would be the fourth runtime the
+  map refuses by default. Fan-out across replicas is an application pattern —
+  a broker subscription per replica feeding that process's streams — not a
+  shared connection registry, which would be N registries. The trigger that
+  would reopen it is a client-to-server stream a request cannot carry. The
+  position is the root `AGENTS.md`'s, thesis #1.
+
+- **Configuration profiles, file layering, a secrets provider and live
+  refresh are declined** (issue #167): the process reads its environment once
+  at boot, and the four around it are the platform's — an overlay per
+  environment, `node --env-file`, a secret store synced into a Kubernetes
+  Secret, and a rolling restart that drains. The reasons are
+  `packages/config/AGENTS.md`'s; the Kubernetes shape is
+  `docs/how-to/configure-a-kubernetes-deployment.md`. A trigger would be a
+  value that must change faster than a rollout can replace a pod.
+
+- **Introspection: the route list ships as a recipe; a graph dump and a REPL
+  are declined** (issue #168). The route list is a few lines over
+  `openApiDocument` — the composed contract is what a modulith serves, and the
+  document is already that list in a standard format — with the htmx and
+  login routes read off the composition root, since they live outside the
+  contract (`docs/how-to/list-what-a-process-serves.md`). A graph dump would
+  print a graph the type checker already accepted: a missing provider or a
+  forgotten slice import is a compile error at the root naming the port, and
+  what does reach runtime is a `WiringDefect` naming it. A REPL against a
+  booted application is a test booting the real root. The trigger would be a
+  wiring failure that reaches runtime without naming its port.
+
+- **No resident CLI and no per-slice generator** (issue #59). A slice is
+  byte-shaped the same on all three transports — one transport file minting a
+  piece from `(contract, key)` and one `module.ts` — so the sibling directory
+  is the template (`docs/how-to/add-a-slice.md`). The two arguments for a
+  generator are gone: the wiring mistake it was to prevent (a slice on disk
+  the root forgot to import) is already a compile error naming the port, and
+  the edit no template collapses — the contract key lives in another package —
+  is the source of truth staying where a client can take it. A `turbo gen`
+  config would cost a commitment to turborepo as the blessed project shape,
+  which was not made. A one-shot new-app initialiser (`npm create btravstack`)
+  is untouched by any of this and would be its own issue if wanted.
+
+- **A router carries the DECLARED authenticators, not the reachable ones**
+  (issue #288). Narrowing a root's `Needs` to the schemes its composed pieces
+  actually name was declined for stability: a contract gaining a marker never
+  silently changes a root's requirements, and the compile error stays at the
+  root composing what `defineHttp` declared. The cost — a router-only root
+  provides `sessionCodec()` for a scheme it never reaches — is accepted and
+  stated in `packages/http-server/AUTH.md`. The trigger would be a deployment
+  that cannot satisfy a declared scheme's needs at all.
