@@ -1,9 +1,0 @@
-# Codex reads AGENTS.md files up to `project_doc_max_bytes` IN TOTAL across the
-# whole root-to-cwd chain (32 KiB by default), truncating the file that crosses
-# it and skipping every one after. This repository's specs are larger than that:
-# the root AGENTS.md alone is past it, so by default a Codex session would hold a
-# truncated root spec and no package spec at all. The longest chain, the root plus
-# packages/http-server, is under this budget with room to grow. A project config
-# applies only to a checkout the user has marked trusted; the root AGENTS.md says
-# what to do when it is not.
-project_doc_max_bytes = 262144

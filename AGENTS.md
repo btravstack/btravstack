@@ -1,21 +1,15 @@
 # AGENTS.md
 
 This file provides guidance to any coding agent working in this repository.
-Every `CLAUDE.md` is a **symlink** to the `AGENTS.md` beside it, so Claude Code
-reads the same file every other agent does and there is no copy to drift. Not
-an `@AGENTS.md` import: Claude Code expands an import only in the launch
-directory's own `CLAUDE.md`, never in an ancestor's (anthropics/claude-code#78697,
-reproduced on 2.1.291), so a session started inside a package would silently
-lose this file. It is the authoritative spec — the rules _and_ the reasoning
-behind them. Keep it in sync with the code as the package evolves (describe
-what _is_, not what was planned).
+`AGENTS.md` files and shared skills under `.agents/skills/` are the
+provider-neutral source of guidance. This is the authoritative spec — the
+rules _and_ the reasoning behind them. Keep it in sync with the code as the
+package evolves (describe what _is_, not what was planned).
 
 **If your instructions stop before the last section, _Deferred, deliberately_,
 read this file in full — and the `AGENTS.md` of the package you are working in
 — before changing anything.** The specs are longer than some agents load by
-default. Codex reads a fixed budget of `AGENTS.md` across the whole chain and
-drops the rest silently; `.codex/config.toml` raises that budget, but only for a
-checkout marked trusted.
+default, so verify that both files have been read completely.
 
 ## What this is
 
@@ -1364,7 +1358,7 @@ And a seventh, about the infrastructure a suite runs against:
 The register of what this repository has declined, deferred or already closed —
 container reaping, the `currentUnit()` lint rule, traces and metrics in
 `@btravstack/observability`, the doc-samples gate — is the
-`deferred-decisions` skill (`.claude/skills/deferred-decisions/SKILL.md`). It
+`deferred-decisions` skill (`.agents/skills/deferred-decisions/SKILL.md`). It
 loads on invocation rather than in every session, because it is read when a
 feature is being PROPOSED, not while code is being written. Read it before
 proposing a feature, a package, a lint rule or a gate that sounds new: a
