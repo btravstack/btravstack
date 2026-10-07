@@ -142,16 +142,29 @@ the old repository.
 - **`scripts/check-export-coverage.ts` refuses an export nothing imports.**
   Every name a published entry point exports must be imported by an example,
   a compiled doc sample, a spec or a sibling package, or — for anything with a
-  type side — be named in a type position of the published source. The rules
-  and why each one counts are the script's header; an export that stays
-  without a consumer goes in its `allowed` record with a reason, and an entry
-  whose reason stopped holding fails the run too.
+  type side — be what a type position of the published source resolves to.
+  The rules and why each one counts are the script's header; an export that
+  stays without a consumer goes in its `allowed` record with a reason, and an
+  entry whose reason stopped holding fails the run too.
 
-  **It reads imports, not words.** A word match would count `start` in every
-  sentence, so a fence that USES a name its page prelude imports is reached
-  through the prelude, which is why preludes are read alongside fences.
-  Regression-proved: appending an unused `export const` to
-  `packages/cache/src/index.ts` fails the docs build naming it.
+  **It reads imports, not words, and resolves symbols, not names.** A word
+  match would count `start` in every sentence, so a fence that USES a name its
+  page prelude imports is reached through the prelude, which is why preludes
+  are read alongside fences. A type position is resolved by the TypeScript
+  checker, because a private `Options` elsewhere in a package says nothing
+  about an exported one. The built declarations cannot stand in: they rename
+  a collision (`UnitNeedsOf$1`) but also split types across chunks behind
+  mangled aliases (`Cache as t`).
+
+  **A sample counts only if `extract-doc-samples.ts` compiles it** — its page
+  set and its markers are mirrored, so a `skip`-marked fence, a `tsx` fence
+  and the uncompiled `docs/entity/` guide credit nothing.
+
+  Regression-proved three ways: an unused `export const` appended to
+  `packages/cache/src/index.ts` fails the build naming it; so does an unused
+  exported `Probe` type beside a private `type Probe` the package references;
+  and so does one imported only by a `skip`-marked fence, which passes once
+  the marker is removed.
 
 - Pages carry frontmatter `title` and `description`, open with the quadrant
   blockquote (`> **How-to.** …`), and link root-relative (`/reference/core/start`).

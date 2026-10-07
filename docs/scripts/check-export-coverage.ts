@@ -12,8 +12,8 @@
 //   file of ANOTHER published package — a starter importing the kernel's
 //   `noObserverMember` is a cross-package contract its own specs exercise;
 // - a relative import in the package's own specs, which is how they reach it;
-// - for anything with a type side, being named in a type position anywhere in
-//   the published source. That export is part of some signature, and exists so
+// - for anything with a type side, being what a type position anywhere in the
+//   published source resolves to. That export is part of some signature, and exists so
 //   a consumer can SPELL what it already receives — an options record built
 //   apart from its call, an error class in an `Err` union. Without it a
 //   consumer's declaration emit fails with TS4023 on the first binding it
@@ -109,22 +109,57 @@ const importsOf = (name: string, text: string): readonly (readonly [string, stri
       : [];
   });
 
-/** Every name the module mentions in a type position. */
-const typeNamesOf = (name: string, text: string): readonly string[] => {
-  const names: string[] = [];
+/**
+ * The entry exports some type position of the package's published source
+ * resolves to. Resolved by the checker, never by name: a private `Options`
+ * elsewhere in the package says nothing about an exported `Options`, and the
+ * bundled declarations cannot stand in — they rename a collision (`Options$1`)
+ * but also split types across chunks behind mangled aliases (`Cache as t`).
+ */
+const carriedBy = (dir: string, entries: readonly string[]): ReadonlySet<string> => {
+  const config = ts.getParsedCommandLineOfConfigFile(
+    join(root, dir, "tsconfig.json"),
+    {},
+    {
+      ...ts.sys,
+      onUnRecoverableConfigFileDiagnostic: () => {},
+    },
+  );
+  const sources = (config?.fileNames ?? []).filter((file) => !isTest(file));
+  const program = ts.createProgram(sources, config?.options ?? {});
+  const checker = program.getTypeChecker();
+  const resolve = (symbol: ts.Symbol): ts.Symbol =>
+    symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+
+  const named = new Set<ts.Symbol>();
   const visit = (node: ts.Node): void => {
-    if (ts.isTypeReferenceNode(node)) {
-      const head = ts.isIdentifier(node.typeName) ? node.typeName : node.typeName.left;
-      if (ts.isIdentifier(head)) names.push(head.text);
-    }
-    if (ts.isTypeQueryNode(node) && ts.isIdentifier(node.exprName)) names.push(node.exprName.text);
-    if (ts.isExpressionWithTypeArguments(node) && ts.isIdentifier(node.expression)) {
-      names.push(node.expression.text);
-    }
+    const at = ts.isTypeReferenceNode(node)
+      ? node.typeName
+      : ts.isTypeQueryNode(node)
+        ? node.exprName
+        : ts.isExpressionWithTypeArguments(node)
+          ? node.expression
+          : undefined;
+    const symbol = at === undefined ? undefined : checker.getSymbolAtLocation(at);
+    if (symbol !== undefined) named.add(resolve(symbol));
     ts.forEachChild(node, visit);
   };
-  visit(parse(name, text));
-  return names;
+  for (const file of program.getSourceFiles()) {
+    if (sources.includes(file.fileName)) visit(file);
+  }
+
+  return new Set(
+    entries.flatMap((entry) => {
+      const file = program.getSourceFile(join(root, entry));
+      const module = file === undefined ? undefined : checker.getSymbolAtLocation(file);
+      return module === undefined
+        ? []
+        : checker
+            .getExportsOfModule(module)
+            .filter((symbol) => named.has(resolve(symbol)))
+            .map(({ name }) => name);
+    }),
+  );
 };
 
 const referenced = new Set<string>();
@@ -144,38 +179,64 @@ const record = (file: string, text: string): void => {
 
 for (const file of files(["examples/**/*.ts", "packages/*/src/**/*.ts"])) record(file, read(file));
 
-let samples = 0;
-const pages = files([
-  "README.md",
-  "docs/**/*.md",
-  "packages/*/README.md",
-  "examples/**/README.md",
-]).filter((file) => !file.startsWith("docs/api/"));
-for (const page of pages) {
-  const text = read(page);
-  const preludes: string[] = [];
+// The pages and the markers are `extract-doc-samples.ts`'s, mirrored: a sample
+// is credited only if that script compiles it, so a `skip`-marked fence, a
+// `tsx` fence (refused there unless skipped) and a page it never reads credit
+// nothing.
+const SKIP = /^<!--\s*doctest:\s*skip\s*[—–-]\s*.+?\s*-->$/;
+const OTHER_MARKER =
+  /^<!--\s*doctest:\s*((defer)(\s*[—–-].*)?|isolate(\s*[—–-].*)?|signature=\S+|group=[a-z-]+)\s*-->$/;
+
+/** The TypeScript `extract-doc-samples.ts` compiles out of one page. */
+const samplesOf = (text: string): readonly string[] => {
   const lines = text.split("\n");
+  const samples: string[] = [];
+  let skipped = false;
   for (let i = 0; i < lines.length; i += 1) {
-    if (!/^<!--\s*doctest:\s*(?:prelude|isolate)\s*$/.test(lines[i]!.trim())) continue;
-    const block: string[] = [];
-    for (i += 1; i < lines.length && lines[i]!.trim() !== "-->"; i += 1) block.push(lines[i]!);
-    preludes.push(block.join("\n"));
+    const line = lines[i]!.trim();
+    if (line === "<!-- doctest: prelude" || /^<!--\s*doctest:\s*isolate\s*$/.test(line)) {
+      const block: string[] = [];
+      for (i += 1; i < lines.length && lines[i]!.trim() !== "-->"; i += 1) block.push(lines[i]!);
+      samples.push(block.join("\n"));
+      skipped = false;
+      continue;
+    }
+    if (SKIP.test(line)) {
+      skipped = true;
+      continue;
+    }
+    if (OTHER_MARKER.test(line)) {
+      skipped = false;
+      continue;
+    }
+    if (lines[i] !== "```ts" && lines[i] !== "```tsx") {
+      if (line !== "") skipped = false;
+      continue;
+    }
+    const compiled = lines[i] === "```ts" && !skipped;
+    const body: string[] = [];
+    for (i += 1; i < lines.length && lines[i] !== "```"; i += 1) body.push(lines[i]!);
+    if (compiled) samples.push(body.join("\n"));
+    skipped = false;
   }
-  for (const body of [
-    ...[...text.matchAll(/^```(?:ts|typescript)\b[^\n]*\n([\s\S]*?)^```/gm)].map(([, b]) => b!),
-    ...preludes,
-  ]) {
+  return samples;
+};
+
+let samples = 0;
+for (const page of files([
+  "docs/{tutorial,how-to,reference,explanation,examples}/**/*.md",
+  "docs/index.md",
+  "README.md",
+  "packages/*/README.md",
+])) {
+  for (const body of samplesOf(read(page))) {
     samples += 1;
     record(page, body);
   }
 }
 
 const exported = packages.flatMap(({ name, dir, entries }) => {
-  const carried = new Set(
-    files([`${dir}/src/**/*.ts`])
-      .filter((file) => !isTest(file))
-      .flatMap((file) => typeNamesOf(file, read(file))),
-  );
+  const carried = carriedBy(dir, entries);
   return [...new Set(entries.flatMap(exportsOf))].map((symbol) => {
     const key = `${name}:${symbol}`;
     if (carried.has(symbol)) referenced.add(key);
