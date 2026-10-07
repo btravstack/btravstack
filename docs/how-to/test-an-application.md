@@ -11,7 +11,7 @@ import { observability, type Line } from "@btravstack/observability";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { expect, test } from "vitest";
 import type {  } from "@unthrown/vitest";
-import { OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
+import { OrderRepository, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderApi, orderRouter } from "../../module.js";
 import { RequestModule } from "../../request-scope.js";
 import { CustomersSlice } from "../../slices/customers/module.js";

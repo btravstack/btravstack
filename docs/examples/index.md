@@ -140,8 +140,9 @@ against a worker that keeps its own clock.
 
 ### [Order AMQP worker](/examples/order-amqp-worker)
 
-`AmqpHandlers` and `AmqpModule`; the outbox relay as a resourceful provider
-with its own `RelayConfig` and a modeled `BrokerUnreachable`; a tombstone
+`AmqpHandlers` and `AmqpModule`; the outbox relayed by
+[`@btravstack/outbox`](/reference/outbox) through a publisher of the
+deployment's own contract, with a modeled `BrokerUnreachable`; a tombstone
 behind every cancellation; a foreign queue receiving the same event; and a
 real RabbitMQ container per run.
 

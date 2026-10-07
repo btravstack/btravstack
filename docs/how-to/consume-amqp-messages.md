@@ -41,33 +41,14 @@ A record covers **every** consumer and rpc the contract declares —
 the one `orderChanged` event on their own queue:
 
 <!-- doctest: prelude
-import { Config } from "@btravstack/config";
-import { AmqpConfig } from "@btravstack/amqp-worker";
-import { Provider, type ServiceOf } from "@btravstack/di";
-import { Outbox, PlaceOrder, Tenant } from "@btravstack/example-order-application";
-import { TenantId } from "@btravstack/example-order-domain";
-import type { AsyncResult } from "unthrown";
+import { PlaceOrder, Tenant } from "@btravstack/example-order-application";
 import { otel } from "@btravstack/observability/otel";
-import { OutboxRelay } from "../../outbox-relay.js";
-
-// The two module-private helpers the outbox-relay excerpt leans on — the
-// page shows the provider, not the whole file.
-declare const tenantsOf: (value: string) => readonly TenantId[];
-declare const startOutboxRelay: (
-  outbox: ServiceOf<Outbox>,
-  logger: ServiceOf<Logger>,
-  meter: ServiceOf<Meter>,
-  options: { url: string; pollMs: number; tenants: readonly TenantId[] },
-) => AsyncResult<ServiceOf<OutboxRelay>, RetryableError>;
-import { currentUnit, Meter, Logger } from "@btravstack/core";
+import { currentUnit, Logger } from "@btravstack/core";
 import { RetryableError } from "@amqp-contract/worker";
 import { ErrAsync } from "unthrown";
-import type { AnyProvider } from "@btravstack/di";
-
-// The relay's own two providers, built on /how-to/publish-a-message — this
-// page composes them and does not restate them.
-declare const relayConfig: AnyProvider;
-declare const outboxRelay: AnyProvider;
+// The publishing half's two providers, built on /how-to/publish-a-message —
+// this page composes them and does not restate them.
+import { orderAmqpClient, orderPublisher } from "../../outbox-publisher.js";
 -->
 
 ```ts
@@ -185,20 +166,18 @@ retries), not the same number Temporal's `maximumAttempts: 3` names.
 
 ```ts
 import { AmqpMessage, AmqpModule } from "@btravstack/amqp-worker";
-import { Env } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
-import { Outbox, Tenant } from "@btravstack/example-order-application";
+import { Tenant } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
 import {
   OrderDatabase,
   OrderPersistenceModule,
 } from "@btravstack/example-order-infrastructure";
 import { observability } from "@btravstack/observability";
+import { OutboxStore, outbox } from "@btravstack/outbox";
 
 import { orderHandlers } from "./handlers.js";
-// The relay's providers — see [Publish a message](/how-to/publish-a-message).
-import { outboxRelay, relayConfig } from "./outbox-relay.js";
 
 // Forked per delivery and seeded with the validated message, so the envelope's
 // own `tenantId` is claimed once rather than at every handler.
@@ -214,22 +193,21 @@ export const MessageUnitModule = Module("MessageUnit")({
 });
 
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
-  needs: [Env],
   contract: orderContract,
   handlers: orderHandlers,
-  // otel() supplies the `Meter` the relay counts through, beside the
-  // `Logger` observability() does.
-  imports: [OrderPersistenceModule, observability(), otel()],
-  provides: [relayConfig, outboxRelay],
+  // outbox() relays what the writes committed, through the publisher below —
+  // see [Publish a message](/how-to/publish-a-message).
+  imports: [OrderPersistenceModule, observability(), otel(), outbox()],
+  provides: [orderAmqpClient, orderPublisher],
   unit: { message: MessageUnitModule },
-  exports: [Outbox, OrderDatabase, Logger],
+  exports: [OutboxStore, OrderDatabase, Logger],
 });
 ```
 
 `AmqpModule` is `Module(name)({...})` plus `contract` and `handlers`: it
 imports `amqp({ contract })`, provides the handlers and exports
 `AmqpRuntime`. [`observability()`](/reference/observability) is the other
-starter in that list — the `Logger` the handlers and the relay write to, bound
+starter in that list — the `Logger` the handlers write to, bound
 from `LOG_LEVEL`, JSON per line on stdout, every line carrying the delivery's
 own unit. The record is checked against the contract at
 `AmqpHandlers(contract)(…)` — a record missing a consumer, or naming one the
@@ -347,10 +325,12 @@ is the exception, and read the report from `kubectl logs --previous`.
 ## The publishing half
 
 A producer is not a runtime — a graph holds exactly one of those, and this
-process's is the consumer. The example's relay is an ordinary resourceful
-provider that sweeps an outbox table and publishes what committed, started as
-the graph builds and stopped when the application scope closes. That half has a
-page of its own: [Publish a message](/how-to/publish-a-message).
+process's is the consumer. The example's relay is
+[`@btravstack/outbox`](/reference/outbox)'s `outbox()`, a resourceful provider
+that claims what committed in the outbox table and publishes it through the
+deployment's own `OutboxPublisher`, started as the graph builds and stopped
+when the application scope closes. That half has a page of its own:
+[Publish a message](/how-to/publish-a-message).
 
 ## See also
 
@@ -359,4 +339,4 @@ page of its own: [Publish a message](/how-to/publish-a-message).
   consumers, one handler per consumer, composed at the root.
 - [Order AMQP worker](/examples/order-amqp-worker) — the outbox pattern end to end, against a real RabbitMQ.
 - [Manage a resource's lifetime](/how-to/manage-a-resource) — `acquire`/`release`, as the relay uses it.
-- [Configure from the environment](/how-to/configure-from-the-environment) — `AMQP_URL` and `OUTBOX_POLL_MS`.
+- [Configure from the environment](/how-to/configure-from-the-environment) — `AMQP_URL`, `OUTBOX_TENANTS` and `OUTBOX_POLL_MS`.

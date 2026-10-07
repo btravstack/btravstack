@@ -105,7 +105,7 @@ describe("the tenant_isolation policy on Order", () => {
         expect.objectContaining({
           kind: "order",
           subjectId: "0199a1e0-0000-7000-8000-000000000606",
-          payload: { quantity: 3 },
+          payload: JSON.stringify({ quantity: 3 }),
         }),
       ],
     });

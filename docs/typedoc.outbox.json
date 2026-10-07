@@ -1,0 +1,7 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/outbox",
+  "entryPoints": ["../packages/outbox/src/index.ts", "../packages/outbox/src/prisma.ts"],
+  "tsconfig": "../packages/outbox/tsconfig.json",
+  "out": "api/outbox"
+}

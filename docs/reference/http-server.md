@@ -885,7 +885,7 @@ the node does not declare, or a handler whose input or output has drifted, is
 a compile error inside the piece. There is no name to give: the path **is**
 the port's name, minted as `` `OrpcController:${path}` `` — the same move
 `AmqpHandler(contract, key)` makes — and carried back on `provider.port`, the
-shape `Config.provider("RelayConfig")(schema)` already uses, so a slice's
+shape `Config.provider(name)(schema)` has too, so a slice's
 module exports `controller.port` rather than naming a port of its own:
 
 <!-- doctest: defer -->

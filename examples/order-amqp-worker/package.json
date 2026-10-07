@@ -28,6 +28,7 @@
     "@btravstack/example-order-infrastructure": "workspace:*",
     "@btravstack/mailer": "workspace:*",
     "@btravstack/observability": "workspace:*",
+    "@btravstack/outbox": "workspace:*",
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/sdk-node": "catalog:",
     "unthrown": "catalog:"

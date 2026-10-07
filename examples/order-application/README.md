@@ -5,7 +5,7 @@ rules into operations — "place an order", "find an order" — and declares, as
 `@btravstack/di` ports, what it needs the outside world to supply.
 
 ```text
-src/ports.ts          Tenant, OrderRepository, CustomerRepository, Outbox, StockService, ShippingService, PaymentService, PlaceOrder, FindOrder, FindCustomer
+src/ports.ts          Tenant, OrderRepository, CustomerRepository, StockService, ShippingService, PaymentService, PlaceOrder, FindOrder, FindCustomer
 src/use-cases.ts      the interactors, and their providers
 src/module.ts         OrderApplicationModule, CustomerApplicationModule, tenantOf
 src/__tests__/test-fixtures.ts  the stub repositories and the per-tenant scope, as Vitest fixtures

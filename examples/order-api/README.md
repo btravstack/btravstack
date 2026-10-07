@@ -187,7 +187,7 @@ and `CustomerPersistenceModule` — because its procedures are unmarked: they
 open an anonymous unit, which has no principal to take a tenant from, so the
 tenant arrives on the input and the repository stays in the application scope.
 That asymmetry is the tenancy showing through the composition, and it is why
-the root also imports `OrderPersistenceModule`: the outbox and the one Prisma
+the root also imports `OrderPersistenceModule`: the outbox store and the one Prisma
 client live there, and the per-request repository is built over that client
 rather than a client of its own.
 `exports` takes the provider itself, not `ordersController.port`:

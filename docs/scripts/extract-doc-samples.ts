@@ -25,7 +25,7 @@
 // An isolate marker may span lines; everything after `isolate` is that
 // fence's PRIVATE prelude. Because the generated module lives inside the
 // target workspace's `src/`, a prelude can import the REAL artifact a page
-// shows elsewhere — `import { relayConfig } from "../../outbox-relay.js";` —
+// shows elsewhere — `import { orderPublisher } from "../../outbox-publisher.js";` —
 // which is perfectly-typed context with no hand-written stub.
 //
 // And the Rust-doctest hidden-line analog, because the fences are NARRATIVE

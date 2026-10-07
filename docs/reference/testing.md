@@ -186,19 +186,19 @@ outbox it reads back, on a root composed to record what its logger wrote:
 ```ts
 const lines: Line[] = [];
 const recording = AmqpModule("RecordingAmqpWorker")({
-  needs: [Env],
   contract: orderContract,
   handlers: orderHandlers,
   imports: [
     OrderApplicationModule,
     OrderPersistenceModule,
     observability({ sink: (line) => lines.push(line) }),
+    outbox(),
   ],
-  provides: [relayConfig, outboxRelay],
-  exports: [PlaceOrder, OrderRepository, Outbox],
+  provides: [orderAmqpClient, orderPublisher],
+  exports: [PlaceOrder, OrderRepository, OutboxStore],
 });
 
-const tap = tapped(recording, [PlaceOrder, OrderRepository, Outbox]);
+const tap = tapped(recording, [PlaceOrder, OrderRepository, OutboxStore]);
 const app = await serve(tap.module);
 const [placeOrder, repository, outbox] = tap.services();
 ```

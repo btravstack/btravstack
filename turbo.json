@@ -36,6 +36,7 @@
         "@btravstack/http-server#build",
         "@btravstack/mailer#build",
         "@btravstack/observability#build",
+        "@btravstack/outbox#build",
         "@btravstack/prisma#build",
         "@btravstack/storage#build",
         "@btravstack/temporal-worker#build",
@@ -71,6 +72,7 @@
         "@btravstack/mailer#build",
         "@btravstack/storage#build",
         "@btravstack/prisma#build",
+        "@btravstack/outbox#build",
         "@btravstack/http-server#build",
         "@btravstack/temporal-worker#build",
         "@btravstack/amqp-worker#build"

@@ -1,33 +1,24 @@
 ---
 title: Order AMQP worker example
-description: The broadcast deployment — two subscriber slices composed by AmqpHandlers over the order contract, a transactional outbox relayed onto RabbitMQ by a resourceful provider with its own RelayConfig and a modeled BrokerUnreachable, a tombstone behind every cancellation, and a real broker container per run.
+description: The broadcast deployment — two subscriber slices composed by AmqpHandlers over the order contract, a transactional outbox relayed onto RabbitMQ by @btravstack/outbox through a publisher of the deployment's own contract with a modeled BrokerUnreachable, a tombstone behind every cancellation, and a real broker container per run.
 ---
 
 <!-- doctest: prelude
+import { TypedAmqpClient } from "@amqp-contract/client";
 import { AmqpConfig, AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp-worker";
 import { RetryableError } from "@amqp-contract/worker";
-import { Config, Env } from "@btravstack/config";
-import { currentUnit, Logger, Meter, Tracer } from "@btravstack/core";
-import { Provider, type ServiceOf } from "@btravstack/di";
+import { currentUnit, Logger, Tracer } from "@btravstack/core";
+import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
-import { ErrAsync, OkAsync, TaggedError } from "unthrown";
-import { TenantId } from "@btravstack/example-order-domain";
-import { Outbox } from "@btravstack/example-order-application";
+import { OutboxPublisher, OutboxStore, outbox } from "@btravstack/outbox";
+import { ErrAsync, OkAsync, P, TaggedError } from "unthrown";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { MessageUnitModule } from "../../message-unit.js";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
-import { OutboxRelay } from "../../outbox-relay.js";
 import { orderAudit } from "../../slices/audit/handler.js";
 import { AuditSlice } from "../../slices/audit/module.js";
 import { NotificationsSlice } from "../../slices/notifications/module.js";
-declare const startOutboxRelay: (
-  outbox: ServiceOf<Outbox>,
-  logger: ServiceOf<Logger>,
-  meter: ServiceOf<Meter>,
-  options: { url: string; pollMs: number; tenants: readonly TenantId[] },
-) => AsyncResult<ServiceOf<OutboxRelay>, BrokerUnreachable>;
-import type { AsyncResult } from "unthrown";
 -->
 
 # Order AMQP worker
@@ -56,8 +47,10 @@ writes a **tombstone** — an event with a `null` payload — the same way. Ther
 is no "publish after save" to forget and no window where the order exists but
 the fact of it is lost.
 
-**The relay** is `outbox-relay.ts`: sweep the outbox in commit order, publish
-each row to the `orders` exchange, mark what the broker confirmed.
+**The relay** is [`@btravstack/outbox`](/reference/outbox)'s `outbox()`: claim
+each tenant's pending rows, publish them in commit order through the
+deployment's own `OutboxPublisher`, mark what the broker confirmed. The one
+file this deployment writes for it is `outbox-publisher.ts`.
 
 **The two subscribers** are one plain function each, on the contract's
 `order-notifications` and `order-audit` queues — deliberately the least
@@ -158,50 +151,17 @@ signal through and the ambient record is the only route to it. Answering a
 the next worker rather than this one finishing work nobody is waiting for.
 See [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit).
 
-## The relay: a resourceful provider with its own config
+## The relay: the package's, and the one half it cannot own
 
-The relay's one piece of configuration is a slice of this deployment's own,
-so `Config.provider("RelayConfig")` mints the port and nothing else ever
-names it:
+The loop, the claim and the table are [`@btravstack/outbox`](/reference/outbox)'s.
+`OrderPersistenceModule` provides its `OutboxStore` over this application's
+table — `prismaOutboxStore(db, { schema: "orders" })` — and `outbox()` reads
+`OUTBOX_TENANTS` and `OUTBOX_POLL_MS` itself. What publishing a row MEANS is
+the one thing the package cannot know, so it is this deployment's: a client of
+its own contract, and an `OutboxPublisher` over it.
 
-```ts
-export const relayConfig = Config.provider("RelayConfig")(
-  Config.object({
-    pollMs: Config.integer("OUTBOX_POLL_MS", {
-      min: 1,
-      max: 60_000,
-      default: 200,
-    }),
-    tenants: Config.string("OUTBOX_TENANTS"),
-  }),
-);
-```
-
-`OUTBOX_POLL_MS=0` is rejected — a relay that never sleeps is a busy loop —
-and so is anything above a minute; either is a `ConfigInvalid`, `startFailed`
-and exit `78`. `OUTBOX_TENANTS` has **no default**, deliberately: the relay
-runs outside any unit, so it cannot read a tenant off the ambient record the
-way every other adapter does, and "whatever is in the table" is how one
-deployment starts broadcasting another's facts. It is a comma-separated list,
-and `tenantsOf` is the one place this deployment claims the `TenantId` brand
-from configuration rather than from a contract:
-
-```ts
-const tenantsOf = (value: string): readonly TenantId[] =>
-  value
-    .split(",")
-    .map((tenant) => tenant.trim())
-    .filter((tenant) => tenant !== "")
-    .map(TenantId);
-```
-
-Naming the tenants is also how a relay is **sharded** — two deployments, half
-the list each, and neither can starve the other's backlog. The sweep then
-goes tenant by tenant, `outbox.pending(tenantId, BATCH)` at a time.
-
-A broker the relay cannot reach is modeled rather than left the
-defect `TypedAmqpClient.create` reports it as, because an operator can act on
-it:
+A broker the client cannot reach is modeled rather than left the defect
+`TypedAmqpClient.create` reports it as, because an operator can act on it:
 
 ```ts
 export class BrokerUnreachable extends TaggedError("BrokerUnreachable")<{
@@ -211,57 +171,94 @@ export class BrokerUnreachable extends TaggedError("BrokerUnreachable")<{
 ```
 
 so `runMain` exits `1`, a startup `Err`, not the `70` a defect earns. The
-relay itself is acquired as the graph builds and released when the
-application scope closes:
+client is a resourceful provider of its own, so the scope closing is what
+closes it:
 
 ```ts
-export const outboxRelay = Provider(OutboxRelay)({
-  inject: {
-    outbox: Outbox,
-    logger: Logger,
-    meter: Meter,
-    broker: AmqpConfig,
-    config: relayConfig.port,
-  },
-  acquire: ({
-    outbox,
-    logger,
-    meter,
-    broker: { url },
-    config: { pollMs, tenants },
-  }) =>
-    startOutboxRelay(outbox, logger, meter, {
-      url,
-      pollMs,
-      tenants: tenantsOf(tenants),
-    }),
-  release: (running) => running.stop().get(),
+class OrderAmqpClient extends Port("OrderAmqpClient")<
+  TypedAmqpClient<typeof orderContract>
+> {}
+
+export const orderAmqpClient = Provider(OrderAmqpClient)({
+  inject: { broker: AmqpConfig },
+  acquire: ({ broker: { url } }) =>
+    TypedAmqpClient.create({ contract: orderContract, urls: [url] }).mapErrCases(
+      (matcher) =>
+        matcher.with(
+          P.tag("@amqp-contract/ConnectionError"),
+          (cause) => new BrokerUnreachable({ url, cause }),
+        ),
+    ),
+  release: (client) => client.close().get(),
 });
 ```
 
-It depends on `AmqpConfig` — the broker `amqp()` bound — so the relay and the
-consumer read one `AMQP_URL`; it creates its own `TypedAmqpClient` because a
-transport connection is the transport's own, and it is not a second TCP
-connection either, since `@amqp-contract/core` pools by URL and
-reference-counts leases. Nothing resolves `OutboxRelay`, and nothing needs to:
-a resourceful provider exists to be started and stopped. The loop is
-**at-least-once** by design — a crash between publish and `markPublished`
-re-publishes on the next sweep — and it triages every outcome per event:
-published → mark; a `MessageValidationError` → left pending, logged; a
-`PublishError` (the broker down, nacking or closing the channel mid-flight) →
-left pending, a warning, retried next sweep; a defect (a failure the client
-could not classify) → left pending, logged.
+It depends on `AmqpConfig` — the broker `amqp()` bound — so the publisher and
+the consumer read one `AMQP_URL`; it is not a second TCP connection either,
+since `@amqp-contract/core` pools by URL and reference-counts leases. The
+publisher turns an outbox row into the contract's envelope:
+
+```ts
+export const orderPublisher = Provider(OutboxPublisher)({
+  inject: { client: OrderAmqpClient },
+  sync: ({ client }): ServiceOf<OutboxPublisher> => ({
+    publish: (message) =>
+      OkAsync()
+        .map(() =>
+          message.payload === null
+            ? null
+            : (JSON.parse(message.payload) as { readonly quantity: number }),
+        )
+        .flatMap((payload) =>
+          client.publish("orderChanged", {
+            eventId: message.id,
+            tenantId: message.tenantId,
+            kind: message.kind as "order",
+            id: message.subjectId,
+            occurredAt: message.occurredAt.toISOString(),
+            payload,
+          }),
+        ),
+  }),
+});
+```
+
+Any `Err` it answers — a `MessageValidationError`, a `PublishError` from a
+broker that is down or nacking — leaves the row pending, and the relay stops
+that tenant's batch there so a later fact never overtakes it, backs off and
+tries again. Every claim and publish is reported to `Observers`, so the
+`otel()` composed below counts and times them and writes the error line; a
+success writes nothing. A tenant falling behind — a message refused forever,
+say — turns the `outbox` component of `/healthz` unhealthy once its oldest
+pending row is older than `OUTBOX_MAX_LAG_MS`.
+
+The relay is **at-least-once**: a crash between a publish and its mark
+re-publishes on the next claim, as does a claiming session the database ends
+mid-batch. What it rules out is replicas racing for one table's rows: a tenant
+is held by one relay while its claiming session lives, under a
+transaction-scoped advisory lock, and skipped by the rest, so a tenant's
+committed facts go out in outbox
+order. Outbox order is not commit order, so a subject's order rests on its own
+row: `save` writes the outbox row after the insert and `remove` after the
+delete, and a second write about one order cannot take its id until the first
+has committed. A subscriber deduplicates a re-delivery on `eventId`, the outbox
+row's id.
+
+`OUTBOX_TENANTS` has **no default**, deliberately: the relay runs outside any
+unit, so there is no tenant to read off anything, and "whatever is in the
+table" is how one deployment starts broadcasting another's facts. Naming the
+tenants is also how relays are **sharded**.
 
 The ordering is worth stating: the relay starts **before** the consumer (as
 the graph builds) and stops **after** it (when the scope closes, not inside
-the runtime's `stop`). `drain` stays the consumer's alone — draining means
-"stop taking new work", and the relay's work is outbound.
+the runtime's `stop`), and before the client it publishes through, which di
+releases in reverse order of acquisition. `drain` stays the consumer's alone —
+draining means "stop taking new work", and the relay's work is outbound.
 
 ## The composition root, and the process
 
 ```ts
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
-  needs: [Env],
   contract: orderContract,
   handlers: orderHandlers,
   imports: [
@@ -270,29 +267,32 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     AuditSlice,
     observability(),
     otel(),
+    outbox(),
   ],
-  provides: [relayConfig, outboxRelay],
+  provides: [orderAmqpClient, orderPublisher],
   // The worker forks this once per delivery, after the message is validated —
   // which is where the envelope's `tenantId` becomes the fork's `Tenant`.
   unit: { message: MessageUnitModule },
-  // Everything the fork and the relay read out of the application scope.
-  exports: [Outbox, OrderDatabase, Logger, Tracer],
+  // Everything the fork reads out of the application scope, and the store a
+  // spec reads the outbox back through.
+  exports: [OutboxStore, OrderDatabase, Logger, Tracer],
 });
 ```
 
-The root is now a list of slices plus what no slice owns: the outbox the relay
-sweeps and the one Prisma client behind it (`OrderPersistenceModule` — the
-relay's own, not either subscriber's), the starter over `orderHandlers`,
+The root is now a list of slices plus what no slice owns: the outbox store and
+the one Prisma client behind it (`OrderPersistenceModule` — the relay's own,
+not either subscriber's), the starter over `orderHandlers`,
 [`observability()`](/reference/observability) for the `Logger` every
-subscriber and the relay write to — `LOG_LEVEL`, JSON per line on stdout,
-every consumer line correlated with the delivery's own unit — and both
-halves of the outbox pattern in one graph. `MessageUnitModule` is the
-per-delivery fork: it names `AmqpMessage(orderContract)` in its `needs`, which
-the worker seeds, and turns the envelope's `tenantId` into `Tenant` once, so
-both handlers read `context.unit.tenant` rather than the payload. The exports
-are what the fork and the relay read out of the application scope;
-`PlaceOrder` is not among them, because nothing at the root can build a
-tenant-bound repository. `main.ts` is `await runMain(OrderAmqpWorker);`.
+subscriber writes to — `LOG_LEVEL`, JSON per line on stdout, every consumer
+line correlated with the delivery's own unit — the relay, and the publisher it
+relays through: both halves of the outbox pattern in one graph.
+`MessageUnitModule` is the per-delivery fork: it names
+`AmqpMessage(orderContract)` in its `needs`, which the worker seeds, and turns
+the envelope's `tenantId` into `Tenant` once, so both handlers read
+`context.unit.tenant` rather than the payload. The exports are what the fork
+and the specs read out of the application scope; `PlaceOrder` is not among
+them, because nothing at the root can build a tenant-bound repository.
+`main.ts` is `await runMain(OrderAmqpWorker);`.
 
 ## Retry and dead-letter live in the contract
 
@@ -352,7 +352,7 @@ await use(async (module, options) => {
 Every app is stopped by `boot`'s teardown when the test ends. The `tapped`
 fixture composes the root's own shape — both slices imported, same as
 `OrderAmqpWorker` — with `observability({ sink })` and taps the services on
-top of it — `tapped(recording, [OrderDatabase, Logger, Outbox])`: the `writer`
+top of it — `tapped(recording, [OrderDatabase, Logger, OutboxStore])`: the `writer`
 fixture composes a per-tenant scope over that very client, so the rows the
 spec commits are the ones the relay sweeps, while neither
 subscriber's own lines need a tap at all — the sink hands them over as `Line`
@@ -398,7 +398,7 @@ const HandlerlessAmqp = Module("HandlerlessAmqp")({
     observability(),
     amqp({ contract: orderContract }),
   ],
-  exports: [AmqpRuntime, Outbox, Logger],
+  exports: [AmqpRuntime, OutboxStore, Logger],
 });
 
 // @ts-expect-error — the module's needs channel carries the handlers port, which nothing provides.

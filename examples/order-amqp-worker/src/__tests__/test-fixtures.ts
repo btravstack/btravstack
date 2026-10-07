@@ -7,13 +7,13 @@ import { Module, Provider, type Context, type Scope } from "@btravstack/di";
 import {
   OrderApplicationModule,
   OrderRepository,
-  Outbox,
   PlaceOrder,
   tenantOf,
 } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
 import { OrderDatabase, OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
 import { LoggerConfig, createLogger, type Line } from "@btravstack/observability";
+import { OutboxStore } from "@btravstack/outbox";
 import { bootFixture, overridden, tapped, type Boot } from "@btravstack/testing";
 import type { AsyncResult } from "unthrown";
 import { uuidv7 } from "uuidv7";
@@ -33,7 +33,7 @@ type ServeOptions = { readonly drainTimeoutMs: number };
  */
 type Serve = <E>(
   module: Module<
-    AmqpRuntime | Outbox | Logger | Tracer | InstanceType<typeof OrderDatabase>,
+    AmqpRuntime | OutboxStore | Logger | Tracer | InstanceType<typeof OrderDatabase>,
     E,
     Scope | Env
   >,
@@ -57,7 +57,7 @@ const tappedAmqp = () => {
       sync: ({ config }) => createLogger((line) => lines.push(line), config.level),
     }),
   ]);
-  const tap = tapped(recording, [OrderDatabase, Logger, Outbox]);
+  const tap = tapped(recording, [OrderDatabase, Logger, OutboxStore]);
   return {
     module: tap.module,
     lines: (): readonly Line[] => lines,

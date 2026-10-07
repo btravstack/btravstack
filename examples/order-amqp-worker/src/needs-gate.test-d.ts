@@ -30,9 +30,9 @@ import { Env } from "@btravstack/config";
 import { start, Logger } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
-import { Outbox } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { observability } from "@btravstack/observability";
+import { OutboxStore } from "@btravstack/outbox";
 import { OkAsync } from "unthrown";
 
 import { MessageUnitModule } from "./message-unit.js";
@@ -51,7 +51,7 @@ const _wired = start(OrderAmqpWorker, options);
 const RuntimelessAmqp = Module("RuntimelessAmqp")({
   needs: [Env],
   imports: [OrderPersistenceModule, observability()],
-  exports: [Outbox, Logger],
+  exports: [OutboxStore, Logger],
 });
 
 // Negative: the marker becomes the `NO RUNTIME — …` sentence, which the module
@@ -69,7 +69,7 @@ const _noRuntime = start(RuntimelessAmqp, options);
 // OWN providers read, and an import's needs travel published in its type.
 const HandlerlessAmqp = Module("HandlerlessAmqp")({
   imports: [OrderPersistenceModule, observability(), amqp({ contract: orderContract })],
-  exports: [AmqpRuntime, Outbox, Logger],
+  exports: [AmqpRuntime, OutboxStore, Logger],
 });
 
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides the handlers port.

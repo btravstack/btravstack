@@ -68,42 +68,6 @@ export class CustomerRepository extends Port("CustomerRepository")<{
 }> {}
 
 /**
- * One event awaiting broadcast — the envelope every subscriber reads.
- *
- * The tenant travels ON the envelope rather than being read from an ambient
- * record, because the relay sweeps across tenants from outside any unit. A
- * **null payload is the tombstone**: the last word about a subject. That is the
- * whole vocabulary a reader needs to rebuild state, and it is why `id`, the
- * outbox sequence, is the order the relay must publish in.
- */
-export type OrderEvent = {
-  readonly id: number;
-  readonly tenantId: TenantId;
-  readonly kind: "order";
-  readonly subjectId: string;
-  readonly occurredAt: Date;
-  readonly payload: { readonly quantity: number } | null;
-};
-
-/**
- * The read side of the transactional outbox. The write side has no port at all —
- * it IS `OrderRepository.save`, which appends the event in the same transaction
- * as the row. Both operations are infallible in the application's terms: a
- * database that will not answer is a defect, not a domain outcome.
- *
- * `pending` names its tenant like every other read here; the relay that calls it
- * has no request behind it, so which tenants it serves is deployment
- * configuration. `markPublished` needs none — an outbox id already names one row.
- */
-export class Outbox extends Port("Outbox")<{
-  readonly pending: (
-    tenantId: TenantId,
-    limit: number,
-  ) => AsyncResult<readonly OrderEvent[], never>;
-  readonly markPublished: (ids: readonly number[]) => AsyncResult<void, never>;
-}> {}
-
-/**
  * The two fulfillment ports the saga orchestrates around placement. `reserve`
  * and `arrange` answer with the domain's own permanent failures; `release` is
  * compensation, and compensation must not invent new ways to fail.

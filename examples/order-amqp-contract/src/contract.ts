@@ -24,9 +24,15 @@ const parked = defineExchange("orders-dlx", { type: "direct" });
  * when a fourth verb shows up.
  *
  * `occurredAt` is an ISO string rather than a `Date` because the wire is JSON.
+ *
+ * `eventId` is the outbox row's id, and the key a subscriber deduplicates on:
+ * delivery is at-least-once, and neither `id` (one subject has many facts) nor
+ * `occurredAt` (one transaction writes several facts at one `now()`) names a
+ * single fact.
  */
 const orderChanged = defineMessage(
   z.object({
+    eventId: z.number().int().positive(),
     tenantId: z.uuidv7(),
     kind: z.literal("order"),
     id: z.uuidv7(),

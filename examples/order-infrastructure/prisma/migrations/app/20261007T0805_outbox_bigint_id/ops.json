@@ -1,0 +1,70 @@
+[
+  {
+    "id": "alterType.outboxMessage.id",
+    "label": "Alter type of \"outboxMessage\".\"id\" to int8",
+    "operationClass": "destructive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "orders",
+        "objectType": "column",
+        "name": "id",
+        "table": "outboxMessage"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"id\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": ["orders", "outboxMessage", "id"]
+      }
+    ],
+    "execute": [
+      {
+        "description": "alter type of \"id\"",
+        "sql": "ALTER TABLE \"orders\".\"outboxMessage\" ALTER COLUMN \"id\" TYPE int8 USING \"id\"::int8"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"id\" has type \"bigint\"",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_attribute\" AS \"a\" INNER JOIN \"pg_class\" AS \"c\" ON \"c\".\"oid\" = \"a\".\"attrelid\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"relnamespace\" WHERE (\"n\".\"nspname\" = $1 AND \"c\".\"relname\" = $2 AND \"a\".\"attname\" = $3 AND (format_type(\"a\".\"atttypid\", \"a\".\"atttypmod\")) = $4 AND NOT (\"a\".\"attisdropped\"))) AS \"result\"",
+        "params": ["orders", "outboxMessage", "id", "bigint"]
+      }
+    ],
+    "meta": {
+      "warning": "TABLE_REWRITE"
+    }
+  },
+  {
+    "id": "alterSequence.outboxMessage.id",
+    "label": "Widen the sequence behind \"outboxMessage\".\"id\" to bigint",
+    "operationClass": "widening",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "orders",
+        "objectType": "sequence",
+        "name": "outboxMessage_id_seq"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure \"outboxMessage\".\"id\" is backed by a sequence",
+        "sql": "SELECT pg_get_serial_sequence('\"orders\".\"outboxMessage\"', 'id') IS NOT NULL AS \"result\""
+      }
+    ],
+    "execute": [
+      {
+        "description": "alter the sequence to bigint",
+        "sql": "DO $$ BEGIN EXECUTE format('ALTER SEQUENCE %s AS bigint', pg_get_serial_sequence('\"orders\".\"outboxMessage\"', 'id')); END $$"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify the sequence is bigint",
+        "sql": "SELECT EXISTS (SELECT 1 FROM pg_sequence WHERE seqrelid = pg_get_serial_sequence('\"orders\".\"outboxMessage\"', 'id')::regclass AND seqtypid = 'bigint'::regtype) AS \"result\""
+      }
+    ]
+  }
+]

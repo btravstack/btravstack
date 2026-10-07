@@ -11,11 +11,11 @@ import { Module } from "@btravstack/di";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { OkAsync } from "unthrown";
-import { Outbox } from "@btravstack/example-order-application";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { MessageUnitModule } from "../../message-unit.js";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
-import { outboxRelay, relayConfig } from "../../outbox-relay.js";
+import { OutboxStore, outbox } from "@btravstack/outbox";
+import { orderAmqpClient, orderPublisher } from "../../outbox-publisher.js";
 import { orderAudit } from "../../slices/audit/handler.js";
 import { AuditSlice } from "../../slices/audit/module.js";
 -->
@@ -192,7 +192,6 @@ even though nothing in it names a piece directly —
 
 ```ts
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
-  needs: [Env],
   contract: orderContract,
   handlers: orderHandlers,
   imports: [
@@ -201,13 +200,15 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     AuditSlice,
     observability(),
     otel(),
+    outbox(),
   ],
-  provides: [relayConfig, outboxRelay],
+  provides: [orderAmqpClient, orderPublisher],
   // Forked per delivery, after the message is validated: where the envelope's
   // `tenantId` becomes the fork's `Tenant`.
   unit: { message: MessageUnitModule },
-  // Everything the fork and the relay read out of the application scope.
-  exports: [Outbox, OrderDatabase, Logger, Tracer],
+  // Everything the fork reads out of the application scope, and the store a
+  // spec reads the outbox back through.
+  exports: [OutboxStore, OrderDatabase, Logger, Tracer],
 });
 ```
 
@@ -336,7 +337,7 @@ gets caught.
 saga slices land in different places, deliberately: a subscriber reacts to a
 fact somebody else already committed, so `NotificationsSlice` and
 `AuditSlice` own no domain and no persistence — the vertical stays at the
-root, next to the outbox relay that writes it. A workflow orchestrates one,
+root, next to the outbox relay that reads it. A workflow orchestrates one,
 so each saga slice owns the services only its own saga calls:
 `FulfillmentSlice` imports `FulfillmentModule` and `BillingSlice` imports
 `BillingModule`, meeting only in the root's `imports` list, never inside either

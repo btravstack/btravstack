@@ -10,7 +10,7 @@ prisma/migrations/app/refs/db.json the contract hash a dev database is at — wh
 src/database.ts                    the client, the OrderDatabase port, the acquire/release provider
 src/prisma-order-repository.ts     the adapter — where Prisma's errors become the domain's
 src/prisma-customer-repository.ts  the customers vertical's adapter — read-only, because its port is
-src/prisma-outbox.ts               the outbox's read side, for whichever deployment relays it
+src/prisma-outbox.spec.ts          @btravstack/outbox's store over this table: the write, the claim, four racing relays
 src/module.ts                      OrderTenantPersistence, OrderPersistenceModule, CustomerPersistenceModule
 src/__tests__/test-fixtures.ts               the in-memory database and the repositories, as Vitest fixtures
 ```
@@ -221,9 +221,9 @@ while the pool happens to hand back the same connection. And the specs connect
 as a non-owner because Prisma 8 emits `ENABLE ROW LEVEL SECURITY` with no way
 to say `FORCE`, so the table's owner would bypass the policy entirely —
 `rls.spec.ts` carries that as a standing assertion.
-`TenantId` is still the domain's own branded string, which is what keeps the
-one place a tenant is claimed — `prisma-outbox.ts`, where a row becomes an
-`OrderEvent` — honest.
+`TenantId` is still the domain's own branded string; the outbox's read side
+does not claim it at all, because `@btravstack/outbox` hands the publisher the
+row's `tenantId` as the plain string the contract's envelope carries.
 
 **Two tables are deliberately not policed, and specs are what guard them.**
 `Customer` stays on the raw client because the `customers` procedures are
@@ -268,8 +268,13 @@ export const OrderTenantPersistence = Module("OrderTenantPersistence")({
 
 export const OrderPersistenceModule = Module("OrderPersistence")({
   imports: [OrderDatabaseModule],
-  provides: [outboxProvider],
-  exports: [Outbox, OrderDatabaseModule],
+  provides: [
+    Provider(OutboxStore)({
+      inject: { db: OrderDatabase },
+      sync: ({ db }) => prismaOutboxStore(db, { schema: "orders" }),
+    }),
+  ],
+  exports: [OutboxStore, OrderDatabaseModule],
 });
 
 export const CustomerPersistenceModule = Module("CustomerPersistence")({
@@ -291,8 +296,10 @@ it belongs to a transaction rather than to a wrapper — the repository opens on
 per operation and pins it there. What is per unit is the tenant the adapter
 closed over; the pool underneath is still the process's.
 
-The outbox stays in the application scope, because the relay that sweeps it
-runs outside any unit and across tenants; `CustomerPersistenceModule` stays
+The outbox store stays in the application scope, because the relay that
+claims from it runs outside any unit and across tenants — the store is
+[`@btravstack/outbox`](../../packages/outbox)'s, and what is left here is where
+the table lives; `CustomerPersistenceModule` stays
 there too, because its port names its tenant.
 
 One database, not two: di flattens the module tree into a `Set` keyed by

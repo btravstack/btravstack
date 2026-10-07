@@ -1,6 +1,6 @@
 name: Release
 
-# Publish the fourteen packages once CI is green on main, through the same
+# Publish the fifteen packages once CI is green on main, through the same
 # reusable workflow the sibling repositories call. Chaining off CI rather than
 # off the push is `deploy-docs.yml`'s rule, and the checkout is pinned to the
 # commit that run measured — so a version is never cut from one CI did not
@@ -12,7 +12,7 @@ name: Release
 # The flow is changesets' own two-step. A push to main carrying changesets opens
 # (or updates) a release PR with the version bumps and rendered CHANGELOGs;
 # merging it is what publishes. That PR is the review gate, and it is
-# load-bearing rather than ceremonial: the fourteen move as one `fixed` group, so
+# load-bearing rather than ceremonial: the fifteen move as one `fixed` group, so
 # the bump it shows is the whole family's, and `1.0.0` must stay a decision
 # rather than somewhere a stray `major` changeset arrives on its own.
 #
@@ -23,7 +23,7 @@ name: Release
 #      `GITHUB_TOKEN` cannot be used: events it triggers do not start new
 #      workflow runs, so the release PR would skip CI — the one thing this
 #      workflow exists to guarantee.
-#   2. A Trusted Publisher on npmjs.com for EACH of the fourteen packages,
+#   2. A Trusted Publisher on npmjs.com for EACH of the fifteen packages,
 #      pointing at this repository and this workflow file. Publishing rides the
 #      OIDC token `id-token: write` mints; there is no `NPM_TOKEN`. A package
 #      must already exist on npm before a Trusted Publisher can be configured

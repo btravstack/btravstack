@@ -171,6 +171,7 @@ const GUIDE_SIDEBAR = [
           { text: "@btravstack/mailer", link: "/reference/mailer" },
           { text: "@btravstack/storage", link: "/reference/storage" },
           { text: "@btravstack/prisma", link: "/reference/prisma" },
+          { text: "@btravstack/outbox", link: "/reference/outbox" },
         ],
       },
       {
@@ -420,6 +421,7 @@ export default defineConfig({
             { text: "@btravstack/mailer", link: "/api/mailer/" },
             { text: "@btravstack/storage", link: "/api/storage/" },
             { text: "@btravstack/prisma", link: "/api/prisma/" },
+            { text: "@btravstack/outbox", link: "/api/outbox/" },
             { text: "@btravstack/testing", link: "/api/testing/" },
             { text: "@btravstack/http-server", link: "/api/http-server/" },
             { text: "@btravstack/temporal-worker", link: "/api/temporal-worker/" },
