@@ -201,3 +201,8 @@ compete with the entity card in social metadata.
 Entity uses the illustrated identity-card mark in `public/entity/logo*.svg`.
 Its preview is rendered from `branding/social-card.html?project=entity`,
 which displays the integrated `/btravstack/entity` documentation address.
+
+DI reference and API pages use `public/di/og-di.png`, rendered from
+`branding/social-card.html?project=di`. Its local syringe mascot is
+`public/di/logo-dark.svg`. Social cards share the large-mascot, short-headline
+composition of the ecosystem website; each keeps its own project accent.

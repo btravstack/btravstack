@@ -349,10 +349,20 @@ export default defineConfig({
     const isEntity =
       pageData.relativePath.startsWith("entity/") ||
       pageData.relativePath.startsWith("api/entity/");
-    const image = `${SITE_URL}${isEntity ? "entity/og-entity-btravstack.png" : "og-btravstack.png"}`;
+    const isDi =
+      pageData.relativePath.startsWith("reference/di/") ||
+      pageData.relativePath.startsWith("api/di/");
+    const imagePath = isEntity
+      ? "entity/og-entity-btravstack.png"
+      : isDi
+        ? "di/og-di.png"
+        : "og-btravstack.png";
+    const image = `${SITE_URL}${imagePath}`;
     const imageAlt = isEntity
       ? "entity — Your domain, declared once. Validated at the boundary. Identity card with a smiling beetroot portrait."
-      : "btravstack — Your application, composed. Your process, taken care of. Smiling beetroot mascot on three teal layers.";
+      : isDi
+        ? "di — Your wiring. Proven before boot. A small smiling beetroot inside a syringe."
+        : "btravstack — Your app, composed. Your process, taken care of. Smiling beetroot mascot on three teal layers.";
     pageData.frontmatter.head.push(
       ["meta", { property: "og:image", content: image }],
       ["meta", { property: "og:image:type", content: "image/png" }],
