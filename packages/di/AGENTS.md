@@ -29,6 +29,17 @@ All runtime code lives in `packages/di/src`, one concept per file:
   `Provider.member` are `docs/reference/di/providers.md`'s. Arm exclusivity is
   enforced by giving each arm the other keys as optional `never`.
 
+  **An ordinary `Provider` on a set port is refused** (issue #375), by a
+  `SetPortGate` marker intersected onto the OPTIONS parameter, never the port
+  one. The runtime cannot tell the two entry points apart, so it lands whatever
+  a set port's provider builds as one member, and `Provider(SetPort)` qualified
+  against the whole `readonly Member[]` handed back a nested array. On the port
+  parameter the gate broke `scoped.test-d.ts`'s port-generic `wrap` (measured):
+  a deferred conditional is not assignable from an unresolved `P`, which is the
+  same false positive `Scope`'s rejected guard hit. On the options it costs a
+  generic helper nothing, since every one that calls the builder already casts
+  its options.
+
   **`inject` rides in the same options object, and it is REQUIRED** (issue
   #227). One signature, one runtime path reading one key: the two overloads
   discriminated by argument count are gone, and with them the comment
