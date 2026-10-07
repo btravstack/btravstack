@@ -96,6 +96,27 @@ describe("the unit module", () => {
     });
   });
 
+  it("still reports a unit teardown that fails after the application has exited", async ({
+    unitApp,
+  }) => {
+    // GIVEN a unit whose teardown is held open past the application's exit —
+    // a stop does not wait for in-flight units
+    const { runtime, app, events, holdTeardown } = unitApp;
+    const { fail } = holdTeardown();
+    const unit = runtime.submit<string>();
+    unit.settle(Ok("x"));
+    app.stop();
+    await app.exited;
+
+    // WHEN that teardown finally fails
+    fail(new Error("late-boom"));
+    await vi.waitUntil(() => events.some((event) => event.type === "teardownError"));
+
+    // THEN the event is still emitted, after `exited`: it is the only channel a
+    // unit's teardown failure has
+    expect(events.map((event) => event.type).slice(-2)).toEqual(["exited", "teardownError"]);
+  });
+
   it("keeps a unit in flight until its scope has closed", async ({ unitApp }) => {
     // GIVEN a unit whose work has settled but whose teardown is held open
     const { runtime, app, holdTeardown } = unitApp;

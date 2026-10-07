@@ -214,6 +214,63 @@ Beyond the nine:
   reported a timeout on every clean stop. A FIRST signal mid-build stays
   buffered — invariant "spends only what is left of preDrainDelayMs" depends on
   it.
+
+  **`stopping` lasts until the finalisers do, on the serving path and the
+  startup-failure path alike.** `disposeAll` — the signal handlers, the move to
+  `exited` — runs once `Module.scoped` settles or the deadline gives up, never
+  when `Serving.stop` returns: before, a second signal during a blocked
+  `release` reached no handler and the phase already read `exited` while
+  `exited` was pending. And a failure inside `use` (a runtime refusing to
+  start, a defect — including a synchronous throw from `runtime.start` or
+  `unitSubstitutes`, which is why `serve` is entered through
+  `OkAsync(ctx).flatMap(serve)` rather than handed to di directly) is tapped
+  there, before di runs a single finaliser —
+  `leaveFailed` emits `startFailed`, moves to `stopping`, and arms the deadline
+  with the failure itself, so an abandoned startup cleanup still settles
+  `exited` with the startup error and adds a `stoppedWaiting` event rather
+  than inventing an `ExitReport`. Guarded by `start.spec.ts` → _"keeps its
+  signal handlers and the stopping phase while a finaliser is still
+  running"_, _"bounds the cleanup of a runtime that refused to start by
+  stopTimeoutMs"_ (both hang against the pre-fix kernel, and both synchronise
+  on a barrier the `release` resolves on entry, never on a timer tick),
+  _"releases the graph of a runtime that refused to start, naming no
+  deadline"_ and _"bounds the cleanup of a runtime whose start throws instead
+  of answering"_.
+
+  **`exited` is the last event, and the `emit` latch is what makes it so.**
+  The deadline stops waiting rather than cancelling, so the losing
+  `Module.scoped` branch still settles after the report: a finaliser that
+  rejects late reaches `onTeardownError`, and the outer `tapFailure` runs
+  `leaveFailed` again on a phase that already reads `exited`. Guarding each
+  site would be one guard per emitter, so `emit` drops everything once the
+  `exited` event has gone out; a late teardown failure still lands in
+  `ExitReport.teardownErrors`, which aliases the live array. Guarded by
+  _"emits nothing once exited, when a release it stopped waiting for fails
+  late"_ and _"keeps a teardown failure that lands after the report on the
+  report, not the event stream"_.
+
+  **A crash during `stopping` still reports as one.** The uncaught handler
+  now outlives `finish`, so a crash can land after the reason is decided, and
+  `requestShutdown` cannot rewrite it: `crashed` overrides the reason in
+  `reportOf`, and a crash during a refused start's cleanup abandons it as the
+  build it was (`startupFailing`, set where the failure is tapped) — so it
+  stays exit `70` rather than the `0` the suppressed Node exit would leave.
+  The report is built when `Module.scoped` settles (or the deadline gives up),
+  never when `Serving.stop` returns, so `uptimeMs` counts the finalisers.
+  Guarded by _"reports an uncaught exception raised while a finaliser runs as
+  uncaught"_, _"gives up on a refused start's cleanup when something crashes
+  during it"_ and _"counts the finalisers in the uptime it reports"_. A
+  `unit` fork's `onTeardownError` writes to `sink`, past the `exited` latch: a
+  unit a stop or a drain deadline stopped waiting for can close after the
+  report, and that event is its only channel (`unit-module.spec.ts` → _"still
+  reports a unit teardown that fails after the application has exited"_).
+
+  **A construction failure — an `Err` or a defect — is the remaining gap**: di releases what
+  it acquired inside `Module.scoped` before anything the kernel holds sees the
+  failure, so only a second signal or an uncaught exception (the abandoned
+  build) cuts a release wedged there short. Closing it needs a hook in di's
+  `ScopedOptions`, not more kernel code.
+
 - **Readiness is a one-way latch.** Forced false by the drain and by an uncaught
   exception, never reset. `invariants.spec.ts` → _"readiness never returns to
   200 once forced false"_. The `forcedUnready` term of `ready()` is load-bearing
@@ -405,13 +462,16 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   back to their defaults when the read fails, which changes nothing observable:
   the same failure is what `exited` reports, and no drain happens after it.
 
-- **`startFailed` is emitted from both `tapFailure` sites** — the probe bind's
-  and `Module.scoped`'s — because a failed probe bind short-circuits the
-  `flatMap` that would otherwise reach the second; the cause is
+- **`startFailed` is emitted from the probe bind's `tapFailure` and from
+  `leaveFailed`** — which runs inside `use` (ahead of the finalisers) and after
+  `Module.scoped` (for a construction failure, which never reaches `use`) —
+  because a failed probe bind short-circuits the `flatMap` that would
+  otherwise reach the others; the cause is
   `failure.tag === "Err" ? failure.error : failure.cause`, the `FailureView`
-  unthrown hands a `tapFailure` callback. The second site is guarded by
-  `tracker.current() !== "stopping"`: a `serving.stop()` that defects
-  reaches the same `tapFailure` after `finish` has already moved the phase
+  unthrown hands a `tapFailure` callback. `leaveFailed` is guarded by
+  `tracker.current() !== "stopping"`, which is also what keeps its two call
+  sites from emitting twice: a `serving.stop()` that defects
+  reaches it after `finish` has already moved the phase
   on, and that is a shutdown failure the exit report owns, not a startup one
   (`start.spec.ts` → _"does not report a shutdown defect as startFailed"_).
 
@@ -495,11 +555,12 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   calls `process.exit()`.
 
 - **The `teardownErrors` aliasing is load-bearing.** The array put on the
-  `ExitReport` is the **same mutable array** `onTeardownError` pushes into. di
-  closes the scope after `use` settles but before its own result settles, so
-  every finaliser failure lands in the array after the object is built and
-  before the caller can observe it. A defensive copy anywhere on that path would
-  silently drop every teardown error.
+  `ExitReport` is the **same mutable array** `onTeardownError` pushes into. On
+  the ordinary path the report is built once the scope has closed, but on the
+  abandoned-stop path the close is still running, so a finaliser that fails
+  late lands in the array after a reader has the report — and the `exited`
+  latch keeps it off the event stream, so the array is its only channel. A
+  defensive copy anywhere on that path would silently drop it.
 
 - **`ready()` is `phase === "serving" && !forcedUnready`, and the two terms do
   not contribute equally.** On the drain path the phase term alone answers
@@ -512,9 +573,9 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
 
 - **`runtimeInfo`'s deferred is settled exactly where `probePort`'s is.**
   `runtimePublished` takes `Serving.info` the moment the runtime is serving, and
-  `undefined` from the **same two** `tapFailure` blocks that already settle
-  `probeBound` — the probe bind failure, and `Module.scoped`'s (construction
-  failure, a runtime refusing to start, a defect). A `Promise.withResolvers`
+  `undefined` from the probe bind failure's `tapFailure`, which also settles
+  `probeBound`, and from `leaveFailed` (construction failure, a runtime
+  refusing to start, a defect). A `Promise.withResolvers`
   `resolve` is idempotent — a second call is a no-op, which is what the
   hand-rolled `createDeferred` needed a `settled` flag for — so a runtime that
   did serve and then failed later keeps what it published. One mechanism, two

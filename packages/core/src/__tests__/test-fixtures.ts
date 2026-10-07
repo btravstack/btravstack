@@ -96,8 +96,11 @@ export type UnitApp = {
   readonly outcomes: readonly (UnitOutcome | undefined)[];
   /** Every kernel event the application emitted, in order. */
   readonly events: readonly KernelEvent[];
-  /** Holds every subsequent unit teardown open until the returned `release` is called. */
-  readonly holdTeardown: () => { readonly release: () => void };
+  /** Holds every subsequent unit teardown open until the returned `release` — or `fail` — is called. */
+  readonly holdTeardown: () => {
+    readonly release: () => void;
+    readonly fail: (cause: unknown) => void;
+  };
   /** Makes every subsequent unit teardown fail with `cause`. */
   readonly failTeardown: (cause: unknown) => void;
   /** Forks the unit module a second time inside one unit, over the running app's host. */
@@ -302,13 +305,13 @@ export const it = test.extend<{
     const outcomes: (UnitOutcome | undefined)[] = [];
     const events: KernelEvent[] = [];
     let teardown: () => Promise<void> | undefined = () => undefined;
-    const holdTeardown = (): { readonly release: () => void } => {
-      let release!: () => void;
-      const held = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      teardown = () => held;
-      return { release: () => release() };
+    const holdTeardown = (): {
+      readonly release: () => void;
+      readonly fail: (cause: unknown) => void;
+    } => {
+      const held = Promise.withResolvers<void>();
+      teardown = () => held.promise;
+      return { release: () => held.resolve(), fail: (cause) => held.reject(cause) };
     };
     const failTeardown = (cause: unknown): void => {
       teardown = () => Promise.reject(cause);

@@ -1,7 +1,7 @@
 import { Module, Port, Provider } from "@btravstack/di";
 import { createFakeClock, testRuntime, TestRuntimePort } from "@btravstack/testing";
 import { ErrAsync, Ok, OkAsync, fromSafePromise } from "unthrown";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { runtimeModule } from "./__tests__/test-fixtures.js";
 import type { KernelEvent } from "./events.js";
@@ -360,6 +360,395 @@ describe("start", () => {
       report: expect.toBeOkWith(expect.objectContaining({ reason: "signal", abandonedAt: "stop" })),
       stoppedWaiting: [{ type: "stoppedWaiting", phase: "stop", afterMs: undefined }],
     });
+  });
+
+  it("keeps its signal handlers and the stopping phase while a finaliser is still running", async () => {
+    // GIVEN a serving application whose one release announces that it has
+    // begun and then never settles
+    const listenerCount = (): number =>
+      process.listenerCount("SIGTERM") + process.listenerCount("SIGINT");
+    const before = listenerCount();
+    const releasing = Promise.withResolvers<void>();
+    const runtime = testRuntime();
+    const events: KernelEvent[] = [];
+    const Wedged = Module("WedgedAfterStop")({
+      imports: [runtime.module],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            releasing.resolve();
+            return new Promise<void>(() => {});
+          },
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Wedged, {
+      clock: createFakeClock(),
+      probes: false,
+      preDrainDelayMs: 0,
+      drainTimeoutMs: 0,
+      stopTimeoutMs: 600_000,
+      onEvent: (event) => events.push(event),
+    });
+    await runtime.untilStarted();
+    process.emit("SIGTERM");
+    await releasing.promise;
+    const duringRelease = { phase: app.phase(), listeners: listenerCount() - before };
+
+    // WHEN a second signal lands while the release is blocked
+    process.emit("SIGTERM");
+
+    // THEN the lifecycle was still listening, and the second signal takes the
+    // abandoned-stop path at once rather than waiting out the deadline
+    expect({
+      duringRelease,
+      report: await app.exited,
+      stoppedWaiting: events.filter(isStoppedWaiting),
+      listeners: listenerCount() - before,
+    }).toEqual({
+      duringRelease: { phase: "stopping", listeners: 2 },
+      report: expect.toBeOkWith(expect.objectContaining({ reason: "signal", abandonedAt: "stop" })),
+      stoppedWaiting: [{ type: "stoppedWaiting", phase: "stop", afterMs: undefined }],
+      listeners: 0,
+    });
+  });
+
+  it("bounds the cleanup of a runtime that refused to start by stopTimeoutMs", async () => {
+    // GIVEN a runtime that refuses to start over a graph whose release
+    // announces that it has begun and then never settles
+    const clock = createFakeClock();
+    const releasing = Promise.withResolvers<void>();
+    const events: KernelEvent[] = [];
+    const broken = {
+      ...testRuntime(),
+      start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })),
+    };
+    const Wedged = Module("WedgedAfterStartFailed")({
+      imports: [runtimeModule(broken)],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            releasing.resolve();
+            return new Promise<void>(() => {});
+          },
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Wedged, {
+      clock,
+      signals: false,
+      probes: false,
+      stopTimeoutMs: 5_000,
+      onEvent: (event) => events.push(event),
+    });
+    await releasing.promise;
+
+    // WHEN the stop deadline passes with the release still running
+    await clock.advance(5_000);
+
+    // THEN the startup failure is still what `exited` reports, and the
+    // abandoned cleanup is named beside it
+    expect({
+      exited: await app.exited,
+      phase: app.phase(),
+      events: events.map((event) => event.type),
+      stoppedWaiting: events.filter(isStoppedWaiting),
+    }).toEqual({
+      exited: expect.toBeErrTagged(
+        "RuntimeStartFailed",
+        expect.objectContaining({ runtime: "broken" }),
+      ),
+      phase: "exited",
+      events: ["building", "startFailed", "stopping", "stoppedWaiting", "exited"],
+      stoppedWaiting: [{ type: "stoppedWaiting", phase: "stop", afterMs: 5_000 }],
+    });
+  });
+
+  it("releases the graph of a runtime that refused to start, naming no deadline", async () => {
+    // GIVEN a runtime that refuses to start over a graph whose release settles
+    const released: string[] = [];
+    const events: KernelEvent["type"][] = [];
+    const broken = {
+      ...testRuntime(),
+      start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })),
+    };
+    const Resourceful = Module("ResourcefulAfterStartFailed")({
+      imports: [runtimeModule(broken)],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            released.push("greeting");
+          },
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+
+    // WHEN it boots
+    const app = start(Resourceful, {
+      clock: createFakeClock(),
+      signals: false,
+      probes: false,
+      onEvent: (event) => events.push(event.type),
+    });
+
+    // THEN
+    expect({ exited: await app.exited, released, events }).toEqual({
+      exited: expect.toBeErrTagged(
+        "RuntimeStartFailed",
+        expect.objectContaining({ runtime: "broken" }),
+      ),
+      released: ["greeting"],
+      events: ["building", "startFailed", "stopping", "exited"],
+    });
+  });
+
+  it("emits nothing once exited, when a release it stopped waiting for fails late", async () => {
+    // GIVEN a runtime that refused to start, and a release the deadline gave
+    // up on that then rejects — which di reports, and which `Module.scoped`
+    // settling would otherwise report as a startup failure a second time
+    const clock = createFakeClock();
+    const releasing = Promise.withResolvers<void>();
+    const releaseFails = Promise.withResolvers<void>();
+    const events: KernelEvent["type"][] = [];
+    const broken = {
+      ...testRuntime(),
+      start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })),
+    };
+    const Wedged = Module("FailsLateAfterStartFailed")({
+      imports: [runtimeModule(broken)],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            releasing.resolve();
+            return releaseFails.promise;
+          },
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Wedged, {
+      clock,
+      signals: false,
+      probes: false,
+      stopTimeoutMs: 5_000,
+      onEvent: (event) => events.push(event.type),
+    });
+    await releasing.promise;
+    await clock.advance(5_000);
+    await app.exited;
+
+    // WHEN the abandoned release finally fails
+    releaseFails.reject(new Error("release failed late"));
+    await clock.advance(0);
+
+    // THEN `exited` is still the last thing the lifecycle said
+    expect(events).toEqual(["building", "startFailed", "stopping", "stoppedWaiting", "exited"]);
+  });
+
+  it("keeps a teardown failure that lands after the report on the report, not the event stream", async () => {
+    // GIVEN a stop the deadline gave up on, whose release then rejects
+    const clock = createFakeClock();
+    const releasing = Promise.withResolvers<void>();
+    const releaseFails = Promise.withResolvers<void>();
+    const boom = new Error("release failed late");
+    const runtime = testRuntime();
+    const events: KernelEvent["type"][] = [];
+    const Wedged = Module("FailsLateAfterStop")({
+      imports: [runtime.module],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            releasing.resolve();
+            return releaseFails.promise;
+          },
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Wedged, {
+      clock,
+      signals: false,
+      probes: false,
+      stopTimeoutMs: 5_000,
+      onEvent: (event) => events.push(event.type),
+    });
+    await runtime.untilStarted();
+    app.stop();
+    await releasing.promise;
+    await clock.advance(5_000);
+    const report = (await app.exited).getOrThrow();
+
+    // WHEN the abandoned release finally fails
+    releaseFails.reject(boom);
+    await vi.waitUntil(() => report.teardownErrors.length > 0);
+
+    // THEN the report's live array has it, and the stream still ends at `exited`
+    expect({ teardownErrors: report.teardownErrors, last: events.at(-1) }).toEqual({
+      teardownErrors: [{ port: "Greeting", cause: boom }],
+      last: "exited",
+    });
+  });
+
+  it("bounds the cleanup of a runtime whose start throws instead of answering", async () => {
+    // GIVEN a runtime whose `start` throws synchronously, so no `AsyncResult`
+    // exists to tap, over a graph whose release never settles
+    const clock = createFakeClock();
+    const releasing = Promise.withResolvers<void>();
+    const boom = new Error("start threw");
+    const events: KernelEvent["type"][] = [];
+    const throwing = {
+      ...testRuntime(),
+      start: () => {
+        // oxlint-disable-next-line unthrown/no-throw -- the synchronous throw is the subject under test
+        throw boom;
+      },
+    };
+    const Wedged = Module("WedgedAfterStartThrew")({
+      imports: [runtimeModule(throwing)],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            releasing.resolve();
+            return new Promise<void>(() => {});
+          },
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Wedged, {
+      clock,
+      signals: false,
+      probes: false,
+      stopTimeoutMs: 5_000,
+      onEvent: (event) => events.push(event.type),
+    });
+    await releasing.promise;
+
+    // WHEN the stop deadline passes with the release still running
+    await clock.advance(5_000);
+
+    // THEN the throw is reported as the defect it is, after the abandoned cleanup
+    expect({ exited: await app.exited, events }).toEqual({
+      exited: expect.toBeDefectWith(boom),
+      events: ["building", "startFailed", "stopping", "stoppedWaiting", "exited"],
+    });
+  });
+
+  it("reports an uncaught exception raised while a finaliser runs as uncaught", async () => {
+    // GIVEN a stop already decided, whose release announces that it has begun
+    // and waits — with the kernel's uncaught handler still installed, which
+    // has suppressed Node's own exit code
+    const releasing = Promise.withResolvers<void>();
+    const released = Promise.withResolvers<void>();
+    const runtime = testRuntime();
+    const Releasing = Module("CrashesWhileReleasing")({
+      imports: [runtime.module],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            releasing.resolve();
+            return released.promise;
+          },
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Releasing, { clock: createFakeClock(), probes: false, onEvent: () => {} });
+    await runtime.untilStarted();
+    app.stop();
+    await releasing.promise;
+
+    // WHEN something crashes before the release returns
+    process.emit("uncaughtException", new Error("boom"));
+    released.resolve();
+
+    // THEN the report says so, which is what `runMain` reads exit 70 off
+    expect(await app.exited).toBeOkWith(expect.objectContaining({ reason: "uncaught" }));
+  });
+
+  it("gives up on a refused start's cleanup when something crashes during it", async () => {
+    // GIVEN a runtime that refused to start, over a release that announces
+    // that it has begun and never settles
+    const releasing = Promise.withResolvers<void>();
+    const broken = {
+      ...testRuntime(),
+      start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })),
+    };
+    const Wedged = Module("CrashesWhileReleasingAfterStartFailed")({
+      imports: [runtimeModule(broken)],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            releasing.resolve();
+            return new Promise<void>(() => {});
+          },
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Wedged, { clock: createFakeClock(), probes: false, onEvent: () => {} });
+    await releasing.promise;
+
+    // WHEN something crashes during that cleanup
+    process.emit("uncaughtException", new Error("boom"));
+
+    // THEN it is a crash mid-build, as it always was: reported, and exit 70
+    expect(await app.exited).toBeOkWith(
+      expect.objectContaining({ reason: "uncaught", abandonedAt: "build" }),
+    );
+  });
+
+  it("counts the finalisers in the uptime it reports", async () => {
+    // GIVEN a stop whose release announces that it has begun and takes a
+    // second of the clock to finish
+    const clock = createFakeClock();
+    const releasing = Promise.withResolvers<void>();
+    const released = Promise.withResolvers<void>();
+    const runtime = testRuntime();
+    const Slow = Module("SlowRelease")({
+      imports: [runtime.module],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            releasing.resolve();
+            return released.promise;
+          },
+        }),
+      ],
+      exports: [Greeting, TestRuntimePort],
+    });
+    const app = start(Slow, { clock, signals: false, probes: false, stopTimeoutMs: 5_000 });
+    await runtime.untilStarted();
+    app.stop();
+    await releasing.promise;
+
+    // WHEN the release finishes a second later, inside the deadline
+    await clock.advance(1_000);
+    released.resolve();
+
+    // THEN
+    expect(await app.exited).toBeOkWith(expect.objectContaining({ uptimeMs: 1_000 }));
   });
 
   it("reports an uncaught exception raised while the graph is still building", async () => {
