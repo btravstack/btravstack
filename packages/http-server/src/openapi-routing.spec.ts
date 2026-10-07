@@ -49,7 +49,8 @@ const localPolicyApp = HttpModule("OpenApiLocalPolicy")({
   router,
   port: 0,
   hostname: "127.0.0.1",
-  provides: [openApiRoutes({ bodyLimit: false, compression: true })],
+  bodyLimit: false,
+  provides: [openApiRoutes({ compression: true })],
 });
 const rpcOnlyApp = HttpModule("RpcOnly")({
   router,
@@ -168,8 +169,8 @@ describe("OpenAPI routes", () => {
     });
   });
 
-  it("honors a body limit disabled on the OpenAPI answerer", async ({ boot }) => {
-    // Given an answerer with its local body limit disabled.
+  it("honors a body limit disabled on the HTTP module", async ({ boot }) => {
+    // Given a module with its body limit disabled.
     const running = boot(localPolicyApp);
     const info = (await running.runtimeInfo()).get();
     expect(info).toBeDefined();

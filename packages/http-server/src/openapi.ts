@@ -6,13 +6,12 @@ import { OpenAPIGenerator, getOpenAPIMeta } from "@orpc/openapi";
 import { OpenAPIHandler } from "@orpc/openapi/node";
 import { fromSafePromise, type AsyncResult } from "unthrown";
 
-import { CookieSchemes, csrfOn } from "./cookie.js";
 import { HttpHandler } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
 import { OrpcRouterPort, pluginsOf, type OrpcOptions } from "./orpc.js";
 
-/** Policies shared with the RPC answerer; only the mount has a different default. */
-export type OpenApiRoutesOptions = Omit<OrpcOptions, "prefix"> & {
+/** Answerer-local policies; body limits and CSRF belong to the HTTP module. */
+export type OpenApiRoutesOptions = Omit<OrpcOptions, "prefix" | "bodyLimit" | "csrf"> & {
   /** Where ordinary method-and-path requests are served. Default `/api`. */
   readonly prefix?: `/${string}`;
 };
@@ -21,10 +20,11 @@ export type OpenApiRoutesOptions = Omit<OrpcOptions, "prefix"> & {
 export const openApiRoutes = (options: OpenApiRoutesOptions = {}) => {
   const prefix = options.prefix ?? "/api";
   return Provider.member(HttpHandler)({
-    inject: { router: OrpcRouterPort, config: HttpConfig, cookieSchemes: CookieSchemes },
-    sync: ({ router, config, cookieSchemes }) => {
+    inject: { router: OrpcRouterPort, config: HttpConfig },
+    sync: ({ router, config }) => {
       const handler = new OpenAPIHandler(router, {
-        plugins: [...pluginsOf(options, config, csrfOn(options.csrf, cookieSchemes))],
+        // OpenAPI GET routes use HTTP's safe-method contract, not RPC's GET exception.
+        plugins: [...pluginsOf(options, config, false)],
       });
       return {
         prefix,

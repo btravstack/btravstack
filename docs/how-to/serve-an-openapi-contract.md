@@ -64,11 +64,12 @@ export const App = HttpModule("App")({
 ```
 
 `openApiRoutes({ prefix: "/v1" })` changes only the OpenAPI mount. The
-answerer accepts the same `cors`, `bodyLimit`, `compression`, `csrf`, and
-`plugins` options as `orpc()`. If `HttpModule` explicitly configures an RPC
-policy such as `cors: true`, repeat that option on `openApiRoutes()` when both
-answerers should use it. Deployed `HTTP_CORS_ORIGIN`, `HTTP_BODY_LIMIT`, and
-`HTTP_COMPRESSION` values are read by both. The listener's security headers,
+answerer accepts `cors`, `compression`, and `plugins` options. Set `bodyLimit`
+and `csrf` on `HttpModule` for both answerers. If `HttpModule` explicitly
+configures an RPC policy such as `cors: true`, repeat that option on
+`openApiRoutes()` when both answerers should use it. Deployed
+`HTTP_CORS_ORIGIN`, `HTTP_BODY_LIMIT`, and `HTTP_COMPRESSION` values are read by
+both. The listener's security headers,
 cookie-based CSRF check, request unit, and drain apply to both answerers.
 
 ## Generate a document for tooling

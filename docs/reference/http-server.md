@@ -2246,7 +2246,7 @@ the same document is the route list:
 
 ## `openApiRoutes()` — from `@btravstack/http-server/openapi`
 
-`openApiRoutes({ prefix?, cors?, bodyLimit?, compression?, csrf?, plugins? })`
+`openApiRoutes({ prefix?, cors?, compression?, plugins? })`
 contributes one `HttpHandler` member under `/api` by default. It uses
 `@orpc/openapi/node`'s `OpenAPIHandler` over the same `OrpcRouterPort` as
 `orpc()`, so a contract can serve TypeScript RPC clients at `/rpc` and generic
@@ -2260,8 +2260,9 @@ not invent `GET /resources/{id}`. The output of `openApiDocument()` describes
 these OpenAPI routes, so the server must mount `openApiRoutes()` for that
 document to be a callable wire contract. The answerer shares `orpc()`'s policy
 builder and reads the same deployed `HTTP_CORS_ORIGIN`, `HTTP_BODY_LIMIT`, and
-`HTTP_COMPRESSION` values. Explicit per-answerer policy options belong on
-`openApiRoutes()` too; `HttpModule`'s `cors`, `compression`, and `plugins`
-options configure its RPC answerer. The HTTP runtime still owns cookie-based
-CSRF checks, the request unit, security headers, and drain. See
+`HTTP_COMPRESSION` values. Explicit per-answerer CORS, compression, and plugin
+options belong on `openApiRoutes()` too; `HttpModule`'s `cors`, `compression`,
+and `plugins` options configure its RPC answerer. Set `bodyLimit` and `csrf` on
+`HttpModule` for both answerers. The HTTP runtime still owns cookie-based CSRF
+checks, the request unit, security headers, and drain. See
 [Serve an oRPC contract as OpenAPI routes](/how-to/serve-an-openapi-contract).

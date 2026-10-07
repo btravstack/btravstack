@@ -467,8 +467,9 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   handler provider therefore declares `HttpConfig` as a dependency — which is
   why `orpc()`'s `HttpConfig` dependency is discharged by `httpServer()`
   rather than owed by `http()`'s own needs channel. An answerer-local
-  `bodyLimit` or `compression` overrides that shared config for its own plugin;
-  an omitted option inherits the deployment's configured value.
+  `compression` overrides that shared config for its own plugin; an omitted
+  option inherits the deployment's configured value. `bodyLimit` stays on the
+  HTTP module, where `Config.integer` validates it before either answerer uses it.
 
   Precedence, spelled once in `corsOf`: a record naming `origin` wins,
   `HTTP_CORS_ORIGIN` next, oRPC's own default (reflect the request's origin) last.
@@ -1415,9 +1416,11 @@ changes with it.
 `openApiRoutes()` is the OpenAPI wire answerer on this same optional subpath.
 It injects the already-built `OrpcRouterPort` and contributes one `HttpHandler`
 member under `/api` by default; `orpc()` remains under `/rpc`. Both use the
-same handler policy builder, so CORS, body limit, compression, and the GET CSRF
-plugin do not diverge. The runtime still owns the unit and cookie-based CSRF
-check. A document is generated separately through `openApiDocument()`; no
+same handler policy builder for CORS, body limit, and compression. The runtime
+owns the unit and cookie-based CSRF check. OpenAPI GET routes follow HTTP's
+safe-method contract, so the RPC streaming GET CSRF plugin does not apply to
+them. `bodyLimit` and `csrf` are configured on the HTTP module, never on this
+answerer. A document is generated separately through `openApiDocument()`; no
 spec or UI route is mounted by default. The installed oRPC reference plugin
 can serve one, but its raw generator would omit this package's authentication
 marker fold, so supply `openApiDocument()` as its `spec` callback. The current
