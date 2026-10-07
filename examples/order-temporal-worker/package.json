@@ -34,6 +34,7 @@
     "@temporalio/client": "catalog:",
     "@temporalio/worker": "catalog:",
     "@temporalio/workflow": "catalog:",
+    "tsx": "catalog:",
     "unthrown": "catalog:"
   },
   "devDependencies": {
@@ -45,7 +46,6 @@
     "@temporalio/testing": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
-    "tsx": "catalog:",
     "typescript": "catalog:",
     "typescript-consumer": "catalog:",
     "uuidv7": "catalog:",
