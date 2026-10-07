@@ -27,22 +27,33 @@ a value that is already markup — another template's result — passes through,
 which is what lets one template nest another:
 
 ```ts
-export type Markup = { readonly markup: string };
+const trusted: unique symbol = Symbol("markup");
+
+export type Markup = { readonly [trusted]: string };
 
 type Interpolated = string | number | Markup | readonly Markup[];
 
 const escaped = (value: Interpolated): string =>
   typeof value === "string" || typeof value === "number"
     ? String(value).replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`)
-    : "markup" in value
-      ? value.markup
-      : value.map((item) => item.markup).join("");
+    : trusted in value
+      ? value[trusted]
+      : value.map((item) => item[trusted]).join("");
 
 export const mailHtml = (
   strings: TemplateStringsArray,
   ...values: readonly Interpolated[]
-): Markup => ({ markup: String.raw({ raw: strings }, ...values.map(escaped)) });
+): Markup => ({ [trusted]: String.raw({ raw: strings }, ...values.map(escaped)) });
+
+export const rendered = (markup: Markup): string => markup[trusted];
 ```
+
+**What passes through unescaped is what only `mailHtml` can mint.** `Markup` is
+keyed by a symbol the module never exports, so no value from a database, an
+event or a CMS can have its type: `{ markup: "<script>…" }` is refused as an
+interpolation by the compiler rather than inserted as it stands. Keep
+these lines in a module of their own, exporting `mailHtml`, `rendered` and the
+`Markup` type and never `trusted`, and the only way in is through the escaper.
 
 It is **context-blind**, like `@btravstack/http-server`'s own `html`, so its
 guarantee covers two places only: **element text**, and the **quoted** value of
@@ -97,11 +108,11 @@ export const placedMail = (order: Placed, to: string, messages: Messages): Mail 
     messages.intro,
     ...order.lines.map((line) => `- ${line.quantity} × ${line.sku}`),
   ].join("\n"),
-  html: mailHtml`<p>${messages.greeting(order.customerName)}</p>
+  html: rendered(mailHtml`<p>${messages.greeting(order.customerName)}</p>
 <p>${messages.intro}</p>
 <ul>
   ${order.lines.map((line) => mailHtml`<li>${line.quantity} × ${line.sku}</li>`)}
-</ul>`.markup,
+</ul>`),
 });
 ```
 
@@ -115,14 +126,28 @@ A second catalogue is a second value of the same type, so a missing sentence is
 a compile error rather than an English fallback in a French mail:
 
 ```ts
+import { fromThrowable } from "unthrown";
+
 export const fr: Messages = {
   subject: (id) => `Commande ${id} enregistrée`,
   greeting: (name) => `Bonjour ${name},`,
   intro: "votre commande est en route :",
 };
 
-export const messagesFor = (locale: string): Messages => (locale.startsWith("fr") ? fr : en);
+const languageOf = fromThrowable(
+  (tag: string) => new Intl.Locale(tag).language,
+  (cause, defect) => (cause instanceof RangeError ? ("not a language tag" as const) : defect(cause)),
+);
+
+export const messagesFor = (locale: string): Messages =>
+  languageOf(locale).getOr("en") === "fr" ? fr : en;
 ```
+
+The tag is parsed rather than prefix-matched, so `FR`, `fr-CA` and `fr-FR` all
+read as French — a language subtag is case-insensitive — while `fresh` is a
+language of its own rather than a French prefix, and a string that is not a
+tag at all, an empty one included, is refused by `Intl.Locale`: both fall back
+to English instead of guessing.
 
 Where the locale comes from is your application's: a column on the customer,
 a field on the event that triggered the mail, or — under HTTP — a header a
