@@ -22,6 +22,27 @@ forbids, and to say what happened so the application can act on it.
 > [billing domain example](/entity/examples/billing-domain), where every snippet on
 > this page compiles and is covered by a test.
 
+<!-- doctest: prelude
+import { CurrencyMismatch, Invoice, type InvoiceVoided } from "../../index.js";
+import { Organization } from "../../organization.js";
+import { Instant, InvoiceNumber, LineItem, Money, OrganizationId } from "../../vocabulary.js";
+const InvoiceId = z.uuid().brand("InvoiceId");
+type InvoiceId = z.infer<typeof InvoiceId>;
+abstract class BillingDocumentBase extends Entity.abstract("BillingDocument")({
+  issuedTo: Entity.field(Organization, { immutable: true }),
+  total: Money,
+  issuedAt: Entity.field(Instant, { generated: true, immutable: true }),
+}) {}
+type Tx = { readonly id: string };
+declare const invoices: {
+  load(tx: Tx, id: InvoiceId): Result<Invoice, Entity.InvalidEntity>;
+  save(tx: Tx, invoice: Invoice): Result<void, never>;
+};
+declare const outbox: {
+  append(tx: Tx, events: readonly (InvoiceIssued | InvoiceVoided)[]): Result<void, never>;
+};
+-->
+
 ## Name the operation as a method
 
 A command is an ordinary method in the class body. It reads the current
@@ -71,6 +92,8 @@ command makes sense.
 Declare each refusal as a `TaggedError` carrying the facts a caller needs, and
 return it before building anything:
 
+<!-- doctest: skip — `void` is a method of `Invoice`, shown outside its class -->
+
 ```ts
 export class InvoiceNotVoidable extends TaggedError("InvoiceNotVoidable")<{
   readonly invoiceId: z.infer<typeof InvoiceId>;
@@ -115,6 +138,8 @@ dunning" would otherwise reject every voided invoice that was in dunning.
 When one state carries a field the other cannot, model the states as
 [variants of one root](/entity/how-to/number-without-gaps#model-the-numbered-state-as-its-own-entity)
 and write the transition as a call to the target variant's factory:
+
+<!-- doctest: skip — `issue` is a method of `DraftInvoice`, shown outside its class -->
 
 ```ts
 // in the body of `DraftInvoice`
@@ -274,6 +299,8 @@ published one.
 that call succeeding. Close the gap at the module boundary: export application
 functions that load, run a command and save, and keep the entity's `update` to
 code inside the domain module.
+
+<!-- doctest: skip — the shape of a module's surface, with every body elided -->
 
 ```ts
 // the application module's public surface

@@ -17,6 +17,14 @@ generators instead of stubbing globals.
 Generators are functions, called once per create, so a factory built at startup
 still yields a fresh id per entity.
 
+<!-- doctest: prelude
+import { Organization } from "../../organization.js";
+declare const ids: { next(): string };
+declare const clock: { now(): string };
+declare const FIXED_ID: string;
+declare const FIXED_INSTANT: string;
+-->
+
 ```ts
 // composition root
 const createOrganization = Organization.factory({

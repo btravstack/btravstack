@@ -12,8 +12,9 @@
     "./subscription": "./src/subscription.ts"
   },
   "scripts": {
+    "generate": "node ../../docs/scripts/extract-doc-samples.ts --group entity --out src/generated/doc-samples",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.emit.json && node ./node_modules/typescript-consumer/bin/tsc -p tsconfig.emit.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit --strict --module nodenext --moduleResolution nodenext --target es2022 node_modules/.emit-check/index.d.ts node_modules/.emit-check/emit-guards.d.ts node_modules/.emit-check/index.spec.d.ts node_modules/.emit-check/order.d.ts node_modules/.emit-check/subscription.d.ts"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit -p tsconfig.test-d.json && tsc -p tsconfig.emit.json && node ./node_modules/typescript-consumer/bin/tsc -p tsconfig.emit.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit --strict --module nodenext --moduleResolution nodenext --target es2022 node_modules/.emit-check/index.d.ts node_modules/.emit-check/emit-guards.d.ts node_modules/.emit-check/index.spec.d.ts node_modules/.emit-check/order.d.ts node_modules/.emit-check/subscription.d.ts"
   },
   "dependencies": {
     "@btravstack/entity": "workspace:*",
@@ -22,10 +23,12 @@
   },
   "devDependencies": {
     "@btravstack/tsconfig": "catalog:",
+    "@orpc/zod": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/standard-schema": "catalog:",
     "@unthrown/vitest": "catalog:",
     "effect": "catalog:",
+    "kysely": "catalog:",
     "typescript": "catalog:",
     "typescript-consumer": "catalog:",
     "vitest": "catalog:"

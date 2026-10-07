@@ -22,6 +22,24 @@ test warns you.
 > Domain vocabulary — entities, brands, factories — is whatever your own
 > domain declares.
 
+<!-- doctest: prelude
+const Reason = z.string().min(1).brand("Reason");
+const Step = z.enum(["RUNNING", "ERROR"]);
+const Label = z.string().min(1).brand("Label");
+type MissionRow = {
+  readonly step: string;
+  readonly reason?: string | null | undefined;
+  readonly label: string;
+};
+declare const db: {
+  select(table: string): Promise<readonly (MissionRow & { readonly id: string })[]>;
+};
+declare const report: (id: string, code: string | undefined) => void;
+declare const reportCorrupt: (id: string, issues: Entity.InvalidEntity["issues"]) => void;
+declare const row: unknown;
+declare const startRecovery: (mission: Mission) => void;
+-->
+
 The steps run in this order: decide what kind of rule it is, measure the rows
 that break it, migrate them, then ship the rule. The last two sections cover
 reading legacy rows in the meantime, and making sure a rejected row fails once
@@ -37,6 +55,13 @@ a command, not in `invariants`
 ([Invariants and transitions](/entity/explanation/invariants-and-transitions#three-kinds-of-rule)).
 A command runs only when someone calls it, so old rows never meet the rule.
 The rollout is then just a deploy:
+
+<!-- doctest: isolate
+import { Entity } from "@btravstack/entity";
+import type { Result } from "unthrown";
+import { z } from "zod";
+const Label = z.string().min(1).brand("Label");
+-->
 
 ```ts
 const Reason = z.string().min(1).brand("Reason");
@@ -157,7 +182,7 @@ call `make`, which is strict:
 
 ```ts
 const { data } = Mission.inspect(row).getOrThrow();
-startRecovery(data); // compile error: data is not a Mission
+startRecovery(data); // ✗ compile error: data is not a Mission
 Mission.make(migrate(data)).map(startRecovery); // the way back
 ```
 

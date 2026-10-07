@@ -40,6 +40,20 @@ features:
 
 ## At a glance
 
+<!-- doctest: prelude
+import { z } from "zod";
+import { Instant, Slug } from "../../vocabulary.js";
+const OrgId = z.uuid().brand("OrgId");
+declare const ids: { next(): string };
+declare const clock: { now(): string };
+declare const db: { insert(row: object): Promise<void> };
+declare const slug: z.infer<typeof Slug>;
+declare const name: string;
+declare const next: string;
+declare const row: object;
+declare const report: (cause: unknown) => void;
+-->
+
 ```ts
 import { z } from "zod";
 import { Entity } from "@btravstack/entity";

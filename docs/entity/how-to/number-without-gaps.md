@@ -19,6 +19,22 @@ a finding at audit rather than a cosmetic defect.
 > Domain vocabulary — entities, brands, factories — is whatever your own
 > domain declares.
 
+<!-- doctest: prelude
+import { Money, Slug } from "../../vocabulary.js";
+const Series = z.string().min(1).brand("Series");
+const InvoiceNumber = z.number().int().positive().brand("InvoiceNumber");
+type InvoiceNumber = z.infer<typeof InvoiceNumber>;
+const Instant = z.iso.datetime().brand("Instant");
+type Instant = z.infer<typeof Instant>;
+type Tx = {
+  query(sql: string, params: readonly unknown[]): Promise<{ readonly rows: readonly [{ readonly last: unknown }] }>;
+};
+type NumberAllocator = {
+  next(series: string): Promise<InvoiceNumber>;
+  release(series: string, number: InvoiceNumber): void;
+};
+-->
+
 ## Decide whether you need it at all
 
 Gapless is not the same as unique. If the number is an identifier, take a

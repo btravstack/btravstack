@@ -19,7 +19,28 @@ without the storage layer knowing about entity internals.
 > Domain vocabulary — entities, brands, factories — is whatever your own
 > domain declares.
 
+<!-- doctest: prelude
+import { Slug } from "../../vocabulary.js";
+const OrgId = z.uuid().brand("OrgId");
+const Name = z.string().min(1).brand("Name");
+const FullName = z.string().min(1).brand("FullName");
+class Person extends Entity("Person")(
+  { id: Entity.field(z.uuid().brand("PersonId"), { identity: true }), first: Name, last: Name },
+  { computed: { fullName: Entity.computed(FullName, (d) => `${d.first} ${d.last}`) } },
+) {}
+declare const id: string;
+declare const row: { readonly id: string };
+declare const db: {
+  insert(table: string, row: object): Promise<void>;
+  upsert(table: string, row: object): Promise<void>;
+  findOne(table: string, where: object): Promise<OrganizationRow | undefined>;
+};
+declare const logger: { error(fields: object, message: string): void };
+-->
+
 ## Write with `toJSON()`
+
+<!-- doctest: defer -->
 
 ```ts
 await db.insert("organizations", org.toJSON());
@@ -48,6 +69,11 @@ insists on mutating its argument gets a structural clone
 (`structuredClone(org.toJSON())`), not a cast.
 
 ## Read with `make()`
+
+<!-- doctest: isolate
+import { Organization } from "../../organization.js";
+declare const row: unknown;
+-->
 
 ```ts
 const org = Organization.make(row).getOrThrow();

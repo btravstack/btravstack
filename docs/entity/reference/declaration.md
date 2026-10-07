@@ -18,9 +18,20 @@ helpers that go inside them. For _why_ it is shaped this way, see
 > import { Entity } from "@btravstack/entity";
 > ```
 
+<!-- doctest: prelude
+import { DisplayName, Slug } from "../../vocabulary.js";
+const OrgId = z.uuid().brand("OrgId");
+const AccountId = z.uuid().brand("AccountId");
+const Label = z.string().min(1).brand("Label");
+const id = Entity.field(AccountId, { identity: true });
+declare const row: unknown;
+-->
+
 ## `Entity(tag)(fields, options?)`
 
 Declares an entity. Curried on the tag so it reads next to the class name.
+
+<!-- doctest: skip — a schematic signature: `fields` and `options` stand for the two arguments described below -->
 
 ```ts
 class Organization extends Entity("Organization")(fields, options) {}
@@ -143,6 +154,8 @@ _with_ their flags, and cannot restate them
 
 One derived field: its schema, and the function producing it.
 
+<!-- doctest: skip — one `computed` option, shown outside its declaration -->
+
 ```ts
 computed: {
   fullName: Entity.computed(FullName, (d) => `${d.first} ${d.last}`),
@@ -170,6 +183,8 @@ when to reach for a plain getter instead.
 
 One rule spanning the whole entity: its stable code, the predicate, and what to
 say when it fails.
+
+<!-- doctest: skip — one `invariants` option, shown outside its declaration -->
 
 ```ts
 invariants: [
@@ -507,6 +522,14 @@ whose one issue carries `path: [discriminant]` — see
 the same discriminant value is a **declaration-time defect**: `Entity.union`
 throws, naming both members, rather than letting the last one silently win the
 dispatch table.
+
+<!-- doctest: isolate
+import { Entity } from "@btravstack/entity";
+import { z } from "zod";
+const UserId = z.uuid().brand("UserId");
+class User extends Entity("User")({ id: UserId, kind: z.literal("user") }) {}
+class AlsoUser extends Entity("AlsoUser")({ id: UserId, kind: z.literal("user") }) {}
+-->
 
 ```ts
 Entity.union("kind", [User, AlsoUser]);

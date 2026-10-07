@@ -21,6 +21,35 @@ caller set a field just because the domain lets it change.
 > declares. The snippets use an `Organization` whose `riskTier` field is set by
 > the credit team and must never reach a customer.
 
+<!-- doctest: prelude
+import { Order, OrderLine } from "../../order.js";
+import { Organization } from "../../organization.js";
+const Name = z.string().min(1).brand("Name");
+const Phone = z.string().min(1).brand("Phone");
+class Customer extends Entity("Customer")({
+  id: Entity.field(z.uuid().brand("CustomerId"), { identity: true, generated: true }),
+  name: Name,
+  phone: Phone.optional(),
+}) {}
+const createCustomer = Customer.factory({ id: () => crypto.randomUUID() });
+class User extends Entity("User")({
+  id: Entity.field(z.uuid().brand("UserId"), { identity: true }),
+  kind: z.literal("user"),
+}) {}
+class ServiceAccount extends Entity("ServiceAccount")({
+  id: Entity.field(z.uuid().brand("ServiceAccountId"), { identity: true }),
+  kind: z.literal("service_account"),
+}) {}
+declare const order: Order;
+const publicFields = {
+  id: true,
+  slug: true,
+  name: true,
+  displayLabel: true,
+  createdAt: true,
+} as const;
+-->
+
 ## Start from the four schemas, not as the contract
 
 `input`, `output`, `createInput` and `updateInput` describe what the **domain**
@@ -37,6 +66,10 @@ each one holds.
 ## Allowlist the response
 
 Pick the public fields by name:
+
+<!-- doctest: isolate
+import { Organization } from "../../organization.js";
+-->
 
 ```ts
 const publicFields = {
@@ -317,6 +350,8 @@ issue, the same one
 
 Here `org` is the organization the handler has already loaded and checked the
 caller may rename:
+
+<!-- doctest: skip — a handler's body: its `return`s need the function the page leaves out -->
 
 ```ts
 const command = RenameOrganizationBody.safeParse(await request.json());

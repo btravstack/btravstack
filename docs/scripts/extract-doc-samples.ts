@@ -8,7 +8,9 @@
 // the ordering, exactly as they do for the Prisma client. Groups are resolved
 // from each page's own imports (a temporal import → the temporal worker, …),
 // so the mapping maintains itself; a page the resolver cannot place carries an
-// explicit `<!-- doctest: group=… -->`.
+// explicit `<!-- doctest: group=… -->`. The entity guide is placed by its
+// directory instead: it is a library of its own, its pages import
+// `zod`, and its group compiles beside the billing example its preludes import.
 //
 // Fence markers, as an HTML comment on the line above the fence — invisible in
 // the rendered page, grep-able in the source:
@@ -43,6 +45,11 @@
 // ones' declarations — with import statements hoisted to the top and
 // de-duplicated textually. Bodies are byte-for-byte: fidelity is the point,
 // and `@ts-expect-error` inside a fence survives as a measured assertion.
+//
+// The one line added to a body is that assertion, spelled the way the entity
+// guide spells it: a line whose comment opens `// ✗` claims it does not
+// compile — unless the claim is that it `throws`, which compiles — so it is
+// emitted under a `@ts-expect-error`, and a line that starts compiling fails.
 import { existsSync, globSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import process from "node:process";
@@ -50,14 +57,17 @@ import process from "node:process";
 const DOCS_ROOT = resolve(import.meta.dirname, "..");
 const REPO_ROOT = resolve(DOCS_ROOT, "..");
 
-type Group = "core" | "order-api" | "order-temporal-worker" | "order-amqp-worker";
+type Group = "core" | "order-api" | "order-temporal-worker" | "order-amqp-worker" | "entity";
 
 const GROUPS: readonly Group[] = [
   "core",
   "order-api",
   "order-temporal-worker",
   "order-amqp-worker",
+  "entity",
 ];
+
+const ENTITY_GUIDE = join(DOCS_ROOT, "entity");
 
 /** Module prefixes that pin a page to a group, most specific transport first. */
 const classify = (imports: readonly string[]): Group => {
@@ -155,7 +165,10 @@ const parsePage = (file: string): Page | undefined => {
     // `tsx` is admitted only to be REFUSED below unless it carries a skip: JSX
     // has no workspace that compiles it, and letting the fence language decide
     // that silently is the ungated channel a skip reason exists to close.
-    if (lines[i] !== "```ts" && lines[i] !== "```tsx") {
+    // A blockquote's fence is a fence: the entity guide states each page's
+    // imports in one, and they are the first lines a reader copies.
+    const quoted = lines[i] === "> ```ts";
+    if (lines[i] !== "```ts" && lines[i] !== "```tsx" && !quoted) {
       // A fence marker binds to the NEXT line only; anything else resets it,
       // so a stale marker cannot silently skip a fence added later below it.
       if (lines[i]!.trim() !== "" && pending !== "include") {
@@ -169,7 +182,10 @@ const parsePage = (file: string): Page | undefined => {
     const jsx = lines[i] === "```tsx";
     const start = i + 1;
     const body: string[] = [];
-    for (i += 1; i < lines.length && lines[i] !== "```"; i += 1) body.push(lines[i]!);
+    const close = quoted ? "> ```" : "```";
+    for (i += 1; i < lines.length && lines[i] !== close; i += 1) {
+      body.push(quoted ? lines[i]!.replace(/^> ?/, "") : lines[i]!);
+    }
     if (typeof pending === "object" && "skip" in pending) {
       skips.push({ line: start, reason: pending.skip });
     } else if (jsx) {
@@ -193,8 +209,16 @@ const parsePage = (file: string): Page | undefined => {
   const imports = [prelude, ...isolatePreludes, ...fences.map((fence) => fence.body)].flatMap(
     (body) => [...body.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]!),
   );
-  return { file, group: pageGroup ?? classify(imports), prelude, fences, skips };
+  const group = pageGroup ?? (file.startsWith(`${ENTITY_GUIDE}/`) ? "entity" : classify(imports));
+  return { file, group, prelude, fences, skips };
 };
+
+/** A `// ✗` line's claim that it does not compile, made a measured assertion. */
+const expectRejections = (body: string): string =>
+  body.replace(
+    /^([ \t]*)(.*\/\/ ✗(?! throws).*)$/gm,
+    "$1// @ts-expect-error — the page marks this line ✗\n$1$2",
+  );
 
 /** Hoist a fence body's import statements (possibly multi-line) off its code. */
 const splitImports = (body: string): { imports: string[]; rest: string } => {
@@ -203,10 +227,12 @@ const splitImports = (body: string): { imports: string[]; rest: string } => {
   const lines = body.split("\n");
   for (let i = 0; i < lines.length; i += 1) {
     if (/^import[\s{]/.test(lines[i]!)) {
-      let statement = lines[i]!;
+      // A trailing `// comment` is dropped first: left on, the statement never
+      // looks finished and swallows the rest of the fence as an import.
+      let statement = lines[i]!.replace(/(["'];?)\s*\/\/.*$/, "$1");
       while (!/["'];?\s*$/.test(statement) && i + 1 < lines.length) {
         i += 1;
-        statement += `\n${lines[i]!}`;
+        statement += `\n${lines[i]!.replace(/(["'];?)\s*\/\/.*$/, "$1")}`;
       }
       imports.push(statement);
     } else {
@@ -386,7 +412,7 @@ const emit = (page: Page, outDir: string): number => {
         bodies.push(`${banner(fence)}\n${checked.code}`);
         continue;
       }
-      const split = splitImports(fence.body);
+      const split = splitImports(expectRejections(fence.body));
       // A FENCE's relative imports — `./x.js` and `../x.js` alike — are
       // dropped: they narrate the page's own file layout, and the
       // concatenated module supplies those names directly. Only a PRELUDE may
@@ -490,7 +516,9 @@ const main = (): void => {
     throw new Error("usage: extract-doc-samples.ts --group <name> --out <dir>");
   }
   const sources = [
-    ...globSync(join(DOCS_ROOT, "{tutorial,how-to,reference,explanation,examples,di}/**/*.md")),
+    ...globSync(
+      join(DOCS_ROOT, "{tutorial,how-to,reference,explanation,examples,di,entity}/**/*.md"),
+    ),
     join(DOCS_ROOT, "index.md"),
     join(REPO_ROOT, "README.md"),
     ...globSync(join(REPO_ROOT, "packages/*/README.md")),

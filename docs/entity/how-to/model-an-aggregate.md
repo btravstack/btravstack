@@ -24,6 +24,22 @@ are the decisions that make a DDD aggregate, and this guide makes them first.
 > with its spec beside it. The brands (`OrderId`, `Quantity`, `Money`, …) are
 > declared there.
 
+<!-- doctest: prelude
+import { CustomerId, OrderId, OrderLineId, OrderStatus, Quantity } from "../../order.js";
+import { Currency, DisplayName, LineLabel, Money } from "../../vocabulary.js";
+const MemberId = z.uuid().brand("MemberId");
+type MemberId = z.infer<typeof MemberId>;
+const Email = z.email().brand("Email");
+const Name = z.string().min(1).brand("Name");
+const AuditId = z.uuid().brand("AuditId");
+const PersonId = z.uuid().brand("PersonId");
+const Age = z.number().int().nonnegative().brand("Age");
+declare const order: Order;
+declare const changed: Order;
+declare const row: object;
+declare const line: object;
+-->
+
 ## Decide what each part is
 
 Four different things can sit inside an order, and they have different
@@ -139,6 +155,8 @@ Outside code holds the `Order`, never a loose `OrderLine` it intends to save. A
 change to a line is a method on the order, and it ends in the order's own
 `update`, which re-runs **every** invariant over the new set of lines:
 
+<!-- doctest: skip — the method on its own: `/* … as above … */` elides the declaration it extends -->
+
 ```ts
 class OrderNotEditable extends TaggedError("OrderNotEditable")<{
   orderId: string;
@@ -173,6 +191,13 @@ the line is still a valid line; 1,001 widgets at €10.00 is. `this.update`
 decides whether the order is still a valid order, and €10,010.00 is over its
 ceiling:
 
+<!-- doctest: isolate
+import type { z } from "zod";
+import { type Order, type OrderLineId, Quantity } from "../../order.js";
+declare const order: Order;
+declare const lineId: z.output<typeof OrderLineId>;
+-->
+
 ```ts
 order.changeQuantity(lineId, Quantity.parse(1_001));
 // Err(InvalidEntity { issues: [{ message: "order total exceeds the ceiling" }] })
@@ -190,6 +215,8 @@ address. If the order rendered the customer's **current** name and address, a
 customer who moves next year would silently rewrite every invoice already sent
 to them. Copy the values at the moment the order is placed, as a value object,
 and store them with the order:
+
+<!-- doctest: skip — the method on its own: `/* … as above … */` elides the declaration it extends -->
 
 ```ts
 class NotTheOrdersCustomer extends TaggedError("NotTheOrdersCustomer")<{
@@ -349,6 +376,17 @@ Nothing is ever an instance of a union: `make` dispatches to a member and
 constructs **that** class. `Entity.union` returns a value, so there is no class
 body to put an unreachable instance method in — and no class body to hang a
 static off either. An entry point is a plain function next to the const:
+
+<!-- doctest: isolate
+import { Entity } from "@btravstack/entity";
+import { z } from "zod";
+const MemberId = z.uuid().brand("MemberId");
+class User extends Entity("User")({ id: MemberId, kind: z.literal("user") }) {}
+class ServiceAccount extends Entity("ServiceAccount")({
+  id: MemberId,
+  kind: z.literal("service_account"),
+}) {}
+-->
 
 ```ts
 export const Member = Entity.union("kind", [User, ServiceAccount]);
