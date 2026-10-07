@@ -44,23 +44,16 @@ features:
 import { z } from "zod";
 import { Entity } from "@btravstack/entity";
 
-const OrgId = z.uuid().brand("OrgId");
-const Slug = z.string().min(1).brand("Slug");
-const DisplayName = z.string().min(1).brand("DisplayName");
-const Instant = z.iso.datetime().brand("Instant");
-const Upper = z.string().min(1).brand("Upper");
+import { Instant, OrgId, Slug } from "./vocabulary.js"; // each brand declared once
 
 class Organization extends Entity("Organization")(
   {
     id: Entity.field(OrgId, { generated: true, immutable: true }),
     slug: Entity.field(Slug, { immutable: true }),
-    name: DisplayName,
+    name: Entity.field(z.string().min(1), { unbranded: true }), // free text
     createdAt: Entity.field(Instant, { generated: true, immutable: true }),
   },
   {
-    computed: {
-      shout: Entity.computed(Upper, (d) => d.name.toUpperCase()),
-    },
     invariants: [
       Entity.invariant({
         code: "NAME_TOO_LONG",

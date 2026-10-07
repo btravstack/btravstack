@@ -18,31 +18,34 @@ typechecks, emits declarations and passes its runtime assertions on 4.3.0.
 Nothing here needs a later minor, and monorepos commonly pin one zod across
 every package, so the range is kept as wide as it is true.
 
+<!-- doctest: skip — imported by the next sample as a module of its own -->
+
+```ts
+// vocabulary.ts — each brand declared once, imported by every entity
+import { z } from "zod";
+
+export const OrgId = z.uuid().brand("OrgId");
+export const Slug = z.string().min(1).brand("Slug");
+export const Instant = z.iso.datetime().brand("Instant");
+```
+
+An entity imports its brands from that module; `Entity.field` only adds flags
+to one. A free-text field has nothing to be confused with, so it opts out with
+`unbranded: true` rather than minting a brand nobody needs.
+
 <!-- doctest: skip — illustrative application wiring uses caller-owned ids, clock and repository -->
 
 ```ts
 import { z } from "zod";
 import { Entity } from "@btravstack/entity";
+import { Instant, OrgId, Slug } from "./vocabulary.js";
 
-const OrgId = z.uuid().brand("OrgId");
-const Slug = z.string().min(1).brand("Slug");
-const Name = z.string().min(1).brand("Name");
-const Instant = z.iso.datetime().brand("Instant");
-const Upper = z.string().min(1).brand("Upper");
-
-class Organization extends Entity("Organization")(
-  {
-    id: Entity.field(OrgId, { generated: true, immutable: true }),
-    slug: Entity.field(Slug, { immutable: true }),
-    name: Name,
-    createdAt: Entity.field(Instant, { generated: true, immutable: true }),
-  },
-  {
-    computed: {
-      shout: Entity.computed(Upper, (d) => d.name.toUpperCase()),
-    },
-  },
-) {
+class Organization extends Entity("Organization")({
+  id: Entity.field(OrgId, { generated: true, immutable: true }),
+  slug: Entity.field(Slug, { immutable: true }),
+  name: Entity.field(z.string().min(1), { unbranded: true }), // free text
+  createdAt: Entity.field(Instant, { generated: true, immutable: true }),
+}) {
   get greeting(): string {
     return `Welcome, ${this.name}`;
   }
@@ -114,9 +117,52 @@ class's instance type cannot be a union at all (`TS2509`).
 
 ## Aggregates
 
-An aggregate root changes only through events. `Entity.aggregate` declares the
-fields, then the events and one handler per event. It has no `update()`: every
-command checks its business rules and returns a sealed decision.
+An aggregate root is an entity. It owns the entities inside its boundary, and
+every change goes through a method on the root that names the business intent.
+The method checks its rules and returns a new root — and, when other parts of
+the system should react, the events it produced beside it. Events are optional:
+a command with nothing to announce returns the entity alone.
+
+<!-- doctest: skip — invoice fields, errors and events are defined by the consuming application -->
+
+```ts
+class Invoice extends Entity("Invoice")({
+  id: Entity.field(InvoiceId, { identity: true, immutable: true }),
+  status: InvoiceStatus, // "DRAFT" | "ISSUED" | "VOID"
+  total: Money,
+}) {
+  void(): Result<
+    { readonly entity: Invoice; readonly events: readonly [InvoiceVoided] },
+    InvoiceNotVoidable | Entity.InvalidEntity
+  > {
+    if (this.status !== "ISSUED") {
+      return Err(new InvoiceNotVoidable({ invoiceId: this.id }));
+    }
+    return this.update({ status: "VOID" }).map((entity) => ({
+      entity,
+      events: [{ type: "InvoiceVoided", invoiceId: entity.id }] as const,
+    }));
+  }
+}
+
+const { entity, events } = invoice.void().getOrThrow();
+// one transaction: the new row, and one outbox row per event
+```
+
+The events are not applied back to the root; they tell other modules what
+happened, so an accounting service can react to `InvoiceVoided` without the
+invoice knowing it exists. `update()` is public, so export commands from the
+domain module rather than entities to patch. See [Model an
+aggregate](https://btravstack.github.io/btravstack/entity/how-to/model-an-aggregate)
+and [Write commands and
+events](https://btravstack.github.io/btravstack/entity/how-to/write-commands).
+
+### Event-sourced roots
+
+When the events are the source of truth — the state is a fold of them, or you
+store an event stream — declare the root with `Entity.aggregate` instead. Its
+state changes only through events: it declares the events and one handler per
+event, it has no `update()`, and every command returns a sealed decision.
 
 <!-- doctest: skip — aggregate events and repository are defined by the consuming application -->
 
@@ -155,9 +201,8 @@ repository.save(decision); // a state row and an outbox, or an event stream
 Only `emit` and `start` build a decision, so a repository is only ever handed
 events that were folded and checked against every invariant. Load with
 `make(row, { version })` or `replay(stream)`; the same aggregate persists as
-state or as events without touching its declaration. Use `Entity` for
-everything inside the boundary, and for simple models where a public `update()`
-costs nothing. See [Model an event-driven
+state or as events without touching its declaration. Reach for it only when
+you want that constraint; an `Entity` root is the default. See [Model an event-driven
 aggregate](https://btravstack.github.io/btravstack/entity/how-to/model-an-event-driven-aggregate).
 
 ## Documentation
