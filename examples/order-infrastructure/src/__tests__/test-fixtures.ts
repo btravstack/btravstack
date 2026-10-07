@@ -11,6 +11,7 @@ import {
   prismaCustomerRepository,
   prismaOrderRepository,
   type OrderDatabaseClient,
+  type OrderPayload,
 } from "../index.js";
 
 export type PersistenceFixtures = {
@@ -47,6 +48,8 @@ export type PersistenceFixtures = {
   readonly customers: ServiceOf<CustomerRepository>;
   /** `@btravstack/outbox`'s store over this application's own table — what the relay claims from. */
   readonly outbox: OutboxStoreService;
+  /** An outbox row's payload as `prismaOrderRepository` encoded it. */
+  readonly decoded: (payload: string | null) => OrderPayload;
   /**
    * The same store over a pool whose every session the server ends after
    * 200 ms idle inside a transaction — the setting that, unlifted, frees a
@@ -102,6 +105,11 @@ export const it = test.extend<PersistenceFixtures>({
 
   outbox: async ({ db }, use) => {
     await use(prismaOutboxStore(db, { schema: "orders" }));
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  decoded: async ({}, use) => {
+    await use((payload) => JSON.parse(payload ?? "null") as OrderPayload);
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

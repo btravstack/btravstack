@@ -44,7 +44,7 @@ export const withdrawStale = (
                   (removed, order) =>
                     removed.flatMap(() =>
                       repository
-                        .remove(order.id)
+                        .remove(order.id, { placedBefore })
                         .recoverErrCases((matcher) =>
                           matcher.with(P.tag("OrderNotFound"), () => undefined),
                         ),

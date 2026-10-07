@@ -73,8 +73,10 @@ namespace orders {
   //
   // The row IS the event envelope — `tenantId` (whose fact it is), `kind`
   // (which sort of thing changed), `subjectId` (which one, and the key a reader
-  // compacts on), `occurredAt`, and `payload`. A NULL payload is the
-  // **tombstone**: the last word about a subject, saying it is gone. `id` is
+  // compacts on), `occurredAt`, and `payload` — this application's own
+  // encoding, `prismaOrderRepository`'s `OrderPayload`: the order's placement
+  // time and the order, or `null` for the **tombstone**, the last word about a
+  // subject saying it is gone. `id` is
   // the sequence the relay publishes in, so a reader sees a subject's create
   // before its tombstone. `publishedAt` is the relay's own bookkeeping — NULL
   // means pending. The shape is `@btravstack/outbox`'s documented table, which

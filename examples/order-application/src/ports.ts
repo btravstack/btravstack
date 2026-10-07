@@ -36,6 +36,12 @@ export class Tenant extends Port("Tenant")<TenantId> {}
  * outbox and `remove` leaves a **tombstone**, each atomically, so a subscriber
  * can never miss either. Deleting what does not exist is `OrderNotFound`, a
  * value, so a duplicate compensation is inert.
+ *
+ * `remove`'s `placedBefore` is a condition the STORE checks in the same
+ * statement that deletes: a row placed at or after it is left alone, no
+ * tombstone is written, and the answer is `OrderNotFound`. That is what lets
+ * a sweep that listed an order delete only that order, and not one placed
+ * under the same id since.
  */
 export class OrderRepository extends Port("OrderRepository")<{
   readonly save: (order: Order) => AsyncResult<Order, DuplicateOrder>;
@@ -43,7 +49,10 @@ export class OrderRepository extends Port("OrderRepository")<{
   readonly list: (
     query: OrderQuery,
   ) => AsyncResult<Page<Order>, MalformedCursor | CursorSortMismatch>;
-  readonly remove: (id: string) => AsyncResult<void, OrderNotFound>;
+  readonly remove: (
+    id: string,
+    condition?: { readonly placedBefore?: Date | undefined },
+  ) => AsyncResult<void, OrderNotFound>;
 }> {}
 
 /**

@@ -35,4 +35,27 @@ describe("withdrawStale", () => {
       removed: [],
     });
   });
+
+  it("leaves an order placed again under a listed id between the listing and the removal", async ({
+    racedStore,
+  }) => {
+    // GIVEN two stale orders, the first of which is compensated away and
+    // placed again — freshly — once the sweep has listed it
+    const signal = new AbortController().signal;
+
+    // WHEN the sweep runs
+    const outcome = await withdrawStale(racedStore.repository, new Date(), signal);
+
+    // THEN the fresh order survives and no tombstone was written for it: the
+    // removal re-checked the cutoff in the store, not in the listing
+    expect({
+      ok: outcome.isOk(),
+      removed: racedStore.removed(),
+      held: racedStore.held(),
+    }).toEqual({
+      ok: true,
+      removed: ["0199a1e0-0000-7000-8000-00000000d002"],
+      held: ["0199a1e0-0000-7000-8000-00000000d001"],
+    });
+  });
 });

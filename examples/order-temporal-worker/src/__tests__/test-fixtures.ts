@@ -199,26 +199,58 @@ const noShippingTemporal = () => {
  * `list` answers whatever is still held, so a sweep that removes it all is
  * answered an empty page next.
  */
-const staleStoreOf = () => {
+const staleStoreOf = (onFirstList: (replace: (id: string) => void) => void = () => undefined) => {
   const ids = ["0199a1e0-0000-7000-8000-00000000d001", "0199a1e0-0000-7000-8000-00000000d002"];
-  const rows = new Map(ids.map((id) => [id, placeOrder(id, 1).getOrThrow()]));
-  const removed: string[] = [];
+  const longAgo = new Date("2025-01-01T00:00:00.000Z");
+  const rows = new Map(
+    ids.map((id) => [id, { order: placeOrder(id, 1).getOrThrow(), placedAt: longAgo }]),
+  );
+  const tombstones: string[] = [];
+  let listed = false;
+  const replace = (id: string) => {
+    rows.set(id, {
+      order: placeOrder(id, 1).getOrThrow(),
+      placedAt: new Date(Date.now() + 3_600_000),
+    });
+  };
   const repository: ServiceOf<OrderRepository> = {
     save: (order) => OkAsync(order),
     find: (id) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
-    list: () => OkAsync({ items: [...rows.values()], hasPreviousPage: false, hasNextPage: false }),
-    remove: (id) => {
+    list: ({ placedBefore }) => {
+      const items = [...rows.values()]
+        .filter((row) => placedBefore === undefined || row.placedAt < placedBefore)
+        .map((row) => row.order);
+      if (!listed) {
+        listed = true;
+        onFirstList(replace);
+      }
+      return OkAsync({ items, hasPreviousPage: false, hasNextPage: false });
+    },
+    remove: (id, { placedBefore } = {}) => {
+      const row = rows.get(id);
+      if (row === undefined || (placedBefore !== undefined && row.placedAt >= placedBefore))
+        return ErrAsync(new OrderNotFound({ id: id as OrderId }));
       rows.delete(id);
-      removed.push(id);
+      tombstones.push(id);
       return OkAsync();
     },
   };
-  return { repository, removed: (): readonly string[] => removed };
+  return {
+    repository,
+    /** The ids a tombstone was written for — what a removal leaves in the outbox. */
+    removed: (): readonly string[] => tombstones,
+    held: (): readonly string[] => [...rows.keys()],
+  };
 };
 
 export type TemporalFixtures = {
   /** Two stale orders in memory, and the ids a sweep removed from them. */
   readonly staleStore: ReturnType<typeof staleStoreOf>;
+  /**
+   * The same store, where the first stale order is compensated away and its
+   * id placed again — freshly — between the sweep's listing and its removal.
+   */
+  readonly racedStore: ReturnType<typeof staleStoreOf>;
   /** Where the shared server is, and the namespace this spec file owns on it. */
   readonly server: Server;
   /**
@@ -347,6 +379,11 @@ export const it = test.extend<TemporalFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   staleStore: async ({}, use) => {
     await use(staleStoreOf());
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  racedStore: async ({}, use) => {
+    await use(staleStoreOf((replace) => replace("0199a1e0-0000-7000-8000-00000000d001")));
   },
 
   scheduled: async ({ server }, use) => {

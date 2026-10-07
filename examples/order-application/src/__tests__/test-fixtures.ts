@@ -40,6 +40,10 @@ type Store = Map<string, Order>;
  */
 const placedAt = new WeakMap<Order, Date>();
 
+const placedPrior = (order: Order, cutoff: Date | undefined): boolean =>
+  cutoff === undefined ||
+  (placedAt.get(order)?.getTime() ?? Number.POSITIVE_INFINITY) < cutoff.getTime();
+
 /** A sort value this stub can order: what a text or numeric key reads as. */
 type SortValue = number | string;
 
@@ -115,9 +119,7 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
           const scoped = mine().filter(
             (order) =>
               (minQuantity === undefined || order.quantity >= minQuantity) &&
-              (placedBefore === undefined ||
-                (placedAt.get(order)?.getTime() ?? Number.POSITIVE_INFINITY) <
-                  placedBefore.getTime()),
+              placedPrior(order, placedBefore),
           );
           const keys = keyset(request);
           if (!keys.resumable)
@@ -154,8 +156,15 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
             ),
           );
         },
-        remove: (id: string) =>
-          rows.delete(key(id)) ? OkAsync() : ErrAsync(new OrderNotFound({ id: id as OrderId })),
+        remove: (
+          id: string,
+          { placedBefore }: { readonly placedBefore?: Date | undefined } = {},
+        ) => {
+          const row = rows.get(key(id));
+          return row !== undefined && placedPrior(row, placedBefore) && rows.delete(key(id))
+            ? OkAsync()
+            : ErrAsync(new OrderNotFound({ id: id as OrderId }));
+        },
       };
     },
   });

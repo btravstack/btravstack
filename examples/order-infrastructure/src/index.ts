@@ -10,4 +10,4 @@ export {
   OrderTenantPersistence,
 } from "./module.js";
 export { prismaCustomerRepository } from "./prisma-customer-repository.js";
-export { prismaOrderRepository } from "./prisma-order-repository.js";
+export { prismaOrderRepository, type OrderPayload } from "./prisma-order-repository.js";
