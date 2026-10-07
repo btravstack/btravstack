@@ -207,6 +207,29 @@ type ServesNothingGate<Router, Fragments> = [Router] extends [undefined]
   : unknown;
 
 /**
+ * The kinds one answerer's `units<…>()` declared and the other's did not, when
+ * both declared some. No binding serves both: the answerer missing a kind types
+ * its leaves under it against `anonymous`'s module, while the root binding the
+ * kind for the other forks that module under them too.
+ */
+type DivergentKinds<Router, Fragments> = [keyof UnitsOfAnswerer<Router>] extends [never]
+  ? never
+  : [keyof UnitsOfAnswerer<Fragments>] extends [never]
+    ? never
+    :
+        | Exclude<keyof UnitsOfAnswerer<Router>, keyof UnitsOfAnswerer<Fragments>>
+        | Exclude<keyof UnitsOfAnswerer<Fragments>, keyof UnitsOfAnswerer<Router>>;
+
+type DivergentGate<Router, Fragments> = [DivergentKinds<Router, Fragments>] extends [never]
+  ? unknown
+  : {
+      readonly "DIVERGENT UNIT KINDS — the router and the fragments come from units<…>() calls declaring different kinds, so mint both from one": DivergentKinds<
+        Router,
+        Fragments
+      >;
+    };
+
+/**
  * An answerer from `units<…>()` makes `unit` required once it serves a kind
  * that call declared: with no record bound, every leaf typed by that kind's
  * module would fork nothing at runtime. A marker rather than a required `unit`
@@ -294,7 +317,8 @@ export type HttpModuleOptions<
   readonly needs?: N;
 } & NeedsGate<Imports<I, Units>, Provides<P, Router, Fragments>, EnvAnd<N>> &
   ServesNothingGate<Router, Fragments> &
-  UnboundGate<Units, Router, Fragments>;
+  UnboundGate<Units, Router, Fragments> &
+  DivergentGate<Router, Fragments>;
 
 /**
  * The declared needs plus `Env`. di's `needs` array is type-level only —

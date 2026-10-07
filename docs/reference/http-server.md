@@ -2067,7 +2067,10 @@ needed. The **first** case reads the kinds off whichever answerer carries the
 **fragments-only** root under a kinded api is gated against the declared
 modules exactly as a router-only one is. Supplying both answerers is an
 intersection of the two declarations — one `api` declares them once, and a
-router and fragments taken from two different apis must satisfy both.
+router and fragments taken from two different apis must satisfy both. Two
+declarations naming different **kinds** cannot be satisfied by one record,
+and are refused against
+`"DIVERGENT UNIT KINDS — the router and the fragments come from units<…>() calls declaring different kinds, so mint both from one"`.
 
 **`http()` and `httpServer()` are un-gated**, and structurally so: they take
 the router as a **need**, never as a value, so there is nothing to check

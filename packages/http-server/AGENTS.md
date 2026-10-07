@@ -817,6 +817,14 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   and off the fragments, `anonymous` optional on an authenticated-only router
   and fragment set, `anonymous` required for a public leaf and for a served
   scheme that falls back, and a fully shadowed mark left optional.
+  **A router and fragments whose `units<…>()` calls declared different KINDS
+  are refused** against `"DIVERGENT UNIT KINDS — …"`, naming the kinds one
+  side lacks: the side without a kind types its leaves under it against
+  `anonymous`'s module, and the binding the other side needs forks a
+  different module under them — no one record serves both. Equal kinds with
+  different modules stay an intersection, which a module exporting both
+  satisfies soundly. Pinned beside the rest: two declarations refused, one
+  declaration for both answerers accepted.
 
   **The two cases treat a record whose keys are NOT literal — one built by
   `Object.fromEntries`, as the runtime fixtures do — differently, because they

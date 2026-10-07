@@ -373,6 +373,28 @@ const _shadowedUnbound = { router: shadowedRouter, port: 0 } as const;
 // @ts-expect-error — UNBOUND UNIT KINDS: the effective `service` mark still opens a unit
 void HttpModule("ShadowedMarkUnbound")(_shadowedUnbound);
 
+// A router and fragments from two `units<…>()` calls declaring different kinds
+// cannot share one binding: `fallbackRouter` types its `user` leaf against
+// `anonymous`'s module, and binding `user` for the fragments would fork
+// `UserUnit` under it. Refused; one declaration for both composes.
+const _divergent = {
+  router: fallbackRouter,
+  fragments: gated.HtmxFragments([gatedUserRow]),
+  port: 0,
+  provides: [gatedUserRow],
+  unit: { anonymous: AnonymousUnit, user: UserUnit },
+} as const;
+// @ts-expect-error — DIVERGENT UNIT KINDS: `fallbackRouter`'s declaration has no `user`
+void HttpModule("DivergentDeclarations")(_divergent);
+
+void HttpModule("OneDeclaration")({
+  router: gatedUserRouter,
+  fragments: gated.HtmxFragments([gatedUserRow]),
+  port: 0,
+  provides: [gatedUserRow],
+  unit: { user: UserUnit },
+});
+
 const _fragmentsUnbound = { fragments: gatedFragments, port: 0, provides: [gatedRow] } as const;
 // @ts-expect-error — UNBOUND UNIT KINDS: the fragments serve `anonymous`, which was declared
 void HttpModule("GatedFragmentsUnbound")(_fragmentsUnbound);
