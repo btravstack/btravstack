@@ -40,8 +40,9 @@ const make = (services: ReadonlyMap<string, unknown>): Context<never> => {
     /* v8 ignore next */
     _R: () => {},
     get: (port: PortLike) => {
-      const service = services.get(port.portId);
-      if (service === undefined) {
+      // Membership, never `=== undefined`: a port's service may itself be
+      // `undefined`, and that is a registered value, not a missing one.
+      if (!services.has(port.portId)) {
         // A set port nobody contributed to is empty, not missing: `plan` never
         // registers a port with no providers, so this is the only place the
         // distinction can be made, and contributing nothing is what a starter
@@ -52,7 +53,7 @@ const make = (services: ReadonlyMap<string, unknown>): Context<never> => {
         // oxlint-disable-next-line unthrown/no-throw
         throw new Error(`[di] no service registered for port ${port.portId}`);
       }
-      return service;
+      return services.get(port.portId);
     },
   } as unknown as Context<never>;
   entries.set(ctx, services);
