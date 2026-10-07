@@ -10,19 +10,24 @@ export type { AnyUnitModule };
 type UnitExportsOf<M> = M extends Module<infer X, never, unknown> ? X : never;
 
 /**
- * Any scheme's principal port, as it appears in a needs union. The seed is what
- * discharges it — a unit module naming one owes the composition root nothing —
- * so it is subtracted from what a bound kind's module still needs.
+ * The principal port a unit opened under kind `K` is seeded with: its own
+ * scheme's, and none for `anonymous`. The seed is what discharges it, so it is
+ * subtracted from what that kind's module still needs — and only from that
+ * kind's.
  */
-type PrincipalInstance = PortInstance<`HttpPrincipal:${string}`, unknown>;
+type PrincipalInstance<K> = K extends "anonymous"
+  ? never
+  : PortInstance<`HttpPrincipal:${K & string}`, unknown>;
 
 /**
  * What a record of bound kinds still owes the composition root: every bound
- * module's own unmet needs, less the principal the fork seeds.
+ * module's own unmet needs, less the principal its own kind's fork seeds.
  */
 export type UnitsNeedsOf<Units> =
   Units extends Readonly<Record<string, unknown>>
-    ? Exclude<UnitNeedsOf<Units[keyof Units]>, PrincipalInstance>
+    ? {
+        [K in keyof Units]: Exclude<UnitNeedsOf<Units[K]>, PrincipalInstance<K>>;
+      }[keyof Units]
     : never;
 
 /** Every kind a unit may be opened under: no credential, or the scheme that resolved one. */

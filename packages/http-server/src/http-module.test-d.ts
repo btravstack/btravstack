@@ -146,6 +146,63 @@ const _principalOnly = start(
 );
 void _principalOnly;
 
+// The subtraction is PER KIND: a fork seeds only the principal of the scheme
+// that resolved, and `anonymous` none at all — so a principal any other kind's
+// module names stays an unmet need rather than a request that answers `500`.
+const _anonymousNeedsPrincipal = HttpModule("AnonymousNeedsPrincipal")({
+  router: userRouter,
+  port: 0,
+  unit: { anonymous: PrincipalOnlyUnit },
+});
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: an anonymous unit is seeded with no principal
+const _anonymousPrincipal = start(_anonymousNeedsPrincipal, startOptions);
+void _anonymousPrincipal;
+
+const withTwo = defineHttp({
+  authenticators: {
+    user: HttpAuthenticator<{ readonly userId: string }>()({
+      inject: {},
+      sync: () => () => OkAsync({ userId: "u-1" }),
+    }),
+    service: HttpAuthenticator<{ readonly serviceId: string }>()({
+      inject: {},
+      sync: () => () => OkAsync({ serviceId: "s-1" }),
+    }),
+  },
+});
+const twoRouter = withTwo.OrpcRouter({
+  me: authenticated({ user: [] })({ hello: oc }),
+  ops: authenticated({ service: [] })({ ping: oc }),
+})({
+  inject: {},
+  sync: () => ({ me: { hello: () => OkAsync("hi") }, ops: { ping: () => OkAsync("pong") } }),
+});
+const ServiceOnlyUnit = Module("ServiceOnlyUnitTypeD")({
+  needs: [withTwo.principals.service],
+  provides: [
+    Provider(UnitSpan)({
+      inject: { principal: withTwo.principals.service },
+      sync: ({ principal }) => ({ at: principal.serviceId.length }),
+    }),
+  ],
+  exports: [UnitSpan],
+});
+
+const _serviceSeeded = start(
+  HttpModule("ServiceSeeded")({ router: twoRouter, port: 0, unit: { service: ServiceOnlyUnit } }),
+  startOptions,
+);
+void _serviceSeeded;
+
+const _mismatchedScheme = HttpModule("MismatchedScheme")({
+  router: twoRouter,
+  port: 0,
+  unit: { user: ServiceOnlyUnit },
+});
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: a `user` unit is seeded with the user principal, never the service one
+const _mismatched = start(_mismatchedScheme, startOptions);
+void _mismatched;
+
 // The root's `unit` gate, case 1: the router carries the kinds `units<…>()`
 // declared, so a bound value must BE the module that kind declared and a kind
 // outside the declaration is refused.

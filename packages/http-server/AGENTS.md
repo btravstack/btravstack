@@ -715,8 +715,16 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   `httpServer`'s own Needs channel, structurally, through a single
   `Units extends Readonly<Record<string, AnyUnitModule>> | undefined` type
   parameter — **less the principal the fork seeds**, which `UnitsNeedsOf<Units>`
-  subtracts with `Exclude<…, PrincipalInstance>`, a `PortInstance` over the
-  template-literal id every principal port carries. Measured: removing that
+  subtracts **per bound kind** with `Exclude<…, PrincipalInstance<K>>`: kind
+  `K`'s module is discharged of `HttpPrincipal:${K}` and of nothing else, and
+  `anonymous`'s of nothing at all. The subtraction used to be every
+  `HttpPrincipal:*` from every module, which compiled and booted a root whose
+  `anonymous` module (or a `user` module naming `service`'s principal) then
+  answered `500` on the first request — a fork is seeded with exactly one
+  principal, or none, and the type must not promise more. The fallback does
+  not widen this: an unbound scheme's request forks `anonymous`'s module WITH
+  that scheme's seed, but an unauthenticated one forks it with none, so the
+  `anonymous` module can count on no principal. Measured: removing the
   `Exclude` makes `start` report
   `UNSATISFIED DEPENDENCIES — nothing provides: "HttpPrincipal:user"`, which is
   the whole point of the seed. (`AnyUnitModule = Module<never, never, unknown>`
@@ -730,7 +738,10 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   exactly what the composition root must supply.
   `http-module.test-d.ts` pins all three directions — a kind whose module owes
   a port and gets it, one that does not, and one owing nothing but its scheme's
-  principal, which starts with no provider at all.
+  principal, which starts with no provider at all — and the per-kind half
+  beside them, under both compilers: that principal-only module bound to
+  `anonymous` is refused, a `service`-principal module bound to `user` is
+  refused, and the same module bound to `service` starts.
 
 - **`HttpModule` gates the kinds a root binds, because the fallback makes a
   typo silent.** An unbound scheme forks `anonymous` (above), so
