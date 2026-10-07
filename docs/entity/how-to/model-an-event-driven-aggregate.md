@@ -252,13 +252,16 @@ terminal.
 
 The decision says the aggregate ended. `decision.isTerminal` is true once a
 terminal event is among its events, so a repository branches on it instead of
-matching the last event's `type`:
+matching the last event's `type`. Keep a tombstone rather than deleting the
+row outright: the version has to survive the end, or a retried save, or a
+stale writer still holding the creation decision, finds version `0` again and
+brings the aggregate back:
 
 <!-- doctest: skip — the write in the example's state-based repository `save`, shown outside its class -->
 
 ```ts
-if (decision.isTerminal) this.#rows.delete(id);
-else this.#rows.set(id, { state: stored(decision.state.toJSON()), version });
+if (decision.isTerminal) this.#rows.set(id, { state: null, version, ended: true });
+else this.#rows.set(id, { state: stored(decision.state.toJSON()), version, ended: false });
 ```
 
 Nothing can be decided after the end. Emitting on the state of a terminal

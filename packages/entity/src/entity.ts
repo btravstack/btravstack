@@ -279,13 +279,13 @@ export function Entity<Tag extends string>(tag: Tag) {
     /**
      * Each data field deep-frozen, keyed exactly as `output` declares them.
      *
-     * One `WeakSet` for the whole record, not one per field: fields can share
-     * a subtree, and a per-field set would re-walk it once per field that
+     * One `WeakMap` for the whole record, not one per field: fields can share
+     * a subtree, and a per-field map would re-walk it once per field that
      * reaches it. See `deepFreeze`.
      */
     const frozenFields = (d: OutputShape): Record<PropertyKey, unknown> => {
       const source = d as unknown as Record<PropertyKey, unknown>;
-      const seen = new WeakSet<object>();
+      const seen = new WeakMap<object, object>();
       return Object.fromEntries(
         dataKeys.map((k) => [
           k,

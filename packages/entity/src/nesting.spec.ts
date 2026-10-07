@@ -171,6 +171,29 @@ test.each([
   });
 });
 
+test("toJSON omits an explicitly undefined key inside an object zod already froze", () => {
+  // GIVEN `.readonly()` objects, which zod freezes as it parses, alone and in arrays
+  const Fixed = z.object({ label: Label.optional() }).readonly();
+  class Settings extends Entity("Settings")({
+    id: OrderId,
+    fixed: Fixed.brand("Fixed"),
+    list: z.array(Fixed.brand("Item")),
+    frozenList: z.array(Fixed.brand("Item")).readonly(),
+  }) {}
+  // WHEN a row with an explicit undefined inside each is made
+  const row = { label: undefined };
+  const json = Settings.make({ id: oid, fixed: row, list: [row], frozenList: [row] }).map((s) =>
+    s.toJSON(),
+  );
+  // THEN every projection is canonical, and still frozen
+  expect(
+    json.map(({ fixed, list, frozenList }) => ({
+      keys: [Object.keys(fixed), Object.keys(list[0]!), Object.keys(frozenList[0]!)],
+      frozen: [fixed, list, list[0], frozenList, frozenList[0]].every((v) => Object.isFrozen(v)),
+    })),
+  ).toBeOkWith({ keys: [[], [], []], frozen: true });
+});
+
 test("an absent optional field is still locked", () => {
   // GIVEN an account without a label
   const account = Account.make({ id: oid, owner: { id: cid }, members: [], meta: {} }).getOrThrow();

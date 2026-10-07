@@ -446,14 +446,14 @@ An aggregate root whose state changes only through events. After the tag, the
 fields are the second call and take everything `Entity(tag)(fields)` takes; the
 options are the third:
 
-| Option       | Required | What it is                                                                                    |
-| ------------ | -------- | --------------------------------------------------------------------------------------------- |
-| `events`     | yes      | a zod discriminated union on `type`: every event the aggregate produces                       |
-| `opens`      | yes      | one handler per **creation** event: `(event) => record`                                       |
-| `evolve`     | yes      | one handler per **other** event: `(record, event) => record`; all of them, or a compile error |
-| `ends`       | no       | the **terminal** events, by `type`: once one is decided, the decision `isTerminal`            |
-| `invariants` | no       | as on `Entity`                                                                                |
-| `computed`   | no       | as on `Entity`                                                                                |
+| Option       | Required | What it is                                                                                                 |
+| ------------ | -------- | ---------------------------------------------------------------------------------------------------------- |
+| `events`     | yes      | a zod discriminated union on `type`: every event the aggregate produces                                    |
+| `opens`      | yes      | one handler per **creation** event: `(event) => record`                                                    |
+| `evolve`     | yes      | one handler per **other** event: `(record, event) => record`; all of them, or a compile error              |
+| `ends`       | no       | the **terminal** events, by `type`: once one is decided, the decision `isTerminal`; never an opening event |
+| `invariants` | no       | as on `Entity`                                                                                             |
+| `computed`   | no       | as on `Entity`                                                                                             |
 
 A handler's record is the fields' plain, unbranded input shape: unvalidated
 data, which a single `make` turns into the aggregate at the end of a fold.

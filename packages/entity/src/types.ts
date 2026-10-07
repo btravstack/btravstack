@@ -643,8 +643,9 @@ export declare class DecisionKey {
  * interprets it.
  *
  * `isTerminal` is true once a decided event is one of the aggregate's `ends`:
- * the aggregate is over, so a state-based repository deletes its row rather
- * than updating it, and nothing more can be decided on that state.
+ * the aggregate is over, so a repository stops loading it (keeping its
+ * version, so a stale save still conflicts), and nothing more can be decided
+ * on that state.
  */
 export type Decision<A, E> = {
   readonly state: A;

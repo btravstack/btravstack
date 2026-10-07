@@ -100,7 +100,7 @@ export class Subscription extends Entity.aggregate("Subscription")({
     return this.emit({ type: "SubscriptionCancelled", at });
   }
 
-  /** The end of the subscription: its decision is terminal, so a repository deletes it. */
+  /** The end of the subscription: its decision is terminal, so a repository stops loading it. */
   erase(): Result<Entity.Decision<Subscription, SubscriptionEvent>, never> {
     return this.emit({ type: "SubscriptionErased" });
   }

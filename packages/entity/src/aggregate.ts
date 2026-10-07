@@ -110,6 +110,11 @@ export const createAggregate =
       );
     }
     const { events, opens, evolve, ends = [], ...entityOptions } = options;
+    const openingEnd = ends.find((type) => Object.hasOwn(opens, type));
+    if (openingEnd !== undefined) {
+      // oxlint-disable-next-line unthrown/no-throw
+      throw new Error(`${tag}: "${openingEnd}" opens the aggregate, so it cannot end it.`);
+    }
     const Base = buildEntity(tag)(fields as Fields, entityOptions) as Record<string, unknown> & {
       readonly prototype: Record<string, unknown>;
       readonly input: z.ZodObject;

@@ -331,6 +331,23 @@ class Doc extends Entity.aggregate("Doc")({ id: Entity.field(CartId, { identity:
 
 const openedDoc = () => Doc.start({ type: "Opened", id }).get();
 
+test("an opening event listed in ends is refused while the declaration runs", () => {
+  // GIVEN a declaration the types would refuse, reached untyped
+  const declare = Entity.aggregate("Instant")({ id: Entity.field(CartId, { identity: true }) }) as (
+    options: object,
+  ) => unknown;
+  // WHEN it names its opening event as terminal
+  const declaring = () =>
+    declare({
+      events: CartEvent,
+      opens: { CartOpened: (e: { cartId: string }) => ({ id: e.cartId }) },
+      evolve: { ItemAdded: (r: object) => r, CartCheckedOut: (r: object) => r },
+      ends: ["CartOpened"],
+    });
+  // THEN it throws, naming the event
+  expect(declaring).toThrow(/Instant: "CartOpened" opens the aggregate, so it cannot end it/u);
+});
+
 test("a decision says whether it ended the aggregate", () => {
   // GIVEN an open document
   const doc = openedDoc().state;
