@@ -33,7 +33,11 @@ describe("the transactional outbox", () => {
         tenantId: tenant,
         kind: "order",
         subjectId: "0199a1e0-0000-7000-8000-000000000001",
-        payload: { placedAt: expect.any(String), order: { quantity: 3 } },
+        payload: {
+          placedAt: expect.any(String),
+          placementId: expect.any(Number),
+          order: { quantity: 3 },
+        },
         occurredAt: expect.any(Date),
       }),
     ]);

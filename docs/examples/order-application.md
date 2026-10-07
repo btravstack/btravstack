@@ -291,9 +291,9 @@ save: (order) =>
       tenantId,
       kind: "order",
       subjectId: order.id,
-      // `{ placedAt, order }`: the placement time rides the payload, the
-      // tombstone's too, so a reused id's two lives stay apart
-      payload: orderPayload(placed.placedAt, { quantity: order.quantity }),
+      // `{ placedAt, placementId, order }`: which life of the order this is
+      // rides the payload, the tombstone's too, so a reused id's two lives stay apart
+      payload: orderPayload(placed, { quantity: order.quantity }),
     });
   })
     .mapErrCases((matcher, defect) =>

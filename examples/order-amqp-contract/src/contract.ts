@@ -30,12 +30,12 @@ const parked = defineExchange("orders-dlx", { type: "direct" });
  * `occurredAt` (one transaction writes several facts at one `now()`) names a
  * single fact.
  *
- * `placedAt` is when the subject was placed — on its tombstone too — because an
- * order id can be reused once its order is gone, and `(id, placedAt)` is what
- * names one life of an order to a reader keeping state about it. It is
- * optional on the wire, and every publisher here still sends it: an envelope
- * queued before the field existed must still be read, as a legacy order whose
- * placement nobody recorded.
+ * An order id can be reused once its order is gone, so two fields name one
+ * life of an order, on its tombstone too: `placementId` — the order row's own
+ * id, which no later life of the same order id is ever given — and `placedAt`,
+ * when that life was placed. Both are optional on the wire, and every publisher
+ * here still sends them: an envelope queued before they existed must still be
+ * read, as a legacy order whose placement nobody recorded.
  */
 const orderChanged = defineMessage(
   z.object({
@@ -45,6 +45,7 @@ const orderChanged = defineMessage(
     id: z.uuidv7(),
     occurredAt: z.string(),
     placedAt: z.iso.datetime().optional(),
+    placementId: z.number().int().positive().optional(),
     payload: z.object({ quantity: z.number() }).nullable(),
   }),
 );

@@ -10,6 +10,7 @@ import {
   openDatabase,
   prismaCustomerRepository,
   prismaOrderRepository,
+  decodeOrderPayload,
   type OrderDatabaseClient,
   type OrderPayload,
 } from "../index.js";
@@ -109,7 +110,7 @@ export const it = test.extend<PersistenceFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   decoded: async ({}, use) => {
-    await use((payload) => JSON.parse(payload ?? "null") as OrderPayload);
+    await use(decodeOrderPayload);
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

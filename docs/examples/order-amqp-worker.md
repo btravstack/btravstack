@@ -13,7 +13,7 @@ import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { OutboxPublisher, OutboxStore, outbox } from "@btravstack/outbox";
 import { ErrAsync, OkAsync, P, TaggedError } from "unthrown";
-import { OrderDatabase, OrderPersistenceModule, type OrderPayload } from "@btravstack/example-order-infrastructure";
+import { OrderDatabase, OrderPersistenceModule, decodeOrderPayload } from "@btravstack/example-order-infrastructure";
 import { MessageUnitModule } from "../../message-unit.js";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { orderAudit } from "../../slices/audit/handler.js";
@@ -154,10 +154,14 @@ See [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit).
 **The notifier also threads [storage](/reference/storage) into
 [the mailer](/reference/mailer)** — the excerpt above shows only its first
 half. A placement renders the order's invoice, `put`s it under
-`invoices/{tenantId}/{orderId}/{placedAt}.txt`, presigns it for a week (the
+`invoices/{tenantId}/{orderId}/{placementId}.txt`, presigns it for a week (the
 longest a SigV4 URL may live) and mails the link, so the bytes never travel in
-the mail. Every event carries the order's `placedAt`, its tombstone too, so a
-reused id never links the invoice of the order placed under it since.
+the mail. Every event carries the order's `placementId` — the order row's own
+id, so one per life of the order — and its `placedAt`, its tombstone too, so a
+reused id never links the invoice of the order placed under it since. The
+bucket expires `invoices/` after `INVOICE_RETENTION_DAYS` through an S3
+lifecycle rule `pnpm deploy:invoice-retention` installs, the same value the
+notifier waits within.
 A withdrawal links the same invoice, and has to `get` it first: presigning
 asks the store nothing, so a URL for a missing key is minted happily and
 `404`s when followed. `ObjectNotFound` means two things by the order's age:
@@ -223,8 +227,8 @@ export const orderPublisher = Provider(OutboxPublisher)({
   sync: ({ client }): ServiceOf<OutboxPublisher> => ({
     publish: (message) =>
       OkAsync()
-        .map(() => JSON.parse(message.payload ?? "null") as OrderPayload)
-        .flatMap(({ placedAt, order }) =>
+        .map(() => decodeOrderPayload(message.payload))
+        .flatMap(({ placedAt, placementId, order }) =>
           client.publish("orderChanged", {
             eventId: message.id,
             tenantId: message.tenantId,
@@ -232,6 +236,7 @@ export const orderPublisher = Provider(OutboxPublisher)({
             id: message.subjectId,
             occurredAt: message.occurredAt.toISOString(),
             placedAt,
+            placementId,
             payload: order,
           }),
         ),
@@ -401,6 +406,7 @@ expect(JSON.parse(String(message?.content))).toEqual({
   id: "0199a1e0-0000-7000-8000-000000000005",
   occurredAt: expect.any(String),
   placedAt: expect.any(String),
+  placementId: expect.any(Number),
   payload: { quantity: 4 },
 });
 ```

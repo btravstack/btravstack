@@ -3,6 +3,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import { TypedAmqpClient } from "@amqp-contract/client";
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
+import {
+  GetBucketLifecycleConfigurationCommand,
+  S3Client,
+  type LifecycleRule,
+} from "@aws-sdk/client-s3";
 import type { AmqpInfo, AmqpRuntime } from "@btravstack/amqp-worker";
 import type { Env } from "@btravstack/config";
 import {
@@ -90,8 +95,8 @@ const tappedAmqp = (slowPutMs?: number) => {
     module: tap.module,
     lines: (): readonly Line[] => lines,
     services: () => {
-      const [, , outbox] = tap.services();
-      return { outbox };
+      const [db, , outbox] = tap.services();
+      return { db, outbox };
     },
     /**
      * A writer's scope over the running app's own client, for one tenant: the
@@ -188,6 +193,7 @@ type Announced = {
   readonly id: string;
   readonly occurredAt: string;
   readonly placedAt?: string;
+  readonly placementId?: number;
   readonly payload: { readonly quantity: number } | null;
 };
 
@@ -210,6 +216,10 @@ export type AmqpFixtures = {
    * called.
    */
   readonly delivered: (tenantId: string) => Promise<readonly Delivered[]>;
+  /** The variables `s3Storage()` and the invoice retention read, pointed at the shared RustFS. */
+  readonly s3Env: Readonly<Record<string, string>>;
+  /** The lifecycle rules the shared bucket holds right now. */
+  readonly bucketRules: () => Promise<readonly LifecycleRule[]>;
   /**
    * Publishes one `orderChanged` fact straight onto this test's vhost, past the
    * outbox — how a spec puts a delivery the relay would never produce in front
@@ -253,6 +263,38 @@ export type AmqpFixtures = {
 export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFixtures>({
   announce: async ({ amqpConnectionUrl }, use) => {
     await use(announcing(amqpConnectionUrl));
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  s3Env: async ({}, use) => {
+    await use({
+      STORAGE_S3_ENDPOINT: inject("__TESTCONTAINERS_S3_ENDPOINT__"),
+      STORAGE_S3_BUCKET: inject("__TESTCONTAINERS_S3_BUCKET__"),
+      STORAGE_S3_ACCESS_KEY_ID: inject("__TESTCONTAINERS_S3_ACCESS_KEY__"),
+      STORAGE_S3_SECRET_ACCESS_KEY: inject("__TESTCONTAINERS_S3_SECRET_KEY__"),
+    });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  bucketRules: async ({}, use) => {
+    const client = new S3Client({
+      endpoint: inject("__TESTCONTAINERS_S3_ENDPOINT__"),
+      region: "us-east-1",
+      forcePathStyle: true,
+      credentials: {
+        accessKeyId: inject("__TESTCONTAINERS_S3_ACCESS_KEY__"),
+        secretAccessKey: inject("__TESTCONTAINERS_S3_SECRET_KEY__"),
+      },
+    });
+    await use(async () => {
+      const read = await client.send(
+        new GetBucketLifecycleConfigurationCommand({
+          Bucket: inject("__TESTCONTAINERS_S3_BUCKET__"),
+        }),
+      );
+      return read.Rules ?? [];
+    });
+    client.destroy();
   },
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture

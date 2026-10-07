@@ -4,6 +4,7 @@ import type { OutboxMessage } from "@btravstack/outbox";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
+import { INVOICE_RETENTION_DAYS, ensureInvoiceRetention } from "./invoice-retention.js";
 
 /**
  * The notification lines as `{ message, ...attributes }` — what the consumer
@@ -173,6 +174,7 @@ describe("the broadcast deployment", () => {
       id: "0199a1e0-0000-7000-8000-000000000005",
       occurredAt: expect.any(String),
       placedAt: expect.any(String),
+      placementId: expect.any(Number),
       payload: { quantity: 4 },
     });
   });
@@ -324,6 +326,7 @@ describe("the invoice a notification links", () => {
       id: "0199a1e0-0000-7000-8000-00000000c007",
       occurredAt: placedAt,
       placedAt,
+      placementId: 7001,
       payload: { quantity: 1 },
     }).flatMap(() =>
       announce({
@@ -333,6 +336,7 @@ describe("the invoice a notification links", () => {
         id: "0199a1e0-0000-7000-8000-00000000c007",
         occurredAt: new Date().toISOString(),
         placedAt,
+        placementId: 7001,
         payload: null,
       }),
     );
@@ -408,6 +412,7 @@ describe("the invoice a notification links", () => {
       id: "0199a1e0-0000-7000-8000-00000000c009",
       occurredAt: new Date().toISOString(),
       placedAt: new Date().toISOString(),
+      placementId: 7009,
       payload: null,
     });
     await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 20_000 });
@@ -451,6 +456,7 @@ describe("the invoice a notification links", () => {
       id: "0199a1e0-0000-7000-8000-00000000c003",
       occurredAt: new Date().toISOString(),
       placedAt: new Date().toISOString(),
+      placementId: 7003,
       payload: null,
     });
     await vi.waitUntil(
@@ -492,6 +498,7 @@ describe("the invoice a notification links", () => {
       id: "0199a1e0-0000-7000-8000-00000000c005",
       occurredAt: new Date().toISOString(),
       placedAt: "2025-01-01T00:00:00.000Z",
+      placementId: 7005,
       payload: null,
     });
     await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
@@ -522,6 +529,7 @@ describe("the invoice a notification links", () => {
       id: "0199a1e0-0000-7000-8000-00000000c006",
       occurredAt: new Date().toISOString(),
       placedAt: new Date().toISOString(),
+      placementId: 7062,
       payload: { quantity: 2 },
     });
     await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
@@ -534,6 +542,7 @@ describe("the invoice a notification links", () => {
       id: "0199a1e0-0000-7000-8000-00000000c006",
       occurredAt: new Date().toISOString(),
       placedAt: "2025-01-01T00:00:00.000Z",
+      placementId: 7061,
       payload: null,
     });
     await vi.waitUntil(async () => (await delivered(tenant)).length === 2, { timeout: 10_000 });
@@ -568,5 +577,146 @@ describe("the invoice a notification links", () => {
     // THEN the store answering late did not send a notification on behalf
     // of a delivery this process had already abandoned
     expect({ placed: placed.isOk(), sent: stalled.sent() }).toEqual({ placed: true, sent: [] });
+  });
+
+  it("belongs to one life of an order, even when two lives were placed in the same millisecond", async ({
+    tenant,
+    serve,
+    tapped,
+    announce,
+    delivered,
+  }) => {
+    // GIVEN the worker serving, and one order id placed twice — two lives —
+    // whose placement times fall in the same millisecond
+    await serve(tapped.module);
+    const placedAt = new Date().toISOString();
+    const life = (eventId: number, placementId: number, payload: { quantity: number } | null) =>
+      announce({
+        eventId,
+        tenantId: tenant,
+        kind: "order",
+        id: "0199a1e0-0000-7000-8000-00000000c00a",
+        occurredAt: placedAt,
+        placedAt,
+        placementId,
+        payload,
+      });
+    const placed = await life(301, 8001, { quantity: 1 });
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
+    const replaced = await life(302, 8002, { quantity: 5 });
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 2, { timeout: 10_000 });
+
+    // WHEN the first life is withdrawn, and its link is followed
+    const withdrawn = await life(303, 8001, null);
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 3, { timeout: 10_000 });
+    const withdrawal = (await delivered(tenant)).find((mail) => mail.Subject.endsWith("withdrawn"));
+    const invoice = await fetch(withdrawal?.Text.match(/https?:\/\/\S+/)?.[0] ?? "");
+
+    // THEN it is the first life's invoice: the key names the placement, not a
+    // timestamp two lives can share
+    expect({
+      announced: placed.isOk() && replaced.isOk() && withdrawn.isOk(),
+      body: await invoice.text(),
+    }).toEqual({
+      announced: true,
+      body: "Invoice for order 0199a1e0-0000-7000-8000-00000000c00a: 1 items.",
+    });
+  });
+});
+
+describe("the invoice store's retention", () => {
+  it("expires every invoice after the window the notifier waits within", async ({
+    s3Env,
+    bucketRules,
+  }) => {
+    // GIVEN the bucket the deployment stores its invoices in
+    // WHEN the deploy step installs the retention, twice — what every release
+    // after the first does
+    const ensured = await ensureInvoiceRetention(s3Env).flatMap(() =>
+      ensureInvoiceRetention(s3Env),
+    );
+    const rules = await bucketRules();
+
+    // THEN the bucket holds one rule expiring everything under `invoices/`
+    // after `INVOICE_RETENTION_DAYS` — the very value the notifier reads
+    expect({
+      ensured: ensured.isOk(),
+      rules: rules.filter((rule) => rule.ID === "expire-invoices"),
+    }).toEqual({
+      ensured: true,
+      rules: [
+        expect.objectContaining({
+          Status: "Enabled",
+          Filter: expect.objectContaining({ Prefix: "invoices/" }),
+          Expiration: expect.objectContaining({ Days: INVOICE_RETENTION_DAYS }),
+        }),
+      ],
+    });
+  });
+});
+
+describe("the outbox written before an event carried its placement", () => {
+  it("still publishes, so a pending legacy row never blocks its tenant", async ({
+    tenant,
+    serve,
+    tapped,
+    initConsumer,
+  }) => {
+    // GIVEN the worker serving, a subscriber of its own on the exchange, and
+    // two rows still pending in the shape the outbox held before the upgrade:
+    // a placement carrying the bare order, and a tombstone carrying `NULL`
+    await serve(tapped.module);
+    const waitForMessages = await initConsumer("orders", "order.changed");
+    const { db, outbox } = tapped.services();
+    await db.orm.orders.OutboxMessage.create({
+      tenantId: tenant,
+      kind: "order",
+      subjectId: "0199a1e0-0000-7000-8000-00000000c00b",
+      payload: JSON.stringify({ quantity: 2 }),
+    });
+    await db.orm.orders.OutboxMessage.create({
+      tenantId: tenant,
+      kind: "order",
+      subjectId: "0199a1e0-0000-7000-8000-00000000c00b",
+      payload: null,
+    });
+
+    // WHEN the relay has swept them
+    const messages = await waitForMessages({ count: 2, timeoutMs: 10_000 });
+    await vi.waitUntil(
+      async () => (await outbox.pending(tenant, 10)).getOr(undefined)?.length === 0,
+      { timeout: 5_000 },
+    );
+
+    // THEN both went out, without the placement fields nobody recorded, and
+    // nothing is left pending behind them
+    expect({
+      published: messages.map((message) => {
+        const { id, placedAt, placementId, payload } = JSON.parse(String(message.content)) as {
+          readonly id: string;
+          readonly placedAt?: string;
+          readonly placementId?: number;
+          readonly payload: unknown;
+        };
+        return { id, placedAt, placementId, payload };
+      }),
+      pending: (await outbox.pending(tenant, 10)).getOr(undefined),
+    }).toEqual({
+      published: [
+        {
+          id: "0199a1e0-0000-7000-8000-00000000c00b",
+          placedAt: undefined,
+          placementId: undefined,
+          payload: { quantity: 2 },
+        },
+        {
+          id: "0199a1e0-0000-7000-8000-00000000c00b",
+          placedAt: undefined,
+          placementId: undefined,
+          payload: null,
+        },
+      ],
+      pending: [],
+    });
   });
 });

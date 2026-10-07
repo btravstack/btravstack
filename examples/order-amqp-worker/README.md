@@ -176,6 +176,12 @@ the sugar cannot leave the handlers out).
 | `DATABASE_URL`      | _(required)_            | the orders database (`DatabaseConfig`)                     |
 | `LOG_LEVEL`         | `info`                  | the `Logger`'s floor (`LoggerConfig`)                      |
 
+`pnpm deploy:invoice-retention` is the release step beside the worker: it
+reads the same `STORAGE_S3_*` variables and installs the bucket's lifecycle
+rule expiring `invoices/` after `INVOICE_RETENTION_DAYS`, the window the
+notifier treats an absent invoice as still on its way within. `pnpm dev` runs
+it first.
+
 `OUTBOX_POLL_MS=0` is rejected at boot — a relay that never sleeps is a busy
 loop — and so is anything above `60000`. A bad value, or an empty one, is a
 `ConfigInvalid` the kernel reports itself: a `startFailed` event naming the

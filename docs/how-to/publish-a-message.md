@@ -7,7 +7,7 @@ description: "Broadcast a committed fact over AMQP — why the write and the row
 <!-- doctest: prelude
 import { TypedAmqpClient } from "@amqp-contract/client";
 import { Module, Port, Provider } from "@btravstack/di";
-import { OrderDatabase, type OrderPayload } from "@btravstack/example-order-infrastructure";
+import { OrderDatabase, decodeOrderPayload } from "@btravstack/example-order-infrastructure";
 import type { AsyncResult } from "unthrown";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 
@@ -66,8 +66,8 @@ save: (order) =>
       tenantId,
       kind: "order",
       subjectId: order.id,
-      // `{ placedAt, order }` — the payload is the application's own encoding
-      payload: orderPayload(placed.placedAt, { quantity: order.quantity }),
+      // `{ placedAt, placementId, order }` — the payload is the application's own encoding
+      payload: orderPayload(placed, { quantity: order.quantity }),
     });
   }),
 ```
@@ -102,8 +102,8 @@ const publisher = Provider(OutboxPublisher)({
   sync: ({ client }) => ({
     publish: (message) =>
       OkAsync()
-        .map(() => JSON.parse(message.payload ?? "null") as OrderPayload)
-        .flatMap(({ placedAt, order }) =>
+        .map(() => decodeOrderPayload(message.payload))
+        .flatMap(({ placedAt, placementId, order }) =>
           client.publish("orderChanged", {
             eventId: message.id,
             tenantId: message.tenantId,
@@ -111,6 +111,7 @@ const publisher = Provider(OutboxPublisher)({
             id: message.subjectId,
             occurredAt: message.occurredAt.toISOString(),
             placedAt,
+            placementId,
             payload: order,
           }),
         ),

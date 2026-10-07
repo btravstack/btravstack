@@ -8,19 +8,16 @@ import { Mailer } from "@btravstack/mailer";
 import { Storage, type PresignNotSupported, type StorageUnavailable } from "@btravstack/storage";
 import { ErrAsync, OkAsync, P, TaggedError, type AsyncResult } from "unthrown";
 
-// The placement time is in the key so a reused order id never links the
-// invoice of the order placed under it since.
-const invoiceKey = (tenantId: string, orderId: string, placedAt: string): string =>
-  `invoices/${tenantId}/${orderId}/${Date.parse(placedAt)}.txt`;
+import { INVOICE_RETENTION_DAYS, invoiceKey } from "../../invoice-retention.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // A week: the longest a SigV4 presigned URL may live.
 const LINK_TTL_MS = 7 * DAY_MS;
 
-// How long the store keeps an invoice. Inside it, an absent invoice is one
-// the placement's notification has not written yet.
-const INVOICE_RETENTION_MS = 30 * DAY_MS;
+// The store's lifecycle rule expires invoices after this; inside it, an absent
+// invoice is one the placement's notification may not have written yet.
+const INVOICE_RETENTION_MS = INVOICE_RETENTION_DAYS * DAY_MS;
 
 class InvoiceNotYetStored extends TaggedError("InvoiceNotYetStored")<{
   readonly key: string;
@@ -36,14 +33,15 @@ const invoiceLink = (
   storage: ServiceOf<Storage>,
   tenantId: string,
   id: string,
-  placedAt: string,
+  placementId: number,
+  placedAt: string | undefined,
   payload: { readonly quantity: number } | null,
   lastAttempt: boolean,
 ): AsyncResult<
   string | undefined,
   StorageUnavailable | PresignNotSupported | InvoiceNotYetStored
 > => {
-  const key = invoiceKey(tenantId, id, placedAt);
+  const key = invoiceKey(tenantId, id, placementId);
   const issued =
     payload === null
       ? // Read before presigning: a presign asks the store nothing, so a URL
@@ -54,7 +52,9 @@ const invoiceLink = (
           .flatMapErrCases((matcher) =>
             matcher
               .with(P.tag("ObjectNotFound"), () =>
-                !lastAttempt && Date.now() - Date.parse(placedAt) < INVOICE_RETENTION_MS
+                !lastAttempt &&
+                placedAt !== undefined &&
+                Date.now() - Date.parse(placedAt) < INVOICE_RETENTION_MS
                   ? ErrAsync(new InvoiceNotYetStored({ key }))
                   : OkAsync(undefined),
               )
@@ -86,14 +86,15 @@ const invoiceLink = (
  *
  * The mail carries a link to the invoice rather than the invoice: a placement
  * renders it, `put`s it under a path keyed by tenant, order id and placement
- * time, and presigns it; a withdrawal links the same one. An invoice that is
+ * id — one per life of the order — and presigns it; a withdrawal links the same one. An invoice that is
  * absent means two different things by the order's age: younger than the
  * store's retention it is one the placement may not have written yet —
  * deliveries are concurrent, and one replica's withdrawal can overtake
  * another's placement — so the delivery is retried, until the attempt that
  * spends the queue's retry budget mails without a link rather than failing;
  * older, it was retained away, and the mail goes out without a link at once.
- * A withdrawal with no `placedAt` is a legacy order and never waits.
+ * An event with no `placementId` is about a legacy order: no invoice, and a
+ * withdrawal mailed without a link at once.
  *
  * Its failure arms are the interesting half: a `MailNotSent` or a store that
  * would not answer becomes a `RetryableError`, so the BROKER's retry budget
@@ -128,7 +129,7 @@ export const orderNotifications = AmqpHandler(
       context,
       raw,
       input: {
-        payload: { id, occurredAt, placedAt, payload },
+        payload: { id, placementId, placedAt, payload },
       },
     }) => {
       const tenantId = context.unit.tenant;
@@ -143,13 +144,13 @@ export const orderNotifications = AmqpHandler(
       });
 
       const lastAttempt = Number(raw.properties.headers?.["x-retry-count"] ?? 0) >= MAX_RETRIES;
-      // A withdrawal with no placement time is an order from before the field
-      // existed: its invoice was never keyed by one, so there is nothing to
-      // wait for. A placement without one was written in this very event.
+      // An event with no placement id is about an order from before the field
+      // existed: no invoice was ever keyed by one, so there is none to store,
+      // wait for or link.
       const link =
-        placedAt === undefined && payload === null
+        placementId === undefined
           ? OkAsync(undefined)
-          : invoiceLink(storage, tenantId, id, placedAt ?? occurredAt, payload, lastAttempt);
+          : invoiceLink(storage, tenantId, id, placementId, placedAt, payload, lastAttempt);
 
       return link
         .mapErrCases((matcher) =>

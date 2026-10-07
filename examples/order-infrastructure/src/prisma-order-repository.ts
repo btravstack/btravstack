@@ -21,19 +21,41 @@ import type { OrderDatabaseClient, OrderTransaction } from "./database.js";
 type OrderRow = { readonly orderId: string; readonly quantity: number };
 
 /**
- * What an order's outbox row carries: when the order was placed — on its
- * tombstone too, so a reader can tell two lives of one reused id apart — and
- * the order itself, `null` once it is gone. The outbox table is
- * `@btravstack/outbox`'s shape and its payload this application's own
- * encoding, so the placement time rides here rather than in a column.
+ * What an order's outbox row carries: which life of the order it is about —
+ * `placementId`, the order row's own surrogate id, which a sequence never hands
+ * out twice, so a reused order id's two lives never share one — when that
+ * life was placed, and the order itself, `null` once it is gone. The outbox
+ * table is `@btravstack/outbox`'s shape and its payload this application's own
+ * encoding, so all of it rides here rather than in a column.
+ *
+ * `placedAt` and `placementId` are absent on a row written before they
+ * existed: a placement then carried the bare order, and a tombstone a `NULL`.
  */
 export type OrderPayload = {
-  readonly placedAt: string;
+  readonly placedAt?: string;
+  readonly placementId?: number;
   readonly order: { readonly quantity: number } | null;
 };
 
-const orderPayload = (placedAt: string, order: OrderPayload["order"]): string =>
-  JSON.stringify({ placedAt: new Date(placedAt).toISOString(), order } satisfies OrderPayload);
+const orderPayload = (
+  placed: { readonly id: number; readonly placedAt: string },
+  order: OrderPayload["order"],
+): string =>
+  JSON.stringify({
+    placedAt: new Date(placed.placedAt).toISOString(),
+    placementId: placed.id,
+    order,
+  } satisfies OrderPayload);
+
+/**
+ * An outbox row's payload, in either shape this application has written:
+ * `OrderPayload`, or — on a row still pending from before it — the bare order,
+ * or `NULL` for a tombstone.
+ */
+export const decodeOrderPayload = (payload: string | null): OrderPayload => {
+  const parsed = JSON.parse(payload ?? "null") as OrderPayload | OrderPayload["order"];
+  return parsed !== null && "order" in parsed ? parsed : { order: parsed };
+};
 
 /**
  * Rebuilding the entity re-runs its invariants, so a stored row that violates
@@ -141,7 +163,7 @@ export const prismaOrderRepository = (
           tenantId,
           kind: "order",
           subjectId: order.id,
-          payload: orderPayload(placed.placedAt, { quantity: order.quantity }),
+          payload: orderPayload(placed, { quantity: order.quantity }),
         });
       })
         .mapErrCases((matcher, defect) =>
@@ -265,7 +287,7 @@ export const prismaOrderRepository = (
           tenantId,
           kind: "order",
           subjectId: id,
-          payload: orderPayload(deleted.placedAt, null),
+          payload: orderPayload(deleted, null),
         });
         return true;
       })

@@ -82,9 +82,10 @@ is the index of the workspaces themselves.
     does not remap `./module.js` to `./module.ts` — measured, it is an
     `ERR_MODULE_NOT_FOUND`. `tsx` was already in the catalog for `docs`; it is
     a devDependency of the example workspaces, and no new dependency — except
-    in `order-temporal-worker`, where it is a dependency, because
-    `deploy:schedules` is the one entry point documented as a release `Job`,
-    and that Job runs from a production install.
+    in `order-temporal-worker` and `order-amqp-worker`, where it is a
+    dependency, because `deploy:schedules` and `deploy:invoice-retention` are
+    the entry points documented as release `Job`s, and a Job runs from a
+    production install.
   - **`.env.dev` is generated, never committed.** The `dev` task depends on
     `@btravstack/internal-test-infra#dev:env`, which attaches to the **same
     shared containers the specs use** (`withReuse()` — a second set
@@ -306,9 +307,17 @@ each deployment's `src/main.ts` carry their own.
   placement stores the invoice it renders and mails a presigned link; a
   withdrawal `get`s the invoice before presigning it, because a presign asks
   the store nothing. The key is
-  `invoices/{tenantId}/{orderId}/{placedAt}.txt`: every event carries the
-  order's `placedAt`, its tombstone too, so a reused id never links the
-  invoice of the order placed under it since. An absent invoice is read by
+  `invoices/{tenantId}/{orderId}/{placementId}.txt`: every event carries the
+  order's `placementId` — the order row's own id, which a sequence never hands
+  out twice, so it names one life of the order where a placement time (whose
+  milliseconds two lives can share) would not — and its `placedAt`, the
+  tombstone too, so a reused id never links the invoice of the order placed
+  under it since. Retention is the bucket's: `pnpm deploy:invoice-retention`
+  (`src/invoice-retention.ts`, also run ahead of `pnpm dev`) installs an S3
+  lifecycle rule expiring `invoices/` after `INVOICE_RETENTION_DAYS`, the
+  same constant the handler waits within — measured on the pinned RustFS,
+  whose scanner expired a past-dated rule's object within thirty seconds and
+  left an object outside the prefix alone. An absent invoice is read by
   the order's age: inside the store's retention it is one the placement has
   not written yet — deliveries are concurrent, and one replica's withdrawal
   can overtake another's placement — so the handler answers a
@@ -317,9 +326,12 @@ each deployment's `src/main.ts` carry their own.
   contract's own `maxRetries`) mails without a link rather than failing — a
   missing invoice delays a withdrawal and never parks it; past retention, the
   invoice was retained away and the mail goes out without a link at once.
-  `placedAt` is optional on the wire so an envelope queued before it existed
-  is still read: a withdrawal without one is a legacy order, mailed without a
-  link on its first delivery. Serialising
+  `placedAt` and `placementId` are optional on the wire so an envelope queued
+  before they existed is still read: an event without a `placementId` is a
+  legacy order, with no invoice, and its withdrawal is mailed without a link on
+  its first delivery. The publisher reads both payload shapes the outbox has
+  held — `decodeOrderPayload` — so a row pending from before the encoding
+  changed publishes rather than blocking its tenant. Serialising
   the consumer would not have held across replicas. It checks the unit's
   signal again once the store has answered and before it sends: a deadline
   that passed while an invoice was in flight would otherwise mail on behalf of
