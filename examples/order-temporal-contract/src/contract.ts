@@ -40,7 +40,8 @@ const orderTarget = tenanted.extend({ orderId: z.uuidv7() });
  * treatment a `Defect` deserves — infrastructure comes back.
  */
 const place = defineActivity({
-  input: orderInput,
+  // Optional: a task the previous workflow version scheduled carries none.
+  input: orderInput.extend({ operationId: z.string().optional() }),
   output: orderView,
   errors: {
     InvalidQuantity: { data: orderRef, nonRetryable: true },

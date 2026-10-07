@@ -15,7 +15,7 @@ src/__tests__/test-fixtures.ts  the stub repositories and the per-tenant scope, 
 
 ```ts
 export class OrderRepository extends Port("OrderRepository")<{
-  readonly save: (order: Order) => AsyncResult<Order, DuplicateOrder>;
+  readonly save: (order: Order, operation?: string) => AsyncResult<Order, DuplicateOrder>;
   readonly find: (id: string) => AsyncResult<Order, OrderNotFound>;
 }> {}
 ```
@@ -24,6 +24,14 @@ export class OrderRepository extends Port("OrderRepository")<{
 error channel is spelled in the _domain's_ vocabulary — `DuplicateOrder`, not a
 Postgres `23505` or a Prisma `P2002` — so an adapter's job is to translate into
 these terms, and no database code can widen what the use cases have to handle.
+
+`save`'s optional `operation` names who is saving. A second save of an id
+under the **same** operation answers the stored order rather than
+`DuplicateOrder` — an activity Temporal retried after its first attempt
+committed is recovering its own write — and under any other operation, or
+none, it is still the duplicate. `PlaceOrder.execute` takes it as a named
+`{ operation }` and hands it straight on — named, because a third positional
+`string` after `(id, quantity)` could trade places with the id unnoticed.
 
 No method names a tenant, and that is the layer's own design rather than the
 framework's: `Tenant` is a port the unit provides, so the repository a call

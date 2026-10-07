@@ -2,7 +2,9 @@
  * Two gates in one file, because the tenancy is spelled two ways here.
  *
  * The orders ports have no tenant parameter at all: it is the unit's,
- * provided once by whoever opened it, so there is no argument to get wrong.
+ * provided once by whoever opened it, so there is no argument to get wrong —
+ * a tenant put in front of a call's full argument list is one too many, and
+ * the arity error is the only one, so nothing else can satisfy the directive.
  * The customers ports still take one, because an unmarked procedure opens an
  * anonymous unit with no principal to read a tenant from — and there the
  * BRAND is what keeps `(TenantId, string)` unswappable, since two `string`s
@@ -27,14 +29,22 @@ const customerId = "0199a1e0-0000-7000-8000-0000000000c1";
 // Positive: the id this caller is asking about, and nothing else — the tenant
 // is the unit's, provided once by whoever opened it.
 const _found = repository.find(orderId);
-const _placed = placeOrder.execute(orderId, 1);
+const _placed = placeOrder.execute(orderId, 1, { operation: "wf-1" });
 
-// Negative: the tenant handed over at the call. It is one argument too many.
+// Negative: the tenant handed over at the call, in front of every argument the
+// port does take. It is one argument too many, and that is the only error —
+// prepended to a shorter call, a `TenantId` would pass as the id, which is
+// a `string`, and the error would be about something else.
 // @ts-expect-error — the tenant is the unit's, not an argument
 const _tenantFind = repository.find(tenant, orderId);
 
 // @ts-expect-error — the tenant is the unit's, not an argument
-const _tenantPlace = placeOrder.execute(tenant, orderId, 1);
+const _tenantPlace = placeOrder.execute(tenant, orderId, 1, { operation: "wf-1" });
+
+// Negative: the operation as a bare positional `string`, which could trade
+// places with the id. It is a named field.
+// @ts-expect-error — the operation is `{ operation }`, not a third string
+const _positionalOperation = placeOrder.execute(orderId, 1, "wf-1");
 
 // Positive: the customers half, where the tenant IS a parameter — the tenant
 // this caller was handed, then the id it is asking about.

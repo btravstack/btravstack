@@ -48,11 +48,12 @@ class PlaceOrderInteractor {
   execute(
     id: string,
     quantity: number,
+    { operation }: { readonly operation?: string | undefined } = {},
   ): AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder> {
     this.#logger.info("placing an order", { tenantId: this.#tenant, orderId: id, quantity });
     return placeOrder(id, quantity)
       .toAsync()
-      .flatMap((order) => this.#repository.save(order));
+      .flatMap((order) => this.#repository.save(order, operation));
   }
 }
 

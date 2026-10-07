@@ -2,9 +2,10 @@ import type { ConfigInvalid, Env } from "@btravstack/config";
 import { type RunningApp, Logger, Meter, Tracer } from "@btravstack/core";
 import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import {
+  OrderRepository,
   ShippingService,
   StockService,
-  type OrderRepository,
+  Tenant,
 } from "@btravstack/example-order-application";
 import {
   OrderNotFound,
@@ -34,7 +35,7 @@ import {
   type TemporalInfo,
   type TemporalUnreachable,
 } from "@btravstack/temporal-worker";
-import { bootFixture, tapped, type Boot } from "@btravstack/testing";
+import { bootFixture, overridden, tapped, type Boot } from "@btravstack/testing";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
 import {
   bundleFor,
@@ -43,7 +44,7 @@ import {
   withTaskQueue,
 } from "@temporal-contract/testing/workflow-bundle";
 import { Client, Connection } from "@temporalio/client";
-import { ErrAsync, OkAsync } from "unthrown";
+import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
 import { uuidv7 } from "uuidv7";
 import { inject, test } from "vitest";
 
@@ -91,6 +92,7 @@ type Serve = <E>(
     E,
     Scope | Env
   >,
+  activity?: readonly Provider<never, never, unknown>[],
 ) => Promise<Deployment<E>>;
 
 /**
@@ -133,6 +135,13 @@ const deployment = (fulfillment: typeof FulfillmentModule) => {
     reader: (tenant: TenantId): ServiceOf<OrderRepository> => {
       const [db] = tap.services();
       return prismaOrderRepository(db, tenant);
+    },
+    /** The outbox rows written about one order — one per placement or tombstone. */
+    events: (tenant: TenantId, orderId: string) => {
+      const [db] = tap.services();
+      return fromSafePromise(
+        db.orm.orders.OutboxMessage.where({ tenantId: tenant, subjectId: orderId }).all().toArray(),
+      );
     },
   };
 };
@@ -191,6 +200,40 @@ const noShippingTemporal = () => {
   );
 
   return { ...base, released: (): readonly string[] => released };
+};
+
+/**
+ * The real composition, with the attempt's repository overridden so the FIRST
+ * save commits and then fails as a defect — what Temporal sees when a worker
+ * dies between the database's answer and the activity's completion. Temporal
+ * retries the attempt; `lost()` counts the completions dropped, so a spec can
+ * tell the fault fired.
+ */
+const lostCompletionTemporal = () => {
+  let lost = 0;
+  return {
+    ...deployment(FulfillmentModule),
+    activity: [
+      Provider(OrderRepository)({
+        inject: { db: OrderDatabase, tenant: Tenant },
+        sync: ({ db, tenant }) => {
+          const real = prismaOrderRepository(db, tenant);
+          return {
+            ...real,
+            save: (order, operation) =>
+              real.save(order, operation).flatMap((saved) => {
+                if (lost > 0) return OkAsync(saved);
+                lost += 1;
+                return fromSafePromise(
+                  Promise.reject(new Error(`the completion for ${order.id} was lost`)),
+                );
+              }),
+          };
+        },
+      }),
+    ],
+    lost: (): number => lost,
+  };
 };
 
 /**
@@ -277,6 +320,7 @@ export type TemporalFixtures = {
   readonly fulfilling: ReturnType<typeof fulfillingTemporal>;
   readonly outOfStock: ReturnType<typeof outOfStockTemporal>;
   readonly noShipping: ReturnType<typeof noShippingTemporal>;
+  readonly lostCompletion: ReturnType<typeof lostCompletionTemporal>;
 };
 
 export const it = test.extend<TemporalFixtures>({
@@ -312,7 +356,7 @@ export const it = test.extend<TemporalFixtures>({
     // still leaves no connection behind on the shared server.
     const connections: Connection[] = [];
 
-    const serve: Serve = async (module) => {
+    const serve: Serve = async (module, activity = []) => {
       // A queue of this test's own: the namespace is shared by every test in
       // this file, and two workers polling one queue would race for each
       // other's tasks.
@@ -345,7 +389,7 @@ export const it = test.extend<TemporalFixtures>({
         provides: [fulfillOrder, chargeOrder, sweepStaleOrders],
       });
 
-      const app = boot(worker, {
+      const app = boot(overridden(worker, [], { unit: { activity } }), {
         env: {
           TEMPORAL_ADDRESS: server.address,
           TEMPORAL_NAMESPACE: server.namespace,
@@ -411,5 +455,10 @@ export const it = test.extend<TemporalFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   noShipping: async ({}, use) => {
     await use(noShippingTemporal());
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  lostCompletion: async ({}, use) => {
+    await use(lostCompletionTemporal());
   },
 });

@@ -40,6 +40,9 @@ type Store = Map<string, Order>;
  */
 const placedAt = new WeakMap<Order, Date>();
 
+/** The operation `save` stored a row under — the stub's `operationId` column. */
+const placedBy = new WeakMap<Order, string>();
+
 const placedPrior = (order: Order, cutoff: Date | undefined): boolean =>
   cutoff === undefined ||
   (placedAt.get(order)?.getTime() ?? Number.POSITIVE_INFINITY) < cutoff.getTime();
@@ -99,10 +102,15 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
           .filter(([rowKey]) => rowKey.startsWith(`${tenantId}/`))
           .map(([, order]) => order);
       return {
-        save: (order: Order) => {
-          if (rows.has(key(order.id))) return ErrAsync(new DuplicateOrder({ id: order.id }));
+        save: (order: Order, operation?: string) => {
+          const stored = rows.get(key(order.id));
+          if (stored !== undefined)
+            return operation !== undefined && placedBy.get(stored) === operation
+              ? OkAsync(stored)
+              : ErrAsync(new DuplicateOrder({ id: order.id }));
           rows.set(key(order.id), order);
           placedAt.set(order, new Date());
+          if (operation !== undefined) placedBy.set(order, operation);
           return OkAsync(order);
         },
         find: (id: string) => {

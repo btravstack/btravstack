@@ -37,6 +37,39 @@ describe("PlaceOrder", () => {
     expect(result).toBeErrTagged("DuplicateOrder", { id: "0199a1e0-0000-7000-8000-000000000001" });
   });
 
+  it("answers a repeat under the same operation with the stored order", async ({ scopeFor }) => {
+    // GIVEN an order placed under an operation — a workflow whose activity
+    // committed, then lost its completion
+    // WHEN that operation places it again
+    const result = await Module.scoped(scopeFor(ACME), (ctx) => {
+      const placeOrder = ctx.get(PlaceOrder);
+      return placeOrder
+        .execute("0199a1e0-0000-7000-8000-000000000001", 2, { operation: "wf-1" })
+        .flatMap(() =>
+          placeOrder.execute("0199a1e0-0000-7000-8000-000000000001", 2, { operation: "wf-1" }),
+        );
+    });
+
+    // THEN the retry recovers its own write rather than reading it as a duplicate
+    expect(result).toBeOkWith({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 });
+  });
+
+  it("still refuses the same id under another operation", async ({ scopeFor }) => {
+    // GIVEN an order placed under one operation
+    // WHEN a different operation places the same id
+    const result = await Module.scoped(scopeFor(ACME), (ctx) => {
+      const placeOrder = ctx.get(PlaceOrder);
+      return placeOrder
+        .execute("0199a1e0-0000-7000-8000-000000000001", 2, { operation: "wf-1" })
+        .flatMap(() =>
+          placeOrder.execute("0199a1e0-0000-7000-8000-000000000001", 2, { operation: "wf-2" }),
+        );
+    });
+
+    // THEN it is a genuine duplicate
+    expect(result).toBeErrTagged("DuplicateOrder", { id: "0199a1e0-0000-7000-8000-000000000001" });
+  });
+
   it("rejects a non-positive quantity without reaching the repository", async ({ scopeFor }) => {
     // GIVEN a quantity the domain invariant rejects
     // WHEN it is placed

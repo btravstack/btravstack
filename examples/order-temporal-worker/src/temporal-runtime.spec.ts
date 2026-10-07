@@ -197,6 +197,45 @@ describe("the fulfillment saga", () => {
     });
   });
 
+  it("recovers a placement whose completion was lost: one order, one placement event", async ({
+    tenant,
+    serve,
+    lostCompletion,
+  }) => {
+    // GIVEN a placement attempt that commits and then loses its completion, so
+    // Temporal retries an activity whose write already landed
+    const { client } = await serve(lostCompletion.module, lostCompletion.activity);
+
+    // WHEN the workflow runs, and its read-back follows
+    const outcome = await client
+      .executeWorkflow("fulfillOrder", {
+        workflowId: "wf-lost-1",
+        args: { tenantId: tenant, orderId: "0199a1e0-0000-7000-8000-000000000005", quantity: 2 },
+      })
+      .flatMap((placed) =>
+        lostCompletion
+          .reader(tenant)
+          .list({ limit: 10, sort: { field: "quantity", direction: "asc" } })
+          .flatMap((page) =>
+            lostCompletion.events(tenant, "0199a1e0-0000-7000-8000-000000000005").map((events) => ({
+              placed,
+              orders: page.items.map((order) => order.id),
+              events: events.length,
+              lost: lostCompletion.lost(),
+            })),
+          ),
+      );
+
+    // THEN the retry recovered its own write rather than refusing it, the saga
+    // ran to the end, and nothing was placed or announced twice
+    expect(outcome).toBeOkWith({
+      placed: { id: "0199a1e0-0000-7000-8000-000000000005", quantity: 2 },
+      orders: ["0199a1e0-0000-7000-8000-000000000005"],
+      events: 1,
+      lost: 1,
+    });
+  });
+
   it("hands the client the OrderAlreadyPlaced the API answers CONFLICT for, as a typed contract error", async ({
     tenant,
     serve,
@@ -253,6 +292,55 @@ describe("the fulfillment saga", () => {
       });
 
     expect(outcome).toBe("conflict:0199a1e0-0000-7000-8000-000000000004");
+  });
+
+  it("refuses a later run under the same workflow id, rather than fulfilling twice", async ({
+    tenant,
+    serve,
+    fulfilling,
+  }) => {
+    // GIVEN an order fulfilled by a first execution
+    const { client } = await serve(fulfilling.module);
+    const start = {
+      workflowId: "wf-rerun-1",
+      args: { tenantId: tenant, orderId: "0199a1e0-0000-7000-8000-000000000006", quantity: 2 },
+    };
+
+    // WHEN the finished workflow id is started again — the contract's
+    // `allow-duplicate` start policy lets it, so the second run is a new
+    // execution with a run id of its own
+    const outcome = await client
+      .executeWorkflow("fulfillOrder", start)
+      .flatMap(() => client.executeWorkflow("fulfillOrder", start))
+      .match({
+        ok: () => "WRONGLY FULFILLED TWICE",
+        // THEN its placement is refused: the first run's order is not this
+        // run's own write, so stock and shipping are not asked a second time
+        errCases: (matcher) =>
+          matcher
+            .with({ errorName: "OrderAlreadyPlaced" }, (error) => `conflict:${error.data.id}`)
+            .with({ errorName: "InvalidQuantity" }, () => "WRONG ERROR")
+            .with({ errorName: "InvalidOrderId" }, () => "WRONG ERROR")
+            .with({ errorName: "OutOfStock" }, () => "WRONG ERROR")
+            .with({ errorName: "ShippingUnavailable" }, () => "WRONG ERROR")
+            .with(
+              P.tag(WORKFLOW_VALIDATION_ERROR_TAG),
+              P.tag(WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG),
+              P.tag(WORKFLOW_ALREADY_STARTED_ERROR_TAG),
+              (error) => `start:${error._tag}`,
+            )
+            .with(
+              P.tag(WORKFLOW_FAILED_ERROR_TAG),
+              P.tag(WORKFLOW_CANCELLED_ERROR_TAG),
+              P.tag(WORKFLOW_TERMINATED_ERROR_TAG),
+              P.tag(WORKFLOW_TIMEOUT_ERROR_TAG),
+              P.tag(WORKFLOW_EXECUTION_NOT_FOUND_ERROR_TAG),
+              (error) => `result:${error._tag}`,
+            ),
+        defect: () => "DEFECT",
+      });
+
+    expect(outcome).toBe("conflict:0199a1e0-0000-7000-8000-000000000006");
   });
 });
 

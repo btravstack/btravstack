@@ -51,6 +51,16 @@ repository and the kernel.
 day this package gains a dependency on the worker it describes, `typecheck`
 fails because the directive stops being used.
 
+## `place` names its operation, optionally
+
+`place`'s input carries an `operationId` — the workflow's run id — so the
+repository can tell a retried attempt recovering its own committed write from
+a different execution placing the same order id. It is **optional** because a
+contract outlives a deploy: a `place` task the previous workflow version
+scheduled carries none, and a required field would have the new worker refuse
+it at validation, failing an in-flight fulfillment. Absent, the placement is
+insert-only, as it was before.
+
 ## The schemas are the demonstration
 
 Where the oRPC contract's proof is a client built from it, this one's is that

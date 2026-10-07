@@ -149,6 +149,14 @@ type 'AsyncResult<Order, DuplicateOrder>'.
 
 Add a fourth SQLSTATE upstream and this file breaks — and only this file.
 
+One duplicate is not a conflict. `save(order, operation)` stores the operation
+in `Order.operationId`, and a `DuplicateOrder` raised under the caller's own
+operation reads the row back — in a transaction of its own, since the
+violation aborted the first — and answers it. That is a Temporal activity
+retried after its first attempt committed and then lost its completion: the
+failed insert rolled its outbox row back with it, so the recovery writes
+nothing. Any other operation, or none, is still `DuplicateOrder`.
+
 ## The read path carries no infrastructure error at all
 
 A read answers `null` for a miss rather than failing, and a database that will
