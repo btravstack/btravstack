@@ -2,13 +2,19 @@
 
 > The **serving half** of HTTP for [`@btravstack/core`](../core): one runtime,
 > and a `HttpHandler` set port every protocol contributes one answerer to,
-> routed by longest matching mount prefix. Three ship — oRPC over `node:http`
+> routed by longest matching mount prefix. Four ship — oRPC over `node:http`
 > (a caller reaches it with `@orpc/client` and the contract package, not this
-> one), htmx fragments, server-rendered `Html` escaped by default, and the
-> OpenID Connect login that seals the session cookie — each
+> one), opt-in OpenAPI routes for ordinary HTTP clients, htmx fragments with
+> server-rendered `Html` escaped by default, and the OpenID Connect login — each
 > with one unit per request and a drain that actually stops accepting. This
 > README works the oRPC half end to end; for fragments, see
 > [Serve htmx fragments](https://btravstack.github.io/btravstack/how-to/serve-htmx-fragments).
+
+To serve the same contract at conventional HTTP methods and paths, add
+`openApiRoutes()` from `@btravstack/http-server/openapi` to `HttpModule`'s
+`provides`. It mounts at `/api` by default. See
+[Serve an oRPC contract as OpenAPI routes](https://btravstack.github.io/btravstack/how-to/serve-an-openapi-contract)
+for route metadata, document generation, and optional publication.
 
 📖 **[Documentation](https://btravstack.github.io/btravstack/how-to/serve-orpc-over-http)** ·
 [Reference](https://btravstack.github.io/btravstack/reference/http-server) ·

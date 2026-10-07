@@ -466,7 +466,10 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   `orpc.ts`'s `pluginsOf(options, config, csrf)` is where the two meet, and the oRPC
   handler provider therefore declares `HttpConfig` as a dependency — which is
   why `orpc()`'s `HttpConfig` dependency is discharged by `httpServer()`
-  rather than owed by `http()`'s own needs channel.
+  rather than owed by `http()`'s own needs channel. An answerer-local
+  `compression` overrides that shared config for its own plugin; an omitted
+  option inherits the deployment's configured value. `bodyLimit` stays on the
+  HTTP module, where `Config.integer` validates it before either answerer uses it.
 
   Precedence, spelled once in `corsOf`: a record naming `origin` wins,
   `HTTP_CORS_ORIGIN` next, oRPC's own default (reflect the request's origin) last.
@@ -1409,6 +1412,20 @@ changes with it.
 `StandardJsonSchemaConverter` is what converts the schemas, and it is why no
 `@orpc/zod` is needed: zod v4 is Standard Schema, and `@orpc/zod` publishes no
 `2.0.0-beta.28` to match the catalog's pin anyway.
+
+`openApiRoutes()` is the OpenAPI wire answerer on this same optional subpath.
+It injects the already-built `OrpcRouterPort` and contributes one `HttpHandler`
+member under `/api` by default; `orpc()` remains under `/rpc`. Both use the
+same handler policy builder for CORS, body limit, and compression. The runtime
+owns the unit and cookie-based CSRF check. OpenAPI GET routes follow HTTP's
+safe-method contract, so the RPC streaming GET CSRF plugin does not apply to
+them. `bodyLimit` and `csrf` are configured on the HTTP module, never on this
+answerer. A document is generated separately through `openApiDocument()`; no
+spec or UI route is mounted by default. The installed oRPC reference plugin
+can serve one, but its raw generator would omit this package's authentication
+marker fold, so supply `openApiDocument()` as its `spec` callback. The current
+`2.0.0-beta.28` plugin has no `allow` option: a private document needs an
+ingress gate or another application-owned serving path.
 
 ## Several answerers, one runtime
 

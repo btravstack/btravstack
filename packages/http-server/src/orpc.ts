@@ -144,7 +144,7 @@ const corsOf = (
 };
 
 /** The configured policies, ahead of whatever `plugins` the application added. */
-const pluginsOf = (
+export const pluginsOf = (
   options: OrpcOptions,
   config: ServiceOf<HttpConfig>,
   csrf: boolean,
@@ -154,6 +154,8 @@ const pluginsOf = (
     options.compression === undefined || typeof options.compression === "boolean"
       ? {}
       : options.compression;
+  const compressionEnabled =
+    options.compression === undefined ? config.compression : options.compression !== false;
   return [
     // The runtime's own check covers the state-changing methods and never sees
     // a GET; this plugin covers the GET oRPC allows for a streaming procedure,
@@ -163,7 +165,7 @@ const pluginsOf = (
     ...(config.bodyLimit === 0
       ? []
       : [new RequestLimitHandlerPlugin({ maxBodySize: config.bodyLimit })]),
-    ...(config.compression ? [new ResponseCompressionHandlerPlugin(compression)] : []),
+    ...(compressionEnabled ? [new ResponseCompressionHandlerPlugin(compression)] : []),
     ...(options.plugins ?? []),
   ];
 };

@@ -189,8 +189,9 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    **One runtime does not mean one protocol.** A graph holds exactly one
    runtime, and that is what bounds the process — not what bounds HTTP itself.
    `@btravstack/http-server`'s `HttpHandler` is a **set port** of
-   `{ prefix, handle }`, and three answerers ship: oRPC (`orpc()`, from
-   `http()`), htmx fragments (`htmx()`, serving `Html` — an object escaped by
+   `{ prefix, handle }`, and four answerers ship: oRPC (`orpc()`, from
+   `http()`), oRPC's conventional OpenAPI routes (`openApiRoutes()`, opt-in),
+   htmx fragments (`htmx()`, serving `Html` — an object escaped by
    default) and the login (`oidc()`, from `@btravstack/http-server/oidc`,
    which walks a browser through the authorization-code flow and seals the
    session cookie). GraphQL is what the package is being extended for next
