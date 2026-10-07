@@ -778,7 +778,7 @@ than degrading to di's own `Qualification`, which names nothing:
 ```text
 error TS2769: No overload matches this call.
   The last overload gave the following error.
-    Type 'Minted<{ orders: { place: ContractBuilder<object>; }; users: { find: ContractBuilder<object>; }; billing: { pay: ContractBuilder<object>; }; }, "orders", SchemesFrom<...>, never>' is not assignable to type 'readonly ["UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover", "billing.pay" | "users.find"]'.
+    Type 'Minted<{ orders: { place: ContractBuilder<object>; }; users: { find: ContractBuilder<object>; }; billing: { pay: ContractBuilder<object>; }; }, "orders", SchemesFrom<...>, never, Record<...>>' is not assignable to type 'readonly ["UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover", "billing.pay" | "users.find"]'.
 ```
 
 Read the **last** line: it is the only actionable part of the diagnostic, and
@@ -786,8 +786,14 @@ it carries both halves — the marker, and every procedure no piece covers. That
 holds at any length, because the refusal is a tuple **as long as the array you
 wrote**: its head is your own elements, which match, and its last element is
 the marker paired with what is missing, so TypeScript lines the two up element
-by element and reports on the trailing one. See
-[Read a wiring error](/how-to/read-a-wiring-error).
+by element and reports on the trailing one.
+
+That output is TypeScript 7's. **TypeScript 5.9 lists both overloads**, and
+the `{ inject, sync }` form comes first — `Overload 1 of 2 … is missing the
+following properties …: inject, sync` — which is not the mistake: skip to
+`Overload 2 of 2`, or search for `UNCOVERED`, and add a piece for the named
+procedure to the array. The full diagnostic under both compilers is in
+[Read a wiring error](/how-to/read-a-wiring-error#an-uncovered-piece).
 
 A **second** gate rides the same overload: two pieces whose paths **nest** —
 `"v1"` and `"v1.orders"` — would implement the same procedures on two
