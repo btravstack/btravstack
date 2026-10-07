@@ -1,5 +1,7 @@
 # packages/amqp-worker
 
+The Node floor is `>=22.22`, matching the required `@amqp-contract` peers.
+
 The AMQP starter's decisions, gotchas and exclusions. Its surface — every
 export, option and default — is `docs/reference/amqp-worker.md`, and the root
 `AGENTS.md` is the authoritative spec for the kernel and the conventions; this

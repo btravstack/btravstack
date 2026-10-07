@@ -6,9 +6,9 @@ import { createAggregate, type BuildEntityClass } from "./aggregate.js";
 import type { BuildEntity } from "./base.js";
 import { createBase, identityScopeOf, record } from "./base.js";
 import { computed, type ComputedField } from "./computed.js";
-import { InvalidEntity } from "./errors.js";
+import { InvalidEntityClass } from "./errors.js";
 import { field, isFieldSpec, type FieldSpec, type Flags } from "./field.js";
-import { deepFreeze } from "./freeze.js";
+import { deepFreeze, omitsUndefined } from "./freeze.js";
 import { invariant, type Invariant } from "./invariant.js";
 import { codeOf, keysOf, renderIssue } from "./issues.js";
 import { attachSchema } from "./schema.js";
@@ -43,6 +43,8 @@ import type {
   UpdateInputShapeOf,
 } from "./types.js";
 import { union, type EntityUnion, type UnionMember } from "./union.js";
+
+type InvalidEntity = InstanceType<typeof InvalidEntityClass>;
 
 /** Calls every generator once, in declaration order. */
 const callAll = (generators: Record<string, () => unknown>): Record<string, unknown> =>
@@ -150,6 +152,11 @@ export function Entity<Tag extends string>(tag: Tag) {
     type InputShape = InputOf<S>;
 
     const dataKeys = Object.keys(output.shape) as unknown as readonly (keyof OutputShape)[];
+    const optionalKeys = new Set(
+      dataKeys.filter((key) =>
+        omitsUndefined((output.shape as Record<string, unknown>)[String(key)]),
+      ),
+    );
 
     /**
      * Why `update` refuses this key, or `undefined` if it accepts it.
@@ -199,13 +206,16 @@ export function Entity<Tag extends string>(tag: Tag) {
     const project = (self: object): OutputShape => {
       const source = self as Record<keyof OutputShape, unknown>;
       return Object.fromEntries(
-        dataKeys.filter((k) => source[k] !== undefined).map((k) => [k, source[k]]),
+        dataKeys
+          .filter((k) => source[k] !== undefined || !optionalKeys.has(k))
+          .map((k) => [k, source[k]]),
       ) as OutputShape;
     };
 
     const parseInput = fromSchema(construction);
 
-    const toInvalidEntity = (issues: SchemaIssues) => new InvalidEntity({ entity: tag, issues });
+    const toInvalidEntity = (issues: SchemaIssues) =>
+      new InvalidEntityClass({ entity: tag, issues });
 
     /**
      * Each computed field's own validator, so a failure names that field.
@@ -236,11 +246,12 @@ export function Entity<Tag extends string>(tag: Tag) {
      * typed, so either is a bug rather than bad caller input.
      */
     const recompute = (base: InputShape): Result<OutputShape, InvalidEntity> => {
-      if (computedParsers.length === 0) return Ok({ ...base } as unknown as OutputShape);
+      const canonical = frozenFields(base as unknown as OutputShape) as InputShape;
+      if (computedParsers.length === 0) return Ok({ ...canonical } as unknown as OutputShape);
       return all(
         computedParsers.map(([key, from, parse]) =>
           fromThrowable(
-            () => from(base),
+            () => from(canonical),
             (cause, defect) => defect(cause),
           )()
             .flatMap((produced) =>
@@ -257,7 +268,7 @@ export function Entity<Tag extends string>(tag: Tag) {
         // `.flatMap` rather than `.map`: `map`'s NotThenable guard cannot
         // resolve while the shape is still generic.
       ).flatMap((pairs) =>
-        Ok({ ...base, ...Object.fromEntries(pairs) } as unknown as OutputShape),
+        Ok({ ...canonical, ...Object.fromEntries(pairs) } as unknown as OutputShape),
       ) as Result<OutputShape, InvalidEntity>;
     };
 
@@ -289,7 +300,7 @@ export function Entity<Tag extends string>(tag: Tag) {
       const seen = new WeakMap<object, object>();
       return Object.fromEntries(
         dataKeys
-          .filter((k) => source[k as PropertyKey] !== undefined)
+          .filter((k) => source[k as PropertyKey] !== undefined || !optionalKeys.has(k))
           .map((k) => [
             k,
             deepFreeze(
@@ -312,7 +323,7 @@ export function Entity<Tag extends string>(tag: Tag) {
       const d = frozenFields(raw) as OutputShape;
       const broken = violationsOf(d);
       if (broken.length > 0) {
-        return Err(new InvalidEntity({ entity: tag, issues: broken }));
+        return Err(new InvalidEntityClass({ entity: tag, issues: broken }));
       }
       // A defect, not an `InvalidEntity`: subclassing is a bug in domain code,
       // not bad caller input. `fromThrowable` is what keeps it inside the
@@ -358,7 +369,7 @@ export function Entity<Tag extends string>(tag: Tag) {
             writable: false,
             // an absent optional stays locked but out of `Object.keys`, so a
             // nested entity omits it exactly as `toJSON()` does
-            enumerable: data[k as PropertyKey] !== undefined,
+            enumerable: data[k as PropertyKey] !== undefined || !optionalKeys.has(k),
           });
         }
         // non-enumerable, so it is absent from Object.keys, spread,
@@ -432,14 +443,27 @@ export function Entity<Tag extends string>(tag: Tag) {
         this: new (d: Sealed<OutputShape>) => T,
         state: unknown,
       ): Result<T, InvalidEntity> {
-        return parseInput(state)
-          .mapErrCases((m) =>
-            // SchemaIssues is `readonly Issue[]` — a single non-union type, nothing to enumerate
-            // oxlint-disable-next-line unthrown/no-catch-all-pattern
-            m.with(P._, toInvalidEntity),
-          )
-          .flatMap(recompute)
-          .flatMap((d) => construct(this, d));
+        return (
+          parseInput(state)
+            .mapErrCases((m) =>
+              // SchemaIssues is `readonly Issue[]` — a single non-union type, nothing to enumerate
+              // oxlint-disable-next-line unthrown/no-catch-all-pattern
+              m.with(P._, toInvalidEntity),
+            )
+            .flatMap(recompute)
+            // A required transform may erase its own input; refuse a value that
+            // `make(toJSON())` could never read back.
+            .flatMap((d) =>
+              dataKeys.some((key) => !optionalKeys.has(key) && d[key] === undefined)
+                ? parseInput(project(d))
+                    // SchemaIssues is one non-union type, as at make's first parse.
+                    // oxlint-disable-next-line unthrown/no-catch-all-pattern
+                    .mapErrCases((m) => m.with(P._, toInvalidEntity))
+                    .flatMap(() => Ok(d) as Result<OutputShape, InvalidEntity>)
+                : Ok(d),
+            )
+            .flatMap((d) => construct(this, d))
+        );
       }
 
       /**
@@ -513,7 +537,7 @@ export function Entity<Tag extends string>(tag: Tag) {
           .filter((pair): pair is readonly [string, string] => pair[1] !== undefined)
           .map(([key, message]) => ({ path: [key] as readonly PropertyKey[], message }));
         if (rejected.length > 0) {
-          return Err(new InvalidEntity({ entity: tag, issues: rejected }));
+          return Err(new InvalidEntityClass({ entity: tag, issues: rejected }));
         }
         const applied = { ...(project(this) as Record<PropertyKey, unknown>) };
         for (const [k, v] of entries) applied[k] = v;
@@ -545,7 +569,7 @@ Entity.invariant = invariant;
 Entity.union = union;
 Entity.abstract = createBase(Entity as unknown as BuildEntity);
 Entity.aggregate = createAggregate(Entity as unknown as BuildEntityClass);
-Entity.InvalidEntity = InvalidEntity;
+Entity.InvalidEntity = InvalidEntityClass;
 // The issue helpers an adapter needs to turn an `InvalidEntity` into a
 // response body: `keysOf` normalises a Standard Schema path (bare key or
 // `{ key }` wrapper) to plain keys, `codeOf` reads an invariant's declared
@@ -657,11 +681,9 @@ export declare namespace Entity {
   > = AggregateInstanceSrc<S, A, Ev, O, End>;
   export type DecisionKey = DecisionKeySrc;
 
-  // `InvalidEntity` is a class, so it needs both meanings under `Entity`: the
-  // value for `instanceof`, the type for annotations. A re-export carries both,
-  // where a `type` member would shadow the value and reject the runtime
-  // assignment above (TS2339).
-  export { InvalidEntity };
+  /** The structured validation failure, as a constructor and an instance type. */
+  export let InvalidEntity: typeof InvalidEntityClass;
+  export type InvalidEntity = InvalidEntityClass;
 
   /** What `Entity.union(...)` returns. */
   export type Union<K extends string, M extends readonly UnionMember[]> = EntityUnionSrc<K, M>;

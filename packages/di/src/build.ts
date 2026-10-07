@@ -1,4 +1,4 @@
-import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
+import { OkAsync, fromSafePromise, type AsyncResult, type FailureView } from "unthrown";
 
 import { Context, unsafeAdd, unsafeAddAll, unsafeKeys } from "./context.js";
 import { constructLevel, runStartHooks, type AnyProvider } from "./lifecycle.js";
@@ -236,6 +236,8 @@ export type SeedEntry<P extends AnyPort> = readonly [port: P, value: ServiceOf<I
 
 export type ScopedOptions = {
   readonly onTeardownError?: TeardownReporter;
+  /** Called after construction fails and before acquired resources are released. */
+  readonly onConstructionFailure?: (failure: FailureView<unknown, unknown>) => void;
   /**
    * Values supplied to the scope from OUTSIDE its module tree, keyed by port.
    * The planner treats a seeded port as provided, exactly as it treats the
@@ -267,7 +269,9 @@ export const runScoped = <A, E2>(
   );
   const settle = async () => {
     // oxlint-disable-next-line unicorn/no-array-callback-reference -- `use` is this function's own parameter, not an array method's element callback
-    const result = await run(module, scope, seeded).flatMap(use);
+    const result = await run(module, scope, seeded)
+      .tapFailure(options.onConstructionFailure ?? (() => {}))
+      .flatMap(use);
     // Never conditioned on `result`: teardown happens whether construction
     // failed, `use` failed or `use` succeeded, and never changes what this
     // function returns.

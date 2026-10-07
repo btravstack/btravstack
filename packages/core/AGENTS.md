@@ -265,11 +265,13 @@ Beyond the nine:
   report, and that event is its only channel (`unit-module.spec.ts` → _"still
   reports a unit teardown that fails after the application has exited"_).
 
-  **A construction failure — an `Err` or a defect — is the remaining gap**: di releases what
-  it acquired inside `Module.scoped` before anything the kernel holds sees the
-  failure, so only a second signal or an uncaught exception (the abandoned
-  build) cuts a release wedged there short. Closing it needs a hook in di's
-  `ScopedOptions`, not more kernel code.
+  **A construction failure — an `Err` or a defect — arms the same deadline**:
+  di's `onConstructionFailure` hook hands the failure to the kernel before it
+  releases what it acquired. A wedged release therefore settles `exited` with
+  the original failure and emits `stoppedWaiting`; a finite release still
+  finishes before the error is reported. Guarded by _"bounds cleanup after a
+  provider fails during construction"_ and _"preserves a construction error
+  when acquired resources release in time"_.
 
 - **Readiness is a one-way latch.** Forced false by the drain and by an uncaught
   exception, never reset. `invariants.spec.ts` → _"readiness never returns to
@@ -463,8 +465,9 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   the same failure is what `exited` reports, and no drain happens after it.
 
 - **`startFailed` is emitted from the probe bind's `tapFailure` and from
-  `leaveFailed`** — which runs inside `use` (ahead of the finalisers) and after
-  `Module.scoped` (for a construction failure, which never reaches `use`) —
+  `leaveFailed`** — which runs inside `use` (ahead of the finalisers), in di's
+  `onConstructionFailure` hook (also ahead of finalisers), and after
+  `Module.scoped` as a fallback —
   because a failed probe bind short-circuits the `flatMap` that would
   otherwise reach the others; the cause is
   `failure.tag === "Err" ? failure.error : failure.cause`, the `FailureView`

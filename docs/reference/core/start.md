@@ -199,9 +199,8 @@ Drop `Httpish` from `exports` and the call to `start` fails to compile against
 Any failure before step 3 — a construction `Err`, a runtime that refused, a
 probe bind failure — emits `startFailed`, moves the phase to `stopping` then
 `exited`, and lands in `exited`'s error channel. Once the graph is built, the
-finalisers a failure runs get `stopTimeoutMs` too: past it the kernel emits
+finalisers a failure runs get `stopTimeoutMs` too, including after construction
+fails: past it the kernel emits
 `stoppedWaiting` and `exited` still settles with the startup failure, not an
-`ExitReport`. A construction failure — an `Err` or a defect while the graph is
-built — is the exception: di releases what it had
-acquired before the kernel can see the failure, so only a second signal or an
-uncaught exception cuts a release wedged there short.
+`ExitReport`. di reports a construction failure to the kernel before releasing
+what it acquired, so the deadline starts before cleanup.

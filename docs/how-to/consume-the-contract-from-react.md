@@ -28,7 +28,7 @@ in TanStack Query**, **let the server say who may call it**.
 ## Step 1 — depend on the contract, not the server
 
 ```sh
-pnpm add @orpc/client@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @unthrown/orpc \
+pnpm add @orpc/client@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @unthrown/orpc@^0.2.0 \
   @tanstack/react-query @orpc/tanstack-query@2.0.0-beta.28 your-api-contract
 ```
 

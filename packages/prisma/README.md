@@ -15,7 +15,7 @@ pnpm add @btravstack/prisma @btravstack/core @btravstack/config @btravstack/di u
 Five peer dependencies — install every one, so the application holds a single
 copy of each. The `prisma` CLI is yours, as a dev dependency: the client is
 built from _your_ emitted contract, so there is none for this package to ship.
-Node `>=22`.
+Node `>=22.12`.
 
 **This is Prisma 8**, which is a different package family rather than a version
 bump — `@prisma/orm-postgres` replaces `@prisma/client` and `@prisma/adapter-pg`

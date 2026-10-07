@@ -243,3 +243,32 @@ test("an absent optional field is still locked", () => {
   // THEN the binding refuses
   expect(assign).toThrow(TypeError);
 });
+
+test("a required undefined field survives a toJSON round trip", () => {
+  class RequiredUndefined extends Entity("RequiredUndefined")({
+    id: OrderId,
+    result: Entity.field(z.undefined(), { unbranded: true }),
+  }) {}
+  const first = RequiredUndefined.make({ id: oid, result: undefined }).getOrThrow();
+  const stored = first.toJSON();
+  expect(Object.keys(stored)).toEqual(["id", "result"]);
+  expect(RequiredUndefined.make(stored).map((again) => again.toJSON())).toBeOkWith(stored);
+});
+
+test("an unrehydratable required output is rejected", () => {
+  class Transformed extends Entity("Transformed")({
+    id: OrderId,
+    result: Entity.field(
+      z.string().transform(() => undefined),
+      { unbranded: true },
+    ),
+  }) {}
+  const result = Transformed.make({ id: oid, result: "source" });
+  expect(
+    result.match({
+      ok: () => "ok",
+      errCases: (m) => m.with(P.tag("InvalidEntity"), (e) => e.issues[0]?.path),
+      defect: () => "defect",
+    }),
+  ).toEqual(["result"]);
+});

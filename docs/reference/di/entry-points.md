@@ -5,6 +5,7 @@ description: "Module.build, Module.scoped and Module.forkScope — signatures, t
 
 <!-- doctest: prelude
 import { Port, type Context } from "@btravstack/di";
+import type { FailureView } from "unthrown";
 class SomePort extends Port("SomePort")<{ readonly go: () => void }> {}
 declare const ctx: Context<SomePort>;
 -->
@@ -140,6 +141,7 @@ Accepted by `Module.scoped` and `Module.forkScope`:
 ```ts
 type ScopedOptions = {
   readonly onTeardownError?: (portId: string, cause: unknown) => void;
+  readonly onConstructionFailure?: (failure: FailureView<unknown, unknown>) => void;
 };
 ```
 
@@ -150,6 +152,10 @@ is never changed by one — a failed close must not mask the failure that
 triggered the unwind. The default reporter writes to `console.error`. A
 throwing reporter is itself swallowed; there is nowhere left to report a
 broken reporter to.
+
+`onConstructionFailure` runs when the graph fails to build, before acquired
+resources are released. The kernel uses it to start its cleanup deadline while
+preserving the original startup failure.
 
 ## `Context`
 

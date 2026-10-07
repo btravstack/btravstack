@@ -689,7 +689,8 @@ fine, which is worse than the advice.
 `@btravstack/temporal-worker/schedule` subpath reads — a consumer that never
 imports `ensureSchedule` installs nothing for it (see
 [Run something on a schedule](/how-to/run-something-on-a-schedule)). Node
-`>=22`.
+`>=22.22`; the package exports ESM only because its required contract peer has
+import-only subpaths.
 
 ## Deliberately not included
 

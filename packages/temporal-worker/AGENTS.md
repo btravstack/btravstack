@@ -10,6 +10,10 @@ page, never this file.
 
 ## Decisions and gotchas
 
+- The package exports ESM only. Its required `@temporal-contract/worker` peer
+  exposes activity subpaths under `import` alone; a CommonJS build cannot load
+  them on any Node. Its Node floor is `>=22.22`, matching that peer.
+
 - **`TemporalModule`'s return type is di's own `Module(name)({...})` over the
   augmented tuples, never a named alias.** A named generic alias was tried and
   removed: declaration emit keeps it unreduced and cannot name imported

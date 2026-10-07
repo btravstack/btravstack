@@ -278,12 +278,9 @@ holding keys, so the codec that reads a cookie is the one that sealed it, and a
 root composing the scheme without `sessionCodec()` is refused at the
 `HttpModule` call.
 
-**The `/jwt` and `/session` subpaths need Node ≥22.12 under CommonJS.** `jose`
-is ESM-only, so the CJS build's `require("jose")` depends on `require(esm)`,
-which Node enables by default from 22.12. ESM consumers are unaffected on any
-Node 22, and so is every consumer that never imports either subpath — which is
-why this is stated here rather than paid for by raising the package's own
-`engines` floor, a breaking change for the many to serve the few.
+**The package requires Node ≥22.12.** Its CommonJS build loads ESM-only oRPC;
+`/jwt` and `/session` also load ESM-only `jose`. Node enables `require(esm)` by
+default from 22.12.
 
 `principal(claims)` is yours — no standard claim carries a tenant — and
 answering `undefined` refuses the token. `scopes` is the vocabulary and **the
@@ -2117,15 +2114,13 @@ so a transient accept fault cannot become an `uncaughtException` teardown.
 `@unthrown/orpc`. All peers, so an application holds one copy of each —
 `@btravstack/contract` most of all, since its marker is a `unique symbol` and
 two copies are two different symbols, so a contract marked against one would
-read as unmarked here. Node `>=22`.
+read as unmarked here. Node `>=22.12`.
 
 **Optional peers, each behind the subpath that needs it**: `jose` (`^6`) for
 both `/jwt` and `/session`, `openid-client` (`^6`) for `/oidc`,
 `@orpc/openapi` and `@orpc/json-schema` for
 `/openapi`. A graph that imports none of those subpaths installs none of them —
-which is the whole reason they are subpaths. `jose` is ESM-only, so a CJS
-consumer of `/jwt` or `/session` needs Node `>=22.12` for `require(esm)`; ESM is
-fine on any Node 22.
+which is the whole reason they are subpaths.
 
 ## Deliberately not included
 

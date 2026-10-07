@@ -470,6 +470,87 @@ describe("start", () => {
     });
   });
 
+  it("bounds cleanup after a provider fails during construction", async () => {
+    // GIVEN a failing provider behind an acquired resource whose release blocks
+    class Broken extends Port("Broken")<{ readonly value: string }> {}
+    const clock = createFakeClock();
+    const releasing = Promise.withResolvers<void>();
+    const events: KernelEvent[] = [];
+    const runtime = testRuntime();
+    const Failed = Module("FailedDuringBuild")({
+      imports: [runtime.module],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => {
+            releasing.resolve();
+            return new Promise<void>(() => {});
+          },
+        }),
+        Provider(Broken)({
+          inject: { greeting: Greeting },
+          make: () => ErrAsync(new RuntimeStartFailed({ runtime: "build", cause: "refused" })),
+        }),
+      ],
+      exports: [TestRuntimePort],
+    });
+    const app = start(Failed, {
+      clock,
+      signals: false,
+      probes: false,
+      stopTimeoutMs: 5_000,
+      onEvent: (event) => events.push(event),
+    });
+    await releasing.promise;
+
+    // WHEN the cleanup deadline passes
+    await clock.advance(5_000);
+
+    // THEN the original construction failure survives and the abandoned close is named
+    expect({ exited: await app.exited, events: events.filter(isStoppedWaiting) }).toEqual({
+      exited: expect.toBeErrTagged(
+        "RuntimeStartFailed",
+        expect.objectContaining({ runtime: "build" }),
+      ),
+      events: [{ type: "stoppedWaiting", phase: "stop", afterMs: 5_000 }],
+    });
+  });
+
+  it("preserves a construction error when acquired resources release in time", async () => {
+    // GIVEN a provider that fails after acquiring one finite resource
+    class Broken extends Port("BrokenFinite")<{ readonly value: string }> {}
+    const released: string[] = [];
+    const runtime = testRuntime();
+    const Failed = Module("FailedWithFiniteRelease")({
+      imports: [runtime.module],
+      provides: [
+        Provider(Greeting)({
+          inject: {},
+          acquire: () => OkAsync({ text: "hi" }),
+          release: () => void released.push("greeting"),
+        }),
+        Provider(Broken)({
+          inject: { greeting: Greeting },
+          make: () => ErrAsync(new RuntimeStartFailed({ runtime: "build", cause: "refused" })),
+        }),
+      ],
+      exports: [TestRuntimePort],
+    });
+
+    // WHEN construction fails and the resource is released
+    const app = start(Failed, { clock: createFakeClock(), signals: false, probes: false });
+
+    // THEN the original failure is reported after finite cleanup
+    expect({ exited: await app.exited, released }).toEqual({
+      exited: expect.toBeErrTagged(
+        "RuntimeStartFailed",
+        expect.objectContaining({ runtime: "build" }),
+      ),
+      released: ["greeting"],
+    });
+  });
+
   it("releases the graph of a runtime that refused to start, naming no deadline", async () => {
     // GIVEN a runtime that refuses to start over a graph whose release settles
     const released: string[] = [];

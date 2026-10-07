@@ -1,5 +1,8 @@
 # packages/prisma
 
+The Node floor is `>=22.12`, matching `@prisma/cli-engine` pulled in by the
+required Prisma peer.
+
 The Prisma starter's public surface. The root `AGENTS.md` is the authoritative
 spec for the kernel and the conventions; this file holds what only matters when
 you are working under `packages/prisma/`.
@@ -71,6 +74,14 @@ server is gone cannot answer it, which `$connect()`-style probes could not
 distinguish; and it goes to `query` rather than `execute` because
 `affectedCount()`'s builder answers `build(): SqlQueryPlan<AffectedCount>` — a
 query plan despite the name. That last one cost a round of red typechecks.
+
+**A fresh client needs a second connection to verify its contract marker.** A
+first statement inside an interactive transaction already holds one. An
+application that sets its pool to one connection must warm the client with a
+query outside a transaction first, or use a pool of at least two. Measured with
+`pg.Pool` at `max: 1` and a 500 ms connection timeout: fresh first transaction
+timed out, while fresh `max: 2` and warmed `max: 1` succeeded. The starter does
+not own pool size and does not issue a query during provider acquisition.
 
 ### `@btravstack/prisma/result`
 

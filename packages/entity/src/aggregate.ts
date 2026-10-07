@@ -153,7 +153,6 @@ export const createAggregate =
     const isTerminal = (e: Event) => terminal.has(e.type);
     const openers = opens as unknown as Handlers;
     const folders = evolve as unknown as Handlers;
-    const recordKeys = Object.keys(Base.input.shape);
     // The entity's own projection, never a subclass override of `toJSON`.
     const project = Base.prototype["toJSON"] as (this: object) => Record<string, unknown>;
 
@@ -164,8 +163,7 @@ export const createAggregate =
      * and a `z.custom` instance survives the fold intact for `make` to check.
      */
     const recordOf = (self: object): Record<string, unknown> => {
-      const data = project.call(self);
-      return Object.fromEntries(recordKeys.map((k) => [k, data[k]]));
+      return { ...project.call(self) };
     };
 
     const bug = (detail: string) => new Error(`${tag}: ${detail}`);

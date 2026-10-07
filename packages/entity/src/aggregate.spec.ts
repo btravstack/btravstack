@@ -167,6 +167,32 @@ test("replay folds a stored stream into the same state, and emits nothing", () =
   expect(Object.keys(replayed)).not.toContain("events");
 });
 
+test("a decision and replay agree on an absent optional key", () => {
+  // GIVEN a fold that depends on whether an optional key is present
+  const events = z.discriminatedUnion("type", [
+    z.object({ type: z.literal("Opened"), id: z.uuid() }),
+    z.object({ type: z.literal("Checked") }),
+  ]);
+  class Presence extends Entity.aggregate("Presence")({
+    id: Entity.field(CartId, { identity: true }),
+    note: Entity.field(z.string().optional(), { unbranded: true }),
+    seen: z.boolean(),
+  })({
+    events,
+    opens: { Opened: (e) => ({ id: e.id, seen: false }) },
+    evolve: { Checked: (r) => ({ ...r, seen: Object.hasOwn(r, "note") }) },
+  }) {}
+  // WHEN a live command is replayed from its events
+  const first = Presence.start({ type: "Opened", id }).get();
+  const live = first.state.emit({ type: "Checked" }).get();
+  const replayed = Presence.replay(live.events).getOrThrow();
+  // THEN both folds see the same record shape
+  expect({ live: live.state.toJSON(), replayed: replayed.toJSON() }).toEqual({
+    live: { id, seen: false },
+    replayed: { id, seen: false },
+  });
+});
+
 test("replay preserves a schema defect in a stored event", () => {
   // GIVEN a schema whose Standard Schema validator defects synchronously
   const events = z.discriminatedUnion("type", [

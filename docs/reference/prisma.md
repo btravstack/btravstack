@@ -173,6 +173,14 @@ statement, not here.
 again lazily on the next statement, which is why no test asserts that a
 released client refuses to query.
 
+**Use at least two connections if a fresh client's first statement can run
+inside a transaction.** Prisma 8 verifies the contract marker on another
+connection at first use. A transaction holding the only connection then waits
+for that verification. Reproduced with `pg.Pool({ max: 1,
+connectionTimeoutMillis: 500 })`: a fresh client's first transaction timed out
+reading the marker; a fresh pool of two and a warmed pool of one both succeeded.
+With a smaller pool, run a query outside a transaction before the first one.
+
 ## `Result`s, on the `@btravstack/prisma/result` subpath
 
 Prisma 8 throws, with a **structured** error: `SqlQueryError` carrying a

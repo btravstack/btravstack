@@ -131,7 +131,7 @@ does, the first package alone suffices.
 
 ```sh [HTTP API]
 pnpm add @btravstack/http-server @btravstack/core @btravstack/config @btravstack/di \
-  @btravstack/contract unthrown @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @unthrown/orpc
+  @btravstack/contract unthrown @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @unthrown/orpc@^0.2.0
 ```
 
 ```sh [Temporal worker]
