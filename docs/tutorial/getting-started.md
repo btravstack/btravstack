@@ -19,42 +19,113 @@ to stop. It takes about ten minutes.
 builds an HTTP application with the full framework.
 :::
 
-## Step 1 — Install
+## Step 1 — Create the project
+
+You need Node `>=22`. Make an empty directory; by the end of the lesson it will
+hold this:
+
+```text
+hello-btravstack/
+├── package.json
+├── tsconfig.json
+└── src/
+    ├── greeter.ts
+    ├── contract.ts
+    ├── router.ts
+    ├── app.ts
+    ├── main.ts
+    └── client.ts
+```
+
+Start with the two files at the top.
+
+**`package.json`**
+
+```json
+{
+  "name": "hello-btravstack",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc",
+    "start": "tsx src/main.ts",
+    "client": "tsx src/client.ts"
+  }
+}
+```
+
+`"type": "module"` makes the project ESM, which `main.ts` needs for its
+top-level `await`.
+
+**`tsconfig.json`**
+
+```json
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src"]
+}
+```
+
+`moduleResolution: "nodenext"` is why every relative import below carries a
+`.js` suffix. `noEmit` makes `tsc` a check and nothing else — `tsx` runs the
+code — so `typecheck` is the command that tells you whether the wiring holds.
+The lesson runs each script as `npm run …`; `pnpm …` and `yarn …` run the same
+ones.
+
+Then install, from the same directory:
 
 ::: code-group
 
 ```sh [pnpm]
-pnpm add @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di unthrown @orpc/server@^2.0.0-beta @orpc/contract@^2.0.0-beta @unthrown/orpc zod
-pnpm add -D tsx
+pnpm add @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di \
+  @btravstack/contract unthrown @unthrown/orpc@^0.2.0 zod \
+  @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @orpc/client@2.0.0-beta.28
+pnpm add -D typescript tsx @types/node --allow-build=esbuild
 ```
 
 ```sh [npm]
-npm install @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di unthrown @orpc/server@^2.0.0-beta @orpc/contract@^2.0.0-beta @unthrown/orpc zod
-npm install -D tsx
+npm install @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di \
+  @btravstack/contract unthrown @unthrown/orpc@^0.2.0 zod \
+  @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @orpc/client@2.0.0-beta.28
+npm install -D typescript tsx @types/node
 ```
 
 ```sh [yarn]
-yarn add @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di unthrown @orpc/server@^2.0.0-beta @orpc/contract@^2.0.0-beta @unthrown/orpc zod
-yarn add -D tsx
+yarn add @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di \
+  @btravstack/contract unthrown @unthrown/orpc@^0.2.0 zod \
+  @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @orpc/client@2.0.0-beta.28
+yarn add -D typescript tsx @types/node
 ```
 
 :::
 
-Every one of those but `zod` is a **peer** of `@btravstack/http-server`, so your
-application holds a single copy of each ([why](/explanation/peer-dependencies)).
-`tsx` is the odd one out: a dev dependency, and only to **run** the TypeScript
-you are about to write — Step 7 says why Node's own type stripping is not enough
-here.
+Most of the first command is **peers** — of `@btravstack/http-server`, and of
+`@unthrown/orpc`, which needs `@orpc/client` — so your application holds a
+single copy of each ([why](/explanation/peer-dependencies)). They are named
+rather than left to the package manager because not every install adds peers
+for you (`pnpm` with `autoInstallPeers: false`, for one), and your own files
+import `@orpc/contract`, `@orpc/client`, `zod` and `unthrown` directly.
 
-The oRPC ranges carry `@^2.0.0-beta` deliberately. oRPC v2 is pre-release and
-its `latest` tag still points at the 1.x line, which `@unthrown/orpc` does not
-peer on; an unpinned install resolves the wrong major and the first compile
-fails ([the full list](/reference/packages)).
+The oRPC packages are pinned to **one exact beta**, the one this framework is
+built and tested against. oRPC v2 is pre-release and its `latest` tag still
+points at the 1.x line, which `@unthrown/orpc` does not peer on, so an
+unpinned install resolves the wrong major and the first compile fails; pinning
+all three to the same beta keeps the client and the server on one version
+([the full list](/reference/packages)).
 
-The project needs `"type": "module"` in its `package.json` — `main.ts` ends in a
-top-level `await` — TypeScript in `strict` mode with `moduleResolution: "nodenext"`
-(which is why every relative import below carries a `.js` suffix), and Node
-`>=22`.
+The dev dependencies split the work: `typescript` **checks** the code,
+`tsx` **runs** it (Step 7 says why Node's own type stripping is not enough
+here), and `@types/node` types the Node APIs both use. The pnpm line's
+`--allow-build=esbuild` lets the bundler `tsx` runs on execute its install
+script, which recent pnpm refuses to do until someone approves it.
 
 ## Step 2 — Declare a service
 
@@ -62,7 +133,7 @@ A service is a **port** — a name with a service type — and a **provider** th
 builds it. Both live in a **module**, which says what it provides and what it
 lets others see:
 
-**`greeter.ts`**
+**`src/greeter.ts`**
 
 ```ts
 import { Module, Port, Provider } from "@btravstack/di";
@@ -90,7 +161,7 @@ application, and a runtime is something you compose _around_ it in Step 5.
 The transport speaks a contract, declared before any implementation exists. One
 procedure, `hello`, with a typed input and output:
 
-**`contract.ts`**
+**`src/contract.ts`**
 
 ```ts
 import { oc } from "@orpc/contract";
@@ -119,7 +190,7 @@ security schemes; this service is public, so it takes no argument. Then
 `api.OrpcRouter(contract)` types the implementation from the contract — a
 typo'd key or a wrong output is a compile error here:
 
-**`router.ts`**
+**`src/router.ts`**
 
 ```ts
 import { defineHttp } from "@btravstack/http-server";
@@ -151,7 +222,7 @@ or `implement(...)` is spelled — the starter does that.
 router. Under the hood it imports the HTTP starter, provides the router and
 exports `HttpRuntime` — the one port the kernel resolves and drives:
 
-**`app.ts`**
+**`src/app.ts`**
 
 ```ts
 import { HttpModule } from "@btravstack/http-server";
@@ -165,16 +236,25 @@ export const App = HttpModule("App")({
 });
 ```
 
-Try deleting `imports: [GreetingModule]` and watch the call fail to compile:
-the router's provider declares `Greeter`, and nothing supplies it. That is
-di's gate ([Compile errors, not surprises](/explanation/compile-time-wiring)),
-and it fires before any process exists.
+Check it:
+
+```sh
+npm run typecheck
+```
+
+`tsc` prints nothing and exits `0`. Now delete `imports: [GreetingModule]` and
+run it again: the call fails to compile, because the router's provider declares
+`Greeter` and nothing supplies it. That is di's gate
+([Compile errors, not surprises](/explanation/compile-time-wiring)), and it
+fires before any process exists.
 
 **Read the sentence, and read it whole.** The error is at the `HttpModule`
-call, and its last line is:
+call, and it ends by naming what is missing — the marker, and `Greeter` as its
+value:
 
 ```text
-UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)
+src/app.ts(6,38): error TS2345: Argument of type '{ router: Built<never, Greeter, Record<never, never>>; }' is not assignable to parameter of type …
+  Property '"UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)"' is missing in type … but required in type '{ readonly "UNDECLARED NEEDS …": Greeter; }'.
 ```
 
 Two fixes, because two readers meet this. A **slice** names the port in
@@ -187,7 +267,7 @@ table and where each fix goes.
 
 ## Step 6 — Write `main.ts`
 
-**`main.ts`**
+**`src/main.ts`**
 
 ```ts
 import { runMain } from "@btravstack/core";
@@ -206,8 +286,12 @@ a drain that abandoned work. It never calls `process.exit`
 ## Step 7 — Run it
 
 ```sh
-PORT=3000 npx tsx src/main.ts
+PORT=3000 npm start
 ```
+
+`start` is `tsx src/main.ts`. `tsx` strips the types without checking them, so
+it runs code `npm run typecheck` would refuse — keep the check as the step
+before.
 
 **`tsx` rather than `node`, and the reason is the `.js` suffixes.** Node `>=22.18`
 does run a `.ts` entry point by stripping the types, but stripping is all it
@@ -238,7 +322,7 @@ anything.
 The contract types the client too. `RPCLink` speaks oRPC's RPC protocol to the
 endpoint the starter mounted under `/rpc`:
 
-**`client.ts`**
+**`src/client.ts`**
 
 ```ts
 import { createORPCClient } from "@orpc/client";
@@ -256,7 +340,7 @@ console.log(message); // Hello, world!
 ```
 
 ```sh
-npx tsx src/client.ts
+npm run client
 ```
 
 `client.hello` takes `{ name: string }` and returns `{ message: string }`
@@ -271,10 +355,12 @@ errors — the shape `examples/order-api` uses. See
 
 ## Step 9 — Stop it
 
-Send the process a SIGTERM (Ctrl-C sends SIGINT, which takes the same path):
+Send the process a SIGTERM (Ctrl-C sends SIGINT, which takes the same path).
+From another terminal, signal the process listening on the port — the Node
+process `tsx` started, not the `npm` wrapper around it:
 
 ```sh
-kill -TERM <pid>
+kill -TERM $(lsof -ti tcp:3000 -sTCP:LISTEN)
 ```
 
 Then read stderr:
