@@ -193,6 +193,25 @@ const gaps: Readonly<Record<string, Gap>> = {
   "@btravstack/temporal-worker require (current)": temporalCjs,
 };
 
+// pnpm names only the first dependency it refuses, and which one comes first
+// varies between runs, so a gap lists every dependency that states the engine.
+type EngineGap = { readonly dependencies: readonly string[]; readonly why: string };
+
+const engineGaps: Readonly<Record<string, EngineGap>> = {
+  "@btravstack/amqp-worker": {
+    dependencies: ["@amqp-contract/contract", "@amqp-contract/core", "@amqp-contract/worker"],
+    why: "each states `engines.node >=22.22` at both the floor this package admits and the catalog's release",
+  },
+  "@btravstack/prisma": {
+    dependencies: ["@prisma/cli-engine"],
+    why: "a required peer of `@prisma/orm-toolchain`, which `@prisma/orm-postgres` pulls in, states `engines.node >=22.12.0`",
+  },
+  "@btravstack/temporal-worker": {
+    dependencies: ["@temporal-contract/contract", "@temporal-contract/worker"],
+    why: "each states `engines.node >=22.22.0` at both the floor this package admits and the catalog's release",
+  },
+};
+
 const SMOKE = `const entries = JSON.parse(process.argv[2]);
 (async () => {
   const failed = [];
@@ -243,25 +262,53 @@ const isOptionalAdapter = (manifest: Manifest, failure: SmokeFailure): boolean =
   );
 };
 
-const install = (args: readonly string[], cwd: string): boolean => {
+// pnpm splits an unmet peer and an unsupported engine across STDOUT and
+// STDERR, so both are captured; this answers them on failure.
+const install = (args: readonly string[], cwd: string): string | undefined => {
   try {
-    run("pnpm", [...args, "--config.minimum-release-age=0"], cwd);
-    return true;
+    execFileSync("pnpm", [...args, "--config.minimum-release-age=0"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return undefined;
   } catch (cause) {
-    // pnpm reports an unmet peer on STDOUT, which `run` pipes.
-    const output: unknown = (cause as { stdout?: unknown }).stdout;
-    if (typeof output === "string") process.stderr.write(output);
-    return false;
+    const { stdout, stderr } = cause as { stdout?: unknown; stderr?: unknown };
+    return `${String(stdout)}${String(stderr)}`;
   }
 };
+
+// Settings, not `--config.*` flags: pnpm ignores `resolutionMode` as a flag.
+const settings = (floor: string, engineStrict: boolean): string =>
+  [
+    "resolutionMode: lowest-direct",
+    "strictPeerDependencies: true",
+    "autoInstallPeers: true",
+    "strictDepBuilds: false",
+    `engineStrict: ${String(engineStrict)}`,
+    // Engines are checked against the floor, not the Node running pnpm.
+    `nodeVersion: ${floor}`,
+    // A `file:` tarball satisfies no `^0.x` range; every other peer stays strict.
+    "peerDependencyRules:",
+    "  allowAny:",
+    '    - "@btravstack/*"',
+    "",
+  ].join("\n");
 
 const isolated = (
   alone: string,
   subject: Packed,
   family: ReadonlyMap<string, Packed>,
   nodes: Readonly<Record<"current" | "floor", string>>,
+  floor: string,
 ): { readonly failures: readonly string[]; readonly matched: readonly string[] } => {
   const { name } = subject.manifest;
+  if (subject.manifest.exports?.["."] === undefined) {
+    return {
+      failures: [`smoke: ${name} exports no "." — its root cannot be imported`],
+      matched: [],
+    };
+  }
   const dir = join(alone, name.replace("/", "+"));
   mkdirSync(dir, { recursive: true });
   const dependencies = new Map<string, string>();
@@ -284,24 +331,25 @@ const isolated = (
     join(dir, "package.json"),
     `${JSON.stringify({ name: "isolated", private: true, dependencies: Object.fromEntries(dependencies) }, undefined, 2)}\n`,
   );
-  // Settings, not `--config.*` flags: pnpm ignores `resolutionMode` as a flag.
-  writeFileSync(
-    join(dir, "pnpm-workspace.yaml"),
-    [
-      "resolutionMode: lowest-direct",
-      "strictPeerDependencies: true",
-      "autoInstallPeers: true",
-      "strictDepBuilds: false",
-      // A `file:` tarball satisfies no `^0.x` range; every other peer stays strict.
-      "peerDependencyRules:",
-      "  allowAny:",
-      '    - "@btravstack/*"',
-      "",
-    ].join("\n"),
-  );
   writeFileSync(join(dir, "smoke.cjs"), SMOKE);
-  if (!install(["install", "--ignore-scripts"], dir)) {
-    return { failures: [`isolated install: ${name} with only its required peers`], matched: [] };
+  const failures: string[] = [];
+  const matched: string[] = [];
+  const engineGap = engineGaps[name];
+  if (engineGap !== undefined) {
+    // Refused for that dependency's engine, and then installed without the
+    // engine check so the loads below still run.
+    writeFileSync(join(dir, "pnpm-workspace.yaml"), settings(floor, true));
+    const refused = install(["install", "--ignore-scripts"], dir);
+    const refusedFor = /Unsupported engine for ((?:@[^/\s]+\/)?[^@\s]+)@/.exec(refused ?? "")?.[1];
+    if (refusedFor !== undefined && engineGap.dependencies.includes(refusedFor)) {
+      matched.push(name);
+    } else if (refused !== undefined) process.stderr.write(refused);
+  }
+  writeFileSync(join(dir, "pnpm-workspace.yaml"), settings(floor, engineGap === undefined));
+  const refused = install(["install", "--ignore-scripts"], dir);
+  if (refused !== undefined) {
+    process.stderr.write(refused);
+    return { failures: [`isolated install: ${name} with only its required peers`], matched };
   }
 
   const entries = Object.entries(subject.manifest.exports ?? {})
@@ -310,8 +358,6 @@ const isolated = (
       specifier: path === "." ? name : `${name}/${path.slice(2)}`,
       cjs: typeof conditions === "object" && conditions !== null && "require" in conditions,
     }));
-  const failures: string[] = [];
-  const matched: string[] = [];
   for (const [label, node] of Object.entries(nodes)) {
     // pnpm's shims point `NODE_PATH` at this workspace, and `require` would
     // find a missing optional peer there.
@@ -322,19 +368,32 @@ const isolated = (
       env,
       stdio: ["ignore", "pipe", "inherit"],
     });
+    const adapted = new Set<string>();
     for (const failure of JSON.parse(output) as readonly SmokeFailure[]) {
+      const key = `${failure.specifier} ${failure.mode} (${label})`;
       if (isOptionalAdapter(subject.manifest, failure)) {
-        matched.push(failure.specifier);
+        adapted.add(key);
         continue;
       }
-      const key = `${failure.specifier} ${failure.mode} (${label})`;
       if (gaps[key]?.code === failure.code) {
+        // A gap fails before the adapter reaches its vendor.
+        adapted.add(key);
         matched.push(key);
         continue;
       }
       failures.push(
         `smoke: ${failure.mode}("${failure.specifier}") on the ${label} Node — ${failure.code ?? "no code"}: ${failure.message}`,
       );
+    }
+    for (const { specifier, cjs } of entries) {
+      if (adapters[specifier] === undefined) continue;
+      matched.push(specifier);
+      for (const mode of cjs ? ["import", "require"] : ["import"]) {
+        const key = `${specifier} ${mode} (${label})`;
+        if (!adapted.has(key)) {
+          failures.push(`smoke: ${key} loads without its optional peers — fix \`adapters\``);
+        }
+      }
     }
   }
   return { failures, matched };
@@ -354,7 +413,9 @@ const smoke = (work: string, alone: string, tarballs: readonly string[]): readon
     join(floorDir, "package.json"),
     `${JSON.stringify({ name: "node-floor", private: true })}\n`,
   );
-  if (!install(["add", `node@runtime:${floor}`], floorDir)) {
+  const unfetched = install(["add", `node@runtime:${floor}`], floorDir);
+  if (unfetched !== undefined) {
+    process.stderr.write(unfetched);
     return [`node floor: could not fetch Node ${floor}`];
   }
   const nodes = {
@@ -368,21 +429,13 @@ const smoke = (work: string, alone: string, tarballs: readonly string[]): readon
   const failures: string[] = [];
   const matched = new Set<string>();
   for (const subject of family.values()) {
-    const result = isolated(alone, subject, family, nodes);
+    const result = isolated(alone, subject, family, nodes, floor);
     failures.push(...result.failures);
     for (const key of result.matched) matched.add(key);
   }
-  for (const [key, { code }] of Object.entries(gaps)) {
-    if (!matched.has(key)) {
-      failures.push(`smoke: ${key} no longer fails with ${code} — drop it from \`gaps\``);
-    }
-  }
-  for (const specifier of Object.keys(adapters)) {
-    if (!matched.has(specifier)) {
-      failures.push(
-        `smoke: ${specifier} loads without its optional peers — drop it from \`adapters\``,
-      );
-    }
+  const unmatched = [...Object.keys(gaps), ...Object.keys(adapters), ...Object.keys(engineGaps)];
+  for (const key of unmatched.filter((key) => !matched.has(key))) {
+    failures.push(`smoke: ${key} names nothing that still fails that way — drop it`);
   }
   return failures;
 };

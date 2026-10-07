@@ -81,14 +81,19 @@ CI job rather than asking another repository for a new one.
      shims point it at this workspace's store and `require` falls back to it.
      An ESM load proves every named import a peer is asked for exists at the
      floor; a CJS load proves only that the module graph resolves.
+     A package whose `exports` has no `"."` fails outright: an `exports` map
+     without one refuses the package's root to every consumer.
    - **An optional adapter stays optional.** The root entry must load. A
      subpath may fail only by not finding a peer `adapters` names for THAT
      subpath, and only one its package declares optional — which is what an
      adapter subpath does when its vendor is absent. Any other failure fails
      the check: a missing package nobody declared, and one adapter reaching
      for another adapter's vendor alike. The manifest does not say which
-     subpath needs which optional peer, so `adapters` does, and an entry
-     whose subpath starts loading without its peers fails as stale.
+     subpath needs which optional peer, so `adapters` does — and every
+     subpath it names must still fail that way in every load it gets, each
+     mode on each Node, so a build that starts bundling its vendor in one of
+     them fails as stale. A load a `gaps` entry excuses counts, since it
+     fails before the adapter reaches its vendor.
    - **On the Node it promises.** Every package states one `engines.node`
      (`>=22`), and the check reads its floor off the manifests (`22.0.0`),
      fetches that Node with pnpm's `node@runtime:` protocol and runs every
@@ -97,6 +102,18 @@ CI job rather than asking another repository for a new one.
      the dev toolchain's highest demand, and it needs no matrix row: the
      Tests job's matrix comes from the reusable workflow, and this rides the
      Type Check job like the rest of this workspace.
+   - **Installable on that Node.** pnpm runs under the dev Node, so each
+     install sets `engineStrict: true` with `nodeVersion` at the floor: a
+     dependency whose own `engines.node` excludes the floor is refused, as it
+     is for a consumer on that Node who enables engine checks. A package that
+     cannot pass this for a reason outside it is in `engineGaps`, naming the
+     dependencies that state the engine. It is installed twice: once to
+     prove the refusal still happens, and once without the check so its loads
+     still run — npm and pnpm only warn on an engine by default. Those are
+     `@btravstack/amqp-worker` and `@btravstack/temporal-worker`, whose
+     contract libraries state `>=22.22`, and `@btravstack/prisma`, whose
+     toolchain pulls in a `@prisma/cli-engine` stating `>=22.12.0`. A gap
+     whose install stops being refused that way fails as stale.
 
    What fails for a reason the package cannot fix on its own is in `gaps`,
    with why — CJS consumers of `@btravstack/http-server` on Node below 22.12,
