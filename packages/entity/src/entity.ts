@@ -277,7 +277,8 @@ export function Entity<Tag extends string>(tag: Tag) {
         .map((rule) => ({ message: rule.describe(d), params: { code: rule.code } }));
 
     /**
-     * Each data field deep-frozen, keyed exactly as `output` declares them.
+     * Each data field deep-frozen, keyed as `output` declares them; an unset
+     * optional has no key, so `inspect`'s data matches `toJSON()`.
      *
      * One `WeakMap` for the whole record, not one per field: fields can share
      * a subtree, and a per-field map would re-walk it once per field that
@@ -287,14 +288,16 @@ export function Entity<Tag extends string>(tag: Tag) {
       const source = d as unknown as Record<PropertyKey, unknown>;
       const seen = new WeakMap<object, object>();
       return Object.fromEntries(
-        dataKeys.map((k) => [
-          k,
-          deepFreeze(
-            source[k as PropertyKey],
-            seen,
-            (output.shape as Record<string, unknown>)[k as string],
-          ),
-        ]),
+        dataKeys
+          .filter((k) => source[k as PropertyKey] !== undefined)
+          .map((k) => [
+            k,
+            deepFreeze(
+              source[k as PropertyKey],
+              seen,
+              (output.shape as Record<string, unknown>)[k as string],
+            ),
+          ]),
       );
     };
 

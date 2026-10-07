@@ -83,6 +83,15 @@ test("a row that satisfies every rule inspects to exactly what make stores", () 
   expect(data).toEqual(Mission.make(row).getOrThrow().toJSON());
 });
 
+test("an unset optional field is omitted from the data, as toJSON omits it", () => {
+  // GIVEN a valid row that leaves its optional reason unset
+  const row = { kind: "mission", step: "RUNNING", label: "relocation", reason: undefined };
+  // WHEN it is inspected
+  const keys = Mission.inspect(row).map(({ data }) => Object.keys(data));
+  // THEN the data has the keys make stores, and no `reason: undefined`
+  expect(keys).toBeOkWith(Object.keys(Mission.make(row).getOrThrow().toJSON()));
+});
+
 test("the data is plain and frozen: no tag, no class, no methods", () => {
   const { data } = Mission.inspect(legacy).getOrThrow();
   expect(Object.getPrototypeOf(data)).toBe(Object.prototype);
