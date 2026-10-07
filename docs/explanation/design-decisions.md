@@ -19,6 +19,9 @@ argument has a page of its own — the drain's three beats, the gate's shape,
 what a starter is — this one links it rather than restating it. A decision
 restated in two places is a decision that will disagree with itself.
 
+For proposals that were deferred, declined or later shipped, see
+[Deferred, deliberately](/explanation/deferred-decisions).
+
 ## The runtime is a service of the module, not an option
 
 `start(module)` takes no `runtime` argument. The module exports a port
@@ -174,8 +177,8 @@ the framework logs too (`kernelEvents`) and one port has to serve both. The
 package is `@btravstack/observability`, not `@btravstack/logger`, because
 logs, traces and metrics share a correlation id, a resource, a configuration
 slice and a flush-on-shutdown lifecycle; two packages would duplicate all
-four, and the second would end up depending on the first. **Traces and metrics
-are not shipped** — the name is the seam, not a claim.
+four, and the second would end up depending on the first. Traces and metrics
+now ship through the same package.
 
 It rules out a `@btravstack/logger` package that a tracing package would then
 have to import; a class you `new`, with the static instance and the
@@ -287,10 +290,9 @@ already verifies — in production. For tests, `@btravstack/testing`'s
 named providers into the real root, because the refusal's measured cost was
 hand-maintained parallel roots drifting silently from the roots they
 mirrored; an override the root stops backing fails loudly ("nothing to
-override"). Two more are deferred rather than declined: a lint rule
-banning `currentUnit()` outside adapters (it needs a convention for
-identifying an adapter), and a `docs-examples.test-d.ts` for the three
-starters (three packages' worth of samples did not yet justify the harness).
+override"). A lint rule banning `currentUnit()` outside adapters remains
+deferred until there is a convention for identifying an adapter. The
+doc-samples gate now compiles the starters' documentation.
 
 ## Where to go next
 

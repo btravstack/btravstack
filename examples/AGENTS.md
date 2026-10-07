@@ -76,7 +76,7 @@ is the index of the workspaces themselves.
   #67): `turbo run dev --filter=./examples/*`, one process per deployment,
   each `tsx watch --env-file=../../.env.dev src/main.ts`, output prefixed by
   workspace. The reasoning against a one-process runner is in the
-  `deferred-decisions` skill; what lives here is the mechanics.
+  `docs/explanation/deferred-decisions.md`; what lives here is the mechanics.
   - **`tsx`, because Node alone cannot run these files.** Relative imports
     carry `.js` (`moduleResolution: NodeNext`) and Node's own type stripping
     does not remap `./module.js` to `./module.ts` — measured, it is an

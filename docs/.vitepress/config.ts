@@ -243,6 +243,7 @@ const GUIDE_SIDEBAR = [
           { text: "Starters", link: "/explanation/starters" },
           { text: "Peer dependencies", link: "/explanation/peer-dependencies" },
           { text: "Design decisions", link: "/explanation/design-decisions" },
+          { text: "Deferred decisions", link: "/explanation/deferred-decisions" },
         ],
       },
     ],

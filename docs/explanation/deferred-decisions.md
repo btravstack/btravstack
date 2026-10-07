@@ -1,9 +1,13 @@
 ---
-name: deferred-decisions
-description: Decisions this repository deliberately deferred, declined or has already closed. Read BEFORE proposing a feature, a package, a lint rule or a gate that sounds new — it may be a settled "no", or already shipped. Covers container reaping, the currentUnit() lint rule, traces/metrics in observability, the doc-samples gate, the one-process dev runner, HTML-means-fragments, transport package naming, the one leaf shape, filtering on a cursor page (declined), sorting on a cursor page (shipped), static files and an SPA fallback (declined), server push over SSE and WebSocket (declined), views and i18n (the application's), config profiles, file layering, secrets and refresh (the platform's), introspection — the route list, a graph dump, a REPL — scaffolding and slice generators (declined), declared-versus-reachable authenticators, and binding HTTP request scopes as values (declined).
+title: Deferred, deliberately
+description: A register of proposals this repository deferred, declined or closed, with the reason and trigger for revisiting each decision.
 ---
 
 # Deferred, deliberately
+
+> **Explanation.** This register records proposals the repository has weighed,
+> including decisions that later shipped. Read it before proposing a feature,
+> package, lint rule or gate that may already have an answer.
 
 A feature request that matches an entry below is not a new idea. A
 struck-through entry has SHIPPED — proposing it again re-proposes work that
@@ -137,11 +141,9 @@ dependencies by name`; a positional array is refused as
   carrying everything the invocation has — the input included — and that input
   repeated as a second positional parameter.**
 
-  ```ts
-  place:   ({ errors, context, input })      => …   // HTTP, oRPC's own shape
-  place:   ({ errors, context, input })      => …   // Temporal
-  process: ({ errors, context, raw, input }) => …   // AMQP
-  ```
+  Schematically, HTTP and Temporal use
+  `place: ({ errors, context, input }) => …`; AMQP also carries `raw` in
+  `process: ({ errors, context, raw, input }) => …`.
 
   **oRPC is the reference because it is the most widely used of the three**,
   not because the shape is inherently better: a developer arriving here is more
