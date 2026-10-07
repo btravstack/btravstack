@@ -1,5 +1,11 @@
 # @btravstack/entity
 
+## 0.18.0
+
+### Patch Changes
+
+- 6adf86f: Publish entity with the framework in the fixed release group and bring its documentation and examples into this repository.
+
 ## 0.9.0
 
 ### Minor Changes

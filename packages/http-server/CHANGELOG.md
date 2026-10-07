@@ -1,5 +1,16 @@
 # @btravstack/http-server
 
+## 0.18.0
+
+### Patch Changes
+
+- Updated dependencies [afae28b]
+- Updated dependencies [7e26f15]
+  - @btravstack/core@0.18.0
+  - @btravstack/config@0.18.0
+  - @btravstack/contract@0.18.0
+  - @btravstack/di@0.18.0
+
 ## 0.17.0
 
 ### Minor Changes

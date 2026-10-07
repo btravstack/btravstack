@@ -1,5 +1,19 @@
 # @btravstack/core
 
+## 0.18.0
+
+### Minor Changes
+
+- 7e26f15: **New in `@btravstack/core`: `unitOutcome()` and the `UnitOutcome` type** — how the current unit's work settled (`"ok"`, or `"error"` for an `Err`, a `Defect` or a throw), readable from the unit's own teardown, which is handed only its service. `UnitRecord` is unchanged.
+
+  `@btravstack/observability`'s `UnitSpanModule` uses it: a unit the kernel aborted now ends its span with an error status and the message `aborted`, and a unit whose work failed ends it with an error status. Both used to end unmarked.
+
+### Patch Changes
+
+- afae28b: `UnitRecord.unitId` is now a UUID (`crypto.randomUUID()`) instead of a per-process `u1`, `u2`… counter, so it is unique across replicas as the documentation already promised. A query that grouped lines by `unitId` across pods no longer merges unrelated units.
+- @btravstack/config@0.18.0
+  - @btravstack/di@0.18.0
+
 ## 0.17.0
 
 ### Minor Changes
