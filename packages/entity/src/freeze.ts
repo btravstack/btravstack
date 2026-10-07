@@ -160,50 +160,70 @@ const childSchema = (schema: Schema | undefined, key: string | number): Schema |
   }
 };
 
-const freezeInto = (value: object, schema: Schema | undefined, seen: WeakSet<object>): void => {
+/** What the walk has reached, mapped to what stands in for it: itself, or its canonical copy. */
+type Seen = WeakMap<object, object>;
+
+const freezeInto = (value: object, schema: Schema | undefined, seen: Seen): object => {
   // Decided by the schema, never by the runtime shape: `z.custom` hands the
   // caller's own reference straight back, and a plain-object one is
   // indistinguishable from decoded data once it reaches here.
-  if (isPassthrough(schema)) return;
+  if (isPassthrough(schema)) return value;
 
   // `seen` guards the cyclic case — entity data is normally a tree, but a
   // `z.custom` field or a caller-supplied object can close a loop, and a
   // shared subtree would otherwise be walked once per reference.
-  if (seen.has(value)) return;
-  seen.add(value);
+  const reached = seen.get(value);
+  if (reached !== undefined) return reached;
+  seen.set(value, value);
 
-  if (Array.isArray(value)) {
-    Object.freeze(value);
-    (value as readonly unknown[]).forEach((element, i) => {
-      if (isObject(element)) freezeInto(element, childSchema(schema, i), seen);
-    });
-    return;
+  if (value instanceof Date) return Object.freeze(value);
+
+  const array = Array.isArray(value);
+  if (!array && !isPlainObject(value)) return value;
+
+  // the canonical form `toJSON()` promises: an absent optional key is omitted,
+  // never `undefined` — zod keeps an explicit `undefined` it was handed
+  const source = value as Record<string, unknown>;
+  const kept = new Map<string, unknown>();
+  for (const [key, property] of Object.entries(source)) {
+    if (array || property !== undefined) {
+      kept.set(
+        key,
+        isObject(property) ? freezeInto(property, childSchema(schema, key), seen) : property,
+      );
+    }
   }
+  const unchanged =
+    kept.size === Object.keys(source).length &&
+    [...kept].every(([key, property]) => source[key] === property);
+  if (unchanged) return Object.freeze(value);
 
-  if (value instanceof Date) {
-    Object.freeze(value);
-    return;
+  // an object zod already froze (`.readonly()`) or a transform sealed cannot drop a key: canonicalise a copy
+  if (!Object.isExtensible(value)) {
+    const copy = array ? [...kept.values()] : Object.fromEntries(kept);
+    seen.set(value, copy);
+    return Object.freeze(copy);
   }
-
-  if (!isPlainObject(value)) return;
-
-  Object.freeze(value);
-  for (const [key, property] of Object.entries(value)) {
-    if (isObject(property)) freezeInto(property, childSchema(schema, key), seen);
+  for (const key of Object.keys(source)) {
+    if (kept.has(key)) source[key] = kept.get(key);
+    else Reflect.deleteProperty(source, key);
   }
+  return Object.freeze(value);
 };
 
 /**
  * Freezes `value` in place and returns it, so it can wrap the expression it
- * guards. A primitive — which is every branded scalar field — costs one
- * `typeof` and allocates nothing.
+ * guards — or, for a plain object zod already froze (`.readonly()`) that still
+ * carries an `undefined` key, returns a frozen canonical copy. A primitive —
+ * which is every branded scalar field — costs one `typeof` and allocates
+ * nothing.
  *
  * `seen` is optional so a single call site stays a one-liner, but the entity
- * constructor passes one `WeakSet` across every field of the instance it is
+ * constructor passes one `WeakMap` across every field of the instance it is
  * building. That is not only about allocation: two fields can reference the
  * same object (zod hands back whatever the payload held, so a shared subtree
- * survives decoding), and a per-field set would walk that subtree once per
- * field that reaches it. Sharing the set makes the whole instance one
+ * survives decoding), and a per-field map would walk that subtree once per
+ * field that reaches it. Sharing the map makes the whole instance one
  * traversal. It is allocated lazily rather than as a default parameter,
  * because a default is evaluated before the `isObject` guard and would
  * allocate for every primitive field.
@@ -214,7 +234,5 @@ const freezeInto = (value: object, schema: Schema | undefined, seen: WeakSet<obj
  * *after* `seen` deliberately: typed `unknown`, it would otherwise silently
  * swallow a `seen` argument passed in the old position.
  */
-export const deepFreeze = <T>(value: T, seen?: WeakSet<object>, schema?: unknown): T => {
-  if (isObject(value)) freezeInto(value, asSchema(schema), seen ?? new WeakSet<object>());
-  return value;
-};
+export const deepFreeze = <T>(value: T, seen?: Seen, schema?: unknown): T =>
+  isObject(value) ? (freezeInto(value, asSchema(schema), seen ?? new WeakMap()) as T) : value;

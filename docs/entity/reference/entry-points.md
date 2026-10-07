@@ -176,10 +176,11 @@ work: a data-quality job, a read model, and the rollout order.
 ## `SomeAggregate.start(event)` → `Result<Decision<SomeAggregate, Event>, never>` {#someaggregate-start}
 
 Creates an aggregate from one of its **creation** events, the keys of `opens`.
-Another event type does not compile. The event is parsed against the declared
-union, handed to its `opens` handler, and the record it returns goes through
-`make`. A failure at any step is a defect: creation is a command, so an event
-that breaks the aggregate is a bug in it.
+Another event type does not compile. The event is typed by the union's
+**input**, since it is parsed against the declared union before it is handed
+to its `opens` handler; the record that handler returns goes through `make`.
+A failure at any step is a defect: creation is a command, so an event that
+breaks the aggregate is a bug in it.
 
 ## `aggregate.emit(...events)` → `Result<Decision<this, Event>, never>` {#aggregate-emit}
 
@@ -190,6 +191,12 @@ holds the verified state, **every** event decided since the aggregate was
 loaded (so a chain of commands saves as one decision), and `expectedVersion`,
 the version the store must still be at. The source aggregate is unchanged. A creation event does not compile here: an aggregate that exists
 cannot be created again, which mirrors `start` accepting nothing else.
+
+The events are typed by the union's **input**, so an event carrying a nested
+part's `input` schema takes plain values; the decision's `events` are the
+parsed output. A terminal event, one named in `ends`, only compiles last, and
+then `isTerminal` is `true`: the aggregate is over, and emitting on the
+decision's state is a defect.
 
 An event that breaks an invariant, fails its schema, or reaches a handler that
 throws is a **defect**, never an `Err`: a decision that cannot hold is a bug in
@@ -208,7 +215,9 @@ compile, and is a defect if forced past the types.
 A stored stream → the aggregate, emitting nothing. The stream is untrusted, so
 every event is parsed; a bad one is an `InvalidEntity` whose issue path starts
 with its index (`[3, "seats"]`). The first event must be a creation event, and a
-creation event later in the stream is refused at its index. The fold ends in
+creation event later in the stream is refused at its index, as is an event
+after a terminal one. A stream ending at a terminal event replays to an
+aggregate on which nothing can be decided. The fold ends in
 `make`, which is strict: a stream breaking a rule added since is an
 `InvalidEntity`, as a row would be. The stream's length becomes the
 aggregate's version. Upcast old event versions before calling it.
@@ -237,6 +246,19 @@ states an intent.
 
 Projects exactly `output`'s keys. Excludes `_tag` and any class-body fields.
 Called implicitly by `JSON.stringify`.
+
+The projection is canonical: an optional field that is not set is **omitted**,
+never present as `undefined`, at every depth — the top level, a nested plain
+object, a nested entity and each entity in an array. It does not matter how
+the state was built: a stored row without the key and an `evolve` handler
+returning `{ ...r, note: undefined }` project the same key set. Equal states
+therefore compare equal under a deep-equality function, which is what makes
+diffing two projections a supported way to compute a partial write. An
+`undefined` element of an array is a value, not an absent key, and is kept. A
+nested entity stays the entity instance, so a field its class body declares is
+visible to a structural compare; diff the `JSON.stringify` form when a nested
+part carries one. Invariants are checked on this canonical form, so a rule
+sees exactly what is stored.
 
 The return type is `DeepReadonly` because the projection is shallow: the
 top-level object is fresh, but every nested container is the instance's own

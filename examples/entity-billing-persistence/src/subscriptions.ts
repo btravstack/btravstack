@@ -14,7 +14,9 @@
  *
  * The decision carries the version its aggregate was loaded at, so `save`
  * takes the decision and nothing else: there is no version to forget or mix
- * up between the load and the save.
+ * up between the load and the save. A terminal decision — an erasure — says
+ * so in `isTerminal`: both stop loading the subscription but keep its
+ * version, so a stale writer or a retried save is a conflict, never a revival.
  *
  * Both implement one port, and `changeSeats` below runs against either: the
  * switch is infrastructure, not a domain rewrite. Both stores are in memory
@@ -53,12 +55,12 @@ const stored = <T>(value: T): unknown => JSON.parse(JSON.stringify(value));
 
 /** The state's row and a version; the decision's events go to the outbox in the same step. */
 export class StateBasedSubscriptions implements SubscriptionRepository {
-  readonly #rows = new Map<string, { state: unknown; version: number }>();
+  readonly #rows = new Map<string, { state: unknown; version: number; ended: boolean }>();
   readonly outbox: unknown[] = [];
 
   load(id: string): Result<Subscription, SubscriptionNotFound | Entity.InvalidEntity> {
     const row = this.#rows.get(id);
-    if (row === undefined) return Err(new SubscriptionNotFound({ id }));
+    if (row === undefined || row.ended) return Err(new SubscriptionNotFound({ id }));
     return Subscription.make(row.state, { version: row.version });
   }
 
@@ -70,7 +72,10 @@ export class StateBasedSubscriptions implements SubscriptionRepository {
     // One synchronous block stands in for one transaction: the row and the
     // outbox move together or not at all.
     const version = current + 1;
-    this.#rows.set(id, { state: stored(decision.state.toJSON()), version });
+    // an ended subscription keeps a tombstone: its payload goes, its version
+    // stays, so a decision from before the end is still a conflict
+    if (decision.isTerminal) this.#rows.set(id, { state: null, version, ended: true });
+    else this.#rows.set(id, { state: stored(decision.state.toJSON()), version, ended: false });
     this.outbox.push(...decision.events.map((event) => stored({ aggregateId: id, event })));
     return Ok(version);
   }
@@ -78,22 +83,24 @@ export class StateBasedSubscriptions implements SubscriptionRepository {
 
 /** The decision's events, appended to the stream; the stream's length is its version. */
 export class EventSourcedSubscriptions implements SubscriptionRepository {
-  readonly #streams = new Map<string, unknown[]>();
+  readonly #streams = new Map<string, { events: readonly unknown[]; ended: boolean }>();
 
   load(id: string): Result<Subscription, SubscriptionNotFound | Entity.InvalidEntity> {
     const stream = this.#streams.get(id);
-    if (stream === undefined) return Err(new SubscriptionNotFound({ id }));
-    return Subscription.replay(stream);
+    if (stream === undefined || stream.ended) return Err(new SubscriptionNotFound({ id }));
+    return Subscription.replay(stream.events);
   }
 
   save(decision: Decision): Result<number, ConcurrentModification> {
     const { state, expectedVersion: expected } = decision;
     const { id } = state;
-    const stream = this.#streams.get(id) ?? [];
+    const stream = this.#streams.get(id)?.events ?? [];
     if (stream.length !== expected) return Err(new ConcurrentModification({ id, expected }));
-    const next = [...stream, ...decision.events.map(stored)];
-    this.#streams.set(id, next);
-    return Ok(next.length);
+    // a terminal decision closes the stream rather than dropping it, so its
+    // length, the version, still refuses a decision from before the end
+    const events = [...stream, ...decision.events.map(stored)];
+    this.#streams.set(id, { events, ended: decision.isTerminal });
+    return Ok(events.length);
   }
 }
 

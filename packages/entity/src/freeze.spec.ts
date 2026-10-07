@@ -68,13 +68,13 @@ test("a null-prototype object counts as plain data", () => {
   expect(Object.isFrozen(deepFreeze(bare))).toBe(true);
 });
 
-test("a shared `seen` set freezes a subtree reachable from two fields once", () => {
+test("a shared `seen` map freezes a subtree reachable from two fields once", () => {
   const shared = { tags: ["a"] };
   const left = { shared };
   const right = { shared };
 
-  // what the entity constructor does: one set across every field
-  const seen = new WeakSet<object>();
+  // what the entity constructor does: one map across every field
+  const seen = new WeakMap<object, object>();
   deepFreeze(left, seen);
   deepFreeze(right, seen);
 

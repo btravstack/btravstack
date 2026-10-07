@@ -198,7 +198,9 @@ export function Entity<Tag extends string>(tag: Tag) {
      */
     const project = (self: object): OutputShape => {
       const source = self as Record<keyof OutputShape, unknown>;
-      return Object.fromEntries(dataKeys.map((k) => [k, source[k]])) as OutputShape;
+      return Object.fromEntries(
+        dataKeys.filter((k) => source[k] !== undefined).map((k) => [k, source[k]]),
+      ) as OutputShape;
     };
 
     const parseInput = fromSchema(construction);
@@ -275,32 +277,39 @@ export function Entity<Tag extends string>(tag: Tag) {
         .map((rule) => ({ message: rule.describe(d), params: { code: rule.code } }));
 
     /**
-     * Each data field deep-frozen, keyed exactly as `output` declares them.
+     * Each data field deep-frozen, keyed as `output` declares them; an unset
+     * optional has no key, so `inspect`'s data matches `toJSON()`.
      *
-     * One `WeakSet` for the whole record, not one per field: fields can share
-     * a subtree, and a per-field set would re-walk it once per field that
+     * One `WeakMap` for the whole record, not one per field: fields can share
+     * a subtree, and a per-field map would re-walk it once per field that
      * reaches it. See `deepFreeze`.
      */
     const frozenFields = (d: OutputShape): Record<PropertyKey, unknown> => {
       const source = d as unknown as Record<PropertyKey, unknown>;
-      const seen = new WeakSet<object>();
+      const seen = new WeakMap<object, object>();
       return Object.fromEntries(
-        dataKeys.map((k) => [
-          k,
-          deepFreeze(
-            source[k as PropertyKey],
-            seen,
-            (output.shape as Record<string, unknown>)[k as string],
-          ),
-        ]),
+        dataKeys
+          .filter((k) => source[k as PropertyKey] !== undefined)
+          .map((k) => [
+            k,
+            deepFreeze(
+              source[k as PropertyKey],
+              seen,
+              (output.shape as Record<string, unknown>)[k as string],
+            ),
+          ]),
       );
     };
 
-    /** The tail every entry point shares: check the invariants, then seal and construct. */
+    /**
+     * The tail every entry point shares: canonicalise, check the invariants on
+     * exactly what will be stored, then seal and construct.
+     */
     const construct = <T>(
       Ctor: new (d: Sealed<OutputShape>) => T,
-      d: OutputShape,
+      raw: OutputShape,
     ): Result<T, InvalidEntity> => {
+      const d = frozenFields(raw) as OutputShape;
       const broken = violationsOf(d);
       if (broken.length > 0) {
         return Err(new InvalidEntity({ entity: tag, issues: broken }));
@@ -347,7 +356,9 @@ export function Entity<Tag extends string>(tag: Tag) {
             // `entity.spec.ts`).
             value: data[k as PropertyKey],
             writable: false,
-            enumerable: true,
+            // an absent optional stays locked but out of `Object.keys`, so a
+            // nested entity omits it exactly as `toJSON()` does
+            enumerable: data[k as PropertyKey] !== undefined,
           });
         }
         // non-enumerable, so it is absent from Object.keys, spread,
@@ -453,12 +464,13 @@ export function Entity<Tag extends string>(tag: Tag) {
             m.with(P._, toInvalidEntity),
           )
           .flatMap(recompute)
-          .flatMap((d) =>
-            Ok({
-              data: Object.freeze(frozenFields(d)) as unknown as DeepReadonly<OutputShape>,
+          .flatMap((raw) => {
+            const d = frozenFields(raw) as OutputShape;
+            return Ok({
+              data: Object.freeze(d) as unknown as DeepReadonly<OutputShape>,
               violations: violationsOf(d),
-            }),
-          );
+            });
+          });
       }
 
       /** caller fields + domain-generated fields → entity */
@@ -567,14 +579,16 @@ type AggregateInstanceSrc<
   A extends Schemas,
   Ev extends Events,
   O extends string,
-> = AggregateInstance<S, A, Ev, O>;
+  End extends string = never,
+> = AggregateInstance<S, A, Ev, O, End>;
 type AggregateStaticSrc<
   Tag extends string,
   S extends Fields,
   A extends Schemas,
   Ev extends Events,
   O extends string,
-> = AggregateStatic<Tag, S, A, Ev, O>;
+  End extends string = never,
+> = AggregateStatic<Tag, S, A, Ev, O, End>;
 type EntityUnionSrc<K extends string, M extends readonly UnionMember[]> = EntityUnion<K, M>;
 type ConstructionKeySrc = ConstructionKey;
 type SealedSrc<D> = Sealed<D>;
@@ -631,14 +645,16 @@ export declare namespace Entity {
     A extends Schemas,
     Ev extends Events,
     O extends string,
-  > = AggregateStaticSrc<Tag, S, A, Ev, O>;
+    End extends string = never,
+  > = AggregateStaticSrc<Tag, S, A, Ev, O, End>;
   // Exported only so a consumer's emitted declarations can name them.
   export type AggregateInstance<
     S extends Fields,
     A extends Schemas,
     Ev extends Events,
     O extends string,
-  > = AggregateInstanceSrc<S, A, Ev, O>;
+    End extends string = never,
+  > = AggregateInstanceSrc<S, A, Ev, O, End>;
   export type DecisionKey = DecisionKeySrc;
 
   // `InvalidEntity` is a class, so it needs both meanings under `Entity`: the

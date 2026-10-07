@@ -25,6 +25,7 @@
     "EntityFactory",
     "EntityStaticSrc",
     "EntityUnionSrc",
+    "EventInput",
     "EventNamed",
     "Events",
     "Fields",

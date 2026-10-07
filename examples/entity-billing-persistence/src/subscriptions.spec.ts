@@ -80,6 +80,47 @@ for (const [style, repository] of styles) {
       "ConcurrentModification",
     );
   });
+
+  test(`${style}: an erased subscription is deleted, so it loads as not found`, () => {
+    // GIVEN a stored subscription
+    const repo = repository();
+    const started = startSubscription(organizationId, 3).get();
+    const { id } = started.state;
+    // WHEN it is loaded, erased and saved — a terminal decision
+    const reloaded = repo
+      .save(started)
+      .flatMap(() => repo.load(id))
+      .flatMap((subscription) => subscription.erase())
+      .flatMap((decision) => repo.save(decision))
+      .flatMap(() => repo.load(id));
+    // THEN the store holds nothing for it
+    expect(reloaded).toBeErrTagged("SubscriptionNotFound");
+  });
+
+  test(`${style}: the creation saved again after an erasure is a conflict, never a revival`, () => {
+    // GIVEN a subscription stored, then loaded and erased
+    const repo = repository();
+    const started = startSubscription(organizationId, 3).get();
+    const erased = repo
+      .save(started)
+      .flatMap(() => repo.load(started.state.id))
+      .flatMap((subscription) => subscription.erase())
+      .flatMap((decision) => repo.save(decision));
+    // WHEN a stale writer saves the creation decision once more
+    const recreated = erased.flatMap(() => repo.save(started));
+    // THEN the tombstone's version refuses it
+    expect(recreated).toBeErrTagged("ConcurrentModification");
+  });
+
+  test(`${style}: an erasure decided before the first save cannot be saved twice`, () => {
+    // GIVEN a subscription started and erased before anything was stored
+    const repo = repository();
+    const erased = startSubscription(organizationId, 3).get().state.erase().get();
+    // WHEN the same decision is saved again, as a retry would
+    const retried = repo.save(erased).flatMap(() => repo.save(erased));
+    // THEN the second save is a conflict, not a second copy of its events
+    expect(retried).toBeErrTagged("ConcurrentModification");
+  });
 }
 
 test("state-based: the decision's events reach the outbox with the state", () => {

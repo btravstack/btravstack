@@ -109,3 +109,81 @@ Doc.make({ id: "0199b1f4-1b1e-7000-8000-000000000000" }, { version: 3 });
 // the decision names the version a repository must still find
 const expected: number = decision.expectedVersion;
 void expected;
+
+// An event may carry a nested part through the part's own `input` schema: its
+// leaves are branded on output, and `emit`/`start` take the union's input.
+const MessageId = z.string().brand("MessageId");
+class Message extends Entity("Message")({
+  id: Entity.field(MessageId, { identity: true }),
+  body: Label,
+}) {}
+class Thread extends Entity.aggregate("Thread")({
+  id: Entity.field(Id, { identity: true }),
+  messages: z.array(Message),
+})({
+  events: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("ThreadOpened"), id: z.uuid(), first: Message.input }),
+    z.object({ type: z.literal("MessageAdded"), message: Message.input }),
+  ]),
+  opens: { ThreadOpened: (e) => ({ id: e.id, messages: [e.first] }) },
+  evolve: { MessageAdded: (r, e) => ({ ...r, messages: [...r.messages, e.message] }) },
+}) {
+  add(id: string, body: string) {
+    return this.emit({ type: "MessageAdded", message: { id, body } });
+  }
+}
+Thread.start({ type: "ThreadOpened", id: "x", first: { id: "m", body: "hi" } });
+
+// A defaulted discriminator is still an input the commands accept, spelled or not.
+class Defaulted extends Entity.aggregate("Defaulted")({ id: Entity.field(Id, { identity: true }) })(
+  {
+    events: z.discriminatedUnion("type", [
+      z.object({ type: z.literal("Opened").default("Opened"), id: z.uuid() }),
+      z.object({ type: z.literal("Closed") }),
+    ]),
+    opens: { Opened: (e) => ({ id: e.id }) },
+    evolve: { Closed: (r) => r },
+  },
+) {}
+Defaulted.start({ type: "Opened", id: "x" });
+Defaulted.start({ id: "x" });
+// @ts-expect-error a defaulted discriminator still names only its own event
+Defaulted.start({ type: "Closed" });
+declare const thread: Thread;
+const added: readonly Entity.Event<typeof Thread>[] = thread.add("m", "hi").get().events;
+void added;
+type Added = Extract<Entity.Event<typeof Thread>, { type: "MessageAdded" }>;
+// @ts-expect-error a decided event is the union's output: its nested id is a MessageId, not a string
+const unbranded: Added["message"]["id"] = "m";
+void unbranded;
+
+// Terminal events: `ends` names them, and `emit` only takes one last.
+class Note extends Entity.aggregate("Note")({ id: Entity.field(Id, { identity: true }) })({
+  events: Event,
+  opens: { Opened: (e) => ({ id: e.id }) },
+  evolve: { Renamed: (r) => r, Closed: (r) => r },
+  ends: ["Closed"],
+}) {}
+declare const note: Note;
+note.emit({ type: "Closed" });
+note.emit({ type: "Renamed", label: "x" }, { type: "Closed" });
+// @ts-expect-error nothing can follow a terminal event
+note.emit({ type: "Closed" }, { type: "Renamed", label: "x" });
+const ended: boolean = note.emit({ type: "Closed" }).get().isTerminal;
+void ended;
+
+Entity.aggregate("OpenEnded")({ id: Entity.field(Id, { identity: true }) })({
+  events: Event,
+  opens: { Opened: (e) => ({ id: e.id }) },
+  evolve: { Renamed: (r) => r, Closed: (r) => r },
+  // @ts-expect-error an opening event cannot end the aggregate
+  ends: ["Opened"],
+});
+
+Entity.aggregate("UnknownEnd")({ id: Entity.field(Id, { identity: true }) })({
+  events: Event,
+  opens: { Opened: (e) => ({ id: e.id }) },
+  evolve: { Renamed: (r) => r, Closed: (r) => r },
+  // @ts-expect-error only a declared event can end the aggregate
+  ends: ["Deleted"],
+});

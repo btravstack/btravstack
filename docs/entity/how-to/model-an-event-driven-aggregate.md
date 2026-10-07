@@ -66,9 +66,50 @@ export const SubscriptionEvent = z.discriminatedUnion("type", [
     seats: z.number().int().positive(),
   }),
   z.object({ type: z.literal("SubscriptionCancelled"), at: z.iso.datetime() }),
+  z.object({ type: z.literal("SubscriptionErased") }),
 ]);
 export type SubscriptionEvent = z.output<typeof SubscriptionEvent>;
 ```
+
+`emit` and `start` take each event's **input** type, because they parse it
+against the union before folding. So an event can carry a whole nested part
+through that part's own `input` schema, and a command still builds it from
+plain values. Here is a thread whose `MessageAdded` event carries a `Message`
+entity, a case the billing example does not have:
+
+<!-- doctest: isolate
+import { z } from "zod";
+import { Entity } from "@btravstack/entity";
+-->
+
+```ts
+class Message extends Entity("Message")({
+  id: Entity.field(z.string().brand("MessageId"), { identity: true }),
+  body: Entity.field(z.string(), { unbranded: true }),
+}) {}
+
+class Thread extends Entity.aggregate("Thread")({
+  id: Entity.field(z.uuid().brand("ThreadId"), { identity: true }),
+  messages: z.array(Message),
+})({
+  events: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("ThreadOpened"), id: z.uuid() }),
+    z.object({ type: z.literal("MessageAdded"), message: Message.input }),
+  ]),
+  opens: { ThreadOpened: (e) => ({ id: e.id, messages: [] }) },
+  evolve: {
+    MessageAdded: (r, e) => ({ ...r, messages: [...r.messages, e.message] }),
+  },
+}) {
+  addMessage(id: string, body: string) {
+    // plain strings: `emit` brands the message's id when it parses the event
+    return this.emit({ type: "MessageAdded", message: { id, body } });
+  }
+}
+```
+
+The decision's `events` are the parsed **output**, so the part's brands are
+on them, and its validation and issue paths are the part's own.
 
 ## Declare the aggregate: fields, then handlers
 
@@ -108,7 +149,9 @@ export class Subscription extends Entity.aggregate("Subscription")({
       status: "CANCELLED",
       cancelledAt: e.at,
     }),
+    SubscriptionErased: (r) => r,
   },
+  ends: ["SubscriptionErased"],
 }) {}
 ```
 
@@ -186,6 +229,46 @@ export const startSubscription = (organizationId: string, seats: number) =>
 The id travels in the opening event, so the command generates it. There is no
 factory: an aggregate is created by an event, like everything else that happens
 to it.
+
+## End with a terminal event
+
+Some events end an aggregate: an erasure, a removal. Name them in `ends`, as
+the declaration above does:
+
+<!-- doctest: skip — two options of `Subscription`'s declaration above, shown outside it -->
+
+```ts
+  evolve: {
+    // …
+    SubscriptionErased: (r) => r,
+  },
+  ends: ["SubscriptionErased"],
+```
+
+A terminal event keeps its `evolve` handler: the state it leaves is the last
+one, and the decision carries it. It can only come last. `emit` with an event
+after a terminal one does not compile, and an opening event cannot be
+terminal.
+
+The decision says the aggregate ended. `decision.isTerminal` is true once a
+terminal event is among its events, so a repository branches on it instead of
+matching the last event's `type`. Keep a tombstone rather than deleting the
+row outright: the version has to survive the end, or a retried save, or a
+stale writer still holding the creation decision, finds version `0` again and
+brings the aggregate back:
+
+<!-- doctest: skip — the write in the example's state-based repository `save`, shown outside its class -->
+
+```ts
+if (decision.isTerminal) this.#rows.set(id, { state: null, version, ended: true });
+else this.#rows.set(id, { state: stored(decision.state.toJSON()), version, ended: false });
+```
+
+Nothing can be decided after the end. Emitting on the state of a terminal
+decision is a defect, and so is an event after a terminal one forced past the
+types. `replay` refuses a stored stream that continues past a terminal event,
+with an `InvalidEntity` at the index of the event that follows it. A stream
+that stops at one replays to an aggregate that can decide nothing more.
 
 ## Persist the state, or the events
 

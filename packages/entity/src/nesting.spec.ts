@@ -120,3 +120,126 @@ test("a nested entity is not re-frozen into uselessness", () => {
   expect(typeof order.customer.toJSON).toBe("function");
   expect(order.customer.toJSON()).toEqual({ id: cid, name: "ada", shout: "ADA" });
 });
+
+/* ── toJSON's canonical form ───────────────────────────────────────── */
+
+const Label = z.string().min(1).brand("Label");
+class Contact extends Entity("Contact")({ id: CustomerId, nickname: Name.optional() }) {}
+class Account extends Entity("Account")({
+  id: OrderId,
+  label: Name.optional(),
+  owner: Contact,
+  backup: z.optional(Contact),
+  members: z.array(Contact),
+  meta: z.object({ label: Label.optional() }).brand("Meta"),
+}) {}
+
+/** Each depth's own enumerable keys: what a deep-equality diff, a driver and `JSON.stringify` see. */
+const keysAt = (account: Account) => {
+  const json = account.toJSON();
+  return {
+    top: Object.keys(json),
+    owner: Object.keys(json.owner),
+    members: json.members.map((m) => Object.keys(m)),
+    meta: Object.keys(json.meta),
+  };
+};
+
+test.each([
+  ["absent", { id: oid, owner: { id: cid }, members: [{ id: cid2 }], meta: {} }],
+  [
+    "explicitly undefined",
+    {
+      id: oid,
+      label: undefined,
+      owner: { id: cid, nickname: undefined },
+      backup: undefined,
+      members: [{ id: cid2, nickname: undefined }],
+      meta: { label: undefined },
+    },
+  ],
+])("toJSON omits an optional field that is %s, at every depth", (_, row) => {
+  // GIVEN a row whose optional fields are not set
+  // WHEN it is made and projected
+  const keys = Account.make(row).map(keysAt);
+  // THEN no depth carries a key for them
+  expect(keys).toBeOkWith({
+    top: ["id", "owner", "members", "meta"],
+    owner: ["id"],
+    members: [["id"]],
+    meta: [],
+  });
+});
+
+test("toJSON omits an explicitly undefined key inside an object zod already froze", () => {
+  // GIVEN `.readonly()` objects, which zod freezes as it parses, alone and in arrays
+  const Fixed = z.object({ label: Label.optional() }).readonly();
+  class Settings extends Entity("Settings")({
+    id: OrderId,
+    fixed: Fixed.brand("Fixed"),
+    list: z.array(Fixed.brand("Item")),
+    frozenList: z.array(Fixed.brand("Item")).readonly(),
+  }) {}
+  // WHEN a row with an explicit undefined inside each is made
+  const row = { label: undefined };
+  const json = Settings.make({ id: oid, fixed: row, list: [row], frozenList: [row] }).map((s) =>
+    s.toJSON(),
+  );
+  // THEN every projection is canonical, and still frozen
+  expect(
+    json.map(({ fixed, list, frozenList }) => ({
+      keys: [Object.keys(fixed), Object.keys(list[0]!), Object.keys(frozenList[0]!)],
+      frozen: [fixed, list, list[0], frozenList, frozenList[0]].every((v) => Object.isFrozen(v)),
+    })),
+  ).toBeOkWith({ keys: [[], [], []], frozen: true });
+});
+
+test("an explicitly undefined key inside an object a transform sealed is omitted", () => {
+  // GIVEN a field whose transform hands back a sealed object
+  class Sealed extends Entity("Sealed")({
+    id: OrderId,
+    meta: z
+      .object({ label: Label.optional() })
+      .transform((o) => Object.seal({ label: o.label }))
+      .brand("SealedMeta"),
+  }) {}
+  // WHEN a row with an explicit undefined inside it is inspected, a single walk
+  const keys = Sealed.inspect({ id: oid, meta: { label: undefined } }).map(({ data }) =>
+    Object.keys(data.meta),
+  );
+  // THEN the sealed key is gone from the data
+  expect(keys).toBeOkWith([]);
+});
+
+test("invariants see the canonical form that is stored", () => {
+  // GIVEN a rule that observes whether a nested key is present
+  class Tagged extends Entity("Tagged")(
+    { id: OrderId, meta: z.object({ label: Label.optional() }).brand("Meta") },
+    {
+      invariants: [
+        Entity.invariant({
+          code: "UNSET_LABEL_KEY",
+          ensure: (d) => !Object.hasOwn(d.meta, "label") || d.meta.label !== undefined,
+          message: "a label key carries a label",
+        }),
+      ],
+    },
+  ) {}
+  // WHEN a row spells its unset label as an explicit undefined
+  const made = Tagged.make({ id: oid, meta: { label: undefined } }).map((t) =>
+    Object.keys(t.toJSON().meta),
+  );
+  // THEN the rule passes on what is stored, which has no such key
+  expect(made).toBeOkWith([]);
+});
+
+test("an absent optional field is still locked", () => {
+  // GIVEN an account without a label
+  const account = Account.make({ id: oid, owner: { id: cid }, members: [], meta: {} }).getOrThrow();
+  // WHEN a caller assigns one
+  const assign = () => {
+    (account as { label?: unknown }).label = "x";
+  };
+  // THEN the binding refuses
+  expect(assign).toThrow(TypeError);
+});

@@ -30,14 +30,8 @@ test("the stored row is exactly the shape, and never carries _tag", () => {
   const row = repo.rawRow(saved.id);
   expect(row).toBeDefined();
   expect("_tag" in row!).toBe(false);
-  expect(Object.keys(row!).sort()).toEqual([
-    "createdAt",
-    "displayLabel",
-    "id",
-    "name",
-    "riskTier",
-    "slug",
-  ]);
+  // `riskTier` is optional and unset, so the row omits it rather than storing `undefined`
+  expect(Object.keys(row!).sort()).toEqual(["createdAt", "displayLabel", "id", "name", "slug"]);
 });
 
 test("a corrupt row comes back as an error, not an exception", async () => {

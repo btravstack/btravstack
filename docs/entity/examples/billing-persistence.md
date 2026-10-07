@@ -105,7 +105,10 @@ Related how-to: [Enforce a uniqueness rule](/entity/how-to/enforce-uniqueness).
 ways behind one port. `StateBasedSubscriptions` keeps the state's `toJSON()`
 with a version and writes the decision's events to an outbox in the same step;
 it loads with `make`. `EventSourcedSubscriptions` appends the events to a stream
-if it is still at the version the command read; it loads with `replay`.
+if it is still at the version the command read; it loads with `replay`. When
+the decision `isTerminal`, both keep a tombstone that holds the version: an
+erased subscription loads as `SubscriptionNotFound`, and a stale or retried
+save is still a `ConcurrentModification`.
 
 The spec runs the same scenarios against both: a round trip, two saves from one
 version (one wins, one is a `ConcurrentModification`), and a refused command
