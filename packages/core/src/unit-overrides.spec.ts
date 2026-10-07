@@ -1,62 +1,22 @@
-import { Module, Port, Provider } from "@btravstack/di";
-import { TestRuntimePort, overridden, testRuntime, type TestRuntime } from "@btravstack/testing";
+import { overridden, testRuntime } from "@btravstack/testing";
 import { Ok } from "unthrown";
-import { describe, expect, test } from "vitest";
+import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { start } from "./start.js";
-
-class Greeter extends Port("UnitOverrideGreeter")<{ readonly text: string }> {}
-class Farewell extends Port("UnitOverrideFarewell")<{ readonly text: string }> {}
-
-/** What the kind module's two providers answer, recorded as they are built. */
-const kindOf = (built: string[]) =>
-  Module("Kind")({
-    provides: [
-      Provider(Greeter)({
-        inject: {},
-        sync: () => {
-          built.push("real greeter");
-          return { text: "real" };
-        },
-      }),
-      Provider(Farewell)({
-        inject: {},
-        sync: () => {
-          built.push("real farewell");
-          return { text: "real" };
-        },
-      }),
-    ],
-    exports: [Greeter, Farewell],
-  });
-
-const stubbing = (built: string[], port: typeof Greeter | typeof Farewell, name: string) =>
-  Provider(port)({
-    inject: {},
-    sync: () => {
-      built.push(name);
-      return { text: "stub" };
-    },
-  });
-
-const rootOver = <U extends Module<never, never, unknown> | undefined>(runtime: TestRuntime<U>) =>
-  Module("UnitRoot")({ imports: [runtime.module], exports: [TestRuntimePort] });
-
-const quiet = { signals: false, probes: false, onEvent: () => {} } as const;
 
 describe("unit overrides", () => {
-  it("merges every contribution for one kind into the module the fork builds", async ({ boot }) => {
+  it("merges every contribution for one kind into the module the fork builds", async ({
+    unitOverride: { built, kind, stub, rootOf, start },
+  }) => {
     // GIVEN two nested overrides, each substituting a different port inside one kind
-    const built: string[] = [];
-    const runtime = testRuntime("test", { unit: kindOf(built) });
-    boot(
+    const runtime = testRuntime("test", { unit: kind });
+    start(
       overridden(
-        overridden(rootOver(runtime), [], {
-          unit: { test: [stubbing(built, Greeter, "stub greeter")] },
-        }),
+        overridden(rootOf(runtime), [], { unit: { test: [stub("greeter", "stub greeter")] } }),
         [],
-        { unit: { test: [stubbing(built, Farewell, "stub farewell")] } },
+        {
+          unit: { test: [stub("farewell", "stub farewell")] },
+        },
       ),
     );
     await runtime.untilStarted();
@@ -66,20 +26,21 @@ describe("unit overrides", () => {
     unit.settle(Ok("done"));
 
     // THEN both overrides were built, and neither base
-    await expect(unit.result.map(() => built.toSorted())).toBeOkWith([
+    await expect(unit.result.map(() => built().toSorted())).toBeOkWith([
       "stub farewell",
       "stub greeter",
     ]);
   });
 
-  test("refuses a kind the runtime binds no module for", async () => {
+  it("refuses a kind the runtime binds no module for", async ({
+    unitOverride: { stub, rootOf, start },
+  }) => {
     // GIVEN a runtime binding no unit module
     const runtime = testRuntime();
 
     // WHEN it is started with an override for a kind
     const app = start(
-      overridden(rootOver(runtime), [], { unit: { user: [stubbing([], Greeter, "stub")] } }),
-      quiet,
+      overridden(rootOf(runtime), [], { unit: { user: [stub("greeter", "stub")] } }),
     );
 
     // THEN the boot is a defect naming the kind and the runtime
@@ -90,14 +51,15 @@ describe("unit overrides", () => {
     );
   });
 
-  test("refuses a port the kind's module does not provide", async () => {
+  it("refuses a port the kind's module does not provide", async ({
+    unitOverride: { empty, stub, rootOf, start },
+  }) => {
     // GIVEN a kind module providing neither port
-    const runtime = testRuntime("test", { unit: Module("Empty")({ provides: [], exports: [] }) });
+    const runtime = testRuntime("test", { unit: empty });
 
     // WHEN it is started with an override for one of them
     const app = start(
-      overridden(rootOver(runtime), [], { unit: { test: [stubbing([], Greeter, "stub")] } }),
-      quiet,
+      overridden(rootOf(runtime), [], { unit: { test: [stub("greeter", "stub")] } }),
     );
 
     // THEN the boot is the drift defect, naming the port and the kind
@@ -109,20 +71,21 @@ describe("unit overrides", () => {
     );
   });
 
-  test("refuses two overrides for one port in one kind at boot, not at the first fork", async () => {
+  it("refuses two overrides for one port in one kind at boot, not at the first fork", async ({
+    unitOverride: { kind, stub, rootOf, start },
+  }) => {
     // GIVEN two nested overrides substituting the same port inside one kind
-    const runtime = testRuntime("test", { unit: kindOf([]) });
+    const runtime = testRuntime("test", { unit: kind });
 
     // WHEN the root is started
     const app = start(
       overridden(
-        overridden(rootOver(runtime), [], {
-          unit: { test: [stubbing([], Greeter, "first")] },
-        }),
+        overridden(rootOf(runtime), [], { unit: { test: [stub("greeter", "first")] } }),
         [],
-        { unit: { test: [stubbing([], Greeter, "second")] } },
+        {
+          unit: { test: [stub("greeter", "second")] },
+        },
       ),
-      quiet,
     );
 
     // THEN the boot is a defect naming the port and the kind
@@ -134,19 +97,15 @@ describe("unit overrides", () => {
     );
   });
 
-  test("refuses a module bound under two kinds, since a fork cannot tell them apart", async () => {
+  it("refuses a module bound under two kinds, since a fork cannot tell them apart", async ({
+    unitOverride: { kind, stub, rootOf, start },
+  }) => {
     // GIVEN a runtime binding one module under two kinds
-    const kind = kindOf([]);
     const runtime = { ...testRuntime(), units: { user: kind, session: kind } };
-    const root = Module("SharedRoot")({
-      provides: [Provider(TestRuntimePort)({ inject: {}, value: runtime })],
-      exports: [TestRuntimePort],
-    });
 
     // WHEN one of the two kinds is overridden
     const app = start(
-      overridden(root, [], { unit: { user: [stubbing([], Greeter, "stub")] } }),
-      quiet,
+      overridden(rootOf(runtime), [], { unit: { user: [stub("greeter", "stub")] } }),
     );
 
     // THEN the boot is a defect naming both kinds

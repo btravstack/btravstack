@@ -1,4 +1,4 @@
-import type { Runtime } from "@btravstack/core";
+import { start, type RunningApp, type Runtime } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { test } from "vitest";
 
@@ -34,9 +34,83 @@ export const greetingApp = () => {
   };
 };
 
+class KindGreeter extends Port("UnitKindGreeter")<{ readonly text: string }> {}
+class KindSibling extends Port("UnitKindSibling")<{ readonly text: string }> {}
+
+/** A provider for `port` that records `name` in `built` as it is constructed. */
+const recordingProvider = (
+  built: string[],
+  port: typeof KindGreeter | typeof KindSibling,
+  name: string,
+) =>
+  Provider(port)({
+    inject: {},
+    sync: () => {
+      built.push(name);
+      return { text: name };
+    },
+  });
+
+/** A unit module building a greeter beside a sibling, each recording its build. */
+const greetingKind = (built: string[]) =>
+  Module("UnitKind")({
+    provides: [
+      recordingProvider(built, KindSibling, "sibling"),
+      recordingProvider(built, KindGreeter, "real"),
+    ],
+    exports: [KindGreeter],
+  });
+
+/** What a spec about an override inside a unit module is handed. */
+export type UnitKindKit = {
+  /** What the kit's providers recorded as they were built, in order. */
+  readonly built: () => readonly string[];
+  /** A unit module building a greeter beside a sibling. */
+  readonly kind: ReturnType<typeof greetingKind>;
+  /** A unit module providing the sibling alone, and no greeter. */
+  readonly unrelated: Module<KindSibling, never, never>;
+  /** An override for `kind`'s greeter, recording `name` when it is built. */
+  readonly stub: (name: string) => Provider<never, never, never>;
+  /** A root providing `runtime` on `TestRuntimePort`. */
+  readonly rootOf: typeof runtimeModule;
+  /**
+   * Starts a module with signals, probes and events off, and stops it when the
+   * test ends — without failing on a defect, since a boot defect is what a
+   * drift spec asserts.
+   */
+  readonly start: Boot;
+};
+
 /** The package's own `bootFixture`, dogfooded: every app a spec boots is stopped by the fixture. */
-export const it = test.extend<{ boot: Boot; issuer: LocalIssuer }>({
+export const it = test.extend<{ boot: Boot; issuer: LocalIssuer; unitKind: UnitKindKit }>({
   boot: bootFixture(),
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  unitKind: async ({}, use) => {
+    const built: string[] = [];
+    const started: RunningApp<unknown, unknown>[] = [];
+    await use({
+      built: () => built,
+      kind: greetingKind(built),
+      unrelated: Module("UnitKindUnrelated")({
+        provides: [recordingProvider(built, KindSibling, "sibling")],
+        exports: [KindSibling],
+      }),
+      stub: (name) => recordingProvider(built, KindGreeter, name),
+      rootOf: runtimeModule,
+      // The gate is proven at each call site and invisible here, as in `bootFixture`.
+      start: ((module: never) => {
+        const app = (
+          start as unknown as (module: never, options: object) => RunningApp<unknown, unknown>
+        )(module, { signals: false, probes: false, onEvent: () => {} });
+        started.push(app);
+        return app;
+      }) as unknown as Boot,
+    });
+    for (const app of started) {
+      app.stop();
+      await app.exited;
+    }
+  },
   // File-scoped: built once and shared by every test in `jwt.spec.ts` that
   // only reads it, closed once the file is done. A test that closes an
   // issuer itself mints its own instead of reaching for this one.
