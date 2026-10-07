@@ -346,10 +346,14 @@ turns a cookie back into a `Session<unknown>` — or into nothing.
 `HTTP_SESSION_KEYS` is a comma-separated list of 32-byte **base64url** keys
 (`A-Z a-z 0-9 - _`, no padding — standard base64 is refused). Mint one with
 `node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'`.
-Rotation is **prepend, deploy, drop**: the first key seals and every key
-unseals, so a cookie sealed with a key that is gone is anonymous rather than an
-error — a browser holding a stale cookie logs in again, which is not a failed
-request. A key that is not 32 base64url bytes fails the boot with a
+Rotation is **append, promote, drop**, one rollout each: `old,new` so every
+pod can open the new key before any pod seals with it, then `new,old`, then —
+once the old key's sessions have expired — `new`. The first key seals and
+every key unseals, so during a rolling update, with old and new pods serving
+side by side, no pod meets a cookie it cannot open; prepending in one step
+would let the first new pod seal cookies the old pods reject. A cookie sealed
+with a key that is gone is anonymous rather than an error — a browser holding
+a stale cookie logs in again, which is not a failed request. A key that is not 32 base64url bytes fails the boot with a
 `ConfigInvalid` naming the variable and the **position** it refused, never the
 value.
 
@@ -365,7 +369,7 @@ other's sessions — a cookie minted by staging opens in production. That bindin
 is deliberately not here: what it would guard against is an operator copying a
 secret between environments, which the same operator can undo by copying it
 back, so it would be advice rather than a boundary — where a key list per
-deployment IS one. Rotation being prepend, deploy, drop is what makes minting a
+deployment IS one. Rotation being append, promote, drop is what makes minting a
 separate list cheap.
 
 **The sealed payload names what it is.** `seal` writes a type marker into the

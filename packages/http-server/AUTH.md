@@ -316,8 +316,9 @@ The two rules this half exists to state, before the detail:
   **The lifetime is the codec's, not the scheme's**, and there is no sliding
   re-seal: a scheme has HEADERS, not a response, so it has nowhere to put a
   `Set-Cookie`. The session ends when `sessionCodec`'s `ttlSec` says it does,
-  and the browser logs in again. Rotation is the codec's too — prepend,
-  deploy, drop.
+  and the browser logs in again. Rotation is the codec's too — append,
+  promote, drop, one rollout each, so a key is unsealable on every pod before
+  any pod seals with it.
 
   **The vocabulary is decided once at composition**, `apiKeyAuthenticator`'s
   own rule: `scopes` present makes the scheme scoped, so a session holding

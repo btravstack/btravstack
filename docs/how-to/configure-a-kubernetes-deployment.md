@@ -147,8 +147,11 @@ variable fails closed**, because the base does not carry it: an overlay that
 leaves out `HTTP_JWT_ISSUER` produces a pod whose environment has none, which
 is a `ConfigInvalid` naming it, exit `78`, before the pod ever turns ready. A
 variable with a default is the exception by construction — left out, it takes
-the default — which is why `HTTP_CORS_ORIGIN` unset means CORS off: cross-origin
-browsers are refused rather than admitted from the wrong origin.
+the default. `HTTP_CORS_ORIGIN` unset means no CORS headers at all, which only
+decides what a browser lets a cross-origin page **read**: a simple
+cross-origin request still reaches the handler. What refuses a request is
+authentication and, for a cookie-carrying one, the
+[CSRF check](/reference/http-server#csrf) — never CORS.
 
 Locally the same role is played by `node --env-file`, which `pnpm dev` already
 uses: a file read **by the runtime, before** the process starts, so the
@@ -175,17 +178,32 @@ sized under the old value serving requests under the new timeout, a unit that
 read half of each, a validation that passed at boot and is never run again.
 A restart has none of that, and it is cheap here — each old pod
 [drains in three beats](/explanation/draining-in-three-beats), so in-flight
-work finishes and the ingress stops routing before the process goes. And a bad
-bad value — a required one missing, or any one malformed — fails **the new
-pod's** boot with exit `78`. Whether the old pods keep serving meanwhile is the rollout
+work finishes and the ingress stops routing before the process goes. And a
+value its `Config` field rejects fails **the new pod's** boot with exit `78`:
+a required variable unset or blank, a number or a port that does not parse or
+is out of range, a `Config.url` field that is not a URL (`HTTP_JWT_JWKS_URI`,
+`HTTP_OIDC_ISSUER`, `HTTP_OIDC_REDIRECT_URI`), a session key that is not 32
+base64url bytes. A field read as a plain string accepts any non-blank value:
+a malformed `DATABASE_URL` or `REDIS_URL` passes configuration and fails when
+the adapter connects, as a startup failure with exit `1` rather than `78`. Whether the old pods keep serving meanwhile is the rollout
 strategy's: under `RollingUpdate` with `maxUnavailable: 0` the rollout stops
 with every old pod still serving, while `Recreate` has already terminated them.
 
-Rotating `HTTP_SESSION_KEYS` is two rollouts for the same reason the variable
-is a list: put the new key **first** (it seals) and keep the old one after it
-(it still unseals cookies already issued), roll; once the longest session the
-old key sealed has expired (`ttlSec`, twelve hours by default), drop it and
-roll again.
+Rotating `HTTP_SESSION_KEYS` takes **three** rollouts. The first key seals and
+every key unseals, and during a rolling update old and new pods serve side by
+side, so a browser can land on either — a pod must be able to open every
+cookie any other pod is sealing:
+
+1. **Append** — `old,new`. Every pod learns to open the new key while all of
+   them still seal with the old one.
+2. **Promote** — `new,old`, once the first rollout has finished. Pods start
+   sealing with the new key, and every pod, from either rollout, opens both.
+3. **Drop** — `new`, once the longest session the old key sealed has expired
+   (`ttlSec`, twelve hours by default).
+
+Putting the new key first in one step would have the first replacement pod seal
+cookies the old pods cannot open, and a browser routed back to one of them
+would be logged out mid-rollout.
 
 ## See also
 

@@ -236,8 +236,9 @@ const codec = (
 /**
  * The cookie codec, from `HTTP_SESSION_KEYS` — a comma-separated list of
  * base64url 32-byte keys. The first seals, every one unseals, so rotation is
- * prepend, deploy, drop; a cookie sealed with a dropped key is anonymous rather
- * than an error.
+ * append, promote, drop — one rollout each, so a key is unsealable on every
+ * replica before any replica seals with it; a cookie sealed with a dropped key
+ * is anonymous rather than an error.
  *
  * A key that is not 32 bytes is a `ConfigInvalid` naming the variable, at boot,
  * rather than a failure at the first request.

@@ -307,10 +307,10 @@ request.
 pins one variable the same way — and `sessionAuthenticator` is the scheme that
 reads what it seals.
 
-| Option   | What it is                                                                                                                                                                               |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `keys`   | pins `HTTP_SESSION_KEYS` — a comma-separated list of 32-byte base64url keys (`A-Z a-z 0-9 - _`, no padding); the first seals and every one unseals, so rotation is prepend, deploy, drop |
-| `ttlSec` | how long a session lasts (default 12 h). Fixed: there is no sliding re-seal                                                                                                              |
+| Option   | What it is                                                                                                                                                                                                  |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `keys`   | pins `HTTP_SESSION_KEYS` — a comma-separated list of 32-byte base64url keys (`A-Z a-z 0-9 - _`, no padding); the first seals and every one unseals, so rotation is append, promote, drop — one rollout each |
+| `ttlSec` | how long a session lasts (default 12 h). Fixed: there is no sliding re-seal                                                                                                                                 |
 
 Mint one with
 `node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'`.

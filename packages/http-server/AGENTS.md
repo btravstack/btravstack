@@ -1073,8 +1073,11 @@ verifies a token or logs a browser in from installing it.
 
 **The cookie is the session, so the key list is the one operational object.**
 `HTTP_SESSION_KEYS` is a `Config.list` of base64url 32-byte keys. The FIRST
-seals and EVERY one unseals, which is what makes rotation prepend, deploy, drop:
-a cookie sealed with a key the deploy dropped is **anonymous**, never an error,
+seals and EVERY one unseals, which is what makes rotation append, promote,
+drop — three rollouts (`old,new`, then `new,old`, then `new`), because a
+rolling update serves old and new pods side by side and a key must be
+unsealable everywhere before any pod seals with it. A cookie sealed with a key
+the last rollout dropped is **anonymous**, never an error,
 because a browser holding a stale cookie is a browser that logs in again and not
 a failed request.
 
