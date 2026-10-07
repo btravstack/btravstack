@@ -37,7 +37,9 @@ CI job rather than asking another repository for a new one.
    packing it needs. The ratio's reason is `BUDGET`'s TSDoc: features move a
    package by a few percent, a mistake in what ships doubles it. Growth that is
    meant goes in `accepted` with its reason until the next release makes it the
-   baseline; a package npm has never seen has no baseline and is skipped.
+   baseline, and an entry for a package back under budget fails as stale, so an
+   exemption cannot outlive the growth it was for; a package npm has never seen
+   has no baseline and is skipped.
 
 ## How it works
 

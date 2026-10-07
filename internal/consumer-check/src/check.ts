@@ -80,9 +80,14 @@ const BUDGET = 1.5;
 /**
  * Growth past the budget that is meant, with why. An entry holds only until
  * the package is next published — it is then the baseline — so drop it with
- * the release that carries it.
+ * the release that carries it: an entry for a package back under budget, or
+ * one this run never packed, fails as stale, so an exemption cannot outlive
+ * the growth it was for.
  */
 const accepted: Readonly<Record<string, string>> = {};
+
+const staleAcceptance = (name: string): string =>
+  `size: ${name} is in \`accepted\` but no longer over budget, or no longer packed — drop the entry`;
 
 /**
  * What the last published release of `name` unpacks to — or `"unpublished"`,
@@ -103,23 +108,33 @@ const publishedSize = (name: string): number | "unpublished" | { readonly failed
   }
 };
 
-/** The budget's verdict on one package, or `undefined` when it holds. */
-const overBudget = (dir: string, packed: string): string | undefined => {
+/** The package `pnpm pack --json` packed, and the budget's verdict on it — `undefined` when it holds. */
+const overBudget = (
+  dir: string,
+  packed: string,
+): { readonly name: string; readonly verdict: string | undefined } => {
   const { name, files } = JSON.parse(packed) as {
     readonly name: string;
     readonly files: readonly { readonly path: string }[];
   };
   const size = files.reduce((sum, { path }) => sum + statSync(join(dir, path)).size, 0);
   const baseline = publishedSize(name);
+  const isAccepted = accepted[name] !== undefined;
   if (baseline === "unpublished") {
     process.stdout.write(`[consumer-check] ${name}: never published, no size baseline\n`);
-    return undefined;
+    return { name, verdict: isAccepted ? staleAcceptance(name) : undefined };
   }
-  if (typeof baseline !== "number") return `size: ${name}'s baseline: ${baseline.failed}`;
+  if (typeof baseline !== "number") {
+    return { name, verdict: `size: ${name}'s baseline: ${baseline.failed}` };
+  }
   const ratio = size / baseline;
-  return ratio > BUDGET && accepted[name] === undefined
-    ? `size: ${name} unpacks to ${String(size)} bytes, ${ratio.toFixed(2)}× its last release's ${String(baseline)} (budget ${String(BUDGET)}×) — find what started shipping, or add it to \`accepted\` with the reason`
-    : undefined;
+  if (ratio <= BUDGET) return { name, verdict: isAccepted ? staleAcceptance(name) : undefined };
+  return {
+    name,
+    verdict: isAccepted
+      ? undefined
+      : `size: ${name} unpacks to ${String(size)} bytes, ${ratio.toFixed(2)}× its last release's ${String(baseline)} (budget ${String(BUDGET)}×) — find what started shipping, or add it to \`accepted\` with the reason`,
+  };
 };
 
 const main = (): void => {
@@ -152,11 +167,13 @@ const main = (): void => {
     }
 
     process.stdout.write(`[consumer-check] packing ${String(dirs.length)} packages\n`);
+    const packed = new Set<string>();
     for (const dir of dirs) {
-      const verdict = overBudget(
+      const { name, verdict } = overBudget(
         dir,
         run("pnpm", ["pack", "--json", "--pack-destination", work], dir),
       );
+      packed.add(name);
       if (verdict !== undefined) failures.push(verdict);
 
       // Both run from HERE, with the package as an argument — never with the
@@ -184,6 +201,9 @@ const main = (): void => {
       } catch {
         failures.push(`attw: ${dir}`);
       }
+    }
+    for (const name of Object.keys(accepted)) {
+      if (!packed.has(name)) failures.push(staleAcceptance(name));
     }
 
     // A throwaway project holding nothing but the tarballs and the peers a
