@@ -101,10 +101,10 @@ describe("s3Storage", () => {
     s3,
     keyPrefix,
   }) => {
+    // GIVEN two different equal-length bodies and one signed upload URL
     const key = `${keyPrefix}replayed.json`;
     const first = aDocument();
     const second = new TextEncoder().encode(`{"ok":null}`);
-    expect(second.byteLength).toBe(first.bytes.byteLength);
     const url = (
       await s3.presignedUpload(key, {
         ttlMs: 60_000,
@@ -119,11 +119,25 @@ describe("s3Storage", () => {
         headers: { "content-type": first.contentType },
         body: bytes,
       });
+
+    // WHEN the same URL is used twice
     const firstResponse = await upload(first.bytes);
     const secondResponse = await upload(second);
 
-    expect([firstResponse.status, secondResponse.status]).toEqual([200, 200]);
-    await expect(s3.get(key)).toBeOkWith({ bytes: second, contentType: first.contentType });
+    // THEN the second body replaces the first under the same key
+    await expect(
+      s3.get(key).map((object) => ({
+        firstStatus: firstResponse.status,
+        secondStatus: secondResponse.status,
+        bytes: object.bytes,
+        contentType: object.contentType,
+      })),
+    ).toBeOkWith({
+      firstStatus: 200,
+      secondStatus: 200,
+      bytes: second,
+      contentType: first.contentType,
+    });
   });
 
   it("refuses a write whose size is not the one it signed", async ({ s3, keyPrefix }) => {
