@@ -1,5 +1,27 @@
 # @btravstack/observability
 
+## 0.18.0
+
+### Minor Changes
+
+- 23b1781: **Breaking for dashboards: `btravstack.<component>.duration` is now recorded in seconds**, with unit `s` and the OpenTelemetry semantic conventions' bucket boundaries (`0.005` … `10`), instead of milliseconds on the SDK's default buckets. The metric names are unchanged.
+
+  Migration: divide any threshold or panel reading these histograms by 1000 (`> 250` ms becomes `> 0.25`). A Prometheus exporter now suffixes the series `_seconds` where it used to suffix `_milliseconds`, so queries naming the old series need renaming. The other deviations from semconv — span names, no `SpanKind`, the starters' own attribute names — are now stated on the observability reference page.
+
+### Patch Changes
+
+- 5dc6f22: `jsonSink`'s fallback for a line `JSON.stringify` refuses now keeps every field that renders — the unit's `unitId`, `traceId` and `tenantId` included — and names the ones it dropped in `unserialisable` (`["total"]` for a `BigInt` attribute), instead of writing only the time, level and message beside `cause: "[unserialisable]"` whatever the culprit was. The reference page now documents the line's field names.
+- 416570e: An operation observed inside a unit — a cache read, a stored object, a sent mail, a query — now opens its span as the CHILD of the unit's `UnitSpanModule` span, and stamps `btravstack.unit_id`, `btravstack.trace_id` and `btravstack.tenant_id` from the ambient record. They used to be root spans with no correlation, so nothing joined them to the unit or to its log lines.
+- 7e26f15: **New in `@btravstack/core`: `unitOutcome()` and the `UnitOutcome` type** — how the current unit's work settled (`"ok"`, or `"error"` for an `Err`, a `Defect` or a throw), readable from the unit's own teardown, which is handed only its service. `UnitRecord` is unchanged.
+
+  `@btravstack/observability`'s `UnitSpanModule` uses it: a unit the kernel aborted now ends its span with an error status and the message `aborted`, and a unit whose work failed ends it with an error status. Both used to end unmarked.
+
+- Updated dependencies [afae28b]
+- Updated dependencies [7e26f15]
+  - @btravstack/core@0.18.0
+  - @btravstack/config@0.18.0
+  - @btravstack/di@0.18.0
+
 ## 0.17.0
 
 ### Minor Changes
