@@ -10,7 +10,7 @@ import {
   type Resolved,
 } from "@btravstack/http-server/internal";
 import type { Authenticators, HttpAuth } from "@btravstack/http-server/internal";
-import { HttpHandler, send, type HttpAnswerer } from "@btravstack/http-server/internal";
+import { HttpHandler, type HttpAnswerer } from "@btravstack/http-server/internal";
 import { HttpConfig, HttpUnit } from "@btravstack/http-server/internal";
 import type {
   KindOf,
@@ -96,11 +96,18 @@ export const graphql = <
             );
         }
       const authenticators = schemeServices(schemes, services);
+      const refuse: Plugin<{}, { refusalStatus?: 401 | 403 }> = {
+        onRequest: ({ serverContext, fetchAPI, endResponse }) => {
+          if (serverContext.refusalStatus !== undefined)
+            endResponse(new fetchAPI.Response(null, { status: serverContext.refusalStatus }));
+        },
+      };
       const yoga = createYoga<{
         principal: unknown;
         incoming: IncomingMessage;
         unit: Readonly<Record<string, unknown>>;
         signal: AbortSignal;
+        refusalStatus?: 401 | 403;
       }>({
         schema: options.schema,
         graphqlEndpoint: prefix,
@@ -109,7 +116,7 @@ export const graphql = <
           (config.corsOrigin === ""
             ? false
             : { origin: config.corsOrigin.split(",").map((origin) => origin.trim()) }),
-        plugins: options.plugins === undefined ? [] : [...options.plugins],
+        plugins: [refuse, ...(options.plugins ?? [])],
         logging: false,
         graphiql: false,
         landingPage: false,
@@ -148,7 +155,13 @@ export const graphql = <
               throw result.cause;
             }
             if (result.isErr()) {
-              send(response, result.error);
+              await yoga.handle(request, response, {
+                principal: undefined,
+                incoming: request,
+                unit: {},
+                signal,
+                refusalStatus: result.error,
+              });
               return;
             }
             resolved = result.value;

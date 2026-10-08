@@ -12,4 +12,5 @@ dependency tree requires it.
 accepts a deployment CORS policy and Yoga plugins, and checks declared unit
 ports against the actual modules in its `units` option. It forks the runtime's
 `HttpUnit` record and refuses a differing declaration at boot, passes CORS
-preflights to Yoga before authentication, and disposes Yoga during scope teardown.
+preflights and authentication refusals through Yoga's CORS policy, and disposes
+Yoga during scope teardown.

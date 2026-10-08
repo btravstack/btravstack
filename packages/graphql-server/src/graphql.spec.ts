@@ -221,7 +221,7 @@ describe("graphql answerer", () => {
     const authenticatedBefore = authenticated;
     const response = await fetch(`http://127.0.0.1:${info!.port}/graphql`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", origin: "https://web.example" },
       body: JSON.stringify({ query: "{ secret }" }),
     });
     const accepted = await fetch(`http://127.0.0.1:${info!.port}/graphql`, {
@@ -237,12 +237,15 @@ describe("graphql answerer", () => {
         origin: preflight.headers.get("access-control-allow-origin"),
         authenticated: authenticatedBefore,
       },
-      refused: response.status,
+      refused: {
+        status: response.status,
+        origin: response.headers.get("access-control-allow-origin"),
+      },
       accepted: await accepted.json(),
       invoked,
     }).toEqual({
       preflight: { status: 204, origin: "https://web.example", authenticated: 0 },
-      refused: 401,
+      refused: { status: 401, origin: "https://web.example" },
       accepted: { data: { secret: "u-1" } },
       invoked: true,
     });
@@ -264,6 +267,7 @@ describe("graphql answerer", () => {
         resolvers: { Query: { secret: () => "secret" } },
       }),
       requires: [{ user: ["read"] }],
+      cors: { origin: ["https://web.example", "https://other.example"], credentials: false },
     });
     const app = boot(
       Module("ScopedGraphqlApp")({
@@ -277,7 +281,11 @@ describe("graphql answerer", () => {
     const send = (authorization: string) =>
       fetch(url, {
         method: "POST",
-        headers: { "content-type": "application/json", authorization },
+        headers: {
+          "content-type": "application/json",
+          authorization,
+          origin: "https://web.example",
+        },
         body: JSON.stringify({ query: "{ secret }" }),
       });
 
@@ -286,7 +294,17 @@ describe("graphql answerer", () => {
     const broken = await send("Bearer broken");
 
     // THEN scope refusal is 403 and the authenticator defect is a runtime 500
-    expect([denied.status, broken.status]).toEqual([403, 500]);
+    expect({
+      denied: {
+        status: denied.status,
+        origin: denied.headers.get("access-control-allow-origin"),
+        credentials: denied.headers.get("access-control-allow-credentials"),
+      },
+      broken: broken.status,
+    }).toEqual({
+      denied: { status: 403, origin: "https://web.example", credentials: null },
+      broken: 500,
+    });
   });
 
   it("answers 500 when its request unit cannot be built", async ({ boot }) => {

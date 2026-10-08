@@ -1,6 +1,6 @@
 ---
 title: Getting started
-description: Boot a small oRPC service with @btravstack/core and @btravstack/http-server, call it with a typed client, then watch it drain on SIGTERM.
+description: Boot a small oRPC service with @btravstack/core and @btravstack/orpc-server, call it with a typed client, then watch it drain on SIGTERM.
 ---
 
 # Getting started
@@ -85,40 +85,47 @@ Then install, from the same directory:
 ::: code-group
 
 ```sh [pnpm]
-pnpm add @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di \
+pnpm add @btravstack/core @btravstack/http-server @btravstack/orpc-server \
+  @btravstack/htmx-server @btravstack/config @btravstack/di \
   @btravstack/contract unthrown @unthrown/orpc@^0.2.0 zod \
-  @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @orpc/client@2.0.0-beta.28
+  @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @orpc/client@2.0.0-beta.28 \
+  @orpc/openapi@2.0.0-beta.28 @orpc/json-schema@2.0.0-beta.28
 pnpm add -D typescript tsx @types/node --allow-build=esbuild
 ```
 
 ```sh [npm]
-npm install @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di \
+npm install @btravstack/core @btravstack/http-server @btravstack/orpc-server \
+  @btravstack/htmx-server @btravstack/config @btravstack/di \
   @btravstack/contract unthrown @unthrown/orpc@^0.2.0 zod \
-  @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @orpc/client@2.0.0-beta.28
+  @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @orpc/client@2.0.0-beta.28 \
+  @orpc/openapi@2.0.0-beta.28 @orpc/json-schema@2.0.0-beta.28
 npm install -D typescript tsx @types/node
 ```
 
 ```sh [yarn]
-yarn add @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di \
+yarn add @btravstack/core @btravstack/http-server @btravstack/orpc-server \
+  @btravstack/htmx-server @btravstack/config @btravstack/di \
   @btravstack/contract unthrown @unthrown/orpc@^0.2.0 zod \
-  @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @orpc/client@2.0.0-beta.28
+  @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @orpc/client@2.0.0-beta.28 \
+  @orpc/openapi@2.0.0-beta.28 @orpc/json-schema@2.0.0-beta.28
 yarn add -D typescript tsx @types/node
 ```
 
 :::
 
-Most of the first command is **peers** — of `@btravstack/http-server`, and of
-`@unthrown/orpc`, which needs `@orpc/client` — so your application holds a
-single copy of each ([why](/explanation/peer-dependencies)). They are named
+Most of the first command is **peers** — of `@btravstack/orpc-server`, its
+HTTP and htmx packages, and `@unthrown/orpc`, which needs `@orpc/client` — so
+your application holds a single copy of each
+([why](/explanation/peer-dependencies)). They are named
 rather than left to the package manager because not every install adds peers
 for you (`pnpm` with `autoInstallPeers: false`, for one), and your own files
 import `@orpc/contract`, `@orpc/client`, `zod` and `unthrown` directly.
 
-The oRPC packages are pinned to **one exact beta**, the one this framework is
+The five oRPC packages are pinned to **one exact beta**, the one this framework is
 built and tested against. oRPC v2 is pre-release and its `latest` tag still
 points at the 1.x line, which `@unthrown/orpc` does not peer on, so an
 unpinned install resolves the wrong major and the first compile fails; pinning
-all three to the same beta keeps the client and the server on one version
+all five to the same beta keeps the client and the server on one version
 ([the full list](/reference/packages)).
 
 The dev dependencies split the work: `typescript` **checks** the code,
