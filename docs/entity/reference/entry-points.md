@@ -1,6 +1,6 @@
 ---
 title: Entry points
-description: factory, factoryAsync, make, inspect, update, toJSON and sameIdentityAs — every way in and out of an entity.
+description: factory, factoryAsync, parseCreate, make, inspect, update, toJSON and sameIdentityAs — every way in and out of an entity.
 ---
 
 # Entry points
@@ -92,6 +92,33 @@ const createOrgAsync = Organization.factoryAsync({
 });
 (await createOrgAsync({ slug, name })).getOrThrow();
 ```
+
+## `SomeEntity.parseCreate(command)` → `Result<CreateInput, InvalidEntity>` {#someentity-parsecreate}
+
+Parses a create command **before** the generated fields exist — for a number
+or a timestamp only the persistence layer can assign, once it holds a lock. What
+comes back is exactly what a factory's function accepts, so it flows in with no
+cast, and a failure is the same `InvalidEntity`, with the same issue paths, that
+the create itself would answer.
+
+```ts
+const command = Organization.parseCreate({ slug: "acme", name: "Acme" });
+command.flatMap(createOrg); // Result<Organization, InvalidEntity>
+```
+
+| Checked at `parseCreate`                               | Waits for the create          |
+| ------------------------------------------------------ | ----------------------------- |
+| every field schema                                     | this entity's invariants      |
+| each nested entity, built under its **own** invariants | this entity's computed fields |
+| a generated or unknown key is dropped, never an error  |                               |
+
+The entity's own invariants wait because a rule may read a generated field, so
+an `Ok` here does not promise the create succeeds. An aggregate has no
+`parseCreate`, as it has no factory: `start` is its creation.
+
+It parses the whole `createInput`. A command that should accept fewer keys — a
+`.pick({ … }).strict()` over it, as an HTTP contract usually wants — is that
+schema's to parse.
 
 ## `SomeEntity.make(data)` → `Result<SomeEntity, InvalidEntity>` {#someentity-make-data-result-someentity-invalidentity}
 

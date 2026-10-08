@@ -148,6 +148,7 @@ export const createAggregate =
     Reflect.deleteProperty(Base.prototype, "update");
     Reflect.deleteProperty(Base, "factory");
     Reflect.deleteProperty(Base, "factoryAsync");
+    Reflect.deleteProperty(Base, "parseCreate");
 
     const parseEvent = fromSchema(events);
     const terminal = new Set<string>(ends);

@@ -543,6 +543,8 @@ export type EntityStatic<
   make<T>(this: new (d: Sealed<OutputOf<S, A>>) => T, state: unknown): Result<T, InvalidEntity>;
   /** stored data → its data plus the invariants it breaks, never an entity */
   inspect(state: unknown): Result<Inspection<OutputOf<S, A>>, InvalidEntity>;
+  /** a create command → `factory`'s input; fields and nested entities, not invariants */
+  parseCreate(raw: unknown): Result<CreateInputOf<S, GeneratedKeys<S>>, InvalidEntity>;
   // No `extend`. An entity is final — extension lives on `AbstractEntity`,
   // which is tagless and can therefore carry behaviour. See `BehaviourOf`.
   factory<T>(

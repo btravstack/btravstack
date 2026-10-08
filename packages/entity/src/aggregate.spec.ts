@@ -300,6 +300,7 @@ test("make rehydrates a snapshot, and an aggregate has no update and no factory"
   expect("update" in cart).toBe(false);
   expect("factory" in Cart).toBe(false);
   expect("factoryAsync" in Cart).toBe(false);
+  expect("parseCreate" in Cart).toBe(false);
 });
 
 /** Every issue of a failed replay as `[path, message]`. */

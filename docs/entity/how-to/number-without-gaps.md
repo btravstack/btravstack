@@ -191,6 +191,31 @@ To make the transition a command on the draft that also announces the
 issuance, allocate the number first and pass it in. That pattern is
 [Write commands and events](/entity/how-to/write-commands).
 
+## Reject a malformed command before taking the lock
+
+When the issued invoice is created straight from a command rather than from a
+draft, parse the command first. `parseCreate` checks every field the caller
+sent without the generated ones, so a malformed command is refused before any
+transaction opens, with the same `InvalidEntity` the create would have answered:
+
+```ts
+const issueCommand = (raw: unknown) => {
+  const parsed = IssuedInvoice.parseCreate(raw);
+  return (tx: Tx, at: Instant) =>
+    parsed.toAsync().flatMap((command) =>
+      IssuedInvoice.factoryAsync({
+        state: () => Promise.resolve("ISSUED"),
+        issuedAt: () => Promise.resolve(at),
+        number: () => allocateNumber(tx, command.series),
+      })(command),
+    );
+};
+```
+
+The invariants still run only in the factory: `ISSUED_WITHOUT_LINES` could read
+a generated field, so a command that parses can still be refused once numbered —
+which is the case the counter's rollback is there for.
+
 ## Number after the fact when throughput demands it
 
 Everything above allocates on the request path, which means the counter row is

@@ -19,6 +19,7 @@ import type {
   AsyncGenerators,
   BaseInstance,
   ConstructionKey,
+  CreateInputOf,
   EntityFactory,
   Generators,
   OutputOf,
@@ -216,6 +217,11 @@ export function Entity<Tag extends string>(tag: Tag) {
     };
 
     const parseInput = fromSchema(construction);
+    // `construction`, not `createInput`: a nested entity is built under its
+    // own rules, and the output is what `factory`'s function accepts.
+    const parseCreateInput = fromSchema(
+      omitBy(construction as unknown as z.ZodObject<Schemas>, generatedKeys),
+    );
 
     const toInvalidEntity = (issues: SchemaIssues) =>
       new InvalidEntityClass({ entity: tag, issues });
@@ -512,6 +518,23 @@ export function Entity<Tag extends string>(tag: Tag) {
               violations: violationsOf(d),
             });
           });
+      }
+
+      /**
+       * a create command → what `factory`'s function accepts, before any
+       * generated value exists.
+       *
+       * Checks every field schema and builds each nested entity under its own
+       * rules. Never this entity's invariants or computed fields, which may
+       * read a generated one, so an `Ok` does not promise the later create
+       * succeeds. A generated or unknown key is dropped, as zod drops any.
+       */
+      static parseCreate(raw: unknown): Result<CreateInputOf<S, GeneratedKeys<S>>, InvalidEntity> {
+        return parseCreateInput(raw).mapErrCases((m) =>
+          // SchemaIssues is `readonly Issue[]` — a single non-union type, nothing to enumerate
+          // oxlint-disable-next-line unthrown/no-catch-all-pattern
+          m.with(P._, toInvalidEntity),
+        ) as Result<CreateInputOf<S, GeneratedKeys<S>>, InvalidEntity>;
       }
 
       /** caller fields + domain-generated fields → entity */
