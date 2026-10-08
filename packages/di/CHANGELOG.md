@@ -1,5 +1,11 @@
 # @btravstack/di
 
+## 0.23.0
+
+### Minor Changes
+
+- 4f6c649: `Provider("Id")({ inject, ...options })` mints the port it provides from what the arm builds and hands it back as `.port`, so a use case with one implementation no longer restates its shape in a separately declared port. `Provider` gains an optional fourth type parameter, the type of its `port` field.
+
 ## 0.22.0
 
 No changes in this release.
