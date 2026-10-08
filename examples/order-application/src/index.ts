@@ -2,14 +2,11 @@ export { CustomerApplicationModule, OrderApplicationModule, tenantOf } from "./m
 export { CursorSortMismatch, MalformedCursor } from "./pagination.js";
 export {
   CustomerRepository,
-  FindCustomer,
-  FindOrder,
-  ListOrders,
   OrderRepository,
   PaymentService,
-  PlaceOrder,
   ShippingService,
   StockService,
   Tenant,
   type OrderQuery,
 } from "./ports.js";
+export { FindCustomer, FindOrder, ListOrders, PlaceOrder } from "./use-cases.js";

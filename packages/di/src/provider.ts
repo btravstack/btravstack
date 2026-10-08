@@ -1,6 +1,14 @@
 import { OkAsync, type AsyncResult, type Result } from "unthrown";
 
-import type { AnyPort, MemberOf, Scope, ServiceOf } from "./port.js";
+import {
+  Port,
+  type AnyPort,
+  type MemberOf,
+  type PortClassOf,
+  type PortInstance,
+  type Scope,
+  type ServiceOf,
+} from "./port.js";
 
 /** Internal: an `inject` record — the one shape a provider declares dependencies in. */
 type Deps = Readonly<Record<string, AnyPort>>;
@@ -135,11 +143,14 @@ type ScopeOf<O> = O extends { readonly acquire: unknown }
  * a resourceful provider to `Module.build`, which never closes the scope it
  * opens, and silently dropping its `release`.
  */
-export type Provider<P, E, N> = {
+export type Provider<P, E, N, C extends AnyPort = AnyPort> = {
   readonly _port: (p: P) => void;
   readonly _error: () => E;
   readonly _needs: () => N;
-  readonly port: AnyPort;
+  // A parameter rather than an `& { port }` intersection where the port is
+  // minted: `AnyPort & PortClassOf<…>` emits through `AnyPort`'s private
+  // instance alias and fails TS4023 on a consumer exporting `provider.port`.
+  readonly port: C;
   readonly deps: readonly AnyPort[];
   // The package's own construction boundary, not application code: the build
   // pipeline narrows these back to `E`/`P` per port.
@@ -239,8 +250,25 @@ function declare<P extends AnyPort, S, Gate>(port: P) {
   return build;
 }
 
-function ProviderDeclaration<P extends AnyPort>(port: P) {
-  return declare<P, ServiceOf<P>, SetPortGate<P>>(port);
+/**
+ * Two forms of the first call. `Provider(Port)` binds a port declared
+ * elsewhere. `Provider("Id")` mints the port from what the arm builds and
+ * hands it back as `.port` — for a use case, whose port would only restate
+ * its implementation. `S` is inferred from the arm through the second
+ * `Qualification`, which is what types a `release` or a hook's parameter;
+ * `O` stays for `ErrorOf`/`ScopeOf`. Ordered string-first so a refused
+ * port call reports the port overload's mismatch, not the string one's.
+ */
+function ProviderDeclaration<const Id extends string>(
+  id: Id,
+): <const D extends Deps, S, O extends Qualification<readonly [ServicesOf<D>], S>>(
+  options: { readonly inject: D } & O & Qualification<readonly [ServicesOf<D>], S>,
+) => Provider<PortInstance<Id, S>, ErrorOf<O>, NeedsOf<D> | ScopeOf<O>, PortClassOf<Id, S>>;
+function ProviderDeclaration<P extends AnyPort>(
+  port: P,
+): ReturnType<typeof declare<P, ServiceOf<P>, SetPortGate<P>>>;
+function ProviderDeclaration(port: AnyPort | string): unknown {
+  return declare(typeof port === "string" ? Port(port) : port);
 }
 
 /**

@@ -1,6 +1,6 @@
 import type { Page } from "@btravstack/contract";
 import { Logger } from "@btravstack/core";
-import { Provider, type ServiceOf } from "@btravstack/di";
+import { Provider } from "@btravstack/di";
 import {
   placeOrder,
   type Customer,
@@ -15,100 +15,58 @@ import {
 import type { AsyncResult } from "unthrown";
 
 import type { CursorSortMismatch, MalformedCursor } from "./pagination.js";
-import {
-  CustomerRepository,
-  FindCustomer,
-  FindOrder,
-  ListOrders,
-  OrderRepository,
-  PlaceOrder,
-  Tenant,
-  type OrderQuery,
-} from "./ports.js";
+import { CustomerRepository, OrderRepository, Tenant, type OrderQuery } from "./ports.js";
 
-class PlaceOrderInteractor {
-  readonly #repository: ServiceOf<OrderRepository>;
-  readonly #logger: ServiceOf<Logger>;
-  readonly #tenant: ServiceOf<Tenant>;
-
-  constructor({
-    repository,
-    logger,
-    tenant,
-  }: {
-    readonly repository: ServiceOf<OrderRepository>;
-    readonly logger: ServiceOf<Logger>;
-    readonly tenant: ServiceOf<Tenant>;
-  }) {
-    this.#repository = repository;
-    this.#logger = logger;
-    this.#tenant = tenant;
-  }
-
-  execute(
-    id: string,
-    quantity: number,
-    { operation }: { readonly operation?: string | undefined } = {},
-  ): AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder> {
-    this.#logger.info("placing an order", { tenantId: this.#tenant, orderId: id, quantity });
-    return placeOrder(id, quantity)
-      .toAsync()
-      .flatMap((order) => this.#repository.save(order, operation));
-  }
-}
-
-class FindOrderInteractor {
-  readonly #repository: ServiceOf<OrderRepository>;
-
-  constructor({ repository }: { readonly repository: ServiceOf<OrderRepository> }) {
-    this.#repository = repository;
-  }
-
-  execute(id: string): AsyncResult<Order, OrderNotFound> {
-    return this.#repository.find(id);
-  }
-}
-
-class ListOrdersInteractor {
-  readonly #repository: ServiceOf<OrderRepository>;
-
-  constructor({ repository }: { readonly repository: ServiceOf<OrderRepository> }) {
-    this.#repository = repository;
-  }
-
-  execute(query: OrderQuery): AsyncResult<Page<Order>, MalformedCursor | CursorSortMismatch> {
-    return this.#repository.list(query);
-  }
-}
-
-class FindCustomerInteractor {
-  readonly #repository: ServiceOf<CustomerRepository>;
-
-  constructor({ repository }: { readonly repository: ServiceOf<CustomerRepository> }) {
-    this.#repository = repository;
-  }
-
-  execute(tenantId: TenantId, id: string): AsyncResult<Customer, CustomerNotFound> {
-    return this.#repository.find(tenantId, id);
-  }
-}
-
-export const placeOrderProvider = Provider(PlaceOrder)({
+/**
+ * `operation` is handed to `OrderRepository.save` as it is: a caller that may
+ * run the same placement more than once — an activity Temporal retries — names
+ * it, so the repeat answers the order rather than `DuplicateOrder`. A named
+ * field rather than a third positional `string`, so it cannot trade places
+ * with the order id.
+ */
+export const placeOrderProvider = Provider("PlaceOrder")({
   inject: { repository: OrderRepository, logger: Logger, tenant: Tenant },
-  class: PlaceOrderInteractor,
+  sync: ({ repository, logger, tenant }) => ({
+    execute: (
+      id: string,
+      quantity: number,
+      { operation }: { readonly operation?: string | undefined } = {},
+    ): AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder> => {
+      logger.info("placing an order", { tenantId: tenant, orderId: id, quantity });
+      return placeOrder(id, quantity)
+        .toAsync()
+        .flatMap((order) => repository.save(order, operation));
+    },
+  }),
 });
+export const PlaceOrder = placeOrderProvider.port;
+export type PlaceOrder = InstanceType<typeof PlaceOrder>;
 
-export const findOrderProvider = Provider(FindOrder)({
+export const findOrderProvider = Provider("FindOrder")({
   inject: { repository: OrderRepository },
-  class: FindOrderInteractor,
+  sync: ({ repository }) => ({
+    execute: (id: string): AsyncResult<Order, OrderNotFound> => repository.find(id),
+  }),
 });
+export const FindOrder = findOrderProvider.port;
+export type FindOrder = InstanceType<typeof FindOrder>;
 
-export const listOrdersProvider = Provider(ListOrders)({
+export const listOrdersProvider = Provider("ListOrders")({
   inject: { repository: OrderRepository },
-  class: ListOrdersInteractor,
+  sync: ({ repository }) => ({
+    execute: (query: OrderQuery): AsyncResult<Page<Order>, MalformedCursor | CursorSortMismatch> =>
+      repository.list(query),
+  }),
 });
+export const ListOrders = listOrdersProvider.port;
+export type ListOrders = InstanceType<typeof ListOrders>;
 
-export const findCustomerProvider = Provider(FindCustomer)({
+export const findCustomerProvider = Provider("FindCustomer")({
   inject: { repository: CustomerRepository },
-  class: FindCustomerInteractor,
+  sync: ({ repository }) => ({
+    execute: (tenantId: TenantId, id: string): AsyncResult<Customer, CustomerNotFound> =>
+      repository.find(tenantId, id),
+  }),
 });
+export const FindCustomer = findCustomerProvider.port;
+export type FindCustomer = InstanceType<typeof FindCustomer>;

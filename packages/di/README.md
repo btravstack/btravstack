@@ -20,7 +20,7 @@ pnpm add @btravstack/di unthrown
 ## Ports, providers, modules
 
 ```ts
-import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { Module, Port, Provider } from "@btravstack/di";
 import { ErrAsync, OkAsync, TaggedError, type AsyncResult } from "unthrown";
 
 type Order = { readonly id: string; readonly total: number };
@@ -32,18 +32,18 @@ class OrderNotFound extends TaggedError("OrderNotFound")<{
 class OrderRepository extends Port("OrderRepository")<{
   readonly findById: (id: string) => AsyncResult<Order, OrderNotFound>;
 }> {}
-class GetOrder extends Port("GetOrder")<{
-  readonly execute: (id: string) => AsyncResult<Order, OrderNotFound>;
-}> {}
 
 // A provider binds a port to a construction and declares what it needs — the
-// services arrive typed, under the names the `inject` record gave them.
-const getOrder = Provider(GetOrder)({
+// services arrive typed, under the names the `inject` record gave them. A use
+// case has one implementation, so `Provider("GetOrder")` mints its port from
+// what the factory builds rather than restating the shape in a declared one.
+const getOrder = Provider("GetOrder")({
   inject: { orders: OrderRepository },
-  sync: ({ orders }): ServiceOf<GetOrder> => ({
-    execute: (id) => orders.findById(id),
+  sync: ({ orders }) => ({
+    execute: (id: string): AsyncResult<Order, OrderNotFound> => orders.findById(id),
   }),
 });
+const GetOrder = getOrder.port;
 
 const inMemoryOrders = Provider(OrderRepository)({
   inject: {},
