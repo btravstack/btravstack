@@ -1,5 +1,13 @@
 # @btravstack/graphql-server
 
+## 0.22.0
+
+### Patch Changes
+
+- @btravstack/contract@0.22.0
+  - @btravstack/di@0.22.0
+  - @btravstack/http-server@0.22.0
+
 ## 0.21.0
 
 ### Minor Changes

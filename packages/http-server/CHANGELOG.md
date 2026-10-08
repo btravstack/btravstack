@@ -1,5 +1,14 @@
 # @btravstack/http-server
 
+## 0.22.0
+
+### Patch Changes
+
+- @btravstack/config@0.22.0
+  - @btravstack/contract@0.22.0
+  - @btravstack/core@0.22.0
+  - @btravstack/di@0.22.0
+
 ## 0.21.0
 
 ### Minor Changes

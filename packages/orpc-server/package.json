@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/orpc-server",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "description": "The oRPC answerer and OpenAPI adapter for @btravstack/http-server",
   "keywords": [
     "http",
