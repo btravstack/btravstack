@@ -528,6 +528,8 @@ export function Entity<Tag extends string>(tag: Tag) {
        * rules. Never this entity's invariants or computed fields, which may
        * read a generated one, so an `Ok` does not promise the later create
        * succeeds. A generated or unknown key is dropped, as zod drops any.
+       * The output re-enters through `make`, so a field's schema must accept
+       * its own output, as rehydration already requires.
        */
       static parseCreate(raw: unknown): Result<CreateInputOf<S, GeneratedKeys<S>>, InvalidEntity> {
         return parseCreateInput(raw).mapErrCases((m) =>

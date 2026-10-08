@@ -116,6 +116,12 @@ The entity's own invariants wait because a rule may read a generated field, so
 an `Ok` here does not promise the create succeeds. An aggregate has no
 `parseCreate`, as it has no factory: `start` is its creation.
 
+Its output re-enters through `make` when the factory creates, as a stored row
+does on `make(toJSON())`. So it carries the constraint rehydration already
+does: a field's schema must accept its own output. A transform that is not
+idempotent applies twice (`s => s + "!"` stores `"x!!"`), and one that changes
+the type rejects its own output.
+
 It parses the whole `createInput`. A command that should accept fewer keys — a
 `.pick({ … }).strict()` over it, as an HTTP contract usually wants — is that
 schema's to parse.

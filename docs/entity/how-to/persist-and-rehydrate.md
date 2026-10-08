@@ -125,6 +125,11 @@ unchanged:
 Organization.make(org.toJSON()); // ✓ round-trips
 ```
 
+The row is the entity's output, parsed again as input, so the round trip holds
+for a field whose schema accepts its own output. A brand or a validation does;
+a transform must be idempotent, since it runs again on every rehydration — one
+that appends applies twice, and one that changes the type rejects the row.
+
 ## Check a hand-built row at the call site
 
 `make` takes `unknown`, so a row you assemble yourself gets no compile-time
