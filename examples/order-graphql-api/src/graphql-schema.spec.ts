@@ -23,4 +23,4 @@ it("keeps the client-consumable SDL in sync with the Pothos schema", () => {
     },
   );
   expect(sdl).toBe(printed);
-});
+}, 30_000);

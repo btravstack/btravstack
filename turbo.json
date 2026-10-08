@@ -23,6 +23,18 @@
     "@btravstack/core#typecheck": {
       "dependsOn": ["build", "@btravstack/testing#build"]
     },
+    "@btravstack/http-server#typecheck": {
+      "dependsOn": ["build", "@btravstack/internal-http-fixtures#build"]
+    },
+    "@btravstack/orpc-server#typecheck": {
+      "dependsOn": ["build", "@btravstack/internal-http-fixtures#build"]
+    },
+    "@btravstack/htmx-server#typecheck": {
+      "dependsOn": ["build", "@btravstack/internal-http-fixtures#build"]
+    },
+    "@btravstack/graphql-server#typecheck": {
+      "dependsOn": ["build", "@btravstack/internal-http-fixtures#build"]
+    },
     "@btravstack/internal-consumer-check#typecheck": {
       "cache": false,
       "dependsOn": [
