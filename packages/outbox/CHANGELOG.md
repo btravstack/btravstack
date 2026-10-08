@@ -1,5 +1,13 @@
 # @btravstack/outbox
 
+## 0.21.0
+
+### Patch Changes
+
+- @btravstack/config@0.21.0
+  - @btravstack/core@0.21.0
+  - @btravstack/di@0.21.0
+
 ## 0.20.0
 
 ### Patch Changes
