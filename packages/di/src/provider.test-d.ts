@@ -2,7 +2,15 @@ import { Err, Ok, TaggedError } from "unthrown";
 import { describe, test } from "vitest";
 
 import { type Equal } from "./__tests__/type-assert.js";
-import { Port, Provider, type PortInstance, type Scope, type ServiceOf } from "./index.js";
+import {
+  Port,
+  Provider,
+  overrideProvider,
+  type PortClassOf,
+  type PortInstance,
+  type Scope,
+  type ServiceOf,
+} from "./index.js";
 
 class ConfigError extends TaggedError("ConfigError")<{ readonly reason: string }> {}
 class PoolError extends TaggedError("ProvPoolError")<{ readonly url: string }> {}
@@ -317,6 +325,13 @@ describe('Provider("Id"), which mints the port it provides', () => {
     Provider(p.port)({ inject: {}, value: { greet: (name) => `hello ${name}` } });
     // @ts-expect-error `greet` returns a string, not a number
     Provider(p.port)({ inject: {}, value: { greet: (name: string) => name.length } });
+  });
+
+  test("an override keeps the minted port typed", () => {
+    const overridden = overrideProvider(Provider("Overridden")({ inject: {}, value: { n: 1 } }));
+
+    const port: Equal<(typeof overridden)["port"], PortClassOf<"Overridden", { n: number }>> = true;
+    void port;
   });
 
   test("two minted ports of one shape stay distinct, because the id is the identity", () => {

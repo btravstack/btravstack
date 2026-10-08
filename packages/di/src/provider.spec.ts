@@ -118,7 +118,7 @@ test("a provider declared by id mints a port carrying that id", () => {
 
   // WHEN its port is read
   // THEN it is a port named by that id
-  expect(p.port.portId).toBe("PMinted");
+  expect(p.port).toEqual(expect.objectContaining({ portId: "PMinted" }));
 });
 
 test("a minted port resolves to the service its provider built, injected by name", async () => {

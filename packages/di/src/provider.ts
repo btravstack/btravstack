@@ -214,8 +214,9 @@ const descriptor = (
  */
 const OVERRIDE = Symbol("di.override");
 
-export const overrideProvider = <P, E, N>(provider: Provider<P, E, N>): Provider<P, E, N> =>
-  ({ ...provider, [OVERRIDE]: true }) as Provider<P, E, N>;
+export const overrideProvider = <P, E, N, C extends AnyPort>(
+  provider: Provider<P, E, N, C>,
+): Provider<P, E, N, C> => ({ ...provider, [OVERRIDE]: true }) as Provider<P, E, N, C>;
 
 /** Package-private (not in `index.ts`): `build.ts`'s plan resolves with it. */
 export const isOverride = (provider: object): boolean => OVERRIDE in provider;

@@ -129,7 +129,7 @@ back through.
 ## Logging is attributes, not sentences
 
 ```ts
-this.#logger.info("placing an order", { tenantId: this.#tenant, orderId: id, quantity });
+logger.info("placing an order", { tenantId: tenant, orderId: id, quantity });
 ```
 
 The message is a constant and the ids are fields, which is what makes a line
