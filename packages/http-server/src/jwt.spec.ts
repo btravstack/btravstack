@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 
+import { it } from "@btravstack/internal-http-fixtures";
 import { describe, expect } from "vitest";
-
-import { it } from "./__tests__/test-fixtures.js";
 
 describe("jwtAuthenticator", () => {
   it("names the caller its claims describe, over a real JWKS fetch", async ({

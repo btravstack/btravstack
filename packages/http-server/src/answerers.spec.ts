@@ -1,6 +1,5 @@
+import { it } from "@btravstack/internal-http-fixtures";
 import { describe, expect } from "vitest";
-
-import { it } from "./__tests__/test-fixtures.js";
 
 describe("http, over several answerers", () => {
   it("routes a request to the answerer whose prefix matches longest", async ({ mounted }) => {

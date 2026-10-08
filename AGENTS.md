@@ -31,7 +31,7 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds fifteen published packages,
+pnpm workspace + turbo monorepo. `packages/` holds eighteen published packages,
 `entity` (optional domain modelling on Zod; sealed entities and aggregates, derived schemas, and Result-returning construction), `contract` (the contract tier: markers and normed shapes a client and the
 server that implements it both need — the `authenticated` marker and a cursor
 page, with the page's schema behind a `/zod` subpath so the root keeps its
@@ -49,8 +49,7 @@ composition function), `outbox` (the transactional outbox's relay — the poll
 loop, a per-tenant claim, a lag health check and a Prisma 8 store behind a
 `/prisma` subpath; the application keeps the transaction that writes the row
 and says what publishing means), and the three
-**servers**, each named for the half it implements: `http-server` (oRPC over
-`node:http`), `temporal-worker` and `amqp-worker`. `di` was its own repository until it was merged here
+**servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus three HTTP answerer packages: `orpc-server`, `htmx-server` and `graphql-server`. `di` was its own repository until it was merged here
 **with its history**; it, `contract` and `entity` are the three packages that depend on
 nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
@@ -59,12 +58,12 @@ back, with `testing`, `observability`, the three application-service ports,
 `packages/contract/AGENTS.md`; the harness's is
 `packages/testing/AGENTS.md`; the logging starter's is
 `packages/observability/AGENTS.md`; the relay's is `packages/outbox/AGENTS.md`.
-`examples/` holds fifteen private ones — a clean-architecture application
+`examples/` holds seventeen private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 three runtimes (`order-api`, `order-temporal-worker`, `order-amqp-worker`),
 each doing what its transport is for — answering, orchestrating,
 broadcasting — with each transport's contract in a package of its own
-(`order-api-contract`, `order-graphql-contract`, `order-temporal-contract`, `order-amqp-contract`)
+(`order-api-contract`, `order-graphql-contract`, `order-temporal-contract`, `order-amqp-contract`); `order-api-client` is the typed caller shared by other deployments, and `order-graphql-api` is a separate GraphQL gateway process
 because a client must be able to take a contract without the server, plus four entity billing examples (`entity-billing-domain`, `entity-billing-api`,
 `entity-billing-persistence`, `entity-billing-relational`) and the
 container's own `di-hexagonal`, which composes a `Module` and never
@@ -140,9 +139,9 @@ pnpm dev              # the three example deployments, one process each, watchin
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
-## Versioning: all fifteen packages move as one
+## Versioning: all eighteen packages move as one
 
-The fifteen published packages share **one version number**, enforced by a
+The eighteen published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. **Do not downgrade `@changesets/cli`
 below 3.0.0** — on 2.x the next `pnpm run version` silently ships a major. The
 measurements behind both rules are in `.changeset/AGENTS.md`.
@@ -189,16 +188,15 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    **One runtime does not mean one protocol.** A graph holds exactly one
    runtime, and that is what bounds the process — not what bounds HTTP itself.
    `@btravstack/http-server`'s `HttpHandler` is a **set port** of
-   `{ prefix, handle }`, and five answerers ship: oRPC (`orpc()`, from
-   `http()`), oRPC's conventional OpenAPI routes (`openApiRoutes()`, opt-in),
-   htmx fragments (`htmx()`, serving `Html` — an object escaped by
-   default), GraphQL Yoga (`graphql()`, from the optional `/graphql` subpath)
-   and the login (`oidc()`, from `@btravstack/http-server/oidc`,
-   which walks a browser through the authorization-code flow and seals the
-   session cookie). The application builds its GraphQL schema with Pothos and
-   exports the generated SDL separately for clients (#179, #435).
-   Every member is an answerer under one runtime, routed by longest matching
-   prefix, because three runtimes is the one thing this thesis forbids.
+   `{ prefix, handle }`, routed by longest matching prefix. Protocol packages
+   contribute members: `@btravstack/orpc-server` supplies oRPC and opt-in
+   OpenAPI routes, `@btravstack/htmx-server` supplies escaped HTML fragments,
+   and `@btravstack/graphql-server` supplies Yoga over a caller-built schema.
+   The OIDC login remains in `@btravstack/http-server/oidc`. These packages
+   declare their peers explicitly. The order API serves oRPC and htmx in one
+   process; the GraphQL gateway is another process and calls it through
+   `order-api-client`, with no oRPC server dependency. Its Pothos schema emits
+   SDL in `order-graphql-contract` (#179, #435).
 
    **"HTML" here means fragments, and only fragments** — what that excludes,
    and which issues hold the rest, is in
@@ -870,7 +868,7 @@ in its place.
   the hop out of `__tests__/` rides the name (`"../workflows"`) rather than
   the URL.
 
-- **`examples/` is part of the gate, not a folder of illustrations.** All fifteen
+- **`examples/` is part of the gate, not a folder of illustrations.** All seventeen
   workspaces run under the same six commands as the kernel, and an example that
   stops compiling fails CI exactly as `packages/core` would. The type-level gates
   they pin, and the `pnpm dev` local loop, are in `examples/AGENTS.md`.
@@ -978,7 +976,7 @@ in its place.
 - **`packages/core`'s specs use `@btravstack/testing` without depending on
   it** — that would be a package-graph cycle turbo refuses — so four configs
   carry the wiring and move together: see `packages/testing/AGENTS.md`.
-- `declarationMap: false` on all fifteen published packages — the published
+- `declarationMap: false` on all eighteen published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **A deployment extends `@btravstack/tsconfig/app.json`; everything that
   exports something keeps `base.json`.** The two differ in one thing,

@@ -1,11 +1,11 @@
 ---
 title: Packages and install
-description: The fifteen published packages grouped by the job each does, who peers on what, and one install command per kind of deployment.
+description: The eighteen published packages grouped by the job each does, who peers on what, and one install command per kind of deployment.
 ---
 
 # Packages and install
 
-> **Reference.** The fifteen published packages, grouped by the job each does,
+> **Reference.** The eighteen published packages, grouped by the job each does,
 > their peer-dependency matrix and the install command for each kind of
 > deployment. For _why_ everything is a peer
 > dependency, see [Peer dependencies](/explanation/peer-dependencies); for what
@@ -20,15 +20,15 @@ its page:
 | ---------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | **Domain modelling**                           | `entity`                                                | When the application benefits from validated domain entities and aggregate decisions. |
 | **The kernel and its plumbing**                | `core`, `di`, `config`, `contract`                      | Always — `core` boots the process, and the other three are what it boots.             |
-| **Servers**, one per transport                 | `http-server`, `temporal-worker`, `amqp-worker`         | One, and exactly one: a process boots a single runtime.                               |
+| **Runtime servers**                            | `http-server`, `temporal-worker`, `amqp-worker`         | One, and exactly one: a process boots a single runtime.                               |
 | **Capability ports**, a contract plus adapters | `observability`, `cache`, `mailer`, `storage`, `outbox` | When the application needs that capability. Each is independent of the others.        |
+| **HTTP answerers**                             | `orpc-server`, `htmx-server`, `graphql-server`          | Add the protocols this deployment serves.                                             |
 | **The harness**                                | `testing`                                               | As a dev dependency, always.                                                          |
 
 **The shortest real application is `core` + `di` + `config` + one server.**
 Everything else arrives when something needs it.
 
-The three servers are named for the half they implement. `http-server` serves
-an oRPC contract; `temporal-worker` and `amqp-worker` run the worker side of
+The three servers are named for the half they implement. `http-server` owns the Node listener; `orpc-server` serves an oRPC contract; `temporal-worker` and `amqp-worker` run the worker side of
 their platforms — "worker" rather than "server" because that is those
 ecosystems' own word, and because `temporal-server` already means the Temporal
 Service itself. **The calling halves are not written yet**; when they are they
@@ -50,7 +50,10 @@ at all.
 | `@btravstack/prisma`          | A Prisma client whose pool is the application scope's: `DATABASE_URL` through `Config`, the Postgres driver adapter, and a resourceful provider. The client type stays yours — it is generated from your schema.                          | [@btravstack/prisma](/reference/prisma)                                                                                                                                                          |
 | `@btravstack/outbox`          | The transactional outbox's relay: publishes committed facts in outbox order through a publisher you provide, with a per-tenant claim so replicas take turns rather than race for the same rows, a lag health check, and a Prisma 8 store. | [@btravstack/outbox](/reference/outbox)                                                                                                                                                          |
 | `@btravstack/observability`   | The kernel's `Logger`, `Tracer` and `Meter` ports, implemented: a logger correlated with the ambient unit, a dependency-free JSON sink, pino behind one subpath and OpenTelemetry behind another, the kernel's events as lines.           | [@btravstack/observability](/reference/observability)                                                                                                                                            |
-| `@btravstack/http-server`     | The HTTP starter: oRPC over `node:http`, one unit per request, `PORT`/`HOST` bound onto `HttpConfig`.                                                                                                                                     | [@btravstack/http-server](/reference/http-server)                                                                                                                                                |
+| `@btravstack/http-server`     | The protocol-neutral Node HTTP runtime, one unit per request, `PORT`/`HOST` bound onto `HttpConfig`.                                                                                                                                      | [@btravstack/http-server](/reference/http-server)                                                                                                                                                |
+| `@btravstack/orpc-server`     | The oRPC answerer, `defineHttp`, `HttpModule`, and OpenAPI routes.                                                                                                                                                                        | [Serve oRPC](/how-to/serve-orpc-over-http)                                                                                                                                                       |
+| `@btravstack/htmx-server`     | Escaped HTML fragments under the HTTP runtime.                                                                                                                                                                                            | [Serve fragments](/how-to/serve-htmx-fragments)                                                                                                                                                  |
+| `@btravstack/graphql-server`  | Yoga answerer for any `GraphQLSchema`, with explicit GraphQL peers.                                                                                                                                                                       | [Serve GraphQL](/how-to/serve-graphql)                                                                                                                                                           |
 | `@btravstack/temporal-worker` | The Temporal starter: a Worker as the runtime, one unit per activity attempt, a drain that honours the kernel's deadline.                                                                                                                 | [@btravstack/temporal-worker](/reference/temporal-worker)                                                                                                                                        |
 | `@btravstack/amqp-worker`     | The AMQP starter: the handlers as a port, one unit per delivery, ack/nack/dead-letter routed by the contract.                                                                                                                             | [@btravstack/amqp-worker](/reference/amqp-worker)                                                                                                                                                |
 | `@btravstack/testing`         | The test harness, a **dev dependency**: `bootFixture` boots and stops inside a vitest fixture, `tapped` reaches a running service, plus `testRuntime` and `createFakeClock`.                                                              | [@btravstack/testing](/reference/testing)                                                                                                                                                        |
@@ -78,23 +81,26 @@ third-party library a starter drives. An application installs each of them
 once, so `di`'s port identity and `unthrown`'s `isResult` compare against a
 single copy.
 
-| Package                       | Peers on                                                                                                                                                                                                    |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@btravstack/entity`          | `zod`, `unthrown`, `@unthrown/standard-schema`                                                                                                                                                              |
-| `@btravstack/di`              | `unthrown`                                                                                                                                                                                                  |
-| `@btravstack/config`          | `@btravstack/di`, `unthrown`                                                                                                                                                                                |
-| `@btravstack/core`            | `@btravstack/config`, `@btravstack/di`, `unthrown`                                                                                                                                                          |
-| `@btravstack/observability`   | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `pino`, `@opentelemetry/api`, `@opentelemetry/sdk-node` as **optional** peers, each needed only by the subpath that imports it |
-| `@btravstack/cache`           | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `redis` as an **optional** peer, behind the `/redis` subpath                                                                   |
-| `@btravstack/mailer`          | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `nodemailer` as an **optional** peer, behind the `/smtp` subpath                                                               |
-| `@btravstack/storage`         | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` as **optional** peers, behind the `/s3` subpath                         |
-| `@btravstack/prisma`          | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@prisma/orm-postgres`                                                                                                              |
-| `@btravstack/outbox`          | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `@prisma/orm-postgres` as an **optional** peer, behind the `/prisma` subpath                                                   |
-| `@btravstack/contract`        | nothing required — and `zod` as an **optional** peer, behind the `/zod` subpath, so a client can take a contract without the server                                                                         |
-| `@btravstack/http-server`     | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `@btravstack/contract`, `unthrown`, `@orpc/server`, `@orpc/contract`, `@unthrown/orpc`                                                          |
-| `@btravstack/temporal-worker` | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`, `@temporal-contract/worker`, `@temporal-contract/contract`      |
-| `@btravstack/amqp-worker`     | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@amqp-contract/worker`, `@opentelemetry/api`                                                                                       |
-| `@btravstack/testing`         | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and **not** `vitest`: `bootFixture` is a plain `(ctx, use) => Promise<void>`, vitest's fixture protocol met without the import     |
+| Package                       | Peers on                                                                                                                                                                                                                                       |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@btravstack/entity`          | `zod`, `unthrown`, `@unthrown/standard-schema`                                                                                                                                                                                                 |
+| `@btravstack/di`              | `unthrown`                                                                                                                                                                                                                                     |
+| `@btravstack/config`          | `@btravstack/di`, `unthrown`                                                                                                                                                                                                                   |
+| `@btravstack/core`            | `@btravstack/config`, `@btravstack/di`, `unthrown`                                                                                                                                                                                             |
+| `@btravstack/observability`   | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `pino`, `@opentelemetry/api`, `@opentelemetry/sdk-node` as **optional** peers, each needed only by the subpath that imports it                                    |
+| `@btravstack/cache`           | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `redis` as an **optional** peer, behind the `/redis` subpath                                                                                                      |
+| `@btravstack/mailer`          | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `nodemailer` as an **optional** peer, behind the `/smtp` subpath                                                                                                  |
+| `@btravstack/storage`         | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` as **optional** peers, behind the `/s3` subpath                                                            |
+| `@btravstack/prisma`          | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@prisma/orm-postgres`                                                                                                                                                 |
+| `@btravstack/outbox`          | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `@prisma/orm-postgres` as an **optional** peer, behind the `/prisma` subpath                                                                                      |
+| `@btravstack/contract`        | nothing required — and `zod` as an **optional** peer, behind the `/zod` subpath, so a client can take a contract without the server                                                                                                            |
+| `@btravstack/http-server`     | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `@btravstack/contract`, `unthrown`; `jose` and `openid-client` remain optional for auth subpaths                                                                                   |
+| `@btravstack/orpc-server`     | `@btravstack/http-server`, `@btravstack/htmx-server`, `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `@btravstack/contract`, `unthrown`, `@orpc/server`, `@orpc/contract`, `@orpc/openapi`, `@orpc/json-schema`, `@unthrown/orpc` |
+| `@btravstack/htmx-server`     | `@btravstack/http-server`, `@btravstack/core`, `@btravstack/di`, `@btravstack/contract`, `unthrown`                                                                                                                                            |
+| `@btravstack/graphql-server`  | `@btravstack/http-server`, `@btravstack/di`, `@btravstack/contract`, `unthrown`, `graphql`, `graphql-yoga`                                                                                                                                     |
+| `@btravstack/temporal-worker` | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`, `@temporal-contract/worker`, `@temporal-contract/contract`                                         |
+| `@btravstack/amqp-worker`     | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@amqp-contract/worker`, `@opentelemetry/api`                                                                                                                          |
+| `@btravstack/testing`         | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and **not** `vitest`: `bootFixture` is a plain `(ctx, use) => Promise<void>`, vitest's fixture protocol met without the import                                        |
 
 `@btravstack/core`, `@btravstack/config`, `@btravstack/di`,
 `@btravstack/testing` and `@btravstack/observability` have **no runtime
@@ -130,8 +136,15 @@ does, the first package alone suffices.
 ::: code-group
 
 ```sh [HTTP API]
-pnpm add @btravstack/http-server @btravstack/core @btravstack/config @btravstack/di \
-  @btravstack/contract unthrown @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @unthrown/orpc@^0.2.0
+pnpm add @btravstack/http-server @btravstack/orpc-server @btravstack/htmx-server \
+  @btravstack/core @btravstack/config @btravstack/di @btravstack/contract unthrown \
+  @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 \
+  @orpc/openapi@2.0.0-beta.28 @orpc/json-schema@2.0.0-beta.28 @unthrown/orpc@^0.2.0
+```
+
+```sh [GraphQL gateway]
+pnpm add @btravstack/http-server @btravstack/graphql-server @btravstack/core \
+  @btravstack/config @btravstack/di @btravstack/contract unthrown graphql@^17.0.0 graphql-yoga@^5.24.1
 ```
 
 ```sh [Temporal worker]
@@ -166,7 +179,7 @@ pnpm add @btravstack/di unthrown
 :::
 
 Most published packages require Node `>=22`; `http-server` and `prisma`
-require `>=22.12`, while `amqp-worker` and `temporal-worker` require
+require `>=22.12`; `graphql-server` requires `>=22.15`, while `amqp-worker` and `temporal-worker` require
 `>=22.22`. Each floor is checked against that package's required peers. The
 repository's own development floor is `>=22.22`.
 
@@ -210,22 +223,22 @@ What is worth stating here rather than derived is the **subpath** shape, since
 a subpath is a decision a reader acts on: it exists so a heavy dependency can
 stay an **optional peer** that a consumer who never imports it never installs.
 
-| Subpath                                | What it holds                                   | The optional peer it keeps out       |
-| -------------------------------------- | ----------------------------------------------- | ------------------------------------ |
-| `@btravstack/contract/zod`             | the cursor page's schema                        | `zod`                                |
-| `@btravstack/observability/pino`       | `pinoSink`                                      | `pino`                               |
-| `@btravstack/observability/otel`       | `otel`, `UnitSpanModule`                        | the `@opentelemetry/*` SDK           |
-| `@btravstack/cache/redis`              | the Redis adapter                               | `redis`                              |
-| `@btravstack/mailer/smtp`              | the SMTP adapter                                | `nodemailer`                         |
-| `@btravstack/storage/s3`               | the S3 adapter                                  | the two `@aws-sdk` packages          |
-| `@btravstack/prisma/rls`               | row-level security, pinned to the unit's tenant | —                                    |
-| `@btravstack/outbox/prisma`            | the Prisma 8 store                              | `@prisma/orm-postgres`               |
-| `@btravstack/http-server/openapi`      | `openApiDocument`                               | `@orpc/openapi`, `@orpc/json-schema` |
-| `@btravstack/http-server/jwt`          | `jwtAuthenticator`                              | `jose`                               |
-| `@btravstack/http-server/session`      | `sessionCodec`, `sessionAuthenticator`          | —                                    |
-| `@btravstack/http-server/oidc`         | `oidc`, the login answerer                      | `openid-client`                      |
-| `@btravstack/temporal-worker/schedule` | `ensureSchedule`                                | `@temporal-contract/client`          |
-| `@btravstack/testing/jwt`              | `localIssuer`, the issuer a test signs with     | `jose`                               |
+| Subpath                                | What it holds                                   | The optional peer it keeps out           |
+| -------------------------------------- | ----------------------------------------------- | ---------------------------------------- |
+| `@btravstack/contract/zod`             | the cursor page's schema                        | `zod`                                    |
+| `@btravstack/observability/pino`       | `pinoSink`                                      | `pino`                                   |
+| `@btravstack/observability/otel`       | `otel`, `UnitSpanModule`                        | the `@opentelemetry/*` SDK               |
+| `@btravstack/cache/redis`              | the Redis adapter                               | `redis`                                  |
+| `@btravstack/mailer/smtp`              | the SMTP adapter                                | `nodemailer`                             |
+| `@btravstack/storage/s3`               | the S3 adapter                                  | the two `@aws-sdk` packages              |
+| `@btravstack/prisma/rls`               | row-level security, pinned to the unit's tenant | —                                        |
+| `@btravstack/outbox/prisma`            | the Prisma 8 store                              | `@prisma/orm-postgres`                   |
+| `@btravstack/orpc-server/openapi`      | `openApiDocument`                               | included as required `orpc-server` peers |
+| `@btravstack/http-server/jwt`          | `jwtAuthenticator`                              | `jose`                                   |
+| `@btravstack/http-server/session`      | `sessionCodec`, `sessionAuthenticator`          | —                                        |
+| `@btravstack/http-server/oidc`         | `oidc`, the login answerer                      | `openid-client`                          |
+| `@btravstack/temporal-worker/schedule` | `ensureSchedule`                                | `@temporal-contract/client`              |
+| `@btravstack/testing/jwt`              | `localIssuer`, the issuer a test signs with     | `jose`                                   |
 
 Two of those keep no peer out and are subpaths for a different reason: the
 surface is separable and most graphs do not want it. `/session` is the cookie

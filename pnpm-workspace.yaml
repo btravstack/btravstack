@@ -170,6 +170,10 @@ catalogs:
 # below reaches us only through dev/build tooling (never a published package's
 # runtime deps). Each selector is version-scoped so only the affected line moves.
 overrides:
+  # GHSA-7mx3-vvmw-hjmv: Yoga 5.24.1 resolves the vulnerable 11.x line of
+  # @graphql-tools/utils. The patched release is 12.x; the GraphQL suites
+  # verify Yoga against it until Yoga raises its own dependency range.
+  "graphql-yoga>@graphql-tools/utils": "12.0.3"
   # GHSA-fx2h-pf6j-xcff, GHSA-4w7w-66w2-5vf9, GHSA-v6wh-96g9-6wx3: vite
   # `server.fs.deny` bypasses (dev-server only; the docs ship as static HTML).
   # Reaches us via docs > vitepress > vite. vitepress 1.6.x pins vite ^5.4.14 and

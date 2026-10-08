@@ -1,60 +1,58 @@
 ---
 title: Serve GraphQL with Yoga and Pothos
-description: Mount a code-first GraphQL schema beside oRPC and htmx under one HTTP runtime.
+description: Run a code-first GraphQL gateway as a separate HTTP process backed by a typed oRPC client.
 ---
 
 # Serve GraphQL with Yoga and Pothos
 
-Install `graphql` and `graphql-yoga` alongside `@btravstack/http-server`. Add
-`@pothos/core` when writing the schema in TypeScript. The optional
-`@btravstack/http-server/graphql` subpath owns Yoga's Node HTTP integration;
-the application supplies a `GraphQLSchema`, so schemas from other builders work
-too.
+> **How-to.** Build a GraphQL schema in TypeScript, run it in its own HTTP
+> process, and call a backend through a typed client.
 
-The runnable [order API](https://github.com/btravstack/btravstack/blob/main/examples/order-api/src/graphql-schema.ts) builds
-its query and mutation with Pothos. Its [composition root](https://github.com/btravstack/btravstack/blob/main/examples/order-api/src/module.ts)
-mounts that schema at `/graphql` beside its existing oRPC and htmx answerers:
+Install `@btravstack/http-server`, `@btravstack/graphql-server`, `graphql`, and
+`graphql-yoga`. Add `@pothos/core` when building the schema in TypeScript.
+`@btravstack/graphql-server` accepts any `GraphQLSchema`; Pothos is the choice
+of this example, not a framework requirement.
 
-<!-- doctest: skip — excerpt of examples/order-api/src/module.ts, compiled by the example's typecheck -->
+The [GraphQL gateway](https://github.com/btravstack/btravstack/blob/main/examples/order-graphql-api/src/module.ts)
+boots its own `HttpRuntime` and mounts the schema at `/graphql`. Its
+[resolvers](https://github.com/btravstack/btravstack/blob/main/examples/order-graphql-api/src/graphql-schema.ts)
+call the order API through a
+[typed oRPC client](https://github.com/btravstack/btravstack/blob/main/examples/order-api-client/src/index.ts).
+The gateway and order API are separate processes. The gateway needs the HTTP
+runtime and GraphQL packages; it does not install the oRPC server.
 
-```ts
-import { graphql } from "@btravstack/http-server/graphql";
+`graphql(defineAuth(), { schema })` makes the mount public. Pass `requires` to
+authenticate the whole mount through the shared HTTP auth registry, and pass
+`unit` to inject request-scoped services into resolvers. Declare the selected
+unit modules with `units: { anonymous: RequestModule }` in the same
+`graphql()` call, and pass that same record to `httpServer({ unit: units })` so
+the runtime can report its units and apply test overrides. The compiler then
+refuses a port that module does not export. In a
+manual composition, include `...answerer.authenticators` in `provides` when
+the mount has `requires`. The resolver context
+receives `principal`, `unit`, `signal`, and the Node `incoming` request. The
+example forwards its bearer header to the backend, which enforces the order
+contract's authentication and authorization.
 
-graphql(api, {
-  schema: orderGraphqlSchema,
-  requires: [{ user: [] }],
-  unit: { find: FindOrder, place: PlaceOrder },
-});
-```
+The application maps modeled backend errors into GraphQL errors with an
+`extensions.code`. Yoga masks unexpected resolver failures. A GraphQL error
+normally retains HTTP 200; the framework does not impose a status or error
+schema on application outcomes. One HTTP request is one unit, closed after the
+response finishes and included in the runtime's drain.
 
-Put the resulting provider in `HttpModule`'s `provides` array. A standalone
-GraphQL process can provide it beside `httpServer()` and export `HttpHandler`
-and `HttpRuntime`. Both forms use one listener and the existing longest-prefix
-routing. `prefix` changes the mount; its default is `/graphql`.
+Yoga's wildcard CORS default is disabled here. `HTTP_CORS_ORIGIN` sets the
+allowed origin; `cors` on `graphql()` can specify Yoga's full policy, including
+credentials, or `false` to disable it explicitly. Yoga's console logger is
+disabled so an unexpected resolver error cannot print sensitive details
+outside the application's logging path. Pass Yoga `plugins` for validation
+rules, depth or complexity limits, and other schema-specific controls before
+exposing expensive fields to untrusted callers.
 
-`requires` protects the **whole mount** before Yoga executes an operation.
-Its schemes and scopes use the same `defineHttp` registry, `RequiresGate`, and
-principal resolution as the other answerers. Omit it for a public schema.
-The resolver context receives `principal`, `unit`, and `signal`. The unit is
-forked once per HTTP request, stays open until its response completes, and
-participates in the runtime's readiness and drain. Place resource-specific
-authorization in a resolver or application service.
+Generate the SDL with
+`pnpm --filter @btravstack/example-order-graphql-api graphql:schema`. The
+checked-in [schema.graphql](https://github.com/btravstack/btravstack/blob/main/examples/order-graphql-contract/schema.graphql)
+is consumable without the gateway or Yoga. Its freshness test detects schema
+drift. Expose live introspection or a contract UI according to the deployment's
+access policy; the answerer mounts no GraphiQL page by default.
 
-The application maps modeled `Result` errors at the resolver boundary. The
-example maps `DuplicateOrder` to a `GraphQLError` with `extensions.code` set
-to `CONFLICT`; Yoga puts it in the GraphQL `errors` array. GraphQL execution
-errors normally retain HTTP 200. Unexpected resolver failures are masked by
-Yoga. The framework does not impose HTTP statuses or a GraphQL error schema
-on application outcomes.
-
-The Pothos source prints an SDL artifact with
-`pnpm --filter @btravstack/example-order-api graphql:schema`. The checked-in
-[`order-graphql-contract/schema.graphql`](https://github.com/btravstack/btravstack/blob/main/examples/order-graphql-contract/schema.graphql)
-is a separate client-consumable workspace with no HTTP server or Yoga peer.
-Its test compares the artifact to the current schema, so a schema edit must
-regenerate it before CI. Consumers can feed that SDL to GraphQL codegen and
-schema-diff tools without booting the server. Expose a live schema endpoint or
-GraphiQL only when the deployment has an audience and access policy for it;
-the answerer mounts neither by default.
-
-Subscriptions and GraphQL-over-WebSocket are outside this answerer's scope.
+Subscriptions and GraphQL over WebSocket are outside this answerer's scope.

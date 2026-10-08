@@ -7,7 +7,7 @@ description: Give each slice of a large API its own contract fragment and contro
 import { Logger, Meter, Tracer } from "@btravstack/core";
 import { otel } from "@btravstack/observability/otel";
 import { Module } from "@btravstack/di";
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
 import { P } from "unthrown";

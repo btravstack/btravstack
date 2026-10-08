@@ -1,0 +1,111 @@
+{
+  "name": "@btravstack/orpc-server",
+  "version": "0.19.0",
+  "description": "The oRPC answerer and OpenAPI adapter for @btravstack/http-server",
+  "keywords": [
+    "http",
+    "orpc",
+    "server",
+    "typescript"
+  ],
+  "homepage": "https://github.com/btravstack/btravstack#readme",
+  "bugs": {
+    "url": "https://github.com/btravstack/btravstack/issues"
+  },
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/btravstack/btravstack.git",
+    "directory": "packages/orpc-server"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./openapi": {
+      "import": {
+        "types": "./dist/openapi.d.mts",
+        "default": "./dist/openapi.mjs"
+      },
+      "require": {
+        "types": "./dist/openapi.d.cts",
+        "default": "./dist/openapi.cjs"
+      }
+    },
+    "./package.json": "./package.json",
+    "./internal": {
+      "import": {
+        "types": "./dist/internal.d.mts",
+        "default": "./dist/internal.mjs"
+      },
+      "require": {
+        "types": "./dist/internal.d.cts",
+        "default": "./dist/internal.cjs"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts src/openapi.ts src/internal.ts --format cjs,esm --dts --clean",
+    "dev": "tsdown src/index.ts src/openapi.ts src/internal.ts --format cjs,esm --dts --watch",
+    "test": "vitest run --coverage",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit -p tsconfig.test-d.json"
+  },
+  "devDependencies": {
+    "@btravstack/config": "workspace:*",
+    "@btravstack/contract": "workspace:*",
+    "@btravstack/core": "workspace:*",
+    "@btravstack/di": "workspace:*",
+    "@btravstack/htmx-server": "workspace:*",
+    "@btravstack/http-server": "workspace:*",
+    "@btravstack/tsconfig": "catalog:",
+    "@orpc/client": "catalog:",
+    "@orpc/contract": "catalog:",
+    "@orpc/json-schema": "catalog:",
+    "@orpc/openapi": "catalog:",
+    "@orpc/server": "catalog:",
+    "@types/node": "catalog:",
+    "@unthrown/orpc": "catalog:",
+    "@unthrown/vitest": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "openid-client": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "typescript-consumer": "catalog:",
+    "unthrown": "catalog:",
+    "vitest": "catalog:",
+    "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "@btravstack/config": "workspace:^",
+    "@btravstack/contract": "workspace:^",
+    "@btravstack/core": "workspace:^",
+    "@btravstack/di": "workspace:^",
+    "@btravstack/htmx-server": "workspace:^",
+    "@btravstack/http-server": "workspace:^",
+    "@orpc/contract": "^2.0.0-beta.28",
+    "@orpc/json-schema": "^2.0.0-beta.28",
+    "@orpc/openapi": "^2.0.0-beta.28",
+    "@orpc/server": "^2.0.0-beta.28",
+    "@unthrown/orpc": "^0.2.0",
+    "unthrown": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

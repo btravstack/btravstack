@@ -45,6 +45,14 @@ const allowed: Readonly<Record<string, string>> = {
     "the member a hand-rolled cookie-reading surface contributes so `csrf` defaults on; the shipped ones contribute it internally and no example writes a scheme of its own",
   "@btravstack/http-server:principalPort":
     "`defineHttp` mints one per declared scheme, which is how every example reaches it; exported for a unit module written without `defineHttp`",
+  "@btravstack/http-server:authenticatorPort":
+    "`defineAuth` mints this port for each declared scheme; exported for custom HTTP answerers that declare authentication requirements themselves",
+  "@btravstack/http-server:DEFAULT_HEADERS_TIMEOUT_MS":
+    "the shared HTTP test fixture reads this documented runtime default to verify configuration",
+  "@btravstack/http-server:DEFAULT_REQUEST_TIMEOUT_MS":
+    "the shared HTTP test fixture reads this documented runtime default to verify configuration",
+  "@btravstack/http-server:_internal_httpRuntime":
+    "the shared HTTP test fixture mounts the raw runtime to exercise listener behavior independently of answerers",
   "@btravstack/prisma:qualify":
     "the SQLSTATE triage `tryQuery` is built on, exported for an adapter whose query runs outside `tryQuery`; `result.spec.ts` exercises it through `tryQuery`",
 };

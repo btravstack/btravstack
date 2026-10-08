@@ -1,0 +1,247 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
+
+import { Provider } from "@btravstack/di";
+import { principalOf, resolveScheme, type Resolved } from "@btravstack/http-server/internal";
+import { HttpHandler, pathUnder, send } from "@btravstack/http-server/internal";
+import { HttpConfig } from "@btravstack/http-server/internal";
+import { HttpUnit } from "@btravstack/http-server/internal";
+import { forLocation, returnTo } from "@btravstack/http-server/internal";
+import { forkUnit } from "@btravstack/http-server/internal";
+import { Err, Ok, P, fromExecutor, type AsyncResult } from "unthrown";
+
+import { matchPath } from "./fragments.js";
+import { HtmxFragmentsPort, type FragmentAnswer } from "./htmx-route.js";
+
+export type HtmxOptions = {
+  /** Where fragments are mounted. Default `/`. */
+  readonly prefix?: `/${string}` | undefined;
+  /**
+   * The login ROUTE — the path the login answerer serves, `/auth/login` for an
+   * `oidc({ prefix: "/auth" })`, not the prefix it is mounted under. Set it and
+   * a route whose `requires` resolves `Unauthenticated` sends the caller there
+   * carrying `?return=` — `303 Location` for a navigating browser, `401
+   * HX-Redirect` for a request htmx made. Unset, that route answers a bare
+   * `401`, and an under-scoped caller answers `403` either way.
+   */
+  readonly login?: `/${string}` | undefined;
+};
+
+/**
+ * The htmx starter: fragments, as ONE answerer under the HTTP runtime. A
+ * request no route claims — outside every path, or on a path whose only
+ * route names a different method — resolves unwritten and the runtime
+ * answers its own `404`.
+ *
+ * `routes` is matched in the ORDER the composition root's piece array gave
+ * them, first match wins — and that ordering is a SECURITY property, not
+ * only a routing one. A public route declared BEFORE a requires-carrying
+ * route whose path can also match the same request answers it itself, and no
+ * authentication ever runs: two routes are two port ids, minted from their
+ * own method and path, so di has nothing to see collide, and a specificity
+ * rule is deliberately not provided (the ordering is the composition root's,
+ * on purpose). Declare a route that requires authentication before any
+ * public route whose path could also match its requests.
+ */
+export const htmx = (options: HtmxOptions = {}) => {
+  const prefix = options.prefix ?? "/";
+  return Provider.member(HttpHandler)({
+    inject: { fragments: HtmxFragmentsPort, config: HttpConfig, unit: HttpUnit },
+    sync: ({ fragments, config, unit: units }) => ({
+      prefix,
+      handle: async (request, response, _signal, host) => {
+        const matched = matchRoute(
+          fragments.routes,
+          request.method,
+          pathUnder(request.url, prefix),
+        );
+        // No route claims this request: resolve unwritten so the runtime's own
+        // 404 answers, rather than stealing it from an answerer mounted deeper.
+        if (matched === undefined) return;
+        const { route, params } = matched;
+
+        let principal: unknown;
+        let authenticated: Resolved | undefined;
+        if (route.requirements !== undefined) {
+          // Exhaustive on `resolveScheme`'s Err union: a third case added there
+          // fails this compile rather than silently falling through to 401.
+          const resolved = await resolveScheme(
+            route.requirements,
+            fragments.authenticators,
+            request.headers,
+          ).mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("Unauthenticated"), (): Refusal => refusalOf(options.login, request.url))
+              // Never sent to log in: a caller who IS logged in and lacks the
+              // scope would come straight back to the same 403.
+              .with(P.tag("UnderScoped"), (): Refusal => ({ status: 403 })),
+          );
+          if (resolved.isDefect()) {
+            // oxlint-disable-next-line unthrown/no-throw -- the only way to hand a defect back to the runtime's own 500 fallback; `handle` has no returned-error channel to carry it
+            throw resolved.cause;
+          }
+          if (resolved.isErr()) {
+            refuseAuth(request, response, resolved.error);
+            return;
+          }
+          authenticated = resolved.value;
+          principal = principalOf(route.requirements, resolved.value);
+        }
+
+        let input: unknown = {};
+        if (request.method === "POST") {
+          const read = await readBody(request, config.bodyLimit);
+          if (read.isDefect()) {
+            // oxlint-disable-next-line unthrown/no-throw -- same as above: a genuine stream fault, not a modeled outcome
+            throw read.cause;
+          }
+          if (read.isErr()) {
+            send(response, 413);
+            return;
+          }
+          const decoded = Object.fromEntries(new URLSearchParams(read.value));
+          if (route.input === undefined) {
+            input = decoded;
+          } else {
+            const validated = await route.input["~standard"].validate(decoded);
+            if (validated.issues !== undefined) {
+              send(response, 422);
+              return;
+            }
+            input = validated.value;
+          }
+        }
+
+        // Forked here — after authentication has succeeded and the body has
+        // validated, immediately before the handler — so a refused or malformed
+        // request never opens a scope: the same point in the request's life
+        // oRPC's own `unitScope` forks at, since `principalMiddleware`
+        // short-circuits without calling `next()` on a refusal, and `unitScope`
+        // sits inside it.
+        const unit = await forkUnit(host, units, fragments.principals, authenticated, route.unit);
+        if (unit.isDefect()) {
+          send(response, 500);
+          return;
+        }
+
+        const rendered = await route.handle({ principal, unit: unit.get() }, params, input).get();
+        // Unconditional, not keyed on `route.requirements`: a public route can
+        // still render caller- or resource-scoped HTML (a path parameter alone
+        // is enough), and this package has no way to know a route is safe to
+        // cache. A shared cache heuristically stores a bare 200 GET with no
+        // directive.
+        response.writeHead(200, {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        response.end(rendered.value);
+      },
+    }),
+  });
+};
+
+/** The route a request matches, and the parameters its path bound. */
+type Matched = {
+  readonly route: FragmentAnswer;
+  readonly params: Readonly<Record<string, string>>;
+};
+
+const matchRoute = (
+  routes: readonly FragmentAnswer[],
+  method: string | undefined,
+  path: string,
+): Matched | undefined => {
+  for (const route of routes) {
+    if (route.method !== method) continue;
+    const params = matchPath(route.path, path);
+    if (params !== undefined) return { route, params };
+  }
+  return undefined;
+};
+
+/**
+ * The body, read while enforcing `limit` as bytes arrive rather than after
+ * buffering it whole — the only shape that actually bounds memory. `0` is
+ * unbounded. Over the limit, bytes stop being kept but keep being drained
+ * (never `request.destroy()`): destroying an `IncomingMessage` destroys the
+ * SOCKET it arrived on, taking the response meant to carry the 413 down with
+ * it. A genuine stream fault settles the defect channel; nothing here models
+ * it, since it is a bug in the transport rather than an oversized caller.
+ *
+ * `request` may already be destroyed or ended by the time this subscribes —
+ * `handle` reaches here only after `await`ing authentication first for a
+ * marked route, and a client that aborts during that await leaves Node's own
+ * `abortIncoming` destroying the stream with no `'error'` listener attached
+ * to hear it, which SUPPRESSES the emit entirely (measured against Node's
+ * `_http_incoming`). Subscribing to a stream that already fired is this
+ * package's own documented footgun (`closedOf` in `http-runtime.ts`), and
+ * missing it here would leave `readBody`'s promise — and the request, its
+ * listeners and `chunks` — open for the process lifetime. The guard below,
+ * plus `'close'` (which still fires on a stream `'end'` already settled, but
+ * the once-only latch makes that a no-op), are what close it.
+ */
+const readBody = (request: IncomingMessage, limit: number): AsyncResult<string, "TooLarge"> =>
+  fromExecutor<string, "TooLarge">((settle, defect) => {
+    if (request.destroyed || request.readableEnded) {
+      settle(defect(new Error("the request stream ended before its body was read")));
+      return;
+    }
+    const chunks: Buffer[] = [];
+    let size = 0;
+    request.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      // `settle` is a once-only latch (unthrown's own guarantee), so an
+      // over-limit request keeps draining harmlessly through this same branch
+      // on every later chunk instead of needing to be unsubscribed.
+      if (limit !== 0 && size > limit) {
+        settle(Err("TooLarge"));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on("end", () => settle(Ok(Buffer.concat(chunks).toString("utf8"))));
+    request.on("error", (cause) => settle(defect(cause)));
+    request.on("close", () => settle(defect(new Error("the request closed before it ended"))));
+  });
+
+/** A refused caller's answer: a bare status, or where to send one with no session. */
+type Refusal = { readonly status: 401 | 403 } | { readonly login: string };
+
+const refusalOf = (login: `/${string}` | undefined, url: string | undefined): Refusal => {
+  if (login === undefined) return { status: 401 };
+  // Absolute-form targets carry an authority that must not become a return
+  // destination. Keep only their path and query; leave origin-form targets raw
+  // so `returnTo` still rejects a leading slash followed by a backslash.
+  const parsed = URL.parse(url ?? "");
+  const target =
+    parsed?.protocol === "http:" || parsed?.protocol === "https:"
+      ? `${parsed.pathname}${parsed.search}`
+      : url;
+  // `forLocation` on the mount, `encodeURIComponent` on the value: Node's
+  // header validator refuses every code point above U+00FF, so an
+  // application whose login route is not Latin-1 would `ERR_INVALID_CHAR`
+  // its own refusal. `forLocation` leaves `?`, `=` and an already-encoded
+  // `%` alone, which is why the query is built after it rather than run
+  // through it.
+  return { login: `${forLocation(login)}?return=${encodeURIComponent(returnTo(target))}` };
+};
+
+const refuseAuth = (request: IncomingMessage, response: ServerResponse, refusal: Refusal): void => {
+  if ("status" in refusal) {
+    send(response, refusal.status);
+    return;
+  }
+  // htmx follows a redirect inside the XHR and swaps the login page into
+  // whatever target the fragment named; `HX-Redirect` is how it is told to
+  // navigate the window instead. The status stays 401 there — the request was
+  // refused, and only the browser's own navigation is a redirect. `"true"`
+  // exactly: htmx sends that literal on every request it makes.
+  if (request.headers["hx-request"] === "true") {
+    send(response, 401, { "hx-redirect": refusal.login });
+    return;
+  }
+  // 303, not 302: `requires` is an option on `HtmxPost` too, and RFC 9110
+  // §15.4.3 leaves a 302's POST-to-GET change a MAY — a strict client would
+  // re-POST a form body at the login route. §15.4.4's 303 specifies the
+  // retrieval request instead.
+  send(response, 303, { location: refusal.login });
+};

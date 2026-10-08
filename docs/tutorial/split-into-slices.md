@@ -31,11 +31,8 @@ a `farewells` fragment beside it:
 // defineHttp — none of which this lesson changes.
 import { Config, Env } from "@btravstack/config";
 import { Module, Port, Provider } from "@btravstack/di";
-import {
-  HttpAuthenticator,
-  Unauthenticated,
-  defineHttp,
-} from "@btravstack/http-server";
+import { HttpAuthenticator, Unauthenticated } from "@btravstack/http-server";
+import { defineHttp } from "@btravstack/orpc-server";
 import { ErrAsync, OkAsync } from "unthrown";
 
 class Greeter extends Port("Greeter")<{
@@ -206,7 +203,7 @@ list of slices, plus what no slice owns:
 **`app.ts`**
 
 ```ts
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 
 import { api } from "./auth.js";
 import { contract } from "./contract.js";

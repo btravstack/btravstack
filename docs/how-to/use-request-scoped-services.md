@@ -41,7 +41,7 @@ import {
   Tenant,
 } from "@btravstack/example-order-application";
 import { OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
-import { defineHttp } from "@btravstack/http-server";
+import { defineHttp } from "@btravstack/orpc-server";
 
 export const auth = defineHttp({ authenticators: { user: userAuth } });
 

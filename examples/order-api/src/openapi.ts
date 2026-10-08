@@ -1,5 +1,5 @@
 import { contract } from "@btravstack/example-order-api-contract";
-import { openApiDocument, type OpenApiDocument } from "@btravstack/http-server/openapi";
+import { openApiDocument, type OpenApiDocument } from "@btravstack/orpc-server/openapi";
 import type { AsyncResult } from "unthrown";
 
 /**

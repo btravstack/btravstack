@@ -147,7 +147,7 @@ it. That is the whole idea.
 **`module.ts`** — the composition root. What the application is made of.
 
 ```ts
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 import { sessionCodec } from "@btravstack/http-server/session";
 
 export const OrdersApi = HttpModule("OrdersApi")({

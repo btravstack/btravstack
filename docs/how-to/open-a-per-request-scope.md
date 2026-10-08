@@ -146,7 +146,7 @@ import { FindOrder, OrderApplicationModule, Tenant } from "@btravstack/example-o
 import { OrderDatabase, OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
 import { Logger } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
-import { defineHttp } from "@btravstack/http-server";
+import { defineHttp } from "@btravstack/orpc-server";
 import { P } from "unthrown";
 import { userAuth } from "../../auth.js";
 import { RequestModule } from "../../request-scope.js";

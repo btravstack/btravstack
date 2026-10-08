@@ -1,4 +1,4 @@
-export { createOrderApiClient, type OrderApiClient } from "./client.js";
+export { createOrderApiClient, type OrderApiClient } from "@btravstack/example-order-api-client";
 export { OrderApi, orderRouter } from "./module.js";
 export { RequestModule, RequestSpan } from "./request-scope.js";
 export { CustomersSlice } from "./slices/customers/module.js";

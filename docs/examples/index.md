@@ -6,9 +6,8 @@ description: One clean-architecture order application booted under three runtime
 # Examples
 
 Annotated tours of the runnable packages under
-[`examples/`](https://github.com/btravstack/btravstack/tree/main/examples). Ten of
-them, none published, all of them in the gate: nine model **one order
-application, booted three ways**, and the tenth is the container's own.
+[`examples/`](https://github.com/btravstack/btravstack/tree/main/examples). Seventeen of
+them, none published, all of them in the gate: twelve belong to the order application and its four deployments, four are billing examples, and one is the container's own.
 
 **Unlike the snippets elsewhere in this guide, this code compiles and is
 covered by tests.** The two workers need something the others do not — a
@@ -29,7 +28,7 @@ Every arrow points inwards, and the contract tier stands to one side:
 depended upon, depending on nothing.
 
 ```text
-  order-api      order-temporal-worker      order-amqp-worker   ← one runtime each; one process each
+  order-api      order-graphql-api      order-temporal-worker      order-amqp-worker   ← one runtime each; one process each
        └────────────────┼──────────────────┘
                         ▼
              order-infrastructure                    ← Prisma, PostgreSQL, P-codes

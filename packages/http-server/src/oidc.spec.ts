@@ -1,3 +1,4 @@
+import { oidcEnv, it, sessionKeys } from "@btravstack/internal-http-fixtures";
 import {
   ORY_CLIENT_ID,
   ORY_CLIENT_SECRET,
@@ -7,7 +8,6 @@ import {
 } from "@btravstack/internal-test-infra/ory";
 import { describe, expect } from "vitest";
 
-import { oidcEnv, it, sessionKeys } from "./__tests__/test-fixtures.js";
 import { OidcUnreachable } from "./oidc.js";
 
 /**

@@ -1,5 +1,5 @@
 import { FindOrder } from "@btravstack/example-order-application";
-import { html } from "@btravstack/http-server";
+import { html } from "@btravstack/htmx-server";
 import { P } from "unthrown";
 
 import { api } from "../../auth.js";

@@ -54,8 +54,8 @@ RPC procedures. A document by itself does not add these routes.
 <!-- doctest: skip — routerProvider is the application's existing router -->
 
 ```ts
-import { HttpModule } from "@btravstack/http-server";
-import { openApiRoutes } from "@btravstack/http-server/openapi";
+import { HttpModule } from "@btravstack/orpc-server";
+import { openApiRoutes } from "@btravstack/orpc-server/openapi";
 
 export const App = HttpModule("App")({
   router: routerProvider,
@@ -85,7 +85,7 @@ must point at the OpenAPI mount, not `/rpc`.
 ```ts
 import { writeFile } from "node:fs/promises";
 import { contract } from "./contract.js";
-import { openApiDocument } from "@btravstack/http-server/openapi";
+import { openApiDocument } from "@btravstack/orpc-server/openapi";
 
 const document = (
   await openApiDocument(contract, {

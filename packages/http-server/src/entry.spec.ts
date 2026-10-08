@@ -1,8 +1,7 @@
 import { readFileSync } from "node:fs";
 
+import { it } from "@btravstack/internal-http-fixtures";
 import { describe, expect } from "vitest";
-
-import { it } from "./__tests__/test-fixtures.js";
 
 describe("the root entry point", () => {
   it("reaches no optional peer, so a consumer that never imports a subpath installs none", () => {

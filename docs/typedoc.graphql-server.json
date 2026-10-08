@@ -1,0 +1,7 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/graphql-server",
+  "entryPoints": ["../packages/graphql-server/src/index.ts"],
+  "tsconfig": "../packages/graphql-server/tsconfig.json",
+  "out": "api/graphql-server"
+}

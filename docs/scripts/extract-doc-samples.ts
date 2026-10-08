@@ -82,6 +82,9 @@ const classify = (imports: readonly string[]): Group => {
   if (
     has(
       "@btravstack/http-server",
+      "@btravstack/orpc-server",
+      "@btravstack/htmx-server",
+      "@btravstack/graphql-server",
       "@btravstack/contract",
       "@btravstack/observability",
       "zod",

@@ -201,7 +201,7 @@ typo'd key or a wrong output is a compile error here:
 **`src/router.ts`**
 
 ```ts
-import { defineHttp } from "@btravstack/http-server";
+import { defineHttp } from "@btravstack/orpc-server";
 import { OkAsync } from "unthrown";
 
 import { contract } from "./contract.js";
@@ -233,7 +233,7 @@ exports `HttpRuntime` — the one port the kernel resolves and drives:
 **`src/app.ts`**
 
 ```ts
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 
 import { GreetingModule } from "./greeter.js";
 import { greetingRouter } from "./router.js";

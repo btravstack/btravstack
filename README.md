@@ -139,7 +139,7 @@ pnpm add @btravstack/core @btravstack/config @btravstack/di unthrown
 For an HTTP API add the starter and its peers:
 
 ```sh
-pnpm add @btravstack/http-server @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @unthrown/orpc@^0.2.0
+pnpm add @btravstack/http-server @btravstack/orpc-server @btravstack/htmx-server @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @unthrown/orpc@^0.2.0
 ```
 
 Everything is a **peer dependency** — the application holds one copy of each,
@@ -190,7 +190,7 @@ TypeScript — the
 writes every one from an empty directory.
 
 ```ts
-import { defineHttp } from "@btravstack/http-server";
+import { defineHttp } from "@btravstack/orpc-server";
 import { P } from "unthrown";
 
 // One call mints every marker-typed HTTP entity; a public API declares no
@@ -237,7 +237,7 @@ export const ordersRouter = api.OrpcRouter(ordersContract)({
 
 ```ts
 import { runMain } from "@btravstack/core";
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 
 const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
@@ -264,7 +264,10 @@ deployments.
 | [`@btravstack/di`](./packages/di)                           | The container: ports, providers, modules, and wiring checked by the compiler. Depends on nothing but `unthrown`.                                                                                                    |
 | [`@btravstack/config`](./packages/config)                   | Configuration from the environment as providers: `Config.string/integer/port`, `Config.object`, `Config.provider`, `ConfigInvalid` → `78`.                                                                          |
 | [`@btravstack/testing`](./packages/testing)                 | The test harness: `bootFixture` for `test.extend`, `tapped` to read services out of a booted app, `testRuntime`, `createFakeClock`, `withApp`.                                                                      |
-| [`@btravstack/http-server`](./packages/http-server)         | The HTTP starter: oRPC over `node:http`, `OrpcRouter` / `HttpModule`, one unit per request, a drain that retires keep-alive connections.                                                                            |
+| [`@btravstack/http-server`](./packages/http-server)         | The Node HTTP runtime, request units, authentication and graceful drain.                                                                                                                                            |
+| [`@btravstack/orpc-server`](./packages/orpc-server)         | Contract-first oRPC answerer, `defineHttp`, `HttpModule` and OpenAPI routes.                                                                                                                                        |
+| [`@btravstack/htmx-server`](./packages/htmx-server)         | Escaped HTML fragments under the shared HTTP runtime.                                                                                                                                                               |
+| [`@btravstack/graphql-server`](./packages/graphql-server)   | GraphQL Yoga answerer for a supplied schema; the example runs it as a separate gateway.                                                                                                                             |
 | [`@btravstack/temporal-worker`](./packages/temporal-worker) | The Temporal starter: `TemporalActivities` / `TemporalWorkflowActivities` / `TemporalModule`, one unit per activity attempt, a drain that honours the kernel's deadline.                                            |
 | [`@btravstack/amqp-worker`](./packages/amqp-worker)         | The AMQP starter: `AmqpHandlers` / `AmqpHandler` / `AmqpModule`, one unit per delivery, one drain deadline.                                                                                                         |
 | [`@btravstack/contract`](./packages/contract)               | The contract tier a client and its server share: which schemes protect a route and which scopes each must grant, and one cursor page. Zero dependencies in the root.                                                |

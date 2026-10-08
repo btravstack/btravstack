@@ -41,6 +41,9 @@ const packages: readonly string[] = [
   "prisma",
   "outbox",
   "http-server",
+  "htmx-server",
+  "orpc-server",
+  "graphql-server",
   "temporal-worker",
   "amqp-worker",
 ];

@@ -6,7 +6,7 @@ description: The complete surface of @btravstack/observability — the Logger po
 <!-- doctest: prelude
 import { runMain, Logger, Meter, Tracer, type Attributes, type Level } from "@btravstack/core";
 import { Config } from "@btravstack/config";
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { createLogger, jsonSink, kernelEvents, logLevel, observability, type Line } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";

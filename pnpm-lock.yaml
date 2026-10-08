@@ -413,6 +413,7 @@ catalogs:
       version: 6.0.3
 
 overrides:
+  graphql-yoga>@graphql-tools/utils: 12.0.3
   vitepress>vite@<6.4.3: 6.4.3
   mysql2@<3.22.0: 3.24.2
   hono@<4.13.5: 4.13.7
@@ -437,6 +438,9 @@ importers:
       '@btravstack/commitlint':
         specifier: 'catalog:'
         version: 0.1.0(@commitlint/cli@21.2.3(@types/node@26.6.4)(conventional-commits-parser@7.1.2)(typescript@7.0.2))
+      '@btravstack/internal-http-fixtures':
+        specifier: workspace:*
+        version: link:internal/http-fixtures
       '@btravstack/lefthook':
         specifier: 'catalog:'
         version: 0.1.1(lefthook@2.1.16)
@@ -822,6 +826,9 @@ importers:
       '@btravstack/di':
         specifier: workspace:*
         version: link:../../packages/di
+      '@btravstack/example-order-api-client':
+        specifier: workspace:*
+        version: link:../order-api-client
       '@btravstack/example-order-api-contract':
         specifier: workspace:*
         version: link:../order-api-contract
@@ -834,12 +841,18 @@ importers:
       '@btravstack/example-order-infrastructure':
         specifier: workspace:*
         version: link:../order-infrastructure
+      '@btravstack/htmx-server':
+        specifier: workspace:*
+        version: link:../../packages/htmx-server
       '@btravstack/http-server':
         specifier: workspace:*
         version: link:../../packages/http-server
       '@btravstack/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@btravstack/orpc-server':
+        specifier: workspace:*
+        version: link:../../packages/orpc-server
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1
@@ -858,18 +871,9 @@ importers:
       '@orpc/openapi':
         specifier: 'catalog:'
         version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@pothos/core':
-        specifier: 'catalog:'
-        version: 4.15.1(graphql@17.0.2)
       '@unthrown/orpc':
         specifier: 'catalog:'
         version: 0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.12.0)
-      graphql:
-        specifier: 'catalog:'
-        version: 17.0.2
-      graphql-yoga:
-        specifier: 'catalog:'
-        version: 5.24.1(graphql@17.0.2)
       jose:
         specifier: 'catalog:'
         version: 6.2.12
@@ -886,6 +890,9 @@ importers:
       '@btravstack/entity':
         specifier: workspace:*
         version: link:../../packages/entity
+      '@btravstack/example-order-graphql-api':
+        specifier: workspace:*
+        version: link:../order-graphql-api
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
@@ -931,6 +938,31 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.6.5
+
+  examples/order-api-client:
+    dependencies:
+      '@btravstack/example-order-api-contract':
+        specifier: workspace:*
+        version: link:../order-api-contract
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/contract':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@unthrown/orpc':
+        specifier: 'catalog:'
+        version: 0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.12.0)
+    devDependencies:
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.4.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
 
   examples/order-api-contract:
     dependencies:
@@ -1036,6 +1068,67 @@ importers:
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+
+  examples/order-graphql-api:
+    dependencies:
+      '@btravstack/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@btravstack/di':
+        specifier: workspace:*
+        version: link:../../packages/di
+      '@btravstack/example-order-api-client':
+        specifier: workspace:*
+        version: link:../order-api-client
+      '@btravstack/example-order-api-contract':
+        specifier: workspace:*
+        version: link:../order-api-contract
+      '@btravstack/graphql-server':
+        specifier: workspace:*
+        version: link:../../packages/graphql-server
+      '@btravstack/http-server':
+        specifier: workspace:*
+        version: link:../../packages/http-server
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@pothos/core':
+        specifier: 'catalog:'
+        version: 4.15.1(graphql@17.0.2)
+      graphql:
+        specifier: 'catalog:'
+        version: 17.0.2
+      graphql-yoga:
+        specifier: 'catalog:'
+        version: 5.24.1(graphql@17.0.2)
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.12.0
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
+    devDependencies:
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.4.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.15
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -1260,6 +1353,70 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+
+  internal/http-fixtures:
+    dependencies:
+      '@btravstack/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@btravstack/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@btravstack/di':
+        specifier: workspace:*
+        version: link:../../packages/di
+      '@btravstack/htmx-server':
+        specifier: workspace:*
+        version: link:../../packages/htmx-server
+      '@btravstack/http-server':
+        specifier: workspace:*
+        version: link:../../packages/http-server
+      '@btravstack/internal-test-infra':
+        specifier: workspace:*
+        version: link:../test-infra
+      '@btravstack/orpc-server':
+        specifier: workspace:*
+        version: link:../../packages/orpc-server
+      '@btravstack/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/contract':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.12
+      openid-client:
+        specifier: 'catalog:'
+        version: 6.8.8
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.12.0
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
+    devDependencies:
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.4.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.0(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   internal/test-infra:
     dependencies:
@@ -1598,6 +1755,99 @@ importers:
         specifier: 'catalog:'
         version: 4.6.5
 
+  packages/graphql-server:
+    devDependencies:
+      '@btravstack/contract':
+        specifier: workspace:*
+        version: link:../contract
+      '@btravstack/di':
+        specifier: workspace:*
+        version: link:../di
+      '@btravstack/http-server':
+        specifier: workspace:*
+        version: link:../http-server
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.4.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.3(vitest@5.0.3)
+      graphql:
+        specifier: 'catalog:'
+        version: 17.0.2
+      graphql-yoga:
+        specifier: 'catalog:'
+        version: 5.24.1(graphql@17.0.2)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.0(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      typescript-consumer:
+        specifier: 'catalog:'
+        version: typescript@5.9.3
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.12.0
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/htmx-server:
+    devDependencies:
+      '@btravstack/config':
+        specifier: workspace:*
+        version: link:../config
+      '@btravstack/contract':
+        specifier: workspace:*
+        version: link:../contract
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../core
+      '@btravstack/di':
+        specifier: workspace:*
+        version: link:../di
+      '@btravstack/http-server':
+        specifier: workspace:*
+        version: link:../http-server
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.4.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.3(vitest@5.0.3)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.0(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      typescript-consumer:
+        specifier: 'catalog:'
+        version: typescript@5.9.3
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.12.0
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
+
   packages/http-server:
     devDependencies:
       '@btravstack/config':
@@ -1615,45 +1865,18 @@ importers:
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
-      '@btravstack/testing':
-        specifier: workspace:*
-        version: link:../testing
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.4.0
-      '@orpc/client':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/contract':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/json-schema':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/openapi':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/server':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
-      '@unthrown/orpc':
-        specifier: 'catalog:'
-        version: 0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.12.0)
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
-      graphql:
-        specifier: 'catalog:'
-        version: 17.0.2
-      graphql-yoga:
-        specifier: 'catalog:'
-        version: 5.24.1(graphql@17.0.2)
       jose:
         specifier: 'catalog:'
         version: 6.2.12
@@ -1789,6 +2012,78 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/orpc-server:
+    devDependencies:
+      '@btravstack/config':
+        specifier: workspace:*
+        version: link:../config
+      '@btravstack/contract':
+        specifier: workspace:*
+        version: link:../contract
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../core
+      '@btravstack/di':
+        specifier: workspace:*
+        version: link:../di
+      '@btravstack/htmx-server':
+        specifier: workspace:*
+        version: link:../htmx-server
+      '@btravstack/http-server':
+        specifier: workspace:*
+        version: link:../http-server
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.4.0
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/contract':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/json-schema':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/openapi':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/server':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      '@unthrown/orpc':
+        specifier: 'catalog:'
+        version: 0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.12.0)
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.3(vitest@5.0.3)
+      openid-client:
+        specifier: 'catalog:'
+        version: 6.8.8
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.0(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      typescript-consumer:
+        specifier: 'catalog:'
+        version: typescript@5.9.3
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.12.0
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
 
   packages/outbox:
     devDependencies:
@@ -3241,12 +3536,6 @@ packages:
 
   '@graphql-tools/schema@10.1.3':
     resolution: {integrity: sha512-N1ZpzguxzqTy5fpurqWQ5BXyjirlrtvVLeSafsu+SCDNjDeRnVxf9n5PVbdgzwFPAmP/7NK9sq9UB/kyR8oFiw==}
-    engines: {node: '>=16.0.0'}
-    peerDependencies:
-      graphql: ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
-
-  '@graphql-tools/utils@11.2.2':
-    resolution: {integrity: sha512-Do2A/t6ayqOma8m7PvpYMsCBswL+NB35BQSng4GWSBqafL2/BnfAZy/NSENPwV721Rm2fG0BHETFC0+FJJZmLw==}
     engines: {node: '>=16.0.0'}
     peerDependencies:
       graphql: ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
@@ -10708,14 +10997,6 @@ snapshots:
       graphql: 17.0.2
       tslib: 2.8.1
 
-  '@graphql-tools/utils@11.2.2(graphql@17.0.2)':
-    dependencies:
-      '@graphql-typed-document-node/core': 3.2.0(graphql@17.0.2)
-      '@whatwg-node/promise-helpers': 1.3.2
-      cross-inspect: 1.0.1
-      graphql: 17.0.2
-      tslib: 2.8.1
-
   '@graphql-tools/utils@12.0.3(graphql@17.0.2)':
     dependencies:
       '@graphql-typed-document-node/core': 3.2.0(graphql@17.0.2)
@@ -14417,7 +14698,7 @@ snapshots:
       '@envelop/instrumentation': 1.0.1
       '@graphql-tools/executor': 2.0.3(graphql@17.0.2)
       '@graphql-tools/schema': 10.1.3(graphql@17.0.2)
-      '@graphql-tools/utils': 11.2.2(graphql@17.0.2)
+      '@graphql-tools/utils': 12.0.3(graphql@17.0.2)
       '@graphql-yoga/logger': 2.0.2
       '@graphql-yoga/subscription': 5.1.1
       '@whatwg-node/fetch': 0.10.13

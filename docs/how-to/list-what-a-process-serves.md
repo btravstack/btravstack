@@ -15,7 +15,7 @@ import { orderRowFragment } from "../../slices/orders/fragment.js";
 > **How-to.** Answer "which paths does this deployment actually serve?" with
 > what already ships, and "what did its graph resolve to?" with the compiler.
 > For the document itself, see
-> [`openApiDocument()`](/reference/http-server#openapidocument-—-from-btravstack-http-server-openapi);
+> [`openApiDocument()`](/reference/http-server#openapidocument-—-from-btravstack-orpc-server-openapi);
 > for the deployment these samples come from, [Order API (HTTP)](/examples/order-api).
 
 A modulith composes several slices into one router, so no single contract file
@@ -189,7 +189,7 @@ not reach runtime. So:
 ## Where to go next
 
 - The document's surface and its security fold:
-  [`openApiDocument()`](/reference/http-server#openapidocument-—-from-btravstack-http-server-openapi).
+  [`openApiDocument()`](/reference/http-server#openapidocument-—-from-btravstack-orpc-server-openapi).
 - Several answerers under one runtime:
   [`HttpHandler`, and several answerers](/reference/http-server#httphandler-and-several-answerers).
 - How the compile-time proof works: [Compile-time wiring](/explanation/compile-time-wiring).

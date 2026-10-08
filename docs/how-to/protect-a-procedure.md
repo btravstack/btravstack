@@ -8,7 +8,7 @@ import { Logger, Meter, Tracer } from "@btravstack/core";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { otel } from "@btravstack/observability/otel";
 import { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
 import { OkAsync, P } from "unthrown";
@@ -17,7 +17,7 @@ import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 import { api } from "../../auth.js";
-import { createOrderApiClient } from "../../client.js";
+import { createOrderApiClient } from "@btravstack/example-order-api-client";
 import { Module } from "@btravstack/di";
 declare const OrdersSlice: Module<
   InstanceType<(typeof ordersController)["port"]>,
@@ -169,13 +169,15 @@ login answerer sealed — see [Log a browser in](/how-to/log-a-browser-in).
 
 <!-- doctest: isolate
 import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
-import { apiKeyAuthenticator, defineHttp } from "@btravstack/http-server";
+import { apiKeyAuthenticator } from "@btravstack/http-server";
+import { defineHttp } from "@btravstack/orpc-server";
 import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 -->
 
 ```ts
 import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
-import { apiKeyAuthenticator, defineHttp } from "@btravstack/http-server";
+import { apiKeyAuthenticator } from "@btravstack/http-server";
+import { defineHttp } from "@btravstack/orpc-server";
 import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 /** What the `user` scheme resolves to. The contract names none of this. */
 export type Identity = { readonly tenantId: TenantId; readonly userId: string };

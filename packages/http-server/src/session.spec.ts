@@ -1,9 +1,8 @@
 import type { ConfigInvalid } from "@btravstack/config";
+import { cookieHeader, it, sessionKeys } from "@btravstack/internal-http-fixtures";
 import { compactDecrypt, decodeProtectedHeader } from "jose";
 import type { Result } from "unthrown";
 import { describe, expect } from "vitest";
-
-import { cookieHeader, it, sessionKeys } from "./__tests__/test-fixtures.js";
 
 describe("sessionCodec", () => {
   it("seals a principal and unseals it back, on the default lifetime", async ({

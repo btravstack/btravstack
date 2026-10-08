@@ -1,6 +1,6 @@
 # examples/
 
-Guidance for the fifteen example workspaces. The repository-wide theses, the
+Guidance for the seventeen example workspaces. The repository-wide theses, the
 gate commands and the test conventions live in the root `AGENTS.md`; what
 follows is what is true of `examples/` specifically. `examples/README.md`
 is the index of the workspaces themselves.
@@ -75,7 +75,8 @@ is the index of the workspaces themselves.
 - **The local loop is `pnpm dev`, and it is the production shape** (issue
   #67): `turbo run dev --filter=./examples/*`, one process per deployment,
   each `tsx watch --env-file=../../.env.dev src/main.ts`, output prefixed by
-  workspace. The reasoning against a one-process runner is in the
+  workspace. `order-api` and `order-graphql-api` are separate HTTP processes;
+  the latter calls the former through `order-api-client`. The reasoning against a one-process runner is in the
   `docs/explanation/deferred-decisions.md`; what lives here is the mechanics.
   - **`tsx`, because Node alone cannot run these files.** Relative imports
     carry `.js` (`moduleResolution: NodeNext`) and Node's own type stripping

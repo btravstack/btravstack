@@ -1,0 +1,49 @@
+{
+  "name": "@btravstack/internal-http-fixtures",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared HTTP answerer integration fixture",
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/test-fixtures.d.mts",
+        "default": "./src/test-fixtures.ts"
+      },
+      "require": {
+        "types": "./dist/test-fixtures.d.cts",
+        "default": "./dist/test-fixtures.cjs"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsdown src/test-fixtures.ts --format cjs,esm --dts --clean",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@btravstack/config": "workspace:*",
+    "@btravstack/contract": "workspace:*",
+    "@btravstack/core": "workspace:*",
+    "@btravstack/di": "workspace:*",
+    "@btravstack/htmx-server": "workspace:*",
+    "@btravstack/http-server": "workspace:*",
+    "@btravstack/internal-test-infra": "workspace:*",
+    "@btravstack/orpc-server": "workspace:*",
+    "@btravstack/testing": "workspace:*",
+    "@orpc/client": "catalog:",
+    "@orpc/contract": "catalog:",
+    "jose": "catalog:",
+    "openid-client": "catalog:",
+    "unthrown": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@btravstack/tsconfig": "catalog:",
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

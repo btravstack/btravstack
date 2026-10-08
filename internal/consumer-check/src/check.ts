@@ -199,10 +199,8 @@ type SmokeFailure = {
 const adapters: Readonly<Record<string, readonly string[]>> = {
   "@btravstack/cache/redis": ["redis"],
   "@btravstack/contract/zod": ["zod"],
-  "@btravstack/http-server/graphql": ["graphql", "graphql-yoga"],
   "@btravstack/http-server/jwt": ["jose"],
   "@btravstack/http-server/oidc": ["jose", "openid-client"],
-  "@btravstack/http-server/openapi": ["@orpc/json-schema", "@orpc/openapi"],
   "@btravstack/http-server/session": ["jose"],
   "@btravstack/mailer/smtp": ["nodemailer"],
   "@btravstack/observability/otel": ["@opentelemetry/api", "@opentelemetry/sdk-node"],

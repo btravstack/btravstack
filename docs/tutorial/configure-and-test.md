@@ -122,7 +122,7 @@ operating system for an ephemeral port, so tests never collide:
 // on its own — in your project these come from the files above.
 import { Config, Env } from "@btravstack/config";
 import { Module, Port, Provider } from "@btravstack/di";
-import { HttpModule, defineHttp } from "@btravstack/http-server";
+import { HttpModule, defineHttp } from "@btravstack/orpc-server";
 import { oc } from "@orpc/contract";
 import type {} from "@unthrown/vitest";
 import { OkAsync } from "unthrown";
@@ -240,7 +240,7 @@ nothing:
 // on its own — in your project these come from the files above.
 import { Config, Env } from "@btravstack/config";
 import { Module, Port, Provider } from "@btravstack/di";
-import { HttpModule, defineHttp } from "@btravstack/http-server";
+import { HttpModule, defineHttp } from "@btravstack/orpc-server";
 import { oc } from "@orpc/contract";
 import type {} from "@unthrown/vitest";
 import { OkAsync } from "unthrown";

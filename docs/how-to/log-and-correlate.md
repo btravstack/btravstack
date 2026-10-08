@@ -48,7 +48,7 @@ happened. The recipe is one import.
 
 ```ts
 import { Module, Provider } from "@btravstack/di";
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { Logger } from "@btravstack/core";
 import { observability } from "@btravstack/observability";
