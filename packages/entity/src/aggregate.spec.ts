@@ -293,13 +293,36 @@ test("replay reports a throwing evolution handler as a defect", () => {
   expect(channel(result)).toBe("defect");
 });
 
-test("make rehydrates a snapshot, and an aggregate has no update and no factory", () => {
+test("make rehydrates a snapshot", () => {
+  // GIVEN a snapshot of a cart holding one item
   const snapshot = opened().addItem("apple", 1).getOrThrow().state.toJSON();
-  const cart = Cart.make(snapshot, { version: 2 }).getOrThrow();
-  expect(cart.items).toHaveLength(1);
-  expect("update" in cart).toBe(false);
-  expect("factory" in Cart).toBe(false);
-  expect("factoryAsync" in Cart).toBe(false);
+
+  // WHEN it is rehydrated
+  const items = Cart.make(snapshot, { version: 2 }).map((cart) => cart.items.length);
+
+  // THEN the item is back
+  expect(items).toBeOkWith(1);
+});
+
+test("an aggregate has no update, no factory and no create command: start is creation", () => {
+  // GIVEN an opened cart
+  const cart = opened();
+
+  // WHEN its surface is read
+  const surface = {
+    update: "update" in cart,
+    factory: "factory" in Cart,
+    factoryAsync: "factoryAsync" in Cart,
+    parseCreate: "parseCreate" in Cart,
+  };
+
+  // THEN none of the state-based ways in exists
+  expect(surface).toEqual({
+    update: false,
+    factory: false,
+    factoryAsync: false,
+    parseCreate: false,
+  });
 });
 
 /** Every issue of a failed replay as `[path, message]`. */

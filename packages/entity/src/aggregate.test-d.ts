@@ -32,6 +32,8 @@ doc.update({ label: Label.parse("x") });
 
 // @ts-expect-error nor a factory: `start` is creation
 Doc.factory({});
+// @ts-expect-error nor a create command to parse ahead of one
+Doc.parseCreate({});
 
 // emit returns a decision over this very class
 const decision: Entity.Decision<Doc, Event> = doc.emit({ type: "Renamed", label: "x" }).get();
