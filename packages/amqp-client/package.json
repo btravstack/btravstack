@@ -33,6 +33,7 @@
   "scripts": {
     "build": "tsdown src/index.ts --format cjs,esm --dts --clean",
     "dev": "tsdown src/index.ts --format cjs,esm --dts --watch",
+    "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
@@ -41,9 +42,12 @@
     "@btravstack/tsconfig": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@types/node": "catalog:",
+    "@unthrown/vitest": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
-    "unthrown": "catalog:"
+    "unthrown": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "@amqp-contract/client": "^3.0.0-beta.11",

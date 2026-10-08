@@ -9,6 +9,7 @@ channel. No application event, outbox mapping, or consumer belongs here.
 
 It has no dependency on `@btravstack/amqp-worker`. A publisher and worker may
 share a broker URL while retaining separate connections; the upstream client
-and worker use separate pools. The worked consumer is
+and worker use separate pools. Package tests cover timeout forwarding, cleanup,
+and upstream error propagation. The worked consumer is
 `examples/order-amqp-worker/src/outbox-publisher.ts`, exercised by its real
 RabbitMQ suite.

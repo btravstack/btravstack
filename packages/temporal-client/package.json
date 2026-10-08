@@ -29,6 +29,7 @@
   "scripts": {
     "build": "tsdown src/index.ts --format esm --dts --clean",
     "dev": "tsdown src/index.ts --format esm --dts --watch",
+    "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
@@ -38,9 +39,12 @@
     "@temporalio/client": "catalog:",
     "@temporalio/common": "catalog:",
     "@types/node": "catalog:",
+    "@unthrown/vitest": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
-    "unthrown": "catalog:"
+    "unthrown": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "@btravstack/di": "workspace:^",

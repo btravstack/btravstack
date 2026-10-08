@@ -9,6 +9,7 @@ The caller binds its contract through `client.for(contract)`.
 
 The settings port supplies `address` and `namespace`; `TemporalClientUnreachable`
 models a failed connection. This package has no worker dependency and owns no
-schedule policy. The worked consumer is
+schedule policy. Package tests cover connection cleanup, namespace binding,
+and connection error qualification. The worked consumer is
 `examples/order-temporal-worker/src/schedules.ts`, exercised by its real
 Temporal suite.
