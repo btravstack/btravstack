@@ -131,13 +131,10 @@ deployment provides, reading `OUTBOX_TENANTS` and `OUTBOX_POLL_MS` itself — an
 releases it when the application scope closes. It contributes an `outbox`
 health check, unhealthy once a tenant's oldest pending row is older than
 `OUTBOX_MAX_LAG_MS`, and reports every claim and publish to `Observers`.
-What this deployment writes is the half the package cannot: `orderAmqpClient`,
-a `TypedAmqpClient` of its own contract created rather than received as a
-port, because a transport connection is the transport's own — and not a second
-connection either: `@amqp-contract/core` pools by URL and reference-counts
-leases, so the publisher's client and the consumer's worker share one TCP
-connection, and `close()` releases a lease rather than the socket — and
+What this deployment writes is the half the package cannot: the
+`OrderAmqpClient` port bound through `@btravstack/amqp-client`, and
 `orderPublisher`, which turns an outbox row into the contract's envelope.
+The publisher and consumer use the same broker URL and separate connections.
 
 That ordering is worth stating. The relay now starts **before** the consumer —
 as the graph builds, where a broker it cannot reach fails startup, as it

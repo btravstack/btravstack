@@ -39,6 +39,7 @@
       "cache": false,
       "dependsOn": [
         "@btravstack/amqp-worker#build",
+        "@btravstack/amqp-client#build",
         "@btravstack/cache#build",
         "@btravstack/config#build",
         "@btravstack/contract#build",
@@ -55,6 +56,7 @@
         "@btravstack/prisma#build",
         "@btravstack/storage#build",
         "@btravstack/temporal-worker#build",
+        "@btravstack/temporal-client#build",
         "@btravstack/testing#build"
       ]
     },
@@ -109,7 +111,9 @@
         "@btravstack/htmx-server#build",
         "@btravstack/graphql-server#build",
         "@btravstack/temporal-worker#build",
-        "@btravstack/amqp-worker#build"
+        "@btravstack/amqp-worker#build",
+        "@btravstack/temporal-client#build",
+        "@btravstack/amqp-client#build"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",

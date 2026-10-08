@@ -109,13 +109,13 @@ dependencies by name`; a positional array is refused as
   inline do not carry it. The reasoning, and the CSP that stays
   the deployment's, is in `packages/http-server/AGENTS.md`'s cross-cutting
   section.
-- **Each transport package is named for the HALF it implements, and the
-  other half's name is reserved.** `http-server`, `temporal-worker` and
+- **Each transport package is named for the HALF it implements.**
+  `http-server`, `temporal-worker` and
   `amqp-worker` — not `http`, `temporal`, `amqp`, which claimed a whole
-  transport and delivered the serving side of it. The calling side exists
-  today as somebody else's library, used directly by the examples
-  (`@orpc/client`, `@temporal-contract/client`, `@amqp-contract/client`),
-  and when this family grows its own they take `-client` names beside these.
+  transport and delivered the serving side of it. The calling side uses
+  upstream libraries. `@btravstack/amqp-client` and
+  `@btravstack/temporal-client` bind resourceful callers to DI scopes without
+  worker peers; the oRPC caller uses `@orpc/client` directly.
   Three things decided the spelling:
   - **The neighbours qualify both sides** — `@orpc/server`/`@orpc/client`,
     `@temporal-contract/worker`/`/client` — so an unqualified name reads as
@@ -125,7 +125,7 @@ dependencies by name`; a positional array is refused as
     Temporal Service — the cluster `internal/test-infra` runs as
     `temporalio/auto-setup`. A name that suggests you are booting the
     cluster is worse than a suffix that varies.
-  - **A client will be a PACKAGE, never a subpath.** Peers are per-package,
+  - **A client is a PACKAGE, never a subpath.** Peers are per-package,
     so `@btravstack/http-server/client` would drag `@orpc/server` into a
     consumer that only ever calls — the same reason `examples/*-contract`
     are packages of their own: a client must be able to take a contract

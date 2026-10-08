@@ -25,7 +25,9 @@
       "@btravstack/htmx-server",
       "@btravstack/graphql-server",
       "@btravstack/temporal-worker",
-      "@btravstack/amqp-worker"
+      "@btravstack/amqp-worker",
+      "@btravstack/temporal-client",
+      "@btravstack/amqp-client"
     ]
   ]
 }

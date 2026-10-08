@@ -1,17 +1,17 @@
 ---
 title: Packages and install
-description: The eighteen published packages grouped by the job each does, who peers on what, and one install command per kind of deployment.
+description: The twenty published packages grouped by the job each does, who peers on what, and one install command per kind of deployment.
 ---
 
 # Packages and install
 
-> **Reference.** The eighteen published packages, grouped by the job each does,
+> **Reference.** The twenty published packages, grouped by the job each does,
 > their peer-dependency matrix and the install command for each kind of
 > deployment. For _why_ everything is a peer
 > dependency, see [Peer dependencies](/explanation/peer-dependencies); for what
 > a starter is, see [Starters](/explanation/starters).
 
-## Five groups, and what to install first
+## Seven groups, and what to install first
 
 The names carry the grouping, so a package's job is legible before you open
 its page:
@@ -23,6 +23,7 @@ its page:
 | **Runtime servers**                            | `http-server`, `temporal-worker`, `amqp-worker`         | One, and exactly one: a process boots a single runtime.                               |
 | **Capability ports**, a contract plus adapters | `observability`, `cache`, `mailer`, `storage`, `outbox` | When the application needs that capability. Each is independent of the others.        |
 | **HTTP answerers**                             | `orpc-server`, `htmx-server`, `graphql-server`          | Add the protocols this deployment serves.                                             |
+| **Outbound clients**                           | `temporal-client`, `amqp-client`                        | Bind a typed remote client to the application scope without its worker.               |
 | **The harness**                                | `testing`                                               | As a dev dependency, always.                                                          |
 
 **The shortest real application is `core` + `di` + `config` + one server.**
@@ -31,9 +32,8 @@ Everything else arrives when something needs it.
 The three servers are named for the half they implement. `http-server` owns the Node listener; `orpc-server` serves an oRPC contract; `temporal-worker` and `amqp-worker` run the worker side of
 their platforms — "worker" rather than "server" because that is those
 ecosystems' own word, and because `temporal-server` already means the Temporal
-Service itself. **The calling halves are not written yet**; when they are they
-take `-client` names beside these, which is why the servers carry a qualifier
-at all.
+Service itself. The AMQP and Temporal calling halves have their own `-client`
+packages, so an outbound caller does not install a worker.
 
 ## The packages
 
@@ -56,6 +56,8 @@ at all.
 | `@btravstack/graphql-server`  | Yoga answerer for any `GraphQLSchema`, with explicit GraphQL peers.                                                                                                                                                                       | [Serve GraphQL](/how-to/serve-graphql)                                                                                                                                                           |
 | `@btravstack/temporal-worker` | The Temporal starter: a Worker as the runtime, one unit per activity attempt, a drain that honours the kernel's deadline.                                                                                                                 | [@btravstack/temporal-worker](/reference/temporal-worker)                                                                                                                                        |
 | `@btravstack/amqp-worker`     | The AMQP starter: the handlers as a port, one unit per delivery, ack/nack/dead-letter routed by the contract.                                                                                                                             | [@btravstack/amqp-worker](/reference/amqp-worker)                                                                                                                                                |
+| `@btravstack/temporal-client` | Scoped connection and typed Temporal client providers.                                                                                                                                                                                    | [@btravstack/temporal-client](/reference/temporal-client)                                                                                                                                        |
+| `@btravstack/amqp-client`     | Scoped typed AMQP client provider.                                                                                                                                                                                                        | [@btravstack/amqp-client](/reference/amqp-client)                                                                                                                                                |
 | `@btravstack/testing`         | The test harness, a **dev dependency**: `bootFixture` boots and stops inside a vitest fixture, `tapped` reaches a running service, plus `testRuntime` and `createFakeClock`.                                                              | [@btravstack/testing](/reference/testing)                                                                                                                                                        |
 
 `entity` is an optional domain-modelling library; applications can use it without the kernel, and the kernel never requires it.
@@ -100,6 +102,8 @@ single copy.
 | `@btravstack/graphql-server`  | `@btravstack/http-server`, `@btravstack/di`, `@btravstack/contract`, `unthrown`, `graphql`, `graphql-yoga`                                                                                                                                     |
 | `@btravstack/temporal-worker` | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`, `@temporal-contract/worker`, `@temporal-contract/contract`                                         |
 | `@btravstack/amqp-worker`     | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@amqp-contract/worker`, `@opentelemetry/api`                                                                                                                          |
+| `@btravstack/temporal-client` | `@btravstack/di`, `@temporal-contract/client`, `@temporalio/client`, `@temporalio/common`, `unthrown`                                                                                                                                          |
+| `@btravstack/amqp-client`     | `@btravstack/di`, `@amqp-contract/client`, `@opentelemetry/api`, `unthrown`                                                                                                                                                                    |
 | `@btravstack/testing`         | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and **not** `vitest`: `bootFixture` is a plain `(ctx, use) => Promise<void>`, vitest's fixture protocol met without the import                                        |
 
 `@btravstack/core`, `@btravstack/config`, `@btravstack/di`,
@@ -158,6 +162,16 @@ pnpm add @btravstack/amqp-worker @btravstack/core @btravstack/config @btravstack
   @amqp-contract/worker@3.0.0-beta.11 @opentelemetry/api
 ```
 
+```sh [Temporal client]
+pnpm add @btravstack/temporal-client @btravstack/di unthrown \
+  @temporal-contract/client@8.0.0-beta.11 @temporalio/client @temporalio/common
+```
+
+```sh [AMQP client]
+pnpm add @btravstack/amqp-client @btravstack/di unthrown \
+  @amqp-contract/client@3.0.0-beta.11 @opentelemetry/api
+```
+
 ```sh [Kernel only]
 pnpm add @btravstack/core @btravstack/config @btravstack/di unthrown
 ```
@@ -179,8 +193,9 @@ pnpm add @btravstack/di unthrown
 :::
 
 Most published packages require Node `>=22`; `http-server` and `prisma`
-require `>=22.12`; `graphql-server` requires `>=22.15`, while `amqp-worker` and `temporal-worker` require
-`>=22.22`. Each floor is checked against that package's required peers. The
+require `>=22.12`; `graphql-server` requires `>=22.15`, while `amqp-worker`,
+`temporal-worker`, `amqp-client`, and `temporal-client` require `>=22.22`.
+Each floor is checked against that package's required peers. The
 repository's own development floor is `>=22.22`.
 
 ## Support and upgrades

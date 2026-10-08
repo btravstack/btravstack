@@ -1,0 +1,7 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/temporal-client",
+  "entryPoints": ["../packages/temporal-client/src/index.ts"],
+  "tsconfig": "../packages/temporal-client/tsconfig.json",
+  "out": "api/temporal-client"
+}

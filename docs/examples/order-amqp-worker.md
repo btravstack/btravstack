@@ -1,10 +1,11 @@
 ---
 title: Order AMQP worker example
-description: The broadcast deployment — two subscriber slices composed by AmqpHandlers over the order contract, a transactional outbox relayed onto RabbitMQ by @btravstack/outbox through a publisher of the deployment's own contract with a modeled BrokerUnreachable, a tombstone behind every cancellation, and a real broker container per run.
+description: The broadcast deployment — two subscriber slices composed by AmqpHandlers over the order contract, a transactional outbox relayed onto RabbitMQ by @btravstack/outbox through a scoped typed client, a tombstone behind every cancellation, and a real broker container per run.
 ---
 
 <!-- doctest: prelude
 import { TypedAmqpClient } from "@amqp-contract/client";
+import { amqpClient } from "@btravstack/amqp-client";
 import { AmqpConfig, AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp-worker";
 import { RetryableError } from "@amqp-contract/worker";
 import { currentUnit, Logger, Tracer } from "@btravstack/core";
@@ -12,7 +13,7 @@ import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { OutboxPublisher, OutboxStore, outbox } from "@btravstack/outbox";
-import { ErrAsync, OkAsync, P, TaggedError } from "unthrown";
+import { ErrAsync, OkAsync } from "unthrown";
 import { OrderDatabase, OrderPersistenceModule, decodeOrderPayload } from "@btravstack/example-order-infrastructure";
 import { MessageUnitModule } from "../../message-unit.js";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
@@ -183,42 +184,21 @@ table — `prismaOutboxStore(db, { schema: "orders" })` — and `outbox()` reads
 the one thing the package cannot know, so it is this deployment's: a client of
 its own contract, and an `OutboxPublisher` over it.
 
-A broker the client cannot reach is modeled rather than left the defect
-`TypedAmqpClient.create` reports it as, because an operator can act on it:
-
-```ts
-export class BrokerUnreachable extends TaggedError("BrokerUnreachable")<{
-  readonly url: string;
-  readonly cause: unknown;
-}> {}
-```
-
-so `runMain` exits `1`, a startup `Err`, not the `70` a defect earns. The
-client is a resourceful provider of its own, so the scope closing is what
-closes it:
+The [AMQP client provider](/reference/amqp-client) keeps the upstream
+`ConnectionError` on the modeled startup channel, so `runMain` exits `1` if
+the broker does not answer. It closes the client with the application scope:
 
 ```ts
 class OrderAmqpClient extends Port("OrderAmqpClient")<
   TypedAmqpClient<typeof orderContract>
 > {}
 
-export const orderAmqpClient = Provider(OrderAmqpClient)({
-  inject: { broker: AmqpConfig },
-  acquire: ({ broker: { url } }) =>
-    TypedAmqpClient.create({ contract: orderContract, urls: [url] }).mapErrCases(
-      (matcher) =>
-        matcher.with(
-          P.tag("@amqp-contract/ConnectionError"),
-          (cause) => new BrokerUnreachable({ url, cause }),
-        ),
-    ),
-  release: (client) => client.close().get(),
-});
+export const orderAmqpClient = amqpClient(OrderAmqpClient, orderContract, AmqpConfig);
 ```
 
 It depends on `AmqpConfig` — the broker `amqp()` bound — so the publisher and
-the consumer read one `AMQP_URL`; it is not a second TCP connection either,
-since `@amqp-contract/core` pools by URL and reference-counts leases. The
+the consumer read one `AMQP_URL`. The upstream client and worker hold separate
+connections. The
 publisher turns an outbox row into the contract's envelope:
 
 ```ts

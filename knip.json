@@ -48,6 +48,9 @@
     "packages/core": {
       "ignoreDependencies": ["@btravstack/testing"]
     },
+    "packages/amqp-client": {
+      "ignoreDependencies": ["@opentelemetry/api"]
+    },
     "packages/prisma": {
       "ignoreDependencies": ["@prisma/orm-postgres"]
     }

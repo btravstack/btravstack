@@ -1,17 +1,16 @@
 import { Config, Env, type Environment } from "@btravstack/config";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
-import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
-import { TemporalUnreachable } from "@btravstack/temporal-worker";
+import { orderContract } from "@btravstack/example-order-temporal-contract";
+import { temporalClient, temporalConnection } from "@btravstack/temporal-client";
 import { ensureSchedule, type ScheduleOutcome } from "@btravstack/temporal-worker/schedule";
 import {
-  TypedClient,
-  type ContractClient,
+  type TypedClient,
   type ScheduleNotFoundError,
   type WorkflowNotInContractError,
   type WorkflowValidationError,
 } from "@temporal-contract/client";
-import { Client, Connection } from "@temporalio/client";
-import { OkAsync, fromPromise, fromSafePromise, type AsyncResult } from "unthrown";
+import type { Client, Connection } from "@temporalio/client";
+import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 const scheduleConfig = Config.provider("ScheduleConfig")(
   Config.object({
@@ -25,9 +24,7 @@ type SweepNotEnsured = WorkflowNotInContractError | WorkflowValidationError | Sc
 
 class ScheduleConnection extends Port("ScheduleConnection")<Connection> {}
 
-class ScheduleClient extends Port("ScheduleClient")<Client> {}
-
-class Schedules extends Port("Schedules")<ContractClient<OrderContract>["schedule"]> {}
+class ScheduleTypedClient extends Port("ScheduleTypedClient")<TypedClient> {}
 
 const PREFIX = "sweep-stale-orders-";
 
@@ -36,31 +33,15 @@ const scheduling = (env: Environment) =>
     provides: [
       Provider(Env)({ inject: {}, value: env }),
       scheduleConfig,
-      Provider(ScheduleConnection)({
-        inject: { config: scheduleConfig.port },
-        acquire: ({ config }) =>
-          fromPromise(
-            Connection.connect({ address: config.address }),
-            (cause) => new TemporalUnreachable({ address: config.address, cause }),
-          ),
-        release: (connection) => connection.close(),
-      }),
-      Provider(ScheduleClient)({
-        inject: { connection: ScheduleConnection, config: scheduleConfig.port },
-        sync: ({ connection, config }) => new Client({ connection, namespace: config.namespace }),
-      }),
-      Provider(Schedules)({
-        inject: { client: ScheduleClient },
-        make: ({ client }) =>
-          TypedClient.create({ client }).map((typed) => typed.for(orderContract).schedule),
-      }),
+      temporalConnection(ScheduleConnection, scheduleConfig.port),
+      temporalClient(ScheduleTypedClient, ScheduleConnection, scheduleConfig.port),
     ],
-    exports: [Schedules, ScheduleClient, scheduleConfig.port],
+    exports: [ScheduleTypedClient, scheduleConfig.port],
   });
 
 // The id is DERIVED from the tenant: that is the whole of the idempotence.
-const sweepFor = (schedules: ServiceOf<Schedules>, tenantId: string) =>
-  ensureSchedule(schedules, "sweepStaleOrders", {
+const sweepFor = (client: ServiceOf<ScheduleTypedClient>, tenantId: string) =>
+  ensureSchedule(client.for(orderContract).schedule, "sweepStaleOrders", {
     scheduleId: `${PREFIX}${tenantId}`,
     spec: { cronExpressions: ["0 3 * * *"] },
     args: { tenantId, olderThanDays: 30 },
@@ -99,13 +80,16 @@ export const deploySchedules = (env: Environment) =>
       .reduce<AsyncResult<readonly ScheduleOutcome[], SweepNotEnsured>>(
         (done, tenantId) =>
           done.flatMap((outcomes) =>
-            sweepFor(ctx.get(Schedules), tenantId).map((outcome) => [...outcomes, outcome]),
+            sweepFor(ctx.get(ScheduleTypedClient), tenantId).map((outcome) => [
+              ...outcomes,
+              outcome,
+            ]),
           ),
         OkAsync([]),
       )
       .flatMap((ensured) =>
         retireAllBut(
-          ctx.get(ScheduleClient),
+          ctx.get(ScheduleTypedClient).raw,
           tenants.map((tenantId) => `${PREFIX}${tenantId}`),
         ).map((retired) => ({ ensured, retired })),
       );
