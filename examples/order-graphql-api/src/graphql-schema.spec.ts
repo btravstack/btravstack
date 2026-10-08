@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-import { expect, it } from "vitest";
+import { expect } from "vitest";
+
+import { it } from "./test-fixtures.js";
 
 it("keeps the client-consumable SDL in sync with the Pothos schema", () => {
   // GIVEN a code-first schema and its checked-in contract artifact

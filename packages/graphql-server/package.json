@@ -48,6 +48,7 @@
   },
   "devDependencies": {
     "@btravstack/contract": "workspace:*",
+    "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/http-server": "workspace:*",
     "@btravstack/tsconfig": "catalog:",

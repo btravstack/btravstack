@@ -74,6 +74,7 @@
     "zod": "catalog:"
   },
   "peerDependencies": {
+    "@btravstack/config": "workspace:^",
     "@btravstack/contract": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",

@@ -46,7 +46,9 @@ credentials, or `false` to disable it explicitly. Yoga's console logger is
 disabled so an unexpected resolver error cannot print sensitive details
 outside the application's logging path. Pass Yoga `plugins` for validation
 rules, depth or complexity limits, and other schema-specific controls before
-exposing expensive fields to untrusted callers.
+exposing expensive fields to untrusted callers. A protected mount lets browser
+CORS preflights reach Yoga before authentication; plugin resources are disposed
+when the application stops.
 
 Generate the SDL with
 `pnpm --filter @btravstack/example-order-graphql-api graphql:schema`. The

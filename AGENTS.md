@@ -133,7 +133,7 @@ anchors as broken.
 Not part of the gate, but the command a contributor runs all day:
 
 ```sh
-pnpm dev              # the three example deployments, one process each, watching
+pnpm dev              # the four example deployments, one process each, watching
 ```
 
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
@@ -181,7 +181,7 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
 
    **The local loop is the production shape, not an exception to it**:
    `pnpm dev` is one process per deployment, never one process booting all
-   three. The declined alternative is in
+   deployments. The declined alternative is in
    `docs/explanation/deferred-decisions.md`, the mechanics in
    `examples/AGENTS.md`.
 
@@ -991,8 +991,8 @@ in its place.
   rather than in an exported binding produces no `TS4023` at all — but the
   router case is the common one.
 
-  Only the three deployments move (`order-api`, `order-temporal-worker`,
-  `order-amqp-worker`): they emit no declarations in production, and they are
+  Only the four deployments move (`order-api`, `order-graphql-api`,
+  `order-temporal-worker`, `order-amqp-worker`): they emit no declarations in production, and they are
   where the composition roots live. **Every workspace that exports a port or a
   contract stays on `base.json`**, and `di-hexagonal` most of all — examples
   carrying `declaration: false` is precisely what let the `TS4020` class ship

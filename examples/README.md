@@ -33,7 +33,7 @@ The four [`entity-billing-*`](../docs/entity/examples/) packages cover domain en
 
 ```text
   order-api      order-graphql-api      order-temporal-worker      order-amqp-worker   ← one runtime each; one process each
-       └────────────────┼──────────────────┘  ─────▶ Config (the kernel's)  ← how all three read the environment
+       └────────────────┼──────────────────┘  ─────▶ Config (the kernel's)  ← how all four read the environment
                         ▼
              order-infrastructure                    ← Prisma, PostgreSQL, P-codes
                         │  provides OrderRepository
@@ -85,11 +85,11 @@ repository's own `pnpm test` runs:
 pnpm install
 pnpm test        # every example's specs, alongside the kernel's own
 pnpm typecheck   # includes the compile-time-only guarantees pinned with @ts-expect-error
-pnpm dev         # the three deployments, side by side, watching
+pnpm dev         # the four deployments, side by side, watching
 ```
 
 `pnpm dev` is the local loop: it brings up the same shared containers the specs
-use, applies the migrations, and runs all three entry points at once with their
+use, applies the migrations, and runs all four entry points at once with their
 output prefixed by workspace — one process per deployment, exactly as in
 production, because that is the only way the drain and the failure isolation
 mean anything. See

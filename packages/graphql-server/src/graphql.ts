@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
 
 import type { OneScheme, Requirements } from "@btravstack/contract";
-import { Provider, type AnyPort } from "@btravstack/di";
+import { Provider, type AnyPort, type Scope } from "@btravstack/di";
 import {
   principalOf,
   resolveScheme,
@@ -10,8 +10,8 @@ import {
   type Resolved,
 } from "@btravstack/http-server/internal";
 import type { Authenticators, HttpAuth } from "@btravstack/http-server/internal";
-import { HttpHandler, send } from "@btravstack/http-server/internal";
-import { HttpConfig } from "@btravstack/http-server/internal";
+import { HttpHandler, send, type HttpAnswerer } from "@btravstack/http-server/internal";
+import { HttpConfig, HttpUnit } from "@btravstack/http-server/internal";
 import type {
   KindOf,
   Kinds,
@@ -25,6 +25,9 @@ import { forkUnit } from "@btravstack/http-server/internal";
 import type { GraphQLSchema } from "graphql";
 import { createYoga, type Plugin, type YogaServerOptions } from "graphql-yoga";
 import { P } from "unthrown";
+
+const dispose = Symbol("graphql.dispose");
+type DisposableAnswerer = HttpAnswerer & { readonly [dispose]: () => Promise<void> | void };
 
 type YogaCors = YogaServerOptions<Record<string, unknown>, Record<string, unknown>>["cors"];
 type MissingUnitPorts<
@@ -69,18 +72,29 @@ export const graphql = <
   api: HttpAuth<A>,
   options: GraphqlOptions<A, Units, R, U>,
 ) => {
-  const prefix = (
-    options.prefix === "/" ? "/" : (options.prefix?.replace(/\/+$/, "") ?? "/graphql")
-  ) as `/${string}`;
+  const mount = options.prefix ?? "/graphql";
+  let end = mount.length;
+  while (end > 1 && mount.charCodeAt(end - 1) === 47) end--;
+  const prefix = mount.slice(0, end) as `/${string}`;
   const requirements = options.requires as Requirements | undefined;
   const schemes = [
     ...new Set(requirements?.flatMap((requirement) => Object.keys(requirement)) ?? []),
   ];
   const provider = Provider.member(HttpHandler)({
-    inject: { config: HttpConfig, ...schemeDeps(schemes) },
+    inject: { config: HttpConfig, units: HttpUnit, ...schemeDeps(schemes) },
     sync: (services) => {
       const config = services.config;
-      const units = options.units ?? {};
+      const units = services.units;
+      if (options.units !== undefined)
+        for (const kind of requirements === undefined ? ["anonymous"] : schemes) {
+          const declared = options.units[kind] ?? options.units["anonymous"];
+          const bound = units[kind] ?? units["anonymous"];
+          if (declared !== bound)
+            // oxlint-disable-next-line unthrown/no-throw -- a declaration that differs from the runtime's binding is a wiring defect
+            throw new Error(
+              `[graphql-server] unit kind ${JSON.stringify(kind)} differs from HttpUnit`,
+            );
+        }
       const authenticators = schemeServices(schemes, services);
       const yoga = createYoga<{
         principal: unknown;
@@ -106,6 +120,18 @@ export const graphql = <
       return {
         prefix,
         handle: async (request, response, signal, host) => {
+          if (
+            request.method === "OPTIONS" &&
+            request.headers["access-control-request-method"] !== undefined
+          ) {
+            await yoga.handle(request, response, {
+              principal: undefined,
+              incoming: request,
+              unit: {},
+              signal,
+            });
+            return;
+          }
           let resolved: Resolved | undefined;
           if (requirements !== undefined) {
             const result = await resolveScheme(
@@ -140,15 +166,21 @@ export const graphql = <
             signal,
           });
         },
+        [dispose]: () => yoga.dispose(),
       };
     },
+    onStop: (answerer) => (answerer as DisposableAnswerer)[dispose](),
   });
   // `schemeDeps` is keyed at runtime, while the literal `R` carries the
   // precise port ids to di's needs gate. The two describe the same schemes.
   const typed = provider as Provider<
     InstanceType<typeof HttpHandler>,
     never,
-    InstanceType<typeof HttpConfig> | UnitsNeedsOf<Units> | SchemePortsOf<R>
+    | InstanceType<typeof HttpConfig>
+    | InstanceType<typeof HttpUnit>
+    | UnitsNeedsOf<Units>
+    | SchemePortsOf<R>
+    | Scope
   >;
   return Object.assign(typed, { authenticators: api.providers });
 };

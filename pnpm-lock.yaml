@@ -1760,6 +1760,9 @@ importers:
       '@btravstack/contract':
         specifier: workspace:*
         version: link:../contract
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../core
       '@btravstack/di':
         specifier: workspace:*
         version: link:../di

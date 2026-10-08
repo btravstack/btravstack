@@ -1,3 +1,4 @@
+import { start } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { HttpAuthenticator, Unauthenticated, granted } from "@btravstack/http-server";
 import { defineAuth } from "@btravstack/http-server";
@@ -43,6 +44,7 @@ describe("graphql answerer", () => {
   });
 
   it("keeps CORS closed by default and honors the configured origin", async ({ boot }) => {
+    // GIVEN a closed server, an allowed origin and a credentialed origin
     const schema = createSchema({
       typeDefs: "type Query { hello: String }",
       resolvers: { Query: { hello: () => "world" } },
@@ -78,12 +80,17 @@ describe("graphql answerer", () => {
         },
       });
 
-    expect((await preflight(closedPort)).headers.get("access-control-allow-origin")).toBeNull();
-    expect((await preflight(allowedPort)).headers.get("access-control-allow-origin")).toBe(
-      "https://web.example",
-    );
+    // WHEN the browser preflights each GraphQL mount
+    const closedPreflight = await preflight(closedPort);
+    const allowedPreflight = await preflight(allowedPort);
     const credentialedPreflight = await preflight(credentialedPort);
-    expect(credentialedPreflight.headers.get("access-control-allow-credentials")).toBe("true");
+
+    // THEN each mount applies its configured CORS policy
+    expect({
+      closed: closedPreflight.headers.get("access-control-allow-origin"),
+      allowed: allowedPreflight.headers.get("access-control-allow-origin"),
+      credentials: credentialedPreflight.headers.get("access-control-allow-credentials"),
+    }).toEqual({ closed: null, allowed: "https://web.example", credentials: "true" });
   });
 
   it("normalizes a trailing slash and accepts Yoga plugins", async ({ boot }) => {
@@ -147,7 +154,7 @@ describe("graphql answerer", () => {
     });
     const app = boot(
       Module("ScopedGraphqlApp")({
-        imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+        imports: [httpServer({ port: 0, hostname: "127.0.0.1", unit: { anonymous: unit } })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
       }),
@@ -169,12 +176,15 @@ describe("graphql answerer", () => {
   it("refuses a protected GraphQL mount before executing its resolver", async ({ boot }) => {
     // GIVEN a protected GraphQL schema whose only credential is Bearer good
     let invoked = false;
+    let authenticated = 0;
     const user = HttpAuthenticator<{ userId: string }>()({
       inject: {},
-      sync: () => (headers) =>
-        headers.authorization === "Bearer good"
+      sync: () => (headers) => {
+        authenticated++;
+        return headers.authorization === "Bearer good"
           ? OkAsync({ userId: "u-1" })
-          : ErrAsync(new Unauthenticated()),
+          : ErrAsync(new Unauthenticated());
+      },
     });
     const api = defineAuth({ authenticators: { user } });
     const schema = createSchema({
@@ -195,11 +205,20 @@ describe("graphql answerer", () => {
         provides: [answerer, ...answerer.authenticators],
         exports: [HttpRuntime, HttpHandler],
       }),
+      { env: { HTTP_CORS_ORIGIN: "https://web.example" } },
     );
     const info = (await app.runtimeInfo()).get();
-    expect(info).toBeDefined();
 
-    // WHEN an anonymous caller requests the protected field
+    // WHEN a browser preflights, then callers request the protected field
+    const preflight = await fetch(`http://127.0.0.1:${info!.port}/graphql`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "https://web.example",
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "authorization,content-type",
+      },
+    });
+    const authenticatedBefore = authenticated;
     const response = await fetch(`http://127.0.0.1:${info!.port}/graphql`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -212,7 +231,17 @@ describe("graphql answerer", () => {
     });
 
     // THEN the shared auth seam refuses it without invoking GraphQL
-    expect({ refused: response.status, accepted: await accepted.json(), invoked }).toEqual({
+    expect({
+      preflight: {
+        status: preflight.status,
+        origin: preflight.headers.get("access-control-allow-origin"),
+        authenticated: authenticatedBefore,
+      },
+      refused: response.status,
+      accepted: await accepted.json(),
+      invoked,
+    }).toEqual({
+      preflight: { status: 204, origin: "https://web.example", authenticated: 0 },
       refused: 401,
       accepted: { data: { secret: "u-1" } },
       invoked: true,
@@ -284,7 +313,7 @@ describe("graphql answerer", () => {
     });
     const app = boot(
       Module("BrokenGraphqlApp")({
-        imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+        imports: [httpServer({ port: 0, hostname: "127.0.0.1", unit: { anonymous: unit } })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
       }),
@@ -300,6 +329,76 @@ describe("graphql answerer", () => {
 
     // THEN the runtime owns the defect response
     expect(response.status).toBe(500);
+  });
+
+  it("refuses a unit declaration that differs from the runtime binding", async () => {
+    // GIVEN a GraphQL unit declaration that differs from the runtime's module
+    class Message extends Port("GraphqlBoundMessage")<string> {}
+    const bound = Module("BoundGraphqlUnit")({
+      provides: [Provider(Message)({ inject: {}, value: "bound" })],
+      exports: [Message],
+    });
+    const declared = Module("DeclaredGraphqlUnit")({
+      provides: [Provider(Message)({ inject: {}, value: "declared" })],
+      exports: [Message],
+    });
+    const answerer = graphql(defineAuth(), {
+      schema: createSchema({
+        typeDefs: "type Query { message: String! }",
+        resolvers: { Query: { message: () => "message" } },
+      }),
+      units: { anonymous: declared },
+      unit: { message: Message },
+    });
+    const app = start(
+      Module("MismatchedGraphqlUnit")({
+        imports: [httpServer({ unit: { anonymous: bound } })],
+        provides: [answerer],
+        exports: [HttpRuntime, HttpHandler],
+      }),
+      { signals: false },
+    );
+
+    // WHEN the application boots
+    // THEN DI reports the mismatched unit binding
+    await expect(app.exited).toBeDefectWith(
+      expect.objectContaining({
+        message: '[graphql-server] unit kind "anonymous" differs from HttpUnit',
+      }),
+    );
+  });
+
+  it("disposes Yoga plugins when the application stops", async ({ boot }) => {
+    // GIVEN a Yoga plugin with a disposal hook
+    let disposals = 0;
+    const answerer = graphql(defineAuth(), {
+      schema: createSchema({
+        typeDefs: "type Query { hello: String! }",
+        resolvers: { Query: { hello: () => "hello" } },
+      }),
+      plugins: [
+        {
+          onDispose: () => {
+            disposals++;
+          },
+        },
+      ],
+    });
+    const app = boot(
+      Module("DisposableGraphqlApp")({
+        imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+        provides: [answerer],
+        exports: [HttpRuntime, HttpHandler],
+      }),
+    );
+    await app.runtimeInfo();
+
+    // WHEN the application stops
+    app.stop();
+    await app.exited;
+
+    // THEN the plugin is disposed once
+    expect(disposals).toBe(1);
   });
 
   it("keeps a resolver failure inside GraphQL's error envelope", async ({ boot }) => {

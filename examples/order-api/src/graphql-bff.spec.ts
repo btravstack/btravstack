@@ -11,6 +11,7 @@ it("serves GraphQL in a separate process backed by the oRPC API", async ({
   serve,
   tokenFor,
 }) => {
+  // GIVEN the oRPC API and a separate GraphQL gateway that calls it
   const backend = serve(api);
   const backendPort = (await backend.runtimeInfo()).get()!.port;
   const gateway = boot(OrderGraphqlApi, {
@@ -29,11 +30,13 @@ it("serves GraphQL in a separate process backed by the oRPC API", async ({
     });
   const mutation = `mutation { placeOrder(id: "${orderId}", quantity: 2) { id quantity } }`;
 
+  // WHEN callers attempt an anonymous mutation, a valid mutation, a query and a duplicate
   const refused = await request(mutation, false);
   const placed = await request(mutation, true);
   const found = await request(`{ order(id: "${orderId}") { id quantity } }`, true);
   const duplicate = await request(mutation, true);
 
+  // THEN the gateway preserves each contract outcome
   expect({
     refused: await refused.json(),
     placed: await placed.json(),

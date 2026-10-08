@@ -11,6 +11,8 @@ selected request kind actually forks. Pass the same `units` record to
 `httpServer({ unit: units })` so the runtime can apply unit test overrides.
 Yoga plugins and CORS policy are explicit
 options; the wildcard CORS default and Yoga console logging are disabled.
+Preflights use Yoga's CORS policy before authentication, and Yoga plugins are
+disposed when the application stops.
 
 See [Serve GraphQL](https://btravstack.github.io/btravstack/how-to/serve-graphql)
 and the [separate GraphQL gateway](../../examples/order-graphql-api).

@@ -5,5 +5,5 @@ export { http } from "./http.js";
 export type { OrpcHttpOptions } from "./http.js";
 export { HttpModule } from "./http-module.js";
 export type { HttpModuleOptions } from "./http-module.js";
-export { orpc, OrpcRouterPort } from "./orpc.js";
+export { orpc } from "./orpc.js";
 export type { OrpcOptions } from "./orpc.js";
