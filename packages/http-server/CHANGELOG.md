@@ -1,5 +1,20 @@
 # @btravstack/http-server
 
+## 0.20.0
+
+### Minor Changes
+
+- d840ad5: Serve a contract's conventional HTTP routes through oRPC's OpenAPI handler while keeping RPC and document publication separate.
+
+### Patch Changes
+
+- a4cd24d: Match htmx fragment routes against the shared parsed pathname so absolute-form request targets reach their fragments.
+- Updated dependencies [94d088d]
+  - @btravstack/core@0.20.0
+  - @btravstack/config@0.20.0
+  - @btravstack/contract@0.20.0
+  - @btravstack/di@0.20.0
+
 ## 0.19.0
 
 ### Minor Changes
