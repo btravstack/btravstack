@@ -141,7 +141,7 @@ against a worker that keeps its own clock.
 
 `AmqpHandlers` and `AmqpModule`; the outbox relayed by
 [`@btravstack/outbox`](/reference/outbox) through a publisher of the
-deployment's own contract, with a modeled `BrokerUnreachable`; a tombstone
+deployment's own contract, with a modeled connection error; a tombstone
 behind every cancellation; a foreign queue receiving the same event; and a
 real RabbitMQ container per run.
 

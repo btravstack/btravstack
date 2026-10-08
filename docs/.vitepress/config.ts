@@ -203,6 +203,14 @@ const GUIDE_SIDEBAR = [
         ],
       },
       {
+        text: "Clients",
+        collapsed: false,
+        items: [
+          { text: "@btravstack/temporal-client", link: "/reference/temporal-client" },
+          { text: "@btravstack/amqp-client", link: "/reference/amqp-client" },
+        ],
+      },
+      {
         text: "Capability ports",
         collapsed: false,
         items: [
@@ -517,6 +525,8 @@ export default defineConfig({
             { text: "@btravstack/graphql-server", link: "/api/graphql-server/" },
             { text: "@btravstack/temporal-worker", link: "/api/temporal-worker/" },
             { text: "@btravstack/amqp-worker", link: "/api/amqp-worker/" },
+            { text: "@btravstack/temporal-client", link: "/api/temporal-client/" },
+            { text: "@btravstack/amqp-client", link: "/api/amqp-client/" },
           ],
         },
       ],

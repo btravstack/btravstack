@@ -31,7 +31,7 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds eighteen published packages,
+pnpm workspace + turbo monorepo. `packages/` holds twenty published packages,
 `entity` (optional domain modelling on Zod; sealed entities and aggregates, derived schemas, and Result-returning construction), `contract` (the contract tier: markers and normed shapes a client and the
 server that implements it both need — the `authenticated` marker and a cursor
 page, with the page's schema behind a `/zod` subpath so the root keeps its
@@ -49,7 +49,7 @@ composition function), `outbox` (the transactional outbox's relay — the poll
 loop, a per-tenant claim, a lag health check and a Prisma 8 store behind a
 `/prisma` subpath; the application keeps the transaction that writes the row
 and says what publishing means), and the three
-**servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus three HTTP answerer packages: `orpc-server`, `htmx-server` and `graphql-server`. `di` was its own repository until it was merged here
+**servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus three HTTP answerer packages: `orpc-server`, `htmx-server` and `graphql-server`. The calling side has `amqp-client` and `temporal-client`, which bind upstream typed clients to application ports and release connections with the DI scope without a worker dependency. `di` was its own repository until it was merged here
 **with its history**; it, `contract` and `entity` are the three packages that depend on
 nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
@@ -139,9 +139,9 @@ pnpm dev              # the four example deployments, one process each, watching
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
-## Versioning: all eighteen packages move as one
+## Versioning: all twenty packages move as one
 
-The eighteen published packages share **one version number**, enforced by a
+The twenty published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. **Do not downgrade `@changesets/cli`
 below 3.0.0** — on 2.x the next `pnpm run version` silently ships a major. The
 measurements behind both rules are in `.changeset/AGENTS.md`.
@@ -259,7 +259,7 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    a deployment operation) is in `packages/temporal-worker/AGENTS.md`.
 
    **Each transport package is named for the HALF it implements** —
-   `http-server`, `temporal-worker`, `amqp-worker` — and a client will be a
+   `http-server`, `temporal-worker`, `amqp-worker` — and a client is a
    separate `-client` PACKAGE, never a subpath: peers are per-package, so a
    subpath would drag the serving half into a consumer that only calls. Why
    these spellings is in `docs/explanation/deferred-decisions.md`.
@@ -976,7 +976,7 @@ in its place.
 - **`packages/core`'s specs use `@btravstack/testing` without depending on
   it** — that would be a package-graph cycle turbo refuses — so four configs
   carry the wiring and move together: see `packages/testing/AGENTS.md`.
-- `declarationMap: false` on all eighteen published packages — the published
+- `declarationMap: false` on all twenty published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **A deployment extends `@btravstack/tsconfig/app.json`; everything that
   exports something keeps `base.json`.** The two differ in one thing,

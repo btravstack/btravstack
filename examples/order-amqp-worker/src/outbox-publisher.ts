@@ -1,21 +1,11 @@
-import { TypedAmqpClient } from "@amqp-contract/client";
+import type { TypedAmqpClient } from "@amqp-contract/client";
+import { amqpClient } from "@btravstack/amqp-client";
 import { AmqpConfig } from "@btravstack/amqp-worker";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { decodeOrderPayload } from "@btravstack/example-order-infrastructure";
 import { OutboxPublisher } from "@btravstack/outbox";
-import { OkAsync, P, TaggedError } from "unthrown";
-
-/**
- * The broker at `AMQP_URL` did not answer when the publisher opened its client.
- * Modeled rather than left the defect `TypedAmqpClient.create` reports it as, so
- * `runMain` exits `1` — an operator can act on it, and neither a wrong URL nor a
- * broker that is down is a bug in this code.
- */
-export class BrokerUnreachable extends TaggedError("BrokerUnreachable")<{
-  readonly url: string;
-  readonly cause: unknown;
-}> {}
+import { OkAsync } from "unthrown";
 
 /**
  * The client, as a port of its own: a resourceful provider hands `release` the
@@ -24,24 +14,7 @@ export class BrokerUnreachable extends TaggedError("BrokerUnreachable")<{
  */
 class OrderAmqpClient extends Port("OrderAmqpClient")<TypedAmqpClient<typeof orderContract>> {}
 
-/**
- * Created here rather than borrowed from the worker: a transport connection is
- * the transport's own, and it is not a second one — the connection manager
- * pools by URL, so this shares the consumer's TCP connection and `close()`
- * releases a lease rather than the socket. A broker it cannot reach fails
- * startup.
- */
-export const orderAmqpClient = Provider(OrderAmqpClient)({
-  inject: { broker: AmqpConfig },
-  acquire: ({ broker: { url } }) =>
-    TypedAmqpClient.create({ contract: orderContract, urls: [url] }).mapErrCases((matcher) =>
-      matcher.with(
-        P.tag("@amqp-contract/ConnectionError"),
-        (cause) => new BrokerUnreachable({ url, cause }),
-      ),
-    ),
-  release: (client) => client.close().get(),
-});
+export const orderAmqpClient = amqpClient(OrderAmqpClient, orderContract, AmqpConfig);
 
 /**
  * What "publish" means for this application — the one half of the outbox

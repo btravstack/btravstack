@@ -26,6 +26,7 @@
     "@btravstack/example-order-temporal-contract": "workspace:*",
     "@btravstack/observability": "workspace:*",
     "@btravstack/storage": "workspace:*",
+    "@btravstack/temporal-client": "workspace:*",
     "@btravstack/temporal-worker": "workspace:*",
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/sdk-node": "catalog:",

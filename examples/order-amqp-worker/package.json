@@ -20,6 +20,7 @@
     "@amqp-contract/client": "catalog:",
     "@amqp-contract/worker": "catalog:",
     "@aws-sdk/client-s3": "catalog:",
+    "@btravstack/amqp-client": "workspace:*",
     "@btravstack/amqp-worker": "workspace:*",
     "@btravstack/config": "workspace:*",
     "@btravstack/core": "workspace:*",

@@ -1,0 +1,7 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/amqp-client",
+  "entryPoints": ["../packages/amqp-client/src/index.ts"],
+  "tsconfig": "../packages/amqp-client/tsconfig.json",
+  "out": "api/amqp-client"
+}

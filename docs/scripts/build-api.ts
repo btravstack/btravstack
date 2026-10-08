@@ -46,6 +46,8 @@ const packages: readonly string[] = [
   "graphql-server",
   "temporal-worker",
   "amqp-worker",
+  "temporal-client",
+  "amqp-client",
 ];
 
 // Refuse to generate a hub that disagrees with the configs on disk: an
