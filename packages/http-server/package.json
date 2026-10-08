@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/http-server",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "description": "The protocol-neutral Node HTTP runtime, request units, and authentication for @btravstack/core",
   "keywords": [
     "graceful-shutdown",
