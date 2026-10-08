@@ -37,10 +37,11 @@ import {
   CustomerPersistenceModule,
   OrderPersistenceModule,
 } from "@btravstack/example-order-infrastructure";
-import { HttpModule, html } from "@btravstack/http-server";
+import { html } from "@btravstack/htmx-server";
 import { jwtAuthenticator } from "@btravstack/http-server/jwt";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
+import { HttpModule } from "@btravstack/orpc-server";
 import { P } from "unthrown";
 
 import { api } from "./auth.js";

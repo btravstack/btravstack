@@ -83,11 +83,11 @@ that has to decide what a client sees. A `Defect` is never named: it has no code
 because it was never modelled, and collapsing it to a 500 is the correct
 treatment rather than a fallback.
 
-## The transport is `@btravstack/http-server`, all of it
+## The HTTP runtime and oRPC answerer
 
 Binding the socket, one unit per request, the drain that retires a busy
-keep-alive connection, the trace-id policy, oRPC's node adapter mounted under
-`/rpc` all live in [`@btravstack/http-server`](../../packages/http-server) —
+keep-alive connection, the trace-id policy, are in [`@btravstack/http-server`](../../packages/http-server); the oRPC
+answerer mounted under `/rpc` is in [`@btravstack/orpc-server`](../../packages/orpc-server) —
 see its README for the guarantee it makes and the one way it answers HTTP.
 What this example writes is two slices, each an `api.OrpcController(contract, path)({ inject: { name: Dep }, sync })`
 over its own contract fragment, and a root router composed by the **array**

@@ -1,0 +1,295 @@
+import type { OneScheme, Requirements } from "@btravstack/contract";
+import {
+  Port,
+  Provider,
+  type AnyPort,
+  type AnyProvider,
+  type PortClassOf,
+  type ServiceOf,
+} from "@btravstack/di";
+import {
+  schemeDeps,
+  schemeServices,
+  type AuthenticatorService,
+} from "@btravstack/http-server/internal";
+import type { RequiresGate, SchemesIn, SchemePortsOf } from "@btravstack/http-server/internal";
+import type { Principal, SchemesOf } from "@btravstack/http-server/internal";
+import type { KindOf, UnitFor } from "@btravstack/http-server/internal";
+import type { AsyncResult } from "unthrown";
+
+import type { FragmentInputSchema, ParamsOf } from "./fragments.js";
+import type { Html } from "./html.js";
+
+/** The prefix a piece's port id carries, ahead of its own method and path. */
+const FRAGMENT_PREFIX = "HtmxFragment:";
+
+/** What a route's own schema infers, or the raw decoded form when it declares none. */
+type InputOfSchema<S extends FragmentInputSchema | undefined> = S extends undefined
+  ? Readonly<Record<string, string>>
+  : NonNullable<NonNullable<S>["~standard"]["types"]>["output"];
+
+/** What `requires` types on `context.principal` — no contract, so nothing to fold nearest-mark-wins over. */
+type PrincipalFromRequires<R extends Requirements, Schemes> = [R] extends [never]
+  ? never
+  : Principal<SchemesOf<R>, Schemes>;
+
+/**
+ * A route's handler: the path's own params next to the decoded input.
+ *
+ * `context.unit` is the declared `unit:` record narrowed to the kind this
+ * route's own `requires` selects — `KindOf` over the data, where an oRPC leaf
+ * reads the same kind off its contract's marks. A route with no `requires`
+ * forks `anonymous`, so a name only a scheme's module exports is absent rather
+ * than `undefined`.
+ */
+type RouteHandler<
+  P extends `/${string}`,
+  S extends FragmentInputSchema | undefined,
+  R extends Requirements,
+  Schemes,
+  Units,
+  U extends Readonly<Record<string, AnyPort>>,
+> = (
+  context: ([R] extends [never]
+    ? object
+    : { readonly principal: PrincipalFromRequires<R, Schemes> }) & {
+    readonly unit: UnitFor<U, Units, KindOf<R>>;
+  },
+  params: ParamsOf<P>,
+  input: InputOfSchema<S>,
+) => AsyncResult<Html, never>;
+
+/**
+ * What `HtmxGet` and `HtmxPost` return. Keyed by `${method} ${path}` — GET and POST on one path
+ * are distinct, and two routes on one method+path are one port id, di's
+ * duplicate-provider defect. `route.requires` carries the LITERAL `R`, not the
+ * widened `Requirements | undefined` — the array arm's needs channel reads it
+ * back through `RequiresOfPiece`, and a widened field would make that
+ * unrecoverable at the type level.
+ */
+type MintedRoute<Id extends string, H, R extends Requirements, N, U> = Provider<
+  InstanceType<PortClassOf<Id, H>>,
+  never,
+  N
+> & {
+  readonly port: PortClassOf<Id, H>;
+  readonly route: {
+    readonly method: "GET" | "POST";
+    readonly path: string;
+    readonly input: FragmentInputSchema | undefined;
+    readonly requires: [R] extends [never] ? undefined : R;
+  };
+  /** The declared `unit:` record, which `HtmxFragments` reads back off the piece. */
+  readonly unit: U;
+};
+
+/** One piece the array arm of `HtmxFragments` accepts — what `HtmxGet`/`HtmxPost` return. */
+type AnyRoutePiece = {
+  readonly port: AnyPort;
+  readonly route: {
+    readonly method: "GET" | "POST";
+    readonly path: string;
+    readonly input: FragmentInputSchema | undefined;
+    readonly requires: Requirements | undefined;
+  };
+  readonly unit: Readonly<Record<string, AnyPort>>;
+};
+
+/**
+ * A piece's own `requires`, read back off its literal type — `never` for a
+ * piece minted with none. `P` is a naked type parameter, so applied to a
+ * UNION of pieces (`T[number]`) this distributes, one arm per piece, which is
+ * what lets `SchemePortsOf` below see every route's own scheme rather than
+ * one collapsed answer.
+ */
+type RequiresOfPiece<P> = P extends {
+  readonly route: { readonly requires: infer R extends Requirements };
+}
+  ? R
+  : never;
+
+/** The kinds a request to these pieces opens under: `"anonymous"` for a public one. */
+type KindsOfRoutes<P> = P extends unknown
+  ? [RequiresOfPiece<P>] extends [never]
+    ? "anonymous"
+    : SchemesIn<RequiresOfPiece<P>>
+  : never;
+
+/**
+ * `HtmxGet` and `HtmxPost`: a route as a provider on a port of its own, minted
+ * straight from a path — no contract in between. Two separate functions,
+ * deliberately, rather than one `method`-parameterised generic: `method` here
+ * is a plain runtime string, never a type argument.
+ *
+ * ```ts
+ * const orderRow = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
+ *   inject: { repository: OrderRepository },
+ *   sync: ({ repository }) => (context, params) => repository.find(params.id).map(rowOf),
+ * });
+ * ```
+ */
+export const htmxRouteFor = <Schemes, Vocab, Units = Record<never, never>>() => {
+  const mint =
+    (
+      method: "GET" | "POST",
+      path: string,
+      input: FragmentInputSchema | undefined,
+      requires: Requirements | undefined,
+    ) =>
+    (options: { readonly unit?: Readonly<Record<string, AnyPort>> }): unknown => {
+      // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
+      const port = class extends Port(`${FRAGMENT_PREFIX}${method} ${path}`)<
+        (context: unknown, params: unknown, input: unknown) => AsyncResult<Html, never>
+      > {};
+      const provider = Provider(port as never)(options as never);
+      return Object.assign(provider, {
+        route: { method, path, input, requires },
+        unit: options.unit ?? {},
+      });
+    };
+
+  const HtmxGet = <
+    const P extends `/${string}`,
+    const R extends Requirements & { readonly [I in keyof R]: OneScheme<R[I]> } = never,
+  >(
+    path: P,
+    options?: { readonly requires?: R & RequiresGate<R, Vocab> },
+  ): {
+    <
+      const D extends Readonly<Record<string, AnyPort>>,
+      const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+    >(buildOptions: {
+      readonly inject: D;
+      /** The unit-scoped ports this route may read off `context.unit`, per its own kind. */
+      readonly unit?: U;
+      readonly sync: (services: {
+        readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+      }) => RouteHandler<P, undefined, R, Schemes, Units, U>;
+    }): MintedRoute<
+      `${typeof FRAGMENT_PREFIX}GET ${P}`,
+      RouteHandler<P, undefined, R, Schemes, Units, U>,
+      R,
+      InstanceType<D[keyof D]>,
+      U
+    >;
+  } => mint("GET", path, undefined, options?.requires as Requirements | undefined) as never;
+
+  const HtmxPost = <
+    const P extends `/${string}`,
+    const R extends Requirements & { readonly [I in keyof R]: OneScheme<R[I]> } = never,
+    const S extends FragmentInputSchema | undefined = undefined,
+  >(
+    path: P,
+    options?: { readonly requires?: R & RequiresGate<R, Vocab>; readonly input?: S },
+  ): {
+    <
+      const D extends Readonly<Record<string, AnyPort>>,
+      const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+    >(buildOptions: {
+      readonly inject: D;
+      /** The unit-scoped ports this route may read off `context.unit`, per its own kind. */
+      readonly unit?: U;
+      readonly sync: (services: {
+        readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+      }) => RouteHandler<P, S, R, Schemes, Units, U>;
+    }): MintedRoute<
+      `${typeof FRAGMENT_PREFIX}POST ${P}`,
+      RouteHandler<P, S, R, Schemes, Units, U>,
+      R,
+      InstanceType<D[keyof D]>,
+      U
+    >;
+  } => mint("POST", path, options?.input, options?.requires as Requirements | undefined) as never;
+
+  return { HtmxGet, HtmxPost };
+};
+
+/** What the answerer reads back for one route, principal and body erased to `unknown`. */
+export type FragmentAnswer = {
+  readonly method: "GET" | "POST";
+  readonly path: string;
+  readonly input: FragmentInputSchema | undefined;
+  readonly requirements: Requirements | undefined;
+  /** The declared `unit:` record, which the answerer resolves out of the fork it opens. */
+  readonly unit: Readonly<Record<string, AnyPort>>;
+  readonly handle: (
+    context: {
+      readonly principal: unknown;
+      readonly unit: Readonly<Record<string, unknown>>;
+    },
+    params: Readonly<Record<string, string>>,
+    input: unknown,
+  ) => AsyncResult<Html, never>;
+};
+
+/**
+ * Every route a fragment declares, composed into one port — the answerer's
+ * own reads it through `routes` and calls `resolvePrincipal` itself, which is
+ * why `requirements` and `authenticators` ride the port rather than staying
+ * in this closure.
+ */
+export class HtmxFragmentsPort extends Port("HtmxFragments")<{
+  readonly routes: readonly FragmentAnswer[];
+  readonly authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>;
+  /** One port per scheme, so `htmx()` can seed the fork it opens for the caller. */
+  readonly principals: Readonly<Record<string, AnyPort>>;
+}> {}
+
+/**
+ * Every scheme any route's `requires` names, walked directly over the raw
+ * data — a route's `requires` is `Requirements` data, read straight off
+ * `piece.route`, never a marker `isAuthenticated` could resolve.
+ */
+const schemesInRoutes = (routes: readonly AnyRoutePiece[]): readonly string[] => [
+  ...new Set(routes.flatMap((piece) => (piece.route.requires ?? []).flatMap(Object.keys))),
+];
+
+/**
+ * `HtmxFragments`: every route composed from an array of `HtmxGet`/`HtmxPost`
+ * pieces into one port. Keyed by INDEX rather than by the piece's own port
+ * id: two pieces sharing one method+path share one port id, and keying
+ * `deps` by that id would silently keep only the last, hiding the very
+ * collision di's duplicate-provider defect exists to catch.
+ */
+export const htmxFragmentsFor =
+  <Auth extends AnyProvider = never, Units = Record<never, never>>(
+    authenticators: readonly Auth[],
+    principals: Readonly<Record<string, AnyPort>> = {},
+  ) =>
+  <const T extends readonly AnyRoutePiece[]>(
+    routes: T,
+  ): Provider<
+    InstanceType<typeof HtmxFragmentsPort>,
+    never,
+    InstanceType<T[number]["port"]> | SchemePortsOf<RequiresOfPiece<T[number]>>
+  > & {
+    readonly authenticators: readonly Auth[];
+    /** Phantom: the kinds bound at `units<…>()`, read by `HttpModule`, never at runtime. */
+    readonly _units?: Units;
+    /** Phantom: the kinds a request here opens under, read by `HttpModule`, never at runtime. */
+    readonly _kinds?: KindsOfRoutes<T[number]>;
+  } => {
+    const routeEntries = routes.map((piece, index) => [`route:${index}`, piece.port] as const);
+    const schemes = schemesInRoutes(routes);
+    const deps: Record<string, AnyPort> = {
+      ...Object.fromEntries(routeEntries),
+      ...schemeDeps(schemes),
+    };
+    const sync = (
+      services: Record<string, unknown>,
+    ): ServiceOf<InstanceType<typeof HtmxFragmentsPort>> => ({
+      routes: routes.map((piece, index) => ({
+        method: piece.route.method,
+        path: piece.route.path,
+        input: piece.route.input,
+        requirements: piece.route.requires,
+        unit: piece.unit,
+        handle: services[`route:${index}`] as FragmentAnswer["handle"],
+      })),
+      authenticators: schemeServices(schemes, services),
+      principals,
+    });
+    return Object.assign(Provider(HtmxFragmentsPort)({ inject: deps, sync } as never), {
+      authenticators,
+    }) as never;
+  };

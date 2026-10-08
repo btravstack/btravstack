@@ -1,6 +1,5 @@
+import { it } from "@btravstack/internal-http-fixtures";
 import { describe, expect } from "vitest";
-
-import { it } from "./__tests__/test-fixtures.js";
 
 describe("csrf", () => {
   it("serves a same-origin state change carrying the session cookie", async ({ csrf }) => {

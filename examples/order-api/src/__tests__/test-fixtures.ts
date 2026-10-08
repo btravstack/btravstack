@@ -10,6 +10,7 @@ import {
   type Tracer,
 } from "@btravstack/core";
 import { Provider, type Module, type Scope, type ServiceOf } from "@btravstack/di";
+import { createOrderApiClient, type OrderApiClient } from "@btravstack/example-order-api-client";
 import {
   CursorSortMismatch,
   CustomerRepository,
@@ -45,7 +46,6 @@ import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
 import { uuidv7 } from "uuidv7";
 import { inject, test } from "vitest";
 
-import { createOrderApiClient, type OrderApiClient } from "../client.js";
 import { OrderApi } from "../module.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();

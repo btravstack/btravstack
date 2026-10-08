@@ -1,8 +1,8 @@
 # Examples
 
-Fourteen small packages, none of them published, all of them in the gate.
+Seventeen small packages, none of them published, all of them in the gate.
 
-The **`order-*` nine** are one application booted three ways: a clean
+The **`order-*` twelve** are one application booted three ways: a clean
 architecture split across four layers, deployed once as an oRPC API, once as a
 Temporal worker and once as an AMQP consumer, with each transport's contract in a
 package of its own — and, at the same time, exercising `@btravstack/core` end to
@@ -18,7 +18,10 @@ calls `start`.
 | [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and one module per vertical whose repository — and, for orders, `Logger` and the unit's `Tenant` — is deliberately an **unmet need**.                                                                                                                      |
 | [`order-infrastructure`](./order-infrastructure)       | adapters  | Prisma-backed repositories over a multi-tenant PostgreSQL schema, translating P-codes into the domain's vocabulary and closing the application's repository needs.                                                                                                                                    |
 | [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                                                                                                                                                                   |
+| [`order-graphql-contract`](./order-graphql-contract)   | contract  | The generated GraphQL SDL on its own — clients can run codegen and schema checks without installing Yoga or the HTTP server.                                                                                                                                                                          |
 | [`order-api`](./order-api)                             | runtime   | The first deployment: a two-slice modulith — a controller per contract fragment, composed into one oRPC router — served by `http()`, and `Result` → `ORPCError`.                                                                                                                                      |
+| [`order-api-client`](./order-api-client)               | client    | Typed oRPC caller shared by the GraphQL gateway and other consumers.                                                                                                                                                                                                                                  |
+| [`order-graphql-api`](./order-graphql-api)             | runtime   | A separate GraphQL process that calls the order API through the typed client.                                                                                                                                                                                                                         |
 | [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — two sagas and a scheduled sweep, each forward step's permanent answers declared `nonRetryable` — read by the worker, the sandbox and the client.                                                                                                                   |
 | [`order-temporal-worker`](./order-temporal-worker)     | runtime   | The **orchestration** deployment: two saga slices on `@btravstack/temporal-worker` — `fulfillOrder` places, reserves and ships with compensation in reverse; `chargeOrder` authorizes and refunds a payment — and a nightly stale-order sweep its `deploy:schedules` registers with `ensureSchedule`. |
 | [`order-amqp-contract`](./order-amqp-contract)         | contract  | The AMQP contract on its own — one exchange, one event, two subscriber queues each with its own retry/dead-letter policy — read by the relay and by any subscriber.                                                                                                                                   |
@@ -29,8 +32,8 @@ The four [`entity-billing-*`](../docs/entity/examples/) packages cover domain en
 ## The layering, and which way the arrows point
 
 ```text
-  order-api      order-temporal-worker      order-amqp-worker   ← one runtime each; one process each
-       └────────────────┼──────────────────┘  ─────▶ Config (the kernel's)  ← how all three read the environment
+  order-api      order-graphql-api      order-temporal-worker      order-amqp-worker   ← one runtime each; one process each
+       └────────────────┼──────────────────┘  ─────▶ Config (the kernel's)  ← how all four read the environment
                         ▼
              order-infrastructure                    ← Prisma, PostgreSQL, P-codes
                         │  provides OrderRepository
@@ -82,11 +85,11 @@ repository's own `pnpm test` runs:
 pnpm install
 pnpm test        # every example's specs, alongside the kernel's own
 pnpm typecheck   # includes the compile-time-only guarantees pinned with @ts-expect-error
-pnpm dev         # the three deployments, side by side, watching
+pnpm dev         # the four deployments, side by side, watching
 ```
 
 `pnpm dev` is the local loop: it brings up the same shared containers the specs
-use, applies the migrations, and runs all three entry points at once with their
+use, applies the migrations, and runs all four entry points at once with their
 output prefixed by workspace — one process per deployment, exactly as in
 production, because that is the only way the drain and the failure isolation
 mean anything. See

@@ -1,6 +1,5 @@
+import { it } from "@btravstack/internal-http-fixtures";
 import { describe, expect, vi } from "vitest";
-
-import { it } from "./__tests__/test-fixtures.js";
 
 describe("httpRuntime", () => {
   it("does not throw when the server emits an error after binding", async ({

@@ -1,0 +1,397 @@
+# @btravstack/orpc-server
+
+> The oRPC answerer and composition helper for the protocol-neutral
+> [`@btravstack/http-server`](../http-server) runtime. `defineHttp` types
+> handlers from the contract; `HttpModule` composes the router, optional htmx
+> fragments, and the HTTP runtime. OpenAPI routes are available from `/openapi`.
+
+The [order API example](../../examples/order-api) serves oRPC and htmx under
+one listener. The [GraphQL example](../../examples/order-graphql-api) runs in
+a separate process and uses the typed oRPC client, without installing this
+server package.
+
+```sh
+pnpm add @btravstack/orpc-server @btravstack/http-server @btravstack/htmx-server \
+  @btravstack/core @btravstack/config @btravstack/di @btravstack/contract \
+  unthrown @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @unthrown/orpc@^0.2.0
+```
+
+## A worked example
+
+<!-- doctest: isolate
+import { oc, type } from "@orpc/contract";
+import { Port, type Module } from "@btravstack/di";
+import { TaggedError, type AsyncResult } from "unthrown";
+// The application's own domain, declared here so this sample stands on the
+// published packages alone: these are yours, not this package's.
+class InvalidQuantity extends TaggedError("InvalidQuantity")<{
+  readonly id: string;
+  readonly quantity: number;
+}> {}
+class InvalidOrderId extends TaggedError("InvalidOrderId")<{ readonly id: string }> {}
+class DuplicateOrder extends TaggedError("DuplicateOrder")<{ readonly id: string }> {}
+class OrderNotFound extends TaggedError("OrderNotFound")<{ readonly id: string }> {}
+type Order = { readonly id: string; readonly quantity: number };
+type OrderView = { readonly id: string; readonly quantity: number };
+type OrderRef = { readonly id: string };
+declare const view: (order: Order) => OrderView;
+class PlaceOrder extends Port("PlaceOrder")<{
+  readonly execute: (
+    id: string,
+    quantity: number,
+  ) => AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder>;
+}> {}
+declare const Persistence: Module<never, never, never>;
+class FindOrder extends Port("FindOrder")<{
+  readonly execute: (id: string) => AsyncResult<Order, OrderNotFound>;
+}> {}
+const ordersContract = {
+  place: oc
+    .input(type<{ readonly id: string; readonly quantity: number }>())
+    .output(type<OrderView>())
+    .errors({
+      INVALID_QUANTITY: { data: type<OrderRef>() },
+      BAD_REQUEST: { data: type<OrderRef>() },
+      CONFLICT: { data: type<OrderRef>() },
+    }),
+  find: oc
+    .input(type<OrderRef>())
+    .output(type<OrderView>())
+    .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
+};
+declare const Application: Module<PlaceOrder | FindOrder, never, never>;
+-->
+
+```ts
+import { runMain } from "@btravstack/core";
+import { HttpModule, defineHttp } from "@btravstack/orpc-server";
+import { P } from "unthrown";
+
+// One call mints every marker-typed entity this application uses. A public
+// API declares no security scheme, so it takes no argument. Hold the result
+// as ONE binding — never destructure it (see "Protecting a procedure").
+const api = defineHttp();
+
+// Contract-first: the record is shaped like the contract, each leaf a plain
+// Result-returning function typed by it. The use cases arrive under the names
+// the `inject` record gave them — di injects them; oRPC's context stays empty.
+const ordersRouter = api.OrpcRouter(ordersContract)({
+  inject: { place: PlaceOrder, find: FindOrder },
+  sync: ({ place, find }) => ({
+    place: ({ errors }, input) =>
+      place
+        .execute(input.id, input.quantity)
+        .map(view)
+        // The one place a domain error becomes a transport one — exhaustive,
+        // so a new domain error is a compile error right here.
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.INVALID_QUANTITY({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            // A malformed id is the caller's mistake, so 400 — not the
+            // 409 a duplicate gets.
+            .with(P.tag("InvalidOrderId"), (error) =>
+              errors.BAD_REQUEST({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            ),
+        ),
+    find: ({ errors }, input) =>
+      find
+        .execute(input.id)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("OrderNotFound"), (error) =>
+            errors.NOT_FOUND({
+              message: error.message,
+              data: { id: error.id },
+            }),
+          ),
+        ),
+  }),
+});
+
+// A di module that also knows about its router: imports the starter, provides
+// the router on the starter's own port (a process serves one router, so
+// there is nothing to name), exports the runtime port — nothing else to spell.
+const OrdersApi = HttpModule("OrdersApi")({
+  router: ordersRouter,
+  imports: [Application, Persistence],
+});
+
+await runMain(OrdersApi);
+```
+
+That is a whole `main.ts`. `PORT` (default `3000`), `HOST` (default `0.0.0.0`)
+and the kernel's `PROBE_PORT` are read inside the graph; the router is mounted
+under `/rpc`; a test boots the same module with
+`start(OrdersApi, { env: { PORT: "0", HOST: "127.0.0.1" } })` and reads the bound
+port back from `app.runtimeInfo()`.
+
+## Splitting a large API into slices
+
+`api.OrpcRouter(contract)({ inject, sync })` is right for a small API. A large
+one splits into **pieces** — one per node of the contract tree, named by a
+dotted path — composed at the root as an array instead:
+
+<!-- doctest: skip — an excerpt of two call shapes, not a program: the compiled versions are on /how-to/split-a-router-into-controllers and in examples/order-api -->
+
+```ts
+// each slice owns one piece, and exports only its port
+export const ordersController = api.OrpcController(contract, "orders")({
+  inject: { place: PlaceOrder },
+  sync: ({ place }) => ({ place: ({ errors }, input) => placeOrder(place, errors, input) }),
+});
+
+// the root composes them; every procedure the contract declares must be covered
+export const orderRouter = api.OrpcRouter(contract)([ordersController, customersController]);
+```
+
+The key rides the piece's own port id, so a piece cannot sit under the wrong
+one; an uncovered procedure and a piece nested inside another's fragment are
+each refused at the array, naming what is missing. And because a **fragment is
+itself a valid contract**, a slice lifts into a process of its own with its
+piece unchanged — which is what makes a modulith a starting point rather than a
+trap.
+
+The worked recipe, with the slice modules and the lifted root:
+[Split a router into controllers](https://btravstack.github.io/btravstack/how-to/split-a-router-into-controllers).
+
+## Protecting a procedure
+
+A contract says which **security schemes** a procedure accepts and which scopes
+each must grant — the marker is `@btravstack/contract`'s, so it lives in the
+artifact a client holds too, and it names no identity type, so nothing about the
+server's view of a caller reaches a client.
+
+`defineHttp({ authenticators })` says what each scheme **resolves to**.
+Declaring a scheme and implementing it are the same act, so there is no registry
+to keep in step with the contract:
+
+<!-- doctest: skip — one call shape; the compiled version is in examples/order-api/src/auth.ts, which the doc-samples gate compiles through /how-to/protect-a-procedure -->
+
+```ts
+const api = defineHttp({ authenticators: { user: userAuth, service: serviceAuth } });
+```
+
+Four consequences, and they are the whole story:
+
+- **A marked procedure's handler receives a typed principal** as
+  `({ principal }, input)`, narrowed to the scheme that answered when the
+  contract names more than one.
+- **The scheme ports are declared by the router**, one per scheme its contract
+  names — so a scheme with no authenticator behind it is an unmet dependency
+  the compiler reports, naming the port.
+- **A caller no requirement accepts gets `401`; a valid credential missing a
+  scope gets `403`**, neither with a message, because oRPC serializes `message`
+  to the client and a refusal has nothing a caller is entitled to.
+- **A defect from an authenticator is a bug, not a refusal**: it stops the walk
+  rather than promoting the caller to the next scheme.
+
+Resource-dependent authorization — "may this caller read _this_ order" — stays
+in the handler, deliberately: a scope is a property of the credential and
+answerable before dispatch, and ownership is not.
+
+The worked recipe:
+[Protect a procedure](https://btravstack.github.io/btravstack/how-to/protect-a-procedure).
+The full surface, arm by arm:
+[`AUTH.md`](../http-server/AUTH.md).
+
+## Authenticators
+
+The shipped ones — JWT, API key and the session cookie — are the ones where
+writing it per application is how CVEs happen. Each is an ordinary
+`Authenticator` value bound by name in `defineHttp({ authenticators })`:
+
+- **`apiKeyAuthenticator<P>()({ keys, header? })`**, on the main entry point. Constant-time
+  compare over SHA-256 digests, every key checked with no early return, and a
+  missing header on the same path as a wrong one.
+- **`jwtAuthenticator<P>()({ principal, jwks?, issuer?, audience?, scopes?, algorithms?, clockToleranceSec?, header? })`**, from
+  `@btravstack/http-server/jwt`, with `jose` as an optional peer. JWKS fetch,
+  cache and rotation; an asymmetric-only algorithm allowlist, because a JWKS
+  publishes public keys and accepting `HS256` beside them is the
+  algorithm-confusion attack; `iss`, `aud` and `exp` required to be present,
+  `nbf` honoured when present. `jwks`, `issuer` and `audience` are bound from
+  `HTTP_JWT_*` when they are not pinned — see **Options** below.
+- **`sessionAuthenticator<P>()({ scopes?, principal? })`**, from
+  `@btravstack/http-server/session`, over the codec `sessionCodec()` provides.
+  Reads `__Host-session`, the cookie the OIDC login answerer (`oidc()`) seals;
+  a root composing it without `sessionCodec()` is an unmet dependency naming
+  the port.
+
+The CommonJS build needs Node ≥22.12: oRPC and `jose` are ESM-only, so its
+`require` depends on `require(esm)`.
+
+Password hashing and credential issuing are out of scope — all three above
+are on the verifying side. Details:
+[the reference page](https://btravstack.github.io/btravstack/reference/http-server).
+
+## Options
+
+`HttpModule(name)({...})` takes `http()`'s options plus `router`, `fragments`,
+`fragmentsPrefix` and the module lists (`imports`, `provides`, `exports`,
+`needs`) — supply `router`, `fragments`, or both; supplying neither is refused
+at the call. Neither `http()` nor `htmx()` takes its answerer's provider as an
+option — each **needs** its own port, which is how the composition root
+supplies it:
+
+| Option             | What it is                                                                                                             |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `router`           | the router provider — what `api.OrpcRouter(contract)(...)` returns                                                     |
+| `fragments`        | the fragments provider — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces          |
+| `prefix`           | where the RPC endpoint is mounted (default `/rpc`)                                                                     |
+| `fragmentsPrefix`  | where htmx fragments are mounted (default `/`, `htmx()`'s own default)                                                 |
+| `port`             | pins `PORT`                                                                                                            |
+| `hostname`         | pins `HOST`                                                                                                            |
+| `headersTimeoutMs` | pins `HTTP_HEADERS_TIMEOUT_MS` — how long a client may take to send its headers before a `408` (60 s)                  |
+| `requestTimeoutMs` | pins `HTTP_REQUEST_TIMEOUT_MS` — how long a client may take to send a whole request (300 s)                            |
+| `cors`             | pins `HTTP_CORS_ORIGIN` — `true` for oRPC's defaults, or its `CORSHandlerPluginOptions` (off); oRPC-only               |
+| `bodyLimit`        | pins `HTTP_BODY_LIMIT` — the largest body a procedure or a fragment POST reads, in bytes (1 MiB; `false` is unbounded) |
+| `compression`      | pins `HTTP_COMPRESSION` — response compression, `true` for oRPC's defaults or its options record; oRPC-only            |
+| `plugins`          | any other oRPC handler plugin, forwarded to `RPCHandler`                                                               |
+| `securityHeaders`  | response headers set on the raw listener, before dispatch (default on)                                                 |
+| `csrf`             | refuse a cross-site state change carrying cookies, before dispatch (default: on once a scheme reads a cookie)          |
+| `unit`             | kind → module: `anonymous`, or a scheme — both answerers fork the kind that authenticated the request                  |
+
+`cors`, `bodyLimit` and `compression` **pin** a field of `HttpConfig` that is
+otherwise bound from the environment — explicit beats environment beats
+default, per field — so a deployment sets `HTTP_CORS_ORIGIN` or
+`HTTP_BODY_LIMIT` without a code change, and a test pins them instead. The rest
+stay composition-time: `prefix` because a client's `baseURL` has to agree with
+it, `securityHeaders` and `csrf` because a deployment that can silently turn
+`x-frame-options` — or the CSRF check — off is a footgun, and `plugins` (or a
+`CORSHandlerPluginOptions` record) because an environment carries no records.
+
+`jwtAuthenticator`'s three transport options pin the same way, from
+`@btravstack/http-server/jwt`. A root composing that scheme writes no `needs`
+line for it: `HttpModule` carries `Env` for every provider in the root, its
+schemes included, the same way it already carries the starter's own.
+
+| Option              | What it is                                                                                         |
+| ------------------- | -------------------------------------------------------------------------------------------------- |
+| `jwks`              | pins `HTTP_JWT_JWKS_URI` — the issuer's JWKS endpoint                                              |
+| `issuer`            | pins `HTTP_JWT_ISSUER` — the required `iss`                                                        |
+| `audience`          | pins `HTTP_JWT_AUDIENCE` — the required `aud`, this deployment's own name                          |
+| `allowInsecureJwks` | fetch the key set from a non-loopback `http:` URL (default `false`, and a boot failure without it) |
+
+A variable nobody pinned and nobody set — or a `HTTP_JWT_JWKS_URI` that is not
+a URL, or a cleartext one that is not loopback — fails the boot with a
+`ConfigInvalid` naming it, rather than a scheme that refuses every caller. A
+refusal the ISSUER caused, rather than the token, is reported to `Observers`,
+so a key-rotation incident is a metric and a line instead of a `401` per
+request.
+
+`sessionCodec({ keys?, ttlSec? })`, from `@btravstack/http-server/session`,
+pins one variable the same way — and `sessionAuthenticator` is the scheme that
+reads what it seals.
+
+| Option   | What it is                                                                                                                                                                                                  |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `keys`   | pins `HTTP_SESSION_KEYS` — a comma-separated list of 32-byte base64url keys (`A-Z a-z 0-9 - _`, no padding); the first seals and every one unseals, so rotation is append, promote, drop — one rollout each |
+| `ttlSec` | how long a session lasts (default 12 h). Fixed: there is no sliding re-seal                                                                                                                                 |
+
+Mint one with
+`node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'`.
+A key that is not 32 base64url bytes fails the boot with a `ConfigInvalid`
+naming `HTTP_SESSION_KEYS` and the POSITION it refused — never the value.
+
+`oidc({ principal, ... })`, from `@btravstack/http-server/oidc`, is what
+authenticates the principal that codec seals: an answerer serving
+`<prefix>/login`, `<prefix>/callback` and `<prefix>/logout` over the
+authorization-code flow with PKCE. It needs `openid-client`, an optional peer
+behind that subpath.
+
+| Option                | What it is                                                                                                      |
+| --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `principal`           | **required** — what the ID token's claims make the caller; `undefined` refuses the login                        |
+| `issuer`              | pins `HTTP_OIDC_ISSUER` — the provider, as its discovery document names itself                                  |
+| `clientId`            | pins `HTTP_OIDC_CLIENT_ID` — this deployment's client                                                           |
+| `clientSecret`        | pins `HTTP_OIDC_CLIENT_SECRET` — its secret; the flow is a confidential client's                                |
+| `redirectUri`         | pins `HTTP_OIDC_REDIRECT_URI` — the URI **registered** with the provider, and what the grant is checked against |
+| `prefix`              | where the three routes are mounted (default `/auth`)                                                            |
+| `scope`               | what the authorization request asks for (default `openid`)                                                      |
+| `postLogout`          | where a logout lands when the provider advertises no end-session endpoint (default `/`)                         |
+| `allowInsecureIssuer` | talk to an `http:` issuer that is not on a loopback host (default `false`, and a boot failure without it)       |
+
+An `http:` issuer is refused at boot unless its host is loopback —
+`localhost`, `127.0.0.1`, `[::1]` — or `allowInsecureIssuer: true` is pinned at
+the call: cleartext sends the client secret, the authorization code and every
+token in the open. An option rather than a variable, because its silent change
+is a security regression.
+
+Discovery runs once, at boot: a provider that is not there is an
+`OidcUnreachable` naming the issuer, rather than a `500` on the first login.
+Each route is an operation reported to `Observers`, so a refusal carries its
+own `reason` — compose any observability and the line is there, compose none
+and it costs nothing. The cookie it seals is `SESSION_COOKIE`, which the
+scheme reads and neither side can rename.
+
+The full table — required/optional, defaults, and the reasoning — lives on
+[the reference page](https://btravstack.github.io/btravstack/reference/http-server),
+which is this list's one detailed home.
+
+## What it guarantees
+
+Every request produces exactly one completed response, and its unit stays open
+until that response is on the wire — the kernel's least-checkable contract,
+made structural. A procedure's output or the `ORPCError` its `Result` was
+mapped to is oRPC's; a defect inside a procedure is oRPC's own
+`INTERNAL_SERVER_ERROR` collapse; an unmatched path is the package's `404`.
+`Result` → HTTP status is the router's `.result()` triage — this package maps
+nothing. The drain retires busy keep-alive connections and resets open
+server-sent-event streams, so a client reconnects to a replica that is
+staying rather than being reported abandoned; a client's `x-request-id`
+becomes the unit's `traceId`. The rest is on the
+[documentation site](https://btravstack.github.io/btravstack/reference/http-server).
+
+## Streaming
+
+A procedure whose output is an `eventIterator` is served as
+`text/event-stream`, and `GET` is admitted for exactly those procedures — the
+one request a browser's `EventSource` can send — so a stream is reachable
+from a browser and from a typed oRPC client alike. A deploy resets an open
+stream at the start of the drain's third beat — after readiness has gone
+false and the pre-drain delay has been paid, so the reconnect lands on a
+replica that is staying — and the client resumes from `Last-Event-ID`. The
+recipe is
+[Stream with server-sent events](https://btravstack.github.io/btravstack/how-to/stream-with-server-sent-events).
+
+## What it does not do
+
+Each of these is a decision with a reason, and the reasons are on
+[the reference page](https://btravstack.github.io/btravstack/reference/http-server#deliberately-not-included):
+
+- **Another router inside the oRPC answerer** — a second protocol is a second
+  answerer on the `HttpHandler` set port, under the same runtime.
+- **A middleware slot for application logic** — oRPC's own middleware is where
+  that belongs, and the ordinary cross-cutting concerns are named options.
+  `plugins` is the honest escape hatch.
+- **`Result` → HTTP status** — the router's `.result()` triage owns it.
+- **Rate limiting** — a per-process counter is the wrong unit when a deployment
+  is N pods; the ingress counts a request once.
+- **Static files and an SPA fallback** — the ingress or a CDN serves assets;
+  with htmx fragments the asset set is htmx plus a stylesheet. The CSP for an
+  HTML response is the deployment's: pass a `securityHeaders` record carrying
+  your policy **and** `x-content-type-options`, `x-frame-options` and
+  `referrer-policy`, since a record replaces the defaults rather than adding
+  to them.
+- **Resource-dependent authorization** — a scope is checked here because it is
+  a property of the credential; "is this caller the order's owner" needs the
+  order, so it stays in the handler.
+- **AND within one requirement**, **OpenAPI scheme metadata**, **HTTPS and
+  HTTP/2** — a composite scheme, the contract, and the ingress, respectively.
+
+## License
+
+[MIT](./LICENSE) © Benoit TRAVERS

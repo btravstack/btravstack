@@ -1,5 +1,5 @@
 ---
-title: "@btravstack/http-server"
+title: "HTTP server family"
 description: The HTTP starter — defineHttp, HttpModule, OrpcRouter, OrpcController, HtmxGet, HtmxPost, HtmxFragments, html and raw, HttpAuthenticator, http(), htmx(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, cors, bodyLimit, compression, plugins, securityHeaders and csrf, what each request is answered with, and how the drain retires a keep-alive connection.
 ---
 
@@ -14,17 +14,9 @@ import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure
 
 import type { Order } from "@btravstack/example-order-domain";
 import { Module } from "@btravstack/di";
-import {
-  HtmxFragmentsPort,
-  HttpAuthenticator,
-  HttpConfig,
-  HttpHandler,
-  HttpRuntime,
-  Unauthenticated,
-  defineHttp,
-  type HtmxOptions,
-  type HttpOptions,
-} from "@btravstack/http-server";
+import { HttpAuthenticator, HttpConfig, HttpHandler, HttpRuntime, Unauthenticated, type HttpOptions } from "@btravstack/http-server";
+import { defineHttp } from "@btravstack/orpc-server";
+import { HtmxFragmentsPort, type HtmxOptions } from "@btravstack/htmx-server";
 import { ErrAsync, OkAsync, P } from "unthrown";
 import { customersController } from "../../slices/customers/controller.js";
 import { ordersController } from "../../slices/orders/controller.js";
@@ -33,11 +25,12 @@ import { exportable, renderCsv } from "../../slices/orders/authorize.js";
 declare const view: (order: Order) => OrderView;
 -->
 
-# @btravstack/http-server
+# HTTP server family
 
-> **Reference.** A complete, structured description of the HTTP starter's
-> public surface: every export of `@btravstack/http-server`, its options and their
-> defaults, and what the package decides about a request. For the task, see
+> **Reference.** The HTTP runtime and its oRPC and htmx answerers live in
+> `@btravstack/http-server`, `@btravstack/orpc-server` and
+> `@btravstack/htmx-server`. This page covers their shared configuration,
+> authentication and request behavior. For the task, see
 > [Serve an oRPC contract over HTTP](/how-to/serve-orpc-over-http); for the
 > reasoning behind a starter, see [Starters](/explanation/starters) and
 > [The kernel maps nothing](/explanation/the-kernel-maps-nothing); for the
@@ -46,7 +39,7 @@ declare const view: (order: Order) => OrderView;
 
 ## Exports
 
-`packages/http-server/src/index.ts` exports exactly this:
+These symbols are exported across the three packages. `defineHttp`, `HttpModule`, `http` and oRPC controller types belong to `@btravstack/orpc-server`; `html`, `raw` and htmx route types belong to `@btravstack/htmx-server`; the runtime, ports and authenticators belong to `@btravstack/http-server`:
 
 | Export                 | Kind  | What it is                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ---------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -113,7 +106,7 @@ types — `jose`), `@btravstack/http-server/session` (`sessionCodec`,
 `SessionCodecService` / `SessionOptions` types — `jose` again),
 `@btravstack/http-server/oidc` (`oidc`, `OidcUnreachable`, and the
 `OidcOptions` type — `openid-client`), and
-`@btravstack/http-server/openapi` (`openApiDocument`, `openApiRoutes`, and
+`@btravstack/orpc-server/openapi` (`openApiDocument`, `openApiRoutes`, and
 `OpenApiRoutesOptions` — `@orpc/openapi`). All
 four have sections of their own below.
 
@@ -164,7 +157,7 @@ The worked composition root, from `examples/order-api/src/module.ts`:
 import { Logger, Tracer, Meter } from "@btravstack/core";
 import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { sessionCodec } from "@btravstack/http-server/session";
@@ -470,7 +463,8 @@ under a prefix of its own — serving three routes, and it needs
 `openid-client` (an optional peer, behind this subpath).
 
 <!-- doctest: isolate
-import { defineHttp, html, HttpModule } from "@btravstack/http-server";
+import { defineHttp, HttpModule } from "@btravstack/orpc-server";
+import { html } from "@btravstack/htmx-server";
 import { oidc } from "@btravstack/http-server/oidc";
 import { sessionAuthenticator, sessionCodec } from "@btravstack/http-server/session";
 import { OkAsync } from "unthrown";
@@ -1257,7 +1251,7 @@ A fragment's handler returns `Html`, not a string: `` html`…` `` escapes
 every interpolation by default, and `raw(markup)` is the one way past it.
 
 <!-- doctest: isolate
-import { html } from "@btravstack/http-server";
+import { html } from "@btravstack/htmx-server";
 declare const order: { readonly id: string; readonly quantity: number };
 -->
 
@@ -1300,7 +1294,7 @@ and path — no contract in between, mirroring htmx's own `hx-get`/`hx-post`:
 
 ```ts
 import { FindOrder } from "@btravstack/example-order-application";
-import { html } from "@btravstack/http-server";
+import { html } from "@btravstack/htmx-server";
 import { P } from "unthrown";
 
 export const orderRowFragment = api.HtmxGet("/orders/:id/row", {
@@ -1434,7 +1428,7 @@ latter.
 sees at the composition root:
 
 <!-- doctest: isolate
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { Logger, Meter, Tracer } from "@btravstack/core";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
@@ -1806,6 +1800,16 @@ mount point is an error, and it is a `RuntimeStartFailed` at `listen` rather
 than a coin toss. A trailing slash is the same mount, so `/rpc` and `/rpc/`
 collide.
 
+`graphql(api, { schema, prefix?, requires?, units?, unit? })` from
+`@btravstack/graphql-server` contributes a Yoga answerer. `schema`
+is any `GraphQLSchema` (the example builds one with Pothos); `prefix` defaults
+to `/graphql`. `requires` gates the whole mount through `RequiresGate` and the
+shared principal resolver. Resolver context carries `principal`, `unit`,
+`incoming`, and `signal`. The response remains one HTTP unit through completion
+and drain. GraphQL and Yoga are required peers of that package.
+See [Serve GraphQL](/how-to/serve-graphql) for the code-first example, SDL
+artifact, and error boundary.
+
 The runtime reads the members through `Runtime.resolves` rather than through
 di, because a member contributed by a **sibling** module is not visible from
 inside the starter's own. That is why `HttpRuntime` resolves `HttpHandler` and
@@ -1942,7 +1946,7 @@ mints one **principal port** per declared scheme, and a second call binds a
 module per kind:
 
 <!-- doctest: isolate
-import { defineHttp } from "@btravstack/http-server";
+import { defineHttp } from "@btravstack/orpc-server";
 import { Module, Port, Provider } from "@btravstack/di";
 import { TenantId } from "@btravstack/example-order-domain";
 import { userAuth } from "../../auth.js";
@@ -2173,7 +2177,7 @@ which is the whole reason they are subpaths.
   ([the record](#securityheaders) shows one).
 - **HTTPS, HTTP/2.** `node:http` only; terminate TLS at the ingress.
 
-## `openApiDocument()` — from `@btravstack/http-server/openapi`
+## `openApiDocument()` — from `@btravstack/orpc-server/openapi`
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled by the package's own specs -->
 
@@ -2244,7 +2248,7 @@ retained. `examples/order-api/src/openapi.ts` shows the document options, and
 the same document is the route list:
 [List what a process serves](/how-to/list-what-a-process-serves).
 
-## `openApiRoutes()` — from `@btravstack/http-server/openapi`
+## `openApiRoutes()` — from `@btravstack/orpc-server/openapi`
 
 `openApiRoutes({ prefix?, cors?, compression?, plugins? })`
 contributes one `HttpHandler` member under `/api` by default. It uses

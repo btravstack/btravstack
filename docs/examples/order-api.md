@@ -6,7 +6,7 @@ description: The HTTP deployment — two slices, orders and customers, one marke
 <!-- doctest: prelude
 import { runMain, Logger, Meter, Tracer } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 import { P } from "unthrown";
 import { createLogger, jsonSink, kernelEvents, observability } from "@btravstack/observability";
 import { UnitSpanModule, otel } from "@btravstack/observability/otel";
@@ -164,7 +164,8 @@ written, and where the one `defineHttp` call the application makes lives:
 
 <!-- doctest: isolate
 import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
-import { apiKeyAuthenticator, defineHttp } from "@btravstack/http-server";
+import { apiKeyAuthenticator } from "@btravstack/http-server";
+import { defineHttp } from "@btravstack/orpc-server";
 import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 import { sessionAuthenticator } from "@btravstack/http-server/session";
 import type { IDToken } from "openid-client";
@@ -172,7 +173,8 @@ import type { IDToken } from "openid-client";
 
 ```ts
 import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
-import { apiKeyAuthenticator, defineHttp } from "@btravstack/http-server";
+import { apiKeyAuthenticator } from "@btravstack/http-server";
+import { defineHttp } from "@btravstack/orpc-server";
 import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 import { sessionAuthenticator } from "@btravstack/http-server/session";
 import type { IDToken } from "openid-client";
@@ -518,7 +520,7 @@ full. `slices/orders/fragment.ts`'s `orderRowFragment` is minted straight
 from its method and path, with `api.HtmxGet` — no contract in between:
 
 ```ts
-import { html } from "@btravstack/http-server";
+import { html } from "@btravstack/htmx-server";
 
 export const orderRowFragment = api.HtmxGet("/orders/:id/row", {
   requires: [{ session: [] }],

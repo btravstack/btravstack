@@ -15,9 +15,10 @@ import { cache, memoryCache } from "@btravstack/cache";
 import { Env } from "@btravstack/config";
 import { start, Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
-import { HttpModule, HttpRuntime, http } from "@btravstack/http-server";
+import { HttpRuntime } from "@btravstack/http-server";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
+import { HttpModule, http } from "@btravstack/orpc-server";
 
 import { OrderApi, orderRouter } from "./module.js";
 import { RequestModule, ServiceModule, SessionModule, UserModule } from "./request-scope.js";

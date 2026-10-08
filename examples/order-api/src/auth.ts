@@ -1,12 +1,8 @@
 import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
-import {
-  apiKeyAuthenticator,
-  defineHttp,
-  type Principal,
-  type SchemesFrom,
-} from "@btravstack/http-server";
+import { apiKeyAuthenticator, type Principal, type SchemesFrom } from "@btravstack/http-server";
 import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 import { sessionAuthenticator } from "@btravstack/http-server/session";
+import { defineHttp } from "@btravstack/orpc-server";
 import type { IDToken } from "openid-client";
 
 import type { RequestModule, ServiceModule, SessionModule, UserModule } from "./request-scope.js";

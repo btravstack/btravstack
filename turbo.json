@@ -23,6 +23,18 @@
     "@btravstack/core#typecheck": {
       "dependsOn": ["build", "@btravstack/testing#build"]
     },
+    "@btravstack/http-server#typecheck": {
+      "dependsOn": ["build", "@btravstack/internal-http-fixtures#build"]
+    },
+    "@btravstack/orpc-server#typecheck": {
+      "dependsOn": ["build", "@btravstack/internal-http-fixtures#build"]
+    },
+    "@btravstack/htmx-server#typecheck": {
+      "dependsOn": ["build", "@btravstack/internal-http-fixtures#build"]
+    },
+    "@btravstack/graphql-server#typecheck": {
+      "dependsOn": ["build", "@btravstack/internal-http-fixtures#build"]
+    },
     "@btravstack/internal-consumer-check#typecheck": {
       "cache": false,
       "dependsOn": [
@@ -34,6 +46,9 @@
         "@btravstack/core#build",
         "@btravstack/di#build",
         "@btravstack/http-server#build",
+        "@btravstack/orpc-server#build",
+        "@btravstack/htmx-server#build",
+        "@btravstack/graphql-server#build",
         "@btravstack/mailer#build",
         "@btravstack/observability#build",
         "@btravstack/outbox#build",
@@ -45,6 +60,22 @@
     },
     "test": {
       "dependsOn": ["^build", "generate", "^generate"],
+      "cache": false
+    },
+    "@btravstack/http-server#test": {
+      "dependsOn": ["^build", "@btravstack/internal-http-fixtures#build"],
+      "cache": false
+    },
+    "@btravstack/orpc-server#test": {
+      "dependsOn": ["^build", "@btravstack/internal-http-fixtures#build"],
+      "cache": false
+    },
+    "@btravstack/htmx-server#test": {
+      "dependsOn": ["^build", "@btravstack/internal-http-fixtures#build"],
+      "cache": false
+    },
+    "@btravstack/graphql-server#test": {
+      "dependsOn": ["^build", "@btravstack/internal-http-fixtures#build"],
       "cache": false
     },
     "dev": {
@@ -74,6 +105,9 @@
         "@btravstack/prisma#build",
         "@btravstack/outbox#build",
         "@btravstack/http-server#build",
+        "@btravstack/orpc-server#build",
+        "@btravstack/htmx-server#build",
+        "@btravstack/graphql-server#build",
         "@btravstack/temporal-worker#build",
         "@btravstack/amqp-worker#build"
       ],

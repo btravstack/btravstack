@@ -95,6 +95,7 @@ const GUIDE_SIDEBAR = [
           { text: "Protect a procedure", link: "/how-to/protect-a-procedure" },
           { text: "Authorize a request", link: "/how-to/authorize-a-request" },
           { text: "Serve htmx fragments", link: "/how-to/serve-htmx-fragments" },
+          { text: "Serve GraphQL", link: "/how-to/serve-graphql" },
           { text: "Log a browser in", link: "/how-to/log-a-browser-in" },
           {
             text: "Stream with server-sent events",
@@ -194,6 +195,9 @@ const GUIDE_SIDEBAR = [
         collapsed: false,
         items: [
           { text: "@btravstack/http-server", link: "/reference/http-server" },
+          { text: "@btravstack/orpc-server", link: "/how-to/serve-orpc-over-http" },
+          { text: "@btravstack/htmx-server", link: "/how-to/serve-htmx-fragments" },
+          { text: "@btravstack/graphql-server", link: "/how-to/serve-graphql" },
           { text: "@btravstack/temporal-worker", link: "/reference/temporal-worker" },
           { text: "@btravstack/amqp-worker", link: "/reference/amqp-worker" },
         ],
@@ -508,6 +512,9 @@ export default defineConfig({
             { text: "@btravstack/outbox", link: "/api/outbox/" },
             { text: "@btravstack/testing", link: "/api/testing/" },
             { text: "@btravstack/http-server", link: "/api/http-server/" },
+            { text: "@btravstack/orpc-server", link: "/api/orpc-server/" },
+            { text: "@btravstack/htmx-server", link: "/api/htmx-server/" },
+            { text: "@btravstack/graphql-server", link: "/api/graphql-server/" },
             { text: "@btravstack/temporal-worker", link: "/api/temporal-worker/" },
             { text: "@btravstack/amqp-worker", link: "/api/amqp-worker/" },
           ],

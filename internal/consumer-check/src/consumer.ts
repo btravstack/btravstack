@@ -16,7 +16,7 @@ import { Config, Env } from "@btravstack/config";
 import { RuntimePort, type Runtime } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { Entity } from "@btravstack/entity";
-import { HttpModule, defineHttp } from "@btravstack/http-server";
+import { HttpModule, defineHttp } from "@btravstack/orpc-server";
 import { OutboxPublisher, outbox } from "@btravstack/outbox";
 import { oc } from "@orpc/contract";
 import { OkAsync } from "unthrown";

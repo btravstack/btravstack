@@ -21,6 +21,9 @@
       "@btravstack/prisma",
       "@btravstack/outbox",
       "@btravstack/http-server",
+      "@btravstack/orpc-server",
+      "@btravstack/htmx-server",
+      "@btravstack/graphql-server",
       "@btravstack/temporal-worker",
       "@btravstack/amqp-worker"
     ]

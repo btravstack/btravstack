@@ -1,7 +1,6 @@
+import { it } from "@btravstack/internal-http-fixtures";
 import { OkAsync } from "unthrown";
 import { describe, expect, vi } from "vitest";
-
-import { it } from "./__tests__/test-fixtures.js";
 
 describe("the runtime's observations", () => {
   it("observes a served request, dimensioned by answerer and status", async ({ observed }) => {

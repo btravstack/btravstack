@@ -1,12 +1,11 @@
 {
   "name": "@btravstack/http-server",
   "version": "0.20.0",
-  "description": "The HTTP starter for @btravstack/core: oRPC over node:http, one unit per request, and a drain that actually stops accepting",
+  "description": "The protocol-neutral Node HTTP runtime, request units, and authentication for @btravstack/core",
   "keywords": [
     "graceful-shutdown",
     "http",
     "lifecycle",
-    "orpc",
     "runtime",
     "starter",
     "typescript",
@@ -42,16 +41,6 @@
         "default": "./dist/index.cjs"
       }
     },
-    "./openapi": {
-      "import": {
-        "types": "./dist/openapi.d.mts",
-        "default": "./dist/openapi.mjs"
-      },
-      "require": {
-        "types": "./dist/openapi.d.cts",
-        "default": "./dist/openapi.cjs"
-      }
-    },
     "./package.json": "./package.json",
     "./jwt": {
       "import": {
@@ -82,11 +71,21 @@
         "types": "./dist/oidc.d.cts",
         "default": "./dist/oidc.cjs"
       }
+    },
+    "./internal": {
+      "import": {
+        "types": "./dist/internal.d.mts",
+        "default": "./dist/internal.mjs"
+      },
+      "require": {
+        "types": "./dist/internal.d.cts",
+        "default": "./dist/internal.cjs"
+      }
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts src/jwt.ts src/oidc.ts src/openapi.ts src/session.ts --format cjs,esm --dts --clean",
-    "dev": "tsdown src/index.ts src/jwt.ts src/oidc.ts src/openapi.ts src/session.ts --format cjs,esm --dts --watch",
+    "build": "tsdown src/index.ts src/internal.ts src/jwt.ts src/oidc.ts src/session.ts --format cjs,esm --dts --clean",
+    "dev": "tsdown src/index.ts src/internal.ts src/jwt.ts src/oidc.ts src/session.ts --format cjs,esm --dts --watch",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit -p tsconfig.test-d.json"
   },
@@ -96,15 +95,8 @@
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/internal-test-infra": "workspace:*",
-    "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
-    "@orpc/client": "catalog:",
-    "@orpc/contract": "catalog:",
-    "@orpc/json-schema": "catalog:",
-    "@orpc/openapi": "catalog:",
-    "@orpc/server": "catalog:",
     "@types/node": "catalog:",
-    "@unthrown/orpc": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "jose": "catalog:",
@@ -121,22 +113,11 @@
     "@btravstack/contract": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",
-    "@orpc/contract": "^2.0.0-beta.28",
-    "@orpc/json-schema": "^2.0.0-beta.28",
-    "@orpc/openapi": "^2.0.0-beta.28",
-    "@orpc/server": "^2.0.0-beta.28",
-    "@unthrown/orpc": "^0.2.0",
     "jose": "^6",
     "openid-client": "^6",
     "unthrown": "^5.7.0"
   },
   "peerDependenciesMeta": {
-    "@orpc/json-schema": {
-      "optional": true
-    },
-    "@orpc/openapi": {
-      "optional": true
-    },
     "jose": {
       "optional": true
     },

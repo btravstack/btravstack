@@ -6,7 +6,8 @@ description: Implement an oRPC contract as a di-provided router, compose it with
 <!-- doctest: prelude
 import { start } from "@btravstack/core";
 import { Module } from "@btravstack/di";
-import { HttpRuntime, http } from "@btravstack/http-server";
+import { HttpRuntime } from "@btravstack/http-server";
+import { http } from "@btravstack/orpc-server";
 import { api } from "../../auth.js";
 import { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
 -->
@@ -194,7 +195,7 @@ import {
   OrderDatabase,
   OrderPersistenceModule,
 } from "@btravstack/example-order-infrastructure";
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";

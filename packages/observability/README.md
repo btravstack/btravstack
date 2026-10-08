@@ -1,5 +1,5 @@
 <!-- doctest: prelude
-import { HttpModule, defineHttp } from "@btravstack/http-server";
+import { HttpModule, defineHttp } from "@btravstack/orpc-server";
 import { Port, type AnyModule } from "@btravstack/di";
 import { OkAsync, type AsyncResult } from "unthrown";
 import { oc } from "@orpc/contract";

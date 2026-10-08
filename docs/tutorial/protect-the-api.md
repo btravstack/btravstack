@@ -104,11 +104,8 @@ resolvers. Declaring a scheme and implementing it are the same act:
 **`auth.ts`**
 
 ```ts
-import {
-  HttpAuthenticator,
-  Unauthenticated,
-  defineHttp,
-} from "@btravstack/http-server";
+import { HttpAuthenticator, Unauthenticated } from "@btravstack/http-server";
+import { defineHttp } from "@btravstack/orpc-server";
 import { ErrAsync, OkAsync } from "unthrown";
 
 /** What this deployment knows about a caller. The contract names none of it. */

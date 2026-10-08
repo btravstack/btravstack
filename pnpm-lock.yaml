@@ -245,6 +245,9 @@ catalogs:
     '@orpc/zod':
       specifier: 2.0.0-beta.28
       version: 2.0.0-beta.28
+    '@pothos/core':
+      specifier: 4.15.1
+      version: 4.15.1
     '@prisma/cli-engine':
       specifier: 0.4.0
       version: 0.4.0
@@ -314,6 +317,12 @@ catalogs:
     effect:
       specifier: 3.22.2
       version: 3.22.2
+    graphql:
+      specifier: 17.0.2
+      version: 17.0.2
+    graphql-yoga:
+      specifier: 5.24.1
+      version: 5.24.1
     jose:
       specifier: 6.2.12
       version: 6.2.12
@@ -404,6 +413,7 @@ catalogs:
       version: 6.0.3
 
 overrides:
+  graphql-yoga>@graphql-tools/utils: 12.0.3
   vitepress>vite@<6.4.3: 6.4.3
   mysql2@<3.22.0: 3.24.2
   hono@<4.13.5: 4.13.7
@@ -428,6 +438,9 @@ importers:
       '@btravstack/commitlint':
         specifier: 'catalog:'
         version: 0.1.0(@commitlint/cli@21.2.3(@types/node@26.6.4)(conventional-commits-parser@7.1.2)(typescript@7.0.2))
+      '@btravstack/internal-http-fixtures':
+        specifier: workspace:*
+        version: link:internal/http-fixtures
       '@btravstack/lefthook':
         specifier: 'catalog:'
         version: 0.1.1(lefthook@2.1.16)
@@ -813,6 +826,9 @@ importers:
       '@btravstack/di':
         specifier: workspace:*
         version: link:../../packages/di
+      '@btravstack/example-order-api-client':
+        specifier: workspace:*
+        version: link:../order-api-client
       '@btravstack/example-order-api-contract':
         specifier: workspace:*
         version: link:../order-api-contract
@@ -825,12 +841,18 @@ importers:
       '@btravstack/example-order-infrastructure':
         specifier: workspace:*
         version: link:../order-infrastructure
+      '@btravstack/htmx-server':
+        specifier: workspace:*
+        version: link:../../packages/htmx-server
       '@btravstack/http-server':
         specifier: workspace:*
         version: link:../../packages/http-server
       '@btravstack/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@btravstack/orpc-server':
+        specifier: workspace:*
+        version: link:../../packages/orpc-server
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1
@@ -868,6 +890,9 @@ importers:
       '@btravstack/entity':
         specifier: workspace:*
         version: link:../../packages/entity
+      '@btravstack/example-order-graphql-api':
+        specifier: workspace:*
+        version: link:../order-graphql-api
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
@@ -913,6 +938,31 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.6.5
+
+  examples/order-api-client:
+    dependencies:
+      '@btravstack/example-order-api-contract':
+        specifier: workspace:*
+        version: link:../order-api-contract
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/contract':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@unthrown/orpc':
+        specifier: 'catalog:'
+        version: 0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.12.0)
+    devDependencies:
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.4.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
 
   examples/order-api-contract:
     dependencies:
@@ -1024,6 +1074,69 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+
+  examples/order-graphql-api:
+    dependencies:
+      '@btravstack/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@btravstack/di':
+        specifier: workspace:*
+        version: link:../../packages/di
+      '@btravstack/example-order-api-client':
+        specifier: workspace:*
+        version: link:../order-api-client
+      '@btravstack/example-order-api-contract':
+        specifier: workspace:*
+        version: link:../order-api-contract
+      '@btravstack/graphql-server':
+        specifier: workspace:*
+        version: link:../../packages/graphql-server
+      '@btravstack/http-server':
+        specifier: workspace:*
+        version: link:../../packages/http-server
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@pothos/core':
+        specifier: 'catalog:'
+        version: 4.15.1(graphql@17.0.2)
+      graphql:
+        specifier: 'catalog:'
+        version: 17.0.2
+      graphql-yoga:
+        specifier: 'catalog:'
+        version: 5.24.1(graphql@17.0.2)
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.12.0
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
+    devDependencies:
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.4.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.15
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+
+  examples/order-graphql-contract: {}
 
   examples/order-infrastructure:
     dependencies:
@@ -1240,6 +1353,70 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+
+  internal/http-fixtures:
+    dependencies:
+      '@btravstack/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@btravstack/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@btravstack/di':
+        specifier: workspace:*
+        version: link:../../packages/di
+      '@btravstack/htmx-server':
+        specifier: workspace:*
+        version: link:../../packages/htmx-server
+      '@btravstack/http-server':
+        specifier: workspace:*
+        version: link:../../packages/http-server
+      '@btravstack/internal-test-infra':
+        specifier: workspace:*
+        version: link:../test-infra
+      '@btravstack/orpc-server':
+        specifier: workspace:*
+        version: link:../../packages/orpc-server
+      '@btravstack/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/contract':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.12
+      openid-client:
+        specifier: 'catalog:'
+        version: 6.8.8
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.12.0
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
+    devDependencies:
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.4.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.0(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   internal/test-infra:
     dependencies:
@@ -1578,6 +1755,102 @@ importers:
         specifier: 'catalog:'
         version: 4.6.5
 
+  packages/graphql-server:
+    devDependencies:
+      '@btravstack/contract':
+        specifier: workspace:*
+        version: link:../contract
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../core
+      '@btravstack/di':
+        specifier: workspace:*
+        version: link:../di
+      '@btravstack/http-server':
+        specifier: workspace:*
+        version: link:../http-server
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.4.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.3(vitest@5.0.3)
+      graphql:
+        specifier: 'catalog:'
+        version: 17.0.2
+      graphql-yoga:
+        specifier: 'catalog:'
+        version: 5.24.1(graphql@17.0.2)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.0(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      typescript-consumer:
+        specifier: 'catalog:'
+        version: typescript@5.9.3
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.12.0
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/htmx-server:
+    devDependencies:
+      '@btravstack/config':
+        specifier: workspace:*
+        version: link:../config
+      '@btravstack/contract':
+        specifier: workspace:*
+        version: link:../contract
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../core
+      '@btravstack/di':
+        specifier: workspace:*
+        version: link:../di
+      '@btravstack/http-server':
+        specifier: workspace:*
+        version: link:../http-server
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.4.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.3(vitest@5.0.3)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.0(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      typescript-consumer:
+        specifier: 'catalog:'
+        version: typescript@5.9.3
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.12.0
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
+
   packages/http-server:
     devDependencies:
       '@btravstack/config':
@@ -1595,33 +1868,12 @@ importers:
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
-      '@btravstack/testing':
-        specifier: workspace:*
-        version: link:../testing
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.4.0
-      '@orpc/client':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/contract':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/json-schema':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/openapi':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/server':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
-      '@unthrown/orpc':
-        specifier: 'catalog:'
-        version: 0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.12.0)
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
@@ -1763,6 +2015,78 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/orpc-server:
+    devDependencies:
+      '@btravstack/config':
+        specifier: workspace:*
+        version: link:../config
+      '@btravstack/contract':
+        specifier: workspace:*
+        version: link:../contract
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../core
+      '@btravstack/di':
+        specifier: workspace:*
+        version: link:../di
+      '@btravstack/htmx-server':
+        specifier: workspace:*
+        version: link:../htmx-server
+      '@btravstack/http-server':
+        specifier: workspace:*
+        version: link:../http-server
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.4.0
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/contract':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/json-schema':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/openapi':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/server':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      '@unthrown/orpc':
+        specifier: 'catalog:'
+        version: 0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.12.0)
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.3(vitest@5.0.3)
+      openid-client:
+        specifier: 'catalog:'
+        version: 6.8.8
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.0(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      typescript-consumer:
+        specifier: 'catalog:'
+        version: typescript@5.9.3
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.12.0
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
 
   packages/outbox:
     devDependencies:
@@ -2871,6 +3195,18 @@ packages:
   '@emnapi/wasi-threads@1.2.2':
     resolution: {integrity: sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA==}
 
+  '@envelop/core@5.6.1':
+    resolution: {integrity: sha512-KEbJ7yrAA+W7IY9MZzpZJ77w/72ndaV/16+hhPapd+0Ohjqffl0mmF3QWy62/m3nRP4qidD+1eiEjJhS/O38Tg==}
+    engines: {node: '>=18.0.0'}
+
+  '@envelop/instrumentation@1.0.1':
+    resolution: {integrity: sha512-FuexE2qd3Yc1Kh1DjTliwGxb9kyyv4ySBNnfJOxnQasVmGdcqX6AkkO5sIMxLWFRftp8PErOcIn2dQW/1RwytQ==}
+    engines: {node: '>=18.0.0'}
+
+  '@envelop/types@5.2.2':
+    resolution: {integrity: sha512-nl9cmUh8F+2/NNzpcLjzNqtaVn0m8XSzzxrPU2ByHhlz4Hqlc5QBfRsemZkoJMKrMviJXyJYdKZiUP1o70F3Kw==}
+    engines: {node: '>=18.0.0'}
+
   '@esbuild/aix-ppc64@0.25.12':
     resolution: {integrity: sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA==}
     engines: {node: '>=18'}
@@ -3183,8 +3519,52 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@fastify/busboy@3.2.2':
+    resolution: {integrity: sha512-yXSS27qPExaXeuLvMRMXOLtpipzfQYNjG3FkunDWKGfMYjKuhFXko9CVzqxm8jcF+lmtS9Fd89QNdh9XDjnbNg==}
+
   '@gerrit0/mini-shiki@3.23.0':
     resolution: {integrity: sha512-bEMORlG0cqdjVyCEuU0cDQbORWX+kYCeo0kV1lbxF5bt4r7SID2l9bqsxJEM0zndaxpOUT7riCyIVEuqq/Ynxg==}
+
+  '@graphql-tools/executor@2.0.3':
+    resolution: {integrity: sha512-0qUCtalTDdanDuvW4EiHnNMct8QHYKTuGjI2lXU388LrpoV+5tlqp/xPqdYbrDtl3OBpZHToOEBcQunWz1UDig==}
+    engines: {node: '>=16.0.0'}
+    peerDependencies:
+      graphql: ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
+
+  '@graphql-tools/merge@9.2.6':
+    resolution: {integrity: sha512-M7iI/qoCnks6iITkimtdZgI2SrWOInr+QRWuhEsInaumzQGPd0pnWbRAVTRVcFN2Gu9hM2aS5kYzASC93d9epw==}
+    engines: {node: '>=16.0.0'}
+    peerDependencies:
+      graphql: ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
+
+  '@graphql-tools/schema@10.1.3':
+    resolution: {integrity: sha512-N1ZpzguxzqTy5fpurqWQ5BXyjirlrtvVLeSafsu+SCDNjDeRnVxf9n5PVbdgzwFPAmP/7NK9sq9UB/kyR8oFiw==}
+    engines: {node: '>=16.0.0'}
+    peerDependencies:
+      graphql: ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
+
+  '@graphql-tools/utils@12.0.3':
+    resolution: {integrity: sha512-M+04bHvI1SKoug7W2EkwfKjig2mdtgIIlFY8p2jLHmxPNVs5bC/3R+58JrD+7ZXWgPILWTwuqJ9AqTjPlahroA==}
+    engines: {node: '>=16.0.0'}
+    peerDependencies:
+      graphql: ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
+
+  '@graphql-typed-document-node/core@3.2.0':
+    resolution: {integrity: sha512-mB9oAsNCm9aM3/SOv4YtBMqZbYj10R7dkq8byBqxGY/ncFwhf2oQzMV+LCRlWoDSEBJ3COiR1yeDvMtsoOsuFQ==}
+    peerDependencies:
+      graphql: ^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0 || ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
+
+  '@graphql-yoga/logger@2.0.2':
+    resolution: {integrity: sha512-k2QGHCcH10O+GGe1sgXn0paaP9GCK91wxkuNQaA4IvXBF/RcdBLaX15UeZLW9kMG8kfz7bL0r4Yu+BXYe0JOaw==}
+    engines: {node: '>=18.0.0'}
+
+  '@graphql-yoga/subscription@5.1.1':
+    resolution: {integrity: sha512-I48DpyPTxYzmO5TwvKOXxiLI/tsbyeYNhb4/6/oJEBn6nlb8snHL0G0Fw1LC2ApNW1QKYuCPRDTp9yUwVBqhNQ==}
+    engines: {node: '>=18.0.0'}
+
+  '@graphql-yoga/typed-event-target@3.0.3':
+    resolution: {integrity: sha512-j/EgVfZSzKA2lVeiZ0un8E2eVIqWa9Woyqta4A40ht1M93ui9CDVHU6pmphoQTpFa92BNbMVexXdOtMQk8LCjA==}
+    engines: {node: '>=18.0.0'}
 
   '@grpc/grpc-js@1.14.5':
     resolution: {integrity: sha512-7VZM+SVdEcUUqSQeNI3zM8Qs/BhQKZndPo2h5VkYkAM8Iz0wJIa8mKV5ekQGqG8UUsnkQ0NMxIxwkIHYvj0qOw==}
@@ -4602,6 +4982,11 @@ packages:
     resolution: {integrity: sha512-pOr5+q1fLYKwFN3LAJuGZEnfXDcQ73zqgDHMtGy+K+uIoUqyY+6MeDCWFwfu+4EFuq76I5EPFofoNAI+Bmmq4A==}
     engines: {node: '>=22.13'}
 
+  '@pothos/core@4.15.1':
+    resolution: {integrity: sha512-G0riOIbF6zer2SU7V1MmivkSdoKk+gYRf+Ru8JVcy3p9GhyJ8OzQj92RgCfCpEvkTgl6EdH8VueLe1Lm7lY4aA==}
+    peerDependencies:
+      graphql: ^16.10.0 || ^17.0.0
+
   '@prisma/cli-engine@0.4.0':
     resolution: {integrity: sha512-8mrARMPTQDKgAQ4M8NnDZuWqtWisnVaI1WI8+pAs+cBmurKxSjGxgNPsQgFwP7/Y3OhpbOtY4nJE/JqUbjVWLw==}
     engines: {node: '>=22.12.0'}
@@ -4766,6 +5151,9 @@ packages:
     engines: {node: '>= 20.0.0'}
     peerDependencies:
       '@redis/client': ^6.3.0
+
+  '@repeaterjs/repeater@3.1.0':
+    resolution: {integrity: sha512-TaoVksZRSx2KWYYpyLQtMQXXeS98VsgZImzW65xmiVgbYhXLk+aEsmzPLirqVuE4/XuUapH2iMtxUzaBNDzdSQ==}
 
   '@rolldown/binding-android-arm-eabi@1.2.12':
     resolution: {integrity: sha512-dB/a1214qKfHMXCpgqR4OZT+jS4kTyEXbQGJPqzobt5EwH5rX080pxE37alt3RzvR1bf1Yz/yGqRfrYAxuPw0A==}
@@ -5911,6 +6299,38 @@ packages:
   '@webassemblyjs/wast-printer@1.14.1':
     resolution: {integrity: sha512-kPSSXE6De1XOR820C90RIo2ogvZG+c3KiHzqUoO/F34Y2shGzesfqv7o57xrxovZJH/MetF5UjroJ/R/3isoiw==}
 
+  '@whatwg-node/disposablestack@0.0.6':
+    resolution: {integrity: sha512-LOtTn+JgJvX8WfBVJtF08TGrdjuFzGJc4mkP8EdDI8ADbvO7kiexYep1o8dwnt0okb0jYclCDXF13xU7Ge4zSw==}
+    engines: {node: '>=18.0.0'}
+
+  '@whatwg-node/disposablestack@0.1.0':
+    resolution: {integrity: sha512-ok0A9+D+mdeb3w1GNCpVr+2gVVLRWKo9Ywm/whNsoWSNfNg3jNxS0/wUF6NSUYbfOtFGu2wZgJnLjasbaQEfvA==}
+    engines: {node: '>=22.15.0'}
+
+  '@whatwg-node/events@0.1.2':
+    resolution: {integrity: sha512-ApcWxkrs1WmEMS2CaLLFUEem/49erT3sxIVjpzU5f6zmVcnijtDSrhoK2zVobOIikZJdH63jdAXOrvjf6eOUNQ==}
+    engines: {node: '>=18.0.0'}
+
+  '@whatwg-node/fetch@0.10.13':
+    resolution: {integrity: sha512-b4PhJ+zYj4357zwk4TTuF2nEe0vVtOrwdsrNo5hL+u1ojXNhh1FgJ6pg1jzDlwlT4oBdzfSwaBwMCtFCsIWg8Q==}
+    engines: {node: '>=18.0.0'}
+
+  '@whatwg-node/node-fetch@0.8.6':
+    resolution: {integrity: sha512-BDMdYFcerLQkwA2RTldxOqRCs6ZQD1S7UgP3pUdGUkcbgTrP/V5ko77ZkCww9DHmC4lpoYuwigGfQYj285gMvA==}
+    engines: {node: '>=18.0.0'}
+
+  '@whatwg-node/promise-helpers@1.3.2':
+    resolution: {integrity: sha512-Nst5JdK47VIl9UcGwtv2Rcgyn5lWtZ0/mhRQ4G8NN2isxpq2TO30iqHzmwoJycjWuyUfg3GFXqP/gFHXeV57IA==}
+    engines: {node: '>=16.0.0'}
+
+  '@whatwg-node/promise-helpers@2.0.0':
+    resolution: {integrity: sha512-/i9CS0Z96o+cPwaYoAyVxAThDiUX1wV3tDmNWPJbn+vtdR+JftuCDg1NGCXBrzIYVDGkJ8uT6ctwmrBOUzOpKQ==}
+    engines: {node: '>=22.15.0'}
+
+  '@whatwg-node/server@0.11.0':
+    resolution: {integrity: sha512-VSdkwnJRr8Yv9UgB2aXB3VUPWwd6Oqnn0hycFwhg9pZgWxJXb7JmhsiXe9tmpMwjHFxli12PGcz9aI63YYloGQ==}
+    engines: {node: '>=18.0.0'}
+
   '@xtuc/ieee754@1.2.0':
     resolution: {integrity: sha512-DX8nKgqcGwsc0eJSqYt5lwP4DH5FlHnmuWWBRy7X0NcaGR0ZtuyeESgMwTYVEtxmsNGY+qit4QYT/MIYTOTPeA==}
 
@@ -6632,6 +7052,10 @@ packages:
     resolution: {integrity: sha512-piICUB6ei4IlTv1+653yq5+KoqfBYmj9bw6LqXoOneTMDXk5nM1qt12mFW1caG3LlJXEKW1Bp0WggEmIfQB34g==}
     engines: {node: '>= 14'}
 
+  cross-inspect@1.0.1:
+    resolution: {integrity: sha512-Pcw1JTvZLSJH83iiGWt6fRcT+BjZlCDRVwYLbUcHzv/CRpB7r0MlSrGbIyQvVSNyGnbt7G4AXuyCiDR3POvZ1A==}
+    engines: {node: '>=16.0.0'}
+
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
     engines: {node: '>= 8'}
@@ -7024,6 +7448,16 @@ packages:
 
   graphmatch@1.1.1:
     resolution: {integrity: sha512-5ykVn/EXM1hF0XCaWh05VbYvEiOL2lY1kBxZtaYsyvjp7cmWOU1XsAdfQBwClraEofXDT197lFbXOEVMHpvQOg==}
+
+  graphql-yoga@5.24.1:
+    resolution: {integrity: sha512-NA2aQ4sZvR/bniCCLOlMG6OSZf5hPg3mUf3Phm33ObqRMZEq6WtZrj2hTcHfT2ZEFVV5FRCbcMb4NB1w7BIKaA==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      graphql: ^15.2.0 || ^16.0.0 || ^17.0.0
+
+  graphql@17.0.2:
+    resolution: {integrity: sha512-FRWbddMxfkjiB7z+aQDWIR+E34xo9I8c9mtK2RPv8PmMzKRvrdsreHL/Ui/TmwHJfhHChEtsFPyMHKI+xuarQQ==}
+    engines: {node: ^22.0.0 || ^24.0.0 || ^25.0.0 || >=26.0.0}
 
   has-flag@4.0.0:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
@@ -8854,6 +9288,9 @@ packages:
     peerDependencies:
       browserslist: '>= 4.21.0'
 
+  urlpattern-polyfill@10.1.0:
+    resolution: {integrity: sha512-IGjKp/o0NL3Bso1PymYURCJxMPNAf/ILOpendP9f5B6e1rTJgdgiOvgfoT8VxCAdY+Wisb9uhGaJJf3yZ2V9nw==}
+
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
 
@@ -10357,6 +10794,23 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+  '@envelop/core@5.6.1':
+    dependencies:
+      '@envelop/instrumentation': 1.0.1
+      '@envelop/types': 5.2.2
+      '@whatwg-node/promise-helpers': 1.3.2
+      tslib: 2.8.1
+
+  '@envelop/instrumentation@1.0.1':
+    dependencies:
+      '@whatwg-node/promise-helpers': 1.3.2
+      tslib: 2.8.1
+
+  '@envelop/types@5.2.2':
+    dependencies:
+      '@whatwg-node/promise-helpers': 1.3.2
+      tslib: 2.8.1
+
   '@esbuild/aix-ppc64@0.25.12':
     optional: true
 
@@ -10513,6 +10967,8 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
+  '@fastify/busboy@3.2.2': {}
+
   '@gerrit0/mini-shiki@3.23.0':
     dependencies:
       '@shikijs/engine-oniguruma': 3.23.0
@@ -10520,6 +10976,57 @@ snapshots:
       '@shikijs/themes': 3.23.0
       '@shikijs/types': 3.23.0
       '@shikijs/vscode-textmate': 10.0.2
+
+  '@graphql-tools/executor@2.0.3(graphql@17.0.2)':
+    dependencies:
+      '@graphql-tools/utils': 12.0.3(graphql@17.0.2)
+      '@graphql-typed-document-node/core': 3.2.0(graphql@17.0.2)
+      '@repeaterjs/repeater': 3.1.0
+      '@whatwg-node/disposablestack': 0.1.0
+      '@whatwg-node/promise-helpers': 2.0.0
+      graphql: 17.0.2
+      tslib: 2.8.1
+
+  '@graphql-tools/merge@9.2.6(graphql@17.0.2)':
+    dependencies:
+      '@graphql-tools/utils': 12.0.3(graphql@17.0.2)
+      graphql: 17.0.2
+      tslib: 2.8.1
+
+  '@graphql-tools/schema@10.1.3(graphql@17.0.2)':
+    dependencies:
+      '@graphql-tools/merge': 9.2.6(graphql@17.0.2)
+      '@graphql-tools/utils': 12.0.3(graphql@17.0.2)
+      graphql: 17.0.2
+      tslib: 2.8.1
+
+  '@graphql-tools/utils@12.0.3(graphql@17.0.2)':
+    dependencies:
+      '@graphql-typed-document-node/core': 3.2.0(graphql@17.0.2)
+      '@whatwg-node/promise-helpers': 2.0.0
+      cross-inspect: 1.0.1
+      graphql: 17.0.2
+      tslib: 2.8.1
+
+  '@graphql-typed-document-node/core@3.2.0(graphql@17.0.2)':
+    dependencies:
+      graphql: 17.0.2
+
+  '@graphql-yoga/logger@2.0.2':
+    dependencies:
+      tslib: 2.8.1
+
+  '@graphql-yoga/subscription@5.1.1':
+    dependencies:
+      '@graphql-yoga/typed-event-target': 3.0.3
+      '@repeaterjs/repeater': 3.1.0
+      '@whatwg-node/events': 0.1.2
+      tslib: 2.8.1
+
+  '@graphql-yoga/typed-event-target@3.0.3':
+    dependencies:
+      '@repeaterjs/repeater': 3.1.0
+      tslib: 2.8.1
 
   '@grpc/grpc-js@1.14.5':
     dependencies:
@@ -11746,6 +12253,10 @@ snapshots:
 
   '@pnpm/deps.graph-sequencer@1100.0.1': {}
 
+  '@pothos/core@4.15.1(graphql@17.0.2)':
+    dependencies:
+      graphql: 17.0.2
+
   '@prisma/cli-engine@0.4.0(@prisma/management-api-sdk@1.69.0)(magicast@0.5.5)':
     dependencies:
       '@clack/prompts': 1.5.0
@@ -12030,6 +12541,8 @@ snapshots:
   '@redis/time-series@6.3.0(@redis/client@6.3.0(@opentelemetry/api@1.9.1))':
     dependencies:
       '@redis/client': 6.3.0(@opentelemetry/api@1.9.1)
+
+  '@repeaterjs/repeater@3.1.0': {}
 
   '@rolldown/binding-android-arm-eabi@1.2.12':
     optional: true
@@ -13105,6 +13618,48 @@ snapshots:
       '@webassemblyjs/ast': 1.14.1
       '@xtuc/long': 4.2.2
 
+  '@whatwg-node/disposablestack@0.0.6':
+    dependencies:
+      '@whatwg-node/promise-helpers': 1.3.2
+      tslib: 2.8.1
+
+  '@whatwg-node/disposablestack@0.1.0':
+    dependencies:
+      '@whatwg-node/promise-helpers': 2.0.0
+      tslib: 2.8.1
+
+  '@whatwg-node/events@0.1.2':
+    dependencies:
+      tslib: 2.8.1
+
+  '@whatwg-node/fetch@0.10.13':
+    dependencies:
+      '@whatwg-node/node-fetch': 0.8.6
+      urlpattern-polyfill: 10.1.0
+
+  '@whatwg-node/node-fetch@0.8.6':
+    dependencies:
+      '@fastify/busboy': 3.2.2
+      '@whatwg-node/disposablestack': 0.0.6
+      '@whatwg-node/promise-helpers': 1.3.2
+      tslib: 2.8.1
+
+  '@whatwg-node/promise-helpers@1.3.2':
+    dependencies:
+      tslib: 2.8.1
+
+  '@whatwg-node/promise-helpers@2.0.0':
+    dependencies:
+      tslib: 2.8.1
+
+  '@whatwg-node/server@0.11.0':
+    dependencies:
+      '@envelop/instrumentation': 1.0.1
+      '@whatwg-node/disposablestack': 0.0.6
+      '@whatwg-node/fetch': 0.10.13
+      '@whatwg-node/promise-helpers': 1.3.2
+      tslib: 2.8.1
+
   '@xtuc/ieee754@1.2.0': {}
 
   '@xtuc/long@4.2.2': {}
@@ -13709,6 +14264,10 @@ snapshots:
       crc-32: 1.2.2
       readable-stream: 4.7.0
 
+  cross-inspect@1.0.1:
+    dependencies:
+      tslib: 2.8.1
+
   cross-spawn@7.0.6:
     dependencies:
       path-key: 3.1.1
@@ -14135,6 +14694,24 @@ snapshots:
   grammex@3.1.13: {}
 
   graphmatch@1.1.1: {}
+
+  graphql-yoga@5.24.1(graphql@17.0.2):
+    dependencies:
+      '@envelop/core': 5.6.1
+      '@envelop/instrumentation': 1.0.1
+      '@graphql-tools/executor': 2.0.3(graphql@17.0.2)
+      '@graphql-tools/schema': 10.1.3(graphql@17.0.2)
+      '@graphql-tools/utils': 12.0.3(graphql@17.0.2)
+      '@graphql-yoga/logger': 2.0.2
+      '@graphql-yoga/subscription': 5.1.1
+      '@whatwg-node/fetch': 0.10.13
+      '@whatwg-node/promise-helpers': 1.3.2
+      '@whatwg-node/server': 0.11.0
+      graphql: 17.0.2
+      lru-cache: 10.4.3
+      tslib: 2.8.1
+
+  graphql@17.0.2: {}
 
   has-flag@4.0.0: {}
 
@@ -16188,6 +16765,8 @@ snapshots:
       browserslist: 4.29.3
       escalade: 3.2.0
       picocolors: 1.1.1
+
+  urlpattern-polyfill@10.1.0: {}
 
   util-deprecate@1.0.2: {}
 

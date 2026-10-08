@@ -1,6 +1,5 @@
+import { it } from "@btravstack/internal-http-fixtures";
 import { describe, expect } from "vitest";
-
-import { it } from "./__tests__/test-fixtures.js";
 
 describe("apiKeyAuthenticator", () => {
   it("names the caller the key was issued to, with what it grants", async ({ apiKeyService }) => {

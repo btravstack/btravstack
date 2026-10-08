@@ -1,31 +1,31 @@
 ---
 title: Run several deployments locally
-description: One process per deployment in development too — turbo runs the API and both workers side by side, with prefixed output, watch on every file change, and the real drain on Ctrl-C.
+description: One process per deployment in development too — turbo runs both APIs and both workers side by side, with prefixed output, watch on every file change, and the real drain on Ctrl-C.
 ---
 
 # Run several deployments locally
 
-> **How-to.** One application, three deployments, one command. For why a
+> **How-to.** One application, four deployments, one command. For why a
 > deployment is one runtime in the first place, see
 > [One process, one runtime](/explanation/one-process-one-runtime); to boot an
 > application from a test instead, see
 > [Test an application](/how-to/test-an-application).
 
-An application with an API, a Temporal worker and an AMQP consumer is three
-deployments — three processes, each booting the same module under its own
-composition root. Locally that would be three terminals. It is one command:
+The example has an oRPC API, a GraphQL gateway, a Temporal worker and an AMQP
+consumer — four processes, each with its own composition root. Locally that
+would be four terminals. It is one command:
 
 ```sh
 pnpm dev
 ```
 
 That runs `turbo run dev --filter=./examples/*`, which brings up the shared
-containers, applies the migrations, and starts all three entry points with
+containers, applies the migrations, and starts all four entry points with
 their output prefixed by workspace.
 
 ## Why processes rather than one runner
 
-The obvious shortcut is to boot all three in **one** Node process, and the
+The obvious shortcut is to boot all four in **one** Node process, and the
 kernel would let you — `start` returns a `RunningApp` and claims nothing about
 the process, exactly so it can be embedded. It is still the wrong local loop,
 for three reasons:
@@ -33,10 +33,10 @@ for three reasons:
 - **Watch.** Reloading a module graph in place means invalidating ESM modules
   Node will not let you re-import — a bespoke loader. One process per
   deployment gets watch from `tsx watch`, which is what makes the loop a loop.
-- **Failure isolation.** Three applications in one process share an event
+- **Failure isolation.** Four applications in one process share an event
   loop and the process-global `uncaughtException` handlers, so one crash takes
-  all three down and a blocking worker starves the API — neither of which can
-  happen to three pods. A local loop that misrepresents failure isolation
+  all four down and a blocking worker starves the APIs — neither of which can
+  happen to four pods. A local loop that misrepresents failure isolation
   teaches the wrong lesson.
 - **The drain.** Each process gets a real signal and runs its own three beats,
   which is the thing worth rehearsing locally.
@@ -61,7 +61,7 @@ back to `.ts`. `--env-file` is Node's, not a `dotenv` dependency.
 
 The inline variables are the ones that **must differ between deployments**,
 and `PROBE_PORT` is the one that bites: it defaults to `9000` for every
-application, so three deployments on one machine would mean two of them fail
+application, so four deployments on one machine would mean three of them fail
 to start with
 
 ```json

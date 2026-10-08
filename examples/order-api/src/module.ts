@@ -3,11 +3,11 @@ import { redisCache } from "@btravstack/cache/redis";
 import { Logger, Meter, Tracer } from "@btravstack/core";
 import { contract } from "@btravstack/example-order-api-contract";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
-import { HttpModule } from "@btravstack/http-server";
 import { oidc } from "@btravstack/http-server/oidc";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
+import { HttpModule } from "@btravstack/orpc-server";
 
 import { api, principal } from "./auth.js";
 import { RequestModule, ServiceModule, SessionModule, UserModule } from "./request-scope.js";

@@ -1,17 +1,19 @@
 # packages/http-server
 
-The HTTP starter's decisions, gotchas and deliberate exclusions. The root
-`AGENTS.md` is the authoritative spec for the kernel and the conventions; this
-file holds what only matters when you are working under `packages/http-server/`.
-The surface itself — every signature, option, export and inject — is
-`docs/reference/http-server.md` and the source TSDoc behind it; the doc-samples
-gate compiles that page's `ts` fences and `README.md`'s. The authentication half
-is `AUTH.md`. Keep this file in sync with the code in the same commit.
+This file records the HTTP family's decisions. The runtime, request units and
+authentication live here; the oRPC, htmx and GraphQL answerers now live in
+`../orpc-server`, `../htmx-server` and `../graphql-server`. The root `AGENTS.md`
+is authoritative for the kernel and conventions. This file explains shared
+HTTP behavior and the original oRPC/htmx composition; when a section names
+`http-module.ts`, `orpc.ts`, `define-http.ts`, `htmx.ts` or `graphql.ts`, look in
+the corresponding protocol package. The public surface is in
+`docs/reference/http-server.md` and the package READMEs. Authentication is in
+`AUTH.md`. Keep these descriptions aligned with code.
 
 ## Decisions and gotchas, by surface
 
-- The Node floor is `>=22.12`: the CommonJS build loads ESM-only oRPC, and
-  unflagged `require(esm)` starts there. The same applies to the optional
+- The Node floor is `>=22.12`: the CommonJS build and protocol packages use
+  unflagged `require(esm)`. The same applies to the optional
   authentication subpaths that load `jose`.
 
 - **`HttpModule(name)({...})`** (`http-module.ts`) — THE way an application
@@ -58,6 +60,14 @@ is `AUTH.md`. Keep this file in sync with the code in the same commit.
   `{ readonly "SERVES NOTHING — supply a router, fragments, or both": true }`
   — booting a listener with no answerer behind it is refused here rather than
   left to `start`'s own runtime gate.
+- **`graphql(api, { schema, prefix?, requires?, unit? })`** lives in
+  `../graphql-server`, with required GraphQL and Yoga peers. It installs Yoga
+  on `HttpHandler`, forks one unit after mount-wide authentication, and gives
+  resolvers `{ principal, unit, signal, incoming }`. `requires` uses the
+  shared `RequiresGate` and `resolveScheme`; absent requirements make the
+  schema public. The separate `order-graphql-api` process calls `order-api`
+  through `order-api-client` and exports SDL for clients. Resolver outcomes
+  remain the application's mapping; Yoga owns execution errors.
 - **`OrpcRouterPort`** (`orpc.ts`, exported from the file for the package's
   own tests, **not** from `index.ts`) — the router's port, one id, the
   starter's own: `Port("OrpcRouter")` cast to di's `PortClassOf<"OrpcRouter",
@@ -1395,7 +1405,7 @@ reads. It is `http-runtime.ts`'s own rule for the request, applied one level
 down — `response.closed` checked first, because subscribing to a stream that
 already fired is this package's documented footgun.
 
-## `openApiDocument` — from `@btravstack/http-server/openapi`
+## `openApiDocument` — from `@btravstack/orpc-server/openapi`
 
 The surface and its reasoning are in `docs/reference/http-server.md` and
 `openapi.ts`'s TSDoc.

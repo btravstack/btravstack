@@ -43,7 +43,7 @@ method and path as arguments to the mint call itself.
 
 ```ts
 import { FindOrder } from "@btravstack/example-order-application";
-import { html } from "@btravstack/http-server";
+import { html } from "@btravstack/htmx-server";
 import { P } from "unthrown";
 
 export const orderRowFragment = api.HtmxGet("/orders/:id/row", {
@@ -152,7 +152,7 @@ unmarked route whose path could also match its requests.
 ## Step 3 — the composition root
 
 ```ts
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";

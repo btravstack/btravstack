@@ -8,7 +8,7 @@ import { Logger, Meter, Tracer } from "@btravstack/core";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { otel } from "@btravstack/observability/otel";
 import { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
 import { orderRouter } from "../../module.js";

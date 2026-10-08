@@ -50,7 +50,8 @@ about what it means to be one:
 
 ```ts
 import { TenantId, TenantIdSchema } from "@btravstack/example-order-domain";
-import { apiKeyAuthenticator, defineHttp } from "@btravstack/http-server";
+import { apiKeyAuthenticator } from "@btravstack/http-server";
+import { defineHttp } from "@btravstack/orpc-server";
 import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
 import { sessionAuthenticator } from "@btravstack/http-server/session";
 import type { IDToken } from "openid-client";
@@ -153,7 +154,7 @@ to the `OrdersSlice` module instead.
 ```ts
 import { Logger, Meter, Tracer } from "@btravstack/core";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 import { oidc } from "@btravstack/http-server/oidc";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
@@ -191,7 +192,7 @@ procedure would name `user`:
 
 ```ts
 import { FindOrder } from "@btravstack/example-order-application";
-import { html } from "@btravstack/http-server";
+import { html } from "@btravstack/htmx-server";
 import { P } from "unthrown";
 
 export const orderRowFragment = api.HtmxGet("/orders/:id/row", { requires: [{ session: [] }] })({

@@ -1,0 +1,7 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/htmx-server",
+  "entryPoints": ["../packages/htmx-server/src/index.ts"],
+  "tsconfig": "../packages/htmx-server/tsconfig.json",
+  "out": "api/htmx-server"
+}

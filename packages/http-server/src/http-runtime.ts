@@ -23,7 +23,6 @@ import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from
 import { CookieSchemes, crossSite, csrfOn } from "./cookie.js";
 import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
-import { DEFAULT_BODY_LIMIT, orpc, type OrpcRouterPort, type OrpcOptions } from "./orpc.js";
 import { HttpSchemes, withFallback } from "./unit-scope.js";
 import type { AnyUnitModule, UnitsNeedsOf } from "./unit.js";
 
@@ -43,7 +42,11 @@ export type HttpInfo = { readonly port: number };
  * The router itself is not an option — it is the provider the composition root
  * supplies on the starter's router port, which this module needs.
  */
-export type HttpOptions = OrpcOptions & {
+export type HttpOptions = {
+  readonly cors?: boolean | object;
+  readonly bodyLimit?: number | false;
+  readonly compression?: boolean | object;
+  readonly csrf?: boolean;
   /** Pins `HttpConfig.port` instead of reading `PORT`. */
   readonly port?: number;
   /** Pins `HttpConfig.hostname` instead of reading `HOST`. */
@@ -84,7 +87,10 @@ export type HttpOptions = OrpcOptions & {
 };
 
 /** What `httpServer` pins on the config it binds — everything but the router's own. */
-type SocketOptions = Omit<HttpOptions, "prefix" | "plugins">;
+type SocketOptions = HttpOptions;
+
+/** One MiB, the default request-body bound shared by all answerers. */
+export const DEFAULT_BODY_LIMIT = 1_048_576;
 
 /** How long a client may take to send its headers by default: Node's own default, stated rather than inherited. */
 export const DEFAULT_HEADERS_TIMEOUT_MS = 60_000;
@@ -279,28 +285,6 @@ export const httpServer = <
  * Pin `port`/`hostname` and the module reads nothing from the environment; pin
  * only some and the rest still comes from it.
  */
-export const http = <Units extends Readonly<Record<string, AnyUnitModule>> | undefined = undefined>(
-  options: Omit<HttpOptions, "unit"> & { readonly unit?: Units } = {},
-): Module<
-  HttpRuntime | HttpConfig | HttpHandler | Observers,
-  ConfigInvalid,
-  Env | OrpcRouterPort | UnitsNeedsOf<Units>
-> =>
-  Module("Http")({
-    imports: [httpServer(options)],
-    provides: [orpc(options)],
-    // `Observers` travels through, for the reason `httpServer` exports it: a
-    // sibling answerer in the root — `oidc()` — reports its own operations and
-    // is a single member provider with nowhere to put a no-op member of its
-    // own. Without this, `http()` and `httpServer()` disagree about what a
-    // root gets, and only the sugar's callers pay.
-    exports: [HttpRuntime, HttpConfig, HttpHandler, Observers],
-  } as never) as unknown as Module<
-    HttpRuntime | HttpConfig | HttpHandler | Observers,
-    ConfigInvalid,
-    Env | OrpcRouterPort | UnitsNeedsOf<Units>
-  >;
-
 /**
  * The answerers, longest prefix first, so the first match is THE match.
  * Nesting is expected — `/rpc` under a `/` fragment answerer — and only a

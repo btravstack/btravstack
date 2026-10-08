@@ -3,7 +3,7 @@
 Release and versioning policy. The gate commands and the package inventory
 live in the root `AGENTS.md`.
 
-A release bumps every one of the fifteen published packages, whether or not
+A release bumps every one of the eighteen published packages, whether or not
 it changed — Spring Boot's model, and the reason is the same:
 an application installs a kernel and two or three starters together, and
 "which version of `@btravstack/http-server` goes with `@btravstack/core@0.4.1`" is a

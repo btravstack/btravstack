@@ -190,7 +190,7 @@ A browser on another origin is refused by default. CORS is **configuration on
 the handler**, not a middleware slot:
 
 ```ts
-import { HttpModule } from "@btravstack/http-server";
+import { HttpModule } from "@btravstack/orpc-server";
 ```
 
 <!-- doctest: skip — an options excerpt of the HttpModule call compiled by docs/examples/order-api.md; the option itself is typed by docs/reference/http-server.md's own fence -->

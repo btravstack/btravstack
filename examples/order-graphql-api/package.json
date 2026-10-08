@@ -1,0 +1,41 @@
+{
+  "name": "@btravstack/example-order-graphql-api",
+  "private": true,
+  "description": "A separate GraphQL BFF process backed by the order API oRPC client",
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "PORT=3001 PROBE_PORT=0 tsx watch --env-file=../../.env.dev src/main.ts",
+    "graphql:schema": "tsx src/print-graphql-schema.ts > ../order-graphql-contract/schema.graphql",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@btravstack/config": "workspace:*",
+    "@btravstack/core": "workspace:*",
+    "@btravstack/di": "workspace:*",
+    "@btravstack/example-order-api-client": "workspace:*",
+    "@btravstack/example-order-api-contract": "workspace:*",
+    "@btravstack/graphql-server": "workspace:*",
+    "@btravstack/http-server": "workspace:*",
+    "@orpc/client": "catalog:",
+    "@pothos/core": "catalog:",
+    "graphql": "catalog:",
+    "graphql-yoga": "catalog:",
+    "unthrown": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@btravstack/tsconfig": "catalog:",
+    "@types/node": "catalog:",
+    "@unthrown/vitest": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
