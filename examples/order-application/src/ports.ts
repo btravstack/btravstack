@@ -4,8 +4,6 @@ import type {
   Customer,
   CustomerNotFound,
   DuplicateOrder,
-  InvalidOrderId,
-  InvalidQuantity,
   Order,
   OrderNotFound,
   OutOfStock,
@@ -114,33 +112,4 @@ export class PaymentService extends Port("PaymentService")<{
   ) => AsyncResult<string, PaymentDeclined>;
   readonly capture: (authorizationId: string, idempotencyKey: string) => AsyncResult<void, never>;
   readonly refund: (authorizationId: string, idempotencyKey: string) => AsyncResult<void, never>;
-}> {}
-
-/**
- * `operation` is handed to `OrderRepository.save` as it is: a caller that may
- * run the same placement more than once — an activity Temporal retries — names
- * it, so the repeat answers the order rather than `DuplicateOrder`. A named
- * field rather than a third positional `string`, so it cannot trade places
- * with the order id.
- */
-export class PlaceOrder extends Port("PlaceOrder")<{
-  readonly execute: (
-    id: string,
-    quantity: number,
-    options?: { readonly operation?: string | undefined },
-  ) => AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder>;
-}> {}
-
-export class FindOrder extends Port("FindOrder")<{
-  readonly execute: (id: string) => AsyncResult<Order, OrderNotFound>;
-}> {}
-
-export class ListOrders extends Port("ListOrders")<{
-  readonly execute: (
-    query: OrderQuery,
-  ) => AsyncResult<Page<Order>, MalformedCursor | CursorSortMismatch>;
-}> {}
-
-export class FindCustomer extends Port("FindCustomer")<{
-  readonly execute: (tenantId: TenantId, id: string) => AsyncResult<Customer, CustomerNotFound>;
 }> {}

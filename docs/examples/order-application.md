@@ -6,7 +6,7 @@ description: The layers every deployment boots — order-domain, order-applicati
 <!-- doctest: prelude
 import { Logger } from "@btravstack/core";
 import { Entity } from "@btravstack/entity";
-import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { Module, Port, Provider } from "@btravstack/di";
 
 import {
   DuplicateOrder,
@@ -34,11 +34,7 @@ import { P, type AsyncResult, type Result } from "unthrown";
 declare const createClient: (binding: PrismaBinding) => OrderDatabaseClient;
 
 class OrderDatabase extends Port("OrderDatabase")<OrderDatabaseClient> {}
-declare const PlaceOrderInteractor: new (deps: {
-  readonly repository: ServiceOf<OrderRepository>;
-  readonly logger: ServiceOf<Logger>;
-  readonly tenant: ServiceOf<Tenant>;
-}) => ServiceOf<PlaceOrder>;
+declare const placeOrderProvider: Provider<PlaceOrder, never, OrderRepository | Logger | Tenant>;
 declare const findOrderProvider: Provider<FindOrder, never, OrderRepository | Logger>;
 declare const findCustomerProvider: Provider<FindCustomer, never, CustomerRepository>;
 -->
@@ -180,19 +176,52 @@ Beside it: `StockService` and
 `ShippingService` (the two fulfillment ports the orders saga orchestrates),
 `PaymentService` (the billing saga's own port — `authorize` answers with the
 domain's permanent `PaymentDeclined`, `capture` and `refund` promise `never`,
-since a compensation must not invent new ways to fail), and the two use-case
-ports `PlaceOrder` and `FindOrder`. The `Logger` the interactors write to is
-**not** declared here: it is
+since a compensation must not invent new ways to fail). The `Logger` the use
+cases write to is **not** declared here: it is
 [`@btravstack/observability`](/reference/observability)'s port, imported like
-any other dependency. The interactors are classes provided with di's `class`
-arm:
+any other dependency.
+
+Nor are the use cases' own ports. A use case has one implementation, so a port
+declared beside it would only restate its shape: `Provider("PlaceOrder")`
+mints the port from what the factory builds and hands it back as `.port`,
+exported as a value and a type of one name so a consumer still writes
+`PlaceOrder` in both positions:
+
+<!-- doctest: isolate
+import { Logger } from "@btravstack/core";
+import { Provider } from "@btravstack/di";
+import {
+  placeOrder,
+  type DuplicateOrder,
+  type InvalidOrderId,
+  type InvalidQuantity,
+  type Order,
+} from "@btravstack/example-order-domain";
+import { OrderRepository, Tenant } from "@btravstack/example-order-application";
+import type { AsyncResult } from "unthrown";
+-->
 
 ```ts
-export const placeOrderProvider = Provider(PlaceOrder)({
+export const placeOrderProvider = Provider("PlaceOrder")({
   inject: { repository: OrderRepository, logger: Logger, tenant: Tenant },
-  class: PlaceOrderInteractor,
+  sync: ({ repository, logger, tenant }) => ({
+    execute: (
+      id: string,
+      quantity: number,
+    ): AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder> => {
+      logger.info("placing an order", { tenantId: tenant, orderId: id, quantity });
+      return placeOrder(id, quantity)
+        .toAsync()
+        .flatMap((order) => repository.save(order));
+    },
+  }),
 });
+export const PlaceOrder = placeOrderProvider.port;
+export type PlaceOrder = InstanceType<typeof PlaceOrder>;
 ```
+
+The return annotation is written, not inferred, because it is the use case's
+contract: the union every triage site folds is this one.
 
 The module — one per vertical, not one for the layer — provides none of
 `OrderRepository`, `Logger` or `Tenant`:
@@ -211,7 +240,7 @@ export const CustomerApplicationModule = Module("CustomerApplication")({
 });
 ```
 
-`PlaceOrderInteractor` depends on all three and nothing here satisfies any, so
+`PlaceOrder` depends on all three and nothing here satisfies any, so
 di propagates all three as unmet needs — the repository because the layer below
 fills it, the logger because the framework does, the tenant because whoever
 opens a unit does, and there is nothing to re-export in any direction. That is
@@ -229,9 +258,9 @@ lets `order-temporal-worker` and `order-amqp-worker` import the orders
 vertical without carrying the customers one.
 
 There is no kernel touchpoint left here. The log calls are structured —
-`this.#logger.info("placing an order", { tenantId: this.#tenant, orderId: id, quantity })`,
+`logger.info("placing an order", { tenantId: tenant, orderId: id, quantity })`,
 a constant message with the ids as fields, the tenant among them because the
-interactor holds it as an injected capability — and correlation is not this
+use case holds it as an injected capability — and correlation is not this
 layer's job:
 `@btravstack/observability`'s implementation reads `currentUnit()` fresh on
 every call, so each line carries the trace id of the unit that wrote it —

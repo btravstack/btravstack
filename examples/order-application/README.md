@@ -5,8 +5,8 @@ rules into operations — "place an order", "find an order" — and declares, as
 `@btravstack/di` ports, what it needs the outside world to supply.
 
 ```text
-src/ports.ts          Tenant, OrderRepository, CustomerRepository, StockService, ShippingService, PaymentService, PlaceOrder, FindOrder, FindCustomer
-src/use-cases.ts      the interactors, and their providers
+src/ports.ts          Tenant, OrderRepository, CustomerRepository, StockService, ShippingService, PaymentService
+src/use-cases.ts      PlaceOrder, FindOrder, ListOrders, FindCustomer — each port minted by its provider
 src/module.ts         OrderApplicationModule, CustomerApplicationModule, tenantOf
 src/__tests__/test-fixtures.ts  the stub repositories and the per-tenant scope, as Vitest fixtures
 ```
@@ -71,7 +71,7 @@ export const CustomerApplicationModule = Module("CustomerApplication")({
 });
 ```
 
-The interactors depend on `OrderRepository`, `Tenant` and `CustomerRepository`,
+The use cases depend on `OrderRepository`, `Tenant` and `CustomerRepository`,
 and nothing here provides any of them, so di propagates each as an unmet _need_ of the
 module that has it. `Logger` is a need of the orders half only — `PlaceOrder`
 writes a line and nothing in the customers vertical does — and it is one for
@@ -129,7 +129,7 @@ back through.
 ## Logging is attributes, not sentences
 
 ```ts
-this.#logger.info("placing an order", { tenantId: this.#tenant, orderId: id, quantity });
+logger.info("placing an order", { tenantId: tenant, orderId: id, quantity });
 ```
 
 The message is a constant and the ids are fields, which is what makes a line

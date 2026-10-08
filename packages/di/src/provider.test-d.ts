@@ -2,7 +2,15 @@ import { Err, Ok, TaggedError } from "unthrown";
 import { describe, test } from "vitest";
 
 import { type Equal } from "./__tests__/type-assert.js";
-import { Port, Provider, type Scope, type ServiceOf } from "./index.js";
+import {
+  Port,
+  Provider,
+  overrideProvider,
+  type PortClassOf,
+  type PortInstance,
+  type Scope,
+  type ServiceOf,
+} from "./index.js";
 
 class ConfigError extends TaggedError("ConfigError")<{ readonly reason: string }> {}
 class PoolError extends TaggedError("ProvPoolError")<{ readonly url: string }> {}
@@ -254,5 +262,83 @@ describe("Provider", () => {
       // @ts-expect-error the hook parameter is the service, which has no `portId`
       onStart: (s) => void s.portId,
     });
+  });
+});
+
+describe('Provider("Id"), which mints the port it provides', () => {
+  test("the service is what the arm builds, and the port is named by the id", () => {
+    const p = Provider("FindRepo")({
+      inject: { repo: Repo },
+      sync: ({ repo }) => ({ execute: (id: string) => `${id}:${repo.find()}` }),
+    });
+
+    type Channels = ChannelsOf<typeof p>;
+    const channels: Equal<
+      Channels,
+      readonly [PortInstance<"FindRepo", { execute: (id: string) => string }>, never, Repo]
+    > = true;
+    const port: Equal<
+      InstanceType<typeof p.port>,
+      PortInstance<"FindRepo", { execute: (id: string) => string }>
+    > = true;
+    void channels;
+    void port;
+  });
+
+  test("make's Ok is the service and its Err the error channel", () => {
+    const p = Provider("ParsedConfig")({
+      inject: { env: Env },
+      make: ({ env }) => {
+        const url = env["DATABASE_URL"];
+        return url === undefined
+          ? Err(new ConfigError({ reason: "DATABASE_URL is unset" }))
+          : Ok({ dbUrl: url });
+      },
+    });
+
+    const channels: Equal<
+      ChannelsOf<typeof p>,
+      readonly [PortInstance<"ParsedConfig", { dbUrl: string }>, ConfigError, Env]
+    > = true;
+    void channels;
+  });
+
+  test("a resourceful arm types its release from what acquire built, and needs a Scope", () => {
+    const p = Provider("MintedPool")({
+      inject: {},
+      acquire: () => Ok({ close: () => {} }),
+      release: (pool) => pool.close(),
+    });
+
+    const needs: Equal<ChannelsOf<typeof p>[2], Scope> = true;
+    void needs;
+  });
+
+  test("inject is still required", () => {
+    // @ts-expect-error Property 'inject' is missing
+    Provider("NoInject")({ sync: () => 1 });
+  });
+
+  test("the minted port takes another implementation, qualified against the same service", () => {
+    const p = Provider("Greeter")({ inject: {}, sync: () => ({ greet: (name: string) => name }) });
+
+    Provider(p.port)({ inject: {}, value: { greet: (name) => `hello ${name}` } });
+    // @ts-expect-error `greet` returns a string, not a number
+    Provider(p.port)({ inject: {}, value: { greet: (name: string) => name.length } });
+  });
+
+  test("an override keeps the minted port typed", () => {
+    const overridden = overrideProvider(Provider("Overridden")({ inject: {}, value: { n: 1 } }));
+
+    const port: Equal<(typeof overridden)["port"], PortClassOf<"Overridden", { n: number }>> = true;
+    void port;
+  });
+
+  test("two minted ports of one shape stay distinct, because the id is the identity", () => {
+    const a = Provider("MintedA")({ inject: {}, value: 1 });
+    const b = Provider("MintedB")({ inject: {}, value: 1 });
+
+    const distinct: Equal<InstanceType<typeof a.port>, InstanceType<typeof b.port>> = false;
+    void distinct;
   });
 });

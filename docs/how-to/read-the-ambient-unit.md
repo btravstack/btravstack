@@ -92,7 +92,7 @@ The canonical reader ships:
 writes carries the unit it was written in, with nothing in the application
 mentioning correlation:
 
-<!-- doctest: skip — a one-line call excerpt of the interactor shown in docs/how-to/log-and-correlate.md -->
+<!-- doctest: skip — a one-line call excerpt of the use case shown in docs/how-to/log-and-correlate.md -->
 
 ```ts
 logger.info("placing an order", { orderId: id, quantity });

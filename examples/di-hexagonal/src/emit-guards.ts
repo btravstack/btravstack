@@ -123,6 +123,14 @@ export const ObservabilityModule = Module("Observability")({
   exports: [Metrics, Subscribers, OrderCache, Auditor],
 });
 
+/** A port minted by its provider, exported as a value and a type of one name. */
+export const FindOrderProvider = Provider("FindOrder")({
+  inject: { orders: OrderRepository },
+  sync: ({ orders }) => ({ execute: (id: string) => orders.findById(id) }),
+});
+export const FindOrder = FindOrderProvider.port;
+export type FindOrder = InstanceType<typeof FindOrder>;
+
 /** A `Module<…>` whose inferred type names port instances in its type arguments. */
 export const AppModule = makeAppModule(InMemoryPersistenceModule);
 

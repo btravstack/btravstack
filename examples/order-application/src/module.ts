@@ -2,16 +2,12 @@ import { Logger } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import type { TenantId } from "@btravstack/example-order-domain";
 
+import { CustomerRepository, OrderRepository, Tenant } from "./ports.js";
 import {
-  CustomerRepository,
   FindCustomer,
   FindOrder,
   ListOrders,
-  OrderRepository,
   PlaceOrder,
-  Tenant,
-} from "./ports.js";
-import {
   findCustomerProvider,
   findOrderProvider,
   listOrdersProvider,

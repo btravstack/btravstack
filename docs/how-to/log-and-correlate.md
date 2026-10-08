@@ -8,7 +8,7 @@ import { type ServiceOf } from "@btravstack/di";
 import { type Line } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { placeOrder } from "@btravstack/example-order-domain";
-import { OrderRepository, PlaceOrder, Tenant } from "@btravstack/example-order-application";
+import { OrderRepository, Tenant } from "@btravstack/example-order-application";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderRouter } from "../../module.js";
 import { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
@@ -84,40 +84,16 @@ a unit carries that unit's ids.
 provider's `inject` record, never from a global or an ambient read:
 
 ```ts
-class PlaceOrderInteractor {
-  readonly #repository: ServiceOf<OrderRepository>;
-  readonly #logger: ServiceOf<Logger>;
-  readonly #tenant: ServiceOf<Tenant>;
-
-  constructor({
-    repository,
-    logger,
-    tenant,
-  }: {
-    readonly repository: ServiceOf<OrderRepository>;
-    readonly logger: ServiceOf<Logger>;
-    readonly tenant: ServiceOf<Tenant>;
-  }) {
-    this.#repository = repository;
-    this.#logger = logger;
-    this.#tenant = tenant;
-  }
-
-  execute(id: string, quantity: number) {
-    this.#logger.info("placing an order", {
-      tenantId: this.#tenant,
-      orderId: id,
-      quantity,
-    });
-    return placeOrder(id, quantity)
-      .toAsync()
-      .flatMap((order) => this.#repository.save(order));
-  }
-}
-
-export const placeOrderProvider = Provider(PlaceOrder)({
+export const placeOrderProvider = Provider("PlaceOrder")({
   inject: { repository: OrderRepository, logger: Logger, tenant: Tenant },
-  class: PlaceOrderInteractor,
+  sync: ({ repository, logger, tenant }) => ({
+    execute: (id: string, quantity: number) => {
+      logger.info("placing an order", { tenantId: tenant, orderId: id, quantity });
+      return placeOrder(id, quantity)
+        .toAsync()
+        .flatMap((order) => repository.save(order));
+    },
+  }),
 });
 ```
 

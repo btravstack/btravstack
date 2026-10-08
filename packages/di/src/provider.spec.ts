@@ -8,7 +8,7 @@ import { expect, test } from "vitest";
 // oxlint-disable-next-line import/no-unassigned-import
 import "@unthrown/vitest";
 
-import { Port, Provider } from "./index.js";
+import { Module, Port, Provider } from "./index.js";
 
 class BoomError extends TaggedError("BoomError")<{ readonly why: string }> {}
 class Value extends Port("PValue")<{ readonly n: number }> {}
@@ -110,4 +110,26 @@ test("an Ok result from make is passed through unchanged", async () => {
   // WHEN it is constructed
   // THEN the value is passed through untouched
   await expect(p.construct([])).resolves.toBeOkWith({ n: 3 });
+});
+
+test("a provider declared by id mints a port carrying that id", () => {
+  // GIVEN a provider declared by id rather than for a port class
+  const p = Provider("PMinted")({ inject: {}, value: { n: 1 } });
+
+  // WHEN its port is read
+  // THEN it is a port named by that id
+  expect(p.port).toEqual(expect.objectContaining({ portId: "PMinted" }));
+});
+
+test("a minted port resolves to the service its provider built, injected by name", async () => {
+  // GIVEN a minted use case reading an ordinary port, exported by its minted port
+  const next = Provider("PNext")({ inject: { seed: Seed }, sync: ({ seed }) => ({ n: seed + 1 }) });
+  const App = Module("PMintedApp")({
+    provides: [Provider(Seed)({ inject: {}, value: 41 }), next],
+    exports: [next.port],
+  });
+
+  // WHEN the module is built and the minted port read back
+  // THEN it is the service the factory built from the injected seed
+  await expect(Module.build(App).map((ctx) => ctx.get(next.port))).resolves.toBeOkWith({ n: 42 });
 });

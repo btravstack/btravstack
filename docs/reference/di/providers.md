@@ -1,6 +1,6 @@
 ---
 title: Providers
-description: "Provider(port)({ inject, ...options }) — the required inject record, the five construction arms, the onStart/onStop hooks, the typed port it hands back, Provider.member, and the three channels a provider carries, precisely."
+description: "Provider(port)({ inject, ...options }) and Provider(\"Id\"), which mints its port — the required inject record, the five construction arms, the onStart/onStop hooks, the typed port it hands back, Provider.member, and the three channels a provider carries, precisely."
 ---
 
 <!-- doctest: prelude
@@ -153,6 +153,45 @@ one is expected. Its declared type is a
 [`PortClassOf<Id, Service>`](/reference/di/ports#portinstance-id-service-and-portclassof-id-service)
 when the port came from a helper, which is what lets a consumer export such a
 provider from a package with `declaration: true`.
+
+## `Provider("Id")({ inject, ...options })`
+
+The same call with a string where the port would be: it **mints** the port
+from what the arm builds and hands it back as `.port`. For a port with one
+implementation — a use case — a separately declared port only restates the
+shape the implementation already has.
+
+```ts
+export const findOrderProvider = Provider("FindOrder")({
+  inject: { orders: OrderRepository },
+  sync: ({ orders }) => ({
+    execute: (id: string): AsyncResult<Order, never> => orders.findById(id),
+  }),
+});
+export const FindOrder = findOrderProvider.port;
+export type FindOrder = InstanceType<typeof FindOrder>;
+```
+
+**Return type:** `Provider<PortInstance<Id, S>, E, N, PortClassOf<Id, S>>`,
+where `S` is what the arm builds — `sync`'s return, `class`'s instance, the
+`Ok` of `make` or `acquire`, or the `value` itself — and `release` and the
+hooks are typed from it. `E` and `N` are what the port form would report.
+
+- **The id is the identity**, as with `Port("Id")`: two minted ports of one
+  shape are distinct, and a module's `exports` and a consumer's `inject` name
+  the minted class exactly as they would a declared one.
+- **`.port` takes another implementation.** `Provider(FindOrder)({ … })` binds
+  a different construction to the same port, qualified against `S` — a test
+  double, or an in-memory adapter.
+- **Prefer `sync` over `class`.** A class expression's constructor parameter is
+  not typed from `inject`, so it has to be spelled by hand; and a class with
+  `#private` fields cannot be emitted into a `.d.ts` as a minted port's service
+  (TS4094), which a package exporting it with `declaration: true` would need.
+- **Write the return annotation of a method that fails.** `S` is inferred, so
+  the method's `Err` union is the port's contract; annotating it is what keeps
+  the union from widening silently when the body changes.
+- A wiring diagnostic prints a minted port as `PortInstance<"FindOrder", { … }>`
+  rather than as a class name.
 
 ## `Provider.member(port)({ inject, ...options })`
 

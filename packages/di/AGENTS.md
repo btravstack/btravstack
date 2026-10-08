@@ -77,6 +77,31 @@ prismaOrderRepository(db) }` — an adapter factory takes the client, not a
   of them single-dependency, and the cheaper fix if the arrow grates is those
   five adapter factories taking `{ db }` instead of `db`.
 
+  **`Provider("Id")` mints its port** (issue #452), and it is an overload of
+  `Provider` rather than `Port.implemented`, because what the call yields is
+  a provider and what an application holds is that provider — the port rides
+  on it as `.port`, the shape `Config.provider("Name")` already had. One
+  name, two first arguments, the way `Config.provider` reads. `S` is
+  inferred by intersecting a second `Qualification<…, S>` onto the options:
+  `O` alone gives `S` no inference site, and binding `O` against `unknown`
+  left a `release` parameter `unknown` (measured). The string overload is
+  declared FIRST so a refused port call reports the port overload.
+
+  **The minted port rides on `Provider`'s fourth parameter, not an
+  `& { readonly port }` intersection.** `.port` read off the intersection is
+  `AnyPort & PortClassOf<…>`; the intersection flattens, `AnyPort`'s private
+  instance alias cannot be named, and the emitter falls back to the brand
+  symbols — TS4023 on `export const FindOrder = provider.port` (measured in
+  `examples/di-hexagonal`'s emit gate, which now carries that export). The
+  port form keeps its intersection: its `P` is a class the consumer declared
+  and exports by name. `Config.provider("Name")` still intersects, so
+  exporting ITS `.port` would meet the same TS4023.
+
+  **The `class` arm is legal and not recommended there.** A class
+  expression's constructor parameter is not contextually typed from
+  `inject`, and a minted service that is a class with `#private` fields
+  cannot be emitted (TS4094, measured) — the issue's own sketch failed both.
+
 - **`module.ts`** — the `Module<Exports, E, Needs>` algebra: its option lists,
   channels and variance rule are `docs/reference/di/modules.md`'s, and the
   entry points hanging off the `Module` const are
