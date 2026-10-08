@@ -1,5 +1,11 @@
 # @btravstack/entity
 
+## 0.23.0
+
+### Minor Changes
+
+- cc6e690: `SomeEntity.parseCreate(command)` parses a create command before the generated fields exist, answering the entity's own `InvalidEntity` and exactly what a factory's function accepts. It checks every field schema and each nested entity's own rules; this entity's invariants still wait for the create.
+
 ## 0.22.0
 
 No changes in this release.

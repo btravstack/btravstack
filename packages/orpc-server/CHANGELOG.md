@@ -1,5 +1,17 @@
 # @btravstack/orpc-server
 
+## 0.23.0
+
+### Patch Changes
+
+- Updated dependencies [4f6c649]
+  - @btravstack/di@0.23.0
+  - @btravstack/config@0.23.0
+  - @btravstack/core@0.23.0
+  - @btravstack/htmx-server@0.23.0
+  - @btravstack/http-server@0.23.0
+  - @btravstack/contract@0.23.0
+
 ## 0.22.0
 
 ### Patch Changes
