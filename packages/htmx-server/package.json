@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/htmx-server",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "description": "The htmx fragment answerer for @btravstack/http-server",
   "keywords": [
     "htmx",

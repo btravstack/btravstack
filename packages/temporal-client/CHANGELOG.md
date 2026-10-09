@@ -1,5 +1,12 @@
 # @btravstack/temporal-client
 
+## 0.24.0
+
+### Patch Changes
+
+- Updated dependencies [a247848]
+  - @btravstack/di@0.24.0
+
 ## 0.23.0
 
 ### Patch Changes

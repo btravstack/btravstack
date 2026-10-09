@@ -1,5 +1,14 @@
 # @btravstack/outbox
 
+## 0.24.0
+
+### Patch Changes
+
+- Updated dependencies [a247848]
+  - @btravstack/di@0.24.0
+  - @btravstack/config@0.24.0
+  - @btravstack/core@0.24.0
+
 ## 0.23.0
 
 ### Patch Changes
