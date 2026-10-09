@@ -46,6 +46,35 @@ normally retains HTTP 200; the framework does not impose a status or error
 schema on application outcomes. One HTTP request is one unit, closed after the
 response finishes and included in the runtime's drain.
 
+## What the example gateway does with that
+
+[`examples/order-graphql-api`](https://github.com/btravstack/btravstack/tree/main/examples/order-graphql-api)
+is the worked case, and its specs pin each behaviour against a stub of the
+order API that counts calls:
+
+- **Each field answers for itself.** Aliased siblings resolve independently: a
+  found order is data, an absent one `null`, a malformed id that field's
+  `BAD_REQUEST`.
+- **The request scope is the cache.** The unit module provides the request's
+  order reads, a [DataLoader](https://github.com/graphql/dataloader) behind
+  them, so an id is fetched once however many fields ask, and the next request
+  starts empty. No cache outlives the unit it was built in.
+- **A write updates the cache.** `placeOrder` primes the loader with the order
+  it placed, and its payload exposes `query: Query`, so a read after the write
+  in the same operation sees it without calling the API. Mutations run in
+  order: placing an order twice in one operation is data, then that field's
+  `CONFLICT`.
+- **Arguments are parsed by the contract.** Each resolver validates its
+  arguments through the procedure's own input schemas before any call, so a
+  GraphQL argument is parsed exactly as the API parses it, branded ids
+  included.
+- **Refusals stay the service's.** The gateway authenticates nobody: it forwards
+  the caller's credentials, and the API's `UNAUTHORIZED` — which its client
+  reports as a defect, being undeclared — is recovered into that field's error.
+- **Limits run before side effects.** An operation naming more than ten aliases
+  is refused by a validation rule, and validation runs before execution, so a
+  refused mutation places nothing.
+
 Yoga's wildcard CORS default is disabled here. `HTTP_CORS_ORIGIN` sets the
 allowed origin; `cors` on `graphql()` can specify Yoga's full policy, including
 credentials, or `false` to disable it explicitly. Yoga's console logger is

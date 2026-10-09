@@ -112,6 +112,7 @@ catalog:
   "@unthrown/standard-schema": 5.12.0
   "@unthrown/vitest": 5.12.0
   effect: 3.22.2
+  dataloader: 2.2.3
   graphql: 17.0.2
   graphql-yoga: 5.24.1
   jose: 6.2.12

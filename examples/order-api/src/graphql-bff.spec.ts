@@ -28,7 +28,7 @@ it("serves GraphQL in a separate process backed by the oRPC API", async ({
       },
       body: JSON.stringify({ query }),
     });
-  const mutation = `mutation { placeOrder(id: "${orderId}", quantity: 2) { id quantity } }`;
+  const mutation = `mutation { placeOrder(id: "${orderId}", quantity: 2) { order { id quantity } } }`;
 
   // WHEN callers attempt an anonymous mutation, a valid mutation, a query and a duplicate
   const refused = await request(mutation, false);
@@ -47,7 +47,7 @@ it("serves GraphQL in a separate process backed by the oRPC API", async ({
       errors: [expect.objectContaining({ extensions: { code: "UNAUTHORIZED" } })],
       data: { placeOrder: null },
     },
-    placed: { data: { placeOrder: { id: orderId, quantity: 2 } } },
+    placed: { data: { placeOrder: { order: { id: orderId, quantity: 2 } } } },
     found: { data: { order: { id: orderId, quantity: 2 } } },
     duplicate: {
       errors: [expect.objectContaining({ extensions: { code: "CONFLICT" } })],
