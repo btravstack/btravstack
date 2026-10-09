@@ -181,7 +181,7 @@ unset:
 | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | [`HTTP_SESSION_KEYS`](/how-to/configure-from-the-environment)       | `sessionCodec()`'s own keys                                                        |
 | [`HTTP_OIDC_ISSUER`](/how-to/configure-from-the-environment)        | the provider `oidc()` discovers, and whose sessions `sessionAuthenticator` accepts |
-| [`HTTP_OIDC_CLIENT_ID`](/how-to/configure-from-the-environment)     | this deployment's client                                                           |
+| [`HTTP_OIDC_CLIENT_ID`](/how-to/configure-from-the-environment)     | this deployment's client, read by `sessionAuthenticator` too                       |
 | [`HTTP_OIDC_CLIENT_SECRET`](/how-to/configure-from-the-environment) | its secret — a confidential client                                                 |
 | [`HTTP_OIDC_REDIRECT_URI`](/how-to/configure-from-the-environment)  | the URI **registered** with the provider                                           |
 

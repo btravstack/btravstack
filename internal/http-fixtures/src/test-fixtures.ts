@@ -334,8 +334,9 @@ export const cookieHeader = (...cookies: readonly string[]): IncomingHttpHeaders
   cookie: cookies.join("; "),
 });
 
-/** The issuer every session scheme here is pinned to, and every session a spec seals carries. */
+/** The login every session scheme here is pinned to, and every session a spec seals carries. */
 export const SESSION_ISSUER = "https://login.test/";
+export const SESSION_CLIENT_ID = "login-test";
 
 /**
  * The three session schemes a spec resolves through — the default one, the same
@@ -343,15 +344,20 @@ export const SESSION_ISSUER = "https://login.test/";
  * minted. All three unseal with the codec the fixture hands them, which is the
  * codec that sealed the cookie.
  */
-const defaultSession = sessionAuthenticator<SessionIdentity>()({ issuer: SESSION_ISSUER });
+const defaultSession = sessionAuthenticator<SessionIdentity>()({
+  issuer: SESSION_ISSUER,
+  clientId: SESSION_CLIENT_ID,
+});
 
 const scopedSession = sessionAuthenticator<SessionIdentity>()({
   issuer: SESSION_ISSUER,
+  clientId: SESSION_CLIENT_ID,
   scopes: ["orders:export"],
 });
 
 const sidSession = sessionAuthenticator<SessionIdentity>()({
   issuer: SESSION_ISSUER,
+  clientId: SESSION_CLIENT_ID,
   principal: (session) =>
     session.sid === undefined ? undefined : (session.principal as SessionIdentity),
 });
@@ -373,14 +379,14 @@ const sessionServiceOf = <P, Scope extends string>(
 
 /** What a spec seals with, and the three schemes that read it back. */
 type SessionScheme = {
-  /** Seals under {@link SESSION_ISSUER} unless the session names its own `iss`. */
+  /** Seals as the login {@link SESSION_ISSUER} and {@link SESSION_CLIENT_ID} name, unless the session names its own. */
   readonly seal: SessionCodecService["seal"];
-  /** The codec's own `seal`, carrying exactly the issuer the session names — or none. */
+  /** The codec's own `seal`, carrying exactly the login the session names — or none. */
   readonly sealBare: SessionCodecService["seal"];
   readonly resolve: AuthenticatorService<SessionIdentity>;
   readonly scoped: AuthenticatorService<SessionIdentity, "orders:export">;
   readonly sid: AuthenticatorService<SessionIdentity>;
-  /** A scheme reading `<variablePrefix>_ISSUER` from `env`, over the same codec. */
+  /** A scheme reading `<variablePrefix>_ISSUER` and `_CLIENT_ID` from `env`, over the same codec. */
   readonly fromEnv: (
     variablePrefix: string | undefined,
     env: Environment,
@@ -398,7 +404,7 @@ const sessionFixture = async (
 ): Promise<void> => {
   const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
   await use({
-    seal: (session) => codec.seal({ iss: SESSION_ISSUER, ...session }),
+    seal: (session) => codec.seal({ iss: SESSION_ISSUER, clientId: SESSION_CLIENT_ID, ...session }),
     sealBare: codec.seal,
     resolve: (await sessionServiceOf(defaultSession, codec)).getOrThrow(),
     scoped: (await sessionServiceOf(scopedSession, codec)).getOrThrow(),
@@ -421,7 +427,12 @@ const sessionFixture = async (
  * off.
  */
 const csrfApi = defineHttp({
-  authenticators: { session: sessionAuthenticator<SessionIdentity>()({ issuer: SESSION_ISSUER }) },
+  authenticators: {
+    session: sessionAuthenticator<SessionIdentity>()({
+      issuer: SESSION_ISSUER,
+      clientId: SESSION_CLIENT_ID,
+    }),
+  },
 });
 
 const csrfNoteFragment = csrfApi.HtmxPost("/note")({
@@ -492,7 +503,13 @@ export type CsrfCalls = {
 
 const csrfCallsOf = async (origin: string): Promise<CsrfCalls> => {
   const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
-  const sealed = (await codec.seal({ principal: { userId: "u-1" }, iss: SESSION_ISSUER })).get();
+  const sealed = (
+    await codec.seal({
+      principal: { userId: "u-1" },
+      iss: SESSION_ISSUER,
+      clientId: SESSION_CLIENT_ID,
+    })
+  ).get();
   const call = async (
     method: string,
     path: string,
@@ -519,6 +536,7 @@ const loginApi = defineHttp({
   authenticators: {
     session: sessionAuthenticator<SessionIdentity>()({
       issuer: SESSION_ISSUER,
+      clientId: SESSION_CLIENT_ID,
       scopes: ["orders:export"],
     }),
   },
@@ -584,7 +602,13 @@ export type LoginCalls = {
 
 const loginCallsOf = async (port: number): Promise<LoginCalls> => {
   const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
-  const sealed = (await codec.seal({ principal: { userId: "u-1" }, iss: SESSION_ISSUER })).get();
+  const sealed = (
+    await codec.seal({
+      principal: { userId: "u-1" },
+      iss: SESSION_ISSUER,
+      clientId: SESSION_CLIENT_ID,
+    })
+  ).get();
   return {
     cookie: `__Host-session=${sealed}`,
     // `http.request`, not `fetch`: the request-target goes out VERBATIM, so a

@@ -32,10 +32,13 @@ export type Session<P> = {
   readonly scopes?: readonly string[];
   /**
    * The issuer of the login that minted the session, as that login is
-   * configured. `sessionAuthenticator` refuses a session whose issuer is not
-   * its own, so a second login's session is never read as the first's.
+   * configured. With {@link Session.clientId} it names the login:
+   * `sessionAuthenticator` refuses a session from any other, so a second
+   * login's session is never read as the first's.
    */
   readonly iss?: string;
+  /** The client id of the login that minted the session — two logins may share an issuer. */
+  readonly clientId?: string;
   readonly iat: number;
   readonly exp: number;
 };
@@ -156,7 +159,8 @@ const sessionOf = (decoded: unknown, now: number): Session<unknown> | undefined 
     "principal" in session &&
     (!("sid" in session) || typeof session["sid"] === "string") &&
     (!("scopes" in session) || scopesOf(session["scopes"])) &&
-    (!("iss" in session) || typeof session["iss"] === "string")
+    (!("iss" in session) || typeof session["iss"] === "string") &&
+    (!("clientId" in session) || typeof session["clientId"] === "string")
     ? (session as unknown as Session<unknown>)
     : undefined;
 };
@@ -222,9 +226,18 @@ const codec = (
   const [sealing] = keys;
   return {
     ttlSec,
-    seal: ({ principal, sid, scopes, iss }) =>
-      // `JSON.stringify` drops an absent `sid` or `iss`, so nothing spreads them in.
-      sealed(sealing, ttlSec, (iat, exp) => ({ typ: TYP, principal, sid, scopes, iss, iat, exp })),
+    seal: ({ principal, sid, scopes, iss, clientId }) =>
+      // `JSON.stringify` drops an absent field, so nothing spreads them in.
+      sealed(sealing, ttlSec, (iat, exp) => ({
+        typ: TYP,
+        principal,
+        sid,
+        scopes,
+        iss,
+        clientId,
+        iat,
+        exp,
+      })),
     unseal: (cookie) => open(keys, cookie, sessionOf),
     transient: {
       // The markers last, so state a caller spelled `typ` cannot become one.
@@ -312,14 +325,18 @@ export type SessionOptions<P, Scopes extends readonly string[]> = {
    */
   readonly principal?: (session: Session<unknown>) => P | undefined;
   /**
-   * The issuer whose login's sessions this scheme accepts — pins
-   * `<prefix>_ISSUER`, the variable that login reads too. A session sealed
-   * under another issuer, or under none, is refused.
+   * The issuer of the login whose sessions this scheme accepts — pins
+   * `<prefix>_ISSUER`, the variable that login reads too.
    */
   readonly issuer?: string;
   /**
-   * The prefix of the issuer variable, `<prefix>_ISSUER`. Default `HTTP_OIDC`,
-   * `oidc()`'s own — a scheme pairs with its login by naming the same prefix.
+   * That login's client id — pins `<prefix>_CLIENT_ID`. A session from another
+   * issuer, another client, or none is refused.
+   */
+  readonly clientId?: string;
+  /**
+   * The prefix of both variables. Default `HTTP_OIDC`, `oidc()`'s own — a
+   * scheme pairs with its login by naming the same prefix.
    */
   readonly variablePrefix?: string;
 };
@@ -341,10 +358,11 @@ export type SessionOptions<P, Scopes extends readonly string[]> = {
  * naming `SessionCodec` — and the codec that reads a cookie is the very one
  * that sealed it.
  *
- * It accepts only sessions its own login minted: the issuer is sealed in the
- * session and must equal this scheme's, bound like `oidc()`'s from
- * `HTTP_OIDC_ISSUER` or under the same `variablePrefix`. Two logins share one
- * cookie and one key list, so the name of a cookie could not keep them apart.
+ * It accepts only sessions its own login minted: the issuer and client id are
+ * sealed in the session and must equal this scheme's, bound like `oidc()`'s
+ * from `HTTP_OIDC_ISSUER` and `HTTP_OIDC_CLIENT_ID`, or under the same
+ * `variablePrefix`. Two logins share one cookie and one key list, so the name
+ * of a cookie could not keep them apart.
  *
  * No cookie, a cookie no key opens, a session past its `exp`, a session from
  * another issuer and a principal the application declined are ONE answer:
@@ -369,6 +387,7 @@ export const sessionAuthenticator =
     const variables = options.variablePrefix ?? "HTTP_OIDC";
     const schema = Config.object({
       issuer: Config.pinned(options.issuer, Config.url(`${variables}_ISSUER`)),
+      clientId: Config.pinned(options.clientId, Config.string(`${variables}_CLIENT_ID`)),
     });
 
     return {
@@ -379,10 +398,10 @@ export const sessionAuthenticator =
             "HttpSessionScheme",
             schema,
           )(env).map(
-            ({ issuer }) =>
+            ({ issuer, clientId }) =>
               (headers) =>
                 codec.unseal(cookieValue(headers.cookie, SESSION_COOKIE)).flatMap((session) => {
-                  if (session === undefined || session.iss !== issuer)
+                  if (session?.iss !== issuer || session.clientId !== clientId)
                     return ErrAsync(new Unauthenticated());
                   const principal = principalOf(session);
                   if (principal === undefined) return ErrAsync(new Unauthenticated());

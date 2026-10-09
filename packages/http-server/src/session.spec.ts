@@ -13,7 +13,12 @@ describe("sessionCodec", () => {
 
     // WHEN a principal is sealed and the cookie handed straight back
     const opened = codec
-      .seal({ principal: { userId: "u-1" }, sid: "s-1", iss: "https://login.test/" })
+      .seal({
+        principal: { userId: "u-1" },
+        sid: "s-1",
+        iss: "https://login.test/",
+        clientId: "login-test",
+      })
       .flatMap((cookie) => codec.unseal(cookie))
       .map((session) => ({ ...session, lifetime: (session?.exp ?? 0) - (session?.iat ?? 0) }));
 
@@ -24,6 +29,7 @@ describe("sessionCodec", () => {
         principal: { userId: "u-1" },
         sid: "s-1",
         iss: "https://login.test/",
+        clientId: "login-test",
         lifetime: 43_200,
       }),
     );
@@ -139,9 +145,12 @@ describe("sessionCodec", () => {
       numberIss: (
         await forged({ typ: "session", principal: {}, iat: 0, exp: 4_102_444_800, iss: 1 })
       ).get(),
+      numberClientId: (
+        await forged({ typ: "session", principal: {}, iat: 0, exp: 4_102_444_800, clientId: 1 })
+      ).get(),
     };
 
-    // THEN all seven are anonymous rather than a defect or a session that
+    // THEN all eight are anonymous rather than a defect or a session that
     // coerced its way past the lifetime: the plaintext is authenticated, not
     // validated, so its shape is checked before it is trusted — and an ARRAY is
     // not enough for `scopes`, since a scheme intersects its own vocabulary
@@ -155,6 +164,7 @@ describe("sessionCodec", () => {
       numberScopes: undefined,
       numberSid: undefined,
       numberIss: undefined,
+      numberClientId: undefined,
     });
   });
 
@@ -390,10 +400,29 @@ describe("sessionAuthenticator", () => {
     // GIVEN a session sealed under another issuer, with the same keys
     // WHEN the browser presents it to this scheme
     const resolved = session
-      .sealBare({ principal: { userId: "u-1" }, iss: "https://customers.test/" })
+      .sealBare({
+        principal: { userId: "u-1" },
+        iss: "https://customers.test/",
+        clientId: "login-test",
+      })
       .flatMap((sealed) => session.resolve(cookieHeader(`__Host-session=${sealed}`)));
 
     // THEN it is refused: a second login's session is never read as this one's
+    await expect(resolved).toBeErrTagged("Unauthenticated");
+  });
+
+  it("refuses a session another client of the same issuer minted", async ({ session }) => {
+    // GIVEN a session sealed by a second client registered with the same provider
+    // WHEN the browser presents it to this scheme
+    const resolved = session
+      .sealBare({
+        principal: { userId: "u-1" },
+        iss: "https://login.test/",
+        clientId: "customer-app",
+      })
+      .flatMap((sealed) => session.resolve(cookieHeader(`__Host-session=${sealed}`)));
+
+    // THEN it is refused: a login is its issuer AND its client, not the issuer alone
     await expect(resolved).toBeErrTagged("Unauthenticated");
   });
 
@@ -408,30 +437,36 @@ describe("sessionAuthenticator", () => {
     await expect(resolved).toBeErrTagged("Unauthenticated");
   });
 
-  it("reads its issuer from the variable its login reads, under that login's prefix", async ({
+  it("reads its login from the variables that login reads, under its prefix", async ({
     session,
   }) => {
     // GIVEN a scheme paired with the staff login, and a session that login sealed
     const resolved = session.fromEnv("HTTP_OIDC_STAFF", {
       HTTP_OIDC_ISSUER: "https://customers.test/",
+      HTTP_OIDC_CLIENT_ID: "customer-app",
       HTTP_OIDC_STAFF_ISSUER: "https://staff.test/",
+      HTTP_OIDC_STAFF_CLIENT_ID: "staff-app",
     });
 
     // WHEN the staff login's session is presented
     const answered = resolved.flatMap((resolve) =>
       session
-        .sealBare({ principal: { userId: "u-1" }, iss: "https://staff.test/" })
+        .sealBare({
+          principal: { userId: "u-1" },
+          iss: "https://staff.test/",
+          clientId: "staff-app",
+        })
         .flatMap((sealed) => resolve(cookieHeader(`__Host-session=${sealed}`))),
     );
 
-    // THEN it is accepted under HTTP_OIDC_STAFF_ISSUER, not HTTP_OIDC_ISSUER
+    // THEN it is accepted under HTTP_OIDC_STAFF_*, not HTTP_OIDC_*
     await expect(answered).toBeOkWith({ userId: "u-1" });
   });
 
   it("names its issuer variable at startup when it is unset", async ({ session }) => {
-    // GIVEN a default scheme and an environment with no HTTP_OIDC_ISSUER
+    // GIVEN a default scheme and an environment naming the client but no HTTP_OIDC_ISSUER
     // WHEN it is built
-    const built = session.fromEnv(undefined, {});
+    const built = session.fromEnv(undefined, { HTTP_OIDC_CLIENT_ID: "login-test" });
 
     // THEN the ConfigInvalid names the variable the default login reads too
     await expect(built).toBeErrWith(

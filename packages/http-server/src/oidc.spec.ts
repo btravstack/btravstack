@@ -598,10 +598,11 @@ describe("oidc(), the login answerer", () => {
 
     // WHEN the application boots
     // THEN it is a `ConfigInvalid` naming the variable, before a single
-    // request — the same shape every other starter's configuration takes
+    // request — the same shape every other starter's configuration takes.
+    // The login and its session scheme both read it, so whichever is built
+    // first reports it; the variable is what the operator acts on
     await expect(app.exited).toBeErrWith(
       expect.objectContaining({
-        port: "HttpOidc",
         issues: [{ message: "is required", path: ["HTTP_OIDC_CLIENT_ID"] }],
       }),
     );

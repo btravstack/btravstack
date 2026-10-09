@@ -250,12 +250,10 @@ The two rules this half exists to state, before the detail:
   before substituting a signing key and minting tokens this process accepts
   (RFC 8725 §3).
 
-  **One JWT scheme per process**, which is why the prefix is `HTTP_JWT_` and
-  not `HTTP_JWT_<SCHEME>_`. Two schemes reading the same three variables are
-  one scheme; a genuinely second issuer pins all three explicitly, exactly as a
-  test does. The `string | readonly string[]` forms of `issuer` and `audience`
-  are gone with that decision: an environment carries one string, and a second
-  accepted issuer is a second authenticator.
+  **A second issuer is a second authenticator, under its own
+  `variablePrefix`** (below). The `string | readonly string[]` forms of
+  `issuer` and `audience` are gone for that reason: an environment carries one
+  string, and two schemes reading the same three variables are one scheme.
 
   **The piece is a `make` arm.** Reading the environment can fail, so the
   scheme's provider carries `ConfigInvalid` on its error channel and a
@@ -288,7 +286,7 @@ The two rules this half exists to state, before the detail:
   does not know grants nothing extra. Nothing new checks them: the grant goes
   through `granted()` and the existing walk produces the 403.
 
-- **`sessionAuthenticator<P>()({ scopes?, principal?, issuer?, variablePrefix? })`
+- **`sessionAuthenticator<P>()({ scopes?, principal?, issuer?, clientId?, variablePrefix? })`
   → `Authenticator<P, Scopes[number], SessionCodec | Env, ConfigInvalid>`** — from
   **`@btravstack/http-server/session`**, beside `sessionCodec` and behind the
   same optional `jose` peer. The third scheme, and the only one whose
@@ -299,9 +297,12 @@ The two rules this half exists to state, before the detail:
   is a scheme.
 
   **It accepts only its own login's sessions** (issue #461). `oidc()` seals
-  the issuer it is configured with as `Session.iss`, and the scheme refuses a
-  session whose issuer is not the one it binds — from `HTTP_OIDC_ISSUER`, or
-  `<variablePrefix>_ISSUER`, the variable its login reads. Two logins share one
+  the issuer and client id it is configured with as `Session.iss` and
+  `Session.clientId`, and the scheme refuses a session from any other login —
+  binding both from `HTTP_OIDC_ISSUER` and `HTTP_OIDC_CLIENT_ID`, or under
+  `<variablePrefix>`, the variables its login reads. The issuer alone is not a
+  login: one provider hosts a staff client and a customer client, and both
+  would seal the same `iss`. Two logins share one
   cookie and one key list, so a cookie NAME could not separate them (a client
   replays any value it holds under any name — the codec's own `typ` argument),
   and the default `principal` hands back whatever the session holds: a
@@ -309,7 +310,7 @@ The two rules this half exists to state, before the detail:
   INSIDE the authenticated payload is the boundary. Sealing the CONFIGURED
   issuer rather than the token's `iss` claim keeps the comparison exact, since
   the two may differ by a trailing slash. A session sealed before this, with
-  no `iss`, is refused — a browser signs in once more after the upgrade.
+  neither, is refused — a browser signs in once more after the upgrade.
 
   **It injects the codec's PORT rather than holding keys.** Its needs channel
   is `SessionCodec`, so a root composing the scheme without `sessionCodec()` is

@@ -334,11 +334,6 @@ The scheme's
 declares `Env` for the whole root, so a composition root writes no `needs` line
 for it.
 
-**Those three variable names belong to the process, so one JWT scheme reads
-them.** A second `jwtAuthenticator` in the same graph — a partner issuer beside
-the first — pins its own `jwks`, `issuer` and `audience` at the call; two
-schemes both reading the environment would both get the first issuer's.
-
 ### The session cookie
 
 `@btravstack/http-server/session` is the storage-free half of a session: the
@@ -423,28 +418,30 @@ keys live inside the codec: a second provider would be either a second
 re-reading `HTTP_SESSION_KEYS`, with its own rotation story for a list an
 operator rotates once.
 
-**`sessionAuthenticator<P>()({ scopes?, principal?, issuer?, variablePrefix? })`** is the scheme
+**`sessionAuthenticator<P>()({ scopes?, principal?, issuer?, clientId?, variablePrefix? })`** is the scheme
 over that codec, and it is an ordinary `Authenticator`: bind it in
 `defineHttp({ authenticators })` and `requires: [{ session: [] }]` or
 `authenticated({ session: [] })` work exactly as they do for the other two.
 
-| Option           | Required | Default                       | What it is                                                                                                    |
-| ---------------- | -------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `scopes`         | no       | none (the scheme is unscoped) | the vocabulary; the grant is its intersection with the session's own `scopes`                                 |
-| `principal`      | no       | `session.principal`           | what the session makes the caller; `undefined` refuses it, and the default refuses a session sealed with none |
-| `issuer`         | no       | read from `HTTP_OIDC_ISSUER`  | the issuer whose login's sessions this scheme accepts                                                         |
-| `variablePrefix` | no       | `HTTP_OIDC`                   | the prefix of that variable, `<prefix>_ISSUER` — the same prefix as the login it pairs with                   |
+| Option           | Required | Default                         | What it is                                                                                                    |
+| ---------------- | -------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `scopes`         | no       | none (the scheme is unscoped)   | the vocabulary; the grant is its intersection with the session's own `scopes`                                 |
+| `principal`      | no       | `session.principal`             | what the session makes the caller; `undefined` refuses it, and the default refuses a session sealed with none |
+| `issuer`         | no       | read from `HTTP_OIDC_ISSUER`    | the issuer whose login's sessions this scheme accepts                                                         |
+| `clientId`       | no       | read from `HTTP_OIDC_CLIENT_ID` | that login's client id — a provider may host several logins                                                   |
+| `variablePrefix` | no       | `HTTP_OIDC`                     | the prefix of that variable, `<prefix>_ISSUER` — the same prefix as the login it pairs with                   |
 
-**It accepts only its own login's sessions.** `oidc()` seals the issuer it is
-configured with into every session, and the scheme refuses one whose issuer is
-not its own — or that carries none. Two logins share the cookie and the key
-list, so nothing else could tell their sessions apart: without this, a session
-from a customer login would authenticate on a route guarded by a staff
-login's scheme. A scheme pairs with its login by reading the same variable —
-`HTTP_OIDC_ISSUER` by default, `<variablePrefix>_ISSUER` for a second login —
-so the two cannot disagree, and an unset one is a `ConfigInvalid` naming it at
-startup. A session an application seals itself through `SessionCodec` names
-its `iss` the same way.
+**It accepts only its own login's sessions.** `oidc()` seals the issuer and
+the client id it is configured with into every session, and the scheme refuses
+one sealed by any other login — another issuer, another client of the same
+issuer, or none. Two logins share the cookie and the key list, so nothing else
+could tell their sessions apart: without this, a session from a customer login
+would authenticate on a route guarded by a staff login's scheme. A scheme pairs
+with its login by reading the same variables — `HTTP_OIDC_ISSUER` and
+`HTTP_OIDC_CLIENT_ID` by default, `<variablePrefix>_ISSUER` and `_CLIENT_ID`
+for a second login — so the two cannot disagree, and an unset one is a
+`ConfigInvalid` naming it at startup. A session an application seals itself
+through `SessionCodec` names its `iss` and `clientId` the same way.
 
 **The cookie is `SESSION_COOKIE`, `__Host-session`, and cannot be renamed.**
 `__Host-` is a browser-enforced prefix — `Secure`, `Path=/`, no `Domain` — so a
