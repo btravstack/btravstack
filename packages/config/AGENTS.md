@@ -26,18 +26,31 @@ are load-bearing:
   emit prints a named alias unreduced, and a consumer exporting a module would
   then name an alias this package does not export. Measured: the needs printed
   as `EnvReading<RequiredKeys<…>, …>` until they were inlined.
-- **A pin decides a variable's need from the option's TYPE.** `Config.pinned`
+- **A pin decides a variable's need from the options' TYPE.** `Config.pinned`
   reads nothing when its value is certainly there, reads the field's own need
   when it is certainly absent, and leaves the variable optional when its type
   admits both. A starter whose options pin a variable with no default
   (`jwtAuthenticator`, `oidc()`, `sessionAuthenticator`, `sessionCodec`,
-  `outbox`) takes each such option as its own inferred type parameter,
-  defaulting to `undefined`, and spells the need with `Unpinned` /
-  `MaybePinned` — so an unpinned `HTTP_JWT_ISSUER` is required at the boot
-  site. A variable WITH a default stays optional however it is pinned, which is
-  why `httpServer`, the workers and the kernel needed no such parameters. The
-  exported option types default those parameters to `T | undefined`, so an
-  options object annotated with them still accepts any value.
+  `outbox`) infers its options as written — one type parameter `O` — and
+  spells its needs with `Unpinned<O, Key, Variable>` / `MaybePinned<…>`, so an
+  unpinned `HTTP_JWT_ISSUER` is required at the boot site. Three details were
+  each a review finding:
+  - **`O`, not one parameter per option.** A per-option parameter inferred
+    `string` from an optional key (`{ jwks?: string }`), reading the variable
+    as pinned when it may be absent; the key's optionality is on `O`. And with
+    `oidc<Identity>(…)`, the one uncurried starter, explicit type arguments
+    defaulted every later parameter to `undefined` and refused the call's own
+    pins — `O` defaults to `OidcPins` there, so the variables fall back to
+    optional instead.
+  - **`OptionsAs<O, T>` checks `O` key by key.** `T & O` let an unknown key
+    join `O` silently and collapsed a mistyped one to `never`, reported on the
+    wrong property. The gate maps an unknown key to `never` and a misfit value
+    to `T`'s type, so each is refused at its own key.
+  - **The gate's template names `O[K]`.** `O` is inferred back through the
+    mapped type, and a template that never mentioned it inferred every value as
+    `unknown` — every pin read as "may be set".
+    A variable WITH a default stays optional however it is pinned, which is why
+    `httpServer`, the workers and the kernel needed none of this.
 - **`EnvPortFor` has a zero-argument constructor**, as `Env` does.
   `InstanceType` matches against `(...args: any)`, and `any` is not assignable
   to `never`, so a `(...args: never)` constructor answers `any` — which every

@@ -65,18 +65,41 @@ export type EnvNeed<I> = string extends keyof I
     : Env;
 
 /**
- * `V`, when the option `X` that could pin it is certainly absent: a variable
- * that must be set. For a starter spelling its needs from its options' types,
- * which over generic options its schema cannot resolve.
+ * `V`, when the options `O` certainly leave `K` — the option that could pin it
+ * — unset: a variable that must be set. For a starter spelling its needs from
+ * its options' type, which over generic options its schema cannot resolve.
+ *
+ * Read off the whole options type rather than the option's value: a key `O`
+ * makes optional may be absent whatever its value's type says.
  */
-export type Unpinned<X, V extends string> = [X] extends [undefined] ? V : never;
-
-/** `V`, when the option `X` may or may not pin it: a variable that may be set. */
-export type MaybePinned<X, V extends string> = [X] extends [undefined]
-  ? never
-  : undefined extends X
+export type Unpinned<O, K extends PropertyKey, V extends string> = K extends keyof O
+  ? [O[K]] extends [undefined]
     ? V
-    : never;
+    : never
+  : V;
+
+/**
+ * `O`, checked key by key against the options type `T`: a key `T` knows takes
+ * `T`'s type for it, and any other is `never`. A starter infers `O` from the
+ * options as written — which is what `Unpinned` and `MaybePinned` read — and
+ * this keeps a misspelt or mistyped option an error at its own key.
+ */
+// The template names `O[K]`: `O` is inferred back through this mapped type, and
+// a template that never mentioned it would infer every value as `unknown`.
+export type OptionsAs<O, T> = {
+  readonly [K in keyof O]: K extends keyof T ? (O[K] extends T[K] ? O[K] : T[K]) : never;
+};
+
+/** `V`, when `O` may or may not set `K`: a variable that may be set. */
+export type MaybePinned<O, K extends PropertyKey, V extends string> = K extends keyof O
+  ? [O[K]] extends [undefined]
+    ? never
+    : Record<never, never> extends Pick<O, K>
+      ? V
+      : undefined extends O[K]
+        ? V
+        : never
+  : never;
 
 /** The `Env` port class, as a need for `EnvNeed<I>` — what {@link Config.env} answers. */
 // A zero-argument constructor, as `Env` has: `InstanceType` matches a

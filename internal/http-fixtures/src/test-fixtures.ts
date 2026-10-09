@@ -409,14 +409,12 @@ const sessionFixture = async (
     resolve: (await sessionServiceOf(defaultSession, codec)).getOrThrow(),
     scoped: (await sessionServiceOf(scopedSession, codec)).getOrThrow(),
     sid: (await sessionServiceOf(sidSession, codec)).getOrThrow(),
-    fromEnv: (variablePrefix, env) =>
-      sessionServiceOf(
-        sessionAuthenticator<SessionIdentity>()(
-          variablePrefix === undefined ? {} : { variablePrefix },
-        ),
-        codec,
-        env,
-      ),
+    fromEnv: (variablePrefix, env) => {
+      // One object type, not a union: the scheme infers its options as written.
+      const options: { readonly variablePrefix?: string } =
+        variablePrefix === undefined ? {} : { variablePrefix };
+      return sessionServiceOf(sessionAuthenticator<SessionIdentity>()(options), codec, env);
+    },
   });
 };
 

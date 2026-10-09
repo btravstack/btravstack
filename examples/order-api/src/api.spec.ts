@@ -535,8 +535,9 @@ describe("order-api", () => {
     api,
   }) => {
     // GIVEN a deployment that set the JWKS and the audience and forgot the issuer
-    // @ts-expect-error the type refuses a deployment missing HTTP_JWT_ISSUER; this spec is the run-time refusal
-    const app = boot(api, { env: { ...env, HTTP_JWT_ISSUER: undefined } });
+    // Cast: the type refuses this environment (`env.test-d.ts` pins that), and
+    // this spec is the run-time refusal of the same deployment.
+    const app = boot(api, { env: { ...env, HTTP_JWT_ISSUER: undefined } as unknown as typeof env });
 
     // WHEN it boots
     // THEN startup is a modeled Err naming the variable — a scheme nobody

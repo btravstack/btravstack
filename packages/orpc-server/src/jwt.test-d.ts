@@ -119,3 +119,17 @@ const reusable: JwtOptions<Identity, readonly []> = {
   principal,
 };
 void reusable;
+
+// A pin typed as an optional key may be absent whatever its value's type says,
+// so its variable stays optional rather than being treated as pinned.
+declare const partial: { readonly jwks?: string };
+const fromPartial = jwtAuthenticator<Identity>()({ ...partial, principal });
+
+expectTypeOf(fromPartial).toEqualTypeOf<
+  Authenticator<
+    Identity,
+    never,
+    EnvReading<"HTTP_JWT_ISSUER" | "HTTP_JWT_AUDIENCE", "HTTP_JWT_JWKS_URI"> | Observers,
+    ConfigInvalid
+  >
+>();

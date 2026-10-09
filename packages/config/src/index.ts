@@ -9,5 +9,6 @@ export type {
   Environment,
   EnvironmentFor,
   MaybePinned,
+  OptionsAs,
   Unpinned,
 } from "./config.js";

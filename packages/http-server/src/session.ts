@@ -4,6 +4,7 @@ import {
   Env,
   type EnvReading,
   type MaybePinned,
+  type OptionsAs,
   type Unpinned,
 } from "@btravstack/config";
 import { Port, Provider } from "@btravstack/di";
@@ -270,19 +271,26 @@ const codec = (
  * A key that is not 32 bytes is a `ConfigInvalid` naming the variable, at boot,
  * rather than a failure at the first request.
  */
-export const sessionCodec = <const Keys extends readonly string[] | undefined = undefined>(
-  pins: { readonly keys?: Keys; readonly ttlSec?: number } = {},
+/** What {@link sessionCodec} is handed. */
+export type SessionCodecPins = {
+  readonly keys?: readonly string[] | undefined;
+  readonly ttlSec?: number;
+};
+
+export const sessionCodec = <const O = Record<never, never>>(
+  // `{}` only when the argument is omitted, which is when `O` is `{}` too.
+  pins: SessionCodecPins & OptionsAs<O, SessionCodecPins> = {} as never,
 ): Provider<
   SessionCodec,
   ConfigInvalid,
-  EnvReading<Unpinned<Keys, "HTTP_SESSION_KEYS">, MaybePinned<Keys, "HTTP_SESSION_KEYS">>
+  EnvReading<Unpinned<O, "keys", "HTTP_SESSION_KEYS">, MaybePinned<O, "keys", "HTTP_SESSION_KEYS">>
 > & {
   readonly port: typeof SessionCodec;
 } => {
   const schema = Config.object({
     keys: Config.pinned(pins.keys, Config.list("HTTP_SESSION_KEYS")),
   });
-  // Cast for the needs alone: over a generic `Keys` the schema's own needs type
+  // Cast for the needs alone: over generic pins the schema's own needs type
   // cannot resolve, so the annotation states the variable — required unless pinned.
   return Provider(SessionCodec)({
     inject: { env: Env },
@@ -327,13 +335,7 @@ export const sessionCodec = <const Keys extends readonly string[] | undefined = 
  */
 export const SESSION_COOKIE = "__Host-session";
 
-export type SessionOptions<
-  P,
-  Scopes extends readonly string[],
-  Pre extends string = string,
-  Issuer extends string | undefined = string | undefined,
-  ClientId extends string | undefined = string | undefined,
-> = {
+export type SessionOptions<P, Scopes extends readonly string[], Pre extends string = string> = {
   /**
    * The scopes this scheme can grant, and **the only place they are written**
    * — `jwtAuthenticator`'s rule, for `jwtAuthenticator`'s reason. The grant is
@@ -351,12 +353,12 @@ export type SessionOptions<
    * The issuer of the login whose sessions this scheme accepts — pins
    * `<prefix>_ISSUER`, the variable that login reads too.
    */
-  readonly issuer?: Issuer;
+  readonly issuer?: string | undefined;
   /**
    * That login's client id — pins `<prefix>_CLIENT_ID`. A session from another
    * issuer, another client, or none is refused.
    */
-  readonly clientId?: ClientId;
+  readonly clientId?: string | undefined;
   /**
    * The prefix of both variables. Default `HTTP_OIDC`, `oidc()`'s own — a
    * scheme pairs with its login by naming the same prefix.
@@ -397,17 +399,18 @@ export const sessionAuthenticator =
   <
     const Scopes extends readonly string[] = readonly [],
     const Pre extends string = "HTTP_OIDC",
-    const Issuer extends string | undefined = undefined,
-    const ClientId extends string | undefined = undefined,
+    const O = Record<never, never>,
   >(
-    options: SessionOptions<P, Scopes, Pre, Issuer, ClientId> = {},
+    // `{}` only when the argument is omitted, which is when `O` is `{}` too.
+    options: SessionOptions<P, Scopes, Pre> &
+      OptionsAs<O, SessionOptions<P, Scopes, Pre>> = {} as never,
   ): Authenticator<
     P,
     Scopes[number],
     | SessionCodec
     | EnvReading<
-        Unpinned<Issuer, `${Pre}_ISSUER`> | Unpinned<ClientId, `${Pre}_CLIENT_ID`>,
-        MaybePinned<Issuer, `${Pre}_ISSUER`> | MaybePinned<ClientId, `${Pre}_CLIENT_ID`>
+        Unpinned<O, "issuer", `${Pre}_ISSUER`> | Unpinned<O, "clientId", `${Pre}_CLIENT_ID`>,
+        MaybePinned<O, "issuer", `${Pre}_ISSUER`> | MaybePinned<O, "clientId", `${Pre}_CLIENT_ID`>
       >,
     ConfigInvalid
   > => {

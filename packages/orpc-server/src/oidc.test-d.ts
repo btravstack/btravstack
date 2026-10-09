@@ -153,3 +153,7 @@ void oidc({
   // @ts-expect-error -- Type 'string' is not assignable to type 'boolean | undefined'
   allowInsecureIssuer: "yes",
 });
+
+// Stating `P` leaves the options uninferred, and a pinned value must still
+// compile: the variables fall back to optional rather than refusing the pin.
+oidc<Identity>({ issuer: "https://issuer.example/", principal: identityOf });

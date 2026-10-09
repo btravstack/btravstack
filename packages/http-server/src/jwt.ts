@@ -4,6 +4,7 @@ import {
   type ConfigInvalid,
   type EnvReading,
   type MaybePinned,
+  type OptionsAs,
   type Unpinned,
 } from "@btravstack/config";
 import { Observers, observe } from "@btravstack/core";
@@ -22,28 +23,21 @@ import { cleartext, cleartextRefused } from "./cleartext.js";
 /** The verified claims, as `jose` reports them. */
 export type Claims = JWTPayload;
 
-export type JwtOptions<
-  P,
-  Scopes extends readonly string[],
-  Pre extends string = string,
-  Jwks extends string | undefined = string | undefined,
-  Issuer extends string | undefined = string | undefined,
-  Audience extends string | undefined = string | undefined,
-> = {
+export type JwtOptions<P, Scopes extends readonly string[], Pre extends string = string> = {
   /**
    * The issuer's JWKS endpoint — pins `<prefix>_JWKS_URI` when set, and is read
    * from it when not. Keys are fetched on demand and cached; a `kid` the cache
    * does not know triggers one refetch, rate-limited by `jose`.
    */
-  readonly jwks?: Jwks;
+  readonly jwks?: string | undefined;
   /** Required `iss` — pins `<prefix>_ISSUER`. A token from another issuer is refused. */
-  readonly issuer?: Issuer;
+  readonly issuer?: string | undefined;
   /**
    * Required `aud` — pins `<prefix>_AUDIENCE`. A token minted for another
    * audience is refused: this is the check that stops a token from a sibling
    * service being replayed here.
    */
-  readonly audience?: Audience;
+  readonly audience?: string | undefined;
   /**
    * The prefix of the three variables this scheme reads: `<prefix>_JWKS_URI`,
    * `<prefix>_ISSUER` and `<prefix>_AUDIENCE`. Default `HTTP_JWT`. A second
@@ -211,21 +205,21 @@ export const jwtAuthenticator =
   <
     const Scopes extends readonly string[] = readonly [],
     const Pre extends string = "HTTP_JWT",
-    const Jwks extends string | undefined = undefined,
-    const Issuer extends string | undefined = undefined,
-    const Audience extends string | undefined = undefined,
+    const O = Record<never, never>,
   >(
-    options: JwtOptions<P, Scopes, Pre, Jwks, Issuer, Audience>,
+    // `O` is the options as written: which pins it certainly sets, may set,
+    // or leaves out decides which variables the needs require.
+    options: JwtOptions<P, Scopes, Pre> & OptionsAs<O, JwtOptions<P, Scopes, Pre>>,
   ): Authenticator<
     P,
     Scopes[number],
     | EnvReading<
-        | Unpinned<Jwks, `${Pre}_JWKS_URI`>
-        | Unpinned<Issuer, `${Pre}_ISSUER`>
-        | Unpinned<Audience, `${Pre}_AUDIENCE`>,
-        | MaybePinned<Jwks, `${Pre}_JWKS_URI`>
-        | MaybePinned<Issuer, `${Pre}_ISSUER`>
-        | MaybePinned<Audience, `${Pre}_AUDIENCE`>
+        | Unpinned<O, "jwks", `${Pre}_JWKS_URI`>
+        | Unpinned<O, "issuer", `${Pre}_ISSUER`>
+        | Unpinned<O, "audience", `${Pre}_AUDIENCE`>,
+        | MaybePinned<O, "jwks", `${Pre}_JWKS_URI`>
+        | MaybePinned<O, "issuer", `${Pre}_ISSUER`>
+        | MaybePinned<O, "audience", `${Pre}_AUDIENCE`>
       >
     | Observers,
     ConfigInvalid
