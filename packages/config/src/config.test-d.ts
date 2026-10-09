@@ -3,8 +3,10 @@ import { describe, test } from "vitest";
 
 import {
   Config,
+  type ConfigField,
   type ConfigSchema,
   type Env,
+  type EnvNeed,
   type EnvReading,
   type Environment,
   type EnvironmentFor,
@@ -77,5 +79,19 @@ describe("a field names its variable, and a provider's needs carry the names", (
       EnvReading<"DATABASE_URL", "DATABASE_POOL_SIZE" | "SESSION_KEYS">
     > = true;
     void named;
+  });
+});
+
+describe("a variable whose need is not pinned down stays, conservatively", () => {
+  test("a field typed with its name and no need counts as required", () => {
+    const field: ConfigField<string, "API_KEY"> = Config.string("API_KEY");
+    const provider = Config.provider("ApiKeyConfig")(Config.object({ key: field }));
+    const named: Equal<NeedsOf<typeof provider>, EnvReading<"API_KEY", never>> = true;
+    void named;
+  });
+
+  test("a union input, whose arms read different variables, opens the record", () => {
+    const opened: Equal<EnvNeed<{ readonly A: string } | { readonly B: string }>, Env> = true;
+    void opened;
   });
 });

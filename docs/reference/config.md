@@ -55,7 +55,8 @@ type ConfigField<
 **A field carries its variable's name and whether it must be set, in its
 type.** `Config.string("DATABASE_URL")` is a
 `ConfigField<string, "DATABASE_URL", "required">`; with a `default` it is
-`"optional"`. `Config.pinned(value, field)` reads nothing when `value` is
+`"optional"`; a field typed `ConfigField<T, "NAME">` with no need given counts
+as required. `Config.pinned(value, field)` reads nothing when `value` is
 certainly there, and leaves the variable `"optional"` when `value` may be
 `undefined` — only the call knows whether it pinned. A hand-written field typed
 `ConfigField<T>` names its variable only as `string`, which is allowed and
@@ -247,13 +248,17 @@ first call names the port, the second says how it is bound.
 
 ```ts
 Config.provider<P extends AnyPort>(port: P):
-  (schema: ConfigSchema<Environment, ServiceOf<P>> & SetPortGate<P>) =>
-    Provider<InstanceType<P>, ConfigInvalid, Env> & { readonly port: P };
+  <I extends Environment>(schema: ConfigSchema<I, ServiceOf<P>> & SetPortGate<P>) =>
+    Provider<InstanceType<P>, ConfigInvalid, EnvNeed<I>> & { readonly port: P };
 
 Config.provider<const Name extends string>(name: Name):
-  <Output>(schema: ConfigSchema<Environment, Output>) =>
-    Provider<PortInstance<Name, Output>, ConfigInvalid, Env> & { readonly port: PortClassOf<Name, Output> };
+  <I extends Environment, Output>(schema: ConfigSchema<I, Output>) =>
+    Provider<PortInstance<Name, Output>, ConfigInvalid, EnvNeed<I>> & { readonly port: PortClassOf<Name, Output> };
 ```
+
+`I` is the schema's input — the environment it reads — and `EnvNeed<I>` the
+need naming those variables (see
+[The variables a graph reads](#the-variables-a-graph-reads)).
 
 | Form                              | When                                                                                                                     |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -332,8 +337,9 @@ type EnvironmentFor<N> = /* the record a graph with needs N accepts */;
 | `EnvPortFor<I>`      | the type `Config.env` answers                                                                                                                                                |
 
 **A reader that names nothing opens the record.** A provider injecting `Env`
-itself, or a hand-written field whose `variable` is a plain `string`, says
-nothing about what it reads, so `EnvironmentFor` is then `Environment` and any
+itself, a hand-written field whose `variable` is a plain `string`, or a schema
+whose input is a union of shapes with different keys says nothing exact about
+what it reads, so `EnvironmentFor` is then `Environment` and any
 record is accepted — the behaviour every graph had before. A starter's own
 module types name their variables; a module's needs are only as precise as its
 least precise reader.

@@ -10,7 +10,7 @@ import type { ConfigInvalid, EnvReading } from "@btravstack/config";
 import type { Observers } from "@btravstack/core";
 import { html } from "@btravstack/htmx-server";
 import type { Authenticator } from "@btravstack/http-server";
-import { jwtAuthenticator, type Claims } from "@btravstack/http-server/jwt";
+import { jwtAuthenticator, type Claims, type JwtOptions } from "@btravstack/http-server/jwt";
 import { defineHttp } from "@btravstack/orpc-server";
 import { HttpModule } from "@btravstack/orpc-server";
 import { OkAsync } from "unthrown";
@@ -99,3 +99,11 @@ void HttpModule("EnvJwtRoot")({
   fragments: api.HtmxFragments([profile]),
   provides: [profile],
 });
+
+// The exported options type takes any prefix when its own parameter is left
+// out: a reusable options object annotated with it still compiles.
+const reusable: JwtOptions<Identity, readonly []> = {
+  variablePrefix: "HTTP_JWT_PARTNER",
+  principal,
+};
+void reusable;

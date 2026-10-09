@@ -15,7 +15,7 @@ import { cleartext, cleartextRefused } from "./cleartext.js";
 /** The verified claims, as `jose` reports them. */
 export type Claims = JWTPayload;
 
-export type JwtOptions<P, Scopes extends readonly string[], Pre extends string = "HTTP_JWT"> = {
+export type JwtOptions<P, Scopes extends readonly string[], Pre extends string = string> = {
   /**
    * The issuer's JWKS endpoint — pins `<prefix>_JWKS_URI` when set, and is read
    * from it when not. Keys are fetched on demand and cached; a `kid` the cache

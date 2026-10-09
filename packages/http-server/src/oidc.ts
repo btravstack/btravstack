@@ -36,7 +36,7 @@ import {
  * one `HttpHandler` member. The second half is a `CookieSchemes` member, which
  * carries no type of its own.
  */
-export type OidcAnswerer<Pre extends string = "HTTP_OIDC"> = Provider<
+export type OidcAnswerer<Pre extends string = string> = Provider<
   HttpHandler,
   ConfigInvalid | OidcUnreachable,
   | EnvReading<
@@ -71,7 +71,7 @@ class GrantFailed extends TaggedError("GrantFailed")<{
   readonly cause: unknown;
 }> {}
 
-export type OidcOptions<P, Pre extends string = "HTTP_OIDC"> = {
+export type OidcOptions<P, Pre extends string = string> = {
   /** Pins `<prefix>_ISSUER` — the provider, as its discovery document names itself. */
   readonly issuer?: string;
   /** Pins `<prefix>_CLIENT_ID`. */

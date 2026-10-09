@@ -314,11 +314,7 @@ export const sessionCodec = (
  */
 export const SESSION_COOKIE = "__Host-session";
 
-export type SessionOptions<
-  P,
-  Scopes extends readonly string[],
-  Pre extends string = "HTTP_OIDC",
-> = {
+export type SessionOptions<P, Scopes extends readonly string[], Pre extends string = string> = {
   /**
    * The scopes this scheme can grant, and **the only place they are written**
    * — `jwtAuthenticator`'s rule, for `jwtAuthenticator`'s reason. The grant is

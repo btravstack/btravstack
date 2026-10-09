@@ -49,16 +49,20 @@ export type EnvReading<Required extends string, Optional extends string> = Env &
  */
 export type EnvNeed<I> = string extends keyof I
   ? Env
-  : EnvReading<
-      {
-        [K in keyof I]-?: Record<never, never> extends Pick<I, K> ? never : K;
-      }[keyof I] &
-        string,
-      {
-        [K in keyof I]-?: Record<never, never> extends Pick<I, K> ? K : never;
-      }[keyof I] &
-        string
-    >;
+  : // A union input keeps only its shared keys under `keyof`, which would
+    // refuse each arm's own variables: open the record instead.
+    [I extends unknown ? keyof I : never] extends [keyof I]
+    ? EnvReading<
+        {
+          [K in keyof I]-?: Record<never, never> extends Pick<I, K> ? never : K;
+        }[keyof I] &
+          string,
+        {
+          [K in keyof I]-?: Record<never, never> extends Pick<I, K> ? K : never;
+        }[keyof I] &
+          string
+      >
+    : Env;
 
 /** The `Env` port class, as a need for `EnvNeed<I>` — what {@link Config.env} answers. */
 // A zero-argument constructor, as `Env` has: `InstanceType` matches a
@@ -189,14 +193,23 @@ export type AnyConfigField = {
 /** A field that reads `default`: optional when the options name one. */
 type NeedOf<O> = O extends { readonly default: unknown } ? "optional" : "required";
 
-/** The variables a field record reads, keyed by need. */
+/**
+ * The variables a field record reads, keyed by need. A need that MAY be
+ * `"required"` — the default `"required" | "optional"` of a field typed
+ * `ConfigField<T, "NAME">`, or none at all — counts as required: dropping it
+ * would refuse the variable its parser asks for.
+ */
 type FieldVariable<F, Want> = F extends {
   readonly variable: infer V extends string;
   readonly "~need"?: infer Need;
 }
-  ? [Need] extends [Want]
-    ? V
-    : never
+  ? Want extends "required"
+    ? "required" extends Need
+      ? V
+      : never
+    : [Need] extends ["optional"]
+      ? V
+      : never
   : never;
 
 /**
