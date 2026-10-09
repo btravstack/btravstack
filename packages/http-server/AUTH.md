@@ -172,7 +172,7 @@ The two rules this half exists to state, before the detail:
   because a key list in the image is a key list in the repository.
   `examples/order-api`'s `serviceAuth` is this, not a stand-in.
 
-- **`jwtAuthenticator<P>()({ jwks?, issuer?, audience?, algorithms?, clockToleranceSec?, header?, principal, scopes? })`
+- **`jwtAuthenticator<P>()({ jwks?, issuer?, audience?, variablePrefix?, algorithms?, clockToleranceSec?, allowInsecureJwks?, header?, principal, scopes? })`
   → `Authenticator<P, Scopes[number], Env, ConfigInvalid>`, and `DEFAULT_ALGORITHMS`** — from
   **`@btravstack/http-server/jwt`**, with `jose` an OPTIONAL peer: a graph that
   never imports the subpath installs nothing. What it owns is the part where
