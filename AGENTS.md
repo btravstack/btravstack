@@ -478,7 +478,7 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    `TestRuntime.untilStarted` and `ProbeServer.close` all carry `E = never`.
    `unthrown/prefer-async-result` cannot enforce this — it only flags a
    `Promise<Result<T, E>>`, and a `Promise<void>` is not Result-bearing — so it
-   is a convention held by review. There are exactly **three** exceptions, each
+   is a convention held by review. There are exactly **four** exceptions, each
    documented where it lives:
    - **`runMain`** returns `Promise<void>`. Its whole job is to leave the Result
      world and become a process exit code; it is the boundary, and a top-level
@@ -492,6 +492,10 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
      it must reach the test runner, and an `AsyncResult` never rejects, so
      wrapping it would turn a failing `expect` into a `Defect` a caller can
      forget to unwrap — a green test that asserted nothing.
+   - **`@btravstack/graphql-server`'s `fieldResult`** returns `Promise<T>`.
+     A GraphQL resolver answers a value or a promise and reports a field's
+     error by rejecting, so `fieldResult` is where a `Result` leaves for
+     GraphQL's own channel — the boundary, as `runMain` is for a process.
 
 7. **The startup error channel is the application's own, unwrapped.** The kernel
    does **not** wrap a construction failure in a kernel error — that would erase

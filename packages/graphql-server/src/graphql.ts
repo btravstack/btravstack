@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 
 import type { OneScheme, Requirements } from "@btravstack/contract";
+import { Observers, observe } from "@btravstack/core";
 import { Provider, type AnyPort, type Scope } from "@btravstack/di";
 import {
   principalOf,
@@ -15,7 +16,10 @@ import { HttpConfig, HttpUnit } from "@btravstack/http-server/internal";
 import type {
   KindOf,
   Kinds,
+  Principal,
   RequiresGate,
+  SchemesFrom,
+  SchemesOf,
   SchemePortsOf,
   UnitFor,
   UnitsNeedsOf,
@@ -23,10 +27,27 @@ import type {
 } from "@btravstack/http-server/internal";
 import { forkUnit } from "@btravstack/http-server/internal";
 import type { GraphQLSchema } from "graphql";
-import { createYoga, type Plugin, type YogaServerOptions } from "graphql-yoga";
+import {
+  createYoga,
+  maskError,
+  type Plugin,
+  type YogaInitialContext,
+  type YogaServerOptions,
+} from "graphql-yoga";
 import { P } from "unthrown";
 
 const dispose = Symbol("graphql.dispose");
+
+/** What failed: GraphQL locates a resolver's error by wrapping it, and a log line walks `cause`, not `originalError`. */
+const causeOf = (error: unknown): unknown =>
+  typeof error === "object" && error !== null && "originalError" in error && error.originalError
+    ? error.originalError
+    : error;
+
+const pathOf = (error: unknown): string | undefined =>
+  typeof error === "object" && error !== null && "path" in error && Array.isArray(error.path)
+    ? error.path.join(".")
+    : undefined;
 type DisposableAnswerer = HttpAnswerer & { readonly [dispose]: () => Promise<void> | void };
 
 type YogaCors = YogaServerOptions<Record<string, unknown>, Record<string, unknown>>["cors"];
@@ -47,17 +68,68 @@ type UnitGate<U extends Readonly<Record<string, AnyPort>>, Units, K extends stri
       >;
     };
 
+/**
+ * The context `graphql()` hands Yoga for an operation: what a resolver and a
+ * plugin's operation hooks (`onParse`, `onValidate`, `onContextBuilding`,
+ * `onExecute`, `onSubscribe`) read beside Yoga's own `request`. `principal` is
+ * the caller `requires` resolved, `undefined` without `requires`; `unit` is the
+ * `unit` record read off the forked kind; `incoming` is the Node request.
+ *
+ * Those hooks run only once the caller is authenticated. A preflight and a
+ * refusal end in Yoga's server hooks (`onRequest`, `onResponse`), whose
+ * context is not this type, so a plugin cannot claim a principal there.
+ */
+export type GraphqlContext<Principal = unknown, Unit = Readonly<Record<string, unknown>>> = {
+  readonly principal: Principal;
+  readonly incoming: IncomingMessage;
+  readonly unit: Unit;
+  readonly signal: AbortSignal;
+};
+
+/** The {@link GraphqlContext} one `graphql()` call builds, from its own options. */
+type ContextOf<
+  A extends Authenticators,
+  Units,
+  R extends Requirements,
+  U extends Readonly<Record<string, AnyPort>>,
+> = GraphqlContext<
+  [R] extends [never] ? undefined : Principal<SchemesOf<R>, SchemesFrom<A>>,
+  UnitFor<U, Units, KindOf<R>>
+>;
+
+/**
+ * Each plugin, unless the context this call builds lacks something it reads, or
+ * the entry is not a plugin at all.
+ * Per element, because Yoga's `Plugin<C>` is invariant in `C`: a plugin typed
+ * for the real context is not a `Plugin`, so none could be widened to one.
+ */
+type PluginsGate<PS extends readonly unknown[], C> = {
+  readonly [I in keyof PS]: PS[I] extends Plugin<infer X>
+    ? YogaInitialContext & C extends X
+      ? PS[I]
+      : "PLUGIN CONTEXT MISMATCH — this plugin reads what this graphql() call does not put in its context"
+    : { readonly "NOT A PLUGIN — this entry is not a Yoga plugin": PS[I] };
+};
+
 /** Serve a GraphQL schema as one answerer under the existing HTTP runtime. */
 export type GraphqlOptions<
   A extends Authenticators,
   Units extends UnitsOf<A>,
   R extends Requirements & { readonly [I in keyof R]: OneScheme<R[I]> },
   U extends Readonly<Record<string, AnyPort>>,
+  PS extends readonly unknown[] = readonly Plugin[],
 > = {
   readonly schema: GraphQLSchema;
   readonly prefix?: `/${string}`;
   readonly cors?: YogaCors;
-  readonly plugins?: readonly Plugin[];
+  /**
+   * Yoga plugins. Each may be typed by the context it reads — a
+   * `Plugin<{ unit: … }>` — and is checked against the {@link GraphqlContext}
+   * this call builds.
+   */
+  readonly plugins?:
+    | (PS & PluginsGate<PS, ContextOf<A, Units, R, U>>)
+    | readonly Plugin<YogaInitialContext & ContextOf<A, Units, R, U>>[];
   readonly units?: Units & { readonly [K in Exclude<keyof Units, Kinds<A>>]: never };
   readonly unit?: U & UnitGate<U, Units, KindOf<R>>;
   readonly requires?: R & RequiresGate<R, { readonly [K in keyof A]: A[K]["scope"] }>;
@@ -68,9 +140,10 @@ export const graphql = <
   Units extends UnitsOf<A> = Record<never, never>,
   const R extends Requirements & { readonly [I in keyof R]: OneScheme<R[I]> } = never,
   U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+  const PS extends readonly unknown[] = [],
 >(
   api: HttpAuth<A>,
-  options: GraphqlOptions<A, Units, R, U>,
+  options: GraphqlOptions<A, Units, R, U, PS>,
 ) => {
   const mount = options.prefix ?? "/graphql";
   let end = mount.length;
@@ -81,10 +154,11 @@ export const graphql = <
     ...new Set(requirements?.flatMap((requirement) => Object.keys(requirement)) ?? []),
   ];
   const provider = Provider.member(HttpHandler)({
-    inject: { config: HttpConfig, units: HttpUnit, ...schemeDeps(schemes) },
+    inject: { config: HttpConfig, units: HttpUnit, observers: Observers, ...schemeDeps(schemes) },
     sync: (services) => {
       const config = services.config;
       const units = services.units;
+      const observers = services.observers;
       if (options.units !== undefined)
         for (const kind of requirements === undefined ? ["anonymous"] : schemes) {
           const declared = options.units[kind] ?? options.units["anonymous"];
@@ -116,7 +190,23 @@ export const graphql = <
           (config.corsOrigin === ""
             ? false
             : { origin: config.corsOrigin.split(",").map((origin) => origin.trim()) }),
-        plugins: [refuse, ...(options.plugins ?? [])],
+        plugins: [refuse, ...((options.plugins ?? []) as readonly Plugin[])],
+        // Yoga reports what it masks through its logger, which is off: the
+        // defect is reported to `Observers` here instead, or nowhere.
+        maskedErrors: {
+          maskError: (error, message, isDev) => {
+            const masked = maskError(error, message, isDev);
+            if (masked !== error)
+              observe(observers, {
+                component: "graphql",
+                name: "defect",
+                attributes: {},
+                details: { "graphql.path": pathOf(error) },
+                traced: false,
+              })({ outcome: "error", cause: causeOf(error) });
+            return masked;
+          },
+        },
         logging: false,
         graphiql: false,
         landingPage: false,
@@ -191,6 +281,7 @@ export const graphql = <
     never,
     | InstanceType<typeof HttpConfig>
     | InstanceType<typeof HttpUnit>
+    | Observers
     | UnitsNeedsOf<Units>
     | SchemePortsOf<R>
     | Scope

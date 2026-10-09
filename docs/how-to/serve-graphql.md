@@ -34,8 +34,14 @@ receives `principal`, `unit`, `signal`, and the Node `incoming` request. The
 example forwards its bearer header to the backend, which enforces the order
 contract's authentication and authorization.
 
-The application maps modeled backend errors into GraphQL errors with an
-`extensions.code`. Yoga masks unexpected resolver failures. A GraphQL error
+A resolver answers through `fieldResult(result)`: it folds the backend's
+modeled errors into `GraphQLError`s with an `extensions.code` — an exhaustive
+`mapErrCases`, or `flatMapErrCases` where a refusal is `Ok(null)` — and
+`fieldResult` returns the value, reports a refusal on that field's own path
+while sibling fields resolve, and masks a defect. Masked defects are reported to
+`Observers`, never to Yoga's console: compose `observability()` to have them
+logged, with the field's path, and counted — without an observer they reach
+nothing. They open no span of their own. A GraphQL error
 normally retains HTTP 200; the framework does not impose a status or error
 schema on application outcomes. One HTTP request is one unit, closed after the
 response finishes and included in the runtime's drain.
@@ -44,7 +50,8 @@ Yoga's wildcard CORS default is disabled here. `HTTP_CORS_ORIGIN` sets the
 allowed origin; `cors` on `graphql()` can specify Yoga's full policy, including
 credentials, or `false` to disable it explicitly. Yoga's console logger is
 disabled so an unexpected resolver error cannot print sensitive details
-outside the application's logging path. Pass Yoga `plugins` for validation
+outside the application's logging path. Pass Yoga `plugins` — inline, or typed
+by the context they read as `Plugin<{ unit: … }>` — for validation
 rules, depth or complexity limits, and other schema-specific controls before
 exposing expensive fields to untrusted callers. A protected mount lets browser
 CORS preflights reach Yoga before authentication, and 401/403 refusals receive
@@ -57,4 +64,6 @@ is consumable without the gateway or Yoga. Its freshness test detects schema
 drift. Expose live introspection or a contract UI according to the deployment's
 access policy; the answerer mounts no GraphiQL page by default.
 
-Subscriptions and GraphQL over WebSocket are outside this answerer's scope.
+A schema's `Subscription` type is served over SSE, as Yoga serves it by
+default, and an event's resolver answers through `fieldResult` like any field,
+so its refusal rides that event. GraphQL over WebSocket is not served.

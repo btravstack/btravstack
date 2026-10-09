@@ -1,14 +1,17 @@
 import { start } from "@btravstack/core";
+import { Observers, type Settled } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { HttpAuthenticator, Unauthenticated, granted } from "@btravstack/http-server";
 import { defineAuth } from "@btravstack/http-server";
 import { HttpHandler } from "@btravstack/http-server/internal";
 import { HttpRuntime, httpServer } from "@btravstack/http-server/internal";
 import { it } from "@btravstack/internal-http-fixtures";
-import { createSchema } from "graphql-yoga";
-import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
+import type { GraphQLError } from "graphql";
+import { createGraphQLError, createSchema, type Plugin } from "graphql-yoga";
+import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
+import { fieldResult } from "./field.js";
 import { graphql } from "./graphql.js";
 
 describe("graphql answerer", () => {
@@ -513,5 +516,278 @@ describe("graphql answerer", () => {
         drain: { inFlightAtStart: 1, completed: 1, abandoned: 0 },
       }),
     );
+  });
+});
+
+describe("fieldResult", () => {
+  const schema = createSchema({
+    typeDefs: `
+      type Query { order(id: String!): String, orders(ids: [String!]!): [String] }
+      type Subscription { placed: String }
+    `,
+    resolvers: {
+      Subscription: {
+        placed: {
+          subscribe: async function* () {
+            yield "1";
+            yield "refused";
+          },
+          resolve: (id: string) => fieldResult(lookup(id)),
+        },
+      },
+      Query: {
+        order: (_parent: unknown, { id }: { id: string }) => fieldResult(lookup(id)),
+        orders: (_parent: unknown, { ids }: { ids: readonly string[] }) =>
+          ids.map((id) => fieldResult(lookup(id))),
+      },
+    },
+  });
+  const lookup = (id: string): AsyncResult<string, GraphQLError> =>
+    id === "refused"
+      ? ErrAsync(createGraphQLError("not yours", { extensions: { code: "FORBIDDEN" } }))
+      : id === "caused"
+        ? ErrAsync(
+            createGraphQLError("not yours either", {
+              extensions: { code: "FORBIDDEN" },
+              originalError: new Error("the service's own reason"),
+            }),
+          )
+        : id === "broken"
+          ? fromSafePromise(Promise.reject(new Error("database password in this message")))
+          : id === "leaky"
+            ? fromSafePromise(Promise.reject(createGraphQLError("internal hostname db-7")))
+            : OkAsync(`order ${id}`);
+  const appWith = (seen: Settled[], plugins: readonly Plugin[] = []) =>
+    Module("FieldResultApp")({
+      imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+      provides: [
+        graphql(defineAuth(), { schema, plugins }),
+        Provider.member(Observers)({
+          inject: {},
+          sync: () => (operation) => (settled) => {
+            if (operation.component === "graphql") seen.push(settled);
+          },
+        }),
+      ],
+      exports: [HttpRuntime, HttpHandler],
+    });
+  const query = async (port: number | undefined, source: string) =>
+    (
+      await fetch(`http://127.0.0.1:${port}/graphql`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: source }),
+      })
+    ).json();
+
+  it("answers a refusal on its own alias, beside a sibling that resolved", async ({ boot }) => {
+    // GIVEN two aliased fields, one refused by its service
+    const info = (await boot(appWith([])).runtimeInfo()).get();
+
+    // WHEN both are asked for in one operation
+    const body = await query(info?.port, '{ mine: order(id: "1") theirs: order(id: "refused") }');
+
+    // THEN the sibling is data and the refusal is that alias's error
+    expect(body).toEqual({
+      data: { mine: "order 1", theirs: null },
+      errors: [expect.objectContaining({ path: ["theirs"], extensions: { code: "FORBIDDEN" } })],
+    });
+  });
+
+  it("answers a refusal at its list index", async ({ boot }) => {
+    // GIVEN a list whose second item is refused
+    const info = (await boot(appWith([])).runtimeInfo()).get();
+
+    // WHEN the list is asked for
+    const body = await query(info?.port, '{ orders(ids: ["1", "refused", "3"]) }');
+
+    // THEN only that item is null, and the error names its index
+    expect(body).toEqual({
+      data: { orders: ["order 1", null, "order 3"] },
+      errors: [expect.objectContaining({ path: ["orders", 1], extensions: { code: "FORBIDDEN" } })],
+    });
+  });
+
+  it("masks a defect for the client", async ({ boot }) => {
+    // GIVEN a field whose service defects
+    const info = (await boot(appWith([])).runtimeInfo()).get();
+
+    // WHEN it is asked for
+    const body = await query(info?.port, '{ order(id: "broken") }');
+
+    // THEN the client sees Yoga's masked message, never the cause
+    expect(body).toEqual({
+      data: { order: null },
+      errors: [
+        expect.objectContaining({
+          message: "Unexpected error.",
+          path: ["order"],
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        }),
+      ],
+    });
+  });
+
+  it("reports the masked defect to Observers, once", async ({ boot }) => {
+    // GIVEN an observer beside a field whose service defects
+    const seen: Settled[] = [];
+    const info = (await boot(appWith(seen)).runtimeInfo()).get();
+
+    // WHEN it is asked for
+    await query(info?.port, '{ order(id: "broken") }');
+
+    // THEN the observer received the defect with its cause
+    expect(seen).toEqual([
+      {
+        outcome: "error",
+        cause: expect.objectContaining({
+          cause: expect.objectContaining({ message: "database password in this message" }),
+        }),
+      },
+    ]);
+  });
+
+  it("reports a defect outside any field, with no path", async ({ boot }) => {
+    // GIVEN a plugin that defects before any field resolves
+    const seen: Settled[] = [];
+    const failing: Plugin = {
+      onExecute: () => {
+        // oxlint-disable-next-line unthrown/no-throw -- the defect under test
+        throw new Error("plugin broke");
+      },
+    };
+    const info = (await boot(appWith(seen, [failing])).runtimeInfo()).get();
+
+    // WHEN any operation runs
+    await query(info?.port, '{ order(id: "1") }');
+
+    // THEN the observer received it, with no field to name
+    expect(seen).toEqual([
+      { outcome: "error", cause: expect.objectContaining({ message: "plugin broke" }) },
+    ]);
+  });
+
+  it("answers a refusal that carries a cause as the refusal", async ({ boot }) => {
+    // GIVEN a refusal minted with the service's own error attached
+    const info = (await boot(appWith([])).runtimeInfo()).get();
+
+    // WHEN it is asked for
+    const body = await query(info?.port, '{ order(id: "caused") }');
+
+    // THEN the client sees the refusal, not a masked defect
+    expect(body).toEqual({
+      data: { order: null },
+      errors: [
+        expect.objectContaining({
+          message: "not yours either",
+          path: ["order"],
+          extensions: { code: "FORBIDDEN" },
+        }),
+      ],
+    });
+  });
+
+  it("masks a defect whose cause is a GraphQLError", async ({ boot }) => {
+    // GIVEN a service that defects with something shaped like a refusal
+    const info = (await boot(appWith([])).runtimeInfo()).get();
+
+    // WHEN it is asked for
+    const body = await query(info?.port, '{ order(id: "leaky") }');
+
+    // THEN the client sees the masked message, never the cause
+    expect(body).toEqual({
+      data: { order: null },
+      errors: [
+        expect.objectContaining({
+          message: "Unexpected error.",
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        }),
+      ],
+    });
+  });
+
+  it("answers a subscription over SSE, each event carrying its own field's error", async ({
+    boot,
+  }) => {
+    // GIVEN a subscription whose second event is refused
+    const info = (await boot(appWith([])).runtimeInfo()).get();
+
+    // WHEN a client subscribes over SSE
+    const stream = await fetch(`http://127.0.0.1:${info?.port}/graphql`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "text/event-stream" },
+      body: JSON.stringify({ query: "subscription { placed }" }),
+    });
+    const events = (await stream.text())
+      .split("\n\n")
+      .filter((event) => event.startsWith("event: next"))
+      .map((event) => JSON.parse(event.slice(event.indexOf("data: ") + 6)));
+
+    // THEN the first event is data and the second carries its refusal
+    expect(events).toEqual([
+      { data: { placed: "order 1" } },
+      {
+        data: { placed: null },
+        errors: [expect.objectContaining({ path: ["placed"], extensions: { code: "FORBIDDEN" } })],
+      },
+    ]);
+  });
+
+  it("runs context-typed plugin hooks only once the caller is authenticated", async ({ boot }) => {
+    // GIVEN a protected mount whose plugin records the principal every
+    // context-typed hook sees
+    const user = HttpAuthenticator<{ userId: string }>()({
+      inject: {},
+      sync: () => (headers) =>
+        headers.authorization === "Bearer good"
+          ? OkAsync({ userId: "u-1" })
+          : ErrAsync(new Unauthenticated()),
+    });
+    const api = defineAuth({ authenticators: { user } });
+    const seen: string[] = [];
+    const answerer = graphql(api, {
+      schema: createSchema({
+        typeDefs: "type Query { hello: String }",
+        resolvers: { Query: { hello: () => "world" } },
+      }),
+      requires: [{ user: [] }],
+      plugins: [
+        {
+          onParse: ({ context }) => void seen.push(`parse:${context.principal.userId}`),
+          onValidate: ({ context }) => void seen.push(`validate:${context.principal.userId}`),
+          onContextBuilding: ({ context }) => void seen.push(`context:${context.principal.userId}`),
+          onExecute: ({ args }) => void seen.push(`execute:${args.contextValue.principal.userId}`),
+        },
+      ],
+    });
+    const info = (
+      await boot(
+        Module("PluginAuthGraphqlApp")({
+          imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+          provides: [answerer, ...answerer.authenticators],
+          exports: [HttpRuntime, HttpHandler],
+        }),
+        { env: { HTTP_CORS_ORIGIN: "https://web.example" } },
+      ).runtimeInfo()
+    ).get();
+    const url = `http://127.0.0.1:${info?.port}/graphql`;
+    const post = (headers: Record<string, string>) =>
+      fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify({ query: "{ hello }" }),
+      });
+
+    // WHEN a browser preflights, an anonymous caller is refused, and an
+    // authenticated one is answered
+    await fetch(url, {
+      method: "OPTIONS",
+      headers: { origin: "https://web.example", "access-control-request-method": "POST" },
+    });
+    await post({});
+    await post({ authorization: "Bearer good" });
+
+    // THEN only the authenticated request reached the hooks, each with its principal
+    expect(seen).toEqual(["parse:u-1", "validate:u-1", "context:u-1", "execute:u-1"]);
   });
 });

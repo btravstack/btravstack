@@ -1836,13 +1836,35 @@ mount point is an error, and it is a `RuntimeStartFailed` at `listen` rather
 than a coin toss. A trailing slash is the same mount, so `/rpc` and `/rpc/`
 collide.
 
-`graphql(api, { schema, prefix?, requires?, units?, unit? })` from
+`graphql(api, { schema, prefix?, requires?, units?, unit?, cors?, plugins? })` from
 `@btravstack/graphql-server` contributes a Yoga answerer. `schema`
 is any `GraphQLSchema` (the example builds one with Pothos); `prefix` defaults
 to `/graphql`. `requires` gates the whole mount through `RequiresGate` and the
 shared principal resolver. Resolver context carries `principal`, `unit`,
-`incoming`, and `signal`. The response remains one HTTP unit through completion
-and drain. GraphQL and Yoga are required peers of that package.
+`incoming`, and `signal` — the exported `GraphqlContext<Principal, Unit>`.
+`plugins` are Yoga plugins, each either inline (typed by this call's context)
+or typed by the context it reads, `Plugin<{ unit: … }>`: Yoga's `Plugin<C>` is
+invariant in `C`, so each is checked against the context the call builds, and
+one reading what the call never binds is refused against
+`"PLUGIN CONTEXT MISMATCH — …"`. The response remains one HTTP unit through
+completion and drain. GraphQL, Yoga and `@btravstack/core` are required peers
+of that package.
+
+`fieldResult(result)` answers a resolver from an `AsyncResult<T, GraphQLError>`
+(or a `Result`): `Ok` is the field's value; `Err` is reported on the field's
+own path — an alias, a list index — with its message and `extensions`, while
+sibling fields resolve, and its `originalError` stays server-side; a defect is
+masked to Yoga's `Unexpected error.` whatever its cause, a `GraphQLError`
+included, and reported to `Observers` as a `graphql` / `defect` operation
+carrying the cause and the field's path. It answers a `Promise`, the one
+async API in the stack that does: a resolver reports a field's error by
+rejecting, so this is where a `Result` leaves for GraphQL. The resolver turns its `E` into `GraphQLError`s itself, with an
+exhaustive `mapErrCases` (or `flatMapErrCases`, where one refusal is `Ok(null)`),
+so widening `E` fails every resolver that folds it. `graphql()` enables no
+`@defer` / `@stream` plugin, so no incremental response can drop a field's
+error. A schema's `Subscription` is served over SSE, as Yoga does by default,
+and each event's `resolve` answers through `fieldResult` too, so a refusal
+rides the event it belongs to. GraphQL over WebSocket is not served.
 See [Serve GraphQL](/how-to/serve-graphql) for the code-first example, SDL
 artifact, and error boundary.
 

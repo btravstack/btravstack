@@ -14,3 +14,42 @@ ports against the actual modules in its `units` option. It forks the runtime's
 `HttpUnit` record and refuses a differing declaration at boot, passes CORS
 preflights and authentication refusals through Yoga's CORS policy, and disposes
 Yoga during scope teardown.
+
+**A masked defect is reported to `Observers`, through Yoga's `maskError`.**
+Yoga reports what it masks only through its logger, and `graphql()` turns that
+logger off, so before #474 a defect reached the client as `Unexpected error.`
+and was recorded nowhere. The hook wraps Yoga's own `maskError` and reports
+only when it masked something — a `GraphQLError` a resolver raised on purpose
+passes through unreported. `Observers` comes from `httpServer()`, which
+contributes `noObserverMember`, so the answerer adds no wiring to a root; that
+is why `@btravstack/core` is a required peer.
+
+**`plugins` is checked per element, because Yoga's `Plugin<C>` is invariant
+in `C`** (`onPluginInit` hands a plugin `Plugin<C>[]`). A plugin typed for the
+real context therefore never widened to the bare `Plugin` the option used to
+take. The option is a union: an inline plugin is contextually typed by the
+context this call builds, and a declared one is inferred with its own context
+and refused against `PLUGIN CONTEXT MISMATCH` when the call's context lacks
+something it reads. The context reaches only Yoga's OPERATION hooks, which run
+once the caller is authenticated (`graphql.spec.ts` records them across a
+preflight, a refusal and an accepted call); its server hooks run for all three,
+so the option types their context `{}` and refuses a plugin claiming more.
+A defect's report carries the located error's `originalError`, not the error
+itself, because a log line walks `cause` and would otherwise stop at the
+location.
+
+**`fieldResult` rebuilds both channels, because Yoga masks by shape.** A
+refusal is thrown as a fresh error carrying only its message and
+`extensions`: one carrying an `originalError` is what Yoga masks as
+unexpected. A defect is thrown wrapped in a plain `Error`, whatever its cause,
+since a `GraphQLError` cause would otherwise be exposed as a refusal and never
+reported. The refusal is minted with Yoga's `createGraphQLError`, not
+`graphql`'s class: the two can be different module instances (measured under
+vitest), and Yoga's check is `instanceof` against its own. Its `Promise`
+return is the fourth exception root thesis #6 names.
+
+**`fieldResult` maps nothing.** The resolver's triage of `E` into
+`GraphQLError`s is the transport's own mapping, as thesis #3 has it for every
+transport; `fieldResult` only moves each channel to where GraphQL reads it.
+Deriving a mutation's result union from `E` is declined — see
+`docs/explanation/deferred-decisions.md`.
