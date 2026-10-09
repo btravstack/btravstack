@@ -1,3 +1,4 @@
+import { Env } from "@btravstack/config";
 import { Module, Port, Provider } from "@btravstack/di";
 import { HttpAuthenticator } from "@btravstack/http-server";
 import { defineAuth } from "@btravstack/http-server";
@@ -40,12 +41,14 @@ graphql(api, {
 const protectedAnswerer = graphql(api, { schema, requires: [{ user: [] }] });
 // @ts-expect-error -- a protected GraphQL mount owes its scheme's provider
 Module("MissingGraphqlAuthenticator")({
+  needs: [Env],
   imports: [httpServer({ port: 0 })],
   provides: [protectedAnswerer],
   exports: [HttpRuntime, HttpHandler],
 });
 
 Module("ProtectedGraphql")({
+  needs: [Env],
   imports: [httpServer({ port: 0 })],
   provides: [protectedAnswerer, ...protectedAnswerer.authenticators],
   exports: [HttpRuntime, HttpHandler],

@@ -1,3 +1,4 @@
+import { Env } from "@btravstack/config";
 import { start } from "@btravstack/core";
 import { Observers, type Settled } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
@@ -24,6 +25,7 @@ describe("graphql answerer", () => {
     const answerer = graphql(defineAuth(), { schema });
     const app = boot(
       Module("GraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
@@ -46,6 +48,103 @@ describe("graphql answerer", () => {
     });
   });
 
+  describe("developer tools", () => {
+    const schema = createSchema({
+      typeDefs: "type Query { hello: String }",
+      resolvers: { Query: { hello: () => "world" } },
+    });
+    const probe = async (port: number) => {
+      const page = await fetch(`http://127.0.0.1:${port}/graphql`, {
+        headers: { accept: "text/html" },
+      });
+      const introspection = await fetch(`http://127.0.0.1:${port}/graphql`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: "{ __typename __schema { queryType { name } } }" }),
+      });
+      return {
+        graphiql: page.headers.get("content-type")?.startsWith("text/html") ?? false,
+        introspection: await introspection.json(),
+      };
+    };
+
+    it("serves neither GraphiQL nor introspection by default", async ({ boot }) => {
+      // GIVEN a mount whose deployment set nothing
+      const app = boot(
+        Module("DefaultToolsGraphqlApp")({
+          needs: [Env],
+          imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+          provides: [graphql(defineAuth(), { schema })],
+          exports: [HttpRuntime, HttpHandler],
+        }),
+      );
+      const info = (await app.runtimeInfo()).get();
+
+      // WHEN a browser asks for the page and a client introspects
+      const seen = await probe(info!.port);
+
+      // THEN the page is not GraphiQL and introspection is refused by field name
+      expect(seen).toEqual({
+        graphiql: false,
+        introspection: {
+          errors: [
+            expect.objectContaining({
+              message: "GraphQL introspection is not allowed, but the query contained __schema",
+            }),
+          ],
+        },
+      });
+    });
+
+    it("serves both when the deployment sets GRAPHQL_DEVELOPER_TOOLS", async ({ boot }) => {
+      // GIVEN a mount whose deployment turned the tools on
+      const app = boot(
+        Module("EnvToolsGraphqlApp")({
+          needs: [Env],
+          imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+          provides: [graphql(defineAuth(), { schema })],
+          exports: [HttpRuntime, HttpHandler],
+        }),
+        { env: { GRAPHQL_DEVELOPER_TOOLS: "true" } },
+      );
+      const info = (await app.runtimeInfo()).get();
+
+      // WHEN a browser asks for the page and a client introspects
+      const seen = await probe(info!.port);
+
+      // THEN GraphiQL renders and introspection answers
+      expect(seen).toEqual({
+        graphiql: true,
+        introspection: {
+          data: { __typename: "Query", __schema: { queryType: { name: "Query" } } },
+        },
+      });
+    });
+
+    it("lets the option pin the variable", async ({ boot }) => {
+      // GIVEN a mount pinned off, under a deployment that asks for the tools
+      const app = boot(
+        Module("PinnedToolsGraphqlApp")({
+          needs: [Env],
+          imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+          provides: [graphql(defineAuth(), { schema, developerTools: false })],
+          exports: [HttpRuntime, HttpHandler],
+        }),
+        { env: { GRAPHQL_DEVELOPER_TOOLS: "true" } },
+      );
+      const info = (await app.runtimeInfo()).get();
+
+      // WHEN a browser asks for the page and a client introspects
+      const seen = await probe(info!.port);
+
+      // THEN the pin wins
+      expect(seen).toEqual({
+        graphiql: false,
+        introspection: { errors: [expect.anything()] },
+      });
+    });
+  });
+
   it("keeps CORS closed by default and honors the configured origin", async ({ boot }) => {
     // GIVEN a closed server, an allowed origin and a credentialed origin
     const schema = createSchema({
@@ -55,6 +154,7 @@ describe("graphql answerer", () => {
     const app = (corsOrigin?: string, credentials = false) =>
       boot(
         Module("CorsGraphqlApp")({
+          needs: [Env],
           imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
           provides: [
             graphql(
@@ -104,6 +204,7 @@ describe("graphql answerer", () => {
     });
     const app = boot(
       Module("CustomGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
         provides: [
           graphql(defineAuth(), {
@@ -157,6 +258,7 @@ describe("graphql answerer", () => {
     });
     const app = boot(
       Module("ScopedGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1", unit: { anonymous: unit } })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
@@ -204,6 +306,7 @@ describe("graphql answerer", () => {
     const answerer = graphql(api, { schema, requires: [{ user: [] }] });
     const app = boot(
       Module("ProtectedGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
         provides: [answerer, ...answerer.authenticators],
         exports: [HttpRuntime, HttpHandler],
@@ -274,6 +377,7 @@ describe("graphql answerer", () => {
     });
     const app = boot(
       Module("ScopedGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
         provides: [answerer, ...answerer.authenticators],
         exports: [HttpRuntime, HttpHandler],
@@ -334,6 +438,7 @@ describe("graphql answerer", () => {
     });
     const app = boot(
       Module("BrokenGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1", unit: { anonymous: unit } })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
@@ -373,6 +478,7 @@ describe("graphql answerer", () => {
     });
     const app = start(
       Module("MismatchedGraphqlUnit")({
+        needs: [Env],
         imports: [httpServer({ unit: { anonymous: bound } })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
@@ -407,6 +513,7 @@ describe("graphql answerer", () => {
     });
     const app = boot(
       Module("DisposableGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
@@ -438,6 +545,7 @@ describe("graphql answerer", () => {
     const answerer = graphql(defineAuth(), { schema });
     const app = boot(
       Module("FailingGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
@@ -491,6 +599,7 @@ describe("graphql answerer", () => {
     const answerer = graphql(defineAuth(), { schema });
     const app = boot(
       Module("DrainingGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
@@ -559,6 +668,7 @@ describe("fieldResult", () => {
             : OkAsync(`order ${id}`);
   const appWith = (seen: Settled[], plugins: readonly Plugin[] = []) =>
     Module("FieldResultApp")({
+      needs: [Env],
       imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
       provides: [
         graphql(defineAuth(), { schema, plugins }),
@@ -763,6 +873,7 @@ describe("fieldResult", () => {
     const info = (
       await boot(
         Module("PluginAuthGraphqlApp")({
+          needs: [Env],
           imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
           provides: [answerer, ...answerer.authenticators],
           exports: [HttpRuntime, HttpHandler],

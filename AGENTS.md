@@ -1327,7 +1327,7 @@ A sixth rule is about production code that tests keep honest:
    origin with whoever is calling, a body limit with what the endpoint
    accepts — all in the manifest, none in the image. So `PRE_DRAIN_DELAY_MS`,
    `DRAIN_TIMEOUT_MS`, `STOP_TIMEOUT_MS`, `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
-   `HTTP_HEADERS_TIMEOUT_MS`, `HTTP_REQUEST_TIMEOUT_MS`,
+   `HTTP_HEADERS_TIMEOUT_MS`, `HTTP_REQUEST_TIMEOUT_MS`, `GRAPHQL_DEVELOPER_TOOLS`,
    `TEMPORAL_GRACE_PERIOD_MS`, `TEMPORAL_FORCE_AFTER_MS`,
    `AMQP_CONNECT_TIMEOUT_MS`, `OUTBOX_POLL_MS` and `OUTBOX_MAX_LAG_MS` are
    fields beside `PORT`, `HOST`, `TEMPORAL_ADDRESS`, `AMQP_URL` and
@@ -1335,7 +1335,7 @@ A sixth rule is about production code that tests keep honest:
    the option is what a test or a settled decision fixes, the variable what a
    deployment sets, and `Config.pinned` decides between them per field.
 
-   **A variable carries its starter's prefix** — `HTTP_`, `TEMPORAL_`, `AMQP_`,
+   **A variable carries its starter's prefix** — `HTTP_`, `GRAPHQL_`, `TEMPORAL_`, `AMQP_`,
    `STORAGE_S3_`, `OUTBOX_` — because several starters share one process (an HTTP
    deployment that publishes to AMQP and reads a database composes three), and
    a bare name like `BODY_LIMIT` is one the next starter would also want. The

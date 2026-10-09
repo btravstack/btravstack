@@ -1834,7 +1834,7 @@ mount point is an error, and it is a `RuntimeStartFailed` at `listen` rather
 than a coin toss. A trailing slash is the same mount, so `/rpc` and `/rpc/`
 collide.
 
-`graphql(api, { schema, prefix?, requires?, units?, unit?, cors?, plugins? })` from
+`graphql(api, { schema, prefix?, requires?, units?, unit?, cors?, developerTools?, plugins? })` from
 `@btravstack/graphql-server` contributes a Yoga answerer. `schema`
 is any `GraphQLSchema` (the example builds one with Pothos); `prefix` defaults
 to `/graphql`. `requires` gates the whole mount through `RequiresGate` and the
@@ -1844,7 +1844,9 @@ shared principal resolver. Resolver context carries `principal`, `unit`,
 or typed by the context it reads, `Plugin<{ unit: … }>`: Yoga's `Plugin<C>` is
 invariant in `C`, so each is checked against the context the call builds, and
 one reading what the call never binds is refused against
-`"PLUGIN CONTEXT MISMATCH — …"`. The response remains one HTTP unit through
+`"PLUGIN CONTEXT MISMATCH — …"`. `developerTools` turns GraphiQL and
+introspection on together; it pins `GRAPHQL_DEVELOPER_TOOLS`, default `false`,
+so a root providing `graphql()` declares `needs: [Env]`. The response remains one HTTP unit through
 completion and drain. GraphQL, Yoga and `@btravstack/core` are required peers
 of that package.
 
