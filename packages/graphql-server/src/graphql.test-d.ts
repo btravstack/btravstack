@@ -98,3 +98,11 @@ const misspelt = { onParce: () => undefined };
 graphql(api, { schema, plugins: ["oops"] });
 // @ts-expect-error -- NOT A PLUGIN: a misspelt hook is no hook
 graphql(api, { schema, plugins: [misspelt] });
+// A server-level hook runs for a preflight and a refusal too, so its context is
+// never this call's: a plugin claiming a principal there is refused.
+const serverTyped: Plugin<
+  Record<never, never>,
+  { readonly principal: { readonly id: string } }
+> = {};
+// @ts-expect-error -- onRequest/onResponse also run unauthenticated, so they are never handed the principal
+graphql(api, { schema, requires: [{ user: [] }], plugins: [serverTyped] });

@@ -641,10 +641,7 @@ describe("fieldResult", () => {
       {
         outcome: "error",
         cause: expect.objectContaining({
-          path: ["order"],
-          originalError: expect.objectContaining({
-            cause: expect.objectContaining({ message: "database password in this message" }),
-          }),
+          cause: expect.objectContaining({ message: "database password in this message" }),
         }),
       },
     ]);
@@ -734,5 +731,63 @@ describe("fieldResult", () => {
         errors: [expect.objectContaining({ path: ["placed"], extensions: { code: "FORBIDDEN" } })],
       },
     ]);
+  });
+
+  it("runs context-typed plugin hooks only once the caller is authenticated", async ({ boot }) => {
+    // GIVEN a protected mount whose plugin records the principal every
+    // context-typed hook sees
+    const user = HttpAuthenticator<{ userId: string }>()({
+      inject: {},
+      sync: () => (headers) =>
+        headers.authorization === "Bearer good"
+          ? OkAsync({ userId: "u-1" })
+          : ErrAsync(new Unauthenticated()),
+    });
+    const api = defineAuth({ authenticators: { user } });
+    const seen: string[] = [];
+    const answerer = graphql(api, {
+      schema: createSchema({
+        typeDefs: "type Query { hello: String }",
+        resolvers: { Query: { hello: () => "world" } },
+      }),
+      requires: [{ user: [] }],
+      plugins: [
+        {
+          onParse: ({ context }) => void seen.push(`parse:${context.principal.userId}`),
+          onValidate: ({ context }) => void seen.push(`validate:${context.principal.userId}`),
+          onContextBuilding: ({ context }) => void seen.push(`context:${context.principal.userId}`),
+          onExecute: ({ args }) => void seen.push(`execute:${args.contextValue.principal.userId}`),
+        },
+      ],
+    });
+    const info = (
+      await boot(
+        Module("PluginAuthGraphqlApp")({
+          imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+          provides: [answerer, ...answerer.authenticators],
+          exports: [HttpRuntime, HttpHandler],
+        }),
+        { env: { HTTP_CORS_ORIGIN: "https://web.example" } },
+      ).runtimeInfo()
+    ).get();
+    const url = `http://127.0.0.1:${info?.port}/graphql`;
+    const post = (headers: Record<string, string>) =>
+      fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify({ query: "{ hello }" }),
+      });
+
+    // WHEN a browser preflights, an anonymous caller is refused, and an
+    // authenticated one is answered
+    await fetch(url, {
+      method: "OPTIONS",
+      headers: { origin: "https://web.example", "access-control-request-method": "POST" },
+    });
+    await post({});
+    await post({ authorization: "Bearer good" });
+
+    // THEN only the authenticated request reached the hooks, each with its principal
+    expect(seen).toEqual(["parse:u-1", "validate:u-1", "context:u-1", "execute:u-1"]);
   });
 });

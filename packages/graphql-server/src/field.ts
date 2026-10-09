@@ -5,8 +5,9 @@ import type { AsyncResult, Result } from "unthrown";
 /**
  * A resolver's answer from a `Result`, so a modeled failure is never thrown by
  * hand. `Ok` is the field's value. `Err` is the `GraphQLError` the resolver's
- * own triage minted from its `E` — an exhaustive `mapErrCases`, so widening
- * `E` fails every resolver that folds it — and GraphQL reports it on this
+ * own triage minted from its `E` — an exhaustive `mapErrCases`, or
+ * `flatMapErrCases` where one refusal is `Ok(null)`, so widening `E` fails
+ * every resolver that folds it — and GraphQL reports it on this
  * field's path, aliases and list indexes included, while its siblings resolve:
  * its message and `extensions` reach the client, its `originalError` does not.
  * A defect is masked to `Unexpected error.` whatever its cause, and `graphql()`

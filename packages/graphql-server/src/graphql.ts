@@ -38,6 +38,12 @@ import { P } from "unthrown";
 
 const dispose = Symbol("graphql.dispose");
 
+/** What failed: GraphQL locates a resolver's error by wrapping it, and a log line walks `cause`, not `originalError`. */
+const causeOf = (error: unknown): unknown =>
+  typeof error === "object" && error !== null && "originalError" in error && error.originalError
+    ? error.originalError
+    : error;
+
 const pathOf = (error: unknown): string | undefined =>
   typeof error === "object" && error !== null && "path" in error && Array.isArray(error.path)
     ? error.path.join(".")
@@ -63,10 +69,15 @@ type UnitGate<U extends Readonly<Record<string, AnyPort>>, Units, K extends stri
     };
 
 /**
- * The server context `graphql()` hands Yoga: what every plugin and resolver
- * reads beside Yoga's own `request`. `principal` is the caller `requires`
- * resolved, `undefined` without `requires`; `unit` is the `unit` record read
- * off the forked kind; `incoming` is the Node request.
+ * The context `graphql()` hands Yoga for an operation: what a resolver and a
+ * plugin's operation hooks (`onParse`, `onValidate`, `onContextBuilding`,
+ * `onExecute`, `onSubscribe`) read beside Yoga's own `request`. `principal` is
+ * the caller `requires` resolved, `undefined` without `requires`; `unit` is the
+ * `unit` record read off the forked kind; `incoming` is the Node request.
+ *
+ * Those hooks run only once the caller is authenticated. A preflight and a
+ * refusal end in Yoga's server hooks (`onRequest`, `onResponse`), whose
+ * context is not this type, so a plugin cannot claim a principal there.
  */
 export type GraphqlContext<Principal = unknown, Unit = Readonly<Record<string, unknown>>> = {
   readonly principal: Principal;
@@ -192,7 +203,7 @@ export const graphql = <
                 attributes: {},
                 details: { "graphql.path": pathOf(error) },
                 traced: false,
-              })({ outcome: "error", cause: error });
+              })({ outcome: "error", cause: causeOf(error) });
             return masked;
           },
         },

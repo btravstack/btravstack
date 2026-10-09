@@ -36,11 +36,12 @@ contract's authentication and authorization.
 
 A resolver answers through `fieldResult(result)`: it folds the backend's
 modeled errors into `GraphQLError`s with an `extensions.code` — an exhaustive
-`mapErrCases`, and `recoverErrCases` where a refusal is `null` — and
+`mapErrCases`, or `flatMapErrCases` where a refusal is `Ok(null)` — and
 `fieldResult` returns the value, reports a refusal on that field's own path
 while sibling fields resolve, and masks a defect. Masked defects are reported to
-`Observers`, never to Yoga's console: compose `observability()` (and `otel()`
-for traces) to have them recorded — without an observer they reach nothing. A GraphQL error
+`Observers`, never to Yoga's console: compose `observability()` to have them
+logged, with the field's path, and counted — without an observer they reach
+nothing. They open no span of their own. A GraphQL error
 normally retains HTTP 200; the framework does not impose a status or error
 schema on application outcomes. One HTTP request is one unit, closed after the
 response finishes and included in the runtime's drain.

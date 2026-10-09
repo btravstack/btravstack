@@ -30,7 +30,13 @@ real context therefore never widened to the bare `Plugin` the option used to
 take. The option is a union: an inline plugin is contextually typed by the
 context this call builds, and a declared one is inferred with its own context
 and refused against `PLUGIN CONTEXT MISMATCH` when the call's context lacks
-something it reads.
+something it reads. The context reaches only Yoga's OPERATION hooks, which run
+once the caller is authenticated (`graphql.spec.ts` records them across a
+preflight, a refusal and an accepted call); its server hooks run for all three,
+so the option types their context `{}` and refuses a plugin claiming more.
+A defect's report carries the located error's `originalError`, not the error
+itself, because a log line walks `cause` and would otherwise stop at the
+location.
 
 **`fieldResult` rebuilds both channels, because Yoga masks by shape.** A
 refusal is thrown as a fresh error carrying only its message and

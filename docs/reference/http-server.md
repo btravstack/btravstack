@@ -1859,7 +1859,7 @@ included, and reported to `Observers` as a `graphql` / `defect` operation
 carrying the cause and the field's path. It answers a `Promise`, the one
 async API in the stack that does: a resolver reports a field's error by
 rejecting, so this is where a `Result` leaves for GraphQL. The resolver turns its `E` into `GraphQLError`s itself, with an
-exhaustive `mapErrCases` (and `recoverErrCases` for a refusal that is `null`),
+exhaustive `mapErrCases` (or `flatMapErrCases`, where one refusal is `Ok(null)`),
 so widening `E` fails every resolver that folds it. `graphql()` enables no
 `@defer` / `@stream` plugin, so no incremental response can drop a field's
 error. A schema's `Subscription` is served over SSE, as Yoga does by default,
