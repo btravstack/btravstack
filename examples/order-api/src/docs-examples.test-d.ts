@@ -231,7 +231,6 @@ const _DocsOrdersApi = HttpModule("DocsOrdersApi")({
 // controller all reduce to this call.
 
 const depsOrdersRouter = api.OrpcRouter(contract.orders)({
-  inject: {},
   unit: { place: PlaceOrder, find: FindOrder, list: ListOrders },
   sync: () => ({
     place: ({ errors, context }, input) =>
@@ -344,7 +343,6 @@ const _docsUserAuth = jwtAuthenticator<{
 // breaks this file rather than only the how-to page's own inline copy.
 
 const _docsOrderRowFragment = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
-  inject: {},
   unit: { find: FindOrder },
   sync: () => (context, params) =>
     context.unit.find

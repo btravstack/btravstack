@@ -59,7 +59,6 @@ export const sweepStaleOrders = TemporalWorkflowActivities(
   orderContract,
   "sweepStaleOrders",
 )({
-  inject: {},
   unit: { repository: OrderRepository },
   sync: () => ({
     withdrawStaleOrders: ({ context, input }) =>

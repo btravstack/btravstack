@@ -20,7 +20,7 @@ kernel's deadline are the package's. Everything below is lifted from
 
 ## Recipe
 
-1. Implement the handlers with `AmqpHandlers(contract)({ inject, unit?, sync })` —
+1. Implement the handlers with `AmqpHandlers(contract)({ inject?, unit?, sync })` —
    one plain function per consumer, typed by the contract.
 2. Decide, per handler, what a domain `Err` and a `Defect` become
    (see the three-way split below).
@@ -32,7 +32,7 @@ kernel's deadline are the package's. Everything below is lifted from
 `AmqpHandlers(orderContract)` is the builder on the starter's own
 handlers port, typed for the contract (its service the record the contract
 wants, `WorkerInferHandlers<typeof orderContract>`) — no class, no name: a
-consumer serves one handlers record — so the next call, `{ inject, unit?, sync }`,
+consumer serves one handlers record — so the next call, `{ inject?, unit?, sync }`,
 declares what the handlers need and closes over it. **Nothing is injected per message** — the middleware
 the package installs opens the unit and calls `next()` unchanged:
 

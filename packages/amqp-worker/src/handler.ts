@@ -116,10 +116,10 @@ export const AmqpHandler = <C extends AnyAmqpContract, const K extends HandlerKe
   const mint = mintPiece(port, withUnit);
 
   return <
-    const D extends Readonly<Record<string, AnyPort>>,
+    const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
     const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
   >(options: {
-    readonly inject: D;
+    readonly inject?: D;
     /** The unit-scoped ports this handler reads off `context.unit`. */
     readonly unit?: U;
     readonly sync: (services: {

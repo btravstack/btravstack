@@ -18,13 +18,13 @@ describe("OrpcController", () => {
   });
 
   it("hands a no-deps router's sync one empty services record", async ({ noDepsRouter }) => {
-    // GIVEN a router declaring `inject: {}`, whose `sync` records its arguments
+    // GIVEN a router declaring no `inject`, whose `sync` records its arguments
     const { provider, handed } = noDepsRouter;
 
     // WHEN the graph constructs it
     await provider.construct([]);
 
-    // THEN it was handed exactly one argument, the empty record `inject` names —
+    // THEN it was handed exactly one argument, an empty record —
     // invisible to an arrow, visible to a rest parameter
     expect(handed()).toEqual([{}]);
   });

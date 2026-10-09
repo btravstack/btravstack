@@ -113,7 +113,6 @@ const ActivityUnit = Module("ActivityUnit")({
 // there is nothing to name). What the leaves read off `context.unit` is
 // declared once, beside `inject`.
 const orderActivities = TemporalActivities(contract)({
-  inject: {},
   unit: { place: PlaceOrder },
   sync: () => ({
     placeOrder: {

@@ -39,12 +39,11 @@ const pinContract = defineContract({
   consumers: { echo: defineEventConsumer(pinPublished, pinQueue) },
 });
 
-// Positive: `AmqpHandlers(contract)`'s record arm is `{ inject, unit?, sync }`
+// Positive: `AmqpHandlers(contract)`'s record arm is `{ inject?, unit?, sync }`
 // on the starter's handlers port typed for the contract, so a record with a
 // handler for every consumer/rpc key the contract declares compiles, and the
 // provider satisfies both the sugar and the primitive.
 const pinHandlers = AmqpHandlers(pinContract)({
-  inject: {},
   sync: () => ({ echo: () => OkAsync(undefined) }),
 });
 AmqpModule("Pin")({ contract: pinContract, handlers: pinHandlers, needs: [Env] });

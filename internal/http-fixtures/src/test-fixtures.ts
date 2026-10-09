@@ -434,7 +434,6 @@ const csrfApi = defineHttp({
 });
 
 const csrfNoteFragment = csrfApi.HtmxPost("/note")({
-  inject: {},
   sync: () => () => OkAsync(html`<p>saved</p>`),
 });
 
@@ -918,7 +917,7 @@ export const helloController = publicApi.OrpcController(
 const echoesController = publicApi.OrpcController(
   slicedContract,
   "echoes.ping",
-)({ inject: {}, sync: () => () => OkAsync("pong") });
+)({ sync: () => () => OkAsync("pong") });
 
 /**
  * A router declaring no dependencies, whose `sync` records what it was handed.
@@ -928,7 +927,6 @@ const echoesController = publicApi.OrpcController(
 const noDepsRouterRecording = () => {
   let seen: readonly unknown[] = [];
   const provider = publicApi.OrpcRouter(oc.router({ greetings: helloFragment }))({
-    inject: {},
     sync: ((...args: readonly unknown[]) => {
       seen = args;
       return { greetings: { hello: () => OkAsync("hello world") } };

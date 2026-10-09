@@ -86,7 +86,7 @@ augmented tuples to di's own `Module(name)`.
 | Option                   | Required | Default                                                       | What it is                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ------------------------ | -------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `contract`               | yes      | —                                                             | an `amqp-contract` contract; the queues consumed are read off its `consumers` and `rpcs`                                                                                                                                                                                                                                                                                                                                    |
-| `handlers`               | yes      | —                                                             | the handlers **provider** — a `Provider<HandlersInstanceOf<TContract>, E, N>`, what `AmqpHandlers(contract)({ inject, unit?, sync })` returns for **this** `contract`, one entry per `consumers` / `rpcs` key; one built for another contract fails at the call                                                                                                                                                             |
+| `handlers`               | yes      | —                                                             | the handlers **provider** — a `Provider<HandlersInstanceOf<TContract>, E, N>`, what `AmqpHandlers(contract)({ inject?, unit?, sync })` returns for **this** `contract`, one entry per `consumers` / `rpcs` key; one built for another contract fails at the call                                                                                                                                                            |
 | `url`                    | no       | read from `AMQP_URL`                                          | pins the broker — a test's container                                                                                                                                                                                                                                                                                                                                                                                        |
 | `connectionOptions`      | no       | unset — `amqp-connection-manager`'s own defaults              | `AmqpConnectionOptions`, the connection tuning `TypedAmqpWorker.create` accepts: heartbeat, reconnect interval, `findServers`, TLS/socket options                                                                                                                                                                                                                                                                           |
 | `defaultConsumerOptions` | no       | unset — and `@amqp-contract/core` then applies `prefetch: 10` | `@amqp-contract/worker`'s `ConsumerOptions`, applied to every handler: `prefetch` (the throughput knob — `"unbounded"` is the no-cap spelling, and unset is **`10`**, not uncapped), `priority`, `arguments`, `consumerTag`, `exclusive`                                                                                                                                                                                    |
@@ -175,10 +175,10 @@ operation, so mapping them to `outcome: "ok"` would discard them anyway.
 
 The first call fixes the contract type (the value is otherwise unused) and
 returns a builder on the starter's handlers port, typed for `C` — so
-the second call is `{ inject, unit?, sync }`, whose `sync` hands back the whole
+the second call is `{ inject?, unit?, sync }`, whose `sync` hands back the whole
 handlers record, checked against the contract before any module sees it (a
 record missing a consumer, or with a typo'd key, is refused here), and the
-provider carries the port as `provider.port`. It is `{ inject, unit?, sync }`
+provider carries the port as `provider.port`. It is `{ inject?, unit?, sync }`
 rather than di's whole arm set for **parity**: `api.OrpcRouter(contract)` and
 all three packages' piece factories spell it that way, so one arm across the
 family is one surface to learn and one to keep. `unit` declares the ports
@@ -273,7 +273,7 @@ compile error here rather than at the root. There is no name to give and
 nothing minted by hand: the provider carries its port as
 `provider.port` (`HandlerPortOf<C, K>`).
 
-The options are `{ inject, unit?, sync }` — this package's own record, not
+The options are `{ inject?, unit?, sync }` — this package's own record, not
 di's whole arm set. `unit` names the ports the handler reads off
 `context.unit`, and `sync`'s return is typed by that record while the port it
 lands on keeps the context-free handler shape. `value` **could** have carried

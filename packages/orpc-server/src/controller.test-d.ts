@@ -22,11 +22,11 @@ const contract = { orders: { place: oc }, users: { find: oc } };
 const ordersPiece = publicApi.OrpcController(
   contract,
   "orders",
-)({ inject: {}, sync: () => ({ place: () => OkAsync("placed") }) });
+)({ sync: () => ({ place: () => OkAsync("placed") }) });
 const usersPiece = publicApi.OrpcController(
   contract,
   "users",
-)({ inject: {}, sync: () => ({ find: () => OkAsync("found") }) });
+)({ sync: () => ({ find: () => OkAsync("found") }) });
 
 // 1. Every contract key must be covered. The refusal is as long as the array
 //    the caller wrote, so the diagnostic lands on its trailing element and

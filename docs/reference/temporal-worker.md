@@ -171,9 +171,9 @@ than what is present.** Per **attempt**, not per activity: a retried activity re
 The first call fixes `C` (the contract value is otherwise unused; it exists so
 `C` is inferred rather than written) and returns a builder on the
 starter's activities port, typed for `C` — so the second call is
-`{ inject, unit?, sync }`, whose `sync` hands back the whole activities record,
+`{ inject?, unit?, sync }`, whose `sync` hands back the whole activities record,
 and the provider it returns carries the port typed as `provider.port`. It is
-`{ inject, unit?, sync }` rather than di's whole arm set for **parity**:
+`{ inject?, unit?, sync }` rather than di's whole arm set for **parity**:
 `api.OrpcRouter(contract)` and all three packages' piece factories spell it
 that way, so one arm across the family is one surface to learn and one to keep.
 `unit` declares the ports **every** entry of the record reads off
@@ -340,7 +340,7 @@ activity whose input has drifted is a compile error here rather than at
 startup. There is no name to give and nothing minted by hand: the provider
 carries its port as `provider.port` (`WorkflowActivitiesPortOf<C, K>`).
 
-The options are `{ inject, unit?, sync }` — this package's own record, not
+The options are `{ inject?, unit?, sync }` — this package's own record, not
 di's whole arm set. `unit` names the ports the activities read off
 `context.unit`, and `sync`'s return is typed by that record while the port it
 lands on keeps the context-free shape `declareActivitiesHandler` takes. The

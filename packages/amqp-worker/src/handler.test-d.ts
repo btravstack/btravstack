@@ -36,7 +36,7 @@ const pinContract = defineContract({
 
 class Tenant extends Port("PinSliceTenant")<{ readonly id: string }> {}
 
-const left = AmqpHandler(pinContract, "left")({ inject: {}, sync: () => () => OkAsync(undefined) });
+const left = AmqpHandler(pinContract, "left")({ sync: () => () => OkAsync(undefined) });
 const right = AmqpHandler(
   pinContract,
   "right",

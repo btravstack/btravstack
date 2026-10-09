@@ -155,10 +155,10 @@ export const TemporalWorkflowActivities = <
   const mint = mintPiece(port, withUnit);
 
   return <
-    const D extends Readonly<Record<string, AnyPort>>,
+    const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
     const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
   >(options: {
-    readonly inject: D;
+    readonly inject?: D;
     /** The unit-scoped ports these activities read off `context.unit`. */
     readonly unit?: U;
     readonly sync: (services: {

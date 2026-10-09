@@ -49,7 +49,6 @@ const record = { span: RouteSpan, tenant: RouteTenant };
 
 // A route requiring `user` opens the module that kind bound, and sees both.
 void kinded.HtmxGet("/profile", { requires: [{ user: [] }] })({
-  inject: {},
   unit: record,
   sync: () => (context) => {
     context.unit.span.finish();

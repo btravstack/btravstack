@@ -45,7 +45,7 @@ class Tenant extends Port("PinSliceTenant")<{ readonly id: string }> {}
 const echo = TemporalWorkflowActivities(
   pinContract,
   "runEcho",
-)({ inject: {}, sync: () => ({ echo: ({ input }) => OkAsync(input) }) });
+)({ sync: () => ({ echo: ({ input }) => OkAsync(input) }) });
 const shout = TemporalWorkflowActivities(
   pinContract,
   "runShout",

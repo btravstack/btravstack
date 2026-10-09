@@ -186,7 +186,6 @@ export const findOrder = api.OrpcController(
   contract,
   "orders.find",
 )({
-  inject: {},
   unit: { find: FindOrder },
   sync: () => ({ errors, context }, input) =>
     context.unit.find
