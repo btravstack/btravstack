@@ -134,4 +134,50 @@ describe("the order GraphQL gateway", () => {
       calls: [],
     });
   });
+
+  it("counts the aliases a fragment brings", async ({ gateway, orderApi }) => {
+    // GIVEN a mutation whose aliases all arrive through a fragment
+    const aliases = Array.from(
+      { length: 11 },
+      (_, index) => `a${String(index)}: placeOrder(id: "${NEW}", quantity: 1) { order { id } }`,
+    );
+
+    // WHEN it is sent
+    const body = await gateway(
+      `mutation { ...Flood } fragment Flood on Mutation { ${aliases.join(" ")} }`,
+    );
+
+    // THEN it is refused like the inline flood, and nothing was placed
+    expect({ body, calls: orderApi.calls }).toEqual({
+      body: { errors: [expect.objectContaining({ extensions: { code: "TOO_MANY_ALIASES" } })] },
+      calls: [],
+    });
+  });
+
+  it("counts each operation of a document on its own", async ({ gateway, orderApi }) => {
+    // GIVEN a document whose two operations are under the limit apart and over it together
+    orderApi.seed(placed);
+    const several = (count: number) =>
+      Array.from(
+        { length: count },
+        (_, index) => `o${String(index)}: order(id: "${PLACED}") { id }`,
+      ).join(" ");
+
+    // WHEN the smaller one is selected
+    const body = await gateway(
+      `query Small { ${several(4)} } query Large { ${several(8)} }`,
+      "bearer",
+      "Small",
+    );
+
+    // THEN it is answered
+    expect(body).toEqual({
+      data: {
+        o0: { id: PLACED },
+        o1: { id: PLACED },
+        o2: { id: PLACED },
+        o3: { id: PLACED },
+      },
+    });
+  });
 });

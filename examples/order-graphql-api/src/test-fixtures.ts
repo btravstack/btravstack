@@ -21,6 +21,7 @@ type OrderApiStub = {
 type Gateway = (
   query: string,
   credentials?: "bearer" | "none",
+  operationName?: string,
 ) => Promise<{ readonly data?: unknown; readonly errors?: readonly unknown[] }>;
 
 const bodyOf = async (request: IncomingMessage): Promise<{ readonly json: unknown }> => {
@@ -30,7 +31,9 @@ const bodyOf = async (request: IncomingMessage): Promise<{ readonly json: unknow
 };
 
 const answer = (response: ServerResponse, status: number, json: unknown): void => {
-  response.writeHead(status, { "content-type": "application/json" });
+  // The gateway's own calls share the process's connection pool, and the next
+  // test's stub may bind this one's port.
+  response.writeHead(status, { "content-type": "application/json", connection: "close" });
   response.end(JSON.stringify({ json, meta: [] }));
 };
 
@@ -107,15 +110,18 @@ export const it = test.extend<{
   gateway: async ({ boot, orderApi }, use) => {
     const app = boot(OrderGraphqlApi, { env: { ORDER_API_URL: orderApi.url } });
     const info = (await app.runtimeInfo()).get();
-    await use(async (query, credentials = "bearer") =>
+    await use(async (query, credentials = "bearer", operationName) =>
       (
         await fetch(`http://127.0.0.1:${String(info?.port)}/graphql`, {
           method: "POST",
           headers: {
+            // A fresh connection per call: a pooled one can outlive the
+            // previous test's gateway and be reused on its recycled port.
+            connection: "close",
             "content-type": "application/json",
             ...(credentials === "bearer" ? { authorization: "Bearer caller" } : {}),
           },
-          body: JSON.stringify({ query }),
+          body: JSON.stringify({ query, operationName }),
         })
       ).json(),
     );
