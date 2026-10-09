@@ -10,7 +10,10 @@ Pass `units` with `unit` to check each injected port against the module the
 selected request kind actually forks. Pass the same `units` record to
 `httpServer({ unit: units })` so the runtime can apply unit test overrides.
 Yoga plugins and CORS policy are explicit
-options; the wildcard CORS default and Yoga console logging are disabled.
+options; the wildcard CORS default and Yoga console logging are disabled, and
+a masked defect is reported to `Observers` instead. `fieldResult(result)`
+answers a resolver from an `AsyncResult`, with a refusal on its own field's
+path.
 Preflights use Yoga's CORS policy before authentication, and Yoga plugins are
 disposed when the application stops.
 

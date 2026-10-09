@@ -1,14 +1,17 @@
 import { start } from "@btravstack/core";
+import { Observers, type Settled } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { HttpAuthenticator, Unauthenticated, granted } from "@btravstack/http-server";
 import { defineAuth } from "@btravstack/http-server";
 import { HttpHandler } from "@btravstack/http-server/internal";
 import { HttpRuntime, httpServer } from "@btravstack/http-server/internal";
 import { it } from "@btravstack/internal-http-fixtures";
-import { createSchema } from "graphql-yoga";
-import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
+import type { GraphQLError } from "graphql";
+import { createGraphQLError, createSchema, type Plugin } from "graphql-yoga";
+import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
+import { fieldResult } from "./field.js";
 import { graphql } from "./graphql.js";
 
 describe("graphql answerer", () => {
@@ -513,5 +516,136 @@ describe("graphql answerer", () => {
         drain: { inFlightAtStart: 1, completed: 1, abandoned: 0 },
       }),
     );
+  });
+});
+
+describe("fieldResult", () => {
+  const schema = createSchema({
+    typeDefs: "type Query { order(id: String!): String, orders(ids: [String!]!): [String] }",
+    resolvers: {
+      Query: {
+        order: (_parent: unknown, { id }: { id: string }) => fieldResult(lookup(id)),
+        orders: (_parent: unknown, { ids }: { ids: readonly string[] }) =>
+          ids.map((id) => fieldResult(lookup(id))),
+      },
+    },
+  });
+  const lookup = (id: string): AsyncResult<string, GraphQLError> =>
+    id === "refused"
+      ? ErrAsync(createGraphQLError("not yours", { extensions: { code: "FORBIDDEN" } }))
+      : id === "broken"
+        ? fromSafePromise(Promise.reject(new Error("database password in this message")))
+        : OkAsync(`order ${id}`);
+  const appWith = (seen: Settled[], plugins: readonly Plugin[] = []) =>
+    Module("FieldResultApp")({
+      imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+      provides: [
+        graphql(defineAuth(), { schema, plugins }),
+        Provider.member(Observers)({
+          inject: {},
+          sync: () => (operation) => (settled) => {
+            if (operation.component === "graphql") seen.push(settled);
+          },
+        }),
+      ],
+      exports: [HttpRuntime, HttpHandler],
+    });
+  const query = async (port: number | undefined, source: string) =>
+    (
+      await fetch(`http://127.0.0.1:${port}/graphql`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: source }),
+      })
+    ).json();
+
+  it("answers a refusal on its own alias, beside a sibling that resolved", async ({ boot }) => {
+    // GIVEN two aliased fields, one refused by its service
+    const info = (await boot(appWith([])).runtimeInfo()).get();
+
+    // WHEN both are asked for in one operation
+    const body = await query(info?.port, '{ mine: order(id: "1") theirs: order(id: "refused") }');
+
+    // THEN the sibling is data and the refusal is that alias's error
+    expect(body).toEqual({
+      data: { mine: "order 1", theirs: null },
+      errors: [expect.objectContaining({ path: ["theirs"], extensions: { code: "FORBIDDEN" } })],
+    });
+  });
+
+  it("answers a refusal at its list index", async ({ boot }) => {
+    // GIVEN a list whose second item is refused
+    const info = (await boot(appWith([])).runtimeInfo()).get();
+
+    // WHEN the list is asked for
+    const body = await query(info?.port, '{ orders(ids: ["1", "refused", "3"]) }');
+
+    // THEN only that item is null, and the error names its index
+    expect(body).toEqual({
+      data: { orders: ["order 1", null, "order 3"] },
+      errors: [expect.objectContaining({ path: ["orders", 1], extensions: { code: "FORBIDDEN" } })],
+    });
+  });
+
+  it("masks a defect for the client", async ({ boot }) => {
+    // GIVEN a field whose service defects
+    const info = (await boot(appWith([])).runtimeInfo()).get();
+
+    // WHEN it is asked for
+    const body = await query(info?.port, '{ order(id: "broken") }');
+
+    // THEN the client sees Yoga's masked message, never the cause
+    expect(body).toEqual({
+      data: { order: null },
+      errors: [
+        expect.objectContaining({
+          message: "Unexpected error.",
+          path: ["order"],
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        }),
+      ],
+    });
+  });
+
+  it("reports the masked defect to Observers, once", async ({ boot }) => {
+    // GIVEN an observer beside a field whose service defects
+    const seen: Settled[] = [];
+    const info = (await boot(appWith(seen)).runtimeInfo()).get();
+
+    // WHEN it is asked for
+    await query(info?.port, '{ order(id: "broken") }');
+
+    // THEN the observer received the defect with its cause
+    expect(seen).toEqual([
+      {
+        outcome: "error",
+        cause: expect.objectContaining({
+          path: ["order"],
+          originalError: expect.objectContaining({
+            message: "database password in this message",
+          }),
+        }),
+      },
+    ]);
+  });
+
+  it("reports a defect outside any field, with no path", async ({ boot }) => {
+    // GIVEN a plugin that defects before any field resolves
+    const seen: Settled[] = [];
+    const failing: Plugin = {
+      onExecute: () => {
+        // oxlint-disable-next-line unthrown/no-throw -- the defect under test
+        throw new Error("plugin broke");
+      },
+    };
+    const info = (await boot(appWith(seen, [failing])).runtimeInfo()).get();
+
+    // WHEN any operation runs
+    await query(info?.port, '{ order(id: "1") }');
+
+    // THEN the observer received it, with no field to name
+    expect(seen).toEqual([
+      { outcome: "error", cause: expect.objectContaining({ message: "plugin broke" }) },
+    ]);
   });
 });

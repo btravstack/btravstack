@@ -182,6 +182,14 @@ dependencies by name`; a positional array is refused as
   but it renames public API on two packages with no obviously-right
   replacement, so it is recorded here rather than guessed at.
 
+- **A GraphQL mutation's result union is not derived from `E`** (issue #474).
+  `E` is a type, and a union's members are runtime object types, so deriving
+  them needs runtime error classes or a registry — and the registry is the list
+  that drifts. The exhaustive `mapErrCases` a resolver already writes cannot:
+  widening `E` fails every fold at compile time. A union, where a schema wants
+  one, is built from that same fold. The trigger to reopen: a schema whose
+  unions are written twice — once as types, once as the fold.
+
 - **Filtering with operators is declined** (issue #261). A normed
   `{ field, op, value }` owes an operator set per type, nesting and null
   handling, and then a translator into Prisma or SQL — a query builder those
