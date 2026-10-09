@@ -1,5 +1,24 @@
 # @btravstack/graphql-server
 
+## 0.27.0
+
+### Minor Changes
+
+- 56157f2: `fieldResult(result)` answers a resolver from an `AsyncResult<T, GraphQLError>`:
+  the value, a refusal reported on the field's own path while siblings resolve,
+  or a masked defect. A masked defect is now reported to `Observers`, where it
+  used to be recorded nowhere. `plugins` accepts a plugin typed by the context it
+  reads, checked against the `GraphqlContext` the call builds. `@btravstack/core`
+  is a new required peer.
+
+### Patch Changes
+
+- Updated dependencies [bd99464]
+  - @btravstack/core@0.27.0
+  - @btravstack/http-server@0.27.0
+  - @btravstack/contract@0.27.0
+  - @btravstack/di@0.27.0
+
 ## 0.26.0
 
 ### Patch Changes

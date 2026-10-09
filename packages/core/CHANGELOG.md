@@ -1,5 +1,19 @@
 # @btravstack/core
 
+## 0.27.0
+
+### Minor Changes
+
+- bd99464: `inject` is optional, absent meaning `{}`, on `OrpcController`, `OrpcRouter`,
+  `HtmxGet`, `HtmxPost`, `TemporalWorkflowActivities`, `TemporalActivities`,
+  `AmqpHandler` and `AmqpHandlers`. A piece whose every dependency comes off the
+  unit declares `unit` alone instead of `inject: {}` beside it.
+
+### Patch Changes
+
+- @btravstack/config@0.27.0
+  - @btravstack/di@0.27.0
+
 ## 0.26.0
 
 ### Minor Changes
