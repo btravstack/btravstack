@@ -1,3 +1,4 @@
+import { Env } from "@btravstack/config";
 import { start } from "@btravstack/core";
 import { Observers, type Settled } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
@@ -24,6 +25,7 @@ describe("graphql answerer", () => {
     const answerer = graphql(defineAuth(), { schema });
     const app = boot(
       Module("GraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
@@ -46,6 +48,77 @@ describe("graphql answerer", () => {
     });
   });
 
+  describe.each([
+    {
+      deployment: "that set nothing",
+      pin: {},
+      env: {},
+      graphiql: false,
+      introspection: {
+        errors: [
+          expect.objectContaining({
+            message: "GraphQL introspection is not allowed, but the query contained __schema",
+          }),
+        ],
+      },
+    },
+    {
+      deployment: "that set GRAPHQL_DEVELOPER_TOOLS",
+      pin: {},
+      env: { GRAPHQL_DEVELOPER_TOOLS: "true" },
+      graphiql: true,
+      introspection: {
+        data: { __typename: "Query", __schema: { queryType: { name: "Query" } } },
+      },
+    },
+    {
+      deployment: "that set GRAPHQL_DEVELOPER_TOOLS, under a pin off",
+      pin: { developerTools: false },
+      env: { GRAPHQL_DEVELOPER_TOOLS: "true" },
+      graphiql: false,
+      introspection: { errors: [expect.anything()] },
+    },
+  ])("developer tools, for a deployment $deployment", (row) => {
+    const schema = createSchema({
+      typeDefs: "type Query { hello: String }",
+      resolvers: { Query: { hello: () => "world" } },
+    });
+    const root = Module("DeveloperToolsGraphqlApp")({
+      needs: [Env],
+      imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+      provides: [graphql(defineAuth(), { schema, ...row.pin })],
+      exports: [HttpRuntime, HttpHandler],
+    });
+
+    it(`${row.graphiql ? "serves" : "does not serve"} GraphiQL`, async ({ boot }) => {
+      // GIVEN the mount, under this deployment
+      const info = (await boot(root, { env: row.env }).runtimeInfo()).get();
+
+      // WHEN a browser asks for the page
+      const page = await fetch(`http://127.0.0.1:${info!.port}/graphql`, {
+        headers: { accept: "text/html" },
+      });
+
+      // THEN GraphiQL renders exactly when the tools are on
+      expect(page.headers.get("content-type")?.startsWith("text/html") ?? false).toBe(row.graphiql);
+    });
+
+    it(`${row.graphiql ? "answers" : "refuses"} introspection`, async ({ boot }) => {
+      // GIVEN the mount, under this deployment
+      const info = (await boot(root, { env: row.env }).runtimeInfo()).get();
+
+      // WHEN a client introspects
+      const response = await fetch(`http://127.0.0.1:${info!.port}/graphql`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: "{ __typename __schema { queryType { name } } }" }),
+      });
+
+      // THEN the schema answers when the tools are on and is refused by field name when not
+      expect(await response.json()).toEqual(row.introspection);
+    });
+  });
+
   it("keeps CORS closed by default and honors the configured origin", async ({ boot }) => {
     // GIVEN a closed server, an allowed origin and a credentialed origin
     const schema = createSchema({
@@ -55,6 +128,7 @@ describe("graphql answerer", () => {
     const app = (corsOrigin?: string, credentials = false) =>
       boot(
         Module("CorsGraphqlApp")({
+          needs: [Env],
           imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
           provides: [
             graphql(
@@ -104,6 +178,7 @@ describe("graphql answerer", () => {
     });
     const app = boot(
       Module("CustomGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
         provides: [
           graphql(defineAuth(), {
@@ -157,6 +232,7 @@ describe("graphql answerer", () => {
     });
     const app = boot(
       Module("ScopedGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1", unit: { anonymous: unit } })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
@@ -204,6 +280,7 @@ describe("graphql answerer", () => {
     const answerer = graphql(api, { schema, requires: [{ user: [] }] });
     const app = boot(
       Module("ProtectedGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
         provides: [answerer, ...answerer.authenticators],
         exports: [HttpRuntime, HttpHandler],
@@ -274,6 +351,7 @@ describe("graphql answerer", () => {
     });
     const app = boot(
       Module("ScopedGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
         provides: [answerer, ...answerer.authenticators],
         exports: [HttpRuntime, HttpHandler],
@@ -334,6 +412,7 @@ describe("graphql answerer", () => {
     });
     const app = boot(
       Module("BrokenGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1", unit: { anonymous: unit } })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
@@ -373,6 +452,7 @@ describe("graphql answerer", () => {
     });
     const app = start(
       Module("MismatchedGraphqlUnit")({
+        needs: [Env],
         imports: [httpServer({ unit: { anonymous: bound } })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
@@ -407,6 +487,7 @@ describe("graphql answerer", () => {
     });
     const app = boot(
       Module("DisposableGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
@@ -438,6 +519,7 @@ describe("graphql answerer", () => {
     const answerer = graphql(defineAuth(), { schema });
     const app = boot(
       Module("FailingGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
@@ -491,6 +573,7 @@ describe("graphql answerer", () => {
     const answerer = graphql(defineAuth(), { schema });
     const app = boot(
       Module("DrainingGraphqlApp")({
+        needs: [Env],
         imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
@@ -559,6 +642,7 @@ describe("fieldResult", () => {
             : OkAsync(`order ${id}`);
   const appWith = (seen: Settled[], plugins: readonly Plugin[] = []) =>
     Module("FieldResultApp")({
+      needs: [Env],
       imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
       provides: [
         graphql(defineAuth(), { schema, plugins }),
@@ -763,6 +847,7 @@ describe("fieldResult", () => {
     const info = (
       await boot(
         Module("PluginAuthGraphqlApp")({
+          needs: [Env],
           imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
           provides: [answerer, ...answerer.authenticators],
           exports: [HttpRuntime, HttpHandler],

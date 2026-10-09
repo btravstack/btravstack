@@ -8,8 +8,8 @@ description: Run a code-first GraphQL gateway as a separate HTTP process backed 
 > **How-to.** Build a GraphQL schema in TypeScript, run it in its own HTTP
 > process, and call a backend through a typed client.
 
-Install `@btravstack/http-server`, `@btravstack/graphql-server`, `graphql`, and
-`graphql-yoga`. Add `@pothos/core` when building the schema in TypeScript.
+Install `@btravstack/http-server`, `@btravstack/graphql-server`,
+`@btravstack/config`, `graphql`, and `graphql-yoga`. Add `@pothos/core` when building the schema in TypeScript.
 `@btravstack/graphql-server` accepts any `GraphQLSchema`; Pothos is the choice
 of this example, not a framework requirement.
 
@@ -92,8 +92,15 @@ Generate the SDL with
 `pnpm --filter @btravstack/example-order-graphql-api graphql:schema`. The
 checked-in [schema.graphql](https://github.com/btravstack/btravstack/blob/main/examples/order-graphql-contract/schema.graphql)
 is consumable without the gateway or Yoga. Its freshness test detects schema
-drift. Expose live introspection or a contract UI according to the deployment's
-access policy; the answerer mounts no GraphiQL page by default.
+drift.
+
+GraphiQL and introspection are one switch, off by default:
+`GRAPHQL_DEVELOPER_TOOLS=true` in a developer's environment turns both on, and
+a production deployment that sets nothing exposes neither. `developerTools` on
+`graphql()` pins it. Off, an operation naming `__schema` or `__type` is refused
+at validation; `__typename` still answers. On a protected mount the GraphiQL
+page itself renders before authentication, and the operations it sends are
+authenticated like any other.
 
 A schema's `Subscription` type is served over SSE, as Yoga serves it by
 default, and an event's resolver answers through `fieldResult` like any field,

@@ -10,7 +10,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "dev": "PORT=3001 PROBE_PORT=0 tsx watch --env-file=../../.env.dev src/main.ts",
+    "dev": "GRAPHQL_DEVELOPER_TOOLS=true PORT=3001 PROBE_PORT=0 tsx watch --env-file=../../.env.dev src/main.ts",
     "graphql:schema": "tsx src/print-graphql-schema.ts > ../order-graphql-contract/schema.graphql",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

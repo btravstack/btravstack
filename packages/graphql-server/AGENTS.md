@@ -24,6 +24,20 @@ passes through unreported. `Observers` comes from `httpServer()`, which
 contributes `noObserverMember`, so the answerer adds no wiring to a root; that
 is why `@btravstack/core` is a required peer.
 
+**GraphiQL and introspection are one switch, `GRAPHQL_DEVELOPER_TOOLS`, off
+by default** (#481). GraphiQL needs introspection, so two switches would only
+add a combination nobody wants, and off by default means production exposes
+neither by omission. The variable is read by the answerer's own provider
+through `Env`, pinned by `developerTools`, which is why a root providing
+`graphql()` declares `needs: [Env]`. Off, introspection is refused by a
+validation rule that reads field names only: graphql's
+`NoSchemaIntrospectionCustomRule` asserts the schema's class and throws when
+the application and Yoga load two copies of `graphql` (measured under vitest),
+and its error is Yoga's `createGraphQLError` for the same reason as
+`fieldResult`'s. Yoga registers GraphiQL ahead of every plugin, so on a
+protected mount the page renders before the refusal; the operations it sends
+are authenticated like any other.
+
 **`plugins` is checked per element, because Yoga's `Plugin<C>` is invariant
 in `C`** (`onPluginInit` hands a plugin `Plugin<C>[]`). A plugin typed for the
 real context therefore never widened to the bare `Plugin` the option used to

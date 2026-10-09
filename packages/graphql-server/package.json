@@ -47,6 +47,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit -p tsconfig.test-d.json"
   },
   "devDependencies": {
+    "@btravstack/config": "workspace:*",
     "@btravstack/contract": "workspace:*",
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
@@ -64,6 +65,7 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
+    "@btravstack/config": "workspace:^",
     "@btravstack/contract": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",

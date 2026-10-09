@@ -11,7 +11,9 @@ selected request kind actually forks. Pass the same `units` record to
 `httpServer({ unit: units })` so the runtime can apply unit test overrides.
 Yoga plugins and CORS policy are explicit
 options; the wildcard CORS default and Yoga console logging are disabled, and
-a masked defect is reported to `Observers` instead. `fieldResult(result)`
+a masked defect is reported to `Observers` instead. GraphiQL and
+introspection stay off unless `GRAPHQL_DEVELOPER_TOOLS=true` (or
+`developerTools: true`) turns both on. `fieldResult(result)`
 answers a resolver from an `AsyncResult`, with a refusal on its own field's
 path.
 Preflights use Yoga's CORS policy before authentication, and Yoga plugins are

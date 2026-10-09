@@ -1814,6 +1814,9 @@ importers:
 
   packages/graphql-server:
     devDependencies:
+      '@btravstack/config':
+        specifier: workspace:*
+        version: link:../config
       '@btravstack/contract':
         specifier: workspace:*
         version: link:../contract

@@ -242,6 +242,7 @@ composition root.
 | `HTTP_OIDC_CLIENT_ID`      | required                | `oidc()` — this deployment's client; `sessionAuthenticator()` reads it too                                                                                                                                                          |
 | `HTTP_OIDC_CLIENT_SECRET`  | required                | `oidc()` — its secret: the authorization-code flow here is a confidential client's                                                                                                                                                  |
 | `HTTP_OIDC_REDIRECT_URI`   | required                | `oidc()` — the URI **registered** with the provider, which is also what the code grant is checked against, a `Config.url` field; a second login reads `<variablePrefix>_*` instead of the four                                      |
+| `GRAPHQL_DEVELOPER_TOOLS`  | `false`                 | [`graphql()`](/how-to/serve-graphql) — GraphiQL and introspection, both or neither; pinned by `developerTools`                                                                                                                      |
 | `TEMPORAL_ADDRESS`         | `127.0.0.1:7233`        | [`temporal()`](/reference/temporal-worker)                                                                                                                                                                                          |
 | `TEMPORAL_NAMESPACE`       | `default`               | `temporal()`                                                                                                                                                                                                                        |
 | `TEMPORAL_GRACE_PERIOD_MS` | `10000`                 | `temporal()` — `shutdownGraceTime`                                                                                                                                                                                                  |
@@ -259,7 +260,7 @@ composition root.
 
 **A variable carries its starter's prefix**, so two starters in one process
 cannot collide — an HTTP deployment that also publishes to AMQP and reads a
-database composes three of them. `HTTP_`, `TEMPORAL_`, `AMQP_`, `OUTBOX_`,
+database composes three of them. `HTTP_`, `GRAPHQL_`, `TEMPORAL_`, `AMQP_`, `OUTBOX_`,
 `STORAGE_S3_` are the namespaces; the exceptions are names the ecosystem already owns and
 that a platform injects for you (`PORT`, `HOST`, `DATABASE_URL`, `REDIS_URL`,
 `SMTP_URL`, `LOG_LEVEL`), where a prefix would break the convention rather than
