@@ -77,30 +77,31 @@ prismaOrderRepository(db) }` — an adapter factory takes the client, not a
   of them single-dependency, and the cheaper fix if the arrow grates is those
   five adapter factories taking `{ db }` instead of `db`.
 
-  **`Provider("Id")` mints its port** (issue #452), and it is an overload of
-  `Provider` rather than `Port.implemented`, because what the call yields is
-  a provider and what an application holds is that provider — the port rides
-  on it as `.port`, the shape `Config.provider("Name")` already had. One
-  name, two first arguments, the way `Config.provider` reads. `S` is
-  inferred by intersecting a second `Qualification<…, S>` onto the options:
-  `O` alone gives `S` no inference site, and binding `O` against `unknown`
-  left a `release` parameter `unknown` (measured). The string overload is
-  declared FIRST so a refused port call reports the port overload.
+  **`Provider.class(id, { inject })` is the one way to declare a port with its
+  implementation** (issue #457, replacing #452's `Provider("Id")`). The
+  subclass is the port, the provider and the service at once. Four things are
+  load-bearing:
 
-  **The minted port rides on `Provider`'s fourth parameter, not an
-  `& { readonly port }` intersection.** `.port` read off the intersection is
-  `AnyPort & PortClassOf<…>`; the intersection flattens, `AnyPort`'s private
-  instance alias cannot be named, and the emitter falls back to the brand
-  symbols — TS4023 on `export const FindOrder = provider.port` (measured in
-  `examples/di-hexagonal`'s emit gate, which now carries that export). The
-  port form keeps its intersection: its `P` is a class the consumer declared
-  and exports by name. `Config.provider("Name")` still intersects, so
-  exporting ITS `.port` would meet the same TS4023.
-
-  **The `class` arm is legal and not recommended there.** A class
-  expression's constructor parameter is not contextually typed from
-  `inject`, and a minted service that is a class with `#private` fields
-  cannot be emitted (TS4094, measured) — the issue's own sketch failed both.
+  - **Every port slot takes a constructor of any arity** —
+    `abstract new (...args: never) => …` in `AnyPort`, `ServiceOf`,
+    `Context.get` and `Exportable`. The class's constructor takes its services
+    record, so the zero-argument slots refused it; `never` arguments accept
+    every constructor and forge nothing, since the brands still decide.
+  - **`ProviderBase` is a `declare`d named class**, exported as a type only:
+    `[SERVICE]: this` makes `ServiceOf` answer the subclass, and being named
+    is what lets `protected deps` and a consumer's `private` helper emit — a
+    TS4094 only fires on an anonymous class expression (measured in
+    `examples/di-hexagonal`'s emit gate).
+  - **The provider half is statics**, typed through `ProviderClass` as a
+    `Provider<ProviderBase<Id, D>, never, NeedsOf<D>>`: `construct` is called
+    as a method, so its `this` is the subclass, and `port` is a getter
+    resolving to the class that directly extends the minted base. A double
+    subclassing a use case therefore provides the same port, not a second class
+    sharing its id, which `plan` refuses. `overrideProvider` copies fields one
+    by one because a spread drops inherited statics.
+  - **Its service is nominal.** A private or protected member refuses an object
+    literal, so another implementation is a subclass. That is the price of
+    helpers on the class, paid deliberately.
 
 - **`module.ts`** — the `Module<Exports, E, Needs>` algebra: its option lists,
   channels and variance rule are `docs/reference/di/modules.md`'s, and the

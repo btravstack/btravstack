@@ -1,5 +1,6 @@
-declare const ID: unique symbol;
-declare const SERVICE: unique symbol;
+// Exported to `provider.ts` for `ProviderBase`'s brands, never from `index.ts`.
+export declare const ID: unique symbol;
+export declare const SERVICE: unique symbol;
 declare const MANY: unique symbol;
 
 /**
@@ -53,7 +54,7 @@ type AnyPortInstance = PortInstance<string, any>;
 export type AnyPort = {
   readonly portId: string;
   readonly many?: true;
-} & (abstract new () => AnyPortInstance);
+} & (abstract new (...args: never) => AnyPortInstance);
 
 /**
  * A concrete port class with `Id` and `Service` fixed — the type of
@@ -70,7 +71,7 @@ export type PortClassOf<Id extends string, Service> = {
 export type ServiceOf<T> =
   T extends PortInstance<string, infer S>
     ? S
-    : T extends abstract new () => PortInstance<string, infer S>
+    : T extends abstract new (...args: never) => PortInstance<string, infer S>
       ? S
       : never;
 

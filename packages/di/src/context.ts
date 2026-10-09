@@ -3,14 +3,14 @@ import type { PortInstance, ServiceOf } from "./port.js";
 // The only thing this module does with a port at run time is read `portId`, so
 // the plumbing is typed against this rather than `AnyPort`, which a concrete
 // port class is not assignable to. A constructor intersection rather than a
-// plain record, so it still overlaps `get`'s `abstract new () => S` parameter.
+// plain record, so it still overlaps `get`'s constructor parameter.
 // `many?: true` is the same runtime discriminant `port.ts`'s `AnyPort` carries,
 // added here so `unsafeAddAll` can tell a set port's members from an ordinary
 // port's single service without importing `AnyPort` itself.
 type PortLike = {
   readonly portId: string;
   readonly many?: true;
-} & (abstract new () => unknown);
+} & (abstract new (...args: never) => unknown);
 
 /**
  * `_R` is LOAD-BEARING. `in R` only asserts contravariance, and `get` cannot
@@ -22,10 +22,10 @@ type PortLike = {
  */
 export type Context<in R> = {
   readonly _R: (r: R) => void;
-  // `S extends R` over a naked `abstract new () => S`, never a
+  // `S extends R` over a naked constructor of `S`, never a
   // `P extends AnyPort` filtered by a conditional: the conditional form leaves
   // `P` unresolved and makes every `get` call fail to compile, valid or not.
-  readonly get: <S extends R>(port: abstract new () => S) => ServiceOf<S>;
+  readonly get: <S extends R>(port: abstract new (...args: never) => S) => ServiceOf<S>;
 };
 
 // Off the Context object itself, so nothing but this module can reach the

@@ -33,18 +33,15 @@ class OrderRepository extends Port("OrderRepository")<{
   readonly findById: (id: string) => AsyncResult<Order, OrderNotFound>;
 }> {}
 
-// A provider binds a port to a construction and declares what it needs — the
-// services arrive typed, under the names the `inject` record gave them. A use
-// case has one implementation, so `Provider("GetOrder")` mints its port from
-// what the factory builds rather than restating the shape in a declared one.
-const getOrder = Provider("GetOrder")({
-  inject: { orders: OrderRepository },
-  sync: ({ orders }) => ({
-    execute: (id: string): AsyncResult<Order, OrderNotFound> => orders.findById(id),
-  }),
-});
-const GetOrder = getOrder.port;
+// A use case is a class that is its own port and provider: its services
+// arrive typed on `this.deps`, under the names the `inject` record gave them.
+class GetOrder extends Provider.class("GetOrder", { inject: { orders: OrderRepository } }) {
+  execute(id: string): AsyncResult<Order, OrderNotFound> {
+    return this.deps.orders.findById(id);
+  }
+}
 
+// An adapter is a provider binding a declared port to a construction.
 const inMemoryOrders = Provider(OrderRepository)({
   inject: {},
   sync: () => {
@@ -64,7 +61,7 @@ const inMemoryOrders = Provider(OrderRepository)({
 // needs `OrderRepository`; a composition that forgets to provide it does not
 // compile.
 const Application = Module("Application")({
-  provides: [getOrder, inMemoryOrders],
+  provides: [GetOrder, inMemoryOrders],
   exports: [GetOrder],
 });
 

@@ -84,17 +84,17 @@ a unit carries that unit's ids.
 provider's `inject` record, never from a global or an ambient read:
 
 ```ts
-export const placeOrderProvider = Provider("PlaceOrder")({
+export class PlaceOrder extends Provider.class("PlaceOrder", {
   inject: { repository: OrderRepository, logger: Logger, tenant: Tenant },
-  sync: ({ repository, logger, tenant }) => ({
-    execute: (id: string, quantity: number) => {
-      logger.info("placing an order", { tenantId: tenant, orderId: id, quantity });
-      return placeOrder(id, quantity)
-        .toAsync()
-        .flatMap((order) => repository.save(order));
-    },
-  }),
-});
+}) {
+  execute(id: string, quantity: number) {
+    const { repository, logger, tenant } = this.deps;
+    logger.info("placing an order", { tenantId: tenant, orderId: id, quantity });
+    return placeOrder(id, quantity)
+      .toAsync()
+      .flatMap((order) => repository.save(order));
+  }
+}
 ```
 
 The tenant is an **injected port**, not something read back out of the ambient

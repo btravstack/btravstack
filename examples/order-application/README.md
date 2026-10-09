@@ -6,7 +6,7 @@ rules into operations — "place an order", "find an order" — and declares, as
 
 ```text
 src/ports.ts          Tenant, OrderRepository, CustomerRepository, StockService, ShippingService, PaymentService
-src/use-cases.ts      PlaceOrder, FindOrder, ListOrders, FindCustomer — each port minted by its provider
+src/use-cases.ts      PlaceOrder, FindOrder, ListOrders, FindCustomer — each class its own port and provider
 src/module.ts         OrderApplicationModule, CustomerApplicationModule, tenantOf
 src/__tests__/test-fixtures.ts  the stub repositories and the per-tenant scope, as Vitest fixtures
 ```
@@ -61,12 +61,13 @@ provides it.
 ```ts
 export const OrderApplicationModule = Module("OrderApplication")({
   needs: [OrderRepository, Logger, Tenant],
-  provides: [placeOrderProvider, findOrderProvider],
+  provides: [PlaceOrder, FindOrder],
   exports: [PlaceOrder, FindOrder],
 });
 
 export const CustomerApplicationModule = Module("CustomerApplication")({
-  provides: [findCustomerProvider],
+  needs: [CustomerRepository],
+  provides: [FindCustomer],
   exports: [FindCustomer],
 });
 ```

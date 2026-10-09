@@ -34,9 +34,6 @@ import { P, type AsyncResult, type Result } from "unthrown";
 declare const createClient: (binding: PrismaBinding) => OrderDatabaseClient;
 
 class OrderDatabase extends Port("OrderDatabase")<OrderDatabaseClient> {}
-declare const placeOrderProvider: Provider<PlaceOrder, never, OrderRepository | Logger | Tenant>;
-declare const findOrderProvider: Provider<FindOrder, never, OrderRepository | Logger>;
-declare const findCustomerProvider: Provider<FindCustomer, never, CustomerRepository>;
 -->
 
 # The order application
@@ -182,10 +179,9 @@ cases write to is **not** declared here: it is
 any other dependency.
 
 Nor are the use cases' own ports. A use case has one implementation, so a port
-declared beside it would only restate its shape: `Provider("PlaceOrder")`
-mints the port from what the factory builds and hands it back as `.port`,
-exported as a value and a type of one name so a consumer still writes
-`PlaceOrder` in both positions:
+declared beside it would only restate its shape: each use case is a class
+extending `Provider.class`, which makes it its own port, its own provider and
+its own service type:
 
 <!-- doctest: isolate
 import { Logger } from "@btravstack/core";
@@ -202,22 +198,20 @@ import type { AsyncResult } from "unthrown";
 -->
 
 ```ts
-export const placeOrderProvider = Provider("PlaceOrder")({
+export class PlaceOrder extends Provider.class("PlaceOrder", {
   inject: { repository: OrderRepository, logger: Logger, tenant: Tenant },
-  sync: ({ repository, logger, tenant }) => ({
-    execute: (
-      id: string,
-      quantity: number,
-    ): AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder> => {
-      logger.info("placing an order", { tenantId: tenant, orderId: id, quantity });
-      return placeOrder(id, quantity)
-        .toAsync()
-        .flatMap((order) => repository.save(order));
-    },
-  }),
-});
-export const PlaceOrder = placeOrderProvider.port;
-export type PlaceOrder = InstanceType<typeof PlaceOrder>;
+}) {
+  execute(
+    id: string,
+    quantity: number,
+  ): AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder> {
+    const { repository, logger, tenant } = this.deps;
+    logger.info("placing an order", { tenantId: tenant, orderId: id, quantity });
+    return placeOrder(id, quantity)
+      .toAsync()
+      .flatMap((order) => repository.save(order));
+  }
+}
 ```
 
 The return annotation is written, not inferred, because it is the use case's
@@ -229,13 +223,13 @@ The module — one per vertical, not one for the layer — provides none of
 ```ts
 export const OrderApplicationModule = Module("OrderApplication")({
   needs: [OrderRepository, Logger, Tenant],
-  provides: [placeOrderProvider, findOrderProvider],
+  provides: [PlaceOrder, FindOrder],
   exports: [PlaceOrder, FindOrder],
 });
 
 export const CustomerApplicationModule = Module("CustomerApplication")({
   needs: [CustomerRepository],
-  provides: [findCustomerProvider],
+  provides: [FindCustomer],
   exports: [FindCustomer],
 });
 ```
