@@ -1,4 +1,4 @@
-import { Config, Env, type ConfigInvalid } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import type { Scope } from "@btravstack/di";
 import { Module, Port, Provider } from "@btravstack/di";
 import { createClient, type RedisClientType } from "redis";
@@ -158,7 +158,7 @@ const connecting = (
 export const redisCache = (): Module<
   CacheBackend,
   ConfigInvalid | CacheConnectionFailed,
-  Env | Scope
+  EnvReading<"REDIS_URL", never> | Scope
 > =>
   Module("RedisCache")({
     needs: [Env],

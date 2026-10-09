@@ -1,4 +1,4 @@
-import type { Env, ConfigInvalid } from "@btravstack/config";
+import type { ConfigInvalid } from "@btravstack/config";
 import { Observers } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import {
@@ -8,6 +8,7 @@ import {
   httpServer,
   type AnyUnitModule,
   type HttpOptions,
+  type HttpServerEnv,
   type UnitsNeedsOf,
 } from "@btravstack/http-server/internal";
 
@@ -21,7 +22,7 @@ export const http = <Units extends Readonly<Record<string, AnyUnitModule>> | und
 ): Module<
   HttpRuntime | HttpConfig | HttpHandler | Observers,
   ConfigInvalid,
-  Env | OrpcRouterPort | UnitsNeedsOf<Units>
+  HttpServerEnv | OrpcRouterPort | UnitsNeedsOf<Units>
 > =>
   Module("Http")({
     imports: [httpServer(options)],
@@ -30,5 +31,5 @@ export const http = <Units extends Readonly<Record<string, AnyUnitModule>> | und
   } as never) as unknown as Module<
     HttpRuntime | HttpConfig | HttpHandler | Observers,
     ConfigInvalid,
-    Env | OrpcRouterPort | UnitsNeedsOf<Units>
+    HttpServerEnv | OrpcRouterPort | UnitsNeedsOf<Units>
   >;

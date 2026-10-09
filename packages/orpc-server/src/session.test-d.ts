@@ -2,7 +2,7 @@
 // principal, the provider binds its keys from the environment, and `seal` is
 // handed a session without a lifetime — which is what stops a caller minting one
 // that outlives the policy. Each `@ts-expect-error` is an assertion.
-import type { ConfigInvalid, Env } from "@btravstack/config";
+import type { ConfigInvalid, EnvReading } from "@btravstack/config";
 import type { Provider } from "@btravstack/di";
 import { html } from "@btravstack/htmx-server";
 import type { Authenticator } from "@btravstack/http-server";
@@ -25,11 +25,15 @@ expectTypeOf<Session<Identity>["principal"]>().toEqualTypeOf<Identity>();
 // Nothing pinned: the keys arrive from `HTTP_SESSION_KEYS`, so the provider
 // needs `Env` and reports `ConfigInvalid`.
 expectTypeOf(sessionCodec()).toEqualTypeOf<
-  Provider<SessionCodec, ConfigInvalid, Env> & { readonly port: typeof SessionCodec }
+  Provider<SessionCodec, ConfigInvalid, EnvReading<never, "HTTP_SESSION_KEYS">> & {
+    readonly port: typeof SessionCodec;
+  }
 >();
 
 expectTypeOf(sessionCodec({ keys: ["k"], ttlSec: 60 })).toEqualTypeOf<
-  Provider<SessionCodec, ConfigInvalid, Env> & { readonly port: typeof SessionCodec }
+  Provider<SessionCodec, ConfigInvalid, EnvReading<never, "HTTP_SESSION_KEYS">> & {
+    readonly port: typeof SessionCodec;
+  }
 >();
 
 declare const codec: SessionCodecService;
@@ -73,7 +77,12 @@ sessionAuthenticator<Identity>()({
 const browserAuth = sessionAuthenticator<Identity>()();
 
 expectTypeOf(browserAuth).toEqualTypeOf<
-  Authenticator<Identity, never, SessionCodec | Env, ConfigInvalid>
+  Authenticator<
+    Identity,
+    never,
+    SessionCodec | EnvReading<never, "HTTP_OIDC_ISSUER" | "HTTP_OIDC_CLIENT_ID">,
+    ConfigInvalid
+  >
 >();
 
 const scopedAuth = sessionAuthenticator<Identity>()({
@@ -82,7 +91,12 @@ const scopedAuth = sessionAuthenticator<Identity>()({
 });
 
 expectTypeOf(scopedAuth).toEqualTypeOf<
-  Authenticator<Identity, "orders:export", SessionCodec | Env, ConfigInvalid>
+  Authenticator<
+    Identity,
+    "orders:export",
+    SessionCodec | EnvReading<never, "HTTP_OIDC_ISSUER" | "HTTP_OIDC_CLIENT_ID">,
+    ConfigInvalid
+  >
 >();
 
 const api = defineHttp({ authenticators: { session: scopedAuth } });

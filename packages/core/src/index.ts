@@ -31,7 +31,15 @@ export { runMain } from "./run-main.js";
 export { RuntimePort, RuntimeStartFailed, releasedBy, traceIdOfTraceparent } from "./runtime.js";
 export type { RunUnit, Runtime, RuntimeHost, RuntimeInfoOf, Serving, UnitHost } from "./runtime.js";
 export { start } from "./start.js";
-export type { ExitReport, RunningApp, StartGate, StartOptions, TeardownError } from "./start.js";
+export type {
+  ExitReport,
+  KernelEnvironment,
+  RunningApp,
+  StartEnvironment,
+  StartGate,
+  StartOptions,
+  TeardownError,
+} from "./start.js";
 export { currentUnit, unitOutcome } from "./units.js";
 export type { UnitMeta, UnitOutcome, UnitRecord, UnitRegistry, UnitWork } from "./units.js";
 export { dispatchUnit, withUnitRecord } from "./unit-record.js";

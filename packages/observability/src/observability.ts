@@ -1,4 +1,4 @@
-import { Config, Env, type ConfigInvalid } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import {
   Logger,
   Observers,
@@ -42,7 +42,7 @@ export type ObservabilityOptions = {
  */
 export const observability = (
   options: ObservabilityOptions = {},
-): Module<Logger | LoggerConfig | Observers, ConfigInvalid, Env> =>
+): Module<Logger | LoggerConfig | Observers, ConfigInvalid, EnvReading<never, "LOG_LEVEL">> =>
   Module("Observability")({
     needs: [Env],
     provides: [
@@ -78,7 +78,11 @@ export const observability = (
       }),
     ],
     exports: [Logger, LoggerConfig, Observers],
-  } as never) as unknown as Module<Logger | LoggerConfig | Observers, ConfigInvalid, Env>;
+  } as never) as unknown as Module<
+    Logger | LoggerConfig | Observers,
+    ConfigInvalid,
+    EnvReading<never, "LOG_LEVEL">
+  >;
 
 /**
  * The kernel's nine lifecycle events, as log lines on `logger` — the adapter

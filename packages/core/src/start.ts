@@ -1,4 +1,11 @@
-import { Config, ConfigInvalid, Env, type ConfigIssue, type Environment } from "@btravstack/config";
+import {
+  Config,
+  ConfigInvalid,
+  Env,
+  type ConfigIssue,
+  type Environment,
+  type EnvironmentFor,
+} from "@btravstack/config";
 import {
   Module,
   Provider,
@@ -147,12 +154,37 @@ const readKernelConfig = (
       );
 };
 
-export type StartOptions = {
+/**
+ * The kernel's own variables, all optional: each has a default, and each is
+ * pinned by the matching {@link StartOptions} field.
+ */
+export type KernelEnvironment = {
+  readonly PROBE_PORT?: string | undefined;
+  readonly PROBE_HOST?: string | undefined;
+  readonly PRE_DRAIN_DELAY_MS?: string | undefined;
+  readonly DRAIN_TIMEOUT_MS?: string | undefined;
+  readonly STOP_TIMEOUT_MS?: string | undefined;
+};
+
+/**
+ * The `env` a `start` of `M` accepts — what the module's configuration reads,
+ * plus the kernel's own variables. For typing an environment kept apart from
+ * the call, such as a test's shared one.
+ */
+export type StartEnvironment<M> =
+  M extends Module<infer _X, infer _E, infer N> ? EnvironmentFor<N> & KernelEnvironment : never;
+
+export type StartOptions<Ev = Environment> = {
   /**
    * The environment the graph is configured from, provided to it as the `Env`
    * port and read for the kernel's own variables. Defaults to `process.env`.
+   *
+   * Typed by what the graph reads: at `start(module, { env })` it accepts the
+   * variables the module's configuration names and the kernel's own, requires
+   * the ones nothing defaults or pins, and refuses any other — unless some
+   * reader named none, when any record is accepted.
    */
-  readonly env?: Environment;
+  readonly env?: Ev;
   readonly clock?: Clock;
   readonly signals?: boolean;
   /**
@@ -268,7 +300,7 @@ export type StartGate<X, N = never> = [Exclude<N, Scope | Env>] extends [never]
 
 export const start = <X, E, N>(
   module: Module<X, E, N> & StartGate<X, N>,
-  options: StartOptions = {},
+  options: StartOptions<EnvironmentFor<N> & KernelEnvironment> = {},
 ): RunningApp<E, RuntimeInfoOf<X>> => {
   type Info = RuntimeInfoOf<X>;
   type Resolves = RuntimeResolvesOf<X>;

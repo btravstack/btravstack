@@ -4,7 +4,7 @@
 // the environment and the CODEC's port, so a root that composes it without
 // `sessionCodec()` is di's own unmet need, and `principal` is the one option it
 // cannot be built without. Each `@ts-expect-error` is an assertion.
-import { Env, type ConfigInvalid } from "@btravstack/config";
+import { Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import type { Observers } from "@btravstack/core";
 import { Module, type AnyProvider, type Provider } from "@btravstack/di";
 import { html } from "@btravstack/htmx-server";
@@ -28,13 +28,25 @@ const identityOf = (claims: IDToken): Identity | undefined =>
     : undefined;
 
 // Nothing pinned: the four values arrive from `HTTP_OIDC_*`, so the provider
-// needs `Env` beside `SessionCodec` — and `Observers`, the set port every
+// needs `Env` reading them beside `SessionCodec` — and `Observers`, the set port every
 // per-operation starter here reports to, which costs a root nothing because
 // `httpServer` already contributes the no-op member and exports the port.
 // Both ways a boot can refuse are on the error channel.
 expectTypeOf(oidc({ principal: identityOf })).toEqualTypeOf<
   readonly [
-    Provider<HttpHandler, ConfigInvalid | OidcUnreachable, Env | SessionCodec | Observers> & {
+    Provider<
+      HttpHandler,
+      ConfigInvalid | OidcUnreachable,
+      | EnvReading<
+          never,
+          | "HTTP_OIDC_ISSUER"
+          | "HTTP_OIDC_CLIENT_ID"
+          | "HTTP_OIDC_CLIENT_SECRET"
+          | "HTTP_OIDC_REDIRECT_URI"
+        >
+      | SessionCodec
+      | Observers
+    > & {
       readonly port: typeof HttpHandler;
     },
     AnyProvider,
@@ -56,7 +68,19 @@ expectTypeOf(
   }),
 ).toEqualTypeOf<
   readonly [
-    Provider<HttpHandler, ConfigInvalid | OidcUnreachable, Env | SessionCodec | Observers> & {
+    Provider<
+      HttpHandler,
+      ConfigInvalid | OidcUnreachable,
+      | EnvReading<
+          never,
+          | "HTTP_OIDC_ISSUER"
+          | "HTTP_OIDC_CLIENT_ID"
+          | "HTTP_OIDC_CLIENT_SECRET"
+          | "HTTP_OIDC_REDIRECT_URI"
+        >
+      | SessionCodec
+      | Observers
+    > & {
       readonly port: typeof HttpHandler;
     },
     AnyProvider,

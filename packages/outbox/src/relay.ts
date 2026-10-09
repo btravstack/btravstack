@@ -1,4 +1,4 @@
-import { Config, Env, type ConfigInvalid } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import {
   HealthCheckFailed,
   HealthChecks,
@@ -175,7 +175,14 @@ const startRelay = (
  */
 export const outbox = (
   options: OutboxOptions = {},
-): Module<HealthChecks, ConfigInvalid, Env | OutboxStore | OutboxPublisher | Scope> => {
+): Module<
+  HealthChecks,
+  ConfigInvalid,
+  | EnvReading<never, "OUTBOX_TENANTS" | "OUTBOX_POLL_MS" | "OUTBOX_MAX_LAG_MS">
+  | OutboxStore
+  | OutboxPublisher
+  | Scope
+> => {
   const clock = options.clock ?? systemClock;
   const config = Config.provider(OutboxConfig)(
     Config.object({

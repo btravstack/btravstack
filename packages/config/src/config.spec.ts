@@ -2,7 +2,7 @@ import { Ok, type Result } from "unthrown";
 import { describe, expect } from "vitest";
 
 import { it, settingsSchema } from "./__tests__/test-fixtures.js";
-import { Config, ConfigInvalid, type ConfigField, type ConfigFieldInvalid } from "./config.js";
+import { Config, ConfigInvalid, Env, type ConfigField, type ConfigFieldInvalid } from "./config.js";
 
 const validate = (env: Record<string, string | undefined>) =>
   settingsSchema["~standard"].validate(env);
@@ -552,5 +552,16 @@ describe("Config.parse", () => {
         ],
       }),
     );
+  });
+});
+
+describe("Config.env", () => {
+  it("answers the Env port itself, so a provider injecting it reads what the kernel provides", () => {
+    // GIVEN a schema
+    // WHEN the port typed by it is asked for
+    const port = Config.env(settingsSchema);
+
+    // THEN it is the very Env class: typed by the schema, one port at run time
+    expect(port).toBe(Env);
   });
 });

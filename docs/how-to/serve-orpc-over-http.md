@@ -351,7 +351,7 @@ from the unit's defect path, before any procedure runs.
 
 ```ts
 const app = start(OrdersApi, {
-  env: { PORT: "0", HOST: "127.0.0.1" },
+  env: { PORT: "0", HOST: "127.0.0.1", DATABASE_URL: "postgres://orders@localhost:5432/orders" },
   signals: false,
   probes: false,
 });

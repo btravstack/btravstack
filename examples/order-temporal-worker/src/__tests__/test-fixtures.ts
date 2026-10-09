@@ -394,9 +394,6 @@ export const it = test.extend<TemporalFixtures>({
           TEMPORAL_ADDRESS: server.address,
           TEMPORAL_NAMESPACE: server.namespace,
           DATABASE_URL: inject("__ORDERS_DATABASE_URL__"),
-          // otel() rides the root; a spec run stands up no collector, so the
-          // SDK is disabled through its own switch — the ports still resolve.
-          OTEL_SDK_DISABLED: "true",
         },
       });
 

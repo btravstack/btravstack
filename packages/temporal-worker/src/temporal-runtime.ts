@@ -1,4 +1,4 @@
-import { Config, Env, type ConfigInvalid } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import {
   Observers,
   RuntimePort,
@@ -212,7 +212,16 @@ export const temporal = <
 ): Module<
   Provided,
   ConfigInvalid | TemporalUnreachable,
-  Env | Scope | ActivitiesInstanceOf<C> | UnitNeedsOf<Unit>
+  | EnvReading<
+      never,
+      | "TEMPORAL_ADDRESS"
+      | "TEMPORAL_NAMESPACE"
+      | "TEMPORAL_GRACE_PERIOD_MS"
+      | "TEMPORAL_FORCE_AFTER_MS"
+    >
+  | Scope
+  | ActivitiesInstanceOf<C>
+  | UnitNeedsOf<Unit>
 > => {
   const { address, namespace } = options;
   const activities = TemporalActivitiesPort as ActivitiesPortOf<C>;
@@ -286,7 +295,16 @@ export const temporal = <
   } as never) as unknown as Module<
     Provided,
     ConfigInvalid | TemporalUnreachable,
-    Env | Scope | ActivitiesInstanceOf<C> | UnitNeedsOf<Unit>
+    | EnvReading<
+        never,
+        | "TEMPORAL_ADDRESS"
+        | "TEMPORAL_NAMESPACE"
+        | "TEMPORAL_GRACE_PERIOD_MS"
+        | "TEMPORAL_FORCE_AFTER_MS"
+      >
+    | Scope
+    | ActivitiesInstanceOf<C>
+    | UnitNeedsOf<Unit>
   >;
 };
 

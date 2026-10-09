@@ -9,7 +9,8 @@ import { Env } from "@btravstack/config";
 import type { Module, Scope } from "@btravstack/di";
 declare const OrderApi: Module<InstanceType<typeof TestRuntimePort>, never, Env | Scope>;
 import { runMain } from "@btravstack/core";
-import type { StartGate, StartOptions } from "@btravstack/core";
+import type { EnvironmentFor } from "@btravstack/config";
+import type { KernelEnvironment, StartGate, StartOptions } from "@btravstack/core";
 -->
 
 # `runMain` and exit codes
@@ -27,7 +28,7 @@ import type { StartGate, StartOptions } from "@btravstack/core";
 ```ts
 const runMain: <X, E, N>(
   module: Module<X, E, N> & StartGate<X, N>,
-  options?: StartOptions,
+  options?: StartOptions<EnvironmentFor<N> & KernelEnvironment>,
   exit?: (code: number) => void,
 ) => Promise<void>;
 ```

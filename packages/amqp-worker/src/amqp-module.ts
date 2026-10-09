@@ -1,4 +1,4 @@
-import type { ConfigInvalid, Env } from "@btravstack/config";
+import type { ConfigInvalid, EnvReading } from "@btravstack/config";
 import type { AnyUnitModule, UnitGate } from "@btravstack/core";
 import {
   Module,
@@ -27,7 +27,9 @@ type AmqpStarter<
 > = Module<
   AmqpRuntime | AmqpConfig,
   ConfigInvalid,
-  Env | HandlersInstanceOf<TContract> | UnitNeedsOf<Unit>
+  | EnvReading<never, "AMQP_URL" | "AMQP_CONNECT_TIMEOUT_MS">
+  | HandlersInstanceOf<TContract>
+  | UnitNeedsOf<Unit>
 >;
 
 /** The application's imports plus the starter — the tuple `Module(name)` is handed. */

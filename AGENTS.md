@@ -1291,6 +1291,12 @@ A sixth rule is about production code that tests keep honest:
    application touches `process.env`, and no `main.ts` folds issues into a
    message and an exit code itself; `examples/order-api/src/main.ts` is one
    line. A schema's own `.parse()` **throws**, which `unthrown/no-throw` bans.
+   **The variables a graph reads are in its type** (#465): every field names
+   its variable, a module's needs carry the names, and `start`'s `env`
+   accepts exactly those plus the kernel's own — so a misspelt or stale
+   variable in a test's environment is a compile error, and
+   `StartEnvironment<typeof Root>` types one kept apart from the call.
+   `packages/config/AGENTS.md` holds the design.
    The semantics `Config.*` fixes once (pinned by `config.spec.ts`'s cases:
    absent, `""`, whitespace, `abc`, `3.5`, valid, out of range, a pin, a
    required field): an **empty or blank value is a configuration

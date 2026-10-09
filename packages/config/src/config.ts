@@ -29,6 +29,63 @@ export type Environment = Readonly<Record<string, string | undefined>>;
 export class Env extends Port("Env")<Environment> {}
 
 /**
+ * `Env`, as a need that names what its reader reads: the variables it requires
+ * and the ones it can do without. A module's needs union them, and
+ * {@link EnvironmentFor} turns that union into the `env` its boot accepts.
+ *
+ * A string key rather than a symbol, so declaration emit can always name it.
+ */
+export type EnvReading<Required extends string, Optional extends string> = Env & {
+  readonly "~env": { readonly required: Required; readonly optional: Optional };
+};
+
+/**
+ * What reading `I` costs a provider: the variables `I` names, or plain `Env`
+ * when `I` is an open record and nothing can be said about them.
+ *
+ * The key computations are INLINE rather than named helpers: declaration emit
+ * prints a named alias unreduced, and a consumer exporting a module would then
+ * name an alias this package does not export.
+ */
+export type EnvNeed<I> = string extends keyof I
+  ? Env
+  : EnvReading<
+      {
+        [K in keyof I]-?: Record<never, never> extends Pick<I, K> ? never : K;
+      }[keyof I] &
+        string,
+      {
+        [K in keyof I]-?: Record<never, never> extends Pick<I, K> ? K : never;
+      }[keyof I] &
+        string
+    >;
+
+/** The `Env` port class, as a need for `EnvNeed<I>` — what {@link Config.env} answers. */
+// A zero-argument constructor, as `Env` has: `InstanceType` matches a
+// constructor against `(...args: any)`, and `any` is not assignable to `never`,
+// so a `(...args: never)` one would answer `any` and every check would pass.
+export type EnvPortFor<I> = { readonly portId: "Env" } & (abstract new () => EnvNeed<I>);
+
+/** The plain `Env` members of a needs union — readers whose variables are unknown. */
+type Unnamed<N> = N extends Env ? (N extends { readonly "~env": unknown } ? never : N) : never;
+
+type RequiredOf<N> = N extends { readonly "~env": { readonly required: infer R } } ? R : never;
+type OptionalOf<N> = N extends { readonly "~env": { readonly optional: infer O } } ? O : never;
+
+/**
+ * The environment a graph with needs `N` is configured from: every variable a
+ * reader requires, every one it can do without, and nothing else — or any
+ * record at all when one of its readers named nothing.
+ *
+ * A variable one reader requires and another defaults is required.
+ */
+export type EnvironmentFor<N> = [Unnamed<N>] extends [never]
+  ? { readonly [K in RequiredOf<N> & string]: string } & {
+      readonly [K in Exclude<OptionalOf<N>, RequiredOf<N>> & string]?: string | undefined;
+    }
+  : Environment;
+
+/**
  * The one issue shape a configuration schema reports: Standard Schema's
  * `Issue`, restated structurally so this package depends on nothing.
  */
@@ -99,10 +156,19 @@ export class ConfigFieldInvalid extends TaggedError("ConfigFieldInvalid")<{
  * about what is valid. It is optional: a hand-written field keeps compiling and
  * simply accepts whatever it is handed.
  */
-export type ConfigField<T> = {
-  readonly variable: string;
+export type ConfigField<
+  T,
+  V extends string = string,
+  Need extends "required" | "optional" = "required" | "optional",
+> = {
+  readonly variable: V;
   readonly parse: (raw: string | undefined) => Result<T, ConfigFieldInvalid>;
   readonly check?: (value: T) => Result<T, ConfigFieldInvalid>;
+  /**
+   * Type-only: whether the variable must be set — `"optional"` for a field
+   * with a default or a pin. Never present at runtime.
+   */
+  readonly "~need"?: Need;
 };
 
 /**
@@ -117,7 +183,34 @@ export type AnyConfigField = {
   readonly variable: string;
   readonly parse: (raw: string | undefined) => Result<unknown, ConfigFieldInvalid>;
   readonly check?: (value: never) => Result<unknown, ConfigFieldInvalid>;
+  readonly "~need"?: "required" | "optional";
 };
+
+/** A field that reads `default`: optional when the options name one. */
+type NeedOf<O> = O extends { readonly default: unknown } ? "optional" : "required";
+
+/** The variables a field record reads, keyed by need. */
+type FieldVariable<F, Want> = F extends {
+  readonly variable: infer V extends string;
+  readonly "~need"?: infer Need;
+}
+  ? [Need] extends [Want]
+    ? V
+    : never
+  : never;
+
+/**
+ * The environment a field record reads, as a shape — or the open record when a
+ * field names its variable only as `string` and nothing can be said.
+ */
+type VariableOf<Field> = Field extends { readonly variable: infer V } ? V : never;
+
+type EnvironmentOf<F> =
+  string extends VariableOf<F[keyof F]>
+    ? Environment
+    : { readonly [K in FieldVariable<F[keyof F], "required">]: string } & {
+        readonly [K in FieldVariable<F[keyof F], "optional">]?: string | undefined;
+      };
 
 const invalid = (reason: string): Result<never, ConfigFieldInvalid> =>
   Err(new ConfigFieldInvalid({ reason }));
@@ -127,12 +220,12 @@ type WithDefault<T> = { readonly default?: T };
 // An empty or blank value is a configuration ERROR, never an absent variable:
 // `PORT=` would otherwise bind what the empty string coerces to — `0`, the
 // ephemeral port. `default` applies only to a variable nobody set.
-const present = <T>(
-  variable: string,
+const present = <T, V extends string, N extends "required" | "optional">(
+  variable: V,
   options: WithDefault<T>,
   read: (value: string) => Result<T, ConfigFieldInvalid>,
   check?: (value: T) => Result<T, ConfigFieldInvalid>,
-): ConfigField<T> => ({
+): ConfigField<T, V, N> => ({
   variable,
   parse: (raw) => {
     if (raw === undefined) {
@@ -246,27 +339,40 @@ export const Config = {
    * through the composition root instead, where `Config.pinned` hands the value
    * over untouched.
    */
-  string: (variable: string, options: WithDefault<string> = {}): ConfigField<string> =>
-    present(variable, options, (value) => Ok(value)),
+  string: <const V extends string, const O extends WithDefault<string> = Record<never, never>>(
+    variable: V,
+    options?: O,
+  ): ConfigField<string, V, NeedOf<O>> => present(variable, options ?? {}, (value) => Ok(value)),
 
   /** A whole number, optionally bounded (both bounds inclusive). */
-  integer: (
-    variable: string,
-    {
+  integer: <
+    const V extends string,
+    const O extends WithDefault<number> & {
+      readonly min?: number;
+      readonly max?: number;
+    } = Record<never, never>,
+  >(
+    variable: V,
+    options?: O,
+  ): ConfigField<number, V, NeedOf<O>> => {
+    const {
       min = Number.MIN_SAFE_INTEGER,
       max = Number.MAX_SAFE_INTEGER,
-      ...options
-    }: WithDefault<number> & { readonly min?: number; readonly max?: number } = {},
-  ): ConfigField<number> =>
-    present(variable, options, integerIn(min, max), wholeNumberIn(min, max)),
+      ...rest
+    }: WithDefault<number> & { readonly min?: number; readonly max?: number } = options ?? {};
+    return present(variable, rest, integerIn(min, max), wholeNumberIn(min, max));
+  },
 
   /**
    * A flag: `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, case-insensitive.
    * Anything else is an error rather than a falsy reading — a deployment that
    * wrote `HTTP_COMPRESSION=enabled` meant to turn it on.
    */
-  boolean: (variable: string, options: WithDefault<boolean> = {}): ConfigField<boolean> =>
-    present(variable, options, (value) => {
+  boolean: <const V extends string, const O extends WithDefault<boolean> = Record<never, never>>(
+    variable: V,
+    options?: O,
+  ): ConfigField<boolean, V, NeedOf<O>> =>
+    present(variable, options ?? {}, (value) => {
       const flag = FLAGS.get(value.toLowerCase());
       return flag === undefined ? invalid(`is not a flag: ${JSON.stringify(value)}`) : Ok(flag);
     }),
@@ -277,8 +383,11 @@ export const Config = {
    * a malformed one is a `ConfigInvalid` naming the variable, at graph build,
    * rather than a `Defect` from wherever the URL is finally needed.
    */
-  url: (variable: string, options: WithDefault<string> = {}): ConfigField<string> =>
-    present(variable, options, absoluteUrl, absoluteUrl),
+  url: <const V extends string, const O extends WithDefault<string> = Record<never, never>>(
+    variable: V,
+    options?: O,
+  ): ConfigField<string, V, NeedOf<O>> =>
+    present(variable, options ?? {}, absoluteUrl, absoluteUrl),
 
   /**
    * A comma-separated list, each entry trimmed and empty entries dropped, so
@@ -300,10 +409,16 @@ export const Config = {
    * that field has no default, so its floor is `1`, and a session codec with
    * no key to seal with is broken rather than empty.
    */
-  list: (
-    variable: string,
-    options: WithDefault<readonly string[]> & { readonly min?: number } = {},
-  ): ConfigField<readonly string[]> => {
+  list: <
+    const V extends string,
+    const O extends WithDefault<readonly string[]> & {
+      readonly min?: number;
+    } = Record<never, never>,
+  >(
+    variable: V,
+    given?: O,
+  ): ConfigField<readonly string[], V, NeedOf<O>> => {
+    const options: WithDefault<readonly string[]> & { readonly min?: number } = given ?? {};
     const rule = atLeast(options.min ?? (options.default === undefined ? 1 : 0));
     return present(
       variable,
@@ -320,8 +435,15 @@ export const Config = {
   },
 
   /** A TCP port: a whole number the OS will accept, `0` (an ephemeral bind) included. */
-  port: (variable: string, options: WithDefault<number> = {}): ConfigField<number> =>
-    Config.integer(variable, { ...options, min: 0, max: 65_535 }),
+  port: <const V extends string, const O extends WithDefault<number> = Record<never, never>>(
+    variable: V,
+    options?: O,
+  ): ConfigField<number, V, NeedOf<O>> =>
+    Config.integer(variable, { ...options, min: 0, max: 65_535 }) as ConfigField<
+      number,
+      V,
+      NeedOf<O>
+    >,
 
   /**
    * `field`, unless `value` is given — then a field answering `value` and
@@ -334,14 +456,23 @@ export const Config = {
    * `size > NaN` is `false` — and the composition root was the one input to
    * the configuration system nothing validated.
    */
-  pinned: <T>(value: T | undefined, field: ConfigField<T>): ConfigField<T> =>
-    value === undefined
+  // A value that may be absent leaves the variable optional — the type cannot
+  // know which; one that is certainly there reads nothing at all.
+  pinned: <T, V extends string, N extends "required" | "optional", X extends T | undefined>(
+    value: X,
+    field: ConfigField<T, V, N>,
+  ): ConfigField<T, undefined extends X ? V : never, [X] extends [undefined] ? N : "optional"> =>
+    (value === undefined
       ? field
       : {
           variable: field.variable,
-          parse: () => field.check?.(value) ?? Ok(value),
+          parse: () => field.check?.(value as T) ?? Ok(value as T),
           ...(field.check === undefined ? {} : { check: field.check }),
-        },
+        }) as ConfigField<
+      T,
+      undefined extends X ? V : never,
+      [X] extends [undefined] ? N : "optional"
+    >,
 
   /**
    * A record of fields, as a Standard Schema over the environment. Every field
@@ -351,7 +482,7 @@ export const Config = {
   object: <F extends Record<string, AnyConfigField>>(
     fields: F,
   ): ConfigSchema<
-    Environment,
+    EnvironmentOf<F>,
     { readonly [K in keyof F]: F[K] extends ConfigField<infer T> ? T : never }
   > => ({
     "~standard": {
@@ -422,20 +553,26 @@ export const Config = {
    * provider carrying it, for a slice that is one application's own.
    */
   provider: configProvider,
+
+  /**
+   * {@link Env}, typed as reading exactly what `schema` reads — the same port at
+   * run time. Inject it where a provider parses the environment itself rather
+   * than through `Config.provider`, so its needs name the variables and a
+   * boot's `env` is typed by them.
+   */
+  env: <I>(_schema: ConfigSchema<I, unknown>): EnvPortFor<I> => Env as unknown as EnvPortFor<I>,
 };
 
 function configProvider<P extends AnyPort>(
   port: P,
-): (
-  schema: ConfigSchema<Environment, ServiceOf<P>> & SetPortGate<P>,
-) => Provider<InstanceType<P>, ConfigInvalid, Env> & { readonly port: P };
+): <I extends Environment>(
+  schema: ConfigSchema<I, ServiceOf<P>> & SetPortGate<P>,
+) => Provider<InstanceType<P>, ConfigInvalid, EnvNeed<I>> & { readonly port: P };
 function configProvider<const Name extends string>(
   name: Name,
-): <Output>(schema: ConfigSchema<Environment, Output>) => Provider<
-  PortInstance<Name, Output>,
-  ConfigInvalid,
-  Env
-> & {
+): <I extends Environment, Output>(
+  schema: ConfigSchema<I, Output>,
+) => Provider<PortInstance<Name, Output>, ConfigInvalid, EnvNeed<I>> & {
   readonly port: PortClassOf<Name, Output>;
 };
 // The implementation's return type is `unknown` — the two overloads above are

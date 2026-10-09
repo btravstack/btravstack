@@ -1,3 +1,4 @@
+import type { EnvReading } from "@btravstack/config";
 import {
   Logger,
   RuntimePort,
@@ -107,7 +108,11 @@ export type ObservabilityFixtures = {
     /** A module every unit `runtime.submit()` opens forks, with no seed — `testRuntime`'s own `unit` option. */
     unit?: Module<never, never, unknown>,
   ) => {
-    readonly module: Module<Logger | LoggerConfig | Greeting | TestRuntimePort, never, never>;
+    readonly module: Module<
+      Logger | LoggerConfig | Greeting | TestRuntimePort,
+      never,
+      EnvReading<never, "LOG_LEVEL">
+    >;
     readonly runtime: ReturnType<typeof testRuntime>;
   };
 };
@@ -169,10 +174,14 @@ export const it = test.extend<ObservabilityFixtures>({
           imports: [runtime.module, observability(options)],
           provides: [Provider(Greeting)({ inject: {}, value: { text: "hello" } })],
           exports: [Logger, LoggerConfig, Greeting, TestRuntimePort],
-          // The starter's own `ConfigInvalid` and `Env` are discharged by the
-          // kernel and asserted by the spec that boots a bad `LOG_LEVEL`;
-          // spelling them here would put them in every fixture's signature.
-        }) as unknown as Module<Logger | LoggerConfig | Greeting | TestRuntimePort, never, never>,
+          // The starter's own `ConfigInvalid` is the kernel's to report and is
+          // asserted by the spec that boots a bad `LOG_LEVEL`; its `Env` read
+          // stays, so a boot's `env` is typed by it.
+        }) as unknown as Module<
+          Logger | LoggerConfig | Greeting | TestRuntimePort,
+          never,
+          EnvReading<never, "LOG_LEVEL">
+        >,
       };
     });
   },

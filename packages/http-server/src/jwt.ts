@@ -1,4 +1,4 @@
-import { Config, Env, type ConfigInvalid } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import { Observers, observe } from "@btravstack/core";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { Err, ErrAsync, Ok, OkAsync, fromPromise, type Result } from "unthrown";
@@ -15,7 +15,7 @@ import { cleartext, cleartextRefused } from "./cleartext.js";
 /** The verified claims, as `jose` reports them. */
 export type Claims = JWTPayload;
 
-export type JwtOptions<P, Scopes extends readonly string[]> = {
+export type JwtOptions<P, Scopes extends readonly string[], Pre extends string = "HTTP_JWT"> = {
   /**
    * The issuer's JWKS endpoint — pins `<prefix>_JWKS_URI` when set, and is read
    * from it when not. Keys are fetched on demand and cached; a `kid` the cache
@@ -36,7 +36,7 @@ export type JwtOptions<P, Scopes extends readonly string[]> = {
    * scheme names its own — `HTTP_JWT_CUSTOMER` — so each issuer is configured
    * per deployment rather than pinned in code.
    */
-  readonly variablePrefix?: string;
+  readonly variablePrefix?: Pre;
   /**
    * The signature algorithms this endpoint accepts. Default
    * {@link DEFAULT_ALGORITHMS} — asymmetric only, and `none` is not
@@ -194,18 +194,25 @@ const bearer = (value: string | readonly string[] | undefined): string | undefin
  */
 export const jwtAuthenticator =
   <P>() =>
-  <const Scopes extends readonly string[] = readonly []>(
-    options: JwtOptions<P, Scopes>,
-  ): Authenticator<P, Scopes[number], Env | Observers, ConfigInvalid> => {
+  <const Scopes extends readonly string[] = readonly [], const Pre extends string = "HTTP_JWT">(
+    options: JwtOptions<P, Scopes, Pre>,
+  ): Authenticator<
+    P,
+    Scopes[number],
+    EnvReading<never, `${Pre}_JWKS_URI` | `${Pre}_ISSUER` | `${Pre}_AUDIENCE`> | Observers,
+    ConfigInvalid
+  > => {
     const header = (options.header ?? "authorization").toLowerCase();
     const vocabulary = options.scopes;
-    const prefix = options.variablePrefix ?? "HTTP_JWT";
+    const prefix = (options.variablePrefix ?? "HTTP_JWT") as Pre;
     const schema = Config.object({
       jwks: Config.pinned(options.jwks, Config.url(`${prefix}_JWKS_URI`)),
       issuer: Config.pinned(options.issuer, Config.string(`${prefix}_ISSUER`)),
       audience: Config.pinned(options.audience, Config.string(`${prefix}_AUDIENCE`)),
     });
 
+    // Cast for the needs alone: over a generic prefix the schema's own needs
+    // type cannot resolve, so the annotation states the three variables.
     return HttpAuthenticator<P, Scopes[number]>()({
       inject: { env: Env, observers: Observers },
       make: ({ env, observers }) =>
@@ -288,5 +295,5 @@ export const jwtAuthenticator =
           };
           return Ok(resolve);
         }),
-    });
+    }) as never;
   };

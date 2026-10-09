@@ -16,6 +16,7 @@ import { HttpHandler, HttpRuntime, httpServer, type HttpConfig } from "@btravsta
 import type { CookieSchemes } from "@btravstack/http-server/internal";
 import {
   type AnyUnitModule,
+  type HttpServerEnv,
   type HttpUnit,
   type UnitsNeedsOf,
 } from "@btravstack/http-server/internal";
@@ -27,7 +28,7 @@ import { orpc, type OrpcRouterPort } from "./orpc.js";
 type HttpStarter<Units> = Module<
   HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers,
   ConfigInvalid,
-  Env | UnitsNeedsOf<Units>
+  HttpServerEnv | UnitsNeedsOf<Units>
 >;
 
 /** The application's imports plus the starter — the tuple `Module(name)` is handed. */

@@ -5,7 +5,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { Config, Env, type ConfigInvalid } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import type { Scope } from "@btravstack/di";
 import { Module, Port, Provider } from "@btravstack/di";
 import { Ok, fromPromise } from "unthrown";
@@ -143,7 +143,18 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
  * only through this subpath, so an application composing the memory adapter
  * installs neither.
  */
-export const s3Storage = (): Module<StorageBackend, ConfigInvalid, Env | Scope> =>
+export const s3Storage = (): Module<
+  StorageBackend,
+  ConfigInvalid,
+  | EnvReading<
+      | "STORAGE_S3_ENDPOINT"
+      | "STORAGE_S3_BUCKET"
+      | "STORAGE_S3_ACCESS_KEY_ID"
+      | "STORAGE_S3_SECRET_ACCESS_KEY",
+      "STORAGE_S3_REGION"
+    >
+  | Scope
+> =>
   Module("S3Storage")({
     needs: [Env],
     provides: [

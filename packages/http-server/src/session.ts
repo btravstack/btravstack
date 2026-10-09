@@ -1,4 +1,4 @@
-import { Config, ConfigInvalid, Env } from "@btravstack/config";
+import { Config, ConfigInvalid, Env, type EnvReading } from "@btravstack/config";
 import { Port, Provider } from "@btravstack/di";
 import { CompactEncrypt, compactDecrypt } from "jose";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
@@ -265,15 +265,18 @@ const codec = (
  */
 export const sessionCodec = (
   pins: { readonly keys?: readonly string[]; readonly ttlSec?: number } = {},
-): Provider<SessionCodec, ConfigInvalid, Env> & { readonly port: typeof SessionCodec } =>
-  Provider(SessionCodec)({
-    inject: { env: Env },
+): Provider<SessionCodec, ConfigInvalid, EnvReading<never, "HTTP_SESSION_KEYS">> & {
+  readonly port: typeof SessionCodec;
+} => {
+  const schema = Config.object({
+    keys: Config.pinned(pins.keys, Config.list("HTTP_SESSION_KEYS")),
+  });
+  return Provider(SessionCodec)({
+    inject: { env: Config.env(schema) },
     make: ({ env }): AsyncResult<SessionCodecService, ConfigInvalid> =>
       Config.parse(
         "HttpSession",
-        Config.object({
-          keys: Config.pinned(pins.keys, Config.list("HTTP_SESSION_KEYS")),
-        }),
+        schema,
       )(env).flatMap(({ keys }) => {
         const decoded = keys.map(decodeKey);
         // The POSITION, never the value: a key list is a secret, and "the
@@ -298,6 +301,7 @@ export const sessionCodec = (
           : OkAsync(codec([sealing, ...rotated], pins.ttlSec ?? DEFAULT_TTL_SEC));
       }),
   });
+};
 
 /**
  * The cookie the session travels on, and there is no option to rename it.
@@ -310,7 +314,11 @@ export const sessionCodec = (
  */
 export const SESSION_COOKIE = "__Host-session";
 
-export type SessionOptions<P, Scopes extends readonly string[]> = {
+export type SessionOptions<
+  P,
+  Scopes extends readonly string[],
+  Pre extends string = "HTTP_OIDC",
+> = {
   /**
    * The scopes this scheme can grant, and **the only place they are written**
    * — `jwtAuthenticator`'s rule, for `jwtAuthenticator`'s reason. The grant is
@@ -338,7 +346,7 @@ export type SessionOptions<P, Scopes extends readonly string[]> = {
    * The prefix of both variables. Default `HTTP_OIDC`, `oidc()`'s own — a
    * scheme pairs with its login by naming the same prefix.
    */
-  readonly variablePrefix?: string;
+  readonly variablePrefix?: Pre;
 };
 
 /**
@@ -371,9 +379,14 @@ export type SessionOptions<P, Scopes extends readonly string[]> = {
  */
 export const sessionAuthenticator =
   <P>() =>
-  <const Scopes extends readonly string[] = readonly []>(
-    options: SessionOptions<P, Scopes> = {},
-  ): Authenticator<P, Scopes[number], SessionCodec | Env, ConfigInvalid> => {
+  <const Scopes extends readonly string[] = readonly [], const Pre extends string = "HTTP_OIDC">(
+    options: SessionOptions<P, Scopes, Pre> = {},
+  ): Authenticator<
+    P,
+    Scopes[number],
+    SessionCodec | EnvReading<never, `${Pre}_ISSUER` | `${Pre}_CLIENT_ID`>,
+    ConfigInvalid
+  > => {
     // The vocabulary decides the answer's SHAPE, and it is read once here: a
     // scoped scheme answers an empty grant for a session that holds nothing,
     // never a bare identity.
@@ -384,7 +397,7 @@ export const sessionAuthenticator =
       // unseals happily; refusing it is this scheme's job.
       ((session: Session<unknown>) => (session.principal ?? undefined) as P | undefined);
 
-    const variables = options.variablePrefix ?? "HTTP_OIDC";
+    const variables = (options.variablePrefix ?? "HTTP_OIDC") as Pre;
     const schema = Config.object({
       issuer: Config.pinned(options.issuer, Config.url(`${variables}_ISSUER`)),
       clientId: Config.pinned(options.clientId, Config.string(`${variables}_CLIENT_ID`)),
@@ -410,5 +423,7 @@ export const sessionAuthenticator =
           ),
       }),
       cookie: true as const,
-    };
+      // Cast for the needs alone: over a generic prefix the schema's own needs
+      // type cannot resolve, so the annotation states the two variables.
+    } as never;
   };

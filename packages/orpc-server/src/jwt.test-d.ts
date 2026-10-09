@@ -6,7 +6,7 @@
 // outage is reported rather than swallowed, and it costs a root nothing:
 // `httpServer` contributes the no-op member and exports the port. Each
 // `@ts-expect-error` is an assertion.
-import type { ConfigInvalid, Env } from "@btravstack/config";
+import type { ConfigInvalid, EnvReading } from "@btravstack/config";
 import type { Observers } from "@btravstack/core";
 import { html } from "@btravstack/htmx-server";
 import type { Authenticator } from "@btravstack/http-server";
@@ -23,11 +23,33 @@ const principal = (claims: Claims): Identity | undefined =>
     ? { tenantId: claims["tenant"], userId: claims.sub }
     : undefined;
 
-// Nothing pinned: every option arrives from `HTTP_JWT_*`.
+// Nothing pinned: every option arrives from `HTTP_JWT_*`, and the needs name
+// the three variables, so a boot's `env` is typed by them.
 const fromEnvironment = jwtAuthenticator<Identity>()({ principal });
 
 expectTypeOf(fromEnvironment).toEqualTypeOf<
-  Authenticator<Identity, never, Env | Observers, ConfigInvalid>
+  Authenticator<
+    Identity,
+    never,
+    EnvReading<never, "HTTP_JWT_JWKS_URI" | "HTTP_JWT_ISSUER" | "HTTP_JWT_AUDIENCE"> | Observers,
+    ConfigInvalid
+  >
+>();
+
+// A second scheme's variables carry its own prefix, in the type as at run time.
+const customer = jwtAuthenticator<Identity>()({ variablePrefix: "HTTP_JWT_CUSTOMER", principal });
+
+expectTypeOf(customer).toEqualTypeOf<
+  Authenticator<
+    Identity,
+    never,
+    | EnvReading<
+        never,
+        "HTTP_JWT_CUSTOMER_JWKS_URI" | "HTTP_JWT_CUSTOMER_ISSUER" | "HTTP_JWT_CUSTOMER_AUDIENCE"
+      >
+    | Observers,
+    ConfigInvalid
+  >
 >();
 
 // All three pinned — what a test does — is the same description.
@@ -40,7 +62,12 @@ const pinned = jwtAuthenticator<Identity>()({
 });
 
 expectTypeOf(pinned).toEqualTypeOf<
-  Authenticator<Identity, "orders:export", Env | Observers, ConfigInvalid>
+  Authenticator<
+    Identity,
+    "orders:export",
+    EnvReading<never, "HTTP_JWT_JWKS_URI" | "HTTP_JWT_ISSUER" | "HTTP_JWT_AUDIENCE"> | Observers,
+    ConfigInvalid
+  >
 >();
 
 // Negative: a second accepted issuer is a second authenticator, not an array —
