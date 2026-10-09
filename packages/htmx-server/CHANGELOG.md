@@ -1,5 +1,25 @@
 # @btravstack/htmx-server
 
+## 0.26.0
+
+### Minor Changes
+
+- 8994a35: `HttpModule` provides the pieces its router and fragments compose. A root that
+  keeps its controllers itself lists each once, in `api.OrpcRouter(contract)([…])`,
+  instead of again in `provides`; a slice that provides and exports its own piece
+  keeps working, since the same provider seen twice is one provider. The composed
+  providers carry their pieces on `pieces`, for a root built on `http()`.
+
+### Patch Changes
+
+- Updated dependencies [0034a32]
+- Updated dependencies [7c7ce8d]
+  - @btravstack/config@0.26.0
+  - @btravstack/http-server@0.26.0
+  - @btravstack/core@0.26.0
+  - @btravstack/contract@0.26.0
+  - @btravstack/di@0.26.0
+
 ## 0.25.0
 
 ### Patch Changes
