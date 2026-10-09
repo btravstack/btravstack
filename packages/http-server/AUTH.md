@@ -224,7 +224,13 @@ The two rules this half exists to state, before the detail:
   against different issuers, a JWKS endpoint moves, and the audience is the
   deployment's own name; none of it belongs in the image. A variable nobody
   pinned and nobody set is a `ConfigInvalid` naming it, at startup, with every
-  offending variable in one message. The rest stay options: `algorithms`,
+  offending variable in one message. **`variablePrefix` renames the three**
+  (default `HTTP_JWT`), so a second scheme trusting another issuer is
+  configured per deployment like the first, rather than pinned in code (issue
+  #461). It is a prefix and not three names because the starter-prefix rule
+  already decides the shape of every variable here; a scheme's KEY in
+  `defineHttp` is not used, since renaming a key would then silently rename a
+  deployment's configuration. The rest stay options: `algorithms`,
   `clockToleranceSec` and `allowInsecureJwks` because a value whose silent
   change is a security regression is not an environment's to change,
   `header`/`principal`/`scopes` because an environment carries no functions and

@@ -298,6 +298,7 @@ Its other options:
 | `clockToleranceSec` | no       | `0`                           | leeway on `exp` and `nbf`, in seconds                                                     |
 | `header`            | no       | `authorization`               | which header carries the token, as `Bearer <token>`                                       |
 | `allowInsecureJwks` | no       | `false`                       | fetch the key set from an `http:` URL that is not on a loopback host                      |
+| `variablePrefix`    | no       | `HTTP_JWT`                    | the prefix of the three variables below, so a second scheme reads its own                 |
 
 **`jwks`, `issuer` and `audience` are pins, the same rule `http({ port })` has against
 `PORT`**: explicit beats environment, per field. Left unset, they bind from
@@ -308,6 +309,14 @@ scheme's `make` arm, so a variable nobody pinned and nobody set is a
 than a `401` for every caller. `jwks` is a
 [`Config.url`](/reference/config#fields) field: a malformed URI is refused with
 the variable named instead of defecting at the first request.
+
+**A second scheme names its own variables** with `variablePrefix`: an API that
+accepts staff tokens from one issuer and customer tokens from another declares
+the second as `jwtAuthenticator<Customer>()({ variablePrefix:
+"HTTP_JWT_CUSTOMER", principal })`, which reads `HTTP_JWT_CUSTOMER_JWKS_URI`,
+`HTTP_JWT_CUSTOMER_ISSUER` and `HTTP_JWT_CUSTOMER_AUDIENCE`. A pin still beats
+its variable, and the `ConfigInvalid` and the cleartext refusal name the
+scheme's own variable.
 
 **A cleartext `jwks` is refused at boot too**, on the same rule
 [`oidc()`](#the-login-answerer) applies to its issuer and with the same

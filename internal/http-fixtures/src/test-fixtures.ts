@@ -2206,6 +2206,13 @@ export type HttpFixtures = {
     env: Environment,
   ) => AsyncResult<AuthenticatorService<JwtIdentity>, ConfigInvalid>;
   /**
+   * A second scheme, pinning nothing and reading `HTTP_JWT_CUSTOMER_*` rather
+   * than `HTTP_JWT_*`, built from whatever environment the test hands it.
+   */
+  readonly customerJwt: (
+    env: Environment,
+  ) => AsyncResult<AuthenticatorService<JwtIdentity>, ConfigInvalid>;
+  /**
    * The CSRF deployments on an ephemeral port, over whatever `csrf` a test
    * pins: `cookies` composes a session scheme, `headers` an API-key one. Shut
    * down by the fixture.
@@ -2340,6 +2347,15 @@ export const it = test.extend<HttpFixtures>({
       jwks: issuer.jwks,
       issuer: issuer.issuer,
       audience: "pinned",
+      principal: jwtPrincipal,
+    });
+    await use((env) => jwtServiceOf(authenticator, env));
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  customerJwt: async ({}, use) => {
+    const authenticator = jwtAuthenticator<JwtIdentity>()({
+      variablePrefix: "HTTP_JWT_CUSTOMER",
       principal: jwtPrincipal,
     });
     await use((env) => jwtServiceOf(authenticator, env));

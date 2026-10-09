@@ -17,19 +17,26 @@ export type Claims = JWTPayload;
 
 export type JwtOptions<P, Scopes extends readonly string[]> = {
   /**
-   * The issuer's JWKS endpoint — pins `HTTP_JWT_JWKS_URI` when set, and is read
+   * The issuer's JWKS endpoint — pins `<prefix>_JWKS_URI` when set, and is read
    * from it when not. Keys are fetched on demand and cached; a `kid` the cache
    * does not know triggers one refetch, rate-limited by `jose`.
    */
   readonly jwks?: string;
-  /** Required `iss` — pins `HTTP_JWT_ISSUER`. A token from another issuer is refused. */
+  /** Required `iss` — pins `<prefix>_ISSUER`. A token from another issuer is refused. */
   readonly issuer?: string;
   /**
-   * Required `aud` — pins `HTTP_JWT_AUDIENCE`. A token minted for another
+   * Required `aud` — pins `<prefix>_AUDIENCE`. A token minted for another
    * audience is refused: this is the check that stops a token from a sibling
    * service being replayed here.
    */
   readonly audience?: string;
+  /**
+   * The prefix of the three variables this scheme reads: `<prefix>_JWKS_URI`,
+   * `<prefix>_ISSUER` and `<prefix>_AUDIENCE`. Default `HTTP_JWT`. A second
+   * scheme names its own — `HTTP_JWT_CUSTOMER` — so each issuer is configured
+   * per deployment rather than pinned in code.
+   */
+  readonly variablePrefix?: string;
   /**
    * The signature algorithms this endpoint accepts. Default
    * {@link DEFAULT_ALGORITHMS} — asymmetric only, and `none` is not
@@ -173,9 +180,10 @@ const bearer = (value: string | readonly string[] | undefined): string | undefin
  * ```
  *
  * `jwks`, `issuer` and `audience` are bound from `HTTP_JWT_JWKS_URI`,
- * `HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE`; an option PINS its variable, the
- * shape `http({ port })` has against `PORT`. A variable nobody pinned and
- * nobody set is a `ConfigInvalid` naming it, at startup.
+ * `HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE` — or under the scheme's own
+ * `variablePrefix`; an option PINS its variable, the shape `http({ port })` has
+ * against `PORT`. A variable nobody pinned and nobody set is a `ConfigInvalid`
+ * naming it, at startup.
  *
  * A refusal carries no reason ON THE WIRE, which is `Unauthenticated`'s own
  * rule. What this scheme records instead is narrower and deliberate: a refusal
@@ -191,10 +199,11 @@ export const jwtAuthenticator =
   ): Authenticator<P, Scopes[number], Env | Observers, ConfigInvalid> => {
     const header = (options.header ?? "authorization").toLowerCase();
     const vocabulary = options.scopes;
+    const prefix = options.variablePrefix ?? "HTTP_JWT";
     const schema = Config.object({
-      jwks: Config.pinned(options.jwks, Config.url("HTTP_JWT_JWKS_URI")),
-      issuer: Config.pinned(options.issuer, Config.string("HTTP_JWT_ISSUER")),
-      audience: Config.pinned(options.audience, Config.string("HTTP_JWT_AUDIENCE")),
+      jwks: Config.pinned(options.jwks, Config.url(`${prefix}_JWKS_URI`)),
+      issuer: Config.pinned(options.issuer, Config.string(`${prefix}_ISSUER`)),
+      audience: Config.pinned(options.audience, Config.string(`${prefix}_AUDIENCE`)),
     });
 
     return HttpAuthenticator<P, Scopes[number]>()({
@@ -213,7 +222,7 @@ export const jwtAuthenticator =
             return Err(
               cleartextRefused({
                 port: "HttpJwt",
-                variable: "HTTP_JWT_JWKS_URI",
+                variable: `${prefix}_JWKS_URI`,
                 option: "allowInsecureJwks",
                 on: "jwtAuthenticator()",
                 what: "anything on the path can substitute its own signing key and mint tokens this process accepts",
