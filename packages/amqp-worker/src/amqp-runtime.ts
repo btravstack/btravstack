@@ -3,7 +3,7 @@ import {
   type ConsumerOptions,
   type WorkerInferHandlers,
 } from "@amqp-contract/worker";
-import { Config, Env, type ConfigInvalid } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import {
   Observers,
   RuntimePort,
@@ -165,7 +165,9 @@ export const amqp = <
 ): Module<
   AmqpRuntime | AmqpConfig,
   ConfigInvalid,
-  Env | HandlersInstanceOf<TContract> | UnitNeedsOf<Unit>
+  | EnvReading<never, "AMQP_URL" | "AMQP_CONNECT_TIMEOUT_MS">
+  | HandlersInstanceOf<TContract>
+  | UnitNeedsOf<Unit>
 > => {
   const config = Config.provider(AmqpConfig)(
     Config.object({
@@ -207,7 +209,9 @@ export const amqp = <
   } as never) as unknown as Module<
     AmqpRuntime | AmqpConfig,
     ConfigInvalid,
-    Env | HandlersInstanceOf<TContract> | UnitNeedsOf<Unit>
+    | EnvReading<never, "AMQP_URL" | "AMQP_CONNECT_TIMEOUT_MS">
+    | HandlersInstanceOf<TContract>
+    | UnitNeedsOf<Unit>
   >;
 };
 

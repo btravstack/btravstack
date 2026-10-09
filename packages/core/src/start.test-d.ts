@@ -1,11 +1,17 @@
-import type { Env } from "@btravstack/config";
+import { Config, Env } from "@btravstack/config";
 import { Module, Port, Provider, type Scope } from "@btravstack/di";
-import { testRuntime, type TestRuntimeInfo } from "@btravstack/testing";
+import { TestRuntimePort, testRuntime, type TestRuntimeInfo } from "@btravstack/testing";
 import { OkAsync } from "unthrown";
 import { expectTypeOf } from "vitest";
 
 import { RuntimePort, type Runtime, type Serving } from "./runtime.js";
-import { start, type RunningApp, type StartGate } from "./start.js";
+import {
+  start,
+  type KernelEnvironment,
+  type RunningApp,
+  type StartEnvironment,
+  type StartGate,
+} from "./start.js";
 
 class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 class Clock extends Port("Clock")<{ readonly now: () => number }> {}
@@ -132,3 +138,46 @@ const SpanApp = Module("SpanApp")({
 });
 // @ts-expect-error -- UNSATISFIED RUNTIME PORTS: `Span` is not among `SpanApp`'s exports
 start(SpanApp);
+
+// `env` is typed by what the module reads: a `Config` provider names its
+// variables in its needs, and `start` turns them into the record it accepts,
+// beside the kernel's own.
+const DatabaseConfig = Config.provider("StartDatabaseConfig")(
+  Config.object({
+    url: Config.string("DATABASE_URL"),
+    poolSize: Config.integer("DATABASE_POOL_SIZE", { default: 8 }),
+  }),
+);
+const reading = Module("StartReadingApp")({
+  needs: [Env],
+  imports: [testRuntime().module],
+  provides: [DatabaseConfig],
+  exports: [TestRuntimePort],
+});
+
+start(reading, { env: { DATABASE_URL: "postgres://db", PROBE_PORT: "0" } });
+// @ts-expect-error DATABASE_URL is required: nothing defaults or pins it
+start(reading, { env: { DATABASE_POOL_SIZE: "4" } });
+// @ts-expect-error a misspelt variable is one no reader names
+start(reading, { env: { DATABASE_URL: "postgres://db", DATABSE_POOL_SIZE: "4" } });
+
+expectTypeOf<StartEnvironment<typeof reading>>().toEqualTypeOf<
+  { readonly DATABASE_URL: string } & {
+    readonly DATABASE_POOL_SIZE?: string | undefined;
+  } & KernelEnvironment
+>();
+
+// A reader that names nothing — `Env` injected whole — opens the record again.
+const unnamed = Module("StartUnnamedApp")({
+  needs: [Env],
+  imports: [testRuntime().module],
+  provides: [
+    Provider(Port("StartRaw")<string>)({
+      inject: { env: Env },
+      sync: ({ env }) => env["ANYTHING"] ?? "",
+    }),
+  ],
+  exports: [TestRuntimePort],
+});
+
+start(unnamed, { env: { ANYTHING: "goes", ELSE: "too" } });

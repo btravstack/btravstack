@@ -37,3 +37,4 @@ export type { IsUnion, Principal, SchemesOf } from "./principal.js";
 export { forLocation, returnTo } from "./redirect.js";
 export { forkUnit, unitScope } from "./unit-scope.js";
 export type { KindOf, Kinds, UnitFor, UnitsOf } from "./unit.js";
+export type { HttpServerEnv } from "./http-runtime.js";

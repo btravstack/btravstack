@@ -8,6 +8,7 @@ import {
   Logger,
   type Meter,
   type Tracer,
+  type StartEnvironment,
 } from "@btravstack/core";
 import { Provider, type Module, type Scope, type ServiceOf } from "@btravstack/di";
 import { createOrderApiClient, type OrderApiClient } from "@btravstack/example-order-api-client";
@@ -241,7 +242,7 @@ export type ApiFixtures = {
    * The environment every `boot` here starts with, handed out so a spec can
    * omit one variable and assert what a deployment that forgot it gets.
    */
-  readonly env: Record<string, string>;
+  readonly env: StartEnvironment<typeof OrderApi>;
   /** The JWKS the `user` scheme fetches, and the key every token below is signed with. */
   readonly issuer: LocalIssuer;
   /** The three Ory containers, attached to; file-scoped like the issuer. */
@@ -395,9 +396,6 @@ export const it = test.extend<ApiFixtures>({
       PORT: "0",
       HOST: "127.0.0.1",
       LOG_LEVEL: "fatal",
-      // A spec run stands up no collector, so the SDK is disabled through its
-      // own switch and the ports still resolve to noop instruments.
-      OTEL_SDK_DISABLED: "true",
       DATABASE_URL: inject("__ORDERS_DATABASE_URL__"),
       // The shared Redis, reached under a tenant of its own, so the cache needs
       // no more cleanup than the database does.

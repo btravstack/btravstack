@@ -10,6 +10,39 @@ commit.
 - **`Env`** is declared **once**, here; the kernel imports it to provide it, so
   di's duplicate-id warning never fires.
 
+## The variables travel in the needs channel (#465)
+
+A field's type carries its variable and whether it must be set
+(`ConfigField<T, V, Need>`); `Config.object`'s input type is the environment it
+reads; `Config.provider` and `Config.env` put that in the provider's needs as
+`EnvReading<Required, Optional>`; `EnvironmentFor<N>` is the record a graph
+with needs `N` accepts, and the kernel types `start`'s `env` by it. Five things
+are load-bearing:
+
+- **`"~env"` is a string key, not a symbol.** A module's needs are printed into
+  every consumer's declarations, and di's brands taught what a private symbol
+  in an expanded intersection costs (TS4023).
+- **`EnvNeed`'s key computations are inline**, not named helpers. Declaration
+  emit prints a named alias unreduced, and a consumer exporting a module would
+  then name an alias this package does not export. Measured: the needs printed
+  as `EnvReading<RequiredKeys<…>, …>` until they were inlined.
+- **A variable a starter option may pin is optional.** `Config.pinned` reads
+  nothing when its value is certainly there and leaves the variable optional
+  when the value's type admits `undefined`: only the call knows. Making that
+  exact needs every starter generic over its options — stage 2 of #465.
+- **`EnvPortFor` has a zero-argument constructor**, as `Env` does.
+  `InstanceType` matches against `(...args: any)`, and `any` is not assignable
+  to `never`, so a `(...args: never)` constructor answers `any` — which every
+  check then passes. Measured: `sessionCodec`'s annotation passed vacuously
+  until this changed.
+- **A reader that names nothing opens the record.** Plain `Env` in a needs
+  union — a provider injecting it whole, a field typed `ConfigField<T>` — makes
+  `EnvironmentFor` the open `Environment`, which is what every graph accepted
+  before. A starter whose module type spells plain `Env` therefore opens every
+  root composing it, which is why each starter's annotation names its
+  variables; over a generic `variablePrefix` the schema's own needs cannot
+  resolve, so those annotations state them and cast.
+
 ## Deliberately not here (#167)
 
 The package reads the process environment once, as the graph is built. The

@@ -1,6 +1,7 @@
-import type { Env } from "@btravstack/config";
+import type { Env, EnvironmentFor } from "@btravstack/config";
 import {
   start,
+  type KernelEnvironment,
   type RunningApp,
   type RuntimeInfoOf,
   type StartGate,
@@ -15,7 +16,7 @@ import type { Module, Scope } from "@btravstack/di";
  */
 export type Boot = <X, E, N>(
   module: Module<X, E, N> & StartGate<X, N>,
-  options?: Omit<StartOptions, "signals">,
+  options?: Omit<StartOptions<EnvironmentFor<N> & KernelEnvironment>, "signals">,
 ) => RunningApp<E, RuntimeInfoOf<X>>;
 
 /** What every `boot` in the fixture starts with; a call's own options win. */

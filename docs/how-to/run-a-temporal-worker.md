@@ -306,7 +306,10 @@ on `Serving.info`:
 
 ```ts
 const app = start(OrderTemporalWorker, {
-  env: { TEMPORAL_ADDRESS: "127.0.0.1:7233" },
+  env: {
+    TEMPORAL_ADDRESS: "127.0.0.1:7233",
+    DATABASE_URL: "postgres://orders@localhost:5432/orders",
+  },
   signals: false,
   probes: false,
 });

@@ -4,9 +4,15 @@ description: Bind a typed configuration slice from environment variables with @b
 ---
 
 <!-- doctest: prelude
-import { start } from "@btravstack/core";
-import { OrderApi } from "../../module.js";
-const App = OrderApi;
+import { start, type StartEnvironment } from "@btravstack/core";
+import type { ConfigInvalid, EnvReading } from "@btravstack/config";
+import type { Module as AppModule } from "@btravstack/di";
+import { TestRuntimePort } from "@btravstack/testing";
+declare const App: AppModule<
+  InstanceType<typeof TestRuntimePort>,
+  ConfigInvalid,
+  EnvReading<"DATABASE_URL", "DATABASE_POOL_SIZE">
+>;
 -->
 
 # Configure from the environment
@@ -164,6 +170,24 @@ const app = start(App, {
 });
 // app.exited: AsyncResult<ExitReport, ConfigInvalid | RuntimeStartFailed>
 ```
+
+**That `env` is typed by what the graph reads.** Every `Config` field names
+its variable in its type, and a module's needs carry the names up to `start`,
+`runMain` and a test's `boot`: the record accepts the variables the module's
+configuration reads and the kernel's own, requires the ones nothing defaults or
+pins, and refuses any other. A misspelt `DATABSE_URL`, or a variable the root
+stopped reading, is a compile error at the call rather than a `ConfigInvalid`
+at boot. A variable a starter option can pin is optional in the type, since
+only the call knows whether it pinned it. To type an environment kept apart
+from the call, such as a test's shared one, use `StartEnvironment`:
+
+```ts
+const env: StartEnvironment<typeof App> = { DATABASE_URL: "postgres://localhost/orders" };
+```
+
+A reader that names no variables — a hand-written field whose `variable` is a
+plain `string`, or a provider injecting `Env` itself — opens the type again,
+and any record is accepted.
 
 Outside the kernel — a bare `Module.scoped` — provide `Env` yourself with
 `Provider(Env)({ inject: {}, value: process.env })`.

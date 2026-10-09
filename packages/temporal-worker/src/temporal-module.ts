@@ -1,4 +1,4 @@
-import type { ConfigInvalid, Env } from "@btravstack/config";
+import type { ConfigInvalid, EnvReading } from "@btravstack/config";
 import {
   composeByPrefix,
   type AnyUnitModule,
@@ -44,7 +44,16 @@ import {
 type TemporalStarter<C extends ContractDefinition, Unit extends AnyUnitModule | undefined> = Module<
   TemporalRuntime | TemporalConfig | TemporalConnection,
   ConfigInvalid | TemporalUnreachable,
-  Env | Scope | ActivitiesInstanceOf<C> | UnitNeedsOf<Unit>
+  | EnvReading<
+      never,
+      | "TEMPORAL_ADDRESS"
+      | "TEMPORAL_NAMESPACE"
+      | "TEMPORAL_GRACE_PERIOD_MS"
+      | "TEMPORAL_FORCE_AFTER_MS"
+    >
+  | Scope
+  | ActivitiesInstanceOf<C>
+  | UnitNeedsOf<Unit>
 >;
 
 /** The application's imports plus the starter — the tuple `Module(name)` is handed. */

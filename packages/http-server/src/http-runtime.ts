@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 
-import { Config, Env, type ConfigInvalid } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import {
   Observers,
   RuntimePort,
@@ -167,6 +167,21 @@ export const _internal_httpRuntime = (
 });
 
 /**
+ * The variables {@link httpServer} reads, every one defaulted or pinnable —
+ * what a root's `env` may carry for it.
+ */
+export type HttpServerEnv = EnvReading<
+  never,
+  | "PORT"
+  | "HOST"
+  | "HTTP_HEADERS_TIMEOUT_MS"
+  | "HTTP_REQUEST_TIMEOUT_MS"
+  | "HTTP_BODY_LIMIT"
+  | "HTTP_CORS_ORIGIN"
+  | "HTTP_COMPRESSION"
+>;
+
+/**
  * The socket half: the runtime, its configuration, and nothing that answers.
  * Answerers are contributed to `HttpHandler` separately — `orpc()` from
  * `http()`, `htmx()` from a fragment graph — which is what lets an application
@@ -179,7 +194,7 @@ export const httpServer = <
 ): Module<
   HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers,
   ConfigInvalid,
-  Env | UnitsNeedsOf<Units>
+  HttpServerEnv | UnitsNeedsOf<Units>
 > => {
   const {
     port,
@@ -270,7 +285,7 @@ export const httpServer = <
   } as never) as unknown as Module<
     HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers,
     ConfigInvalid,
-    Env | UnitsNeedsOf<Units>
+    HttpServerEnv | UnitsNeedsOf<Units>
   >;
 };
 

@@ -1,4 +1,4 @@
-import { ConfigInvalid } from "@btravstack/config";
+import { ConfigInvalid, type EnvironmentFor } from "@btravstack/config";
 import type { Module } from "@btravstack/di";
 import { P } from "unthrown";
 
@@ -8,6 +8,7 @@ import {
   type ExitReport,
   type RunningApp,
   type StartGate,
+  type KernelEnvironment,
   type StartOptions,
 } from "./start.js";
 
@@ -98,7 +99,7 @@ export const awaitExit = async <E>(
 // to leave the Result world and become a process exit code.
 export const runMain = async <X, E, N>(
   module: Module<X, E, N> & StartGate<X, N>,
-  options: StartOptions = {},
+  options: StartOptions<EnvironmentFor<N> & KernelEnvironment> = {},
   exit: (code: number) => void = (code) => {
     process.exitCode = code;
   },

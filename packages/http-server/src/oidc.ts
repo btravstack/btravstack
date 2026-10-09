@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { Config, Env, type ConfigInvalid } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import { Observers, observe, type Operation, type Settle } from "@btravstack/core";
 import { Provider, type AnyProvider } from "@btravstack/di";
 import {
@@ -36,10 +36,15 @@ import {
  * one `HttpHandler` member. The second half is a `CookieSchemes` member, which
  * carries no type of its own.
  */
-export type OidcAnswerer = Provider<
+export type OidcAnswerer<Pre extends string = string> = Provider<
   HttpHandler,
   ConfigInvalid | OidcUnreachable,
-  Env | SessionCodec | Observers
+  | EnvReading<
+      never,
+      `${Pre}_ISSUER` | `${Pre}_CLIENT_ID` | `${Pre}_CLIENT_SECRET` | `${Pre}_REDIRECT_URI`
+    >
+  | SessionCodec
+  | Observers
 > & { readonly port: typeof HttpHandler };
 
 /**
@@ -66,7 +71,7 @@ class GrantFailed extends TaggedError("GrantFailed")<{
   readonly cause: unknown;
 }> {}
 
-export type OidcOptions<P> = {
+export type OidcOptions<P, Pre extends string = string> = {
   /** Pins `<prefix>_ISSUER` — the provider, as its discovery document names itself. */
   readonly issuer?: string;
   /** Pins `<prefix>_CLIENT_ID`. */
@@ -85,7 +90,7 @@ export type OidcOptions<P> = {
    * Default `HTTP_OIDC`. A second login names its own — `HTTP_OIDC_STAFF` — the
    * way a second `jwtAuthenticator` does.
    */
-  readonly variablePrefix?: string;
+  readonly variablePrefix?: Pre;
   /** Where the three routes are mounted. Default `/auth`. */
   readonly prefix?: `/${string}`;
   /** What the authorization request asks for. Default `openid`. */
@@ -436,9 +441,11 @@ const handlerFor =
  * member beside a scheme that reads one; this is that rule reaching the one
  * surface it could not see.
  */
-export const oidc = <P>(options: OidcOptions<P>): readonly [OidcAnswerer, AnyProvider] => {
+export const oidc = <P, const Pre extends string = "HTTP_OIDC">(
+  options: OidcOptions<P, Pre>,
+): readonly [OidcAnswerer<Pre>, AnyProvider] => {
   const prefix = options.prefix ?? DEFAULT_PREFIX;
-  const variables = options.variablePrefix ?? "HTTP_OIDC";
+  const variables = (options.variablePrefix ?? "HTTP_OIDC") as Pre;
   const schema = Config.object({
     issuer: Config.pinned(options.issuer, Config.url(`${variables}_ISSUER`)),
     clientId: Config.pinned(options.clientId, Config.string(`${variables}_CLIENT_ID`)),
@@ -446,7 +453,9 @@ export const oidc = <P>(options: OidcOptions<P>): readonly [OidcAnswerer, AnyPro
     redirectUri: Config.pinned(options.redirectUri, Config.url(`${variables}_REDIRECT_URI`)),
   });
 
-  const answerer: OidcAnswerer = Provider.member(HttpHandler)({
+  // Cast for the needs alone: over a generic prefix the schema's own needs type
+  // cannot resolve, so `OidcAnswerer` states the four variables.
+  const answerer = Provider.member(HttpHandler)({
     inject: { env: Env, codec: SessionCodec, observers: Observers },
     make: ({ env, codec, observers }): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> =>
       Config.parse(
@@ -486,5 +495,5 @@ export const oidc = <P>(options: OidcOptions<P>): readonly [OidcAnswerer, AnyPro
       }),
   });
 
-  return [answerer, cookieScheme()];
+  return [answerer as unknown as OidcAnswerer<Pre>, cookieScheme()];
 };

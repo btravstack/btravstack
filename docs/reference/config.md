@@ -38,13 +38,30 @@ A field reads **one** variable into a typed value:
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-type ConfigField<T> = {
-  readonly variable: string;
+type ConfigField<
+  T,
+  V extends string = string,
+  Need extends "required" | "optional" = "required" | "optional",
+> = {
+  readonly variable: V;
   readonly parse: (raw: string | undefined) => Result<T, ConfigFieldInvalid>;
   /** The same rule over a value that is already a `T` — a pin, or a default. Optional. */
   readonly check?: (value: T) => Result<T, ConfigFieldInvalid>;
+  /** Type-only: whether the variable must be set. Never present at run time. */
+  readonly "~need"?: Need;
 };
 ```
+
+**A field carries its variable's name and whether it must be set, in its
+type.** `Config.string("DATABASE_URL")` is a
+`ConfigField<string, "DATABASE_URL", "required">`; with a `default` it is
+`"optional"`; a field typed `ConfigField<T, "NAME">` with no need given counts
+as required. `Config.pinned(value, field)` reads nothing when `value` is
+certainly there, and leaves the variable `"optional"` when `value` may be
+`undefined` — only the call knows whether it pinned. A hand-written field typed
+`ConfigField<T>` names its variable only as `string`, which is allowed and
+opens the environment its graph accepts (see
+[The variables a graph reads](#the-variables-a-graph-reads)).
 
 | Constructor                          | Value                                                                                                                 | Options                                                                                                                                    |
 | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -151,7 +168,10 @@ compiling.
 
 ```ts
 Config.object<F extends Record<string, ConfigField<unknown>>>(fields: F):
-  ConfigSchema<Environment, { readonly [K in keyof F]: /* the field's T */ }>
+  ConfigSchema<
+    /* { the required variables: string } & { the optional ones?: string } */,
+    { readonly [K in keyof F]: /* the field's T */ }
+  >
 ```
 
 A record of fields, as a **Standard Schema v1** over the environment
@@ -228,13 +248,17 @@ first call names the port, the second says how it is bound.
 
 ```ts
 Config.provider<P extends AnyPort>(port: P):
-  (schema: ConfigSchema<Environment, ServiceOf<P>> & SetPortGate<P>) =>
-    Provider<InstanceType<P>, ConfigInvalid, Env> & { readonly port: P };
+  <I extends Environment>(schema: ConfigSchema<I, ServiceOf<P>> & SetPortGate<P>) =>
+    Provider<InstanceType<P>, ConfigInvalid, EnvNeed<I>> & { readonly port: P };
 
 Config.provider<const Name extends string>(name: Name):
-  <Output>(schema: ConfigSchema<Environment, Output>) =>
-    Provider<PortInstance<Name, Output>, ConfigInvalid, Env> & { readonly port: PortClassOf<Name, Output> };
+  <I extends Environment, Output>(schema: ConfigSchema<I, Output>) =>
+    Provider<PortInstance<Name, Output>, ConfigInvalid, EnvNeed<I>> & { readonly port: PortClassOf<Name, Output> };
 ```
+
+`I` is the schema's input — the environment it reads — and `EnvNeed<I>` the
+need naming those variables (see
+[The variables a graph reads](#the-variables-a-graph-reads)).
 
 | Form                              | When                                                                                                                     |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -285,6 +309,41 @@ const Persistence = Module("Persistence")({
 `Persistence` carries `ConfigInvalid` in its error channel and `Env` in its
 needs; the kernel discharges the second.
 
+## The variables a graph reads
+
+A schema's **input type** is the environment it reads: `Config.object`'s is
+built from its fields, and a `zod` object's is its own input. `Config.provider`
+turns it into its need — `EnvReading<Required, Optional>`, which is `Env`
+naming those variables — so a module's needs union every variable its
+configuration reads, and `start`, `runMain` and `@btravstack/testing`'s `boot`
+type their `env` by it (see [`start`](/reference/core/start)).
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
+```ts
+type EnvReading<Required extends string, Optional extends string> = Env & {
+  readonly "~env": { readonly required: Required; readonly optional: Optional };
+};
+type EnvNeed<I> = /* EnvReading over I's keys, or plain Env for an open record */;
+type EnvironmentFor<N> = /* the record a graph with needs N accepts */;
+```
+
+| Type / value         | What it is                                                                                                                                                                   |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `EnvReading<R, O>`   | `Env`, as a need naming the variables its reader requires (`R`) and can do without (`O`)                                                                                     |
+| `EnvNeed<I>`         | what reading a schema with input `I` costs a provider: `EnvReading` over `I`'s keys, or plain `Env` when `I` is an open record                                               |
+| `EnvironmentFor<N>`  | the record a graph with needs `N` accepts: every required variable, every optional one, nothing else — a variable one reader requires and another defaults is required       |
+| `Config.env(schema)` | `Env` typed as reading what `schema` reads — the same port at run time — for a provider that parses the environment itself with `Config.parse` rather than `Config.provider` |
+| `EnvPortFor<I>`      | the type `Config.env` answers                                                                                                                                                |
+
+**A reader that names nothing opens the record.** A provider injecting `Env`
+itself, a hand-written field whose `variable` is a plain `string`, or a schema
+whose input is a union of shapes with different keys says nothing exact about
+what it reads, so `EnvironmentFor` is then `Environment` and any
+record is accepted — the behaviour every graph had before. A starter's own
+module types name their variables; a module's needs are only as precise as its
+least precise reader.
+
 ## Errors
 
 **`ConfigInvalid`** — `TaggedError("ConfigInvalid")<{ port: string; issues: readonly ConfigIssue[] }>`.
@@ -308,13 +367,17 @@ leaves `Config.object`; a caller sees `ConfigInvalid`.
 
 ## Summary of exports
 
-| Export               | Kind                                                                                           |
-| -------------------- | ---------------------------------------------------------------------------------------------- |
-| `Env`                | port                                                                                           |
-| `Environment`        | type                                                                                           |
-| `Config`             | value — `string`, `integer`, `boolean`, `port`, `url`, `pinned`, `object`, `parse`, `provider` |
-| `ConfigField<T>`     | type                                                                                           |
-| `ConfigSchema<I, O>` | type                                                                                           |
-| `ConfigIssue`        | type                                                                                           |
-| `ConfigInvalid`      | error                                                                                          |
-| `ConfigFieldInvalid` | error                                                                                          |
+| Export                    | Kind                                                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `Env`                     | port                                                                                                          |
+| `Environment`             | type                                                                                                          |
+| `Config`                  | value — `string`, `integer`, `boolean`, `port`, `url`, `list`, `pinned`, `object`, `parse`, `provider`, `env` |
+| `ConfigField<T, V, Need>` | type                                                                                                          |
+| `EnvReading<R, O>`        | type                                                                                                          |
+| `EnvNeed<I>`              | type                                                                                                          |
+| `EnvironmentFor<N>`       | type                                                                                                          |
+| `EnvPortFor<I>`           | type                                                                                                          |
+| `ConfigSchema<I, O>`      | type                                                                                                          |
+| `ConfigIssue`             | type                                                                                                          |
+| `ConfigInvalid`           | error                                                                                                         |
+| `ConfigFieldInvalid`      | error                                                                                                         |

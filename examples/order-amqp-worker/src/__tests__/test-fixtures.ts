@@ -339,9 +339,6 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
       STORAGE_S3_SECRET_ACCESS_KEY: inject("__TESTCONTAINERS_S3_SECRET_KEY__"),
       OUTBOX_POLL_MS: "25",
       OUTBOX_TENANTS: tenant,
-      // The real root composes otel(); a spec run stands up no collector, so
-      // the SDK is disabled through its own switch — the ports still resolve.
-      OTEL_SDK_DISABLED: "true",
     };
 
     await use(async (module, options) => {

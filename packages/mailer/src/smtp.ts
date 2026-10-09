@@ -1,4 +1,4 @@
-import { Config, Env, type ConfigInvalid } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import { HealthCheckFailed, HealthChecks } from "@btravstack/core";
 import type { Scope } from "@btravstack/di";
 import { Module, Port, Provider } from "@btravstack/di";
@@ -88,7 +88,11 @@ export const smtpMailerBackend = (transport: Transporter): MailerService => ({
  * it, and `MailerBackend` over it. `nodemailer` is an **optional** peer reached
  * only through this subpath.
  */
-export const smtpMailer = (): Module<MailerBackend | HealthChecks, ConfigInvalid, Env | Scope> =>
+export const smtpMailer = (): Module<
+  MailerBackend | HealthChecks,
+  ConfigInvalid,
+  EnvReading<"SMTP_URL", never> | Scope
+> =>
   Module("SmtpMailer")({
     needs: [Env],
     provides: [

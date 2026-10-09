@@ -4,9 +4,15 @@ description: The @btravstack/testing surface — bootFixture and Boot, tapped, o
 ---
 
 <!-- doctest: prelude
-import type { Env } from "@btravstack/config";
+import type { Env, EnvironmentFor } from "@btravstack/config";
 import type { AnyPort, Module } from "@btravstack/di";
-import type { RunningApp, RuntimeInfoOf, StartGate, StartOptions } from "@btravstack/core";
+import type {
+  KernelEnvironment,
+  RunningApp,
+  RuntimeInfoOf,
+  StartGate,
+  StartOptions,
+} from "@btravstack/core";
 import type {
   Boot,
   BootDefaults,
@@ -62,7 +68,7 @@ const bootFixture: (
 
 type Boot = <X, E, N>(
   module: Module<X, E, N> & StartGate<X, N>,
-  options?: Omit<StartOptions, "signals">,
+  options?: Omit<StartOptions<EnvironmentFor<N> & KernelEnvironment>, "signals">,
 ) => RunningApp<E, RuntimeInfoOf<X>>;
 
 type BootDefaults = Omit<StartOptions, "signals">;
