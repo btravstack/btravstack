@@ -172,7 +172,7 @@ The two rules this half exists to state, before the detail:
   because a key list in the image is a key list in the repository.
   `examples/order-api`'s `serviceAuth` is this, not a stand-in.
 
-- **`jwtAuthenticator<P>()({ jwks?, issuer?, audience?, algorithms?, clockToleranceSec?, header?, principal, scopes? })`
+- **`jwtAuthenticator<P>()({ jwks?, issuer?, audience?, variablePrefix?, algorithms?, clockToleranceSec?, allowInsecureJwks?, header?, principal, scopes? })`
   → `Authenticator<P, Scopes[number], Env, ConfigInvalid>`, and `DEFAULT_ALGORITHMS`** — from
   **`@btravstack/http-server/jwt`**, with `jose` an OPTIONAL peer: a graph that
   never imports the subpath installs nothing. What it owns is the part where
@@ -224,7 +224,16 @@ The two rules this half exists to state, before the detail:
   against different issuers, a JWKS endpoint moves, and the audience is the
   deployment's own name; none of it belongs in the image. A variable nobody
   pinned and nobody set is a `ConfigInvalid` naming it, at startup, with every
-  offending variable in one message. The rest stay options: `algorithms`,
+  offending variable in one message. **`variablePrefix` renames the three**
+  (default `HTTP_JWT`), so a second scheme trusting another issuer is
+  configured per deployment like the first, rather than pinned in code (issue
+  #461). It is a prefix and not three names because the starter-prefix rule
+  already decides the shape of every variable here; a scheme's KEY in
+  `defineHttp` is not used, since renaming a key would then silently rename a
+  deployment's configuration. `oidc()` takes the same option for its four
+  `HTTP_OIDC_*` variables, so the two never disagree on how an instance is
+  configured — and it is `variablePrefix`, not `prefix`, because `oidc()`'s
+  `prefix` is already where its routes mount. The rest stay options: `algorithms`,
   `clockToleranceSec` and `allowInsecureJwks` because a value whose silent
   change is a security regression is not an environment's to change,
   `header`/`principal`/`scopes` because an environment carries no functions and
@@ -241,12 +250,10 @@ The two rules this half exists to state, before the detail:
   before substituting a signing key and minting tokens this process accepts
   (RFC 8725 §3).
 
-  **One JWT scheme per process**, which is why the prefix is `HTTP_JWT_` and
-  not `HTTP_JWT_<SCHEME>_`. Two schemes reading the same three variables are
-  one scheme; a genuinely second issuer pins all three explicitly, exactly as a
-  test does. The `string | readonly string[]` forms of `issuer` and `audience`
-  are gone with that decision: an environment carries one string, and a second
-  accepted issuer is a second authenticator.
+  **A second issuer is a second authenticator, under its own
+  `variablePrefix`** (below). The `string | readonly string[]` forms of
+  `issuer` and `audience` are gone for that reason: an environment carries one
+  string, and two schemes reading the same three variables are one scheme.
 
   **The piece is a `make` arm.** Reading the environment can fail, so the
   scheme's provider carries `ConfigInvalid` on its error channel and a
@@ -279,8 +286,8 @@ The two rules this half exists to state, before the detail:
   does not know grants nothing extra. Nothing new checks them: the grant goes
   through `granted()` and the existing walk produces the 403.
 
-- **`sessionAuthenticator<P>()({ scopes?, principal? })`
-  → `Authenticator<P, Scopes[number], SessionCodec, never>`** — from
+- **`sessionAuthenticator<P>()({ scopes?, principal?, issuer?, clientId?, variablePrefix? })`
+  → `Authenticator<P, Scopes[number], SessionCodec | Env, ConfigInvalid>`** — from
   **`@btravstack/http-server/session`**, beside `sessionCodec` and behind the
   same optional `jose` peer. The third scheme, and the only one whose
   credential this stack seals itself: it reads the `cookie` header, hands the
@@ -288,6 +295,22 @@ The two rules this half exists to state, before the detail:
   carries. `requires: [{ session: [] }]` on a fragment route and
   `authenticated({ session: [] })` on a procedure need nothing new — a scheme
   is a scheme.
+
+  **It accepts only its own login's sessions** (issue #461). `oidc()` seals
+  the issuer and client id it is configured with as `Session.iss` and
+  `Session.clientId`, and the scheme refuses a session from any other login —
+  binding both from `HTTP_OIDC_ISSUER` and `HTTP_OIDC_CLIENT_ID`, or under
+  `<variablePrefix>`, the variables its login reads. The issuer alone is not a
+  login: one provider hosts a staff client and a customer client, and both
+  would seal the same `iss`. Two logins share one
+  cookie and one key list, so a cookie NAME could not separate them (a client
+  replays any value it holds under any name — the codec's own `typ` argument),
+  and the default `principal` hands back whatever the session holds: a
+  customer login's session authenticated on a staff route. The issuer sealed
+  INSIDE the authenticated payload is the boundary. Sealing the CONFIGURED
+  issuer rather than the token's `iss` claim keeps the comparison exact, since
+  the two may differ by a trailing slash. A session sealed before this, with
+  neither, is refused — a browser signs in once more after the upgrade.
 
   **It injects the codec's PORT rather than holding keys.** Its needs channel
   is `SessionCodec`, so a root composing the scheme without `sessionCodec()` is
@@ -357,7 +380,7 @@ The two rules this half exists to state, before the detail:
   header, and a caller presenting a header credential is not a CSRF target, so
   neither sets the marker.
 
-- **`oidc({ principal, issuer?, clientId?, clientSecret?, redirectUri?, prefix?, scope?, postLogout?, allowInsecureIssuer? })`
+- **`oidc({ principal, issuer?, clientId?, clientSecret?, redirectUri?, variablePrefix?, prefix?, scope?, postLogout?, allowInsecureIssuer? })`
   and `OidcUnreachable`** (`oidc.ts`, from `@btravstack/http-server/oidc`) —
   **the one thing in this package on the ISSUING side of the line above, and
   the exception that proves it.** It mints no credential: it walks a browser

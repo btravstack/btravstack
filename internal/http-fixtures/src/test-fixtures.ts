@@ -334,27 +334,63 @@ export const cookieHeader = (...cookies: readonly string[]): IncomingHttpHeaders
   cookie: cookies.join("; "),
 });
 
+/** The login every session scheme here is pinned to, and every session a spec seals carries. */
+export const SESSION_ISSUER = "https://login.test/";
+export const SESSION_CLIENT_ID = "login-test";
+
 /**
  * The three session schemes a spec resolves through — the default one, the same
  * over a vocabulary, and one whose application declines a session no OIDC login
  * minted. All three unseal with the codec the fixture hands them, which is the
  * codec that sealed the cookie.
  */
-const defaultSession = sessionAuthenticator<SessionIdentity>()();
+const defaultSession = sessionAuthenticator<SessionIdentity>()({
+  issuer: SESSION_ISSUER,
+  clientId: SESSION_CLIENT_ID,
+});
 
-const scopedSession = sessionAuthenticator<SessionIdentity>()({ scopes: ["orders:export"] });
+const scopedSession = sessionAuthenticator<SessionIdentity>()({
+  issuer: SESSION_ISSUER,
+  clientId: SESSION_CLIENT_ID,
+  scopes: ["orders:export"],
+});
 
 const sidSession = sessionAuthenticator<SessionIdentity>()({
+  issuer: SESSION_ISSUER,
+  clientId: SESSION_CLIENT_ID,
   principal: (session) =>
     session.sid === undefined ? undefined : (session.principal as SessionIdentity),
 });
 
+/** The `make` arm of a session scheme, built over a codec and an environment without a graph. */
+const sessionServiceOf = <P, Scope extends string>(
+  authenticator: Authenticator<P, Scope, Env | SessionCodec, ConfigInvalid>,
+  codec: SessionCodecService,
+  env: Environment = {},
+): AsyncResult<AuthenticatorService<P, Scope>, ConfigInvalid> =>
+  (
+    authenticator.options as {
+      readonly make: (services: {
+        readonly codec: SessionCodecService;
+        readonly env: Environment;
+      }) => AsyncResult<AuthenticatorService<P, Scope>, ConfigInvalid>;
+    }
+  ).make({ codec, env });
+
 /** What a spec seals with, and the three schemes that read it back. */
 type SessionScheme = {
+  /** Seals as the login {@link SESSION_ISSUER} and {@link SESSION_CLIENT_ID} name, unless the session names its own. */
   readonly seal: SessionCodecService["seal"];
+  /** The codec's own `seal`, carrying exactly the login the session names — or none. */
+  readonly sealBare: SessionCodecService["seal"];
   readonly resolve: AuthenticatorService<SessionIdentity>;
   readonly scoped: AuthenticatorService<SessionIdentity, "orders:export">;
   readonly sid: AuthenticatorService<SessionIdentity>;
+  /** A scheme reading `<variablePrefix>_ISSUER` and `_CLIENT_ID` from `env`, over the same codec. */
+  readonly fromEnv: (
+    variablePrefix: string | undefined,
+    env: Environment,
+  ) => AsyncResult<AuthenticatorService<SessionIdentity>, ConfigInvalid>;
 };
 
 /**
@@ -368,10 +404,19 @@ const sessionFixture = async (
 ): Promise<void> => {
   const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
   await use({
-    seal: codec.seal,
-    resolve: serviceOf(defaultSession, { codec }),
-    scoped: serviceOf(scopedSession, { codec }),
-    sid: serviceOf(sidSession, { codec }),
+    seal: (session) => codec.seal({ iss: SESSION_ISSUER, clientId: SESSION_CLIENT_ID, ...session }),
+    sealBare: codec.seal,
+    resolve: (await sessionServiceOf(defaultSession, codec)).getOrThrow(),
+    scoped: (await sessionServiceOf(scopedSession, codec)).getOrThrow(),
+    sid: (await sessionServiceOf(sidSession, codec)).getOrThrow(),
+    fromEnv: (variablePrefix, env) =>
+      sessionServiceOf(
+        sessionAuthenticator<SessionIdentity>()(
+          variablePrefix === undefined ? {} : { variablePrefix },
+        ),
+        codec,
+        env,
+      ),
   });
 };
 
@@ -382,7 +427,12 @@ const sessionFixture = async (
  * off.
  */
 const csrfApi = defineHttp({
-  authenticators: { session: sessionAuthenticator<SessionIdentity>()() },
+  authenticators: {
+    session: sessionAuthenticator<SessionIdentity>()({
+      issuer: SESSION_ISSUER,
+      clientId: SESSION_CLIENT_ID,
+    }),
+  },
 });
 
 const csrfNoteFragment = csrfApi.HtmxPost("/note")({
@@ -453,7 +503,13 @@ export type CsrfCalls = {
 
 const csrfCallsOf = async (origin: string): Promise<CsrfCalls> => {
   const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
-  const sealed = (await codec.seal({ principal: { userId: "u-1" } })).get();
+  const sealed = (
+    await codec.seal({
+      principal: { userId: "u-1" },
+      iss: SESSION_ISSUER,
+      clientId: SESSION_CLIENT_ID,
+    })
+  ).get();
   const call = async (
     method: string,
     path: string,
@@ -478,7 +534,11 @@ const csrfCallsOf = async (origin: string): Promise<CsrfCalls> => {
  */
 const loginApi = defineHttp({
   authenticators: {
-    session: sessionAuthenticator<SessionIdentity>()({ scopes: ["orders:export"] }),
+    session: sessionAuthenticator<SessionIdentity>()({
+      issuer: SESSION_ISSUER,
+      clientId: SESSION_CLIENT_ID,
+      scopes: ["orders:export"],
+    }),
   },
 });
 
@@ -542,7 +602,13 @@ export type LoginCalls = {
 
 const loginCallsOf = async (port: number): Promise<LoginCalls> => {
   const codec = (await sessionCodecOf({ keys: [sessionKeys.alpha] })).getOrThrow();
-  const sealed = (await codec.seal({ principal: { userId: "u-1" } })).get();
+  const sealed = (
+    await codec.seal({
+      principal: { userId: "u-1" },
+      iss: SESSION_ISSUER,
+      clientId: SESSION_CLIENT_ID,
+    })
+  ).get();
   return {
     cookie: `__Host-session=${sealed}`,
     // `http.request`, not `fetch`: the request-target goes out VERBATIM, so a
@@ -643,7 +709,7 @@ const loginOnlyStatusFragment = loginOnlyApi.HtmxGet("/status")({
   sync: () => () => OkAsync(html`ok`),
 });
 
-const loginOnlyAppOf = () =>
+const loginOnlyAppOf = (variablePrefix?: string) =>
   HttpModule("LoginOnlyApp")({
     fragments: loginOnlyApi.HtmxFragments([loginOnlyStatusFragment]),
     port: 0,
@@ -652,7 +718,11 @@ const loginOnlyAppOf = () =>
     provides: [
       loginOnlyStatusFragment,
       sessionCodec(),
-      ...oidc({ principal: oidcPrincipal, scope: ORY_SCOPE }),
+      ...oidc({
+        principal: oidcPrincipal,
+        scope: ORY_SCOPE,
+        ...(variablePrefix === undefined ? {} : { variablePrefix }),
+      }),
     ],
   });
 
@@ -2147,6 +2217,10 @@ export type HttpFixtures = {
     env: Environment,
     allowInsecureIssuer?: boolean,
   ) => RunningApp<ConfigInvalid | OidcUnreachable, HttpInfo>;
+  /** A second login reading `HTTP_OIDC_STAFF_*`, over whatever environment a test hands it. */
+  readonly staffOidcApp: (
+    env: Environment,
+  ) => RunningApp<ConfigInvalid | OidcUnreachable, HttpInfo>;
 
   /** A JWE under a header and payload of the test's choosing, sealed with a held key. */
   readonly forgeSession: (
@@ -2203,6 +2277,13 @@ export type HttpFixtures = {
    * inside the piece's `make`.
    */
   readonly pinnedAudienceJwt: (
+    env: Environment,
+  ) => AsyncResult<AuthenticatorService<JwtIdentity>, ConfigInvalid>;
+  /**
+   * A second scheme, pinning nothing and reading `HTTP_JWT_CUSTOMER_*` rather
+   * than `HTTP_JWT_*`, built from whatever environment the test hands it.
+   */
+  readonly customerJwt: (
     env: Environment,
   ) => AsyncResult<AuthenticatorService<JwtIdentity>, ConfigInvalid>;
   /**
@@ -2340,6 +2421,15 @@ export const it = test.extend<HttpFixtures>({
       jwks: issuer.jwks,
       issuer: issuer.issuer,
       audience: "pinned",
+      principal: jwtPrincipal,
+    });
+    await use((env) => jwtServiceOf(authenticator, env));
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  customerJwt: async ({}, use) => {
+    const authenticator = jwtAuthenticator<JwtIdentity>()({
+      variablePrefix: "HTTP_JWT_CUSTOMER",
       principal: jwtPrincipal,
     });
     await use((env) => jwtServiceOf(authenticator, env));
@@ -3021,6 +3111,10 @@ export const it = test.extend<HttpFixtures>({
     await use((env, allowInsecureIssuer) =>
       boot(bffAppOf(oidcPrincipal, recordingObserver().member, allowInsecureIssuer), { env }),
     );
+  },
+
+  staffOidcApp: async ({ boot }, use) => {
+    await use((env) => boot(loginOnlyAppOf("HTTP_OIDC_STAFF"), { env }));
   },
 
   bothProtocols: async ({ boot }, use) => {

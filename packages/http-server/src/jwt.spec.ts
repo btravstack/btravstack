@@ -310,6 +310,63 @@ describe("jwtAuthenticator", () => {
     });
   });
 
+  it("binds a second scheme from its own prefixed variables", async ({ issuer, customerJwt }) => {
+    // GIVEN a scheme reading HTTP_JWT_CUSTOMER_*, and the first scheme's variables naming another issuer
+    const authenticate = (
+      await customerJwt({
+        HTTP_JWT_JWKS_URI: "https://staff.example/.well-known/jwks.json",
+        HTTP_JWT_ISSUER: "https://staff.example",
+        HTTP_JWT_AUDIENCE: "staff",
+        HTTP_JWT_CUSTOMER_JWKS_URI: issuer.jwks,
+        HTTP_JWT_CUSTOMER_ISSUER: issuer.issuer,
+        HTTP_JWT_CUSTOMER_AUDIENCE: issuer.audience,
+      })
+    ).getOrThrow();
+    const token = await issuer.sign({ sub: "u-1", tenant: "acme" }).get();
+
+    // WHEN a token the customer issuer signed is presented
+    const resolved = await authenticate({ authorization: `Bearer ${token}` });
+
+    // THEN the scheme verified it against its own issuer, not the first scheme's
+    expect(resolved).toBeOkWith({ tenantId: "acme", userId: "u-1" });
+  });
+
+  it("names a second scheme's own variable when it is unset", async ({ issuer, customerJwt }) => {
+    // GIVEN the customer scheme's environment, missing its issuer
+    const built = await customerJwt({
+      HTTP_JWT_CUSTOMER_JWKS_URI: issuer.jwks,
+      HTTP_JWT_CUSTOMER_AUDIENCE: issuer.audience,
+    });
+
+    // WHEN it is built
+    // THEN the ConfigInvalid names the prefixed variable, not HTTP_JWT_ISSUER
+    expect(built).toBeErrWith(
+      expect.objectContaining({
+        issues: [{ message: "is required", path: ["HTTP_JWT_CUSTOMER_ISSUER"] }],
+      }),
+    );
+  });
+
+  it("names a second scheme's own variable when its JWKS is cleartext", async ({
+    issuer,
+    customerJwt,
+  }) => {
+    // GIVEN the customer scheme's key set on a plaintext host that is not this machine
+    const built = await customerJwt({
+      HTTP_JWT_CUSTOMER_JWKS_URI: "http://keys.internal/.well-known/jwks.json",
+      HTTP_JWT_CUSTOMER_ISSUER: issuer.issuer,
+      HTTP_JWT_CUSTOMER_AUDIENCE: issuer.audience,
+    });
+
+    // WHEN it is built
+    // THEN the refusal points the operator at the variable they actually set
+    expect(built).toBeErrWith(
+      expect.objectContaining({
+        issues: [expect.objectContaining({ path: ["HTTP_JWT_CUSTOMER_JWKS_URI"] })],
+      }),
+    );
+  });
+
   it("refuses a cleartext JWKS endpoint at boot, unless it is loopback", async ({
     issuer,
     jwtApp,

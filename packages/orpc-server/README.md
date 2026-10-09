@@ -217,18 +217,20 @@ writing it per application is how CVEs happen. Each is an ordinary
 - **`apiKeyAuthenticator<P>()({ keys, header? })`**, on the main entry point. Constant-time
   compare over SHA-256 digests, every key checked with no early return, and a
   missing header on the same path as a wrong one.
-- **`jwtAuthenticator<P>()({ principal, jwks?, issuer?, audience?, scopes?, algorithms?, clockToleranceSec?, header? })`**, from
+- **`jwtAuthenticator<P>()({ principal, jwks?, issuer?, audience?, variablePrefix?, scopes?, algorithms?, clockToleranceSec?, header? })`**, from
   `@btravstack/http-server/jwt`, with `jose` as an optional peer. JWKS fetch,
   cache and rotation; an asymmetric-only algorithm allowlist, because a JWKS
   publishes public keys and accepting `HS256` beside them is the
   algorithm-confusion attack; `iss`, `aud` and `exp` required to be present,
   `nbf` honoured when present. `jwks`, `issuer` and `audience` are bound from
   `HTTP_JWT_*` when they are not pinned — see **Options** below.
-- **`sessionAuthenticator<P>()({ scopes?, principal? })`**, from
+- **`sessionAuthenticator<P>()({ scopes?, principal?, issuer?, clientId?, variablePrefix? })`**, from
   `@btravstack/http-server/session`, over the codec `sessionCodec()` provides.
-  Reads `__Host-session`, the cookie the OIDC login answerer (`oidc()`) seals;
-  a root composing it without `sessionCodec()` is an unmet dependency naming
-  the port.
+  Reads `__Host-session`, the cookie the OIDC login answerer (`oidc()`) seals,
+  and accepts only a session its own login sealed — the issuer and client id
+  that login reads, `HTTP_OIDC_ISSUER` and `HTTP_OIDC_CLIENT_ID` by default; a
+  root composing it without `sessionCodec()` is an unmet dependency naming the
+  port.
 
 The CommonJS build needs Node ≥22.12: oRPC and `jose` are ESM-only, so its
 `require` depends on `require(esm)`.
@@ -284,6 +286,7 @@ schemes included, the same way it already carries the starter's own.
 | `issuer`            | pins `HTTP_JWT_ISSUER` — the required `iss`                                                        |
 | `audience`          | pins `HTTP_JWT_AUDIENCE` — the required `aud`, this deployment's own name                          |
 | `allowInsecureJwks` | fetch the key set from a non-loopback `http:` URL (default `false`, and a boot failure without it) |
+| `variablePrefix`    | the prefix of the three variables (default `HTTP_JWT`), so a second scheme reads its own           |
 
 A variable nobody pinned and nobody set — or a `HTTP_JWT_JWKS_URI` that is not
 a URL, or a cleartext one that is not loopback — fails the boot with a
@@ -323,6 +326,7 @@ behind that subpath.
 | `scope`               | what the authorization request asks for (default `openid`)                                                      |
 | `postLogout`          | where a logout lands when the provider advertises no end-session endpoint (default `/`)                         |
 | `allowInsecureIssuer` | talk to an `http:` issuer that is not on a loopback host (default `false`, and a boot failure without it)       |
+| `variablePrefix`      | the prefix of the four variables (default `HTTP_OIDC`), so a second login reads its own                         |
 
 An `http:` issuer is refused at boot unless its host is loopback —
 `localhost`, `127.0.0.1`, `[::1]` — or `allowInsecureIssuer: true` is pinned at

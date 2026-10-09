@@ -298,6 +298,7 @@ Its other options:
 | `clockToleranceSec` | no       | `0`                           | leeway on `exp` and `nbf`, in seconds                                                     |
 | `header`            | no       | `authorization`               | which header carries the token, as `Bearer <token>`                                       |
 | `allowInsecureJwks` | no       | `false`                       | fetch the key set from an `http:` URL that is not on a loopback host                      |
+| `variablePrefix`    | no       | `HTTP_JWT`                    | the prefix of the three variables below, so a second scheme reads its own                 |
 
 **`jwks`, `issuer` and `audience` are pins, the same rule `http({ port })` has against
 `PORT`**: explicit beats environment, per field. Left unset, they bind from
@@ -308,6 +309,14 @@ scheme's `make` arm, so a variable nobody pinned and nobody set is a
 than a `401` for every caller. `jwks` is a
 [`Config.url`](/reference/config#fields) field: a malformed URI is refused with
 the variable named instead of defecting at the first request.
+
+**A second scheme names its own variables** with `variablePrefix`: an API that
+accepts staff tokens from one issuer and customer tokens from another declares
+the second as `jwtAuthenticator<Customer>()({ variablePrefix:
+"HTTP_JWT_CUSTOMER", principal })`, which reads `HTTP_JWT_CUSTOMER_JWKS_URI`,
+`HTTP_JWT_CUSTOMER_ISSUER` and `HTTP_JWT_CUSTOMER_AUDIENCE`. A pin still beats
+its variable, and the `ConfigInvalid` and the cleartext refusal name the
+scheme's own variable. [`oidc()`](#the-login-answerer) takes the same option.
 
 **A cleartext `jwks` is refused at boot too**, on the same rule
 [`oidc()`](#the-login-answerer) applies to its issuer and with the same
@@ -324,11 +333,6 @@ The scheme's
 `Env` need travels with it into the graph like any other, and `HttpModule`
 declares `Env` for the whole root, so a composition root writes no `needs` line
 for it.
-
-**Those three variable names belong to the process, so one JWT scheme reads
-them.** A second `jwtAuthenticator` in the same graph — a partner issuer beside
-the first — pins its own `jwks`, `issuer` and `audience` at the call; two
-schemes both reading the environment would both get the first issuer's.
 
 ### The session cookie
 
@@ -364,9 +368,10 @@ the cookie longer than the payload lives looks anonymous with a cookie still
 attached, and one holding it for less is a session cut short by the wrapper
 rather than by the policy.
 
-**Mint a key list per deployment.** There is no `iss` or `aud` in the sealed
-payload, so two deployments handed the same `HTTP_SESSION_KEYS` accept each
-other's sessions — a cookie minted by staging opens in production. That binding
+**Mint a key list per deployment.** The sealed `iss` names a login, not a
+deployment, and there is no `aud`, so two deployments handed the same
+`HTTP_SESSION_KEYS` and the same issuer accept each other's sessions — a cookie
+minted by staging opens in production. That binding
 is deliberately not here: what it would guard against is an operator copying a
 secret between environments, which the same operator can undo by copying it
 back, so it would be advice rather than a boundary — where a key list per
@@ -413,15 +418,30 @@ keys live inside the codec: a second provider would be either a second
 re-reading `HTTP_SESSION_KEYS`, with its own rotation story for a list an
 operator rotates once.
 
-**`sessionAuthenticator<P>()({ scopes?, principal? })`** is the scheme
+**`sessionAuthenticator<P>()({ scopes?, principal?, issuer?, clientId?, variablePrefix? })`** is the scheme
 over that codec, and it is an ordinary `Authenticator`: bind it in
 `defineHttp({ authenticators })` and `requires: [{ session: [] }]` or
 `authenticated({ session: [] })` work exactly as they do for the other two.
 
-| Option      | Required | Default                       | What it is                                                                                                    |
-| ----------- | -------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `scopes`    | no       | none (the scheme is unscoped) | the vocabulary; the grant is its intersection with the session's own `scopes`                                 |
-| `principal` | no       | `session.principal`           | what the session makes the caller; `undefined` refuses it, and the default refuses a session sealed with none |
+| Option           | Required | Default                         | What it is                                                                                                    |
+| ---------------- | -------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `scopes`         | no       | none (the scheme is unscoped)   | the vocabulary; the grant is its intersection with the session's own `scopes`                                 |
+| `principal`      | no       | `session.principal`             | what the session makes the caller; `undefined` refuses it, and the default refuses a session sealed with none |
+| `issuer`         | no       | read from `HTTP_OIDC_ISSUER`    | the issuer whose login's sessions this scheme accepts                                                         |
+| `clientId`       | no       | read from `HTTP_OIDC_CLIENT_ID` | that login's client id — a provider may host several logins                                                   |
+| `variablePrefix` | no       | `HTTP_OIDC`                     | the prefix of that variable, `<prefix>_ISSUER` — the same prefix as the login it pairs with                   |
+
+**It accepts only its own login's sessions.** `oidc()` seals the issuer and
+the client id it is configured with into every session, and the scheme refuses
+one sealed by any other login — another issuer, another client of the same
+issuer, or none. Two logins share the cookie and the key list, so nothing else
+could tell their sessions apart: without this, a session from a customer login
+would authenticate on a route guarded by a staff login's scheme. A scheme pairs
+with its login by reading the same variables — `HTTP_OIDC_ISSUER` and
+`HTTP_OIDC_CLIENT_ID` by default, `<variablePrefix>_ISSUER` and `_CLIENT_ID`
+for a second login — so the two cannot disagree, and an unset one is a
+`ConfigInvalid` naming it at startup. A session an application seals itself
+through `SessionCodec` names its `iss` and `clientId` the same way.
 
 **The cookie is `SESSION_COOKIE`, `__Host-session`, and cannot be renamed.**
 `__Host-` is a browser-enforced prefix — `Secure`, `Path=/`, no `Domain` — so a
@@ -510,6 +530,7 @@ export const BrowserApi = HttpModule("BrowserApi")({
 | `scope`               | no       | `openid`                            | what the authorization request asks for                                   |
 | `postLogout`          | no       | `/`                                 | where a logout lands when the provider advertises no end-session endpoint |
 | `allowInsecureIssuer` | no       | `false`                             | talk to an `http:` issuer that is not on a loopback host                  |
+| `variablePrefix`      | no       | `HTTP_OIDC`                         | the prefix of the four variables, so a second login reads its own         |
 
 **`GET <prefix>/login?return=<path>&as=<hint>`** mints a PKCE verifier, a
 `state` and a `nonce`, seals them and `return` into the five-minute

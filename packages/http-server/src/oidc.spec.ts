@@ -598,11 +598,69 @@ describe("oidc(), the login answerer", () => {
 
     // WHEN the application boots
     // THEN it is a `ConfigInvalid` naming the variable, before a single
-    // request — the same shape every other starter's configuration takes
+    // request — the same shape every other starter's configuration takes.
+    // The login and its session scheme both read it, so whichever is built
+    // first reports it; the variable is what the operator acts on
     await expect(app.exited).toBeErrWith(
       expect.objectContaining({
-        port: "HttpOidc",
         issues: [{ message: "is required", path: ["HTTP_OIDC_CLIENT_ID"] }],
+      }),
+    );
+  });
+
+  it("reads a second login's issuer from its own prefixed variable", async ({ staffOidcApp }) => {
+    // GIVEN the first login's variables naming the real issuer, and the staff
+    // login's naming a loopback port nothing listens on
+    const app = staffOidcApp({
+      ...oidcEnv,
+      HTTP_OIDC_STAFF_ISSUER: "http://127.0.0.1:1/",
+      HTTP_OIDC_STAFF_CLIENT_ID: ORY_CLIENT_ID,
+      HTTP_OIDC_STAFF_CLIENT_SECRET: ORY_CLIENT_SECRET,
+      HTTP_OIDC_STAFF_REDIRECT_URI: ORY_REDIRECT_URI,
+    });
+
+    // WHEN the application boots
+    // THEN discovery ran against the staff login's own issuer, not the first one's
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({ constructor: OidcUnreachable, issuer: "http://127.0.0.1:1/" }),
+    );
+  });
+
+  it("names a second login's own variable when it is unset", async ({ staffOidcApp }) => {
+    // GIVEN the staff login's environment, missing its client id
+    const app = staffOidcApp({
+      HTTP_SESSION_KEYS: oidcEnv["HTTP_SESSION_KEYS"],
+      HTTP_OIDC_STAFF_ISSUER: ORY_ISSUER,
+      HTTP_OIDC_STAFF_CLIENT_SECRET: ORY_CLIENT_SECRET,
+      HTTP_OIDC_STAFF_REDIRECT_URI: ORY_REDIRECT_URI,
+    });
+
+    // WHEN the application boots
+    // THEN the ConfigInvalid names the prefixed variable, not HTTP_OIDC_CLIENT_ID
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        issues: [{ message: "is required", path: ["HTTP_OIDC_STAFF_CLIENT_ID"] }],
+      }),
+    );
+  });
+
+  it("names a second login's own variable when its issuer is cleartext", async ({
+    staffOidcApp,
+  }) => {
+    // GIVEN the staff login's issuer on a plaintext host that is not this machine
+    const app = staffOidcApp({
+      HTTP_SESSION_KEYS: oidcEnv["HTTP_SESSION_KEYS"],
+      HTTP_OIDC_STAFF_ISSUER: "http://issuer.example/",
+      HTTP_OIDC_STAFF_CLIENT_ID: ORY_CLIENT_ID,
+      HTTP_OIDC_STAFF_CLIENT_SECRET: ORY_CLIENT_SECRET,
+      HTTP_OIDC_STAFF_REDIRECT_URI: ORY_REDIRECT_URI,
+    });
+
+    // WHEN the application boots
+    // THEN the refusal points the operator at the variable they actually set
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        issues: [expect.objectContaining({ path: ["HTTP_OIDC_STAFF_ISSUER"] })],
       }),
     );
   });

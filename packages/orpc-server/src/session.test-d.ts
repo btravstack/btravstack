@@ -66,11 +66,15 @@ sessionAuthenticator<Identity>()({
 });
 
 // The scheme: its needs channel is the CODEC's port, so a root composing it
-// without `sessionCodec()` is di's own unmet need — and its vocabulary is
-// inferred from `scopes`, exactly as `jwtAuthenticator`'s is.
+// without `sessionCodec()` is di's own unmet need, and `Env`, for the issuer
+// whose sessions it accepts — which is also why it can fail with
+// `ConfigInvalid`. Its vocabulary is inferred from `scopes`, exactly as
+// `jwtAuthenticator`'s is.
 const browserAuth = sessionAuthenticator<Identity>()();
 
-expectTypeOf(browserAuth).toEqualTypeOf<Authenticator<Identity, never, SessionCodec, never>>();
+expectTypeOf(browserAuth).toEqualTypeOf<
+  Authenticator<Identity, never, SessionCodec | Env, ConfigInvalid>
+>();
 
 const scopedAuth = sessionAuthenticator<Identity>()({
   scopes: ["orders:export"],
@@ -78,7 +82,7 @@ const scopedAuth = sessionAuthenticator<Identity>()({
 });
 
 expectTypeOf(scopedAuth).toEqualTypeOf<
-  Authenticator<Identity, "orders:export", SessionCodec, never>
+  Authenticator<Identity, "orders:export", SessionCodec | Env, ConfigInvalid>
 >();
 
 const api = defineHttp({ authenticators: { session: scopedAuth } });

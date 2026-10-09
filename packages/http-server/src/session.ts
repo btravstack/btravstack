@@ -30,6 +30,15 @@ export type Session<P> = {
    * the scheme does not know grants nothing extra.
    */
   readonly scopes?: readonly string[];
+  /**
+   * The issuer of the login that minted the session, as that login is
+   * configured. With {@link Session.clientId} it names the login:
+   * `sessionAuthenticator` refuses a session from any other, so a second
+   * login's session is never read as the first's.
+   */
+  readonly iss?: string;
+  /** The client id of the login that minted the session — two logins may share an issuer. */
+  readonly clientId?: string;
   readonly iat: number;
   readonly exp: number;
 };
@@ -149,7 +158,9 @@ const sessionOf = (decoded: unknown, now: number): Session<unknown> | undefined 
   return session !== undefined &&
     "principal" in session &&
     (!("sid" in session) || typeof session["sid"] === "string") &&
-    (!("scopes" in session) || scopesOf(session["scopes"]))
+    (!("scopes" in session) || scopesOf(session["scopes"])) &&
+    (!("iss" in session) || typeof session["iss"] === "string") &&
+    (!("clientId" in session) || typeof session["clientId"] === "string")
     ? (session as unknown as Session<unknown>)
     : undefined;
 };
@@ -215,9 +226,18 @@ const codec = (
   const [sealing] = keys;
   return {
     ttlSec,
-    seal: ({ principal, sid, scopes }) =>
-      // `JSON.stringify` drops an absent `sid`, so nothing spreads it in.
-      sealed(sealing, ttlSec, (iat, exp) => ({ typ: TYP, principal, sid, scopes, iat, exp })),
+    seal: ({ principal, sid, scopes, iss, clientId }) =>
+      // `JSON.stringify` drops an absent field, so nothing spreads them in.
+      sealed(sealing, ttlSec, (iat, exp) => ({
+        typ: TYP,
+        principal,
+        sid,
+        scopes,
+        iss,
+        clientId,
+        iat,
+        exp,
+      })),
     unseal: (cookie) => open(keys, cookie, sessionOf),
     transient: {
       // The markers last, so state a caller spelled `typ` cannot become one.
@@ -304,6 +324,21 @@ export type SessionOptions<P, Scopes extends readonly string[]> = {
    * answer to a session sealed with no principal at all.
    */
   readonly principal?: (session: Session<unknown>) => P | undefined;
+  /**
+   * The issuer of the login whose sessions this scheme accepts — pins
+   * `<prefix>_ISSUER`, the variable that login reads too.
+   */
+  readonly issuer?: string;
+  /**
+   * That login's client id — pins `<prefix>_CLIENT_ID`. A session from another
+   * issuer, another client, or none is refused.
+   */
+  readonly clientId?: string;
+  /**
+   * The prefix of both variables. Default `HTTP_OIDC`, `oidc()`'s own — a
+   * scheme pairs with its login by naming the same prefix.
+   */
+  readonly variablePrefix?: string;
 };
 
 /**
@@ -323,15 +358,22 @@ export type SessionOptions<P, Scopes extends readonly string[]> = {
  * naming `SessionCodec` — and the codec that reads a cookie is the very one
  * that sealed it.
  *
- * No cookie, a cookie no key opens, a session past its `exp` and a principal
- * the application declined are ONE answer: `Unauthenticated`, carrying no
- * reason, which is the codec's own rule one layer up.
+ * It accepts only sessions its own login minted: the issuer and client id are
+ * sealed in the session and must equal this scheme's, bound like `oidc()`'s
+ * from `HTTP_OIDC_ISSUER` and `HTTP_OIDC_CLIENT_ID`, or under the same
+ * `variablePrefix`. Two logins share one cookie and one key list, so the name
+ * of a cookie could not keep them apart.
+ *
+ * No cookie, a cookie no key opens, a session past its `exp`, a session from
+ * another issuer and a principal the application declined are ONE answer:
+ * `Unauthenticated`, carrying no reason, which is the codec's own rule one
+ * layer up.
  */
 export const sessionAuthenticator =
   <P>() =>
   <const Scopes extends readonly string[] = readonly []>(
     options: SessionOptions<P, Scopes> = {},
-  ): Authenticator<P, Scopes[number], SessionCodec, never> => {
+  ): Authenticator<P, Scopes[number], SessionCodec | Env, ConfigInvalid> => {
     // The vocabulary decides the answer's SHAPE, and it is read once here: a
     // scoped scheme answers an empty grant for a session that holds nothing,
     // never a bare identity.
@@ -342,18 +384,30 @@ export const sessionAuthenticator =
       // unseals happily; refusing it is this scheme's job.
       ((session: Session<unknown>) => (session.principal ?? undefined) as P | undefined);
 
+    const variables = options.variablePrefix ?? "HTTP_OIDC";
+    const schema = Config.object({
+      issuer: Config.pinned(options.issuer, Config.url(`${variables}_ISSUER`)),
+      clientId: Config.pinned(options.clientId, Config.string(`${variables}_CLIENT_ID`)),
+    });
+
     return {
       ...HttpAuthenticator<P, Scopes[number]>()({
-        inject: { codec: SessionCodec },
-        sync:
-          ({ codec }) =>
-          (headers) =>
-            codec.unseal(cookieValue(headers.cookie, SESSION_COOKIE)).flatMap((session) => {
-              if (session === undefined) return ErrAsync(new Unauthenticated());
-              const principal = principalOf(session);
-              if (principal === undefined) return ErrAsync(new Unauthenticated());
-              return OkAsync(grantOf(principal, vocabulary, session.scopes) as never);
-            }),
+        inject: { codec: SessionCodec, env: Env },
+        make: ({ codec, env }) =>
+          Config.parse(
+            "HttpSessionScheme",
+            schema,
+          )(env).map(
+            ({ issuer, clientId }) =>
+              (headers) =>
+                codec.unseal(cookieValue(headers.cookie, SESSION_COOKIE)).flatMap((session) => {
+                  if (session?.iss !== issuer || session.clientId !== clientId)
+                    return ErrAsync(new Unauthenticated());
+                  const principal = principalOf(session);
+                  if (principal === undefined) return ErrAsync(new Unauthenticated());
+                  return OkAsync(grantOf(principal, vocabulary, session.scopes) as never);
+                }),
+          ),
       }),
       cookie: true as const,
     };

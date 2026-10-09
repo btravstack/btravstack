@@ -67,18 +67,25 @@ class GrantFailed extends TaggedError("GrantFailed")<{
 }> {}
 
 export type OidcOptions<P> = {
-  /** Pins `HTTP_OIDC_ISSUER` — the provider, as its discovery document names itself. */
+  /** Pins `<prefix>_ISSUER` — the provider, as its discovery document names itself. */
   readonly issuer?: string;
-  /** Pins `HTTP_OIDC_CLIENT_ID`. */
+  /** Pins `<prefix>_CLIENT_ID`. */
   readonly clientId?: string;
-  /** Pins `HTTP_OIDC_CLIENT_SECRET` — this is a confidential client. */
+  /** Pins `<prefix>_CLIENT_SECRET` — this is a confidential client. */
   readonly clientSecret?: string;
   /**
-   * Pins `HTTP_OIDC_REDIRECT_URI` — the URI REGISTERED with the provider, which
+   * Pins `<prefix>_REDIRECT_URI` — the URI REGISTERED with the provider, which
    * is also what the code grant is checked against. It is never rebuilt from
    * the request's `Host`.
    */
   readonly redirectUri?: string;
+  /**
+   * The prefix of the four variables this login reads: `<prefix>_ISSUER`,
+   * `<prefix>_CLIENT_ID`, `<prefix>_CLIENT_SECRET` and `<prefix>_REDIRECT_URI`.
+   * Default `HTTP_OIDC`. A second login names its own — `HTTP_OIDC_STAFF` — the
+   * way a second `jwtAuthenticator` does.
+   */
+  readonly variablePrefix?: string;
   /** Where the three routes are mounted. Default `/auth`. */
   readonly prefix?: `/${string}`;
   /** What the authorization request asks for. Default `openid`. */
@@ -125,6 +132,9 @@ const RELATIVE = "http://request.invalid";
 /** Everything the routes close over, decided once at boot. */
 type Bound<P> = {
   readonly config: Configuration;
+  /** The issuer and client id as configured, sealed into every session so its scheme can tell logins apart. */
+  readonly issuer: string;
+  readonly clientId: string;
   readonly redirectUri: string;
   readonly scope: string;
   readonly postLogout: string;
@@ -305,6 +315,8 @@ const callback = async <P>(
   const sealed = await codec
     .seal({
       principal,
+      iss: bound.issuer,
+      clientId: bound.clientId,
       ...(typeof sid === "string" ? { sid } : {}),
       ...(typeof scope === "string" ? { scopes: scope.split(" ") } : {}),
     })
@@ -426,11 +438,12 @@ const handlerFor =
  */
 export const oidc = <P>(options: OidcOptions<P>): readonly [OidcAnswerer, AnyProvider] => {
   const prefix = options.prefix ?? DEFAULT_PREFIX;
+  const variables = options.variablePrefix ?? "HTTP_OIDC";
   const schema = Config.object({
-    issuer: Config.pinned(options.issuer, Config.url("HTTP_OIDC_ISSUER")),
-    clientId: Config.pinned(options.clientId, Config.string("HTTP_OIDC_CLIENT_ID")),
-    clientSecret: Config.pinned(options.clientSecret, Config.string("HTTP_OIDC_CLIENT_SECRET")),
-    redirectUri: Config.pinned(options.redirectUri, Config.url("HTTP_OIDC_REDIRECT_URI")),
+    issuer: Config.pinned(options.issuer, Config.url(`${variables}_ISSUER`)),
+    clientId: Config.pinned(options.clientId, Config.string(`${variables}_CLIENT_ID`)),
+    clientSecret: Config.pinned(options.clientSecret, Config.string(`${variables}_CLIENT_SECRET`)),
+    redirectUri: Config.pinned(options.redirectUri, Config.url(`${variables}_REDIRECT_URI`)),
   });
 
   const answerer: OidcAnswerer = Provider.member(HttpHandler)({
@@ -445,7 +458,7 @@ export const oidc = <P>(options: OidcOptions<P>): readonly [OidcAnswerer, AnyPro
           return ErrAsync(
             cleartextRefused({
               port: "HttpOidc",
-              variable: "HTTP_OIDC_ISSUER",
+              variable: `${variables}_ISSUER`,
               option: "allowInsecureIssuer",
               on: "oidc()",
               what: "it sends the client secret, the authorization code and every token in the open",
@@ -457,6 +470,8 @@ export const oidc = <P>(options: OidcOptions<P>): readonly [OidcAnswerer, AnyPro
             handle: handlerFor(
               {
                 config,
+                issuer: bound.issuer,
+                clientId: bound.clientId,
                 redirectUri: bound.redirectUri,
                 scope: options.scope ?? DEFAULT_SCOPE,
                 postLogout: options.postLogout ?? DEFAULT_POST_LOGOUT,
