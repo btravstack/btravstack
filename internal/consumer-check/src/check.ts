@@ -86,10 +86,7 @@ const BUDGET = 1.5;
  * one this run never packed, fails as stale, so an exemption cannot outlive
  * the growth it was for.
  */
-const accepted: Readonly<Record<string, string>> = {
-  "@btravstack/graphql-server":
-    "#474 adds fieldResult, the GraphqlContext type, the per-plugin context gate and the Observers defect report to a package that was one function",
-};
+const accepted: Readonly<Record<string, string>> = {};
 
 const staleAcceptance = (name: string): string =>
   `size: ${name} is in \`accepted\` but no longer over budget, or no longer packed — drop the entry`;
