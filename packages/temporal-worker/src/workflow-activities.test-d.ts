@@ -172,3 +172,22 @@ TemporalActivities(pinContract)({
     audit: ({ input }) => OkAsync(input),
   }),
 });
+
+// `inject` is optional, so a mistyped key is what excess-property checking refuses.
+TemporalWorkflowActivities(
+  pinContract,
+  "runEcho",
+)({
+  // @ts-expect-error -- `injec` is not `inject`
+  injec: {},
+  sync: () => ({ echo: ({ input }) => OkAsync(input) }),
+});
+TemporalActivities(pinContract)({
+  // @ts-expect-error -- `injec` is not `inject`
+  injec: {},
+  sync: () => ({
+    runEcho: { echo: ({ input }) => OkAsync(input) },
+    runShout: { shout: ({ input }) => OkAsync(input) },
+    audit: ({ input }) => OkAsync(input),
+  }),
+});

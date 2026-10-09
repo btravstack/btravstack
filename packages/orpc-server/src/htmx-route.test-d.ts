@@ -106,3 +106,10 @@ const plain = kinded.HtmxGet("/plain")({
 });
 type Expect<T extends true> = T;
 type _EmptyUnitRecord = Expect<keyof typeof plain.unit extends never ? true : false>;
+
+// `inject` is optional, so a mistyped key is what excess-property checking refuses.
+void api.HtmxGet("/typo")({
+  // @ts-expect-error — `injec` is not `inject`
+  injec: {},
+  sync: () => () => OkAsync(html`<p></p>`),
+});

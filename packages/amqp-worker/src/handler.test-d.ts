@@ -129,3 +129,18 @@ AmqpHandler(
     return OkAsync(undefined);
   },
 });
+
+// `inject` is optional, so a mistyped key is what excess-property checking refuses.
+AmqpHandler(
+  pinContract,
+  "left",
+)({
+  // @ts-expect-error -- `injec` is not `inject`
+  injec: {},
+  sync: () => () => OkAsync(undefined),
+});
+AmqpHandlers(pinContract)({
+  // @ts-expect-error -- `injec` is not `inject`
+  injec: {},
+  sync: () => ({ left: () => OkAsync(undefined), right: () => OkAsync(undefined) }),
+});

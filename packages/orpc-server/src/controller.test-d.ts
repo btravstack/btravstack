@@ -508,3 +508,22 @@ const kindedCustomers = kinded.OrpcController(
   "customers",
 )({ inject: {}, sync: () => ({ find: () => OkAsync("found") }) });
 type _EmptyUnitRecord = Expect<keyof typeof kindedCustomers.unit extends never ? true : false>;
+
+// `inject` is optional, so a mistyped key is what excess-property checking
+// refuses — the options are one object type, not di's arm union.
+void publicApi.OrpcController(
+  contract,
+  "orders",
+)({
+  // @ts-expect-error — `injec` is not `inject`
+  injec: {},
+  sync: () => ({ place: () => OkAsync("placed") }),
+});
+void publicApi.OrpcRouter(contract)({
+  // @ts-expect-error — `injec` is not `inject`
+  injec: {},
+  sync: () => ({
+    orders: { place: () => OkAsync("placed") },
+    users: { find: () => OkAsync("found") },
+  }),
+});
