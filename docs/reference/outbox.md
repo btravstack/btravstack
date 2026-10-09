@@ -188,16 +188,28 @@ your own must keep: claim the tenant or skip it, hand the batch to `relay`,
 mark published exactly the ids `relay` answers, and release the claim — marking
 nothing if `relay` defects.
 
-## `prismaOutboxStore(db, { schema?, table? })`
+## `prismaOutboxStore(db, { schema?, table?, columns?, tenantSetting? })`
 
 From `@btravstack/outbox/prisma`, which is the only entry point that needs
 `@prisma/orm-postgres`. It takes your Prisma 8 client — anything with the raw
 lane and `transaction` — and reads the table in raw SQL:
 
-| Option   | Default         | What it is                                                         |
-| -------- | --------------- | ------------------------------------------------------------------ |
-| `schema` | `public`        | the namespace your model is declared in                            |
-| `table`  | `outboxMessage` | the table Prisma maps the model to — a model named `OutboxMessage` |
+| Option          | Default         | What it is                                                                                |
+| --------------- | --------------- | ----------------------------------------------------------------------------------------- |
+| `schema`        | `public`        | the namespace your model is declared in                                                   |
+| `table`         | `outboxMessage` | the table Prisma maps the model to — a model named `OutboxMessage`                        |
+| `columns`       | the field names | each column's physical name, for a model mapped with `@map` (`{ tenantId: "tenant_id" }`) |
+| `tenantSetting` | `app.tenant_id` | the run-time setting each tenant's reads and marks are pinned to, which a policy reads    |
+
+**Every claim pins its tenant before it reads.** The claim's first statement
+takes the lock, lifts the idle timeout and runs `set_config(tenantSetting,
+tenant, true)` — transaction-local, as `@btravstack/prisma/rls`'s
+`tenantPinned` is — so a row-level-security policy reading
+`current_setting('app.tenant_id', true)` admits that tenant's rows to the read
+and the mark, and no connection goes back to the pool still pinned. A
+`pending` read pins the same way, and the health check pins once per tenant on
+one connection, since no single statement can see two tenants under a policy.
+On a table without row security the pin changes nothing.
 
 **The claim is `pg_try_advisory_xact_lock`, per tenant, taken by the
 transaction that reads, publishes and marks the batch.** A relay that does not
@@ -236,10 +248,36 @@ namespace orders {
 }
 ```
 
-It carries **no `@@rls`**: the relay runs outside any unit, on a connection
-nothing pinned, and a policy would deny it every row — `tenantId` is what holds
-the tenant, in the store's own `WHERE`. `occurredAt` is read through `to_json`,
-so `Timestamptz` works as well as `TimestamptzString`.
+`occurredAt` is read through `to_json`, so `Timestamptz` works as well as
+`TimestamptzString`.
+
+**Row security is supported, and opted into in the contract alone.** Every
+read and mark the store issues is pinned to its tenant, so the model may carry
+`@@rls` with the same policy your tenant-owned models have:
+
+```prisma
+  model OutboxMessage {
+    // … the fields above …
+    @@rls
+  }
+
+  policy_all outbox_tenant_isolation {
+    target    = OutboxMessage
+    using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
+    withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
+  }
+```
+
+Adopting it on an existing table is that edit, then `prisma migration plan` and
+`db migrate` like any change — the plan is `ENABLE ROW LEVEL SECURITY` and
+`CREATE POLICY`, both additive. Three things must already hold, and each fails
+quietly if it does not: every writer of the table writes inside a pinned
+transaction (the row your adapter writes beside the business row already is,
+if that transaction is `tenantPinned`); the relay connects as a role that owns
+nothing and is `NOBYPASSRLS` — Prisma 8 cannot express `FORCE`, so the owner
+bypasses the policy; and the policy reads the setting `tenantSetting` names. A
+relay whose policy reads a different setting is handed nothing and reports
+nothing pending, which looks exactly like an empty outbox.
 
 **`id` is a `BigInt`, not an `Int`.** An `int4` sequence stops at 2^31 − 1 —
 under a month at a thousand facts a second. The store reads it through
@@ -277,8 +315,9 @@ instance behave as two replicas over one table do.
 ## The health check
 
 `outbox()` contributes one member to `HealthChecks`, named `outbox`: it reads
-every tenant's oldest pending time in **one** `oldestPending` round trip —
-never a query per tenant, which would queue the pool behind the probe — and
+every tenant's oldest pending time in **one** `oldestPending` call, on one
+connection — never a connection per tenant, which would queue the pool behind
+the probe — and
 reports **unhealthy, naming every tenant that is behind**, once that time is
 older than `maxLagMs`. It
 reports lag rather than reachability because the failure an operator needs to

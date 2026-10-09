@@ -790,6 +790,9 @@ importers:
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
+      '@btravstack/prisma':
+        specifier: workspace:*
+        version: link:../../packages/prisma
       '@btravstack/testing':
         specifier: workspace:*
         version: link:../../packages/testing
@@ -1311,6 +1314,9 @@ importers:
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
+      '@btravstack/prisma':
+        specifier: workspace:*
+        version: link:../../packages/prisma
       '@btravstack/testing':
         specifier: workspace:*
         version: link:../../packages/testing

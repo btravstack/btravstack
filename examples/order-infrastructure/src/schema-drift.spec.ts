@@ -59,18 +59,19 @@ describe("the committed migrations", () => {
     );
   });
 
-  it("keeps row security enabled and policed on Order", async ({ db }) => {
+  it("keeps row security enabled and policed on Order and OutboxMessage", async ({ db }) => {
     // GIVEN the same database, carrying the policy the CONTRACT declares —
     // `@@rls` plus a `policy_all` block, planned and applied like any other
     // operation rather than hand-written DDL
 
-    // WHEN it is asked what row security `order` carries
+    // WHEN it is asked what row security `order` and `outboxMessage` carry
     const security = await db.runtime().query(
       db.raw
         .sql`SELECT c.relrowsecurity AS enabled, c.relforcerowsecurity AS forced, p.policyname AS policy
          FROM pg_class c
          LEFT JOIN pg_policies p ON p.schemaname = 'orders' AND p.tablename = c.relname
-        WHERE c.relnamespace = 'orders'::regnamespace AND c.relname = 'order'`
+        WHERE c.relnamespace = 'orders'::regnamespace AND c.relname IN ('order', 'outboxMessage')
+        ORDER BY c.relname`
         .returnsRow({ enabled: "pg/bool@1", forced: "pg/bool@1", policy: "pg/text@1" })
         .build(),
     );
@@ -86,6 +87,7 @@ describe("the committed migrations", () => {
     // owner has no row security at all.
     expect(security).toEqual([
       { enabled: true, forced: false, policy: "order_tenant_isolation_c516f4ff" },
+      { enabled: true, forced: false, policy: "outbox_tenant_isolation_c516f4ff" },
     ]);
   });
 });

@@ -2,7 +2,8 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import type { DuplicateOrder } from "@btravstack/example-order-domain";
 import type { OutboxMessage } from "@btravstack/outbox";
-import { OkAsync, P, fromSafePromise, type AsyncResult } from "unthrown";
+import { tenantPinned } from "@btravstack/prisma/rls";
+import { Ok, OkAsync, P, allAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { uuidv7 } from "uuidv7";
 import { describe, expect } from "vitest";
 
@@ -244,7 +245,7 @@ describe("the transactional outbox", () => {
     const inFlight = new Promise<void>((resolve) => {
       allocated = resolve;
     });
-    const first = db.transaction(async (tx) => {
+    const first = tenantPinned(db, tenant, async (tx) => {
       await tx.orm.orders.OutboxMessage.create(fact("first"));
       allocated();
       await held;
@@ -259,11 +260,13 @@ describe("the transactional outbox", () => {
     // WHEN the relay sweeps while the first is in flight, and again once it
     // has committed
     const swept = await fromSafePromise(inFlight)
-      .flatMap(() => fromSafePromise(db.orm.orders.OutboxMessage.create(fact("second"))))
+      .flatMap(() =>
+        tenantPinned(db, tenant, (tx) => tx.orm.orders.OutboxMessage.create(fact("second"))),
+      )
       .flatMap(() => relay())
       .flatMap(() => {
         release();
-        return fromSafePromise(first);
+        return first;
       })
       .flatMap(() => relay())
       .map(() => published);
@@ -316,8 +319,8 @@ describe("the transactional outbox", () => {
     const handed: number[] = [];
 
     // WHEN it is claimed and published
-    const swept = await fromSafePromise(
-      db.orm.orders.OutboxMessage.create({
+    const swept = await tenantPinned(db, tenant, (tx) =>
+      tx.orm.orders.OutboxMessage.create({
         id: BigInt(id),
         tenantId: tenant,
         kind: "order",
@@ -480,5 +483,129 @@ describe("the transactional outbox", () => {
     // relay was configured with, which is what stops one deployment
     // broadcasting another's facts off a shared database
     expect(events).toBeOkWith([]);
+  });
+
+  it("marks none of another tenant's rows, whatever the relay hands back", async ({
+    tenant,
+    otherTenant,
+    repository,
+    otherRepository,
+    outbox,
+    anOrder,
+  }) => {
+    // GIVEN an event in this tenant and one in another
+    // WHEN this tenant's claim hands back the other's id beside its own
+    const left = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000071", 1))
+      .flatMap(() => otherRepository.save(anOrder("0199a1e0-0000-7000-8000-000000000072", 1)))
+      .flatMap(() => outbox.pending(otherTenant, 10))
+      .flatMap((theirs) =>
+        outbox.claim(tenant, 10, (mine) => OkAsync([...mine, ...theirs].map(({ id }) => id))),
+      )
+      .flatMap(() => outbox.pending(otherTenant, 10))
+      .map((pending) => pending.map(({ subjectId }) => subjectId));
+
+    // THEN the mark, pinned to this tenant, could not reach the other's row:
+    // it is still pending, for its own relay
+    expect(left).toBeOkWith(["0199a1e0-0000-7000-8000-000000000072"]);
+  });
+
+  it("hands two tenants' concurrent claims their own rows only", async ({
+    tenant,
+    otherTenant,
+    repository,
+    otherRepository,
+    outbox,
+    anOrder,
+  }) => {
+    // GIVEN an event in each tenant, and two relays that each wait inside
+    // their claim until both are in, so both pins are live at once
+    let arrived = 0;
+    let bothIn = (): void => {};
+    const together = new Promise<void>((resolve) => {
+      bothIn = resolve;
+    });
+    const handed: Record<string, readonly string[]> = {};
+    const claimFor = (tenantId: string) =>
+      outbox.claim(tenantId, 10, (batch) => {
+        handed[tenantId] = batch.map(({ subjectId }) => subjectId);
+        arrived += 1;
+        if (arrived === 2) bothIn();
+        return fromSafePromise(together).map(() => batch.map(({ id }) => id));
+      });
+
+    // WHEN both tenants are claimed concurrently, on two pooled connections
+    const claimed = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000073", 1))
+      .flatMap(() => otherRepository.save(anOrder("0199a1e0-0000-7000-8000-000000000074", 1)))
+      .flatMap(() => allAsync([claimFor(tenant), claimFor(otherTenant)]))
+      .map(() => ({ mine: handed[tenant], theirs: handed[otherTenant] }));
+
+    // THEN each was handed its own tenant's row, and nothing of the other's
+    expect(claimed).toBeOkWith({
+      mine: ["0199a1e0-0000-7000-8000-000000000073"],
+      theirs: ["0199a1e0-0000-7000-8000-000000000074"],
+    });
+  });
+
+  it("leaves no pin on the pool's connections once a claim has ended", async ({
+    raw,
+    tenant,
+    repository,
+    outbox,
+    anOrder,
+  }) => {
+    // GIVEN a pending event its claim left unpublished
+    // WHEN the pool's connections are read with nothing pinned, all at once
+    const reads = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000075", 1))
+      .flatMap(() => outbox.claim(tenant, 10, () => OkAsync([])))
+      .flatMap(() =>
+        fromSafePromise(
+          Promise.all(
+            Array.from({ length: 10 }, () =>
+              raw.orm.orders.OutboxMessage.where({ tenantId: tenant }).all().toArray(),
+            ),
+          ),
+        ),
+      );
+
+    // THEN none of them sees it: the claim's pin was transaction-local, so no
+    // connection went back to the pool still pinned to the tenant
+    expect(reads).toBeOkWith(Array.from({ length: 10 }, () => []));
+  });
+
+  it("frees a tenant whose claiming session the database ended, and redelivers its rows", async ({
+    tenant,
+    repository,
+    outbox,
+    severable,
+    anOrder,
+  }) => {
+    // GIVEN a pending event, and a relay whose session the database ends while
+    // it publishes — after the publish, before the mark
+    const redelivered: string[] = [];
+
+    // WHEN that claim fails, and another relay claims the tenant
+    const swept = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000076", 1))
+      .flatMap(() =>
+        severable.outbox
+          .claim(tenant, 10, (batch) =>
+            fromSafePromise(severable.sever()).map(() => batch.map(({ id }) => id)),
+          )
+          .recoverDefect(() => Ok(undefined)),
+      )
+      .flatMap(() =>
+        outbox.claim(tenant, 10, (batch) => {
+          redelivered.push(...batch.map(({ subjectId }) => subjectId));
+          return OkAsync(batch.map(({ id }) => id));
+        }),
+      )
+      .map(() => redelivered);
+
+    // THEN the lock died with the session and the unmarked row went out again:
+    // at-least-once, deduplicated on the outbox id downstream
+    expect(swept).toBeOkWith(["0199a1e0-0000-7000-8000-000000000076"]);
   });
 });

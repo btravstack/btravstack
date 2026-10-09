@@ -43,6 +43,7 @@
     "@amqp-contract/contract": "catalog:",
     "@amqp-contract/testing": "catalog:",
     "@btravstack/internal-test-infra": "workspace:*",
+    "@btravstack/prisma": "workspace:*",
     "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",

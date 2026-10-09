@@ -149,10 +149,12 @@ same spec published them 132 times.
   hold every other tenant to its back-off. Each tenant has its own loop, so a
   pending claim or publish holds that tenant alone; one loop for all tenants
   left later tenants waiting for the first pending publisher.
-- **The health check is one round trip** — `OutboxStore.oldestPending` over
-  every tenant at once. A read per tenant per `/healthz` queues the pool behind
-  the probe that is meant to report it, and outlives the kernel's health
-  deadline with queries nothing can cancel.
+- **The health check is one connection** — `OutboxStore.oldestPending` over
+  every tenant at once. A connection per tenant per `/healthz` queues the pool
+  behind the probe that is meant to report it. The Prisma store pins each
+  tenant in turn on that one connection (see **Row security** below), so it is
+  a round trip per tenant: bounded by the configured tenants, as the claims
+  are.
 - **The sleep is the kernel's `Clock`**, aborted by the relay's own stop
   signal, so `release` returns as soon as the in-flight batch has, an idle
   relay pins nothing (`systemClock`'s timer is unref'ed), and a spec drives the
@@ -166,6 +168,33 @@ same spec published them 132 times.
   claim is `traced: false`, since a span per tenant per poll would bury the
   publishes. The tenant is an attribute — the relay is told its tenants, so it
   is bounded — and the outbox id and subject are details.
+
+## Row security: every read is pinned (#476)
+
+The table may carry `@@rls` like every other tenant-owned table, because the
+store pins each tenant before it reads or marks — `set_config(tenantSetting,
+tenant, true)`, transaction-local. Four details are load-bearing:
+
+- **The pin rides the claim's first statement**, beside the lock and the
+  idle-timeout lift, so the claim costs no extra round trip, and it dies with
+  the transaction: no pooled connection carries it to the next caller.
+  `prisma-outbox.spec.ts`'s "leaves no pin on the pool's connections" fails if
+  it is made session-scoped (`false`), measured.
+- **The pin is unconditional.** A store that pinned only when told to would,
+  on a table under `@@rls` whose option was forgotten, be handed nothing and
+  report nothing pending — a stopped relay that looks healthy. On a table
+  without row security the pin changes nothing.
+- **The health check pins per tenant.** A policy is read once per statement,
+  so no single statement sees two tenants. A narrowly granted path — a
+  `SECURITY DEFINER` function answering every tenant's oldest pending time —
+  would restore one round trip, at the cost of a privileged object the
+  application must own and review. Declined until a deployment's tenant count
+  makes the per-tenant reads outlast the kernel's health deadline.
+- **The lock key did not change**, so relays of the previous release and this
+  one still exclude each other during a rolling deploy.
+
+`columns` exists for a model mapped with `@map`: the store names each column
+by its physical name and reads it back under the port's own.
 
 ## Why tenants are configuration
 

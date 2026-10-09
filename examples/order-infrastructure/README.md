@@ -4,7 +4,7 @@ The adapter side. This layer speaks Prisma, PostgreSQL and SQLSTATEs, and its
 job is to make sure none of that vocabulary reaches the layers above it.
 
 ```text
-src/prisma/contract.prisma         the Order, Customer and OutboxMessage models, and Order's RLS policy
+src/prisma/contract.prisma         the Order, Customer and OutboxMessage models, and the RLS policies on Order and OutboxMessage
 prisma/migrations/                 planned from the contract, committed, applied by db:migrate
 prisma/migrations/app/refs/db.json the contract hash a dev database is at — what `migration plan` diffs from
 src/database.ts                    the client, the OrderDatabase port, the acquire/release provider

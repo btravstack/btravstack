@@ -141,3 +141,46 @@ describe("the role the application connects as", () => {
     expect(roles).toEqual([{ rolsuper: false, rolbypassrls: false }]);
   });
 });
+
+describe("the tenant isolation policy on OutboxMessage", () => {
+  it("shows a pinned transaction its own tenant's events only", async ({
+    raw,
+    tenant,
+    repository,
+    otherRepository,
+    anOrder,
+  }) => {
+    // GIVEN an event under this tenant and one under another
+    // WHEN this tenant reads the outbox with NO filter at all
+    const rows = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000611", 3))
+      .flatMap(() => otherRepository.save(anOrder("0199a1e0-0000-7000-8000-000000000612", 4)))
+      .flatMap(() =>
+        tenantPinned(raw, tenant, (tx) => tx.orm.orders.OutboxMessage.all().toArray()),
+      );
+
+    // THEN the database narrowed it to this tenant's event
+    expect(rows).toBeOkWith([
+      expect.objectContaining({
+        tenantId: tenant,
+        subjectId: "0199a1e0-0000-7000-8000-000000000611",
+      }),
+    ]);
+  });
+
+  it("refuses an event naming another tenant", async ({ raw, tenant, otherTenant }) => {
+    // GIVEN a transaction pinned to this tenant
+    // WHEN it writes an event claiming another one
+    const refused = await tenantPinned(raw, tenant, (tx) =>
+      tx.orm.orders.OutboxMessage.create({
+        tenantId: otherTenant,
+        kind: "order",
+        subjectId: "0199a1e0-0000-7000-8000-000000000613",
+        payload: null,
+      }),
+    );
+
+    // THEN `WITH CHECK` refuses it, as it refuses an order
+    expect(refused).toBeErrTagged("NotAuthorized");
+  });
+});

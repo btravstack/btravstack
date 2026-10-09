@@ -1,0 +1,70 @@
+[
+  {
+    "id": "rowLevelSecurity.orders.outboxMessage",
+    "label": "Enable row-level security on \"outboxMessage\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "orders",
+        "objectType": "rowLevelSecurity",
+        "name": "outboxMessage"
+      }
+    },
+    "precheck": [
+      {
+        "description": "check RLS is not already enabled on \"outboxMessage\"",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_class\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"relnamespace\" WHERE (\"n\".\"nspname\" = $1 AND \"c\".\"relname\" = $2 AND NOT (\"c\".\"relrowsecurity\"))) AS \"result\"",
+        "params": ["orders", "outboxMessage"]
+      }
+    ],
+    "execute": [
+      {
+        "description": "enable row-level security on \"outboxMessage\"",
+        "sql": "ALTER TABLE \"orders\".\"outboxMessage\" ENABLE ROW LEVEL SECURITY"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify row-level security is enabled on \"outboxMessage\"",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_class\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"relnamespace\" WHERE (\"n\".\"nspname\" = $1 AND \"c\".\"relname\" = $2 AND \"c\".\"relrowsecurity\")) AS \"result\"",
+        "params": ["orders", "outboxMessage"]
+      }
+    ]
+  },
+  {
+    "id": "rlsPolicy.orders.outboxMessage.outbox_tenant_isolation_c516f4ff",
+    "label": "Create RLS policy \"outbox_tenant_isolation_c516f4ff\" on \"outboxMessage\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "orders",
+        "objectType": "rlsPolicy",
+        "name": "outbox_tenant_isolation_c516f4ff",
+        "table": "outboxMessage"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure RLS policy \"outbox_tenant_isolation_c516f4ff\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_policies\" WHERE (\"schemaname\" = $1 AND \"tablename\" = $2 AND \"policyname\" = $3)) AS \"result\"",
+        "params": ["orders", "outboxMessage", "outbox_tenant_isolation_c516f4ff"]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create RLS policy \"outbox_tenant_isolation_c516f4ff\"",
+        "sql": "CREATE POLICY \"outbox_tenant_isolation_c516f4ff\" ON \"orders\".\"outboxMessage\" AS PERMISSIVE FOR ALL TO PUBLIC USING (\"tenantId\" = current_setting('app.tenant_id', true)) WITH CHECK (\"tenantId\" = current_setting('app.tenant_id', true))",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify RLS policy \"outbox_tenant_isolation_c516f4ff\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_policies\" WHERE (\"schemaname\" = $1 AND \"tablename\" = $2 AND \"policyname\" = $3)) AS \"result\"",
+        "params": ["orders", "outboxMessage", "outbox_tenant_isolation_c516f4ff"]
+      }
+    ]
+  }
+]
