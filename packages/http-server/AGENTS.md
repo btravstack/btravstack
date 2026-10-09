@@ -60,14 +60,18 @@ the corresponding protocol package. The public surface is in
   `{ readonly "SERVES NOTHING — supply a router, fragments, or both": true }`
   — booting a listener with no answerer behind it is refused here rather than
   left to `start`'s own runtime gate.
-- **`graphql(api, { schema, prefix?, requires?, unit? })`** lives in
-  `../graphql-server`, with required GraphQL and Yoga peers. It installs Yoga
+- **`graphql(api, { schema, prefix?, requires?, units?, unit?, cors?, developerTools?, plugins? })`**
+  lives in `../graphql-server`, with required GraphQL and Yoga peers. It installs Yoga
   on `HttpHandler`, forks one unit after mount-wide authentication, and gives
   resolvers `{ principal, unit, signal, incoming }`. `requires` uses the
   shared `RequiresGate` and `resolveScheme`; absent requirements make the
   schema public. The separate `order-graphql-api` process calls `order-api`
   through `order-api-client` and exports SDL for clients. Resolver outcomes
   remain the application's mapping; Yoga owns execution errors.
+  `developerTools` pins `GRAPHQL_DEVELOPER_TOOLS`, which turns GraphiQL and
+  introspection on together and is off by default; the answerer reads `Env`,
+  so a root providing it declares `needs: [Env]`. The reasoning is in
+  `../graphql-server/AGENTS.md`.
 - **`OrpcRouterPort`** (`orpc.ts`, exported from the file for the package's
   own tests, **not** from `index.ts`) — the router's port, one id, the
   starter's own: `Port("OrpcRouter")` cast to di's `PortClassOf<"OrpcRouter",

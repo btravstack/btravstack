@@ -8,8 +8,8 @@ description: Run a code-first GraphQL gateway as a separate HTTP process backed 
 > **How-to.** Build a GraphQL schema in TypeScript, run it in its own HTTP
 > process, and call a backend through a typed client.
 
-Install `@btravstack/http-server`, `@btravstack/graphql-server`, `graphql`, and
-`graphql-yoga`. Add `@pothos/core` when building the schema in TypeScript.
+Install `@btravstack/http-server`, `@btravstack/graphql-server`,
+`@btravstack/config`, `graphql`, and `graphql-yoga`. Add `@pothos/core` when building the schema in TypeScript.
 `@btravstack/graphql-server` accepts any `GraphQLSchema`; Pothos is the choice
 of this example, not a framework requirement.
 

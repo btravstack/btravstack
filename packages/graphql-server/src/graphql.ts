@@ -50,11 +50,8 @@ const pathOf = (error: unknown): string | undefined =>
   typeof error === "object" && error !== null && "path" in error && Array.isArray(error.path)
     ? error.path.join(".")
     : undefined;
-/**
- * Refuses `__schema` and `__type` by field name alone. graphql's own
- * `NoSchemaIntrospectionCustomRule` asserts the schema's class, which throws
- * when the application and Yoga load two copies of `graphql`.
- */
+// By name, not graphql's `NoSchemaIntrospectionCustomRule`: that one throws
+// when the application and Yoga load two copies of `graphql`.
 const noIntrospection: ValidationRule = (context) => ({
   Field: (node) => {
     if (node.name.value === "__schema" || node.name.value === "__type")
