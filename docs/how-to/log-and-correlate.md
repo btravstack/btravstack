@@ -7,7 +7,14 @@ description: Add @btravstack/observability, log structured attributes from a use
 import { type ServiceOf } from "@btravstack/di";
 import { type Line } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
-import { placeOrder } from "@btravstack/example-order-domain";
+import {
+  placeOrder,
+  type DuplicateOrder,
+  type InvalidOrderId,
+  type InvalidQuantity,
+  type Order,
+} from "@btravstack/example-order-domain";
+import type { AsyncResult } from "unthrown";
 import { OrderRepository, Tenant } from "@btravstack/example-order-application";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderRouter } from "../../module.js";
@@ -87,7 +94,10 @@ provider's `inject` record, never from a global or an ambient read:
 export class PlaceOrder extends Provider.class("PlaceOrder", {
   inject: { repository: OrderRepository, logger: Logger, tenant: Tenant },
 }) {
-  execute(id: string, quantity: number) {
+  execute(
+    id: string,
+    quantity: number,
+  ): AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder> {
     const { repository, logger, tenant } = this.deps;
     logger.info("placing an order", { tenantId: tenant, orderId: id, quantity });
     return placeOrder(id, quantity)

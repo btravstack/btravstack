@@ -2,7 +2,14 @@ import { Err, Ok, TaggedError } from "unthrown";
 import { describe, test } from "vitest";
 
 import { type Equal } from "./__tests__/type-assert.js";
-import { Port, Provider, type Scope, type ServiceOf } from "./index.js";
+import {
+  Port,
+  Provider,
+  overrideProvider,
+  type Context,
+  type Scope,
+  type ServiceOf,
+} from "./index.js";
 
 class ConfigError extends TaggedError("ConfigError")<{ readonly reason: string }> {}
 class PoolError extends TaggedError("ProvPoolError")<{ readonly url: string }> {}
@@ -303,5 +310,28 @@ describe("Provider.class", () => {
   test("another implementation is a subclass, not an object literal", () => {
     // @ts-expect-error a class with a private member is compared nominally
     Provider(FindThing)({ inject: {}, value: { execute: (id: string) => id } });
+  });
+
+  test("a subclass as a key answers the service that was provided, not its own type", () => {
+    class FakeFindThing extends FindThing {
+      fakeOnly(): string {
+        return "fake";
+      }
+    }
+    const read = (ctx: Context<FindThing>) => {
+      const found = ctx.get(FakeFindThing);
+      // @ts-expect-error the context holds a `FindThing`, whatever subclass named it
+      return found.fakeOnly();
+    };
+    void read;
+  });
+});
+
+describe("overrideProvider", () => {
+  test("keeps the provider's typed port", () => {
+    const overridden = overrideProvider(Provider(Logger)({ inject: {}, value: { log: () => {} } }));
+
+    const service: Equal<ServiceOf<typeof overridden.port>, ServiceOf<Logger>> = true;
+    void service;
   });
 });

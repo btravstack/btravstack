@@ -102,6 +102,15 @@ prismaOrderRepository(db) }` — an adapter factory takes the client, not a
   - **Its service is nominal.** A private or protected member refuses an object
     literal, so another implementation is a subclass. That is the price of
     helpers on the class, paid deliberately.
+  - **`Context.get` answers the port the context HOLDS under the key's id**
+    (`Held` in `context.ts`), not the key's own type. A subclass is a subtype
+    of the class it extends, so it passes `S extends R` as a key, and
+    `[SERVICE]: this` would have typed `ctx.get(Fake)` as `Fake` over a graph
+    that provided the original — a method only the fake has compiled and threw.
+  - **A subclass constructor taking more than the services record is a
+    defect** at construction: the port slots accept any arity, and di only
+    ever passes the record. In `construct`, not `plan`, because an override is
+    copied into a plain object `plan` cannot inspect.
 
 - **`module.ts`** — the `Module<Exports, E, Needs>` algebra: its option lists,
   channels and variance rule are `docs/reference/di/modules.md`'s, and the

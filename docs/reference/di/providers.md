@@ -197,7 +197,12 @@ takes the services record `inject` describes, and whose instances carry it as
   in `provides` (or `overrideProvider`, or `@btravstack/testing`'s
   `overridden`) in its place, and provides `FindOrder` itself — never a second
   port sharing its id.
-- **It constructs directly, for a unit test:** `new FindOrder({ orders })`.
+- **A subclass used as a key answers the class that was provided.**
+  `ctx.get(FakeFindOrder)` over a graph that provided `FindOrder` is typed as
+  `FindOrder`, which is what it returns.
+- **It constructs directly, for a unit test:** `new FindOrder({ orders })`. A
+  subclass constructor must take only that record: one that requires more is a
+  defect when the graph is built, since di passes nothing else.
 - **Write the return annotation of a method that fails.** It is the port's
   contract, and annotating it keeps the `Err` union from widening silently
   when the body changes.

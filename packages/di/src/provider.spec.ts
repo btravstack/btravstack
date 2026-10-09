@@ -170,3 +170,23 @@ test("an override of a provider class carries its inherited statics", async () =
   // THEN the double replaced the class
   await expect(built).resolves.toBeOkWith(0);
 });
+
+test("a provider class whose constructor wants more than its services is a defect", async () => {
+  // GIVEN a subclass whose constructor requires an argument di never passes
+  class Configured extends Doubled {
+    readonly factor: number;
+    constructor(deps: ConstructorParameters<typeof Doubled>[0], factor: number) {
+      super(deps);
+      this.factor = factor;
+    }
+  }
+  const App = Module("PClassArity")({ provides: [seed, Configured], exports: [Doubled] });
+
+  // WHEN it is built
+  const built = Module.build(App);
+
+  // THEN construction refused it, naming the port
+  await expect(built).resolves.toBeDefectWith(
+    expect.objectContaining({ message: expect.stringContaining("PDoubled") }),
+  );
+});

@@ -213,7 +213,9 @@ const OVERRIDE = Symbol("di.override");
 
 // Field by field, not a spread: a `Provider.class` subclass inherits these as
 // statics, which a spread does not copy.
-export const overrideProvider = <P, E, N>(provider: Provider<P, E, N>): Provider<P, E, N> =>
+export const overrideProvider = <P, E, N, Q extends AnyPort>(
+  provider: Provider<P, E, N> & { readonly port: Q },
+): Provider<P, E, N> & { readonly port: Q } =>
   ({
     port: provider.port,
     deps: provider.deps,
@@ -222,7 +224,7 @@ export const overrideProvider = <P, E, N>(provider: Provider<P, E, N>): Provider
     onStart: provider.onStart,
     onStop: provider.onStop,
     [OVERRIDE]: true,
-  }) as unknown as Provider<P, E, N>;
+  }) as unknown as Provider<P, E, N> & { readonly port: Q };
 
 /** Package-private (not in `index.ts`): `build.ts`'s plan resolves with it. */
 export const isOverride = (provider: object): boolean => OVERRIDE in provider;
@@ -312,7 +314,17 @@ function providerClass<const Id extends string, const D extends Deps>(
     static readonly deps = entries.map(([, dependency]) => dependency);
     static construct(this: new (deps: unknown) => unknown, services: readonly unknown[]) {
       const record = Object.fromEntries(entries.map(([key], index) => [key, services[index]]));
-      return OkAsync().map(() => new this(record));
+      return OkAsync().map(() => {
+        // The types accept a subclass constructor of any arity, and only the
+        // services record is ever passed: a wiring bug, landing as a defect.
+        if (this.length > 1) {
+          // oxlint-disable-next-line unthrown/no-throw
+          throw new Error(
+            `[di] ${id}: a Provider.class constructor takes only its services record`,
+          );
+        }
+        return new this(record);
+      });
     }
     protected readonly deps: unknown;
     constructor(deps: unknown) {

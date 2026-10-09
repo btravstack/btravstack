@@ -1,4 +1,17 @@
-import type { PortInstance, ServiceOf } from "./port.js";
+import type { ID, PortInstance, ServiceOf } from "./port.js";
+
+/**
+ * The port `R` holds under `S`'s id. A subclass of a `Provider.class` is a
+ * subtype of the class it extends, so it passes `S extends R` as a key; its own
+ * type must not then claim the service, which is whatever was provided.
+ */
+type Held<R, S> = S extends { readonly [ID]: infer Id extends string }
+  ? string extends Id
+    ? S
+    : [Extract<R, { readonly [ID]: Id }>] extends [never]
+      ? S
+      : Extract<R, { readonly [ID]: Id }>
+  : S;
 
 // The only thing this module does with a port at run time is read `portId`, so
 // the plumbing is typed against this rather than `AnyPort`, which a concrete
@@ -25,7 +38,7 @@ export type Context<in R> = {
   // `S extends R` over a naked constructor of `S`, never a
   // `P extends AnyPort` filtered by a conditional: the conditional form leaves
   // `P` unresolved and makes every `get` call fail to compile, valid or not.
-  readonly get: <S extends R>(port: abstract new (...args: never) => S) => ServiceOf<S>;
+  readonly get: <S extends R>(port: abstract new (...args: never) => S) => ServiceOf<Held<R, S>>;
 };
 
 // Off the Context object itself, so nothing but this module can reach the

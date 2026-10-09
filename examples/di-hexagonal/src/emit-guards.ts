@@ -38,6 +38,7 @@ import {
   makeAppModule,
   type GetOrder,
   type Order,
+  type OrderNotFound,
 } from "./index.js";
 
 /* ── The brands stay out of reach ──────────────────────────────────────────
@@ -127,7 +128,7 @@ export const ObservabilityModule = Module("Observability")({
 export class FindOrder extends Provider.class("FindOrder", {
   inject: { orders: OrderRepository },
 }) {
-  execute(id: string) {
+  execute(id: string): AsyncResult<Order, OrderNotFound> {
     return this.deps.orders.findById(this.normalised(id));
   }
 
