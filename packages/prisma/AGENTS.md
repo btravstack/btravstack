@@ -41,8 +41,9 @@ despite living on that page.
   refused.
 
 - The port is a cast rather than a class expression, and the provider is
-  resourceful with an empty error channel: the comments and TSDoc in
-  `src/prisma.ts` say why.
+  resourceful, failing only with `DatabaseUnreachable` when the probe it runs
+  while opening goes unanswered: the comments and TSDoc in `src/prisma.ts` say
+  why.
 
 **Nothing here imports `@prisma/orm-postgres`, and it is still a peer.** Every
 shape this package needs of a client is structural, so there is no import and
@@ -93,6 +94,11 @@ on Prisma's default pool of ten committed none before the probe and all after.
   acquired.
 - **It does not catch a marker mismatch.** Prisma rc.11 warns once and carries
   on; `prisma db verify` is the deploy-time check.
+- **A middleware that answers an unannotated plan would answer the probe too**,
+  and the health check with it — both run the same `SELECT 1` through
+  `runtime().query`. Prisma's own cache middleware cannot: it caches only plans
+  carrying `cacheAnnotation`, and the probe carries none. Checking each
+  answer's `source` was weighed and declined for a middleware nobody ships.
 
 ### `@btravstack/prisma/result`
 
