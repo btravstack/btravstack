@@ -148,12 +148,8 @@ export const prismaDatabase =
     // `pnpm build` fails here — measured, not anticipated.
     const DatabasePort = Port(name) as PortClassOf<N, C>;
 
-    // The probe runs BEFORE the client is handed out. Prisma verifies its
-    // contract marker on first use, on a connection of its own, so a fresh
-    // pool whose first statements are a burst of transactions — as many as it
-    // has connections — leaves the check nothing to run on, and every one of
-    // them times out. Verified here, no unit ever meets a fresh pool. A failed
-    // probe closes the pool itself: `release` only runs for what was acquired.
+    // Before the client is handed out, so no burst meets an unverified pool.
+    // A failed probe closes the pool itself: `release` runs only for what was acquired.
     const verified = (db: C): AsyncResult<C, DatabaseUnreachable> =>
       fromPromise(
         probe(db).then(

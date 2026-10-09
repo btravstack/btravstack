@@ -72,11 +72,7 @@ export type PersistenceFixtures = {
    * reads.
    */
   readonly aCustomer: (id: string, name: string) => Promise<void>;
-  /**
-   * Runs `work` in a scope `prismaDatabase` has just opened, over a pool of
-   * Prisma's default ten connections that gives up waiting for one after two
-   * seconds rather than twenty — so a pool that cannot hand one out fails fast.
-   */
+  /** A scope `prismaDatabase` just opened, whose pool gives up on a connection after 2 s, not 20. */
   readonly freshScope: <A>(
     work: (db: OrderDatabaseClient) => AsyncResult<A, never>,
   ) => AsyncResult<A, ConfigInvalid | DatabaseUnreachable>;
