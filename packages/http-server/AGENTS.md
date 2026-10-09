@@ -307,7 +307,15 @@ not cover"` marker, and what the marker names is a procedure path
   `injec:` slipped past excess-property checking only inside di's arm UNION,
   and these options are one object type, so the typo is `TS2561` at the call
   under both compilers, pinned per builder by a `@ts-expect-error` in its
-  type test. What optional buys is the multi-tenant case, where every use
+  type test. Optional is only sound while `D` is what `inject` inferred, so
+  the options are intersected with
+  `[keyof D] extends [never] ? unknown : { readonly inject: D }`: a non-empty
+  `D` named by an explicit type argument requires `inject` back, where
+  dropping it would type `sync` with a service the provider never resolves —
+  the runtime normalises an absent record to `{}`. The intersection rather
+  than an overload pair keeps one signature, so a bad `sync` is still
+  reported against the arm it was written for. What optional buys is the
+  multi-tenant case, where every use
   case is built inside the unit and `inject: {}` was boilerplate a reader
   asked about. An optional `unit: { name: Port }` rides beside it — see
   **`context.unit` and `UnitFor`**.

@@ -216,14 +216,16 @@ type Uncovered<C extends ContractDefinition, T extends readonly PieceOf<C>[]> = 
 type Whole<C extends ContractDefinition> = <
   const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
   const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
->(options: {
-  readonly inject?: D;
-  /** The unit-scoped ports every activity in the record reads off `context.unit`. */
-  readonly unit?: U;
-  readonly sync: (services: {
-    readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
-  }) => ActivitiesOf<C, { readonly unit: UnitRecordOf<U> }>;
-}) => Provider<ActivitiesInstanceOf<C>, never, InstanceType<D[keyof D]>> & {
+>(
+  options: {
+    readonly inject?: D;
+    /** The unit-scoped ports every activity in the record reads off `context.unit`. */
+    readonly unit?: U;
+    readonly sync: (services: {
+      readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+    }) => ActivitiesOf<C, { readonly unit: UnitRecordOf<U> }>;
+  } & ([keyof D] extends [never] ? unknown : { readonly inject: D }),
+) => Provider<ActivitiesInstanceOf<C>, never, InstanceType<D[keyof D]>> & {
   readonly port: ActivitiesPortOf<C>;
   /** Phantom: the declared ports, which `TemporalModule` gates `unit.activity` against. */
   readonly _declaredUnit?: InstanceType<U[keyof U]>;

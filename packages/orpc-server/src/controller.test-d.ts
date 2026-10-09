@@ -527,3 +527,23 @@ void publicApi.OrpcRouter(contract)({
     users: { find: () => OkAsync("found") },
   }),
 });
+
+// A non-empty `D` named by an explicit type argument requires `inject`: absent,
+// `sync` would be typed a service the provider never resolves.
+class PinDb extends Port("PinDb")<{ readonly n: number }> {}
+void publicApi.OrpcController(
+  contract,
+  "orders",
+)<{ db: typeof PinDb }>(
+  // @ts-expect-error — `inject` is required once `D` names a port
+  { sync: ({ db }) => ({ place: () => OkAsync(String(db.n)) }) },
+);
+void publicApi.OrpcRouter(contract)<{ db: typeof PinDb }>(
+  // @ts-expect-error — `inject` is required once `D` names a port
+  {
+    sync: ({ db }) => ({
+      orders: { place: () => OkAsync(String(db.n)) },
+      users: { find: () => OkAsync("found") },
+    }),
+  },
+);

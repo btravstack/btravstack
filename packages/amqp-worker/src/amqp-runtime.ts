@@ -256,14 +256,16 @@ type Uncovered<C extends AnyAmqpContract, T extends readonly PieceOf<C>[]> = Exc
 type Whole<C extends AnyAmqpContract> = <
   const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
   const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
->(options: {
-  readonly inject?: D;
-  /** The unit-scoped ports every handler in the record reads off `context.unit`. */
-  readonly unit?: U;
-  readonly sync: (services: {
-    readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
-  }) => WorkerInferHandlers<C, { readonly unit: UnitRecordOf<U> }>;
-}) => Provider<HandlersInstanceOf<C>, never, InstanceType<D[keyof D]>> & {
+>(
+  options: {
+    readonly inject?: D;
+    /** The unit-scoped ports every handler in the record reads off `context.unit`. */
+    readonly unit?: U;
+    readonly sync: (services: {
+      readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+    }) => WorkerInferHandlers<C, { readonly unit: UnitRecordOf<U> }>;
+  } & ([keyof D] extends [never] ? unknown : { readonly inject: D }),
+) => Provider<HandlersInstanceOf<C>, never, InstanceType<D[keyof D]>> & {
   readonly port: HandlersPortOf<C>;
   /** Phantom: the declared ports, which `AmqpModule` gates `unit.message` against. */
   readonly _declaredUnit?: InstanceType<U[keyof U]>;

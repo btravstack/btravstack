@@ -144,3 +144,26 @@ AmqpHandlers(pinContract)({
   injec: {},
   sync: () => ({ left: () => OkAsync(undefined), right: () => OkAsync(undefined) }),
 });
+
+// A non-empty `D` named by an explicit type argument requires `inject`.
+AmqpHandler(
+  pinContract,
+  "left",
+)<{ tenant: typeof Tenant }>(
+  // @ts-expect-error -- `inject` is required once `D` names a port
+  {
+    sync:
+      ({ tenant }) =>
+      () =>
+        OkAsync(void tenant.id),
+  },
+);
+AmqpHandlers(pinContract)<{ tenant: typeof Tenant }>(
+  // @ts-expect-error -- `inject` is required once `D` names a port
+  {
+    sync: ({ tenant }) => ({
+      left: () => OkAsync(void tenant.id),
+      right: () => OkAsync(undefined),
+    }),
+  },
+);

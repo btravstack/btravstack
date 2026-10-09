@@ -894,7 +894,7 @@ const OrpcController: <
   readonly sync: (services: {
     readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
   }) => Implementation<FragmentAt<C, K>, Schemes, never, Units, U>;
-}) => Provider<
+} & ([keyof D] extends [never] ? unknown : { readonly inject: D })) => Provider<
   PortInstance<
     `OrpcController:${K}`,
     Implementation<FragmentAt<C, K>, Schemes>

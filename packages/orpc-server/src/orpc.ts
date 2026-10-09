@@ -256,14 +256,16 @@ export const routerFor =
     function build<
       const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
       const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
-    >(options: {
-      readonly inject?: D;
-      /** The unit-scoped ports every leaf may read off `context.unit`, per its own kind. */
-      readonly unit?: U;
-      readonly sync: (services: {
-        readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
-      }) => Implementation<C, Schemes, never, Units, U>;
-    }): Built<
+    >(
+      options: {
+        readonly inject?: D;
+        /** The unit-scoped ports every leaf may read off `context.unit`, per its own kind. */
+        readonly unit?: U;
+        readonly sync: (services: {
+          readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
+        }) => Implementation<C, Schemes, never, Units, U>;
+      } & ([keyof D] extends [never] ? unknown : { readonly inject: D }),
+    ): Built<
       Auth,
       InstanceType<D[keyof D]> | SchemePortsOf<AllRequirementsOf<C>>,
       Units,

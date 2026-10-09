@@ -947,7 +947,10 @@ in its place.
   line — a leaf discharged twice is di's duplicate-provider defect, and HTTP's
   nested key space adds `OVERLAPPING CONTROLLERS`. HTTP's gates are in
   `packages/http-server/AGENTS.md`; the worker side is
-  `docs/how-to/split-a-worker-into-slices.md`.
+  `docs/how-to/split-a-worker-into-slices.md`. Every one of these builders,
+  and `HtmxGet` / `HtmxPost`, takes `{ inject?, unit?, sync }` with `inject`
+  optional where di's own `Provider` requires it — the reason, and the gates
+  that keep it sound, are recorded once, in `packages/http-server/AGENTS.md`.
 
 - **`examples/order-api` consumes `@btravstack/http-server`**, `order-temporal-worker`
   consumes `@btravstack/temporal-worker` and `order-amqp-worker` consumes

@@ -113,3 +113,14 @@ void api.HtmxGet("/typo")({
   injec: {},
   sync: () => () => OkAsync(html`<p></p>`),
 });
+
+// A non-empty `D` named by an explicit type argument requires `inject`.
+void api.HtmxGet("/explicit")<{ tenant: typeof RouteTenant }>(
+  // @ts-expect-error — `inject` is required once `D` names a port
+  {
+    sync:
+      ({ tenant }) =>
+      () =>
+        OkAsync(html`<p>${tenant}</p>`),
+  },
+);
