@@ -318,7 +318,9 @@ the second as `jwtAuthenticator<Customer>()({ variablePrefix:
 its variable, and the `ConfigInvalid` and the cleartext refusal name the
 scheme's own variable. [`oidc()`](#the-login-answerer) takes the same option.
 The scheme's needs name the prefixed variables too, so a boot's `env` is typed
-by them — see [The variables a graph reads](/reference/config#the-variables-a-graph-reads).
+by them: each is required unless the call pins it, and not read when it does —
+the same for `oidc()`, `sessionAuthenticator` and `sessionCodec`. See
+[The variables a graph reads](/reference/config#the-variables-a-graph-reads).
 
 **A cleartext `jwks` is refused at boot too**, on the same rule
 [`oidc()`](#the-login-answerer) applies to its issuer and with the same

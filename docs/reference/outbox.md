@@ -111,7 +111,8 @@ malformed value is a `ConfigInvalid` naming the variable, so the process exits
 unit, so there is no tenant to read off anything, and "whatever is in the
 table" is how one deployment starts broadcasting another's facts off a shared
 database. Naming them is also how relays are sharded. A single-tenant
-application names its one.
+application names its one. A boot's typed `env` requires it too, unless
+`tenants` is pinned at the call.
 
 ## The loop
 

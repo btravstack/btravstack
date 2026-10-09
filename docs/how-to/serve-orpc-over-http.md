@@ -362,7 +362,9 @@ const origin = `http://127.0.0.1:${info?.port}`;
 ```
 
 `deployment` stands for the rest of what this root reads — the database URL, the
-JWT scheme's three variables, the session keys and the login's issuer and client.
+JWT scheme's three variables, the session keys, and the issuer and client id the
+session scheme accepts sessions from. This root composes no `oidc()` login, so
+its secret and redirect URI are not among them.
 `env` is typed by them: leave one out and the call names it, rather than the
 boot. `StartEnvironment<typeof OrdersApi>` is that record.
 

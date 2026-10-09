@@ -89,7 +89,13 @@ deployment could not cross is not one a composition root can pin either.
 `Config.string` deliberately carries none: "set but empty" is about the raw
 variable, where a pinned `""` is a decision (`http({ cors: false })` pins
 exactly that). Any Standard Schema (`zod`,
-`valibot`, `arktype`) is accepted in place of `Config.object`. The full
+`valibot`, `arktype`) is accepted in place of `Config.object`.
+
+Every field names its variable in its type, and a module's needs carry the
+names up to `start`: its `env` accepts what the module's configuration reads,
+requires what nothing defaults or pins, and refuses a misspelt or unread
+variable at the call. `StartEnvironment<typeof Root>` types one kept apart
+from the call. The full
 semantics, `ConfigInvalid`'s message and `ConfigFieldInvalid` are on the
 [documentation site](https://btravstack.github.io/btravstack/reference/config).
 
