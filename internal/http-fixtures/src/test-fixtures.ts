@@ -643,7 +643,7 @@ const loginOnlyStatusFragment = loginOnlyApi.HtmxGet("/status")({
   sync: () => () => OkAsync(html`ok`),
 });
 
-const loginOnlyAppOf = () =>
+const loginOnlyAppOf = (variablePrefix?: string) =>
   HttpModule("LoginOnlyApp")({
     fragments: loginOnlyApi.HtmxFragments([loginOnlyStatusFragment]),
     port: 0,
@@ -652,7 +652,11 @@ const loginOnlyAppOf = () =>
     provides: [
       loginOnlyStatusFragment,
       sessionCodec(),
-      ...oidc({ principal: oidcPrincipal, scope: ORY_SCOPE }),
+      ...oidc({
+        principal: oidcPrincipal,
+        scope: ORY_SCOPE,
+        ...(variablePrefix === undefined ? {} : { variablePrefix }),
+      }),
     ],
   });
 
@@ -2147,6 +2151,10 @@ export type HttpFixtures = {
     env: Environment,
     allowInsecureIssuer?: boolean,
   ) => RunningApp<ConfigInvalid | OidcUnreachable, HttpInfo>;
+  /** A second login reading `HTTP_OIDC_STAFF_*`, over whatever environment a test hands it. */
+  readonly staffOidcApp: (
+    env: Environment,
+  ) => RunningApp<ConfigInvalid | OidcUnreachable, HttpInfo>;
 
   /** A JWE under a header and payload of the test's choosing, sealed with a held key. */
   readonly forgeSession: (
@@ -3037,6 +3045,10 @@ export const it = test.extend<HttpFixtures>({
     await use((env, allowInsecureIssuer) =>
       boot(bffAppOf(oidcPrincipal, recordingObserver().member, allowInsecureIssuer), { env }),
     );
+  },
+
+  staffOidcApp: async ({ boot }, use) => {
+    await use((env) => boot(loginOnlyAppOf("HTTP_OIDC_STAFF"), { env }));
   },
 
   bothProtocols: async ({ boot }, use) => {

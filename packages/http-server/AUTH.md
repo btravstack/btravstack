@@ -230,7 +230,10 @@ The two rules this half exists to state, before the detail:
   #461). It is a prefix and not three names because the starter-prefix rule
   already decides the shape of every variable here; a scheme's KEY in
   `defineHttp` is not used, since renaming a key would then silently rename a
-  deployment's configuration. The rest stay options: `algorithms`,
+  deployment's configuration. `oidc()` takes the same option for its four
+  `HTTP_OIDC_*` variables, so the two never disagree on how an instance is
+  configured — and it is `variablePrefix`, not `prefix`, because `oidc()`'s
+  `prefix` is already where its routes mount. The rest stay options: `algorithms`,
   `clockToleranceSec` and `allowInsecureJwks` because a value whose silent
   change is a security regression is not an environment's to change,
   `header`/`principal`/`scopes` because an environment carries no functions and
@@ -363,7 +366,7 @@ The two rules this half exists to state, before the detail:
   header, and a caller presenting a header credential is not a CSRF target, so
   neither sets the marker.
 
-- **`oidc({ principal, issuer?, clientId?, clientSecret?, redirectUri?, prefix?, scope?, postLogout?, allowInsecureIssuer? })`
+- **`oidc({ principal, issuer?, clientId?, clientSecret?, redirectUri?, variablePrefix?, prefix?, scope?, postLogout?, allowInsecureIssuer? })`
   and `OidcUnreachable`** (`oidc.ts`, from `@btravstack/http-server/oidc`) —
   **the one thing in this package on the ISSUING side of the line above, and
   the exception that proves it.** It mints no credential: it walks a browser

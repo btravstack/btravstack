@@ -316,7 +316,7 @@ the second as `jwtAuthenticator<Customer>()({ variablePrefix:
 "HTTP_JWT_CUSTOMER", principal })`, which reads `HTTP_JWT_CUSTOMER_JWKS_URI`,
 `HTTP_JWT_CUSTOMER_ISSUER` and `HTTP_JWT_CUSTOMER_AUDIENCE`. A pin still beats
 its variable, and the `ConfigInvalid` and the cleartext refusal name the
-scheme's own variable.
+scheme's own variable. [`oidc()`](#the-login-answerer) takes the same option.
 
 **A cleartext `jwks` is refused at boot too**, on the same rule
 [`oidc()`](#the-login-answerer) applies to its issuer and with the same
@@ -519,6 +519,7 @@ export const BrowserApi = HttpModule("BrowserApi")({
 | `scope`               | no       | `openid`                            | what the authorization request asks for                                   |
 | `postLogout`          | no       | `/`                                 | where a logout lands when the provider advertises no end-session endpoint |
 | `allowInsecureIssuer` | no       | `false`                             | talk to an `http:` issuer that is not on a loopback host                  |
+| `variablePrefix`      | no       | `HTTP_OIDC`                         | the prefix of the four variables, so a second login reads its own         |
 
 **`GET <prefix>/login?return=<path>&as=<hint>`** mints a PKCE verifier, a
 `state` and a `nonce`, seals them and `return` into the five-minute
