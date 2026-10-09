@@ -14,7 +14,8 @@ server package.
 ```sh
 pnpm add @btravstack/orpc-server @btravstack/http-server @btravstack/htmx-server \
   @btravstack/core @btravstack/config @btravstack/di @btravstack/contract \
-  unthrown @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @unthrown/orpc@^0.2.0
+  unthrown @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 \
+  @orpc/openapi@2.0.0-beta.28 @orpc/json-schema@2.0.0-beta.28 @unthrown/orpc@^0.2.0
 ```
 
 ## A worked example

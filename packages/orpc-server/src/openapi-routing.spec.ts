@@ -225,30 +225,26 @@ describe("OpenAPI routes", () => {
   });
 
   it("serves OpenAPI routes from a root composed with http()", async ({ boot }) => {
-    // Given a root that composes `http()` and `openApiRoutes()` itself.
-    const running = boot(handRolledApp);
-    const info = (await running.runtimeInfo()).get();
-    expect(info).toBeDefined();
+    // GIVEN a root that composes `http()` and `openApiRoutes()` itself
+    const info = (await boot(handRolledApp).runtimeInfo()).get();
 
-    // When a client calls an OpenAPI route.
-    const response = await fetch(`http://127.0.0.1:${info!.port}/api/items/42`);
+    // WHEN a client calls an OpenAPI route
+    const response = await fetch(`http://127.0.0.1:${info?.port}/api/items/42`);
 
-    // Then the route is served.
+    // THEN the route is served
     expect([response.status, await response.json()]).toEqual([200, { id: "42", name: "first" }]);
   });
 
   it("takes the module's own cors when the option pins none", async ({ boot }) => {
-    // Given `cors: true` on the module and `openapi: true`.
-    const running = boot(modulePolicyApp);
-    const info = (await running.runtimeInfo()).get();
-    expect(info).toBeDefined();
+    // GIVEN `cors: true` on the module and `openapi: true`
+    const info = (await boot(modulePolicyApp).runtimeInfo()).get();
 
-    // When a cross-origin client calls an OpenAPI route.
-    const response = await fetch(`http://127.0.0.1:${info!.port}/api/items/42`, {
+    // WHEN a cross-origin client calls an OpenAPI route
+    const response = await fetch(`http://127.0.0.1:${info?.port}/api/items/42`, {
       headers: { origin: "https://caller.test" },
     });
 
-    // Then the answerer reflects the caller's origin, as the RPC answerer does.
+    // THEN the answerer reflects the caller's origin, as the RPC answerer does
     expect([response.status, response.headers.get("access-control-allow-origin")]).toEqual([
       200,
       "https://caller.test",
