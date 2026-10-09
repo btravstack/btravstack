@@ -24,13 +24,15 @@
     "@btravstack/graphql-server": "workspace:*",
     "@btravstack/http-server": "workspace:*",
     "@orpc/client": "catalog:",
+    "@orpc/contract": "catalog:",
     "@pothos/core": "catalog:",
+    "dataloader": "catalog:",
     "graphql": "catalog:",
     "graphql-yoga": "catalog:",
-    "unthrown": "catalog:",
-    "zod": "catalog:"
+    "unthrown": "catalog:"
   },
   "devDependencies": {
+    "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",

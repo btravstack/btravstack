@@ -1,22 +1,17 @@
 import { Config, Env } from "@btravstack/config";
-import { Module, Port, Provider } from "@btravstack/di";
+import { Module } from "@btravstack/di";
 import { graphql } from "@btravstack/graphql-server";
 import { HttpHandler, HttpRuntime, defineAuth, httpServer } from "@btravstack/http-server";
 
 import { orderGraphqlSchema } from "./graphql-schema.js";
+import { maxAliases } from "./limits.js";
+import { OrderApiOrigin, OrderReads, orderReads } from "./order-reads.js";
 
-export class OrderApiOrigin extends Port("OrderApiOrigin")<{ readonly url: string }> {}
-class GraphqlOrigin extends Port("GraphqlOrigin")<{ readonly url: string }> {}
-
+/** What every request forks: its own order reads, and with them its own cache. */
 const GraphqlRequest = Module("GraphqlRequest")({
   needs: [OrderApiOrigin],
-  provides: [
-    Provider(GraphqlOrigin)({
-      inject: { origin: OrderApiOrigin },
-      sync: ({ origin }) => origin,
-    }),
-  ],
-  exports: [GraphqlOrigin],
+  provides: [orderReads],
+  exports: [OrderReads],
 });
 const graphqlUnits = { anonymous: GraphqlRequest };
 
@@ -31,7 +26,8 @@ export const OrderGraphqlApi = Module("OrderGraphqlApi")({
     graphql(defineAuth(), {
       schema: orderGraphqlSchema,
       units: graphqlUnits,
-      unit: { origin: GraphqlOrigin },
+      unit: { reads: OrderReads },
+      plugins: [maxAliases(10)],
     }),
   ],
   exports: [HttpRuntime, HttpHandler, OrderApiOrigin],

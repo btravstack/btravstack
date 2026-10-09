@@ -190,6 +190,16 @@ dependencies by name`; a positional array is refused as
   one, is built from that same fold. The trigger to reopen: a schema whose
   unions are written twice — once as types, once as the fold.
 
+- **A contract-to-GraphQL argument adapter is deferred** (issue #474). oRPC
+  2 keeps a procedure's runtime schemas as an untyped `inputSchemas` array, but
+  its type parameters keep the declared schema, so a gateway can validate a
+  GraphQL argument through the contract's own schemas, typed — which
+  `examples/order-graphql-api`'s `inputOf` does in a dozen lines. A framework
+  helper would put an `@orpc/contract` peer on `@btravstack/graphql-server`,
+  which accepts any `GraphQLSchema` and owns no protocol. Graph exposure and
+  joins stay explicit either way. The trigger: a second gateway writing the
+  same function.
+
 - **Filtering with operators is declined** (issue #261). A normed
   `{ field, op, value }` owes an operator set per type, nesting and null
   handling, and then a translator into Prisma or SQL — a query builder those

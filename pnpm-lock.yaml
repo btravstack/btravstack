@@ -314,6 +314,9 @@ catalogs:
     '@vitest/coverage-v8':
       specifier: 5.0.3
       version: 5.0.3
+    dataloader:
+      specifier: 2.2.3
+      version: 2.2.3
     effect:
       specifier: 3.22.2
       version: 3.22.2
@@ -1104,9 +1107,15 @@ importers:
       '@orpc/client':
         specifier: 'catalog:'
         version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/contract':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
       '@pothos/core':
         specifier: 'catalog:'
         version: 4.15.1(graphql@17.0.2)
+      dataloader:
+        specifier: 'catalog:'
+        version: 2.2.3
       graphql:
         specifier: 'catalog:'
         version: 17.0.2
@@ -1116,10 +1125,10 @@ importers:
       unthrown:
         specifier: 'catalog:'
         version: 5.12.0
-      zod:
-        specifier: 'catalog:'
-        version: 4.6.5
     devDependencies:
+      '@btravstack/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.4.0
@@ -7143,6 +7152,9 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  dataloader@2.2.3:
+    resolution: {integrity: sha512-y2krtASINtPFS1rSDjacrFgn1dcUuoREVabwlOGOe4SdxenREqwjwjElAdwvbGM7kgZz9a3KVicWR7vcz8rnzA==}
 
   debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
@@ -14356,6 +14368,8 @@ snapshots:
       which: 2.0.2
 
   csstype@3.2.3: {}
+
+  dataloader@2.2.3: {}
 
   debug@4.4.3(supports-color@8.1.1):
     dependencies:
