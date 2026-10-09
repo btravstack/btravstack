@@ -48,100 +48,74 @@ describe("graphql answerer", () => {
     });
   });
 
-  describe("developer tools", () => {
+  describe.each([
+    {
+      deployment: "that set nothing",
+      pin: {},
+      env: {},
+      graphiql: false,
+      introspection: {
+        errors: [
+          expect.objectContaining({
+            message: "GraphQL introspection is not allowed, but the query contained __schema",
+          }),
+        ],
+      },
+    },
+    {
+      deployment: "that set GRAPHQL_DEVELOPER_TOOLS",
+      pin: {},
+      env: { GRAPHQL_DEVELOPER_TOOLS: "true" },
+      graphiql: true,
+      introspection: {
+        data: { __typename: "Query", __schema: { queryType: { name: "Query" } } },
+      },
+    },
+    {
+      deployment: "that set GRAPHQL_DEVELOPER_TOOLS, under a pin off",
+      pin: { developerTools: false },
+      env: { GRAPHQL_DEVELOPER_TOOLS: "true" },
+      graphiql: false,
+      introspection: { errors: [expect.anything()] },
+    },
+  ])("developer tools, for a deployment $deployment", (row) => {
     const schema = createSchema({
       typeDefs: "type Query { hello: String }",
       resolvers: { Query: { hello: () => "world" } },
     });
-    const probe = async (port: number) => {
-      const page = await fetch(`http://127.0.0.1:${port}/graphql`, {
+    const root = Module("DeveloperToolsGraphqlApp")({
+      needs: [Env],
+      imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+      provides: [graphql(defineAuth(), { schema, ...row.pin })],
+      exports: [HttpRuntime, HttpHandler],
+    });
+
+    it(`${row.graphiql ? "serves" : "does not serve"} GraphiQL`, async ({ boot }) => {
+      // GIVEN the mount, under this deployment
+      const info = (await boot(root, { env: row.env }).runtimeInfo()).get();
+
+      // WHEN a browser asks for the page
+      const page = await fetch(`http://127.0.0.1:${info!.port}/graphql`, {
         headers: { accept: "text/html" },
       });
-      const introspection = await fetch(`http://127.0.0.1:${port}/graphql`, {
+
+      // THEN GraphiQL renders exactly when the tools are on
+      expect(page.headers.get("content-type")?.startsWith("text/html") ?? false).toBe(row.graphiql);
+    });
+
+    it(`${row.graphiql ? "answers" : "refuses"} introspection`, async ({ boot }) => {
+      // GIVEN the mount, under this deployment
+      const info = (await boot(root, { env: row.env }).runtimeInfo()).get();
+
+      // WHEN a client introspects
+      const response = await fetch(`http://127.0.0.1:${info!.port}/graphql`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ query: "{ __typename __schema { queryType { name } } }" }),
       });
-      return {
-        graphiql: page.headers.get("content-type")?.startsWith("text/html") ?? false,
-        introspection: await introspection.json(),
-      };
-    };
 
-    it("serves neither GraphiQL nor introspection by default", async ({ boot }) => {
-      // GIVEN a mount whose deployment set nothing
-      const app = boot(
-        Module("DefaultToolsGraphqlApp")({
-          needs: [Env],
-          imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
-          provides: [graphql(defineAuth(), { schema })],
-          exports: [HttpRuntime, HttpHandler],
-        }),
-      );
-      const info = (await app.runtimeInfo()).get();
-
-      // WHEN a browser asks for the page and a client introspects
-      const seen = await probe(info!.port);
-
-      // THEN the page is not GraphiQL and introspection is refused by field name
-      expect(seen).toEqual({
-        graphiql: false,
-        introspection: {
-          errors: [
-            expect.objectContaining({
-              message: "GraphQL introspection is not allowed, but the query contained __schema",
-            }),
-          ],
-        },
-      });
-    });
-
-    it("serves both when the deployment sets GRAPHQL_DEVELOPER_TOOLS", async ({ boot }) => {
-      // GIVEN a mount whose deployment turned the tools on
-      const app = boot(
-        Module("EnvToolsGraphqlApp")({
-          needs: [Env],
-          imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
-          provides: [graphql(defineAuth(), { schema })],
-          exports: [HttpRuntime, HttpHandler],
-        }),
-        { env: { GRAPHQL_DEVELOPER_TOOLS: "true" } },
-      );
-      const info = (await app.runtimeInfo()).get();
-
-      // WHEN a browser asks for the page and a client introspects
-      const seen = await probe(info!.port);
-
-      // THEN GraphiQL renders and introspection answers
-      expect(seen).toEqual({
-        graphiql: true,
-        introspection: {
-          data: { __typename: "Query", __schema: { queryType: { name: "Query" } } },
-        },
-      });
-    });
-
-    it("lets the option pin the variable", async ({ boot }) => {
-      // GIVEN a mount pinned off, under a deployment that asks for the tools
-      const app = boot(
-        Module("PinnedToolsGraphqlApp")({
-          needs: [Env],
-          imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
-          provides: [graphql(defineAuth(), { schema, developerTools: false })],
-          exports: [HttpRuntime, HttpHandler],
-        }),
-        { env: { GRAPHQL_DEVELOPER_TOOLS: "true" } },
-      );
-      const info = (await app.runtimeInfo()).get();
-
-      // WHEN a browser asks for the page and a client introspects
-      const seen = await probe(info!.port);
-
-      // THEN the pin wins
-      expect(seen).toEqual({
-        graphiql: false,
-        introspection: { errors: [expect.anything()] },
-      });
+      // THEN the schema answers when the tools are on and is refused by field name when not
+      expect(await response.json()).toEqual(row.introspection);
     });
   });
 
