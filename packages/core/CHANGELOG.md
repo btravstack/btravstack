@@ -1,5 +1,12 @@
 # @btravstack/core
 
+## 0.25.0
+
+### Patch Changes
+
+- @btravstack/config@0.25.0
+  - @btravstack/di@0.25.0
+
 ## 0.24.0
 
 ### Patch Changes
