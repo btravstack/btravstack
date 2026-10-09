@@ -42,13 +42,30 @@ test("json types each codec field as its wire text, nested and optional ones inc
   }>();
 });
 
-test("a union keeps a decoded member named before its codec", () => {
-  class Misordered extends Entity("Misordered")({
-    value: z.union([Amount, z.codec(PositiveText, Amount, { decode: BigInt, encode: String })]),
+test("a union Entity.codec did not build keeps every member", () => {
+  const AmountAgain = z.bigint().positive().brand("Amount");
+  class HandWritten extends Entity("HandWritten")({
+    value: z.union([
+      z.codec(PositiveText, Amount, { decode: BigInt, encode: String }),
+      AmountAgain,
+    ]),
   }) {}
-  expectTypeOf<z.output<typeof Misordered.json>["value"]>().toEqualTypeOf<
-    z.output<typeof Amount> | string
+  expectTypeOf<z.output<typeof HandWritten.json>["value"]>().toEqualTypeOf<
+    string | z.output<typeof AmountAgain>
   >();
+});
+
+test("a codec whose wire side is a codec is the text at the end of the chain", () => {
+  const NumberText = z.codec(z.string(), z.number(), { decode: Number, encode: String });
+  class Chained extends Entity("Chained")({
+    value: Entity.codec(NumberText, Amount, { decode: (n) => BigInt(n), encode: Number }),
+  }) {}
+  expectTypeOf<z.output<typeof Chained.json>["value"]>().toEqualTypeOf<string>();
+});
+
+test("an Entity.codec field described is still its wire text", () => {
+  class Described extends Entity("Described")({ value: amount.describe("an amount") }) {}
+  expectTypeOf<z.output<typeof Described.json>["value"]>().toEqualTypeOf<string>();
 });
 
 test("a union value's json is its members' json", () => {

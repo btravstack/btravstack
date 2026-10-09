@@ -1,6 +1,17 @@
 import { z } from "zod";
 
 /**
+ * The mark `Entity.codec` leaves on its union. On the def, not the instance:
+ * zod's clones (`.describe()`, `.meta()`) copy the def, so the mark follows.
+ */
+const ENTITY_CODEC = "entityCodec";
+
+/** What `Entity.codec` returns: its union, carrying a phantom `json` reads. */
+export type EntityCodec<W extends z.core.SomeType, D extends z.core.SomeType> = z.ZodUnion<
+  [z.ZodCodec<W, D>, D]
+> & { readonly __entityCodec: true };
+
+/**
  * Declares a field whose value JSON cannot hold, public as `Entity.codec`:
  *
  * ```ts
@@ -17,7 +28,7 @@ import { z } from "zod";
  * comes first because `z.encode` takes the first member that accepts a value:
  * with the decoded member first, a body would carry the `bigint` itself. So
  * `make` takes the wire text or the value, `z.encode(X.output, x.toJSON())`
- * writes the text, and `X.json` describes it.
+ * writes the text, and `X.json` describes the text alone.
  *
  * The wire schema is what `X.json` publishes for the field, so make it the
  * canonical spelling `encode` writes rather than everything `decode` accepts.
@@ -26,8 +37,10 @@ export function codec<const W extends z.core.SomeType, D extends z.core.SomeType
   wire: W,
   domain: D,
   transforms: Parameters<typeof z.codec<W, D>>[2],
-): z.ZodUnion<[z.ZodCodec<W, D>, D]> {
-  return z.union([z.codec(wire, domain, transforms), domain]);
+): EntityCodec<W, D> {
+  const union = z.union([z.codec(wire, domain, transforms), domain]);
+  (union._zod.def as unknown as Record<string, unknown>)[ENTITY_CODEC] = true;
+  return union as EntityCodec<W, D>;
 }
 
 type Def = z.core.$ZodTypeDef & Record<string, unknown>;
@@ -46,15 +59,15 @@ const hasJson = (schema: unknown): schema is { readonly json: z.core.$ZodType } 
 
 /**
  * One field schema as its JSON form: what `z.encode` writes for it. A codec is
- * its wire side, a nested entity or union its own `json`; `z.array`,
- * `z.optional` and `z.nullable` are walked. Anything else is itself.
+ * its wire side, walked again since a wire side may itself be a codec; a nested
+ * entity or union is its own `json`; `z.array`, `z.optional` and `z.nullable`
+ * are walked. Anything else is itself.
  *
- * A union drops a member that is the decoded side of a codec **before** it:
- * that member is there for `make`'s sake, and `z.encode` — which takes the first
- * member accepting a value — never reaches it. Order is the point. Placed
- * first, the decoded member is what `z.encode` writes, so it is kept, and the
- * `bigint` it carries fails JSON Schema conversion instead of `json` claiming
- * a string the body does not hold.
+ * Only `Entity.codec`'s union collapses, to its codec: its decoded member is
+ * there for `make`'s sake, and the codec it follows is what `z.encode` writes.
+ * Any other union keeps every member, each walked — the type cannot see which
+ * schema object a member is, so a rule that dropped a hand-written union's
+ * member would type a field the validator still parses differently.
  *
  * A wrapper is cloned only when something under it changed, as `plain` does in
  * `shape.ts`, so a field with nothing to encode stays the very same object.
@@ -64,20 +77,14 @@ const hasJson = (schema: unknown): schema is { readonly json: z.core.$ZodType } 
 export const json = (schema: z.core.$ZodType): z.core.$ZodType => {
   if (hasJson(schema)) return schema.json;
   const def = schema._zod.def as Def;
-  if (isCodec(schema)) return (def as unknown as z.core.$ZodCodecDef).in;
+  if (isCodec(schema)) return json((def as unknown as z.core.$ZodCodecDef).in);
   if (def.type === "union") {
     const { options } = def as unknown as z.core.$ZodUnionDef;
-    const decoded = new Set<z.core.$ZodType>();
-    const kept: z.core.$ZodType[] = [];
-    for (const member of options) {
-      if (decoded.has(member)) continue;
-      kept.push(json(member));
-      if (isCodec(member)) decoded.add((member._zod.def as z.core.$ZodCodecDef).out);
-    }
-    if (kept.length === 1) return kept[0] as z.core.$ZodType;
-    return kept.length === options.length && kept.every((member, i) => member === options[i])
+    if (def[ENTITY_CODEC] === true) return json(options[0] as z.core.$ZodType);
+    const next = options.map(json);
+    return next.every((member, i) => member === options[i])
       ? schema
-      : z.core.util.clone(schema, { ...def, options: kept } as typeof def);
+      : z.core.util.clone(schema, { ...def, options: next } as typeof def);
   }
   if (def.type === "array") {
     const { element } = def as unknown as z.core.$ZodArrayDef;

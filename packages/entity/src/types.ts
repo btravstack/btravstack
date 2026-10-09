@@ -71,60 +71,48 @@ export type PlainOf<S extends Fields, W extends "input" | "output"> = {
   [K in keyof S]: PlainSchema<SchemaOf<S[K]>, W>;
 };
 
-/** A union member that is a codec's decoded side, which `JsonSchema` drops. */
-type DecodedSide<M> = M extends z.ZodCodec<z.core.SomeType, infer D> ? D : never;
-
-/**
- * A union's members less each that is the decoded side of an EARLIER codec,
- * each as its JSON form — `D` accumulates the codecs seen so far, as `json`'s
- * loop does.
- */
-type JsonMembers<O extends readonly unknown[], D = never> = O extends readonly [infer H, ...infer R]
-  ? [H] extends [D]
-    ? JsonMembers<R, D>
-    : [JsonSchema<H>, ...JsonMembers<R, D | DecodedSide<H>>]
-  : [];
-
 /**
  * One field schema as its JSON form — the type-level mirror of `json` in
  * `json.ts`. A nested entity or union is its own `json`, by indexed access as
- * `PlainSchema` does; a codec is its wire side; a union keeps the members that
- * are not the decoded side of an earlier codec, and is that member alone when
- * one is left. A wrapper is rebuilt only when its content changed.
+ * `PlainSchema` does; `Entity.codec`'s union is its codec, and a codec its wire
+ * side, walked again; any other union keeps every member, each walked. A
+ * wrapper is rebuilt only when its content changed.
  */
 export type JsonSchema<T> = T extends {
   readonly make: unknown;
   readonly json: infer J extends z.core.$ZodType;
 }
   ? J
-  : T extends z.ZodCodec<infer W extends z.core.$ZodType, z.core.SomeType>
-    ? W
-    : T extends z.ZodUnion<infer O extends readonly z.core.SomeType[]>
-      ? JsonMembers<O> extends infer Kept extends readonly z.core.SomeType[]
-        ? Kept extends readonly [infer Only extends z.core.$ZodType]
-          ? Only
-          : [Kept] extends [O]
+  : T extends { readonly __entityCodec: true } & z.ZodUnion<
+        readonly [infer C extends z.core.SomeType, ...z.core.SomeType[]]
+      >
+    ? JsonSchema<C>
+    : T extends z.ZodCodec<infer W, z.core.SomeType>
+      ? JsonSchema<W>
+      : T extends z.ZodUnion<infer O extends readonly z.core.SomeType[]>
+        ? { [I in keyof O]: JsonSchema<O[I]> } extends infer Next extends readonly z.core.SomeType[]
+          ? [Next] extends [O]
             ? T
-            : z.ZodUnion<Kept>
-        : never
-      : T extends z.ZodArray<infer E>
-        ? [JsonSchema<E>] extends [E]
-          ? T
-          : z.ZodArray<Extract<JsonSchema<E>, z.core.SomeType>>
-        : T extends z.ZodOptional<infer E>
+            : z.ZodUnion<Next>
+          : never
+        : T extends z.ZodArray<infer E>
           ? [JsonSchema<E>] extends [E]
             ? T
-            : z.ZodOptional<Extract<JsonSchema<E>, z.core.SomeType>>
-          : T extends z.ZodNullable<infer E>
+            : z.ZodArray<Extract<JsonSchema<E>, z.core.SomeType>>
+          : T extends z.ZodOptional<infer E>
             ? [JsonSchema<E>] extends [E]
               ? T
-              : z.ZodNullable<Extract<JsonSchema<E>, z.core.SomeType>>
-            : T;
+              : z.ZodOptional<Extract<JsonSchema<E>, z.core.SomeType>>
+            : T extends z.ZodNullable<infer E>
+              ? [JsonSchema<E>] extends [E]
+                ? T
+                : z.ZodNullable<Extract<JsonSchema<E>, z.core.SomeType>>
+              : T;
 
 /** An entity's fields and computed fields, each as its JSON form — what `json` is built from. */
 export type JsonOf<S extends Fields, A extends Schemas> = {
-  [K in keyof S]: JsonSchema<SchemaOf<S[K]>>;
-} & { [K in keyof A]: JsonSchema<A[K]> };
+  [K in keyof S]: Extract<JsonSchema<SchemaOf<S[K]>>, z.core.$ZodType>;
+} & { [K in keyof A]: Extract<JsonSchema<A[K]>, z.core.$ZodType> };
 
 /**
  * The keys whose entries carry each flag. Matched on the `flags` property

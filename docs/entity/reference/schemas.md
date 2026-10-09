@@ -195,10 +195,16 @@ construction all parse the decoded value again, and a bare codec refuses it.
 `Entity.codec` is `z.union([z.codec(wire, domain, …), domain])`, codec first.
 The order matters as much as the union: `z.encode` takes the first member that
 accepts a value, so with the domain member first a body carries the `bigint`
-itself. `json` follows the same rule — a union drops a member only when it is
-the decoded side of a codec **before** it — so a hand-written union in the
-wrong order keeps its `bigint` member, and converting `json` throws instead of
-describing a string the body does not hold.
+itself.
+
+`json` collapses `Entity.codec`'s union to its codec's wire side, and that
+union alone — it is marked, and the mark survives `.describe()` and `.meta()`.
+A union written by hand keeps every member, each in its own JSON form, so a
+`z.union([z.codec(…), value])` of your own keeps its `bigint` and converting
+`json` throws. That is deliberate: a type cannot tell which schema object a
+member is, so a rule that dropped one by matching it would type a field the
+validator still parses differently. A codec whose wire side is itself a codec
+is followed to the end of the chain, as `z.encode` follows it.
 
 ## The class as a schema
 

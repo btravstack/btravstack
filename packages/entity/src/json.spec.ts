@@ -119,17 +119,57 @@ describe("an entity's json", () => {
     expect(Bill.json.shape.note).toBe(Bill.output.shape.note);
   });
 
-  test("keeps the decoded member of a union that names it before its codec", () => {
-    // GIVEN a hand-written union whose decoded member comes first, which is
-    // what z.encode writes
-    class Misordered extends Entity("Misordered")({
-      value: z.union([Amount, z.codec(PositiveText, Amount, { decode: BigInt, encode: String })]),
+  test("keeps every member of a union Entity.codec did not build", () => {
+    // GIVEN the codec-or-value union written by hand, codec first
+    class HandWritten extends Entity("HandWritten")({
+      value: z.union([z.codec(PositiveText, Amount, { decode: BigInt, encode: String }), Amount]),
     }) {}
 
     // WHEN its json is converted
-    // THEN the bigint member is still there, and conversion refuses it rather
-    // than describing a string the body does not hold
-    expect(() => z.toJSONSchema(Misordered.json, { io: "output" })).toThrow(/BigInt/);
+    // THEN the bigint member is still there, and conversion refuses it: only
+    // Entity.codec's union is known to be written as its text
+    expect(() => z.toJSONSchema(HandWritten.json, { io: "output" })).toThrow(/BigInt/);
+  });
+
+  test("still collapses Entity.codec's union once zod has cloned it", () => {
+    // GIVEN an Entity.codec field described, which clones the union
+    class Described extends Entity("Described")({ value: amount.describe("an amount") }) {}
+
+    // WHEN its json is converted
+    // THEN the field is still the wire text
+    expect(z.toJSONSchema(Described.json, { io: "output" })).toMatchObject({
+      properties: { value: { type: "string", pattern: "^[1-9][0-9]*$" } },
+    });
+  });
+
+  test("follows a codec whose wire side is itself a codec", () => {
+    // GIVEN a field encoded to a number, then the number to text
+    const NumberText = z.codec(z.string().regex(/^[0-9]+$/), z.number().int(), {
+      decode: Number,
+      encode: String,
+    });
+    class Chained extends Entity("Chained")({
+      value: Entity.codec(NumberText, Amount, {
+        decode: (n) => BigInt(n),
+        encode: (a) => Number(a),
+      }),
+    }) {}
+    const chained = Chained.make({ value: "7" }).getOrThrow();
+
+    // WHEN its json describes what z.encode writes
+    const described = {
+      body: z.encode(
+        Chained.output,
+        chained.toJSON() as unknown as z.output<typeof Chained.output>,
+      ),
+      schema: z.toJSONSchema(Chained.json, { io: "output" }),
+    };
+
+    // THEN both are the text at the end of the chain
+    expect(described).toMatchObject({
+      body: { value: "7" },
+      schema: { properties: { value: { type: "string", pattern: "^[0-9]+$" } } },
+    });
   });
 });
 
