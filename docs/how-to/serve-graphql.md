@@ -71,9 +71,11 @@ order API that counts calls:
 - **Refusals stay the service's.** The gateway authenticates nobody: it forwards
   the caller's credentials, and the API's `UNAUTHORIZED` — which its client
   reports as a defect, being undeclared — is recovered into that field's error.
-- **Limits run before side effects.** An operation naming more than ten aliases
-  is refused by a validation rule, and validation runs before execution, so a
-  refused mutation places nothing.
+- **Limits run before side effects.** An operation running more than ten
+  aliases — its fragments' included — is refused once it is selected and
+  before any resolver runs, so a refused mutation places nothing. It is checked
+  at execution rather than as a validation rule because validation sees the
+  whole document, not the operation `operationName` selects.
 
 Yoga's wildcard CORS default is disabled here. `HTTP_CORS_ORIGIN` sets the
 allowed origin; `cors` on `graphql()` can specify Yoga's full policy, including

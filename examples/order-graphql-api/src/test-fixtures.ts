@@ -8,8 +8,16 @@ import { test } from "vitest";
 
 import { OrderGraphqlApi } from "./module.js";
 
-/** The order the stub answers for every `find`, unless seeded otherwise: a defect. */
-export const BROKEN = "0199a1e0-0000-7000-8000-0000000000ff";
+/** The order whose `find` the stub answers with a defect. */
+const BROKEN = "0199a1e0-0000-7000-8000-0000000000ff";
+
+/** Orders a spec names: one it seeds, one nobody placed, one the API lacks, one it breaks on. */
+type Known = {
+  readonly placed: OrderView;
+  readonly fresh: string;
+  readonly missing: string;
+  readonly broken: string;
+};
 
 type OrderApiStub = {
   /** Every call, in order, as `procedure:id`. */
@@ -95,10 +103,21 @@ const orderApiStub = async (): Promise<OrderApiStub & { readonly close: () => Pr
 
 export const it = test.extend<{
   boot: Boot;
+  known: Known;
   orderApi: OrderApiStub;
   gateway: Gateway;
 }>({
   boot: bootFixture({ env: { PORT: "0", HOST: "127.0.0.1" } }),
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  known: async ({}, use) => {
+    await use({
+      placed: { id: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 } as OrderView,
+      fresh: "0199a1e0-0000-7000-8000-000000000002",
+      missing: "0199a1e0-0000-7000-8000-000000000404",
+      broken: BROKEN,
+    });
+  },
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   orderApi: async ({}, use) => {
