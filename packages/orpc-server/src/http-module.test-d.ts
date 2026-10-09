@@ -34,9 +34,9 @@ void HttpModule("Neither")({ port: 0 });
 
 void HttpModule("RouterOnly")({ router, port: 0 });
 
-void HttpModule("FragmentsOnly")({ fragments, port: 0, provides: [rowFragment] });
+void HttpModule("FragmentsOnly")({ fragments, port: 0 });
 
-void HttpModule("Both")({ router, fragments, port: 0, provides: [rowFragment] });
+void HttpModule("Both")({ router, fragments, port: 0 });
 
 // The `unit` needs-propagation gate: a bound `unit.anonymous` module's own
 // unmet needs join `HttpModule`'s own Needs channel (an import's own unmet
@@ -437,3 +437,47 @@ void HttpModule("CsrfNotABoolean")(_csrfNotABoolean);
 
 // @ts-expect-error — the same on `http()`, which takes the identical option type
 void http({ csrf: "same-origin" });
+
+// The pieces a composing call names are provided with it: a root that keeps
+// its controllers itself lists them once, and a slice that provides and
+// exports its own piece keeps its piece's needs to itself — the root does not
+// take them on.
+class Greeter extends Port("PiecesGreeter")<{ readonly greet: () => string }> {}
+const piecesContract = oc.router({ greetings: { hello: oc }, farewells: { bye: oc } });
+const greetings = api.OrpcController(
+  piecesContract,
+  "greetings",
+)({
+  inject: { greeter: Greeter },
+  sync: ({ greeter }) => ({ hello: () => OkAsync(greeter.greet()) }),
+});
+const farewells = api.OrpcController(
+  piecesContract,
+  "farewells",
+)({
+  inject: {},
+  sync: () => ({ bye: () => OkAsync("bye") }),
+});
+const piecesRouter = api.OrpcRouter(piecesContract)([greetings, farewells]);
+const greeter = Provider(Greeter)({ inject: {}, value: { greet: () => "hi" } });
+
+const _ownPieces = start(
+  HttpModule("OwnPieces")({ router: piecesRouter, port: 0, provides: [greeter] }),
+  startOptions,
+);
+void _ownPieces;
+
+const GreetingsSlice = Module("GreetingsSlice")({
+  provides: [greeter, greetings],
+  exports: [greetings],
+});
+const _slicedPieces = start(
+  HttpModule("SlicedPieces")({ router: piecesRouter, port: 0, imports: [GreetingsSlice] }),
+  startOptions,
+);
+void _slicedPieces;
+
+// The piece is this root's own provider now, so its unmet need is di's
+// declaration gate at the call rather than `start`'s.
+// @ts-expect-error — UNDECLARED NEEDS: the `greetings` piece needs `Greeter`
+void HttpModule("UnprovidedPieceNeed")({ router: piecesRouter, port: 0 });

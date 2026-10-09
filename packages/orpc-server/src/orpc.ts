@@ -301,7 +301,8 @@ export const routerFor =
       Auth,
       InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<C>>,
       Units,
-      KindsIn<C>
+      KindsIn<C>,
+      T[number]
     >;
     function build(depsOrPieces: unknown): unknown {
       const schemes = schemesOf(contract);
@@ -312,6 +313,7 @@ export const routerFor =
         deps: Record<string, AnyPort>,
         implementationOf: (own: Record<string, unknown>) => Record<string, unknown>,
         records: ReadonlyMap<string, Readonly<Record<string, AnyPort>>>,
+        pieces: readonly AnyProvider[],
       ): unknown => {
         const sync = (services: Record<string, unknown>): Router<Record<never, never>> => {
           const own = Object.fromEntries(Object.keys(deps).map((key) => [key, services[key]]));
@@ -375,7 +377,7 @@ export const routerFor =
             inject: { ...deps, ...schemeDeps(schemes), [UNIT]: HttpUnit },
             sync,
           } as never),
-          { authenticators },
+          { authenticators, pieces },
         );
       };
 
@@ -395,6 +397,7 @@ export const routerFor =
           Object.fromEntries(pieces.map((piece) => [pathOf(piece), piece.port])),
           nest,
           new Map(pieces.map((piece) => [pathOf(piece), piece.unit])),
+          depsOrPieces as readonly AnyProvider[],
         );
       }
 
@@ -407,6 +410,7 @@ export const routerFor =
         supplied.inject,
         (own) => supplied.sync(own) as Record<string, unknown>,
         new Map([["", supplied.unit ?? {}]]),
+        [],
       );
     }
 

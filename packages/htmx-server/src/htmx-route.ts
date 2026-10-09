@@ -264,6 +264,8 @@ export const htmxFragmentsFor =
     InstanceType<T[number]["port"]> | SchemePortsOf<RequiresOfPiece<T[number]>>
   > & {
     readonly authenticators: readonly Auth[];
+    /** The pieces composed, carried so `HttpModule` provides them with the fragments. */
+    readonly pieces: T;
     /** Phantom: the kinds bound at `units<…>()`, read by `HttpModule`, never at runtime. */
     readonly _units?: Units;
     /** Phantom: the kinds a request here opens under, read by `HttpModule`, never at runtime. */
@@ -291,5 +293,6 @@ export const htmxFragmentsFor =
     });
     return Object.assign(Provider(HtmxFragmentsPort)({ inject: deps, sync } as never), {
       authenticators,
+      pieces: routes,
     }) as never;
   };

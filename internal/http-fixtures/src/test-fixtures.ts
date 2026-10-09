@@ -946,11 +946,7 @@ const rpcSlicedAppOf = () =>
     router: slicedRouter,
     port: 0,
     hostname: "127.0.0.1",
-    provides: [
-      helloController,
-      echoesController,
-      Provider(Greeter)({ inject: {}, value: { greet: (name) => `hello ${name}` } }),
-    ],
+    provides: [Provider(Greeter)({ inject: {}, value: { greet: (name) => `hello ${name}` } })],
   });
 
 /**
@@ -1362,7 +1358,6 @@ const bothProtocolsAppOf = () =>
     fragments: bothFragmentsProvider,
     port: 0,
     hostname: "127.0.0.1",
-    provides: [bothStatusFragment],
   });
 
 /** One procedure that streams and one that does not, so a method rule can be told apart from a path rule. */

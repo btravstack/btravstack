@@ -37,15 +37,38 @@ type Imports<I extends readonly AnyModule[], Units> = readonly [...I, HttpStarte
 /** Whatever `api.OrpcRouter(contract)(…)` returns. */
 type AnyRouterProvider = Provider<OrpcRouterPort, unknown, unknown> & {
   readonly authenticators: readonly AnyProvider[];
+  readonly pieces: readonly AnyProvider[];
 };
 
 /** Whatever `api.HtmxFragments([…])` returns. */
 type AnyFragmentsProvider = Provider<HtmxFragmentsPort, unknown, unknown> & {
   readonly authenticators: readonly AnyProvider[];
+  readonly pieces: readonly AnyProvider[];
 };
 
 /** The scheme authenticators a supplied provider carries, or `never` when none was supplied. */
 type AuthOf<T> = T extends { readonly authenticators: readonly (infer A)[] } ? A : never;
+
+/** What the imports export. */
+type ExportsOf<I extends readonly AnyModule[]> = I[number] extends infer M
+  ? M extends Module<infer X, unknown, unknown>
+    ? X
+    : never
+  : never;
+
+/** `Piece`, unless an import already exports its port — a slice providing its own. */
+type Unexported<Piece, Exports> = Piece extends { readonly port: infer Port extends AnyPort }
+  ? [InstanceType<Port>] extends [Exports]
+    ? never
+    : Piece
+  : never;
+
+/** The pieces a supplied provider composes that no import exports, or `never`. */
+type PiecesOf<T, I extends readonly AnyModule[]> = T extends {
+  readonly pieces: readonly (infer Piece)[];
+}
+  ? Unexported<Piece, ExportsOf<I>>
+  : never;
 
 /** The `orpc()`/`htmx()` answerer this root composes when the matching option is supplied. */
 type OrpcAnswerer = ReturnType<typeof orpc>;
@@ -54,19 +77,26 @@ type HtmxAnswerer = ReturnType<typeof htmx>;
 /**
  * What this root provides: the router and its own `orpc()` answerer when
  * `router` is supplied, the fragments provider and its own `htmx()` answerer
- * when `fragments` is, each provider's scheme authenticators, and the
- * application's own. `Router`/`Fragments` resolve to `undefined` — every
+ * when `fragments` is, each provider's scheme authenticators, the pieces each
+ * composes that no import exports, and the application's own. `Router`/`Fragments` resolve to `undefined` — every
  * branch gated on them collapsing to `never` — when the matching option is
  * omitted, which is what lets `HttpModule` compose a router, fragments, or
  * both from one declaration. A union-element array rather than a tuple:
  * each authenticator union is one type per scheme, and a tuple takes one
  * rest element, not two.
  */
-type Provides<P extends readonly AnyProvider[], Router, Fragments> = readonly (
+type Provides<
+  P extends readonly AnyProvider[],
+  Router,
+  Fragments,
+  I extends readonly AnyModule[],
+> = readonly (
   | ([Router] extends [undefined] ? never : Exclude<Router, undefined> | OrpcAnswerer)
   | ([Fragments] extends [undefined] ? never : Exclude<Fragments, undefined> | HtmxAnswerer)
   | AuthOf<Router>
   | AuthOf<Fragments>
+  | PiecesOf<Router, I>
+  | PiecesOf<Fragments, I>
   | P[number]
 )[];
 
@@ -251,7 +281,7 @@ export type HttpModuleOptions<
   Units extends Readonly<Record<string, AnyUnitModule>> | undefined,
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
-  X extends readonly Exportable<Imports<I, Units>, Provides<P, Router, Fragments>>[],
+  X extends readonly Exportable<Imports<I, Units>, Provides<P, Router, Fragments, I>>[],
   N extends readonly AnyPort[],
 > = Omit<OrpcHttpOptions, "unit"> & {
   /**
@@ -313,7 +343,7 @@ export type HttpModuleOptions<
    * `Env` too and no root has ever named that either.
    */
   readonly needs?: N;
-} & NeedsGate<Imports<I, Units>, Provides<P, Router, Fragments>, EnvAnd<N>> &
+} & NeedsGate<Imports<I, Units>, Provides<P, Router, Fragments, I>, EnvAnd<N>> &
   ServesNothingGate<Router, Fragments> &
   UnboundGate<Units, Router, Fragments> &
   DivergentGate<Router, Fragments>;
@@ -354,7 +384,8 @@ export const HttpModule =
     Units extends Readonly<Record<string, AnyUnitModule>> | undefined = undefined,
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
-    const X extends readonly Exportable<Imports<I, Units>, Provides<P, Router, Fragments>>[] = [],
+    const X extends readonly Exportable<Imports<I, Units>, Provides<P, Router, Fragments, I>>[] =
+      [],
     const N extends readonly AnyPort[] = [],
   >(
     options: HttpModuleOptions<Router, Fragments, Units, I, P, X, N>,
@@ -383,6 +414,9 @@ export const HttpModule =
     const authenticators = [
       ...new Set([...(router?.authenticators ?? []), ...(fragments?.authenticators ?? [])]),
     ];
+    // Every piece, including one a slice already provides: di keys providers
+    // by reference, so the same piece seen twice is one provider.
+    const pieces = [...(router?.pieces ?? []), ...(fragments?.pieces ?? [])];
     // The assertion is the gate, not the shape: `NeedsGate` defers while the
     // tuples are type parameters, and is computed at the application's own call
     // because `HttpModuleOptions` re-declares it. Spelled out rather than
@@ -395,8 +429,9 @@ export const HttpModule =
           ? []
           : [fragments, htmx({ prefix: options.fragmentsPrefix, login: options.fragmentsLogin })]),
         ...authenticators,
+        ...pieces,
         ...provides,
-      ] as unknown as Provides<P, Router, Fragments>,
+      ] as unknown as Provides<P, Router, Fragments, I>,
       // `HttpHandler` too, and not as a courtesy: the runtime RESOLVES it, so
       // `start`'s gate refuses a root that does not export it. A second
       // protocol's answerer lands in the same set from its own provider.
@@ -408,8 +443,8 @@ export const HttpModule =
       needs: [...(options.needs ?? []), Env] as EnvAnd<N>,
     } as {
       readonly imports: Imports<I, Units>;
-      readonly provides: Provides<P, Router, Fragments>;
+      readonly provides: Provides<P, Router, Fragments, I>;
       readonly exports: readonly [typeof HttpRuntime, typeof HttpHandler, ...X];
       readonly needs: EnvAnd<N>;
-    } & NeedsGate<Imports<I, Units>, Provides<P, Router, Fragments>, EnvAnd<N>>);
+    } & NeedsGate<Imports<I, Units>, Provides<P, Router, Fragments, I>, EnvAnd<N>>);
   };
