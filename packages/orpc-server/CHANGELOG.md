@@ -1,5 +1,34 @@
 # @btravstack/orpc-server
 
+## 0.26.0
+
+### Minor Changes
+
+- f8c4a76: `HttpModule` takes an `openapi` option — `true`, or `openApiRoutes()`'s options
+  — that serves the router as OpenAPI routes beside RPC. The module's `cors` and
+  `compression` reach both answerers unless the option's record pins its own, so
+  `cors: true` no longer has to be repeated on `openApiRoutes()`. `openapi`
+  without a `router` is refused at the call. `openApiRoutes()` stays on the
+  `/openapi` subpath for roots built on `http()`.
+- 8994a35: `HttpModule` provides the pieces its router and fragments compose. A root that
+  keeps its controllers itself lists each once, in `api.OrpcRouter(contract)([…])`,
+  instead of again in `provides`; a slice that provides and exports its own piece
+  keeps working, since the same provider seen twice is one provider. The composed
+  providers carry their pieces on `pieces`, for a root built on `http()`.
+- 7c7ce8d: The environment variables a graph reads are in its type. A `Config` field names its variable and whether it must be set; `Config.provider` (and the new `Config.env`) put the names in the provider's needs as `EnvReading<Required, Optional>`; every starter's module type names what it reads. `start`, `runMain` and `@btravstack/testing`'s `boot` type their `env` by it, with the kernel's own variables: a required variable must be present, and a misspelt or unread one is a compile error. `StartEnvironment<typeof Root>` types an environment kept apart from the call. A reader that names nothing — `Env` injected whole, a hand-written `ConfigField<T>` — keeps the environment open, as before. A variable a starter option can pin is optional in the type.
+
+### Patch Changes
+
+- Updated dependencies [8994a35]
+- Updated dependencies [0034a32]
+- Updated dependencies [7c7ce8d]
+  - @btravstack/htmx-server@0.26.0
+  - @btravstack/config@0.26.0
+  - @btravstack/http-server@0.26.0
+  - @btravstack/core@0.26.0
+  - @btravstack/contract@0.26.0
+  - @btravstack/di@0.26.0
+
 ## 0.25.0
 
 ### Patch Changes

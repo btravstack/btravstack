@@ -1,5 +1,15 @@
 # @btravstack/graphql-server
 
+## 0.26.0
+
+### Patch Changes
+
+- Updated dependencies [0034a32]
+- Updated dependencies [7c7ce8d]
+  - @btravstack/http-server@0.26.0
+  - @btravstack/contract@0.26.0
+  - @btravstack/di@0.26.0
+
 ## 0.25.0
 
 ### Patch Changes
