@@ -1433,8 +1433,18 @@ changes with it.
 `@orpc/zod` is needed: zod v4 is Standard Schema, and `@orpc/zod` publishes no
 `2.0.0-beta.28` to match the catalog's pin anyway.
 
-`openApiRoutes()` is the OpenAPI wire answerer on this same optional subpath.
-It injects the already-built `OrpcRouterPort` and contributes one `HttpHandler`
+`openApiRoutes()` is the OpenAPI wire answerer, exported from the same subpath
+and composed by `HttpModule`'s `openapi` option (#470). The option is why
+`@orpc/openapi` is a REQUIRED peer: `HttpModule` is the main entry, so the
+answerer lives in `openapi-routes.ts`, which the main entry imports, while
+`openApiDocument` stays in `openapi.ts` and keeps `@orpc/json-schema` off it.
+Through the option, the module's `cors` and `compression` reach the answerer
+unless its record pins its own, field by field: `HttpConfig` already carries a
+deployed origin and a compression boolean to both, but `cors: true` and either
+record live only on the RPC answerer's options, so without the forward the
+module's `cors: true` silently left `/api` closed. `plugins` are not forwarded —
+they are each protocol's own. `openapi` without `router` is refused at its key,
+against `"OPENAPI WITHOUT A ROUTER — …"`. It injects the already-built `OrpcRouterPort` and contributes one `HttpHandler`
 member under `/api` by default; `orpc()` remains under `/rpc`. Both use the
 same handler policy builder for CORS, body limit, and compression. The runtime
 owns the unit and cookie-based CSRF check. OpenAPI GET routes follow HTTP's

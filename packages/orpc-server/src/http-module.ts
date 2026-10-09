@@ -22,6 +22,7 @@ import {
 } from "@btravstack/http-server/internal";
 
 import type { OrpcHttpOptions } from "./http.js";
+import { openApiRoutes, type OpenApiRoutesOptions } from "./openapi-routes.js";
 import { orpc, type OrpcRouterPort } from "./orpc.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
@@ -329,6 +330,15 @@ export type HttpModuleOptions<
    * and redirects nothing.
    */
   readonly fragmentsLogin?: `/${string}`;
+  /**
+   * Serves the router as OpenAPI routes too, beside RPC — `openApiRoutes()`
+   * under `/api` by default. `cors` and `compression` are this module's unless
+   * the record pins its own, field by field; `plugins` are per answerer, so
+   * the RPC answerer's are never shared. Needs a `router`.
+   */
+  readonly openapi?: [Router] extends [undefined]
+    ? "OPENAPI WITHOUT A ROUTER — openapi serves the router; supply one"
+    : boolean | OpenApiRoutesOptions;
   readonly imports?: I;
   readonly provides?: P;
   /** The application's own exports; `HttpRuntime` is added, since `start` resolves it. */
@@ -391,6 +401,8 @@ export const HttpModule =
     options: HttpModuleOptions<Router, Fragments, Units, I, P, X, N>,
   ) => {
     const { router, fragments } = options;
+    // The marker arm of the option's type is a refusal, never a value.
+    const openapi = options.openapi as boolean | OpenApiRoutesOptions | undefined;
     const imports = (options.imports ?? []) as I;
     const provides = (options.provides ?? []) as P;
     const exports = (options.exports ?? []) as X;
@@ -425,6 +437,15 @@ export const HttpModule =
       imports: [...imports, starter] as Imports<I, Units>,
       provides: [
         ...(router === undefined ? [] : [router, orpc(options)]),
+        ...(router === undefined || openapi === undefined || openapi === false
+          ? []
+          : [
+              openApiRoutes({
+                ...(options.cors === undefined ? {} : { cors: options.cors }),
+                ...(options.compression === undefined ? {} : { compression: options.compression }),
+                ...(openapi === true ? {} : openapi),
+              }),
+            ]),
         ...(fragments === undefined
           ? []
           : [fragments, htmx({ prefix: options.fragmentsPrefix, login: options.fragmentsLogin })]),

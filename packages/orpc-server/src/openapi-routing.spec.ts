@@ -1,5 +1,12 @@
+import { Env } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
-import { HttpAuthenticator, Unauthenticated } from "@btravstack/http-server";
+import { Module } from "@btravstack/di";
+import {
+  HttpAuthenticator,
+  HttpHandler,
+  HttpRuntime,
+  Unauthenticated,
+} from "@btravstack/http-server";
 import { it } from "@btravstack/internal-http-fixtures";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
@@ -12,6 +19,7 @@ import { z } from "zod";
 
 import { defineHttp } from "./define-http.js";
 import { HttpModule } from "./http-module.js";
+import { http } from "./http.js";
 import { openApiDocument, openApiRoutes, type OpenApiDocument } from "./openapi.js";
 
 const item = z.object({ id: z.string(), name: z.string() });
@@ -43,14 +51,27 @@ const app = HttpModule("OpenApiRoutes")({
   router,
   port: 0,
   hostname: "127.0.0.1",
-  provides: [openApiRoutes()],
+  openapi: true,
 });
 const localPolicyApp = HttpModule("OpenApiLocalPolicy")({
   router,
   port: 0,
   hostname: "127.0.0.1",
   bodyLimit: false,
-  provides: [openApiRoutes({ compression: true })],
+  openapi: { compression: true },
+});
+const handRolledApp = Module("OpenApiHandRolled")({
+  needs: [Env],
+  imports: [http({ port: 0, hostname: "127.0.0.1" })],
+  provides: [router, openApiRoutes()],
+  exports: [HttpRuntime, HttpHandler],
+});
+const modulePolicyApp = HttpModule("OpenApiModulePolicy")({
+  router,
+  port: 0,
+  hostname: "127.0.0.1",
+  cors: true,
+  openapi: true,
 });
 const rpcOnlyApp = HttpModule("RpcOnly")({
   router,
@@ -87,26 +108,24 @@ const protectedApp = HttpModule("ProtectedOpenApiRoutes")({
   port: 0,
   hostname: "127.0.0.1",
   csrf: true,
-  provides: [openApiRoutes()],
+  openapi: true,
 });
 const documentApp = HttpModule("OpenApiDocument")({
   router: protectedRouter,
   port: 0,
   hostname: "127.0.0.1",
-  provides: [
-    openApiRoutes({
-      plugins: [
-        new OpenAPIReferenceHandlerPlugin({
-          spec: async () =>
-            (
-              await openApiDocument(protectedContract, {
-                securitySchemes: { user: { type: "http", scheme: "bearer" } },
-              })
-            ).get(),
-        }),
-      ],
-    }),
-  ],
+  openapi: {
+    plugins: [
+      new OpenAPIReferenceHandlerPlugin({
+        spec: async () =>
+          (
+            await openApiDocument(protectedContract, {
+              securitySchemes: { user: { type: "http", scheme: "bearer" } },
+            })
+          ).get(),
+      }),
+    ],
+  },
 });
 
 describe("OpenAPI routes", () => {
@@ -203,6 +222,37 @@ describe("OpenAPI routes", () => {
 
     // Then the response is compressed.
     expect([response.status, response.headers.get("content-encoding")]).toEqual([200, "gzip"]);
+  });
+
+  it("serves OpenAPI routes from a root composed with http()", async ({ boot }) => {
+    // Given a root that composes `http()` and `openApiRoutes()` itself.
+    const running = boot(handRolledApp);
+    const info = (await running.runtimeInfo()).get();
+    expect(info).toBeDefined();
+
+    // When a client calls an OpenAPI route.
+    const response = await fetch(`http://127.0.0.1:${info!.port}/api/items/42`);
+
+    // Then the route is served.
+    expect([response.status, await response.json()]).toEqual([200, { id: "42", name: "first" }]);
+  });
+
+  it("takes the module's own cors when the option pins none", async ({ boot }) => {
+    // Given `cors: true` on the module and `openapi: true`.
+    const running = boot(modulePolicyApp);
+    const info = (await running.runtimeInfo()).get();
+    expect(info).toBeDefined();
+
+    // When a cross-origin client calls an OpenAPI route.
+    const response = await fetch(`http://127.0.0.1:${info!.port}/api/items/42`, {
+      headers: { origin: "https://caller.test" },
+    });
+
+    // Then the answerer reflects the caller's origin, as the RPC answerer does.
+    expect([response.status, response.headers.get("access-control-allow-origin")]).toEqual([
+      200,
+      "https://caller.test",
+    ]);
   });
 
   it("keeps authentication and CSRF checks on the OpenAPI wire", async ({ boot }) => {
