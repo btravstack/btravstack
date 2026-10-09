@@ -481,3 +481,8 @@ void _slicedPieces;
 // declaration gate at the call rather than `start`'s.
 // @ts-expect-error — UNDECLARED NEEDS: the `greetings` piece needs `Greeter`
 void HttpModule("UnprovidedPieceNeed")({ router: piecesRouter, port: 0 });
+
+// `openapi` serves the router, so it is refused where there is none.
+void HttpModule("OpenApiWithRouter")({ router, port: 0, openapi: { prefix: "/v1" } });
+// @ts-expect-error — OPENAPI WITHOUT A ROUTER: fragments alone have nothing to serve as OpenAPI
+void HttpModule("OpenApiWithoutRouter")({ fragments, port: 0, openapi: true });

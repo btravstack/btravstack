@@ -47,7 +47,7 @@ These symbols are exported across the three packages. `defineHttp`, `HttpModule`
 | `Http`                 | type  | `Http<A, Units>` — what `defineHttp` returns, held as one binding and never destructured; `Units` is the record `auth.units<…>()` binds, empty until that second call                                                                                                                                                                                                                                                    |
 | `Authenticators`       | type  | `Readonly<Record<string, Authenticator<…>>>` — the registry `defineHttp` takes, keyed by scheme name                                                                                                                                                                                                                                                                                                                     |
 | `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                                                                                                                                                                                                             |
-| `HttpModule`           | value | `HttpModule(name)({ router, fragments?, fragmentsPrefix?, fragmentsLogin?, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, csrf?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                                                                                  |
+| `HttpModule`           | value | `HttpModule(name)({ router, fragments?, fragmentsPrefix?, fragmentsLogin?, openapi?, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, csrf?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                                                                        |
 | `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                                                                                                                                                                                                              |
 | `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })` — or `make` where building the scheme can fail, or `({ inject: {}, sync })` with no deps; the scheme's **name** is the key it sits under in `defineHttp`                                                                                                                                                                                                |
 | `Authenticator`        | type  | `Authenticator<P, Scope, N, E>` — what `HttpAuthenticator` hands back: a description carrying its principal, its scope vocabulary, the ports it needs and the error its arm reports, which `defineHttp` binds to a port                                                                                                                                                                                                  |
@@ -97,8 +97,7 @@ the grounds that oRPC was the only way to answer HTTP here — and is exported
 now, since a second protocol's package has to name the set port it contributes
 to.
 
-**Four subpaths export more**, each behind an optional peer so a graph that
-never imports it installs nothing: `@btravstack/http-server/jwt`
+**Four subpaths export more**: `@btravstack/http-server/jwt`
 (`jwtAuthenticator`, `DEFAULT_ALGORITHMS`, and the `Claims` / `JwtOptions`
 types — `jose`), `@btravstack/http-server/session` (`sessionCodec`,
 `sessionAuthenticator`, `SessionCodec`, `SESSION_COOKIE`, `DEFAULT_TTL_SEC`,
@@ -107,8 +106,11 @@ types — `jose`), `@btravstack/http-server/session` (`sessionCodec`,
 `@btravstack/http-server/oidc` (`oidc`, `OidcUnreachable`, and the
 `OidcOptions` type — `openid-client`), and
 `@btravstack/orpc-server/openapi` (`openApiDocument`, `openApiRoutes`, and
-`OpenApiRoutesOptions` — `@orpc/openapi`). All
-four have sections of their own below.
+`OpenApiRoutesOptions` — `@orpc/openapi` and `@orpc/json-schema`). The first
+three sit behind an optional peer, so a graph that never imports one installs
+nothing; the OpenAPI peers are required, because `HttpModule`'s `openapi`
+option serves the routes from the main entry. All four have sections of their
+own below.
 
 ## `HttpModule(name)({...})`
 
@@ -131,27 +133,28 @@ exports its port, so the root never takes on a slice's needs. It prepends
 di's own `Module(name)`, whose return type is the sugar's. The kernel and both
 gates see a plain module.
 
-| Option             | Required | Default                             | What it is                                                                                                                                                                                      |
-| ------------------ | -------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `router`           | no\*     | —                                   | the application's router **provider** — a `Provider<OrpcRouterPort, E, N>`, what `api.OrpcRouter(contract)({ inject, unit?, sync })` returns; a provider on any other port fails at the call    |
-| `fragments`        | no\*     | —                                   | the application's fragments **provider** — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces; likewise typed to its own port                                 |
-| `prefix`           | no       | `/rpc`                              | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                                     |
-| `fragmentsPrefix`  | no       | `/`                                 | where htmx fragments are mounted — `htmx()`'s own default, a separate field because one cannot carry two mount points with two different defaults                                               |
-| `fragmentsLogin`   | no       | —                                   | `htmx()`'s [`login`](#login-—-where-an-unauthenticated-caller-is-sent) — the login route an unauthenticated fragment caller is sent to; fragment-only, like `fragmentsPrefix`                   |
-| `port`             | no       | read from `PORT`                    | pins the port instead of reading it                                                                                                                                                             |
-| `headersTimeoutMs` | no       | read from `HTTP_HEADERS_TIMEOUT_MS` | pins how long a client may take to send its headers, in ms; past it the listener answers `408`                                                                                                  |
-| `requestTimeoutMs` | no       | read from `HTTP_REQUEST_TIMEOUT_MS` | pins how long a client may take to send a whole request, in ms; bounds what the client sends, never the response                                                                                |
-| `hostname`         | no       | read from `HOST`                    | pins the host instead of reading it                                                                                                                                                             |
-| `cors`             | no       | read from `HTTP_CORS_ORIGIN`        | pins the CORS policy — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                                  |
-| `bodyLimit`        | no       | read from `HTTP_BODY_LIMIT`         | pins the largest request body a procedure or a fragment POST reads, in bytes; `false` is unbounded                                                                                              |
-| `compression`      | no       | read from `HTTP_COMPRESSION`        | pins response compression — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                             |
-| `plugins`          | no       | `[]`                                | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                                                                                        |
-| `securityHeaders`  | no       | `true`                              | response headers set on the raw listener, before dispatch — covers both answerers                                                                                                               |
-| `csrf`             | no       | on when a scheme reads a cookie     | refuses a cross-site state change carrying cookies, before dispatch. See [`csrf`](#csrf)                                                                                                        |
-| `unit`             | no       | none                                | kind → module — the module each answerer forks around a request it handles, chosen by the kind that authenticated it; **gated** against the kinds this root can open. See [The unit](#the-unit) |
-| `imports`          | no       | `[]`                                | the application's modules                                                                                                                                                                       |
-| `provides`         | no       | `[]`                                | the application's own providers                                                                                                                                                                 |
-| `exports`          | no       | `[]`                                | the application's own exports; `HttpRuntime` and `HttpHandler` are added                                                                                                                        |
+| Option             | Required | Default                             | What it is                                                                                                                                                                                                                                      |
+| ------------------ | -------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `router`           | no\*     | —                                   | the application's router **provider** — a `Provider<OrpcRouterPort, E, N>`, what `api.OrpcRouter(contract)({ inject, unit?, sync })` returns; a provider on any other port fails at the call                                                    |
+| `fragments`        | no\*     | —                                   | the application's fragments **provider** — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces; likewise typed to its own port                                                                                 |
+| `prefix`           | no       | `/rpc`                              | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                                                                                     |
+| `fragmentsPrefix`  | no       | `/`                                 | where htmx fragments are mounted — `htmx()`'s own default, a separate field because one cannot carry two mount points with two different defaults                                                                                               |
+| `fragmentsLogin`   | no       | —                                   | `htmx()`'s [`login`](#login-—-where-an-unauthenticated-caller-is-sent) — the login route an unauthenticated fragment caller is sent to; fragment-only, like `fragmentsPrefix`                                                                   |
+| `openapi`          | no       | off                                 | serves the router as OpenAPI routes too, through [`openApiRoutes()`](#openapiroutes-—-from-btravstack-orpc-server-openapi): `true`, or its options; `cors` and `compression` are this module's unless the record pins its own; needs a `router` |
+| `port`             | no       | read from `PORT`                    | pins the port instead of reading it                                                                                                                                                                                                             |
+| `headersTimeoutMs` | no       | read from `HTTP_HEADERS_TIMEOUT_MS` | pins how long a client may take to send its headers, in ms; past it the listener answers `408`                                                                                                                                                  |
+| `requestTimeoutMs` | no       | read from `HTTP_REQUEST_TIMEOUT_MS` | pins how long a client may take to send a whole request, in ms; bounds what the client sends, never the response                                                                                                                                |
+| `hostname`         | no       | read from `HOST`                    | pins the host instead of reading it                                                                                                                                                                                                             |
+| `cors`             | no       | read from `HTTP_CORS_ORIGIN`        | pins the CORS policy — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                                                                                  |
+| `bodyLimit`        | no       | read from `HTTP_BODY_LIMIT`         | pins the largest request body a procedure or a fragment POST reads, in bytes; `false` is unbounded                                                                                                                                              |
+| `compression`      | no       | read from `HTTP_COMPRESSION`        | pins response compression — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                                                                             |
+| `plugins`          | no       | `[]`                                | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                                                                                                                                        |
+| `securityHeaders`  | no       | `true`                              | response headers set on the raw listener, before dispatch — covers both answerers                                                                                                                                                               |
+| `csrf`             | no       | on when a scheme reads a cookie     | refuses a cross-site state change carrying cookies, before dispatch. See [`csrf`](#csrf)                                                                                                                                                        |
+| `unit`             | no       | none                                | kind → module — the module each answerer forks around a request it handles, chosen by the kind that authenticated it; **gated** against the kinds this root can open. See [The unit](#the-unit)                                                 |
+| `imports`          | no       | `[]`                                | the application's modules                                                                                                                                                                                                                       |
+| `provides`         | no       | `[]`                                | the application's own providers                                                                                                                                                                                                                 |
+| `exports`          | no       | `[]`                                | the application's own exports; `HttpRuntime` and `HttpHandler` are added                                                                                                                                                                        |
 
 \* at least one of `router`/`fragments` is required.
 
@@ -2267,8 +2270,10 @@ client. A scheme the contract names with no definition still appears in
 `security`, as a visible unresolvable reference rather than a silently dropped
 requirement.
 
-`@orpc/openapi` and `@orpc/json-schema` are **optional peers** behind the
-subpath, so an application that never asks for a document installs neither.
+`@orpc/openapi` and `@orpc/json-schema` are **required peers**: `HttpModule`'s
+`openapi` option serves the routes from the package's main entry. The document
+generator stays behind the subpath, so the main entry never loads
+`@orpc/json-schema`.
 
 ### Document publication is optional
 
@@ -2287,8 +2292,10 @@ the same document is the route list:
 contributes one `HttpHandler` member under `/api` by default. It uses
 `@orpc/openapi/node`'s `OpenAPIHandler` over the same `OrpcRouterPort` as
 `orpc()`, so a contract can serve TypeScript RPC clients at `/rpc` and generic
-HTTP clients at `/api` in one process. Add it to `HttpModule`'s `provides`;
-no second runtime or router implementation is needed. It is opt-in, and the
+HTTP clients at `/api` in one process. `HttpModule`'s `openapi` option composes
+it — `openapi: true`, or `openapi: { prefix, cors, compression, plugins }`; a
+root built on `http()` adds `openApiRoutes()` to its `provides` itself. No
+second runtime or router implementation is needed. It is opt-in, and the
 RPC-only composition remains unchanged.
 
 Methods and paths come from the contract's oRPC OpenAPI metadata. With no
@@ -2297,9 +2304,9 @@ not invent `GET /resources/{id}`. The output of `openApiDocument()` describes
 these OpenAPI routes, so the server must mount `openApiRoutes()` for that
 document to be a callable wire contract. The answerer shares `orpc()`'s policy
 builder and reads the same deployed `HTTP_CORS_ORIGIN`, `HTTP_BODY_LIMIT`, and
-`HTTP_COMPRESSION` values. Explicit per-answerer CORS, compression, and plugin
-options belong on `openApiRoutes()` too; `HttpModule`'s `cors`, `compression`,
-and `plugins` options configure its RPC answerer. Set `bodyLimit` and `csrf` on
-`HttpModule` for both answerers. The HTTP runtime still owns cookie-based CSRF
+`HTTP_COMPRESSION` values. Through the `openapi` option, `HttpModule`'s `cors`
+and `compression` reach it too, unless the option's record pins its own, field
+by field; `plugins` are per answerer, and the module's stay with RPC. Set
+`bodyLimit` and `csrf` on `HttpModule` for both answerers. The HTTP runtime still owns cookie-based CSRF
 checks, the request unit, security headers, and drain. See
 [Serve an oRPC contract as OpenAPI routes](/how-to/serve-an-openapi-contract).

@@ -45,8 +45,8 @@ export const contract = {
 
 ## Mount the OpenAPI answerer
 
-Add `openApiRoutes()` to the existing `HttpModule`'s `provides`. It uses the
-same router, authentication walk, unit lifecycle, and HTTP listener as the RPC
+Set `openapi` on the existing `HttpModule`. The OpenAPI answerer uses the same
+router, authentication walk, unit lifecycle, and HTTP listener as the RPC
 answerer. The default mounts are `/api` for OpenAPI and `/rpc` for RPC, so the
 example above answers `GET /api/items/42`, `POST /api/items`, and the original
 RPC procedures. A document by itself does not add these routes.
@@ -55,19 +55,20 @@ RPC procedures. A document by itself does not add these routes.
 
 ```ts
 import { HttpModule } from "@btravstack/orpc-server";
-import { openApiRoutes } from "@btravstack/orpc-server/openapi";
 
 export const App = HttpModule("App")({
   router: routerProvider,
-  provides: [openApiRoutes()],
+  openapi: true,
 });
 ```
 
-`openApiRoutes({ prefix: "/v1" })` changes only the OpenAPI mount. The
-answerer accepts `cors`, `compression`, and `plugins` options. Set `bodyLimit`
-and `csrf` on `HttpModule` for both answerers. If `HttpModule` explicitly
-configures an RPC policy such as `cors: true`, repeat that option on
-`openApiRoutes()` when both answerers should use it. Deployed
+`openapi: { prefix: "/v1" }` changes only the OpenAPI mount. The record also
+takes `cors`, `compression`, and `plugins`. `HttpModule`'s own `cors` and
+`compression` apply to both answerers unless the record pins its own;
+`plugins` stay per answerer. Set `bodyLimit` and `csrf` on `HttpModule` for
+both answerers. A root built on `http()` instead of `HttpModule` adds
+`openApiRoutes()` from `@btravstack/orpc-server/openapi` to its `provides`,
+with the same options. Deployed
 `HTTP_CORS_ORIGIN`, `HTTP_BODY_LIMIT`, and `HTTP_COMPRESSION` values are read by
 both. The listener's security headers,
 cookie-based CSRF check, request unit, and drain apply to both answerers.

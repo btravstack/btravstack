@@ -3,7 +3,8 @@
 > The oRPC answerer and composition helper for the protocol-neutral
 > [`@btravstack/http-server`](../http-server) runtime. `defineHttp` types
 > handlers from the contract; `HttpModule` composes the router, optional htmx
-> fragments, and the HTTP runtime. OpenAPI routes are available from `/openapi`.
+> fragments, and the HTTP runtime — and, with `openapi: true`, the same router
+> as OpenAPI routes. The document generator is on `/openapi`.
 
 The [order API example](../../examples/order-api) serves oRPC and htmx under
 one listener. The [GraphQL example](../../examples/order-graphql-api) runs in
@@ -13,7 +14,8 @@ server package.
 ```sh
 pnpm add @btravstack/orpc-server @btravstack/http-server @btravstack/htmx-server \
   @btravstack/core @btravstack/config @btravstack/di @btravstack/contract \
-  unthrown @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @unthrown/orpc@^0.2.0
+  unthrown @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 \
+  @orpc/openapi@2.0.0-beta.28 @orpc/json-schema@2.0.0-beta.28 @unthrown/orpc@^0.2.0
 ```
 
 ## A worked example
@@ -242,7 +244,7 @@ are on the verifying side. Details:
 ## Options
 
 `HttpModule(name)({...})` takes `http()`'s options plus `router`, `fragments`,
-`fragmentsPrefix` and the module lists (`imports`, `provides`, `exports`,
+`fragmentsPrefix`, `openapi` and the module lists (`imports`, `provides`, `exports`,
 `needs`) — supply `router`, `fragments`, or both; supplying neither is refused
 at the call. Neither `http()` nor `htmx()` takes its answerer's provider as an
 option — each **needs** its own port, which is how the composition root
@@ -254,13 +256,14 @@ supplies it:
 | `fragments`        | the fragments provider — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces          |
 | `prefix`           | where the RPC endpoint is mounted (default `/rpc`)                                                                     |
 | `fragmentsPrefix`  | where htmx fragments are mounted (default `/`, `htmx()`'s own default)                                                 |
+| `openapi`          | serves the router as OpenAPI routes too — `true`, or `openApiRoutes()`'s options (off; needs `router`)                 |
 | `port`             | pins `PORT`                                                                                                            |
 | `hostname`         | pins `HOST`                                                                                                            |
 | `headersTimeoutMs` | pins `HTTP_HEADERS_TIMEOUT_MS` — how long a client may take to send its headers before a `408` (60 s)                  |
 | `requestTimeoutMs` | pins `HTTP_REQUEST_TIMEOUT_MS` — how long a client may take to send a whole request (300 s)                            |
-| `cors`             | pins `HTTP_CORS_ORIGIN` — `true` for oRPC's defaults, or its `CORSHandlerPluginOptions` (off); oRPC-only               |
+| `cors`             | pins `HTTP_CORS_ORIGIN` — `true` for oRPC's defaults, or its `CORSHandlerPluginOptions` (off); RPC and `openapi`       |
 | `bodyLimit`        | pins `HTTP_BODY_LIMIT` — the largest body a procedure or a fragment POST reads, in bytes (1 MiB; `false` is unbounded) |
-| `compression`      | pins `HTTP_COMPRESSION` — response compression, `true` for oRPC's defaults or its options record; oRPC-only            |
+| `compression`      | pins `HTTP_COMPRESSION` — response compression, `true` for oRPC's defaults or its options record; RPC and `openapi`    |
 | `plugins`          | any other oRPC handler plugin, forwarded to `RPCHandler`                                                               |
 | `securityHeaders`  | response headers set on the raw listener, before dispatch (default on)                                                 |
 | `csrf`             | refuse a cross-site state change carrying cookies, before dispatch (default: on once a scheme reads a cookie)          |
