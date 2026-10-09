@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/amqp-client",
-  "version": "0.24.0",
+  "version": "0.25.0",
   "description": "Scoped DI binding for @amqp-contract/client",
   "license": "MIT",
   "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
