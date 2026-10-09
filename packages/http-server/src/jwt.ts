@@ -19,6 +19,7 @@ import {
   type AuthenticatorService,
 } from "./auth.js";
 import { cleartext, cleartextRefused } from "./cleartext.js";
+import type { PrefixOf, ScopesOf } from "./options.js";
 
 /** The verified claims, as `jose` reports them. */
 export type Claims = JWTPayload;
@@ -202,28 +203,26 @@ const bearer = (value: string | readonly string[] | undefined): string | undefin
  */
 export const jwtAuthenticator =
   <P>() =>
-  <
-    const Scopes extends readonly string[] = readonly [],
-    const Pre extends string = "HTTP_JWT",
-    const O = Record<never, never>,
-  >(
-    // `O` is the options as written: which pins it certainly sets, may set,
-    // or leaves out decides which variables the needs require.
-    options: JwtOptions<P, Scopes, Pre> & OptionsAs<O, JwtOptions<P, Scopes, Pre>>,
+  // `O` is the options as written — naked, so a union or an annotated type is
+  // inferred whole — and which pins it sets decides which variables are needed.
+  <const O extends JwtOptions<P, readonly string[], string>>(
+    options: O & OptionsAs<O, JwtOptions<P, readonly string[], string>>,
   ): Authenticator<
     P,
-    Scopes[number],
+    ScopesOf<O>[number],
     | EnvReading<
-        | Unpinned<O, "jwks", `${Pre}_JWKS_URI`>
-        | Unpinned<O, "issuer", `${Pre}_ISSUER`>
-        | Unpinned<O, "audience", `${Pre}_AUDIENCE`>,
-        | MaybePinned<O, "jwks", `${Pre}_JWKS_URI`>
-        | MaybePinned<O, "issuer", `${Pre}_ISSUER`>
-        | MaybePinned<O, "audience", `${Pre}_AUDIENCE`>
+        | Unpinned<O, "jwks", `${PrefixOf<O, "HTTP_JWT">}_JWKS_URI`>
+        | Unpinned<O, "issuer", `${PrefixOf<O, "HTTP_JWT">}_ISSUER`>
+        | Unpinned<O, "audience", `${PrefixOf<O, "HTTP_JWT">}_AUDIENCE`>,
+        | MaybePinned<O, "jwks", `${PrefixOf<O, "HTTP_JWT">}_JWKS_URI`>
+        | MaybePinned<O, "issuer", `${PrefixOf<O, "HTTP_JWT">}_ISSUER`>
+        | MaybePinned<O, "audience", `${PrefixOf<O, "HTTP_JWT">}_AUDIENCE`>
       >
     | Observers,
     ConfigInvalid
   > => {
+    type Scopes = ScopesOf<O>;
+    type Pre = PrefixOf<O, "HTTP_JWT">;
     const header = (options.header ?? "authorization").toLowerCase();
     const vocabulary = options.scopes;
     const prefix = (options.variablePrefix ?? "HTTP_JWT") as Pre;

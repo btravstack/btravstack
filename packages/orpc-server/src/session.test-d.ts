@@ -10,6 +10,7 @@ import {
   SessionCodec,
   sessionAuthenticator,
   sessionCodec,
+  type SessionCodecPins,
   type Session,
   type SessionCodecService,
 } from "@btravstack/http-server/session";
@@ -123,3 +124,13 @@ api.HtmxGet("/admin", {
   // @ts-expect-error -- UNGRANTABLE SCOPE: "orders:admin" is not one `session` can grant
   requires: [{ session: ["orders:admin"] }],
 })({ inject: {}, sync: () => () => OkAsync(html`admin`) });
+
+// An annotated pins value is read as written: its `keys` may be set, so the
+// variable is optional rather than required.
+const annotated: SessionCodecPins = { keys: ["k"] };
+
+expectTypeOf(sessionCodec(annotated)).toEqualTypeOf<
+  Provider<SessionCodec, ConfigInvalid, EnvReading<never, "HTTP_SESSION_KEYS">> & {
+    readonly port: typeof SessionCodec;
+  }
+>();

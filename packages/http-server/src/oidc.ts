@@ -31,6 +31,7 @@ import { ErrAsync, TaggedError, fromPromise, type AsyncResult } from "unthrown";
 import { cleartext, cleartextRefused } from "./cleartext.js";
 import { clearCookie, cookieScheme, cookieValue, setCookie } from "./cookie.js";
 import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
+import type { PrefixOf } from "./options.js";
 import { forLocation, returnTo } from "./redirect.js";
 import {
   SESSION_COOKIE,
@@ -39,11 +40,6 @@ import {
   type SessionCodecService,
 } from "./session.js";
 
-/**
- * The answerer half of what {@link oidc} composes — the three login routes as
- * one `HttpHandler` member. The second half is a `CookieSchemes` member, which
- * carries no type of its own.
- */
 /** What `oidc()`'s pins are, as their own type: every one may be set. */
 export type OidcPins = {
   readonly issuer?: string | undefined;
@@ -51,6 +47,12 @@ export type OidcPins = {
   readonly clientSecret?: string | undefined;
   readonly redirectUri?: string | undefined;
 };
+
+/**
+ * The answerer half of what {@link oidc} composes — the three login routes as
+ * one `HttpHandler` member. The second half is a `CookieSchemes` member, which
+ * carries no type of its own.
+ */
 
 export type OidcAnswerer<Pre extends string = string, O = OidcPins> = Provider<
   HttpHandler,
@@ -463,12 +465,14 @@ const handlerFor =
  * member beside a scheme that reads one; this is that rule reaching the one
  * surface it could not see.
  */
-// `O` is the options as written, and defaults to `OidcPins` — every pin MAY be
-// set — so a call that states `P` and leaves `O` uninferred types its variables
-// as optional rather than refusing its own pins.
-export const oidc = <P, const Pre extends string = "HTTP_OIDC", const O = OidcPins>(
-  options: OidcOptions<P, Pre> & OptionsAs<O, OidcOptions<P, Pre>>,
-): readonly [OidcAnswerer<Pre, O>, AnyProvider] => {
+// `O` is the options as written, naked so a union or an annotated type is
+// inferred whole; `P` comes from the `OidcOptions<P>` half. A call that states
+// `P` leaves `O` at its default — every pin MAY be set — so its variables are
+// optional rather than its own pins refused.
+export const oidc = <P, const O extends OidcOptions<unknown, string> = OidcOptions<P, string>>(
+  options: OidcOptions<P, string> & O & OptionsAs<O, OidcOptions<P, string>>,
+): readonly [OidcAnswerer<PrefixOf<O, "HTTP_OIDC">, O>, AnyProvider] => {
+  type Pre = PrefixOf<O, "HTTP_OIDC">;
   const prefix = options.prefix ?? DEFAULT_PREFIX;
   const variables = (options.variablePrefix ?? "HTTP_OIDC") as Pre;
   const schema = Config.object({

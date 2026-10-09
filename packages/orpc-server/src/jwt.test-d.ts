@@ -133,3 +133,19 @@ expectTypeOf(fromPartial).toEqualTypeOf<
     ConfigInvalid
   >
 >();
+
+// Options built conditionally are a union: each branch is accepted, and a pin
+// only one branch sets is only maybe set.
+declare const useIssuer: boolean;
+const conditional = jwtAuthenticator<Identity>()(
+  useIssuer ? { issuer: "https://issuer.test", principal } : { audience: "orders-api", principal },
+);
+
+expectTypeOf(conditional).toEqualTypeOf<
+  Authenticator<
+    Identity,
+    never,
+    EnvReading<"HTTP_JWT_JWKS_URI", "HTTP_JWT_ISSUER" | "HTTP_JWT_AUDIENCE"> | Observers,
+    ConfigInvalid
+  >
+>();

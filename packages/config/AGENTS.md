@@ -33,22 +33,28 @@ are load-bearing:
   (`jwtAuthenticator`, `oidc()`, `sessionAuthenticator`, `sessionCodec`,
   `outbox`) infers its options as written — one type parameter `O` — and
   spells its needs with `Unpinned<O, Key, Variable>` / `MaybePinned<…>`, so an
-  unpinned `HTTP_JWT_ISSUER` is required at the boot site. Three details were
-  each a review finding:
+  unpinned `HTTP_JWT_ISSUER` is required at the boot site. The shape is
+  `<const O extends Options>(options: O & OptionsAs<O, Options>)`, and each
+  part of it was a review finding:
   - **`O`, not one parameter per option.** A per-option parameter inferred
     `string` from an optional key (`{ jwks?: string }`), reading the variable
-    as pinned when it may be absent; the key's optionality is on `O`. And with
-    `oidc<Identity>(…)`, the one uncurried starter, explicit type arguments
-    defaulted every later parameter to `undefined` and refused the call's own
-    pins — `O` defaults to `OidcPins` there, so the variables fall back to
-    optional instead.
-  - **`OptionsAs<O, T>` checks `O` key by key.** `T & O` let an unknown key
-    join `O` silently and collapsed a mistyped one to `never`, reported on the
-    wrong property. The gate maps an unknown key to `never` and a misfit value
-    to `T`'s type, so each is refused at its own key.
-  - **The gate's template names `O[K]`.** `O` is inferred back through the
-    mapped type, and a template that never mentioned it inferred every value as
-    `unknown` — every pin read as "may be set".
+    as pinned when it may be absent; and under `oidc<Identity>(…)` — the one
+    uncurried starter — explicit type arguments defaulted the rest to
+    `undefined` and refused the call's own pins. `oidc()`'s `O` defaults to
+    `OidcOptions<P>`, so there its variables fall back to optional.
+  - **`O` naked, and constrained.** Behind a mapped type, `O` was inferred by
+    reverse mapping: a conditional options object kept one branch and refused
+    the other, and an annotated `SessionCodecPins` argument matched the plain
+    half and left `O` at its default. Naked, `O` is the argument's type — a
+    union or an annotation included; the constraint keeps the contextual type
+    a `principal` callback needs, and a mistyped value fails it and is refused
+    at its key.
+  - **`OptionsAs<O, T>`** maps a key `T` does not know to `never`, so a
+    misspelt option is still an error at its own key (`T & O` alone let it
+    join `O` silently).
+  - **The pin helpers distribute over `O`.** A pin one branch of a union sets
+    is only maybe set, so `Unpinned` holds when every member leaves it out and
+    `MaybePinned` when some member may set it.
     A variable WITH a default stays optional however it is pinned, which is why
     `httpServer`, the workers and the kernel needed none of this.
 - **`EnvPortFor` has a zero-argument constructor**, as `Env` does.

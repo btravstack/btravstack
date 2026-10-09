@@ -65,41 +65,51 @@ export type EnvNeed<I> = string extends keyof I
     : Env;
 
 /**
+ * Whether options `O` set `K`, per union member: `"absent"`, `"maybe"` (an
+ * optional key, or a value that may be `undefined`) or `"set"`. A conditional
+ * options object is a union, and a pin one branch sets is only maybe set.
+ */
+type PinState<O, K extends PropertyKey> = O extends unknown
+  ? K extends keyof O
+    ? [O[K]] extends [undefined]
+      ? "absent"
+      : Record<never, never> extends Pick<O, K>
+        ? "maybe"
+        : undefined extends O[K]
+          ? "maybe"
+          : "set"
+    : "absent"
+  : never;
+
+/**
  * `V`, when the options `O` certainly leave `K` — the option that could pin it
  * — unset: a variable that must be set. For a starter spelling its needs from
  * its options' type, which over generic options its schema cannot resolve.
- *
- * Read off the whole options type rather than the option's value: a key `O`
- * makes optional may be absent whatever its value's type says.
  */
-export type Unpinned<O, K extends PropertyKey, V extends string> = K extends keyof O
-  ? [O[K]] extends [undefined]
-    ? V
-    : never
-  : V;
-
-/**
- * `O`, checked key by key against the options type `T`: a key `T` knows takes
- * `T`'s type for it, and any other is `never`. A starter infers `O` from the
- * options as written — which is what `Unpinned` and `MaybePinned` read — and
- * this keeps a misspelt or mistyped option an error at its own key.
- */
-// The template names `O[K]`: `O` is inferred back through this mapped type, and
-// a template that never mentioned it would infer every value as `unknown`.
-export type OptionsAs<O, T> = {
-  readonly [K in keyof O]: K extends keyof T ? (O[K] extends T[K] ? O[K] : T[K]) : never;
-};
+export type Unpinned<O, K extends PropertyKey, V extends string> = [PinState<O, K>] extends [
+  "absent",
+]
+  ? V
+  : never;
 
 /** `V`, when `O` may or may not set `K`: a variable that may be set. */
-export type MaybePinned<O, K extends PropertyKey, V extends string> = K extends keyof O
-  ? [O[K]] extends [undefined]
+export type MaybePinned<O, K extends PropertyKey, V extends string> = [PinState<O, K>] extends [
+  "absent",
+]
+  ? never
+  : [PinState<O, K>] extends ["set"]
     ? never
-    : Record<never, never> extends Pick<O, K>
-      ? V
-      : undefined extends O[K]
-        ? V
-        : never
-  : never;
+    : V;
+
+/**
+ * `O`, checked key by key against the options type `T`: a key `T` does not
+ * know is `never`, so a misspelt option is an error at its own key. A starter
+ * takes its options as `O & OptionsAs<O, T>` with `O extends T` — `O` naked, so
+ * it is inferred as written, a union or an annotated type included.
+ */
+export type OptionsAs<O, T> = {
+  readonly [K in keyof O]: K extends keyof T ? T[K] : never;
+};
 
 /** The `Env` port class, as a need for `EnvNeed<I>` — what {@link Config.env} answers. */
 // A zero-argument constructor, as `Env` has: `InstanceType` matches a

@@ -181,9 +181,9 @@ const startRelay = (
  * Every claim and publish is reported to `Observers`; the module holds no
  * logger of its own.
  */
-export const outbox = <const O = Record<never, never>>(
+export const outbox = <const O extends OutboxOptions = Record<never, never>>(
   // `{}` only when the argument is omitted, which is when `O` is `{}` too.
-  options: OutboxOptions & OptionsAs<O, OutboxOptions> = {} as never,
+  options: O & OptionsAs<O, OutboxOptions> = {} as never,
 ): Module<
   HealthChecks,
   ConfigInvalid,
