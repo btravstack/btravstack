@@ -521,8 +521,20 @@ describe("graphql answerer", () => {
 
 describe("fieldResult", () => {
   const schema = createSchema({
-    typeDefs: "type Query { order(id: String!): String, orders(ids: [String!]!): [String] }",
+    typeDefs: `
+      type Query { order(id: String!): String, orders(ids: [String!]!): [String] }
+      type Subscription { placed: String }
+    `,
     resolvers: {
+      Subscription: {
+        placed: {
+          subscribe: async function* () {
+            yield "1";
+            yield "refused";
+          },
+          resolve: (id: string) => fieldResult(lookup(id)),
+        },
+      },
       Query: {
         order: (_parent: unknown, { id }: { id: string }) => fieldResult(lookup(id)),
         orders: (_parent: unknown, { ids }: { ids: readonly string[] }) =>
@@ -533,9 +545,18 @@ describe("fieldResult", () => {
   const lookup = (id: string): AsyncResult<string, GraphQLError> =>
     id === "refused"
       ? ErrAsync(createGraphQLError("not yours", { extensions: { code: "FORBIDDEN" } }))
-      : id === "broken"
-        ? fromSafePromise(Promise.reject(new Error("database password in this message")))
-        : OkAsync(`order ${id}`);
+      : id === "caused"
+        ? ErrAsync(
+            createGraphQLError("not yours either", {
+              extensions: { code: "FORBIDDEN" },
+              originalError: new Error("the service's own reason"),
+            }),
+          )
+        : id === "broken"
+          ? fromSafePromise(Promise.reject(new Error("database password in this message")))
+          : id === "leaky"
+            ? fromSafePromise(Promise.reject(createGraphQLError("internal hostname db-7")))
+            : OkAsync(`order ${id}`);
   const appWith = (seen: Settled[], plugins: readonly Plugin[] = []) =>
     Module("FieldResultApp")({
       imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
@@ -622,7 +643,7 @@ describe("fieldResult", () => {
         cause: expect.objectContaining({
           path: ["order"],
           originalError: expect.objectContaining({
-            message: "database password in this message",
+            cause: expect.objectContaining({ message: "database password in this message" }),
           }),
         }),
       },
@@ -646,6 +667,72 @@ describe("fieldResult", () => {
     // THEN the observer received it, with no field to name
     expect(seen).toEqual([
       { outcome: "error", cause: expect.objectContaining({ message: "plugin broke" }) },
+    ]);
+  });
+
+  it("answers a refusal that carries a cause as the refusal", async ({ boot }) => {
+    // GIVEN a refusal minted with the service's own error attached
+    const info = (await boot(appWith([])).runtimeInfo()).get();
+
+    // WHEN it is asked for
+    const body = await query(info?.port, '{ order(id: "caused") }');
+
+    // THEN the client sees the refusal, not a masked defect
+    expect(body).toEqual({
+      data: { order: null },
+      errors: [
+        expect.objectContaining({
+          message: "not yours either",
+          path: ["order"],
+          extensions: { code: "FORBIDDEN" },
+        }),
+      ],
+    });
+  });
+
+  it("masks a defect whose cause is a GraphQLError", async ({ boot }) => {
+    // GIVEN a service that defects with something shaped like a refusal
+    const info = (await boot(appWith([])).runtimeInfo()).get();
+
+    // WHEN it is asked for
+    const body = await query(info?.port, '{ order(id: "leaky") }');
+
+    // THEN the client sees the masked message, never the cause
+    expect(body).toEqual({
+      data: { order: null },
+      errors: [
+        expect.objectContaining({
+          message: "Unexpected error.",
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        }),
+      ],
+    });
+  });
+
+  it("answers a subscription over SSE, each event carrying its own field's error", async ({
+    boot,
+  }) => {
+    // GIVEN a subscription whose second event is refused
+    const info = (await boot(appWith([])).runtimeInfo()).get();
+
+    // WHEN a client subscribes over SSE
+    const stream = await fetch(`http://127.0.0.1:${info?.port}/graphql`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "text/event-stream" },
+      body: JSON.stringify({ query: "subscription { placed }" }),
+    });
+    const events = (await stream.text())
+      .split("\n\n")
+      .filter((event) => event.startsWith("event: next"))
+      .map((event) => JSON.parse(event.slice(event.indexOf("data: ") + 6)));
+
+    // THEN the first event is data and the second carries its refusal
+    expect(events).toEqual([
+      { data: { placed: "order 1" } },
+      {
+        data: { placed: null },
+        errors: [expect.objectContaining({ path: ["placed"], extensions: { code: "FORBIDDEN" } })],
+      },
     ]);
   });
 });

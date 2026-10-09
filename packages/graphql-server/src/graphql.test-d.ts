@@ -93,3 +93,8 @@ graphql(api, {
   // @ts-expect-error -- PLUGIN CONTEXT MISMATCH: the call binds no `missing` on `unit`
   plugins: [readsMessage, readsMissing],
 });
+const misspelt = { onParce: () => undefined };
+// @ts-expect-error -- NOT A PLUGIN: a value with no Yoga hook
+graphql(api, { schema, plugins: ["oops"] });
+// @ts-expect-error -- NOT A PLUGIN: a misspelt hook is no hook
+graphql(api, { schema, plugins: [misspelt] });

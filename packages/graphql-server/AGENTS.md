@@ -32,6 +32,16 @@ context this call builds, and a declared one is inferred with its own context
 and refused against `PLUGIN CONTEXT MISMATCH` when the call's context lacks
 something it reads.
 
+**`fieldResult` rebuilds both channels, because Yoga masks by shape.** A
+refusal is thrown as a fresh error carrying only its message and
+`extensions`: one carrying an `originalError` is what Yoga masks as
+unexpected. A defect is thrown wrapped in a plain `Error`, whatever its cause,
+since a `GraphQLError` cause would otherwise be exposed as a refusal and never
+reported. The refusal is minted with Yoga's `createGraphQLError`, not
+`graphql`'s class: the two can be different module instances (measured under
+vitest), and Yoga's check is `instanceof` against its own. Its `Promise`
+return is the fourth exception root thesis #6 names.
+
 **`fieldResult` maps nothing.** The resolver's triage of `E` into
 `GraphQLError`s is the transport's own mapping, as thesis #3 has it for every
 transport; `fieldResult` only moves each channel to where GraphQL reads it.

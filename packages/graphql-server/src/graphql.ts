@@ -87,7 +87,8 @@ type ContextOf<
 >;
 
 /**
- * Each plugin, unless the context this call builds lacks something it reads.
+ * Each plugin, unless the context this call builds lacks something it reads, or
+ * the entry is not a plugin at all.
  * Per element, because Yoga's `Plugin<C>` is invariant in `C`: a plugin typed
  * for the real context is not a `Plugin`, so none could be widened to one.
  */
@@ -96,7 +97,7 @@ type PluginsGate<PS extends readonly unknown[], C> = {
     ? YogaInitialContext & C extends X
       ? PS[I]
       : "PLUGIN CONTEXT MISMATCH — this plugin reads what this graphql() call does not put in its context"
-    : PS[I];
+    : { readonly "NOT A PLUGIN — this entry is not a Yoga plugin": PS[I] };
 };
 
 /** Serve a GraphQL schema as one answerer under the existing HTTP runtime. */

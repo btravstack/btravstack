@@ -39,8 +39,8 @@ modeled errors into `GraphQLError`s with an `extensions.code` — an exhaustive
 `mapErrCases`, and `recoverErrCases` where a refusal is `null` — and
 `fieldResult` returns the value, reports a refusal on that field's own path
 while sibling fields resolve, and masks a defect. Masked defects are reported to
-`Observers`, so they reach the application's logs and traces rather than
-Yoga's console. A GraphQL error
+`Observers`, never to Yoga's console: compose `observability()` (and `otel()`
+for traces) to have them recorded — without an observer they reach nothing. A GraphQL error
 normally retains HTTP 200; the framework does not impose a status or error
 schema on application outcomes. One HTTP request is one unit, closed after the
 response finishes and included in the runtime's drain.
@@ -63,4 +63,6 @@ is consumable without the gateway or Yoga. Its freshness test detects schema
 drift. Expose live introspection or a contract UI according to the deployment's
 access policy; the answerer mounts no GraphiQL page by default.
 
-Subscriptions and GraphQL over WebSocket are outside this answerer's scope.
+A schema's `Subscription` type is served over SSE, as Yoga serves it by
+default, and an event's resolver answers through `fieldResult` like any field,
+so its refusal rides that event. GraphQL over WebSocket is not served.
