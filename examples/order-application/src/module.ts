@@ -3,16 +3,7 @@ import { Module, Provider } from "@btravstack/di";
 import type { TenantId } from "@btravstack/example-order-domain";
 
 import { CustomerRepository, OrderRepository, Tenant } from "./ports.js";
-import {
-  FindCustomer,
-  FindOrder,
-  ListOrders,
-  PlaceOrder,
-  findCustomerProvider,
-  findOrderProvider,
-  listOrdersProvider,
-  placeOrderProvider,
-} from "./use-cases.js";
+import { FindCustomer, FindOrder, ListOrders, PlaceOrder } from "./use-cases.js";
 
 /**
  * One module per vertical, not one for the layer. A deployment that only
@@ -35,7 +26,7 @@ import {
  */
 export const OrderApplicationModule = Module("OrderApplication")({
   needs: [OrderRepository, Logger, Tenant],
-  provides: [placeOrderProvider, findOrderProvider, listOrdersProvider],
+  provides: [PlaceOrder, FindOrder, ListOrders],
   exports: [PlaceOrder, FindOrder, ListOrders],
 });
 
@@ -48,7 +39,7 @@ export const OrderApplicationModule = Module("OrderApplication")({
  */
 export const CustomerApplicationModule = Module("CustomerApplication")({
   needs: [CustomerRepository],
-  provides: [findCustomerProvider],
+  provides: [FindCustomer],
   exports: [FindCustomer],
 });
 

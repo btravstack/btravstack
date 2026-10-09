@@ -74,8 +74,8 @@ type Available<I extends readonly AnyModule[], P extends readonly AnyProvider[]>
  * asks whether EVERY port is available, and rejects legal exports.
  */
 export type Exportable<I extends readonly AnyModule[], P extends readonly AnyProvider[]> =
-  | (AnyPort & (new () => Available<I, P>))
-  | (AnyProvider & { readonly port: AnyPort & (new () => Available<I, P>) })
+  | (AnyPort & (new (...args: never) => Available<I, P>))
+  | (AnyProvider & { readonly port: AnyPort & (new (...args: never) => Available<I, P>) })
   | I[number];
 
 type ResolvedExports<X extends readonly unknown[]> =

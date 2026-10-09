@@ -24,6 +24,32 @@ test("the real root answers with the override's service", async () => {
   expect(served).toBeOkWith("stub");
 });
 
+test("a subclass overrides a provider class in the real root", async () => {
+  // GIVEN a root providing a use case class, and a double subclassing it
+  class Greeting extends Provider.class("OverriddenGreeting", { inject: { greeter: Greeter } }) {
+    say(): string {
+      return this.deps.greeter.greet();
+    }
+  }
+  class SilentGreeting extends Greeting {
+    override say(): string {
+      return "…";
+    }
+  }
+  const Root = Module("OverriddenClassRoot")({
+    provides: [Provider(Greeter)({ inject: {}, value: { greet: () => "real" } }), Greeting],
+    exports: [Greeting],
+  });
+
+  // WHEN the root is built with the double in the class's place
+  const served = await Module.build(overridden(Root, [SilentGreeting])).map((ctx) =>
+    ctx.get(Greeting).say(),
+  );
+
+  // THEN the double answered under the class's own port
+  expect(served).toBeOkWith("…");
+});
+
 test("an override the root no longer backs is a loud defect, not a silent divergence", async () => {
   // GIVEN a root that does not provide the overridden port at all
   const Root = Module("DriftedRoot")({

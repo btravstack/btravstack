@@ -391,8 +391,8 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    channel's own type** (issue #69's question, answered by measurement).
    `placeOrder`'s union (`InvalidQuantity | InvalidOrderId | DuplicateOrder`)
    has one source of truth — the return annotation of `PlaceOrder`'s
-   `execute` in `examples/order-application/src/use-cases.ts`, whose provider
-   mints the port from it (`Provider("PlaceOrder")`) — and flows through the port
+   `execute` in `examples/order-application/src/use-cases.ts`, a class that is
+   its own port (`Provider.class("PlaceOrder", …)`) — and flows through the port
    to every consumer; each triage site folds it with an exhaustive
    `mapErrCases` (`P._` is a lint error, and its two structural disables are
    nowhere near a triage), so widening the union fails

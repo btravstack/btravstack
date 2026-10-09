@@ -110,8 +110,10 @@ type-level guards, and both are hazards. Providing it is caught at runtime as a
 ## `AnyPort`
 
 The structural bound every concrete port class satisfies — `portId`, an
-optional `many`, and a no-arg constructor returning some port instance. Use it
-to write helpers generic over ports:
+optional `many`, and a constructor returning some port instance. The
+constructor may take arguments: a [`Provider.class`](/reference/di/providers#provider-class-id-inject)
+subclass takes its services record and is a port all the same. Use it to write
+helpers generic over ports:
 
 ```ts
 const describePort = (port: AnyPort): string => port.portId;

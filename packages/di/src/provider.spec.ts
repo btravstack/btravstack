@@ -8,7 +8,7 @@ import { expect, test } from "vitest";
 // oxlint-disable-next-line import/no-unassigned-import
 import "@unthrown/vitest";
 
-import { Module, Port, Provider } from "./index.js";
+import { Module, Port, Provider, overrideProvider } from "./index.js";
 
 class BoomError extends TaggedError("BoomError")<{ readonly why: string }> {}
 class Value extends Port("PValue")<{ readonly n: number }> {}
@@ -112,24 +112,81 @@ test("an Ok result from make is passed through unchanged", async () => {
   await expect(p.construct([])).resolves.toBeOkWith({ n: 3 });
 });
 
-test("a provider declared by id mints a port carrying that id", () => {
-  // GIVEN a provider declared by id rather than for a port class
-  const p = Provider("PMinted")({ inject: {}, value: { n: 1 } });
+class Doubled extends Provider.class("PDoubled", { inject: { seed: Seed } }) {
+  n(): number {
+    return this.twice(this.deps.seed);
+  }
+  private twice(value: number): number {
+    return value * 2;
+  }
+}
+const seed = Provider(Seed)({ inject: {}, value: 21 });
 
-  // WHEN its port is read
-  // THEN it is a port named by that id
-  expect(p.port).toEqual(expect.objectContaining({ portId: "PMinted" }));
-});
+test("a provider class is its own port, provider and service", async () => {
+  // GIVEN a module providing and exporting the class itself
+  const App = Module("PClassApp")({ provides: [seed, Doubled], exports: [Doubled] });
 
-test("a minted port resolves to the service its provider built, injected by name", async () => {
-  // GIVEN a minted use case reading an ordinary port, exported by its minted port
-  const next = Provider("PNext")({ inject: { seed: Seed }, sync: ({ seed }) => ({ n: seed + 1 }) });
-  const App = Module("PMintedApp")({
-    provides: [Provider(Seed)({ inject: {}, value: 41 }), next],
-    exports: [next.port],
+  // WHEN it is built and the class read back
+  const built = Module.build(App).map((ctx) => {
+    const service = ctx.get(Doubled);
+    return { n: service.n(), instance: service instanceof Doubled };
   });
 
-  // WHEN the module is built and the minted port read back
-  // THEN it is the service the factory built from the injected seed
-  await expect(Module.build(App).map((ctx) => ctx.get(next.port))).resolves.toBeOkWith({ n: 42 });
+  // THEN it is an instance built from the injected seed, its helper included
+  await expect(built).resolves.toBeOkWith({ n: 42, instance: true });
+});
+
+test("a subclass of a provider class provides the same port", async () => {
+  // GIVEN a double overriding a method, provided in the class's place
+  class FakeDoubled extends Doubled {
+    override n(): number {
+      return -1;
+    }
+  }
+  const App = Module("PClassFake")({ provides: [seed, FakeDoubled], exports: [Doubled] });
+
+  // WHEN it is built and the original class read back
+  const built = Module.build(App).map((ctx) => ctx.get(Doubled).n());
+
+  // THEN the double answered under the original port, not a second one sharing its id
+  await expect(built).resolves.toBeOkWith(-1);
+});
+
+test("an override of a provider class carries its inherited statics", async () => {
+  // GIVEN the class overridden by a double, through the override brand
+  class FakeDoubled extends Doubled {
+    override n(): number {
+      return 0;
+    }
+  }
+  const App = Module("PClassOverride")({
+    provides: [seed, Doubled, overrideProvider(FakeDoubled)],
+    exports: [Doubled],
+  });
+
+  // WHEN it is built
+  const built = Module.build(App).map((ctx) => ctx.get(Doubled).n());
+
+  // THEN the double replaced the class
+  await expect(built).resolves.toBeOkWith(0);
+});
+
+test("a provider class whose constructor wants more than its services is a defect", async () => {
+  // GIVEN a subclass whose constructor requires an argument di never passes
+  class Configured extends Doubled {
+    readonly factor: number;
+    constructor(deps: ConstructorParameters<typeof Doubled>[0], factor: number) {
+      super(deps);
+      this.factor = factor;
+    }
+  }
+  const App = Module("PClassArity")({ provides: [seed, Configured], exports: [Doubled] });
+
+  // WHEN it is built
+  const built = Module.build(App);
+
+  // THEN construction refused it, naming the port
+  await expect(built).resolves.toBeDefectWith(
+    expect.objectContaining({ message: expect.stringContaining("PDoubled") }),
+  );
 });

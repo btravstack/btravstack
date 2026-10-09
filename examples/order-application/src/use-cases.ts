@@ -24,49 +24,42 @@ import { CustomerRepository, OrderRepository, Tenant, type OrderQuery } from "./
  * field rather than a third positional `string`, so it cannot trade places
  * with the order id.
  */
-export const placeOrderProvider = Provider("PlaceOrder")({
+export class PlaceOrder extends Provider.class("PlaceOrder", {
   inject: { repository: OrderRepository, logger: Logger, tenant: Tenant },
-  sync: ({ repository, logger, tenant }) => ({
-    execute: (
-      id: string,
-      quantity: number,
-      { operation }: { readonly operation?: string | undefined } = {},
-    ): AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder> => {
-      logger.info("placing an order", { tenantId: tenant, orderId: id, quantity });
-      return placeOrder(id, quantity)
-        .toAsync()
-        .flatMap((order) => repository.save(order, operation));
-    },
-  }),
-});
-export const PlaceOrder = placeOrderProvider.port;
-export type PlaceOrder = InstanceType<typeof PlaceOrder>;
+}) {
+  execute(
+    id: string,
+    quantity: number,
+    { operation }: { readonly operation?: string | undefined } = {},
+  ): AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder> {
+    const { repository, logger, tenant } = this.deps;
+    logger.info("placing an order", { tenantId: tenant, orderId: id, quantity });
+    return placeOrder(id, quantity)
+      .toAsync()
+      .flatMap((order) => repository.save(order, operation));
+  }
+}
 
-export const findOrderProvider = Provider("FindOrder")({
+export class FindOrder extends Provider.class("FindOrder", {
   inject: { repository: OrderRepository },
-  sync: ({ repository }) => ({
-    execute: (id: string): AsyncResult<Order, OrderNotFound> => repository.find(id),
-  }),
-});
-export const FindOrder = findOrderProvider.port;
-export type FindOrder = InstanceType<typeof FindOrder>;
+}) {
+  execute(id: string): AsyncResult<Order, OrderNotFound> {
+    return this.deps.repository.find(id);
+  }
+}
 
-export const listOrdersProvider = Provider("ListOrders")({
+export class ListOrders extends Provider.class("ListOrders", {
   inject: { repository: OrderRepository },
-  sync: ({ repository }) => ({
-    execute: (query: OrderQuery): AsyncResult<Page<Order>, MalformedCursor | CursorSortMismatch> =>
-      repository.list(query),
-  }),
-});
-export const ListOrders = listOrdersProvider.port;
-export type ListOrders = InstanceType<typeof ListOrders>;
+}) {
+  execute(query: OrderQuery): AsyncResult<Page<Order>, MalformedCursor | CursorSortMismatch> {
+    return this.deps.repository.list(query);
+  }
+}
 
-export const findCustomerProvider = Provider("FindCustomer")({
+export class FindCustomer extends Provider.class("FindCustomer", {
   inject: { repository: CustomerRepository },
-  sync: ({ repository }) => ({
-    execute: (tenantId: TenantId, id: string): AsyncResult<Customer, CustomerNotFound> =>
-      repository.find(tenantId, id),
-  }),
-});
-export const FindCustomer = findCustomerProvider.port;
-export type FindCustomer = InstanceType<typeof FindCustomer>;
+}) {
+  execute(tenantId: TenantId, id: string): AsyncResult<Customer, CustomerNotFound> {
+    return this.deps.repository.find(tenantId, id);
+  }
+}

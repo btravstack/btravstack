@@ -3,9 +3,9 @@ import { OkAsync, type AsyncResult, type Result } from "unthrown";
 import {
   Port,
   type AnyPort,
+  type ID,
   type MemberOf,
-  type PortClassOf,
-  type PortInstance,
+  type SERVICE,
   type Scope,
   type ServiceOf,
 } from "./port.js";
@@ -143,14 +143,11 @@ type ScopeOf<O> = O extends { readonly acquire: unknown }
  * a resourceful provider to `Module.build`, which never closes the scope it
  * opens, and silently dropping its `release`.
  */
-export type Provider<P, E, N, C extends AnyPort = AnyPort> = {
+export type Provider<P, E, N> = {
   readonly _port: (p: P) => void;
   readonly _error: () => E;
   readonly _needs: () => N;
-  // A parameter rather than an `& { port }` intersection where the port is
-  // minted: `AnyPort & PortClassOf<…>` emits through `AnyPort`'s private
-  // instance alias and fails TS4023 on a consumer exporting `provider.port`.
-  readonly port: C;
+  readonly port: AnyPort;
   readonly deps: readonly AnyPort[];
   // The package's own construction boundary, not application code: the build
   // pipeline narrows these back to `E`/`P` per port.
@@ -214,9 +211,20 @@ const descriptor = (
  */
 const OVERRIDE = Symbol("di.override");
 
-export const overrideProvider = <P, E, N, C extends AnyPort>(
-  provider: Provider<P, E, N, C>,
-): Provider<P, E, N, C> => ({ ...provider, [OVERRIDE]: true }) as Provider<P, E, N, C>;
+// Field by field, not a spread: a `Provider.class` subclass inherits these as
+// statics, which a spread does not copy.
+export const overrideProvider = <P, E, N, Q extends AnyPort>(
+  provider: Provider<P, E, N> & { readonly port: Q },
+): Provider<P, E, N> & { readonly port: Q } =>
+  ({
+    port: provider.port,
+    deps: provider.deps,
+    construct: (services: readonly unknown[]) => provider.construct(services),
+    release: provider.release,
+    onStart: provider.onStart,
+    onStop: provider.onStop,
+    [OVERRIDE]: true,
+  }) as unknown as Provider<P, E, N> & { readonly port: Q };
 
 /** Package-private (not in `index.ts`): `build.ts`'s plan resolves with it. */
 export const isOverride = (provider: object): boolean => OVERRIDE in provider;
@@ -251,25 +259,80 @@ function declare<P extends AnyPort, S, Gate>(port: P) {
   return build;
 }
 
+function ProviderDeclaration<P extends AnyPort>(port: P) {
+  return declare<P, ServiceOf<P>, SetPortGate<P>>(port);
+}
+
 /**
- * Two forms of the first call. `Provider(Port)` binds a port declared
- * elsewhere. `Provider("Id")` mints the port from what the arm builds and
- * hands it back as `.port` — for a use case, whose port would only restate
- * its implementation. `S` is inferred from the arm through the second
- * `Qualification`, which is what types a `release` or a hook's parameter;
- * `O` stays for `ErrorOf`/`ScopeOf`. Ordered string-first so a refused
- * port call reports the port overload's mismatch, not the string one's.
+ * The instance side of a `Provider.class` base: a port instance whose service is
+ * the subclass itself, through the polymorphic `this`. Declared, never defined —
+ * the runtime class is minted per id — so it cannot be extended directly.
+ *
+ * `deps` is protected, not `#private`: this is a named class, so a subclass a
+ * consumer exports emits without TS4094, and a caller of the service cannot
+ * reach past it to the services it was built from.
  */
-function ProviderDeclaration<const Id extends string>(
+export declare abstract class ProviderBase<Id extends string, D extends Deps> {
+  declare readonly [ID]: Id;
+  declare readonly [SERVICE]: this;
+  protected readonly deps: ServicesOf<D>;
+  constructor(deps: ServicesOf<D>);
+}
+
+/** What `Provider.class(id, { inject })` returns: a port, a provider, and the base of both. */
+export type ProviderClass<Id extends string, D extends Deps> = Provider<
+  ProviderBase<Id, D>,
+  never,
+  NeedsOf<D>
+> & { readonly portId: Id } & (abstract new (deps: ServicesOf<D>) => ProviderBase<Id, D>);
+
+const directSubclass = (cls: object, base: object): object =>
+  cls === base || Object.getPrototypeOf(cls) === base
+    ? cls
+    : directSubclass(Object.getPrototypeOf(cls) as object, base);
+
+/**
+ * The base of a use case written as a class. The subclass is its own port, its
+ * own provider and its own service type; its constructor takes the services
+ * record `inject` describes, read in its methods as the protected `this.deps`.
+ * It cannot fail and needs exactly what it injects. Another implementation is a
+ * subclass, which provides the same port.
+ */
+function providerClass<const Id extends string, const D extends Deps>(
   id: Id,
-): <const D extends Deps, S, O extends Qualification<readonly [ServicesOf<D>], S>>(
-  options: { readonly inject: D } & O & Qualification<readonly [ServicesOf<D>], S>,
-) => Provider<PortInstance<Id, S>, ErrorOf<O>, NeedsOf<D> | ScopeOf<O>, PortClassOf<Id, S>>;
-function ProviderDeclaration<P extends AnyPort>(
-  port: P,
-): ReturnType<typeof declare<P, ServiceOf<P>, SetPortGate<P>>>;
-function ProviderDeclaration(port: AnyPort | string): unknown {
-  return declare(typeof port === "string" ? Port(port) : port);
+  { inject }: { readonly inject: D },
+): ProviderClass<Id, D> {
+  const entries = Object.entries(inject);
+  // oxlint-disable-next-line max-classes-per-file
+  const Minted = class extends (Port(id) as unknown as abstract new () => object) {
+    // The class extending this base, never a deeper subclass: a double that
+    // overrides methods then provides the same port instead of a second class
+    // sharing its id, which `plan` refuses.
+    static get port(): unknown {
+      return directSubclass(this, Minted);
+    }
+    static readonly deps = entries.map(([, dependency]) => dependency);
+    static construct(this: new (deps: unknown) => unknown, services: readonly unknown[]) {
+      const record = Object.fromEntries(entries.map(([key], index) => [key, services[index]]));
+      return OkAsync().map(() => {
+        // The types accept a subclass constructor of any arity, and only the
+        // services record is ever passed: a wiring bug, landing as a defect.
+        if (this.length > 1) {
+          // oxlint-disable-next-line unthrown/no-throw
+          throw new Error(
+            `[di] ${id}: a Provider.class constructor takes only its services record`,
+          );
+        }
+        return new this(record);
+      });
+    }
+    protected readonly deps: unknown;
+    constructor(deps: unknown) {
+      super();
+      this.deps = deps;
+    }
+  };
+  return Minted as unknown as ProviderClass<Id, D>;
 }
 
 /**
@@ -285,4 +348,5 @@ function ProviderDeclaration(port: AnyPort | string): unknown {
  */
 export const Provider = Object.assign(ProviderDeclaration, {
   member: <P extends AnyPort>(port: P) => declare<P, MemberOf<P>, unknown>(port),
+  class: providerClass,
 });

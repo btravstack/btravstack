@@ -35,7 +35,6 @@ import {
   PlaceOrder,
   tenantOf,
 } from "./index.js";
-import { findOrderProvider, placeOrderProvider } from "./use-cases.js";
 
 const orderRepository = Provider(OrderRepository)({
   inject: {},
@@ -125,12 +124,12 @@ const _tenantless = Module.scoped(TenantlessOrders, (ctx) =>
 );
 
 // Negative, and the OTHER gate — the distinction the two draw. Here the
-// interactors are this module's OWN providers rather than an import's, so
+// use cases are this module's OWN providers rather than an import's, so
 // `OrderRepository` and `Logger` are its to name, and leaving `needs` out is
 // refused at the declaration instead of at `Module.scoped`.
 // @ts-expect-error — UNDECLARED NEEDS: Logger | OrderRepository | Tenant.
 const UndeclaredOrders = Module("UndeclaredOrders")({
-  provides: [placeOrderProvider, findOrderProvider],
+  provides: [PlaceOrder, FindOrder],
   exports: [PlaceOrder, FindOrder],
 });
 
