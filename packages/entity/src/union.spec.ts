@@ -117,12 +117,13 @@ test("the members are reachable, for exhaustiveness and registries", () => {
   expect(Member.members.map((m) => m.entityName)).toEqual(["User", "ServiceAccount"]);
 });
 
-test("the union value's own enumerable keys are exactly the six public ones", () => {
+test("the union value's own enumerable keys are exactly the seven public ones", () => {
   expect(Object.keys(Member)).toEqual([
     "discriminant",
     "members",
     "input",
     "output",
+    "json",
     "make",
     "inspect",
   ]);

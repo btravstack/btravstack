@@ -1,11 +1,12 @@
 ---
 title: Schema members
-description: input, output, createInput, updateInput, entityName — and the class itself as a zod schema.
+description: input, output, createInput, updateInput, json, entityName — and the class itself as a zod schema.
 ---
 
 # Schema members
 
-Every entity carries four plain `ZodObject`s as statics, plus the class itself.
+Every entity carries four plain `ZodObject`s as statics, a fifth describing its
+JSON form, plus the class itself.
 
 > Snippets on this page assume these imports:
 >
@@ -31,6 +32,7 @@ Organization.input; // ZodObject — everything make() accepts
 Organization.output; // ZodObject — stored state, internal fields included
 Organization.createInput; // ZodObject — input minus the generated fields
 Organization.updateInput; // ZodObject — input minus the immutable fields, partial
+Organization.json; // ZodObject — what z.encode(output, toJSON()) writes
 Organization.entityName; // the tag, as a literal type
 Organization; // …is itself a zod schema, parsing to an instance
 ```
@@ -43,12 +45,13 @@ Schema cannot express is the exception; see
 
 Each describes what the **domain** accepts or holds, whoever is asking:
 
-| Member        | Describes                              | Is not                                                     |
-| ------------- | -------------------------------------- | ---------------------------------------------------------- |
-| `input`       | every field `make()` reads             | a request body: it includes the `generated` fields         |
-| `output`      | the stored state, every field included | a response body: an internal field is in it too            |
-| `createInput` | every field a create may set           | a public command: internal fields are in it too            |
-| `updateInput` | every field the domain lets change     | authorization: mutable does not mean any caller may set it |
+| Member        | Describes                                | Is not                                                     |
+| ------------- | ---------------------------------------- | ---------------------------------------------------------- |
+| `input`       | every field `make()` reads               | a request body: it includes the `generated` fields         |
+| `output`      | the stored state, every field included   | a response body: an internal field is in it too            |
+| `createInput` | every field a create may set             | a public command: internal fields are in it too            |
+| `updateInput` | every field the domain lets change       | authorization: mutable does not mean any caller may set it |
+| `json`        | the stored state as JSON, codecs encoded | a response body: an internal field is in it too            |
 
 They are building blocks for a contract. A public route selects from them
 with `.pick`, an allowlist, so a field the entity gains later is not exposed
@@ -67,6 +70,7 @@ schema, never its class. Which one depends on the member:
 | `output`      | its `output`, computed fields included |
 | `createInput` | its `input`                            |
 | `updateInput` | its `input`, as an optional key        |
+| `json`        | its `json`                             |
 
 The substitution goes through `z.array(...)`, `z.optional(...)`,
 `z.nullable(...)` and `Entity.field(...)`, and it repeats at every level,
@@ -121,6 +125,7 @@ wrote them, so what converts is what zod converts:
 | `z.custom(...)`, `z.instanceof(...)` | the value you passed, untouched | ✗ throws                        | ✗ throws                         |
 | a `.transform(...)`                  | the transformed value           | ✓ the source schema             | ✗ throws                         |
 | a `z.codec(wire, domain, ...)`       | the decoded (domain) value      | ✓ the wire schema               | the domain schema; ✗ if a `Date` |
+| `Entity.codec(wire, domain, ...)`    | the decoded (domain) value      | ✗ throws on the domain member   | ✗ throws; **`json`** converts    |
 
 Two of those rows also break the round trip above, before JSON Schema is
 involved: `JSON.stringify` writes a `Date` as a string, which `z.date()` then
@@ -136,6 +141,70 @@ property instead of throwing, and documents nothing about it:
 ```ts
 z.toJSONSchema(Ledger.output, { unrepresentable: "any" }); // ✓ the bigint field is {}
 ```
+
+## The JSON form: `json`
+
+A field whose value JSON cannot hold — a `bigint`, a `Temporal.Instant` — is
+declared with [`Entity.codec`](/entity/reference/declaration#entity-codec-wire-domain-transforms).
+`make` takes its wire text or its value, the entity stores the value, and
+`json` describes the text:
+
+```ts
+const Cents = Entity.codec(z.string().regex(/^-?[0-9]+$/), z.bigint().brand("Cents"), {
+  decode: (text) => BigInt(text),
+  encode: (cents) => String(cents),
+});
+
+class Account extends Entity("Account")({
+  id: Entity.field(z.uuid().brand("AccountId"), { identity: true }),
+  balance: Cents,
+}) {}
+
+z.toJSONSchema(Account.json, { io: "output" }); // ✓ balance is a string
+```
+
+`json` is the schema of what `z.encode(output, x.toJSON())` writes: each codec
+field as its wire side, a nested entity or union as its own `json`, generated
+and computed fields included and an unset optional omitted, as in `toJSON()`.
+It is a plain `ZodObject`, so a contract picks its response from it, and the
+handler encodes the matching pick of `output`:
+
+```ts
+const AccountView = Account.json.pick({ id: true, balance: true });
+
+declare const account: Account;
+const body = z.encode(Account.output.pick({ id: true, balance: true }), {
+  id: account.id,
+  balance: account.balance,
+}); // { id: "…", balance: "1250" }, which AccountView parses
+```
+
+Encoding a whole `toJSON()` takes a cast —
+`account.toJSON() as unknown as z.output<typeof Account.output>` — because
+`toJSON()` is deep-readonly and types a nested entity as its instance, while
+`z.encode` wants the schema's plain output. The data is the same.
+
+A field's wire schema is what `json` publishes for it, so make it the canonical
+spelling `encode` writes: a codec whose wire side is
+`z.iso.datetime({ offset: true })` describes every offset `decode` accepts,
+not the one form `encode` emits.
+
+**Why a codec field is `Entity.codec` and not a bare `z.codec`.** A field must
+accept its own output: `make(toJSON())`, `update` and a nested entity's
+construction all parse the decoded value again, and a bare codec refuses it.
+`Entity.codec` is `z.union([z.codec(wire, domain, …), domain])`, codec first.
+The order matters as much as the union: `z.encode` takes the first member that
+accepts a value, so with the domain member first a body carries the `bigint`
+itself.
+
+`json` collapses `Entity.codec`'s union to its codec's wire side, and that
+union alone — it is marked, and the mark survives `.describe()` and `.meta()`.
+A union written by hand keeps every member, each in its own JSON form, so a
+`z.union([z.codec(…), value])` of your own keeps its `bigint` and converting
+`json` throws. That is deliberate: a type cannot tell which schema object a
+member is, so a rule that dropped one by matching it would type a field the
+validator still parses differently. A codec whose wire side is itself a codec
+is followed to the end of the chain, as `z.encode` follows it.
 
 ## The class as a schema
 

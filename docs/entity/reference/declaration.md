@@ -1,6 +1,6 @@
 ---
 title: Declaring an entity
-description: Entity(tag)(fields, options), the field rules, the field flags, the two options, and the Entity.field / Entity.computed / Entity.invariant / Entity.abstract / Entity.union declaration helpers.
+description: Entity(tag)(fields, options), the field rules, the field flags, the two options, and the Entity.field / Entity.codec / Entity.computed / Entity.invariant / Entity.abstract / Entity.union declaration helpers.
 ---
 
 # Declaring an entity
@@ -149,6 +149,25 @@ recovered when the redundant check was dropped.
 Flags ride their field. A variant extending a root inherits the root's fields
 _with_ their flags, and cannot restate them
 ([below](#root-extend-tag-fields-options)).
+
+## `Entity.codec(wire, domain, transforms)`
+
+A field whose value JSON cannot hold, with the text it travels as:
+
+```ts
+const Amount = Entity.codec(z.string().regex(/^[0-9]+$/), z.bigint().brand("Amount"), {
+  decode: (text) => BigInt(text),
+  encode: (amount) => String(amount),
+});
+```
+
+`transforms` is `z.codec`'s own. The field is
+`z.union([z.codec(wire, domain, transforms), domain])`: `make` takes the wire
+text or the value, the entity holds the value, `z.encode(X.output, …)` writes
+the text, and [`X.json`](/entity/reference/schemas#the-json-form-json)
+describes it. Write the wire schema as the canonical spelling `encode` emits,
+since that is what `json` publishes. Why both members, and why in this order:
+[The JSON form](/entity/reference/schemas#the-json-form-json).
 
 ## `Entity.computed(schema, from)`
 

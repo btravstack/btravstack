@@ -11,6 +11,7 @@ import { field, isFieldSpec, type FieldSpec, type Flags } from "./field.js";
 import { deepFreeze, omitsUndefined } from "./freeze.js";
 import { invariant, type Invariant } from "./invariant.js";
 import { codeOf, keysOf, renderIssue } from "./issues.js";
+import { codec, json } from "./json.js";
 import { attachSchema } from "./schema.js";
 import { plainShape, shape, type OnlyNominal } from "./shape.js";
 import type {
@@ -26,6 +27,7 @@ import type {
   DeepReadonly,
   InputOf,
   EntityStatic,
+  JsonOf,
   Fields,
   GeneratedKeys,
   ImmutableKeys,
@@ -121,6 +123,13 @@ export function Entity<Tag extends string>(tag: Tag) {
       .extend(
         Object.fromEntries(computedFields.map(([k, f]) => [k, f.schema])),
       ) as unknown as z.ZodObject<PlainOf<S, "output"> & A>;
+
+    // From the construction shape, so a nested entity contributes its own
+    // `json`, not its output read back through the walk.
+    const jsonSchema = z.object({
+      ...Object.fromEntries(Object.entries(construction.shape).map(([k, s]) => [k, json(s)])),
+      ...Object.fromEntries(computedFields.map(([k, f]) => [k, json(f.schema)])),
+    }) as unknown as z.ZodObject<JsonOf<S, A>>;
 
     const generatedKeys = Object.entries(fields)
       .filter(([, v]) => isFieldSpec(v) && v.flags.generated)
@@ -359,8 +368,10 @@ export function Entity<Tag extends string>(tag: Tag) {
       static readonly entityName = tag;
       /** everything `make` accepts */
       static readonly input = input;
-      /** stored state and response body */
+      /** stored state */
       static readonly output = output;
+      /** what `z.encode(output, x.toJSON())` writes — a response body */
+      static readonly json = jsonSchema;
       /** what a caller may send to create */
       static readonly createInput = createInput;
       /** what a caller may send to update */
@@ -605,6 +616,7 @@ export function Entity<Tag extends string>(tag: Tag) {
  * holds that name when it is nothing of the sort. `InvalidEntity` would pass
  * that test on its own, and is grouped anyway so the rule has no exceptions.
  */
+Entity.codec = codec;
 Entity.computed = computed;
 Entity.field = field;
 Entity.invariant = invariant;

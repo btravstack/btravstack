@@ -72,6 +72,49 @@ export type PlainOf<S extends Fields, W extends "input" | "output"> = {
 };
 
 /**
+ * One field schema as its JSON form — the type-level mirror of `json` in
+ * `json.ts`. A nested entity or union is its own `json`, by indexed access as
+ * `PlainSchema` does; `Entity.codec`'s union is its codec, and a codec its wire
+ * side, walked again; any other union keeps every member, each walked. A
+ * wrapper is rebuilt only when its content changed.
+ */
+export type JsonSchema<T> = T extends {
+  readonly make: unknown;
+  readonly json: infer J extends z.core.$ZodType;
+}
+  ? J
+  : T extends { readonly __entityCodec: true } & z.ZodUnion<
+        readonly [infer C extends z.core.SomeType, ...z.core.SomeType[]]
+      >
+    ? JsonSchema<C>
+    : T extends z.ZodCodec<infer W, z.core.SomeType>
+      ? JsonSchema<W>
+      : T extends z.ZodUnion<infer O extends readonly z.core.SomeType[]>
+        ? { [I in keyof O]: JsonSchema<O[I]> } extends infer Next extends readonly z.core.SomeType[]
+          ? [Next] extends [O]
+            ? T
+            : z.ZodUnion<Next>
+          : never
+        : T extends z.ZodArray<infer E>
+          ? [JsonSchema<E>] extends [E]
+            ? T
+            : z.ZodArray<Extract<JsonSchema<E>, z.core.SomeType>>
+          : T extends z.ZodOptional<infer E>
+            ? [JsonSchema<E>] extends [E]
+              ? T
+              : z.ZodOptional<Extract<JsonSchema<E>, z.core.SomeType>>
+            : T extends z.ZodNullable<infer E>
+              ? [JsonSchema<E>] extends [E]
+                ? T
+                : z.ZodNullable<Extract<JsonSchema<E>, z.core.SomeType>>
+              : T;
+
+/** An entity's fields and computed fields, each as its JSON form — what `json` is built from. */
+export type JsonOf<S extends Fields, A extends Schemas> = {
+  [K in keyof S]: Extract<JsonSchema<SchemaOf<S[K]>>, z.core.$ZodType>;
+} & { [K in keyof A]: Extract<JsonSchema<A[K]>, z.core.$ZodType> };
+
+/**
  * The keys whose entries carry each flag. Matched on the `flags` property
  * rather than on `FieldSpec<…, {…}>` — the `Flags` constraint rejects a
  * partial literal in extends position (measured, TS2344-class).
@@ -514,6 +557,8 @@ export type EntityStatic<
   // schema that keeps the classes, so construction still nests instances.
   readonly input: z.ZodObject<PlainOf<S, "input">>;
   readonly output: z.ZodObject<PlainOf<S, "output"> & A>;
+  /** what `z.encode(output, x.toJSON())` writes: a response body, each codec as its wire form */
+  readonly json: z.ZodObject<JsonOf<S, A>>;
   readonly createInput: z.ZodObject<Omit<PlainOf<S, "input">, GeneratedKeys<S>>>;
   readonly updateInput: z.ZodObject<UpdateInputShapeOf<S, A, ImmutableKeys<S>>>;
   /**
@@ -738,6 +783,8 @@ export type AggregateStatic<
   readonly entityName: Tag;
   readonly input: z.ZodObject<PlainOf<S, "input">>;
   readonly output: z.ZodObject<PlainOf<S, "output"> & A>;
+  /** what `z.encode(output, x.toJSON())` writes: a response body, each codec as its wire form */
+  readonly json: z.ZodObject<JsonOf<S, A>>;
   /** the declared event union, for an outbox or an event store's contract */
   readonly events: Ev;
   readonly __input: InputOf<S>;
