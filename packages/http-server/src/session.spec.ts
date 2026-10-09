@@ -13,7 +13,7 @@ describe("sessionCodec", () => {
 
     // WHEN a principal is sealed and the cookie handed straight back
     const opened = codec
-      .seal({ principal: { userId: "u-1" }, sid: "s-1" })
+      .seal({ principal: { userId: "u-1" }, sid: "s-1", iss: "https://login.test/" })
       .flatMap((cookie) => codec.unseal(cookie))
       .map((session) => ({ ...session, lifetime: (session?.exp ?? 0) - (session?.iat ?? 0) }));
 
@@ -23,6 +23,7 @@ describe("sessionCodec", () => {
       expect.objectContaining({
         principal: { userId: "u-1" },
         sid: "s-1",
+        iss: "https://login.test/",
         lifetime: 43_200,
       }),
     );
@@ -135,9 +136,12 @@ describe("sessionCodec", () => {
       numberSid: (
         await forged({ typ: "session", principal: {}, iat: 0, exp: 4_102_444_800, sid: 123 })
       ).get(),
+      numberIss: (
+        await forged({ typ: "session", principal: {}, iat: 0, exp: 4_102_444_800, iss: 1 })
+      ).get(),
     };
 
-    // THEN all six are anonymous rather than a defect or a session that
+    // THEN all seven are anonymous rather than a defect or a session that
     // coerced its way past the lifetime: the plaintext is authenticated, not
     // validated, so its shape is checked before it is trusted — and an ARRAY is
     // not enough for `scopes`, since a scheme intersects its own vocabulary
@@ -150,6 +154,7 @@ describe("sessionCodec", () => {
       stringScopes: undefined,
       numberScopes: undefined,
       numberSid: undefined,
+      numberIss: undefined,
     });
   });
 
@@ -381,6 +386,61 @@ describe("sessionCodec", () => {
 });
 
 describe("sessionAuthenticator", () => {
+  it("refuses a session another login minted", async ({ session }) => {
+    // GIVEN a session sealed under another issuer, with the same keys
+    // WHEN the browser presents it to this scheme
+    const resolved = session
+      .sealBare({ principal: { userId: "u-1" }, iss: "https://customers.test/" })
+      .flatMap((sealed) => session.resolve(cookieHeader(`__Host-session=${sealed}`)));
+
+    // THEN it is refused: a second login's session is never read as this one's
+    await expect(resolved).toBeErrTagged("Unauthenticated");
+  });
+
+  it("refuses a session sealed with no issuer", async ({ session }) => {
+    // GIVEN a session no login minted, sealed with the same keys
+    // WHEN the browser presents it to this scheme
+    const resolved = session
+      .sealBare({ principal: { userId: "u-1" } })
+      .flatMap((sealed) => session.resolve(cookieHeader(`__Host-session=${sealed}`)));
+
+    // THEN it is refused, since nothing says which login it belongs to
+    await expect(resolved).toBeErrTagged("Unauthenticated");
+  });
+
+  it("reads its issuer from the variable its login reads, under that login's prefix", async ({
+    session,
+  }) => {
+    // GIVEN a scheme paired with the staff login, and a session that login sealed
+    const resolved = session.fromEnv("HTTP_OIDC_STAFF", {
+      HTTP_OIDC_ISSUER: "https://customers.test/",
+      HTTP_OIDC_STAFF_ISSUER: "https://staff.test/",
+    });
+
+    // WHEN the staff login's session is presented
+    const answered = resolved.flatMap((resolve) =>
+      session
+        .sealBare({ principal: { userId: "u-1" }, iss: "https://staff.test/" })
+        .flatMap((sealed) => resolve(cookieHeader(`__Host-session=${sealed}`))),
+    );
+
+    // THEN it is accepted under HTTP_OIDC_STAFF_ISSUER, not HTTP_OIDC_ISSUER
+    await expect(answered).toBeOkWith({ userId: "u-1" });
+  });
+
+  it("names its issuer variable at startup when it is unset", async ({ session }) => {
+    // GIVEN a default scheme and an environment with no HTTP_OIDC_ISSUER
+    // WHEN it is built
+    const built = session.fromEnv(undefined, {});
+
+    // THEN the ConfigInvalid names the variable the default login reads too
+    await expect(built).toBeErrWith(
+      expect.objectContaining({
+        issues: [{ message: "is required", path: ["HTTP_OIDC_ISSUER"] }],
+      }),
+    );
+  });
+
   it("resolves the principal a sealed cookie carries", async ({ session }) => {
     // GIVEN a session sealed by the codec the scheme reads with
     // WHEN the browser sends it back under the default cookie name

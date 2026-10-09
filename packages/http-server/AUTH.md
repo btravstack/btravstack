@@ -288,8 +288,8 @@ The two rules this half exists to state, before the detail:
   does not know grants nothing extra. Nothing new checks them: the grant goes
   through `granted()` and the existing walk produces the 403.
 
-- **`sessionAuthenticator<P>()({ scopes?, principal? })`
-  → `Authenticator<P, Scopes[number], SessionCodec, never>`** — from
+- **`sessionAuthenticator<P>()({ scopes?, principal?, issuer?, variablePrefix? })`
+  → `Authenticator<P, Scopes[number], SessionCodec | Env, ConfigInvalid>`** — from
   **`@btravstack/http-server/session`**, beside `sessionCodec` and behind the
   same optional `jose` peer. The third scheme, and the only one whose
   credential this stack seals itself: it reads the `cookie` header, hands the
@@ -297,6 +297,19 @@ The two rules this half exists to state, before the detail:
   carries. `requires: [{ session: [] }]` on a fragment route and
   `authenticated({ session: [] })` on a procedure need nothing new — a scheme
   is a scheme.
+
+  **It accepts only its own login's sessions** (issue #461). `oidc()` seals
+  the issuer it is configured with as `Session.iss`, and the scheme refuses a
+  session whose issuer is not the one it binds — from `HTTP_OIDC_ISSUER`, or
+  `<variablePrefix>_ISSUER`, the variable its login reads. Two logins share one
+  cookie and one key list, so a cookie NAME could not separate them (a client
+  replays any value it holds under any name — the codec's own `typ` argument),
+  and the default `principal` hands back whatever the session holds: a
+  customer login's session authenticated on a staff route. The issuer sealed
+  INSIDE the authenticated payload is the boundary. Sealing the CONFIGURED
+  issuer rather than the token's `iss` claim keeps the comparison exact, since
+  the two may differ by a trailing slash. A session sealed before this, with
+  no `iss`, is refused — a browser signs in once more after the upgrade.
 
   **It injects the codec's PORT rather than holding keys.** Its needs channel
   is `SessionCodec`, so a root composing the scheme without `sessionCodec()` is

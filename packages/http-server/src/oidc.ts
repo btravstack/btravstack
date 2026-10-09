@@ -132,6 +132,8 @@ const RELATIVE = "http://request.invalid";
 /** Everything the routes close over, decided once at boot. */
 type Bound<P> = {
   readonly config: Configuration;
+  /** The issuer as configured, sealed into every session so its scheme can tell logins apart. */
+  readonly issuer: string;
   readonly redirectUri: string;
   readonly scope: string;
   readonly postLogout: string;
@@ -312,6 +314,7 @@ const callback = async <P>(
   const sealed = await codec
     .seal({
       principal,
+      iss: bound.issuer,
       ...(typeof sid === "string" ? { sid } : {}),
       ...(typeof scope === "string" ? { scopes: scope.split(" ") } : {}),
     })
@@ -465,6 +468,7 @@ export const oidc = <P>(options: OidcOptions<P>): readonly [OidcAnswerer, AnyPro
             handle: handlerFor(
               {
                 config,
+                issuer: bound.issuer,
                 redirectUri: bound.redirectUri,
                 scope: options.scope ?? DEFAULT_SCOPE,
                 postLogout: options.postLogout ?? DEFAULT_POST_LOGOUT,
