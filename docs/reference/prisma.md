@@ -55,6 +55,7 @@ export const PersistenceModule = Module("Persistence")({
 | `PrismaBinding`                    | `{ url: string; middleware: readonly SqlMiddlewareLike[] }` — what the starter hands your arrow.                    |
 | `PrismaOptions<C>`                 | `{ client: (binding: PrismaBinding) => C }`.                                                                        |
 | `SqlMiddlewareLike`                | The structural shape of a Prisma 8 `SqlMiddleware`, as the binding carries it.                                      |
+| `DatabaseUnreachable`              | The startup error when the database does not answer as the scope opens: `{ database, cause }`.                      |
 
 What the module needs is `Env`; what it exports is your port and
 `HealthChecks`. A composition root that re-exports it whole passes the second
@@ -74,12 +75,25 @@ query.
 
 ## Errors
 
-There are none of this package's own. The client provider's error channel is
-**`never`**: opening cannot fail in the application's terms, because Prisma
-dials on the first statement rather than here. What can fail is configuration
-(`ConfigInvalid`, above) and the queries themselves — which belong to
-`@prisma/orm-postgres`, and to the [`/result` subpath](#results-on-the-btravstack-prisma-result-subpath)
-if you want them as `Result`s.
+One of this package's own, at startup. Opening the scope runs the health
+check's probe before the client is handed out, so a database that does not
+answer fails the boot with **`DatabaseUnreachable`** — `database` is the name
+you gave, `cause` the driver's own failure, and the URL is never in it, since
+it holds credentials. The wait is bounded by your pool's
+`connectionTimeoutMillis` (Prisma's default is twenty seconds), set in your
+`client` arrow. It is the same posture as
+[`@btravstack/cache`](/reference/cache)'s Redis adapter and the AMQP and
+Temporal clients: a dependency the process cannot reach fails the boot rather
+than its first request.
+
+A contract marker that does not match is **not** one of them. Prisma 8 checks
+the marker on that first statement and, on a mismatch, logs a warning once and
+carries on; `prisma db verify` is the deploy-time check that fails.
+
+Everything else is configuration (`ConfigInvalid`, above) and the queries
+themselves — which belong to `@prisma/orm-postgres`, and to the
+[`/result` subpath](#results-on-the-btravstack-prisma-result-subpath) if you
+want them as `Result`s.
 
 The health member's own failure is the kernel's `HealthCheckFailed`, carrying
 the driver's message, and it reaches `/healthz` rather than the caller.
@@ -165,21 +179,21 @@ A client missing either is still a compile error, which is the whole job.
 ## The pool's lifetime is the scope's
 
 The provider is **resourceful**, so `release` runs on every exit path —
-including a boot that fails after it ran. The error channel is empty because
-opening cannot fail in the application's terms: Prisma dials on the first
-statement, not here.
+including a boot that fails after it ran. A probe that fails closes the pool
+itself, since nothing was acquired for `release` to close.
 
 `runtime().close()` ends the pool without killing the client; Prisma dials
 again lazily on the next statement, which is why no test asserts that a
 released client refuses to query.
 
-**Use at least two connections if a fresh client's first statement can run
-inside a transaction.** Prisma 8 verifies the contract marker on another
-connection at first use. A transaction holding the only connection then waits
-for that verification. Reproduced with `pg.Pool({ max: 1,
-connectionTimeoutMillis: 500 })`: a fresh client's first transaction timed out
-reading the marker; a fresh pool of two and a warmed pool of one both succeeded.
-With a smaller pool, run a query outside a transaction before the first one.
+**The pool is verified before any unit runs on it.** Prisma 8 verifies its
+contract marker on first use, on a connection of its own. On a fresh pool whose
+first statements are a burst of transactions — as many as it has connections —
+every connection is held by a transaction waiting on that check, the check never
+gets one, and the whole burst times out. Running the probe while the scope opens
+takes that first use off the request path, whatever the pool size; a fresh
+scope serving twenty-five concurrent transactions on Prisma's default pool of
+ten is pinned by `examples/order-infrastructure`'s `database.spec.ts`.
 
 ## `Result`s, on the `@btravstack/prisma/result` subpath
 

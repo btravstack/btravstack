@@ -7,7 +7,7 @@
 import { Env, type ConfigInvalid } from "@btravstack/config";
 import type { Module, ServiceOf } from "@btravstack/di";
 
-import { prismaDatabase, type PrismaBinding } from "./prisma.js";
+import { prismaDatabase, type DatabaseUnreachable, type PrismaBinding } from "./prisma.js";
 
 type Expect<T extends true> = T;
 type Exactly<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
@@ -54,9 +54,9 @@ type _Needs = Expect<Exactly<NeedsOf<typeof database>, Env>>;
 // @ts-expect-error — `instrumented` no longer exists; observation is a set port.
 void prismaDatabase("OrderDatabase")({ client, instrumented: false });
 
-// 5. The error channel is the config's, unwrapped — the starter mints none of
-//    its own, because opening cannot fail in the application's terms.
-type _Error = Expect<Exactly<ErrorOf<typeof database>, ConfigInvalid>>;
+// 5. The error channel is the config's, unwrapped, and the one failure the
+//    starter mints: a database that did not answer when the scope opened.
+type _Error = Expect<Exactly<ErrorOf<typeof database>, ConfigInvalid | DatabaseUnreachable>>;
 
 // 6. A client with no pool to close is refused: `PrismaLike` is the one thing
 //    the starter needs of it.
