@@ -8,7 +8,7 @@ import {
   type Settle,
 } from "@btravstack/core";
 import { Module, Port, Provider, type PortClassOf } from "@btravstack/di";
-import { fromPromise, fromSafePromise, type AsyncResult } from "unthrown";
+import { TaggedError, fromPromise, fromSafePromise, type AsyncResult } from "unthrown";
 
 import { queryObserver, type SqlMiddlewareLike } from "./instrument.js";
 
@@ -60,6 +60,24 @@ type Probeable = {
 /** The one place the cast above is spelled. */
 const probeable = (db: PrismaLike): Probeable => db as unknown as Probeable;
 
+// `SELECT 1` terminated by `affectedCount()` rather than by a row spec: the
+// statement still runs, so the server has to answer — a pooled client reports
+// connected while the server behind it is gone — and nothing decodes a row, so
+// the probe needs no codec the application's contract may not have registered.
+const probe = (db: PrismaLike): Promise<unknown> =>
+  probeable(db)
+    .runtime()
+    .query(probeable(db).raw.sql`SELECT 1`.affectedCount().build());
+
+/**
+ * The database did not answer when the scope opened. Carries the database's
+ * name and the driver's own failure, never the URL, which holds credentials.
+ */
+export class DatabaseUnreachable extends TaggedError("DatabaseUnreachable")<{
+  readonly database: string;
+  readonly cause: unknown;
+}> {}
+
 /** What the starter hands {@link PrismaOptions.client}. */
 export type PrismaBinding = {
   /** `DATABASE_URL`, read through `Config` rather than by the application. */
@@ -101,6 +119,11 @@ export type PrismaOptions<C extends PrismaLike> = {
  * the client is reached through, and the resourceful provider that opens it and
  * closes it again.
  *
+ * **The database answers before the scope is handed out**: opening runs the
+ * health check's probe, so a pool is verified before any unit uses it, and a
+ * database that does not answer fails the boot with
+ * {@link DatabaseUnreachable}.
+ *
  * **The pool closes on every exit path**, including a boot that fails after
  * this provider ran — that is what makes it resourceful rather than a plain
  * value. `runtime().close()` ends the pool; Prisma dials again lazily on the
@@ -125,6 +148,22 @@ export const prismaDatabase =
     // `pnpm build` fails here — measured, not anticipated.
     const DatabasePort = Port(name) as PortClassOf<N, C>;
 
+    // Before the client is handed out, so no burst meets an unverified pool.
+    // A failed probe closes the pool itself: `release` runs only for what was acquired.
+    const verified = (db: C): AsyncResult<C, DatabaseUnreachable> =>
+      fromPromise(
+        probe(db).then(
+          () => db,
+          // `finally`, so the probe's failure is what rejects even when closing fails too.
+          (cause: unknown) =>
+            probeable(db)
+              .runtime()
+              .close()
+              .finally(() => Promise.reject(cause)),
+        ),
+        (cause: unknown) => new DatabaseUnreachable({ database: name, cause }),
+      ) as AsyncResult<C, DatabaseUnreachable>;
+
     // Pinned to `string` for THIS call alone. `Provider` reads a port's service
     // type through `PortInstance<string, infer S>`, and while `N` is still a
     // generic parameter that inference defers and `S` lands on `never`. The
@@ -140,7 +179,7 @@ export const prismaDatabase =
     // `$allModels` wrapper ever did.
     const clientProvider = Provider(port)({
       inject: { settings: config.port, observers: Observers },
-      acquire: ({ settings, observers }): AsyncResult<C, never> =>
+      acquire: ({ settings, observers }): AsyncResult<C, DatabaseUnreachable> =>
         // `Promise.resolve().then(...)` rather than `Promise.resolve(client(...))`:
         // the factory runs INSIDE the promise either way for the second form's
         // argument, which is evaluated first — measured, `postgres()` throws
@@ -151,31 +190,26 @@ export const prismaDatabase =
         // The cast is because `C` is only constrained by `PrismaLike`, so
         // unthrown's `NotThenable` guard cannot prove a client is not a
         // promise. It is whatever the application's `client` arrow returned.
-        fromSafePromise(
-          Promise.resolve().then(() =>
-            client({
-              url: settings.url,
-              middleware: [queryObserver(observers as readonly ((o: Operation) => Settle)[])],
-            }),
-          ),
-        ) as AsyncResult<C, never>,
+        (
+          fromSafePromise(
+            Promise.resolve().then(() =>
+              client({
+                url: settings.url,
+                middleware: [queryObserver(observers as readonly ((o: Operation) => Settle)[])],
+              }),
+            ),
+          ) as AsyncResult<C, never>
+        ).flatMap(verified),
       release: (db: C) => probeable(db).runtime().close(),
     });
 
-    // `SELECT 1` terminated by `affectedCount()` rather than by a row spec: the
-    // statement still runs, so the server has to answer — a pooled client
-    // reports connected while the server behind it is gone — and nothing
-    // decodes a row, so the probe needs no codec the application's contract may
-    // not have registered.
     const healthCheck = Provider.member(HealthChecks)({
       inject: { db: port },
       sync: ({ db }) => ({
         name,
         check: () =>
           fromPromise(
-            probeable(db)
-              .runtime()
-              .query(probeable(db).raw.sql`SELECT 1`.affectedCount().build()),
+            probe(db),
             (cause: unknown) =>
               new HealthCheckFailed({
                 reason: cause instanceof Error ? cause.message : "database unreachable",

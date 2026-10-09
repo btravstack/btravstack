@@ -74,6 +74,11 @@ the per-query observation below comes from.
   first query.
 - **The pool's lifetime.** The provider is _resourceful_, so `release` closes it
   on every exit path, including a boot that fails after it ran.
+- **A database that answers before any work runs.** Opening the scope runs the
+  health check's probe, so a fresh pool is verified before its first burst of
+  transactions, and a database that does not answer fails the boot with
+  `DatabaseUnreachable` — the database's name and the driver's cause, never the
+  URL.
 - **A health check**, named after the starter — `SELECT 1` through the raw
   lane, folded into the kernel's `GET /healthz` with nothing wired. `/readyz`
   does not read it: failing readiness on a dependency every replica shares

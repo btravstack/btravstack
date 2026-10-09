@@ -42,6 +42,74 @@ describe("prismaDatabase", () => {
     expect(stub.last()?.closed()).toBe(1);
   });
 
+  it("asks the database to answer before the scope is handed out", async ({ stub }) => {
+    // GIVEN a starter over a reachable stub client
+    const db = prismaDatabase("OrderDatabase")({ client: stub.client });
+    const root = Module("Root")({
+      imports: [db],
+      provides: [Provider(Env)({ inject: {}, value: { DATABASE_URL } })],
+      exports: [db.port],
+    });
+
+    // WHEN the scope opens, and nothing has used the client yet
+    const ran = await Module.scoped(root, (ctx) => OkAsync([...ctx.get(db.port).ran()]));
+
+    // THEN the probe already ran: a fresh pool is verified before any unit meets it
+    expect(ran).toBeOkWith([{ sql: "SELECT 1", values: [], kind: "affectedCount", tx: undefined }]);
+  });
+
+  it("fails the scope with DatabaseUnreachable when the database does not answer", async ({
+    stub,
+  }) => {
+    // GIVEN a client whose server does not answer
+    const db = prismaDatabase("OrderDatabase")({
+      client: (binding) => {
+        const client = stub.client(binding);
+        client.breakQueries("connection refused");
+        return client;
+      },
+    });
+    const root = Module("Root")({
+      imports: [db],
+      provides: [Provider(Env)({ inject: {}, value: { DATABASE_URL } })],
+      exports: [db.port],
+    });
+
+    // WHEN the scope opens
+    const opened = await Module.scoped(root, () => OkAsync(undefined));
+
+    // THEN the boot fails, naming the database and carrying the driver's failure
+    expect(opened).toBeErrWith(
+      expect.objectContaining({
+        _tag: "DatabaseUnreachable",
+        database: "OrderDatabase",
+        cause: expect.objectContaining({ message: "connection refused" }),
+      }),
+    );
+  });
+
+  it("closes the pool a failed probe opened", async ({ stub }) => {
+    // GIVEN a client whose server does not answer
+    const db = prismaDatabase("OrderDatabase")({
+      client: (binding) => {
+        const client = stub.client(binding);
+        client.breakQueries("connection refused");
+        return client;
+      },
+    });
+    const root = Module("Root")({
+      imports: [db],
+      provides: [Provider(Env)({ inject: {}, value: { DATABASE_URL } })],
+      exports: [db.port],
+    });
+
+    // WHEN the scope fails to open
+    await Module.scoped(root, () => OkAsync(undefined));
+
+    // THEN the pool was still closed, though the scope never acquired the client
+    expect(stub.last()?.closed()).toBe(1);
+  });
+
   it("reports a missing DATABASE_URL as a modeled error naming it", async ({ stub }) => {
     // GIVEN the same graph and an environment that names no database
     const db = prismaDatabase("OrderDatabase")({ client: stub.client });
@@ -136,23 +204,19 @@ describe("prismaDatabase", () => {
     // WHEN the contributed check is run
     await Module.scoped(root, (ctx) => runHealthChecks(ctx.get(HealthChecks)));
 
-    // THEN it went out as an `affectedCount` plan: the statement still runs, so
-    // a pool whose server is gone cannot answer it, and nothing decodes a row —
-    // which is what keeps the probe off any codec the contract may not register
+    // THEN it went out as an `affectedCount` plan, after the one opening the
+    // scope ran: the statement still runs, so a pool whose server is gone
+    // cannot answer it, and nothing decodes a row — which is what keeps the
+    // probe off any codec the contract may not register
     expect(stub.last()?.ran()).toEqual([
+      { sql: "SELECT 1", values: [], kind: "affectedCount", tx: undefined },
       { sql: "SELECT 1", values: [], kind: "affectedCount", tx: undefined },
     ]);
   });
 
   it("reports the database unhealthy when it cannot answer", async ({ stub }) => {
-    // GIVEN a client whose queries fail, as an unreachable server's would
-    const db = prismaDatabase("OrderDatabase")({
-      client: (binding) => {
-        const client = stub.client(binding);
-        client.breakQueries("connection refused");
-        return client;
-      },
-    });
+    // GIVEN an opened scope whose server then stops answering
+    const db = prismaDatabase("OrderDatabase")({ client: stub.client });
     const root = Module("Root")({
       imports: [db],
       provides: [Provider(Env)({ inject: {}, value: { DATABASE_URL } })],
@@ -160,7 +224,10 @@ describe("prismaDatabase", () => {
     });
 
     // WHEN the contributed check is run
-    const report = await Module.scoped(root, (ctx) => runHealthChecks(ctx.get(HealthChecks)));
+    const report = await Module.scoped(root, (ctx) => {
+      ctx.get(db.port).breakQueries("connection refused");
+      return runHealthChecks(ctx.get(HealthChecks));
+    });
 
     // THEN the report is unhealthy and carries the reason the driver gave
     expect(report).toBeOkWith({
@@ -175,21 +242,18 @@ describe("prismaDatabase", () => {
     // GIVEN a driver that rejects with something that is not an `Error` — which
     // nothing obliges it not to do, and which leaves the check with no message
     // to pass on
-    const db = prismaDatabase("OrderDatabase")({
-      client: (binding) => {
-        const client = stub.client(binding);
-        client.breakQueriesWith({ code: "57P01" });
-        return client;
-      },
-    });
+    const db = prismaDatabase("OrderDatabase")({ client: stub.client });
     const root = Module("Root")({
       imports: [db],
       provides: [Provider(Env)({ inject: {}, value: { DATABASE_URL } })],
       exports: [db.port, HealthChecks],
     });
 
-    // WHEN the contributed check is run
-    const report = await Module.scoped(root, (ctx) => runHealthChecks(ctx.get(HealthChecks)));
+    // WHEN the contributed check is run, once the scope is open
+    const report = await Module.scoped(root, (ctx) => {
+      ctx.get(db.port).breakQueriesWith({ code: "57P01" });
+      return runHealthChecks(ctx.get(HealthChecks));
+    });
 
     // THEN the component is still named and still unhealthy, with the fallback
     // reason rather than `[object Object]` or an empty string

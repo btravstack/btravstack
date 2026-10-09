@@ -41,8 +41,9 @@ despite living on that page.
   refused.
 
 - The port is a cast rather than a class expression, and the provider is
-  resourceful with an empty error channel: the comments and TSDoc in
-  `src/prisma.ts` say why.
+  resourceful, failing only with `DatabaseUnreachable` when the probe it runs
+  while opening goes unanswered: the comments and TSDoc in `src/prisma.ts` say
+  why.
 
 **Nothing here imports `@prisma/orm-postgres`, and it is still a peer.** Every
 shape this package needs of a client is structural, so there is no import and
@@ -75,13 +76,29 @@ distinguish; and it goes to `query` rather than `execute` because
 `affectedCount()`'s builder answers `build(): SqlQueryPlan<AffectedCount>` — a
 query plan despite the name. That last one cost a round of red typechecks.
 
-**A fresh client needs a second connection to verify its contract marker.** A
-first statement inside an interactive transaction already holds one. An
-application that sets its pool to one connection must warm the client with a
-query outside a transaction first, or use a pool of at least two. Measured with
-`pg.Pool` at `max: 1` and a 500 ms connection timeout: fresh first transaction
-timed out, while fresh `max: 2` and warmed `max: 1` succeeded. The starter does
-not own pool size and does not issue a query during provider acquisition.
+**The client is probed while the scope opens** (issue #460), and that reverses
+an earlier "no query during acquisition". Prisma 8 verifies its contract marker
+on first use, on a connection of its own, so a fresh pool whose first statements
+are as many concurrent transactions as it has connections deadlocks: every
+connection waits on a check that cannot get one. The earlier note advised a pool
+of at least two, which only covered a pool of one. Measured on
+`examples/order-infrastructure`'s `database.spec.ts`: 25 concurrent transactions
+on Prisma's default pool of ten committed none before the probe and all after.
+
+- **It fails the boot with `DatabaseUnreachable`**, the way the Redis cache, the
+  AMQP client and the Temporal client already do. It carries the name and the
+  driver's cause, never the URL, which holds credentials. The wait is the pool's
+  own `connectionTimeoutMillis`, which the application sets in its `client`
+  arrow; a starter timeout would duplicate it.
+- **A failed probe closes the pool itself**: `release` runs only for what was
+  acquired.
+- **It does not catch a marker mismatch.** Prisma rc.11 warns once and carries
+  on; `prisma db verify` is the deploy-time check.
+- **A middleware that answers an unannotated plan would answer the probe too**,
+  and the health check with it — both run the same `SELECT 1` through
+  `runtime().query`. Prisma's own cache middleware cannot: it caches only plans
+  carrying `cacheAnnotation`, and the probe carries none. Checking each
+  answer's `source` was weighed and declined for a middleware nobody ships.
 
 ### `@btravstack/prisma/result`
 

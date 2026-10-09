@@ -1,8 +1,13 @@
-import type { ServiceOf } from "@btravstack/di";
+import { Env } from "@btravstack/config";
+import type { ConfigInvalid } from "@btravstack/config";
+import { Module, Provider, type ServiceOf } from "@btravstack/di";
 import type { CustomerRepository, OrderRepository } from "@btravstack/example-order-application";
 import { TenantId, placeOrder, type Order } from "@btravstack/example-order-domain";
 import type { OutboxStoreService } from "@btravstack/outbox";
 import { prismaOutboxStore } from "@btravstack/outbox/prisma";
+import { prismaDatabase, type DatabaseUnreachable } from "@btravstack/prisma";
+import postgres from "@prisma/orm-postgres/runtime";
+import type { AsyncResult } from "unthrown";
 import { uuidv7 } from "uuidv7";
 import { inject, test } from "vitest";
 
@@ -14,6 +19,8 @@ import {
   type OrderDatabaseClient,
   type OrderPayload,
 } from "../index.js";
+import type { Contract } from "../prisma/contract.js";
+import contractJson from "../prisma/contract.json" with { type: "json" };
 
 export type PersistenceFixtures = {
   /**
@@ -65,6 +72,10 @@ export type PersistenceFixtures = {
    * reads.
    */
   readonly aCustomer: (id: string, name: string) => Promise<void>;
+  /** A scope `prismaDatabase` just opened, whose pool gives up on a connection after 2 s, not 20. */
+  readonly freshScope: <A>(
+    work: (db: OrderDatabaseClient) => AsyncResult<A, never>,
+  ) => AsyncResult<A, ConfigInvalid | DatabaseUnreachable>;
 };
 
 export const it = test.extend<PersistenceFixtures>({
@@ -130,6 +141,27 @@ export const it = test.extend<PersistenceFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   anOrder: async ({}, use) => {
     await use((id, quantity) => placeOrder(id, quantity).getOrThrow());
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  freshScope: async ({}, use) => {
+    const database = prismaDatabase("FreshDatabase")({
+      client: ({ url, middleware }) =>
+        postgres<Contract>({
+          contractJson,
+          url,
+          middleware: middleware as never,
+          poolOptions: { connectionTimeoutMillis: 2_000 },
+        }),
+    });
+    const root = Module("FreshScope")({
+      imports: [database],
+      provides: [
+        Provider(Env)({ inject: {}, value: { DATABASE_URL: inject("__ORDERS_DATABASE_URL__") } }),
+      ],
+      exports: [database.port],
+    });
+    await use((work) => Module.scoped(root, (ctx) => work(ctx.get(database.port))));
   },
 
   aCustomer: async ({ db, tenant }, use) => {
