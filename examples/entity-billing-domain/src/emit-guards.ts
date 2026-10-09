@@ -49,7 +49,7 @@
  * one type further along (`TS4023`), found while writing this example.
  */
 import { Entity } from "@btravstack/entity";
-import type { z } from "zod";
+import { z } from "zod";
 
 // `Organization` is imported as a value: the sealed-construction assertion
 // below needs the runtime binding to write `new Organization(...)` at all.
@@ -88,6 +88,21 @@ export const mutateTotal = (invoice: Invoice): void => {
 // `z.ZodArray<typeof OrderLine>`, and the schema it named could not reach
 // JSON Schema at all.
 export const OrderSummary = Order.output.pick({ id: true, lines: true, total: true });
+
+// `json` (#482) is a third shape per entity: an `Entity.codec` field is a
+// `ZodUnion<[ZodCodec<W, D>, D]>` in the four members and its wire side `W`
+// alone in `json`, a nested entity is its own `json` by indexed access, and a
+// union's is its members'. Each export below makes the emitter name one.
+export class Ledger extends Entity("Ledger")({
+  id: Entity.field(z.uuid().brand("LedgerId"), { identity: true }),
+  balance: Entity.codec(z.string().regex(/^[1-9][0-9]*$/), z.bigint().brand("Cents"), {
+    decode: (text) => BigInt(text),
+    encode: (cents) => String(cents),
+  }),
+}) {}
+export const LedgerJson = Ledger.json;
+export const OrderJson = Order.json.pick({ id: true, lines: true });
+export const DocumentJson = BillingDocument.json;
 
 /* ── Every namespace member, named so declaration emit walks it ───────── */
 

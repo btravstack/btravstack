@@ -336,8 +336,16 @@ The class carries a `.transform()`: it parses to an _instance_, not to plain
 data, and a transforming schema has no output representation. That is
 deliberate, and it is the reason the four plain `ZodObject`s exist separately.
 
-Rule of thumb: **contracts compose the four `ZodObject`s; domain code composes
-the class.**
+Rule of thumb: **contracts compose the four `ZodObject`s, and `json` where a
+field is a codec; domain code composes the class.**
+
+## Send a field JSON cannot hold
+
+A `bigint` or a `Temporal.Instant` declared with `Entity.codec` is a value in
+`output` and its wire text in `json`. Pick the response from `json`, so its
+JSON Schema and its mocks describe the text, and encode the matching pick of
+`output` in the handler —
+[The JSON form](/entity/reference/schemas#the-json-form-json) has both halves.
 
 ## Handle failures at the edge
 

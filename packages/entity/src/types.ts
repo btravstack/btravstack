@@ -71,6 +71,61 @@ export type PlainOf<S extends Fields, W extends "input" | "output"> = {
   [K in keyof S]: PlainSchema<SchemaOf<S[K]>, W>;
 };
 
+/** A union member that is a codec's decoded side, which `JsonSchema` drops. */
+type DecodedSide<M> = M extends z.ZodCodec<z.core.SomeType, infer D> ? D : never;
+
+/**
+ * A union's members less each that is the decoded side of an EARLIER codec,
+ * each as its JSON form — `D` accumulates the codecs seen so far, as `json`'s
+ * loop does.
+ */
+type JsonMembers<O extends readonly unknown[], D = never> = O extends readonly [infer H, ...infer R]
+  ? [H] extends [D]
+    ? JsonMembers<R, D>
+    : [JsonSchema<H>, ...JsonMembers<R, D | DecodedSide<H>>]
+  : [];
+
+/**
+ * One field schema as its JSON form — the type-level mirror of `json` in
+ * `json.ts`. A nested entity or union is its own `json`, by indexed access as
+ * `PlainSchema` does; a codec is its wire side; a union keeps the members that
+ * are not the decoded side of an earlier codec, and is that member alone when
+ * one is left. A wrapper is rebuilt only when its content changed.
+ */
+export type JsonSchema<T> = T extends {
+  readonly make: unknown;
+  readonly json: infer J extends z.core.$ZodType;
+}
+  ? J
+  : T extends z.ZodCodec<infer W extends z.core.$ZodType, z.core.SomeType>
+    ? W
+    : T extends z.ZodUnion<infer O extends readonly z.core.SomeType[]>
+      ? JsonMembers<O> extends infer Kept extends readonly z.core.SomeType[]
+        ? Kept extends readonly [infer Only extends z.core.$ZodType]
+          ? Only
+          : [Kept] extends [O]
+            ? T
+            : z.ZodUnion<Kept>
+        : never
+      : T extends z.ZodArray<infer E>
+        ? [JsonSchema<E>] extends [E]
+          ? T
+          : z.ZodArray<Extract<JsonSchema<E>, z.core.SomeType>>
+        : T extends z.ZodOptional<infer E>
+          ? [JsonSchema<E>] extends [E]
+            ? T
+            : z.ZodOptional<Extract<JsonSchema<E>, z.core.SomeType>>
+          : T extends z.ZodNullable<infer E>
+            ? [JsonSchema<E>] extends [E]
+              ? T
+              : z.ZodNullable<Extract<JsonSchema<E>, z.core.SomeType>>
+            : T;
+
+/** An entity's fields and computed fields, each as its JSON form — what `json` is built from. */
+export type JsonOf<S extends Fields, A extends Schemas> = {
+  [K in keyof S]: JsonSchema<SchemaOf<S[K]>>;
+} & { [K in keyof A]: JsonSchema<A[K]> };
+
 /**
  * The keys whose entries carry each flag. Matched on the `flags` property
  * rather than on `FieldSpec<…, {…}>` — the `Flags` constraint rejects a
@@ -514,6 +569,8 @@ export type EntityStatic<
   // schema that keeps the classes, so construction still nests instances.
   readonly input: z.ZodObject<PlainOf<S, "input">>;
   readonly output: z.ZodObject<PlainOf<S, "output"> & A>;
+  /** what `z.encode(output, x.toJSON())` writes: a response body, each codec as its wire form */
+  readonly json: z.ZodObject<JsonOf<S, A>>;
   readonly createInput: z.ZodObject<Omit<PlainOf<S, "input">, GeneratedKeys<S>>>;
   readonly updateInput: z.ZodObject<UpdateInputShapeOf<S, A, ImmutableKeys<S>>>;
   /**
@@ -738,6 +795,8 @@ export type AggregateStatic<
   readonly entityName: Tag;
   readonly input: z.ZodObject<PlainOf<S, "input">>;
   readonly output: z.ZodObject<PlainOf<S, "output"> & A>;
+  /** what `z.encode(output, x.toJSON())` writes: a response body, each codec as its wire form */
+  readonly json: z.ZodObject<JsonOf<S, A>>;
   /** the declared event union, for an outbox or an event store's contract */
   readonly events: Ev;
   readonly __input: InputOf<S>;

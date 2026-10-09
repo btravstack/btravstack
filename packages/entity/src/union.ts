@@ -13,6 +13,7 @@ export type UnionMember = {
   readonly entityName: string;
   readonly input: z.ZodObject<z.core.$ZodLooseShape>;
   readonly output: z.ZodObject<z.core.$ZodLooseShape>;
+  readonly json: z.ZodObject<z.core.$ZodLooseShape>;
   make(state: unknown): Result<unknown, InvalidEntity>;
   inspect(state: unknown): Result<Inspection<unknown>, InvalidEntity>;
 } & z.core.$ZodType;
@@ -44,6 +45,8 @@ export type EntityUnion<K extends string, M extends readonly UnionMember[]> = {
   // in its four derived members (#72).
   readonly input: z.ZodType<z.output<M[number]["input"]>, z.input<M[number]["input"]>>;
   readonly output: z.ZodType<z.output<M[number]["output"]>, z.input<M[number]["output"]>>;
+  /** each member's `json`, discriminated on the same field — a response body */
+  readonly json: z.ZodType<z.output<M[number]["json"]>, z.input<M[number]["json"]>>;
   /** the exact member union, read by `Entity.Instance` */
   readonly __instance: InstanceOf<M[number]>;
   make(state: unknown): Result<InstanceOf<M[number]>, InvalidEntity>;
@@ -138,6 +141,10 @@ export function union<
     discriminant,
     members.map((m) => m.output) as unknown as Branches,
   ) as unknown as EntityUnion<K, M>["output"];
+  const json = z.discriminatedUnion(
+    discriminant,
+    members.map((m) => m.json) as unknown as Branches,
+  ) as unknown as EntityUnion<K, M>["json"];
 
   const byValue = new Map<unknown, UnionMember>();
   for (const member of members) {
@@ -226,12 +233,13 @@ export function union<
     members,
     input,
     output,
+    json,
     make,
     inspect,
   } satisfies Omit<EntityUnion<K, M>, "__instance" | "_zod" | "~standard">;
   // non-enumerable, like `entity.ts` installs `_tag` — so `Object.keys` and
-  // spread over the union value list only the six public members; `input`
-  // and `output` are themselves enumerable ZodTypes, so this does not keep
+  // spread over the union value list only the seven public members; `input`,
+  // `output` and `json` are themselves enumerable ZodTypes, so this does not keep
   // `JSON.stringify` from walking the whole schema graph (measured)
   return Object.defineProperties(core, {
     _zod: { value: slots["_zod"], enumerable: false, configurable: true },
