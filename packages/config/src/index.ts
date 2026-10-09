@@ -8,4 +8,6 @@ export type {
   EnvReading,
   Environment,
   EnvironmentFor,
+  MaybePinned,
+  Unpinned,
 } from "./config.js";

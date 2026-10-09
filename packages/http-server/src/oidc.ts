@@ -1,6 +1,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
+import {
+  Config,
+  Env,
+  type ConfigInvalid,
+  type EnvReading,
+  type MaybePinned,
+  type Unpinned,
+} from "@btravstack/config";
 import { Observers, observe, type Operation, type Settle } from "@btravstack/core";
 import { Provider, type AnyProvider } from "@btravstack/di";
 import {
@@ -36,12 +43,24 @@ import {
  * one `HttpHandler` member. The second half is a `CookieSchemes` member, which
  * carries no type of its own.
  */
-export type OidcAnswerer<Pre extends string = string> = Provider<
+export type OidcAnswerer<
+  Pre extends string = string,
+  Issuer extends string | undefined = string | undefined,
+  ClientId extends string | undefined = string | undefined,
+  ClientSecret extends string | undefined = string | undefined,
+  RedirectUri extends string | undefined = string | undefined,
+> = Provider<
   HttpHandler,
   ConfigInvalid | OidcUnreachable,
   | EnvReading<
-      never,
-      `${Pre}_ISSUER` | `${Pre}_CLIENT_ID` | `${Pre}_CLIENT_SECRET` | `${Pre}_REDIRECT_URI`
+      | Unpinned<Issuer, `${Pre}_ISSUER`>
+      | Unpinned<ClientId, `${Pre}_CLIENT_ID`>
+      | Unpinned<ClientSecret, `${Pre}_CLIENT_SECRET`>
+      | Unpinned<RedirectUri, `${Pre}_REDIRECT_URI`>,
+      | MaybePinned<Issuer, `${Pre}_ISSUER`>
+      | MaybePinned<ClientId, `${Pre}_CLIENT_ID`>
+      | MaybePinned<ClientSecret, `${Pre}_CLIENT_SECRET`>
+      | MaybePinned<RedirectUri, `${Pre}_REDIRECT_URI`>
     >
   | SessionCodec
   | Observers
@@ -71,19 +90,26 @@ class GrantFailed extends TaggedError("GrantFailed")<{
   readonly cause: unknown;
 }> {}
 
-export type OidcOptions<P, Pre extends string = string> = {
+export type OidcOptions<
+  P,
+  Pre extends string = string,
+  Issuer extends string | undefined = string | undefined,
+  ClientId extends string | undefined = string | undefined,
+  ClientSecret extends string | undefined = string | undefined,
+  RedirectUri extends string | undefined = string | undefined,
+> = {
   /** Pins `<prefix>_ISSUER` — the provider, as its discovery document names itself. */
-  readonly issuer?: string;
+  readonly issuer?: Issuer;
   /** Pins `<prefix>_CLIENT_ID`. */
-  readonly clientId?: string;
+  readonly clientId?: ClientId;
   /** Pins `<prefix>_CLIENT_SECRET` — this is a confidential client. */
-  readonly clientSecret?: string;
+  readonly clientSecret?: ClientSecret;
   /**
    * Pins `<prefix>_REDIRECT_URI` — the URI REGISTERED with the provider, which
    * is also what the code grant is checked against. It is never rebuilt from
    * the request's `Host`.
    */
-  readonly redirectUri?: string;
+  readonly redirectUri?: RedirectUri;
   /**
    * The prefix of the four variables this login reads: `<prefix>_ISSUER`,
    * `<prefix>_CLIENT_ID`, `<prefix>_CLIENT_SECRET` and `<prefix>_REDIRECT_URI`.
@@ -441,9 +467,16 @@ const handlerFor =
  * member beside a scheme that reads one; this is that rule reaching the one
  * surface it could not see.
  */
-export const oidc = <P, const Pre extends string = "HTTP_OIDC">(
-  options: OidcOptions<P, Pre>,
-): readonly [OidcAnswerer<Pre>, AnyProvider] => {
+export const oidc = <
+  P,
+  const Pre extends string = "HTTP_OIDC",
+  const Issuer extends string | undefined = undefined,
+  const ClientId extends string | undefined = undefined,
+  const ClientSecret extends string | undefined = undefined,
+  const RedirectUri extends string | undefined = undefined,
+>(
+  options: OidcOptions<P, Pre, Issuer, ClientId, ClientSecret, RedirectUri>,
+): readonly [OidcAnswerer<Pre, Issuer, ClientId, ClientSecret, RedirectUri>, AnyProvider] => {
   const prefix = options.prefix ?? DEFAULT_PREFIX;
   const variables = (options.variablePrefix ?? "HTTP_OIDC") as Pre;
   const schema = Config.object({
@@ -495,5 +528,8 @@ export const oidc = <P, const Pre extends string = "HTTP_OIDC">(
       }),
   });
 
-  return [answerer as unknown as OidcAnswerer<Pre>, cookieScheme()];
+  return [
+    answerer as unknown as OidcAnswerer<Pre, Issuer, ClientId, ClientSecret, RedirectUri>,
+    cookieScheme(),
+  ];
 };

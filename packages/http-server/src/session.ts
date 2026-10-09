@@ -1,4 +1,11 @@
-import { Config, ConfigInvalid, Env, type EnvReading } from "@btravstack/config";
+import {
+  Config,
+  ConfigInvalid,
+  Env,
+  type EnvReading,
+  type MaybePinned,
+  type Unpinned,
+} from "@btravstack/config";
 import { Port, Provider } from "@btravstack/di";
 import { CompactEncrypt, compactDecrypt } from "jose";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
@@ -263,16 +270,22 @@ const codec = (
  * A key that is not 32 bytes is a `ConfigInvalid` naming the variable, at boot,
  * rather than a failure at the first request.
  */
-export const sessionCodec = (
-  pins: { readonly keys?: readonly string[]; readonly ttlSec?: number } = {},
-): Provider<SessionCodec, ConfigInvalid, EnvReading<never, "HTTP_SESSION_KEYS">> & {
+export const sessionCodec = <const Keys extends readonly string[] | undefined = undefined>(
+  pins: { readonly keys?: Keys; readonly ttlSec?: number } = {},
+): Provider<
+  SessionCodec,
+  ConfigInvalid,
+  EnvReading<Unpinned<Keys, "HTTP_SESSION_KEYS">, MaybePinned<Keys, "HTTP_SESSION_KEYS">>
+> & {
   readonly port: typeof SessionCodec;
 } => {
   const schema = Config.object({
     keys: Config.pinned(pins.keys, Config.list("HTTP_SESSION_KEYS")),
   });
+  // Cast for the needs alone: over a generic `Keys` the schema's own needs type
+  // cannot resolve, so the annotation states the variable — required unless pinned.
   return Provider(SessionCodec)({
-    inject: { env: Config.env(schema) },
+    inject: { env: Env },
     make: ({ env }): AsyncResult<SessionCodecService, ConfigInvalid> =>
       Config.parse(
         "HttpSession",
@@ -300,7 +313,7 @@ export const sessionCodec = (
             )
           : OkAsync(codec([sealing, ...rotated], pins.ttlSec ?? DEFAULT_TTL_SEC));
       }),
-  });
+  }) as never;
 };
 
 /**
@@ -314,7 +327,13 @@ export const sessionCodec = (
  */
 export const SESSION_COOKIE = "__Host-session";
 
-export type SessionOptions<P, Scopes extends readonly string[], Pre extends string = string> = {
+export type SessionOptions<
+  P,
+  Scopes extends readonly string[],
+  Pre extends string = string,
+  Issuer extends string | undefined = string | undefined,
+  ClientId extends string | undefined = string | undefined,
+> = {
   /**
    * The scopes this scheme can grant, and **the only place they are written**
    * — `jwtAuthenticator`'s rule, for `jwtAuthenticator`'s reason. The grant is
@@ -332,12 +351,12 @@ export type SessionOptions<P, Scopes extends readonly string[], Pre extends stri
    * The issuer of the login whose sessions this scheme accepts — pins
    * `<prefix>_ISSUER`, the variable that login reads too.
    */
-  readonly issuer?: string;
+  readonly issuer?: Issuer;
   /**
    * That login's client id — pins `<prefix>_CLIENT_ID`. A session from another
    * issuer, another client, or none is refused.
    */
-  readonly clientId?: string;
+  readonly clientId?: ClientId;
   /**
    * The prefix of both variables. Default `HTTP_OIDC`, `oidc()`'s own — a
    * scheme pairs with its login by naming the same prefix.
@@ -375,12 +394,21 @@ export type SessionOptions<P, Scopes extends readonly string[], Pre extends stri
  */
 export const sessionAuthenticator =
   <P>() =>
-  <const Scopes extends readonly string[] = readonly [], const Pre extends string = "HTTP_OIDC">(
-    options: SessionOptions<P, Scopes, Pre> = {},
+  <
+    const Scopes extends readonly string[] = readonly [],
+    const Pre extends string = "HTTP_OIDC",
+    const Issuer extends string | undefined = undefined,
+    const ClientId extends string | undefined = undefined,
+  >(
+    options: SessionOptions<P, Scopes, Pre, Issuer, ClientId> = {},
   ): Authenticator<
     P,
     Scopes[number],
-    SessionCodec | EnvReading<never, `${Pre}_ISSUER` | `${Pre}_CLIENT_ID`>,
+    | SessionCodec
+    | EnvReading<
+        Unpinned<Issuer, `${Pre}_ISSUER`> | Unpinned<ClientId, `${Pre}_CLIENT_ID`>,
+        MaybePinned<Issuer, `${Pre}_ISSUER`> | MaybePinned<ClientId, `${Pre}_CLIENT_ID`>
+      >,
     ConfigInvalid
   > => {
     // The vocabulary decides the answer's SHAPE, and it is read once here: a

@@ -28,7 +28,7 @@ const identityOf = (claims: IDToken): Identity | undefined =>
     : undefined;
 
 // Nothing pinned: the four values arrive from `HTTP_OIDC_*`, so the provider
-// needs `Env` reading them beside `SessionCodec` — and `Observers`, the set port every
+// needs `Env` requiring them beside `SessionCodec` — and `Observers`, the set port every
 // per-operation starter here reports to, which costs a root nothing because
 // `httpServer` already contributes the no-op member and exports the port.
 // Both ways a boot can refuse are on the error channel.
@@ -38,11 +38,11 @@ expectTypeOf(oidc({ principal: identityOf })).toEqualTypeOf<
       HttpHandler,
       ConfigInvalid | OidcUnreachable,
       | EnvReading<
-          never,
           | "HTTP_OIDC_ISSUER"
           | "HTTP_OIDC_CLIENT_ID"
           | "HTTP_OIDC_CLIENT_SECRET"
-          | "HTTP_OIDC_REDIRECT_URI"
+          | "HTTP_OIDC_REDIRECT_URI",
+          never
         >
       | SessionCodec
       | Observers
@@ -53,8 +53,8 @@ expectTypeOf(oidc({ principal: identityOf })).toEqualTypeOf<
   ]
 >();
 
-// Every transport option pinned at the call is the same provider: a pin
-// replaces a variable, it does not change what the answerer is.
+// Every transport option pinned at the call reads none of the four variables:
+// a pin replaces a variable, in the type as at run time.
 expectTypeOf(
   oidc({
     issuer: "https://issuer.example/",
@@ -71,15 +71,7 @@ expectTypeOf(
     Provider<
       HttpHandler,
       ConfigInvalid | OidcUnreachable,
-      | EnvReading<
-          never,
-          | "HTTP_OIDC_ISSUER"
-          | "HTTP_OIDC_CLIENT_ID"
-          | "HTTP_OIDC_CLIENT_SECRET"
-          | "HTTP_OIDC_REDIRECT_URI"
-        >
-      | SessionCodec
-      | Observers
+      EnvReading<never, never> | SessionCodec | Observers
     > & {
       readonly port: typeof HttpHandler;
     },

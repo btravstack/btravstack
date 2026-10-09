@@ -535,6 +535,7 @@ describe("order-api", () => {
     api,
   }) => {
     // GIVEN a deployment that set the JWKS and the audience and forgot the issuer
+    // @ts-expect-error the type refuses a deployment missing HTTP_JWT_ISSUER; this spec is the run-time refusal
     const app = boot(api, { env: { ...env, HTTP_JWT_ISSUER: undefined } });
 
     // WHEN it boots

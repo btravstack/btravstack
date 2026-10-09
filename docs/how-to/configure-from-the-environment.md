@@ -177,8 +177,9 @@ its variable in its type, and a module's needs carry the names up to `start`,
 configuration reads and the kernel's own, requires the ones nothing defaults or
 pins, and refuses any other. A misspelt `DATABSE_URL`, or a variable the root
 stopped reading, is a compile error at the call rather than a `ConfigInvalid`
-at boot. A variable a starter option can pin is optional in the type, since
-only the call knows whether it pinned it. To type an environment kept apart
+at boot. A starter option that pins a variable takes it out of the record —
+`jwtAuthenticator({ issuer: "https://…" })` no longer needs `HTTP_JWT_ISSUER` —
+and one whose value may be `undefined` leaves it optional. To type an environment kept apart
 from the call, such as a test's shared one, use `StartEnvironment`:
 
 ```ts

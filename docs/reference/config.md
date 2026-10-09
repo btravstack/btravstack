@@ -58,7 +58,10 @@ type.** `Config.string("DATABASE_URL")` is a
 `"optional"`; a field typed `ConfigField<T, "NAME">` with no need given counts
 as required. `Config.pinned(value, field)` reads nothing when `value` is
 certainly there, and leaves the variable `"optional"` when `value` may be
-`undefined` — only the call knows whether it pinned. A hand-written field typed
+`undefined`. A starter whose options pin variables carries the same rule in its
+own type — with `Unpinned<X, V>` and `MaybePinned<X, V>`, `V` when the option
+`X` is certainly absent, and when it may or may not be there — so an unpinned
+`HTTP_JWT_ISSUER` is required and a pinned one is not read. A hand-written field typed
 `ConfigField<T>` names its variable only as `string`, which is allowed and
 opens the environment its graph accepts (see
 [The variables a graph reads](#the-variables-a-graph-reads)).

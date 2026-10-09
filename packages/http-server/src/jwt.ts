@@ -1,4 +1,11 @@
-import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
+import {
+  Config,
+  Env,
+  type ConfigInvalid,
+  type EnvReading,
+  type MaybePinned,
+  type Unpinned,
+} from "@btravstack/config";
 import { Observers, observe } from "@btravstack/core";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { Err, ErrAsync, Ok, OkAsync, fromPromise, type Result } from "unthrown";
@@ -15,21 +22,28 @@ import { cleartext, cleartextRefused } from "./cleartext.js";
 /** The verified claims, as `jose` reports them. */
 export type Claims = JWTPayload;
 
-export type JwtOptions<P, Scopes extends readonly string[], Pre extends string = string> = {
+export type JwtOptions<
+  P,
+  Scopes extends readonly string[],
+  Pre extends string = string,
+  Jwks extends string | undefined = string | undefined,
+  Issuer extends string | undefined = string | undefined,
+  Audience extends string | undefined = string | undefined,
+> = {
   /**
    * The issuer's JWKS endpoint — pins `<prefix>_JWKS_URI` when set, and is read
    * from it when not. Keys are fetched on demand and cached; a `kid` the cache
    * does not know triggers one refetch, rate-limited by `jose`.
    */
-  readonly jwks?: string;
+  readonly jwks?: Jwks;
   /** Required `iss` — pins `<prefix>_ISSUER`. A token from another issuer is refused. */
-  readonly issuer?: string;
+  readonly issuer?: Issuer;
   /**
    * Required `aud` — pins `<prefix>_AUDIENCE`. A token minted for another
    * audience is refused: this is the check that stops a token from a sibling
    * service being replayed here.
    */
-  readonly audience?: string;
+  readonly audience?: Audience;
   /**
    * The prefix of the three variables this scheme reads: `<prefix>_JWKS_URI`,
    * `<prefix>_ISSUER` and `<prefix>_AUDIENCE`. Default `HTTP_JWT`. A second
@@ -194,12 +208,26 @@ const bearer = (value: string | readonly string[] | undefined): string | undefin
  */
 export const jwtAuthenticator =
   <P>() =>
-  <const Scopes extends readonly string[] = readonly [], const Pre extends string = "HTTP_JWT">(
-    options: JwtOptions<P, Scopes, Pre>,
+  <
+    const Scopes extends readonly string[] = readonly [],
+    const Pre extends string = "HTTP_JWT",
+    const Jwks extends string | undefined = undefined,
+    const Issuer extends string | undefined = undefined,
+    const Audience extends string | undefined = undefined,
+  >(
+    options: JwtOptions<P, Scopes, Pre, Jwks, Issuer, Audience>,
   ): Authenticator<
     P,
     Scopes[number],
-    EnvReading<never, `${Pre}_JWKS_URI` | `${Pre}_ISSUER` | `${Pre}_AUDIENCE`> | Observers,
+    | EnvReading<
+        | Unpinned<Jwks, `${Pre}_JWKS_URI`>
+        | Unpinned<Issuer, `${Pre}_ISSUER`>
+        | Unpinned<Audience, `${Pre}_AUDIENCE`>,
+        | MaybePinned<Jwks, `${Pre}_JWKS_URI`>
+        | MaybePinned<Issuer, `${Pre}_ISSUER`>
+        | MaybePinned<Audience, `${Pre}_AUDIENCE`>
+      >
+    | Observers,
     ConfigInvalid
   > => {
     const header = (options.header ?? "authorization").toLowerCase();
@@ -211,8 +239,9 @@ export const jwtAuthenticator =
       audience: Config.pinned(options.audience, Config.string(`${prefix}_AUDIENCE`)),
     });
 
-    // Cast for the needs alone: over a generic prefix the schema's own needs
-    // type cannot resolve, so the annotation states the three variables.
+    // Cast for the needs alone: over generic options the schema's own needs
+    // type cannot resolve, so the annotation states the three variables —
+    // required unless pinned, absent when certainly pinned.
     return HttpAuthenticator<P, Scopes[number]>()({
       inject: { env: Env, observers: Observers },
       make: ({ env, observers }) =>

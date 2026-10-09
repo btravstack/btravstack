@@ -1,4 +1,11 @@
-import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
+import {
+  Config,
+  Env,
+  type ConfigInvalid,
+  type EnvReading,
+  type MaybePinned,
+  type Unpinned,
+} from "@btravstack/config";
 import {
   HealthCheckFailed,
   HealthChecks,
@@ -28,9 +35,11 @@ const BATCH = 32;
 const MAX_BACKOFF_MS = 30_000;
 
 /** What {@link outbox} is handed. Each field pins the variable named beside it. */
-export type OutboxOptions = {
+export type OutboxOptions<
+  Tenants extends readonly string[] | undefined = readonly string[] | undefined,
+> = {
   /** The tenants this relay serves — `OUTBOX_TENANTS`, comma-separated, required. */
-  readonly tenants?: readonly string[];
+  readonly tenants?: Tenants;
   /** The idle sleep between sweeps — `OUTBOX_POLL_MS` (default `200`). */
   readonly pollMs?: number;
   /** The oldest pending age `/healthz` tolerates — `OUTBOX_MAX_LAG_MS` (default `60_000`). */
@@ -173,12 +182,15 @@ const startRelay = (
  * Every claim and publish is reported to `Observers`; the module holds no
  * logger of its own.
  */
-export const outbox = (
-  options: OutboxOptions = {},
+export const outbox = <const Tenants extends readonly string[] | undefined = undefined>(
+  options: OutboxOptions<Tenants> = {},
 ): Module<
   HealthChecks,
   ConfigInvalid,
-  | EnvReading<never, "OUTBOX_TENANTS" | "OUTBOX_POLL_MS" | "OUTBOX_MAX_LAG_MS">
+  | EnvReading<
+      Unpinned<Tenants, "OUTBOX_TENANTS">,
+      MaybePinned<Tenants, "OUTBOX_TENANTS"> | "OUTBOX_POLL_MS" | "OUTBOX_MAX_LAG_MS"
+    >
   | OutboxStore
   | OutboxPublisher
   | Scope
@@ -235,9 +247,12 @@ export const outbox = (
     }),
   });
 
+  // Cast for the needs alone: over a generic `Tenants` the schema's own needs
+  // type cannot resolve, so the annotation states the variables — `OUTBOX_TENANTS`
+  // required unless pinned.
   return Module("Outbox")({
     needs: [Env, OutboxStore, OutboxPublisher],
     provides: [config, noObserverMember, relay, healthCheck],
     exports: [HealthChecks],
-  });
+  }) as never;
 };

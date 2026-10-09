@@ -26,10 +26,18 @@ are load-bearing:
   emit prints a named alias unreduced, and a consumer exporting a module would
   then name an alias this package does not export. Measured: the needs printed
   as `EnvReading<RequiredKeys<…>, …>` until they were inlined.
-- **A variable a starter option may pin is optional.** `Config.pinned` reads
-  nothing when its value is certainly there and leaves the variable optional
-  when the value's type admits `undefined`: only the call knows. Making that
-  exact needs every starter generic over its options — stage 2 of #465.
+- **A pin decides a variable's need from the option's TYPE.** `Config.pinned`
+  reads nothing when its value is certainly there, reads the field's own need
+  when it is certainly absent, and leaves the variable optional when its type
+  admits both. A starter whose options pin a variable with no default
+  (`jwtAuthenticator`, `oidc()`, `sessionAuthenticator`, `sessionCodec`,
+  `outbox`) takes each such option as its own inferred type parameter,
+  defaulting to `undefined`, and spells the need with `Unpinned` /
+  `MaybePinned` — so an unpinned `HTTP_JWT_ISSUER` is required at the boot
+  site. A variable WITH a default stays optional however it is pinned, which is
+  why `httpServer`, the workers and the kernel needed no such parameters. The
+  exported option types default those parameters to `T | undefined`, so an
+  options object annotated with them still accepts any value.
 - **`EnvPortFor` has a zero-argument constructor**, as `Env` does.
   `InstanceType` matches against `(...args: any)`, and `any` is not assignable
   to `never`, so a `(...args: never)` constructor answers `any` — which every

@@ -64,6 +64,20 @@ export type EnvNeed<I> = string extends keyof I
       >
     : Env;
 
+/**
+ * `V`, when the option `X` that could pin it is certainly absent: a variable
+ * that must be set. For a starter spelling its needs from its options' types,
+ * which over generic options its schema cannot resolve.
+ */
+export type Unpinned<X, V extends string> = [X] extends [undefined] ? V : never;
+
+/** `V`, when the option `X` may or may not pin it: a variable that may be set. */
+export type MaybePinned<X, V extends string> = [X] extends [undefined]
+  ? never
+  : undefined extends X
+    ? V
+    : never;
+
 /** The `Env` port class, as a need for `EnvNeed<I>` — what {@link Config.env} answers. */
 // A zero-argument constructor, as `Env` has: `InstanceType` matches a
 // constructor against `(...args: any)`, and `any` is not assignable to `never`,
