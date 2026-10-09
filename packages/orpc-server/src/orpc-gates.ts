@@ -53,7 +53,7 @@ export type KindsIn<C, R = never> =
       }[Exclude<keyof C, PrincipalKey>];
 
 /** What every `OrpcRouter` arm returns; only the needs channel `N` differs. */
-export type Built<Auth, N, Units, Kinds = string> = Provider<
+export type Built<Auth, N, Units, Kinds = string, Pieces = never> = Provider<
   PortInstance<"OrpcRouter", Router<Record<never, never>>>,
   never,
   N
@@ -64,6 +64,11 @@ export type Built<Auth, N, Units, Kinds = string> = Provider<
    * the router is what needs them: they discharge its scheme ports.
    */
   readonly authenticators: readonly Auth[];
+  /**
+   * The pieces the composing form was handed, carried so `HttpModule` provides
+   * them with the router. Empty for the `{ inject, sync }` form.
+   */
+  readonly pieces: readonly Pieces[];
   /** Phantom: the kinds bound at `units<…>()`, read by `HttpModule`, never at runtime. */
   readonly _units?: Units;
   /** Phantom: the kinds a request here opens under, read by `HttpModule`, never at runtime. */

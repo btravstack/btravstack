@@ -183,16 +183,26 @@ not cover"` marker, and what the marker names is a procedure path
   walk: `routerOf` walks the same tree it always did, marks,
   inheritance and the stray-key drop included. The walk itself is untouched —
   `nest` lives in the composing arm because the walk is shared with the
-  `{ inject, unit?, sync }` form, which never nests. The pieces themselves still need
-  discharging — listed in `provides` alongside the router, or exported by a
-  slice module imported in — exactly as in `packages/amqp-worker`. Coverage
+  `{ inject, unit?, sync }` form, which never nests. **The composed provider
+  carries its pieces** (`pieces`, beside `authenticators`), and `HttpModule`
+  provides them with the router — the htmx fragments provider does the same —
+  so a root that keeps its controllers itself lists each once, in the
+  composing call (#469). A slice that provides and exports its own piece still
+  composes: di keys providers by reference, so the same piece seen twice is
+  one provider. The TYPE adds a piece to the root's `provides` only when no
+  import exports its port (`Unexported` in `http-module.ts`), since a piece in
+  the root's own `provides` puts its needs on the root — a slice's controller
+  reading a use case the slice composes privately would otherwise become the
+  root's undeclared need. A piece no import provides is the root's own
+  provider, so its unmet need is di's `UNDECLARED NEEDS` at the `HttpModule`
+  call. `http()` is not sugar and adds nothing: its root spreads
+  `router.pieces` as it spreads `router.authenticators`. Coverage
   is not uniqueness, but with paths the split moved: a piece **inside**
   another piece's fragment is caught at the call (the
   `OVERLAPPING CONTROLLERS` gate above), while two pieces at the **same**
-  path remain one port id and therefore di's duplicate-provider defect — and
-  only when **both** end up discharged as providers in the same graph; wire
-  in only one and the other's implementation is simply never registered, no
-  diagnostic marking the conflict.
+  path remain one port id and therefore di's duplicate-provider defect —
+  which, now that `HttpModule` provides every piece the array names, fires
+  whenever both are in the array.
   **A literal dot in a contract key is refused, at both ends** (issue #121,
   where it was a green compile and a 404): `nest` rebuilds a piece's path by
   splitting on `.`, so it cannot tell a path separator from a dot inside one

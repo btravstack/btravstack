@@ -253,7 +253,10 @@ export const OrderApi = HttpModule("OrderApi")({
 `observability()` is here because every slice's layers write to its `Logger`
 and none of them owns it; `OrderPersistenceModule` because the one Prisma
 client belongs to the process rather than to a request. Both are exported
-because the unit kinds read them once forked. The **authenticators are not** here, and that is the point: who a
+because the unit kinds read them once forked. Neither are the controllers: the
+router carries the pieces it composes and `HttpModule` provides them, so a root
+with no slices lists each controller once, in the `OrpcRouter` call, and a
+slice that provides and exports its own is still one provider. The **authenticators are not** here, and that is the point: who a
 caller is is one answer per process, so they were declared once in `auth.ts`
 and they ride the router, which is what needs them — `HttpModule` puts them in
 `provides` itself. A marked fragment makes each scheme it names a dependency of

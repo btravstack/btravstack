@@ -119,10 +119,14 @@ plus the starter's own fields. Supply `router`, `fragments`, or both; supplying
 booting a listener with nothing behind it. It appends
 `httpServer(options)` — the whole options record, `csrf` and `unit` included —
 to `imports`; when `router` is given it prepends `router` **and the scheme
-authenticators it carries**, plus `orpc({ prefix, plugins, … })`, to
+authenticators and pieces it carries**, plus `orpc({ prefix, plugins, … })`, to
 `provides`; when `fragments` is given it prepends `fragments` and its own
-authenticators, plus `htmx({ prefix: fragmentsPrefix, login: fragmentsLogin })`. A scheme both
-provide is deduplicated by reference before it reaches `provides`. It prepends
+authenticators and pieces, plus `htmx({ prefix: fragmentsPrefix, login: fragmentsLogin })`. A scheme both
+provide is deduplicated by reference before it reaches `provides`. A piece a
+slice already provides and exports is the same provider, which di keys by
+reference, so a root lists its controllers once — in the composing call — and
+the type counts a piece among the root's own providers only when no import
+exports its port, so the root never takes on a slice's needs. It prepends
 `HttpRuntime` and `HttpHandler` to `exports`, and hands the augmented tuples to
 di's own `Module(name)`, whose return type is the sugar's. The kernel and both
 gates see a plain module.
@@ -860,7 +864,11 @@ into a process of its own with its piece untouched —
 compiles — the property a slice's independent deployability rests on. The
 `{ inject, sync }` form is unchanged and stays correct for a small API — an
 array is never a valid `{ inject, unit?, sync }` call, so `Array.isArray` alone
-tells the two arms apart, and there is nothing else left to discriminate. See
+tells the two arms apart, and there is nothing else left to discriminate.
+The composed provider carries its pieces on `provider.pieces` (empty for the
+`{ inject, sync }` form), which `HttpModule` provides with it; a root built on
+`http()` spreads them into `provides` itself, as it does
+`provider.authenticators`. See
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
 the worked recipe.
 
