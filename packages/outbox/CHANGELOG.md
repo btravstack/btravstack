@@ -1,5 +1,24 @@
 # @btravstack/outbox
 
+## 0.27.0
+
+### Minor Changes
+
+- dafe570: `prismaOutboxStore` pins each tenant before it reads or marks, transaction-
+  locally, so the outbox table may carry `@@rls` like any tenant-owned table and
+  the relay may connect as a non-owner, `NOBYPASSRLS` role. The setting defaults
+  to `app.tenant_id` (`tenantSetting`), and on a table without row security the
+  pin changes nothing. The health check's `oldestPending` now reads each tenant
+  pinned, on one connection. `columns` names the physical columns of a model
+  mapped with `@map`.
+
+### Patch Changes
+
+- Updated dependencies [bd99464]
+  - @btravstack/core@0.27.0
+  - @btravstack/config@0.27.0
+  - @btravstack/di@0.27.0
+
 ## 0.26.0
 
 ### Minor Changes
