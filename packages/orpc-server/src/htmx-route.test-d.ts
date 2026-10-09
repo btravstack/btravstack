@@ -49,7 +49,6 @@ const record = { span: RouteSpan, tenant: RouteTenant };
 
 // A route requiring `user` opens the module that kind bound, and sees both.
 void kinded.HtmxGet("/profile", { requires: [{ user: [] }] })({
-  inject: {},
   unit: record,
   sync: () => (context) => {
     context.unit.span.finish();
@@ -107,3 +106,21 @@ const plain = kinded.HtmxGet("/plain")({
 });
 type Expect<T extends true> = T;
 type _EmptyUnitRecord = Expect<keyof typeof plain.unit extends never ? true : false>;
+
+// `inject` is optional, so a mistyped key is what excess-property checking refuses.
+void api.HtmxGet("/typo")({
+  // @ts-expect-error — `injec` is not `inject`
+  injec: {},
+  sync: () => () => OkAsync(html`<p></p>`),
+});
+
+// A non-empty `D` named by an explicit type argument requires `inject`.
+void api.HtmxGet("/explicit")<{ tenant: typeof RouteTenant }>(
+  // @ts-expect-error — `inject` is required once `D` names a port
+  {
+    sync:
+      ({ tenant }) =>
+      () =>
+        OkAsync(html`<p>${tenant}</p>`),
+  },
+);

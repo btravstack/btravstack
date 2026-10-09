@@ -143,17 +143,22 @@ export const controllerFor =
     > {};
 
     return <
-      const D extends Readonly<Record<string, AnyPort>>,
+      const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
       const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
-    >(options: {
-      readonly inject: D;
-      /** The unit-scoped ports every leaf may read off `context.unit`, per its own kind. */
-      readonly unit?: U;
-      readonly sync: (services: {
-        readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
-      }) => Implementation<FragmentAt<C, Key>, Schemes, never, Units, U>;
-    }): Minted<C, Key, Schemes, InstanceType<D[keyof D]>, U> =>
-      Object.assign(Provider(port as never)(options as never), {
-        unit: options.unit ?? {},
-      }) as never;
+    >(
+      options: {
+        readonly inject?: D;
+        /** The unit-scoped ports every leaf may read off `context.unit`, per its own kind. */
+        readonly unit?: U;
+        readonly sync: (services: {
+          readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+        }) => Implementation<FragmentAt<C, Key>, Schemes, never, Units, U>;
+      } & ([keyof D] extends [never] ? unknown : { readonly inject: D }),
+    ): Minted<C, Key, Schemes, InstanceType<D[keyof D]>, U> =>
+      Object.assign(
+        Provider(port as never)({ ...options, inject: options.inject ?? {} } as never),
+        {
+          unit: options.unit ?? {},
+        },
+      ) as never;
   };

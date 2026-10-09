@@ -115,7 +115,6 @@ domain failure becomes a status code here, and nowhere else.
 import { P } from "unthrown";
 
 export const ordersRouter = api.OrpcRouter(ordersContract)({
-  inject: {},
   unit: { place: PlaceOrder },
   sync: () => ({
     place: ({ errors, context }, input) =>

@@ -117,7 +117,7 @@ const contract = { orders: { find: oc }, customers: { find: oc } };
 const ordersController = api.OrpcController(
   contract,
   "orders",
-)({ inject: {}, sync: () => ({ find: () => OkAsync("order") }) });
+)({ sync: () => ({ find: () => OkAsync("order") }) });
 
 export const router = api.OrpcRouter(contract)([ordersController]);
 ```
@@ -127,10 +127,10 @@ TypeScript 5.9 prints both of `OrpcRouter`'s overloads. The first is the
 
 ```text
 error TS2769: No overload matches this call.
-  Overload 1 of 2, '(options: { readonly inject: Readonly<Record<string, AnyPort>>; readonly unit?: Record<never, never>; readonly sync: (services: { readonly [x: string]: any; }) => { readonly orders: { ...; }; readonly customers: { ...; }; }; }): Built<...>', gave the following error.
-    Argument of type 'Minted<{ orders: { find: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }, "orders", SchemesFrom<Record<never, never>>, never, Record<...>>[]' is not assignable to parameter of type '{ readonly inject: Readonly<Record<string, AnyPort>>; readonly unit?: Record<never, never>; readonly sync: (services: { readonly [x: string]: any; }) => { readonly orders: { readonly find: ResultHandler<...>; }; readonly customers: { ...; }; }; }'.
-      Type 'Minted<{ orders: { find: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }, "orders", SchemesFrom<Record<never, never>>, never, Record<...>>[]' is missing the following properties from type '{ readonly inject: Readonly<Record<string, AnyPort>>; readonly unit?: Record<never, never>; readonly sync: (services: { readonly [x: string]: any; }) => { readonly orders: { readonly find: ResultHandler<...>; }; readonly customers: { ...; }; }; }': inject, sync
-  Overload 2 of 2, '(pieces: readonly [readonly ["UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover", "customers.find"]]): Built<never, PortInstance<"OrpcController:orders", { readonly find: ResultHandler<Omit<...> & ... 1 more ... & { ...; }, unknown, unknown, AnyORPCError, object>; }>, Record<...>>', gave the following error.
+  Overload 1 of 2, '(options: { readonly inject?: Record<never, never>; readonly unit?: Record<never, never>; readonly sync: (services: {}) => { readonly orders: { readonly find: ResultHandler<Omit<DefaultInitialContext & object, "unit"> & object & { ...; }, unknown, unknown, AnyORPCError, object>; }; readonly customers: { ...; }; }; }): Built<...>', gave the following error.
+    Argument of type 'Minted<{ orders: { find: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }, "orders", SchemesFrom<Record<never, never>>, never, Record<...>>[]' is not assignable to parameter of type '{ readonly inject?: Record<never, never>; readonly unit?: Record<never, never>; readonly sync: (services: {}) => { readonly orders: { readonly find: ResultHandler<Omit<DefaultInitialContext & object, "unit"> & object & { ...; }, unknown, unknown, AnyORPCError, object>; }; readonly customers: { ...; }; }; }'.
+      Property 'sync' is missing in type 'Minted<{ orders: { find: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }, "orders", SchemesFrom<Record<never, never>>, never, Record<...>>[]' but required in type '{ readonly inject?: Record<never, never>; readonly unit?: Record<never, never>; readonly sync: (services: {}) => { readonly orders: { readonly find: ResultHandler<Omit<DefaultInitialContext & object, "unit"> & object & { ...; }, unknown, unknown, AnyORPCError, object>; }; readonly customers: { ...; }; }; }'.
+  Overload 2 of 2, '(pieces: readonly [readonly ["UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover", "customers.find"]]): Built<never, PortInstance<"OrpcController:orders", { readonly find: ResultHandler<Omit<...> & ... 1 more ... & { ...; }, unknown, unknown, AnyORPCError, object>; }>, Record<...>, "anonymous", Minted<...>>', gave the following error.
     Type 'Minted<{ orders: { find: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }, "orders", SchemesFrom<Record<never, never>>, never, Record<...>>' is not assignable to type 'readonly ["UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover", "customers.find"]'.
 ```
 

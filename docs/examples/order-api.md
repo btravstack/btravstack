@@ -525,7 +525,6 @@ import { html } from "@btravstack/htmx-server";
 export const orderRowFragment = api.HtmxGet("/orders/:id/row", {
   requires: [{ session: [] }],
 })({
-  inject: {},
   unit: { find: FindOrder },
   sync: () => (context, params) =>
     context.unit.find

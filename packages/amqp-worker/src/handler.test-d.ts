@@ -36,7 +36,7 @@ const pinContract = defineContract({
 
 class Tenant extends Port("PinSliceTenant")<{ readonly id: string }> {}
 
-const left = AmqpHandler(pinContract, "left")({ inject: {}, sync: () => () => OkAsync(undefined) });
+const left = AmqpHandler(pinContract, "left")({ sync: () => () => OkAsync(undefined) });
 const right = AmqpHandler(
   pinContract,
   "right",
@@ -129,3 +129,41 @@ AmqpHandler(
     return OkAsync(undefined);
   },
 });
+
+// `inject` is optional, so a mistyped key is what excess-property checking refuses.
+AmqpHandler(
+  pinContract,
+  "left",
+)({
+  // @ts-expect-error -- `injec` is not `inject`
+  injec: {},
+  sync: () => () => OkAsync(undefined),
+});
+AmqpHandlers(pinContract)({
+  // @ts-expect-error -- `injec` is not `inject`
+  injec: {},
+  sync: () => ({ left: () => OkAsync(undefined), right: () => OkAsync(undefined) }),
+});
+
+// A non-empty `D` named by an explicit type argument requires `inject`.
+AmqpHandler(
+  pinContract,
+  "left",
+)<{ tenant: typeof Tenant }>(
+  // @ts-expect-error -- `inject` is required once `D` names a port
+  {
+    sync:
+      ({ tenant }) =>
+      () =>
+        OkAsync(void tenant.id),
+  },
+);
+AmqpHandlers(pinContract)<{ tenant: typeof Tenant }>(
+  // @ts-expect-error -- `inject` is required once `D` names a port
+  {
+    sync: ({ tenant }) => ({
+      left: () => OkAsync(void tenant.id),
+      right: () => OkAsync(undefined),
+    }),
+  },
+);

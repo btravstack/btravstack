@@ -148,8 +148,8 @@ router" option: oRPC is the one way, and the listener port is internal.
 
 ## The starter sugars name nothing
 
-`api.OrpcRouter(contract)({ inject, unit?, sync })`, `TemporalActivities(contract)({ inject, unit?, sync })`
-and `AmqpHandlers(contract)({ inject, unit?, sync })` take no port name: each returns a
+`api.OrpcRouter(contract)({ inject?, unit?, sync })`, `TemporalActivities(contract)({ inject?, unit?, sync })`
+and `AmqpHandlers(contract)({ inject?, unit?, sync })` take no port name: each returns a
 builder on a port the starter owns and declares once —
 `Port("OrpcRouter")`, `Port("TemporalActivities")`, `Port("AmqpHandlers")` —
 the way it owns `HttpConfig` or `HttpRuntime`. A process serves one router,

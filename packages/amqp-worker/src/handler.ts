@@ -116,15 +116,17 @@ export const AmqpHandler = <C extends AnyAmqpContract, const K extends HandlerKe
   const mint = mintPiece(port, withUnit);
 
   return <
-    const D extends Readonly<Record<string, AnyPort>>,
+    const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
     const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
-  >(options: {
-    readonly inject: D;
-    /** The unit-scoped ports this handler reads off `context.unit`. */
-    readonly unit?: U;
-    readonly sync: (services: {
-      readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
-    }) => WorkerInferHandlers<C, { readonly unit: UnitRecordOf<U> }>[K &
-      keyof WorkerInferHandlers<C, { readonly unit: UnitRecordOf<U> }>];
-  }): MintedHandler<C, K, InstanceType<D[keyof D]>, U> => mint(options as never) as never;
+  >(
+    options: {
+      readonly inject?: D;
+      /** The unit-scoped ports this handler reads off `context.unit`. */
+      readonly unit?: U;
+      readonly sync: (services: {
+        readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+      }) => WorkerInferHandlers<C, { readonly unit: UnitRecordOf<U> }>[K &
+        keyof WorkerInferHandlers<C, { readonly unit: UnitRecordOf<U> }>];
+    } & ([keyof D] extends [never] ? unknown : { readonly inject: D }),
+  ): MintedHandler<C, K, InstanceType<D[keyof D]>, U> => mint(options as never) as never;
 };

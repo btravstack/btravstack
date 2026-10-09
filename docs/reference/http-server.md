@@ -135,7 +135,7 @@ gates see a plain module.
 
 | Option             | Required | Default                             | What it is                                                                                                                                                                                                                                      |
 | ------------------ | -------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `router`           | no\*     | —                                   | the application's router **provider** — a `Provider<OrpcRouterPort, E, N>`, what `api.OrpcRouter(contract)({ inject, unit?, sync })` returns; a provider on any other port fails at the call                                                    |
+| `router`           | no\*     | —                                   | the application's router **provider** — a `Provider<OrpcRouterPort, E, N>`, what `api.OrpcRouter(contract)({ inject?, unit?, sync })` returns; a provider on any other port fails at the call                                                   |
 | `fragments`        | no\*     | —                                   | the application's fragments **provider** — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces; likewise typed to its own port                                                                                 |
 | `prefix`           | no       | `/rpc`                              | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                                                                                     |
 | `fragmentsPrefix`  | no       | `/`                                 | where htmx fragments are mounted — `htmx()`'s own default, a separate field because one cannot carry two mount points with two different defaults                                                                                               |
@@ -686,7 +686,6 @@ module, which is where the use cases below were built over it:
 
 ```ts
 export const ordersRouter = api.OrpcRouter(contract.orders)({
-  inject: {},
   unit: { place: PlaceOrder, find: FindOrder, list: ListOrders },
   sync: () => ({
     place: ({ errors, context }, input) =>
@@ -866,7 +865,7 @@ into a process of its own with its piece untouched —
 `api.OrpcRouter(contract.orders)({ inject: { implementation: ordersController.port }, sync: ({ implementation }) => implementation })`
 compiles — the property a slice's independent deployability rests on. The
 `{ inject, sync }` form is unchanged and stays correct for a small API — an
-array is never a valid `{ inject, unit?, sync }` call, so `Array.isArray` alone
+array is never a valid `{ inject?, unit?, sync }` call, so `Array.isArray` alone
 tells the two arms apart, and there is nothing else left to discriminate.
 The composed provider carries its pieces on `provider.pieces` (empty for the
 `{ inject, sync }` form), which `HttpModule` provides with it; a root built on
@@ -887,15 +886,15 @@ const OrpcController: <
   contract: C,
   path: K,
 ) => <
-  const D extends Readonly<Record<string, AnyPort>>,
+  const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
   const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
 >(options: {
-  readonly inject: D;
+  readonly inject?: D;
   readonly unit?: U;
   readonly sync: (services: {
     readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
   }) => Implementation<FragmentAt<C, K>, Schemes, never, Units, U>;
-}) => Provider<
+} & ([keyof D] extends [never] ? unknown : { readonly inject: D })) => Provider<
   PortInstance<
     `OrpcController:${K}`,
     Implementation<FragmentAt<C, K>, Schemes>
@@ -1336,7 +1335,6 @@ import { P } from "unthrown";
 export const orderRowFragment = api.HtmxGet("/orders/:id/row", {
   requires: [{ user: [] }],
 })({
-  inject: {},
   unit: { find: FindOrder },
   sync: () => (context, params) =>
     context.unit.find
@@ -1444,7 +1442,7 @@ hand. `HttpOptions`:
 The module **provides** `HttpRuntime`, `HttpConfig` and `HttpUnit`, exports
 `HttpRuntime`, `HttpConfig`, `HttpHandler` and `Observers`, and **needs** `Env` (the kernel discharges it),
 the starter's router port
-(`OrpcRouterPort`, the port `api.OrpcRouter(contract)({ inject, unit?, sync })` provides on) and,
+(`OrpcRouterPort`, the port `api.OrpcRouter(contract)({ inject?, unit?, sync })` provides on) and,
 for every kind `unit` binds, that module's own unmet needs — `Scope` excluded,
 since nothing can provide it, and the scheme's own principal port excluded too,
 since the fork seeds it —
@@ -2055,13 +2053,15 @@ empty record and everything below degrades to the pre-kinds behaviour.
 ### What a leaf reads off the fork
 
 A piece — or a fragment route — declares the unit-scoped ports its leaves may
-read **once**, beside `inject`, and every leaf reads them off `context.unit`:
+read **once**, beside `inject`, and every leaf reads them off `context.unit`.
+`inject` is optional, absent meaning `{}`: a piece whose every dependency comes
+off the fork — the usual case in a multi-tenant application — declares `unit`
+alone:
 
 <!-- doctest: skip — an excerpt over an `api` whose kinds are declared elsewhere; the `units<…>()` call it depends on is the fence above -->
 
 ```ts
 api.OrpcController(contract, "orders")({
-  inject: {},
   unit: { place: PlaceOrder },
   sync: () => ({
     place: ({ context, input }) =>

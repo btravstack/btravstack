@@ -172,7 +172,7 @@ not cover"` marker, and what the marker names is a procedure path
   because the alias route rides a compiler heuristic that has already changed
   behaviour across one key-shape refactor — see `PieceOf`'s own TSDoc. At
   runtime `Array.isArray`
-  alone identifies this arm — an array is never a valid `{ inject, unit?, sync }`
+  alone identifies this arm — an array is never a valid `{ inject?, unit?, sync }`
   call — so the retired keyed record's three-form
   `sync`-holds-a-function discrimination is gone, and there is nothing left to
   discriminate: the other arm is one options object, as di's own is. The
@@ -183,7 +183,7 @@ not cover"` marker, and what the marker names is a procedure path
   walk: `routerOf` walks the same tree it always did, marks,
   inheritance and the stray-key drop included. The walk itself is untouched —
   `nest` lives in the composing arm because the walk is shared with the
-  `{ inject, unit?, sync }` form, which never nests. **The composed provider
+  `{ inject?, unit?, sync }` form, which never nests. **The composed provider
   carries its pieces** (`pieces`, beside `authenticators`), and `HttpModule`
   provides them with the router — the htmx fragments provider does the same —
   so a root that keeps its controllers itself lists each once, in the
@@ -218,7 +218,7 @@ not cover"` marker, and what the marker names is a procedure path
   level carries one, against `"UNSLICEABLE CONTRACT KEY — …"` reported ahead
   of `Uncovered`, because "no piece can name this" is a different fact from
   "no piece did" and only the first says the array form is the wrong tool.
-  Both sentences point at the `{ inject, unit?, sync }` form, which splits nothing and
+  Both sentences point at the `{ inject?, unit?, sync }` form, which splits nothing and
   serves such a contract correctly. Only the **top** level is fatal: a piece
   at a dotted key's parent hands its implementation record to `routerOf`
   whole, and that walk splits paths, never the keys underneath them — so
@@ -269,8 +269,8 @@ not cover"` marker, and what the marker names is a procedure path
   request — and by `rpcDeep`, two pieces sharing the nested `"v1"` parent
   plus one at the bare procedure path `"health"`.
 
-- **`api.OrpcController(contract, key)({ inject: { name: Dep }, sync })`, or
-  `({ inject: {}, sync })` with no deps** (`controller.ts`, minted by
+- **`api.OrpcController(contract, key)({ inject?: { name: Dep }, unit?, sync })`**
+  (`controller.ts`, minted by
   `defineHttp`) — one
   node of a contract, at any depth, as a provider on a port of its own. There
   is no name to give: the dotted path IS the port's name, minted as
@@ -301,12 +301,24 @@ not cover"` marker, and what the marker names is a procedure path
   `Inherit<node, folded>`, which is how a marked ancestor types
   `context.principal` in a piece minted from below it — the check the retired
   keyed form performed at the root, now performed where the handler is
-  written. The second call is di's `Provider(port)({ inject: { name: Dep }, sync })`,
-  unchanged — **`inject` included, and required**: a piece that calls no use
-  case is the common shape here, not an edge case, and it spells
-  `{ inject: {}, sync }` like every other no-deps provider (issue #227). An
-  optional `unit: { name: Port }` rides beside it — see **`context.unit` and
-  `UnitFor`**.
+  written. The second call is di's `Provider(port)({ inject: { name: Dep }, sync })`
+  with **`inject` optional**, absent meaning `{}` — unlike di's own, which
+  stays required (issue #466). di's reason does not carry over: a mistyped
+  `injec:` slipped past excess-property checking only inside di's arm UNION,
+  and these options are one object type, so the typo is `TS2561` at the call
+  under both compilers, pinned per builder by a `@ts-expect-error` in its
+  type test. Optional is only sound while `D` is what `inject` inferred, so
+  the options are intersected with
+  `[keyof D] extends [never] ? unknown : { readonly inject: D }`: a non-empty
+  `D` named by an explicit type argument requires `inject` back, where
+  dropping it would type `sync` with a service the provider never resolves —
+  the runtime normalises an absent record to `{}`. The intersection rather
+  than an overload pair keeps one signature, so a bad `sync` is still
+  reported against the arm it was written for. What optional buys is the
+  multi-tenant case, where every use
+  case is built inside the unit and `inject: {}` was boilerplate a reader
+  asked about. An optional `unit: { name: Port }` rides beside it — see
+  **`context.unit` and `UnitFor`**.
   Returns
   `Provider<InstanceType<ControllerPortOf<C, K, Schemes>>, never, N> & { readonly port: ControllerPortOf<C, K, Schemes>; readonly unit: U }` —
   `ControllerPortOf<C, K, Schemes>` being `PortClassOf` over the prefixed
@@ -385,8 +397,8 @@ not cover"` marker, and what the marker names is a procedure path
 
 - **`api.HtmxGet(path, options?)` and `api.HtmxPost(path, options?)`**
   (`htmx-route.ts`, minted by `defineHttp`) — a route as a provider on a port
-  of its own, minted straight from a path template, then `{ inject, sync }`
-  — `inject: {}` when the route calls nothing — the same two-call shape as
+  of its own, minted straight from a path template, then `{ inject?, unit?, sync }` —
+  `inject` optional exactly as on a controller — the same two-call shape as
   `api.OrpcController(contract, path)`. The port id carries the method and
   path (`` `HtmxFragment:${method} ${path}` ``, `FRAGMENT_PREFIX` in
   `htmx-route.ts`) — two routes on one method and path are one port id, di's
@@ -423,7 +435,7 @@ grant it"` sentence oRPC's `routerFor` gives — and each requirement is also
   back to compose without the path or the requirement being spelled twice.
 
   ```ts
-  const orderRow = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({ inject: {}, sync: () => (context, params) => repository.find(params.id).map(rowOf) });
+  const orderRow = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({ inject: { repository: OrderRepository }, sync: ({ repository }) => (context, params) => repository.find(params.id).map(rowOf) });
   ```
 
 - **`api.HtmxFragments([piece, …])`** (`htmx-route.ts`, minted by
@@ -1121,7 +1133,6 @@ read **once**, as a record beside `inject`, and every leaf reads them off
 
 ```ts
 api.OrpcController(contract, "orders")({
-  inject: {},
   unit: { span: Span, tenant: Tenant },
   sync: () => ({
     find: ({ context }) => OkAsync(context.unit.tenant),

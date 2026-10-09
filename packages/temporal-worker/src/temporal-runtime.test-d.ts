@@ -58,7 +58,6 @@ const scopedPiece = TemporalWorkflowActivities(
   pinContract,
   "runEcho",
 )({
-  inject: {},
   unit: { tenant: Tenant },
   sync: () => ({
     echo: ({ context, input }) => OkAsync(`${context.unit.tenant.id}:${input}`),
@@ -106,7 +105,6 @@ TemporalModule("PinUnitUnbound")(_noUnit);
 // as a piece's does: `sync` sees `context.unit` typed by what the record
 // declared, and `_declaredUnit` carries it to `TemporalModule`.
 const recordActivities = TemporalActivities(pinContract)({
-  inject: {},
   unit: { tenant: Tenant },
   sync: () => ({
     runEcho: { echo: ({ context, input }) => OkAsync(`${context.unit.tenant.id}:${input}`) },

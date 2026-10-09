@@ -246,24 +246,26 @@ type Uncovered<C extends AnyAmqpContract, T extends readonly PieceOf<C>[]> = Exc
  * The record arm: the whole handlers record from one `sync`, with one `unit:`
  * record shared by every entry in it.
  *
- * It is `{ inject, unit?, sync }` — di's other arms are gone — for PARITY, not
+ * It is `{ inject?, unit?, sync }` — di's other arms are gone — for PARITY, not
  * for a type-system reason: `value` could have carried the record just as well,
  * since `U` infers from `unit` and never from the arm. `@btravstack/http-server`'s
- * `api.OrpcRouter(contract)` is `{ inject, unit?, sync }` and so are all three
+ * `api.OrpcRouter(contract)` is `{ inject?, unit?, sync }` and so are all three
  * packages' piece factories, so one arm across the family is one surface to
  * learn and one to keep.
  */
 type Whole<C extends AnyAmqpContract> = <
-  const D extends Readonly<Record<string, AnyPort>>,
+  const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
   const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
->(options: {
-  readonly inject: D;
-  /** The unit-scoped ports every handler in the record reads off `context.unit`. */
-  readonly unit?: U;
-  readonly sync: (services: {
-    readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
-  }) => WorkerInferHandlers<C, { readonly unit: UnitRecordOf<U> }>;
-}) => Provider<HandlersInstanceOf<C>, never, InstanceType<D[keyof D]>> & {
+>(
+  options: {
+    readonly inject?: D;
+    /** The unit-scoped ports every handler in the record reads off `context.unit`. */
+    readonly unit?: U;
+    readonly sync: (services: {
+      readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+    }) => WorkerInferHandlers<C, { readonly unit: UnitRecordOf<U> }>;
+  } & ([keyof D] extends [never] ? unknown : { readonly inject: D }),
+) => Provider<HandlersInstanceOf<C>, never, InstanceType<D[keyof D]>> & {
   readonly port: HandlersPortOf<C>;
   /** Phantom: the declared ports, which `AmqpModule` gates `unit.message` against. */
   readonly _declaredUnit?: InstanceType<U[keyof U]>;
@@ -300,7 +302,7 @@ type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]
  * AmqpHandlers(orderContract)([orderNotifications, orderAudit])
  * ```
  *
- * The first is `{ inject, unit?, sync }`, whose `sync` hands back the whole
+ * The first is `{ inject?, unit?, sync }`, whose `sync` hands back the whole
  * handlers record — one `unit:` record for every entry in it. The second takes
  * the pieces `AmqpHandler(contract, key)` builds: they are the provider's deps,
  * keyed by the contract key each piece's port id carries, so the services

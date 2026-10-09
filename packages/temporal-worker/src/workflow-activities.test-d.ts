@@ -45,7 +45,7 @@ class Tenant extends Port("PinSliceTenant")<{ readonly id: string }> {}
 const echo = TemporalWorkflowActivities(
   pinContract,
   "runEcho",
-)({ inject: {}, sync: () => ({ echo: ({ input }) => OkAsync(input) }) });
+)({ sync: () => ({ echo: ({ input }) => OkAsync(input) }) });
 const shout = TemporalWorkflowActivities(
   pinContract,
   "runShout",
@@ -172,3 +172,41 @@ TemporalActivities(pinContract)({
     audit: ({ input }) => OkAsync(input),
   }),
 });
+
+// `inject` is optional, so a mistyped key is what excess-property checking refuses.
+TemporalWorkflowActivities(
+  pinContract,
+  "runEcho",
+)({
+  // @ts-expect-error -- `injec` is not `inject`
+  injec: {},
+  sync: () => ({ echo: ({ input }) => OkAsync(input) }),
+});
+TemporalActivities(pinContract)({
+  // @ts-expect-error -- `injec` is not `inject`
+  injec: {},
+  sync: () => ({
+    runEcho: { echo: ({ input }) => OkAsync(input) },
+    runShout: { shout: ({ input }) => OkAsync(input) },
+    audit: ({ input }) => OkAsync(input),
+  }),
+});
+
+// A non-empty `D` named by an explicit type argument requires `inject`.
+TemporalWorkflowActivities(
+  pinContract,
+  "runEcho",
+)<{ tenant: typeof Tenant }>(
+  // @ts-expect-error -- `inject` is required once `D` names a port
+  { sync: ({ tenant }) => ({ echo: ({ input }) => OkAsync(`${tenant.id}${input}`) }) },
+);
+TemporalActivities(pinContract)<{ tenant: typeof Tenant }>(
+  // @ts-expect-error -- `inject` is required once `D` names a port
+  {
+    sync: ({ tenant }) => ({
+      runEcho: { echo: ({ input }) => OkAsync(`${tenant.id}${input}`) },
+      runShout: { shout: ({ input }) => OkAsync(input) },
+      audit: ({ input }) => OkAsync(input),
+    }),
+  },
+);

@@ -22,11 +22,11 @@ const contract = { orders: { place: oc }, users: { find: oc } };
 const ordersPiece = publicApi.OrpcController(
   contract,
   "orders",
-)({ inject: {}, sync: () => ({ place: () => OkAsync("placed") }) });
+)({ sync: () => ({ place: () => OkAsync("placed") }) });
 const usersPiece = publicApi.OrpcController(
   contract,
   "users",
-)({ inject: {}, sync: () => ({ find: () => OkAsync("found") }) });
+)({ sync: () => ({ find: () => OkAsync("found") }) });
 
 // 1. Every contract key must be covered. The refusal is as long as the array
 //    the caller wrote, so the diagnostic lands on its trailing element and
@@ -508,3 +508,42 @@ const kindedCustomers = kinded.OrpcController(
   "customers",
 )({ inject: {}, sync: () => ({ find: () => OkAsync("found") }) });
 type _EmptyUnitRecord = Expect<keyof typeof kindedCustomers.unit extends never ? true : false>;
+
+// `inject` is optional, so a mistyped key is what excess-property checking
+// refuses — the options are one object type, not di's arm union.
+void publicApi.OrpcController(
+  contract,
+  "orders",
+)({
+  // @ts-expect-error — `injec` is not `inject`
+  injec: {},
+  sync: () => ({ place: () => OkAsync("placed") }),
+});
+void publicApi.OrpcRouter(contract)({
+  // @ts-expect-error — `injec` is not `inject`
+  injec: {},
+  sync: () => ({
+    orders: { place: () => OkAsync("placed") },
+    users: { find: () => OkAsync("found") },
+  }),
+});
+
+// A non-empty `D` named by an explicit type argument requires `inject`: absent,
+// `sync` would be typed a service the provider never resolves.
+class PinDb extends Port("PinDb")<{ readonly n: number }> {}
+void publicApi.OrpcController(
+  contract,
+  "orders",
+)<{ db: typeof PinDb }>(
+  // @ts-expect-error — `inject` is required once `D` names a port
+  { sync: ({ db }) => ({ place: () => OkAsync(String(db.n)) }) },
+);
+void publicApi.OrpcRouter(contract)<{ db: typeof PinDb }>(
+  // @ts-expect-error — `inject` is required once `D` names a port
+  {
+    sync: ({ db }) => ({
+      orders: { place: () => OkAsync(String(db.n)) },
+      users: { find: () => OkAsync("found") },
+    }),
+  },
+);

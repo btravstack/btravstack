@@ -136,12 +136,18 @@ export const htmxRouteFor = <Schemes, Vocab, Units = Record<never, never>>() => 
       input: FragmentInputSchema | undefined,
       requires: Requirements | undefined,
     ) =>
-    (options: { readonly unit?: Readonly<Record<string, AnyPort>> }): unknown => {
+    (options: {
+      readonly inject?: Readonly<Record<string, AnyPort>>;
+      readonly unit?: Readonly<Record<string, AnyPort>>;
+    }): unknown => {
       // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
       const port = class extends Port(`${FRAGMENT_PREFIX}${method} ${path}`)<
         (context: unknown, params: unknown, input: unknown) => AsyncResult<Html, never>
       > {};
-      const provider = Provider(port as never)(options as never);
+      const provider = Provider(port as never)({
+        ...options,
+        inject: options.inject ?? {},
+      } as never);
       return Object.assign(provider, {
         route: { method, path, input, requires },
         unit: options.unit ?? {},
@@ -156,16 +162,18 @@ export const htmxRouteFor = <Schemes, Vocab, Units = Record<never, never>>() => 
     options?: { readonly requires?: R & RequiresGate<R, Vocab> },
   ): {
     <
-      const D extends Readonly<Record<string, AnyPort>>,
+      const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
       const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
-    >(buildOptions: {
-      readonly inject: D;
-      /** The unit-scoped ports this route may read off `context.unit`, per its own kind. */
-      readonly unit?: U;
-      readonly sync: (services: {
-        readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
-      }) => RouteHandler<P, undefined, R, Schemes, Units, U>;
-    }): MintedRoute<
+    >(
+      buildOptions: {
+        readonly inject?: D;
+        /** The unit-scoped ports this route may read off `context.unit`, per its own kind. */
+        readonly unit?: U;
+        readonly sync: (services: {
+          readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+        }) => RouteHandler<P, undefined, R, Schemes, Units, U>;
+      } & ([keyof D] extends [never] ? unknown : { readonly inject: D }),
+    ): MintedRoute<
       `${typeof FRAGMENT_PREFIX}GET ${P}`,
       RouteHandler<P, undefined, R, Schemes, Units, U>,
       R,
@@ -183,16 +191,18 @@ export const htmxRouteFor = <Schemes, Vocab, Units = Record<never, never>>() => 
     options?: { readonly requires?: R & RequiresGate<R, Vocab>; readonly input?: S },
   ): {
     <
-      const D extends Readonly<Record<string, AnyPort>>,
+      const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
       const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
-    >(buildOptions: {
-      readonly inject: D;
-      /** The unit-scoped ports this route may read off `context.unit`, per its own kind. */
-      readonly unit?: U;
-      readonly sync: (services: {
-        readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
-      }) => RouteHandler<P, S, R, Schemes, Units, U>;
-    }): MintedRoute<
+    >(
+      buildOptions: {
+        readonly inject?: D;
+        /** The unit-scoped ports this route may read off `context.unit`, per its own kind. */
+        readonly unit?: U;
+        readonly sync: (services: {
+          readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+        }) => RouteHandler<P, S, R, Schemes, Units, U>;
+      } & ([keyof D] extends [never] ? unknown : { readonly inject: D }),
+    ): MintedRoute<
       `${typeof FRAGMENT_PREFIX}POST ${P}`,
       RouteHandler<P, S, R, Schemes, Units, U>,
       R,

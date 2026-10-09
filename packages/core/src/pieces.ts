@@ -23,9 +23,9 @@ export type Refuse<
 /** How a starter puts a piece's declared `unit:` record on one of its entries. */
 type EntryWrapper = (record: Readonly<Record<string, AnyPort>>, entry: unknown) => unknown;
 
-/** A piece's `{ inject, unit?, sync }` options, with the types each starter states erased. */
+/** A piece's `{ inject?, unit?, sync }` options, with the types each starter states erased. */
 type PieceOptions = {
-  readonly inject: Readonly<Record<string, AnyPort>>;
+  readonly inject?: Readonly<Record<string, AnyPort>>;
   readonly unit?: Readonly<Record<string, AnyPort>>;
   readonly sync: (services: never) => unknown;
 };
@@ -40,7 +40,7 @@ export const mintPiece =
   (port: AnyPort, withUnit: EntryWrapper) =>
   (options: PieceOptions): unknown =>
     Provider(port as never)({
-      inject: options.inject,
+      inject: options.inject ?? {},
       sync: (services: never) => withUnit(options.unit ?? {}, options.sync(services)),
     } as never);
 
@@ -48,7 +48,7 @@ export const mintPiece =
  * The runtime half of a starter's composing provider — `AmqpHandlers(contract)`,
  * `TemporalActivities(contract)` — and its two arms. An array of pieces is
  * composed into one record keyed by each piece's port id less `prefix`, so the
- * services record IS the composed record; a `{ inject, unit?, sync }` record
+ * services record IS the composed record; a `{ inject?, unit?, sync }` record
  * has `withUnit` applied to every entry `sync` answers.
  */
 export const composeByPrefix = (

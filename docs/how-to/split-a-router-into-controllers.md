@@ -224,7 +224,7 @@ procedures are unmarked and its repository takes its tenant as an argument.
 `api.OrpcRouter(contract)([...])` — an **array** of pieces, each an
 `OrpcController(contract, path)` — replaces the
 `{ inject, sync }` call at the root. An array is never a valid
-`{ inject, unit?, sync }` call, so `Array.isArray` alone tells the two arms apart:
+`{ inject?, unit?, sync }` call, so `Array.isArray` alone tells the two arms apart:
 
 ```ts
 export const orderRouter = api.OrpcRouter(contract)([

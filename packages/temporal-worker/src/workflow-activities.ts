@@ -155,14 +155,16 @@ export const TemporalWorkflowActivities = <
   const mint = mintPiece(port, withUnit);
 
   return <
-    const D extends Readonly<Record<string, AnyPort>>,
+    const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
     const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
-  >(options: {
-    readonly inject: D;
-    /** The unit-scoped ports these activities read off `context.unit`. */
-    readonly unit?: U;
-    readonly sync: (services: {
-      readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
-    }) => ScopedActivitiesOf<C, K, U>;
-  }): MintedActivities<C, K, InstanceType<D[keyof D]>, U> => mint(options as never) as never;
+  >(
+    options: {
+      readonly inject?: D;
+      /** The unit-scoped ports these activities read off `context.unit`. */
+      readonly unit?: U;
+      readonly sync: (services: {
+        readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+      }) => ScopedActivitiesOf<C, K, U>;
+    } & ([keyof D] extends [never] ? unknown : { readonly inject: D }),
+  ): MintedActivities<C, K, InstanceType<D[keyof D]>, U> => mint(options as never) as never;
 };

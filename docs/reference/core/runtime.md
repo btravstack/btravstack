@@ -329,7 +329,7 @@ const mintPiece: (
   port: AnyPort,
   withUnit: (record: Readonly<Record<string, AnyPort>>, entry: unknown) => unknown,
 ) => (options: {
-  readonly inject: Readonly<Record<string, AnyPort>>;
+  readonly inject?: Readonly<Record<string, AnyPort>>;
   readonly unit?: Readonly<Record<string, AnyPort>>;
   readonly sync: (services: never) => unknown;
 }) => unknown;

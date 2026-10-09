@@ -377,7 +377,7 @@ describe("graphql answerer", () => {
         provides: [answerer],
         exports: [HttpRuntime, HttpHandler],
       }),
-      { signals: false },
+      { signals: false, probes: false },
     );
 
     // WHEN the application boots

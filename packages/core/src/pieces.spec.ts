@@ -50,7 +50,7 @@ describe("mintPiece and composeByPrefix", () => {
   });
 
   it("wraps every entry the record arm's sync answers", async () => {
-    // GIVEN a record arm declaring no unit record
+    // GIVEN a record arm declaring neither deps nor a unit record
     class Composed extends Port("PiecesWhole")<Readonly<Record<string, string>>> {}
 
     // WHEN it is composed and built
@@ -58,7 +58,7 @@ describe("mintPiece and composeByPrefix", () => {
       Composed,
       "Piece:",
       (record, entry) => `${String(entry)}+${Object.keys(record).length}`,
-    )({ inject: {}, sync: () => ({ a: "x", b: "y" }) });
+    )({ sync: () => ({ a: "x", b: "y" }) });
     const built = Module.build(
       Module("PiecesWhole")({ provides: [composed], exports: [Composed] } as never),
     );
