@@ -24,6 +24,7 @@ import { orderContract, type OrderContract } from "@btravstack/example-order-tem
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
 import { observability, type Line, type Sink } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
+import { tenantPinned } from "@btravstack/prisma/rls";
 import {
   memoryStorageBackend,
   storage,
@@ -139,8 +140,8 @@ const deployment = (fulfillment: typeof FulfillmentModule) => {
     /** The outbox rows written about one order — one per placement or tombstone. */
     events: (tenant: TenantId, orderId: string) => {
       const [db] = tap.services();
-      return fromSafePromise(
-        db.orm.orders.OutboxMessage.where({ tenantId: tenant, subjectId: orderId }).all().toArray(),
+      return tenantPinned(db, tenant, (tx) =>
+        tx.orm.orders.OutboxMessage.where({ subjectId: orderId }).all().toArray(),
       );
     },
   };

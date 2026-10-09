@@ -64,6 +64,14 @@ export type PersistenceFixtures = {
    * claim's lock while its publisher is still working.
    */
   readonly impatientOutbox: OutboxStoreService;
+  /**
+   * The same store over a pool of its own, and a way to end every session that
+   * pool holds — the database losing a claiming session mid-batch.
+   */
+  readonly severable: {
+    readonly outbox: OutboxStoreService;
+    readonly sever: () => Promise<void>;
+  };
   readonly anOrder: (id: string, quantity: number) => Order;
   /**
    * Puts a customer in this test's tenant. Straight through the client, past
@@ -136,6 +144,31 @@ export const it = test.extend<PersistenceFixtures>({
     await db.runtime().query(db.raw.sql`SELECT 1 AS one`.returnsRow({ one: "pg/int4@1" }).build());
     await use(prismaOutboxStore(db, { schema: "orders" }));
     await db.runtime().close();
+  },
+
+  severable: async ({ db }, use) => {
+    // Named so the spec can find its sessions: a role may end its own backends.
+    const name = `severable-${uuidv7()}`;
+    const url = new URL(inject("__ORDERS_DATABASE_URL__"));
+    url.searchParams.set("application_name", name);
+    const own = (await openDatabase(url.toString())).get();
+    await own
+      .runtime()
+      .query(own.raw.sql`SELECT 1 AS one`.returnsRow({ one: "pg/int4@1" }).build());
+    await use({
+      outbox: prismaOutboxStore(own, { schema: "orders" }),
+      sever: async () => {
+        await db
+          .runtime()
+          .query(
+            db.raw
+              .sql`SELECT count(pg_terminate_backend(pid))::text AS ended FROM pg_stat_activity WHERE application_name = ${name}`
+              .returnsRow({ ended: "pg/text@1" })
+              .build(),
+          );
+      },
+    });
+    await own.runtime().close();
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

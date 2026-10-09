@@ -90,6 +90,8 @@ export type StubDatabase = {
 export type Stub = (answers: {
   readonly locked?: boolean;
   readonly rows?: readonly StubRow[];
+  /** Each tenant's oldest pending time, answered to a read pinned to that tenant. */
+  readonly oldest?: Readonly<Record<string, string>>;
   readonly failure?: unknown;
 }) => StubDatabase;
 
@@ -196,9 +198,10 @@ export const it = test.extend<OutboxFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- see above
   stub: async ({}, use) => {
-    await use(({ locked = true, rows = [], failure }) => {
+    await use(({ locked = true, rows = [], oldest = {}, failure }) => {
       const ran: Ran[] = [];
       let transactions = 0;
+      let pinned: unknown;
       type Plan = { readonly sql: string; readonly values: readonly unknown[] };
       const plan = (strings: TemplateStringsArray, values: readonly unknown[]) => ({
         build: (): Plan => ({ sql: strings.join("?"), values }),
@@ -218,12 +221,15 @@ export const it = test.extend<OutboxFixtures>({
             query: (built) => {
               const { sql, values } = built as Plan;
               ran.push({ sql, values, tx });
+              if (sql.startsWith("SELECT set_config(?")) pinned = values[1];
               return Promise.resolve(
                 sql.includes("pg_try_advisory_xact_lock")
                   ? [{ locked: String(locked) }]
-                  : sql.startsWith("SELECT")
-                    ? rows
-                    : { affectedRows: 0 },
+                  : sql.includes("min(")
+                    ? [{ occurredAt: oldest[String(pinned)] ?? null }]
+                    : sql.startsWith("SELECT")
+                      ? rows
+                      : { affectedRows: 0 },
               );
             },
           });

@@ -1,6 +1,7 @@
 import { OrderRepository, PlaceOrder } from "@btravstack/example-order-application";
 import type { Line } from "@btravstack/observability";
 import type { OutboxMessage } from "@btravstack/outbox";
+import { tenantPinned } from "@btravstack/prisma/rls";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -668,18 +669,20 @@ describe("the outbox written before an event carried its placement", () => {
     await serve(tapped.module);
     const waitForMessages = await initConsumer("orders", "order.changed");
     const { db, outbox } = tapped.services();
-    await db.orm.orders.OutboxMessage.create({
-      tenantId: tenant,
-      kind: "order",
-      subjectId: "0199a1e0-0000-7000-8000-00000000c00b",
-      payload: JSON.stringify({ quantity: 2 }),
-    });
-    await db.orm.orders.OutboxMessage.create({
-      tenantId: tenant,
-      kind: "order",
-      subjectId: "0199a1e0-0000-7000-8000-00000000c00b",
-      payload: null,
-    });
+    await tenantPinned(db, tenant, async (tx) => {
+      await tx.orm.orders.OutboxMessage.create({
+        tenantId: tenant,
+        kind: "order",
+        subjectId: "0199a1e0-0000-7000-8000-00000000c00b",
+        payload: JSON.stringify({ quantity: 2 }),
+      });
+      await tx.orm.orders.OutboxMessage.create({
+        tenantId: tenant,
+        kind: "order",
+        subjectId: "0199a1e0-0000-7000-8000-00000000c00b",
+        payload: null,
+      });
+    }).getOrThrow();
 
     // WHEN the relay has swept them
     const messages = await waitForMessages({ count: 2, timeoutMs: 10_000 });

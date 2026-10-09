@@ -38,9 +38,9 @@ export type OutboxStoreService = {
   ) => AsyncResult<readonly OutboxMessage[], never>;
   /**
    * When each of `tenantIds`' oldest unpublished message was written, for the
-   * tenants that have one — in ONE round trip however many tenants are asked
-   * about, because the health check asks on every `/healthz`, and a query per
-   * tenant would queue the pool behind the probe meant to report it.
+   * tenants that have one — on ONE connection however many tenants are asked
+   * about, because the health check asks on every `/healthz`, and a connection
+   * per tenant would queue the pool behind the probe meant to report it.
    */
   readonly oldestPending: (
     tenantIds: readonly string[],

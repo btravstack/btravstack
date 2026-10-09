@@ -17,12 +17,31 @@ export type OutboxDatabase<Tx> = {
   readonly transaction: <R>(fn: (tx: Tx) => PromiseLike<R>) => Promise<R>;
 };
 
-/** Where the table lives. */
+/** The table's physical column names, where they are not the documented model's field names. */
+export type OutboxColumns = {
+  readonly id?: string;
+  readonly tenantId?: string;
+  readonly kind?: string;
+  readonly subjectId?: string;
+  readonly payload?: string;
+  readonly occurredAt?: string;
+  readonly publishedAt?: string;
+};
+
+/** Where the table lives, and what its tenant boundary is called. */
 export type PrismaOutboxStoreOptions = {
   /** The namespace the model is declared in (default `public`). */
   readonly schema?: string;
   /** The table Prisma maps the model to (default `outboxMessage`, the table of a model named `OutboxMessage`). */
   readonly table?: string;
+  /** Each column's physical name, for a table mapped with `@map` (default: the field names). */
+  readonly columns?: OutboxColumns;
+  /**
+   * The run-time setting each tenant's reads and marks are pinned to, which a
+   * row-level-security policy on the table reads (default `app.tenant_id`, as
+   * `@btravstack/prisma/rls`'s `tenantPinned`).
+   */
+  readonly tenantSetting?: string;
 };
 
 type Plan = { readonly build: () => unknown };
@@ -100,22 +119,35 @@ export const prismaOutboxStore = <Tx>(
 ): OutboxStoreService => {
   const schema = options.schema ?? "public";
   const table = options.table ?? "outboxMessage";
+  const setting = options.tenantSetting ?? "app.tenant_id";
   const qualified = `${identifier(schema)}.${identifier(table)}`;
+  const column = (field: keyof OutboxColumns): string =>
+    identifier(options.columns?.[field] ?? field);
   const { sql } = (db as unknown as Raw).raw;
 
   // `idle_in_transaction_session_timeout` is lifted for this transaction alone:
   // the claim sits idle while the publisher works, and a server that ended the
-  // session there would free the lock mid-batch for another relay to take.
+  // session there would free the lock mid-batch for another relay to take. The
+  // tenant is pinned in the same statement, transaction-locally, so a policy
+  // admits this tenant's rows to the read and the mark that follow, and no pin
+  // outlives the transaction on a pooled connection.
   const lock = (tenantId: string) =>
-    sql`SELECT set_config('idle_in_transaction_session_timeout', '0', true) AS lifted, pg_try_advisory_xact_lock(hashtext(${`${schema}.${table}`}), hashtext(${tenantId}))::text AS locked`
-      .returnsRow({ lifted: "pg/text@1", locked: "pg/text@1" })
+    sql`SELECT set_config('idle_in_transaction_session_timeout', '0', true) AS lifted, set_config(${setting}, ${tenantId}, true) AS pinned, pg_try_advisory_xact_lock(hashtext(${`${schema}.${table}`}), hashtext(${tenantId}))::text AS locked`
+      .returnsRow({ lifted: "pg/text@1", pinned: "pg/text@1", locked: "pg/text@1" })
       .build();
+
+  const pin = (tenantId: string) =>
+    sql`SELECT set_config(${setting}, ${tenantId}, true) AS pinned`
+      .returnsRow({ pinned: "pg/text@1" })
+      .build();
+
+  const pending = `${column("publishedAt")} IS NULL`;
 
   const select = (tenantId: string, limit: number) =>
     sql(
       statement(
-        `SELECT "id", "tenantId", "kind", "subjectId", "payload", to_json("occurredAt") #>> '{}' AS "occurredAt" FROM ${qualified} WHERE "tenantId" = `,
-        ` AND "publishedAt" IS NULL ORDER BY "id" LIMIT `,
+        `SELECT ${column("id")} AS "id", ${column("tenantId")} AS "tenantId", ${column("kind")} AS "kind", ${column("subjectId")} AS "subjectId", ${column("payload")} AS "payload", to_json(${column("occurredAt")}) #>> '{}' AS "occurredAt" FROM ${qualified} WHERE ${column("tenantId")} = `,
+        ` AND ${pending} ORDER BY ${column("id")} LIMIT `,
         "::int",
       ),
       tenantId,
@@ -131,23 +163,21 @@ export const prismaOutboxStore = <Tx>(
       })
       .build();
 
-  // The tenants ride as one JSON array, so a tenant id carries no delimiter
-  // the statement could split on.
-  const oldest = (tenantIds: readonly string[]) =>
+  const oldest = (tenantId: string) =>
     sql(
       statement(
-        `SELECT "tenantId", to_json(min("occurredAt")) #>> '{}' AS "occurredAt" FROM ${qualified} WHERE "publishedAt" IS NULL AND "tenantId" IN (SELECT json_array_elements_text(`,
-        `::json)) GROUP BY "tenantId"`,
+        `SELECT to_json(min(${column("occurredAt")})) #>> '{}' AS "occurredAt" FROM ${qualified} WHERE ${column("tenantId")} = `,
+        ` AND ${pending}`,
       ),
-      JSON.stringify(tenantIds),
+      tenantId,
     )
-      .returnsRow({ tenantId: "pg/text@1", occurredAt: "pg/text@1" })
+      .returnsRow({ occurredAt: "pg/text@1" })
       .build();
 
   const mark = (ids: readonly number[]) =>
     sql(
       statement(
-        `UPDATE ${qualified} SET "publishedAt" = now() WHERE "id" = ANY(string_to_array(`,
+        `UPDATE ${qualified} SET ${column("publishedAt")} = now() WHERE ${column("id")} = ANY(string_to_array(`,
         ", ',')::bigint[])",
       ),
       ids.join(","),
@@ -168,16 +198,26 @@ export const prismaOutboxStore = <Tx>(
     );
 
   return {
-    pending: (tenantId, limit) => transaction((tx) => read(tx, tenantId, limit)),
+    pending: (tenantId, limit) =>
+      transaction(async (tx) => {
+        await tx.query(pin(tenantId));
+        return read(tx, tenantId, limit);
+      }),
+    // One transaction, one connection, a pinned read per tenant: a policy is
+    // read once per statement, so no single statement can see two tenants.
     oldestPending: (tenantIds) =>
-      transaction(async (tx) =>
-        (
-          (await tx.query(oldest(tenantIds))) as readonly {
-            readonly tenantId: string;
-            readonly occurredAt: string;
-          }[]
-        ).map(({ tenantId, occurredAt }) => ({ tenantId, occurredAt: new Date(occurredAt) })),
-      ),
+      transaction(async (tx) => {
+        const oldestOf: { readonly tenantId: string; readonly occurredAt: Date }[] = [];
+        for (const tenantId of tenantIds) {
+          await tx.query(pin(tenantId));
+          const [row] = (await tx.query(oldest(tenantId))) as readonly {
+            readonly occurredAt: string | null;
+          }[];
+          if (row?.occurredAt != null)
+            oldestOf.push({ tenantId, occurredAt: new Date(row.occurredAt) });
+        }
+        return oldestOf;
+      }),
     claim: (tenantId, limit, relay) =>
       transaction(async (tx) => {
         const [held] = (await tx.query(lock(tenantId))) as readonly { readonly locked: string }[];

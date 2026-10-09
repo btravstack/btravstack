@@ -62,10 +62,10 @@ namespace orders {
   // The customers vertical, on the same shape: `customerId` is the business id
   // the domain speaks, unique within its tenant.
   //
-  // No `@@rls`, deliberately, and it is the same reason `OutboxMessage` has
-  // none: the customers procedures are unmarked, so they open no unit with a
-  // tenant to pin, and the adapter carries the tenant as an argument instead. A
-  // policy here would deny every row to a client nothing pinned.
+  // No `@@rls`, deliberately: the customers procedures are unmarked, so they
+  // open no unit with a tenant to pin, and the adapter carries the tenant as an
+  // argument instead. A policy here would deny every row to a client nothing
+  // pinned.
   model Customer {
     id         Int    @id @default(autoincrement())
     tenantId   String
@@ -90,9 +90,10 @@ namespace orders {
   // its `prismaOutboxStore` reads and claims in raw SQL. `id` is a `BigInt`
   // because an `Int` sequence runs out at 2^31 - 1.
   //
-  // The relay sweeps ACROSS tenants, which is why nothing here is scoped by one
-  // and why it carries no `@@rls`: it runs outside any unit, so there is no
-  // tenant pinned on its connection and a policy would deny it every row.
+  // Under `@@rls` like `Order`, on the same setting: the writer is already
+  // pinned (the repository writes this row inside `tenantPinned`), and the
+  // relay pins each tenant it claims, transaction-locally, before it reads or
+  // marks — so one tenant's relay can neither see nor mark another's facts.
   // `TimestamptzString`, not `Timestamptz`: the latter reads and writes
   // `Temporal.Instant` and throws `RUNTIME.TEMPORAL_UNAVAILABLE` on a runtime
   // with no `globalThis.Temporal`, which is every Node before 26.8.2 —
@@ -107,6 +108,8 @@ namespace orders {
     payload     String?
     occurredAt  TimestamptzString  @default(now())
     publishedAt TimestamptzString?
+
+    @@rls
   }
 
   // Row security is the DATABASE's answer to "whose row is this", and the
@@ -118,6 +121,12 @@ namespace orders {
   // and cannot legitimately produce one.
   policy_all order_tenant_isolation {
     target    = Order
+    using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
+    withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
+  }
+
+  policy_all outbox_tenant_isolation {
+    target    = OutboxMessage
     using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
     withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
   }
