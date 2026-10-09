@@ -409,14 +409,12 @@ const sessionFixture = async (
     resolve: (await sessionServiceOf(defaultSession, codec)).getOrThrow(),
     scoped: (await sessionServiceOf(scopedSession, codec)).getOrThrow(),
     sid: (await sessionServiceOf(sidSession, codec)).getOrThrow(),
-    fromEnv: (variablePrefix, env) =>
-      sessionServiceOf(
-        sessionAuthenticator<SessionIdentity>()(
-          variablePrefix === undefined ? {} : { variablePrefix },
-        ),
-        codec,
-        env,
-      ),
+    fromEnv: (variablePrefix, env) => {
+      // One object type, not a union: the scheme infers its options as written.
+      const options: { readonly variablePrefix?: string } =
+        variablePrefix === undefined ? {} : { variablePrefix };
+      return sessionServiceOf(sessionAuthenticator<SessionIdentity>()(options), codec, env);
+    },
   });
 };
 
@@ -732,13 +730,13 @@ const loginOnlyAppOf = (variablePrefix?: string) =>
  * ephemeral one, and the answerer building the grant's `currentUrl` from the
  * configured value rather than from `Host` is exactly what lets the two differ.
  */
-export const oidcEnv: Environment = {
+export const oidcEnv = {
   HTTP_SESSION_KEYS: sessionKeys.alpha,
   HTTP_OIDC_ISSUER: ORY_ISSUER,
   HTTP_OIDC_CLIENT_ID: ORY_CLIENT_ID,
   HTTP_OIDC_CLIENT_SECRET: ORY_CLIENT_SECRET,
   HTTP_OIDC_REDIRECT_URI: ORY_REDIRECT_URI,
-};
+} satisfies Environment;
 
 /** One request a browser made, and everything a spec reads off the answer. */
 export type Visit = {
@@ -2401,7 +2399,9 @@ export const it = test.extend<HttpFixtures>({
   },
 
   jwtApp: async ({ boot }, use) => {
-    await use((env) => boot(envJwtAppOf(), { env }));
+    // The environment a spec hands over, complete or not: these boots exist to
+    // assert what an incomplete one gets at run time, which the type refuses.
+    await use((env) => boot(envJwtAppOf(), { env: env as never }));
   },
 
   csrf: async ({ boot }, use) => {
@@ -3109,12 +3109,18 @@ export const it = test.extend<HttpFixtures>({
   // fetched, and a fixture is only built by a test that names it.
   oidcApp: async ({ boot }, use) => {
     await use((env, allowInsecureIssuer) =>
-      boot(bffAppOf(oidcPrincipal, recordingObserver().member, allowInsecureIssuer), { env }),
+      boot(bffAppOf(oidcPrincipal, recordingObserver().member, allowInsecureIssuer), {
+        // Complete or not: these boots assert what an incomplete environment
+        // gets at run time, which the type refuses.
+        env: env as never,
+      }),
     );
   },
 
   staffOidcApp: async ({ boot }, use) => {
-    await use((env) => boot(loginOnlyAppOf("HTTP_OIDC_STAFF"), { env }));
+    // The environment a spec hands over, complete or not: these boots exist to
+    // assert what an incomplete one gets at run time, which the type refuses.
+    await use((env) => boot(loginOnlyAppOf("HTTP_OIDC_STAFF"), { env: env as never }));
   },
 
   bothProtocols: async ({ boot }, use) => {

@@ -1,10 +1,19 @@
-import { Config, ConfigInvalid, Env, type EnvReading } from "@btravstack/config";
+import {
+  Config,
+  ConfigInvalid,
+  Env,
+  type EnvReading,
+  type MaybePinned,
+  type OptionsAs,
+  type Unpinned,
+} from "@btravstack/config";
 import { Port, Provider } from "@btravstack/di";
 import { CompactEncrypt, compactDecrypt } from "jose";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 import { HttpAuthenticator, Unauthenticated, grantOf, type Authenticator } from "./auth.js";
 import { cookieValue } from "./cookie.js";
+import type { PrefixOf, ScopesOf } from "./options.js";
 
 export { CookieSchemes, cookieScheme } from "./cookie.js";
 
@@ -253,6 +262,12 @@ const codec = (
   };
 };
 
+/** What {@link sessionCodec} is handed. */
+export type SessionCodecPins = {
+  readonly keys?: readonly string[] | undefined;
+  readonly ttlSec?: number;
+};
+
 /**
  * The cookie codec, from `HTTP_SESSION_KEYS` — a comma-separated list of
  * base64url 32-byte keys. The first seals, every one unseals, so rotation is
@@ -263,16 +278,24 @@ const codec = (
  * A key that is not 32 bytes is a `ConfigInvalid` naming the variable, at boot,
  * rather than a failure at the first request.
  */
-export const sessionCodec = (
-  pins: { readonly keys?: readonly string[]; readonly ttlSec?: number } = {},
-): Provider<SessionCodec, ConfigInvalid, EnvReading<never, "HTTP_SESSION_KEYS">> & {
+
+export const sessionCodec = <const O extends SessionCodecPins = Record<never, never>>(
+  // `{}` only when the argument is omitted, which is when `O` is `{}` too.
+  pins: O & OptionsAs<O, SessionCodecPins> = {} as never,
+): Provider<
+  SessionCodec,
+  ConfigInvalid,
+  EnvReading<Unpinned<O, "keys", "HTTP_SESSION_KEYS">, MaybePinned<O, "keys", "HTTP_SESSION_KEYS">>
+> & {
   readonly port: typeof SessionCodec;
 } => {
   const schema = Config.object({
     keys: Config.pinned(pins.keys, Config.list("HTTP_SESSION_KEYS")),
   });
+  // Cast for the needs alone: over generic pins the schema's own needs type
+  // cannot resolve, so the annotation states the variable — required unless pinned.
   return Provider(SessionCodec)({
-    inject: { env: Config.env(schema) },
+    inject: { env: Env },
     make: ({ env }): AsyncResult<SessionCodecService, ConfigInvalid> =>
       Config.parse(
         "HttpSession",
@@ -300,7 +323,7 @@ export const sessionCodec = (
             )
           : OkAsync(codec([sealing, ...rotated], pins.ttlSec ?? DEFAULT_TTL_SEC));
       }),
-  });
+  }) as never;
 };
 
 /**
@@ -332,12 +355,12 @@ export type SessionOptions<P, Scopes extends readonly string[], Pre extends stri
    * The issuer of the login whose sessions this scheme accepts — pins
    * `<prefix>_ISSUER`, the variable that login reads too.
    */
-  readonly issuer?: string;
+  readonly issuer?: string | undefined;
   /**
    * That login's client id — pins `<prefix>_CLIENT_ID`. A session from another
    * issuer, another client, or none is refused.
    */
-  readonly clientId?: string;
+  readonly clientId?: string | undefined;
   /**
    * The prefix of both variables. Default `HTTP_OIDC`, `oidc()`'s own — a
    * scheme pairs with its login by naming the same prefix.
@@ -375,14 +398,23 @@ export type SessionOptions<P, Scopes extends readonly string[], Pre extends stri
  */
 export const sessionAuthenticator =
   <P>() =>
-  <const Scopes extends readonly string[] = readonly [], const Pre extends string = "HTTP_OIDC">(
-    options: SessionOptions<P, Scopes, Pre> = {},
+  <const O extends SessionOptions<P, readonly string[], string> = Record<never, never>>(
+    // `{}` only when the argument is omitted, which is when `O` is `{}` too.
+    options: O & OptionsAs<O, SessionOptions<P, readonly string[], string>> = {} as never,
   ): Authenticator<
     P,
-    Scopes[number],
-    SessionCodec | EnvReading<never, `${Pre}_ISSUER` | `${Pre}_CLIENT_ID`>,
+    ScopesOf<O>[number],
+    | SessionCodec
+    | EnvReading<
+        | Unpinned<O, "issuer", `${PrefixOf<O, "HTTP_OIDC">}_ISSUER`>
+        | Unpinned<O, "clientId", `${PrefixOf<O, "HTTP_OIDC">}_CLIENT_ID`>,
+        | MaybePinned<O, "issuer", `${PrefixOf<O, "HTTP_OIDC">}_ISSUER`>
+        | MaybePinned<O, "clientId", `${PrefixOf<O, "HTTP_OIDC">}_CLIENT_ID`>
+      >,
     ConfigInvalid
   > => {
+    type Scopes = ScopesOf<O>;
+    type Pre = PrefixOf<O, "HTTP_OIDC">;
     // The vocabulary decides the answer's SHAPE, and it is read once here: a
     // scoped scheme answers an empty grant for a session that holds nothing,
     // never a bare identity.

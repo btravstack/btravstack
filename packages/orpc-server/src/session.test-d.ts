@@ -10,6 +10,7 @@ import {
   SessionCodec,
   sessionAuthenticator,
   sessionCodec,
+  type SessionCodecPins,
   type Session,
   type SessionCodecService,
 } from "@btravstack/http-server/session";
@@ -25,13 +26,13 @@ expectTypeOf<Session<Identity>["principal"]>().toEqualTypeOf<Identity>();
 // Nothing pinned: the keys arrive from `HTTP_SESSION_KEYS`, so the provider
 // needs `Env` and reports `ConfigInvalid`.
 expectTypeOf(sessionCodec()).toEqualTypeOf<
-  Provider<SessionCodec, ConfigInvalid, EnvReading<never, "HTTP_SESSION_KEYS">> & {
+  Provider<SessionCodec, ConfigInvalid, EnvReading<"HTTP_SESSION_KEYS", never>> & {
     readonly port: typeof SessionCodec;
   }
 >();
 
 expectTypeOf(sessionCodec({ keys: ["k"], ttlSec: 60 })).toEqualTypeOf<
-  Provider<SessionCodec, ConfigInvalid, EnvReading<never, "HTTP_SESSION_KEYS">> & {
+  Provider<SessionCodec, ConfigInvalid, EnvReading<never, never>> & {
     readonly port: typeof SessionCodec;
   }
 >();
@@ -80,7 +81,7 @@ expectTypeOf(browserAuth).toEqualTypeOf<
   Authenticator<
     Identity,
     never,
-    SessionCodec | EnvReading<never, "HTTP_OIDC_ISSUER" | "HTTP_OIDC_CLIENT_ID">,
+    SessionCodec | EnvReading<"HTTP_OIDC_ISSUER" | "HTTP_OIDC_CLIENT_ID", never>,
     ConfigInvalid
   >
 >();
@@ -94,7 +95,7 @@ expectTypeOf(scopedAuth).toEqualTypeOf<
   Authenticator<
     Identity,
     "orders:export",
-    SessionCodec | EnvReading<never, "HTTP_OIDC_ISSUER" | "HTTP_OIDC_CLIENT_ID">,
+    SessionCodec | EnvReading<"HTTP_OIDC_ISSUER" | "HTTP_OIDC_CLIENT_ID", never>,
     ConfigInvalid
   >
 >();
@@ -123,3 +124,13 @@ api.HtmxGet("/admin", {
   // @ts-expect-error -- UNGRANTABLE SCOPE: "orders:admin" is not one `session` can grant
   requires: [{ session: ["orders:admin"] }],
 })({ inject: {}, sync: () => () => OkAsync(html`admin`) });
+
+// An annotated pins value is read as written: its `keys` may be set, so the
+// variable is optional rather than required.
+const annotated: SessionCodecPins = { keys: ["k"] };
+
+expectTypeOf(sessionCodec(annotated)).toEqualTypeOf<
+  Provider<SessionCodec, ConfigInvalid, EnvReading<never, "HTTP_SESSION_KEYS">> & {
+    readonly port: typeof SessionCodec;
+  }
+>();

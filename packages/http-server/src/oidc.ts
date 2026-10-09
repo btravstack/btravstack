@@ -1,6 +1,14 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
+import {
+  Config,
+  Env,
+  type ConfigInvalid,
+  type EnvReading,
+  type MaybePinned,
+  type OptionsAs,
+  type Unpinned,
+} from "@btravstack/config";
 import { Observers, observe, type Operation, type Settle } from "@btravstack/core";
 import { Provider, type AnyProvider } from "@btravstack/di";
 import {
@@ -23,6 +31,7 @@ import { ErrAsync, TaggedError, fromPromise, type AsyncResult } from "unthrown";
 import { cleartext, cleartextRefused } from "./cleartext.js";
 import { clearCookie, cookieScheme, cookieValue, setCookie } from "./cookie.js";
 import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
+import type { PrefixOf } from "./options.js";
 import { forLocation, returnTo } from "./redirect.js";
 import {
   SESSION_COOKIE,
@@ -31,17 +40,32 @@ import {
   type SessionCodecService,
 } from "./session.js";
 
+/** What `oidc()`'s pins are, as their own type: every one may be set. */
+export type OidcPins = {
+  readonly issuer?: string | undefined;
+  readonly clientId?: string | undefined;
+  readonly clientSecret?: string | undefined;
+  readonly redirectUri?: string | undefined;
+};
+
 /**
  * The answerer half of what {@link oidc} composes — the three login routes as
  * one `HttpHandler` member. The second half is a `CookieSchemes` member, which
  * carries no type of its own.
  */
-export type OidcAnswerer<Pre extends string = string> = Provider<
+
+export type OidcAnswerer<Pre extends string = string, O = OidcPins> = Provider<
   HttpHandler,
   ConfigInvalid | OidcUnreachable,
   | EnvReading<
-      never,
-      `${Pre}_ISSUER` | `${Pre}_CLIENT_ID` | `${Pre}_CLIENT_SECRET` | `${Pre}_REDIRECT_URI`
+      | Unpinned<O, "issuer", `${Pre}_ISSUER`>
+      | Unpinned<O, "clientId", `${Pre}_CLIENT_ID`>
+      | Unpinned<O, "clientSecret", `${Pre}_CLIENT_SECRET`>
+      | Unpinned<O, "redirectUri", `${Pre}_REDIRECT_URI`>,
+      | MaybePinned<O, "issuer", `${Pre}_ISSUER`>
+      | MaybePinned<O, "clientId", `${Pre}_CLIENT_ID`>
+      | MaybePinned<O, "clientSecret", `${Pre}_CLIENT_SECRET`>
+      | MaybePinned<O, "redirectUri", `${Pre}_REDIRECT_URI`>
     >
   | SessionCodec
   | Observers
@@ -73,17 +97,17 @@ class GrantFailed extends TaggedError("GrantFailed")<{
 
 export type OidcOptions<P, Pre extends string = string> = {
   /** Pins `<prefix>_ISSUER` — the provider, as its discovery document names itself. */
-  readonly issuer?: string;
+  readonly issuer?: string | undefined;
   /** Pins `<prefix>_CLIENT_ID`. */
-  readonly clientId?: string;
+  readonly clientId?: string | undefined;
   /** Pins `<prefix>_CLIENT_SECRET` — this is a confidential client. */
-  readonly clientSecret?: string;
+  readonly clientSecret?: string | undefined;
   /**
    * Pins `<prefix>_REDIRECT_URI` — the URI REGISTERED with the provider, which
    * is also what the code grant is checked against. It is never rebuilt from
    * the request's `Host`.
    */
-  readonly redirectUri?: string;
+  readonly redirectUri?: string | undefined;
   /**
    * The prefix of the four variables this login reads: `<prefix>_ISSUER`,
    * `<prefix>_CLIENT_ID`, `<prefix>_CLIENT_SECRET` and `<prefix>_REDIRECT_URI`.
@@ -441,9 +465,14 @@ const handlerFor =
  * member beside a scheme that reads one; this is that rule reaching the one
  * surface it could not see.
  */
-export const oidc = <P, const Pre extends string = "HTTP_OIDC">(
-  options: OidcOptions<P, Pre>,
-): readonly [OidcAnswerer<Pre>, AnyProvider] => {
+// `O` is the options as written, naked so a union or an annotated type is
+// inferred whole; `P` comes from the `OidcOptions<P>` half. A call that states
+// `P` leaves `O` at its default — every pin MAY be set — so its variables are
+// optional rather than its own pins refused.
+export const oidc = <P, const O extends OidcOptions<unknown, string> = OidcOptions<P, string>>(
+  options: OidcOptions<P, string> & O & OptionsAs<O, OidcOptions<P, string>>,
+): readonly [OidcAnswerer<PrefixOf<O, "HTTP_OIDC">, O>, AnyProvider] => {
+  type Pre = PrefixOf<O, "HTTP_OIDC">;
   const prefix = options.prefix ?? DEFAULT_PREFIX;
   const variables = (options.variablePrefix ?? "HTTP_OIDC") as Pre;
   const schema = Config.object({
@@ -495,5 +524,5 @@ export const oidc = <P, const Pre extends string = "HTTP_OIDC">(
       }),
   });
 
-  return [answerer as unknown as OidcAnswerer<Pre>, cookieScheme()];
+  return [answerer as unknown as OidcAnswerer<Pre, O>, cookieScheme()];
 };

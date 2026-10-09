@@ -26,10 +26,37 @@ are load-bearing:
   emit prints a named alias unreduced, and a consumer exporting a module would
   then name an alias this package does not export. Measured: the needs printed
   as `EnvReading<RequiredKeys<…>, …>` until they were inlined.
-- **A variable a starter option may pin is optional.** `Config.pinned` reads
-  nothing when its value is certainly there and leaves the variable optional
-  when the value's type admits `undefined`: only the call knows. Making that
-  exact needs every starter generic over its options — stage 2 of #465.
+- **A pin decides a variable's need from the options' TYPE.** `Config.pinned`
+  reads nothing when its value is certainly there, reads the field's own need
+  when it is certainly absent, and leaves the variable optional when its type
+  admits both. A starter whose options pin a variable with no default
+  (`jwtAuthenticator`, `oidc()`, `sessionAuthenticator`, `sessionCodec`,
+  `outbox`) infers its options as written — one type parameter `O` — and
+  spells its needs with `Unpinned<O, Key, Variable>` / `MaybePinned<…>`, so an
+  unpinned `HTTP_JWT_ISSUER` is required at the boot site. The shape is
+  `<const O extends Options>(options: O & OptionsAs<O, Options>)`, and each
+  part of it was a review finding:
+  - **`O`, not one parameter per option.** A per-option parameter inferred
+    `string` from an optional key (`{ jwks?: string }`), reading the variable
+    as pinned when it may be absent; and under `oidc<Identity>(…)` — the one
+    uncurried starter — explicit type arguments defaulted the rest to
+    `undefined` and refused the call's own pins. `oidc()`'s `O` defaults to
+    `OidcOptions<P>`, so there its variables fall back to optional.
+  - **`O` naked, and constrained.** Behind a mapped type, `O` was inferred by
+    reverse mapping: a conditional options object kept one branch and refused
+    the other, and an annotated `SessionCodecPins` argument matched the plain
+    half and left `O` at its default. Naked, `O` is the argument's type — a
+    union or an annotation included; the constraint keeps the contextual type
+    a `principal` callback needs, and a mistyped value fails it and is refused
+    at its key.
+  - **`OptionsAs<O, T>`** maps a key `T` does not know to `never`, so a
+    misspelt option is still an error at its own key (`T & O` alone let it
+    join `O` silently).
+  - **The pin helpers distribute over `O`.** A pin one branch of a union sets
+    is only maybe set, so `Unpinned` holds when every member leaves it out and
+    `MaybePinned` when some member may set it.
+    A variable WITH a default stays optional however it is pinned, which is why
+    `httpServer`, the workers and the kernel needed none of this.
 - **`EnvPortFor` has a zero-argument constructor**, as `Env` does.
   `InstanceType` matches against `(...args: any)`, and `any` is not assignable
   to `never`, so a `(...args: never)` constructor answers `any` — which every

@@ -24,14 +24,14 @@ const principal = (claims: Claims): Identity | undefined =>
     : undefined;
 
 // Nothing pinned: every option arrives from `HTTP_JWT_*`, and the needs name
-// the three variables, so a boot's `env` is typed by them.
+// the three variables as REQUIRED, so a boot's `env` must carry them.
 const fromEnvironment = jwtAuthenticator<Identity>()({ principal });
 
 expectTypeOf(fromEnvironment).toEqualTypeOf<
   Authenticator<
     Identity,
     never,
-    EnvReading<never, "HTTP_JWT_JWKS_URI" | "HTTP_JWT_ISSUER" | "HTTP_JWT_AUDIENCE"> | Observers,
+    EnvReading<"HTTP_JWT_JWKS_URI" | "HTTP_JWT_ISSUER" | "HTTP_JWT_AUDIENCE", never> | Observers,
     ConfigInvalid
   >
 >();
@@ -44,15 +44,15 @@ expectTypeOf(customer).toEqualTypeOf<
     Identity,
     never,
     | EnvReading<
-        never,
-        "HTTP_JWT_CUSTOMER_JWKS_URI" | "HTTP_JWT_CUSTOMER_ISSUER" | "HTTP_JWT_CUSTOMER_AUDIENCE"
+        "HTTP_JWT_CUSTOMER_JWKS_URI" | "HTTP_JWT_CUSTOMER_ISSUER" | "HTTP_JWT_CUSTOMER_AUDIENCE",
+        never
       >
     | Observers,
     ConfigInvalid
   >
 >();
 
-// All three pinned — what a test does — is the same description.
+// All three pinned — what a test does — reads none of them.
 const pinned = jwtAuthenticator<Identity>()({
   jwks: "http://127.0.0.1:1/jwks.json",
   issuer: "https://issuer.test",
@@ -62,10 +62,22 @@ const pinned = jwtAuthenticator<Identity>()({
 });
 
 expectTypeOf(pinned).toEqualTypeOf<
+  Authenticator<Identity, "orders:export", EnvReading<never, never> | Observers, ConfigInvalid>
+>();
+
+// A pin that may be absent leaves its variable optional: only the call knows.
+declare const maybeIssuer: string | undefined;
+const maybePinned = jwtAuthenticator<Identity>()({
+  jwks: "http://127.0.0.1:1/jwks.json",
+  issuer: maybeIssuer,
+  principal,
+});
+
+expectTypeOf(maybePinned).toEqualTypeOf<
   Authenticator<
     Identity,
-    "orders:export",
-    EnvReading<never, "HTTP_JWT_JWKS_URI" | "HTTP_JWT_ISSUER" | "HTTP_JWT_AUDIENCE"> | Observers,
+    never,
+    EnvReading<"HTTP_JWT_AUDIENCE", "HTTP_JWT_ISSUER"> | Observers,
     ConfigInvalid
   >
 >();
@@ -107,3 +119,33 @@ const reusable: JwtOptions<Identity, readonly []> = {
   principal,
 };
 void reusable;
+
+// A pin typed as an optional key may be absent whatever its value's type says,
+// so its variable stays optional rather than being treated as pinned.
+declare const partial: { readonly jwks?: string };
+const fromPartial = jwtAuthenticator<Identity>()({ ...partial, principal });
+
+expectTypeOf(fromPartial).toEqualTypeOf<
+  Authenticator<
+    Identity,
+    never,
+    EnvReading<"HTTP_JWT_ISSUER" | "HTTP_JWT_AUDIENCE", "HTTP_JWT_JWKS_URI"> | Observers,
+    ConfigInvalid
+  >
+>();
+
+// Options built conditionally are a union: each branch is accepted, and a pin
+// only one branch sets is only maybe set.
+declare const useIssuer: boolean;
+const conditional = jwtAuthenticator<Identity>()(
+  useIssuer ? { issuer: "https://issuer.test", principal } : { audience: "orders-api", principal },
+);
+
+expectTypeOf(conditional).toEqualTypeOf<
+  Authenticator<
+    Identity,
+    never,
+    EnvReading<"HTTP_JWT_JWKS_URI", "HTTP_JWT_ISSUER" | "HTTP_JWT_AUDIENCE"> | Observers,
+    ConfigInvalid
+  >
+>();

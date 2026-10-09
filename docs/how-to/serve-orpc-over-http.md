@@ -4,12 +4,14 @@ description: Implement an oRPC contract as a di-provided router, compose it with
 ---
 
 <!-- doctest: prelude
-import { start } from "@btravstack/core";
+import { start, type StartEnvironment } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { HttpRuntime } from "@btravstack/http-server";
 import { http } from "@btravstack/orpc-server";
 import { api } from "../../auth.js";
 import { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
+// The rest of what this root reads, beside the two the sample sets.
+declare const deployment: Omit<StartEnvironment<typeof OrdersApi>, "PORT" | "HOST">;
 -->
 
 # Serve an oRPC contract over HTTP
@@ -351,13 +353,20 @@ from the unit's defect path, before any procedure runs.
 
 ```ts
 const app = start(OrdersApi, {
-  env: { PORT: "0", HOST: "127.0.0.1", DATABASE_URL: "postgres://orders@localhost:5432/orders" },
+  env: { ...deployment, PORT: "0", HOST: "127.0.0.1" },
   signals: false,
   probes: false,
 });
 const info = (await app.runtimeInfo()).get(); // HttpInfo | undefined
 const origin = `http://127.0.0.1:${info?.port}`;
 ```
+
+`deployment` stands for the rest of what this root reads — the database URL, the
+JWT scheme's three variables, the session keys, and the issuer and client id the
+session scheme accepts sessions from. This root composes no `oidc()` login, so
+its secret and redirect URI are not among them.
+`env` is typed by them: leave one out and the call names it, rather than the
+boot. `StartEnvironment<typeof OrdersApi>` is that record.
 
 `runtimeInfo()` is an `AsyncResult<HttpInfo | undefined, never>` — `undefined`
 if the runtime never reached serving.
