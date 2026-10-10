@@ -1,5 +1,5 @@
 import type { AnySchema, ErrorMap, ProcedureContract } from "@orpc/contract";
-import { Err, fromSafeThrowable, TaggedError, type AsyncResult } from "unthrown";
+import { Err, fromSafePromise, fromSafeThrowable, TaggedError, type AsyncResult } from "unthrown";
 import { z } from "zod";
 
 /**
@@ -36,8 +36,8 @@ export class InvalidInput extends TaggedError("InvalidInput")<{
 
 /**
  * `call`, handed the input as the procedure's contract parses it and encodes
- * it back for the wire — its defaults applied, its codecs run — or
- * `InvalidInput` without calling it. A contract whose input is not one Zod
+ * it back for the wire — its defaults applied, its codecs run, asynchronous
+ * refinements and transforms included — or `InvalidInput` without calling it. A contract whose input is not one Zod
  * schema is a defect.
  */
 export const contractCall = <
@@ -52,14 +52,14 @@ export const contractCall = <
   call: (validated: z.input<Schema>) => AsyncResult<Output, Failure>,
 ): AsyncResult<Output, Failure | InvalidInput> =>
   fromSafeThrowable(() => contractInput(procedure))()
+    .toAsync()
     .flatMap((schema) =>
-      fromSafeThrowable(() => schema.safeParse(input))().flatMap((parsed) =>
+      fromSafePromise(schema.safeParseAsync(input)).flatMap((parsed) =>
         parsed.success
-          ? fromSafeThrowable(() => z.encode(schema, parsed.data))()
+          ? fromSafePromise(z.encodeAsync(schema, parsed.data))
           : Err(new InvalidInput({ issues: parsed.error.issues })),
       ),
     )
-    .toAsync()
     .flatMap((validated) => call(validated));
 
 /**
@@ -68,4 +68,4 @@ export const contractCall = <
  * broke its own contract.
  */
 export const contractOutput = <Schema extends z.ZodType>(schema: Schema, value: unknown) =>
-  fromSafeThrowable(() => schema.parse(value))();
+  fromSafePromise(schema.parseAsync(value));

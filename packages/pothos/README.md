@@ -11,7 +11,7 @@ contract-first services. The default export is the plugin, listed after
   decodes the answer with `output`, and answers each error the procedure
   declares as the GraphQL error class the builder's `orpc: { refusals }`
   registers for its code — a member of the field's result union. A registry
-  that misses a declared code does not compile.
+  that misses a code `call` can fail with does not compile.
 - `t.procedureConnection(procedure, { …, connection })` is the same for a
   Relay connection, with the decoded page folded by `connection`.
 - `UNAUTHORIZED` and `FORBIDDEN` are answered as GraphQL's own error, with

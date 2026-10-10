@@ -52,6 +52,21 @@ describe("contract", () => {
     expect(called).toBeErrTagged("InvalidInput");
   });
 
+  it("parses input through an asynchronous refinement", async () => {
+    // GIVEN a contract checking a shelf exists asynchronously
+    const shelve = oc.input(
+      z.object({ shelf: z.string().refine(async (shelf) => Promise.resolve(shelf === "poetry")) }),
+    );
+
+    // WHEN it is called with a shelf that does not exist
+    const called = await contractCall(shelve, { shelf: "fiction" }, (validated) =>
+      OkAsync(validated),
+    );
+
+    // THEN the input is refused, not a defect
+    expect(called).toBeErrTagged("InvalidInput");
+  });
+
   it("answers a defect for a contract holding no Zod input", async () => {
     // GIVEN a contract with no input schema
     const unbound = oc.output(z.string());
@@ -74,25 +89,36 @@ describe("contract", () => {
     expect(read).toBe(Shelf);
   });
 
-  it("decodes a procedure's answer", () => {
+  it("decodes a procedure's answer", async () => {
     // GIVEN a page count travelling as text
     const Pages = z.coerce.bigint();
 
     // WHEN an answer is decoded
-    const decoded = contractOutput(Pages, "120");
+    const decoded = await contractOutput(Pages, "120");
 
     // THEN the field resolves the decoded value
     expect(decoded).toBeOkWith(120n);
   });
 
-  it("answers a defect for an answer breaking its own contract", () => {
+  it("answers a defect for an answer breaking its own contract", async () => {
     // GIVEN a page count travelling as text
     const Pages = z.coerce.bigint();
 
     // WHEN an answer that is no number is decoded
-    const decoded = contractOutput(Pages, "some");
+    const decoded = await contractOutput(Pages, "some");
 
     // THEN the service broke its contract
     expect(decoded).toBeDefect();
+  });
+
+  it("decodes an answer through an asynchronous transform", async () => {
+    // GIVEN a page count resolved asynchronously
+    const Pages = z.number().transform(async (pages) => Promise.resolve(pages * 2));
+
+    // WHEN an answer is decoded
+    const decoded = await contractOutput(Pages, 60);
+
+    // THEN the field resolves the transformed value
+    expect(decoded).toBeOkWith(120);
   });
 });
