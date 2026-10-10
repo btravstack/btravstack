@@ -942,7 +942,7 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   **`login` is where this answerer and the login answerer touch, and it is the
   ONLY place the two know about each other.** It is the login ROUTE, not the
   prefix the login answerer is mounted under — `/auth/login` for an
-  `oidc({ prefix: "/auth" })`, since `/auth` itself serves nothing and a
+  `oidc()({ prefix: "/auth" })`, since `/auth` itself serves nothing and a
   redirect there is a `404`. Set it and a route whose `requires` resolves
   `Unauthenticated` sends the caller there carrying
   `?return=<encodeURIComponent(request.url)>` instead of answering a bare

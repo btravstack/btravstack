@@ -219,13 +219,15 @@ writing it per application is how CVEs happen. Each is an ordinary
 - **`apiKeyAuthenticator<P>()({ keys, header? })`**, on the main entry point. Constant-time
   compare over SHA-256 digests, every key checked with no early return, and a
   missing header on the same path as a wrong one.
-- **`jwtAuthenticator<P>()({ principal, jwks?, issuer?, audience?, variablePrefix?, scopes?, algorithms?, clockToleranceSec?, header? })`**, from
+- **`jwtAuthenticator<P>()({ principal, inject?, jwks?, issuer?, audience?, variablePrefix?, scopes?, algorithms?, clockToleranceSec?, header? })`**, from
   `@btravstack/http-server/jwt`, with `jose` as an optional peer. JWKS fetch,
   cache and rotation; an asymmetric-only algorithm allowlist, because a JWKS
   publishes public keys and accepting `HS256` beside them is the
   algorithm-confusion attack; `iss`, `aud` and `exp` required to be present,
   `nbf` honoured when present. `jwks`, `issuer` and `audience` are bound from
-  `HTTP_JWT_*` when they are not pinned — see **Options** below.
+  `HTTP_JWT_*` when they are not pinned — see **Options** below. `principal`
+  is `(claims, services)`: `services` are the ports `inject` names, so a claim
+  check can read configuration, each port joining the scheme's needs.
 - **`sessionAuthenticator<P>()({ scopes?, principal?, issuer?, clientId?, variablePrefix? })`**, from
   `@btravstack/http-server/session`, over the codec `sessionCodec()` provides.
   Reads `__Host-session`, the cookie the OIDC login answerer (`oidc()`) seals,
@@ -312,7 +314,7 @@ Mint one with
 A key that is not 32 base64url bytes fails the boot with a `ConfigInvalid`
 naming `HTTP_SESSION_KEYS` and the POSITION it refused — never the value.
 
-`oidc({ principal, ... })`, from `@btravstack/http-server/oidc`, is what
+`oidc()({ principal, ... })`, from `@btravstack/http-server/oidc`, is what
 authenticates the principal that codec seals: an answerer serving
 `<prefix>/login`, `<prefix>/callback` and `<prefix>/logout` over the
 authorization-code flow with PKCE. It needs `openid-client`, an optional peer
@@ -320,7 +322,8 @@ behind that subpath.
 
 | Option                | What it is                                                                                                      |
 | --------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `principal`           | **required** — what the ID token's claims make the caller; `undefined` refuses the login                        |
+| `principal`           | **required** — `(claims, services)`; what the ID token's claims make the caller; `undefined` refuses the login  |
+| `inject`              | the ports `principal` reads, resolved as the graph is built; each joins the answerer's needs                    |
 | `issuer`              | pins `HTTP_OIDC_ISSUER` — the provider, as its discovery document names itself                                  |
 | `clientId`            | pins `HTTP_OIDC_CLIENT_ID` — this deployment's client                                                           |
 | `clientSecret`        | pins `HTTP_OIDC_CLIENT_SECRET` — its secret; the flow is a confidential client's                                |

@@ -38,10 +38,11 @@ are load-bearing:
   part of it was a review finding:
   - **`O`, not one parameter per option.** A per-option parameter inferred
     `string` from an optional key (`{ jwks?: string }`), reading the variable
-    as pinned when it may be absent; and under `oidc<Identity>(…)` — the one
-    uncurried starter — explicit type arguments defaulted the rest to
-    `undefined` and refused the call's own pins. `oidc()`'s `O` defaults to
-    `OidcOptions<P>`, so there its variables fall back to optional.
+    as pinned when it may be absent; and under `oidc<Identity>(…)`, when it
+    was the one uncurried starter, explicit type arguments defaulted the rest
+    to `undefined` and refused the call's own pins. `oidc` is curried now —
+    `oidc<P>()(options)`, as `jwtAuthenticator<P>()` is (#486) — so an explicit
+    `P` never touches the options' inference.
   - **`O` naked, and constrained.** Behind a mapped type, `O` was inferred by
     reverse mapping: a conditional options object kept one branch and refused
     the other, and an annotated `SessionCodecPins` argument matched the plain

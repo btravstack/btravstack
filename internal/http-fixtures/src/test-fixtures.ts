@@ -25,7 +25,7 @@ import { once } from "node:events";
 import { Agent, createServer, request as httpRequest } from "node:http";
 import { connect, type Socket } from "node:net";
 
-import { Env, type ConfigInvalid, type Environment } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid, type Environment } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
 import {
   Observers,
@@ -687,7 +687,7 @@ const bffAppOf = (
     provides: [
       bffRowFragment,
       sessionCodec(),
-      ...oidc({ principal, scope: ORY_SCOPE, allowInsecureIssuer }),
+      ...oidc()({ principal, scope: ORY_SCOPE, allowInsecureIssuer }),
       Provider.member(Observers)({ inject: {}, value: member }),
     ],
   });
@@ -715,7 +715,7 @@ const loginOnlyAppOf = (variablePrefix?: string) =>
     provides: [
       loginOnlyStatusFragment,
       sessionCodec(),
-      ...oidc({
+      ...oidc()({
         principal: oidcPrincipal,
         scope: ORY_SCOPE,
         ...(variablePrefix === undefined ? {} : { variablePrefix }),
@@ -867,6 +867,45 @@ const envJwtAppOf = () =>
     hostname: "127.0.0.1",
     provides: [envJwtFragment],
   });
+
+/** The subjects a delegated token may act for — configuration, read by `principal`. */
+class TrustedSubjects extends Port("TrustedSubjects")<{ readonly subjects: readonly string[] }> {}
+
+/**
+ * A JWT scheme whose `principal` reads an injected, configured allow-list: the
+ * caller is who the token names only when its subject is on the list, which
+ * comes from `JWT_TRUSTED_SUBJECTS` rather than from code.
+ */
+const delegatedJwtAppOf = (issuer: LocalIssuer) => {
+  const api = defineHttp({
+    authenticators: {
+      user: jwtAuthenticator<JwtIdentity>()({
+        jwks: issuer.jwks,
+        issuer: issuer.issuer,
+        audience: issuer.audience,
+        inject: { trusted: TrustedSubjects },
+        principal: (claims, { trusted }) =>
+          typeof claims.sub === "string" && trusted.subjects.includes(claims.sub)
+            ? jwtPrincipal(claims)
+            : undefined,
+      }),
+    },
+  });
+  const whoami = api.HtmxGet("/whoami", { requires: [{ user: [] }] })({
+    inject: {},
+    sync: () => (context) => OkAsync(html`${context.principal.userId}`),
+  });
+  return HttpModule("DelegatedJwtApp")({
+    fragments: api.HtmxFragments([whoami]),
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [
+      Config.provider(TrustedSubjects)(
+        Config.object({ subjects: Config.list("JWT_TRUSTED_SUBJECTS") }),
+      ),
+    ],
+  });
+};
 
 /** A greeting service, so the router has a real dependency to declare. */
 class Greeter extends Port("Greeter")<{ readonly greet: (name: string) => string }> {}
@@ -2263,6 +2302,13 @@ export type HttpFixtures = {
    */
   readonly jwtApp: (env: Environment) => App;
   /**
+   * A JWT scheme whose `principal` reads an injected allow-list, configured to
+   * trust `u-1` alone; it sends a signed token and answers the response.
+   */
+  readonly delegatedJwt: (
+    sub: string,
+  ) => Promise<{ readonly status: number; readonly body: string }>;
+  /**
    * The same scheme with `audience` PINNED, built from whatever environment the
    * test hands it — the pin-versus-variable question, which lives entirely
    * inside the piece's `make`.
@@ -2388,6 +2434,19 @@ export const it = test.extend<HttpFixtures>({
         )
       ).getOrThrow();
       return { resolve, taken: observer.taken };
+    });
+  },
+
+  delegatedJwt: async ({ boot, issuer }, use) => {
+    const app = boot(delegatedJwtAppOf(issuer), { env: { JWT_TRUSTED_SUBJECTS: "u-1" } });
+    const info = (await app.runtimeInfo()).get();
+    await use(async (sub) => {
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const token = await issuer.sign({ sub, tenant: "acme" }).get();
+      const response = await fetch(`http://127.0.0.1:${String(info.port)}/whoami`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      return { status: response.status, body: await response.text() };
     });
   },
 

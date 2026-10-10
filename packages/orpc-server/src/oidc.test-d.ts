@@ -6,7 +6,7 @@
 // cannot be built without. Each `@ts-expect-error` is an assertion.
 import { Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import type { Observers } from "@btravstack/core";
-import { Module, type AnyProvider, type Provider } from "@btravstack/di";
+import { Module, Port, type AnyProvider, type Provider } from "@btravstack/di";
 import { html } from "@btravstack/htmx-server";
 import { HttpHandler } from "@btravstack/http-server";
 import { HttpRuntime } from "@btravstack/http-server";
@@ -32,7 +32,7 @@ const identityOf = (claims: IDToken): Identity | undefined =>
 // per-operation starter here reports to, which costs a root nothing because
 // `httpServer` already contributes the no-op member and exports the port.
 // Both ways a boot can refuse are on the error channel.
-expectTypeOf(oidc({ principal: identityOf })).toEqualTypeOf<
+expectTypeOf(oidc()({ principal: identityOf })).toEqualTypeOf<
   readonly [
     Provider<
       HttpHandler,
@@ -56,7 +56,7 @@ expectTypeOf(oidc({ principal: identityOf })).toEqualTypeOf<
 // Every transport option pinned at the call reads none of the four variables:
 // a pin replaces a variable, in the type as at run time.
 expectTypeOf(
-  oidc({
+  oidc()({
     issuer: "https://issuer.example/",
     clientId: "bff",
     clientSecret: "s3cret",
@@ -80,7 +80,7 @@ expectTypeOf(
 >();
 
 // @ts-expect-error -- Property 'principal' is missing: there is no default for what claims mean
-void oidc({});
+void oidc()({});
 
 const api = defineHttp({
   authenticators: {
@@ -99,7 +99,7 @@ const row = api.HtmxGet("/orders/:id/row", { requires: [{ session: ["orders:expo
 void HttpModule("BrowserApi")({
   fragments: api.HtmxFragments([row]),
   fragmentsLogin: "/auth/login",
-  provides: [row, sessionCodec(), ...oidc({ principal: identityOf })],
+  provides: [row, sessionCodec(), ...oidc()({ principal: identityOf })],
 });
 
 // The negative below is built over fragments with NO session scheme, and that
@@ -118,13 +118,13 @@ const status = publicApi.HtmxGet("/status")({
 // codec beside it discharges that.
 void HttpModule("PublicWithLogin")({
   fragments: publicApi.HtmxFragments([status]),
-  provides: [status, sessionCodec(), ...oidc({ principal: identityOf })],
+  provides: [status, sessionCodec(), ...oidc()({ principal: identityOf })],
 });
 
 // @ts-expect-error -- UNSATISFIED DEPENDENCIES: nothing discharges `SessionCodec`, which only `oidc()` needs here
 void HttpModule("PublicWithLoginNoCodec")({
   fragments: publicApi.HtmxFragments([status]),
-  provides: [status, ...oidc({ principal: identityOf })],
+  provides: [status, ...oidc()({ principal: identityOf })],
 });
 
 // `http()` exports `Observers` too, so a root that imports the oRPC sugar and
@@ -140,15 +140,15 @@ const pingRouter = publicApi.OrpcRouter(pingContract)({
 
 void Module("RpcWithLogin")({
   imports: [http()],
-  provides: [pingRouter, sessionCodec(), ...oidc({ principal: identityOf })],
+  provides: [pingRouter, sessionCodec(), ...oidc()({ principal: identityOf })],
   exports: [HttpRuntime, HttpHandler],
   needs: [Env],
 });
 
 // The insecure-issuer opt-in is a boolean option and nothing else.
-void oidc({ principal: identityOf, allowInsecureIssuer: true });
+void oidc()({ principal: identityOf, allowInsecureIssuer: true });
 
-void oidc({
+void oidc()({
   principal: identityOf,
   // @ts-expect-error -- Type 'string' is not assignable to type 'boolean | undefined'
   allowInsecureIssuer: "yes",
@@ -156,4 +156,46 @@ void oidc({
 
 // Stating `P` leaves the options uninferred, and a pinned value must still
 // compile: the variables fall back to optional rather than refusing the pin.
-oidc<Identity>({ issuer: "https://issuer.example/", principal: identityOf });
+oidc<Identity>()({ issuer: "https://issuer.example/", principal: identityOf });
+
+// `principal` may read injected services, as `jwtAuthenticator`'s does: the
+// port joins the answerer's needs.
+class TrustedDomains extends Port("TrustedDomains")<ReadonlySet<string>> {}
+const [gated] = oidc()({
+  inject: { domains: TrustedDomains },
+  principal: (claims, { domains }) =>
+    typeof claims["email"] === "string" && domains.has(claims["email"].split("@")[1] ?? "")
+      ? identityOf(claims)
+      : undefined,
+});
+
+expectTypeOf(gated).toEqualTypeOf<
+  Provider<
+    HttpHandler,
+    ConfigInvalid | OidcUnreachable,
+    | EnvReading<
+        | "HTTP_OIDC_ISSUER"
+        | "HTTP_OIDC_CLIENT_ID"
+        | "HTTP_OIDC_CLIENT_SECRET"
+        | "HTTP_OIDC_REDIRECT_URI",
+        never
+      >
+    | SessionCodec
+    | Observers
+    | TrustedDomains
+  > & { readonly port: typeof HttpHandler }
+>();
+
+oidc()({
+  inject: { domains: TrustedDomains },
+  // @ts-expect-error -- `principal` reads only what `inject` names
+  principal: (_claims, { domain }) => (domain ? undefined : undefined),
+});
+
+// An explicit `P` no longer defaults `D`: it is the first call's, and `inject`
+// is still read in the second.
+const [explicit] = oidc<Identity>()({
+  inject: { domains: TrustedDomains },
+  principal: (claims, { domains }) => (domains.size > 0 ? identityOf(claims) : undefined),
+});
+expectTypeOf(explicit).toEqualTypeOf<typeof gated>();

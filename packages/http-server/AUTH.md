@@ -239,6 +239,18 @@ The two rules this half exists to state, before the detail:
   `header`/`principal`/`scopes` because an environment carries no functions and
   no arrays.
 
+  **`principal` reaches configuration and ports through `inject`** (#486), the
+  way a provider does: `principal(claims, services)` receives the services
+  `inject` names, resolved once with the scheme, and each port joins the
+  scheme's needs, so a root that does not provide one does not compile. That is
+  how a claim check that varies by deployment — the client subjects a
+  delegation (`act`, RFC 8693) is trusted from — reads a `Config.provider`
+  instead of a constant. `oidc()` takes the same pair. The application's keys
+  are namespaced inside the provider's own `inject`, so a service named `env`
+  cannot shadow the scheme's. A second argument rather than a
+  `(services) => (claims) => …` factory: one call shape, and anything worth
+  precomputing belongs in the provider being injected.
+
   **`allowInsecureJwks` is `oidc()`'s `allowInsecureIssuer` under another
   name, and the two now share one rule** (`cleartext.ts`). An `https:` URL is
   always fine, an `http:` one on `localhost`/`127.0.0.1`/`[::1]` is the dev
@@ -380,7 +392,7 @@ The two rules this half exists to state, before the detail:
   header, and a caller presenting a header credential is not a CSRF target, so
   neither sets the marker.
 
-- **`oidc({ principal, issuer?, clientId?, clientSecret?, redirectUri?, variablePrefix?, prefix?, scope?, postLogout?, allowInsecureIssuer? })`
+- **`oidc()({ principal, issuer?, clientId?, clientSecret?, redirectUri?, variablePrefix?, prefix?, scope?, postLogout?, allowInsecureIssuer? })`
   and `OidcUnreachable`** (`oidc.ts`, from `@btravstack/http-server/oidc`) —
   **the one thing in this package on the ISSUING side of the line above, and
   the exception that proves it.** It mints no credential: it walks a browser
@@ -511,7 +523,7 @@ The two rules this half exists to state, before the detail:
   the flow and there is one of it; the refused tab logs in again.
 
   **It contributes a `cookieScheme()` member of its own**, which is why it is
-  spread: `...oidc({ principal })`, two providers, the answerer and the marker.
+  spread: `...oidc()({ principal })`, two providers, the answerer and the marker.
   It used to contribute none, on the argument that CSRF rode a session scheme
   composed in the same root and that an `oidc()` with no session scheme "seals
   a cookie nothing reads, so the composition does not work at all". The second

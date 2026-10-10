@@ -8,6 +8,7 @@
 // `@ts-expect-error` is an assertion.
 import type { ConfigInvalid, EnvReading } from "@btravstack/config";
 import type { Observers } from "@btravstack/core";
+import { Port } from "@btravstack/di";
 import { html } from "@btravstack/htmx-server";
 import type { Authenticator } from "@btravstack/http-server";
 import { jwtAuthenticator, type Claims, type JwtOptions } from "@btravstack/http-server/jwt";
@@ -149,3 +150,29 @@ expectTypeOf(conditional).toEqualTypeOf<
     ConfigInvalid
   >
 >();
+
+// `principal` may read injected services: `inject` types its second argument,
+// and each port joins the scheme's needs, so a root must provide it.
+class TrustedDelegates extends Port("TrustedDelegates")<ReadonlySet<string>> {}
+const delegated = jwtAuthenticator<Identity>()({
+  inject: { trusted: TrustedDelegates },
+  principal: (claims, { trusted }) =>
+    typeof claims.sub === "string" && trusted.has(claims.sub) ? principal(claims) : undefined,
+});
+
+expectTypeOf(delegated).toEqualTypeOf<
+  Authenticator<
+    Identity,
+    never,
+    | EnvReading<"HTTP_JWT_JWKS_URI" | "HTTP_JWT_ISSUER" | "HTTP_JWT_AUDIENCE", never>
+    | Observers
+    | TrustedDelegates,
+    ConfigInvalid
+  >
+>();
+
+jwtAuthenticator<Identity>()({
+  inject: { trusted: TrustedDelegates },
+  // @ts-expect-error -- `principal` reads only what `inject` names
+  principal: (_claims, { trustd }) => (trustd ? undefined : undefined),
+});

@@ -182,6 +182,28 @@ describe("jwtAuthenticator", () => {
     expect(resolved).toBeErrTagged("Unauthenticated");
   });
 
+  it("hands principal the services it injects: a configured subject is the caller", async ({
+    delegatedJwt,
+  }) => {
+    // GIVEN a scheme whose principal reads an allow-list from configuration
+    // WHEN a subject the list holds presents a valid token
+    const answered = await delegatedJwt("u-1");
+
+    // THEN it is the caller
+    expect(answered).toEqual({ status: 200, body: "u-1" });
+  });
+
+  it("refuses a valid token whose subject the injected allow-list does not hold", async ({
+    delegatedJwt,
+  }) => {
+    // GIVEN the same scheme
+    // WHEN a subject the list does not hold presents a valid token
+    const answered = await delegatedJwt("u-2");
+
+    // THEN the token is refused, as any principal answering undefined is
+    expect(answered.status).toBe(401);
+  });
+
   it("refuses a request carrying no bearer token", async ({ jwtService }) => {
     // GIVEN a header in the wrong scheme
     // WHEN it is presented
