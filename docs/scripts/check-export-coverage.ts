@@ -102,19 +102,23 @@ const exportsOf = (path: string): readonly string[] =>
     return named.name !== undefined && ts.isIdentifier(named.name) ? [named.name.text] : [];
   });
 
-/** Every `{ name }` a module imports, and where from. */
+/** Every `{ name }` a module imports, its default included, and where from. */
 const importsOf = (name: string, text: string): readonly (readonly [string, string])[] =>
   parse(name, text).statements.flatMap((statement) => {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
       return [];
     }
-    const bindings = statement.importClause?.namedBindings;
+    const clause = statement.importClause;
+    const bindings = clause?.namedBindings;
     const from = statement.moduleSpecifier.text;
-    return bindings !== undefined && ts.isNamedImports(bindings)
-      ? bindings.elements.map(
-          ({ name, propertyName }) => [from, (propertyName ?? name).text] as const,
-        )
-      : [];
+    return [
+      ...(clause?.name === undefined ? [] : [[from, "default"] as const]),
+      ...(bindings !== undefined && ts.isNamedImports(bindings)
+        ? bindings.elements.map(
+            ({ name, propertyName }) => [from, (propertyName ?? name).text] as const,
+          )
+        : []),
+    ];
   });
 
 /**
