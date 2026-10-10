@@ -2441,8 +2441,9 @@ export const it = test.extend<HttpFixtures>({
     const app = boot(delegatedJwtAppOf(issuer), { env: { JWT_TRUSTED_SUBJECTS: "u-1" } });
     const info = (await app.runtimeInfo()).get();
     await use(async (sub) => {
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
       const token = await issuer.sign({ sub, tenant: "acme" }).get();
-      const response = await fetch(`http://127.0.0.1:${String(info?.port)}/whoami`, {
+      const response = await fetch(`http://127.0.0.1:${String(info.port)}/whoami`, {
         headers: { authorization: `Bearer ${token}` },
       });
       return { status: response.status, body: await response.text() };
