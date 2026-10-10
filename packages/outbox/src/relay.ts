@@ -165,25 +165,26 @@ const startRelay = (
   const running = Promise.all(
     tenants.map(async (tenantId) => {
       let due = clock.now();
-      let pruneDue = clock.now();
+      let pruneDue = retainMs > 0 ? clock.now() : Number.POSITIVE_INFINITY;
+      let swept: Swept = "idle";
       let failures = 0;
       while (!signal.aborted) {
-        const wait = due - clock.now();
+        const wait = Math.min(due, pruneDue) - clock.now();
         if (wait > 0) await clock.sleep(wait, signal);
         if (signal.aborted) break;
-        const swept = await sweep(tenantId);
-        let backlog = false;
+        // Two deadlines: waking to prune must not retry a publish its backoff
+        // still holds back.
+        if (clock.now() >= due) {
+          swept = await sweep(tenantId);
+          failures = swept === "failed" ? failures + 1 : 0;
+          due = clock.now() + (swept === "full" ? 0 : backoff(failures));
+        }
         // Not after a full batch, so a backlog publishes first; after a failed
         // one too, since a refused head message must not hold retention back.
-        if (retainMs > 0 && swept !== "full" && clock.now() >= pruneDue) {
-          backlog = await prune(tenantId);
+        if (swept !== "full" && clock.now() >= pruneDue) {
+          const backlog = await prune(tenantId);
           pruneDue = clock.now() + (backlog ? PRUNE_BACKLOG_MS : PRUNE_EVERY_MS);
         }
-        failures = swept === "failed" ? failures + 1 : 0;
-        due = clock.now() + (swept === "full" ? 0 : backoff(failures));
-        // A poll interval longer than the backlog pace would otherwise hold
-        // the next batch back until the poll.
-        if (backlog) due = Math.min(due, pruneDue);
       }
     }),
   );

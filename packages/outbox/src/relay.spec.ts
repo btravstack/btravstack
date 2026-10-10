@@ -1,5 +1,5 @@
 import { HealthChecks, runHealthChecks } from "@btravstack/core";
-import { fromSafePromise } from "unthrown";
+import { type AsyncResult, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -335,6 +335,45 @@ describe("outbox", () => {
     // THEN the published row was pruned anyway: retention does not wait for
     // the publisher
     expect(left).toBeOkWith(0);
+  });
+
+  it("drains a prune backlog without retrying a refused publish early", async ({
+    store,
+    publisher,
+    clock,
+    observations,
+    relaying,
+  }) => {
+    // GIVEN five batches of published history, then a fact the transport
+    // refuses forever, its backoff grown long
+    for (let i = 0; i < 5_001; i++) store.append(order("acme", `m${String(i)}`));
+    const refusals = () =>
+      observations.filter(({ name, outcome }) => name === "publish" && outcome === "error").length;
+    const seconds = (n: number) =>
+      Array.from({ length: n }).reduce<AsyncResult<void, never>>(
+        (stepped) => stepped.flatMap(() => clock.advance(1_000)),
+        OkAsync(),
+      );
+
+    // WHEN the history is pruned, a batch a second
+    const retried = await relaying({ tenants: ["acme"], retainMs: 1_000 }, () =>
+      clock
+        .advance(0)
+        .flatMap(() => {
+          store.append(order("acme", "x"));
+          publisher.refuse("x");
+          return seconds(59);
+        })
+        .map(refusals)
+        .flatMap((before) =>
+          seconds(6)
+            .flatMap(() => store.prune("acme", 0, 10_000))
+            .map((left) => ({ left, retries: refusals() - before })),
+        ),
+    );
+
+    // THEN it all went, and the refused fact waited out its backoff
+    expect(retried).toBeOkWith({ left: 0, retries: 0 });
   });
 
   it("keeps published messages when no retention is set", async ({ store, clock, relaying }) => {

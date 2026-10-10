@@ -222,7 +222,9 @@ delivery state, and a published row may carry data that must be erasable.
   deleted a long history ahead of every new fact, re-pruning on the very next
   sweep was five deletes a second, and a strict minute capped retention at a
   thousand rows a minute — under a busy tenant's publish rate, so it would
-  never catch up.
+  never catch up. The loop keeps two deadlines, the sweep's and the prune's,
+  and wakes for the earlier: waking to prune and sweeping anyway retried a
+  refused publish every second, past the backoff it had earned.
 - **Aged from the mark, on the mark's clock.** The mark writes
   `clock_timestamp()`: `now()` is the claim's transaction start, before the
   publisher ran, so a publish slower than the retention made a row prunable the
