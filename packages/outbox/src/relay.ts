@@ -172,13 +172,17 @@ const startRelay = (
         if (wait > 0) await clock.sleep(wait, signal);
         if (signal.aborted) break;
         const swept = await sweep(tenantId);
+        let backlog = false;
         // On an idle sweep only: a tenant with a backlog publishes first.
         if (retainMs > 0 && swept === "idle" && clock.now() >= pruneDue) {
-          const more = await prune(tenantId);
-          pruneDue = clock.now() + (more ? PRUNE_BACKLOG_MS : PRUNE_EVERY_MS);
+          backlog = await prune(tenantId);
+          pruneDue = clock.now() + (backlog ? PRUNE_BACKLOG_MS : PRUNE_EVERY_MS);
         }
         failures = swept === "failed" ? failures + 1 : 0;
         due = clock.now() + (swept === "full" ? 0 : backoff(failures));
+        // A poll interval longer than the backlog pace would otherwise hold
+        // the next batch back until the poll.
+        if (backlog) due = Math.min(due, pruneDue);
       }
     }),
   );

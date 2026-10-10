@@ -40,10 +40,10 @@ than race for its rows.
 
 Between the two sit the two ports the relay needs and cannot provide itself:
 
-| Port              | What it answers                                                                                                                       | Who provides it                                               |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `OutboxStore`     | `pending(tenantId, limit)`, `oldestPending(tenantIds)`, `claim(tenantId, limit, relay)` and `prune(tenantId, publishedBefore, limit)` | `prismaOutboxStore`, `memoryOutboxStore`, or your own adapter |
-| `OutboxPublisher` | `publish(message)` → `AsyncResult<void, PublishRefused>` — any tagged error                                                           | you: the transport, the contract and the payload's decoding   |
+| Port              | What it answers                                                                                                                   | Who provides it                                               |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `OutboxStore`     | `pending(tenantId, limit)`, `oldestPending(tenantIds)`, `claim(tenantId, limit, relay)` and `prune(tenantId, olderThanMs, limit)` | `prismaOutboxStore`, `memoryOutboxStore`, or your own adapter |
+| `OutboxPublisher` | `publish(message)` → `AsyncResult<void, PublishRefused>` — any tagged error                                                       | you: the transport, the contract and the payload's decoding   |
 
 ```ts
 export const store = Provider(OutboxStore)({
@@ -317,7 +317,7 @@ new facts keep going out, and a busy tenant's publishes are outpaced. Each batch
 `Observers`. Unset, or `0`, keeps them: a deployment that keeps the log changes
 nothing.
 
-It runs through the store's `prune(tenantId, publishedBefore, limit)`, pinned
+It runs through the store's `prune(tenantId, olderThanMs, limit)`, pinned
 to the tenant like every other read, so a table under `@@rls` is pruned by the
 same non-owner role that relays it. A prune takes the tenant's lock as a claim
 does and skips a tenant another relay holds, so across replicas one prunes a

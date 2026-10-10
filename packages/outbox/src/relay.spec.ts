@@ -289,6 +289,27 @@ describe("outbox", () => {
     expect(ran).toBeOkWith({ left: 0, adjacentPrunes: false });
   });
 
+  it("wakes for the next backlog batch sooner than a long poll interval", async ({
+    store,
+    clock,
+    relaying,
+  }) => {
+    // GIVEN more published history than one batch, and a five-second poll
+    for (let i = 0; i < 1_001; i++) store.append(order("acme", `m${String(i)}`));
+
+    // WHEN pruning falls due, and two seconds pass after it — under one poll
+    const left = await relaying({ tenants: ["acme"], retainMs: 1_000, pollMs: 5_000 }, () =>
+      clock
+        .advance(0)
+        .flatMap(() => clock.advance(60_000))
+        .flatMap(() => clock.advance(2_000))
+        .flatMap(() => store.prune("acme", 0, 10_000)),
+    );
+
+    // THEN the second batch ran a second after the first, not at the next poll
+    expect(left).toBeOkWith(0);
+  });
+
   it("keeps published messages when no retention is set", async ({ store, clock, relaying }) => {
     // GIVEN a fact, and a relay with no retention
     store.append(order("acme", "a"));
