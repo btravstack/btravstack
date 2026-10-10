@@ -185,18 +185,18 @@ export const prismaOutboxStore = <Tx>(
       .affectedCount()
       .build();
 
-  // The oldest `limit` published before the cutoff, deleted and counted in one
-  // statement; the count is text, the codec every other read here uses.
-  const purge = (tenantId: string, publishedBefore: Date, limit: number) =>
+  // The oldest `limit` published more than `olderThanMs` ago by the database's
+  // clock, the one the mark stamps with; deleted and counted in one statement.
+  const purge = (tenantId: string, olderThanMs: number, limit: number) =>
     sql(
       statement(
         `WITH gone AS (DELETE FROM ${qualified} WHERE ${column("id")} IN (SELECT ${column("id")} FROM ${qualified} WHERE ${column("tenantId")} = `,
-        ` AND ${column("publishedAt")} < `,
-        `::timestamptz ORDER BY ${column("id")} LIMIT `,
+        ` AND ${column("publishedAt")} < clock_timestamp() - `,
+        `::bigint * interval '1 millisecond' ORDER BY ${column("id")} LIMIT `,
         `::int) RETURNING 1) SELECT count(*)::text AS "deleted" FROM gone`,
       ),
       tenantId,
-      publishedBefore.toISOString(),
+      String(olderThanMs),
       String(limit),
     )
       .returnsRow({ deleted: "pg/text@1" })
@@ -235,11 +235,11 @@ export const prismaOutboxStore = <Tx>(
         }
         return oldestOf;
       }),
-    prune: (tenantId, publishedBefore, limit) =>
+    prune: (tenantId, olderThanMs, limit) =>
       transaction(async (tx) => {
         const [held] = (await tx.query(lock(tenantId))) as readonly { readonly locked: string }[];
         if (held?.locked !== "true") return 0;
-        const [row] = (await tx.query(purge(tenantId, publishedBefore, limit))) as readonly {
+        const [row] = (await tx.query(purge(tenantId, olderThanMs, limit))) as readonly {
           readonly deleted: string;
         }[];
         return Number(row?.deleted ?? 0);

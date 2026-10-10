@@ -166,9 +166,9 @@ describe("prismaOutboxStore", () => {
     // GIVEN a client that deletes three rows
     const db = stub({ deleted: 3 });
 
-    // WHEN a tenant's rows published before a cutoff are pruned
+    // WHEN a tenant's rows published more than a day ago are pruned
     const pruned = await prismaOutboxStore(db)
-      .prune("acme", new Date("2026-10-01T00:00:00.000Z"), 1000)
+      .prune("acme", 86_400_000, 1000)
       .map((count) => ({ count, ran: db.ran() }));
 
     // THEN one transaction holding the tenant's lock, and pinned to it, deleted
@@ -178,8 +178,8 @@ describe("prismaOutboxStore", () => {
       ran: [
         { sql: LOCK, values: ["app.tenant_id", "acme", "public.outboxMessage", "acme"], tx: 1 },
         {
-          sql: `WITH gone AS (DELETE FROM "public"."outboxMessage" WHERE "id" IN (SELECT "id" FROM "public"."outboxMessage" WHERE "tenantId" = ? AND "publishedAt" < ?::timestamptz ORDER BY "id" LIMIT ?::int) RETURNING 1) SELECT count(*)::text AS "deleted" FROM gone`,
-          values: ["acme", "2026-10-01T00:00:00.000Z", "1000"],
+          sql: `WITH gone AS (DELETE FROM "public"."outboxMessage" WHERE "id" IN (SELECT "id" FROM "public"."outboxMessage" WHERE "tenantId" = ? AND "publishedAt" < clock_timestamp() - ?::bigint * interval '1 millisecond' ORDER BY "id" LIMIT ?::int) RETURNING 1) SELECT count(*)::text AS "deleted" FROM gone`,
+          values: ["acme", "86400000", "1000"],
           tx: 1,
         },
       ],
@@ -192,7 +192,7 @@ describe("prismaOutboxStore", () => {
 
     // WHEN the tenant is pruned
     const pruned = await prismaOutboxStore(db)
-      .prune("acme", new Date("2026-10-01T00:00:00.000Z"), 1000)
+      .prune("acme", 86_400_000, 1000)
       .map((count) => ({ count, ran: db.ran().map(({ sql }) => sql) }));
 
     // THEN it skipped, as a claim would, deleting nothing

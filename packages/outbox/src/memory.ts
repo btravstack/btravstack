@@ -52,13 +52,14 @@ export const memoryOutboxStore = (clock: Clock = systemClock): MemoryOutboxStore
         .tapFailure(() => claimed.delete(tenantId))
         .tap(() => claimed.delete(tenantId));
     },
-    prune: (tenantId, publishedBefore, limit) => {
+    prune: (tenantId, olderThanMs, limit) => {
       if (claimed.has(tenantId)) return OkAsync(0);
+      const cutoff = clock.now() - olderThanMs;
       const gone = new Set(
         messages
           .filter(
             ({ id, tenantId: owner }) =>
-              owner === tenantId && (published.get(id) ?? Infinity) < publishedBefore.getTime(),
+              owner === tenantId && (published.get(id) ?? Infinity) < cutoff,
           )
           .slice(0, limit)
           .map(({ id }) => id),

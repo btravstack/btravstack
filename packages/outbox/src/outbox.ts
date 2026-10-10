@@ -61,15 +61,17 @@ export type OutboxStoreService = {
     relay: (batch: readonly OutboxMessage[]) => AsyncResult<readonly number[], never>,
   ) => AsyncResult<void, never>;
   /**
-   * Deletes a tenant's messages published before `publishedBefore`, at most
-   * `limit`, and answers how many went. Published rows only — a pending one is
-   * never touched. It holds the tenant as a claim does, and a tenant another
-   * caller holds is skipped, answering `0`: across replicas, one prunes a
-   * tenant at a time, and never while it is being claimed.
+   * Deletes a tenant's messages published more than `olderThanMs` ago, at most
+   * `limit`, and answers how many went. The age is measured on the clock that
+   * stamped the publish — the database's own, for a database — so a host
+   * clock's skew can neither age a row early nor keep it late. Published rows
+   * only: a pending one is never touched. It holds the tenant as a claim does,
+   * and a tenant another caller holds is skipped, answering `0`: across
+   * replicas, one prunes a tenant at a time, and never while it is claimed.
    */
   readonly prune: (
     tenantId: string,
-    publishedBefore: Date,
+    olderThanMs: number,
     limit: number,
   ) => AsyncResult<number, never>;
 };

@@ -252,7 +252,7 @@ describe("outbox", () => {
       clock
         .advance(0)
         .flatMap(() => clock.advance(60_000))
-        .flatMap(() => store.prune("acme", new Date(9_999_999_999_999), 10)),
+        .flatMap(() => store.prune("acme", 0, 10)),
     );
 
     // THEN the relay had already deleted it: nothing published is left to prune
@@ -274,7 +274,7 @@ describe("outbox", () => {
         .advance(0)
         .flatMap(() => clock.advance(61_000))
         .flatMap(() => clock.advance(1_000))
-        .flatMap(() => store.prune("acme", new Date(9_999_999_999_999), 10_000))
+        .flatMap(() => store.prune("acme", 0, 10_000))
         .map((left) => ({
           left,
           adjacentPrunes: observations
@@ -298,7 +298,7 @@ describe("outbox", () => {
       clock
         .advance(0)
         .flatMap(() => clock.advance(60_000))
-        .flatMap(() => store.prune("acme", new Date(9_999_999_999_999), 10)),
+        .flatMap(() => store.prune("acme", 0, 10)),
     );
 
     // THEN the published row is still there

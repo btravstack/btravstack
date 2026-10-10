@@ -38,8 +38,11 @@ const MAX_BACKOFF_MS = 30_000;
 /** How many published rows one prune deletes, so no sweep holds a long lock. */
 const PRUNE_BATCH = 1_000;
 
-/** How often a tenant's published rows are pruned, at most. */
 const PRUNE_EVERY_MS = 60_000;
+
+// While a batch comes back full: often enough to outpace a busy tenant's
+// publishes, which a minute's single batch would not, and still paced.
+const PRUNE_BACKLOG_MS = 1_000;
 
 /** What {@link outbox} is handed. Each field pins the variable named beside it. */
 export type OutboxOptions = {
@@ -145,11 +148,11 @@ const startRelay = (
     return claimed.isOk() ? swept : "failed";
   };
 
-  // One batch per round: a full one leaves the prune due again on the next idle
-  // sweep, so a long history is deleted between sweeps rather than ahead of them.
+  // One batch per round: a long history is deleted between sweeps rather than
+  // ahead of them.
   const prune = async (tenantId: string): Promise<boolean> => {
     const pruned = await observed(observers, pruning(tenantId), () =>
-      store.prune(tenantId, new Date(clock.now() - retainMs), PRUNE_BATCH),
+      store.prune(tenantId, retainMs, PRUNE_BATCH),
     );
     return pruned.isOk() && pruned.value === PRUNE_BATCH;
   };
@@ -172,7 +175,7 @@ const startRelay = (
         // On an idle sweep only: a tenant with a backlog publishes first.
         if (retainMs > 0 && swept === "idle" && clock.now() >= pruneDue) {
           const more = await prune(tenantId);
-          pruneDue = more ? clock.now() : clock.now() + PRUNE_EVERY_MS;
+          pruneDue = clock.now() + (more ? PRUNE_BACKLOG_MS : PRUNE_EVERY_MS);
         }
         failures = swept === "failed" ? failures + 1 : 0;
         due = clock.now() + (swept === "full" ? 0 : backoff(failures));

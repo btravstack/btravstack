@@ -311,9 +311,9 @@ The store's queries filter on `tenantId` and `publishedAt IS NULL` and order by
 and it may carry data that has to be erasable. With `retainMs` (or
 `OUTBOX_RETAIN_MS`) set, the relay deletes each tenant's rows published longer
 ago than that — on an idle sweep, so a tenant with a backlog publishes first,
-at most once a minute, a thousand rows at a time. A full batch leaves the prune
-due on the next idle sweep, so a long history is deleted between sweeps and new
-facts keep going out. Each batch is an `outbox` / `prune` operation on
+once a minute, a thousand rows at a time. While a batch comes back full the
+next is due a second later, so a long history drains steadily between sweeps,
+new facts keep going out, and a busy tenant's publishes are outpaced. Each batch is an `outbox` / `prune` operation on
 `Observers`. Unset, or `0`, keeps them: a deployment that keeps the log changes
 nothing.
 
@@ -323,7 +323,8 @@ same non-owner role that relays it. A prune takes the tenant's lock as a claim
 does and skips a tenant another relay holds, so across replicas one prunes a
 tenant at a time, and never while it is being claimed. A row's age counts from
 when it was marked — `clock_timestamp()`, not the claim's transaction start —
-so a slow publish does not age it before it went out. A log you want to keep is your subscriber's, which already holds every
+and is measured on that same database clock, so neither a slow publish nor a
+host clock's skew ages a row early. A log you want to keep is your subscriber's, which already holds every
 fact; erasing one subject's rows on request is a different operation, and stays
 yours.
 
@@ -353,16 +354,16 @@ export const report = Module.scoped(Tested, (ctx) => runHealthChecks(ctx.get(Hea
 
 ## What it reports
 
-Every claim and every publish is an `Observers` operation; the module holds no
+Every claim, publish and prune is an `Observers` operation; the module holds no
 logger. With `@btravstack/observability` composed:
 
-| Signal   | Name                                                            | Attributes                                                                          |
-| -------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| span     | `outbox.publish`                                                | `kind`, `btravstack.tenant_id`, `btravstack.outbox.id`, `btravstack.outbox.subject` |
-| counter  | `btravstack.outbox.operations`                                  | `{ operation, kind?, btravstack.tenant_id, outcome }` — `publish` or `claim`        |
-| log line | `"outbox.publish failed"` / `"outbox.claim failed"`, at `error` | the attributes and details, with the failure as the cause                           |
+| Signal   | Name                                                                                      | Attributes                                                                            |
+| -------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| span     | `outbox.publish`                                                                          | `kind`, `btravstack.tenant_id`, `btravstack.outbox.id`, `btravstack.outbox.subject`   |
+| counter  | `btravstack.outbox.operations`                                                            | `{ operation, kind?, btravstack.tenant_id, outcome }` — `publish`, `claim` or `prune` |
+| log line | `"outbox.publish failed"` / `"outbox.claim failed"` / `"outbox.prune failed"`, at `error` | the attributes and details, with the failure as the cause                             |
 
-A claim opens **no span** — one per tenant per poll would bury the publishes —
+A claim or a prune opens **no span** — one per tenant per poll would bury the publishes —
 and a success writes no line. The tenant is a dimension because the relay is
 told its tenants, so it is bounded; the id and subject are details, on the span
 and the error line only.

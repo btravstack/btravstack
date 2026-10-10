@@ -617,15 +617,13 @@ describe("the transactional outbox", () => {
   }) => {
     // GIVEN two events published and a third still pending, under the table's
     // row security
-    const after = new Date(Date.now() + 60_000);
-
-    // WHEN the tenant is pruned with a cutoff past every publish
+    // WHEN the tenant is pruned of everything published before this instant
     const pruned = await repository
       .save(anOrder("0199a1e0-0000-7000-8000-000000000081", 1))
       .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000082", 1)))
       .flatMap(() => outbox.claim(tenant, 10, (batch) => OkAsync(batch.map(({ id }) => id))))
       .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000083", 1)))
-      .flatMap(() => outbox.prune(tenant, after, 100))
+      .flatMap(() => outbox.prune(tenant, 0, 100))
       .flatMap((count) =>
         outbox
           .pending(tenant, 10)

@@ -212,13 +212,19 @@ delivery state, and a published row may carry data that must be erasable.
   holds. Without it every replica pruned every tenant on its own minute — a
   skipped claim still reads as an idle sweep — and contended on the same
   deletes.
-- **One bounded batch per idle sweep.** A thousand rows per statement
+- **One bounded batch per idle sweep, paced.** A thousand rows per statement
   (`id IN (SELECT … LIMIT n)`), so no round holds a long lock or writes a
-  burst of WAL; a full batch leaves the prune due on the next idle sweep rather
-  than looping, since a loop deleted a long history ahead of every new fact.
-- **Aged from the mark.** The mark writes `clock_timestamp()`: `now()` is the
-  claim's transaction start, before the publisher ran, so a publish slower
-  than the retention made a row prunable the moment it went out.
+  burst of WAL. A full batch makes the next one due a second later: a loop
+  deleted a long history ahead of every new fact, re-pruning on the very next
+  sweep was five deletes a second, and a strict minute capped retention at a
+  thousand rows a minute — under a busy tenant's publish rate, so it would
+  never catch up.
+- **Aged from the mark, on the mark's clock.** The mark writes
+  `clock_timestamp()`: `now()` is the claim's transaction start, before the
+  publisher ran, so a publish slower than the retention made a row prunable the
+  moment it went out. And `prune` takes an AGE, not a cutoff, so the store
+  measures it on the clock it stamped with — a host clock ahead of the database
+  would otherwise delete a fresh row under a short retention.
 - **On an idle sweep, at most once a minute per tenant.** A tenant with a
   backlog publishes before it prunes.
 - **Not a Temporal Schedule.** Scheduling is Temporal's by the role map, but a
