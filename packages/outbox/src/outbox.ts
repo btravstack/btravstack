@@ -63,7 +63,9 @@ export type OutboxStoreService = {
   /**
    * Deletes a tenant's messages published before `publishedBefore`, at most
    * `limit`, and answers how many went. Published rows only — a pending one is
-   * never touched, so a prune shares nothing with a claim and takes no lock.
+   * never touched. It holds the tenant as a claim does, and a tenant another
+   * caller holds is skipped, answering `0`: across replicas, one prunes a
+   * tenant at a time, and never while it is being claimed.
    */
   readonly prune: (
     tenantId: string,

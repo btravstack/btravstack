@@ -177,7 +177,7 @@ export const prismaOutboxStore = <Tx>(
   const mark = (ids: readonly number[]) =>
     sql(
       statement(
-        `UPDATE ${qualified} SET ${column("publishedAt")} = now() WHERE ${column("id")} = ANY(string_to_array(`,
+        `UPDATE ${qualified} SET ${column("publishedAt")} = clock_timestamp() WHERE ${column("id")} = ANY(string_to_array(`,
         ", ',')::bigint[])",
       ),
       ids.join(","),
@@ -237,7 +237,8 @@ export const prismaOutboxStore = <Tx>(
       }),
     prune: (tenantId, publishedBefore, limit) =>
       transaction(async (tx) => {
-        await tx.query(pin(tenantId));
+        const [held] = (await tx.query(lock(tenantId))) as readonly { readonly locked: string }[];
+        if (held?.locked !== "true") return 0;
         const [row] = (await tx.query(purge(tenantId, publishedBefore, limit))) as readonly {
           readonly deleted: string;
         }[];

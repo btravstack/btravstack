@@ -259,6 +259,36 @@ describe("outbox", () => {
     expect(left).toBeOkWith(0);
   });
 
+  it("prunes a batch per idle sweep, so publishing interleaves with a long history", async ({
+    store,
+    clock,
+    observations,
+    relaying,
+  }) => {
+    // GIVEN more published history than one prune batch deletes
+    for (let i = 0; i < 1_001; i++) store.append(order("acme", `m${String(i)}`));
+
+    // WHEN it is all published, and pruning falls due a minute later
+    const ran = await relaying({ tenants: ["acme"], retainMs: 1_000 }, () =>
+      clock
+        .advance(0)
+        .flatMap(() => clock.advance(61_000))
+        .flatMap(() => clock.advance(1_000))
+        .flatMap(() => store.prune("acme", new Date(9_999_999_999_999), 10_000))
+        .map((left) => ({
+          left,
+          adjacentPrunes: observations
+            .filter(({ name }) => name === "prune" || name === "claim")
+            .map(({ name }) => name)
+            .join(",")
+            .includes("prune,prune"),
+        })),
+    );
+
+    // THEN every row went, and a sweep ran between the two batches
+    expect(ran).toBeOkWith({ left: 0, adjacentPrunes: false });
+  });
+
   it("keeps published messages when no retention is set", async ({ store, clock, relaying }) => {
     // GIVEN a fact, and a relay with no retention
     store.append(order("acme", "a"));

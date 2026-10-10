@@ -107,4 +107,21 @@ describe("memoryOutboxStore", () => {
     // THEN the cutoff is exclusive, and globex's row was never a candidate
     expect(pruned).toBeOkWith({ atTheCutoff: 0, acme: 1 });
   });
+
+  it("prunes nothing of a tenant a claim holds", async ({ store }) => {
+    // GIVEN a published message, and a claim in progress
+    store.append(order("a"));
+    const during: number[] = [];
+
+    // WHEN the tenant is pruned while the claim holds it
+    await store.claim("acme", 10, (batch) =>
+      store.prune("acme", new Date(2_000_000), 10).map((count) => {
+        during.push(count);
+        return batch.map(({ id }) => id);
+      }),
+    );
+
+    // THEN the prune skipped it, as a second claim would
+    expect(during).toEqual([0]);
+  });
 });

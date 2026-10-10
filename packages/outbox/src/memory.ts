@@ -53,6 +53,7 @@ export const memoryOutboxStore = (clock: Clock = systemClock): MemoryOutboxStore
         .tap(() => claimed.delete(tenantId));
     },
     prune: (tenantId, publishedBefore, limit) => {
+      if (claimed.has(tenantId)) return OkAsync(0);
       const gone = new Set(
         messages
           .filter(

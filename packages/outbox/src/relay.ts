@@ -145,16 +145,13 @@ const startRelay = (
     return claimed.isOk() ? swept : "failed";
   };
 
-  // Published rows only, so it shares nothing with a claim; a full batch means
-  // more remain, and a store that fails stops this round rather than the loop.
-  const prune = async (tenantId: string): Promise<void> => {
-    const publishedBefore = new Date(clock.now() - retainMs);
-    for (;;) {
-      const pruned = await observed(observers, pruning(tenantId), () =>
-        store.prune(tenantId, publishedBefore, PRUNE_BATCH),
-      );
-      if (!pruned.isOk() || pruned.value < PRUNE_BATCH || signal.aborted) return;
-    }
+  // One batch per round: a full one leaves the prune due again on the next idle
+  // sweep, so a long history is deleted between sweeps rather than ahead of them.
+  const prune = async (tenantId: string): Promise<boolean> => {
+    const pruned = await observed(observers, pruning(tenantId), () =>
+      store.prune(tenantId, new Date(clock.now() - retainMs), PRUNE_BATCH),
+    );
+    return pruned.isOk() && pruned.value === PRUNE_BATCH;
   };
 
   const backoff = (failures: number): number =>
@@ -174,8 +171,8 @@ const startRelay = (
         const swept = await sweep(tenantId);
         // On an idle sweep only: a tenant with a backlog publishes first.
         if (retainMs > 0 && swept === "idle" && clock.now() >= pruneDue) {
-          await prune(tenantId);
-          pruneDue = clock.now() + PRUNE_EVERY_MS;
+          const more = await prune(tenantId);
+          pruneDue = more ? clock.now() : clock.now() + PRUNE_EVERY_MS;
         }
         failures = swept === "failed" ? failures + 1 : 0;
         due = clock.now() + (swept === "full" ? 0 : backoff(failures));

@@ -206,12 +206,19 @@ delivery state, and a published row may carry data that must be erasable.
 
 - **Off unless configured.** `OUTBOX_RETAIN_MS` defaults to `0`, which keeps
   every row, so a deployment that treats the table as a log is unchanged.
-- **Published rows only.** A claim reads pending rows and a prune deletes
-  published ones, so the two never touch the same row and a prune takes no
-  advisory lock.
-- **Bounded.** A thousand rows per statement (`id IN (SELECT … LIMIT n)`), so
-  one round neither holds a long lock nor writes a burst of WAL; repeated while
-  a batch comes back full.
+- **Published rows only, under the tenant's lock.** A claim reads pending rows
+  and a prune deletes published ones, so the two never touch the same row; the
+  prune still takes the claim's advisory lock, and skips a tenant another relay
+  holds. Without it every replica pruned every tenant on its own minute — a
+  skipped claim still reads as an idle sweep — and contended on the same
+  deletes.
+- **One bounded batch per idle sweep.** A thousand rows per statement
+  (`id IN (SELECT … LIMIT n)`), so no round holds a long lock or writes a
+  burst of WAL; a full batch leaves the prune due on the next idle sweep rather
+  than looping, since a loop deleted a long history ahead of every new fact.
+- **Aged from the mark.** The mark writes `clock_timestamp()`: `now()` is the
+  claim's transaction start, before the publisher ran, so a publish slower
+  than the retention made a row prunable the moment it went out.
 - **On an idle sweep, at most once a minute per tenant.** A tenant with a
   backlog publishes before it prunes.
 - **Not a Temporal Schedule.** Scheduling is Temporal's by the role map, but a

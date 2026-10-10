@@ -311,15 +311,19 @@ The store's queries filter on `tenantId` and `publishedAt IS NULL` and order by
 and it may carry data that has to be erasable. With `retainMs` (or
 `OUTBOX_RETAIN_MS`) set, the relay deletes each tenant's rows published longer
 ago than that — on an idle sweep, so a tenant with a backlog publishes first,
-at most once a minute, a thousand rows at a time until a batch comes back
-short. Each round is an `outbox` / `prune` operation on `Observers`. Unset, or
-`0`, keeps them: a deployment that keeps the log changes nothing.
+at most once a minute, a thousand rows at a time. A full batch leaves the prune
+due on the next idle sweep, so a long history is deleted between sweeps and new
+facts keep going out. Each batch is an `outbox` / `prune` operation on
+`Observers`. Unset, or `0`, keeps them: a deployment that keeps the log changes
+nothing.
 
 It runs through the store's `prune(tenantId, publishedBefore, limit)`, pinned
 to the tenant like every other read, so a table under `@@rls` is pruned by the
-same non-owner role that relays it. Only published rows are ever candidates,
-and a claim only reads pending ones, so a prune takes no lock and cannot race a
-relay. A log you want to keep is your subscriber's, which already holds every
+same non-owner role that relays it. A prune takes the tenant's lock as a claim
+does and skips a tenant another relay holds, so across replicas one prunes a
+tenant at a time, and never while it is being claimed. A row's age counts from
+when it was marked — `clock_timestamp()`, not the claim's transaction start —
+so a slow publish does not age it before it went out. A log you want to keep is your subscriber's, which already holds every
 fact; erasing one subject's rows on request is a different operation, and stays
 yours.
 
