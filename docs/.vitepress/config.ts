@@ -96,6 +96,10 @@ const GUIDE_SIDEBAR = [
           { text: "Authorize a request", link: "/how-to/authorize-a-request" },
           { text: "Serve htmx fragments", link: "/how-to/serve-htmx-fragments" },
           { text: "Serve GraphQL", link: "/how-to/serve-graphql" },
+          {
+            text: "Resolve GraphQL fields from oRPC",
+            link: "/how-to/resolve-graphql-fields-from-orpc",
+          },
           { text: "Log a browser in", link: "/how-to/log-a-browser-in" },
           {
             text: "Stream with server-sent events",
@@ -198,6 +202,7 @@ const GUIDE_SIDEBAR = [
           { text: "@btravstack/orpc-server", link: "/how-to/serve-orpc-over-http" },
           { text: "@btravstack/htmx-server", link: "/how-to/serve-htmx-fragments" },
           { text: "@btravstack/graphql-server", link: "/how-to/serve-graphql" },
+          { text: "@btravstack/pothos", link: "/how-to/resolve-graphql-fields-from-orpc" },
           { text: "@btravstack/temporal-worker", link: "/reference/temporal-worker" },
           { text: "@btravstack/amqp-worker", link: "/reference/amqp-worker" },
         ],
@@ -523,6 +528,7 @@ export default defineConfig({
             { text: "@btravstack/orpc-server", link: "/api/orpc-server/" },
             { text: "@btravstack/htmx-server", link: "/api/htmx-server/" },
             { text: "@btravstack/graphql-server", link: "/api/graphql-server/" },
+            { text: "@btravstack/pothos", link: "/api/pothos/" },
             { text: "@btravstack/temporal-worker", link: "/api/temporal-worker/" },
             { text: "@btravstack/amqp-worker", link: "/api/amqp-worker/" },
             { text: "@btravstack/temporal-client", link: "/api/temporal-client/" },

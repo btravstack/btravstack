@@ -44,6 +44,7 @@ const packages: readonly string[] = [
   "htmx-server",
   "orpc-server",
   "graphql-server",
+  "pothos",
   "temporal-worker",
   "amqp-worker",
   "temporal-client",

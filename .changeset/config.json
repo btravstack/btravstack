@@ -24,6 +24,7 @@
       "@btravstack/orpc-server",
       "@btravstack/htmx-server",
       "@btravstack/graphql-server",
+      "@btravstack/pothos",
       "@btravstack/temporal-worker",
       "@btravstack/amqp-worker",
       "@btravstack/temporal-client",

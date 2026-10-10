@@ -11,7 +11,9 @@ description: Run a code-first GraphQL gateway as a separate HTTP process backed 
 Install `@btravstack/http-server`, `@btravstack/graphql-server`,
 `@btravstack/config`, `graphql`, and `graphql-yoga`. Add `@pothos/core` when building the schema in TypeScript.
 `@btravstack/graphql-server` accepts any `GraphQLSchema`; Pothos is the choice
-of this example, not a framework requirement.
+of this example, not a framework requirement. A Pothos schema whose fields call
+oRPC procedures can take
+[`@btravstack/pothos`](/how-to/resolve-graphql-fields-from-orpc).
 
 The [GraphQL gateway](https://github.com/btravstack/btravstack/blob/main/examples/order-graphql-api/src/module.ts)
 boots its own `HttpRuntime` and mounts the schema at `/graphql`. Its

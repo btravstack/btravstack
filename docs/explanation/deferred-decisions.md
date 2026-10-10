@@ -190,6 +190,12 @@ dependencies by name`; a positional array is refused as
   one, is built from that same fold. The trigger to reopen: a schema whose
   unions are written twice — once as types, once as the fold.
 
+  `@btravstack/pothos` does build a union from a registry, for a field calling
+  an oRPC procedure only, and the drift is what it closes: the members are the
+  codes the procedure's contract declares at runtime, and a registry missing
+  one fails that field at compile time. Outside an oRPC procedure the decline
+  above stands.
+
 - **A contract-to-GraphQL argument adapter is deferred** (issue #474). oRPC
   2 keeps a procedure's runtime schemas as an untyped `inputSchemas` array, but
   its type parameters keep the declared schema, so a gateway can validate a
@@ -199,6 +205,12 @@ dependencies by name`; a positional array is refused as
   which accepts any `GraphQLSchema` and owns no protocol. Graph exposure and
   joins stay explicit either way. The trigger: a second gateway writing the
   same function.
+
+  **The trigger fired, and it shipped as a package of its own**:
+  `@btravstack/pothos` validates a field's input through the procedure's own
+  contract, for a gateway that builds its schema with Pothos, so
+  `@btravstack/graphql-server` keeps no oRPC peer. Its spec is
+  `packages/pothos/AGENTS.md`.
 
 - **Filtering with operators is declined** (issue #261). A normed
   `{ field, op, value }` owes an operator set per type, nesting and null
