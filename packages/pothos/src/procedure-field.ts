@@ -50,8 +50,9 @@ type Covered<Registry, Failure> =
 /**
  * `t.procedureField`'s options: `resultField`'s, with `call`, `input` and
  * `output` in place of `resolve`, and the builder's `orpc.refusals` in place
- * of `refusals`. The registry must cover every error the procedure declares,
- * and `InvalidInput`; an uncovered case is a compile error naming it.
+ * of `refusals`. The registry must cover every error `call` can return but
+ * the access refusals, and `InvalidInput`; an uncovered case is a compile
+ * error naming it. A declared error `call` handles itself needs no entry.
  */
 export type ProcedureFieldOptions<
   Types extends SchemaTypes,
@@ -221,7 +222,8 @@ declare global {
 /**
  * The refusals a procedure can answer, read from `registry`: one per error
  * code its contract declares, and `InvalidInput`. A code the registry lacks is
- * left out.
+ * left out, and so are `UNAUTHORIZED` and `FORBIDDEN`, answered as GraphQL's
+ * own error.
  */
 export const refusalsOf = <Failure>(
   registry: Readonly<Record<string, ErrorClass>>,
