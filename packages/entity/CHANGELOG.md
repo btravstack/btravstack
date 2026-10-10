@@ -1,5 +1,16 @@
 # @btravstack/entity
 
+## 0.28.0
+
+### Minor Changes
+
+- 246440b: Entities, aggregates and `Entity.union` values carry `json`: the schema of what
+  `z.encode(output, x.toJSON())` writes, a plain `ZodObject` to pick a response
+  body from. `Entity.codec(wire, domain, transforms)` declares a field JSON cannot
+  hold — `z.union([z.codec(wire, domain, transforms), domain])`, codec first — so
+  `make`, `update` and nesting accept its own decoded value and `json` describes
+  its wire text.
+
 ## 0.27.0
 
 No changes in this release.
