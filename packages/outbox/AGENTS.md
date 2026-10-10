@@ -209,10 +209,14 @@ delivery state, and a published row may carry data that must be erasable.
 - **Published rows only, under the tenant's lock.** A claim reads pending rows
   and a prune deletes published ones, so the two never touch the same row; the
   prune still takes the claim's advisory lock, and skips a tenant another relay
-  holds. Without it every replica pruned every tenant on its own minute — a
-  skipped claim still reads as an idle sweep — and contended on the same
-  deletes.
-- **One bounded batch per idle sweep, paced.** A thousand rows per statement
+  holds, so no two deletes of one tenant ever overlap. The lock is the
+  transaction's, so it serialises deletes rather than electing a pruner: each
+  relay keeps its own cadence, and N replicas delete up to N batches per
+  interval. Coordinating that cadence was declined — it needs shared state, a
+  per-tenant stamp in a table every application would have to migrate, or a
+  per-tenant leader the relay does not have — for a cost that is linear in
+  replicas, with every delete bounded and none concurrent.
+- **One bounded batch per round, paced.** A thousand rows per statement
   (`id IN (SELECT … LIMIT n)`), so no round holds a long lock or writes a
   burst of WAL. A full batch makes the next one due a second later: a loop
   deleted a long history ahead of every new fact, re-pruning on the very next
@@ -225,8 +229,11 @@ delivery state, and a published row may carry data that must be erasable.
   moment it went out. And `prune` takes an AGE, not a cutoff, so the store
   measures it on the clock it stamped with — a host clock ahead of the database
   would otherwise delete a fresh row under a short retention.
-- **On an idle sweep, at most once a minute per tenant.** A tenant with a
-  backlog publishes before it prunes.
+- **After any sweep that did not come back full, once a minute per relay.** A
+  tenant with a backlog publishes before it prunes, but a FAILED sweep prunes
+  too: a head message the publisher refuses forever fails every sweep, and an
+  idle-only rule would have held that tenant's retention — the erasure half of
+  it — back for as long as the refusal lasted.
 - **Not a Temporal Schedule.** Scheduling is Temporal's by the role map, but a
   cluster to prune the relay's own table is the "cluster for one nightly job"
   floor `run-something-on-a-schedule.md` warns about; this is a property of the

@@ -310,18 +310,20 @@ The store's queries filter on `tenantId` and `publishedAt IS NULL` and order by
 **The outbox is delivery state, not a log**: a published row has done its job,
 and it may carry data that has to be erasable. With `retainMs` (or
 `OUTBOX_RETAIN_MS`) set, the relay deletes each tenant's rows published longer
-ago than that — on an idle sweep, so a tenant with a backlog publishes first,
-once a minute, a thousand rows at a time. While a batch comes back full the
-next is due a second later, so a long history drains steadily between sweeps,
-new facts keep going out, and a busy tenant's publishes are outpaced. Each batch is an `outbox` / `prune` operation on
+ago than that — after a sweep that did not come back full, so a tenant with a
+backlog publishes first while one whose publisher refuses a message is still
+pruned — once a minute, a thousand rows at a time. While a batch comes back
+full the next is due a second later, so a long history drains steadily between
+sweeps, new facts keep going out, and a busy tenant's publishes are outpaced. Each batch is an `outbox` / `prune` operation on
 `Observers`. Unset, or `0`, keeps them: a deployment that keeps the log changes
 nothing.
 
 It runs through the store's `prune(tenantId, olderThanMs, limit)`, pinned
 to the tenant like every other read, so a table under `@@rls` is pruned by the
 same non-owner role that relays it. A prune takes the tenant's lock as a claim
-does and skips a tenant another relay holds, so across replicas one prunes a
-tenant at a time, and never while it is being claimed. A row's age counts from
+does and skips a tenant another relay holds, so no two deletes of a tenant
+overlap, and none runs while it is being claimed. The cadence is each relay's
+own: N replicas delete up to N batches per interval, one after another. A row's age counts from
 when it was marked — `clock_timestamp()`, not the claim's transaction start —
 and is measured on that same database clock, so neither a slow publish nor a
 host clock's skew ages a row early. A log you want to keep is your subscriber's, which already holds every

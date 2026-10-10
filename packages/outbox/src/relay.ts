@@ -173,8 +173,9 @@ const startRelay = (
         if (signal.aborted) break;
         const swept = await sweep(tenantId);
         let backlog = false;
-        // On an idle sweep only: a tenant with a backlog publishes first.
-        if (retainMs > 0 && swept === "idle" && clock.now() >= pruneDue) {
+        // Not after a full batch, so a backlog publishes first; after a failed
+        // one too, since a refused head message must not hold retention back.
+        if (retainMs > 0 && swept !== "full" && clock.now() >= pruneDue) {
           backlog = await prune(tenantId);
           pruneDue = clock.now() + (backlog ? PRUNE_BACKLOG_MS : PRUNE_EVERY_MS);
         }

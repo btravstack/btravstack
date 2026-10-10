@@ -20,7 +20,6 @@ export type MemoryOutboxStore = OutboxStoreService & {
 export const memoryOutboxStore = (clock: Clock = systemClock): MemoryOutboxStore => {
   let messages: OutboxMessage[] = [];
   let sequence = 0;
-  /** When each published id was marked. */
   const published = new Map<number, number>();
   const claimed = new Set<string>();
 

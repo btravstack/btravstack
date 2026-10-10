@@ -310,6 +310,33 @@ describe("outbox", () => {
     expect(left).toBeOkWith(0);
   });
 
+  it("prunes a tenant whose next message the publisher refuses forever", async ({
+    store,
+    publisher,
+    clock,
+    relaying,
+  }) => {
+    // GIVEN one published fact, then one the transport refuses forever
+    store.append(order("acme", "a"));
+
+    // WHEN the refusal holds the tenant's sweeps failed past the retention
+    const left = await relaying({ tenants: ["acme"], retainMs: 1_000 }, () =>
+      clock
+        .advance(0)
+        .flatMap(() => {
+          store.append(order("acme", "b"));
+          publisher.refuse("b");
+          return clock.advance(61_000);
+        })
+        .flatMap(() => clock.advance(1_000))
+        .flatMap(() => store.prune("acme", 0, 10)),
+    );
+
+    // THEN the published row was pruned anyway: retention does not wait for
+    // the publisher
+    expect(left).toBeOkWith(0);
+  });
+
   it("keeps published messages when no retention is set", async ({ store, clock, relaying }) => {
     // GIVEN a fact, and a relay with no retention
     store.append(order("acme", "a"));
