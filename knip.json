@@ -29,8 +29,14 @@
     "examples/order-api": {
       "ignoreDependencies": [
         "@btravstack/entity",
+        "@btravstack/pothos",
         "@btravstack/prisma",
         "@orpc/tanstack-query",
+        "@pothos/core",
+        "@pothos/plugin-errors",
+        "@pothos/plugin-relay",
+        "@unthrown/pothos",
+        "graphql",
         "@tanstack/query-core",
         "@prisma/orm-postgres"
       ]

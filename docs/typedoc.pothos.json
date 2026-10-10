@@ -1,0 +1,7 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/pothos",
+  "entryPoints": ["../packages/pothos/src/index.ts"],
+  "tsconfig": "../packages/pothos/tsconfig.json",
+  "out": "api/pothos"
+}

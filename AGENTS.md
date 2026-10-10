@@ -31,7 +31,7 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds twenty published packages,
+pnpm workspace + turbo monorepo. `packages/` holds twenty-one published packages,
 `entity` (optional domain modelling on Zod; sealed entities and aggregates, derived schemas, and Result-returning construction), `contract` (the contract tier: markers and normed shapes a client and the
 server that implements it both need — the `authenticated` marker and a cursor
 page, with the page's schema behind a `/zod` subpath so the root keeps its
@@ -49,8 +49,8 @@ composition function), `outbox` (the transactional outbox's relay — the poll
 loop, a per-tenant claim, a lag health check and a Prisma 8 store behind a
 `/prisma` subpath; the application keeps the transaction that writes the row
 and says what publishing means), and the three
-**servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus three HTTP answerer packages: `orpc-server`, `htmx-server` and `graphql-server`. The calling side has `amqp-client` and `temporal-client`, which bind upstream typed clients to application ports and release connections with the DI scope without a worker dependency. `di` was its own repository until it was merged here
-**with its history**; it, `contract` and `entity` are the three packages that depend on
+**servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus three HTTP answerer packages: `orpc-server`, `htmx-server` and `graphql-server`, and `pothos`, the Pothos plugin a GraphQL gateway builds its schema with when its fields call oRPC procedures. The calling side has `amqp-client` and `temporal-client`, which bind upstream typed clients to application ports and release connections with the DI scope without a worker dependency. `di` was its own repository until it was merged here
+**with its history**; it, `contract`, `entity` and `pothos` are the four packages that depend on
 nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
 back, with `testing`, `observability`, the three application-service ports,
@@ -117,7 +117,7 @@ pnpm lint             # oxlint (all eight @unthrown rules) + markdownlint-cli2
 pnpm typecheck        # tsc, incl. the type-level *.test-d.ts files
 pnpm knip             # dead code / unused deps
 pnpm test             # vitest + v8 coverage (100% lines/functions, 90% branches)
-pnpm build            # tsdown CJS/ESM + d.ts (Temporal worker: ESM only)
+pnpm build            # tsdown CJS/ESM + d.ts (Temporal worker, pothos: ESM only)
 ```
 
 **`lint` runs two linters, and markdown rides it deliberately.** CI's jobs come
@@ -139,9 +139,9 @@ pnpm dev              # the four example deployments, one process each, watching
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
-## Versioning: all twenty packages move as one
+## Versioning: all twenty-one packages move as one
 
-The twenty published packages share **one version number**, enforced by a
+The twenty-one published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. **Do not downgrade `@changesets/cli`
 below 3.0.0** — on 2.x the next `pnpm run version` silently ships a major. The
 measurements behind both rules are in `.changeset/AGENTS.md`.
@@ -478,7 +478,7 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    `TestRuntime.untilStarted` and `ProbeServer.close` all carry `E = never`.
    `unthrown/prefer-async-result` cannot enforce this — it only flags a
    `Promise<Result<T, E>>`, and a `Promise<void>` is not Result-bearing — so it
-   is a convention held by review. There are exactly **four** exceptions, each
+   is a convention held by review. There are exactly **five** exceptions, each
    documented where it lives:
    - **`runMain`** returns `Promise<void>`. Its whole job is to leave the Result
      world and become a process exit code; it is the boundary, and a top-level
@@ -496,6 +496,9 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
      A GraphQL resolver answers a value or a promise and reports a field's
      error by rejecting, so `fieldResult` is where a `Result` leaves for
      GraphQL's own channel — the boundary, as `runMain` is for a process.
+   - **`@btravstack/pothos`'s `loadProcedure`** returns `Promise<T | Error>`.
+     A DataLoader's batch function answers a value or an `Error` per key, so
+     that is where one key's `Result` leaves for the loader's own channel.
 
 7. **The startup error channel is the application's own, unwrapped.** The kernel
    does **not** wrap a construction failure in a kernel error — that would erase
@@ -983,7 +986,7 @@ in its place.
 - **`packages/core`'s specs use `@btravstack/testing` without depending on
   it** — that would be a package-graph cycle turbo refuses — so four configs
   carry the wiring and move together: see `packages/testing/AGENTS.md`.
-- `declarationMap: false` on all twenty published packages — the published
+- `declarationMap: false` on all twenty-one published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **A deployment extends `@btravstack/tsconfig/app.json`; everything that
   exports something keeps `base.json`.** The two differ in one thing,
@@ -1025,10 +1028,11 @@ in its place.
 
 - **oxlint rules are binding: no `interface` (use `type`), no `any` (use
   `unknown`).** Genuine exceptions carry a targeted `oxlint-disable` **with a
-  reason**. Two are structural: `units.ts`'s `UnitWork` return union
-  (`prefer-async-result`, a function-type return position) and `run-main.ts`'s
-  `P._` (`no-catch-all-pattern`, the generic-`E` case where the catch-all is
-  the only arm that can terminate the match).
+  reason**. Three are structural: `units.ts`'s `UnitWork` return union
+  (`prefer-async-result`, a function-type return position), and `run-main.ts`'s
+  and `@btravstack/pothos`'s `procedure-field.ts`'s `P._`
+  (`no-catch-all-pattern`, the generic-`E` case where the catch-all is the
+  only arm that can terminate the match).
 - The repo dogfoods **every** `@unthrown/oxlint` rule, opt-ins included
   (`no-throw`, `no-get-or-throw`). oxlint refuses to parse a config naming an
   unknown rule, so a config still listing a rule an upgrade removed fails the

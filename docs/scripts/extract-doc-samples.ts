@@ -85,6 +85,7 @@ const classify = (imports: readonly string[]): Group => {
       "@btravstack/orpc-server",
       "@btravstack/htmx-server",
       "@btravstack/graphql-server",
+      "@btravstack/pothos",
       "@btravstack/contract",
       "@btravstack/observability",
       "zod",

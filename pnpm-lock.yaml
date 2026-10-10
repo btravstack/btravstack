@@ -248,6 +248,12 @@ catalogs:
     '@pothos/core':
       specifier: 4.15.1
       version: 4.15.1
+    '@pothos/plugin-errors':
+      specifier: 4.9.3
+      version: 4.9.3
+    '@pothos/plugin-relay':
+      specifier: 4.8.1
+      version: 4.8.1
     '@prisma/cli-engine':
       specifier: 0.4.0
       version: 0.4.0
@@ -305,6 +311,9 @@ catalogs:
     '@unthrown/oxlint':
       specifier: 5.12.0
       version: 5.12.0
+    '@unthrown/pothos':
+      specifier: 0.1.0
+      version: 0.1.0
     '@unthrown/standard-schema':
       specifier: 5.12.0
       version: 5.12.0
@@ -905,6 +914,9 @@ importers:
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
+      '@btravstack/pothos':
+        specifier: workspace:*
+        version: link:../../packages/pothos
       '@btravstack/prisma':
         specifier: workspace:*
         version: link:../../packages/prisma
@@ -917,6 +929,15 @@ importers:
       '@orpc/tanstack-query':
         specifier: 'catalog:'
         version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)(@tanstack/query-core@5.104.1)
+      '@pothos/core':
+        specifier: 'catalog:'
+        version: 4.15.1(graphql@17.0.2)
+      '@pothos/plugin-errors':
+        specifier: 'catalog:'
+        version: 4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)
+      '@pothos/plugin-relay':
+        specifier: 'catalog:'
+        version: 4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)
       '@prisma/orm-postgres':
         specifier: 'catalog:'
         version: 8.0.0-rc.11(@prisma/cli-engine@0.4.0(magicast@0.5.5))(magicast@0.5.5)(typescript@7.0.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -926,9 +947,15 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
+      '@unthrown/pothos':
+        specifier: 'catalog:'
+        version: 0.1.0(@pothos/core@4.15.1(graphql@17.0.2))(@pothos/plugin-errors@4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(@pothos/plugin-relay@4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(graphql@17.0.2)(unthrown@5.12.0)
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+      graphql:
+        specifier: 'catalog:'
+        version: 17.0.2
       tsx:
         specifier: 'catalog:'
         version: 4.23.15
@@ -2186,6 +2213,60 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/pothos:
+    devDependencies:
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.4.0
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/contract':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@pothos/core':
+        specifier: 'catalog:'
+        version: 4.15.1(graphql@17.0.2)
+      '@pothos/plugin-errors':
+        specifier: 'catalog:'
+        version: 4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)
+      '@pothos/plugin-relay':
+        specifier: 'catalog:'
+        version: 4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      '@unthrown/pothos':
+        specifier: 'catalog:'
+        version: 0.1.0(@pothos/core@4.15.1(graphql@17.0.2))(@pothos/plugin-errors@4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(@pothos/plugin-relay@4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(graphql@17.0.2)(unthrown@5.12.0)
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.3(vitest@5.0.3)
+      graphql:
+        specifier: 'catalog:'
+        version: 17.0.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.0(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      typescript-consumer:
+        specifier: 'catalog:'
+        version: typescript@5.9.3
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.12.0
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
 
   packages/prisma:
     devDependencies:
@@ -5086,6 +5167,18 @@ packages:
     peerDependencies:
       graphql: ^16.10.0 || ^17.0.0
 
+  '@pothos/plugin-errors@4.9.3':
+    resolution: {integrity: sha512-lta89hCM7gJMspq+s/6fqheZcwybzy6czOMi0uCQ0R+KFP9Tqd21PWywW7SyzyzRK8SwrKVrvtmJCPvXBR1jfQ==}
+    peerDependencies:
+      '@pothos/core': '*'
+      graphql: ^16.10.0 || ^17.0.0
+
+  '@pothos/plugin-relay@4.8.1':
+    resolution: {integrity: sha512-saJGin9neFVHbE23XzFky299Idr8jgjpoyhrSh4Fj7p4RyOO7UQ+ZwhF8p3k31uC10iFnjqRdWsrqDZE2y9Fiw==}
+    peerDependencies:
+      '@pothos/core': '*'
+      graphql: ^16.10.0 || ^17.0.0
+
   '@prisma/cli-engine@0.4.0':
     resolution: {integrity: sha512-8mrARMPTQDKgAQ4M8NnDZuWqtWisnVaI1WI8+pAs+cBmurKxSjGxgNPsQgFwP7/Y3OhpbOtY4nJE/JqUbjVWLw==}
     engines: {node: '>=22.12.0'}
@@ -6194,6 +6287,19 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       oxlint: ^1.69.0
+
+  '@unthrown/pothos@0.1.0':
+    resolution: {integrity: sha512-6T8BI97wnAwzB6vpvvTkMxqmAXVB0gY9NP9p+IOH4nWgkUSs0XFdXB+n6kZWjjvuSgBvZUCvoxCXmiJElH+1lw==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@pothos/core': ^4.15.0
+      '@pothos/plugin-errors': ^4.9.0
+      '@pothos/plugin-relay': ^4.8.0
+      graphql: ^16.10.0 || ^17.0.0
+      unthrown: ^5.12.0
+    peerDependenciesMeta:
+      '@pothos/plugin-relay':
+        optional: true
 
   '@unthrown/saga@5.11.0':
     resolution: {integrity: sha512-o2dQNCdIEFNaT+aseyqOvCAOb2PU17KlHL+wA/C7Od+KprcNLRIMftB2o9QjW/Y+NcczQ6YFi6l0FONywaJIZQ==}
@@ -12359,6 +12465,16 @@ snapshots:
     dependencies:
       graphql: 17.0.2
 
+  '@pothos/plugin-errors@4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)':
+    dependencies:
+      '@pothos/core': 4.15.1(graphql@17.0.2)
+      graphql: 17.0.2
+
+  '@pothos/plugin-relay@4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)':
+    dependencies:
+      '@pothos/core': 4.15.1(graphql@17.0.2)
+      graphql: 17.0.2
+
   '@prisma/cli-engine@0.4.0(@prisma/management-api-sdk@1.69.0)(magicast@0.5.5)':
     dependencies:
       '@clack/prompts': 1.5.0
@@ -13470,6 +13586,15 @@ snapshots:
     dependencies:
       '@oxlint/plugins': 1.86.0
       oxlint: 1.86.0
+
+  '@unthrown/pothos@0.1.0(@pothos/core@4.15.1(graphql@17.0.2))(@pothos/plugin-errors@4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(@pothos/plugin-relay@4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(graphql@17.0.2)(unthrown@5.12.0)':
+    dependencies:
+      '@pothos/core': 4.15.1(graphql@17.0.2)
+      '@pothos/plugin-errors': 4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)
+      graphql: 17.0.2
+      unthrown: 5.12.0
+    optionalDependencies:
+      '@pothos/plugin-relay': 4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)
 
   '@unthrown/saga@5.11.0(unthrown@5.12.0)':
     dependencies:
