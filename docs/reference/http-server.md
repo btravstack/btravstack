@@ -283,8 +283,40 @@ root composing the scheme without `sessionCodec()` is refused at the
 `/jwt` and `/session` also load ESM-only `jose`. Node enables `require(esm)` by
 default from 22.12.
 
-`principal(claims)` is yours — no standard claim carries a tenant — and
-answering `undefined` refuses the token. `scopes` is the vocabulary and **the
+`principal(claims, services)` is yours — no standard claim carries a tenant —
+and answering `undefined` refuses the token. `services` are the ports `inject`
+names, resolved once as the graph is built, and each joins the scheme's needs,
+so a claim check that depends on the deployment reads its configuration rather
+than a constant — here, an allow-list of the subjects a delegated token may act
+for:
+
+<!-- doctest: isolate
+import { Config } from "@btravstack/config";
+import { Port } from "@btravstack/di";
+import { jwtAuthenticator } from "@btravstack/http-server/jwt";
+type Identity = { readonly tenantId: string; readonly userId: string };
+-->
+
+```ts
+class TrustedDelegates extends Port("TrustedDelegates")<{
+  readonly subjects: readonly string[];
+}> {}
+
+const delegated = jwtAuthenticator<Identity>()({
+  inject: { trusted: TrustedDelegates },
+  principal: (claims, { trusted }) =>
+    typeof claims.sub === "string" && trusted.subjects.includes(claims.sub)
+      ? { tenantId: "acme", userId: claims.sub }
+      : undefined,
+});
+
+// provided beside it, from the environment
+const trustedDelegates = Config.provider(TrustedDelegates)(
+  Config.object({ subjects: Config.list("TRUSTED_DELEGATES") }),
+);
+```
+
+`scopes` is the vocabulary and **the
 only place it is written**: the scheme's scope type is inferred from it, so it
 cannot name a scope nothing grants. The grant is its **intersection** with the
 token's `scope` or `scp` claim, so a token claiming a scope the scheme does not
@@ -296,7 +328,8 @@ Its other options:
 
 | Option              | Required | Default                       | What it is                                                                                |
 | ------------------- | -------- | ----------------------------- | ----------------------------------------------------------------------------------------- |
-| `principal`         | yes      | —                             | `(claims) => P \| undefined`; `undefined` refuses the token                               |
+| `principal`         | yes      | —                             | `(claims, services) => P \| undefined`; `undefined` refuses the token                     |
+| `inject`            | no       | none                          | the ports `principal` reads, as a provider's `inject`; each joins the scheme's needs      |
 | `scopes`            | no       | none (the scheme is unscoped) | the vocabulary, and the scheme's scope type; omit it entirely for a scheme with no scopes |
 | `jwks`              | no       | read from `HTTP_JWT_JWKS_URI` | pins the issuer's JWKS endpoint instead of reading it                                     |
 | `issuer`            | no       | read from `HTTP_JWT_ISSUER`   | pins the required `iss`                                                                   |
@@ -530,18 +563,19 @@ export const BrowserApi = HttpModule("BrowserApi")({
 });
 ```
 
-| Option                | Required | Default                             | What it is                                                                |
-| --------------------- | -------- | ----------------------------------- | ------------------------------------------------------------------------- |
-| `principal`           | **yes**  | —                                   | what the ID token's claims make the caller; `undefined` refuses the login |
-| `issuer`              | no       | read from `HTTP_OIDC_ISSUER`        | the provider, as its discovery document names itself                      |
-| `clientId`            | no       | read from `HTTP_OIDC_CLIENT_ID`     | this deployment's client                                                  |
-| `clientSecret`        | no       | read from `HTTP_OIDC_CLIENT_SECRET` | its secret — this is a confidential client                                |
-| `redirectUri`         | no       | read from `HTTP_OIDC_REDIRECT_URI`  | the URI **registered** with the provider                                  |
-| `prefix`              | no       | `/auth`                             | where the three routes are mounted                                        |
-| `scope`               | no       | `openid`                            | what the authorization request asks for                                   |
-| `postLogout`          | no       | `/`                                 | where a logout lands when the provider advertises no end-session endpoint |
-| `allowInsecureIssuer` | no       | `false`                             | talk to an `http:` issuer that is not on a loopback host                  |
-| `variablePrefix`      | no       | `HTTP_OIDC`                         | the prefix of the four variables, so a second login reads its own         |
+| Option                | Required | Default                             | What it is                                                                                       |
+| --------------------- | -------- | ----------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `principal`           | **yes**  | —                                   | `(claims, services)` — what the ID token's claims make the caller; `undefined` refuses the login |
+| `inject`              | no       | none                                | the ports `principal` reads, as `jwtAuthenticator`'s `inject`                                    |
+| `issuer`              | no       | read from `HTTP_OIDC_ISSUER`        | the provider, as its discovery document names itself                                             |
+| `clientId`            | no       | read from `HTTP_OIDC_CLIENT_ID`     | this deployment's client                                                                         |
+| `clientSecret`        | no       | read from `HTTP_OIDC_CLIENT_SECRET` | its secret — this is a confidential client                                                       |
+| `redirectUri`         | no       | read from `HTTP_OIDC_REDIRECT_URI`  | the URI **registered** with the provider                                                         |
+| `prefix`              | no       | `/auth`                             | where the three routes are mounted                                                               |
+| `scope`               | no       | `openid`                            | what the authorization request asks for                                                          |
+| `postLogout`          | no       | `/`                                 | where a logout lands when the provider advertises no end-session endpoint                        |
+| `allowInsecureIssuer` | no       | `false`                             | talk to an `http:` issuer that is not on a loopback host                                         |
+| `variablePrefix`      | no       | `HTTP_OIDC`                         | the prefix of the four variables, so a second login reads its own                                |
 
 **`GET <prefix>/login?return=<path>&as=<hint>`** mints a PKCE verifier, a
 `state` and a `nonce`, seals them and `return` into the five-minute

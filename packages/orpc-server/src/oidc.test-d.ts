@@ -6,7 +6,7 @@
 // cannot be built without. Each `@ts-expect-error` is an assertion.
 import { Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import type { Observers } from "@btravstack/core";
-import { Module, type AnyProvider, type Provider } from "@btravstack/di";
+import { Module, Port, type AnyProvider, type Provider } from "@btravstack/di";
 import { html } from "@btravstack/htmx-server";
 import { HttpHandler } from "@btravstack/http-server";
 import { HttpRuntime } from "@btravstack/http-server";
@@ -157,3 +157,37 @@ void oidc({
 // Stating `P` leaves the options uninferred, and a pinned value must still
 // compile: the variables fall back to optional rather than refusing the pin.
 oidc<Identity>({ issuer: "https://issuer.example/", principal: identityOf });
+
+// `principal` may read injected services, as `jwtAuthenticator`'s does: the
+// port joins the answerer's needs.
+class TrustedDomains extends Port("TrustedDomains")<ReadonlySet<string>> {}
+const [gated] = oidc({
+  inject: { domains: TrustedDomains },
+  principal: (claims, { domains }) =>
+    typeof claims["email"] === "string" && domains.has(claims["email"].split("@")[1] ?? "")
+      ? identityOf(claims)
+      : undefined,
+});
+
+expectTypeOf(gated).toEqualTypeOf<
+  Provider<
+    HttpHandler,
+    ConfigInvalid | OidcUnreachable,
+    | EnvReading<
+        | "HTTP_OIDC_ISSUER"
+        | "HTTP_OIDC_CLIENT_ID"
+        | "HTTP_OIDC_CLIENT_SECRET"
+        | "HTTP_OIDC_REDIRECT_URI",
+        never
+      >
+    | SessionCodec
+    | Observers
+    | TrustedDomains
+  > & { readonly port: typeof HttpHandler }
+>();
+
+oidc({
+  inject: { domains: TrustedDomains },
+  // @ts-expect-error -- `principal` reads only what `inject` names
+  principal: (_claims, { domain }) => (domain ? undefined : undefined),
+});

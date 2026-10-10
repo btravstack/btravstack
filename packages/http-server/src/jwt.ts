@@ -8,6 +8,7 @@ import {
   type Unpinned,
 } from "@btravstack/config";
 import { Observers, observe } from "@btravstack/core";
+import type { AnyPort } from "@btravstack/di";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { Err, ErrAsync, Ok, OkAsync, fromPromise, type Result } from "unthrown";
 
@@ -19,12 +20,18 @@ import {
   type AuthenticatorService,
 } from "./auth.js";
 import { cleartext, cleartextRefused } from "./cleartext.js";
-import type { PrefixOf, ScopesOf } from "./options.js";
+import { injectedDeps, injectedServices } from "./options.js";
+import type { Injected, PrefixOf, ScopesOf } from "./options.js";
 
 /** The verified claims, as `jose` reports them. */
 export type Claims = JWTPayload;
 
-export type JwtOptions<P, Scopes extends readonly string[], Pre extends string = string> = {
+export type JwtOptions<
+  P,
+  Scopes extends readonly string[],
+  Pre extends string = string,
+  D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+> = {
   /**
    * The issuer's JWKS endpoint — pins `<prefix>_JWKS_URI` when set, and is read
    * from it when not. Keys are fetched on demand and cached; a `kid` the cache
@@ -72,11 +79,17 @@ export type JwtOptions<P, Scopes extends readonly string[], Pre extends string =
   /** Which header carries the token. Default `authorization`, as `Bearer <token>`. */
   readonly header?: string;
   /**
-   * What the claims make the caller. Answering `undefined` refuses the token —
-   * the hook for a claim this endpoint requires and the standard does not, such
-   * as a tenant.
+   * The services `principal` reads, as a provider's `inject`: each port joins
+   * this scheme's needs, and is resolved once, as the graph is built.
    */
-  readonly principal: (claims: Claims) => P | undefined;
+  readonly inject?: D;
+  /**
+   * What the claims make the caller, given the services `inject` names.
+   * Answering `undefined` refuses the token — the hook for a claim this
+   * endpoint requires and the standard does not, such as a tenant, or a
+   * delegation only some clients may claim, read from configuration.
+   */
+  readonly principal: (claims: Claims, services: Injected<D>) => P | undefined;
   /**
    * The scopes this scheme can grant, and **the only place they are written**.
    * The scheme's vocabulary is inferred from this array rather than declared a
@@ -205,8 +218,19 @@ export const jwtAuthenticator =
   <P>() =>
   // `O` is the options as written — naked, so a union or an annotated type is
   // inferred whole — and which pins it sets decides which variables are needed.
-  <const O extends JwtOptions<P, readonly string[], string>>(
-    options: O & OptionsAs<O, JwtOptions<P, readonly string[], string>>,
+  // `D` is read off `inject` before `principal` is typed, so its services
+  // arrive named and typed in the callback.
+  <
+    const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+    const O extends JwtOptions<P, readonly string[], string, D> = JwtOptions<
+      P,
+      readonly string[],
+      string,
+      D
+    >,
+  >(
+    options: O &
+      OptionsAs<O, JwtOptions<P, readonly string[], string, D>> & { readonly inject?: D },
   ): Authenticator<
     P,
     ScopesOf<O>[number],
@@ -218,7 +242,8 @@ export const jwtAuthenticator =
         | MaybePinned<O, "issuer", `${PrefixOf<O, "HTTP_JWT">}_ISSUER`>
         | MaybePinned<O, "audience", `${PrefixOf<O, "HTTP_JWT">}_AUDIENCE`>
       >
-    | Observers,
+    | Observers
+    | InstanceType<D[keyof D]>,
     ConfigInvalid
   > => {
     type Scopes = ScopesOf<O>;
@@ -236,8 +261,8 @@ export const jwtAuthenticator =
     // type cannot resolve, so the annotation states the three variables —
     // required unless pinned, absent when certainly pinned.
     return HttpAuthenticator<P, Scopes[number]>()({
-      inject: { env: Env, observers: Observers },
-      make: ({ env, observers }) =>
+      inject: { env: Env, observers: Observers, ...injectedDeps(options.inject) },
+      make: ({ env, observers, ...services }) =>
         Config.parse(
           "HttpJwt",
           schema,
@@ -261,6 +286,7 @@ export const jwtAuthenticator =
           // the cache, so one per request would refetch the issuer's keys on
           // every call.
           const keys = createRemoteJWKSet(new URL(bound.jwks));
+          const injected = injectedServices(services) as Injected<D>;
           // A refusal the ISSUER caused is an operation that failed; one the
           // token caused is not an operation at all. So this is called on the
           // key-set branch alone, and a verified token — like every other
@@ -309,7 +335,7 @@ export const jwtAuthenticator =
                 // a principal — an unauthenticated caller with a context that
                 // type-checks.
                 .flatMap((claims) => {
-                  const principal = options.principal(claims);
+                  const principal = options.principal(claims, injected);
                   if (principal === undefined) return ErrAsync(new Unauthenticated());
                   return OkAsync(grantOf(principal, vocabulary, claimedScopes(claims)) as never);
                 })

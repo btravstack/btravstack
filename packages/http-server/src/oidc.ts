@@ -10,7 +10,7 @@ import {
   type Unpinned,
 } from "@btravstack/config";
 import { Observers, observe, type Operation, type Settle } from "@btravstack/core";
-import { Provider, type AnyProvider } from "@btravstack/di";
+import { Provider, type AnyPort, type AnyProvider } from "@btravstack/di";
 import {
   ClientSecretBasic,
   allowInsecureRequests,
@@ -31,7 +31,8 @@ import { ErrAsync, TaggedError, fromPromise, type AsyncResult } from "unthrown";
 import { cleartext, cleartextRefused } from "./cleartext.js";
 import { clearCookie, cookieScheme, cookieValue, setCookie } from "./cookie.js";
 import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
-import type { PrefixOf } from "./options.js";
+import { injectedDeps, injectedServices } from "./options.js";
+import type { Injected, PrefixOf } from "./options.js";
 import { forLocation, returnTo } from "./redirect.js";
 import {
   SESSION_COOKIE,
@@ -54,7 +55,7 @@ export type OidcPins = {
  * carries no type of its own.
  */
 
-export type OidcAnswerer<Pre extends string = string, O = OidcPins> = Provider<
+export type OidcAnswerer<Pre extends string = string, O = OidcPins, Needs = never> = Provider<
   HttpHandler,
   ConfigInvalid | OidcUnreachable,
   | EnvReading<
@@ -69,6 +70,7 @@ export type OidcAnswerer<Pre extends string = string, O = OidcPins> = Provider<
     >
   | SessionCodec
   | Observers
+  | Needs
 > & { readonly port: typeof HttpHandler };
 
 /**
@@ -95,7 +97,11 @@ class GrantFailed extends TaggedError("GrantFailed")<{
   readonly cause: unknown;
 }> {}
 
-export type OidcOptions<P, Pre extends string = string> = {
+export type OidcOptions<
+  P,
+  Pre extends string = string,
+  D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+> = {
   /** Pins `<prefix>_ISSUER` — the provider, as its discovery document names itself. */
   readonly issuer?: string | undefined;
   /** Pins `<prefix>_CLIENT_ID`. */
@@ -120,12 +126,17 @@ export type OidcOptions<P, Pre extends string = string> = {
   /** What the authorization request asks for. Default `openid`. */
   readonly scope?: string;
   /**
-   * What the ID token's claims make the caller — the same shape
-   * `jwtAuthenticator` takes, so one function serves both. Answering
-   * `undefined` refuses the login: the claim this application requires and the
-   * standard does not, such as a tenant.
+   * The services `principal` reads, as a provider's `inject`: each port joins
+   * the answerer's needs, and is resolved once, as the graph is built.
    */
-  readonly principal: (claims: IDToken) => P | undefined;
+  readonly inject?: D;
+  /**
+   * What the ID token's claims make the caller, given the services `inject`
+   * names — the same shape `jwtAuthenticator` takes, so one function serves
+   * both. Answering `undefined` refuses the login: the claim this application
+   * requires and the standard does not, such as a tenant.
+   */
+  readonly principal: (claims: IDToken, services: Injected<D>) => P | undefined;
   /**
    * Where a logout lands when the provider advertises no `end_session_endpoint`.
    * Default `/`.
@@ -469,9 +480,13 @@ const handlerFor =
 // inferred whole; `P` comes from the `OidcOptions<P>` half. A call that states
 // `P` leaves `O` at its default — every pin MAY be set — so its variables are
 // optional rather than its own pins refused.
-export const oidc = <P, const O extends OidcOptions<unknown, string> = OidcOptions<P, string>>(
-  options: OidcOptions<P, string> & O & OptionsAs<O, OidcOptions<P, string>>,
-): readonly [OidcAnswerer<PrefixOf<O, "HTTP_OIDC">, O>, AnyProvider] => {
+export const oidc = <
+  P,
+  const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+  const O extends OidcOptions<unknown, string, D> = OidcOptions<P, string, D>,
+>(
+  options: OidcOptions<P, string, D> & O & OptionsAs<O, OidcOptions<P, string, D>>,
+): readonly [OidcAnswerer<PrefixOf<O, "HTTP_OIDC">, O, InstanceType<D[keyof D]>>, AnyProvider] => {
   type Pre = PrefixOf<O, "HTTP_OIDC">;
   const prefix = options.prefix ?? DEFAULT_PREFIX;
   const variables = (options.variablePrefix ?? "HTTP_OIDC") as Pre;
@@ -485,8 +500,18 @@ export const oidc = <P, const O extends OidcOptions<unknown, string> = OidcOptio
   // Cast for the needs alone: over a generic prefix the schema's own needs type
   // cannot resolve, so `OidcAnswerer` states the four variables.
   const answerer = Provider.member(HttpHandler)({
-    inject: { env: Env, codec: SessionCodec, observers: Observers },
-    make: ({ env, codec, observers }): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> =>
+    inject: {
+      env: Env,
+      codec: SessionCodec,
+      observers: Observers,
+      ...injectedDeps(options.inject),
+    },
+    make: ({
+      env,
+      codec,
+      observers,
+      ...services
+    }): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> =>
       Config.parse(
         "HttpOidc",
         schema,
@@ -513,7 +538,8 @@ export const oidc = <P, const O extends OidcOptions<unknown, string> = OidcOptio
                 redirectUri: bound.redirectUri,
                 scope: options.scope ?? DEFAULT_SCOPE,
                 postLogout: options.postLogout ?? DEFAULT_POST_LOGOUT,
-                principal: options.principal,
+                principal: (claims) =>
+                  options.principal(claims, injectedServices(services) as Injected<D>),
                 observers,
               },
               prefix,
@@ -524,5 +550,5 @@ export const oidc = <P, const O extends OidcOptions<unknown, string> = OidcOptio
       }),
   });
 
-  return [answerer as unknown as OidcAnswerer<Pre, O>, cookieScheme()];
+  return [answerer as unknown as OidcAnswerer<Pre, O, InstanceType<D[keyof D]>>, cookieScheme()];
 };
