@@ -154,9 +154,10 @@ pnpm add @btravstack/http-server @btravstack/graphql-server @btravstack/core \
 ```
 
 ```sh [GraphQL over oRPC]
-pnpm add @btravstack/pothos @pothos/core @pothos/plugin-errors @pothos/plugin-relay \
-  @unthrown/pothos@^0.1.0 graphql unthrown zod \
-  @orpc/client@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28
+pnpm add @btravstack/http-server @btravstack/graphql-server @btravstack/core \
+  @btravstack/config @btravstack/di @btravstack/contract unthrown graphql@^17.0.0 graphql-yoga@^5.24.1 \
+  @btravstack/pothos @pothos/core @pothos/plugin-errors @pothos/plugin-relay \
+  @unthrown/pothos@^0.1.0 zod @orpc/client@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28
 ```
 
 ```sh [Temporal worker]

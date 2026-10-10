@@ -346,4 +346,18 @@ describe("refusalsOf", () => {
       InvalidInput: registry.InvalidInput,
     });
   });
+
+  it("leaves an access code out even when the registry holds a member for it", () => {
+    // GIVEN a registry holding a member for FORBIDDEN
+    const holdingAccess = { ...registry, FORBIDDEN: registry.NOT_FOUND };
+
+    // WHEN the catalogue's refusals are read
+    const refusals = refusalsOf(holdingAccess, getBook);
+
+    // THEN FORBIDDEN is left out: it is answered as GraphQL's own error
+    expect(refusals).toEqual({
+      NOT_FOUND: registry.NOT_FOUND,
+      InvalidInput: registry.InvalidInput,
+    });
+  });
 });

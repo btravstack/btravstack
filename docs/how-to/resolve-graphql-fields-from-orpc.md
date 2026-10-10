@@ -121,7 +121,7 @@ each path:
   wire before `call` runs. An input the contract refuses is `BadRequest`, and
   the service is never called.
 - **A declared error is its registered member.** A registry that misses a code
-  the procedure declares does not compile: the options demand an `uncovered`
+  `call` can fail with does not compile: the options demand an `uncovered`
   property naming the code.
 - **An access refusal is an error of the operation.** `UNAUTHORIZED` and
   `FORBIDDEN`, declared or not, become a `GraphQLError` with that code in

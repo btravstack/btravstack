@@ -27,9 +27,12 @@ what registers the plugin and the two field methods.
 **The registry is one per builder, and its coverage is a compile error.**
 `orpc.refusals` maps an error code to the GraphQL error class built from that
 failure. A field's refusals are the codes its procedure declares, read from
-the contract's `errorMap`, plus `InvalidInput`; a declared code the registry
-lacks fails the field with `uncovered: "<CODE>"` (`procedure-field.test-d.ts`
-pins it under both compilers). A builder given no registry at runtime answers
+the contract's `errorMap`, plus `InvalidInput`, less the two access codes; a
+code its `call` can fail with that the registry lacks fails the field with
+`uncovered: "<CODE>"` (`procedure-field.test-d.ts` pins it under both
+compilers). Coverage follows `call`'s failure rather than the `errorMap`: a
+declared code a narrower `call` handles itself never reaches the field, and a
+code the registry lacks adds no member to its union. A builder given no registry at runtime answers
 every declared error as an error of the operation, because the field's union
 has no member for it (`procedure-field.spec.ts`).
 

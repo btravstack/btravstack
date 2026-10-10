@@ -32,6 +32,8 @@ type ErrorClass = new (failure: never) => Error;
 
 type Access = { readonly code: "UNAUTHORIZED" | "FORBIDDEN" };
 
+const ACCESS_CODES: ReadonlySet<string> = new Set(["UNAUTHORIZED", "FORBIDDEN"]);
+
 type Procedure<Schema extends z.ZodType> = ProcedureContract<Schema, AnySchema, ErrorMap>;
 
 type AnyProcedure = Procedure<z.ZodType>;
@@ -227,7 +229,7 @@ export const refusalsOf = <Failure>(
 ): Refusals<Failure> =>
   Object.fromEntries(
     [...Object.keys(procedure["~orpc"].errorMap), "InvalidInput"].flatMap((code) => {
-      const Refusal = registry[code];
+      const Refusal = ACCESS_CODES.has(code) ? undefined : registry[code];
       return Refusal === undefined ? [] : [[code, Refusal]];
     }),
   ) as Refusals<Failure>;
