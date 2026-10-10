@@ -196,7 +196,7 @@ export const OrderApi = HttpModule("OrderApi")({
     observability(),
     otel(),
   ],
-  provides: [sessionCodec(), ...oidc({ principal, scope: "openid orders:export" })],
+  provides: [sessionCodec(), ...oidc()({ principal, scope: "openid orders:export" })],
   exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
@@ -552,7 +552,7 @@ export const BrowserApi = HttpModule("BrowserApi")({
   provides: [
     row,
     sessionCodec(),
-    ...oidc({
+    ...oidc()({
       scope: "openid orders:export",
       principal: (claims) =>
         typeof claims["tenant"] === "string" && typeof claims.sub === "string"
@@ -1724,7 +1724,7 @@ going:
 | under-scoped, whatever the sender | `403`  | none                                         |
 
 **It is the login route, not the prefix its answerer is mounted under.** An
-`oidc({ prefix: "/auth" })` serves `GET /auth/login`; `/auth` itself answers
+`oidc()({ prefix: "/auth" })` serves `GET /auth/login`; `/auth` itself answers
 nothing, so `login: "/auth"` would send every logged-out caller to a `404`.
 
 **The htmx row is not a cosmetic difference.** htmx follows a redirect inside

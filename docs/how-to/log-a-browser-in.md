@@ -34,7 +34,7 @@ own lifetime, **is** the session.
 2. Bind the kind — `SessionModule`, `UserModule`'s own shape over
    `auth.principals.session` instead of `.user`.
 3. Compose the codec and the answerer — `sessionCodec()` and
-   `...oidc({ principal, scope })`, both in the root's `provides`. The
+   `...oidc()({ principal, scope })`, both in the root's `provides`. The
    answerer is spread because it is two providers: the three login routes,
    and the `CookieSchemes` member that turns CSRF on for them.
 4. Require `session` on the route — `requires: [{ session: [] }]` on
@@ -167,7 +167,7 @@ export const BrowserApi = HttpModule("BrowserApi")({
   provides: [
     orderRowFragment,
     sessionCodec(),
-    ...oidc({ principal, scope: "openid orders:export" }),
+    ...oidc()({ principal, scope: "openid orders:export" }),
   ],
   imports: [OrderPersistenceModule, observability(), otel()],
   exports: [Logger, Tracer, Meter, OrderDatabase],

@@ -226,7 +226,7 @@ carrying `?return=` set to the path and query they asked for. One line beside
 `fragments` is the whole wiring; drop it and that route answers a bare `401`.
 
 It is the login **route**, not the prefix its answerer is mounted under: an
-`oidc({ prefix: "/auth" })` serves `GET /auth/login`, and `/auth` on its own
+`oidc()({ prefix: "/auth" })` serves `GET /auth/login`, and `/auth` on its own
 answers nothing — see [Log a browser in](/how-to/log-a-browser-in) for the
 scheme it authenticates and the cookie it seals. Then:
 

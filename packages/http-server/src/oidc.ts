@@ -438,7 +438,7 @@ const handlerFor =
  * export const BrowserApi = HttpModule("BrowserApi")({
  *   fragments,
  *   fragmentsLogin: "/auth/login",
- *   provides: [sessionCodec(), oidc({ principal: identityOf })],
+ *   provides: [sessionCodec(), oidc()({ principal: identityOf })],
  * });
  * ```
  *
@@ -476,79 +476,86 @@ const handlerFor =
  * member beside a scheme that reads one; this is that rule reaching the one
  * surface it could not see.
  */
-// `O` is the options as written, naked so a union or an annotated type is
-// inferred whole; `P` comes from the `OidcOptions<P>` half. A call that states
-// `P` leaves `O` at its default — every pin MAY be set — so its variables are
-// optional rather than its own pins refused.
-export const oidc = <
-  P,
-  const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
-  const O extends OidcOptions<unknown, string, D> = OidcOptions<P, string, D>,
->(
-  options: OidcOptions<P, string, D> & O & OptionsAs<O, OidcOptions<P, string, D>>,
-): readonly [OidcAnswerer<PrefixOf<O, "HTTP_OIDC">, O, InstanceType<D[keyof D]>>, AnyProvider] => {
-  type Pre = PrefixOf<O, "HTTP_OIDC">;
-  const prefix = options.prefix ?? DEFAULT_PREFIX;
-  const variables = (options.variablePrefix ?? "HTTP_OIDC") as Pre;
-  const schema = Config.object({
-    issuer: Config.pinned(options.issuer, Config.url(`${variables}_ISSUER`)),
-    clientId: Config.pinned(options.clientId, Config.string(`${variables}_CLIENT_ID`)),
-    clientSecret: Config.pinned(options.clientSecret, Config.string(`${variables}_CLIENT_SECRET`)),
-    redirectUri: Config.pinned(options.redirectUri, Config.url(`${variables}_REDIRECT_URI`)),
-  });
+// Curried, as `jwtAuthenticator<P>()` is: an explicit `P` in the second call
+// would default `D` and `O` rather than infer them. `O` is the options as
+// written, naked so a union or an annotated type is inferred whole, and `D` is
+// read off `inject` before `principal` is typed.
+export const oidc =
+  <P = unknown>() =>
+  <
+    const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+    const O extends OidcOptions<P, string, D> = OidcOptions<P, string, D>,
+  >(
+    options: O & OptionsAs<O, OidcOptions<P, string, D>> & { readonly inject?: D },
+  ): readonly [
+    OidcAnswerer<PrefixOf<O, "HTTP_OIDC">, O, InstanceType<D[keyof D]>>,
+    AnyProvider,
+  ] => {
+    type Pre = PrefixOf<O, "HTTP_OIDC">;
+    const prefix = options.prefix ?? DEFAULT_PREFIX;
+    const variables = (options.variablePrefix ?? "HTTP_OIDC") as Pre;
+    const schema = Config.object({
+      issuer: Config.pinned(options.issuer, Config.url(`${variables}_ISSUER`)),
+      clientId: Config.pinned(options.clientId, Config.string(`${variables}_CLIENT_ID`)),
+      clientSecret: Config.pinned(
+        options.clientSecret,
+        Config.string(`${variables}_CLIENT_SECRET`),
+      ),
+      redirectUri: Config.pinned(options.redirectUri, Config.url(`${variables}_REDIRECT_URI`)),
+    });
 
-  // Cast for the needs alone: over a generic prefix the schema's own needs type
-  // cannot resolve, so `OidcAnswerer` states the four variables.
-  const answerer = Provider.member(HttpHandler)({
-    inject: {
-      env: Env,
-      codec: SessionCodec,
-      observers: Observers,
-      ...injectedDeps(options.inject),
-    },
-    make: ({
-      env,
-      codec,
-      observers,
-      ...services
-    }): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> =>
-      Config.parse(
-        "HttpOidc",
-        schema,
-      )(env).flatMap((bound): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> => {
-        const insecure = cleartext(bound.issuer, options.allowInsecureIssuer ?? false);
-        if (insecure === "refused")
-          return ErrAsync(
-            cleartextRefused({
-              port: "HttpOidc",
-              variable: `${variables}_ISSUER`,
-              option: "allowInsecureIssuer",
-              on: "oidc()",
-              what: "it sends the client secret, the authorization code and every token in the open",
+    // Cast for the needs alone: over a generic prefix the schema's own needs type
+    // cannot resolve, so `OidcAnswerer` states the four variables.
+    const answerer = Provider.member(HttpHandler)({
+      inject: {
+        env: Env,
+        codec: SessionCodec,
+        observers: Observers,
+        ...injectedDeps(options.inject),
+      },
+      make: ({
+        env,
+        codec,
+        observers,
+        ...services
+      }): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> =>
+        Config.parse(
+          "HttpOidc",
+          schema,
+        )(env).flatMap((bound): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> => {
+          const insecure = cleartext(bound.issuer, options.allowInsecureIssuer ?? false);
+          if (insecure === "refused")
+            return ErrAsync(
+              cleartextRefused({
+                port: "HttpOidc",
+                variable: `${variables}_ISSUER`,
+                option: "allowInsecureIssuer",
+                on: "oidc()",
+                what: "it sends the client secret, the authorization code and every token in the open",
+              }),
+            );
+          return discover(bound.issuer, bound.clientId, bound.clientSecret, insecure).map(
+            (config) => ({
+              prefix,
+              handle: handlerFor(
+                {
+                  config,
+                  issuer: bound.issuer,
+                  clientId: bound.clientId,
+                  redirectUri: bound.redirectUri,
+                  scope: options.scope ?? DEFAULT_SCOPE,
+                  postLogout: options.postLogout ?? DEFAULT_POST_LOGOUT,
+                  principal: (claims) =>
+                    options.principal(claims, injectedServices(services) as Injected<D>),
+                  observers,
+                },
+                prefix,
+                codec,
+              ),
             }),
           );
-        return discover(bound.issuer, bound.clientId, bound.clientSecret, insecure).map(
-          (config) => ({
-            prefix,
-            handle: handlerFor(
-              {
-                config,
-                issuer: bound.issuer,
-                clientId: bound.clientId,
-                redirectUri: bound.redirectUri,
-                scope: options.scope ?? DEFAULT_SCOPE,
-                postLogout: options.postLogout ?? DEFAULT_POST_LOGOUT,
-                principal: (claims) =>
-                  options.principal(claims, injectedServices(services) as Injected<D>),
-                observers,
-              },
-              prefix,
-              codec,
-            ),
-          }),
-        );
-      }),
-  });
+        }),
+    });
 
-  return [answerer as unknown as OidcAnswerer<Pre, O, InstanceType<D[keyof D]>>, cookieScheme()];
-};
+    return [answerer as unknown as OidcAnswerer<Pre, O, InstanceType<D[keyof D]>>, cookieScheme()];
+  };

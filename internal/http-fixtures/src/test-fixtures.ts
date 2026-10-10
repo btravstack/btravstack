@@ -687,7 +687,7 @@ const bffAppOf = (
     provides: [
       bffRowFragment,
       sessionCodec(),
-      ...oidc({ principal, scope: ORY_SCOPE, allowInsecureIssuer }),
+      ...oidc()({ principal, scope: ORY_SCOPE, allowInsecureIssuer }),
       Provider.member(Observers)({ inject: {}, value: member }),
     ],
   });
@@ -715,7 +715,7 @@ const loginOnlyAppOf = (variablePrefix?: string) =>
     provides: [
       loginOnlyStatusFragment,
       sessionCodec(),
-      ...oidc({
+      ...oidc()({
         principal: oidcPrincipal,
         scope: ORY_SCOPE,
         ...(variablePrefix === undefined ? {} : { variablePrefix }),

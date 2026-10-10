@@ -312,7 +312,7 @@ Mint one with
 A key that is not 32 base64url bytes fails the boot with a `ConfigInvalid`
 naming `HTTP_SESSION_KEYS` and the POSITION it refused — never the value.
 
-`oidc({ principal, ... })`, from `@btravstack/http-server/oidc`, is what
+`oidc()({ principal, ... })`, from `@btravstack/http-server/oidc`, is what
 authenticates the principal that codec seals: an answerer serving
 `<prefix>/login`, `<prefix>/callback` and `<prefix>/logout` over the
 authorization-code flow with PKCE. It needs `openid-client`, an optional peer

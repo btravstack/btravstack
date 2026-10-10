@@ -17,7 +17,7 @@ export type HtmxOptions = {
   readonly prefix?: `/${string}` | undefined;
   /**
    * The login ROUTE — the path the login answerer serves, `/auth/login` for an
-   * `oidc({ prefix: "/auth" })`, not the prefix it is mounted under. Set it and
+   * `oidc()({ prefix: "/auth" })`, not the prefix it is mounted under. Set it and
    * a route whose `requires` resolves `Unauthenticated` sends the caller there
    * carrying `?return=` — `303 Location` for a navigating browser, `401
    * HX-Redirect` for a request htmx made. Unset, that route answers a bare
