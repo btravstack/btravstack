@@ -1,5 +1,20 @@
 # @btravstack/graphql-server
 
+## 0.28.0
+
+### Minor Changes
+
+- 7d70401: `graphql()` takes `developerTools`, which pins `GRAPHQL_DEVELOPER_TOOLS` (default `false`) and turns GraphiQL and introspection on together. Introspection, previously always answered, is now off unless a deployment turns it on; off, an operation naming `__schema` or `__type` is refused at validation. The answerer now reads `Env`, so a root providing `graphql()` declares `needs: [Env]`, and `@btravstack/config` is a new required peer.
+
+### Patch Changes
+
+- Updated dependencies [3964fd7]
+  - @btravstack/http-server@0.28.0
+  - @btravstack/config@0.28.0
+  - @btravstack/contract@0.28.0
+  - @btravstack/core@0.28.0
+  - @btravstack/di@0.28.0
+
 ## 0.27.0
 
 ### Minor Changes

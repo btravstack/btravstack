@@ -1,5 +1,16 @@
 # @btravstack/htmx-server
 
+## 0.28.0
+
+### Patch Changes
+
+- Updated dependencies [3964fd7]
+  - @btravstack/http-server@0.28.0
+  - @btravstack/config@0.28.0
+  - @btravstack/contract@0.28.0
+  - @btravstack/core@0.28.0
+  - @btravstack/di@0.28.0
+
 ## 0.27.0
 
 ### Minor Changes
