@@ -1,5 +1,12 @@
 import type { AnySchema, ErrorMap, ProcedureContract } from "@orpc/contract";
-import { Err, fromSafePromise, fromSafeThrowable, TaggedError, type AsyncResult } from "unthrown";
+import {
+  Err,
+  fromPromise,
+  fromSafePromise,
+  fromSafeThrowable,
+  TaggedError,
+  type AsyncResult,
+} from "unthrown";
 import { z } from "zod";
 
 /**
@@ -37,7 +44,9 @@ export class InvalidInput extends TaggedError("InvalidInput")<{
 /**
  * `call`, handed the input as the procedure's contract parses it and encodes
  * it back for the wire — its defaults applied, its codecs run, asynchronous
- * refinements and transforms included — or `InvalidInput` without calling it. A contract whose input is not one Zod
+ * refinements included — or `InvalidInput` without calling it. A schema with a
+ * transform cannot be encoded back: `call` gets the input as given, which the
+ * contract admitted. A contract whose input is not one Zod
  * schema is a defect.
  */
 export const contractCall = <
@@ -56,11 +65,23 @@ export const contractCall = <
     .flatMap((schema) =>
       fromSafePromise(schema.safeParseAsync(input)).flatMap((parsed) =>
         parsed.success
-          ? fromSafePromise(z.encodeAsync(schema, parsed.data))
+          ? wireInput(schema, parsed.data, input as z.input<Schema>)
           : Err(new InvalidInput({ issues: parsed.error.issues })),
       ),
     )
     .flatMap((validated) => call(validated));
+
+// A schema holding a unidirectional transform has no wire spelling to encode
+// back to: the input goes as given, already admitted by the contract, which the
+// service parses again.
+const wireInput = <Schema extends z.ZodType>(
+  schema: Schema,
+  parsed: z.output<Schema>,
+  given: z.input<Schema>,
+): AsyncResult<z.input<Schema>, never> =>
+  fromPromise(z.encodeAsync(schema, parsed), (cause, defect) =>
+    cause instanceof z.core.$ZodEncodeError ? ("Unencodable" as const) : defect(cause),
+  ).recoverErrCases((matcher) => matcher.with("Unencodable", () => given));
 
 /**
  * A procedure's answer decoded by `schema` — the shape the GraphQL field

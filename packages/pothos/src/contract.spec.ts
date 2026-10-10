@@ -67,6 +67,42 @@ describe("contract", () => {
     expect(called).toBeErrTagged("InvalidInput");
   });
 
+  it("calls with the input as given when its schema transforms it", async () => {
+    // GIVEN a contract normalizing a shelf name with a transform
+    const shelve = oc.input(z.object({ shelf: z.string().transform((shelf) => shelf.trim()) }));
+
+    // WHEN it is called
+    const called = await contractCall(shelve, { shelf: " poetry " }, (validated) =>
+      OkAsync(validated),
+    );
+
+    // THEN the call receives the input the contract admitted, as given
+    expect(called).toBeOkWith({ shelf: " poetry " });
+  });
+
+  it("answers a defect when a codec fails to encode the input", async () => {
+    // GIVEN a contract whose codec cannot encode back
+    const renew = oc.input(
+      z.object({
+        due: z.codec(z.iso.date(), z.date(), {
+          decode: (text) => new Date(text),
+          encode: () => {
+            // oxlint-disable-next-line unthrown/no-throw -- the case under test: a codec whose encode is a bug
+            throw new RangeError("Unencodable date");
+          },
+        }),
+      }),
+    );
+
+    // WHEN it is called
+    const called = await contractCall(renew, { due: "2026-11-01" }, (validated) =>
+      OkAsync(validated),
+    );
+
+    // THEN the codec's bug is a defect
+    expect(called).toBeDefectWith(new RangeError("Unencodable date"));
+  });
+
   it("answers a defect for a contract holding no Zod input", async () => {
     // GIVEN a contract with no input schema
     const unbound = oc.output(z.string());

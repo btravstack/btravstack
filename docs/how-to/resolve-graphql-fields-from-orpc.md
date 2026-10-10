@@ -118,7 +118,8 @@ each path:
 
 - **The input is the contract's.** It is parsed by the procedure's own input
   schema — its defaults applied, its codecs run — and encoded back for the
-  wire before `call` runs. An input the contract refuses is `BadRequest`, and
+  wire before `call` runs; a schema with a `.transform()` has no wire spelling,
+  so `call` gets the input as given. An input the contract refuses is `BadRequest`, and
   the service is never called.
 - **A declared error is its registered member.** A registry that misses a code
   `call` can fail with does not compile: the options demand an `uncovered`
