@@ -608,4 +608,34 @@ describe("the transactional outbox", () => {
     // at-least-once, deduplicated on the outbox id downstream
     expect(swept).toBeOkWith(["0199a1e0-0000-7000-8000-000000000076"]);
   });
+
+  it("prunes the tenant's published rows before the cutoff, never a pending one", async ({
+    tenant,
+    repository,
+    outbox,
+    anOrder,
+  }) => {
+    // GIVEN two events published and a third still pending, under the table's
+    // row security
+    const after = new Date(Date.now() + 60_000);
+
+    // WHEN the tenant is pruned with a cutoff past every publish
+    const pruned = await repository
+      .save(anOrder("0199a1e0-0000-7000-8000-000000000081", 1))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000082", 1)))
+      .flatMap(() => outbox.claim(tenant, 10, (batch) => OkAsync(batch.map(({ id }) => id))))
+      .flatMap(() => repository.save(anOrder("0199a1e0-0000-7000-8000-000000000083", 1)))
+      .flatMap(() => outbox.prune(tenant, after, 100))
+      .flatMap((count) =>
+        outbox
+          .pending(tenant, 10)
+          .map((pending) => ({ count, pending: pending.map(({ subjectId }) => subjectId) })),
+      );
+
+    // THEN the two published rows went, counted, and the pending one stayed
+    expect(pruned).toBeOkWith({
+      count: 2,
+      pending: ["0199a1e0-0000-7000-8000-000000000083"],
+    });
+  });
 });

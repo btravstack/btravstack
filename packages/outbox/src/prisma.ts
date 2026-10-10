@@ -185,6 +185,23 @@ export const prismaOutboxStore = <Tx>(
       .affectedCount()
       .build();
 
+  // The oldest `limit` published before the cutoff, deleted and counted in one
+  // statement; the count is text, the codec every other read here uses.
+  const purge = (tenantId: string, publishedBefore: Date, limit: number) =>
+    sql(
+      statement(
+        `WITH gone AS (DELETE FROM ${qualified} WHERE ${column("id")} IN (SELECT ${column("id")} FROM ${qualified} WHERE ${column("tenantId")} = `,
+        ` AND ${column("publishedAt")} < `,
+        `::timestamptz ORDER BY ${column("id")} LIMIT `,
+        `::int) RETURNING 1) SELECT count(*)::text AS "deleted" FROM gone`,
+      ),
+      tenantId,
+      publishedBefore.toISOString(),
+      String(limit),
+    )
+      .returnsRow({ deleted: "pg/text@1" })
+      .build();
+
   const read = async (tx: Queryable, tenantId: string, limit: number) =>
     ((await tx.query(select(tenantId, limit))) as readonly Row[]).map((row): OutboxMessage => ({
       ...row,
@@ -217,6 +234,14 @@ export const prismaOutboxStore = <Tx>(
             oldestOf.push({ tenantId, occurredAt: new Date(row.occurredAt) });
         }
         return oldestOf;
+      }),
+    prune: (tenantId, publishedBefore, limit) =>
+      transaction(async (tx) => {
+        await tx.query(pin(tenantId));
+        const [row] = (await tx.query(purge(tenantId, publishedBefore, limit))) as readonly {
+          readonly deleted: string;
+        }[];
+        return Number(row?.deleted ?? 0);
       }),
     claim: (tenantId, limit, relay) =>
       transaction(async (tx) => {

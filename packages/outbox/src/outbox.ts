@@ -22,7 +22,7 @@ export type OutboxMessage = {
 };
 
 /**
- * What a store answers for the relay. Both operations promise `never`: a
+ * What a store answers for the relay. Every operation promises `never`: a
  * database that will not answer is a defect the relay observes and retries,
  * not a domain outcome.
  */
@@ -60,6 +60,16 @@ export type OutboxStoreService = {
     limit: number,
     relay: (batch: readonly OutboxMessage[]) => AsyncResult<readonly number[], never>,
   ) => AsyncResult<void, never>;
+  /**
+   * Deletes a tenant's messages published before `publishedBefore`, at most
+   * `limit`, and answers how many went. Published rows only — a pending one is
+   * never touched, so a prune shares nothing with a claim and takes no lock.
+   */
+  readonly prune: (
+    tenantId: string,
+    publishedBefore: Date,
+    limit: number,
+  ) => AsyncResult<number, never>;
 };
 
 /**

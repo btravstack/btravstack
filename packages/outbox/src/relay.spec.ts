@@ -239,6 +239,42 @@ describe("outbox", () => {
     expect(swept).toBeOkWith(ids);
   });
 
+  it("deletes a published message once it is older than retainMs", async ({
+    store,
+    clock,
+    relaying,
+  }) => {
+    // GIVEN a fact, and a relay keeping published rows for a second
+    store.append(order("acme", "a"));
+
+    // WHEN it is published, and a prune round falls due a minute later
+    const left = await relaying({ tenants: ["acme"], retainMs: 1_000 }, () =>
+      clock
+        .advance(0)
+        .flatMap(() => clock.advance(60_000))
+        .flatMap(() => store.prune("acme", new Date(9_999_999_999_999), 10)),
+    );
+
+    // THEN the relay had already deleted it: nothing published is left to prune
+    expect(left).toBeOkWith(0);
+  });
+
+  it("keeps published messages when no retention is set", async ({ store, clock, relaying }) => {
+    // GIVEN a fact, and a relay with no retention
+    store.append(order("acme", "a"));
+
+    // WHEN it is published, and a minute passes
+    const left = await relaying({ tenants: ["acme"] }, () =>
+      clock
+        .advance(0)
+        .flatMap(() => clock.advance(60_000))
+        .flatMap(() => store.prune("acme", new Date(9_999_999_999_999), 10)),
+    );
+
+    // THEN the published row is still there
+    expect(left).toBeOkWith(1);
+  });
+
   it("stops polling when the scope closes", async ({ store, publisher, clock, relaying }) => {
     // GIVEN a relay that ran and was released
     const ran = await relaying({ tenants: ["acme"] }, () => clock.advance(0));

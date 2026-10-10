@@ -160,6 +160,32 @@ describe("prismaOutboxStore", () => {
     expect(db.ran()[0]).toEqual({ sql: PIN, values: ["orders.tenant", "acme"], tx: 1 });
   });
 
+  it("prunes a tenant's published rows pinned to it, and answers how many went", async ({
+    stub,
+  }) => {
+    // GIVEN a client that deletes three rows
+    const db = stub({ deleted: 3 });
+
+    // WHEN a tenant's rows published before a cutoff are pruned
+    const pruned = await prismaOutboxStore(db)
+      .prune("acme", new Date("2026-10-01T00:00:00.000Z"), 1000)
+      .map((count) => ({ count, ran: db.ran() }));
+
+    // THEN one pinned transaction deleted the oldest published rows, never a
+    // pending one, and counted them
+    expect(pruned).toBeOkWith({
+      count: 3,
+      ran: [
+        { sql: PIN, values: ["app.tenant_id", "acme"], tx: 1 },
+        {
+          sql: `WITH gone AS (DELETE FROM "public"."outboxMessage" WHERE "id" IN (SELECT "id" FROM "public"."outboxMessage" WHERE "tenantId" = ? AND "publishedAt" < ?::timestamptz ORDER BY "id" LIMIT ?::int) RETURNING 1) SELECT count(*)::text AS "deleted" FROM gone`,
+          values: ["acme", "2026-10-01T00:00:00.000Z", "1000"],
+          tx: 1,
+        },
+      ],
+    });
+  });
+
   it("quotes the identifiers it is given", async ({ stub }) => {
     // GIVEN a schema name carrying a quote
     const db = stub({});

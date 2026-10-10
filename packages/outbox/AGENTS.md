@@ -196,6 +196,32 @@ tenant, true)`, transaction-local. Four details are load-bearing:
 `columns` exists for a model mapped with `@map`: the store names each column
 by its physical name and reads it back under the port's own.
 
+## Retention is the relay's (#487)
+
+This was declined once, as housekeeping that belonged to whoever owned the
+database. Row security moved it here: under `@@rls` a delete has to pin each
+tenant, name the mapped columns and know the table — what `prismaOutboxStore`
+already does, and what every application would otherwise copy. The outbox is
+delivery state, and a published row may carry data that must be erasable.
+
+- **Off unless configured.** `OUTBOX_RETAIN_MS` defaults to `0`, which keeps
+  every row, so a deployment that treats the table as a log is unchanged.
+- **Published rows only.** A claim reads pending rows and a prune deletes
+  published ones, so the two never touch the same row and a prune takes no
+  advisory lock.
+- **Bounded.** A thousand rows per statement (`id IN (SELECT … LIMIT n)`), so
+  one round neither holds a long lock nor writes a burst of WAL; repeated while
+  a batch comes back full.
+- **On an idle sweep, at most once a minute per tenant.** A tenant with a
+  backlog publishes before it prunes.
+- **Not a Temporal Schedule.** Scheduling is Temporal's by the role map, but a
+  cluster to prune the relay's own table is the "cluster for one nightly job"
+  floor `run-something-on-a-schedule.md` warns about; this is a property of the
+  relay, not a workload.
+- **No archive, no erasure on request.** The subscriber's store is the archive,
+  and deleting one subject's rows now — published or not — is the
+  application's operation.
+
 ## Why tenants are configuration
 
 The relay runs outside any unit, so there is no tenant to read off anything,
@@ -208,12 +234,9 @@ them is also how relays are sharded. A single-tenant application names one.
 - **Exactly-once.** A crash between a publish and its mark re-publishes; a
   subscriber dedupes on the outbox id. No outbox can do better without the
   broker joining the database's transaction.
-- **A second store adapter.** `OutboxStore` is three methods, and the reasons
+- **A second store adapter.** `OutboxStore` is four methods, and the reasons
   `@btravstack/prisma` is the only persistence starter (root **Persistence**)
   hold here too.
-- **Retention.** Published rows stay. Deleting them is an operational choice —
-  some teams keep the log — and the `DELETE` that prunes them belongs to
-  whoever owns the database's housekeeping.
 - **A partial index.** The store's queries filter on `tenantId` and
   `publishedAt IS NULL` and order by `id`; an index for that is the
   application's migration, sized by its own table.

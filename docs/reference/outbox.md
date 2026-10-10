@@ -40,10 +40,10 @@ than race for its rows.
 
 Between the two sit the two ports the relay needs and cannot provide itself:
 
-| Port              | What it answers                                                                            | Who provides it                                               |
-| ----------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
-| `OutboxStore`     | `pending(tenantId, limit)`, `oldestPending(tenantIds)` and `claim(tenantId, limit, relay)` | `prismaOutboxStore`, `memoryOutboxStore`, or your own adapter |
-| `OutboxPublisher` | `publish(message)` → `AsyncResult<void, PublishRefused>` — any tagged error                | you: the transport, the contract and the payload's decoding   |
+| Port              | What it answers                                                                                                                       | Who provides it                                               |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `OutboxStore`     | `pending(tenantId, limit)`, `oldestPending(tenantIds)`, `claim(tenantId, limit, relay)` and `prune(tenantId, publishedBefore, limit)` | `prismaOutboxStore`, `memoryOutboxStore`, or your own adapter |
+| `OutboxPublisher` | `publish(message)` → `AsyncResult<void, PublishRefused>` — any tagged error                                                           | you: the transport, the contract and the payload's decoding   |
 
 ```ts
 export const store = Provider(OutboxStore)({
@@ -96,12 +96,13 @@ it starts as the graph builds — before the runtime accepts anything — and
 stops when the application scope closes, after the runtime has drained and
 before anything it depends on is released.
 
-| Option     | Variable            | Default                    | What it is                                                         |
-| ---------- | ------------------- | -------------------------- | ------------------------------------------------------------------ |
-| `tenants`  | `OUTBOX_TENANTS`    | none                       | the tenants this relay serves, comma-separated — required          |
-| `pollMs`   | `OUTBOX_POLL_MS`    | `200`                      | the sleep between sweeps that found nothing to do, `1` to `60_000` |
-| `maxLagMs` | `OUTBOX_MAX_LAG_MS` | `60_000`                   | the oldest pending age the health check tolerates                  |
-| `clock`    | —                   | the kernel's `systemClock` | what the poll sleeps on and the lag is measured against            |
+| Option     | Variable            | Default                    | What it is                                                                        |
+| ---------- | ------------------- | -------------------------- | --------------------------------------------------------------------------------- |
+| `tenants`  | `OUTBOX_TENANTS`    | none                       | the tenants this relay serves, comma-separated — required                         |
+| `pollMs`   | `OUTBOX_POLL_MS`    | `200`                      | the sleep between sweeps that found nothing to do, `1` to `60_000`                |
+| `maxLagMs` | `OUTBOX_MAX_LAG_MS` | `60_000`                   | the oldest pending age the health check tolerates                                 |
+| `retainMs` | `OUTBOX_RETAIN_MS`  | `0` (kept)                 | how long a published row is kept before the relay deletes it; `false` pins it off |
+| `clock`    | —                   | the kernel's `systemClock` | what the poll sleeps on and the lag is measured against                           |
 
 Each option **pins** its variable: given, the variable is not read. A blank or
 malformed value is a `ConfigInvalid` naming the variable, so the process exits
@@ -302,8 +303,25 @@ await tx.orm.orders.OutboxMessage.create({
 ```
 
 The store's queries filter on `tenantId` and `publishedAt IS NULL` and order by
-`id`; an index for that, and the `DELETE` that prunes published rows, are your
-migration's and your housekeeping's.
+`id`; an index for that is your migration's.
+
+### Retention
+
+**The outbox is delivery state, not a log**: a published row has done its job,
+and it may carry data that has to be erasable. With `retainMs` (or
+`OUTBOX_RETAIN_MS`) set, the relay deletes each tenant's rows published longer
+ago than that — on an idle sweep, so a tenant with a backlog publishes first,
+at most once a minute, a thousand rows at a time until a batch comes back
+short. Each round is an `outbox` / `prune` operation on `Observers`. Unset, or
+`0`, keeps them: a deployment that keeps the log changes nothing.
+
+It runs through the store's `prune(tenantId, publishedBefore, limit)`, pinned
+to the tenant like every other read, so a table under `@@rls` is pruned by the
+same non-owner role that relays it. Only published rows are ever candidates,
+and a claim only reads pending ones, so a prune takes no lock and cannot race a
+relay. A log you want to keep is your subscriber's, which already holds every
+fact; erasing one subject's rows on request is a different operation, and stays
+yours.
 
 ## `memoryOutboxStore(clock?)`
 
@@ -353,6 +371,7 @@ and the error line only.
   webhook and a Kafka producer are three providers of it.
 - **Write the row.** The transaction is your adapter's, by the rule that keeps
   commit boundaries off the unit.
-- **Retention, or a second store.** Published rows stay until your housekeeping
-  prunes them; `@btravstack/prisma` is the only persistence starter, and this
-  store is the only one shipped over it.
+- **A second store.** `@btravstack/prisma` is the only persistence starter, and
+  this store is the only one shipped over it.
+- **Archive published rows.** The subscriber's store is the archive; retention
+  only deletes.

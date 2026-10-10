@@ -1329,7 +1329,8 @@ A sixth rule is about production code that tests keep honest:
    `DRAIN_TIMEOUT_MS`, `STOP_TIMEOUT_MS`, `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
    `HTTP_HEADERS_TIMEOUT_MS`, `HTTP_REQUEST_TIMEOUT_MS`, `GRAPHQL_DEVELOPER_TOOLS`,
    `TEMPORAL_GRACE_PERIOD_MS`, `TEMPORAL_FORCE_AFTER_MS`,
-   `AMQP_CONNECT_TIMEOUT_MS`, `OUTBOX_POLL_MS` and `OUTBOX_MAX_LAG_MS` are
+   `AMQP_CONNECT_TIMEOUT_MS`, `OUTBOX_POLL_MS`, `OUTBOX_MAX_LAG_MS` and
+   `OUTBOX_RETAIN_MS` are
    fields beside `PORT`, `HOST`, `TEMPORAL_ADDRESS`, `AMQP_URL` and
    `OUTBOX_TENANTS`, each **pinned** by the matching option:
    the option is what a test or a settled decision fixes, the variable what a

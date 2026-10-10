@@ -35,6 +35,12 @@ const BATCH = 32;
 /** The ceiling the back-off doubles towards, unless the poll interval is already longer. */
 const MAX_BACKOFF_MS = 30_000;
 
+/** How many published rows one prune deletes, so no sweep holds a long lock. */
+const PRUNE_BATCH = 1_000;
+
+/** How often a tenant's published rows are pruned, at most. */
+const PRUNE_EVERY_MS = 60_000;
+
 /** What {@link outbox} is handed. Each field pins the variable named beside it. */
 export type OutboxOptions = {
   /** The tenants this relay serves — `OUTBOX_TENANTS`, comma-separated, required. */
@@ -43,6 +49,12 @@ export type OutboxOptions = {
   readonly pollMs?: number;
   /** The oldest pending age `/healthz` tolerates — `OUTBOX_MAX_LAG_MS` (default `60_000`). */
   readonly maxLagMs?: number;
+  /**
+   * How long a published row is kept before the relay deletes it —
+   * `OUTBOX_RETAIN_MS` (default `0`: kept). `false` pins it off whatever the
+   * deployment sets.
+   */
+  readonly retainMs?: number | false;
   /** What the poll sleeps on and the lag is measured against (default: the kernel's `systemClock`). */
   readonly clock?: Clock;
 };
@@ -51,6 +63,7 @@ class OutboxConfig extends Port("OutboxConfig")<{
   readonly tenants: readonly string[];
   readonly pollMs: number;
   readonly maxLagMs: number;
+  readonly retainMs: number;
 }> {}
 
 /** The running relay. Nothing resolves it; it exists to be started and stopped. */
@@ -72,6 +85,14 @@ const publishing = (message: OutboxMessage): Operation => ({
   details: { "btravstack.outbox.id": message.id, "btravstack.outbox.subject": message.subjectId },
 });
 
+/** Not traced, for the claim's reason: one span per tenant per minute says nothing. */
+const pruning = (tenantId: string): Operation => ({
+  component: "outbox",
+  name: "prune",
+  attributes: { operation: "prune", "btravstack.tenant_id": tenantId },
+  traced: false,
+});
+
 /** Not traced: one span per tenant per poll would bury the publishes it contains. */
 const claiming = (tenantId: string): Operation => ({
   component: "outbox",
@@ -87,7 +108,11 @@ const startRelay = (
   publisher: OutboxPublisherService,
   observers: readonly Observer[],
   clock: Clock,
-  { tenants, pollMs }: { readonly tenants: readonly string[]; readonly pollMs: number },
+  {
+    tenants,
+    pollMs,
+    retainMs,
+  }: { readonly tenants: readonly string[]; readonly pollMs: number; readonly retainMs: number },
 ) => {
   const stopping = new AbortController();
   const { signal } = stopping;
@@ -120,6 +145,18 @@ const startRelay = (
     return claimed.isOk() ? swept : "failed";
   };
 
+  // Published rows only, so it shares nothing with a claim; a full batch means
+  // more remain, and a store that fails stops this round rather than the loop.
+  const prune = async (tenantId: string): Promise<void> => {
+    const publishedBefore = new Date(clock.now() - retainMs);
+    for (;;) {
+      const pruned = await observed(observers, pruning(tenantId), () =>
+        store.prune(tenantId, publishedBefore, PRUNE_BATCH),
+      );
+      if (!pruned.isOk() || pruned.value < PRUNE_BATCH || signal.aborted) return;
+    }
+  };
+
   const backoff = (failures: number): number =>
     Math.min(pollMs * 2 ** failures, Math.max(pollMs, MAX_BACKOFF_MS));
 
@@ -128,12 +165,18 @@ const startRelay = (
   const running = Promise.all(
     tenants.map(async (tenantId) => {
       let due = clock.now();
+      let pruneDue = clock.now();
       let failures = 0;
       while (!signal.aborted) {
         const wait = due - clock.now();
         if (wait > 0) await clock.sleep(wait, signal);
         if (signal.aborted) break;
         const swept = await sweep(tenantId);
+        // On an idle sweep only: a tenant with a backlog publishes first.
+        if (retainMs > 0 && swept === "idle" && clock.now() >= pruneDue) {
+          await prune(tenantId);
+          pruneDue = clock.now() + PRUNE_EVERY_MS;
+        }
         failures = swept === "failed" ? failures + 1 : 0;
         due = clock.now() + (swept === "full" ? 0 : backoff(failures));
       }
@@ -189,7 +232,10 @@ export const outbox = <const O extends OutboxOptions = Record<never, never>>(
   ConfigInvalid,
   | EnvReading<
       Unpinned<O, "tenants", "OUTBOX_TENANTS">,
-      MaybePinned<O, "tenants", "OUTBOX_TENANTS"> | "OUTBOX_POLL_MS" | "OUTBOX_MAX_LAG_MS"
+      | MaybePinned<O, "tenants", "OUTBOX_TENANTS">
+      | "OUTBOX_POLL_MS"
+      | "OUTBOX_MAX_LAG_MS"
+      | "OUTBOX_RETAIN_MS"
     >
   | OutboxStore
   | OutboxPublisher
@@ -206,6 +252,10 @@ export const outbox = <const O extends OutboxOptions = Record<never, never>>(
       maxLagMs: Config.pinned(
         options.maxLagMs,
         Config.integer("OUTBOX_MAX_LAG_MS", { min: 1, default: 60_000 }),
+      ),
+      retainMs: Config.pinned(
+        options.retainMs === false ? 0 : options.retainMs,
+        Config.integer("OUTBOX_RETAIN_MS", { min: 0, default: 0 }),
       ),
     }),
   );
