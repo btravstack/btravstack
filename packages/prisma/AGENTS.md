@@ -343,3 +343,20 @@ inside it is the caller's.
 
 Migrations and a readiness contribution are not here either: `src/prisma.ts`'s
 TSDoc and the root's **Health checks** section say why.
+
+**No pool or timeout options** (issue #497). Each one is already expressible
+below the starter, and a second spelling would have to agree with the first:
+the timeouts are URL query parameters the `pg` driver sends at startup
+(`pg-connection-string` copies every parameter, `Client.getStartupConf` sends
+the three timeouts) or an `ALTER ROLE … SET`, and the pool size is a `pg.Pool`
+the application builds in its `client` arrow and hands Prisma as `pg`. That
+pool still ends with the scope — `release` is `runtime().close()`, which is the
+driver's `pool.end()` whoever built the pool, unlike Prisma's own `db.close()`.
+If a release ever switches to `db.close()`, a handed-in pool leaks.
+
+**No `CONCURRENTLY` step** (issue #506). The runner wraps a migration in one
+transaction; a non-transactional step is Prisma's to add. The documented
+out-of-band procedure leans on two measured runner facts — the postcheck is
+tested before the precheck and skips a pre-satisfied operation, and
+`createIndex`'s check is `to_regclass(…) IS NOT NULL`, by name only — which is
+why it insists on `pg_index.indisvalid`.

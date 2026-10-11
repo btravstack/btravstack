@@ -209,6 +209,66 @@ takes that first use off the request path, whatever the pool size; a fresh
 scope serving twenty-five concurrent transactions on Prisma's default pool of
 ten is pinned by `examples/order-infrastructure`'s `database.spec.ts`.
 
+### Pool size and timeouts are the URL's, or your pool's
+
+The starter takes no pool or timeout options, because each is already
+expressible below it and a second spelling would have to agree with the first.
+
+**Statement, lock and idle-in-transaction timeouts ride the URL.** The driver
+copies every query parameter of `DATABASE_URL` into its connection settings
+and sends `statement_timeout`, `lock_timeout` and
+`idle_in_transaction_session_timeout` as startup parameters of every session
+the pool opens:
+
+```text
+postgresql://orders_app:…@db:5432/orders?statement_timeout=5000&lock_timeout=2000&idle_in_transaction_session_timeout=10000
+```
+
+Each value is read with `parseInt`, so it is **milliseconds as a bare
+integer** — `5s` would arrive as `5`. Anything else PostgreSQL accepts at
+startup goes through libpq's `options` (`?options=-c%20work_mem%3D64MB`), and a
+setting that belongs to the role rather than the deployment is
+`ALTER ROLE orders_app SET statement_timeout = '5s'`, which then needs no URL
+at all. A statement timeout cancels with SQLSTATE `57014` and a lock timeout
+with `55P03`, neither of which `tryQuery` models, so both reach the defect
+channel; an idle-in-transaction timeout ends the session itself.
+
+**The pool's size is a pool you build.** Prisma 8 forwards only
+`poolOptions.connectionTimeoutMillis` and `idleTimeoutMillis`; for `max`, or
+anything else `pg.Pool` takes, construct one in the `client` arrow from the URL
+the starter bound and pass it as `pg` — `Pool` from the `pg` package, which you
+install beside `@prisma/orm-postgres`:
+
+<!-- doctest: isolate
+import { prismaDatabase, type PrismaBinding } from "@btravstack/prisma";
+
+declare class Pool {
+  constructor(config: { readonly connectionString: string; readonly max: number; readonly connectionTimeoutMillis: number });
+}
+declare const postgres: (options: Pick<PrismaBinding, "middleware"> & { readonly contractJson: unknown; readonly pg: Pool }) => {
+  readonly raw: { readonly sql: unknown };
+  readonly runtime: unknown;
+};
+declare const contractJson: unknown;
+-->
+
+```ts
+const database = prismaDatabase("OrderDatabase")({
+  client: ({ url, middleware }) =>
+    postgres({
+      contractJson,
+      middleware,
+      pg: new Pool({ connectionString: url, max: 20, connectionTimeoutMillis: 5_000 }),
+    }),
+});
+```
+
+**The starter still ends that pool.** Prisma's own `db.close()` leaves a pool
+it did not construct alone, but the starter's `release` is
+`runtime().close()`, which closes the driver, and the driver's `close()` is
+`pool.end()` for a pool it was handed as much as for one it built. So the
+pool's lifetime stays the scope's either way; do not end it yourself.
+
 ## `Result`s, on the `@btravstack/prisma/result` subpath
 
 Prisma 8 throws, with a **structured** error: `SqlQueryError` carrying a
@@ -494,6 +554,33 @@ from a built artifact: advancing it in a deploy would have a release writing a
 repository file. Leave it behind on the authoring side, though, and the next
 plan re-includes the migration you already shipped — the example README carries
 the worked sequence.
+
+**A non-transactional migration step.** `prisma db migrate` runs a whole
+migration inside one `BEGIN … COMMIT`, and the planner never emits
+`CONCURRENTLY` — so `CREATE INDEX CONCURRENTLY` cannot be a step of it
+(`25001`), and a planned `createIndex` on a populated table blocks writes for
+the whole build. A step that runs outside the transaction is Prisma's runner to
+add, upstream; this package runs no migration at all. Until it exists, build
+the index out of band and let the migration find it:
+
+1. `prisma migration plan` as usual. The package's `ops.json` holds the
+   operation, `index.<table>.<name>`, with its `CREATE INDEX` statement — the
+   **name** the planner chose is what the next steps must use.
+2. As the owner, run that statement with `CONCURRENTLY` after `INDEX` and
+   nothing else changed: same name, same columns, same uniqueness and method,
+   since `db migrate` verifies the resulting schema against the contract once
+   it has applied.
+3. Check that the build finished:
+   `SELECT indisvalid FROM pg_index WHERE indexrelid = to_regclass('"orders"."<name>"')`.
+   A concurrent build that failed or was cancelled leaves an `INVALID` index
+   behind under that name; `DROP INDEX CONCURRENTLY` it and go back to step 2.
+   This step is not optional: the operation's check matches the index **by
+   name only** — `to_regclass(…) IS NOT NULL`, nothing reads `indisvalid` —
+   so the migration would accept an invalid index, and the table would carry
+   one the planner never queries.
+4. `prisma db migrate`. The runner tests each operation's postcheck before its
+   precheck, finds the index already present, records the operation as
+   skipped, and applies the rest in its one transaction.
 
 **Engine-level tracing.** There is no engine. Prisma 8 is a TypeScript runtime
 and ships no instrumentation package, so the `Instrumentations` loader this
