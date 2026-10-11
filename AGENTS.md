@@ -49,7 +49,7 @@ composition function), `outbox` (the transactional outbox's relay — the poll
 loop, a per-tenant claim, a lag health check and a Prisma 8 store behind a
 `/prisma` subpath; the application keeps the transaction that writes the row
 and says what publishing means), and the three
-**servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus three HTTP answerer packages: `orpc-server`, `htmx-server` and `graphql-server`, and `pothos`, the Pothos plugin a GraphQL gateway builds its schema with when its fields call oRPC procedures. The calling side has `amqp-client` and `temporal-client`, which bind upstream typed clients to application ports and release connections with the DI scope without a worker dependency, and `oauth-client`, a `TokenSource` port over the OAuth 2.0 client credentials grant, so a service calls another as itself. `di` was its own repository until it was merged here
+**servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus three HTTP answerer packages: `orpc-server`, `htmx-server` and `graphql-server`, and `pothos`, the Pothos plugin a GraphQL gateway builds its schema with when its fields call oRPC procedures. The calling side has `amqp-client` and `temporal-client`, which bind upstream typed clients to application ports and release connections with the DI scope without a worker dependency, and `oauth-client`, a `TokenSource` port over client credentials and RFC 8693 token exchange, so a service calls another as itself or for a subject. `di` was its own repository until it was merged here
 **with its history**; it, `contract`, `entity` and `pothos` are the four packages that depend on
 nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
@@ -86,7 +86,14 @@ because the examples carried `declaration: false` — which is the sharpest
 version of "green gate, no consumer can build" this repo has met. Do not
 judge the workspace by the example half; a reader who does concludes it is
 redundant with `order-api`, and takes the emit gate with it. `docs/` is the documentation site (see **Documentation
-site** below); it is a workspace but not a published package. `internal/`
+site** below); it is a workspace but not a published package. `templates/http-app` is a copyable standalone application, outside the
+workspace graph, tested by the consumer gate against published packages on
+its declared Node floor. It blesses neither a workspace tool nor a generator.
+Knip follows its `src/main.ts` but ignores the explicitly installed required
+peers and its `tsc` binary: they are needed by the published starter, and are
+installed only outside the workspace by `check-template.ts`. The strict peer
+install, compiler, real endpoint and SIGTERM in that gate check their use.
+`internal/`
 holds two more, neither of them either: `test-infra` owns the containers the
 whole gate shares, and `consumer-check` answers from OUTSIDE the workspace a
 question two gates here answer from inside — it packs every published package,

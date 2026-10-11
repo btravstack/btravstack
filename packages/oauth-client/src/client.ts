@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   Config,
   Env,
@@ -28,6 +30,7 @@ import {
   allowInsecureRequests,
   clientCredentialsGrant,
   discovery,
+  genericGrantRequest,
   type Configuration,
 } from "openid-client";
 import { ErrAsync, OkAsync, fromPromise, type AsyncResult, type FailureView } from "unthrown";
@@ -67,6 +70,7 @@ export type OAuthClientOptions = {
  * is still reused.
  */
 const SKEW_MS = 60_000;
+const CACHE_CAPACITY = 1024;
 
 type Observer = (operation: Operation) => Settle;
 type TokenError = TokenRefused | TokenIssuerUnavailable;
@@ -148,10 +152,24 @@ const tokenFetches = (
 
   const grant = (request: TokenRequest, config: Configuration) =>
     fromPromise(
-      clientCredentialsGrant(config, {
-        audience: request.audience,
-        ...(request.scope === undefined ? {} : { scope: request.scope }),
-      }),
+      request.onBehalfOf === undefined
+        ? clientCredentialsGrant(config, {
+            audience: request.audience,
+            ...(request.scope === undefined ? {} : { scope: request.scope }),
+          })
+        : genericGrantRequest(config, "urn:ietf:params:oauth:grant-type:token-exchange", {
+            audience: request.audience,
+            ...(request.scope === undefined ? {} : { scope: request.scope }),
+            subject_token: request.onBehalfOf.token,
+            subject_token_type: request.onBehalfOf.tokenType,
+            requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
+            ...(request.onBehalfOf.actor === undefined
+              ? {}
+              : {
+                  actor_token: request.onBehalfOf.actor.token,
+                  actor_token_type: request.onBehalfOf.actor.tokenType,
+                }),
+          }),
       (cause): TokenError => {
         const refusal = refusalOf(cause);
         return refusal === undefined
@@ -162,6 +180,7 @@ const tokenFetches = (
 
   const fetchToken = (key: string, request: TokenRequest): AsyncResult<AccessToken, TokenError> => {
     const asked = clock.now();
+    const healthKey = JSON.stringify([request.audience, request.scope ?? null]);
     const fetched = observed(observers, fetching(request), () =>
       discover().flatMap((config) => grant(request, config)),
     )
@@ -174,12 +193,13 @@ const tokenFetches = (
       })
       .tap((entry) => {
         inFlight.delete(key);
-        failing.delete(key);
+        failing.delete(healthKey);
         cached.set(key, entry);
+        if (cached.size > CACHE_CAPACITY) cached.delete(cached.keys().next().value!);
       })
       .tapFailure((failure) => {
         inFlight.delete(key);
-        failing.set(key, reasonOf(request.audience, failure));
+        failing.set(healthKey, reasonOf(request.audience, failure));
       })
       .map((entry) => entry.token);
     inFlight.set(key, fetched);
@@ -189,9 +209,21 @@ const tokenFetches = (
   return {
     source: {
       token: (request) => {
-        const key = JSON.stringify([request.audience, request.scope ?? null]);
+        const key = createHash("sha256")
+          .update(
+            JSON.stringify([
+              request.audience,
+              request.scope ?? null,
+              request.onBehalfOf?.token ?? null,
+              request.onBehalfOf?.tokenType ?? null,
+              request.onBehalfOf?.actor?.token ?? null,
+              request.onBehalfOf?.actor?.tokenType ?? null,
+            ]),
+          )
+          .digest("hex");
         const hit = cached.get(key);
         if (hit !== undefined && clock.now() < hit.refreshAt) return OkAsync(hit.token);
+        cached.delete(key);
         return inFlight.get(key) ?? fetchToken(key, request);
       },
     },
@@ -203,8 +235,8 @@ const tokenFetches = (
 };
 
 /**
- * The client credentials starter: `TokenSource` over an OAuth 2.0
- * authorization server, so a service calls another as itself.
+ * `TokenSource` over an OAuth 2.0 authorization server: client credentials
+ * for the service itself, or RFC 8693 token exchange for a subject.
  *
  * ```ts
  * Module("Gateway")({ imports: [oauthClient()], provides: [ordersClient] });
@@ -217,10 +249,11 @@ const tokenFetches = (
  * - **Discovery is lazy**: the first token asks for the issuer's metadata, and
  *   a failed discovery is asked again by the next. An authorization server
  *   down at deploy fails the calls that need a token, not the boot.
- * - **A token is kept per audience and scope** until a minute before it
+ * - **A token is kept per audience, scope and subject/actor credentials** until a minute before it
  *   expires (half its lifetime, if that is shorter), and callers asking for
  *   the same one while it is being fetched share that one request. A failure
- *   is never kept.
+ *   is never kept. The source keeps at most 1024 tokens, evicting the oldest
+ *   insertion at capacity and removing stale entries when accessed.
  * - **Every fetch is reported to `Observers`** (`component: "oauth-client"`);
  *   a token served from memory reports nothing.
  * - **It contributes the `oauth-client` health check**, failing while the

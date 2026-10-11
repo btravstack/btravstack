@@ -5,13 +5,21 @@ import { OkAsync, TaggedError, type AsyncResult } from "unthrown";
  * What a token is asked for: the service it will be presented to, and
  * optionally the scopes it must carry (space-delimited, as OAuth spells them).
  *
- * A record rather than positional arguments, so a later field — the actor a
- * call is made on behalf of — joins it without moving anything already here.
+ * On behalf of a subject, supply its token and the RFC 8693 token type. The
+ * service still authenticates with its client credentials. An issuer using
+ * explicit delegation also takes the acting service's token in `actor`.
  */
 export type TokenRequest = {
   /** The callee, as its authorization server names it: the `aud` the token is minted for. */
   readonly audience: string;
   readonly scope?: string;
+  /** A subject credential to exchange; the issuer must authorize delegation and mint the `act` claim. */
+  readonly onBehalfOf?: {
+    readonly token: string;
+    readonly tokenType: string;
+    /** The acting service's credential, where the issuer requires RFC 8693 `actor_token`. */
+    readonly actor?: { readonly token: string; readonly tokenType: string };
+  };
 };
 
 /**
@@ -56,9 +64,9 @@ export type TokenSourceService = {
 };
 
 /**
- * The port an application depends on to call another service as itself: a
+ * The port an application depends on to call another service as itself or for a subject: a
  * bearer token for an audience. `oauthClient()` provides it over the client
- * credentials grant; `staticTokenSource` is the in-process stand-in.
+ * credentials grant or RFC 8693 exchange; `staticTokenSource` is the in-process stand-in.
  */
 export class TokenSource extends Port("TokenSource")<TokenSourceService> {}
 

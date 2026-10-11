@@ -7,7 +7,7 @@
   "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
   "type": "module",
   "scripts": {
-    "typecheck": "tsx src/check.ts"
+    "typecheck": "tsx src/check.ts && tsx src/check-template.ts"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",

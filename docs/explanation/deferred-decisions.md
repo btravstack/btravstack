@@ -284,7 +284,10 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   is the source of truth staying where a client can take it. A `turbo gen`
   config would cost a commitment to turborepo as the blessed project shape,
   which was not made. A one-shot new-app initialiser (`npm create btravstack`)
-  is untouched by any of this and would be its own issue if wanted.
+  remains separate. The copyable standalone template (#437) removes manifest,
+  peer, contract and composition setup; a trial still needs clone/copy, project
+  naming, install, check/build and a port. An initializer would currently
+  remove only the copy commands and name edit, so no package is added.
 
 - **A router carries the DECLARED authenticators, not the reachable ones**
   (issue #288). Narrowing a root's `Needs` to the schemes its composed pieces
@@ -295,22 +298,14 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   stated in `packages/http-server/AUTH.md`. The trigger would be a deployment
   that cannot satisfy a declared scheme's needs at all.
 
-- **An outbound token on behalf of an actor is deferred; the service's own
-  token ships** (issue #504). `@btravstack/oauth-client` answers a bearer
-  token that names the calling service, over the client credentials grant,
-  cached per audience and scope. The other half of the issue — OAuth 2.0
-  Token Exchange (RFC 8693), so a callee sees whom the caller acts for in an
-  `act` claim — needs an authorization server that grants it, and the gate's
-  has none: Ory Hydra v2.3.0's discovery document advertises
-  `authorization_code`, `implicit`, `client_credentials` and `refresh_token`,
-  nothing else. Shipping it would mean testing it against a fake issuer, and a
-  hand-written double of the thing under test proves less than the container
-  does. `TokenRequest` is a record so the
-  actor joins it as an optional field without breaking a caller, and the
-  inbound half already trusts `act` (`principal(claims, services)`, #486).
-  The trigger: an issuer supporting RFC 8693 on the gate — Keycloak is the
-  likely one — together with an example that calls `order-api` for the user
-  who triggered the work.
+- **Outbound token exchange shipped** (issue #504). `@btravstack/oauth-client`
+  keeps the service's client credentials grant and adds RFC 8693 exchange for
+  `TokenRequest.onBehalfOf`: a subject credential with its token type and, when
+  required, the acting service's credential. Keys include both credentials, so
+  subjects never share cached tokens. The real-issuer trigger is met by the
+  gate's Keycloak, with native delegation enabled; its preview status is stated
+  on the reference page. The issuer authorizes delegation and produces `act`,
+  rather than the client inventing an identity assertion.
 
 - **A background runtime is deferred** (issue #508). A process whose only work
   is `outbox()`'s relay would want a runtime with probes and a drain and no

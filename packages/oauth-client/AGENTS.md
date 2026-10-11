@@ -1,11 +1,10 @@
 # AGENTS.md — @btravstack/oauth-client
 
 The outbound half of authentication: a `TokenSource` an application depends on
-to call another service **as itself**, provided over the OAuth 2.0 client
-credentials grant. The root `AGENTS.md` is the authoritative spec; issue #504
-is the need. This package is its client-credentials half only — **token
-exchange on behalf of an actor (RFC 8693) is deferred**, and why is in
-`docs/explanation/deferred-decisions.md`.
+to call another service **as itself or for a subject**, provided over the OAuth
+2.0 client credentials grant or RFC 8693 token exchange. The root `AGENTS.md` is the authoritative spec; issue #504
+is the need. A subject is a credential, never an unverified actor id; the
+issuer authorizes the delegation and owns the resulting `act` claim.
 
 ## Public surface
 
@@ -23,10 +22,20 @@ recipe.
   report. With no wrapper there is nothing for a second port to separate, so
   `oauthClient()` provides `TokenSource` directly and a spec overrides that
   same port with `staticTokenSource`.
-- **`TokenRequest` is a record** — `{ audience, scope? }` — so the actor of a
-  token exchange joins it as one more optional field (`onBehalfOf`) without
-  breaking a caller. The cache key is the record's fields, which that field
-  would extend.
+- **`TokenRequest` is a record** — `{ audience, scope?, onBehalfOf? }` — so
+  delegation does not break service-only callers. `onBehalfOf` carries a token
+  and its RFC 8693 token type, plus an optional actor credential for issuers
+  requiring explicit delegation. Cache and single-flight keys include every
+  credential and token type, hashed so their keys retain no raw token.
+  The cache is capped at 1024 entries with FIFO eviction and removes stale
+  entries on access, so user credential turnover cannot retain tokens forever.
+- **The issuer owns authorization and actor claims.** Sending a subject token
+  without an actor credential can mean impersonation at some issuers. An
+  application requiring delegation configures its issuer to produce `act`,
+  and supplies the actor token when that issuer requires one. Never invent a
+  subject assertion from an actor id; workers receive the subject credential
+  their producer was authorized to forward. Tokens and subject identities
+  never become observation details or health-check reasons.
 - **`AccessToken` is `{ bearer }`, with no expiry.** Keeping a token until
   shortly before it expires is the source's job; a caller holding the expiry
   is a caller about to cache it a second time. A record, so a field can be
@@ -37,7 +46,7 @@ recipe.
   timeout; the cap keeps a token minted for two minutes reusable rather than
   fetched on every call. A response without `expires_in` is never reused —
   `(expires_in ?? 0)` makes it already stale, with no branch of its own.
-- **Single flight per (audience, scope).** Callers asking while a fetch is in
+- **Single flight per (audience, scope, subject and actor credentials).** Callers asking while a fetch is in
   flight receive THAT `AsyncResult` — unthrown's is a promise underneath, so
   any number of consumers may await one. It leaves the in-flight map when it
   settles, and only an `Ok` enters the cache: a failure is asked again by the
@@ -57,7 +66,10 @@ recipe.
   issuer's code, and recovers when that key next fetches. A probe of the
   issuer was declined: it proves reachability only, and the failure an
   operator meets most — a rotated secret — leaves the issuer reachable and
-  every call refused. Before the first fetch it is healthy: nothing is known.
+  every call refused. Health keys deliberately omit subject credentials: a
+  replacement token's success must clear a failed obsolete credential, rather
+  than leave a failure no future request can name. Before the first fetch it
+  is healthy: nothing is known.
 - **`TokenRefused` vs `TokenIssuerUnavailable` is decided by the error class
   and its status.** Under 500, two answers are refusals: an OAuth error body
   (`ResponseBodyError` — Hydra answers `invalid_client` as 401, an ungranted
@@ -94,7 +106,6 @@ recipe.
 
 ## Deliberately not here
 
-- **Token exchange (RFC 8693).** Deferred; see above.
 - **A header helper for an oRPC client.** It would return a `Promise` — oRPC's
   `headers` option is `async` — and the root's thesis #6 lists the only
   exceptions. The how-to shows the three lines at the call site, where the
@@ -107,12 +118,20 @@ recipe.
 
 ## Testing
 
-Against the shared Hydra in `internal/test-infra`, which advertises
+Client credentials run against the shared Hydra in `internal/test-infra`, which advertises
 `client_credentials`. The per-test boundary is a CLIENT —
 `createServiceClient({ audience, scope })` mints one under a UUID id — because
 the caller here is a service, and what a test varies is that client's grant.
 Lifetimes are measured on the fake clock; Hydra's `expires_in` is `3599` or
 `3600` depending on where in a second it minted, which is why the skew tests
 sit a couple of seconds either side of the boundary.
+
+Token exchange runs against shared Keycloak 26.8.0 with native delegation
+enabled (a preview feature of that issuer). Each test provisions its own realm,
+subjects, and confidential client. A fixture mapper grants those subjects
+`may_act` for the service account; Keycloak validates both credentials and
+produces `act` itself. This is controlled test authorization, not a production
+consent policy. Introspection proves active status and JOSE verifies the signed
+JWT claims, since Keycloak introspection omits `act`.
 
 Observation: see the root `AGENTS.md`, **Observability is a set port, never a flag**.

@@ -16,10 +16,10 @@ import { P, type AsyncResult } from "unthrown";
 > call another as itself, its two modeled errors, `oauthClient()` over the
 > OAuth 2.0 client credentials grant, and `staticTokenSource` for tests.
 
-This is the **client credentials** half of an outbound token source: a token
-that names the calling service. A token minted on behalf of the user who
-triggered the work (RFC 8693 token exchange) is
-[deferred](/explanation/deferred-decisions).
+The source uses **client credentials** for a service token and **RFC 8693
+token exchange** when `onBehalfOf` names a subject credential. The issuer
+authorizes delegation and owns the actor claim; no actor id is accepted as a
+substitute for a credential.
 The recipe is [Call another service as itself](/how-to/call-another-service-as-itself).
 
 ```sh
@@ -39,6 +39,11 @@ CommonJS build relies on `require(esm)`.
 type TokenRequest = {
   readonly audience: string;
   readonly scope?: string;
+  readonly onBehalfOf?: {
+    readonly token: string;
+    readonly tokenType: string;
+    readonly actor?: { readonly token: string; readonly tokenType: string };
+  };
 };
 
 type AccessToken = {
@@ -50,8 +55,36 @@ type AccessToken = {
 `token(request: TokenRequest): AsyncResult<AccessToken, TokenRefused | TokenIssuerUnavailable>`.
 `audience` is the callee as the authorization server names it — the `aud`
 the token is minted for — and `scope` is space-delimited, as OAuth spells it.
-The request is a record so that the actor of a later token exchange joins it
-as one more optional field.
+For token exchange, `onBehalfOf.token` is the incoming subject token and
+`tokenType` is its RFC 8693 type, usually
+`urn:ietf:params:oauth:token-type:access_token`. `actor` supplies the acting
+service's token and type if the issuer requires `actor_token`. Client
+credentials authenticate the service on both grants. The requested output is
+always an access token.
+
+```ts
+import { type TokenSourceService } from "@btravstack/oauth-client";
+
+declare const tokens: TokenSourceService;
+declare const subjectToken: string;
+declare const serviceToken: string;
+
+const delegated = tokens.token({
+  audience: "orders",
+  onBehalfOf: {
+    token: subjectToken,
+    tokenType: "urn:ietf:params:oauth:token-type:access_token",
+    actor: { token: serviceToken, tokenType: "urn:ietf:params:oauth:token-type:access_token" },
+  },
+});
+```
+
+Configure the issuer to authorize delegation and mint the `act` claim naming
+the service. An exchange without `actor` may mean impersonation at an issuer;
+use its documented policy. Workers receive a subject credential from their
+producer, never fabricate one from an actor id. Native delegation is verified
+against [Keycloak](https://www.keycloak.org/securing-apps/token-exchange), whose
+delegation feature is currently preview; the port is issuer-neutral.
 
 `AccessToken` carries no expiry. Keeping a token is the source's job; a caller
 holding the expiry would cache it a second time.
@@ -104,7 +137,7 @@ export const Gateway = Module("ReferenceGateway")({
 ```
 
 A module providing `TokenSource` and one `HealthChecks` member, over the
-client credentials grant (`client_secret_basic`).
+client credentials grant or RFC 8693 exchange (`client_secret_basic`).
 
 | Variable              | Option         | Required | What it is                                                   |
 | --------------------- | -------------- | -------- | ------------------------------------------------------------ |
@@ -133,9 +166,14 @@ has to answer during the process's life anyway, and a boot that depended on it
 would turn an issuer blip into a crashlooping rollout of a process whose other
 routes work. Configuration is still checked at boot.
 
-**A token is kept per audience and scope until a minute before it expires**,
+**A token is kept per audience, scope and subject/actor credentials until a minute before it expires**,
 or half its lifetime if that is shorter, so it outlives the request it rides.
-A response without `expires_in` is not kept.
+A response without `expires_in` is not kept. At most 1024 tokens are retained:
+FIFO eviction removes the oldest insertion at capacity, and stale entries are
+removed on access. Keys hash every credential and
+its token type; changing any of them cannot reuse another subject's token.
+Neither credentials nor subject identities are put in observation details or
+health-check reasons.
 
 **Callers asking for the same token while it is being fetched share that one
 request.** A failure is never kept.
@@ -147,7 +185,8 @@ request.** A failure is never kept.
 
 **The `oauth-client` health check fails while the last fetch for any audience
 and scope failed**, naming each one and the issuer's error code, and recovers
-when that pair next fetches. It is healthy before the first fetch. It reports
+when that pair next fetches successfully. Health keys omit credentials, so a
+valid replacement clears an obsolete subject token's failure. It is healthy before the first fetch. It reports
 the fetches rather than probing the issuer, because a rotated secret leaves
 the issuer reachable and every call refused.
 

@@ -19,6 +19,59 @@ to stop. It takes about ten minutes.
 builds an HTTP application with the full framework.
 :::
 
+## Start from the copyable template
+
+For an application you can run immediately, copy the standalone template:
+
+```sh
+git clone --depth 1 https://github.com/btravstack/btravstack.git btravstack-source
+cp -R btravstack-source/templates/http-app hello-btravstack
+cd hello-btravstack
+npm install --strict-peer-deps
+npm run typecheck
+npm run build
+PORT=3000 npm start
+```
+
+The copied directory has its own manifest and TypeScript configuration and
+uses published packages, with no workspace links or Turborepo. Node
+`>=22.12.0` is the floor. The consumer gate repeats the copy and registry
+install outside this repository, compiles and builds on that floor, calls
+`POST /rpc/hello`, then sends SIGTERM and asserts exit `0`.
+
+The measured remaining setup is: choose a project directory/name, install
+its pinned dependencies, run the check/build, and choose the deployment port.
+There is no package manifest, peer list, contract or composition root left to
+assemble. A one-shot initializer would currently remove only the clone/copy
+commands and name edit, so no initializer package is added.
+
+Call the template from another terminal:
+
+```sh
+curl -s http://localhost:3000/rpc/hello \
+  -H 'content-type: application/json' \
+  -d '{"json":{"name":"world"}}'
+```
+
+It answers `{"json":{"message":"Hello, world!"}}`. Send SIGTERM to the Node
+process as shown in Step 9 to watch the clean drain. Commit the lockfile your
+install creates.
+
+**Upgrade the pins together.** The template pins every `@btravstack/*`
+dependency to one published release, all five `@orpc/*` packages to the same
+exact beta, and `@unthrown/orpc` to a minor admitted by the starter's published
+peer range. Before upgrading, inspect those peer ranges, update the framework
+family together and the oRPC beta family together, and repeat check/build,
+endpoint and SIGTERM. An unversioned prerelease peer can select the older
+`latest` major.
+
+**A second slice is an edit, not a generator.** Add its contract under a new
+key in `src/contract.ts`, implement that key in the router in `src/app.ts`,
+and run typecheck. When a capability needs its own services, move its pieces
+into an ordinary module using [Add a slice](/how-to/add-a-slice).
+
+Continue below to assemble and understand the same framework concepts by hand.
+
 ## Step 1 — Create the project
 
 You need Node `>=22.12`. Make an empty directory; by the end of the lesson it will

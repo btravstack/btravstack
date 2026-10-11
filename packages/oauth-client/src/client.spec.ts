@@ -1,7 +1,7 @@
 import { ConfigInvalid } from "@btravstack/config";
 import { HealthChecks, runHealthChecks } from "@btravstack/core";
 import { ORY_ISSUER } from "@btravstack/internal-test-infra/ory";
-import { allAsync, fromSafePromise } from "unthrown";
+import { OkAsync, allAsync, fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
 
 import { AUDIENCE, SCOPE, it } from "./__tests__/test-fixtures.js";
@@ -15,6 +15,212 @@ const BEFORE_SKEW_MS = 3_538_000;
 const AFTER_SKEW_MS = 3_541_000;
 
 describe("oauthClient", () => {
+  describe("token exchange", () => {
+    it("authenticates the service and preserves the subject with the issuer's actor claim", async ({
+      tokens,
+      exchange,
+    }) => {
+      // GIVEN a real issuer permitting the gateway to exchange Alice's token
+      // WHEN the source is asked on Alice's behalf
+      const answer = await tokens({ env: exchange.env }, (ctx) =>
+        ctx
+          .get(TokenSource)
+          .token({ audience: "orders", onBehalfOf: exchange.alice })
+          .flatMap(({ bearer }) => fromSafePromise(exchange.introspect(bearer))),
+      );
+
+      // THEN the issuer minted an active delegated token, rather than a service token
+      expect(answer).toBeOkWith(
+        expect.objectContaining({
+          active: true,
+          aud: "orders",
+          act: { sub: exchange.actorId, client_id: "gateway" },
+          preferred_username: "alice",
+        }),
+      );
+    });
+
+    it("keeps different subjects and the service's own token apart", async ({
+      tokens,
+      exchange,
+      observations,
+    }) => {
+      // GIVEN one source serving two subjects and itself
+      // WHEN each asks for the same audience
+      const answer = await tokens({ env: exchange.env }, (ctx) => {
+        const source = ctx.get(TokenSource);
+        return source.token({ audience: "orders", onBehalfOf: exchange.alice }).flatMap((alice) =>
+          source.token({ audience: "orders", onBehalfOf: exchange.bob }).flatMap((bob) =>
+            source.token({ audience: "orders" }).flatMap((service) =>
+              source.token({ audience: "orders", onBehalfOf: exchange.alice }).map((cached) => ({
+                distinct: new Set([alice.bearer, bob.bearer, service.bearer]).size,
+                same: cached.bearer === alice.bearer,
+                fetches: observations.length,
+              })),
+            ),
+          ),
+        );
+      });
+
+      // THEN subject credentials separate caches and the repeated request reuses Alice's token
+      expect(answer).toBeOkWith({ distinct: 3, same: true, fetches: 3 });
+    });
+
+    it("shares one exchange among simultaneous callers for a subject", async ({
+      tokens,
+      exchange,
+      observations,
+    }) => {
+      // GIVEN an uncached subject
+      // WHEN two callers ask simultaneously
+      const answer = await tokens({ env: exchange.env }, (ctx) =>
+        allAsync([
+          ctx.get(TokenSource).token({ audience: "orders", onBehalfOf: exchange.alice }),
+          ctx.get(TokenSource).token({ audience: "orders", onBehalfOf: exchange.alice }),
+        ]).map((answers) => ({
+          distinct: new Set(answers.map(({ bearer }) => bearer)).size,
+          fetches: observations.length,
+        })),
+      );
+
+      // THEN the exchange is single flight
+      expect(answer).toBeOkWith({ distinct: 1, fetches: 1 });
+    });
+
+    it("refuses delegation without an actor token when the issuer requires it", async ({
+      tokens,
+      exchange,
+    }) => {
+      // GIVEN a subject authorized for native delegation
+      const { actor: _actor, ...subject } = exchange.alice;
+
+      // WHEN the required actor credential is omitted
+      const answer = await tokens({ env: exchange.env }, (ctx) =>
+        ctx.get(TokenSource).token({ audience: "orders", onBehalfOf: subject }),
+      );
+
+      // THEN it cannot silently become an impersonation grant
+      expect(answer).toBeErrWith(
+        expect.objectContaining({ constructor: TokenRefused, error: "invalid_request" }),
+      );
+    });
+
+    it("keeps subject credentials out of observation details", async ({
+      tokens,
+      exchange,
+      observations,
+    }) => {
+      // GIVEN subject and actor credentials passed to the real issuer
+      // WHEN their exchange is observed
+      const answer = await tokens({ env: exchange.env }, (ctx) =>
+        ctx
+          .get(TokenSource)
+          .token({ audience: "orders", onBehalfOf: exchange.alice })
+          .map(() => observations),
+      );
+
+      // THEN telemetry carries audience and scope only
+      expect(answer).toBeOkWith([
+        {
+          operation: {
+            component: "oauth-client",
+            name: "token",
+            attributes: { operation: "token", "btravstack.oauth.audience": "orders" },
+            details: { "btravstack.oauth.scope": "" },
+          },
+          settled: { outcome: "ok" },
+        },
+      ]);
+    });
+
+    it("evicts the oldest token when subject turnover reaches the fixed capacity", async ({
+      tokens,
+      scripted,
+      observations,
+    }) => {
+      // GIVEN an issuer boundary returning a new token for each cache miss
+      const env = {
+        OAUTH_ISSUER: scripted.issuing,
+        OAUTH_CLIENT_ID: "client",
+        OAUTH_CLIENT_SECRET: "secret",
+      };
+      const subject = (token: string) => ({
+        audience: "orders",
+        onBehalfOf: { token, tokenType: "urn:ietf:params:oauth:token-type:access_token" },
+      });
+
+      // WHEN more subjects than the cache can retain are fetched, then the newest and oldest are asked again
+      const answer = await tokens({ env }, (ctx) => {
+        const source = ctx.get(TokenSource);
+        return source.token(subject("first")).flatMap((first) =>
+          Array.from({ length: 1024 }, (_, i) => i)
+            .reduce<ReturnType<typeof source.token>>(
+              (previous, i) => previous.flatMap(() => source.token(subject(`subject-${i}`))),
+              OkAsync(first),
+            )
+            .flatMap((last) =>
+              source.token(subject("subject-1023")).flatMap((newest) =>
+                source.token(subject("first")).map((oldest) => ({
+                  oldestReused: oldest.bearer === first.bearer,
+                  newestReused: newest.bearer === last.bearer,
+                  fetches: observations.length,
+                })),
+              ),
+            ),
+        );
+      });
+
+      // THEN the cache retains recent tokens without growing for every subject forever
+      expect(answer).toBeOkWith({ oldestReused: false, newestReused: true, fetches: 1026 });
+    });
+
+    it("recovers health when a refused subject is replaced with a valid credential", async ({
+      tokens,
+      exchange,
+    }) => {
+      // GIVEN a subject credential the issuer refuses
+      // WHEN that audience is fetched again with the subject's valid replacement
+      const answer = await tokens({ env: exchange.env }, (ctx) => {
+        const source = ctx.get(TokenSource);
+        return fromSafePromise(
+          source
+            .token({ audience: "orders", onBehalfOf: { ...exchange.alice, token: "invalid" } })
+            .getOrUndefined(),
+        )
+          .flatMap(() => source.token({ audience: "orders", onBehalfOf: exchange.alice }))
+          .flatMap(() => runHealthChecks(ctx.get(HealthChecks)));
+      });
+
+      // THEN the obsolete credential's failure no longer poisons the component
+      expect(answer).toBeOkWith({
+        status: "healthy",
+        components: [{ name: "oauth-client", status: "healthy" }],
+      });
+    });
+
+    it("reports an invalid subject as a typed refusal instead of issuing a service token", async ({
+      tokens,
+      exchange,
+    }) => {
+      // GIVEN credentials that cannot identify a subject
+      // WHEN the gateway asks on that subject's behalf
+      const answer = await tokens({ env: exchange.env }, (ctx) =>
+        ctx
+          .get(TokenSource)
+          .token({ audience: "orders", onBehalfOf: { ...exchange.alice, token: "invalid" } }),
+      );
+
+      // THEN the issuer's refusal is retained
+      expect(answer).toBeErrWith(
+        expect.objectContaining({
+          constructor: TokenRefused,
+          audience: "orders",
+          error: "invalid_request",
+        }),
+      );
+    });
+  });
+
   describe("a token", () => {
     it("is one the issuer introspects as active for the audience and scope", async ({
       tokens,

@@ -146,3 +146,15 @@ So the requirement is **`node16`/`nodenext` consumers**, stated in the
 package README rather than shimmed around. The check uses attw's `node16`
 profile for dual-format packages and `esm-only` for a package with no `require`
 export. It checks each advertised module format and ignores `node10`.
+
+## A new application installs without the workspace
+
+`src/check-template.ts`, the final step of `typecheck`, copies
+`templates/http-app` outside the monorepo and installs its exact published
+versions from npm with strict peer validation. It runs the compiler and built
+entry point on the manifest's Node floor, calls the validated HTTP endpoint,
+and signals the actual Node process with SIGTERM. The endpoint answer,
+drained/exited events and exit `0` are assertions, so a broken boot or lifecycle
+cannot pass as a template that merely compiles. Temporary files are removed on
+every path. This check uses registry releases, while `check.ts` checks the
+current source tarballs; neither can substitute for the other.

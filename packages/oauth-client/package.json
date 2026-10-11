@@ -1,7 +1,7 @@
 {
   "name": "@btravstack/oauth-client",
   "version": "0.29.0",
-  "description": "A TokenSource port for @btravstack/core: the OAuth 2.0 client credentials grant, so a service calls another as itself — cached per audience until shortly before expiry, one fetch shared by concurrent callers, and a static adapter for tests",
+  "description": "A TokenSource port for @btravstack/core: OAuth 2.0 client credentials and RFC 8693 token exchange, so a service calls another as itself or for a subject — cached per audience until shortly before expiry, one fetch shared by concurrent callers, and a static adapter for tests",
   "keywords": [
     "client-credentials",
     "dependency-injection",

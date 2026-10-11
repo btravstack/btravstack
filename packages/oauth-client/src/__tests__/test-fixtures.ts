@@ -10,6 +10,7 @@ import {
   type Settled,
 } from "@btravstack/core";
 import { Module, Provider, type Context } from "@btravstack/di";
+import { createExchangeClient } from "@btravstack/internal-test-infra/keycloak";
 import {
   ORY_ISSUER,
   createServiceClient,
@@ -41,6 +42,7 @@ export type Tokens = <T, E>(
 ) => AsyncResult<T, E | ConfigInvalid>;
 
 export type OAuthFixtures = {
+  readonly exchange: Awaited<ReturnType<typeof createExchangeClient>>;
   readonly clock: FakeClock;
   /** A client of this test's own, allowed {@link AUDIENCE} and {@link SCOPE}. */
   readonly client: OryServiceClient;
@@ -57,10 +59,18 @@ export type OAuthFixtures = {
    * `401` with a `WWW-Authenticate` challenge — and `failing` answers every
    * token request with a `503` and an OAuth error body.
    */
-  readonly scripted: { readonly challenging: string; readonly failing: string };
+  readonly scripted: {
+    readonly challenging: string;
+    readonly failing: string;
+    readonly issuing: string;
+  };
 };
 
 export const it = test.extend<OAuthFixtures>({
+  // oxlint-disable-next-line no-empty-pattern -- a fixture with no dependencies still takes vitest's destructured first parameter
+  exchange: async ({}, use) => {
+    await use(await createExchangeClient());
+  },
   // oxlint-disable-next-line no-empty-pattern -- vitest's fixture signature: one that names no other fixture still takes the destructured first parameter
   clock: async ({}, use) => {
     await use(createFakeClock());
@@ -104,6 +114,7 @@ export const it = test.extend<OAuthFixtures>({
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   scripted: async ({}, use) => {
+    let issued = 0;
     const server = createServer((request, response) => {
       const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
       const [, name, rest] = (request.url ?? "").split(/^\/(\w+)/);
@@ -111,6 +122,17 @@ export const it = test.extend<OAuthFixtures>({
       if (rest === "/.well-known/openid-configuration") {
         const issuer = `${base}/${name}`;
         response.end(JSON.stringify({ issuer, token_endpoint: `${issuer}/token` }));
+        return;
+      }
+      if (name === "issuing") {
+        issued += 1;
+        response.end(
+          JSON.stringify({
+            access_token: `test-bearer-${issued}`,
+            token_type: "Bearer",
+            expires_in: 3600,
+          }),
+        );
         return;
       }
       if (name === "challenging") {
@@ -124,7 +146,11 @@ export const it = test.extend<OAuthFixtures>({
     });
     await new Promise<void>((listening) => server.listen(0, "127.0.0.1", listening));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    await use({ challenging: `${base}/challenging`, failing: `${base}/failing` });
+    await use({
+      challenging: `${base}/challenging`,
+      failing: `${base}/failing`,
+      issuing: `${base}/issuing`,
+    });
     await new Promise((closed) => server.close(closed));
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
