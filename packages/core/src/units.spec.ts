@@ -274,6 +274,34 @@ describe("createUnitRegistry", () => {
     );
   });
 
+  it("stays busy for a unit opened by a settled unit's abort listener", async () => {
+    // GIVEN a unit whose signal listener opens another unit, and idleness awaited
+    const registry = createUnitRegistry();
+    let release = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const first = registry.run(meta, async (signal) => {
+      signal.addEventListener("abort", () => {
+        void registry.run(meta, () => new Promise<Result<void, never>>(() => {}));
+      });
+      await held;
+      return Ok();
+    });
+    let idle = false;
+    void registry.awaitIdle().then(() => {
+      idle = true;
+    });
+
+    // WHEN the first unit settles
+    release();
+    await first;
+    await Promise.resolve();
+
+    // THEN the unit its listener opened keeps the registry busy
+    expect({ idle, inFlight: registry.inFlight() }).toEqual({ idle: false, inFlight: 1 });
+  });
+
   it("awaitIdle resolves immediately when nothing is in flight", async () => {
     // GIVEN
     const registry = createUnitRegistry();

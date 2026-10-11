@@ -128,10 +128,11 @@ export const createUnitRegistry = (): UnitRegistry => {
             // exactly once, here.
             open.delete(controller);
             closedCount += 1;
-            settleIfIdle();
-            // Last, after the fork's teardown: an `onStop` reading
-            // `signal.aborted` must still see only the kernel's own aborts.
+            // After the fork's teardown, so an `onStop` reading `signal.aborted`
+            // sees only the kernel's own aborts; before `settleIfIdle`, so a
+            // unit a listener opens keeps the registry from reading idle.
             controller.abort(new DOMException("The unit has settled", "AbortError"));
+            settleIfIdle();
           }
         }),
       ).flatMap((result) => result);
