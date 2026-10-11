@@ -1,5 +1,26 @@
 # @btravstack/outbox
 
+## 0.29.0
+
+### Minor Changes
+
+- b29b9df: `outbox()` takes `concurrency`, which pins `OUTBOX_CONCURRENCY` (default `4`): at most that many tenants hold a claim or a prune — each a pooled connection, a claim inside a transaction across its batch's publishes — at once, and the rest wait their turn in order. Previously every configured tenant could claim at the same moment, so as many busy tenants as the pool has connections (10, `pg`'s default) starved a publisher sharing that pool. A stop answers a tenant still waiting for a slot at once; release waits only for the batches in flight.
+- e3d9625: The relay prunes published rows: with `retainMs` (`OUTBOX_RETAIN_MS`) set, each
+  tenant's rows published longer ago are deleted after a sweep that did not come
+  back full, a thousand at a time — once a minute, and a second apart while
+  batches come back full — pinned to the tenant and holding its lock as a claim
+  does. Unset, rows are kept as before. `OutboxStore` gains `prune(tenantId,
+olderThanMs, limit)`, measured on the store's own clock, which
+  `prismaOutboxStore` and `memoryOutboxStore` implement.
+
+### Patch Changes
+
+- Updated dependencies [1d2ac78]
+- Updated dependencies [5bf7ace]
+  - @btravstack/config@0.29.0
+  - @btravstack/core@0.29.0
+  - @btravstack/di@0.29.0
+
 ## 0.28.0
 
 ### Patch Changes
