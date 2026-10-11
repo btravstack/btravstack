@@ -233,7 +233,8 @@ on success, `error` with the `Err` or the defect as `cause` otherwise.
 Observer startup and finisher failures are dropped independently: telemetry
 cannot rewrite a result or prevent another observer from settling. No recursive
 reporting is attempted, matching the logger's broken-destination policy.
-A synchronous throw from the operation is qualified as a defect. `settled`
+A synchronous throw from the operation is qualified as a defect. A throwing
+settlement-shaping hook falls back to the normal settlement. `settled`
 replaces either default where a starter has more to say — `ok` receives the
 value (a cache reports hit or miss), `failure` the `FailureView` (storage
 reports a missing object as an ordinary answer). One line per method, and the

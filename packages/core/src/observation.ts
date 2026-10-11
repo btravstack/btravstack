@@ -134,7 +134,8 @@ export const observe = (
  *
  * `settled` replaces either default where a starter has more to say: `ok`
  * receives the value (a cache reports a hit or a miss), `failure` the
- * `FailureView` (a store reports a missing object as an ordinary answer).
+ * `FailureView` (a store reports a missing object as an ordinary answer). A
+ * throwing shaping hook is dropped and the ordinary settlement is used.
  */
 export const observed = <T, E>(
   observers: readonly ((operation: Operation) => Settle)[],
@@ -148,13 +149,21 @@ export const observed = <T, E>(
   const settle = observe(observers, operation);
   return OkAsync()
     .flatMap(call)
-    .tap((value) => settle(settled.ok?.(value) ?? { outcome: "ok" }))
-    .tapFailure((failure) =>
+    .tap((value) => {
+      const rendered = fromSafeThrowable(() => settled.ok?.(value))()
+        .recoverDefect(() => Ok(undefined))
+        .get();
+      settle(rendered ?? { outcome: "ok" });
+    })
+    .tapFailure((failure) => {
+      const rendered = fromSafeThrowable(() => settled.failure?.(failure))()
+        .recoverDefect(() => Ok(undefined))
+        .get();
       settle(
-        settled.failure?.(failure) ?? {
+        rendered ?? {
           outcome: "error",
           cause: failure.tag === "Err" ? failure.error : failure.cause,
         },
-      ),
-    );
+      );
+    });
 };

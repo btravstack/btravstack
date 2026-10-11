@@ -777,4 +777,6 @@ carry the same `tap`/`tapFailure` pair; `observation.spec.ts`'s `observed`
 block pins both defaults, the defect arm and both hooks. Startup and finisher
 throws are isolated individually and dropped, without recursive reporting.
 A synchronous throw from the operation itself enters the defect channel, and
-valid finishers still receive the original outcome exactly once.
+valid finishers still receive the original outcome exactly once. A broken
+settlement-shaping hook falls back to the ordinary settlement, without changing
+that outcome.

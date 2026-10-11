@@ -166,6 +166,40 @@ describe("observed", () => {
     });
   });
 
+  it("preserves success when its settlement hook throws", async ({ recording }) => {
+    // GIVEN a successful operation with a broken telemetry hook
+    // WHEN the hook tries to shape its settlement
+    const answer = await observed([recording.observer], operation, () => OkAsync("committed"), {
+      ok: () => {
+        // oxlint-disable-next-line unthrown/no-throw -- a broken telemetry hook is the subject under test
+        throw new Error("hook failed");
+      },
+    });
+
+    // THEN the normal settlement and operation result survive
+    expect({ answer, settled: recording.seen }).toEqual({
+      answer: expect.objectContaining({ tag: "Ok", value: "committed" }),
+      settled: [{ outcome: "ok" }],
+    });
+  });
+
+  it("preserves a refusal when its settlement hook throws", async ({ recording }) => {
+    // GIVEN a refused operation with a broken telemetry hook
+    // WHEN the hook tries to shape its settlement
+    const answer = await observed([recording.observer], operation, () => ErrAsync("refused"), {
+      failure: () => {
+        // oxlint-disable-next-line unthrown/no-throw -- a broken telemetry hook is the subject under test
+        throw new Error("hook failed");
+      },
+    });
+
+    // THEN the normal settlement carries the original refusal
+    expect({ answer, settled: recording.seen }).toEqual({
+      answer: expect.objectContaining({ tag: "Err", error: "refused" }),
+      settled: [{ outcome: "error", cause: "refused" }],
+    });
+  });
+
   it("answers the success value untouched", async ({ recording }) => {
     // GIVEN a call that succeeds
     // WHEN it is observed
