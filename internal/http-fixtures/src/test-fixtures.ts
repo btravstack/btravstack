@@ -38,6 +38,7 @@ import {
   type RuntimeStartFailed,
   type RunningApp,
   type Settle,
+  type Settled,
 } from "@btravstack/core";
 import { Module, Port, Provider, type PortClassOf, type ServiceOf } from "@btravstack/di";
 import { html, HtmxFragmentsPort, htmx } from "@btravstack/htmx-server";
@@ -87,6 +88,7 @@ import {
   HttpModule,
   type OrpcHttpOptions as HttpOptions,
 } from "@btravstack/orpc-server";
+import type { Implementation } from "@btravstack/orpc-server/internal";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import { localIssuer, type LocalIssuer } from "@btravstack/testing/jwt";
 import { createORPCClient } from "@orpc/client";
@@ -913,10 +915,18 @@ class Greeter extends Port("Greeter")<{ readonly greet: (name: string) => string
 /** Three bare procedures, one nested — the contract is what types the implementation below and the client. */
 const helloFragment = { hello: oc };
 const nestedFragment = { ping: oc };
-const greetingContract = oc.router({ ...helloFragment, boom: oc, nested: nestedFragment });
+const greetingContract = oc.router({
+  ...helloFragment,
+  boom: oc,
+  refused: oc.errors({ CONFLICT: {} }),
+  nested: nestedFragment,
+});
 
-const greetingImplementation = (greeter: ServiceOf<Greeter>) => ({
+const greetingImplementation = (
+  greeter: ServiceOf<Greeter>,
+): Implementation<typeof greetingContract> => ({
   hello: () => OkAsync(greeter.greet("world")),
+  refused: ({ errors }) => ErrAsync(errors.CONFLICT()),
   boom: () => {
     // oxlint-disable-next-line unthrown/no-throw -- the defect IS the subject under test: oRPC's own collapse to INTERNAL_SERVER_ERROR
     throw new Error("bug");
@@ -1368,6 +1378,18 @@ const rpcAppOf = (prefix?: `/${string}`, stray = false) =>
     hostname: "127.0.0.1",
     ...(prefix === undefined ? {} : { prefix }),
     provides: [Provider(Greeter)({ inject: {}, value: { greet: (name) => `hello ${name}` } })],
+  });
+
+/** `rpcAppOf`'s router beside an observer that records. */
+const observedRpcAppOf = (member: (operation: Operation) => Settle) =>
+  HttpModule("ObservedRpcApp")({
+    router: greetingRouter,
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [
+      Provider(Greeter)({ inject: {}, value: { greet: (name) => `hello ${name}` } }),
+      Provider.member(Observers)({ inject: {}, value: member }),
+    ],
   });
 
 /**
@@ -1942,6 +1964,11 @@ export type HttpFixtures = {
   ) => Promise<{
     readonly origin: string;
     readonly client: RouterContractClient<typeof greetingContract>;
+  }>;
+  /** `rpc`'s app beside an observer keeping every `orpc` operation it settles. */
+  readonly observedRpc: () => Promise<{
+    readonly client: RouterContractClient<typeof greetingContract>;
+    readonly taken: () => readonly (Operation & Settled)[];
   }>;
   /** An app bound to an `anonymous` unit module that counts its builds and teardowns. */
   readonly scoped: {
@@ -2530,6 +2557,23 @@ export const it = test.extend<HttpFixtures>({
         new RPCLink({ origin, url: prefix ?? "/rpc" }),
       );
       return { origin, client };
+    });
+  },
+
+  observedRpc: async ({ boot }, use) => {
+    await use(async () => {
+      const taken: (Operation & Settled)[] = [];
+      const app = boot(
+        observedRpcAppOf((operation) => (settled) => {
+          if (operation.component === "orpc") taken.push({ ...operation, ...settled });
+        }),
+      );
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const client: RouterContractClient<typeof greetingContract> = createORPCClient(
+        new RPCLink({ origin: `http://127.0.0.1:${info.port}`, url: "/rpc" }),
+      );
+      return { client, taken: () => taken };
     });
   },
 

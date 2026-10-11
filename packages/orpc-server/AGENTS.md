@@ -9,3 +9,14 @@ serves the application's contract; it does not publish a document by default.
 `HttpModule`'s `openapi` option composes the same OpenAPI answerer, and only
 beside a `router`, which is why `@orpc/openapi` is a required peer; the
 reasoning is in the HTTP family's `AGENTS.md`.
+
+**A defect is reported to `Observers` before oRPC answers `500`.**
+`@unthrown/orpc` rethrows a `Defect`'s cause and oRPC turns it into a bare
+`INTERNAL_SERVER_ERROR`, so without a hook the cause was recorded nowhere.
+`reportDefects` is a client interceptor on both handlers, not a handler
+interceptor: the handler's also sees a body it failed to decode, which it
+answers `400`. It reports what oRPC would answer with a 5xx unless the contract
+declares the error, because a declared custom code (`INVALID_QUANTITY`) falls
+back to `500` with no `errorStatusMap` and is still a refusal. The operation
+has the same shape as `graphql-server`'s masked defect. `Observers` comes from
+`httpServer()`'s `noObserverMember`, so no root gains wiring.

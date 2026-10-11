@@ -6,6 +6,7 @@ import {
   type Requirements,
   type RequirementsOf,
 } from "@btravstack/contract";
+import { Observers, observe } from "@btravstack/core";
 import {
   Port,
   Provider,
@@ -29,13 +30,17 @@ import {
   type RouterContract,
 } from "@orpc/contract";
 import {
+  COMMON_ERROR_STATUS_MAP,
+  DEFAULT_ERROR_STATUS,
   implement,
+  onError,
+  toORPCError,
   type AnyProcedure,
   type DefaultInitialContext,
   type ProcedureImplementer,
   type Router,
 } from "@orpc/server";
-import { RPCHandler, type NodeHttpHandlerPlugin } from "@orpc/server/node";
+import { RPCHandler, type NodeHttpHandlerPlugin, type RPCHandlerOptions } from "@orpc/server/node";
 import {
   CORSHandlerPlugin,
   GetMethodCsrfProtectionHandlerPlugin,
@@ -159,6 +164,30 @@ export const pluginsOf = (
   ];
 };
 
+const STATUS_OF: Readonly<Record<string, number | undefined>> = COMMON_ERROR_STATUS_MAP;
+
+/**
+ * Reports what oRPC is about to answer a 5xx for to `Observers`, with its
+ * cause. An error the contract declares is the caller's answer and is not
+ * reported, even where its custom code answers `500`. A client interceptor, so
+ * a body oRPC cannot decode never counts as a defect.
+ */
+export const reportDefects = (
+  observers: ServiceOf<Observers>,
+): NonNullable<RPCHandlerOptions<DefaultInitialContext>["clientInterceptors"]> => [
+  onError((error, { path }) => {
+    const answered = toORPCError(error);
+    if (!answered.defined && (STATUS_OF[answered.code] ?? DEFAULT_ERROR_STATUS) >= 500)
+      observe(observers, {
+        component: "orpc",
+        name: "defect",
+        attributes: {},
+        details: { "orpc.path": path.join(".") },
+        traced: false,
+      })({ outcome: "error", cause: answered.cause ?? error });
+  }),
+];
+
 /**
  * The router's port — one id, the starter's own, which an application never
  * names. Spelled through `PortClassOf` / `PortInstance` rather than a `class`
@@ -188,10 +217,16 @@ const streamsOutput = (procedure: AnyProcedure): boolean =>
 export const orpc = (options: OrpcOptions = {}) => {
   const prefix = options.prefix ?? "/rpc";
   return Provider.member(HttpHandler)({
-    inject: { router: OrpcRouterPort, config: HttpConfig, cookieSchemes: CookieSchemes },
-    sync: ({ router, config, cookieSchemes }) => {
+    inject: {
+      router: OrpcRouterPort,
+      config: HttpConfig,
+      cookieSchemes: CookieSchemes,
+      observers: Observers,
+    },
+    sync: ({ router, config, cookieSchemes, observers }) => {
       const rpc = new RPCHandler(router, {
         plugins: [...pluginsOf(options, config, csrfOn(options.csrf, cookieSchemes))],
+        clientInterceptors: reportDefects(observers),
         allowMethods: (method, procedure) =>
           method === "GET" ? streamsOutput(procedure) : RPC_METHODS.has(method),
       });

@@ -1960,6 +1960,14 @@ through the same `send` every other htmx refusal uses.
 `Result` → HTTP status is deliberately **not** in the table: it is the
 router's `.result()` triage, at the one place that decides what a client sees.
 
+Before oRPC collapses a defect, `orpc()` and the OpenAPI routes report it to
+[`Observers`](/reference/core/observability) as an `orpc` / `defect` operation
+carrying the cause and the procedure's path (`orpc.path`). The client still
+sees only `INTERNAL_SERVER_ERROR`. Any error oRPC would answer with a 5xx is
+reported, unless the procedure's contract declares it: a declared code is the
+caller's answer even where it falls back to `500`. `Observers` comes from
+`httpServer()`, so the answerer adds no wiring to a root.
+
 ## The unit
 
 One unit per request, `kind: "http"`. Its lifetime **is** the response's: the
