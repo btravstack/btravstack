@@ -63,4 +63,74 @@ describe("memoryOutboxStore", () => {
     // THEN the second claim was handed the message the first could not mark
     expect(next).toBeOkWith([]);
   });
+
+  it("prunes only what was published longer ago than the age, at most the limit", async ({
+    store,
+    clock,
+  }) => {
+    // GIVEN three messages, the first two published ten milliseconds ago
+    for (const id of ["a", "b", "c"]) store.append(order(id));
+
+    // WHEN the tenant is pruned of anything older than five, one at a time
+    const pruned = await store
+      .claim("acme", 2, (batch) => OkAsync(batch.map(({ id }) => id)))
+      .flatMap(() => clock.advance(10))
+      .flatMap(() => store.prune("acme", 5, 1))
+      .flatMap((first) =>
+        store
+          .prune("acme", 5, 1)
+          .flatMap((second) => store.prune("acme", 5, 1).map((third) => [first, second, third])),
+      )
+      .flatMap((counts) =>
+        store
+          .pending("acme", 10)
+          .map((pending) => ({ counts, pending: pending.map(({ subjectId }) => subjectId) })),
+      );
+
+    // THEN each published message went once, and the pending one stayed
+    expect(pruned).toBeOkWith({ counts: [1, 1, 0], pending: ["c"] });
+  });
+
+  it("prunes nothing published within the age, nor another tenant's", async ({ store, clock }) => {
+    // GIVEN one published message in each of two tenants, ten milliseconds ago
+    store.append(order("a"));
+    store.append({ ...order("b"), tenantId: "globex" });
+
+    // WHEN acme is pruned of what is older than ten, then of what is older than five
+    const pruned = await store
+      .claim("acme", 10, (batch) => OkAsync(batch.map(({ id }) => id)))
+      .flatMap(() => store.claim("globex", 10, (batch) => OkAsync(batch.map(({ id }) => id))))
+      .flatMap(() => clock.advance(10))
+      .flatMap(() => store.prune("acme", 10, 10))
+      .flatMap((exactlyTheAge) =>
+        store.prune("acme", 5, 10).map((acme) => ({ exactlyTheAge, acme })),
+      );
+
+    // THEN the age is exclusive, and globex's row was never a candidate
+    expect(pruned).toBeOkWith({ exactlyTheAge: 0, acme: 1 });
+  });
+
+  it("prunes nothing of a tenant a claim holds", async ({ store, clock }) => {
+    // GIVEN one message published long enough ago to prune, and a second claim
+    // in progress over a new one
+    store.append(order("a"));
+    const during: number[] = [];
+
+    // WHEN the tenant is pruned while that claim holds it
+    await store
+      .claim("acme", 10, (batch) => OkAsync(batch.map(({ id }) => id)))
+      .flatMap(() => clock.advance(10))
+      .flatMap(() => {
+        store.append(order("b"));
+        return store.claim("acme", 10, (batch) =>
+          store.prune("acme", 5, 10).map((count) => {
+            during.push(count);
+            return batch.map(({ id }) => id);
+          }),
+        );
+      });
+
+    // THEN the prune skipped it, as a second claim would, though `a` was due
+    expect(during).toEqual([0]);
+  });
 });

@@ -40,10 +40,10 @@ than race for its rows.
 
 Between the two sit the two ports the relay needs and cannot provide itself:
 
-| Port              | What it answers                                                                            | Who provides it                                               |
-| ----------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
-| `OutboxStore`     | `pending(tenantId, limit)`, `oldestPending(tenantIds)` and `claim(tenantId, limit, relay)` | `prismaOutboxStore`, `memoryOutboxStore`, or your own adapter |
-| `OutboxPublisher` | `publish(message)` → `AsyncResult<void, PublishRefused>` — any tagged error                | you: the transport, the contract and the payload's decoding   |
+| Port              | What it answers                                                                                                                   | Who provides it                                               |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `OutboxStore`     | `pending(tenantId, limit)`, `oldestPending(tenantIds)`, `claim(tenantId, limit, relay)` and `prune(tenantId, olderThanMs, limit)` | `prismaOutboxStore`, `memoryOutboxStore`, or your own adapter |
+| `OutboxPublisher` | `publish(message)` → `AsyncResult<void, PublishRefused>` — any tagged error                                                       | you: the transport, the contract and the payload's decoding   |
 
 ```ts
 export const store = Provider(OutboxStore)({
@@ -96,12 +96,13 @@ it starts as the graph builds — before the runtime accepts anything — and
 stops when the application scope closes, after the runtime has drained and
 before anything it depends on is released.
 
-| Option     | Variable            | Default                    | What it is                                                         |
-| ---------- | ------------------- | -------------------------- | ------------------------------------------------------------------ |
-| `tenants`  | `OUTBOX_TENANTS`    | none                       | the tenants this relay serves, comma-separated — required          |
-| `pollMs`   | `OUTBOX_POLL_MS`    | `200`                      | the sleep between sweeps that found nothing to do, `1` to `60_000` |
-| `maxLagMs` | `OUTBOX_MAX_LAG_MS` | `60_000`                   | the oldest pending age the health check tolerates                  |
-| `clock`    | —                   | the kernel's `systemClock` | what the poll sleeps on and the lag is measured against            |
+| Option     | Variable            | Default                    | What it is                                                                        |
+| ---------- | ------------------- | -------------------------- | --------------------------------------------------------------------------------- |
+| `tenants`  | `OUTBOX_TENANTS`    | none                       | the tenants this relay serves, comma-separated — required                         |
+| `pollMs`   | `OUTBOX_POLL_MS`    | `200`                      | the sleep between sweeps that found nothing to do, `1` to `60_000`                |
+| `maxLagMs` | `OUTBOX_MAX_LAG_MS` | `60_000`                   | the oldest pending age the health check tolerates                                 |
+| `retainMs` | `OUTBOX_RETAIN_MS`  | `0` (kept)                 | how long a published row is kept before the relay deletes it; `false` pins it off |
+| `clock`    | —                   | the kernel's `systemClock` | what the poll sleeps on and the lag is measured against                           |
 
 Each option **pins** its variable: given, the variable is not read. A blank or
 malformed value is a `ConfigInvalid` naming the variable, so the process exits
@@ -302,8 +303,32 @@ await tx.orm.orders.OutboxMessage.create({
 ```
 
 The store's queries filter on `tenantId` and `publishedAt IS NULL` and order by
-`id`; an index for that, and the `DELETE` that prunes published rows, are your
-migration's and your housekeeping's.
+`id`; an index for that is your migration's.
+
+### Retention
+
+**The outbox is delivery state, not a log**: a published row has done its job,
+and it may carry data that has to be erasable. With `retainMs` (or
+`OUTBOX_RETAIN_MS`) set, the relay deletes each tenant's rows published longer
+ago than that — after a sweep that did not come back full, so a tenant with a
+backlog publishes first while one whose publisher refuses a message is still
+pruned — once a minute, a thousand rows at a time. While a batch comes back
+full the next is due a second later, so a long history drains steadily between
+sweeps, new facts keep going out, and a busy tenant's publishes are outpaced. Each batch is an `outbox` / `prune` operation on
+`Observers`. Unset, or `0`, keeps them: a deployment that keeps the log changes
+nothing.
+
+It runs through the store's `prune(tenantId, olderThanMs, limit)`, pinned
+to the tenant like every other read, so a table under `@@rls` is pruned by the
+same non-owner role that relays it. A prune takes the tenant's lock as a claim
+does and skips a tenant another relay holds, so no two deletes of a tenant
+overlap, and none runs while it is being claimed. The cadence is each relay's
+own: N replicas delete up to N batches per interval, one after another. A row's age counts from
+when it was marked — `clock_timestamp()`, not the claim's transaction start —
+and is measured on that same database clock, so neither a slow publish nor a
+host clock's skew ages a row early. A log you want to keep is your subscriber's, which already holds every
+fact; erasing one subject's rows on request is a different operation, and stays
+yours.
 
 ## `memoryOutboxStore(clock?)`
 
@@ -331,16 +356,16 @@ export const report = Module.scoped(Tested, (ctx) => runHealthChecks(ctx.get(Hea
 
 ## What it reports
 
-Every claim and every publish is an `Observers` operation; the module holds no
+Every claim, publish and prune is an `Observers` operation; the module holds no
 logger. With `@btravstack/observability` composed:
 
-| Signal   | Name                                                            | Attributes                                                                          |
-| -------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| span     | `outbox.publish`                                                | `kind`, `btravstack.tenant_id`, `btravstack.outbox.id`, `btravstack.outbox.subject` |
-| counter  | `btravstack.outbox.operations`                                  | `{ operation, kind?, btravstack.tenant_id, outcome }` — `publish` or `claim`        |
-| log line | `"outbox.publish failed"` / `"outbox.claim failed"`, at `error` | the attributes and details, with the failure as the cause                           |
+| Signal   | Name                                                                                      | Attributes                                                                            |
+| -------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| span     | `outbox.publish`                                                                          | `kind`, `btravstack.tenant_id`, `btravstack.outbox.id`, `btravstack.outbox.subject`   |
+| counter  | `btravstack.outbox.operations`                                                            | `{ operation, kind?, btravstack.tenant_id, outcome }` — `publish`, `claim` or `prune` |
+| log line | `"outbox.publish failed"` / `"outbox.claim failed"` / `"outbox.prune failed"`, at `error` | the attributes and details, with the failure as the cause                             |
 
-A claim opens **no span** — one per tenant per poll would bury the publishes —
+A claim or a prune opens **no span** — one per tenant per poll would bury the publishes —
 and a success writes no line. The tenant is a dimension because the relay is
 told its tenants, so it is bounded; the id and subject are details, on the span
 and the error line only.
@@ -353,6 +378,7 @@ and the error line only.
   webhook and a Kafka producer are three providers of it.
 - **Write the row.** The transaction is your adapter's, by the rule that keeps
   commit boundaries off the unit.
-- **Retention, or a second store.** Published rows stay until your housekeeping
-  prunes them; `@btravstack/prisma` is the only persistence starter, and this
-  store is the only one shipped over it.
+- **A second store.** `@btravstack/prisma` is the only persistence starter, and
+  this store is the only one shipped over it.
+- **Archive published rows.** The subscriber's store is the archive; retention
+  only deletes.

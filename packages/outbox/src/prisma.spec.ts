@@ -38,7 +38,7 @@ describe("prismaOutboxStore", () => {
       { sql: LOCK, values: ["app.tenant_id", "acme", "orders.outboxMessage", "acme"], tx: 1 },
       { sql: SELECT(`"orders"."outboxMessage"`), values: ["acme", "32"], tx: 1 },
       {
-        sql: `UPDATE "orders"."outboxMessage" SET "publishedAt" = now() WHERE "id" = ANY(string_to_array(?, ',')::bigint[])`,
+        sql: `UPDATE "orders"."outboxMessage" SET "publishedAt" = clock_timestamp() WHERE "id" = ANY(string_to_array(?, ',')::bigint[])`,
         values: ["7"],
         tx: 1,
       },
@@ -145,7 +145,7 @@ describe("prismaOutboxStore", () => {
     expect(db.ran().map(({ sql }) => sql)).toEqual([
       LOCK,
       `SELECT "id" AS "id", "tenant_id" AS "tenantId", "kind" AS "kind", "subject_id" AS "subjectId", "payload" AS "payload", to_json("occurred_at") #>> '{}' AS "occurredAt" FROM "public"."outboxMessage" WHERE "tenant_id" = ? AND "published_at" IS NULL ORDER BY "id" LIMIT ?::int`,
-      `UPDATE "public"."outboxMessage" SET "published_at" = now() WHERE "id" = ANY(string_to_array(?, ',')::bigint[])`,
+      `UPDATE "public"."outboxMessage" SET "published_at" = clock_timestamp() WHERE "id" = ANY(string_to_array(?, ',')::bigint[])`,
     ]);
   });
 
@@ -158,6 +158,45 @@ describe("prismaOutboxStore", () => {
 
     // THEN that setting is the one pinned
     expect(db.ran()[0]).toEqual({ sql: PIN, values: ["orders.tenant", "acme"], tx: 1 });
+  });
+
+  it("prunes a tenant's published rows pinned to it, and answers how many went", async ({
+    stub,
+  }) => {
+    // GIVEN a client that deletes three rows
+    const db = stub({ deleted: 3 });
+
+    // WHEN a tenant's rows published more than a day ago are pruned
+    const pruned = await prismaOutboxStore(db)
+      .prune("acme", 86_400_000, 1000)
+      .map((count) => ({ count, ran: db.ran() }));
+
+    // THEN one transaction holding the tenant's lock, and pinned to it, deleted
+    // the oldest published rows, never a pending one, and counted them
+    expect(pruned).toBeOkWith({
+      count: 3,
+      ran: [
+        { sql: LOCK, values: ["app.tenant_id", "acme", "public.outboxMessage", "acme"], tx: 1 },
+        {
+          sql: `WITH gone AS (DELETE FROM "public"."outboxMessage" WHERE "id" IN (SELECT "id" FROM "public"."outboxMessage" WHERE "tenantId" = ? AND "publishedAt" < clock_timestamp() - ?::bigint * interval '1 millisecond' ORDER BY "id" LIMIT ?::int) RETURNING 1) SELECT count(*)::text AS "deleted" FROM gone`,
+          values: ["acme", "86400000", "1000"],
+          tx: 1,
+        },
+      ],
+    });
+  });
+
+  it("prunes nothing of a tenant another relay holds", async ({ stub }) => {
+    // GIVEN a client whose tenant lock is taken
+    const db = stub({ locked: false, deleted: 3 });
+
+    // WHEN the tenant is pruned
+    const pruned = await prismaOutboxStore(db)
+      .prune("acme", 86_400_000, 1000)
+      .map((count) => ({ count, ran: db.ran().map(({ sql }) => sql) }));
+
+    // THEN it skipped, as a claim would, deleting nothing
+    expect(pruned).toBeOkWith({ count: 0, ran: [LOCK] });
   });
 
   it("quotes the identifiers it is given", async ({ stub }) => {

@@ -22,7 +22,7 @@ export type OutboxMessage = {
 };
 
 /**
- * What a store answers for the relay. Both operations promise `never`: a
+ * What a store answers for the relay. Every operation promises `never`: a
  * database that will not answer is a defect the relay observes and retries,
  * not a domain outcome.
  */
@@ -60,6 +60,20 @@ export type OutboxStoreService = {
     limit: number,
     relay: (batch: readonly OutboxMessage[]) => AsyncResult<readonly number[], never>,
   ) => AsyncResult<void, never>;
+  /**
+   * Deletes a tenant's messages published more than `olderThanMs` ago, at most
+   * `limit`, and answers how many went. The age is measured on the clock that
+   * stamped the publish — the database's own, for a database — so a host
+   * clock's skew can neither age a row early nor keep it late. Published rows
+   * only: a pending one is never touched. It holds the tenant as a claim does,
+   * and a tenant another caller holds is skipped, answering `0`: across
+   * replicas, one prunes a tenant at a time, and never while it is claimed.
+   */
+  readonly prune: (
+    tenantId: string,
+    olderThanMs: number,
+    limit: number,
+  ) => AsyncResult<number, never>;
 };
 
 /**

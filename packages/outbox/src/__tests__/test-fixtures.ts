@@ -92,6 +92,8 @@ export type Stub = (answers: {
   readonly rows?: readonly StubRow[];
   /** Each tenant's oldest pending time, answered to a read pinned to that tenant. */
   readonly oldest?: Readonly<Record<string, string>>;
+  /** How many rows a prune answers it deleted. */
+  readonly deleted?: number;
   readonly failure?: unknown;
 }) => StubDatabase;
 
@@ -198,7 +200,7 @@ export const it = test.extend<OutboxFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- see above
   stub: async ({}, use) => {
-    await use(({ locked = true, rows = [], oldest = {}, failure }) => {
+    await use(({ locked = true, rows = [], oldest = {}, deleted = 0, failure }) => {
       const ran: Ran[] = [];
       let transactions = 0;
       let pinned: unknown;
@@ -225,11 +227,13 @@ export const it = test.extend<OutboxFixtures>({
               return Promise.resolve(
                 sql.includes("pg_try_advisory_xact_lock")
                   ? [{ locked: String(locked) }]
-                  : sql.includes("min(")
-                    ? [{ occurredAt: oldest[String(pinned)] ?? null }]
-                    : sql.startsWith("SELECT")
-                      ? rows
-                      : { affectedRows: 0 },
+                  : sql.startsWith("WITH gone")
+                    ? [{ deleted: String(deleted) }]
+                    : sql.includes("min(")
+                      ? [{ occurredAt: oldest[String(pinned)] ?? null }]
+                      : sql.startsWith("SELECT")
+                        ? rows
+                        : { affectedRows: 0 },
               );
             },
           });

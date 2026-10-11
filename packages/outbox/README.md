@@ -75,6 +75,7 @@ export const Relay = Module("Relay")({
 | `OUTBOX_TENANTS`    | environment, or `tenants`    | the tenants this relay serves, comma-separated — required                        |
 | `OUTBOX_POLL_MS`    | environment, or `pollMs`     | the idle sleep between sweeps (default `200`)                                    |
 | `OUTBOX_MAX_LAG_MS` | environment, or `maxLagMs`   | the oldest pending age the `outbox` health check tolerates (default 60 s)        |
+| `OUTBOX_RETAIN_MS`  | environment, or `retainMs`   | how long a published row is kept before the relay deletes it (default: kept)     |
 | `clock`             | `outbox({ clock })`          | what the poll sleeps on and the lag is measured against (default: `systemClock`) |
 | `schema`, `table`   | `prismaOutboxStore(db, {…})` | where the model lives (default `public`, `outboxMessage`)                        |
 | `columns`           | `prismaOutboxStore(db, {…})` | the physical column names, for a model mapped with `@map`                        |
@@ -98,8 +99,8 @@ outbox id, which the publisher puts on the wire.
 
 **It does not decide** what a publish is, which transport it rides or how the
 payload is encoded — that is your `OutboxPublisher` — nor the transaction that
-writes the row, which is your adapter's. There is no exactly-once, no
-retention and no second store; the reasons are in [`AGENTS.md`](./AGENTS.md).
+writes the row, which is your adapter's. There is no exactly-once and no
+second store; the reasons are in [`AGENTS.md`](./AGENTS.md).
 
 ## License
 

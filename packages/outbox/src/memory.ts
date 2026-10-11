@@ -18,8 +18,9 @@ export type MemoryOutboxStore = OutboxStoreService & {
  * one table do — which is the only sharing an in-process store can have.
  */
 export const memoryOutboxStore = (clock: Clock = systemClock): MemoryOutboxStore => {
-  const messages: OutboxMessage[] = [];
-  const published = new Set<number>();
+  let messages: OutboxMessage[] = [];
+  let sequence = 0;
+  const published = new Map<number, number>();
   const claimed = new Set<string>();
 
   const pendingOf = (tenantId: string, limit: number): readonly OutboxMessage[] =>
@@ -29,7 +30,8 @@ export const memoryOutboxStore = (clock: Clock = systemClock): MemoryOutboxStore
 
   return {
     append: (message) => {
-      messages.push({ ...message, id: messages.length + 1, occurredAt: new Date(clock.now()) });
+      sequence += 1;
+      messages.push({ ...message, id: sequence, occurredAt: new Date(clock.now()) });
     },
     pending: (tenantId, limit) => OkAsync(pendingOf(tenantId, limit)),
     oldestPending: (tenantIds) =>
@@ -44,10 +46,26 @@ export const memoryOutboxStore = (clock: Clock = systemClock): MemoryOutboxStore
       return OkAsync()
         .flatMap(() => relay(pendingOf(tenantId, limit)))
         .map((ids) => {
-          for (const id of ids) published.add(id);
+          for (const id of ids) published.set(id, clock.now());
         })
         .tapFailure(() => claimed.delete(tenantId))
         .tap(() => claimed.delete(tenantId));
+    },
+    prune: (tenantId, olderThanMs, limit) => {
+      if (claimed.has(tenantId)) return OkAsync(0);
+      const cutoff = clock.now() - olderThanMs;
+      const gone = new Set(
+        messages
+          .filter(
+            ({ id, tenantId: owner }) =>
+              owner === tenantId && (published.get(id) ?? Infinity) < cutoff,
+          )
+          .slice(0, limit)
+          .map(({ id }) => id),
+      );
+      messages = messages.filter(({ id }) => !gone.has(id));
+      for (const id of gone) published.delete(id);
+      return OkAsync(gone.size);
     },
   };
 };

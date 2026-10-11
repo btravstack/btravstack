@@ -196,6 +196,54 @@ tenant, true)`, transaction-local. Four details are load-bearing:
 `columns` exists for a model mapped with `@map`: the store names each column
 by its physical name and reads it back under the port's own.
 
+## Retention is the relay's (#487)
+
+This was declined once, as housekeeping that belonged to whoever owned the
+database. Row security moved it here: under `@@rls` a delete has to pin each
+tenant, name the mapped columns and know the table — what `prismaOutboxStore`
+already does, and what every application would otherwise copy. The outbox is
+delivery state, and a published row may carry data that must be erasable.
+
+- **Off unless configured.** `OUTBOX_RETAIN_MS` defaults to `0`, which keeps
+  every row, so a deployment that treats the table as a log is unchanged.
+- **Published rows only, under the tenant's lock.** A claim reads pending rows
+  and a prune deletes published ones, so the two never touch the same row; the
+  prune still takes the claim's advisory lock, and skips a tenant another relay
+  holds, so no two deletes of one tenant ever overlap. The lock is the
+  transaction's, so it serialises deletes rather than electing a pruner: each
+  relay keeps its own cadence, and N replicas delete up to N batches per
+  interval. Coordinating that cadence was declined — it needs shared state, a
+  per-tenant stamp in a table every application would have to migrate, or a
+  per-tenant leader the relay does not have — for a cost that is linear in
+  replicas, with every delete bounded and none concurrent.
+- **One bounded batch per round, paced.** A thousand rows per statement
+  (`id IN (SELECT … LIMIT n)`), so no round holds a long lock or writes a
+  burst of WAL. A full batch makes the next one due a second later: a loop
+  deleted a long history ahead of every new fact, re-pruning on the very next
+  sweep was five deletes a second, and a strict minute capped retention at a
+  thousand rows a minute — under a busy tenant's publish rate, so it would
+  never catch up. The loop keeps two deadlines, the sweep's and the prune's,
+  and wakes for the earlier: waking to prune and sweeping anyway retried a
+  refused publish every second, past the backoff it had earned.
+- **Aged from the mark, on the mark's clock.** The mark writes
+  `clock_timestamp()`: `now()` is the claim's transaction start, before the
+  publisher ran, so a publish slower than the retention made a row prunable the
+  moment it went out. And `prune` takes an AGE, not a cutoff, so the store
+  measures it on the clock it stamped with — a host clock ahead of the database
+  would otherwise delete a fresh row under a short retention.
+- **After any sweep that did not come back full, once a minute per relay.** A
+  tenant with a backlog publishes before it prunes, but a FAILED sweep prunes
+  too: a head message the publisher refuses forever fails every sweep, and an
+  idle-only rule would have held that tenant's retention — the erasure half of
+  it — back for as long as the refusal lasted.
+- **Not a Temporal Schedule.** Scheduling is Temporal's by the role map, but a
+  cluster to prune the relay's own table is the "cluster for one nightly job"
+  floor `run-something-on-a-schedule.md` warns about; this is a property of the
+  relay, not a workload.
+- **No archive, no erasure on request.** The subscriber's store is the archive,
+  and deleting one subject's rows now — published or not — is the
+  application's operation.
+
 ## Why tenants are configuration
 
 The relay runs outside any unit, so there is no tenant to read off anything,
@@ -208,12 +256,9 @@ them is also how relays are sharded. A single-tenant application names one.
 - **Exactly-once.** A crash between a publish and its mark re-publishes; a
   subscriber dedupes on the outbox id. No outbox can do better without the
   broker joining the database's transaction.
-- **A second store adapter.** `OutboxStore` is three methods, and the reasons
+- **A second store adapter.** `OutboxStore` is four methods, and the reasons
   `@btravstack/prisma` is the only persistence starter (root **Persistence**)
   hold here too.
-- **Retention.** Published rows stay. Deleting them is an operational choice —
-  some teams keep the log — and the `DELETE` that prunes them belongs to
-  whoever owns the database's housekeeping.
 - **A partial index.** The store's queries filter on `tenantId` and
   `publishedAt IS NULL` and order by `id`; an index for that is the
   application's migration, sized by its own table.

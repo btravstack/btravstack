@@ -1,5 +1,5 @@
 import { HealthChecks, runHealthChecks } from "@btravstack/core";
-import { fromSafePromise } from "unthrown";
+import { type AsyncResult, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -237,6 +237,159 @@ describe("outbox", () => {
 
     // THEN each went out once, in order
     expect(swept).toBeOkWith(ids);
+  });
+
+  it("deletes a published message once it is older than retainMs", async ({
+    store,
+    clock,
+    relaying,
+  }) => {
+    // GIVEN a fact, and a relay keeping published rows for a second
+    store.append(order("acme", "a"));
+
+    // WHEN it is published, and a prune round falls due a minute later
+    const left = await relaying({ tenants: ["acme"], retainMs: 1_000 }, () =>
+      clock
+        .advance(0)
+        .flatMap(() => clock.advance(60_000))
+        .flatMap(() => store.prune("acme", 0, 10)),
+    );
+
+    // THEN the relay had already deleted it: nothing published is left to prune
+    expect(left).toBeOkWith(0);
+  });
+
+  it("prunes a batch per idle sweep, so publishing interleaves with a long history", async ({
+    store,
+    clock,
+    observations,
+    relaying,
+  }) => {
+    // GIVEN more published history than one prune batch deletes
+    for (let i = 0; i < 1_001; i++) store.append(order("acme", `m${String(i)}`));
+
+    // WHEN it is all published, and pruning falls due a minute later
+    const ran = await relaying({ tenants: ["acme"], retainMs: 1_000 }, () =>
+      clock
+        .advance(0)
+        .flatMap(() => clock.advance(61_000))
+        .flatMap(() => clock.advance(1_000))
+        .flatMap(() => store.prune("acme", 0, 10_000))
+        .map((left) => ({
+          left,
+          adjacentPrunes: observations
+            .filter(({ name }) => name === "prune" || name === "claim")
+            .map(({ name }) => name)
+            .join(",")
+            .includes("prune,prune"),
+        })),
+    );
+
+    // THEN every row went, and a sweep ran between the two batches
+    expect(ran).toBeOkWith({ left: 0, adjacentPrunes: false });
+  });
+
+  it("wakes for the next backlog batch sooner than a long poll interval", async ({
+    store,
+    clock,
+    relaying,
+  }) => {
+    // GIVEN more published history than one batch, and a five-second poll
+    for (let i = 0; i < 1_001; i++) store.append(order("acme", `m${String(i)}`));
+
+    // WHEN pruning falls due, and two seconds pass after it — under one poll
+    const left = await relaying({ tenants: ["acme"], retainMs: 1_000, pollMs: 5_000 }, () =>
+      clock
+        .advance(0)
+        .flatMap(() => clock.advance(60_000))
+        .flatMap(() => clock.advance(2_000))
+        .flatMap(() => store.prune("acme", 0, 10_000)),
+    );
+
+    // THEN the second batch ran a second after the first, not at the next poll
+    expect(left).toBeOkWith(0);
+  });
+
+  it("prunes a tenant whose next message the publisher refuses forever", async ({
+    store,
+    publisher,
+    clock,
+    relaying,
+  }) => {
+    // GIVEN one published fact, then one the transport refuses forever
+    store.append(order("acme", "a"));
+
+    // WHEN the refusal holds the tenant's sweeps failed past the retention
+    const left = await relaying({ tenants: ["acme"], retainMs: 1_000 }, () =>
+      clock
+        .advance(0)
+        .flatMap(() => {
+          store.append(order("acme", "b"));
+          publisher.refuse("b");
+          return clock.advance(61_000);
+        })
+        .flatMap(() => clock.advance(1_000))
+        .flatMap(() => store.prune("acme", 0, 10)),
+    );
+
+    // THEN the published row was pruned anyway: retention does not wait for
+    // the publisher
+    expect(left).toBeOkWith(0);
+  });
+
+  it("drains a prune backlog without retrying a refused publish early", async ({
+    store,
+    publisher,
+    clock,
+    observations,
+    relaying,
+  }) => {
+    // GIVEN five batches of published history, then a fact the transport
+    // refuses forever, its backoff grown long
+    for (let i = 0; i < 5_001; i++) store.append(order("acme", `m${String(i)}`));
+    const refusals = () =>
+      observations.filter(({ name, outcome }) => name === "publish" && outcome === "error").length;
+    const seconds = (n: number) =>
+      Array.from({ length: n }).reduce<AsyncResult<void, never>>(
+        (stepped) => stepped.flatMap(() => clock.advance(1_000)),
+        OkAsync(),
+      );
+
+    // WHEN the history is pruned, a batch a second
+    const retried = await relaying({ tenants: ["acme"], retainMs: 1_000 }, () =>
+      clock
+        .advance(0)
+        .flatMap(() => {
+          store.append(order("acme", "x"));
+          publisher.refuse("x");
+          return seconds(59);
+        })
+        .map(refusals)
+        .flatMap((before) =>
+          seconds(6)
+            .flatMap(() => store.prune("acme", 0, 10_000))
+            .map((left) => ({ left, retries: refusals() - before })),
+        ),
+    );
+
+    // THEN it all went, and the refused fact waited out its backoff
+    expect(retried).toBeOkWith({ left: 0, retries: 0 });
+  });
+
+  it("keeps published messages when no retention is set", async ({ store, clock, relaying }) => {
+    // GIVEN a fact, and a relay with no retention
+    store.append(order("acme", "a"));
+
+    // WHEN it is published, and a minute passes
+    const left = await relaying({ tenants: ["acme"] }, () =>
+      clock
+        .advance(0)
+        .flatMap(() => clock.advance(60_000))
+        .flatMap(() => store.prune("acme", 0, 10)),
+    );
+
+    // THEN the published row is still there
+    expect(left).toBeOkWith(1);
   });
 
   it("stops polling when the scope closes", async ({ store, publisher, clock, relaying }) => {

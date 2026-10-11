@@ -177,12 +177,27 @@ export const prismaOutboxStore = <Tx>(
   const mark = (ids: readonly number[]) =>
     sql(
       statement(
-        `UPDATE ${qualified} SET ${column("publishedAt")} = now() WHERE ${column("id")} = ANY(string_to_array(`,
+        `UPDATE ${qualified} SET ${column("publishedAt")} = clock_timestamp() WHERE ${column("id")} = ANY(string_to_array(`,
         ", ',')::bigint[])",
       ),
       ids.join(","),
     )
       .affectedCount()
+      .build();
+
+  const purge = (tenantId: string, olderThanMs: number, limit: number) =>
+    sql(
+      statement(
+        `WITH gone AS (DELETE FROM ${qualified} WHERE ${column("id")} IN (SELECT ${column("id")} FROM ${qualified} WHERE ${column("tenantId")} = `,
+        ` AND ${column("publishedAt")} < clock_timestamp() - `,
+        `::bigint * interval '1 millisecond' ORDER BY ${column("id")} LIMIT `,
+        `::int) RETURNING 1) SELECT count(*)::text AS "deleted" FROM gone`,
+      ),
+      tenantId,
+      String(olderThanMs),
+      String(limit),
+    )
+      .returnsRow({ deleted: "pg/text@1" })
       .build();
 
   const read = async (tx: Queryable, tenantId: string, limit: number) =>
@@ -217,6 +232,15 @@ export const prismaOutboxStore = <Tx>(
             oldestOf.push({ tenantId, occurredAt: new Date(row.occurredAt) });
         }
         return oldestOf;
+      }),
+    prune: (tenantId, olderThanMs, limit) =>
+      transaction(async (tx) => {
+        const [held] = (await tx.query(lock(tenantId))) as readonly { readonly locked: string }[];
+        if (held?.locked !== "true") return 0;
+        const [row] = (await tx.query(purge(tenantId, olderThanMs, limit))) as readonly {
+          readonly deleted: string;
+        }[];
+        return Number(row?.deleted ?? 0);
       }),
     claim: (tenantId, limit, relay) =>
       transaction(async (tx) => {
