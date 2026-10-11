@@ -2260,8 +2260,8 @@ which is the whole reason they are subpaths.
   and none of them is the limit anybody meant. Where a request is counted once
   is the ingress or the gateway, which is also where it can be refused before
   it costs a process anything. An application that wants one anyway writes an
-  oRPC plugin and passes it through [`plugins`](#plugins) — the escape hatch
-  doing its job.
+  oRPC plugin and passes it through [`plugins`](#plugins), or a Yoga plugin
+  through `graphql()`'s `plugins` — the escape hatch doing its job.
 - **`Result` → HTTP status.** The router's `.result()` triage owns it.
 - **Resource-dependent authorization.** A **scope** is checked here, because it
   is a property of the credential and answerable before dispatch. "Is this

@@ -1520,8 +1520,9 @@ transport's hands.
   unit: an `api` deployment is N pods (thesis #1), so a per-process budget is
   N independent budgets and none of them is the limit anybody meant. The
   ingress or gateway is where a request count is counted once. An application
-  that wants one anyway writes a plugin and passes it through `plugins` —
-  which is the escape hatch doing its job, not a gap.
+  that wants one anyway writes an oRPC plugin for `orpc()`'s `plugins`, or a
+  Yoga plugin for `graphql()`'s — which is the escape hatch doing its job, not
+  a gap.
 - **Static files and an SPA fallback are a stated non-goal** (#161). The
   ingress or a CDN serves assets: thesis #1 already puts an ingress in front of
   every `api` deployment, and one that routes `/assets` to a bucket and `/rpc`
