@@ -56,6 +56,8 @@ export const PersistenceModule = Module("Persistence")({
 | `PrismaOptions<C>`                 | `{ client: (binding: PrismaBinding) => C }`.                                                                        |
 | `SqlMiddlewareLike`                | The structural shape of a Prisma 8 `SqlMiddleware`, as the binding carries it.                                      |
 | `DatabaseUnreachable`              | The startup error when the database does not answer as the scope opens: `{ database, cause }`.                      |
+| `RowSecurityBypassed`              | The startup error when row security would not apply to the role: `{ database, role, bypass, tables }`.              |
+| `RowSecurityBypass`                | `"superuser" \| "bypassrls" \| "owner"` — why it would not, as `bypass` carries it.                                 |
 
 What the module needs is `Env`; what it exports is your port and
 `HealthChecks`. A composition root that re-exports it whole passes the second
@@ -75,7 +77,7 @@ query.
 
 ## Errors
 
-One of this package's own, at startup. Opening the scope runs the health
+Two of this package's own, at startup. Opening the scope runs the health
 check's probe before the client is handed out, so a database that does not
 answer fails the boot with **`DatabaseUnreachable`** — `database` is the name
 you gave, `cause` the driver's own failure, and the URL is never in it, since
@@ -85,6 +87,18 @@ it holds credentials. The wait is bounded by your pool's
 [`@btravstack/cache`](/reference/cache)'s Redis adapter and the AMQP and
 Temporal clients: a dependency the process cannot reach fails the boot rather
 than its first request.
+
+Then, where any table has row-level security enabled, it asks whether that
+security applies to the role it connected as, and fails the boot with
+**`RowSecurityBypassed`** when it does not: the role is a superuser, has
+`BYPASSRLS`, or owns — directly or through a role whose privileges it
+inherits — a row-secured table that is not `FORCE`d. `role` is the role,
+`bypass` which of the three, and `tables` every table it would bypass. Every
+policy would admit every row for such a role, so serving would look exactly
+like working isolation; _Two things are still the deployment's_, below, is
+the split that avoids it. A database with no row-secured table is asked
+nothing more, and the check is not repeated by the health member: it is a fact
+about the deployment's credentials, settled once.
 
 A contract marker that does not match is **not** one of them. Prisma 8 checks
 the marker on that first statement and, on a mismatch, logs a warning once and
@@ -367,7 +381,11 @@ isolated from any other.
   emits `ENABLE ROW LEVEL SECURITY` and has no way to express `FORCE`, which is
   what would make a policy apply to the owner — and the owner is the role that
   ran the migrations. A superuser is exempt whatever a policy says. So a
-  deployment connects as a role that is neither:
+  deployment runs with **two URLs**: the **migration URL**, the owner's, which
+  only `prisma db migrate` reads, before the process starts; and the **runtime
+  URL** in `DATABASE_URL`, a role that is neither, with explicit grants.
+  `prismaDatabase` refuses to boot on the first — a managed `postgres` user, or
+  the migration role reused at runtime — with `RowSecurityBypassed`:
 
   ```sql
   CREATE ROLE orders_app NOSUPERUSER NOBYPASSRLS LOGIN PASSWORD '…';
@@ -388,9 +406,10 @@ isolated from any other.
   `internal/test-infra/src/containers.ts`'s `provisionApplicationRole` runs that
   DDL for this repository's own gate, and
   `examples/order-infrastructure/src/rls.spec.ts` carries "is neither a
-  superuser nor exempt from row security" as a standing test — a regression
-  handing the owner's URL back is red on its own, without waiting for a policy
-  test to notice.
+  superuser, nor exempt from row security, nor an owner of a policed table" as
+  a standing test, beside `database.spec.ts`'s boot as the owner refused — a
+  regression handing the owner's URL back is red on its own, without waiting
+  for a policy test to notice.
 
 - **The grants are yours.** Prisma 8 authors policies and not `GRANT`s; a role
   with policies and no grant gets a permission error rather than filtered rows.
@@ -401,22 +420,18 @@ isolated from any other.
 
 ### What a policy does not cover, it is your specs that do
 
-A policy is per table, and the example polices `Order` only. The other two are
-deliberate, and each has a reason the policy could not serve:
+A policy is per table, and the example polices `Order` and `OutboxMessage` —
+the relay pins each tenant it claims, as the repository pins its writes.
+`Customer` is left out deliberately: the `customers` procedures are unmarked,
+so a request under them forks the `anonymous` kind and has no principal to take
+a tenant from. The caller names the tenant on the input, and the adapter
+reaches it on an unpinned client with `where({ tenantId, customerId })`.
 
-- **`Customer`** — the `customers` procedures are unmarked, so a request under
-  them forks the `anonymous` kind and has no principal to take a tenant from.
-  The caller names the tenant on the input, and the adapter reaches it on an
-  unpinned client with `where({ tenantId, customerId })`.
-- **`OutboxMessage`** — the relay sweeps it **across** tenants, from outside any
-  unit, so there is no tenant to pin it to.
-
-Both are therefore **filtered by hand**, and what guards them is
+That table is therefore **filtered by hand**, and what guards it is
 `examples/order-infrastructure/src/prisma-customer-repository.spec.ts`'s "does
-not read another tenant's customer" and `src/prisma-outbox.spec.ts`'s "does not
-hand one tenant another's pending events" — **two specs, not the database**. A
-hand-filter bug on those tables is caught by a test run, not refused by
-PostgreSQL, and that is the difference the policy buys on `Order`.
+not read another tenant's customer" — **a spec, not the database**. A
+hand-filter bug there is caught by a test run, not refused by PostgreSQL, and
+that is the difference the policy buys on the other two.
 
 ## Not included, deliberately
 

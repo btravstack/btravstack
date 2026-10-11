@@ -54,8 +54,12 @@ describe("prismaDatabase", () => {
     // WHEN the scope opens, and nothing has used the client yet
     const ran = await Module.scoped(root, (ctx) => OkAsync([...ctx.get(db.port).ran()]));
 
-    // THEN the probe already ran: a fresh pool is verified before any unit meets it
-    expect(ran).toBeOkWith([{ sql: "SELECT 1", values: [], kind: "affectedCount", tx: undefined }]);
+    // THEN the probe already ran, then the row-security check: a fresh pool is
+    // verified before any unit meets it
+    expect(ran).toBeOkWith([
+      { sql: "SELECT 1", values: [], kind: "affectedCount", tx: undefined },
+      expect.objectContaining({ sql: expect.stringContaining("relrowsecurity"), kind: "row" }),
+    ]);
   });
 
   it("fails the scope with DatabaseUnreachable when the database does not answer", async ({
@@ -107,6 +111,61 @@ describe("prismaDatabase", () => {
     await Module.scoped(root, () => OkAsync(undefined));
 
     // THEN the pool was still closed, though the scope never acquired the client
+    expect(stub.last()?.closed()).toBe(1);
+  });
+
+  it("refuses to open as a role row security does not apply to", async ({ stub }) => {
+    // GIVEN a database answering that the connected role bypasses two policed tables
+    const db = prismaDatabase("OrderDatabase")({
+      client: (binding) => {
+        const client = stub.client(binding);
+        client.answerRows([
+          { role: "migrator", relation: 'orders."order"', bypass: "owner" },
+          { role: "migrator", relation: 'orders."outboxMessage"', bypass: "owner" },
+        ]);
+        return client;
+      },
+    });
+    const root = Module("Root")({
+      imports: [db],
+      provides: [Provider(Env)({ inject: {}, value: { DATABASE_URL } })],
+      exports: [db.port],
+    });
+
+    // WHEN the scope opens
+    const opened = await Module.scoped(root, () => OkAsync(undefined));
+
+    // THEN the boot fails naming the role, why it is exempt and every table it would bypass
+    expect(opened).toBeErrWith(
+      expect.objectContaining({
+        _tag: "RowSecurityBypassed",
+        database: "OrderDatabase",
+        role: "migrator",
+        bypass: "owner",
+        tables: ['orders."order"', 'orders."outboxMessage"'],
+      }),
+    );
+  });
+
+  it("closes the pool of a role row security does not apply to", async ({ stub }) => {
+    // GIVEN a database answering that the connected role is a superuser
+    const db = prismaDatabase("OrderDatabase")({
+      client: (binding) => {
+        const client = stub.client(binding);
+        client.answerRows([{ role: "postgres", relation: 'orders."order"', bypass: "superuser" }]);
+        return client;
+      },
+    });
+    const root = Module("Root")({
+      imports: [db],
+      provides: [Provider(Env)({ inject: {}, value: { DATABASE_URL } })],
+      exports: [db.port],
+    });
+
+    // WHEN the scope fails to open
+    await Module.scoped(root, () => OkAsync(undefined));
+
+    // THEN the pool was closed, though the scope never acquired the client
     expect(stub.last()?.closed()).toBe(1);
   });
 
@@ -204,12 +263,14 @@ describe("prismaDatabase", () => {
     // WHEN the contributed check is run
     await Module.scoped(root, (ctx) => runHealthChecks(ctx.get(HealthChecks)));
 
-    // THEN it went out as an `affectedCount` plan, after the one opening the
+    // THEN it went out as an `affectedCount` plan, after the two opening the
     // scope ran: the statement still runs, so a pool whose server is gone
     // cannot answer it, and nothing decodes a row — which is what keeps the
-    // probe off any codec the contract may not register
+    // probe off any codec the contract may not register. The row-security
+    // check is not repeated: it is the boot's, not the health check's
     expect(stub.last()?.ran()).toEqual([
       { sql: "SELECT 1", values: [], kind: "affectedCount", tx: undefined },
+      expect.objectContaining({ kind: "row" }),
       { sql: "SELECT 1", values: [], kind: "affectedCount", tx: undefined },
     ]);
   });

@@ -49,6 +49,9 @@ type Probeable = {
   readonly raw: {
     readonly sql: (strings: TemplateStringsArray) => {
       readonly affectedCount: () => { readonly build: () => unknown };
+      readonly returnsRow: (spec: Readonly<Record<string, string>>) => {
+        readonly build: () => unknown;
+      };
     };
   };
   readonly runtime: () => {
@@ -68,6 +71,44 @@ const probe = (db: PrismaLike): Promise<unknown> =>
   probeable(db)
     .runtime()
     .query(probeable(db).raw.sql`SELECT 1`.affectedCount().build());
+
+/** Why row-level security does not apply to the role, as {@link RowSecurityBypassed} names it. */
+export type RowSecurityBypass = "superuser" | "bypassrls" | "owner";
+
+type Exemption = {
+  readonly role: string;
+  readonly relation: string;
+  readonly bypass: RowSecurityBypass;
+};
+
+// One row per row-secured table the role is exempt from. `pg_has_role(…,
+// 'USAGE')` rather than `relowner = current_user`: a member inheriting the
+// owner's privileges bypasses the policy exactly as the owner does.
+const exemptions = (db: PrismaLike): Promise<readonly Exemption[]> =>
+  probeable(db)
+    .runtime()
+    .query(
+      probeable(db).raw
+        .sql`SELECT current_user::text AS role, c.oid::regclass::text AS relation, CASE WHEN r.rolsuper THEN 'superuser' WHEN r.rolbypassrls THEN 'bypassrls' ELSE 'owner' END AS bypass FROM pg_class c JOIN pg_roles r ON r.rolname = current_user WHERE c.relrowsecurity AND (r.rolsuper OR r.rolbypassrls OR (NOT c.relforcerowsecurity AND pg_has_role(current_user, c.relowner, 'USAGE'))) ORDER BY 2`
+        .returnsRow({ role: "pg/text@1", relation: "pg/text@1", bypass: "pg/text@1" })
+        .build(),
+    ) as Promise<readonly Exemption[]>;
+
+/**
+ * The role the client connected as is exempt from row-level security on a
+ * table that has it enabled: a superuser, a role with `BYPASSRLS`, or the
+ * owner of a table whose security is not `FORCE`d — which Prisma 8 cannot
+ * declare, so every table a migration created qualifies for the role that ran
+ * it. Every policy would admit every row, so the boot is refused rather than
+ * served without isolation. `tables` are the ones it would bypass; the URL is
+ * never carried.
+ */
+export class RowSecurityBypassed extends TaggedError("RowSecurityBypassed")<{
+  readonly database: string;
+  readonly role: string;
+  readonly bypass: RowSecurityBypass;
+  readonly tables: readonly string[];
+}> {}
 
 /**
  * The database did not answer when the scope opened. Carries the database's
@@ -124,6 +165,12 @@ export type PrismaOptions<C extends PrismaLike> = {
  * database that does not answer fails the boot with
  * {@link DatabaseUnreachable}.
  *
+ * **Row-level security has to apply to the role it connected as.** Where any
+ * table has it enabled, a role that is a superuser, has `BYPASSRLS`, or owns
+ * such a table without `FORCE` fails the boot with {@link RowSecurityBypassed}.
+ * A database with no row-secured table passes as it is. The health check does
+ * not repeat it: a role does not change under a running pool.
+ *
  * **The pool closes on every exit path**, including a boot that fails after
  * this provider ran — that is what makes it resourceful rather than a plain
  * value. `runtime().close()` ends the pool; Prisma dials again lazily on the
@@ -150,19 +197,34 @@ export const prismaDatabase =
 
     // Before the client is handed out, so no burst meets an unverified pool.
     // A failed probe closes the pool itself: `release` runs only for what was acquired.
-    const verified = (db: C): AsyncResult<C, DatabaseUnreachable> =>
+    const verified = (db: C): AsyncResult<C, DatabaseUnreachable | RowSecurityBypassed> =>
       fromPromise(
-        probe(db).then(
-          () => db,
+        probe(db)
+          .then(() => exemptions(db))
+          .then((exempt) =>
+            exempt[0] === undefined
+              ? db
+              : Promise.reject(
+                  new RowSecurityBypassed({
+                    database: name,
+                    role: exempt[0].role,
+                    bypass: exempt[0].bypass,
+                    tables: exempt.map(({ relation }) => relation),
+                  }),
+                ),
+          )
           // `finally`, so the probe's failure is what rejects even when closing fails too.
-          (cause: unknown) =>
+          .catch((cause: unknown) =>
             probeable(db)
               .runtime()
               .close()
               .finally(() => Promise.reject(cause)),
-        ),
-        (cause: unknown) => new DatabaseUnreachable({ database: name, cause }),
-      ) as AsyncResult<C, DatabaseUnreachable>;
+          ),
+        (cause: unknown) =>
+          cause instanceof RowSecurityBypassed
+            ? cause
+            : new DatabaseUnreachable({ database: name, cause }),
+      ) as AsyncResult<C, DatabaseUnreachable | RowSecurityBypassed>;
 
     // Pinned to `string` for THIS call alone. `Provider` reads a port's service
     // type through `PortInstance<string, infer S>`, and while `N` is still a
@@ -179,7 +241,10 @@ export const prismaDatabase =
     // `$allModels` wrapper ever did.
     const clientProvider = Provider(port)({
       inject: { settings: config.port, observers: Observers },
-      acquire: ({ settings, observers }): AsyncResult<C, DatabaseUnreachable> =>
+      acquire: ({
+        settings,
+        observers,
+      }): AsyncResult<C, DatabaseUnreachable | RowSecurityBypassed> =>
         // `Promise.resolve().then(...)` rather than `Promise.resolve(client(...))`:
         // the factory runs INSIDE the promise either way for the second form's
         // argument, which is evaluated first — measured, `postgres()` throws

@@ -7,7 +7,12 @@
 import { Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import type { Module, ServiceOf } from "@btravstack/di";
 
-import { prismaDatabase, type DatabaseUnreachable, type PrismaBinding } from "./prisma.js";
+import {
+  prismaDatabase,
+  type DatabaseUnreachable,
+  type PrismaBinding,
+  type RowSecurityBypassed,
+} from "./prisma.js";
 
 type Expect<T extends true> = T;
 type Exactly<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
@@ -54,9 +59,12 @@ type _Needs = Expect<Exactly<NeedsOf<typeof database>, EnvReading<"DATABASE_URL"
 // @ts-expect-error — `instrumented` no longer exists; observation is a set port.
 void prismaDatabase("OrderDatabase")({ client, instrumented: false });
 
-// 5. The error channel is the config's, unwrapped, and the one failure the
-//    starter mints: a database that did not answer when the scope opened.
-type _Error = Expect<Exactly<ErrorOf<typeof database>, ConfigInvalid | DatabaseUnreachable>>;
+// 5. The error channel is the config's, unwrapped, and the two failures the
+//    starter mints: a database that did not answer when the scope opened, and
+//    a role row-level security does not apply to.
+type _Error = Expect<
+  Exactly<ErrorOf<typeof database>, ConfigInvalid | DatabaseUnreachable | RowSecurityBypassed>
+>;
 
 // 6. A client with no pool to close is refused: `PrismaLike` is the one thing
 //    the starter needs of it.
