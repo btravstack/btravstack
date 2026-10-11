@@ -31,6 +31,7 @@
     "kysely": "catalog:",
     "typescript": "catalog:",
     "typescript-consumer": "catalog:",
+    "uuidv7": "catalog:",
     "vitest": "catalog:"
   }
 }

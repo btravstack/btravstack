@@ -225,12 +225,81 @@ describe("createUnitRegistry", () => {
       return Ok("done");
     });
 
-    // WHEN
+    // WHEN, read before either settles: a settled unit is aborted anyway
     registry.abortAll();
+    const seen = { abortedA, abortedB };
     await Promise.all([runA, runB]);
     // THEN
-    expect(abortedA).toBe(true);
-    expect(abortedB).toBe(true);
+    expect(seen).toEqual({ abortedA: true, abortedB: true });
+  });
+
+  it("aborts a unit's signal once its work settles, so work outliving it is told to stop", async () => {
+    // GIVEN a unit whose work hands its signal out
+    const registry = createUnitRegistry();
+    let handed: AbortSignal | undefined;
+
+    // WHEN its work settles
+    await registry.run(meta, (signal) => {
+      handed = signal;
+      return OkAsync();
+    });
+
+    // THEN the signal is aborted, with the settle reason rather than the kernel's
+    expect(handed).toEqual(
+      expect.objectContaining({
+        aborted: true,
+        reason: expect.objectContaining({ name: "AbortError", message: "The unit has settled" }),
+      }),
+    );
+  });
+
+  it("keeps the deadline's reason on a unit aborted before it settled", async () => {
+    // GIVEN a unit that settles only once aborted
+    const registry = createUnitRegistry();
+    let handed: AbortSignal | undefined;
+    const running = registry.run(meta, (signal) => {
+      handed = signal;
+      return new Promise<Result<void, never>>((settle) => {
+        signal.addEventListener("abort", () => settle(Ok()), { once: true });
+      });
+    });
+
+    // WHEN the deadline aborts it, and it settles
+    registry.abortAll();
+    await running;
+
+    // THEN the reason is still the kernel's own
+    expect(handed?.reason).toEqual(
+      expect.objectContaining({ message: "This operation was aborted" }),
+    );
+  });
+
+  it("stays busy for a unit opened by a settled unit's abort listener", async () => {
+    // GIVEN a unit whose signal listener opens another unit, and idleness awaited
+    const registry = createUnitRegistry();
+    let release = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const first = registry.run(meta, async (signal) => {
+      signal.addEventListener("abort", () => {
+        void registry.run(meta, () => new Promise<Result<void, never>>(() => {}));
+      });
+      await held;
+      return Ok();
+    });
+    let idle = false;
+    void registry.awaitIdle().then(() => {
+      idle = true;
+    });
+
+    // WHEN the first unit settles
+    release();
+    await first;
+    await Promise.resolve();
+
+    // THEN the unit its listener opened keeps the registry busy
+    expect({ idle, inFlight: registry.inFlight() }).toEqual({ idle: false, inFlight: 1 });
   });
 
   it("awaitIdle resolves immediately when nothing is in flight", async () => {

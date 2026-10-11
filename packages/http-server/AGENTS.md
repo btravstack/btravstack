@@ -694,6 +694,18 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   minted id outright),
   so the two contracts a runtime owes are structural here rather than left to
   a caller's care.
+
+  **The flip side is that a disconnect settles the unit while `handle` is
+  still running** — `handle` is dispatched with `void`, never awaited by the
+  unit. The kernel aborts every unit's signal once it settles, so the
+  handler's third parameter fires with `"The unit has settled"` the moment a
+  client walks away, and an outbound call that honours it stops. That abort
+  is the kernel's, not this package's: no `'close'` listener here aborts
+  anything, and an ingress whose upstream (response) timeout closes the
+  connection cancels work through the very same path, which is why there is no per-request deadline
+  option (`docs/explanation/deferred-decisions.md`). `http-runtime.spec.ts` →
+  _"aborts the handler's signal when its client disconnects"_.
+
 - **The fork is the answerer's, for a request it handles — not the kernel's,
   and it is the KIND that decides which module.**
   `http()`/`httpServer()`/`HttpModule` all take

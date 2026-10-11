@@ -242,6 +242,37 @@ describe("httpRuntime", () => {
     expect(response.status).toBe(404);
   });
 
+  it("aborts the handler's signal when its client disconnects", async ({ serve }) => {
+    // GIVEN a handler that has written its head and then works on until told
+    // to stop
+    let reason: unknown;
+    const { origin } = await serve(
+      (_request, response, signal) =>
+        new Promise<void>((done) => {
+          response.writeHead(200);
+          response.write("partial");
+          signal.addEventListener(
+            "abort",
+            () => {
+              reason = signal.reason;
+              done();
+            },
+            { once: true },
+          );
+        }),
+    );
+
+    // WHEN the caller walks away mid-response
+    const aborting = new AbortController();
+    await fetch(origin, { signal: aborting.signal });
+    aborting.abort();
+    await vi.waitUntil(() => reason !== undefined);
+
+    // THEN the work outliving its unit was told to stop, by the unit's settle
+    // rather than by a drain nobody started
+    expect(reason).toEqual(expect.objectContaining({ message: "The unit has settled" }));
+  });
+
   it("answers 500 when the handler fails", async ({ serve }) => {
     // GIVEN a handler whose promise rejects
     const { origin } = await serve(() => Promise.reject(new Error("boom")));

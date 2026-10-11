@@ -8,7 +8,11 @@ import { OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrow
  * record of **data about this unit**, and never a service.
  *
  * `signal` is the same `AbortSignal` the work callback receives — aborted at
- * the drain deadline, or at once on a path that skips the drain. It is here
+ * the drain deadline, at once on a path that skips the drain, and once the
+ * unit has settled, so work that outlives its unit — an HTTP handler whose
+ * client disconnected — is told to stop. The settle abort's `reason` is an
+ * `AbortError` `DOMException` whose message is `"The unit has settled"`; the
+ * kernel's own aborts keep the default reason. It is here
  * because the callback is not always where the work is: a middleware-shaped
  * runtime opens the unit around a call whose arguments it does not own. A
  * transport's own cancellation is a different clock, not this one.
@@ -124,6 +128,10 @@ export const createUnitRegistry = (): UnitRegistry => {
             // exactly once, here.
             open.delete(controller);
             closedCount += 1;
+            // After the fork's teardown, so an `onStop` reading `signal.aborted`
+            // sees only the kernel's own aborts; before `settleIfIdle`, so a
+            // unit a listener opens keeps the registry from reading idle.
+            controller.abort(new DOMException("The unit has settled", "AbortError"));
             settleIfIdle();
           }
         }),

@@ -21,7 +21,7 @@
     "examples/entity-billing-domain": {
       "entry": ["src/emit-guards.ts"],
       "project": ["src/**/*.ts"],
-      "ignoreDependencies": ["@orpc/zod", "kysely"]
+      "ignoreDependencies": ["@orpc/zod", "kysely", "uuidv7"]
     },
     "examples/order-amqp-worker": {
       "ignoreDependencies": ["@amqp-contract/contract", "zod"]

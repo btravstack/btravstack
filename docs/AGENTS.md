@@ -72,8 +72,8 @@ the old repository.
   relative path (`../../vocabulary.js`) — the real-artifact rule below — where
   a page says it follows the billing example. `@orpc/zod` and `kysely` are
   devDependencies there for `how-to/http-contract.md`,
-  `examples/billing-api.md` and `how-to/persist-relationally.md`, ignored in
-  `knip.json`.
+  `examples/billing-api.md` and `how-to/persist-relationally.md`, and `uuidv7`
+  is one for the guide's landing page, all ignored in `knip.json`.
 
   Two spellings exist only because this guide was written for another site,
   and the extractor reads both rather than the pages being rewritten. A fence
