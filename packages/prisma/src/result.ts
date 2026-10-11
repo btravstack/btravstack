@@ -36,8 +36,51 @@ export class NotAuthorized extends TaggedError("NotAuthorized")<{
   readonly table: string | undefined;
 }> {}
 
+/**
+ * A SQLSTATE the application raises on purpose — a trigger or a function
+ * refusing a write the schema cannot express with `RAISE EXCEPTION … USING
+ * ERRCODE = '…'` — modeled because the caller listed it in `raises`.
+ *
+ * `message` is the one the `RAISE` wrote. Raise in a class of your own rather
+ * than in `XX`, which PostgreSQL reserves for its internal errors.
+ */
+export class RaisedException<S extends string = string> extends TaggedError("RaisedException")<{
+  readonly sqlState: S;
+  readonly constraint: string | undefined;
+  readonly table: string | undefined;
+}> {
+  constructor({
+    message,
+    ...fields
+  }: {
+    readonly sqlState: S;
+    readonly message: string;
+    readonly constraint: string | undefined;
+    readonly table: string | undefined;
+  }) {
+    super(fields);
+    this.message = message;
+  }
+}
+
 /** What {@link qualify} models. Anything else is a defect. */
 export type SqlError = UniqueConstraintViolation | ForeignKeyViolation | NotAuthorized;
+
+/**
+ * One {@link RaisedException} per SQLSTATE listed, and nothing when none is,
+ * so a caller that lists no code keeps the three arms it already matches.
+ */
+export type Raised<S extends string> = S extends string ? RaisedException<S> : never;
+
+/** Options of {@link tryQuery} and {@link qualify}. */
+export type QualifyOptions<S extends string> = {
+  /**
+   * The SQLSTATEs the application raises on purpose and wants as a
+   * {@link RaisedException} rather than a defect. The three SQLSTATEs
+   * {@link SqlError} already models keep their own arms.
+   */
+  readonly raises?: readonly S[];
+};
 
 /**
  * What a Prisma 8 `SqlQueryError` carries, as a structural type.
@@ -49,6 +92,7 @@ export type SqlError = UniqueConstraintViolation | ForeignKeyViolation | NotAuth
  */
 type SqlQueryErrorLike = {
   readonly sqlState?: string;
+  readonly message: string;
   readonly constraint?: string;
   readonly table?: string;
 };
@@ -59,11 +103,16 @@ type SqlQueryErrorLike = {
  * The three arms are the ones an application triages. Everything else — a
  * syntax error, a dead connection, a deadlock — is infrastructure a caller
  * cannot act on differently, and belongs on the defect channel where an
- * unexpected failure already goes.
+ * unexpected failure already goes — unless the caller listed its SQLSTATE in
+ * `raises`.
  */
-export const qualify = <D>(cause: unknown, defect: (cause: unknown) => D): SqlError | D => {
-  const error = cause as SqlQueryErrorLike | null;
-  switch (error?.sqlState) {
+export const qualify = <D, const S extends string = never>(
+  cause: unknown,
+  defect: (cause: unknown) => D,
+  options?: QualifyOptions<S>,
+): SqlError | Raised<S> | D => {
+  const error = (cause ?? {}) as SqlQueryErrorLike;
+  switch (error.sqlState) {
     case "23505":
       return new UniqueConstraintViolation({
         constraint: error.constraint,
@@ -73,8 +122,17 @@ export const qualify = <D>(cause: unknown, defect: (cause: unknown) => D): SqlEr
       return new ForeignKeyViolation({ constraint: error.constraint, table: error.table });
     case "42501":
       return new NotAuthorized({ table: error.table });
-    default:
-      return defect(cause);
+    default: {
+      const raised = options?.raises?.find((code) => code === error.sqlState);
+      return raised === undefined
+        ? defect(cause)
+        : (new RaisedException({
+            sqlState: raised,
+            message: error.message,
+            constraint: error.constraint,
+            table: error.table,
+          }) as Raised<S>);
+    }
   }
 };
 
@@ -97,12 +155,26 @@ export const qualify = <D>(cause: unknown, defect: (cause: unknown) => D): SqlEr
  *         .with(P.tag("NotAuthorized"), (refused) => defect(refused)),
  *   );
  * ```
+ *
+ * A trigger's own refusal arrives as a {@link RaisedException} once its
+ * SQLSTATE is listed:
+ *
+ * ```ts
+ * tryQuery(() => db.orm.orders.Order.create(row), { raises: ["OR001"] });
+ * ```
  */
-export const tryQuery = <T>(run: () => PromiseLike<T>): AsyncResult<T, SqlError> =>
-  fromPromise(
+export const tryQuery = <T, const S extends string = never>(
+  run: () => PromiseLike<T>,
+  options?: QualifyOptions<S>,
+): AsyncResult<T, SqlError | Raised<S>> => {
+  const qualified = fromPromise(
     // `Promise.resolve().then(run)` rather than `run()`: a thunk that throws
     // SYNCHRONOUSLY would otherwise escape past `fromPromise` as a real throw,
     // which is exactly the channel this function exists to close.
     Promise.resolve().then(run),
-    qualify,
+    (cause, defect) => qualify<ReturnType<typeof defect>, string>(cause, defect, options),
   );
+  // Qualified over `string` and narrowed back: `fromPromise`'s guard and its
+  // `Exclude<…, Defect>` cannot see through `Raised<S>` while `S` is generic.
+  return qualified as AsyncResult<T, SqlError | Raised<S>>;
+};

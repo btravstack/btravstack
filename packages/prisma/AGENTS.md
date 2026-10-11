@@ -41,8 +41,9 @@ despite living on that page.
   refused.
 
 - The port is a cast rather than a class expression, and the provider is
-  resourceful, failing only with `DatabaseUnreachable` when the probe it runs
-  while opening goes unanswered: the comments and TSDoc in `src/prisma.ts` say
+  resourceful, failing with `DatabaseUnreachable` when the probe it runs while
+  opening goes unanswered and with `RowSecurityBypassed` when row security
+  would not apply to the role: the comments and TSDoc in `src/prisma.ts` say
   why.
 
 **Nothing here imports `@prisma/orm-postgres`, and it is still a peer.** Every
@@ -68,9 +69,7 @@ constraint.
 
 **The health probe is `SELECT 1` terminated by `affectedCount().build()`, run
 through `runtime().query`.** Three things about that are deliberate:
-`affectedCount` decodes no row, so the probe needs no codec the application's
-contract may not have registered (`pg/text@1` and `pg/int4@1` are only there if
-the contract uses them); the statement still RUNS, so a pooled client whose
+`affectedCount` decodes no row, so the probe depends on no codec at all; the statement still RUNS, so a pooled client whose
 server is gone cannot answer it, which `$connect()`-style probes could not
 distinguish; and it goes to `query` rather than `execute` because
 `affectedCount()`'s builder answers `build(): SqlQueryPlan<AffectedCount>` — a
@@ -92,6 +91,24 @@ on Prisma's default pool of ten committed none before the probe and all after.
   arrow; a starter timeout would duplicate it.
 - **A failed probe closes the pool itself**: `release` runs only for what was
   acquired.
+- **It refuses a role row security does not apply to** (issue #498), with
+  `RowSecurityBypassed`: after the probe, one statement lists every
+  row-secured table the role is exempt from — as a superuser, with
+  `BYPASSRLS`, or as an owner of a table that is not `FORCE`d, ownership read
+  through `pg_has_role(…, 'USAGE')` so a member inheriting the owner's
+  privileges counts too. It lives in the ROOT entry rather than in `/rls`
+  because the boot is `prismaDatabase`'s: `/rls` composes nothing that runs at
+  boot, and an application on the owner's URL is exactly one that may never
+  have reached for `tenantPinned`. A database with no row-secured table
+  answers no row, so the check costs those applications one statement and
+  nothing else. **There is no opt-out**, because nothing in this repository
+  needs one: the gate and `pnpm dev` already boot as `orders_app`, and a
+  deployment that wants the owner's privileges at runtime has no use for a
+  policy. **The health check does not carry it**: `/healthz` reports a
+  dependency's reachability, and a role is not something that degrades under a
+  running pool. It decodes three `pg/text@1` columns, a codec the Postgres
+  target registers whatever the contract declares — the registry is built
+  from the target, adapter and extensions, not from the contract's columns.
 - **It does not catch a marker mismatch.** Prisma rc.11 warns once and carries
   on; `prisma db verify` is the deploy-time check.
 - **A middleware that answers an unannotated plan would answer the probe too**,
@@ -115,6 +132,17 @@ v7's `P2002` could not say which unique index fired. Three arms —
 `UniqueConstraintViolation`, `ForeignKeyViolation`, `NotAuthorized` — and
 everything else is a defect, because a syntax error, a dead connection or a
 deadlock is infrastructure a caller cannot act on differently.
+
+**A code the application raises on purpose is the one exception, and the
+caller opts in** (issue #489): `raises: ["OR001"]` on `tryQuery` or
+`tenantPinned` models it as `RaisedException<"OR001">`. Opt-in rather than a
+fourth default arm because an unlisted code is still infrastructure — a
+`P0001` from someone's forgotten debug `RAISE` is not a refusal to triage — and
+because a default arm would break every exhaustive `mapErrCases` in every
+consumer. `Raised<S>` distributes, so `never` (nothing listed) adds nothing —
+`result.test-d.ts` pins both halves — and each listed code is its own arm.
+The three modeled SQLSTATEs win over `raises`. `message` is set after
+`super`, because `TaggedError` reserves it as a payload key.
 
 **`tryQuery` takes a THUNK.** An `AsyncResult` is eager, so a promise built at
 the call site has already started before the Result exists — the hazard
@@ -315,3 +343,26 @@ inside it is the caller's.
 
 Migrations and a readiness contribution are not here either: `src/prisma.ts`'s
 TSDoc and the root's **Health checks** section say why.
+
+**No pool or timeout options** (issue #497). Each one is already expressible
+below the starter, and a second spelling would have to agree with the first:
+the timeouts are URL query parameters the `pg` driver sends at startup
+(`pg-connection-string` copies every parameter, `Client.getStartupConf` sends
+the three timeouts) or an `ALTER ROLE … SET`, and the pool size is a `pg.Pool`
+the application builds in its `client` arrow and hands Prisma as `pg`. That
+pool still ends with the scope — `release` is `runtime().close()`, which is the
+driver's `pool.end()` whoever built the pool, unlike Prisma's own `db.close()`.
+If a release ever switches to `db.close()`, a handed-in pool leaks.
+
+**No `CONCURRENTLY` step** (issue #506). The runner wraps a migration in one
+transaction; a non-transactional step is Prisma's to add. The documented
+out-of-band procedure leans on two measured runner facts — the postcheck is
+tested before the precheck and skips a pre-satisfied operation, and
+`createIndex`'s check is `to_regclass(…) IS NOT NULL`, by name only — which is
+why it insists on `pg_index.indisvalid`.
+
+**No read-only `tenantPinned`** (issue #499). Prisma 8's `transaction` takes
+no options at all, so there is no `READ ONLY` to open, and what is left — the
+three `SqlError` arms folded into the defect channel — is one `mapErrCases` an
+adapter writes once, as `examples/order-infrastructure`'s `pinnedOrDefect`
+does. A variant here would be that line under a second name.

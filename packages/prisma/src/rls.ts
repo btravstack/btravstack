@@ -1,9 +1,12 @@
 import type { AsyncResult } from "unthrown";
 
-import { tryQuery, type SqlError } from "./result.js";
+import { tryQuery, type QualifyOptions, type Raised, type SqlError } from "./result.js";
 
-/** Options of {@link tenantPinned}. */
-export type TenantPinnedOptions = {
+/**
+ * Options of {@link tenantPinned}: `raises`, as {@link tryQuery} takes it,
+ * and the setting the pin writes.
+ */
+export type TenantPinnedOptions<S extends string = never> = QualifyOptions<S> & {
   /**
    * The PostgreSQL run-time setting the policy reads. Defaults to
    * `app.tenant_id`, matching `current_setting('app.tenant_id', true)`.
@@ -57,7 +60,8 @@ type Queryable = { readonly query: (plan: never) => PromiseLike<unknown> };
  * the first time it does not; it is the shape a middleware would take, and it
  * is why there is no middleware here.
  *
- * It answers an `AsyncResult`, qualified by {@link tryQuery}: the pin and the
+ * It answers an `AsyncResult`, qualified by {@link tryQuery} — with
+ * `raises` as it takes it: the pin and the
  * work run on one connection and fail on one channel, so a caller never wraps
  * this in a second combinator. `work` still hands back a `PromiseLike`, because
  * that is what Prisma's own transaction callback is.
@@ -72,12 +76,12 @@ type Queryable = { readonly query: (plan: never) => PromiseLike<unknown> };
  * const orders = await tenantPinned(db, tenant, (tx) => tx.orm.orders.Order.all());
  * ```
  */
-export const tenantPinned = <Tx extends Queryable, R>(
+export const tenantPinned = <Tx extends Queryable, R, const S extends string = never>(
   db: Pinnable<Tx>,
   tenant: string,
   work: (tx: Tx) => PromiseLike<R>,
-  options?: TenantPinnedOptions,
-): AsyncResult<R, SqlError> => {
+  options?: TenantPinnedOptions<S>,
+): AsyncResult<R, SqlError | Raised<S>> => {
   const setting = options?.setting ?? "app.tenant_id";
   // Built off the client, run on the transaction: `db.raw` is where the tagged
   // template lives, and `tx.query` is what puts the statement on the
@@ -89,12 +93,14 @@ export const tenantPinned = <Tx extends Queryable, R>(
       pinned: "pg/text@1",
     })
     .build();
-  return tryQuery(() =>
-    db.transaction(async (tx) => {
-      await (tx as unknown as { readonly query: (plan: unknown) => PromiseLike<unknown> }).query(
-        plan,
-      );
-      return work(tx);
-    }),
+  return tryQuery(
+    () =>
+      db.transaction(async (tx) => {
+        await (tx as unknown as { readonly query: (plan: unknown) => PromiseLike<unknown> }).query(
+          plan,
+        );
+        return work(tx);
+      }),
+    options,
   );
 };

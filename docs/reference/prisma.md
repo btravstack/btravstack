@@ -56,6 +56,8 @@ export const PersistenceModule = Module("Persistence")({
 | `PrismaOptions<C>`                 | `{ client: (binding: PrismaBinding) => C }`.                                                                        |
 | `SqlMiddlewareLike`                | The structural shape of a Prisma 8 `SqlMiddleware`, as the binding carries it.                                      |
 | `DatabaseUnreachable`              | The startup error when the database does not answer as the scope opens: `{ database, cause }`.                      |
+| `RowSecurityBypassed`              | The startup error when row security would not apply to the role: `{ database, role, bypass, tables }`.              |
+| `RowSecurityBypass`                | `"superuser" \| "bypassrls" \| "owner"` — why it would not, as `bypass` carries it.                                 |
 
 What the module needs is `Env`; what it exports is your port and
 `HealthChecks`. A composition root that re-exports it whole passes the second
@@ -75,7 +77,7 @@ query.
 
 ## Errors
 
-One of this package's own, at startup. Opening the scope runs the health
+Two of this package's own, at startup. Opening the scope runs the health
 check's probe before the client is handed out, so a database that does not
 answer fails the boot with **`DatabaseUnreachable`** — `database` is the name
 you gave, `cause` the driver's own failure, and the URL is never in it, since
@@ -85,6 +87,18 @@ it holds credentials. The wait is bounded by your pool's
 [`@btravstack/cache`](/reference/cache)'s Redis adapter and the AMQP and
 Temporal clients: a dependency the process cannot reach fails the boot rather
 than its first request.
+
+Then, where any table has row-level security enabled, it asks whether that
+security applies to the role it connected as, and fails the boot with
+**`RowSecurityBypassed`** when it does not: the role is a superuser, has
+`BYPASSRLS`, or owns — directly or through a role whose privileges it
+inherits — a row-secured table that is not `FORCE`d. `role` is the role,
+`bypass` which of the three, and `tables` every table it would bypass. Every
+policy would admit every row for such a role, so serving would look exactly
+like working isolation; _Two things are still the deployment's_, below, is
+the split that avoids it. A database with no row-secured table is asked
+nothing more, and the check is not repeated by the health member: it is a fact
+about the deployment's credentials, settled once.
 
 A contract marker that does not match is **not** one of them. Prisma 8 checks
 the marker on that first statement and, on a mismatch, logs a warning once and
@@ -195,6 +209,66 @@ takes that first use off the request path, whatever the pool size; a fresh
 scope serving twenty-five concurrent transactions on Prisma's default pool of
 ten is pinned by `examples/order-infrastructure`'s `database.spec.ts`.
 
+### Pool size and timeouts are the URL's, or your pool's
+
+The starter takes no pool or timeout options, because each is already
+expressible below it and a second spelling would have to agree with the first.
+
+**Statement, lock and idle-in-transaction timeouts ride the URL.** The driver
+copies every query parameter of `DATABASE_URL` into its connection settings
+and sends `statement_timeout`, `lock_timeout` and
+`idle_in_transaction_session_timeout` as startup parameters of every session
+the pool opens:
+
+```text
+postgresql://orders_app:…@db:5432/orders?statement_timeout=5000&lock_timeout=2000&idle_in_transaction_session_timeout=10000
+```
+
+Each value is read with `parseInt`, so it is **milliseconds as a bare
+integer** — `5s` would arrive as `5`. Anything else PostgreSQL accepts at
+startup goes through libpq's `options` (`?options=-c%20work_mem%3D64MB`), and a
+setting that belongs to the role rather than the deployment is
+`ALTER ROLE orders_app SET statement_timeout = '5s'`, which then needs no URL
+at all. A statement timeout cancels with SQLSTATE `57014` and a lock timeout
+with `55P03`, neither of which `tryQuery` models, so both reach the defect
+channel; an idle-in-transaction timeout ends the session itself.
+
+**The pool's size is a pool you build.** Prisma 8 forwards only
+`poolOptions.connectionTimeoutMillis` and `idleTimeoutMillis`; for `max`, or
+anything else `pg.Pool` takes, construct one in the `client` arrow from the URL
+the starter bound and pass it as `pg` — `Pool` from the `pg` package, which you
+install beside `@prisma/orm-postgres`:
+
+<!-- doctest: isolate
+import { prismaDatabase, type PrismaBinding } from "@btravstack/prisma";
+
+declare class Pool {
+  constructor(config: { readonly connectionString: string; readonly max: number; readonly connectionTimeoutMillis: number });
+}
+declare const postgres: (options: Pick<PrismaBinding, "middleware"> & { readonly contractJson: unknown; readonly pg: Pool }) => {
+  readonly raw: { readonly sql: unknown };
+  readonly runtime: unknown;
+};
+declare const contractJson: unknown;
+-->
+
+```ts
+const database = prismaDatabase("OrderDatabase")({
+  client: ({ url, middleware }) =>
+    postgres({
+      contractJson,
+      middleware,
+      pg: new Pool({ connectionString: url, max: 20, connectionTimeoutMillis: 5_000 }),
+    }),
+});
+```
+
+**The starter still ends that pool.** Prisma's own `db.close()` leaves a pool
+it did not construct alone, but the starter's `release` is
+`runtime().close()`, which closes the driver, and the driver's `close()` is
+`pool.end()` for a pool it was handed as much as for one it built. So the
+pool's lifetime stays the scope's either way; do not end it yourself.
+
 ## `Result`s, on the `@btravstack/prisma/result` subpath
 
 Prisma 8 throws, with a **structured** error: `SqlQueryError` carrying a
@@ -202,18 +276,64 @@ Prisma 8 throws, with a **structured** error: `SqlQueryError` carrying a
 `sqlState` is PostgreSQL's own SQLSTATE rather than a vendor code, which is
 what makes the mapping portable.
 
-| Export                      | What it is                                                                                      |
-| --------------------------- | ----------------------------------------------------------------------------------------------- |
-| `tryQuery(() => query)`     | Runs a query and answers `AsyncResult<T, SqlError>` instead of rejecting. Takes a **thunk**.    |
-| `qualify(cause, defect)`    | SQLSTATE → a tagged error, or the caller's defect for anything unmodeled. What `tryQuery` uses. |
-| `UniqueConstraintViolation` | SQLSTATE `23505`, carrying `constraint` and `table`.                                            |
-| `ForeignKeyViolation`       | SQLSTATE `23503`.                                                                               |
-| `NotAuthorized`             | SQLSTATE `42501` — including a write a row-security policy's `WITH CHECK` refused.              |
-| `SqlError`                  | The union of the three.                                                                         |
+| Export                       | What it is                                                                                      |
+| ---------------------------- | ----------------------------------------------------------------------------------------------- |
+| `tryQuery(() => query, o?)`  | Runs a query and answers `AsyncResult<T, SqlError>` instead of rejecting. Takes a **thunk**.    |
+| `qualify(cause, defect, o?)` | SQLSTATE → a tagged error, or the caller's defect for anything unmodeled. What `tryQuery` uses. |
+| `UniqueConstraintViolation`  | SQLSTATE `23505`, carrying `constraint` and `table`.                                            |
+| `ForeignKeyViolation`        | SQLSTATE `23503`.                                                                               |
+| `NotAuthorized`              | SQLSTATE `42501` — including a write a row-security policy's `WITH CHECK` refused.              |
+| `SqlError`                   | The union of the three.                                                                         |
+| `RaisedException<S>`         | A SQLSTATE listed in `raises`: `{ sqlState: S, message, constraint, table }`.                   |
+| `Raised<S>`                  | One `RaisedException` per listed code, and `never` when none is.                                |
+| `QualifyOptions<S>`          | `{ raises?: readonly S[] }` — the option both functions take.                                   |
 
-Three arms and no more: a syntax error, a dead connection or a deadlock is
+Three arms by default: a syntax error, a dead connection or a deadlock is
 infrastructure a caller cannot act on differently, and belongs on the defect
 channel where an unexpected failure already goes.
+
+**A refusal the application raises on purpose is the exception, and it is
+opt-in.** A trigger guarding what the schema cannot express — `RAISE EXCEPTION
+'…' USING ERRCODE = 'OR001'` — refuses with a code of the application's own,
+and the adapter is the one place that can name it. List it in `raises` and it
+arrives as `RaisedException<"OR001">`, carrying the code, the message the
+`RAISE` wrote, and the constraint and table where the database named them:
+
+<!-- doctest: isolate
+import { tryQuery } from "@btravstack/prisma/result";
+import { P } from "unthrown";
+
+declare const db: { readonly orm: { readonly orders: { readonly Order: { readonly create: (row: { readonly orderId: string; readonly quantity: number }) => Promise<unknown> } } } };
+declare const row: { readonly orderId: string; readonly quantity: number };
+declare const frozen: () => Error;
+-->
+
+```ts
+const saved = tryQuery(() => db.orm.orders.Order.create(row), {
+  raises: ["OR001"],
+}).mapErrCases((matcher, defect) =>
+  matcher
+    .with(P.tag("RaisedException"), () => frozen())
+    .with(
+      P.tag("UniqueConstraintViolation"),
+      P.tag("ForeignKeyViolation"),
+      P.tag("NotAuthorized"),
+      (cause) => defect(cause),
+    ),
+);
+```
+
+Listing nothing adds nothing — the channel stays the three arms, so every
+exhaustive match written without the option compiles unchanged — and each
+listed code is an arm of its own, so a match that forgets one does not compile.
+An unlisted code is still a defect, and a listed code the three arms already
+model keeps its own arm. `tenantPinned` takes the same option.
+
+**Raise in a class of your own, not in `XX`.** PostgreSQL reserves `XX` for
+its internal errors (`XX000`, `XX001` data corruption), and `P0001` is what a
+bare `RAISE EXCEPTION` uses, so neither says "this guard". Any class the
+[SQLSTATE table](https://www.postgresql.org/docs/current/errcodes-appendix.html)
+does not use — five characters of digits and upper-case letters — is yours.
 
 **`tryQuery` takes a thunk, not a promise.** An `AsyncResult` is eager, so a
 promise built at the call site has already started before the Result exists —
@@ -323,10 +443,10 @@ import { tenantPinned } from "@btravstack/prisma/rls";
 const orders = await tenantPinned(db, tenant, (tx) => tx.orm.orders.Order.all());
 ```
 
-| Export                               | What it is                                                                               |
-| ------------------------------------ | ---------------------------------------------------------------------------------------- |
-| `tenantPinned(db, tenant, work, o?)` | Runs `work` in a transaction pinned to `tenant`. Answers whatever `work` answers.        |
-| `TenantPinnedOptions`                | `{ setting?: string }` — the run-time setting the policy reads, default `app.tenant_id`. |
+| Export                               | What it is                                                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `tenantPinned(db, tenant, work, o?)` | Runs `work` in a transaction pinned to `tenant`. Answers whatever `work` answers.                                               |
+| `TenantPinnedOptions<S>`             | `{ setting?: string }` — the run-time setting the policy reads, default `app.tenant_id` — and `raises`, as `tryQuery` takes it. |
 
 **It opens a transaction because `set_config(…, true)` is transaction-local**,
 and that is the whole design rather than an implementation detail. A
@@ -367,7 +487,11 @@ isolated from any other.
   emits `ENABLE ROW LEVEL SECURITY` and has no way to express `FORCE`, which is
   what would make a policy apply to the owner — and the owner is the role that
   ran the migrations. A superuser is exempt whatever a policy says. So a
-  deployment connects as a role that is neither:
+  deployment runs with **two URLs**: the **migration URL**, the owner's, which
+  only `prisma db migrate` reads, before the process starts; and the **runtime
+  URL** in `DATABASE_URL`, a role that is neither, with explicit grants.
+  `prismaDatabase` refuses to boot on the first — a managed `postgres` user, or
+  the migration role reused at runtime — with `RowSecurityBypassed`:
 
   ```sql
   CREATE ROLE orders_app NOSUPERUSER NOBYPASSRLS LOGIN PASSWORD '…';
@@ -388,9 +512,10 @@ isolated from any other.
   `internal/test-infra/src/containers.ts`'s `provisionApplicationRole` runs that
   DDL for this repository's own gate, and
   `examples/order-infrastructure/src/rls.spec.ts` carries "is neither a
-  superuser nor exempt from row security" as a standing test — a regression
-  handing the owner's URL back is red on its own, without waiting for a policy
-  test to notice.
+  superuser, nor exempt from row security, nor an owner of a policed table" as
+  a standing test, beside `database.spec.ts`'s boot as the owner refused — a
+  regression handing the owner's URL back is red on its own, without waiting
+  for a policy test to notice.
 
 - **The grants are yours.** Prisma 8 authors policies and not `GRANT`s; a role
   with policies and no grant gets a permission error rather than filtered rows.
@@ -401,22 +526,18 @@ isolated from any other.
 
 ### What a policy does not cover, it is your specs that do
 
-A policy is per table, and the example polices `Order` only. The other two are
-deliberate, and each has a reason the policy could not serve:
+A policy is per table, and the example polices `Order` and `OutboxMessage` —
+the relay pins each tenant it claims, as the repository pins its writes.
+`Customer` is left out deliberately: the `customers` procedures are unmarked,
+so a request under them forks the `anonymous` kind and has no principal to take
+a tenant from. The caller names the tenant on the input, and the adapter
+reaches it on an unpinned client with `where({ tenantId, customerId })`.
 
-- **`Customer`** — the `customers` procedures are unmarked, so a request under
-  them forks the `anonymous` kind and has no principal to take a tenant from.
-  The caller names the tenant on the input, and the adapter reaches it on an
-  unpinned client with `where({ tenantId, customerId })`.
-- **`OutboxMessage`** — the relay sweeps it **across** tenants, from outside any
-  unit, so there is no tenant to pin it to.
-
-Both are therefore **filtered by hand**, and what guards them is
+That table is therefore **filtered by hand**, and what guards it is
 `examples/order-infrastructure/src/prisma-customer-repository.spec.ts`'s "does
-not read another tenant's customer" and `src/prisma-outbox.spec.ts`'s "does not
-hand one tenant another's pending events" — **two specs, not the database**. A
-hand-filter bug on those tables is caught by a test run, not refused by
-PostgreSQL, and that is the difference the policy buys on `Order`.
+not read another tenant's customer" — **a spec, not the database**. A
+hand-filter bug there is caught by a test run, not refused by PostgreSQL, and
+that is the difference the policy buys on the other two.
 
 ## Not included, deliberately
 
@@ -433,6 +554,33 @@ from a built artifact: advancing it in a deploy would have a release writing a
 repository file. Leave it behind on the authoring side, though, and the next
 plan re-includes the migration you already shipped — the example README carries
 the worked sequence.
+
+**A non-transactional migration step.** `prisma db migrate` runs a whole
+migration inside one `BEGIN … COMMIT`, and the planner never emits
+`CONCURRENTLY` — so `CREATE INDEX CONCURRENTLY` cannot be a step of it
+(`25001`), and a planned `createIndex` on a populated table blocks writes for
+the whole build. A step that runs outside the transaction is Prisma's runner to
+add, upstream; this package runs no migration at all. Until it exists, build
+the index out of band and let the migration find it:
+
+1. `prisma migration plan` as usual. The package's `ops.json` holds the
+   operation, `index.<table>.<name>`, with its `CREATE INDEX` statement — the
+   **name** the planner chose is what the next steps must use.
+2. As the owner, run that statement with `CONCURRENTLY` after `INDEX` and
+   nothing else changed: same name, same columns, same uniqueness and method,
+   since `db migrate` verifies the resulting schema against the contract once
+   it has applied.
+3. Check that the build finished:
+   `SELECT indisvalid FROM pg_index WHERE indexrelid = to_regclass('"orders"."<name>"')`.
+   A concurrent build that failed or was cancelled leaves an `INVALID` index
+   behind under that name; `DROP INDEX CONCURRENTLY` it and go back to step 2.
+   This step is not optional: the operation's check matches the index **by
+   name only** — `to_regclass(…) IS NOT NULL`, nothing reads `indisvalid` —
+   so the migration would accept an invalid index, and the table would carry
+   one the planner never queries.
+4. `prisma db migrate`. The runner tests each operation's postcheck before its
+   precheck, finds the index already present, records the operation as
+   skipped, and applies the rest in its one transaction.
 
 **Engine-level tracing.** There is no engine. Prisma 8 is a TypeScript runtime
 and ships no instrumentation package, so the `Instrumentations` loader this

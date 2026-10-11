@@ -41,6 +41,8 @@ export type StubClient = {
    * obliged to reject with an `Error`, and the health check has an arm for it.
    */
   readonly breakQueriesWith: (cause: unknown) => void;
+  /** The rows every row-returning statement answers from here on. None until set. */
+  readonly answerRows: (rows: readonly Readonly<Record<string, string>>[]) => void;
   /** What the starter bound: the URL it read, and the middleware it passed. */
   readonly url: string;
   readonly middleware: readonly SqlMiddlewareLike[];
@@ -111,6 +113,7 @@ export const it = test.extend<{ stub: Stub; observed: Observed; sqlError: SqlErr
       readonly middleware: readonly SqlMiddlewareLike[];
     }): StubClient => {
       let failure: { readonly cause: unknown } | undefined;
+      let rows: readonly Readonly<Record<string, string>>[] = [];
       let transactions = 0;
       const ran: Plan[] = [];
 
@@ -125,9 +128,7 @@ export const it = test.extend<{ stub: Stub; observed: Observed; sqlError: SqlErr
 
       const run = (plan: unknown, tx: number | undefined): Promise<unknown> => {
         ran.push({ ...(plan as Plan), tx });
-        return failure === undefined
-          ? Promise.resolve([{ pinned: "ok" }])
-          : Promise.reject(failure.cause);
+        return failure === undefined ? Promise.resolve(rows) : Promise.reject(failure.cause);
       };
 
       const client: StubClient = {
@@ -155,6 +156,9 @@ export const it = test.extend<{ stub: Stub; observed: Observed; sqlError: SqlErr
         },
         breakQueriesWith: (cause) => {
           failure = { cause };
+        },
+        answerRows: (answered) => {
+          rows = answered;
         },
         url: binding.url,
         middleware: binding.middleware,

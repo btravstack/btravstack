@@ -79,6 +79,11 @@ the per-query observation below comes from.
   transactions, and a database that does not answer fails the boot with
   `DatabaseUnreachable` — the database's name and the driver's cause, never the
   URL.
+- **A role row security applies to.** Where any table has row-level security
+  enabled, a role that is a superuser, has `BYPASSRLS`, or owns a row-secured
+  table that is not `FORCE`d fails the boot with `RowSecurityBypassed`, naming
+  the role and the tables it would bypass — every policy would admit every row
+  for it.
 - **A health check**, named after the starter — `SELECT 1` through the raw
   lane, folded into the kernel's `GET /healthz` with nothing wired. `/readyz`
   does not read it: failing readiness on a dependency every replica shares
@@ -95,7 +100,9 @@ Prisma 8 throws a **structured** error carrying PostgreSQL's own SQLSTATE.
 `tryQuery` turns that into a `Result` with three modeled arms —
 `UniqueConstraintViolation` (`23505`, with the `constraint` the database
 named), `ForeignKeyViolation` (`23503`) and `NotAuthorized` (`42501`,
-including a write a row-security policy refused). Anything else is a defect.
+including a write a row-security policy refused). Anything else is a defect,
+unless you list it in `raises` — a SQLSTATE your own trigger raises on purpose
+then arrives as a `RaisedException` carrying that code.
 
 <!-- doctest: isolate
 import { tryQuery } from "@btravstack/prisma/result";
@@ -151,7 +158,7 @@ Two halves stay the deployment's, and both fail quietly when forgotten: Prisma 8
 authors policies but no `GRANT`s, and it emits `ENABLE ROW LEVEL SECURITY` with
 no way to say `FORCE` — so the table's **owner**, which is the role that ran the
 migrations, bypasses every policy. Connect as a role that is neither the owner
-nor a superuser. The
+nor a superuser — the boot refuses either with `RowSecurityBypassed`. The
 [reference page](https://btravstack.github.io/btravstack/reference/prisma)
 carries the DDL and the smaller lines that fail the same way.
 
@@ -177,12 +184,13 @@ package's.
 
 ## Options
 
-| Option         | Where                                         | What it is                                                                               |
-| -------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `name`         | `prismaDatabase(name)`                        | the port's id and the health check's name — required                                     |
-| `client`       | `prismaDatabase(name)({ client })`            | builds your client from the URL and middleware this package bound — required             |
-| `DATABASE_URL` | environment, read by `prismaDatabase(name)`   | the connection string — required, validated at graph build; blank is an error, exit `78` |
-| `setting`      | `tenantPinned(db, tenant, work, { setting })` | the PostgreSQL run-time setting the policy reads — default `app.tenant_id`               |
+| Option         | Where                                                      | What it is                                                                               |
+| -------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `name`         | `prismaDatabase(name)`                                     | the port's id and the health check's name — required                                     |
+| `client`       | `prismaDatabase(name)({ client })`                         | builds your client from the URL and middleware this package bound — required             |
+| `DATABASE_URL` | environment, read by `prismaDatabase(name)`                | the connection string — required, validated at graph build; blank is an error, exit `78` |
+| `setting`      | `tenantPinned(db, tenant, work, { setting })`              | the PostgreSQL run-time setting the policy reads — default `app.tenant_id`               |
+| `raises`       | `tryQuery(run, { raises })`, `tenantPinned(…, { raises })` | SQLSTATEs modeled as `RaisedException` rather than defects — default none                |
 
 There is **no `instrumented` flag**: observation is a set port every call is
 handed to, so a graph composing no observability pays one inert call and no

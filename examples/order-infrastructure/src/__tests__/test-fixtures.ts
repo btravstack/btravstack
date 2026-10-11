@@ -5,7 +5,11 @@ import type { CustomerRepository, OrderRepository } from "@btravstack/example-or
 import { TenantId, placeOrder, type Order } from "@btravstack/example-order-domain";
 import type { OutboxStoreService } from "@btravstack/outbox";
 import { prismaOutboxStore } from "@btravstack/outbox/prisma";
-import { prismaDatabase, type DatabaseUnreachable } from "@btravstack/prisma";
+import {
+  prismaDatabase,
+  type DatabaseUnreachable,
+  type RowSecurityBypassed,
+} from "@btravstack/prisma";
 import postgres from "@prisma/orm-postgres/runtime";
 import type { AsyncResult } from "unthrown";
 import { uuidv7 } from "uuidv7";
@@ -80,10 +84,14 @@ export type PersistenceFixtures = {
    * reads.
    */
   readonly aCustomer: (id: string, name: string) => Promise<void>;
-  /** A scope `prismaDatabase` just opened, whose pool gives up on a connection after 2 s, not 20. */
+  /**
+   * A scope `prismaDatabase` just opened, whose pool gives up on a connection
+   * after 2 s, not 20 — as the application role unless `url` names another.
+   */
   readonly freshScope: <A>(
     work: (db: OrderDatabaseClient) => AsyncResult<A, never>,
-  ) => AsyncResult<A, ConfigInvalid | DatabaseUnreachable>;
+    url?: string,
+  ) => AsyncResult<A, ConfigInvalid | DatabaseUnreachable | RowSecurityBypassed>;
 };
 
 export const it = test.extend<PersistenceFixtures>({
@@ -187,14 +195,15 @@ export const it = test.extend<PersistenceFixtures>({
           poolOptions: { connectionTimeoutMillis: 2_000 },
         }),
     });
-    const root = Module("FreshScope")({
-      imports: [database],
-      provides: [
-        Provider(Env)({ inject: {}, value: { DATABASE_URL: inject("__ORDERS_DATABASE_URL__") } }),
-      ],
-      exports: [database.port],
-    });
-    await use((work) => Module.scoped(root, (ctx) => work(ctx.get(database.port))));
+    const rootAt = (url: string) =>
+      Module("FreshScope")({
+        imports: [database],
+        provides: [Provider(Env)({ inject: {}, value: { DATABASE_URL: url } })],
+        exports: [database.port],
+      });
+    await use((work, url = inject("__ORDERS_DATABASE_URL__")) =>
+      Module.scoped(rootAt(url), (ctx) => work(ctx.get(database.port))),
+    );
   },
 
   aCustomer: async ({ db, tenant }, use) => {

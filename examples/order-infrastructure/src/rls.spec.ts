@@ -123,22 +123,27 @@ describe("the tenant_isolation policy on Order", () => {
 });
 
 describe("the role the application connects as", () => {
-  it("is neither a superuser nor exempt from row security", async ({ raw }) => {
+  it("is neither a superuser, nor exempt from row security, nor an owner of a policed table", async ({
+    raw,
+  }) => {
     // GIVEN the connection every spec above made its assertions over
-    // WHEN PostgreSQL is asked what that role is
+    // WHEN PostgreSQL is asked what that role is, and which policed tables it
+    // owns — directly or through a role whose privileges it inherits
     const roles = await raw
       .runtime()
       .query(
-        raw.raw.sql`SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user`
-          .returnsRow({ rolsuper: "pg/bool@1", rolbypassrls: "pg/bool@1" })
+        raw.raw
+          .sql`SELECT rolsuper, rolbypassrls, coalesce((SELECT string_agg(c.oid::regclass::text, ',') FROM pg_class c WHERE c.relrowsecurity AND pg_has_role(current_user, c.relowner, 'USAGE')), '') AS owns FROM pg_roles WHERE rolname = current_user`
+          .returnsRow({ rolsuper: "pg/bool@1", rolbypassrls: "pg/bool@1", owns: "pg/text@1" })
           .build(),
       );
 
-    // THEN both are false. A superuser bypasses row security whatever a policy
-    // says, so connecting as one would make every proof above vacuous — and
-    // Prisma 8 emits `ENABLE ROW LEVEL SECURITY` without `FORCE`, so the table
-    // OWNER would bypass it too. Connecting as a non-owner is what closes that.
-    expect(roles).toEqual([{ rolsuper: false, rolbypassrls: false }]);
+    // THEN none of the three. A superuser bypasses row security whatever a
+    // policy says, so connecting as one would make every proof above vacuous —
+    // and Prisma 8 emits `ENABLE ROW LEVEL SECURITY` without `FORCE`, so the
+    // table OWNER would bypass it too. Connecting as a non-owner is what closes
+    // that, and `prismaDatabase` refuses to boot as any of the three.
+    expect(roles).toEqual([{ rolsuper: false, rolbypassrls: false, owns: "" }]);
   });
 });
 

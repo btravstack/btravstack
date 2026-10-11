@@ -1,4 +1,9 @@
-import { migrateOrders, sharedPostgres } from "@btravstack/internal-test-infra/containers";
+import {
+  ORDERS_DATABASE,
+  migrateOrders,
+  postgresUrl,
+  sharedPostgres,
+} from "@btravstack/internal-test-infra/containers";
 import type {} from "vitest";
 import type { TestProject } from "vitest/node";
 
@@ -13,6 +18,7 @@ declare module "vitest" {
   // oxlint-disable-next-line typescript/consistent-type-definitions -- a module augmentation must be an interface; a type alias cannot merge
   interface ProvidedContext {
     __ORDERS_DATABASE_URL__: string;
+    __ORDERS_OWNER_DATABASE_URL__: string;
   }
 }
 
@@ -25,5 +31,7 @@ declare module "vitest" {
  * its own**, so there is nothing to clean and no order they must run in.
  */
 export default async ({ provide }: TestProject): Promise<void> => {
-  provide("__ORDERS_DATABASE_URL__", await migrateOrders(await sharedPostgres()));
+  const postgres = await sharedPostgres();
+  provide("__ORDERS_DATABASE_URL__", await migrateOrders(postgres));
+  provide("__ORDERS_OWNER_DATABASE_URL__", postgresUrl(postgres, ORDERS_DATABASE));
 };
