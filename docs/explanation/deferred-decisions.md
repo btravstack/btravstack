@@ -285,6 +285,35 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   stated in `packages/http-server/AUTH.md`. The trigger would be a deployment
   that cannot satisfy a declared scheme's needs at all.
 
+- **A background runtime is deferred** (issue #508). A process whose only work
+  is `outbox()`'s relay would want a runtime with probes and a drain and no
+  answerer. Composing the relay into the API or the consumer process already
+  gives it both — replicas take turns per tenant, the kernel serves the probes
+  for any runtime, and the relay stops in the scope's teardown — and a
+  relay-only process is a few lines of
+  `docs/how-to/write-a-runtime.md`: a runtime holding one referenced timer,
+  cleared in `stop` (`docs/how-to/publish-a-message.md`, "Where the relay
+  runs"). A shipped runtime for one starter's loop would be a fourth runtime
+  by default. The trigger is a second starter growing a loop of its own.
+
+- **The outbox's tenants from a port is deferred** (issue #495). The relay
+  serves the tenants `OUTBOX_TENANTS` names, so onboarding one is a
+  configuration change and a rollout, and an unlisted tenant is silently
+  undelivered and invisible to the lag check. A source re-read each sweep
+  makes the tenant count unbounded, and the concurrency bound (#493) is what
+  keeps that from being the pool's count; the trigger is revisiting once the
+  bound has run in a deployment, against onboarding that cannot wait for a
+  rollout. `packages/outbox/AGENTS.md` carries the cost.
+
+- **Parking a poison outbox message is declined** (issue #494). The publisher
+  holds the terminal lever — record the message as a dead letter and answer
+  `Ok`, and the relay marks it — at the stated cost that later facts about
+  that subject go out without it. An attempt counter and a parked column
+  would skip on a count rather than on unpublishability, letting a tombstone
+  overtake its create silently after a broker outage, and would migrate every
+  adopter's table, which is the application's model. The trigger would be a
+  terminal refusal the publisher cannot recognise as one.
+
 - **Binding HTTP request scopes as values is declined; the record stays
   stated twice and is gated both ways** (issue #384). The proposal was a
   value-bearing second stage, `auth.withRequestScopes({ anonymous, user })`,

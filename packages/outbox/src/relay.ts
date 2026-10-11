@@ -58,6 +58,8 @@ export type OutboxOptions = {
    * deployment sets.
    */
   readonly retainMs?: number | false;
+  /** How many tenants hold a claim at once — `OUTBOX_CONCURRENCY` (default `4`). */
+  readonly concurrency?: number;
   /** What the poll sleeps on and the lag is measured against (default: the kernel's `systemClock`). */
   readonly clock?: Clock;
 };
@@ -67,6 +69,7 @@ class OutboxConfig extends Port("OutboxConfig")<{
   readonly pollMs: number;
   readonly maxLagMs: number;
   readonly retainMs: number;
+  readonly concurrency: number;
 }> {}
 
 /** The running relay. Nothing resolves it; it exists to be started and stopped. */
@@ -115,10 +118,35 @@ const startRelay = (
     tenants,
     pollMs,
     retainMs,
-  }: { readonly tenants: readonly string[]; readonly pollMs: number; readonly retainMs: number },
+    concurrency,
+  }: {
+    readonly tenants: readonly string[];
+    readonly pollMs: number;
+    readonly retainMs: number;
+    readonly concurrency: number;
+  },
 ) => {
   const stopping = new AbortController();
   const { signal } = stopping;
+
+  // A freed slot passes straight to the longest waiter rather than back to the
+  // pool, so a tenant whose batch came back full queues behind the others
+  // instead of retaking it. A stop answers every waiter `false` at once.
+  let free = concurrency;
+  const waiting: ((granted: boolean) => void)[] = [];
+  signal.addEventListener("abort", () => {
+    for (const wake of waiting.splice(0)) wake(false);
+  });
+  const take = (): Promise<boolean> => {
+    if (free === 0) return new Promise((wake) => waiting.push(wake));
+    free -= 1;
+    return Promise.resolve(true);
+  };
+  const give = (): void => {
+    const next = waiting.shift();
+    if (next) next(true);
+    else free += 1;
+  };
 
   // In order, and stopping at the first refusal: publishing the rest would let
   // a later fact about a subject overtake the one still pending.
@@ -160,8 +188,8 @@ const startRelay = (
   const backoff = (failures: number): number =>
     Math.min(pollMs * 2 ** failures, Math.max(pollMs, MAX_BACKOFF_MS));
 
-  // One loop per tenant keeps claims serial within a tenant while a slow
-  // publisher or claim cannot hold another tenant's due work.
+  // One loop per tenant keeps claims serial within a tenant; the slots bound
+  // how many claims and prunes, and so pooled connections, are held at once.
   const running = Promise.all(
     tenants.map(async (tenantId) => {
       let due = clock.now();
@@ -171,19 +199,27 @@ const startRelay = (
       while (!signal.aborted) {
         const wait = Math.min(due, pruneDue) - clock.now();
         if (wait > 0) await clock.sleep(wait, signal);
-        if (signal.aborted) break;
-        // Two deadlines: waking to prune must not retry a publish its backoff
-        // still holds back.
-        if (clock.now() >= due) {
-          swept = await sweep(tenantId);
-          failures = swept === "failed" ? failures + 1 : 0;
-          due = clock.now() + (swept === "full" ? 0 : backoff(failures));
-        }
-        // Not after a full batch, so a backlog publishes first; after a failed
-        // one too, since a refused head message must not hold retention back.
-        if (swept !== "full" && clock.now() >= pruneDue) {
-          const backlog = await prune(tenantId);
-          pruneDue = clock.now() + (backlog ? PRUNE_BACKLOG_MS : PRUNE_EVERY_MS);
+        if (signal.aborted || !(await take())) break;
+        // One slot covers the sweep and the prune: each holds the tenant's
+        // lock on a pooled connection.
+        try {
+          // A slot handed over as the stop landed goes back unused.
+          if (signal.aborted) break;
+          // Two deadlines: waking to prune must not retry a publish its backoff
+          // still holds back.
+          if (clock.now() >= due) {
+            swept = await sweep(tenantId);
+            failures = swept === "failed" ? failures + 1 : 0;
+            due = clock.now() + (swept === "full" ? 0 : backoff(failures));
+          }
+          // Not after a full batch, so a backlog publishes first; after a failed
+          // one too, since a refused head message must not hold retention back.
+          if (swept !== "full" && clock.now() >= pruneDue) {
+            const backlog = await prune(tenantId);
+            pruneDue = clock.now() + (backlog ? PRUNE_BACKLOG_MS : PRUNE_EVERY_MS);
+          }
+        } finally {
+          give();
         }
       }
     }),
@@ -220,10 +256,16 @@ const startRelay = (
  *
  * **A refused publish stops the tenant's batch** and backs that tenant off,
  * doubling from the poll interval to 30 seconds, so a later fact never
- * overtakes an earlier one. Each tenant has its own loop, so a pending claim
- * or publish holds only that tenant. A message the publisher refuses forever
- * therefore holds its tenant's outbox — which is what the health check is for:
- * it reports a tenant whose oldest pending message is older than `maxLagMs`.
+ * overtakes an earlier one. A message the publisher refuses forever therefore
+ * holds its tenant's outbox — which is what the health check is for: it
+ * reports a tenant whose oldest pending message is older than `maxLagMs`.
+ *
+ * **At most `concurrency` tenants hold a claim or a prune at once**, each on
+ * one pooled connection for its whole batch; the rest wait their turn in
+ * order. The
+ * default of 4 leaves most of a 10-connection pool to the publisher and the
+ * requests sharing it. A publish that never settles holds its slot, so a
+ * publisher that can hang answers `Err` on a timeout of its own.
  *
  * Started as the graph builds, before the runtime accepts anything, and
  * stopped when the application scope closes, after the runtime has drained.
@@ -242,6 +284,7 @@ export const outbox = <const O extends OutboxOptions = Record<never, never>>(
       | "OUTBOX_POLL_MS"
       | "OUTBOX_MAX_LAG_MS"
       | "OUTBOX_RETAIN_MS"
+      | "OUTBOX_CONCURRENCY"
     >
   | OutboxStore
   | OutboxPublisher
@@ -262,6 +305,10 @@ export const outbox = <const O extends OutboxOptions = Record<never, never>>(
       retainMs: Config.pinned(
         options.retainMs === false ? 0 : options.retainMs,
         Config.integer("OUTBOX_RETAIN_MS", { min: 0, default: 0 }),
+      ),
+      concurrency: Config.pinned(
+        options.concurrency,
+        Config.integer("OUTBOX_CONCURRENCY", { min: 1, default: 4 }),
       ),
     }),
   );

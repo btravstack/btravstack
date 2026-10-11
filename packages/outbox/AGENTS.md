@@ -93,12 +93,49 @@ a lock some other code takes on a single bigint never collides. A `hashtext`
 collision between two tenants only serialises them.
 
 **The cost is stated, not hidden**: the claim, the publishes and the mark run
-in one transaction, so a relay holds one pooled connection per active tenant
-for that tenant's batch. A deployment's pool needs room for concurrent claims;
-if all its connections are pinned by stalled publishers, other tenants wait at
-the pool. That is an interactive transaction — the shape thesis #2 refuses for
-a unit — and it is accepted here because concurrency is bounded by the
-configured tenants and each 32-message batch, rather than by requests.
+in one transaction, so a relay holds one pooled connection per claimed tenant
+for that tenant's batch. That is an interactive transaction — the shape
+thesis #2 refuses for a unit — and it is accepted here because it is bounded: by
+`concurrency` (#493), and by each 32-message batch, never by requests.
+
+**`concurrency` is the bound, and its default is a fraction of the pool.**
+Unbounded, every configured tenant claimed at once, so as many busy tenants as
+the pool has connections pinned all of them, and a publisher that opens its
+own transactions on the same database waited out its connection timeout behind
+the claims it was serving — every batch failed, and every tenant retried in
+lockstep. Prisma 8 builds its pool from a URL with `pg`'s default `max` of 10
+and exposes no option to change it, so the default is `4`: enough to keep
+tenants moving past one slow publisher, and six connections left for the
+publisher, the requests and the health check. A relay that wants none of the
+application's pool is handed a store over a client of its own —
+`prismaOutboxStore` takes any client.
+
+The bound is a FIFO semaphore around each round of a tenant's loop — the
+sweep and the prune after it share one slot, since a prune takes the tenant's
+lock on a pooled connection just as a claim does, and a prune outside the
+bound would hold connections the bound promised to leave — with a freed slot handed to
+the longest waiter rather than returned to the count. A tenant whose batch
+came back full is due again at once, so with a count a woken waiter re-checks,
+whether the backlog retakes its slot first is down to microtask order; handed
+over, it never is, and the backlog queues behind every tenant already waiting
+(`relay.spec.ts`, "hands a freed slot to the waiting tenant before a backlog
+takes it back", which fails against a waiter that polls the count). The wait is aborted by the relay's stop signal like
+its sleep, so a tenant queued for a slot neither delays `release` nor sweeps
+after it, and a slot handed over just as the stop lands is given back unused —
+release waits for the batches in flight and nothing else.
+
+**Claim-and-release was declined, and so was a bound on a batch's wall-clock
+time** (#493's other two proposals). Claim-and-release — mark the rows with a
+lease, commit, publish outside the transaction, mark them published — frees
+the connection by freeing the TENANT: once the lease lapses while the first
+relay is still publishing, a second relay claims the same tenant and can put
+later facts on the wire first, which is the reordering the per-tenant claim
+exists to rule out (shape 2 above, the lease column). A deadline on the batch
+has the same hole from the other side: abandoning a publish that timed out does
+not stop it, so it can still land after the next relay's publish of the facts
+behind it. A publish that can hang is the publisher's to bound — it knows its
+transport, and answering `Err` on a timeout of its own leaves the row pending
+in order, which the relay already handles.
 
 **One relay per tenant holds while its claiming session lives, and no
 longer.** The lock is the session's: if the database ends that session
@@ -147,8 +184,8 @@ same spec published them 132 times.
   speed rather than 32 per poll; when idle it waits `pollMs`. One counter for
   the whole sweep was the first shape, and it let one tenant's poison message
   hold every other tenant to its back-off. Each tenant has its own loop, so a
-  pending claim or publish holds that tenant alone; one loop for all tenants
-  left later tenants waiting for the first pending publisher.
+  pending claim or publish holds that tenant and one slot; one loop for all
+  tenants left later tenants waiting for the first pending publisher.
 - **The health check is one connection** — `OutboxStore.oldestPending` over
   every tenant at once. A connection per tenant per `/healthz` queues the pool
   behind the probe that is meant to report it. The Prisma store pins each
@@ -156,7 +193,7 @@ same spec published them 132 times.
   a round trip per tenant: bounded by the configured tenants, as the claims
   are.
 - **The sleep is the kernel's `Clock`**, aborted by the relay's own stop
-  signal, so `release` returns as soon as the in-flight batch has, an idle
+  signal, so `release` returns as soon as the in-flight batches have, an idle
   relay pins nothing (`systemClock`'s timer is unref'ed), and a spec drives the
   loop with `createFakeClock`. There is no `Clock` PORT in the kernel, so the
   clock is an option rather than an injection.
@@ -251,8 +288,25 @@ and sweeping "whatever is in the table" is how one deployment broadcasts
 another's facts. `OUTBOX_TENANTS` has no default for that reason, and naming
 them is also how relays are sharded. A single-tenant application names one.
 
+**The cost, stated plainly: a new tenant is a configuration change and a
+rollout**, and an unlisted tenant fails silently twice — its rows are never
+delivered, and the lag check, which asks only about the listed tenants, never
+sees them. A tenant source the relay re-reads each sweep (#495) is deferred,
+not declined: it makes the tenant count unbounded, and `concurrency` is what
+now keeps that from becoming the pool's count. It is revisited once the bound
+has run in a deployment; the register entry carries the trigger.
+
 ## Deliberately not here
 
+- **Parking a poison message** (#494). The publisher is the terminal lever:
+  it records a message it will never get out where the application keeps its
+  dead letters and answers `Ok`, so the relay marks it — and later facts about
+  that subject go out without it, which is the stated cost. An attempt counter
+  with a parked column was declined: a count-based skip parks a message for
+  having failed N times rather than for being unpublishable, so a broker down
+  for N back-offs parks a create and lets its tombstone overtake it silently;
+  and the table is the application's model, so every adopter would migrate
+  for a judgement only the publisher can make.
 - **Exactly-once.** A crash between a publish and its mark re-publishes; a
   subscriber dedupes on the outbox id. No outbox can do better without the
   broker joining the database's transaction.

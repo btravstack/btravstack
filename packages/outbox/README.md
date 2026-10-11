@@ -70,16 +70,17 @@ export const Relay = Module("Relay")({
 
 ## Options
 
-| Option              | Where                        | What it is                                                                       |
-| ------------------- | ---------------------------- | -------------------------------------------------------------------------------- |
-| `OUTBOX_TENANTS`    | environment, or `tenants`    | the tenants this relay serves, comma-separated — required                        |
-| `OUTBOX_POLL_MS`    | environment, or `pollMs`     | the idle sleep between sweeps (default `200`)                                    |
-| `OUTBOX_MAX_LAG_MS` | environment, or `maxLagMs`   | the oldest pending age the `outbox` health check tolerates (default 60 s)        |
-| `OUTBOX_RETAIN_MS`  | environment, or `retainMs`   | how long a published row is kept before the relay deletes it (default: kept)     |
-| `clock`             | `outbox({ clock })`          | what the poll sleeps on and the lag is measured against (default: `systemClock`) |
-| `schema`, `table`   | `prismaOutboxStore(db, {…})` | where the model lives (default `public`, `outboxMessage`)                        |
-| `columns`           | `prismaOutboxStore(db, {…})` | the physical column names, for a model mapped with `@map`                        |
-| `tenantSetting`     | `prismaOutboxStore(db, {…})` | the setting each tenant's reads are pinned to, for `@@rls` (`app.tenant_id`)     |
+| Option               | Where                         | What it is                                                                       |
+| -------------------- | ----------------------------- | -------------------------------------------------------------------------------- |
+| `OUTBOX_TENANTS`     | environment, or `tenants`     | the tenants this relay serves, comma-separated — required                        |
+| `OUTBOX_POLL_MS`     | environment, or `pollMs`      | the idle sleep between sweeps (default `200`)                                    |
+| `OUTBOX_MAX_LAG_MS`  | environment, or `maxLagMs`    | the oldest pending age the `outbox` health check tolerates (default 60 s)        |
+| `OUTBOX_RETAIN_MS`   | environment, or `retainMs`    | how long a published row is kept before the relay deletes it (default: kept)     |
+| `OUTBOX_CONCURRENCY` | environment, or `concurrency` | how many tenants claim or prune, each on a pooled connection, at once (`4`)      |
+| `clock`              | `outbox({ clock })`           | what the poll sleeps on and the lag is measured against (default: `systemClock`) |
+| `schema`, `table`    | `prismaOutboxStore(db, {…})`  | where the model lives (default `public`, `outboxMessage`)                        |
+| `columns`            | `prismaOutboxStore(db, {…})`  | the physical column names, for a model mapped with `@map`                        |
+| `tenantSetting`      | `prismaOutboxStore(db, {…})`  | the setting each tenant's reads are pinned to, for `@@rls` (`app.tenant_id`)     |
 
 The full table — defaults, semantics, the table's PSL and the reasoning — lives
 on [the reference page](https://btravstack.github.io/btravstack/reference/outbox),

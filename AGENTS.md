@@ -337,8 +337,8 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    spelled. The write stays the adapter's, by the rule above,
    and what publishing means stays the application's, as an
    `OutboxPublisher` it provides. The claim does hold one interactive
-   transaction across a batch's publishes — one per active tenant per relay,
-   bounded by the batch and the configured tenants, never one per request,
+   transaction across a batch's publishes — one per claimed tenant per relay,
+   bounded by the batch and by `OUTBOX_CONCURRENCY`, never one per request,
    which is the trade
    `packages/outbox/AGENTS.md` weighs. Three reasons a unit-scoped transaction is
    the wrong shape: it makes every request an **interactive** transaction,
@@ -1333,8 +1333,8 @@ A sixth rule is about production code that tests keep honest:
    `DRAIN_TIMEOUT_MS`, `STOP_TIMEOUT_MS`, `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
    `HTTP_HEADERS_TIMEOUT_MS`, `HTTP_REQUEST_TIMEOUT_MS`, `GRAPHQL_DEVELOPER_TOOLS`,
    `TEMPORAL_GRACE_PERIOD_MS`, `TEMPORAL_FORCE_AFTER_MS`,
-   `AMQP_CONNECT_TIMEOUT_MS`, `OUTBOX_POLL_MS`, `OUTBOX_MAX_LAG_MS` and
-   `OUTBOX_RETAIN_MS` are
+   `AMQP_CONNECT_TIMEOUT_MS`, `OUTBOX_POLL_MS`, `OUTBOX_MAX_LAG_MS`,
+   `OUTBOX_RETAIN_MS` and `OUTBOX_CONCURRENCY` are
    fields beside `PORT`, `HOST`, `TEMPORAL_ADDRESS`, `AMQP_URL` and
    `OUTBOX_TENANTS`, each **pinned** by the matching option:
    the option is what a test or a settled decision fixes, the variable what a
