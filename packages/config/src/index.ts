@@ -12,3 +12,4 @@ export type {
   OptionsAs,
   Unpinned,
 } from "./config.js";
+export { cleartext, cleartextRefused } from "./cleartext.js";

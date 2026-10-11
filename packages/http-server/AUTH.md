@@ -252,7 +252,7 @@ The two rules this half exists to state, before the detail:
   precomputing belongs in the provider being injected.
 
   **`allowInsecureJwks` is `oidc()`'s `allowInsecureIssuer` under another
-  name, and the two now share one rule** (`cleartext.ts`). An `https:` URL is
+  name, and the two now share one rule** (`@btravstack/config`'s `cleartext`). An `https:` URL is
   always fine, an `http:` one on `localhost`/`127.0.0.1`/`[::1]` is the dev
   loop, and any other `http:` URL is a `ConfigInvalid` at boot unless the
   option is pinned. `oidc()` had refused a cleartext issuer since it shipped

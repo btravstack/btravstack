@@ -2,6 +2,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
   Config,
+  cleartext,
+  cleartextRefused,
   Env,
   type ConfigInvalid,
   type EnvReading,
@@ -28,7 +30,6 @@ import {
 } from "openid-client";
 import { ErrAsync, TaggedError, fromPromise, type AsyncResult } from "unthrown";
 
-import { cleartext, cleartextRefused } from "./cleartext.js";
 import { clearCookie, cookieScheme, cookieValue, setCookie } from "./cookie.js";
 import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
 import { injectedDeps, injectedServices } from "./options.js";
