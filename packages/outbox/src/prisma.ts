@@ -185,8 +185,6 @@ export const prismaOutboxStore = <Tx>(
       .affectedCount()
       .build();
 
-  // The oldest `limit` published more than `olderThanMs` ago by the database's
-  // clock, the one the mark stamps with; deleted and counted in one statement.
   const purge = (tenantId: string, olderThanMs: number, limit: number) =>
     sql(
       statement(
