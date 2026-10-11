@@ -70,7 +70,7 @@
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",
     "@btravstack/http-server": "workspace:^",
-    "graphql": "^16.0.0 || ^17.0.0",
+    "graphql": "^16.6.0 || ^17.0.0",
     "graphql-yoga": "^5.24.1",
     "unthrown": "^5.7.0"
   },

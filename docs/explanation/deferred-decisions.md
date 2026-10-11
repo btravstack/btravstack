@@ -243,6 +243,16 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   would reopen it is a client-to-server stream a request cannot carry. The
   position is the root `AGENTS.md`'s, thesis #1.
 
+- **Rate limiting is declined; it belongs to the ingress** (issue #502). A
+  per-process counter is the wrong unit: an `api` deployment is N pods, so a
+  per-process budget is N independent budgets and none of them is the limit
+  anybody meant. The ingress or gateway counts a request once, refuses it
+  before it costs a process anything, and answers `429` with `Retry-After`.
+  An application that wants an in-process limit anyway passes an oRPC plugin
+  through `orpc()`'s `plugins`, or a Yoga plugin through `graphql()`'s. The
+  position is `packages/http-server/AGENTS.md`'s. The trigger would be a
+  deployment with no ingress in front of it.
+
 - **Configuration profiles, file layering, a secrets provider and live
   refresh are declined** (issue #167): the process reads its environment once
   at boot, and the four around it are the platform's — an overlay per

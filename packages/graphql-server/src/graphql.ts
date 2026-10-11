@@ -31,6 +31,7 @@ import type { GraphQLSchema, ValidationRule } from "graphql";
 import {
   createGraphQLError,
   createYoga,
+  handleStreamOrSingleExecutionResult,
   maskError,
   type Plugin,
   type YogaInitialContext,
@@ -67,6 +68,33 @@ const noIntrospection: ValidationRule = (context) => ({
 const withoutIntrospection: Plugin = {
   onValidate: ({ addValidationRule }) => addValidationRule(noIntrospection),
 };
+
+// Text rather than graphql 17's `hideSuggestions`: Yoga's executor ignores
+// that flag when it coerces variables, and graphql 16 has none.
+const SUGGESTION = / Did you mean [^?]*\?/g;
+const hideSuggestion = (error: unknown): void => {
+  if (error instanceof Error) error.message = error.message.replace(SUGGESTION, "");
+};
+const hideSuggestionsIn = (payload: Parameters<typeof handleStreamOrSingleExecutionResult>[0]) =>
+  handleStreamOrSingleExecutionResult(payload, ({ result }) =>
+    result.errors?.forEach(hideSuggestion),
+  );
+
+const withoutSuggestions: Plugin = {
+  onValidate:
+    () =>
+    ({ result }) =>
+      result.forEach(hideSuggestion),
+  onExecute: () => ({ onExecuteDone: hideSuggestionsIn }),
+  onSubscribe: () => ({ onSubscribeResult: hideSuggestionsIn }),
+};
+
+const DEFAULT_MAX_TOKENS = 1000;
+
+const tokenLimit = (maxTokens: number): Plugin => ({
+  onParse: ({ parseFn, setParseFn }) =>
+    setParseFn((source, options) => parseFn(source, { ...options, maxTokens })),
+});
 
 type DisposableAnswerer = HttpAnswerer & { readonly [dispose]: () => Promise<void> | void };
 
@@ -143,11 +171,18 @@ export type GraphqlOptions<
   readonly prefix?: `/${string}`;
   readonly cors?: YogaCors;
   /**
-   * GraphiQL and introspection, both or neither — pins
-   * `GRAPHQL_DEVELOPER_TOOLS`, which defaults to `false`, so a deployment
-   * exposes neither unless it says so.
+   * GraphiQL, introspection and the "Did you mean …" suggestions in an error,
+   * all or none — pins `GRAPHQL_DEVELOPER_TOOLS`, which defaults to `false`, so
+   * a deployment exposes none of them unless it says so.
    */
   readonly developerTools?: boolean;
+  /**
+   * Pins `GRAPHQL_MAX_TOKENS` (default `1000`) — the most tokens graphql-js
+   * parses in one document before refusing it, so an oversized document is
+   * refused before any validation rule runs on it. `false` pins the unbounded
+   * `0`.
+   */
+  readonly maxTokens?: number | false;
   /**
    * Yoga plugins. Each may be typed by the context it reads — a
    * `Plugin<{ unit: … }>` — and is checked against the {@link GraphqlContext}
@@ -179,10 +214,14 @@ export const graphql = <
   const schemes = [
     ...new Set(requirements?.flatMap((requirement) => Object.keys(requirement)) ?? []),
   ];
-  const developerToolsSchema = Config.object({
+  const configSchema = Config.object({
     developerTools: Config.pinned(
       options.developerTools,
       Config.boolean("GRAPHQL_DEVELOPER_TOOLS", { default: false }),
+    ),
+    maxTokens: Config.pinned(
+      options.maxTokens === false ? 0 : options.maxTokens,
+      Config.integer("GRAPHQL_MAX_TOKENS", { default: DEFAULT_MAX_TOKENS, min: 0 }),
     ),
   });
   const provider = Provider.member(HttpHandler)({
@@ -196,8 +235,8 @@ export const graphql = <
     make: (services) =>
       Config.parse(
         "GraphqlConfig",
-        developerToolsSchema,
-      )(services.env).map(({ developerTools }) => {
+        configSchema,
+      )(services.env).map(({ developerTools, maxTokens }) => {
         const config = services.config;
         const units = services.units;
         const observers = services.observers;
@@ -234,7 +273,8 @@ export const graphql = <
               : { origin: config.corsOrigin.split(",").map((origin) => origin.trim()) }),
           plugins: [
             refuse,
-            ...(developerTools ? [] : [withoutIntrospection]),
+            ...(developerTools ? [] : [withoutIntrospection, withoutSuggestions]),
+            ...(maxTokens === 0 ? [] : [tokenLimit(maxTokens)]),
             ...((options.plugins ?? []) as readonly Plugin[]),
           ],
           // Yoga reports what it masks through its logger, which is off: the
@@ -331,7 +371,7 @@ export const graphql = <
   const typed = provider as Provider<
     InstanceType<typeof HttpHandler>,
     ConfigInvalid,
-    | EnvReading<never, "GRAPHQL_DEVELOPER_TOOLS">
+    | EnvReading<never, "GRAPHQL_DEVELOPER_TOOLS" | "GRAPHQL_MAX_TOKENS">
     | InstanceType<typeof HttpConfig>
     | InstanceType<typeof HttpUnit>
     | Observers

@@ -38,6 +38,25 @@ and its error is Yoga's `createGraphQLError` for the same reason as
 protected mount the page renders before the refusal; the operations it sends
 are authenticated like any other.
 
+**The same switch hides "Did you mean …" suggestions** (#500), which name
+fields and enum values back to a caller who could not introspect them. They
+are removed from the message text, not with graphql 17's `hideSuggestions`:
+Yoga executes through `@graphql-tools/executor`, which ignores that flag when
+it coerces variables, and graphql 16, still a supported peer, has no flag at
+all. Validation, execution and subscription results are all stripped.
+
+**`maxTokens` bounds the parse, `GRAPHQL_MAX_TOKENS`, default `1000`** (#500).
+It is graphql-js's own `parse` option, set by wrapping the parse function in a
+built-in plugin, so an oversized document costs one aborted parse and never
+reaches a validation rule such as overlapping-fields-can-be-merged. `1000` is
+graphql-armor's default; the fullest introspection query parses to about 240
+tokens, so GraphiQL stays well inside it. It is a variable like
+`HTTP_BODY_LIMIT`, the bound one layer below it: the documents it must admit
+are the clients', and raising it for a client release should not need a
+rebuild. Alias and directive caps were proposed and are not shipped: each
+alias or directive is tokens, so this limit bounds them already, and a finer
+budget is graphql-armor's plugins through `plugins`.
+
 **`plugins` is checked per element, because Yoga's `Plugin<C>` is invariant
 in `C`** (`onPluginInit` hands a plugin `Plugin<C>[]`). A plugin typed for the
 real context therefore never widened to the bare `Plugin` the option used to

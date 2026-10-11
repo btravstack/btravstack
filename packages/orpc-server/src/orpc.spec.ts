@@ -81,6 +81,35 @@ describe("http, over a router", () => {
     await expect(client.boom()).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
   });
 
+  it("reports a defect to Observers with its cause and procedure", async ({ observedRpc }) => {
+    // GIVEN a procedure that throws, beside an observer
+    const { client, taken } = await observedRpc();
+
+    // WHEN it is called
+    await client.boom().catch(() => undefined);
+
+    // THEN the observer received the cause the client never sees
+    expect(taken()).toEqual([
+      expect.objectContaining({
+        name: "defect",
+        details: { "orpc.path": "boom" },
+        outcome: "error",
+        cause: expect.objectContaining({ message: "bug" }),
+      }),
+    ]);
+  });
+
+  it("reports nothing for an error the contract declares", async ({ observedRpc }) => {
+    // GIVEN a procedure answering a declared CONFLICT, beside an observer
+    const { client, taken } = await observedRpc();
+
+    // WHEN it is called
+    await client.refused().catch(() => undefined);
+
+    // THEN the refusal was the caller's answer, and nothing was reported
+    expect(taken()).toEqual([]);
+  });
+
   it("runs a plugin it was handed", async ({ rpcPolicy }) => {
     // GIVEN an app handed oRPC's CORS plugin through the escape hatch
     const { greet } = await rpcPolicy({

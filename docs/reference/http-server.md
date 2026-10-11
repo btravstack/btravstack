@@ -1868,7 +1868,7 @@ mount point is an error, and it is a `RuntimeStartFailed` at `listen` rather
 than a coin toss. A trailing slash is the same mount, so `/rpc` and `/rpc/`
 collide.
 
-`graphql(api, { schema, prefix?, requires?, units?, unit?, cors?, developerTools?, plugins? })` from
+`graphql(api, { schema, prefix?, requires?, units?, unit?, cors?, developerTools?, maxTokens?, plugins? })` from
 `@btravstack/graphql-server` contributes a Yoga answerer. `schema`
 is any `GraphQLSchema` (the example builds one with Pothos); `prefix` defaults
 to `/graphql`. `requires` gates the whole mount through `RequiresGate` and the
@@ -1878,9 +1878,16 @@ shared principal resolver. Resolver context carries `principal`, `unit`,
 or typed by the context it reads, `Plugin<{ unit: … }>`: Yoga's `Plugin<C>` is
 invariant in `C`, so each is checked against the context the call builds, and
 one reading what the call never binds is refused against
-`"PLUGIN CONTEXT MISMATCH — …"`. `developerTools` turns GraphiQL and
-introspection on together; it pins `GRAPHQL_DEVELOPER_TOOLS`, default `false`,
-so a root providing `graphql()` declares `needs: [Env]`. The response remains one HTTP unit through
+`"PLUGIN CONTEXT MISMATCH — …"`. `developerTools` turns GraphiQL,
+introspection and an error's "Did you mean …" suggestions on together; it pins
+`GRAPHQL_DEVELOPER_TOOLS`, default `false`, so a root providing `graphql()`
+declares `needs: [Env]`. `maxTokens` pins `GRAPHQL_MAX_TOKENS`, default
+`1000`, the most tokens graphql-js parses in one document; over it the parser
+refuses the document before any validation rule runs, and `false` turns the
+limit off. There is no alias or directive cap: each alias or directive costs
+tokens, so the token limit already bounds them, and a finer budget — aliases,
+directives, depth or cost — is a Yoga plugin such as graphql-armor's, passed
+through `plugins`. The response remains one HTTP unit through
 completion and drain. GraphQL, Yoga and `@btravstack/core` are required peers
 of that package.
 
@@ -1959,6 +1966,14 @@ through the same `send` every other htmx refusal uses.
 
 `Result` → HTTP status is deliberately **not** in the table: it is the
 router's `.result()` triage, at the one place that decides what a client sees.
+
+Before oRPC collapses a defect, `orpc()` and the OpenAPI routes report it to
+[`Observers`](/reference/core/observability) as an `orpc` / `defect` operation
+carrying the cause and the procedure's path (`orpc.path`). The client still
+sees only `INTERNAL_SERVER_ERROR`. Any error oRPC would answer with a 5xx is
+reported, unless the procedure's contract declares it: a declared code is the
+caller's answer even where it falls back to `500`. `Observers` comes from
+`httpServer()`, so the answerer adds no wiring to a root.
 
 ## The unit
 
@@ -2245,8 +2260,8 @@ which is the whole reason they are subpaths.
   and none of them is the limit anybody meant. Where a request is counted once
   is the ingress or the gateway, which is also where it can be refused before
   it costs a process anything. An application that wants one anyway writes an
-  oRPC plugin and passes it through [`plugins`](#plugins) — the escape hatch
-  doing its job.
+  oRPC plugin and passes it through [`plugins`](#plugins), or a Yoga plugin
+  through `graphql()`'s `plugins` — the escape hatch doing its job.
 - **`Result` → HTTP status.** The router's `.result()` triage owns it.
 - **Resource-dependent authorization.** A **scope** is checked here, because it
   is a property of the credential and answerable before dispatch. "Is this
