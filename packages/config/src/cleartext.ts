@@ -14,8 +14,9 @@ const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
  *
  * `https:` is always fine, `http:` on a loopback host is the dev loop, and any
  * other `http:` sends whatever the URL carries across the wire in the open.
- * That last case is `"refused"` — a `ConfigInvalid` at boot unless the caller
- * pinned the opt-in, which is where a security posture belongs and is why it is
+ * That case is `"refused"` — a `ConfigInvalid` at boot unless the caller
+ * pinned the opt-in — and so is every other scheme, opt-in or not: a `file:`
+ * issuer is a deployment mistake to report at boot, not on the first call, which is where a security posture belongs and is why it is
  * an option rather than a variable: rule 6's own test, that a value whose
  * silent change is a security regression stays in the composition root.
  *
@@ -27,9 +28,9 @@ const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
  */
 export const cleartext = (url: string, allowed: boolean): boolean | "refused" => {
   const parsed = new URL(url);
-  return parsed.protocol !== "http:"
+  return parsed.protocol === "https:"
     ? false
-    : allowed || LOOPBACK.has(parsed.hostname)
+    : parsed.protocol === "http:" && (allowed || LOOPBACK.has(parsed.hostname))
       ? true
       : "refused";
 };

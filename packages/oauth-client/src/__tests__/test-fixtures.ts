@@ -1,3 +1,6 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+
 import { Env, type ConfigInvalid, type Environment } from "@btravstack/config";
 import {
   HealthChecks,
@@ -48,6 +51,13 @@ export type OAuthFixtures = {
   readonly tokens: Tokens;
   /** What Hydra says a token it issued is. */
   readonly introspect: (token: string) => Promise<unknown>;
+  /**
+   * Two issuers answering what the gate's Hydra never does: `challenging`
+   * refuses every client as RFC 6749 §5.2 spells it for Basic authentication —
+   * `401` with a `WWW-Authenticate` challenge — and `failing` answers every
+   * token request with a `503` and an OAuth error body.
+   */
+  readonly scripted: { readonly challenging: string; readonly failing: string };
 };
 
 export const it = test.extend<OAuthFixtures>({
@@ -91,6 +101,31 @@ export const it = test.extend<OAuthFixtures>({
         body,
       ),
     );
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  scripted: async ({}, use) => {
+    const server = createServer((request, response) => {
+      const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      const [, name, rest] = (request.url ?? "").split(/^\/(\w+)/);
+      response.setHeader("content-type", "application/json");
+      if (rest === "/.well-known/openid-configuration") {
+        const issuer = `${base}/${name}`;
+        response.end(JSON.stringify({ issuer, token_endpoint: `${issuer}/token` }));
+        return;
+      }
+      if (name === "challenging") {
+        response.statusCode = 401;
+        response.setHeader("www-authenticate", 'Basic realm="challenging", error="invalid_client"');
+        response.end(JSON.stringify({ error: "invalid_client" }));
+        return;
+      }
+      response.statusCode = 503;
+      response.end(JSON.stringify({ error: "temporarily_unavailable" }));
+    });
+    await new Promise<void>((listening) => server.listen(0, "127.0.0.1", listening));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    await use({ challenging: `${base}/challenging`, failing: `${base}/failing` });
+    await new Promise((closed) => server.close(closed));
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   introspect: async ({}, use) => {

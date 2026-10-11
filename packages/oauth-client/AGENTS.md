@@ -58,13 +58,23 @@ recipe.
   issuer was declined: it proves reachability only, and the failure an
   operator meets most — a rotated secret — leaves the issuer reachable and
   every call refused. Before the first fetch it is healthy: nothing is known.
-- **`TokenRefused` vs `TokenIssuerUnavailable` is decided by
-  `ResponseBodyError` and its status.** An OAuth error body under 500 is a
-  refusal (Hydra answers `invalid_client` as 401, an ungranted audience as
-  `invalid_request` 400, an ungranted scope as `invalid_scope` 400 —
-  measured); everything else — a fetch failure, a 5xx, a discovery that did
-  not answer — is unavailability. A refusal carries the issuer's `error` and
-  `error_description`, never the secret.
+- **`TokenRefused` vs `TokenIssuerUnavailable` is decided by the error class
+  and its status.** Under 500, two answers are refusals: an OAuth error body
+  (`ResponseBodyError` — Hydra answers `invalid_client` as 401, an ungranted
+  audience as `invalid_request` 400, an ungranted scope as `invalid_scope` 400,
+  measured) and a `WWWAuthenticateChallengeError`, RFC 6749 §5.2's `401` with a
+  challenge, which a conforming issuer sends for a rejected Basic credential
+  and Hydra does not — so a spec serves one locally. The library throws it
+  before reading the body, and §5.2 makes that answer `invalid_client`, so the
+  refusal says so rather than parsing the challenge's parameters. Everything else — a fetch
+  failure, a 5xx, a discovery that did not answer — is unavailability. A
+  refusal carries the issuer's `error` and `error_description`, never the
+  secret.
+- **Discovery is OpenID Connect's, not RFC 8414's.** `openid-client`'s default
+  asks `/.well-known/openid-configuration`; `algorithm: "oauth2"` would ask
+  `/.well-known/oauth-authorization-server`, which the gate's Hydra answers
+  `404`, as do common providers that publish only the OIDC document. The
+  trigger for an option is a deployment whose issuer publishes only RFC 8414.
 - **The cleartext rule is `@btravstack/config`'s `cleartext`**, moved out of
   `@btravstack/http-server` for this package rather than copied: a client must
   not depend on the serving half. Loopback is accepted as it stands, which is

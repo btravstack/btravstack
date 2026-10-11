@@ -24,6 +24,7 @@ import { Module, Port, Provider } from "@btravstack/di";
 import {
   ClientSecretBasic,
   ResponseBodyError,
+  WWWAuthenticateChallengeError,
   allowInsecureRequests,
   clientCredentialsGrant,
   discovery,
@@ -92,6 +93,18 @@ const fetching = (request: TokenRequest): Operation => ({
   details: { "btravstack.oauth.scope": request.scope ?? "" },
 });
 
+/**
+ * What the issuer said no with, when the answer was a refusal rather than an
+ * outage. A challenge is RFC 6749 §5.2's `401` for a rejected client, which
+ * is `invalid_client` by definition.
+ */
+const refusalOf = (cause: unknown) =>
+  cause instanceof WWWAuthenticateChallengeError
+    ? { error: "invalid_client", description: undefined }
+    : cause instanceof ResponseBodyError && cause.status < 500
+      ? { error: cause.error, description: cause.error_description }
+      : undefined;
+
 const reasonOf = (audience: string, failure: FailureView<TokenError, unknown>): string =>
   failure.tag === "Err" && failure.error._tag === "TokenRefused"
     ? `${audience}: refused (${failure.error.error})`
@@ -139,14 +152,12 @@ const tokenFetches = (
         audience: request.audience,
         ...(request.scope === undefined ? {} : { scope: request.scope }),
       }),
-      (cause): TokenError =>
-        cause instanceof ResponseBodyError && cause.status < 500
-          ? new TokenRefused({
-              audience: request.audience,
-              error: cause.error,
-              description: cause.error_description,
-            })
-          : new TokenIssuerUnavailable({ issuer: settings.issuer, cause }),
+      (cause): TokenError => {
+        const refusal = refusalOf(cause);
+        return refusal === undefined
+          ? new TokenIssuerUnavailable({ issuer: settings.issuer, cause })
+          : new TokenRefused({ audience: request.audience, ...refusal });
+      },
     );
 
   const fetchToken = (key: string, request: TokenRequest): AsyncResult<AccessToken, TokenError> => {
@@ -178,7 +189,7 @@ const tokenFetches = (
   return {
     source: {
       token: (request) => {
-        const key = JSON.stringify([request.audience, request.scope ?? ""]);
+        const key = JSON.stringify([request.audience, request.scope ?? null]);
         const hit = cached.get(key);
         if (hit !== undefined && clock.now() < hit.refreshAt) return OkAsync(hit.token);
         return inFlight.get(key) ?? fetchToken(key, request);

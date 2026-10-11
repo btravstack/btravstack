@@ -17,3 +17,5 @@ the in-process adapter a spec overrides with.
 `@btravstack/config` now exports `cleartext` and `cleartextRefused`, the rule
 `oidc()` and `jwtAuthenticator` refuse a cleartext issuer or JWKS by, moved
 out of `@btravstack/http-server` so a package that only calls out can apply it.
+
+The rule also refuses any scheme other than `https:` and `http:`, opt-in or not: a `file:` issuer or JWKS URL used to pass boot and fail on first use, and is now a `ConfigInvalid` at boot for `oidc()`, `jwtAuthenticator` and `oauthClient()` alike.

@@ -111,6 +111,26 @@ describe("oauthClient", () => {
       expect(fetches).toBeOkWith(2);
     });
 
+    it("is kept apart for an absent scope and an empty one", async ({
+      tokens,
+      env,
+      observations,
+    }) => {
+      // GIVEN a token fetched with no scope
+      // WHEN one is asked for with an explicitly empty scope
+      const fetches = await tokens({ env }, (ctx) => {
+        const source = ctx.get(TokenSource);
+        return fromSafePromise(source.token({ audience: AUDIENCE }).getOrUndefined())
+          .flatMap(() =>
+            fromSafePromise(source.token({ audience: AUDIENCE, scope: "" }).getOrUndefined()),
+          )
+          .map(() => observations.length);
+      });
+
+      // THEN the second was a fetch of its own, not the first one's token
+      expect(fetches).toBeOkWith(2);
+    });
+
     it("is fetched once for callers that ask at the same time", async ({
       tokens,
       env,
@@ -151,6 +171,28 @@ describe("oauthClient", () => {
           error: "invalid_client",
           description: expect.not.stringContaining("not-the-secret"),
         }),
+      );
+    });
+
+    it("is TokenRefused, invalid_client, for a Basic-auth challenge", async ({
+      tokens,
+      scripted,
+    }) => {
+      // GIVEN an issuer that answers a wrong client with a WWW-Authenticate challenge
+      const env = {
+        OAUTH_ISSUER: scripted.challenging,
+        OAUTH_CLIENT_ID: "client",
+        OAUTH_CLIENT_SECRET: "secret",
+      };
+
+      // WHEN a token is asked for
+      const answer = await tokens({ env }, (ctx) =>
+        ctx.get(TokenSource).token({ audience: AUDIENCE }),
+      );
+
+      // THEN it is a refusal, not an outage
+      expect(answer).toBeErrWith(
+        expect.objectContaining({ constructor: TokenRefused, error: "invalid_client" }),
       );
     });
 
@@ -208,6 +250,28 @@ describe("oauthClient", () => {
       // THEN the outage is told apart from a refusal
       expect(answer).toBeErrWith(
         expect.objectContaining({ constructor: TokenIssuerUnavailable, issuer: UNREACHABLE }),
+      );
+    });
+
+    it("is TokenIssuerUnavailable, not a refusal, for a token endpoint answering 5xx", async ({
+      tokens,
+      scripted,
+    }) => {
+      // GIVEN an issuer whose token endpoint answers 503 with an OAuth error body
+      const env = {
+        OAUTH_ISSUER: scripted.failing,
+        OAUTH_CLIENT_ID: "client",
+        OAUTH_CLIENT_SECRET: "secret",
+      };
+
+      // WHEN a token is asked for
+      const answer = await tokens({ env }, (ctx) =>
+        ctx.get(TokenSource).token({ audience: AUDIENCE }),
+      );
+
+      // THEN the outage is not mistaken for a refusal
+      expect(answer).toBeErrWith(
+        expect.objectContaining({ constructor: TokenIssuerUnavailable, issuer: scripted.failing }),
       );
     });
 

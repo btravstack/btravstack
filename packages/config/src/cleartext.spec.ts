@@ -12,6 +12,8 @@ describe("cleartext", () => {
     ["an http: URL on [::1]", "http://[::1]:4444/", false, true],
     ["an http: URL elsewhere, opted in", "http://issuer.internal/", true, true],
     ["an http: URL elsewhere", "http://issuer.internal/", false, "refused"],
+    ["a file: URL", "file:///tmp/issuer", false, "refused"],
+    ["a file: URL, opted in", "file:///tmp/issuer", true, "refused"],
   ] as const)("answers %s", (_name, url, allowed, expected) => {
     // GIVEN a configured URL and whether the caller pinned the opt-in
     // WHEN the rule is asked about it
