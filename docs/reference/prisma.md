@@ -216,18 +216,64 @@ Prisma 8 throws, with a **structured** error: `SqlQueryError` carrying a
 `sqlState` is PostgreSQL's own SQLSTATE rather than a vendor code, which is
 what makes the mapping portable.
 
-| Export                      | What it is                                                                                      |
-| --------------------------- | ----------------------------------------------------------------------------------------------- |
-| `tryQuery(() => query)`     | Runs a query and answers `AsyncResult<T, SqlError>` instead of rejecting. Takes a **thunk**.    |
-| `qualify(cause, defect)`    | SQLSTATE → a tagged error, or the caller's defect for anything unmodeled. What `tryQuery` uses. |
-| `UniqueConstraintViolation` | SQLSTATE `23505`, carrying `constraint` and `table`.                                            |
-| `ForeignKeyViolation`       | SQLSTATE `23503`.                                                                               |
-| `NotAuthorized`             | SQLSTATE `42501` — including a write a row-security policy's `WITH CHECK` refused.              |
-| `SqlError`                  | The union of the three.                                                                         |
+| Export                       | What it is                                                                                      |
+| ---------------------------- | ----------------------------------------------------------------------------------------------- |
+| `tryQuery(() => query, o?)`  | Runs a query and answers `AsyncResult<T, SqlError>` instead of rejecting. Takes a **thunk**.    |
+| `qualify(cause, defect, o?)` | SQLSTATE → a tagged error, or the caller's defect for anything unmodeled. What `tryQuery` uses. |
+| `UniqueConstraintViolation`  | SQLSTATE `23505`, carrying `constraint` and `table`.                                            |
+| `ForeignKeyViolation`        | SQLSTATE `23503`.                                                                               |
+| `NotAuthorized`              | SQLSTATE `42501` — including a write a row-security policy's `WITH CHECK` refused.              |
+| `SqlError`                   | The union of the three.                                                                         |
+| `RaisedException<S>`         | A SQLSTATE listed in `raises`: `{ sqlState: S, message, constraint, table }`.                   |
+| `Raised<S>`                  | One `RaisedException` per listed code, and `never` when none is.                                |
+| `QualifyOptions<S>`          | `{ raises?: readonly S[] }` — the option both functions take.                                   |
 
-Three arms and no more: a syntax error, a dead connection or a deadlock is
+Three arms by default: a syntax error, a dead connection or a deadlock is
 infrastructure a caller cannot act on differently, and belongs on the defect
 channel where an unexpected failure already goes.
+
+**A refusal the application raises on purpose is the exception, and it is
+opt-in.** A trigger guarding what the schema cannot express — `RAISE EXCEPTION
+'…' USING ERRCODE = 'OR001'` — refuses with a code of the application's own,
+and the adapter is the one place that can name it. List it in `raises` and it
+arrives as `RaisedException<"OR001">`, carrying the code, the message the
+`RAISE` wrote, and the constraint and table where the database named them:
+
+<!-- doctest: isolate
+import { tryQuery } from "@btravstack/prisma/result";
+import { P } from "unthrown";
+
+declare const db: { readonly orm: { readonly orders: { readonly Order: { readonly create: (row: { readonly orderId: string; readonly quantity: number }) => Promise<unknown> } } } };
+declare const row: { readonly orderId: string; readonly quantity: number };
+declare const frozen: () => Error;
+-->
+
+```ts
+const saved = tryQuery(() => db.orm.orders.Order.create(row), {
+  raises: ["OR001"],
+}).mapErrCases((matcher, defect) =>
+  matcher
+    .with(P.tag("RaisedException"), () => frozen())
+    .with(
+      P.tag("UniqueConstraintViolation"),
+      P.tag("ForeignKeyViolation"),
+      P.tag("NotAuthorized"),
+      (cause) => defect(cause),
+    ),
+);
+```
+
+Listing nothing adds nothing — the channel stays the three arms, so every
+exhaustive match written without the option compiles unchanged — and each
+listed code is an arm of its own, so a match that forgets one does not compile.
+An unlisted code is still a defect, and a listed code the three arms already
+model keeps its own arm. `tenantPinned` takes the same option.
+
+**Raise in a class of your own, not in `XX`.** PostgreSQL reserves `XX` for
+its internal errors (`XX000`, `XX001` data corruption), and `P0001` is what a
+bare `RAISE EXCEPTION` uses, so neither says "this guard". Any class the
+[SQLSTATE table](https://www.postgresql.org/docs/current/errcodes-appendix.html)
+does not use — five characters of digits and upper-case letters — is yours.
 
 **`tryQuery` takes a thunk, not a promise.** An `AsyncResult` is eager, so a
 promise built at the call site has already started before the Result exists —
@@ -337,10 +383,10 @@ import { tenantPinned } from "@btravstack/prisma/rls";
 const orders = await tenantPinned(db, tenant, (tx) => tx.orm.orders.Order.all());
 ```
 
-| Export                               | What it is                                                                               |
-| ------------------------------------ | ---------------------------------------------------------------------------------------- |
-| `tenantPinned(db, tenant, work, o?)` | Runs `work` in a transaction pinned to `tenant`. Answers whatever `work` answers.        |
-| `TenantPinnedOptions`                | `{ setting?: string }` — the run-time setting the policy reads, default `app.tenant_id`. |
+| Export                               | What it is                                                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `tenantPinned(db, tenant, work, o?)` | Runs `work` in a transaction pinned to `tenant`. Answers whatever `work` answers.                                               |
+| `TenantPinnedOptions<S>`             | `{ setting?: string }` — the run-time setting the policy reads, default `app.tenant_id` — and `raises`, as `tryQuery` takes it. |
 
 **It opens a transaction because `set_config(…, true)` is transaction-local**,
 and that is the whole design rather than an implementation detail. A

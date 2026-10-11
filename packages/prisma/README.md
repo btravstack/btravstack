@@ -100,7 +100,9 @@ Prisma 8 throws a **structured** error carrying PostgreSQL's own SQLSTATE.
 `tryQuery` turns that into a `Result` with three modeled arms —
 `UniqueConstraintViolation` (`23505`, with the `constraint` the database
 named), `ForeignKeyViolation` (`23503`) and `NotAuthorized` (`42501`,
-including a write a row-security policy refused). Anything else is a defect.
+including a write a row-security policy refused). Anything else is a defect,
+unless you list it in `raises` — a SQLSTATE your own trigger raises on purpose
+then arrives as a `RaisedException` carrying that code.
 
 <!-- doctest: isolate
 import { tryQuery } from "@btravstack/prisma/result";
@@ -182,12 +184,13 @@ package's.
 
 ## Options
 
-| Option         | Where                                         | What it is                                                                               |
-| -------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `name`         | `prismaDatabase(name)`                        | the port's id and the health check's name — required                                     |
-| `client`       | `prismaDatabase(name)({ client })`            | builds your client from the URL and middleware this package bound — required             |
-| `DATABASE_URL` | environment, read by `prismaDatabase(name)`   | the connection string — required, validated at graph build; blank is an error, exit `78` |
-| `setting`      | `tenantPinned(db, tenant, work, { setting })` | the PostgreSQL run-time setting the policy reads — default `app.tenant_id`               |
+| Option         | Where                                                      | What it is                                                                               |
+| -------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `name`         | `prismaDatabase(name)`                                     | the port's id and the health check's name — required                                     |
+| `client`       | `prismaDatabase(name)({ client })`                         | builds your client from the URL and middleware this package bound — required             |
+| `DATABASE_URL` | environment, read by `prismaDatabase(name)`                | the connection string — required, validated at graph build; blank is an error, exit `78` |
+| `setting`      | `tenantPinned(db, tenant, work, { setting })`              | the PostgreSQL run-time setting the policy reads — default `app.tenant_id`               |
+| `raises`       | `tryQuery(run, { raises })`, `tenantPinned(…, { raises })` | SQLSTATEs modeled as `RaisedException` rather than defects — default none                |
 
 There is **no `instrumented` flag**: observation is a set port every call is
 handed to, so a graph composing no observability pays one inert call and no

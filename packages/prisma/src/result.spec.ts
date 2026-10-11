@@ -68,6 +68,47 @@ describe("tryQuery", () => {
     expect(failed).toBeDefectWith(expect.objectContaining({ sqlState: "40P01" }));
   });
 
+  it("names a SQLSTATE the application raises, once it is listed", async ({ sqlError }) => {
+    // GIVEN a trigger's guard refusing a write in a class of the application's own
+    // WHEN it is run with that code listed
+    const refused = await tryQuery(() => Promise.reject(sqlError("OR001", { table: "order" })), {
+      raises: ["OR001"],
+    });
+
+    // THEN it is modeled, carrying the code, the message the RAISE wrote and the table
+    expect(refused).toBeErrWith(
+      expect.objectContaining({
+        _tag: "RaisedException",
+        sqlState: "OR001",
+        message: "refused: OR001",
+        table: "order",
+        constraint: undefined,
+      }),
+    );
+  });
+
+  it("defects on a raised SQLSTATE that is not listed", async ({ sqlError }) => {
+    // GIVEN a guard raising a code the caller did not list
+    // WHEN it is run listing another
+    const failed = await tryQuery(() => Promise.reject(sqlError("OR002")), {
+      raises: ["OR001"],
+    });
+
+    // THEN listing is per code: an unlisted one is still a defect
+    expect(failed).toBeDefectWith(expect.objectContaining({ sqlState: "OR002" }));
+  });
+
+  it("keeps a modeled SQLSTATE on its own arm when it is listed too", async ({ sqlError }) => {
+    // GIVEN a unique violation, whose code the caller also listed
+    // WHEN it is run
+    const refused = await tryQuery(() => Promise.reject(sqlError("23505")), {
+      raises: ["23505"],
+    });
+
+    // THEN the dedicated arm wins: `raises` adds arms, it never moves one
+    expect(refused).toBeErrTagged("UniqueConstraintViolation");
+  });
+
   it("defects on a rejection that is not a SQL error at all", async () => {
     // GIVEN a socket that died, which carries no `sqlState`
     // WHEN it is run
@@ -76,6 +117,15 @@ describe("tryQuery", () => {
     // THEN the same channel: the qualifier reads a field that is not there and
     // hands the cause to `defect` rather than guessing
     expect(failed).toBeDefectWith(expect.objectContaining({ message: "ECONNRESET" }));
+  });
+
+  it("defects on a rejection carrying nothing at all", async () => {
+    // GIVEN a driver rejecting with `undefined`, which nothing obliges it not to do
+    // WHEN it is run with a code listed
+    const failed = await tryQuery(() => Promise.reject(undefined), { raises: ["OR001"] });
+
+    // THEN there is no SQLSTATE to read, so it is a defect rather than a crash in the qualifier
+    expect(failed).toBeDefectWith(undefined);
   });
 
   it("catches a thunk that throws synchronously", async ({ sqlError }) => {

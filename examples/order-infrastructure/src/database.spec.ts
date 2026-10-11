@@ -1,3 +1,5 @@
+import { tryQuery } from "@btravstack/prisma/result";
+import { tenantPinned } from "@btravstack/prisma/rls";
 import { OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, inject } from "vitest";
 
@@ -51,5 +53,71 @@ describe("the database a scope opens", () => {
 
     // THEN it opens
     expect(opened).toBeOkWith("opened");
+  });
+});
+
+describe("an exception the database raises on purpose", () => {
+  it("arrives modeled when its SQLSTATE is listed", async ({ db }) => {
+    // GIVEN a guard refusing in a class of the application's own, as a trigger would
+    // WHEN it runs with that code listed
+    const refused = await tryQuery(
+      () =>
+        db
+          .runtime()
+          .query(
+            db.raw
+              .sql`DO $$ BEGIN RAISE EXCEPTION 'quantity is frozen' USING ERRCODE = 'OR001'; END $$`
+              .affectedCount()
+              .build(),
+          ),
+      { raises: ["OR001"] },
+    );
+
+    // THEN it is the modeled arm, carrying the code and the message the RAISE wrote
+    expect(refused).toBeErrWith(
+      expect.objectContaining({
+        _tag: "RaisedException",
+        sqlState: "OR001",
+        message: expect.stringContaining("quantity is frozen"),
+      }),
+    );
+  });
+
+  it("arrives modeled from inside a pinned transaction too", async ({ db, tenant }) => {
+    // GIVEN the same guard, reached from a tenant's pinned unit of work
+    // WHEN it runs with that code listed
+    const refused = await tenantPinned(
+      db,
+      tenant,
+      (tx) =>
+        tx.query(
+          db.raw
+            .sql`DO $$ BEGIN RAISE EXCEPTION 'quantity is frozen' USING ERRCODE = 'OR001'; END $$`
+            .affectedCount()
+            .build(),
+        ),
+      { raises: ["OR001"] },
+    );
+
+    // THEN the transaction's rejection is qualified the same way
+    expect(refused).toBeErrTagged("RaisedException");
+  });
+
+  it("is a defect when its SQLSTATE is not listed", async ({ db }) => {
+    // GIVEN the same guard
+    // WHEN it runs with nothing listed
+    const failed = await tryQuery(() =>
+      db
+        .runtime()
+        .query(
+          db.raw
+            .sql`DO $$ BEGIN RAISE EXCEPTION 'quantity is frozen' USING ERRCODE = 'OR001'; END $$`
+            .affectedCount()
+            .build(),
+        ),
+    );
+
+    // THEN it stays on the defect channel, as every unmodeled SQLSTATE does
+    expect(failed).toBeDefectWith(expect.objectContaining({ sqlState: "OR001" }));
   });
 });

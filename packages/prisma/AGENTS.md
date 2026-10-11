@@ -133,6 +133,17 @@ v7's `P2002` could not say which unique index fired. Three arms —
 everything else is a defect, because a syntax error, a dead connection or a
 deadlock is infrastructure a caller cannot act on differently.
 
+**A code the application raises on purpose is the one exception, and the
+caller opts in** (issue #489): `raises: ["OR001"]` on `tryQuery` or
+`tenantPinned` models it as `RaisedException<"OR001">`. Opt-in rather than a
+fourth default arm because an unlisted code is still infrastructure — a
+`P0001` from someone's forgotten debug `RAISE` is not a refusal to triage — and
+because a default arm would break every exhaustive `mapErrCases` in every
+consumer. `Raised<S>` distributes, so `never` (nothing listed) adds nothing —
+`result.test-d.ts` pins both halves — and each listed code is its own arm.
+The three modeled SQLSTATEs win over `raises`. `message` is set after
+`super`, because `TaggedError` reserves it as a payload key.
+
 **`tryQuery` takes a THUNK.** An `AsyncResult` is eager, so a promise built at
 the call site has already started before the Result exists — the hazard
 `unthrown/no-async-result-race` reports one layer up. The thunk is wrapped in
