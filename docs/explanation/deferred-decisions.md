@@ -348,8 +348,10 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   #501). Its disconnect half shipped: the kernel aborts a unit's signal once
   the unit settles, and `@btravstack/http-server` settles a unit on the
   response's `'close'`, so a client that walks away aborts the handler it left
-  behind. With that in place the ingress read timeout IS the deadline — an
-  ingress that gives up closes the connection, and that cancels the work
-  through the same path a disconnect does — so a second clock in the process
-  would only have to be kept below the first. The trigger would be a
-  deployment with no ingress in front of it.
+  behind. With that in place the deadline is the ingress's upstream (response)
+  timeout — not its read timeout, which bounds only the client sending the
+  request: an ingress that gives up waiting for the response closes the
+  connection, and that cancels the work through the same path a disconnect
+  does — so a second clock in the process would only have to be kept below
+  the first. The trigger would be a deployment with no ingress in front of it,
+  or one whose ingress has no response timeout that closes the connection.

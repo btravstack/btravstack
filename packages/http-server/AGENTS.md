@@ -701,8 +701,8 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   handler's third parameter fires with `"The unit has settled"` the moment a
   client walks away, and an outbound call that honours it stops. That abort
   is the kernel's, not this package's: no `'close'` listener here aborts
-  anything, and an ingress timing out on the client's behalf cancels work
-  through the very same path, which is why there is no per-request deadline
+  anything, and an ingress whose upstream (response) timeout closes the
+  connection cancels work through the very same path, which is why there is no per-request deadline
   option (`docs/explanation/deferred-decisions.md`). `http-runtime.spec.ts` →
   _"aborts the handler's signal when its client disconnects"_.
 
