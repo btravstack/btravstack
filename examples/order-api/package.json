@@ -45,6 +45,7 @@
     "@btravstack/entity": "workspace:*",
     "@btravstack/example-order-graphql-api": "workspace:*",
     "@btravstack/internal-test-infra": "workspace:*",
+    "@btravstack/oauth-client": "workspace:*",
     "@btravstack/pothos": "workspace:*",
     "@btravstack/prisma": "workspace:*",
     "@btravstack/testing": "workspace:*",

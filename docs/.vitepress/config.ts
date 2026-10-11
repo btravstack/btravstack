@@ -102,6 +102,10 @@ const GUIDE_SIDEBAR = [
           },
           { text: "Log a browser in", link: "/how-to/log-a-browser-in" },
           {
+            text: "Call another service as itself",
+            link: "/how-to/call-another-service-as-itself",
+          },
+          {
             text: "Stream with server-sent events",
             link: "/how-to/stream-with-server-sent-events",
           },
@@ -213,6 +217,7 @@ const GUIDE_SIDEBAR = [
         items: [
           { text: "@btravstack/temporal-client", link: "/reference/temporal-client" },
           { text: "@btravstack/amqp-client", link: "/reference/amqp-client" },
+          { text: "@btravstack/oauth-client", link: "/reference/oauth-client" },
         ],
       },
       {
@@ -533,6 +538,7 @@ export default defineConfig({
             { text: "@btravstack/amqp-worker", link: "/api/amqp-worker/" },
             { text: "@btravstack/temporal-client", link: "/api/temporal-client/" },
             { text: "@btravstack/amqp-client", link: "/api/amqp-client/" },
+            { text: "@btravstack/oauth-client", link: "/api/oauth-client/" },
           ],
         },
       ],

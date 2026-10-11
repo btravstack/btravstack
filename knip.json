@@ -29,6 +29,7 @@
     "examples/order-api": {
       "ignoreDependencies": [
         "@btravstack/entity",
+        "@btravstack/oauth-client",
         "@btravstack/pothos",
         "@btravstack/prisma",
         "@orpc/tanstack-query",

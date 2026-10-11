@@ -119,6 +119,35 @@ export const createIdentity = async (user: OryUser): Promise<OryIdentity> => {
   return { id: made.id, status: "created" };
 };
 
+/** A confidential client that authenticates as itself, and the credentials it does so with. */
+export type OryServiceClient = {
+  readonly clientId: string;
+  readonly clientSecret: string;
+};
+
+/**
+ * A fresh client-credentials client, allowed `audience` and `scope` — the
+ * per-test boundary for a suite whose caller IS a client, the way
+ * {@link createIdentity} is for a suite whose caller is a user. A UUID id, so
+ * nothing collides and nothing is cleaned up.
+ */
+export const createServiceClient = async (grant: {
+  readonly audience: readonly string[];
+  readonly scope: string;
+}): Promise<OryServiceClient> => {
+  const clientId = `service-${randomUUID()}`;
+  const clientSecret = `secret-${randomUUID()}`;
+  await create(`client '${clientId}'`, `${HYDRA_ADMIN}/clients`, {
+    client_id: clientId,
+    client_secret: clientSecret,
+    grant_types: ["client_credentials"],
+    audience: grant.audience,
+    scope: grant.scope,
+    token_endpoint_auth_method: "client_secret_basic",
+  });
+  return { clientId, clientSecret };
+};
+
 const client = async (): Promise<Outcome> => {
   const found = await send(`${HYDRA_ADMIN}/clients/${ORY_CLIENT_ID}`);
   if (found.status === 200) return "existing";

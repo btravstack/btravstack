@@ -259,11 +259,14 @@ composition root.
 | `DATABASE_URL`             | required                | [`prismaDatabase()`](/reference/prisma) — the **application role's** credentials, not the owner's, where row security is on: `prisma db migrate` runs as the owner                                                                  |
 | `REDIS_URL`                | required                | [`cache()` over Redis](/reference/cache)                                                                                                                                                                                            |
 | `SMTP_URL`                 | required                | [`mailer()` over SMTP](/reference/mailer)                                                                                                                                                                                           |
+| `OAUTH_ISSUER`             | required                | [`oauthClient()`](/reference/oauth-client) — the authorization server, a `Config.url` field; an `http:` one off loopback is refused unless `allowInsecureIssuer` is pinned                                                          |
+| `OAUTH_CLIENT_ID`          | required                | `oauthClient()` — this service's client; pinned by `clientId`                                                                                                                                                                       |
+| `OAUTH_CLIENT_SECRET`      | required                | `oauthClient()` — its secret, from a Kubernetes Secret; pinned by `clientSecret`                                                                                                                                                    |
 | `STORAGE_S3_*`             | see the page            | [`storage()` over S3](/reference/storage)                                                                                                                                                                                           |
 
 **A variable carries its starter's prefix**, so two starters in one process
 cannot collide — an HTTP deployment that also publishes to AMQP and reads a
-database composes three of them. `HTTP_`, `GRAPHQL_`, `TEMPORAL_`, `AMQP_`, `OUTBOX_`,
+database composes three of them. `HTTP_`, `GRAPHQL_`, `TEMPORAL_`, `AMQP_`, `OUTBOX_`, `OAUTH_`,
 `STORAGE_S3_` are the namespaces; the exceptions are names the ecosystem already owns and
 that a platform injects for you (`PORT`, `HOST`, `DATABASE_URL`, `REDIS_URL`,
 `SMTP_URL`, `LOG_LEVEL`), where a prefix would break the convention rather than
