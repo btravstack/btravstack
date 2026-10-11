@@ -102,7 +102,7 @@ before anything it depends on is released.
 | `pollMs`      | `OUTBOX_POLL_MS`     | `200`                      | the sleep between sweeps that found nothing to do, `1` to `60_000`                |
 | `maxLagMs`    | `OUTBOX_MAX_LAG_MS`  | `60_000`                   | the oldest pending age the health check tolerates                                 |
 | `retainMs`    | `OUTBOX_RETAIN_MS`   | `0` (kept)                 | how long a published row is kept before the relay deletes it; `false` pins it off |
-| `concurrency` | `OUTBOX_CONCURRENCY` | `4`                        | how many tenants hold a claim at once, at least `1`                               |
+| `concurrency` | `OUTBOX_CONCURRENCY` | `4`                        | how many tenants claim or prune at once, at least `1`                             |
 | `clock`       | —                    | the kernel's `systemClock` | what the poll sleeps on and the lag is measured against                           |
 
 Each option **pins** its variable: given, the variable is not read. A blank or
@@ -115,6 +115,12 @@ table" is how one deployment starts broadcasting another's facts off a shared
 database. Naming them is also how relays are sharded. A single-tenant
 application names its one. A boot's typed `env` requires it too, unless
 `tenants` is pinned at the call.
+
+**Onboarding a tenant is therefore a configuration change and a rollout.** A
+tenant missing from the list is not an error anywhere: its rows are written
+and never published, and the health check — which asks only about the tenants
+it was told — does not see them either. Add a tenant to `OUTBOX_TENANTS` in
+the rollout before, or with, the one that lets it write.
 
 ## The loop
 
@@ -162,6 +168,32 @@ export const swept = Module.scoped(Tested, () =>
   clock.advance(0).flatMap(() => memory.pending("acme", 10)),
 );
 ```
+
+### A message that will never go out
+
+**Head-of-line blocking is the price of a tenant's order.** A payload the
+contract rejects, a `kind` the publisher cannot decode, a downstream that
+refuses for good: each is an `Err` on every attempt, retried with back-off
+forever, and every later fact of that tenant waits behind it. The lag check is
+what reports it.
+
+**The terminal lever is the publisher's**, because only the publisher knows
+which of its refusals are final. For one that is, record the message wherever
+the application keeps its dead letters and answer `Ok`: the relay marks it
+published and the tenant moves on. The cost is stated: the later facts about
+that subject now go out without it — a subscriber can see an update for a
+create it never received, or a tombstone for nothing — so the dead letter is
+where it is replayed from, deliberately, by someone who knows what it was.
+[Publish a message](/how-to/publish-a-message#a-message-that-will-never-go-out)
+shows the shape.
+
+**There is no attempt counter and no parked column.** A count-based skip parks
+a message for having failed N times, not for being unpublishable: a broker
+down for N back-offs parks a create, and the tombstone behind it — now at the
+head of the queue — goes out first, with nothing to say so. And the table is
+the application's, declared in its own contract, so a counter and a parking
+column would be a schema change for every adopter, to give the relay a
+judgement only the publisher can make.
 
 ## The claim, and what it guarantees
 
@@ -385,7 +417,12 @@ logger. With `@btravstack/observability` composed:
 | log line | `"outbox.publish failed"` / `"outbox.claim failed"` / `"outbox.prune failed"`, at `error` | the attributes and details, with the failure as the cause                             |
 
 A claim or a prune opens **no span** — one per tenant per poll would bury the publishes —
-and a success writes no line. The tenant is a dimension because the relay is
+and a success writes no line. The relay runs outside any unit, so its publish
+span is not part of the request that wrote the row; the trace id that request
+ran under crosses as data instead — the adapter writes it into the payload and
+the publisher puts it on the wire, as
+[Publish a message](/how-to/publish-a-message#carry-the-trace-id-to-the-subscriber)
+shows. The tenant is a dimension because the relay is
 told its tenants, so it is bounded; the id and subject are details, on the span
 and the error line only.
 

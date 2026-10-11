@@ -14,6 +14,10 @@ import { orderContract } from "@btravstack/example-order-amqp-contract";
 // The client, a resourceful provider of the deployment's own — see
 // /examples/order-amqp-worker for its acquire and release.
 class OrderAmqpClient extends Port("OrderAmqpClient")<TypedAmqpClient<typeof orderContract>> {}
+
+// The deployment's modules that provide the two, as /examples/order-amqp-worker composes them.
+declare const OrderPersistenceModule: Module<InstanceType<typeof OrderDatabase>, never, never>;
+declare const OrderAmqpClientModule: Module<OrderAmqpClient, never, never>;
 -->
 
 # Publish a message
@@ -143,7 +147,8 @@ the relay backs off and tries again. A payload the contract will refuse on
 every attempt therefore blocks its tenant, and the `outbox` component of
 `/healthz` goes unhealthy, naming it, once its oldest pending row is older than
 `OUTBOX_MAX_LAG_MS`. Whether such a row is dropped is the publisher's call: it
-answers `Ok` for a row it decides to park, and the relay marks it.
+answers `Ok` for a row it decides to park, and the relay marks it — see
+[A message that will never go out](#a-message-that-will-never-go-out).
 
 **Order is per tenant, and then only as far as one queue and one consumer.**
 The claim publishes a tenant's committed facts in outbox order, one relay at a
@@ -183,6 +188,174 @@ export const Producer = Module("Producer")({
   needs: [OrderDatabase, OrderAmqpClient],
 });
 ```
+
+## A message that will never go out
+
+A refusal holds its tenant because the tenant's order is the point, so a
+message that can never go out holds it forever. Only the publisher knows which
+of its refusals are final — here, a payload the contract refuses will be
+refused on every attempt, while a broker that refused may not be next time.
+For the final kind, record the message where the application keeps its dead
+letters and answer `Ok`:
+
+```ts
+import type { OutboxMessage } from "@btravstack/outbox";
+import { ErrAsync, P } from "unthrown";
+
+class DeadLetters extends Port("DeadLetters")<{
+  readonly record: (message: OutboxMessage, reason: string) => AsyncResult<void, never>;
+}> {}
+
+const parkingPublisher = Provider(OutboxPublisher)({
+  inject: { client: OrderAmqpClient, deadLetters: DeadLetters },
+  sync: ({ client, deadLetters }) => ({
+    publish: (message) =>
+      OkAsync()
+        .map(() => decodeOrderPayload(message.payload))
+        .flatMap(({ placedAt, placementId, order }) =>
+          client.publish("orderChanged", {
+            eventId: message.id,
+            tenantId: message.tenantId,
+            kind: message.kind as "order",
+            id: message.subjectId,
+            occurredAt: message.occurredAt.toISOString(),
+            placedAt,
+            placementId,
+            payload: order,
+          }),
+        )
+        // Parked and answered `Ok`, so the relay marks it; a broker's refusal stays an `Err`.
+        .flatMapErrCases((matcher) =>
+          matcher
+            .with(P.tag("@amqp-contract/MessageValidationError"), (refused) =>
+              deadLetters.record(message, refused.message),
+            )
+            .with(P.tag("@amqp-contract/PublishError"), (failed) => ErrAsync(failed)),
+        ),
+  }),
+});
+```
+
+The relay marks it published and the tenant moves on. What that costs is the
+subject's story: the later facts about it now go out without this one, so a
+subscriber can see an update for a create it never received. Replaying the
+dead letter is a decision somebody makes, knowing that. The relay keeps no
+attempt counter that would make it for you — the reasons are on
+[the reference page](/reference/outbox#a-message-that-will-never-go-out).
+
+## Carry the trace id to the subscriber
+
+The relay publishes outside any unit, so on its own the delivery that reaches
+a subscriber starts a trace of its own. The row is what crosses the gap: the
+adapter that writes it runs inside the request's unit, and an infrastructure
+adapter reading `currentUnit()` is exactly what the ambient record is for. Put
+the trace id into the payload, in the same transaction:
+
+<!-- doctest: skip — an excerpt of an adapter's transaction; the ORM accessor is typed by the application's emitted contract -->
+
+```ts
+await tx.orm.orders.OutboxMessage.create({
+  tenantId,
+  kind: "order",
+  subjectId: order.id,
+  payload: JSON.stringify({ placedAt, placementId, order, traceId: currentUnit()?.traceId }),
+});
+```
+
+and have the publisher put it where
+[`@btravstack/amqp-worker`](/reference/amqp-worker) adopts a delivery's trace
+id from. It reads the trace-id field of a W3C `traceparent` header, else the
+message's `messageId`. The request's trace id is a W3C one only when the
+request arrived with a `traceparent`; otherwise it is the `x-request-id` it
+carried or a minted UUID, which no `traceparent` can hold. `messageId` takes
+any of them:
+
+```ts
+type Traced = { readonly traceId?: string };
+
+const tracedPublisher = Provider(OutboxPublisher)({
+  inject: { client: OrderAmqpClient },
+  sync: ({ client }) => ({
+    publish: (message) =>
+      OkAsync()
+        .map(() => decodeOrderPayload(message.payload) as ReturnType<typeof decodeOrderPayload> & Traced)
+        .flatMap(({ placedAt, placementId, order, traceId }) =>
+          client.publish(
+            "orderChanged",
+            {
+              eventId: message.id,
+              tenantId: message.tenantId,
+              kind: message.kind as "order",
+              id: message.subjectId,
+              occurredAt: message.occurredAt.toISOString(),
+              placedAt,
+              placementId,
+              payload: order,
+            },
+            traceId === undefined ? {} : { messageId: traceId },
+          ),
+        ),
+  }),
+});
+```
+
+The subscriber's unit then logs under the request's trace id, so one id finds
+the request, the row and the handler. What crosses is that correlation id and
+nothing more: the relay's publish span is not made a child or a link of the
+request's span, for the reason `@btravstack/observability` correlates by
+attribute rather than by a parent-child edge it cannot prove.
+
+## Where the relay runs
+
+**In a process you already run.** Compose `outbox()` into the API or the
+consumer deployment, as above: every replica runs a relay, and the claim makes
+them take turns per tenant. The kernel serves `/livez`, `/readyz` and
+`/healthz` on the probe port whatever the runtime is, so the relay's lag
+check is on `/healthz` with nothing more to wire, and the relay stops in the
+application scope's teardown, after the runtime has drained.
+
+**A process that runs only the relay** needs a runtime too — `runMain` boots
+one — and the one it needs does nothing but hold the process open. Nothing
+else does: the probe server and the relay's sleep are both unreferenced, so
+without a referenced handle the event loop empties, `runMain`'s top-level
+`await` never settles, and Node exits `13`. A pooled database connection may
+hold the loop for a while, until the pool reaps it as idle, which is not
+something to stand a process on. Following
+[Write a runtime](/how-to/write-a-runtime), it is one timer, cleared on `stop`:
+
+```ts
+import { RuntimePort, runMain, type Runtime } from "@btravstack/core";
+
+class Background extends RuntimePort<Runtime> {}
+
+const background: Runtime = {
+  name: "background",
+  resolves: [],
+  start: () => {
+    const alive = setInterval(() => {}, 2 ** 30);
+    return OkAsync({
+      drain: () => OkAsync(),
+      stop: () => {
+        clearInterval(alive);
+        return OkAsync();
+      },
+    });
+  },
+};
+
+export const RelayProcess = Module("RelayProcess")({
+  imports: [OrderPersistenceModule, OrderAmqpClientModule, Producer],
+  provides: [Provider(Background)({ inject: {}, value: background })],
+  exports: [Background],
+});
+
+await runMain(RelayProcess);
+```
+
+Set `PRE_DRAIN_DELAY_MS=0` on that deployment. The pre-drain delay waits out
+a Service's endpoint removal, and a relay is behind no Service; with no units
+of its own to drain, it goes straight to teardown, which waits for the batches
+in flight.
 
 ## Where to go next
 

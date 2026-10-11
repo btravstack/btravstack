@@ -288,8 +288,25 @@ and sweeping "whatever is in the table" is how one deployment broadcasts
 another's facts. `OUTBOX_TENANTS` has no default for that reason, and naming
 them is also how relays are sharded. A single-tenant application names one.
 
+**The cost, stated plainly: a new tenant is a configuration change and a
+rollout**, and an unlisted tenant fails silently twice — its rows are never
+delivered, and the lag check, which asks only about the listed tenants, never
+sees them. A tenant source the relay re-reads each sweep (#495) is deferred,
+not declined: it makes the tenant count unbounded, and `concurrency` is what
+now keeps that from becoming the pool's count. It is revisited once the bound
+has run in a deployment; the register entry carries the trigger.
+
 ## Deliberately not here
 
+- **Parking a poison message** (#494). The publisher is the terminal lever:
+  it records a message it will never get out where the application keeps its
+  dead letters and answers `Ok`, so the relay marks it — and later facts about
+  that subject go out without it, which is the stated cost. An attempt counter
+  with a parked column was declined: a count-based skip parks a message for
+  having failed N times rather than for being unpublishable, so a broker down
+  for N back-offs parks a create and lets its tombstone overtake it silently;
+  and the table is the application's model, so every adopter would migrate
+  for a judgement only the publisher can make.
 - **Exactly-once.** A crash between a publish and its mark re-publishes; a
   subscriber dedupes on the outbox id. No outbox can do better without the
   broker joining the database's transaction.
