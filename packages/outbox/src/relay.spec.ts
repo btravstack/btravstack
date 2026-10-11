@@ -215,6 +215,124 @@ describe("outbox", () => {
     expect(swept).toBeOkWith(ids);
   });
 
+  it("holds at most OUTBOX_CONCURRENCY claims at once, and serves every tenant", async ({
+    store,
+    publisher,
+    clock,
+    relaying,
+  }) => {
+    // GIVEN five tenants with a fact each, and a store that counts open claims
+    const tenants = ["a", "b", "c", "d", "e"];
+    for (const tenant of tenants) store.append(order(tenant, tenant));
+    let open = 0;
+    let peak = 0;
+    const counted = {
+      ...store,
+      claim: (...args: Parameters<typeof store.claim>) => {
+        open += 1;
+        peak = Math.max(peak, open);
+        return store.claim(...args).tap(() => {
+          open -= 1;
+        });
+      },
+    };
+
+    // WHEN the relay sweeps with two slots
+    const swept = await relaying(
+      { tenants, env: { OUTBOX_CONCURRENCY: "2" } },
+      () => clock.advance(0).map(() => ({ peak, sent: publisher.sent() })),
+      counted,
+    );
+
+    // THEN never more than two claims were open, and every tenant went out in turn
+    expect(swept).toBeOkWith({ peak: 2, sent: tenants });
+  });
+
+  it("counts a prune against OUTBOX_CONCURRENCY like a claim", async ({
+    store,
+    publisher,
+    clock,
+    relaying,
+  }) => {
+    // GIVEN two tenants with a fact each, retention on, and a store that counts
+    // open claims and prunes together
+    store.append(order("acme", "a"));
+    store.append(order("globex", "g"));
+    let open = 0;
+    let peak = 0;
+    const opened = <T>(call: () => AsyncResult<T, never>) => {
+      open += 1;
+      peak = Math.max(peak, open);
+      return call().tap(() => {
+        open -= 1;
+      });
+    };
+    const counted = {
+      ...store,
+      claim: (...args: Parameters<typeof store.claim>) => opened(() => store.claim(...args)),
+      prune: (...args: Parameters<typeof store.prune>) => opened(() => store.prune(...args)),
+    };
+
+    // WHEN the relay sweeps and prunes both with one slot
+    const swept = await relaying(
+      { tenants: ["acme", "globex"], concurrency: 1, retainMs: 1 },
+      () => clock.advance(0).map(() => ({ peak, sent: publisher.sent() })),
+      counted,
+    );
+
+    // THEN no prune ran beside another tenant's claim
+    expect(swept).toBeOkWith({ peak: 1, sent: ["a", "g"] });
+  });
+
+  it("hands a freed slot to the waiting tenant before a backlog takes it back", async ({
+    store,
+    publisher,
+    clock,
+    relaying,
+  }) => {
+    // GIVEN two tenants each with more than one batch, and one slot
+    const backlog = (tenant: string) =>
+      Array.from({ length: 40 }, (_, index) => `${tenant}-${String(index)}`);
+    for (const tenant of ["acme", "globex"])
+      for (const id of backlog(tenant)) store.append(order(tenant, id));
+
+    // WHEN the relay drains both, and no time passes
+    const swept = await relaying({ tenants: ["acme", "globex"], concurrency: 1 }, () =>
+      clock.advance(0).map(() => publisher.sent()),
+    );
+
+    // THEN the tenants alternated batch by batch
+    expect(swept).toBeOkWith([
+      ...backlog("acme").slice(0, 32),
+      ...backlog("globex").slice(0, 32),
+      ...backlog("acme").slice(32),
+      ...backlog("globex").slice(32),
+    ]);
+  });
+
+  it("stops a tenant waiting for a slot without sweeping it", async ({
+    store,
+    publisher,
+    clock,
+    relaying,
+  }) => {
+    // GIVEN one slot, held by a publish the test controls, and a second tenant queued behind it
+    store.append(order("acme", "held"));
+    store.append(order("globex", "queued"));
+    const held = publisher.hold("held");
+
+    // WHEN the scope closes while the slot is held, and the publish then settles
+    const closing = relaying({ tenants: ["acme", "globex"], concurrency: 1 }, () =>
+      fromSafePromise(held.entered),
+    );
+    await clock.advance(0);
+    held.release();
+    const closed = await closing.map(() => publisher.sent());
+
+    // THEN release waited for the batch in flight, and the queued tenant never swept
+    expect(closed).toBeOkWith(["held"]);
+  });
+
   it("never hands two relays over one store the same message", async ({
     store,
     publisher,

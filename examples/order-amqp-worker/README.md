@@ -163,15 +163,16 @@ the sugar cannot leave the handlers out).
 
 ## The environment
 
-| Variable            | Default                 | What it is                                                 |
-| ------------------- | ----------------------- | ---------------------------------------------------------- |
-| `AMQP_URL`          | `amqp://127.0.0.1:5672` | the broker (`AmqpConfig`), consumer and relay              |
-| `PROBE_PORT`        | `9000`                  | `/livez` / `/readyz`                                       |
-| `OUTBOX_POLL_MS`    | `200`                   | the relay's idle sleep (`outbox()`)                        |
-| `OUTBOX_TENANTS`    | _(required)_            | the tenants the relay sweeps, comma-separated              |
-| `OUTBOX_MAX_LAG_MS` | `60000`                 | the oldest pending age the `outbox` health check tolerates |
-| `DATABASE_URL`      | _(required)_            | the orders database (`DatabaseConfig`)                     |
-| `LOG_LEVEL`         | `info`                  | the `Logger`'s floor (`LoggerConfig`)                      |
+| Variable             | Default                 | What it is                                                 |
+| -------------------- | ----------------------- | ---------------------------------------------------------- |
+| `AMQP_URL`           | `amqp://127.0.0.1:5672` | the broker (`AmqpConfig`), consumer and relay              |
+| `PROBE_PORT`         | `9000`                  | `/livez` / `/readyz`                                       |
+| `OUTBOX_POLL_MS`     | `200`                   | the relay's idle sleep (`outbox()`)                        |
+| `OUTBOX_TENANTS`     | _(required)_            | the tenants the relay sweeps, comma-separated              |
+| `OUTBOX_MAX_LAG_MS`  | `60000`                 | the oldest pending age the `outbox` health check tolerates |
+| `OUTBOX_CONCURRENCY` | `4`                     | how many tenants the relay claims at once                  |
+| `DATABASE_URL`       | _(required)_            | the orders database (`DatabaseConfig`)                     |
+| `LOG_LEVEL`          | `info`                  | the `Logger`'s floor (`LoggerConfig`)                      |
 
 `pnpm deploy:invoice-retention` is the release step beside the worker: it
 reads the same `STORAGE_S3_*` variables and installs the bucket's lifecycle

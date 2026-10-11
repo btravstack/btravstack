@@ -160,8 +160,11 @@ put them on two, with no order between them at all.
 
 The relay is the one caller with no request, delivery or activity behind it,
 so its tenants come from configuration — `OUTBOX_TENANTS` — rather than an
-ambient record, and it sweeps them one by one so one tenant's backlog cannot
-starve another's.
+ambient record. Each tenant keeps its own schedule, and at most
+`OUTBOX_CONCURRENCY` of them (default `4`) hold a claim at once, taking turns
+batch by batch so one tenant's backlog cannot starve another's — a claim holds
+a pooled connection for its batch, and the bound is what leaves the rest of
+the pool to the publisher.
 
 ## The contract is where the shape lives
 

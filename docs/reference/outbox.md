@@ -96,13 +96,14 @@ it starts as the graph builds — before the runtime accepts anything — and
 stops when the application scope closes, after the runtime has drained and
 before anything it depends on is released.
 
-| Option     | Variable            | Default                    | What it is                                                                        |
-| ---------- | ------------------- | -------------------------- | --------------------------------------------------------------------------------- |
-| `tenants`  | `OUTBOX_TENANTS`    | none                       | the tenants this relay serves, comma-separated — required                         |
-| `pollMs`   | `OUTBOX_POLL_MS`    | `200`                      | the sleep between sweeps that found nothing to do, `1` to `60_000`                |
-| `maxLagMs` | `OUTBOX_MAX_LAG_MS` | `60_000`                   | the oldest pending age the health check tolerates                                 |
-| `retainMs` | `OUTBOX_RETAIN_MS`  | `0` (kept)                 | how long a published row is kept before the relay deletes it; `false` pins it off |
-| `clock`    | —                   | the kernel's `systemClock` | what the poll sleeps on and the lag is measured against                           |
+| Option        | Variable             | Default                    | What it is                                                                        |
+| ------------- | -------------------- | -------------------------- | --------------------------------------------------------------------------------- |
+| `tenants`     | `OUTBOX_TENANTS`     | none                       | the tenants this relay serves, comma-separated — required                         |
+| `pollMs`      | `OUTBOX_POLL_MS`     | `200`                      | the sleep between sweeps that found nothing to do, `1` to `60_000`                |
+| `maxLagMs`    | `OUTBOX_MAX_LAG_MS`  | `60_000`                   | the oldest pending age the health check tolerates                                 |
+| `retainMs`    | `OUTBOX_RETAIN_MS`   | `0` (kept)                 | how long a published row is kept before the relay deletes it; `false` pins it off |
+| `concurrency` | `OUTBOX_CONCURRENCY` | `4`                        | how many tenants hold a claim at once, at least `1`                               |
+| `clock`       | —                    | the kernel's `systemClock` | what the poll sleeps on and the lag is measured against                           |
 
 Each option **pins** its variable: given, the variable is not read. A blank or
 malformed value is a `ConfigInvalid` naming the variable, so the process exits
@@ -118,8 +119,8 @@ application names its one. A boot's typed `env` requires it too, unless
 ## The loop
 
 Each tenant has its own loop and claims at most 32 of its oldest pending
-messages per sweep. A pending claim or publish for one tenant does not stop
-another tenant's loop:
+messages per sweep. At most `concurrency` tenants are claimed or pruned at
+once; the others wait for a slot, in the order they asked for one:
 
 - **They are published in outbox order, and a refusal stops the batch.** An
   `Err` from `publish` — or a defect — leaves that message and everything after
@@ -128,11 +129,19 @@ another tenant's loop:
 - **Each tenant keeps its own schedule.** A failed sweep backs that tenant off,
   doubling from `pollMs` up to 30 seconds, and a clean one resets it; a full
   batch makes it due again at once, so a backlog drains at the publisher's
-  speed rather than 32 messages per poll. One tenant's refused or pending
-  message slows no other tenant.
-- **The sleep is the `clock`'s, aborted on stop**, so `release` returns as soon
-  as the batch in flight has, an idle relay never holds the process open, and
-  a test drives the loop with `createFakeClock`:
+  speed rather than 32 messages per poll. One tenant's refused message slows
+  no other tenant.
+- **A slot is held for one batch, then handed on.** A freed slot goes to the
+  tenant that has waited longest, so a tenant draining a backlog queues behind
+  the others between batches rather than taking the slot straight back, and
+  every tenant is served. What holds a slot is a publish in flight: a publish
+  that never settles holds it for good, and `concurrency` of them hold every
+  tenant. A publisher whose transport can hang therefore answers `Err` on a
+  timeout of its own — the relay cannot cancel a publish it does not own.
+- **The sleep is the `clock`'s, aborted on stop**, and so is the wait for a
+  slot, so `release` returns as soon as the batches in flight have, an idle
+  relay never holds the process open, and a test drives the loop with
+  `createFakeClock`:
 
 ```ts
 const clock = createFakeClock();
@@ -216,10 +225,18 @@ On a table without row security the pin changes nothing.
 transaction that reads, publishes and marks the batch.** A relay that does not
 get the lock skips the tenant. The lock dies with the transaction, so a relay
 that crashes frees it with its connection, and a mark that never commits
-leaves its rows pending rather than lost. A relay can hold one pooled
-connection per active tenant for the length of that tenant's batch. The pool
-needs capacity for concurrent claims; a pool exhausted by stalled publishers
-still makes other tenants wait for a connection.
+leaves its rows pending rather than lost.
+
+**Each claim holds one pooled connection for its whole batch**, inside a
+transaction, and that is what `concurrency` bounds: at most that many of the
+pool's connections are the relay's. Prisma 8 builds a client's pool from its
+URL with `pg`'s default of ten connections, and no option to raise it, so the
+default of `4` leaves six to a publisher that writes to the same database and
+to the requests and health checks sharing the process. Raise it only with the
+pool. To take the relay off the application's pool altogether, hand
+`prismaOutboxStore` a client of its own — it takes any client, so a second
+`prismaDatabase` module over the same `DATABASE_URL` gives the relay its own
+ten connections, at the cost of ten more on the server.
 
 **The claim lifts `idle_in_transaction_session_timeout` for its own
 transaction**, since it sits idle while the publisher works and a configured
@@ -322,7 +339,9 @@ It runs through the store's `prune(tenantId, olderThanMs, limit)`, pinned
 to the tenant like every other read, so a table under `@@rls` is pruned by the
 same non-owner role that relays it. A prune takes the tenant's lock as a claim
 does and skips a tenant another relay holds, so no two deletes of a tenant
-overlap, and none runs while it is being claimed. The cadence is each relay's
+overlap, and none runs while it is being claimed. It runs in the same slot as
+the sweep before it, so it counts against `concurrency` like a claim: a
+prune holds a pooled connection too. The cadence is each relay's
 own: N replicas delete up to N batches per interval, one after another. A row's age counts from
 when it was marked — `clock_timestamp()`, not the claim's transaction start —
 and is measured on that same database clock, so neither a slow publish nor a
