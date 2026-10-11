@@ -29,10 +29,12 @@ export {
   ORY_SCOPE,
   ORY_USERS,
   createIdentity,
+  createServiceClient,
   provisionOry,
   registerRedirectUri,
   type OryIdentity,
   type OryProvisioned,
+  type OryServiceClient,
   type OryUser,
 } from "./ory-provision.js";
 

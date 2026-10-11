@@ -1,4 +1,4 @@
-import { ConfigInvalid } from "@btravstack/config";
+import { ConfigInvalid } from "./config.js";
 
 /** A plaintext host that never leaves the machine: the dev loop's own provider. */
 // `url.hostname` keeps an IPv6 literal's brackets, so the set spells them.
@@ -14,29 +14,29 @@ const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
  *
  * `https:` is always fine, `http:` on a loopback host is the dev loop, and any
  * other `http:` sends whatever the URL carries across the wire in the open.
- * That last case is `"refused"` — a `ConfigInvalid` at boot unless the caller
- * pinned the opt-in, which is where a security posture belongs and is why it is
+ * That case is `"refused"` — a `ConfigInvalid` at boot unless the caller
+ * pinned the opt-in — and so is every other scheme, opt-in or not: a `file:`
+ * issuer is a deployment mistake to report at boot, not on the first call, which is where a security posture belongs and is why it is
  * an option rather than a variable: rule 6's own test, that a value whose
  * silent change is a security regression stays in the composition root.
  *
- * **One rule, two callers**, and they disagreed before this existed: `oidc()`
- * refused a cleartext issuer at boot while `jwtAuthenticator` handed an
- * `http:` JWKS URI straight to `jose`. A public key set fetched in cleartext
- * lets anything on the path substitute its own key and mint tokens this
- * process then accepts — RFC 8725 §3, and the sharper half of the two, since a
- * JWKS needs no secret to be worth attacking.
+ * **One rule for every starter that is handed a URL carrying a credential**
+ * — an issuer a client secret is sent to, a JWKS whose keys decide which
+ * tokens are accepted. A public key set fetched in cleartext lets anything on
+ * the path substitute its own key and mint tokens the process then accepts
+ * (RFC 8725 §3), so even a URL that carries no secret is worth attacking.
  */
 export const cleartext = (url: string, allowed: boolean): boolean | "refused" => {
   const parsed = new URL(url);
-  return parsed.protocol !== "http:"
+  return parsed.protocol === "https:"
     ? false
-    : allowed || LOOPBACK.has(parsed.hostname)
+    : parsed.protocol === "http:" && (allowed || LOOPBACK.has(parsed.hostname))
       ? true
       : "refused";
 };
 
 /**
- * The refusal, as the `ConfigInvalid` a boot reports — one message, so the two
+ * The refusal, as the `ConfigInvalid` a boot reports — one message, so the
  * callers cannot drift into explaining the same rule differently.
  *
  * `port` is the configuration port's name and `variable` the one an operator

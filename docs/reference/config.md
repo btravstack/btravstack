@@ -372,6 +372,28 @@ whose `cause` is one, the kernel's own `PROBE_PORT` — is exit code `78`; see
 `Config.object` matches it by tag rather than over a bare `string`. It never
 leaves `Config.object`; a caller sees `ConfigInvalid`.
 
+## A URL carrying a credential: `cleartext` and `cleartextRefused`
+
+`Config.url` says a value parses, not that it is safe to talk to. A starter
+handed a URL that carries a credential — an issuer a client secret is sent to,
+a key set that decides which tokens are accepted — asks the one rule:
+
+<!-- doctest: signature=@btravstack/config -->
+
+```ts
+const cleartext: (url: string, allowed: boolean) => boolean | "refused";
+```
+
+`false` for `https:`; `true` for `http:` on a loopback host (`localhost`,
+`127.0.0.1`, `[::1]`) or when `allowed` — the caller's pinned opt-in — and
+the caller then permits plaintext; `"refused"` for any other `http:` URL.
+`cleartextRefused({ port, variable, option, on, what })` builds the
+`ConfigInvalid` a boot then answers, naming the variable and the option that
+would override it, so every caller explains the rule in the same words.
+`oidc()`, `jwtAuthenticator` and `oauthClient()` apply it. The opt-in is an
+option rather than a variable everywhere, because its silent change is a
+security regression.
+
 ## Summary of exports
 
 | Export                    | Kind                                                                                                          |
@@ -388,3 +410,5 @@ leaves `Config.object`; a caller sees `ConfigInvalid`.
 | `ConfigIssue`             | type                                                                                                          |
 | `ConfigInvalid`           | error                                                                                                         |
 | `ConfigFieldInvalid`      | error                                                                                                         |
+| `cleartext`               | value                                                                                                         |
+| `cleartextRefused`        | value                                                                                                         |

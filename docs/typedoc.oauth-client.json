@@ -1,0 +1,7 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/oauth-client",
+  "entryPoints": ["../packages/oauth-client/src/index.ts"],
+  "tsconfig": "../packages/oauth-client/tsconfig.json",
+  "out": "api/oauth-client"
+}

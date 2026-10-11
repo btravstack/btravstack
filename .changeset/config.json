@@ -20,6 +20,7 @@
       "@btravstack/storage",
       "@btravstack/prisma",
       "@btravstack/outbox",
+      "@btravstack/oauth-client",
       "@btravstack/http-server",
       "@btravstack/orpc-server",
       "@btravstack/htmx-server",

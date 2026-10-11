@@ -6,18 +6,18 @@ rather than one per workspace.
 
 ## What it starts
 
-| Container                          | Who uses it                                                             |
-| ---------------------------------- | ----------------------------------------------------------------------- |
-| `postgres:18.1`                    | Temporal, the example application's `orders` database, Hydra and Kratos |
-| `rabbitmq:4.2.1-management-alpine` | `packages/amqp-worker`, `examples/order-amqp-worker`                    |
-| `temporalio/auto-setup:1.29.1`     | `packages/temporal-worker`, `examples/order-temporal-worker`            |
-| `redis:8.8.2-alpine`               | `packages/cache`, `examples/order-api`                                  |
-| `axllent/mailpit:v1.31.0`          | `packages/mailer`, `examples/order-amqp-worker`                         |
-| `rustfs/rustfs:1.0.0-rc.3`         | `packages/storage`                                                      |
-| `nginx:1.29-alpine`                | the dev loop's JWKS endpoint, and `src/dev-issuer.spec.ts`              |
-| `oryd/hydra:v2.3.0`                | the OpenID provider the backend-for-frontend authorises against         |
-| `oryd/kratos:v1.3.1`               | the identity provider Hydra delegates login to                          |
-| `node:24-alpine`                   | `src/ory-consent.mjs`, the consent and logout endpoint                  |
+| Container                          | Who uses it                                                                                                 |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `postgres:18.1`                    | Temporal, the example application's `orders` database, Hydra and Kratos                                     |
+| `rabbitmq:4.2.1-management-alpine` | `packages/amqp-worker`, `examples/order-amqp-worker`                                                        |
+| `temporalio/auto-setup:1.29.1`     | `packages/temporal-worker`, `examples/order-temporal-worker`                                                |
+| `redis:8.8.2-alpine`               | `packages/cache`, `examples/order-api`                                                                      |
+| `axllent/mailpit:v1.31.0`          | `packages/mailer`, `examples/order-amqp-worker`                                                             |
+| `rustfs/rustfs:1.0.0-rc.3`         | `packages/storage`                                                                                          |
+| `nginx:1.29-alpine`                | the dev loop's JWKS endpoint, and `src/dev-issuer.spec.ts`                                                  |
+| `oryd/hydra:v2.3.0`                | the OpenID provider the backend-for-frontend authorises against, and `packages/oauth-client`'s token issuer |
+| `oryd/kratos:v1.3.1`               | the identity provider Hydra delegates login to                                                              |
+| `node:24-alpine`                   | `src/ory-consent.mjs`, the consent and logout endpoint                                                      |
 
 One container per backing service — the table above is the list, and the
 workspaces reading each are in it. Before this existed, the broker and the
@@ -149,7 +149,7 @@ break.
 | `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@temporal-contract/testing`'s                                                                                                                                                         |
 | `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal` / `sharedRedis` / `sharedMailpit` / `sharedRustFs`, plus `postgresUrl`, `provisionApplicationRole`, `migrateOrders` and the credentials each one is started with |
 | `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                                                                                                                                                                      |
-| `@btravstack/internal-test-infra/ory`        | `sharedOry` / `provisionOry` / `createIdentity` / `registerRedirectUri`, the issuer and client constants, and `ORY_USERS`                                                                                               |
+| `@btravstack/internal-test-infra/ory`        | `sharedOry` / `provisionOry` / `createIdentity` / `createServiceClient` / `registerRedirectUri`, the issuer and client constants, and `ORY_USERS`                                                                       |
 | `@btravstack/internal-test-infra/ory-login`  | `oryClient()`, `headlessLogin({ authorizationUrl, user })`, `browserLogin(origin, user)` and `followRedirects(from, until)`                                                                                             |
 | `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                                                                                                                                                                   |
 
@@ -330,13 +330,18 @@ other. Their passwords, `ORY_CLIENT_SECRET` and Hydra's `SECRETS_SYSTEM` are
 constants in the source on the same footing as `POSTGRES_PASSWORD`: nothing
 outside this repository authenticates with them.
 
-**The per-test boundary here is an identity, never a client.** `createIdentity`
+**The per-test boundary is the CALLER: an identity for a login, a client for
+a service.** `createIdentity`
 is the same lookup-then-create `provisionOry` runs, exported on its own and
 answering the Kratos id — which is the `sub` the tokens carry — beside
 `"created"` or `"existing"`. A spec that needs state nobody else touches mints a
 user, exactly as a Redis spec mints a key prefix. A client per test would be a
 second registration against the one provider for an isolation an identity
-already gives.
+already gives. A client-credentials suite (`packages/oauth-client`) is the
+other case: there the caller IS a client, and what a test varies — the
+audiences and scopes it may ask for, its secret — is the client's own
+registration. `createServiceClient({ audience, scope })` mints one per test
+under a UUID id and answers its credentials; nothing deletes it.
 
 ## Signing in without a browser
 

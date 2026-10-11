@@ -49,6 +49,7 @@ const packages: readonly string[] = [
   "amqp-worker",
   "temporal-client",
   "amqp-client",
+  "oauth-client",
 ];
 
 // Refuse to generate a hub that disagrees with the configs on disk: an

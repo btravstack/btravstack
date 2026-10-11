@@ -295,6 +295,23 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   stated in `packages/http-server/AUTH.md`. The trigger would be a deployment
   that cannot satisfy a declared scheme's needs at all.
 
+- **An outbound token on behalf of an actor is deferred; the service's own
+  token ships** (issue #504). `@btravstack/oauth-client` answers a bearer
+  token that names the calling service, over the client credentials grant,
+  cached per audience and scope. The other half of the issue — OAuth 2.0
+  Token Exchange (RFC 8693), so a callee sees whom the caller acts for in an
+  `act` claim — needs an authorization server that grants it, and the gate's
+  has none: Ory Hydra v2.3.0's discovery document advertises
+  `authorization_code`, `implicit`, `client_credentials` and `refresh_token`,
+  nothing else. Shipping it would mean testing it against a fake issuer, and a
+  hand-written double of the thing under test proves less than the container
+  does. `TokenRequest` is a record so the
+  actor joins it as an optional field without breaking a caller, and the
+  inbound half already trusts `act` (`principal(claims, services)`, #486).
+  The trigger: an issuer supporting RFC 8693 on the gate — Keycloak is the
+  likely one — together with an example that calls `order-api` for the user
+  who triggered the work.
+
 - **A background runtime is deferred** (issue #508). A process whose only work
   is `outbox()`'s relay would want a runtime with probes and a drain and no
   answerer. Composing the relay into the API or the consumer process already

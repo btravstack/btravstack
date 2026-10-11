@@ -1383,7 +1383,7 @@ a variable, on rule 6's test — `securityHeaders`' own argument — and the fla
 re-derived there, so the check that refuses and the switch that permits cannot
 drift apart.
 
-**The rule lives in `cleartext.ts` because two callers need it and they
+**The rule lives in `@btravstack/config`'s `cleartext` because several callers need it and two of them
 disagreed.** `oidc()` refused a cleartext issuer from the day it shipped;
 `jwtAuthenticator` handed an `http:` JWKS URI straight to `jose` — the same
 class of value, two answers, and the silent one was the sharper hole: a key
@@ -1394,7 +1394,12 @@ option-not-a-variable posture written once. The alternative on the table was a
 `protocols?: readonly string[]` option on `Config.url`; it was declined
 because the loopback exception is not expressible as a scheme list, and a
 second option to carry it would put a security rule in a package that knows
-nothing about what a URL is for.
+nothing about what a URL is for. The predicate and its message moved from this
+package to `@btravstack/config` when `@btravstack/oauth-client` became a third
+caller: a package that only calls out must not depend on the serving half to
+refuse a cleartext issuer, and `config` is the peer every caller already has.
+It is still the CALLER that asks, at the call that knows what the URL carries —
+which is what the declined `Config.url` option would have lost.
 
 **Discovery runs ONCE, in `make`.** Three consequences, and each is why it is
 there rather than per request: a provider that is not there fails the BOOT with

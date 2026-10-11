@@ -1,5 +1,7 @@
 import {
   Config,
+  cleartext,
+  cleartextRefused,
   Env,
   type ConfigInvalid,
   type EnvReading,
@@ -19,7 +21,6 @@ import {
   type Authenticator,
   type AuthenticatorService,
 } from "./auth.js";
-import { cleartext, cleartextRefused } from "./cleartext.js";
 import { injectedDeps, injectedServices } from "./options.js";
 import type { Injected, PrefixOf, ScopesOf } from "./options.js";
 

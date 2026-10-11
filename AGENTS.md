@@ -31,7 +31,7 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds twenty-one published packages,
+pnpm workspace + turbo monorepo. `packages/` holds twenty-two published packages,
 `entity` (optional domain modelling on Zod; sealed entities and aggregates, derived schemas, and Result-returning construction), `contract` (the contract tier: markers and normed shapes a client and the
 server that implements it both need — the `authenticated` marker and a cursor
 page, with the page's schema behind a `/zod` subpath so the root keeps its
@@ -49,12 +49,12 @@ composition function), `outbox` (the transactional outbox's relay — the poll
 loop, a per-tenant claim, a lag health check and a Prisma 8 store behind a
 `/prisma` subpath; the application keeps the transaction that writes the row
 and says what publishing means), and the three
-**servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus three HTTP answerer packages: `orpc-server`, `htmx-server` and `graphql-server`, and `pothos`, the Pothos plugin a GraphQL gateway builds its schema with when its fields call oRPC procedures. The calling side has `amqp-client` and `temporal-client`, which bind upstream typed clients to application ports and release connections with the DI scope without a worker dependency. `di` was its own repository until it was merged here
+**servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus three HTTP answerer packages: `orpc-server`, `htmx-server` and `graphql-server`, and `pothos`, the Pothos plugin a GraphQL gateway builds its schema with when its fields call oRPC procedures. The calling side has `amqp-client` and `temporal-client`, which bind upstream typed clients to application ports and release connections with the DI scope without a worker dependency, and `oauth-client`, a `TokenSource` port over the OAuth 2.0 client credentials grant, so a service calls another as itself. `di` was its own repository until it was merged here
 **with its history**; it, `contract`, `entity` and `pothos` are the four packages that depend on
 nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
 back, with `testing`, `observability`, the three application-service ports,
-`outbox` and the three servers on `core`. Its own spec is `packages/di/AGENTS.md`; `contract`'s is
+`outbox`, `oauth-client` and the three servers on `core`. Its own spec is `packages/di/AGENTS.md`; `contract`'s is
 `packages/contract/AGENTS.md`; the harness's is
 `packages/testing/AGENTS.md`; the logging starter's is
 `packages/observability/AGENTS.md`; the relay's is `packages/outbox/AGENTS.md`.
@@ -139,9 +139,9 @@ pnpm dev              # the four example deployments, one process each, watching
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
-## Versioning: all twenty-one packages move as one
+## Versioning: all twenty-two packages move as one
 
-The twenty-one published packages share **one version number**, enforced by a
+The twenty-two published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. **Do not downgrade `@changesets/cli`
 below 3.0.0** — on 2.x the next `pnpm run version` silently ships a major. The
 measurements behind both rules are in `.changeset/AGENTS.md`.
@@ -586,12 +586,15 @@ those three in sync.
 
 A starter that owns a dependency declares a health check; the kernel folds every
 one into `GET /healthz`. `@btravstack/cache`, `@btravstack/storage`,
-`@btravstack/prisma`, `@btravstack/mailer` and `@btravstack/outbox` each
+`@btravstack/prisma`, `@btravstack/mailer`, `@btravstack/outbox` and
+`@btravstack/oauth-client` each
 contribute one, named for the component — the mailer's on its SMTP **adapter**
 rather than on the composition, since the recording adapter sends nowhere and
-would report healthy for free, and the outbox's on its LAG rather than on its
+would report healthy for free, the outbox's on its LAG rather than on its
 store, since a reachable table whose oldest pending row is an hour old is the
-failure an operator needs to see; a starter an
+failure an operator needs to see, and the token source's on its last FETCH
+rather than on a probe of the issuer, since a rotated client secret leaves the
+issuer reachable and every call refused; a starter an
 application never composed contributes nothing, and a set port with no
 contributors is empty rather than missing.
 
@@ -776,6 +779,7 @@ copy with no gate is the copy that lies.
 | `@btravstack/storage`         | `packages/storage/AGENTS.md`                                                 | `/reference/storage`         |
 | `@btravstack/prisma`          | `packages/prisma/AGENTS.md`                                                  | `/reference/prisma`          |
 | `@btravstack/outbox`          | `packages/outbox/AGENTS.md`                                                  | `/reference/outbox`          |
+| `@btravstack/oauth-client`    | `packages/oauth-client/AGENTS.md`                                            | `/reference/oauth-client`    |
 | `@btravstack/http-server`     | `packages/http-server/AGENTS.md` (auth half: `packages/http-server/AUTH.md`) | `/reference/http-server`     |
 | `@btravstack/temporal-worker` | `packages/temporal-worker/AGENTS.md`                                         | `/reference/temporal-worker` |
 | `@btravstack/amqp-worker`     | `packages/amqp-worker/AGENTS.md`                                             | `/reference/amqp-worker`     |
@@ -986,7 +990,7 @@ in its place.
 - **`packages/core`'s specs use `@btravstack/testing` without depending on
   it** — that would be a package-graph cycle turbo refuses — so four configs
   carry the wiring and move together: see `packages/testing/AGENTS.md`.
-- `declarationMap: false` on all twenty-one published packages — the published
+- `declarationMap: false` on all twenty-two published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **A deployment extends `@btravstack/tsconfig/app.json`; everything that
   exports something keeps `base.json`.** The two differ in one thing,
@@ -1014,8 +1018,9 @@ in its place.
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
 - Published packages state the lowest Node version their required dependencies
-  and entry points support: most claim `>=22`, while `http-server` and `prisma`
-  claim `>=22.12`, and `amqp-worker` and `temporal-worker` claim `>=22.22`.
+  and entry points support: most claim `>=22`, while `http-server`, `prisma` and
+  `oauth-client` claim `>=22.12`, and `amqp-worker` and `temporal-worker` claim
+  `>=22.22`.
   The root claims `>=22.22` for the dev toolchain. A package's floor is a
   compatibility promise to consumers; the consumer check tests each package
   on its own floor. Do not align them for tidiness — raising a published floor
@@ -1335,13 +1340,14 @@ A sixth rule is about production code that tests keep honest:
    `TEMPORAL_GRACE_PERIOD_MS`, `TEMPORAL_FORCE_AFTER_MS`,
    `AMQP_CONNECT_TIMEOUT_MS`, `OUTBOX_POLL_MS`, `OUTBOX_MAX_LAG_MS`,
    `OUTBOX_RETAIN_MS` and `OUTBOX_CONCURRENCY` are
-   fields beside `PORT`, `HOST`, `TEMPORAL_ADDRESS`, `AMQP_URL` and
-   `OUTBOX_TENANTS`, each **pinned** by the matching option:
+   fields beside `PORT`, `HOST`, `TEMPORAL_ADDRESS`, `AMQP_URL`,
+   `OUTBOX_TENANTS`, `OAUTH_ISSUER`, `OAUTH_CLIENT_ID` and
+   `OAUTH_CLIENT_SECRET`, each **pinned** by the matching option:
    the option is what a test or a settled decision fixes, the variable what a
    deployment sets, and `Config.pinned` decides between them per field.
 
    **A variable carries its starter's prefix** — `HTTP_`, `GRAPHQL_`, `TEMPORAL_`, `AMQP_`,
-   `STORAGE_S3_`, `OUTBOX_` — because several starters share one process (an HTTP
+   `STORAGE_S3_`, `OUTBOX_`, `OAUTH_` — because several starters share one process (an HTTP
    deployment that publishes to AMQP and reads a database composes three), and
    a bare name like `BODY_LIMIT` is one the next starter would also want. The
    exceptions are names the **ecosystem** already owns and a platform injects
@@ -1364,7 +1370,8 @@ And a seventh, about the infrastructure a suite runs against:
 7. **A test file is isolated by the boundary its infrastructure already has,
    never by a server of its own.** A RabbitMQ suite gets a **vhost**, a
    Temporal suite a **namespace**, a database suite a **tenant**, an OpenID
-   Connect suite an **identity** — each minted
+   Connect suite an **identity** — or a **client**, where the caller is a
+   service — each minted
    in setup, each free, each finer than the thing it replaces. What a suite
    must NOT do is start a copy of the server: that is what made `pnpm test`
    intermittently red at turbo's default concurrency (issue #52), and it buys
