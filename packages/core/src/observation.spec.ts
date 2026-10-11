@@ -82,6 +82,90 @@ describe("observe", () => {
 });
 
 describe("observed", () => {
+  it("preserves success when an observer cannot start", async ({ recording }) => {
+    // GIVEN an observer whose startup is broken
+    const broken = (): Settle => {
+      // oxlint-disable-next-line unthrown/no-throw -- a broken observer is the subject under test
+      throw new Error("observer start");
+    };
+
+    // WHEN the operation is observed alongside a valid observer
+    const answer = await observed([broken, recording.observer], operation, () =>
+      OkAsync("committed"),
+    );
+
+    // THEN its result and the valid observer's settlement survive
+    expect({ answer, settled: recording.seen }).toEqual({
+      answer: expect.objectContaining({ tag: "Ok", value: "committed" }),
+      settled: [{ outcome: "ok" }],
+    });
+  });
+
+  it("settles later observers once when a finisher fails", async ({ recording }) => {
+    // GIVEN a finisher whose destination is broken
+    const broken = (): Settle => () => {
+      // oxlint-disable-next-line unthrown/no-throw -- a broken observer is the subject under test
+      throw new Error("observer finish");
+    };
+
+    // WHEN a committed operation is observed
+    const answer = await observed([broken, recording.observer], operation, () =>
+      OkAsync("committed"),
+    );
+
+    // THEN neither its success nor the later settlement is lost
+    expect({ answer, settled: recording.seen }).toEqual({
+      answer: expect.objectContaining({ tag: "Ok", value: "committed" }),
+      settled: [{ outcome: "ok" }],
+    });
+  });
+
+  it("preserves a modeled refusal when a finisher fails", async ({ recording }) => {
+    // GIVEN a broken finisher and an operation that refuses
+    const broken = (): Settle => () => {
+      // oxlint-disable-next-line unthrown/no-throw -- a broken observer is the subject under test
+      throw new Error("observer finish");
+    };
+
+    // WHEN the refusal is observed
+    const answer = await observed([broken, recording.observer], operation, () =>
+      ErrAsync("refused"),
+    );
+
+    // THEN the original refusal remains the operation's outcome
+    expect({ answer, settled: recording.seen }).toEqual({
+      answer: expect.objectContaining({ tag: "Err", error: "refused" }),
+      settled: [{ outcome: "error", cause: "refused" }],
+    });
+  });
+
+  it("qualifies a synchronous operation throw and preserves it through broken finishers", async ({
+    recording,
+  }) => {
+    // GIVEN a throwing call and a broken finisher
+    const cause = new Error("operation defect");
+    const broken = (): Settle => () => {
+      // oxlint-disable-next-line unthrown/no-throw -- a broken observer is the subject under test
+      throw new Error("observer finish");
+    };
+
+    // WHEN the call throws before returning an AsyncResult
+    const answer = await observed(
+      [broken, recording.observer],
+      operation,
+      (): AsyncResult<never, never> => {
+        // oxlint-disable-next-line unthrown/no-throw -- a synchronous operation defect is the subject under test
+        throw cause;
+      },
+    );
+
+    // THEN the original defect is preserved and every valid observer settles
+    expect({ answer, settled: recording.seen }).toEqual({
+      answer: expect.objectContaining({ tag: "Defect", cause }),
+      settled: [{ outcome: "error", cause }],
+    });
+  });
+
   it("answers the success value untouched", async ({ recording }) => {
     // GIVEN a call that succeeds
     // WHEN it is observed

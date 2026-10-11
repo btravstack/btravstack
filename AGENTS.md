@@ -707,6 +707,10 @@ composed, free when it is not, and one composition either way.** It is the
 health-check argument again — a starter DECLARES, and composing the collector
 is what turns the declarations on.
 
+Observer failures are isolated per callback and deliberately dropped, like a
+broken logger destination. They cannot change the operation outcome or prevent
+other observers from settling; reporting through the same set would recurse.
+
 Four things are load-bearing:
 
 - **A reader of the port contributes a no-op member of its own.** A collector

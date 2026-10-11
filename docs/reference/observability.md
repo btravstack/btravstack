@@ -253,7 +253,13 @@ Three rules:
   `message` or `time`. An `attributes: { level: "info" }` that could rewrite
   the severity is how a log stream stops being trustworthy.
 - **`cause` is normalised**, not stringified: an `Error` becomes
-  `{ name, message, stack, cause }` and the `cause` chain is walked up to four
+  `{ name, message, stack, cause }`, plus scalar own data fields from a fixed
+  whitelist: `_tag`, `sqlState`, `constraint`, `table`, `database`, `role`,
+  `bypass` and `port`. Getters and other tagged payload fields are omitted: they may contain tokens or
+  personal data. Put reviewed, non-sensitive diagnostics in the line's
+  attributes explicitly. Aggregate errors keep up to sixteen `errors` members
+  per level, with `omittedErrors` naming any remainder. Cycles render as
+  `"[circular]"`; both member trees and `cause` chains are walked up to four
   levels. `JSON.stringify` skips non-enumerable properties, so a bare `Error`
   would render the line that exists to carry a failure as `{}` — the same rule,
   and the same reason, as the kernel's `stderrSink`.

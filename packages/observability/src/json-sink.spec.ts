@@ -1,3 +1,4 @@
+import { TaggedError } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -7,6 +8,168 @@ const lineOf = (written: { readonly chunks: () => readonly string[] }): Record<s
   JSON.parse(written.chunks().join("")) as Record<string, unknown>;
 
 describe("the JSON sink", () => {
+  it("keeps bounded aggregate constituents, including their nested causes", ({ written }) => {
+    // GIVEN the original failure and a failure of its observer
+    const cause = new AggregateError(
+      [
+        new Error("observer failed"),
+        new Error("operation failed", { cause: new Error("connection refused") }),
+        ...Array.from({ length: 20 }, () => new Error("additional")),
+      ],
+      "both failures",
+    );
+
+    // WHEN the diagnostic line is rendered
+    jsonSink(written)({
+      level: "error",
+      message: "failed",
+      attributes: {},
+      cause,
+      time: 0,
+      unit: undefined,
+    });
+    const rendered = lineOf(written)["cause"] as { errors: unknown[]; omittedErrors: number };
+
+    // THEN both failures survive, and the aggregate's width is bounded
+    expect(rendered).toEqual(
+      expect.objectContaining({
+        errors: [
+          expect.objectContaining({ message: "observer failed" }),
+          expect.objectContaining({
+            message: "operation failed",
+            cause: expect.objectContaining({ message: "connection refused" }),
+          }),
+          ...Array.from({ length: 14 }, () => expect.objectContaining({ message: "additional" })),
+        ],
+        omittedErrors: 6,
+      }),
+    );
+  });
+
+  it("keeps a tagged error's identity without copying its secret-bearing payload", ({
+    written,
+  }) => {
+    // GIVEN a tagged error carrying private context
+    class Refused extends TaggedError("Refused")<{ token: string; actor: string }> {}
+    const cause = new Refused({ token: "private-token", actor: "private@example.test" });
+
+    // WHEN the diagnostic line is rendered
+    jsonSink(written)({
+      level: "error",
+      message: "failed",
+      attributes: {},
+      cause,
+      time: 0,
+      unit: undefined,
+    });
+
+    // THEN its tag survives, and arbitrary payload fields do not
+    expect(lineOf(written)["cause"]).toEqual({
+      name: "Refused",
+      message: cause.message,
+      stack: expect.any(String),
+      _tag: "Refused",
+    });
+  });
+
+  it("keeps only safe scalar infrastructure diagnostics from a tagged error", ({ written }) => {
+    // GIVEN database diagnostics alongside private request context
+    class DatabaseFailed extends TaggedError("DatabaseFailed")<{
+      sqlState: string;
+      constraint: string;
+      table: string;
+      database: string;
+      role: string;
+      bypass: boolean;
+      port: number;
+      token: string;
+      issues: unknown[];
+    }> {}
+    const cause = new DatabaseFailed({
+      sqlState: "23505",
+      constraint: "unique_id",
+      table: "orders",
+      database: "app",
+      role: "app_role",
+      bypass: false,
+      port: 5432,
+      token: "secret",
+      issues: [{ message: "private" }],
+    });
+
+    // WHEN it is written
+    jsonSink(written)({
+      level: "error",
+      message: "failed",
+      attributes: {},
+      cause,
+      time: 0,
+      unit: undefined,
+    });
+
+    // THEN the fixed scalar whitelist keeps diagnostics without arbitrary payloads
+    expect(lineOf(written)["cause"]).toEqual({
+      name: "DatabaseFailed",
+      message: cause.message,
+      stack: expect.any(String),
+      _tag: "DatabaseFailed",
+      sqlState: "23505",
+      constraint: "unique_id",
+      table: "orders",
+      database: "app",
+      role: "app_role",
+      bypass: false,
+      port: 5432,
+    });
+  });
+
+  it("bounds cycles through aggregate members and causes without losing the line", ({
+    written,
+  }) => {
+    // GIVEN an aggregate referring to itself through both error channels
+    const cause = new AggregateError([], "recursive");
+    cause.errors.push(cause);
+    cause.cause = cause;
+
+    // WHEN it is rendered
+    jsonSink(written)({
+      level: "error",
+      message: "failed",
+      attributes: {},
+      cause,
+      time: 0,
+      unit: undefined,
+    });
+
+    // THEN the diagnostic remains useful and cannot recurse forever
+    expect(lineOf(written)["cause"]).toEqual({
+      name: "AggregateError",
+      message: "recursive",
+      stack: expect.any(String),
+      errors: ["[circular]"],
+      cause: "[circular]",
+    });
+  });
+
+  it("bounds nested aggregates at the same depth as cause chains", ({ written }) => {
+    // GIVEN a tree deeper than the renderer permits
+    let cause: Error = new Error("too deep");
+    for (let i = 0; i < 6; i++) cause = new AggregateError([cause], "nested");
+
+    // WHEN it is rendered
+    jsonSink(written)({
+      level: "error",
+      message: "failed",
+      attributes: {},
+      cause,
+      time: 0,
+      unit: undefined,
+    });
+
+    // THEN no deeply nested payload survives the bound
+    expect(written.chunks().join("")).not.toContain("too deep");
+  });
+
   it("writes one object per line, correlation fields at the top level", ({ written }) => {
     // GIVEN a sink over a stream that keeps what it is given
     const sink = jsonSink(written);

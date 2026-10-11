@@ -1,5 +1,5 @@
 import { Port } from "@btravstack/di";
-import type { AsyncResult, FailureView } from "unthrown";
+import { Ok, OkAsync, fromSafeThrowable, type AsyncResult, type FailureView } from "unthrown";
 
 import type { Attributes } from "./observability.js";
 
@@ -99,17 +99,29 @@ export const noObserver = (): Settle => () => {};
  * matters because the settling call sites are error paths, where a `tap` and a
  * `tapFailure` on the same chain, or a retry, is exactly the shape that fires
  * twice and doubles a failure count.
+ *
+ * A broken observer is dropped independently, on startup and settlement. No
+ * recursive reporting is attempted: telemetry must never alter the operation
+ * or prevent another observer from settling.
  */
 export const observe = (
   observers: readonly ((operation: Operation) => Settle)[],
   operation: Operation,
 ): Settle => {
-  const settlers = observers.map((observer) => observer(operation));
+  const settlers = observers.map((observer) =>
+    fromSafeThrowable(observer)(operation)
+      .recoverDefect(() => Ok(noObserver()))
+      .get(),
+  );
   let done = false;
   return (settled) => {
     if (done) return;
     done = true;
-    for (const settle of settlers) settle(settled);
+    for (const settle of settlers) {
+      fromSafeThrowable(settle)(settled)
+        .recoverDefect(() => Ok())
+        .get();
+    }
   };
 };
 
@@ -134,7 +146,8 @@ export const observed = <T, E>(
   } = {},
 ): AsyncResult<T, E> => {
   const settle = observe(observers, operation);
-  return call()
+  return OkAsync()
+    .flatMap(call)
     .tap((value) => settle(settled.ok?.(value) ?? { outcome: "ok" }))
     .tapFailure((failure) =>
       settle(

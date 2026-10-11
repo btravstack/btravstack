@@ -774,4 +774,7 @@ one `() => AsyncResult<T, E>`, settling from whichever channel the call comes
 back on, with `settled.ok` / `settled.failure` replacing either default where a
 starter has more to say. It exists so cache, mailer and storage do not each
 carry the same `tap`/`tapFailure` pair; `observation.spec.ts`'s `observed`
-block pins both defaults, the defect arm and both hooks.
+block pins both defaults, the defect arm and both hooks. Startup and finisher
+throws are isolated individually and dropped, without recursive reporting.
+A synchronous throw from the operation itself enters the defect channel, and
+valid finishers still receive the original outcome exactly once.
