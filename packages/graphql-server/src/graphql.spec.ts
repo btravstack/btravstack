@@ -117,6 +117,79 @@ describe("graphql answerer", () => {
       // THEN the schema answers when the tools are on and is refused by field name when not
       expect(await response.json()).toEqual(row.introspection);
     });
+
+    it(`${row.graphiql ? "suggests" : "does not suggest"} a field name`, async ({ boot }) => {
+      // GIVEN the mount, under this deployment
+      const info = (await boot(root, { env: row.env }).runtimeInfo()).get();
+
+      // WHEN a client misspells a field
+      const response = await fetch(`http://127.0.0.1:${info!.port}/graphql`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: "{ helo }" }),
+      });
+
+      // THEN the schema is named back only when the tools are on
+      expect(await response.json()).toEqual({
+        errors: [
+          expect.objectContaining({
+            message: `Cannot query field "helo" on type "Query".${row.graphiql ? ' Did you mean "hello"?' : ""}`,
+          }),
+        ],
+      });
+    });
+  });
+
+  describe("maxTokens", () => {
+    const schema = createSchema({
+      typeDefs: "type Query { hello: String }",
+      resolvers: { Query: { hello: () => "world" } },
+    });
+    const rootWith = (maxTokens?: false) =>
+      Module("TokenLimitedGraphqlApp")({
+        needs: [Env],
+        imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+        provides: [
+          graphql(defineAuth(), { schema, ...(maxTokens === undefined ? {} : { maxTokens }) }),
+        ],
+        exports: [HttpRuntime, HttpHandler],
+      });
+    const post = async (port: number | undefined, query: string) =>
+      (
+        await fetch(`http://127.0.0.1:${port}/graphql`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ query }),
+        })
+      ).json();
+
+    it("refuses a document over the default limit before validating it", async ({ boot }) => {
+      // GIVEN the mount, with no limit configured
+      const info = (await boot(rootWith()).runtimeInfo()).get();
+
+      // WHEN a document of 1002 tokens, every field unknown, is sent
+      const body = await post(info?.port, `{ ${"nope ".repeat(1000)}}`);
+
+      // THEN the parser refused it, and no validation rule reported a field
+      expect(body).toEqual({
+        errors: [
+          expect.objectContaining({
+            message: "Syntax Error: Document contains more than 1000 tokens. Parsing aborted.",
+          }),
+        ],
+      });
+    });
+
+    it("parses a document of any size when the limit is off", async ({ boot }) => {
+      // GIVEN the mount, with the limit pinned off
+      const info = (await boot(rootWith(false)).runtimeInfo()).get();
+
+      // WHEN a document over the default limit is sent
+      const body = await post(info?.port, `{ ${"hello ".repeat(1000)}}`);
+
+      // THEN it was parsed and answered
+      expect(body).toEqual({ data: { hello: "world" } });
+    });
   });
 
   it("keeps CORS closed by default and honors the configured origin", async ({ boot }) => {

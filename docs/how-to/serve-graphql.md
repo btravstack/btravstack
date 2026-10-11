@@ -100,9 +100,17 @@ GraphiQL and introspection are one switch, off by default:
 `GRAPHQL_DEVELOPER_TOOLS=true` in a developer's environment turns both on, and
 a production deployment that sets nothing exposes neither. `developerTools` on
 `graphql()` pins it. Off, an operation naming `__schema` or `__type` is refused
-at validation; `__typename` still answers. On a protected mount the GraphiQL
-page itself renders before authentication, and the operations it sends are
-authenticated like any other.
+at validation; `__typename` still answers. Off, an error's "Did you mean …"
+suggestion is removed too, since it names the schema back to the caller. On a
+protected mount the GraphiQL page itself renders before authentication, and
+the operations it sends are authenticated like any other.
+
+A document is parsed with a token limit, `GRAPHQL_MAX_TOKENS` (default
+`1000`), pinned by `maxTokens`; `maxTokens: false` turns it off. Over it, the
+parser refuses the document before any validation rule runs, so a document of
+repeated aliases or directives costs one aborted parse. A finer budget —
+aliases, directives, depth or cost — is a Yoga plugin such as graphql-armor's,
+passed through `plugins`.
 
 A schema's `Subscription` type is served over SSE, as Yoga serves it by
 default, and an event's resolver answers through `fieldResult` like any field,

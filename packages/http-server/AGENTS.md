@@ -68,8 +68,9 @@ the corresponding protocol package. The public surface is in
   schema public. The separate `order-graphql-api` process calls `order-api`
   through `order-api-client` and exports SDL for clients. Resolver outcomes
   remain the application's mapping; Yoga owns execution errors.
-  `developerTools` pins `GRAPHQL_DEVELOPER_TOOLS`, which turns GraphiQL and
-  introspection on together and is off by default; the answerer reads `Env`,
+  `developerTools` pins `GRAPHQL_DEVELOPER_TOOLS`, which turns GraphiQL,
+  introspection and field suggestions on together and is off by default, and
+  `maxTokens` pins `GRAPHQL_MAX_TOKENS`; the answerer reads `Env`,
   so a root providing it declares `needs: [Env]`. The reasoning is in
   `../graphql-server/AGENTS.md`.
 - **`OrpcRouterPort`** (`orpc.ts`, exported from the file for the package's
