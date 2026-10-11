@@ -142,5 +142,6 @@ export const TestGateway = overridden(Gateway, [staticTokenSource("test-token")]
 ```
 
 The overridden root still reads the three variables, because the rest of
-`oauthClient()` is still built; set them to anything, or compose
+`oauthClient()` is still built; set `OAUTH_ISSUER` to any valid URL (it is
+validated, never contacted) and the two credentials to any non-empty string, or compose
 `staticTokenSource("test-token")` in a test root in place of `oauthClient()`.

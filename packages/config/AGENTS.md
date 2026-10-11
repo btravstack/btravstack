@@ -9,6 +9,12 @@ commit.
 
 - **`Env`** is declared **once**, here; the kernel imports it to provide it, so
   di's duplicate-id warning never fires.
+- **`cleartext` / `cleartextRefused` live here, not in `@btravstack/http-server`.**
+  Every starter that sends a credential to a URL needs one rule for when
+  `http:` is allowed, and `@btravstack/oauth-client` must not depend on the
+  serving half to get it. They stay functions the starter calls at its own
+  call site, not a `Config.url` option: the refusal names the starter's own
+  override option, which a field cannot know.
 
 ## The variables travel in the needs channel (#465)
 

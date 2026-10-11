@@ -108,13 +108,17 @@ const tokenFetches = (
   const failing = new Map<string, string>();
 
   const discover = (): AsyncResult<Configuration, TokenIssuerUnavailable> => {
+    // Inside the promise: a pinned value skips validation, and `new URL` or
+    // `ClientSecretBasic("")` throws synchronously, past `fromPromise`.
     configuration ??= fromPromise(
-      discovery(
-        new URL(settings.issuer),
-        settings.clientId,
-        undefined,
-        ClientSecretBasic(settings.clientSecret),
-        { execute: settings.insecure ? [allowInsecureRequests] : [] },
+      Promise.resolve().then(() =>
+        discovery(
+          new URL(settings.issuer),
+          settings.clientId,
+          undefined,
+          ClientSecretBasic(settings.clientSecret),
+          { execute: settings.insecure ? [allowInsecureRequests] : [] },
+        ),
       ),
       (cause) => new TokenIssuerUnavailable({ issuer: settings.issuer, cause }),
     )

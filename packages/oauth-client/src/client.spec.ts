@@ -211,6 +211,23 @@ describe("oauthClient", () => {
       );
     });
 
+    it("is TokenIssuerUnavailable, not a throw, for a pinned empty secret", async ({
+      tokens,
+      client,
+    }) => {
+      // GIVEN a secret pinned empty, which a pin does not validate
+      // WHEN a token is asked for
+      const answer = await tokens(
+        { env: {}, issuer: ORY_ISSUER, clientId: client.clientId, clientSecret: "" },
+        (ctx) => ctx.get(TokenSource).token({ audience: AUDIENCE }),
+      );
+
+      // THEN the failure arrives on the error channel
+      expect(answer).toBeErrWith(
+        expect.objectContaining({ constructor: TokenIssuerUnavailable, issuer: ORY_ISSUER }),
+      );
+    });
+
     it("is asked again by the next caller, because a failure is never kept", async ({
       tokens,
       observations,
