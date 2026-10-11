@@ -1,5 +1,14 @@
 # @btravstack/core
 
+## 0.29.0
+
+### Patch Changes
+
+- 5bf7ace: A unit's `AbortSignal` now aborts once the unit settles, with an `AbortError` reading "The unit has settled", so work a runtime left running past its unit is told to stop. Under `@btravstack/http-server` a client that disconnects aborts the handler's signal. The drain's accounting is unchanged: a settled unit is never counted `abandoned`.
+- Updated dependencies [1d2ac78]
+  - @btravstack/config@0.29.0
+  - @btravstack/di@0.29.0
+
 ## 0.28.0
 
 ### Patch Changes

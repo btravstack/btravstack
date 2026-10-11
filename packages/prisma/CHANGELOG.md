@@ -1,5 +1,32 @@
 # @btravstack/prisma
 
+## 0.29.0
+
+### Minor Changes
+
+- a22bcf8: `tryQuery` and `tenantPinned` take `raises`, a list of SQLSTATEs the
+  application raises on purpose — a trigger's `RAISE EXCEPTION … USING ERRCODE`
+  — and answer each listed code as a `RaisedException<S>` carrying `sqlState`,
+  the message, and the constraint and table where the database named them,
+  instead of a defect. Listing nothing changes nothing: the error channel stays
+  `SqlError`, so existing exhaustive matches compile unchanged. `qualify` takes
+  the same option; `Raised<S>` and `QualifyOptions<S>` are exported beside it.
+- f5eddac: `prismaDatabase` refuses to boot as a role row-level security does not apply
+  to. Where any table has row security enabled, a role that is a superuser, has
+  `BYPASSRLS`, or owns a row-secured table that is not `FORCE`d fails the scope
+  with the new `RowSecurityBypassed` (`{ database, role, bypass, tables }`),
+  exported with its `RowSecurityBypass` union and added to the module's error
+  channel. Run migrations with the owner's URL and the application with a
+  non-owner role's; a database with no row-secured table is unaffected.
+
+### Patch Changes
+
+- Updated dependencies [1d2ac78]
+- Updated dependencies [5bf7ace]
+  - @btravstack/config@0.29.0
+  - @btravstack/core@0.29.0
+  - @btravstack/di@0.29.0
+
 ## 0.28.0
 
 ### Patch Changes

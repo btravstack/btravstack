@@ -1,5 +1,22 @@
 # @btravstack/orpc-server
 
+## 0.29.0
+
+### Minor Changes
+
+- 22dc6fc: `orpc()` and the OpenAPI routes report a defect to `Observers` before oRPC answers `500`, as an `orpc` / `defect` operation carrying the cause and the procedure's path. The client still sees only `INTERNAL_SERVER_ERROR`, and an error the contract declares is not reported. Both answerers now read `Observers`, which `httpServer()` already provides, so no root changes.
+
+### Patch Changes
+
+- Updated dependencies [1d2ac78]
+- Updated dependencies [5bf7ace]
+  - @btravstack/config@0.29.0
+  - @btravstack/http-server@0.29.0
+  - @btravstack/core@0.29.0
+  - @btravstack/htmx-server@0.29.0
+  - @btravstack/contract@0.29.0
+  - @btravstack/di@0.29.0
+
 ## 0.28.0
 
 ### Patch Changes
