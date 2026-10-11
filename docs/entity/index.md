@@ -95,6 +95,28 @@ const loaded = Organization.make(row).getOrThrow(); // rows, imports, event fold
 const renamed = loaded.update({ name: next }).getOrThrow(); // a NEW entity
 ```
 
+For a new id, a version-7 UUID (RFC 9562) is unguessable across tenants and
+sorts by creation time, so a primary-key index stays append-friendly. The
+[`uuidv7`](https://www.npmjs.com/package/uuidv7) package is monotonic within a
+millisecond; Node's own `crypto.randomUUIDv7()` needs Node 24 and is not.
+
+<!-- doctest: isolate
+import { z } from "zod";
+import { Entity } from "@btravstack/entity";
+-->
+
+```ts
+import { uuidv7 } from "uuidv7";
+
+const OrgId = z.uuidv7().brand("OrgId"); // a v7 UUID, and nothing else
+
+class Organization extends Entity("Organization")({
+  id: Entity.field(OrgId, { generated: true, immutable: true }),
+}) {}
+
+const createOrganization = Organization.factory({ id: () => uuidv7() });
+```
+
 Failures are values, not exceptions:
 
 ```ts
