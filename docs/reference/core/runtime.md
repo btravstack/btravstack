@@ -127,6 +127,15 @@ and gives the work's own
 runtime's job. A runtime that wants a per-unit scope calls `unit.fork(...)`
 itself, from inside `work`, at the moment it holds the unit's own input.
 
+The signal also aborts **once the unit settles**, after its scope has closed,
+with an `AbortError` whose message is `"The unit has settled"` — the kernel's
+own aborts keep the default reason. Work a runtime leaves running past its
+unit is told to stop that way: `@btravstack/http-server` settles a unit on the
+response's `'close'`, so a client that disconnects aborts the handler it left
+behind. A unit that settled is closed, so this abort is never counted
+`abandoned`, and a unit module's `onStop` still reads only the kernel's own
+aborts on `signal.aborted`.
+
 ## `Serving<Info>`
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->

@@ -41,6 +41,11 @@ export class RuntimeStartFailed extends TaggedError("RuntimeStartFailed")<{
  * moment it holds the unit's input; the kernel closes that scope when the
  * unit settles, after the response is flushed. Work that subscribes to an
  * event after a `fork` must first check whether it already fired.
+ *
+ * `signal` aborts at the drain deadline, at once when the drain is skipped,
+ * and once the unit settles — after its scope has closed — so work the
+ * runtime left running past the unit, such as an HTTP handler whose client
+ * disconnected, is told to stop. Only the first two count as `abandoned`.
  */
 // `Context<InstanceType<Resolves>>`, not `Context<Resolves>`: di parameterises
 // `Context<in R>` by port instance types, while a runtime declares what it

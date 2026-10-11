@@ -293,6 +293,25 @@ Beyond the nine:
   is already aborted"_.
 - **A unit is counted closed on every exit path, including a throw.**
   `units.spec.ts` → _"decrements even when the work throws"_.
+- **A unit's signal aborts once the unit settles, so work outliving it is
+  told to stop.** A runtime may settle a unit while work it started runs on —
+  `@btravstack/http-server` settles on the response's `'close'` and dispatches
+  `handle` un-awaited, so a disconnected client used to leave that work
+  orphaned: out of `open`, uncounted by the drain, never aborted. The abort is
+  the LAST statement of `registry.run`'s `finally`, with an `AbortError`
+  reading `"The unit has settled"`; three things ride that placement. It
+  comes after `open.delete`, so `abandoned` still means "open at the
+  deadline" and nothing else. It comes after the fork's teardown — `start.ts`'s
+  wrapper awaits `closing` inside the work — so `UnitSpanModule`'s `onStop`,
+  which marks a span errored on `signal.aborted`, still sees only the kernel's
+  own aborts. And a unit `abortAll` already aborted keeps that reason, since a
+  second `abort()` is a no-op. `units.spec.ts` → _"aborts a unit's signal once
+  its work settles, so work outliving it is told to stop"_ and _"keeps the
+  deadline's reason on a unit aborted before it settled"_; _"aborts every open
+  unit on abortAll"_ reads its flags before the units settle, or the settle
+  abort would satisfy it against an `abortAll` that did nothing.
+  `@btravstack/http-server`'s _"aborts the handler's signal when its client
+  disconnects"_ proves it through a real socket.
 - **The ambient record does not leak between concurrent units.**
   `units.spec.ts` → _"does not leak between concurrent units"_.
 - **The record's `signal` IS the work's own, not a copy.** One

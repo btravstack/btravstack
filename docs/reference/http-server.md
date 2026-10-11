@@ -1868,6 +1868,13 @@ mount point is an error, and it is a `RuntimeStartFailed` at `listen` rather
 than a coin toss. A trailing slash is the same mount, so `/rpc` and `/rpc/`
 collide.
 
+`signal` is the unit's own. The unit closes on the response's `'close'`, not
+on `handle` returning, so a client that disconnects settles it while `handle`
+may still be running — and the kernel aborts a unit's signal once it settles,
+so the handler is told to stop. An outbound call that takes the signal stops
+with it; an ingress whose upstream timeout closes the connection cancels work
+the same way.
+
 `graphql(api, { schema, prefix?, requires?, units?, unit?, cors?, developerTools?, maxTokens?, plugins? })` from
 `@btravstack/graphql-server` contributes a Yoga answerer. `schema`
 is any `GraphQLSchema` (the example builds one with Pothos); `prefix` defaults

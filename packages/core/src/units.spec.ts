@@ -225,12 +225,53 @@ describe("createUnitRegistry", () => {
       return Ok("done");
     });
 
-    // WHEN
+    // WHEN, read before either settles: a settled unit is aborted anyway
     registry.abortAll();
+    const seen = { abortedA, abortedB };
     await Promise.all([runA, runB]);
     // THEN
-    expect(abortedA).toBe(true);
-    expect(abortedB).toBe(true);
+    expect(seen).toEqual({ abortedA: true, abortedB: true });
+  });
+
+  it("aborts a unit's signal once its work settles, so work outliving it is told to stop", async () => {
+    // GIVEN a unit whose work hands its signal out
+    const registry = createUnitRegistry();
+    let handed: AbortSignal | undefined;
+
+    // WHEN its work settles
+    await registry.run(meta, (signal) => {
+      handed = signal;
+      return OkAsync();
+    });
+
+    // THEN the signal is aborted, with the settle reason rather than the kernel's
+    expect(handed).toEqual(
+      expect.objectContaining({
+        aborted: true,
+        reason: expect.objectContaining({ name: "AbortError", message: "The unit has settled" }),
+      }),
+    );
+  });
+
+  it("keeps the deadline's reason on a unit aborted before it settled", async () => {
+    // GIVEN a unit that settles only once aborted
+    const registry = createUnitRegistry();
+    let handed: AbortSignal | undefined;
+    const running = registry.run(meta, (signal) => {
+      handed = signal;
+      return new Promise<Result<void, never>>((settle) => {
+        signal.addEventListener("abort", () => settle(Ok()), { once: true });
+      });
+    });
+
+    // WHEN the deadline aborts it, and it settles
+    registry.abortAll();
+    await running;
+
+    // THEN the reason is still the kernel's own
+    expect(handed?.reason).toEqual(
+      expect.objectContaining({ message: "This operation was aborted" }),
+    );
   });
 
   it("awaitIdle resolves immediately when nothing is in flight", async () => {

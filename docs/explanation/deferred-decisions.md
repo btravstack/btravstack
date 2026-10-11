@@ -343,3 +343,13 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   `docs/how-to/use-request-scoped-services.md`. The trigger would be a root
   that must bind its kinds where the gate cannot see it — a hand-rolled
   `http()` root becoming the common shape.
+
+- **A per-request deadline (`HTTP_REQUEST_DEADLINE_MS`) is declined** (issue
+  #501). Its disconnect half shipped: the kernel aborts a unit's signal once
+  the unit settles, and `@btravstack/http-server` settles a unit on the
+  response's `'close'`, so a client that walks away aborts the handler it left
+  behind. With that in place the ingress read timeout IS the deadline — an
+  ingress that gives up closes the connection, and that cancels the work
+  through the same path a disconnect does — so a second clock in the process
+  would only have to be kept below the first. The trigger would be a
+  deployment with no ingress in front of it.

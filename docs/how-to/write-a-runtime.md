@@ -250,6 +250,14 @@ const serveOne = (
   });
 ```
 
+The converse holds too: a unit may settle while work it started is still
+running, when its client goes away first. `@btravstack/http-server` settles a
+unit on the response's `'close'` and leaves the handler behind. The kernel aborts
+every unit's signal once the unit settles, with the reason
+`"The unit has settled"`, so that work is told to stop without the runtime
+wiring anything — and it is never counted `abandoned`, because the unit is
+already closed.
+
 ::: tip If your work callback is someone else's `next()`
 A middleware-shaped runtime opens the unit around a call it does not own the
 arguments of, so the `signal` parameter above has nowhere to go — the work
