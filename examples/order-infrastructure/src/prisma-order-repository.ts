@@ -145,6 +145,17 @@ export const prismaOrderRepository = (
 ): ServiceOf<OrderRepository> => {
   const pinned = <R>(work: (tx: OrderTransaction) => PromiseLike<R>) =>
     tenantPinned(db, tenantId, work);
+  // A read, or a write with no relation to violate: no SQLSTATE it can meet
+  // has a meaning here, so all three arms are bugs.
+  const pinnedOrDefect = <R>(work: (tx: OrderTransaction) => PromiseLike<R>) =>
+    pinned(work).mapErrCases((matcher, defect) =>
+      matcher.with(
+        P.tag("UniqueConstraintViolation"),
+        P.tag("ForeignKeyViolation"),
+        P.tag("NotAuthorized"),
+        (e) => defect(e),
+      ),
+    );
 
   return {
     // The transactional-outbox write: the row and the fact of the row commit
@@ -183,38 +194,20 @@ export const prismaOrderRepository = (
           matcher.with(P.tag("DuplicateOrder"), (duplicate) =>
             operation === undefined
               ? ErrAsync(duplicate)
-              : pinned((tx) =>
+              : pinnedOrDefect((tx) =>
                   tx.orm.orders.Order.where({
                     tenantId,
                     orderId: order.id,
                     operationId: operation,
                   }).first(),
-                )
-                  .mapErrCases((matcher, defect) =>
-                    matcher.with(
-                      P.tag("UniqueConstraintViolation"),
-                      P.tag("ForeignKeyViolation"),
-                      P.tag("NotAuthorized"),
-                      (e) => defect(e),
-                    ),
-                  )
-                  .flatMap((row) => (row === null ? Err(duplicate) : hydrate(row))),
+                ).flatMap((row) => (row === null ? Err(duplicate) : hydrate(row))),
           ),
         ),
 
     find: (id) =>
-      pinned((tx) => tx.orm.orders.Order.where({ tenantId, orderId: id }).first())
-        .mapErrCases((matcher, defect) =>
-          matcher.with(
-            P.tag("UniqueConstraintViolation"),
-            P.tag("ForeignKeyViolation"),
-            P.tag("NotAuthorized"),
-            (e) => defect(e),
-          ),
-        )
-        .flatMap((row) =>
-          row === null ? Err(new OrderNotFound({ id: id as OrderId })) : hydrate(row),
-        ),
+      pinnedOrDefect((tx) => tx.orm.orders.Order.where({ tenantId, orderId: id }).first()).flatMap(
+        (row) => (row === null ? Err(new OrderNotFound({ id: id as OrderId })) : hydrate(row)),
+      ),
 
     /**
      * The listing, and what is left of it is the three decisions this
@@ -235,7 +228,7 @@ export const prismaOrderRepository = (
       const { column, encode, decode } = sortKeys[keys.sort.field];
       const start = keys.cursor === undefined ? Ok(undefined) : decodeCursor(keys.cursor, decode);
       return start.toAsync().flatMap((cursor) =>
-        pinned(async (tx) => {
+        pinnedOrDefect(async (tx) => {
           // No `tenantId` filter: the policy on `Order` holds it, and a filter
           // here would hide whether it does.
           const floored =
@@ -264,24 +257,15 @@ export const prismaOrderRepository = (
               ? ordered
               : ordered.cursor({ [column]: cursor.value, id: cursor.id });
           return seeked.limit(keys.take).all();
-        })
-          .mapErrCases((matcher, defect) =>
-            matcher.with(
-              P.tag("UniqueConstraintViolation"),
-              P.tag("ForeignKeyViolation"),
-              P.tag("NotAuthorized"),
-              (e) => defect(e),
-            ),
-          )
-          .flatMap((fetched) =>
-            all(fetched.map((row) => hydrate(row).map((order) => ({ row, order })))).map((rows) =>
-              keys.page(
-                rows,
-                ({ row }) => [encode(row[column]), String(row.id)],
-                ({ order }) => order,
-              ),
+        }).flatMap((fetched) =>
+          all(fetched.map((row) => hydrate(row).map((order) => ({ row, order })))).map((rows) =>
+            keys.page(
+              rows,
+              ({ row }) => [encode(row[column]), String(row.id)],
+              ({ order }) => order,
             ),
           ),
+        ),
       );
     },
 
@@ -303,7 +287,7 @@ export const prismaOrderRepository = (
      * row placed since is not matched, and nothing is written for it.
      */
     remove: (id, { placedBefore } = {}) =>
-      pinned(async (tx) => {
+      pinnedOrDefect(async (tx) => {
         const named = tx.orm.orders.Order.where({ tenantId, orderId: id });
         const deleted = await (
           placedBefore === undefined
@@ -318,19 +302,8 @@ export const prismaOrderRepository = (
           payload: orderPayload(deleted, null),
         });
         return true;
-      })
-        .mapErrCases((matcher, defect) =>
-          // No relation to violate in this schema, and the pin is this
-          // adapter's own: reaching either is a bug.
-          matcher.with(
-            P.tag("UniqueConstraintViolation"),
-            P.tag("ForeignKeyViolation"),
-            P.tag("NotAuthorized"),
-            (e) => defect(e),
-          ),
-        )
-        .flatMap((removed) =>
-          removed ? Ok(undefined) : Err(new OrderNotFound({ id: id as OrderId })),
-        ),
+      }).flatMap((removed) =>
+        removed ? Ok(undefined) : Err(new OrderNotFound({ id: id as OrderId })),
+      ),
   };
 };

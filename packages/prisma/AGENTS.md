@@ -360,3 +360,9 @@ out-of-band procedure leans on two measured runner facts — the postcheck is
 tested before the precheck and skips a pre-satisfied operation, and
 `createIndex`'s check is `to_regclass(…) IS NOT NULL`, by name only — which is
 why it insists on `pg_index.indisvalid`.
+
+**No read-only `tenantPinned`** (issue #499). Prisma 8's `transaction` takes
+no options at all, so there is no `READ ONLY` to open, and what is left — the
+three `SqlError` arms folded into the defect channel — is one `mapErrCases` an
+adapter writes once, as `examples/order-infrastructure`'s `pinnedOrDefect`
+does. A variant here would be that line under a second name.

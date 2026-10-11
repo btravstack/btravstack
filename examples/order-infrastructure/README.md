@@ -160,11 +160,14 @@ nothing. Any other operation, or none, is still `DuplicateOrder`.
 ## The read path carries no infrastructure error at all
 
 A read answers `null` for a miss rather than failing, and a database that will
-not answer is a defect. `find` therefore adds the one error the domain does
-model:
+not answer is a defect. Nor can a read meet any of the three SQLSTATEs the
+`/result` bridge models with a meaning, so the adapter folds them into the
+defect channel once — `pinnedOrDefect`, `tenantPinned` followed by that one
+`mapErrCases`, shared with the recovery read in `save`, `list` and `remove` —
+and `find` adds the one error the domain does model:
 
 ```ts
-tryQuery(() => db.orm.orders.Order.where({ tenantId, orderId: id }).first())
+pinnedOrDefect((tx) => tx.orm.orders.Order.where({ tenantId, orderId: id }).first())
   .flatMap((row) =>
     row === null ? Err(new OrderNotFound({ id })) : hydrate(row),
   );
