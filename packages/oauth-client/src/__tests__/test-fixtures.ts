@@ -54,10 +54,11 @@ export type OAuthFixtures = {
   /** What Hydra says a token it issued is. */
   readonly introspect: (token: string) => Promise<unknown>;
   /**
-   * Two issuers answering what the gate's Hydra never does: `challenging`
+   * Scripted issuers answering what the gate's Hydra never does: `challenging`
    * refuses every client as RFC 6749 §5.2 spells it for Basic authentication —
    * `401` with a `WWW-Authenticate` challenge — and `failing` answers every
-   * token request with a `503` and an OAuth error body.
+   * token request with a `503` and an OAuth error body. `issuing` answers each
+   * token request with a fresh bearer.
    */
   readonly scripted: {
     readonly challenging: string;

@@ -20,7 +20,8 @@ curl -s http://localhost:3000/rpc/hello \
 ```
 
 It answers `{"json":{"message":"Hello, world!"}}`. Send SIGTERM to the Node
-process listening on the port to watch it drain and exit cleanly:
+process listening on the port to watch it drain and exit cleanly (requires
+`lsof`):
 
 ```sh
 kill -TERM $(lsof -ti tcp:3000 -sTCP:LISTEN)

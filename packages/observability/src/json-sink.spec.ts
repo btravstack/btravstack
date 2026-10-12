@@ -46,6 +46,77 @@ describe("the JSON sink", () => {
     );
   });
 
+  it("redacts object-valued aggregate members without running their serializers", ({ written }) => {
+    // GIVEN rejection reasons that carry private data
+    const cause = new AggregateError(
+      [
+        { token: "private-token", user: { email: "private@example.test" } },
+        ["private-token"],
+        { toJSON: () => "private-token" },
+        () => "private-token",
+        new Error("wrapped", { cause: { token: "private-token" } }),
+        "refused",
+        42,
+        false,
+        null,
+      ],
+      "failed batch",
+    );
+
+    // WHEN the diagnostic line is rendered
+    jsonSink(written)({
+      level: "error",
+      message: "failed",
+      attributes: {},
+      cause,
+      time: 0,
+      unit: undefined,
+    });
+
+    // THEN private payloads are replaced while error and scalar diagnostics survive
+    expect(lineOf(written)["cause"]).toEqual({
+      name: "AggregateError",
+      message: "failed batch",
+      stack: expect.any(String),
+      errors: [
+        "[non-error]",
+        "[non-error]",
+        "[non-error]",
+        "[non-error]",
+        expect.objectContaining({ message: "wrapped", cause: "[non-error]" }),
+        "refused",
+        42,
+        false,
+        null,
+      ],
+    });
+  });
+
+  for (const errors of [undefined, null, "invalid", { token: "private-token" }]) {
+    it(`keeps the diagnostic when aggregate errors is ${JSON.stringify(errors)}`, ({ written }) => {
+      // GIVEN an aggregate whose writable errors property is malformed
+      const cause = new AggregateError([], "failed batch");
+      Object.defineProperty(cause, "errors", { value: errors });
+
+      // WHEN the diagnostic line is rendered
+      jsonSink(written)({
+        level: "error",
+        message: "failed",
+        attributes: {},
+        cause,
+        time: 0,
+        unit: undefined,
+      });
+
+      // THEN the aggregate's own diagnostic survives without malformed members
+      expect(lineOf(written)["cause"]).toEqual({
+        name: "AggregateError",
+        message: "failed batch",
+        stack: expect.any(String),
+      });
+    });
+  }
+
   it("keeps a tagged error's identity without copying its secret-bearing payload", ({
     written,
   }) => {

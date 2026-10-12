@@ -46,7 +46,20 @@ try {
   run(node, ["node_modules/typescript/bin/tsc", "--noEmit"]);
   run(node, ["node_modules/typescript/bin/tsc"]);
 
-  const child = spawn(node, ["dist/main.js"], {
+  // Node warnings and malformed event lines must not prevent the serving event from being read.
+  const noise = `Node warning
+null
+{}
+{
+{"type":"serving"}
+{"type":"serving","info":{"port":"invalid"}}
+{"type":"serving","info":{"port":0}}
+{"type":"serving","info":{"port":-1}}
+{"type":"serving","info":{"port":70000}}
+{"type":"serving","info":{"port":3.5}}
+`;
+  const preload = `data:text/javascript,process.stderr.write(${JSON.stringify(noise)})`;
+  const child = spawn(node, ["--import", preload, "dist/main.js"], {
     cwd: work,
     env: {
       ...process.env,
@@ -76,8 +89,22 @@ try {
       const lines = pending.split("\n");
       pending = lines.pop()!;
       for (const line of lines) {
-        const event = JSON.parse(line) as { type: string; info?: { port: number } };
-        if (event.type === "serving") resolve(event.info!.port);
+        let event: { type?: string; info?: { port?: unknown } } | null;
+        try {
+          event = JSON.parse(line) as typeof event;
+        } catch {
+          continue;
+        }
+        const port = event?.info?.port;
+        if (
+          event?.type === "serving" &&
+          typeof port === "number" &&
+          Number.isInteger(port) &&
+          port > 0 &&
+          port <= 65535
+        ) {
+          resolve(port);
+        }
       }
     });
   });

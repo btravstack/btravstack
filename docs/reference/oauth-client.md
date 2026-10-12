@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/oauth-client"
-description: The complete surface of @btravstack/oauth-client — the TokenSource port, TokenRequest and AccessToken, TokenRefused and TokenIssuerUnavailable, oauthClient() over the client credentials grant, its cache and health check, OAUTH_ISSUER, OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET, and staticTokenSource.
+description: The complete surface of @btravstack/oauth-client — the TokenSource port, TokenRequest and AccessToken, TokenRefused and TokenIssuerUnavailable, oauthClient() over client credentials or RFC 8693 token exchange, its cache and health check, OAUTH_ISSUER, OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET, and staticTokenSource.
 ---
 
 <!-- doctest: prelude
@@ -13,8 +13,9 @@ import { P, type AsyncResult } from "unthrown";
 
 > **Reference.** A complete, structured description of
 > `@btravstack/oauth-client`: the `TokenSource` port a service depends on to
-> call another as itself, its two modeled errors, `oauthClient()` over the
-> OAuth 2.0 client credentials grant, and `staticTokenSource` for tests.
+> call another as itself or for a subject, its two modeled errors,
+> `oauthClient()` over OAuth 2.0 client credentials or RFC 8693 token exchange,
+> and `staticTokenSource` for tests.
 
 The source uses **client credentials** for a service token and **RFC 8693
 token exchange** when `onBehalfOf` names a subject credential. The issuer

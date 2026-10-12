@@ -18,7 +18,11 @@ const DIAGNOSTIC_FIELDS = [
  * its origin.
  */
 const renderCause = (cause: unknown, depth = 0, parents = new Set<Error>()): unknown => {
-  if (!(cause instanceof Error)) return cause;
+  if (!(cause instanceof Error)) {
+    return depth > 0 && cause !== null && (typeof cause === "object" || typeof cause === "function")
+      ? "[non-error]"
+      : cause;
+  }
   if (parents.has(cause)) return "[circular]";
   const ancestors = new Set(parents).add(cause);
   return {
@@ -38,7 +42,7 @@ const renderCause = (cause: unknown, depth = 0, parents = new Set<Error>()): unk
     ...(cause.cause === undefined || depth >= 4
       ? {}
       : { cause: renderCause(cause.cause, depth + 1, ancestors) }),
-    ...(cause instanceof AggregateError && depth < 4
+    ...(cause instanceof AggregateError && Array.isArray(cause.errors) && depth < 4
       ? {
           errors: cause.errors
             .slice(0, 16)
