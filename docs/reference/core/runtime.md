@@ -535,3 +535,18 @@ const TickerModule = Module("Ticker")({
 A composition root that imports `TickerModule` must also export `Greeter`, or
 `start` refuses the module against
 `"UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export"`.
+
+## `infrastructureExports(imports, provides)`
+
+Application starters use this helper to export visible `Logger` and
+`HealthChecks` ports. It follows public module exports, including whole-module
+re-exports, and includes providers declared at the root. Private providers and
+business ports remain hidden. Each starter adds its own runtime ports.
+`InfrastructureExports<I, P>` describes the same visibility at the type level.
+
+```ts
+import { infrastructureExports, type InfrastructureExports } from "@btravstack/core";
+
+const ports: InfrastructureExports<readonly [], readonly []> = infrastructureExports([], []);
+void ports;
+```

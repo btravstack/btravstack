@@ -1,4 +1,5 @@
 import type { ConfigInvalid, EnvReading } from "@btravstack/config";
+import { infrastructureExports, type InfrastructureExports } from "@btravstack/core";
 import {
   composeByPrefix,
   type AnyUnitModule,
@@ -99,7 +100,7 @@ export type TemporalModuleOptions<
   };
   readonly imports?: I;
   readonly provides?: P;
-  /** The application's own exports; `TemporalRuntime` is added, since `start` resolves it. */
+  /** The application's own exports; `TemporalRuntime` and visible kernel infrastructure are added. */
   readonly exports?: X;
   /**
    * What this root's OWN providers expect from outside. di's gate is re-stated
@@ -162,15 +163,40 @@ export const TemporalModule =
     // tuples are type parameters, and is computed at the application's own call
     // because the options type re-declares it. Spelled out rather than
     // `as never`, which collapses the return to `Module<never, never, never>`.
+    const rootImports = [...imports, starter] as Imports<I, C, Unit>;
+    const rootProvides = [activities, ...provides] as Provides<
+      P,
+      C,
+      ActivitiesError,
+      ActivitiesNeeds
+    >;
     return Module(name)({
-      imports: [...imports, starter] as Imports<I, C, Unit>,
-      provides: [activities, ...provides] as Provides<P, C, ActivitiesError, ActivitiesNeeds>,
-      exports: [TemporalRuntime, ...exports] as readonly [typeof TemporalRuntime, ...X],
+      imports: rootImports,
+      provides: rootProvides,
+      exports: [
+        TemporalRuntime,
+        ...infrastructureExports(rootImports, rootProvides),
+        ...exports,
+      ] as readonly [
+        typeof TemporalRuntime,
+        ...InfrastructureExports<
+          Imports<I, C, Unit>,
+          Provides<P, C, ActivitiesError, ActivitiesNeeds>
+        >,
+        ...X,
+      ],
       needs: (options.needs ?? []) as N,
     } as {
       readonly imports: Imports<I, C, Unit>;
       readonly provides: Provides<P, C, ActivitiesError, ActivitiesNeeds>;
-      readonly exports: readonly [typeof TemporalRuntime, ...X];
+      readonly exports: readonly [
+        typeof TemporalRuntime,
+        ...InfrastructureExports<
+          Imports<I, C, Unit>,
+          Provides<P, C, ActivitiesError, ActivitiesNeeds>
+        >,
+        ...X,
+      ];
       readonly needs: N;
     } & NeedsGate<Imports<I, C, Unit>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N>);
   };

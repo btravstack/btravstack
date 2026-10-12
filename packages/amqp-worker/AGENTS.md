@@ -139,3 +139,7 @@ page, never this file.
   issue #25 landed — a different question from this one. `@btravstack/contract` is dependency-free, so its marker combinator
   _would_ work over an AMQP contract; it is deliberately not wired, because
   there is nothing here to authenticate **from**.
+
+`AmqpModule` automatically exports publicly available `Logger` and `HealthChecks`
+ports, including whole-module re-exports and providers declared at the root.
+It keeps private infrastructure hidden and business exports explicit.

@@ -559,3 +559,7 @@ pins the composing form's
 compile-time gates: a piece typed by its own key, an array covering every
 declared key, a missing key refused and named, and a piece built for another
 contract refused structurally.
+
+`AmqpModule` automatically exports publicly available `Logger` and `HealthChecks`
+ports, including whole-module re-exports and providers declared at the root.
+It keeps private infrastructure hidden and business exports explicit.

@@ -159,3 +159,7 @@ rule exists because peers are per-package and a caller must not install the
 serving half. This is not the calling half of a contract — it starts no
 workflow and awaits no result — it is a deployment operation performed by
 whoever ships the worker, who already holds this package.
+
+`TemporalModule` automatically exports publicly available `Logger` and `HealthChecks`
+ports, including whole-module re-exports and providers declared at the root.
+It keeps private infrastructure hidden and business exports explicit.

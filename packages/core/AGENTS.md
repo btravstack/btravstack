@@ -780,3 +780,9 @@ A synchronous throw from the operation itself enters the defect channel, and
 valid finishers still receive the original outcome exactly once. A broken
 settlement-shaping hook falls back to the ordinary settlement, without changing
 that outcome.
+
+**Application infrastructure exports are shared across transport roots.**
+`infrastructureExports` discovers only publicly visible `Logger` and
+`HealthChecks` ports through imported modules and root providers. HTTP and
+worker starters add their runtime ports themselves. The runtime discovery and
+`InfrastructureExports` type must agree; private and business ports stay hidden.

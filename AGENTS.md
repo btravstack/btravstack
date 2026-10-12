@@ -222,9 +222,10 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    escaper shared with `@btravstack/http-server` would make it depend on the
    HTTP server. `docs/how-to/send-a-formatted-email.md` is the pattern.
 
-   **HTTP application roots own runtime export plumbing.** `HttpModule` and
-   `GraphqlModule` add the HTTP runtime ports and the `Logger` / `HealthChecks`
-   their imports export or their own providers supply. This convenience is
+   **Application roots own runtime export plumbing.** `HttpModule`,
+   `GraphqlModule`, `AmqpModule` and `TemporalModule` add their runtime ports
+   and the `Logger` / `HealthChecks` their imports export or their own providers
+   supply, using core's shared `infrastructureExports` discovery. This convenience is
    confined to deployment roots: ordinary modules still export their business
    ports explicitly, and private infrastructure is never made public by walking
    an imported module's providers.

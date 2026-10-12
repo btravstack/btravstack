@@ -54,3 +54,6 @@ export type {
 export { composeByPrefix, mintPiece } from "./pieces.js";
 export type { Refuse } from "./pieces.js";
 export { noObserverMember } from "./starter.js";
+
+export { infrastructureExports } from "./infrastructure-exports.js";
+export type { InfrastructureExports } from "./infrastructure-exports.js";

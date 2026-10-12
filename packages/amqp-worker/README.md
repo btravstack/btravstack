@@ -215,6 +215,10 @@ there is no second timeout in the process to keep in step. Each delivery is one
 unit, `traceId` the publisher's `messageId`. The rest is on the
 [documentation site](https://btravstack.github.io/btravstack/reference/amqp-worker).
 
+`AmqpModule` automatically exports publicly available `Logger` and `HealthChecks`
+ports, including whole-module re-exports and providers declared at the root.
+It keeps private infrastructure hidden and business exports explicit.
+
 ## License
 
 [MIT](./LICENSE) © Benoit TRAVERS

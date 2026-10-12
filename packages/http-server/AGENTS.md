@@ -13,8 +13,9 @@ the corresponding protocol package. The public surface is in
 ## Application-root infrastructure exports
 
 `applicationExports`, on the internal subpath, is shared by `HttpModule` and
-`GraphqlModule`. It exposes `HttpRuntime` and `HttpHandler`, and adds `Logger`
-and `HealthChecks` only when the application's own providers or its imports'
+`GraphqlModule`. It adds `HttpRuntime` and `HttpHandler` to core's shared
+`infrastructureExports` discovery, also used by AMQP and Temporal roots.
+`Logger` and `HealthChecks` are added only when the application's own providers or its imports'
 public exports make them available. It follows whole-module re-exports, never
 private providers. The conditional types mirror that walk, so a root without
 a logger cannot resolve one, and business ports still require explicit exports.

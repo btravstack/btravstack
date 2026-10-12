@@ -19,6 +19,8 @@ import { expect, expectTypeOf, test } from "vitest";
 
 import {
   RuntimePort,
+  infrastructureExports,
+  type InfrastructureExports,
   currentUnit,
   runMain,
   start,
@@ -312,3 +314,10 @@ const drainTest = (): void => {
     expectTypeOf(report.getOrThrow().drain).toEqualTypeOf<DrainReport | undefined>();
   });
 };
+
+// "Application infrastructure exports" — packages/core/README.md; docs/reference/core/runtime.md.
+const infrastructurePorts: InfrastructureExports<readonly [], readonly []> = infrastructureExports(
+  [],
+  [],
+);
+void infrastructurePorts;

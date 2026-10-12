@@ -142,6 +142,14 @@ them and none should own a private copy:
   `ff` — so your runtime falls back to its own id instead of adopting one that
   means nothing. A higher version's extra fields are read rather than refused.
 
+## Application infrastructure exports
+
+`infrastructureExports(imports, provides)` returns the publicly available
+`Logger` and `HealthChecks` ports from imported modules and root providers.
+`InfrastructureExports<I, P>` describes those ports at the type level.
+It follows whole-module re-exports while keeping private providers and business
+ports hidden. Application starters use it alongside their own runtime exports.
+
 ## What you get
 
 - **A drain that survives Kubernetes.** On SIGTERM: readiness flips false, the
