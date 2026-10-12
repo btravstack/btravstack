@@ -19,7 +19,9 @@ const DIAGNOSTIC_FIELDS = [
  */
 const renderCause = (cause: unknown, depth = 0, parents = new Set<Error>()): unknown => {
   if (!(cause instanceof Error)) {
-    return depth > 0 && cause !== null && (typeof cause === "object" || typeof cause === "function")
+    return depth > 0 &&
+      cause !== null &&
+      (typeof cause === "object" || typeof cause === "function" || typeof cause === "bigint")
       ? "[non-error]"
       : cause;
   }

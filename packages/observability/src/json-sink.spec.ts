@@ -92,6 +92,45 @@ describe("the JSON sink", () => {
     });
   });
 
+  it("keeps sibling diagnostics when aggregate members contain BigInt reasons", ({ written }) => {
+    // GIVEN a legal rejection reason that JSON cannot encode
+    const cause = new AggregateError(
+      [
+        1n,
+        new Error("operation failed"),
+        new AggregateError([2n, new Error("observer failed")], "nested"),
+        new Error("wrapped", { cause: 3n }),
+      ],
+      "failed batch",
+    );
+
+    // WHEN the diagnostic line is rendered
+    jsonSink(written)({
+      level: "error",
+      message: "failed",
+      attributes: {},
+      cause,
+      time: 0,
+      unit: undefined,
+    });
+
+    // THEN only the unsupported reasons are replaced, preserving the whole error tree
+    expect(lineOf(written)["cause"]).toEqual({
+      name: "AggregateError",
+      message: "failed batch",
+      stack: expect.any(String),
+      errors: [
+        "[non-error]",
+        expect.objectContaining({ message: "operation failed" }),
+        expect.objectContaining({
+          message: "nested",
+          errors: ["[non-error]", expect.objectContaining({ message: "observer failed" })],
+        }),
+        expect.objectContaining({ message: "wrapped", cause: "[non-error]" }),
+      ],
+    });
+  });
+
   for (const errors of [undefined, null, "invalid", { token: "private-token" }]) {
     it(`keeps the diagnostic when aggregate errors is ${JSON.stringify(errors)}`, ({ written }) => {
       // GIVEN an aggregate whose writable errors property is malformed

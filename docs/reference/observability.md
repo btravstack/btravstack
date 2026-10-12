@@ -259,9 +259,9 @@ Three rules:
   personal data. Put reviewed, non-sensitive diagnostics in the line's
   attributes explicitly. Aggregate errors keep up to sixteen `errors` members
   per level, with `omittedErrors` naming any remainder. A malformed non-array
-  `errors` property is omitted. Non-error objects and functions nested in
+  `errors` property is omitted. Non-error objects, functions and BigInts nested in
   members or cause chains render as `"[non-error]"` without invoking getters or
-  serializers; scalar reasons remain visible. Cycles render as
+  serializers; JSON-compatible scalar reasons remain visible. Cycles render as
   `"[circular]"`; both member trees and `cause` chains are walked up to four
   levels. `JSON.stringify` skips non-enumerable properties, so a bare `Error`
   would render the line that exists to carry a failure as `{}` — the same rule,
