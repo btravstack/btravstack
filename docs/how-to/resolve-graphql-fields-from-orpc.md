@@ -14,8 +14,8 @@ them a peer:
 
 ```sh
 pnpm add @btravstack/pothos @pothos/core @pothos/plugin-errors @pothos/plugin-relay \
-  @unthrown/pothos@^0.1.0 graphql unthrown zod \
-  @orpc/client@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28
+  @unthrown/pothos@^0.1.2 graphql unthrown zod \
+  @orpc/client@2.0.0-beta.34 @orpc/contract@2.0.0-beta.34
 ```
 
 The schema is any server's: serve it with

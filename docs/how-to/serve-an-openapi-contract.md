@@ -11,7 +11,7 @@ description: Keep one contract for TypeScript callers and conventional HTTP clie
 > the router and composition root.
 
 Install the `/openapi` subpath's two optional peers,
-`@orpc/openapi@2.0.0-beta.28` and `@orpc/json-schema@2.0.0-beta.28`, in the
+`@orpc/openapi@2.0.0-beta.34` and `@orpc/json-schema@2.0.0-beta.34`, in the
 application. The contract package also needs `@orpc/openapi` for its routing
 metadata.
 
@@ -117,6 +117,6 @@ When public documentation is wanted, oRPC's
 [OpenAPI reference plugin](https://orpc.dev/docs/plugins/openapi-reference)
 can be passed in `openApiRoutes({ plugins: [...] })`. Give its `spec` callback
 the result of **this package's** `openApiDocument()`, so `authenticated()`
-requirements are retained. The pinned oRPC `2.0.0-beta.28` plugin serves its
-spec and UI publicly when installed; protect them at the gateway if the
-document is private.
+requirements are retained. The pinned oRPC `2.0.0-beta.34` plugin serves its
+spec and UI publicly by default. For a private document, supply its `allow`
+predicate to gate both routes or protect them at the gateway.

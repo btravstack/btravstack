@@ -9,9 +9,9 @@ export { openApiRoutes, type OpenApiRoutesOptions } from "./openapi-routes.js";
 /**
  * The OpenAPI document, as `@orpc/openapi` returns it.
  *
- * **Exported so a consumer can name it.** Its constituent types come from
- * `@hey-api/spec-types`, a transitive dependency nothing here depends on
- * directly, so an application annotating nothing gets TS4023 in its own
+ * **Exported so a consumer can name it.** Its constituent types come from a
+ * transitive OpenAPI specification package nothing here depends on directly,
+ * so an application annotating nothing gets TS4023 in its own
  * declaration emit — measured on `examples/order-api`. Re-exporting the alias
  * gives that application a name it owns a path to.
  */
@@ -20,7 +20,7 @@ export type OpenApiDocument = Awaited<ReturnType<OpenAPIGenerator["generate"]>>;
 /**
  * The document's own `components.securitySchemes` shape, reached by index off
  * `OpenApiDocument` for the same TS4023 reason that alias exists: the real
- * type lives in `@hey-api/spec-types`, which no consumer depends on directly.
+ * type lives in a transitive OpenAPI specification package.
  */
 export type OpenApiSecuritySchemes = NonNullable<
   NonNullable<OpenApiDocument["components"]>["securitySchemes"]
@@ -40,7 +40,7 @@ export type OpenApiOptions = {
    */
   readonly securitySchemes?: Readonly<OpenApiSecuritySchemes>;
   /** Merged into the document — `info`, `servers`, and anything else OpenAPI takes. */
-  readonly base?: Partial<OpenApiDocument>;
+  readonly base?: NonNullable<Parameters<OpenAPIGenerator["generate"]>[1]>["base"];
 };
 
 /**

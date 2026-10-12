@@ -102,7 +102,7 @@
     "@orpc/json-schema": "^2.0.0-beta.28",
     "@orpc/openapi": "^2.0.0-beta.28",
     "@orpc/server": "^2.0.0-beta.28",
-    "@unthrown/orpc": "^0.2.0",
+    "@unthrown/orpc": "^0.2.0 || ^0.4.2",
     "unthrown": "^5.7.0"
   },
   "engines": {

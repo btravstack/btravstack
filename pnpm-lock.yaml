@@ -225,26 +225,26 @@ catalogs:
       specifier: 2.11.0
       version: 2.11.0
     '@orpc/client':
-      specifier: 2.0.0-beta.28
-      version: 2.0.0-beta.28
+      specifier: 2.0.0-beta.34
+      version: 2.0.0-beta.34
     '@orpc/contract':
-      specifier: 2.0.0-beta.28
-      version: 2.0.0-beta.28
+      specifier: 2.0.0-beta.34
+      version: 2.0.0-beta.34
     '@orpc/json-schema':
-      specifier: 2.0.0-beta.28
-      version: 2.0.0-beta.28
+      specifier: 2.0.0-beta.34
+      version: 2.0.0-beta.34
     '@orpc/openapi':
-      specifier: 2.0.0-beta.28
-      version: 2.0.0-beta.28
+      specifier: 2.0.0-beta.34
+      version: 2.0.0-beta.34
     '@orpc/server':
-      specifier: 2.0.0-beta.28
-      version: 2.0.0-beta.28
+      specifier: 2.0.0-beta.34
+      version: 2.0.0-beta.34
     '@orpc/tanstack-query':
-      specifier: 2.0.0-beta.28
-      version: 2.0.0-beta.28
+      specifier: 2.0.0-beta.34
+      version: 2.0.0-beta.34
     '@orpc/zod':
-      specifier: 2.0.0-beta.28
-      version: 2.0.0-beta.28
+      specifier: 2.0.0-beta.34
+      version: 2.0.0-beta.34
     '@pothos/core':
       specifier: 4.15.1
       version: 4.15.1
@@ -306,20 +306,20 @@ catalogs:
       specifier: 8.0.2
       version: 8.0.2
     '@unthrown/orpc':
-      specifier: 0.2.0
-      version: 0.2.0
+      specifier: 0.4.2
+      version: 0.4.2
     '@unthrown/oxlint':
-      specifier: 5.12.0
-      version: 5.12.0
+      specifier: 5.12.1
+      version: 5.12.1
     '@unthrown/pothos':
-      specifier: 0.1.0
-      version: 0.1.0
+      specifier: 0.1.2
+      version: 0.1.2
     '@unthrown/standard-schema':
-      specifier: 5.12.0
-      version: 5.12.0
+      specifier: 5.12.1
+      version: 5.12.1
     '@unthrown/vitest':
-      specifier: 5.12.0
-      version: 5.12.0
+      specifier: 5.12.1
+      version: 5.12.1
     '@vitest/coverage-v8':
       specifier: 5.0.3
       version: 5.0.3
@@ -402,8 +402,8 @@ catalogs:
       specifier: npm:typescript@5.9.3
       version: 5.9.3
     unthrown:
-      specifier: 5.12.0
-      version: 5.12.0
+      specifier: 5.12.1
+      version: 5.12.1
     uuidv7:
       specifier: 1.2.1
       version: 1.2.1
@@ -467,7 +467,7 @@ importers:
         version: 21.2.3(@types/node@26.6.4)(conventional-commits-parser@7.1.2)(typescript@7.0.2)
       '@unthrown/oxlint':
         specifier: 'catalog:'
-        version: 5.12.0(oxlint@1.86.0)
+        version: 5.12.1(oxlint@1.86.0)
       knip:
         specifier: 'catalog:'
         version: 6.39.0
@@ -524,7 +524,7 @@ importers:
         version: link:../../packages/di
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -534,7 +534,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -552,13 +552,13 @@ importers:
         version: link:../entity-billing-domain
       '@orpc/contract':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@orpc/json-schema':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@orpc/zod':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)(zod@4.6.5)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)(zod@4.6.5)
       zod:
         specifier: 'catalog:'
         version: 4.6.5
@@ -571,7 +571,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -586,7 +586,7 @@ importers:
         version: link:../../packages/entity
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       zod:
         specifier: 'catalog:'
         version: 4.6.5
@@ -596,16 +596,16 @@ importers:
         version: 0.4.0
       '@orpc/zod':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)(zod@4.6.5)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)(zod@4.6.5)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)
+        version: 5.12.1(unthrown@5.12.1)
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       effect:
         specifier: 'catalog:'
         version: 3.22.2
@@ -635,7 +635,7 @@ importers:
         version: link:../entity-billing-domain
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       zod:
         specifier: 'catalog:'
         version: 4.6.5
@@ -648,7 +648,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -669,7 +669,7 @@ importers:
         version: 0.29.6
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       zod:
         specifier: 'catalog:'
         version: 4.6.5
@@ -685,7 +685,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       kysely-pglite-dialect:
         specifier: 'catalog:'
         version: 1.3.1(@electric-sql/pglite@0.4.6)(kysely@0.29.6)
@@ -713,16 +713,16 @@ importers:
         version: 26.6.4
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)
+        version: 5.12.1(unthrown@5.12.1)
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -731,10 +731,10 @@ importers:
     dependencies:
       '@amqp-contract/client':
         specifier: 'catalog:'
-        version: 3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.0)
+        version: 3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.1)
       '@amqp-contract/worker':
         specifier: 'catalog:'
-        version: 3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.0)
+        version: 3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.1)
       '@aws-sdk/client-s3':
         specifier: 'catalog:'
         version: 3.1146.0
@@ -791,7 +791,7 @@ importers:
         version: 4.23.15
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
     devDependencies:
       '@amqp-contract/contract':
         specifier: 'catalog:'
@@ -816,7 +816,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -882,19 +882,19 @@ importers:
         version: 0.222.0(@opentelemetry/api@1.9.1)(supports-color@8.1.1)
       '@orpc/client':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@orpc/contract':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@orpc/json-schema':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@orpc/openapi':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@unthrown/orpc':
         specifier: 'catalog:'
-        version: 0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.12.0)
+        version: 0.4.2(@orpc/client@2.0.0-beta.34(@opentelemetry/api@1.9.1))(@orpc/contract@2.0.0-beta.34(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.34(@opentelemetry/api@1.9.1))(unthrown@5.12.1)
       jose:
         specifier: 'catalog:'
         version: 6.2.12
@@ -903,7 +903,7 @@ importers:
         version: 6.8.8
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
     devDependencies:
       '@btravstack/contract':
         specifier: workspace:^
@@ -934,7 +934,7 @@ importers:
         version: 0.4.0
       '@orpc/tanstack-query':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)(@tanstack/query-core@5.104.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)(@tanstack/query-core@5.104.1)
       '@pothos/core':
         specifier: 'catalog:'
         version: 4.15.1(graphql@17.0.2)
@@ -955,10 +955,10 @@ importers:
         version: 26.6.4
       '@unthrown/pothos':
         specifier: 'catalog:'
-        version: 0.1.0(@pothos/core@4.15.1(graphql@17.0.2))(@pothos/plugin-errors@4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(@pothos/plugin-relay@4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(graphql@17.0.2)(unthrown@5.12.0)
+        version: 0.1.2(@pothos/core@4.15.1(graphql@17.0.2))(@pothos/plugin-errors@4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(@pothos/plugin-relay@4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(graphql@17.0.2)(unthrown@5.12.1)
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       graphql:
         specifier: 'catalog:'
         version: 17.0.2
@@ -988,13 +988,13 @@ importers:
         version: link:../order-api-contract
       '@orpc/client':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@orpc/contract':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@unthrown/orpc':
         specifier: 'catalog:'
-        version: 0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.12.0)
+        version: 0.4.2(@orpc/client@2.0.0-beta.34(@opentelemetry/api@1.9.1))(@orpc/contract@2.0.0-beta.34(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.34(@opentelemetry/api@1.9.1))(unthrown@5.12.1)
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -1010,7 +1010,7 @@ importers:
     dependencies:
       '@orpc/contract':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       zod:
         specifier: 'catalog:'
         version: 4.6.5
@@ -1023,22 +1023,22 @@ importers:
         version: 0.4.0
       '@orpc/client':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
       '@unthrown/orpc':
         specifier: 'catalog:'
-        version: 0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.12.0)
+        version: 0.4.2(@orpc/client@2.0.0-beta.34(@opentelemetry/api@1.9.1))(@orpc/contract@2.0.0-beta.34(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.34(@opentelemetry/api@1.9.1))(unthrown@5.12.1)
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -1062,7 +1062,7 @@ importers:
         version: link:../../packages/observability
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
     devDependencies:
       '@btravstack/config':
         specifier: workspace:*
@@ -1075,7 +1075,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -1093,7 +1093,7 @@ importers:
         version: link:../../packages/entity
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       zod:
         specifier: 'catalog:'
         version: 4.6.5
@@ -1106,10 +1106,10 @@ importers:
         version: 26.6.4
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)
+        version: 5.12.1(unthrown@5.12.1)
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -1142,10 +1142,10 @@ importers:
         version: link:../../packages/http-server
       '@orpc/client':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@orpc/contract':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@pothos/core':
         specifier: 'catalog:'
         version: 4.15.1(graphql@17.0.2)
@@ -1160,7 +1160,7 @@ importers:
         version: 5.24.1(graphql@17.0.2)
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
     devDependencies:
       '@btravstack/testing':
         specifier: workspace:*
@@ -1173,7 +1173,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       tsx:
         specifier: 'catalog:'
         version: 4.23.15
@@ -1220,7 +1220,7 @@ importers:
         version: 8.0.0-rc.11(@prisma/cli-engine@0.4.0(magicast@0.5.5))(magicast@0.5.5)(typescript@7.0.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
     devDependencies:
       '@btravstack/internal-test-infra':
         specifier: workspace:*
@@ -1236,7 +1236,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       prisma:
         specifier: 'catalog:'
         version: 8.0.0-rc.15(@types/node@26.6.4)(@vercel/nft@1.11.0(rollup@4.64.0)(supports-color@8.1.1))(magicast@0.5.5)(pg@8.22.0)(rollup@4.64.0)(supports-color@8.1.1)(typescript@7.0.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.3)(ws@8.22.0)
@@ -1254,7 +1254,7 @@ importers:
     dependencies:
       '@temporal-contract/contract':
         specifier: 'catalog:'
-        version: 8.0.0-beta.11(unthrown@5.12.0)
+        version: 8.0.0-beta.11(unthrown@5.12.1)
       zod:
         specifier: 'catalog:'
         version: 4.6.5
@@ -1267,16 +1267,16 @@ importers:
         version: 26.6.4
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)
+        version: 5.12.1(unthrown@5.12.1)
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -1324,10 +1324,10 @@ importers:
         version: 0.222.0(@opentelemetry/api@1.9.1)(supports-color@8.1.1)
       '@temporal-contract/client':
         specifier: 'catalog:'
-        version: 8.0.0-beta.11(@temporalio/client@1.24.0)(@temporalio/common@1.24.0)(unthrown@5.12.0)
+        version: 8.0.0-beta.11(@temporalio/client@1.24.0)(@temporalio/common@1.24.0)(unthrown@5.12.1)
       '@temporal-contract/worker':
         specifier: 'catalog:'
-        version: 8.0.0-beta.11(@temporalio/common@1.24.0)(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/workflow@1.24.0)(unthrown@5.12.0)
+        version: 8.0.0-beta.11(@temporalio/common@1.24.0)(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/workflow@1.24.0)(unthrown@5.12.1)
       '@temporalio/client':
         specifier: 'catalog:'
         version: 1.24.0
@@ -1342,7 +1342,7 @@ importers:
         version: 4.23.15
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
     devDependencies:
       '@btravstack/internal-test-infra':
         specifier: workspace:*
@@ -1358,10 +1358,10 @@ importers:
         version: 0.4.0
       '@temporal-contract/contract':
         specifier: 'catalog:'
-        version: 8.0.0-beta.11(unthrown@5.12.0)
+        version: 8.0.0-beta.11(unthrown@5.12.1)
       '@temporal-contract/testing':
         specifier: 'catalog:'
-        version: 8.0.0-beta.11(@temporal-contract/client@8.0.0-beta.11(@temporalio/client@1.24.0)(@temporalio/common@1.24.0)(unthrown@5.12.0))(@temporal-contract/contract@8.0.0-beta.11(unthrown@5.12.0))(@temporal-contract/worker@8.0.0-beta.11(@temporalio/common@1.24.0)(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/workflow@1.24.0)(unthrown@5.12.0))(@temporalio/client@1.24.0)(@temporalio/testing@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(testcontainers@12.2.0(supports-color@8.1.1))(unthrown@5.12.0)(vitest@5.0.3)
+        version: 8.0.0-beta.11(@temporal-contract/client@8.0.0-beta.11(@temporalio/client@1.24.0)(@temporalio/common@1.24.0)(unthrown@5.12.1))(@temporal-contract/contract@8.0.0-beta.11(unthrown@5.12.1))(@temporal-contract/worker@8.0.0-beta.11(@temporalio/common@1.24.0)(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/workflow@1.24.0)(unthrown@5.12.1))(@temporalio/client@1.24.0)(@temporalio/testing@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(testcontainers@12.2.0(supports-color@8.1.1))(unthrown@5.12.1)(vitest@5.0.3)
       '@temporalio/testing':
         specifier: 'catalog:'
         version: 1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4))
@@ -1370,7 +1370,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -1439,10 +1439,10 @@ importers:
         version: link:../../packages/testing
       '@orpc/client':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@orpc/contract':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       jose:
         specifier: 'catalog:'
         version: 6.2.12
@@ -1451,7 +1451,7 @@ importers:
         version: 6.8.8
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       zod:
         specifier: 'catalog:'
         version: 4.6.5
@@ -1501,7 +1501,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       tsx:
         specifier: 'catalog:'
         version: 4.23.15
@@ -1516,7 +1516,7 @@ importers:
     devDependencies:
       '@amqp-contract/client':
         specifier: 'catalog:'
-        version: 3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.0)
+        version: 3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.1)
       '@btravstack/di':
         specifier: workspace:*
         version: link:../di
@@ -1531,7 +1531,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -1543,7 +1543,7 @@ importers:
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -1558,7 +1558,7 @@ importers:
         version: 3.0.0-beta.11(supports-color@8.1.1)(vitest@5.0.3)
       '@amqp-contract/worker':
         specifier: 'catalog:'
-        version: 3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.0)
+        version: 3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.1)
       '@btravstack/config':
         specifier: workspace:*
         version: link:../config
@@ -1585,7 +1585,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -1600,7 +1600,7 @@ importers:
         version: typescript@5.9.3
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -1648,7 +1648,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -1663,7 +1663,7 @@ importers:
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -1681,7 +1681,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -1696,7 +1696,7 @@ importers:
         version: typescript@5.9.3
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -1750,7 +1750,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -1765,7 +1765,7 @@ importers:
         version: typescript@5.9.3
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -1786,7 +1786,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -1801,7 +1801,7 @@ importers:
         version: typescript@5.9.3
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -1813,16 +1813,16 @@ importers:
         version: 0.4.0
       '@orpc/zod':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)(zod@4.6.5)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)(zod@4.6.5)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)
+        version: 5.12.1(unthrown@5.12.1)
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -1837,7 +1837,7 @@ importers:
         version: typescript@5.9.3
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -1870,7 +1870,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -1891,7 +1891,7 @@ importers:
         version: typescript@5.9.3
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -1921,7 +1921,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -1936,7 +1936,7 @@ importers:
         version: typescript@5.9.3
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -1969,7 +1969,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -1990,7 +1990,7 @@ importers:
         version: typescript@5.9.3
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -2038,7 +2038,7 @@ importers:
         version: 8.0.2
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -2053,7 +2053,7 @@ importers:
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -2083,7 +2083,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -2098,7 +2098,7 @@ importers:
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -2134,7 +2134,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -2149,7 +2149,7 @@ importers:
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -2179,28 +2179,28 @@ importers:
         version: 0.4.0
       '@orpc/client':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@orpc/contract':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@orpc/json-schema':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@orpc/openapi':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@orpc/server':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
       '@unthrown/orpc':
         specifier: 'catalog:'
-        version: 0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.12.0)
+        version: 0.4.2(@orpc/client@2.0.0-beta.34(@opentelemetry/api@1.9.1))(@orpc/contract@2.0.0-beta.34(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.34(@opentelemetry/api@1.9.1))(unthrown@5.12.1)
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -2218,7 +2218,7 @@ importers:
         version: typescript@5.9.3
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -2248,7 +2248,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -2260,7 +2260,7 @@ importers:
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -2272,10 +2272,10 @@ importers:
         version: 0.4.0
       '@orpc/client':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@orpc/contract':
         specifier: 'catalog:'
-        version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@pothos/core':
         specifier: 'catalog:'
         version: 4.15.1(graphql@17.0.2)
@@ -2290,16 +2290,22 @@ importers:
         version: 26.6.4
       '@unthrown/pothos':
         specifier: 'catalog:'
-        version: 0.1.0(@pothos/core@4.15.1(graphql@17.0.2))(@pothos/plugin-errors@4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(@pothos/plugin-relay@4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(graphql@17.0.2)(unthrown@5.12.0)
+        version: 0.1.2(@pothos/core@4.15.1(graphql@17.0.2))(@pothos/plugin-errors@4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(@pothos/plugin-relay@4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(graphql@17.0.2)(unthrown@5.12.1)
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
+      dataloader:
+        specifier: 'catalog:'
+        version: 2.2.3
       graphql:
         specifier: 'catalog:'
         version: 17.0.2
+      graphql-yoga:
+        specifier: 'catalog:'
+        version: 5.24.1(graphql@17.0.2)
       tsdown:
         specifier: 'catalog:'
         version: 0.23.0(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
@@ -2311,7 +2317,7 @@ importers:
         version: typescript@5.9.3
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -2341,7 +2347,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -2353,7 +2359,7 @@ importers:
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -2401,7 +2407,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -2413,7 +2419,7 @@ importers:
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -2428,7 +2434,7 @@ importers:
         version: 0.4.0
       '@temporal-contract/client':
         specifier: 'catalog:'
-        version: 8.0.0-beta.11(@temporalio/client@1.24.0)(@temporalio/common@1.24.0)(unthrown@5.12.0)
+        version: 8.0.0-beta.11(@temporalio/client@1.24.0)(@temporalio/common@1.24.0)(unthrown@5.12.1)
       '@temporalio/client':
         specifier: 'catalog:'
         version: 1.24.0
@@ -2440,7 +2446,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -2452,7 +2458,7 @@ importers:
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -2479,13 +2485,13 @@ importers:
         version: 0.4.0
       '@temporal-contract/client':
         specifier: 'catalog:'
-        version: 8.0.0-beta.11(@temporalio/client@1.24.0)(@temporalio/common@1.24.0)(unthrown@5.12.0)
+        version: 8.0.0-beta.11(@temporalio/client@1.24.0)(@temporalio/common@1.24.0)(unthrown@5.12.1)
       '@temporal-contract/contract':
         specifier: 'catalog:'
-        version: 8.0.0-beta.11(unthrown@5.12.0)
+        version: 8.0.0-beta.11(unthrown@5.12.1)
       '@temporal-contract/worker':
         specifier: 'catalog:'
-        version: 8.0.0-beta.11(@temporalio/common@1.24.0)(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/workflow@1.24.0)(unthrown@5.12.0)
+        version: 8.0.0-beta.11(@temporalio/common@1.24.0)(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/workflow@1.24.0)(unthrown@5.12.1)
       '@temporalio/activity':
         specifier: 'catalog:'
         version: 1.24.0
@@ -2506,7 +2512,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -2521,7 +2527,7 @@ importers:
         version: typescript@5.9.3
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -2548,7 +2554,7 @@ importers:
         version: 26.6.4
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.12.0(unthrown@5.12.0)(vitest@5.0.3)
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
@@ -2563,7 +2569,7 @@ importers:
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.12.0
+        version: 5.12.1
       vitest:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -3811,12 +3817,6 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
-  '@hey-api/spec-types@0.0.0-next-20260408030107':
-    resolution: {integrity: sha512-P5DKr4dpZ7lmZpZt2bc2KWuzU9vl4GZcN7VrjchZF1WWKNGZFnwWhBxZo1t6P2muOCopIvqD2Fvp5os4QiitKA==}
-
-  '@hey-api/types@0.1.4':
-    resolution: {integrity: sha512-thWfawrDIP7wSI9ioT13I5soaaqB5vAPIiZmgD8PbeEVKNrkonc0N/Sjj97ezl7oQgusZmaNphGdMKipPO6IBg==}
-
   '@hono/node-server@1.19.15':
     resolution: {integrity: sha512-Za2ai6TLdKjUvnur+eenO6nuYYipVAEhyCAdaV8IRvmU9kK8crOZUSYvIXn72E4f8fJqyAbpcJuTsYYmZp9Deg==}
     engines: {node: '>=18.14.1'}
@@ -4494,6 +4494,12 @@ packages:
     resolution: {integrity: sha512-da6KbdNCV5sr1/txD896V+6W0iamFWrvVl8cHkBSPT+YlvmT3DwXa4jxZnQc+gnuTEqSWbBeoSZYTayXH9wXcw==}
     engines: {node: '>= 20'}
 
+  '@openapi-spec/downgrader@0.1.0':
+    resolution: {integrity: sha512-za2h8wGa4BFy2+AiKJHutt8BS2ua7Fw7vgNMmAtLyFbreozWHkXRVBRVA86sczyLY1ZN9Gw4rITygs90ehztQg==}
+
+  '@openapi-spec/types@0.1.0':
+    resolution: {integrity: sha512-5m9GUj5ekwmJ5uXH0yctarqLGckGc8X7pX65dirukZDUAGmrUx5lKovvWA7YvEBKd480Q7R2oG3nE5C+SoVgNw==}
+
   '@opentelemetry/api-logs@0.222.0':
     resolution: {integrity: sha512-9mb1If+IF6u0ZVXkHQ6ogEae5HwA6ajIVUgpSDQyRASxft6BSXHvBvPooRle3yFN/fKnCdSOnuu0OC3PLcF6+g==}
     engines: {node: '>=8.0.0'}
@@ -4668,17 +4674,17 @@ packages:
     resolution: {integrity: sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg==}
     engines: {node: '>=14'}
 
-  '@orpc/client@2.0.0-beta.28':
-    resolution: {integrity: sha512-iCmSzOGPsdotCpCvFQ8b6LEjYr50CZhKgKnTbU3CVMm/+lRvZg8V4OJ5QRtjx5PGG909vsLxG5IQczb7fJ2yZw==}
+  '@orpc/client@2.0.0-beta.34':
+    resolution: {integrity: sha512-9Jxq/de7pc54K0WU2Qz+qJhZ5rFYtyWv6sJEMUacqpDnPutft1yC4meNQLz2PgS1OT+KHWfBJS6MZ7+crEBeow==}
 
-  '@orpc/contract@2.0.0-beta.28':
-    resolution: {integrity: sha512-akbw6nsQtYsyuejg4XTPzfaj7xcXbmUFSRLcXXBWmCp+eKOX8VtH/B1SiCr1aKSO0H62PrX6OXKIT69bzskfxQ==}
+  '@orpc/contract@2.0.0-beta.34':
+    resolution: {integrity: sha512-oSftxWC3TwxijEUk996YNPprzU+KZRzkCeRc6RLhs3HMWybtv1jK2zLemi5BU7aqbnlpc2d4WMaTqAd3hcWt6g==}
 
-  '@orpc/json-schema@2.0.0-beta.28':
-    resolution: {integrity: sha512-GlBwcV5NyeifoyagEro0fT1o3Nbhyva+iBhYmeXu7S2owq4tzjMFlUSvDui9+nkbQ0slPXeHIEeyZG8fB4EyIA==}
+  '@orpc/json-schema@2.0.0-beta.34':
+    resolution: {integrity: sha512-+YK154l3WQ6g8M5muAjjqdTf9S9dPGbf4s8iP0xH8qRuqc2ownUXtqmkAdw8O3xiQx74acWReYFu0mhk0Dw0+Q==}
 
-  '@orpc/openapi@2.0.0-beta.28':
-    resolution: {integrity: sha512-mpCeXJfdDtjt8JiPvDagkxNCIrWEBnxqyubi8tyMDWETHULFXN6/qaeHJV4+2+DuD39lYHr+VYSGuw6UmeGzKA==}
+  '@orpc/openapi@2.0.0-beta.34':
+    resolution: {integrity: sha512-YP5BJz5qhY2WPf8SEQvyTmWgwmIf2tTaXlj4MPjF2kDqVyMJoc2kysMWjB+mhRo/oJJcoGpIzaKGb+Wn2QUYvg==}
     peerDependencies:
       '@scalar/api-reference': '>=1.57.2'
       '@types/swagger-ui': '>=5.32.0'
@@ -4691,8 +4697,8 @@ packages:
       swagger-ui:
         optional: true
 
-  '@orpc/server@2.0.0-beta.28':
-    resolution: {integrity: sha512-SPjru8A5JdODtLxydXQP0peDpBNxYeQqMQQzoFUNvjyGBwqmMe6WhB6anvwJTpCDmjHTZdo4jOK1erVbxN3J6Q==}
+  '@orpc/server@2.0.0-beta.34':
+    resolution: {integrity: sha512-lC/gSn/Yywmio6PL7qAYf/EJeStlfGkCVO/Rt1p7zxF+IJ1Wz/mh9wVPmfDqpvvq0V9S42T61ZaCeJVekBZFjA==}
     peerDependencies:
       crossws: '>=0.3.4'
       fastify: '>=5.6.1'
@@ -4702,23 +4708,23 @@ packages:
       fastify:
         optional: true
 
-  '@orpc/shared@2.0.0-beta.28':
-    resolution: {integrity: sha512-/XWptvamwvcvTp9Jfd4xBSha6JfqBNeA8VSduUYSjrKKlVPFcPyjNQc5v/dU8CrAiBf+8w3p4XLVRKF3e1Y4dA==}
+  '@orpc/shared@2.0.0-beta.34':
+    resolution: {integrity: sha512-8vmWOl9yX+6CdY1T4+WFPPCvQsprYwb1Y25kVG362yco1joFh/MjVaf6TFV27ivUQFKDDhnq1yFP0Ykh2TWxqw==}
     peerDependencies:
       '@opentelemetry/api': '>=1.9.0'
     peerDependenciesMeta:
       '@opentelemetry/api':
         optional: true
 
-  '@orpc/tanstack-query@2.0.0-beta.28':
-    resolution: {integrity: sha512-OyujlXj/CQpqBYmefmV2I+nXY085dOrXECuX7kDu8pL4NdqY70/WD3+qGS2j5J1xGFQWI0JBNwjO7rznh5tEAA==}
+  '@orpc/tanstack-query@2.0.0-beta.34':
+    resolution: {integrity: sha512-Eg8OUMbPP1QaqKc6ZUNzsO9a2AVoW3ubErP2esMv9uRG6st4ooZILnCu6rbP+kbB0/kVZ4TfXIlq76+fv9OJyw==}
     peerDependencies:
       '@tanstack/query-core': '>=5.80.2'
 
-  '@orpc/zod@2.0.0-beta.28':
-    resolution: {integrity: sha512-sAu7oVOLzaqSzKbBFUUSDfPMfZA6qsT0DHx2e4/I4hSudevRiWrrqujkoGblHARoQ++2TF+ApqcAua/TSvhbZw==}
+  '@orpc/zod@2.0.0-beta.34':
+    resolution: {integrity: sha512-n7FAvSTUMMa65cleI2xL7SkCeB3ts2UKuCxRCshh7QhVnKietHuNj5cpXJZFm7apIr/y2g0V8oezJLXuJ2JHFw==}
     peerDependencies:
-      zod: '>=4.3.5'
+      zod: '>=4.5.0'
 
   '@oxc-parser/binding-android-arm-eabi@0.150.0':
     resolution: {integrity: sha512-oQef2Zu4Prz1KLKznz3HqZzU9uVoA5PMoDZuuLmqms7hKmKSAPzlaMnLllJq3t+rgKmfJJ2siPrpZfFrW06btw==}
@@ -5845,38 +5851,31 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@standardserver/aws-lambda@0.8.3':
-    resolution: {integrity: sha512-QozxFyi5h8cmcAgTTfd7KoHjjsfXwoSBdWV64Ehffow4i9+Hv6lvezwhsVchQRPXDbY7f3WzN5MJ/uWwesObng==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+  '@standard-server/aws-lambda@0.9.2':
+    resolution: {integrity: sha512-29ra5sHSQL1/WZd2Vj1hEAiv45zkcU7yEsRDQ0r/C2u+96zW4Zhpn1XMZ6p9eKy8H74IWMqrK7W43OaLaAX3vg==}
 
-  '@standardserver/core@0.8.3':
-    resolution: {integrity: sha512-G0jN6oU1N/p4DgmLuoEtuIxWvKr3LsnCGOaqnzM6/tnTQAnqKwxuZN5Oh8S/Fw7+IJNxDcn26jER4ZTAXTxsrA==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+  '@standard-server/core@0.9.2':
+    resolution: {integrity: sha512-P1tlRyxyM9n/toFH69/4O5Xn2V33iFszCy2xgZlqpng03nNNmFFH1ua6holdGbQ5CMeRMoJvlb8iezUhfak6Cw==}
 
-  '@standardserver/fastify@0.8.3':
-    resolution: {integrity: sha512-bFfFJk1lWFRLgD4Rd/VOyyZm+87xyKdmRuHRVb8TDZw8JjWFrmBzFTJe+amrkrCZ+pzC3VIMy/XNSJoIkuygjA==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+  '@standard-server/fastify@0.9.2':
+    resolution: {integrity: sha512-/3WuZxXIMYS59lVjUnD28ois0OMXRVwRlaGksIesu+DoiQJecc1zc8nkx5Rsh6Znfup+M2MvhVECyIqbzs8TFg==}
     peerDependencies:
       fastify: '>=5.6.1'
     peerDependenciesMeta:
       fastify:
         optional: true
 
-  '@standardserver/fetch@0.8.3':
-    resolution: {integrity: sha512-Uy+lE/OzruJp5n7ZS7gFXpI9CkTHLty/wMeT/qSjijByfdN1Lk1kofXk0zQ4NqQ/Yk0m6LPAk0bD/mRyOP4T7g==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+  '@standard-server/fetch@0.9.2':
+    resolution: {integrity: sha512-tqvbaMra8jUK0glOajYom7rA9udO2xQ0/2Svfj68ba8T/9jADSUVRsrzecsucs3fA2Gqmg8mWniOWCV2r6Aq2A==}
 
-  '@standardserver/node@0.8.3':
-    resolution: {integrity: sha512-pafmT/2sQ3NYD1CCIa+u0rANi4ke0iZ3Nz94rAPY1bpuf3xU3MlMuLFjg66bt3ioDwYiobGihkbXJ7GcoPfKGA==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+  '@standard-server/node@0.9.2':
+    resolution: {integrity: sha512-O+drGGJhOwGgUS4lzB1WveXoYs0zEJG8xj5u9Tc7+giho8GnVxE+J2HkFM2pGxuQh0UrCEFoHvzlPsadFqh9AQ==}
 
-  '@standardserver/peer@0.8.3':
-    resolution: {integrity: sha512-N1deRqDmSgq5Mz6ZJty3FYxhz7eEfqw3riBlcNR3idJGCssZT662scN3/WhnPjXrVhMXTJbAQNezs2A3gDBq5g==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+  '@standard-server/peer@0.9.2':
+    resolution: {integrity: sha512-4DtQdtwFeid1jBbdzwfD/UkCwT0FEAE2XxpqGjQhQ41tT551O8IWANX9WHjMrdSUuP5AR8ayL0FMuLlHbQa4MQ==}
 
-  '@standardserver/shared@0.8.3':
-    resolution: {integrity: sha512-HDn1zMWTXY0W5nS+6J7PnD5swCzSz+e8L1FvYk4PxNIAjUsEolNfkRgONOQ5D/W+rU4kyqGF8g0DbC08AfiyxA==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+  '@standard-server/shared@0.9.2':
+    resolution: {integrity: sha512-QMdJDBG6/oKMoZOAcWXdZdRcKRXSrRj05NNwA8tRmrymQNt3KxojnWJERwu++z405dYAs3/zRL9eAOWbD7i4qQ==}
 
   '@stricli/core@1.3.0':
     resolution: {integrity: sha512-LnBe2HntygaLDU5trtjiC3J4C/YkmIZuM0XB52IF4qaLqJH09kgD1fnZiS2gaYUnt0nAN2a+1b4PSOBcfPrN4Q==}
@@ -6322,32 +6321,33 @@ packages:
   '@ungap/structured-clone@1.4.0':
     resolution: {integrity: sha512-1mEZtMKPM09vDmQt5y7YvmN2+DFTP7Tg0EWXdic8/C6VRnpb33e4ghisCIE3WZjsE2N8mf+QV1Zqh7ZFYLWInQ==}
 
-  '@unthrown/orpc@0.2.0':
-    resolution: {integrity: sha512-idmcB4zkAveXnjM55pa6CZp7G50wpV8+br7r17TuphckuuFKXg4NNbfyLaKTvK9V8xD0CbtP8UxgbsTx+N9I7g==}
+  '@unthrown/orpc@0.4.2':
+    resolution: {integrity: sha512-3AC0B/NVjSKbZr/T8mc7m7vlaikdUrwPdJHfTBnvOxNKmxTVOwvy93xNI00oMujG2zfk609dIXclxg+YtYszWQ==}
     engines: {node: '>=20'}
     peerDependencies:
-      '@orpc/client': ^2.0.0-beta
-      '@orpc/server': ^2.0.0-beta
-      unthrown: ^5.7.0
+      '@orpc/client': ^2.0.0-beta.34
+      '@orpc/contract': ^2.0.0-beta.34
+      '@orpc/server': ^2.0.0-beta.34
+      unthrown: ^5.12.1
     peerDependenciesMeta:
       '@orpc/server':
         optional: true
 
-  '@unthrown/oxlint@5.12.0':
-    resolution: {integrity: sha512-NAffPcnbEZo/qkd/3UnIDKX9ZAaoxXiG74t2LvOCufaPJVkHGqLO+EYQA7t81JdpkvDowf/aE60LNIDbRPHhLQ==}
+  '@unthrown/oxlint@5.12.1':
+    resolution: {integrity: sha512-ZwJEimmNWFyNItfpr1Q4Z90Tu+y4ZZu0tnBKkD8xzEWYjdxqysTKvSquduNZ/ZPBNw3C8Js/Cc3ypeV1zZhtBA==}
     engines: {node: '>=20'}
     peerDependencies:
       oxlint: ^1.69.0
 
-  '@unthrown/pothos@0.1.0':
-    resolution: {integrity: sha512-6T8BI97wnAwzB6vpvvTkMxqmAXVB0gY9NP9p+IOH4nWgkUSs0XFdXB+n6kZWjjvuSgBvZUCvoxCXmiJElH+1lw==}
+  '@unthrown/pothos@0.1.2':
+    resolution: {integrity: sha512-vy12BZF46BW8XThHiqpu4/ann+k5bMPfULb+opAN4L3kon5dy6VRAtUupjfz/5/UcNwPw27Y/RERLIiZAHi5sg==}
     engines: {node: '>=20'}
     peerDependencies:
       '@pothos/core': ^4.15.0
       '@pothos/plugin-errors': ^4.9.0
       '@pothos/plugin-relay': ^4.8.0
       graphql: ^16.10.0 || ^17.0.0
-      unthrown: ^5.12.0
+      unthrown: ^5.12.1
     peerDependenciesMeta:
       '@pothos/plugin-relay':
         optional: true
@@ -6364,17 +6364,17 @@ packages:
     peerDependencies:
       unthrown: ^5.11.0
 
-  '@unthrown/standard-schema@5.12.0':
-    resolution: {integrity: sha512-E0MgXwZIR5ct+cJV9pADHshYkKAADWY9pADIHFtwetga0QDbVXFHAbAak+/XEncxdwaBgxYr6zVn+qnCrRDzpQ==}
+  '@unthrown/standard-schema@5.12.1':
+    resolution: {integrity: sha512-srIZKDVtq28+gjYV3xtB61Ljl0CRsgR2BuiK2cEruwG6EtNkuKcTuSlya+bjfulVkHJ4p1wIdiiugxsq8N0jJw==}
     engines: {node: '>=20'}
     peerDependencies:
-      unthrown: ^5.12.0
+      unthrown: ^5.12.1
 
-  '@unthrown/vitest@5.12.0':
-    resolution: {integrity: sha512-zhJv00QVL1rF5j6OuJXG5CzJZFi8cPvP0tw3jZHaGPy9aZ9Rc/7YRPuJjY3w3LN1pRnxvriF7/5Ox1aeoBeV9w==}
+  '@unthrown/vitest@5.12.1':
+    resolution: {integrity: sha512-04AMYrcg14I5HaKuLvm3G8/2GYeq9Yyy2fLPahLEGeZ/yx77GL7plsfClZFtRvYWzQgIdEoN58dGILp98KDi2Q==}
     engines: {node: '>=20'}
     peerDependencies:
-      unthrown: ^5.12.0
+      unthrown: ^5.12.1
       vitest: ^5
 
   '@vercel/detect-agent@1.2.5':
@@ -7974,9 +7974,6 @@ packages:
   json-schema-traverse@1.0.0:
     resolution: {integrity: sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==}
 
-  json-schema-typed@8.0.2:
-    resolution: {integrity: sha512-fQhoXdcvc3V28x7C7BMs4P5+kNlgUURe2jmUT1T//oBRMDrqy1QPelJimwZGo7Hg9VPV3EQV5Bnq4hbFy2vetA==}
-
   json-with-bigint@3.5.12:
     resolution: {integrity: sha512-uwbF/wSSuOgC7qqlq27Xp5B6a2MHVug3t0idZdTqu0JnlFvgJuH7ju+KAk/J06C7GfhoYy2gnb9wz2INqcne7w==}
 
@@ -9537,8 +9534,8 @@ packages:
   universal-user-agent@7.0.3:
     resolution: {integrity: sha512-TmnEAEAsBJVZM/AADELsK76llnwcf9vMKuPz8JflO1frO8Lchitr0fNaN9d+Ap0BjKtqWqd/J17qeDnXh8CL2A==}
 
-  unthrown@5.12.0:
-    resolution: {integrity: sha512-ikJNPs+fbtJk696Nc7dECAQKGZRMFw5glUnFVc7oHMElvvhEmIRZlXLFdGsi2ejSL9W0Iy+65tmpQDxsWqU/4g==}
+  unthrown@5.12.1:
+    resolution: {integrity: sha512-rsdoeU8wvXMqaumYulnMI3r57WtIFaR3jsC5joxZUzqledPsHVcfUDQLR8cEu6/gGcetTxAuxujUbmG//nPgHA==}
     engines: {node: '>=20'}
 
   update-browserslist-db@1.3.3:
@@ -10056,13 +10053,13 @@ snapshots:
     dependencies:
       '@algolia/client-common': 5.59.0
 
-  '@amqp-contract/client@3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.0)':
+  '@amqp-contract/client@3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.1)':
     dependencies:
       '@amqp-contract/contract': 3.0.0-beta.11
-      '@amqp-contract/core': 3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.0)
+      '@amqp-contract/core': 3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.1)
       '@standard-schema/spec': 1.1.0
-      '@unthrown/standard-schema': 5.11.0(unthrown@5.12.0)
-      unthrown: 5.12.0
+      '@unthrown/standard-schema': 5.11.0(unthrown@5.12.1)
+      unthrown: 5.12.1
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
@@ -10070,12 +10067,12 @@ snapshots:
     dependencies:
       '@standard-schema/spec': 1.1.0
 
-  '@amqp-contract/core@3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.0)':
+  '@amqp-contract/core@3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.1)':
     dependencies:
       '@amqp-contract/contract': 3.0.0-beta.11
       amqp-connection-manager: 5.0.0(amqplib@2.2.0)
       amqplib: 2.2.0
-      unthrown: 5.12.0
+      unthrown: 5.12.1
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
 
@@ -10090,13 +10087,13 @@ snapshots:
       - react-native-b4a
       - supports-color
 
-  '@amqp-contract/worker@3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.0)':
+  '@amqp-contract/worker@3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.1)':
     dependencies:
       '@amqp-contract/contract': 3.0.0-beta.11
-      '@amqp-contract/core': 3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.0)
+      '@amqp-contract/core': 3.0.0-beta.11(@opentelemetry/api@1.9.1)(unthrown@5.12.1)
       '@standard-schema/spec': 1.1.0
-      '@unthrown/standard-schema': 5.11.0(unthrown@5.12.0)
-      unthrown: 5.12.0
+      '@unthrown/standard-schema': 5.11.0(unthrown@5.12.1)
+      unthrown: 5.12.1
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
@@ -11306,12 +11303,6 @@ snapshots:
       protobufjs: 7.6.6
       yargs: 17.7.3
 
-  '@hey-api/spec-types@0.0.0-next-20260408030107':
-    dependencies:
-      '@hey-api/types': 0.1.4
-
-  '@hey-api/types@0.1.4': {}
-
   '@hono/node-server@1.19.15(hono@4.13.7)':
     dependencies:
       hono: 4.13.7
@@ -11947,6 +11938,12 @@ snapshots:
       '@octokit/request-error': 7.1.2
       '@octokit/webhooks-methods': 6.0.0
 
+  '@openapi-spec/downgrader@0.1.0':
+    dependencies:
+      '@openapi-spec/types': 0.1.0
+
+  '@openapi-spec/types@0.1.0': {}
+
   '@opentelemetry/api-logs@0.222.0':
     dependencies:
       '@opentelemetry/api': 1.9.1
@@ -12171,81 +12168,82 @@ snapshots:
 
   '@opentelemetry/semantic-conventions@1.43.0': {}
 
-  '@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1)':
+  '@orpc/client@2.0.0-beta.34(@opentelemetry/api@1.9.1)':
     dependencies:
-      '@orpc/shared': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@standardserver/core': 0.8.3
-      '@standardserver/fetch': 0.8.3
-      '@standardserver/peer': 0.8.3
+      '@orpc/shared': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@standard-server/core': 0.9.2
+      '@standard-server/fetch': 0.9.2
+      '@standard-server/peer': 0.9.2
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
-  '@orpc/contract@2.0.0-beta.28(@opentelemetry/api@1.9.1)':
+  '@orpc/contract@2.0.0-beta.34(@opentelemetry/api@1.9.1)':
     dependencies:
-      '@orpc/client': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/shared': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/client': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@orpc/shared': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@standard-schema/spec': 1.1.0
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
-  '@orpc/json-schema@2.0.0-beta.28(@opentelemetry/api@1.9.1)':
+  '@orpc/json-schema@2.0.0-beta.34(@opentelemetry/api@1.9.1)':
     dependencies:
-      '@orpc/client': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/contract': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/server': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/shared': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@openapi-spec/types': 0.1.0
+      '@orpc/client': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@orpc/contract': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@orpc/server': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@orpc/shared': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@standard-schema/spec': 1.1.0
-      json-schema-typed: 8.0.2
     transitivePeerDependencies:
       - '@opentelemetry/api'
       - crossws
       - fastify
 
-  '@orpc/openapi@2.0.0-beta.28(@opentelemetry/api@1.9.1)':
+  '@orpc/openapi@2.0.0-beta.34(@opentelemetry/api@1.9.1)':
     dependencies:
-      '@hey-api/spec-types': 0.0.0-next-20260408030107
-      '@orpc/client': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/contract': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/json-schema': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/server': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/shared': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@standardserver/core': 0.8.3
-      '@standardserver/fetch': 0.8.3
+      '@openapi-spec/downgrader': 0.1.0
+      '@openapi-spec/types': 0.1.0
+      '@orpc/client': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@orpc/contract': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@orpc/json-schema': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@orpc/server': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@orpc/shared': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@standard-server/core': 0.9.2
+      '@standard-server/fetch': 0.9.2
       rou3: 0.9.2
     transitivePeerDependencies:
       - '@opentelemetry/api'
       - crossws
       - fastify
 
-  '@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1)':
+  '@orpc/server@2.0.0-beta.34(@opentelemetry/api@1.9.1)':
     dependencies:
-      '@orpc/client': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/contract': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/shared': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@standardserver/aws-lambda': 0.8.3
-      '@standardserver/core': 0.8.3
-      '@standardserver/fastify': 0.8.3
-      '@standardserver/fetch': 0.8.3
-      '@standardserver/node': 0.8.3
-      '@standardserver/peer': 0.8.3
+      '@orpc/client': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@orpc/contract': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@orpc/shared': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@standard-server/aws-lambda': 0.9.2
+      '@standard-server/core': 0.9.2
+      '@standard-server/fastify': 0.9.2
+      '@standard-server/fetch': 0.9.2
+      '@standard-server/node': 0.9.2
+      '@standard-server/peer': 0.9.2
       cookie: 2.0.1
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
-  '@orpc/shared@2.0.0-beta.28(@opentelemetry/api@1.9.1)':
+  '@orpc/shared@2.0.0-beta.34(@opentelemetry/api@1.9.1)':
     dependencies:
-      '@standardserver/shared': 0.8.3
+      '@standard-server/shared': 0.9.2
       radash: 12.1.1
       type-fest: 5.10.0
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
 
-  '@orpc/tanstack-query@2.0.0-beta.28(@opentelemetry/api@1.9.1)(@tanstack/query-core@5.104.1)':
+  '@orpc/tanstack-query@2.0.0-beta.34(@opentelemetry/api@1.9.1)(@tanstack/query-core@5.104.1)':
     dependencies:
-      '@orpc/client': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/contract': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/openapi': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      '@orpc/shared': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/client': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@orpc/contract': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@orpc/openapi': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@orpc/shared': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@tanstack/query-core': 5.104.1
     transitivePeerDependencies:
       - '@opentelemetry/api'
@@ -12255,10 +12253,10 @@ snapshots:
       - fastify
       - swagger-ui
 
-  '@orpc/zod@2.0.0-beta.28(@opentelemetry/api@1.9.1)(zod@4.6.5)':
+  '@orpc/zod@2.0.0-beta.34(@opentelemetry/api@1.9.1)(zod@4.6.5)':
     dependencies:
-      '@orpc/json-schema': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      json-schema-typed: 8.0.2
+      '@openapi-spec/types': 0.1.0
+      '@orpc/json-schema': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       zod: 4.6.5
     transitivePeerDependencies:
       - '@opentelemetry/api'
@@ -13126,39 +13124,39 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@standardserver/aws-lambda@0.8.3':
+  '@standard-server/aws-lambda@0.9.2':
     dependencies:
-      '@standardserver/core': 0.8.3
-      '@standardserver/fetch': 0.8.3
-      '@standardserver/node': 0.8.3
-      '@standardserver/shared': 0.8.3
+      '@standard-server/core': 0.9.2
+      '@standard-server/fetch': 0.9.2
+      '@standard-server/node': 0.9.2
+      '@standard-server/shared': 0.9.2
 
-  '@standardserver/core@0.8.3':
+  '@standard-server/core@0.9.2':
     dependencies:
-      '@standardserver/shared': 0.8.3
+      '@standard-server/shared': 0.9.2
 
-  '@standardserver/fastify@0.8.3':
+  '@standard-server/fastify@0.9.2':
     dependencies:
-      '@standardserver/core': 0.8.3
-      '@standardserver/node': 0.8.3
+      '@standard-server/core': 0.9.2
+      '@standard-server/node': 0.9.2
 
-  '@standardserver/fetch@0.8.3':
+  '@standard-server/fetch@0.9.2':
     dependencies:
-      '@standardserver/core': 0.8.3
-      '@standardserver/shared': 0.8.3
+      '@standard-server/core': 0.9.2
+      '@standard-server/shared': 0.9.2
 
-  '@standardserver/node@0.8.3':
+  '@standard-server/node@0.9.2':
     dependencies:
-      '@standardserver/core': 0.8.3
-      '@standardserver/fetch': 0.8.3
-      '@standardserver/shared': 0.8.3
+      '@standard-server/core': 0.9.2
+      '@standard-server/fetch': 0.9.2
+      '@standard-server/shared': 0.9.2
 
-  '@standardserver/peer@0.8.3':
+  '@standard-server/peer@0.9.2':
     dependencies:
-      '@standardserver/core': 0.8.3
-      '@standardserver/shared': 0.8.3
+      '@standard-server/core': 0.9.2
+      '@standard-server/shared': 0.9.2
 
-  '@standardserver/shared@0.8.3': {}
+  '@standard-server/shared@0.9.2': {}
 
   '@stricli/core@1.3.0': {}
 
@@ -13290,42 +13288,42 @@ snapshots:
 
   '@tanstack/query-core@5.104.1': {}
 
-  '@temporal-contract/client@8.0.0-beta.11(@temporalio/client@1.24.0)(@temporalio/common@1.24.0)(unthrown@5.12.0)':
+  '@temporal-contract/client@8.0.0-beta.11(@temporalio/client@1.24.0)(@temporalio/common@1.24.0)(unthrown@5.12.1)':
     dependencies:
       '@standard-schema/spec': 1.1.0
-      '@temporal-contract/contract': 8.0.0-beta.11(unthrown@5.12.0)
+      '@temporal-contract/contract': 8.0.0-beta.11(unthrown@5.12.1)
       '@temporalio/client': 1.24.0
       '@temporalio/common': 1.24.0
-      unthrown: 5.12.0
+      unthrown: 5.12.1
 
-  '@temporal-contract/contract@8.0.0-beta.11(unthrown@5.12.0)':
+  '@temporal-contract/contract@8.0.0-beta.11(unthrown@5.12.1)':
     dependencies:
       '@standard-schema/spec': 1.1.0
     optionalDependencies:
-      unthrown: 5.12.0
+      unthrown: 5.12.1
 
-  '@temporal-contract/testing@8.0.0-beta.11(@temporal-contract/client@8.0.0-beta.11(@temporalio/client@1.24.0)(@temporalio/common@1.24.0)(unthrown@5.12.0))(@temporal-contract/contract@8.0.0-beta.11(unthrown@5.12.0))(@temporal-contract/worker@8.0.0-beta.11(@temporalio/common@1.24.0)(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/workflow@1.24.0)(unthrown@5.12.0))(@temporalio/client@1.24.0)(@temporalio/testing@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(testcontainers@12.2.0(supports-color@8.1.1))(unthrown@5.12.0)(vitest@5.0.3)':
+  '@temporal-contract/testing@8.0.0-beta.11(@temporal-contract/client@8.0.0-beta.11(@temporalio/client@1.24.0)(@temporalio/common@1.24.0)(unthrown@5.12.1))(@temporal-contract/contract@8.0.0-beta.11(unthrown@5.12.1))(@temporal-contract/worker@8.0.0-beta.11(@temporalio/common@1.24.0)(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/workflow@1.24.0)(unthrown@5.12.1))(@temporalio/client@1.24.0)(@temporalio/testing@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(testcontainers@12.2.0(supports-color@8.1.1))(unthrown@5.12.1)(vitest@5.0.3)':
     dependencies:
-      '@temporal-contract/client': 8.0.0-beta.11(@temporalio/client@1.24.0)(@temporalio/common@1.24.0)(unthrown@5.12.0)
-      '@temporal-contract/contract': 8.0.0-beta.11(unthrown@5.12.0)
-      '@temporal-contract/worker': 8.0.0-beta.11(@temporalio/common@1.24.0)(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/workflow@1.24.0)(unthrown@5.12.0)
+      '@temporal-contract/client': 8.0.0-beta.11(@temporalio/client@1.24.0)(@temporalio/common@1.24.0)(unthrown@5.12.1)
+      '@temporal-contract/contract': 8.0.0-beta.11(unthrown@5.12.1)
+      '@temporal-contract/worker': 8.0.0-beta.11(@temporalio/common@1.24.0)(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/workflow@1.24.0)(unthrown@5.12.1)
       '@temporalio/client': 1.24.0
       '@temporalio/testing': 1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4))
       '@temporalio/worker': 1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4))
-      unthrown: 5.12.0
+      unthrown: 5.12.1
       vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
     optionalDependencies:
       testcontainers: 12.2.0(supports-color@8.1.1)
 
-  '@temporal-contract/worker@8.0.0-beta.11(@temporalio/common@1.24.0)(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/workflow@1.24.0)(unthrown@5.12.0)':
+  '@temporal-contract/worker@8.0.0-beta.11(@temporalio/common@1.24.0)(@temporalio/worker@1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4)))(@temporalio/workflow@1.24.0)(unthrown@5.12.1)':
     dependencies:
       '@standard-schema/spec': 1.1.0
-      '@temporal-contract/contract': 8.0.0-beta.11(unthrown@5.12.0)
+      '@temporal-contract/contract': 8.0.0-beta.11(unthrown@5.12.1)
       '@temporalio/common': 1.24.0
       '@temporalio/worker': 1.24.0(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@26.6.4))
       '@temporalio/workflow': 1.24.0
-      '@unthrown/saga': 5.11.0(unthrown@5.12.0)
-      unthrown: 5.12.0
+      '@unthrown/saga': 5.11.0(unthrown@5.12.1)
+      unthrown: 5.12.1
 
   '@temporalio/activity@1.24.0':
     dependencies:
@@ -13626,44 +13624,45 @@ snapshots:
 
   '@ungap/structured-clone@1.4.0': {}
 
-  '@unthrown/orpc@0.2.0(@orpc/client@2.0.0-beta.28(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.28(@opentelemetry/api@1.9.1))(unthrown@5.12.0)':
+  '@unthrown/orpc@0.4.2(@orpc/client@2.0.0-beta.34(@opentelemetry/api@1.9.1))(@orpc/contract@2.0.0-beta.34(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.34(@opentelemetry/api@1.9.1))(unthrown@5.12.1)':
     dependencies:
-      '@orpc/client': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
-      unthrown: 5.12.0
+      '@orpc/client': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@orpc/contract': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
+      unthrown: 5.12.1
     optionalDependencies:
-      '@orpc/server': 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      '@orpc/server': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
 
-  '@unthrown/oxlint@5.12.0(oxlint@1.86.0)':
+  '@unthrown/oxlint@5.12.1(oxlint@1.86.0)':
     dependencies:
       '@oxlint/plugins': 1.86.0
       oxlint: 1.86.0
 
-  '@unthrown/pothos@0.1.0(@pothos/core@4.15.1(graphql@17.0.2))(@pothos/plugin-errors@4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(@pothos/plugin-relay@4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(graphql@17.0.2)(unthrown@5.12.0)':
+  '@unthrown/pothos@0.1.2(@pothos/core@4.15.1(graphql@17.0.2))(@pothos/plugin-errors@4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(@pothos/plugin-relay@4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(graphql@17.0.2)(unthrown@5.12.1)':
     dependencies:
       '@pothos/core': 4.15.1(graphql@17.0.2)
       '@pothos/plugin-errors': 4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)
       graphql: 17.0.2
-      unthrown: 5.12.0
+      unthrown: 5.12.1
     optionalDependencies:
       '@pothos/plugin-relay': 4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)
 
-  '@unthrown/saga@5.11.0(unthrown@5.12.0)':
+  '@unthrown/saga@5.11.0(unthrown@5.12.1)':
     dependencies:
-      unthrown: 5.12.0
+      unthrown: 5.12.1
 
-  '@unthrown/standard-schema@5.11.0(unthrown@5.12.0)':
+  '@unthrown/standard-schema@5.11.0(unthrown@5.12.1)':
     dependencies:
       '@standard-schema/spec': 1.1.0
-      unthrown: 5.12.0
+      unthrown: 5.12.1
 
-  '@unthrown/standard-schema@5.12.0(unthrown@5.12.0)':
+  '@unthrown/standard-schema@5.12.1(unthrown@5.12.1)':
     dependencies:
       '@standard-schema/spec': 1.1.0
-      unthrown: 5.12.0
+      unthrown: 5.12.1
 
-  '@unthrown/vitest@5.12.0(unthrown@5.12.0)(vitest@5.0.3)':
+  '@unthrown/vitest@5.12.1(unthrown@5.12.1)(vitest@5.0.3)':
     dependencies:
-      unthrown: 5.12.0
+      unthrown: 5.12.1
       vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   '@vercel/detect-agent@1.2.5': {}
@@ -15213,8 +15212,6 @@ snapshots:
   json-rpc-2.0@1.8.1: {}
 
   json-schema-traverse@1.0.0: {}
-
-  json-schema-typed@8.0.2: {}
 
   json-with-bigint@3.5.12: {}
 
@@ -17038,7 +17035,7 @@ snapshots:
 
   universal-user-agent@7.0.3: {}
 
-  unthrown@5.12.0: {}
+  unthrown@5.12.1: {}
 
   update-browserslist-db@1.3.3(browserslist@4.29.3):
     dependencies:

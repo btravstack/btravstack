@@ -205,7 +205,7 @@ the old repository.
   version, or a `^0.x` range (whose minor is its major), names a number a
   range would otherwise have tracked, so the same script compares it against
   the default catalog. The tutorial needs both: one exact oRPC beta for the
-  client and the server halves, and `@unthrown/orpc@^0.2.0`, because an
+  client and the server halves, and `@unthrown/orpc@^0.4.2`, because an
   unversioned install resolves a later 0.x that `@btravstack/http-server`'s
   peer range refuses (issue #378). Regression-proved: writing
   `@orpc/client@2.0.0-beta.27` or `@unthrown/orpc@^0.4.0` in

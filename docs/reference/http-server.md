@@ -2308,7 +2308,7 @@ const document = (
 
 It returns `AsyncResult<OpenApiDocument, never>` — async, and cannot fail — so
 `.get()` is the extraction; a generator fault arrives as a defect, never a raw
-rejection. `base` is `Partial<OpenApiDocument>` and `securitySchemes` is
+rejection. `base` takes the generator's own base-document type and `securitySchemes` is
 `OpenApiSecuritySchemes` (the document's own `components.securitySchemes`
 shape), so a key the generator would ignore is a type error rather than
 silently inert.
