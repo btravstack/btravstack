@@ -1,5 +1,13 @@
 # @btravstack/core
 
+## 0.30.0
+
+### Patch Changes
+
+- a590301: Isolate observer startup and settlement failures so telemetry preserves operation outcomes and later observers still settle. Qualify synchronous operation throws as defects. Broken settlement-shaping hooks fall back to normal settlements.
+- @btravstack/config@0.30.0
+  - @btravstack/di@0.30.0
+
 ## 0.29.0
 
 ### Patch Changes
