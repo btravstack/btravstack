@@ -1,5 +1,11 @@
 # @btravstack/pothos
 
+## 0.30.1
+
+### Patch Changes
+
+- 5fcbe04: Preserve sanitized UNAUTHORIZED and FORBIDDEN operation errors with @unthrown/pothos defect masking, including procedure connections and DataLoader keys. Genuine GraphQLError defects remain masked.
+
 ## 0.30.0
 
 No changes in this release.
