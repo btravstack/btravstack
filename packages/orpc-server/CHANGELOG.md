@@ -1,5 +1,21 @@
 # @btravstack/orpc-server
 
+## 0.31.0
+
+### Minor Changes
+
+- 8a8468f: Add GraphqlModule to compose a GraphQL answerer, its authenticators, and its request modules with the HTTP runtime. GraphqlModule and HttpModule automatically expose the runtime ports and available Logger and HealthChecks infrastructure while keeping business exports explicit.
+
+### Patch Changes
+
+- Updated dependencies [8a8468f]
+  - @btravstack/http-server@0.31.0
+  - @btravstack/htmx-server@0.31.0
+  - @btravstack/config@0.31.0
+  - @btravstack/contract@0.31.0
+  - @btravstack/core@0.31.0
+  - @btravstack/di@0.31.0
+
 ## 0.30.1
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/entity",
-  "version": "0.30.1",
+  "version": "0.31.0",
   "description": "A domain-entity builder on zod v4: branded fields, immutable data, sealed construction, and Result instead of throws",
   "keywords": [
     "ddd",
