@@ -20,8 +20,8 @@ import {
   defineQueue,
 } from "@amqp-contract/contract";
 import { Env } from "@btravstack/config";
-import { start } from "@btravstack/core";
-import { Module, Port, Provider } from "@btravstack/di";
+import { HealthChecks, Logger, start } from "@btravstack/core";
+import { Module, Port, Provider, type Context } from "@btravstack/di";
 import { OkAsync } from "unthrown";
 import { z } from "zod";
 
@@ -247,3 +247,62 @@ AmqpModule("PinUnitUndeclared")({
   provides: [plainPiece],
   unit: { message: ElsewhereUnit },
 });
+
+const infrastructureBusiness = Port("InfrastructureBusiness")<string>;
+const rootLogger = Provider(Logger)({ inject: {}, sync: () => null as never });
+const infrastructureModule = Module("Infrastructure")({
+  provides: [
+    rootLogger,
+    Provider(infrastructureBusiness)({ inject: {}, value: "business" }),
+    Provider.member(HealthChecks)({
+      inject: {},
+      value: { name: "backend", timeoutMs: 100, check: () => OkAsync() },
+    }),
+  ],
+  exports: [Logger, HealthChecks, infrastructureBusiness],
+});
+const nestedInfrastructure = Module("NestedInfrastructure")({
+  imports: [infrastructureModule],
+  exports: [infrastructureModule],
+});
+type ApplicationPorts<M> = M extends Module<infer X, infer _E, infer _N> ? X : never;
+const bareRoot = AmqpModule("BareRoot")({ contract: pinContract, handlers: pinHandlers });
+declare const bareContext: Context<ApplicationPorts<typeof bareRoot>>;
+// @ts-expect-error -- an absent logger is not exported
+bareContext.get(Logger);
+// @ts-expect-error -- absent health checks are not exported
+bareContext.get(HealthChecks);
+const infrastructureRoot = AmqpModule("InfrastructureRoot")({
+  contract: pinContract,
+  handlers: pinHandlers,
+  imports: [nestedInfrastructure],
+});
+declare const infrastructureContext: Context<ApplicationPorts<typeof infrastructureRoot>>;
+infrastructureContext.get(Logger);
+infrastructureContext.get(HealthChecks);
+// @ts-expect-error -- business ports remain explicit
+infrastructureContext.get(infrastructureBusiness);
+const ownInfrastructureRoot = AmqpModule("OwnInfrastructureRoot")({
+  contract: pinContract,
+  handlers: pinHandlers,
+  provides: [rootLogger],
+});
+declare const ownInfrastructureContext: Context<ApplicationPorts<typeof ownInfrastructureRoot>>;
+ownInfrastructureContext.get(Logger);
+const privateInfrastructure = Module("PrivateInfrastructure")({ provides: [rootLogger] });
+const privateRoot = AmqpModule("PrivateRoot")({
+  contract: pinContract,
+  handlers: pinHandlers,
+  imports: [privateInfrastructure],
+});
+declare const privateContext: Context<ApplicationPorts<typeof privateRoot>>;
+// @ts-expect-error -- private infrastructure is not exported
+privateContext.get(Logger);
+const businessRoot = AmqpModule("BusinessRoot")({
+  contract: pinContract,
+  handlers: pinHandlers,
+  imports: [infrastructureModule],
+  exports: [infrastructureBusiness],
+});
+declare const businessContext: Context<ApplicationPorts<typeof businessRoot>>;
+businessContext.get(infrastructureBusiness);

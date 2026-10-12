@@ -10,8 +10,8 @@
  * `@unthrown/vitest`'s matcher augmentation, which this file's own
  * `tsconfig.test-d.json` — `src/**\/*.test-d.ts` only — never loads.
  */
-import { start } from "@btravstack/core";
-import { Module, Port, Provider } from "@btravstack/di";
+import { HealthChecks, Logger, start } from "@btravstack/core";
+import { Module, Port, Provider, type Context } from "@btravstack/di";
 import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
 import { OkAsync } from "unthrown";
 import { z } from "zod";
@@ -161,3 +161,74 @@ TemporalModule("PinUnitUndeclared")({
   provides: [plainPiece],
   unit: { activity: ElsewhereUnit },
 });
+
+const infrastructureBusiness = Port("InfrastructureBusiness")<string>;
+const rootLogger = Provider(Logger)({ inject: {}, sync: () => null as never });
+const infrastructureModule = Module("Infrastructure")({
+  provides: [
+    rootLogger,
+    Provider(infrastructureBusiness)({ inject: {}, value: "business" }),
+    Provider.member(HealthChecks)({
+      inject: {},
+      value: { name: "backend", timeoutMs: 100, check: () => OkAsync() },
+    }),
+  ],
+  exports: [Logger, HealthChecks, infrastructureBusiness],
+});
+const nestedInfrastructure = Module("NestedInfrastructure")({
+  imports: [infrastructureModule],
+  exports: [infrastructureModule],
+});
+type ApplicationPorts<M> = M extends Module<infer X, infer _E, infer _N> ? X : never;
+const bareRoot = TemporalModule("BareRoot")({
+  contract: pinContract,
+  activities: TemporalActivities(pinContract)([plainPiece]),
+  provides: [plainPiece],
+  workflows,
+});
+declare const bareContext: Context<ApplicationPorts<typeof bareRoot>>;
+// @ts-expect-error -- an absent logger is not exported
+bareContext.get(Logger);
+// @ts-expect-error -- absent health checks are not exported
+bareContext.get(HealthChecks);
+const infrastructureRoot = TemporalModule("InfrastructureRoot")({
+  contract: pinContract,
+  activities: TemporalActivities(pinContract)([plainPiece]),
+  provides: [plainPiece],
+  workflows,
+  imports: [nestedInfrastructure],
+});
+declare const infrastructureContext: Context<ApplicationPorts<typeof infrastructureRoot>>;
+infrastructureContext.get(Logger);
+infrastructureContext.get(HealthChecks);
+// @ts-expect-error -- business ports remain explicit
+infrastructureContext.get(infrastructureBusiness);
+const ownInfrastructureRoot = TemporalModule("OwnInfrastructureRoot")({
+  contract: pinContract,
+  activities: TemporalActivities(pinContract)([plainPiece]),
+  provides: [plainPiece, rootLogger],
+  workflows,
+});
+declare const ownInfrastructureContext: Context<ApplicationPorts<typeof ownInfrastructureRoot>>;
+ownInfrastructureContext.get(Logger);
+const privateInfrastructure = Module("PrivateInfrastructure")({ provides: [rootLogger] });
+const privateRoot = TemporalModule("PrivateRoot")({
+  contract: pinContract,
+  activities: TemporalActivities(pinContract)([plainPiece]),
+  provides: [plainPiece],
+  workflows,
+  imports: [privateInfrastructure],
+});
+declare const privateContext: Context<ApplicationPorts<typeof privateRoot>>;
+// @ts-expect-error -- private infrastructure is not exported
+privateContext.get(Logger);
+const businessRoot = TemporalModule("BusinessRoot")({
+  contract: pinContract,
+  activities: TemporalActivities(pinContract)([plainPiece]),
+  provides: [plainPiece],
+  workflows,
+  imports: [infrastructureModule],
+  exports: [infrastructureBusiness],
+});
+declare const businessContext: Context<ApplicationPorts<typeof businessRoot>>;
+businessContext.get(infrastructureBusiness);

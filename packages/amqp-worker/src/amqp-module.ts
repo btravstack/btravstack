@@ -1,4 +1,5 @@
 import type { ConfigInvalid, EnvReading } from "@btravstack/config";
+import { infrastructureExports, type InfrastructureExports } from "@btravstack/core";
 import type { AnyUnitModule, UnitGate } from "@btravstack/core";
 import {
   Module,
@@ -73,7 +74,7 @@ export type AmqpModuleOptions<
   };
   readonly imports?: I;
   readonly provides?: P;
-  /** The application's own exports; `AmqpRuntime` is added, since `start` resolves it. */
+  /** The application's own exports; `AmqpRuntime` and visible kernel infrastructure are added. */
   readonly exports?: X;
   /**
    * What this root's OWN providers expect from outside. di's gate is re-stated
@@ -138,15 +139,40 @@ export const AmqpModule =
     // tuples are type parameters, and is computed at the application's own call
     // because the options type re-declares it. Spelled out rather than
     // `as never`, which collapses the return to `Module<never, never, never>`.
+    const rootImports = [...imports, starter] as Imports<I, TContract, Unit>;
+    const rootProvides = [handlers, ...provides] as Provides<
+      P,
+      TContract,
+      HandlersError,
+      HandlersNeeds
+    >;
     return Module(name)({
-      imports: [...imports, starter] as Imports<I, TContract, Unit>,
-      provides: [handlers, ...provides] as Provides<P, TContract, HandlersError, HandlersNeeds>,
-      exports: [AmqpRuntime, ...exports] as readonly [typeof AmqpRuntime, ...X],
+      imports: rootImports,
+      provides: rootProvides,
+      exports: [
+        AmqpRuntime,
+        ...infrastructureExports(rootImports, rootProvides),
+        ...exports,
+      ] as readonly [
+        typeof AmqpRuntime,
+        ...InfrastructureExports<
+          Imports<I, TContract, Unit>,
+          Provides<P, TContract, HandlersError, HandlersNeeds>
+        >,
+        ...X,
+      ],
       needs: (options.needs ?? []) as N,
     } as {
       readonly imports: Imports<I, TContract, Unit>;
       readonly provides: Provides<P, TContract, HandlersError, HandlersNeeds>;
-      readonly exports: readonly [typeof AmqpRuntime, ...X];
+      readonly exports: readonly [
+        typeof AmqpRuntime,
+        ...InfrastructureExports<
+          Imports<I, TContract, Unit>,
+          Provides<P, TContract, HandlersError, HandlersNeeds>
+        >,
+        ...X,
+      ];
       readonly needs: N;
     } & NeedsGate<
       Imports<I, TContract, Unit>,

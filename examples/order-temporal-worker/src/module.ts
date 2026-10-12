@@ -1,4 +1,4 @@
-import { Logger, Tracer } from "@btravstack/core";
+import { Tracer } from "@btravstack/core";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
@@ -64,5 +64,5 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   // the orders vertical to the tenant the attempt's input names.
   unit: { activity: ActivityUnitModule },
   // Everything the fork reads out of the application scope.
-  exports: [Tracer, Logger, OrderDatabase],
+  exports: [Tracer, OrderDatabase],
 });

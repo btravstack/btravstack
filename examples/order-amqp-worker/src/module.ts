@@ -1,5 +1,5 @@
 import { AmqpHandlers, AmqpModule } from "@btravstack/amqp-worker";
-import { Logger, Tracer } from "@btravstack/core";
+import { Tracer } from "@btravstack/core";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { mailer } from "@btravstack/mailer";
@@ -85,5 +85,5 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   unit: { message: MessageUnitModule },
   // Everything the fork reads out of the application scope, and the store a
   // spec reads the outbox back through.
-  exports: [OutboxStore, OrderDatabase, Logger, Tracer],
+  exports: [OutboxStore, OrderDatabase, Tracer],
 });

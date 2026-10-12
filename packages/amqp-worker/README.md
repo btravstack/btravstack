@@ -218,3 +218,7 @@ unit, `traceId` the publisher's `messageId`. The rest is on the
 ## License
 
 [MIT](./LICENSE) © Benoit TRAVERS
+
+`AmqpModule` automatically exports publicly available `Logger` and `HealthChecks`
+ports, including whole-module re-exports and providers declared at the root.
+It keeps private infrastructure hidden and business exports explicit.

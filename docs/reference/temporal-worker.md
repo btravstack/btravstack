@@ -736,3 +736,7 @@ another contract refused there too. It and `@btravstack/amqp-worker`'s
 the other — they drifted apart once (issue #51). Checked by
 `tsc -p tsconfig.test-d.json`, which the package's own `typecheck` script runs
 alongside the ordinary `tsc --noEmit`.
+
+`TemporalModule` automatically exports publicly available `Logger` and `HealthChecks`
+ports, including whole-module re-exports and providers declared at the root.
+It keeps private infrastructure hidden and business exports explicit.
