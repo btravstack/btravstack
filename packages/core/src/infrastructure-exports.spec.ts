@@ -1,7 +1,8 @@
 import { Module, Port, Provider } from "@btravstack/di";
 import { OkAsync } from "unthrown";
-import { describe, expect, it } from "vitest";
+import { describe, expect } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { HealthChecks } from "./health.js";
 import { infrastructureExports } from "./infrastructure-exports.js";
 import { Logger } from "./observability.js";
