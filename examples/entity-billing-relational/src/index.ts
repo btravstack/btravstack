@@ -24,14 +24,7 @@
 import type { Entity } from "@btravstack/entity";
 import { Customer, Order } from "@btravstack/entity-example-billing-domain/order";
 import type { Kysely, Selectable } from "kysely";
-import {
-  allAsync,
-  fromNullable,
-  fromPromise,
-  fromSafePromise,
-  OkAsync,
-  TaggedError,
-} from "unthrown";
+import { fromNullable, fromPromise, fromSafePromise, OkAsync, TaggedError } from "unthrown";
 import type { AsyncResult } from "unthrown";
 import { z } from "zod";
 
@@ -338,12 +331,12 @@ export const placeOrder = (db: Kysely<Database>) => (id: OrderId) =>
 /* ── Delivery ──────────────────────────────────────────────────────────── */
 
 /**
- * Publishes every undelivered outbox row in the order it was written, then marks them
- * delivered. It only ever sees committed rows, so a rolled-back save publishes
+ * Publishes up to 100 undelivered rows sequentially, marking each successful
+ * publication before starting the next. It only sees committed rows, so a rolled-back save publishes
  * nothing. Publish-then-mark is at-least-once: a crash between the two
  * publishes again, so consumers dedupe on the event id.
  *
- * ponytail: one relay at a time. Several concurrent relays want
+ * shortcut: one relay at a time. Several concurrent relays want
  * `for update skip locked` on the select, inside a transaction.
  */
 export const relayOutbox =
@@ -355,23 +348,24 @@ export const relayOutbox =
         .select(["id", "payload"])
         .where("delivered_at", "is", null)
         .orderBy("position")
+        .limit(100)
         .execute(),
     ).flatMap((rows) =>
-      rows.length === 0
-        ? OkAsync(0)
-        : allAsync(rows.map((row) => publish(row.payload)))
-            .flatMap(() =>
-              fromSafePromise(() =>
-                db
-                  .updateTable("outbox")
-                  .set({ delivered_at: new Date() })
-                  .where(
-                    "id",
-                    "in",
-                    rows.map((row) => row.id),
-                  )
-                  .execute(),
-              ),
-            )
-            .map(() => rows.length),
+      rows.reduce(
+        (delivered, row) =>
+          delivered.flatMap((count) =>
+            publish(row.payload)
+              .flatTap(() =>
+                fromSafePromise(() =>
+                  db
+                    .updateTable("outbox")
+                    .set({ delivered_at: new Date() })
+                    .where("id", "=", row.id)
+                    .execute(),
+                ),
+              )
+              .map(() => count + 1),
+          ),
+        OkAsync(0),
+      ),
     );

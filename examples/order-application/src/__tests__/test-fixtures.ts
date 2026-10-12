@@ -40,8 +40,8 @@ type Store = Map<string, Order>;
  */
 const placedAt = new WeakMap<Order, Date>();
 
-/** The operation `save` stored a row under — the stub's `operationId` column. */
-const placedBy = new WeakMap<Order, string>();
+/** Ownership follows the stored tenant/order entry and outlives each scope. */
+const placedBy = new WeakMap<Store, Map<string, string | undefined>>();
 
 const placedPrior = (order: Order, cutoff: Date | undefined): boolean =>
   cutoff === undefined ||
@@ -97,6 +97,8 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
     inject: {},
     sync: () => {
       const key = (id: string): string => `${tenantId}/${id}`;
+      const operations = placedBy.get(rows) ?? new Map<string, string | undefined>();
+      placedBy.set(rows, operations);
       const mine = (): readonly Order[] =>
         [...rows.entries()]
           .filter(([rowKey]) => rowKey.startsWith(`${tenantId}/`))
@@ -105,12 +107,12 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
         save: (order: Order, operation?: string) => {
           const stored = rows.get(key(order.id));
           if (stored !== undefined)
-            return operation !== undefined && placedBy.get(stored) === operation
+            return operation !== undefined && operations.get(key(order.id)) === operation
               ? OkAsync(stored)
               : ErrAsync(new DuplicateOrder({ id: order.id }));
           rows.set(key(order.id), order);
           placedAt.set(order, new Date());
-          if (operation !== undefined) placedBy.set(order, operation);
+          operations.set(key(order.id), operation);
           return OkAsync(order);
         },
         find: (id: string) => {
@@ -166,12 +168,24 @@ const stubRepositoryFor = (rows: Store, tenantId: TenantId) =>
         },
         remove: (
           id: string,
-          { placedBefore }: { readonly placedBefore?: Date | undefined } = {},
+          {
+            placedBefore,
+            operation,
+          }: {
+            readonly placedBefore?: Date | undefined;
+            readonly operation?: string | undefined;
+          } = {},
         ) => {
           const row = rows.get(key(id));
-          return row !== undefined && placedPrior(row, placedBefore) && rows.delete(key(id))
-            ? OkAsync()
-            : ErrAsync(new OrderNotFound({ id: id as OrderId }));
+          if (
+            row === undefined ||
+            !placedPrior(row, placedBefore) ||
+            (operation !== undefined && operations.get(key(id)) !== operation)
+          )
+            return ErrAsync(new OrderNotFound({ id: id as OrderId }));
+          rows.delete(key(id));
+          operations.delete(key(id));
+          return OkAsync();
         },
       };
     },

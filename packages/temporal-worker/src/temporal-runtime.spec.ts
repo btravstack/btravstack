@@ -400,6 +400,7 @@ describe("temporal", () => {
     const { app, client, taskQueue } = await serve({
       activities: gate.activities,
       drainTimeoutMs: 100,
+      stopTimeoutMs: 100,
     });
     await client.workflow.start("runEcho", {
       taskQueue,
@@ -424,9 +425,123 @@ describe("temporal", () => {
       promptly: true,
     });
   });
+
+  it("closes its native connection after normal teardown", async ({ serve, connected }) => {
+    // GIVEN the real connection acquired by the starter
+    const { app } = await serve({ tap: connected.tap });
+
+    // WHEN the worker and graph stop normally
+    app.stop();
+    await app.exited;
+
+    // THEN the native client is actually closed
+    await expect(connected.check()).toBeDefectWith(
+      expect.objectContaining({ message: expect.stringContaining("already closed") }),
+    );
+  });
+
+  it("closes its native connection when the worker finishes after both exit deadlines", async ({
+    serve,
+    gate,
+    connected,
+  }) => {
+    // GIVEN a real activity held beyond the drain and stop budgets
+    const { app, client, taskQueue } = await serve({
+      activities: gate.activities,
+      drainTimeoutMs: 100,
+      stopTimeoutMs: 100,
+      tap: connected.tap,
+    });
+    await client.workflow.start("runEcho", {
+      taskQueue,
+      workflowId: "wf-delayed-close",
+      args: ["x"],
+    });
+    await gate.arrived;
+
+    // WHEN the kernel exits first and the activity subsequently finishes
+    app.requestDrain();
+    const report = await app.exited;
+    gate.release();
+    await vi.waitUntil(async () => (await connected.check()).isDefect(), { timeout: 10_000 });
+    const connection = await connected.check();
+
+    // THEN the graph's finalizer closed the native client after the reported abandonment
+    expect(
+      report.map((exit) => ({ drain: exit.drain, abandonedAt: exit.abandonedAt, connection })),
+    ).toBeOkWith({
+      drain: { inFlightAtStart: 1, completed: 0, abandoned: 1 },
+      abandonedAt: "stop",
+      connection: expect.objectContaining({
+        tag: "Defect",
+        cause: expect.objectContaining({ message: expect.stringContaining("already closed") }),
+      }),
+    });
+  });
+
+  it("reports an unexpected native connection close failure during normal teardown", async ({
+    serve,
+    connected,
+  }) => {
+    // GIVEN the failure seam for a close the shared Temporal server cannot induce safely
+    const { app } = await serve({ tap: connected.tap });
+    const cause = connected.failClose();
+
+    // WHEN normal teardown reaches the connection resource
+    app.stop();
+
+    // THEN DI retains the unexpected cause on the exit report
+    await expect(app.exited).toBeOkWith(
+      expect.objectContaining({ teardownErrors: [{ port: "TemporalConnection", cause }] }),
+    );
+  });
+
+  it("retains a delayed close failure in the report after the stop deadline", async ({
+    serve,
+    gate,
+    connected,
+  }) => {
+    // GIVEN an activity that outlives both kernel deadlines
+    const { app, client, taskQueue } = await serve({
+      activities: gate.activities,
+      drainTimeoutMs: 100,
+      stopTimeoutMs: 100,
+      tap: connected.tap,
+    });
+    await client.workflow.start("runEcho", {
+      taskQueue,
+      workflowId: "wf-delayed-close-failure",
+      args: ["x"],
+    });
+    await gate.arrived;
+
+    // WHEN the kernel exits before a subsequent close failure
+    app.requestDrain();
+    const report = (await app.exited).getOrThrow();
+    const cause = connected.failClose();
+    gate.release();
+    await vi.waitUntil(() => report.teardownErrors.length !== 0, { timeout: 10_000 });
+
+    // THEN the live teardown array retains it even though the lifecycle has exited
+    expect({ abandonedAt: report.abandonedAt, errors: report.teardownErrors }).toEqual({
+      abandonedAt: "stop",
+      errors: [{ port: "TemporalConnection", cause }],
+    });
+  });
 });
 
 describe("temporal, when the worker stops on its own account", () => {
+  it("retains a failed run on the stop channel", async ({ stubbed }) => {
+    // GIVEN the existing failure seam for a worker that fails while polling
+    const { run, serving } = stubbed();
+    const cause = new Error("worker failed");
+
+    // WHEN the worker fails and the kernel stops it
+    run.settle(cause);
+
+    // THEN shutdown still observes the original defect
+    await expect(serving.stop()).toBeDefectWith(cause);
+  });
   it("settles `stopped` for a run that ended with nobody asking", async ({ stubbed }) => {
     // GIVEN a worker whose `run()` rejects mid-flight, which is what a worker
     // reaching `FAILED` looks like from here

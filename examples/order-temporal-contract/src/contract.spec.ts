@@ -71,6 +71,29 @@ describe("orderContract", () => {
     expect(validatePlace(legacy)).toBeOkWith(legacy);
   });
 
+  it("preserves the originating operation on a cancellation task", ({ validateCancel }) => {
+    // GIVEN compensation naming the run that placed the order
+    const input = {
+      tenantId: "0199a1e0-0000-7000-8000-000000009000",
+      orderId: "0199a1e0-0000-7000-8000-000000000001",
+      operationId: "original-run",
+    };
+    // WHEN the activity input crosses the contract boundary
+    // THEN validation preserves the guard the repository needs
+    expect(validateCancel(input)).toBeOkWith(input);
+  });
+
+  it("accepts a cancellation task scheduled before it named an operation", ({ validateCancel }) => {
+    // GIVEN the input a previous workflow version scheduled
+    const input = {
+      tenantId: "0199a1e0-0000-7000-8000-000000009000",
+      orderId: "0199a1e0-0000-7000-8000-000000000001",
+    };
+    // WHEN the new worker validates an in-flight task
+    // THEN it remains accepted
+    expect(validateCancel(input)).toBeOkWith(input);
+  });
+
   it("refuses an id that is not a UUIDv7", ({ validate }) => {
     // GIVEN a payload whose order id is a plain string, not the contract's UUIDv7 shape
     const input = {

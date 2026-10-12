@@ -7,6 +7,10 @@ commit.
 
 ## Public surface
 
+Invalid URL diagnostics omit the raw value: a malformed URL cannot reliably
+separate credentials from its host, path or query. The field's variable still
+identifies what an operator must fix.
+
 - **`Env`** is declared **once**, here; the kernel imports it to provide it, so
   di's duplicate-id warning never fires.
 - **`cleartext` / `cleartextRefused` live here, not in `@btravstack/http-server`.**

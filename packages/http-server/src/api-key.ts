@@ -61,8 +61,13 @@ const digest = (value: string): Buffer => createHash("sha256").update(value, "ut
  *   `Unauthenticated`, which the starter turns into `401`; the endpoint's own
  *   scope check is what produces a `403`.
  *
+ * <!-- doctest: prelude
+ * import { apiKeyAuthenticator } from "@btravstack/http-server";
+ * type ServiceIdentity = { readonly appId: string };
+ * declare const env: { readonly REPORTING_KEY: string };
+ * -->
  * ```ts
- * export const serviceAuth = apiKeyAuthenticator<ServiceIdentity, "reports:read">({
+ * export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({
  *   keys: [{ key: env.REPORTING_KEY, principal: { appId: "reporting" }, scopes: ["reports:read"] }],
  * });
  * ```

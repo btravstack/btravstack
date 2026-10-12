@@ -131,8 +131,13 @@ import { pinoSink } from "@btravstack/observability/pino";
 observability({ sink: pinoSink(pino()) });
 ```
 
+The child logger uses a `trace` floor and leaves the supplied logger unchanged.
 The level filter stays this package's — `LOG_LEVEL`, validated once — so there
 is one filter in the process rather than two that can disagree.
+
+Both JSON and Pino sinks retain safe error diagnostics and omit arbitrary
+error payloads. Pino's error serializer is installed on a child logger at
+`trace`, leaving the supplied logger's configuration intact.
 
 ## Traces and metrics
 

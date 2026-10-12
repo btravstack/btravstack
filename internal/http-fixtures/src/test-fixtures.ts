@@ -2057,6 +2057,7 @@ export type HttpFixtures = {
     readonly arrived: Promise<void>;
     readonly release: () => void;
   };
+  readonly queuedSseGate: HttpFixtures["gate"];
   /**
    * Like `gate`, except the handler flushes its headers before holding — the
    * state `retire`'s `headersSent` branch exists for. This package's own router
@@ -2894,6 +2895,30 @@ export const it = test.extend<HttpFixtures>({
       release: () => open(),
     });
 
+    open();
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixture has no dependencies
+  queuedSseGate: async ({}, use) => {
+    let entered!: () => void;
+    const arrived = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let open!: () => void;
+    const held = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    await use({
+      handler: (_request, response) => {
+        response.setHeader("Content-Type", "text/event-stream");
+        entered();
+        return held.then(() => {
+          if (!response.destroyed) response.end("data: late\n\n");
+        });
+      },
+      arrived,
+      release: () => open(),
+    });
     open();
   },
 

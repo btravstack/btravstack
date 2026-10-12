@@ -7,6 +7,7 @@ import {
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { Storage } from "@btravstack/storage";
 import { TemporalWorkflowActivities } from "@btravstack/temporal-worker";
+import { Context } from "@temporalio/activity";
 import { P } from "unthrown";
 
 /**
@@ -34,7 +35,10 @@ import { P } from "unthrown";
  *
  * `cancelPlacement` absorbs `OrderNotFound` on purpose: undoing a placement that
  * never landed is the no-op a REPEATED compensation performs, and an activity
- * Temporal may re-run has to answer the same both times.
+ * Temporal may re-run has to answer the same both times. It names the placing
+ * run in the removal condition, so another run's replacement is also untouched.
+ * A persisted task without `operationId` reads that run from Temporal's native
+ * activity metadata. These workflow activities require a workflow execution.
  */
 /**
  * Where a confirmation lives.
@@ -55,7 +59,9 @@ export const fulfillOrder = TemporalWorkflowActivities(
   sync: ({ stock, shipping, storage }) => ({
     place: ({ errors, context, input }) =>
       context.unit.place
-        .execute(input.orderId, input.quantity, { operation: input.operationId })
+        .execute(input.orderId, input.quantity, {
+          operation: input.operationId ?? Context.current().info.workflowExecution!.runId,
+        })
         .map((order) => ({ id: order.id, quantity: order.quantity }))
         .mapErrCases((matcher) =>
           matcher
@@ -100,7 +106,9 @@ export const fulfillOrder = TemporalWorkflowActivities(
     releaseStock: ({ input }) => stock.release(input.orderId),
     cancelPlacement: ({ context, input }) =>
       context.unit.repository
-        .remove(input.orderId)
+        .remove(input.orderId, {
+          operation: input.operationId ?? Context.current().info.workflowExecution!.runId,
+        })
         .recoverErrCases((matcher) => matcher.with(P.tag("OrderNotFound"), () => undefined)),
   }),
 });

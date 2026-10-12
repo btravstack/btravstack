@@ -1,5 +1,6 @@
 import type { Logger as PinoLogger } from "pino";
 
+import { renderCause } from "./json-sink.js";
 import type { Line, Sink } from "./logger.js";
 
 /**
@@ -18,23 +19,34 @@ import type { Line, Sink } from "./logger.js";
  * ```
  *
  * The level filter stays **ours**: `createLogger` has already decided the
- * line is worth writing by the time a sink sees it, so pino is configured at
- * `trace` here — one filter in the process, and it is the one `LOG_LEVEL`
- * validated at startup. `fatal` and `trace` map to pino's own; the ambient
- * unit's ids ride as fields, not as a message prefix, so they stay indexable.
+ * line is worth writing by the time a sink sees it, so the child logger has a
+ * `trace` floor — one filter in the process, and it is the one `LOG_LEVEL`
+ * validated at startup. The supplied logger is left unchanged. `fatal` and
+ * `trace` map to pino's own; the ambient unit's ids ride as fields, not as a
+ * message prefix, so they stay indexable.
  */
-export const pinoSink =
-  (logger: PinoLogger): Sink =>
-  (line: Line) => {
+export const pinoSink = (logger: PinoLogger): Sink => {
+  const safeLogger = logger.child(
+    {},
+    {
+      level: "trace",
+      serializers: {
+        err: (cause: unknown) =>
+          cause instanceof Error
+            ? { type: cause.name, ...(renderCause(cause) as object) }
+            : renderCause(cause),
+      },
+    },
+  );
+  return (line: Line) => {
     const { level, message, attributes, cause, unit } = line;
     const fields = {
       ...attributes,
       ...(unit === undefined ? {} : unit),
-      // pino renders `err` through its own error serialiser, which keeps the
-      // non-enumerable `message` and `stack` a bare `JSON.stringify` drops.
       ...(cause === undefined ? {} : { err: cause }),
     };
     // A sink never throws: `createLogger` swallows what escapes here, and a
     // pino transport that has closed under a shutdown is the case that would.
-    logger[level](fields, message);
+    safeLogger[level](fields, message);
   };
+};

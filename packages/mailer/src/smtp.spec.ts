@@ -10,6 +10,27 @@ import { aMail, it } from "./__tests__/test-fixtures.js";
 import { smtpMailer } from "./smtp.js";
 
 describe("smtpMailer", () => {
+  it("reports the recipient refused after the shared relay's limit", async ({
+    smtp,
+    recipient,
+  }) => {
+    // GIVEN one more recipient than Mailpit's SMTP maximum of 100
+    const to = Array.from({ length: 101 }, (_, index) => `${index}-${recipient}`);
+
+    // WHEN the real relay accepts the first 100 and refuses the final recipient
+    const sent = await smtp.send({ ...aMail(recipient), to });
+
+    // THEN the refusal names only the recipient safe to retry
+    expect(sent).toBeErrWith(
+      expect.objectContaining({
+        _tag: "MailNotSent",
+        to: [to[100]],
+        subject: "your order",
+        reason: "SMTP rejected some recipients; other recipients may already have been accepted",
+      }),
+    );
+  });
+
   it("delivers the message to the server", async ({ smtp, recipient, delivered }) => {
     // GIVEN a mailer over the shared SMTP server
     // WHEN a message is sent to this test's own recipient

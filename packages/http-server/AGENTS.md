@@ -917,9 +917,10 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   `Readonly<Record<string, AnyUnitModule>>`. A hand-rolled composition that
   wants the gate composes through `HttpModule`.
 
-- **Drain**: `stopAccepting` retires every open response — an unsent header
-  gets `Connection: close`, a sent `text/event-stream` response is
-  **destroyed** on the spot, any other sent one ends its socket on
+- **Drain**: `stopAccepting` retires every open response — a queued
+  `text/event-stream` response is **destroyed** on the spot, whether or not
+  its headers have flushed. Other unsent headers get `Connection: close`,
+  and any other sent response ends its socket on
   `'finish'` — and `stop()` destroys what is still open.
   `closeIdleConnections()` alone would miss a response with a request in
   flight; that is why retirement is tracked per-response rather than left

@@ -5,7 +5,7 @@ import type { InvalidEntity } from "./errors.js";
 import { toZodIssue } from "./issues.js";
 
 /**
- * The composable surface: input data parsed into a class instance.
+ * The composable surface: raw input validated once by `make` into a class instance.
  *
  * Failures cross into zod's issue channel so a nested entity reports which
  * member failed — `z.object({ owner: Organization })` yields
@@ -21,11 +21,8 @@ import { toZodIssue } from "./issues.js";
  * instead of reporting an ordinary issue. An unexpected bug in `make`
  * must stay distinguishable from bad caller input, not surface as one.
  */
-function instanceSchema<T>(
-  input: z.ZodType,
-  makeFrom: (d: unknown) => Result<T, InvalidEntity>,
-): z.ZodType<T> {
-  return input.transform((d, ctx) =>
+function instanceSchema<T>(makeFrom: (d: unknown) => Result<T, InvalidEntity>): z.ZodType<T> {
+  return z.unknown().transform((d, ctx) =>
     makeFrom(d)
       .recoverErrCases((m) =>
         m.with(P.tag("InvalidEntity"), (invalid) => {
@@ -64,11 +61,11 @@ function instanceSchema<T>(
  */
 const schemas = new WeakMap<object, z.ZodType>();
 
-export function attachSchema<T>(Base: object, input: z.ZodType): void {
+export function attachSchema<T>(Base: object): void {
   const schemaFor = (receiver: object): z.ZodType => {
     const cached = schemas.get(receiver);
     if (cached !== undefined) return cached;
-    const built = instanceSchema<T>(input, (d) =>
+    const built = instanceSchema<T>((d) =>
       (receiver as unknown as { make: (state: unknown) => Result<T, InvalidEntity> }).make(d),
     );
     schemas.set(receiver, built);

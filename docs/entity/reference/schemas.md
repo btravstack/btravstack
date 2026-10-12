@@ -92,7 +92,13 @@ Order.make(row).getOrThrow().lines[0]; // an OrderLine instance
 
 Parsing with a member gives plain data at every depth. Construction is
 unchanged: `make`, `update` and a factory parse through a module-private schema
-that keeps the classes, so a nested field still holds a real instance.
+that keeps the classes, so a nested field still holds a real instance. The class
+used as a schema delegates raw input directly to `make`, so nesting adds no
+validation passes, regardless of parent depth. A transform
+that appends text or changes its output type behaves the same when nested as
+when made directly. Re-entering stored output through another `make` remains a
+new validation pass; this does not change the requirement that fields accept
+their own output for rehydration and update.
 
 What is not walked: an entity inside `z.record(...)`, `z.tuple(...)`,
 `.default(...)`, `.readonly()` or an inline `z.object(...)` stays the class, and

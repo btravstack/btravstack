@@ -477,6 +477,11 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    and drains once serving, which is what beat 2's charge-from-request
    arithmetic depends on.
 
+   Temporal's connection finaliser waits for its worker to release the native
+   reference before retrying close. It can therefore outlive the drain deadline;
+   the same `stopTimeoutMs` bounds that wait, and cleanup continues afterwards.
+   Late close failures still reach the report's live `teardownErrors` array.
+
    **A long-lived stream is a unit, and the HTTP runtime resets it at beat
    3's start** (issue #137): `@btravstack/http-server` destroys a
    `text/event-stream` response when `Serving.drain` is called, so the client
@@ -761,6 +766,13 @@ No starter holds a `Logger`. The last one was `@btravstack/prisma`'s, for a
 startup line about engine tracing, and it went with the Prisma 7 engine;
 `@btravstack/amqp-worker` routes even its library's own diagnostics through
 `Observers`.
+
+Both built-in log sinks share the safe error diagnostic renderer: Pino is
+configured through a child logger so a sink change cannot expose arbitrary
+error payloads. That child accepts all six levels, leaving the stack's validated
+`LOG_LEVEL` as the sole filter and the supplied logger's level intact.
+Malformed `Config.url` diagnostics omit the raw value entirely,
+since malformed credentials cannot be reliably separated from the URL.
 
 ## Cross-cutting concerns: configuration, not a middleware slot
 

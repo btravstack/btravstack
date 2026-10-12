@@ -279,10 +279,10 @@ describe("Config.url", () => {
     expect(read).toEqual({
       good: Ok("https://issuer.example/.well-known/jwks.json"),
       malformed: expect.objectContaining({
-        error: expect.objectContaining({ reason: 'is not a URL: "issuer.example/jwks.json"' }),
+        error: expect.objectContaining({ reason: "is not a URL" }),
       }),
       pinned: expect.objectContaining({
-        error: expect.objectContaining({ reason: 'is not a URL: "issuer.example/jwks.json"' }),
+        error: expect.objectContaining({ reason: "is not a URL" }),
       }),
     });
   });
@@ -296,18 +296,29 @@ describe("Config.url", () => {
     // WHEN the malformed value is read
     const read = field.parse("postgres://user:hunter2@db.internal:notaport/orders");
 
-    // THEN the userinfo is gone and everything that helps diagnose it stays:
-    // the scheme, the host, the bad port and the path. The secret used to be
-    // quoted whole, which is the twelve-factor rule saying config is
-    // credentials, in the one place this package prints config.
+    // THEN the invalid value never reaches diagnostics
     expect(read).toEqual(
       expect.objectContaining({
         error: expect.objectContaining({
-          reason: 'is not a URL: "postgres://***@db.internal:notaport/orders"',
+          reason: "is not a URL",
         }),
       }),
     );
   });
+
+  it.each(["hun/ter2", "hun?ter2", "hun#ter2"])(
+    "does not quote malformed credentials containing %s",
+    (password) => {
+      // GIVEN a connection string whose unescaped password prevents reliable URL parsing
+      const field = Config.url("DATABASE_URL");
+
+      // WHEN validation rejects the malformed connection string
+      const result = field.parse(`postgres://user:${password}@db.internal:notaport/orders`);
+
+      // THEN neither credentials nor the raw connection string reach diagnostics
+      expect(result).toBeErrWith(expect.objectContaining({ reason: "is not a URL" }));
+    },
+  );
 });
 
 describe("Config.integer, on the grammar it accepts", () => {

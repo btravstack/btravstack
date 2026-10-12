@@ -236,8 +236,8 @@ the undos are its own business rather than each step's:
 context
   .saga()
   .step(
-    () => context.activities.place(order),
-    () => context.activities.cancelPlacement(order),
+    () => context.activities.place({ ...order, operationId: context.info.runId }),
+    () => context.activities.cancelPlacement({ ...order, operationId: context.info.runId }),
   )
   .step(
     () => context.activities.reserveStock(order),

@@ -58,9 +58,13 @@ level is unwrapped. So `z.array(Customer)`, `z.optional(Slug)` and even
 `z.array(Slug).optional()` are all accepted — the rule applies to the element,
 not the container.
 
-Four names are reserved, because an entity installs them on every instance:
-`_tag`, `sameIdentityAs`, `toJSON`, `update`. Using one is a compile error naming
-`FieldNameIsReservedByEntity`.
+Instance protocol names are reserved in both declared and computed fields:
+`_tag`, `sameIdentityAs`, `toJSON`, `update`, `constructor` and `emit`. The rule
+applies to concrete entities, abstract roots, their variants and aggregate
+roots. Using one is a compile error; a declaration hidden behind a cast or a
+dynamic map also throws while the declaration is evaluated. Reserving `toJSON`
+protects the projection that excludes private subclass fields, and reserving
+`constructor` protects update and aggregate decision dispatch.
 
 ### `options`
 

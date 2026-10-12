@@ -377,15 +377,15 @@ const listen = (
           let draining = false;
 
           const retire = (response: ServerResponse): void => {
-            if (!response.headersSent) {
-              response.setHeader("Connection", "close");
-              return;
-            }
             // A stream never finishes on its own, and a clean `end()` is read by
             // oRPC's client as the iterator completing — only a reset makes it
             // and a bare `EventSource` reconnect.
             if (isEventStream(response)) {
               response.destroy();
+              return;
+            }
+            if (!response.headersSent) {
+              response.setHeader("Connection", "close");
               return;
             }
             // Headers already on the wire: no header left to change, so the socket

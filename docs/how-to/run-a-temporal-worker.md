@@ -64,6 +64,7 @@ import {
 import { TenantId } from "@btravstack/example-order-domain";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { TemporalActivities } from "@btravstack/temporal-worker";
+import { Context } from "@temporalio/activity";
 import { P } from "unthrown";
 
 export const orderActivities = TemporalActivities(orderContract)({
@@ -79,7 +80,7 @@ export const orderActivities = TemporalActivities(orderContract)({
     fulfillOrder: {
       place: ({ errors, context, input }) =>
         context.unit.place
-          .execute(input.orderId, input.quantity, { operation: input.operationId })
+          .execute(input.orderId, input.quantity, { operation: input.operationId ?? Context.current().info.workflowExecution!.runId })
           .map((order) => ({ id: order.id, quantity: order.quantity }))
           .mapErrCases((matcher) =>
             matcher
@@ -112,7 +113,7 @@ export const orderActivities = TemporalActivities(orderContract)({
       releaseStock: ({ input }) => stock.release(input.orderId),
       cancelPlacement: ({ context, input }) =>
         context.unit.repository
-          .remove(input.orderId)
+          .remove(input.orderId, { operation: input.operationId ?? Context.current().info.workflowExecution!.runId })
           .recoverErrCases((matcher) =>
             matcher.with(P.tag("OrderNotFound"), () => undefined),
           ),
@@ -158,7 +159,11 @@ tenancy. The worker seeds the per-attempt fork with that very input on
 at each activity. So `PlaceOrder` and `OrderRepository` arrive on
 `context.unit` already bound, and no activity passes a tenant.
 `cancelPlacement` absorbs `OrderNotFound` on purpose — a compensation Temporal
-may re-run has to answer the same both times.
+may re-run has to answer the same both times. Its `operationId` is the placing
+workflow's run id, checked in the repository's DELETE so a late compensation
+leaves another run's replacement alone. A task scheduled by an older workflow may omit it; the activity then reads
+that same run id from Temporal's native metadata. A historical row with no
+stored operation is left alone because ownership cannot be verified.
 
 ## Step 2 — the composition root
 
@@ -335,7 +340,11 @@ The runtime returns and the worker is still alive: `@temporalio/worker`
 exposes no public forced shutdown, so "stop waiting" is the only escalation.
 The kernel gets its thread back on time, reports the activity `abandoned`
 (exit `2` under `runMain`), and the worker keeps winding down on Temporal's
-clock until the process exits.
+clock. Connection release waits for the worker to finish before closing it.
+The kernel gives that finalizer its existing `stopTimeoutMs`; if that expires,
+the report also names `abandonedAt: "stop"` and cleanup continues. Unexpected
+close failures remain in the report's live `teardownErrors` array, including
+failures arriving after exit, but no lifecycle event follows `exited`.
 :::
 
 Keep `forceAfter` at or below `drainTimeoutMs` (default `20_000`). It matters

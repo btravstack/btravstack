@@ -51,15 +51,23 @@ repository and the kernel.
 day this package gains a dependency on the worker it describes, `typecheck`
 fails because the directive stops being used.
 
-## `place` names its operation, optionally
+## Placement and cancellation name their operation, optionally
 
 `place`'s input carries an `operationId` — the workflow's run id — so the
 repository can tell a retried attempt recovering its own committed write from
 a different execution placing the same order id. It is **optional** because a
 contract outlives a deploy: a `place` task the previous workflow version
 scheduled carries none, and a required field would have the new worker refuse
-it at validation, failing an in-flight fulfillment. Absent, the placement is
-insert-only, as it was before.
+it at validation, failing an in-flight fulfillment. When absent, the activity
+reads the originating workflow run id from Temporal's native metadata.
+
+`cancelPlacement` carries the same optional field: the workflow hands both
+activities its run id, and the repository deletes only a placement owned by
+that operation. A delayed or repeated compensation leaves a replacement by
+another run alone. Cancellation tasks already scheduled without the field
+remain accepted: the activity recovers the originating run id from native
+metadata and applies the same guard. A historical row with no stored operation
+is left alone because its ownership cannot be verified.
 
 ## The schemas are the demonstration
 

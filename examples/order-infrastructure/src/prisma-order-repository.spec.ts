@@ -95,6 +95,61 @@ describe("the Prisma OrderRepository", () => {
     expect(removal).toBeErrTagged("OrderNotFound", { id: "o-absent" });
   });
 
+  it("leaves a new placement alone when an old operation compensates a reused id", async ({
+    repository,
+    anOrder,
+  }) => {
+    // GIVEN an old placement removed and its id reused by another operation
+    const id = "0199a1e0-0000-7000-8000-000000000611";
+    // WHEN the old compensation runs again
+    const remaining = await repository
+      .save(anOrder(id, 1), "old-run")
+      .flatMap(() => repository.remove(id))
+      .flatMap(() => repository.save(anOrder(id, 9), "new-run"))
+      .flatMap(() =>
+        repository
+          .remove(id, { operation: "old-run" })
+          .recoverErrCases((matcher) => matcher.with({ _tag: "OrderNotFound" }, () => undefined)),
+      )
+      .flatMap(() => repository.find(id));
+    // THEN it still holds the new operation's order
+    expect(remaining).toBeOkWith({ id, quantity: 9 });
+  });
+
+  it("removes its own operation once and reports a repeated compensation as absent", async ({
+    repository,
+    anOrder,
+  }) => {
+    // GIVEN an order belonging to the compensating operation
+    const id = "0199a1e0-0000-7000-8000-000000000612";
+    // WHEN the same operation removes it twice
+    const repeated = await repository
+      .save(anOrder(id, 1), "own-run")
+      .flatMap(() => repository.remove(id, { operation: "own-run" }))
+      .flatMap(() => repository.remove(id, { operation: "own-run" }));
+    // THEN the first succeeded and the repeat is harmless absence
+    expect(repeated).toBeErrTagged("OrderNotFound", { id });
+  });
+
+  it("keeps the placement cutoff when the removing operation also matches", async ({
+    repository,
+    anOrder,
+  }) => {
+    // GIVEN a fresh placement owned by the removing operation
+    const id = "0199a1e0-0000-7000-8000-000000000613";
+    // WHEN removal names that operation but an earlier cutoff
+    const remaining = await repository
+      .save(anOrder(id, 1), "own-run")
+      .flatMap(() =>
+        repository
+          .remove(id, { operation: "own-run", placedBefore: new Date(0) })
+          .recoverErrCases((matcher) => matcher.with({ _tag: "OrderNotFound" }, () => undefined)),
+      )
+      .flatMap(() => repository.find(id));
+    // THEN both guards must match before deletion
+    expect(remaining).toBeOkWith({ id, quantity: 1 });
+  });
+
   it("translates a real unique-constraint violation into DuplicateOrder", async ({
     repository,
     anOrder,

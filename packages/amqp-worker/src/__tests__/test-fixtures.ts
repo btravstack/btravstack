@@ -179,6 +179,10 @@ const failingHandlers: EchoProvider = echoHandlers({
 
 type App = RunningApp<ConfigInvalid, AmqpInfo>;
 
+export const untilServing = async (app: App): Promise<void> => {
+  if ((await app.runtimeInfo()).get() === undefined) (await app.exited).getOrThrow();
+};
+
 type ServeOptions = {
   readonly drainTimeoutMs?: number;
   readonly unit?: AnyUnitModule;
@@ -320,10 +324,12 @@ const gatedHandler = () => {
 };
 
 const leftQueue = defineQueue("amqp-sliced-left", {
+  type: "classic",
   deadLetter: { exchange: echoDlx, externalConsumers: true },
   retry: { mode: "immediate-requeue", maxRetries: 1 },
 });
 const rightQueue = defineQueue("amqp-sliced-right", {
+  type: "classic",
   deadLetter: { exchange: echoDlx, externalConsumers: true },
   retry: { mode: "immediate-requeue", maxRetries: 1 },
 });
@@ -509,7 +515,7 @@ export type AmqpFixtures = {
 // since `AmqpTestFixtures` reaches back into amqplib's `Channel` /
 // `ChannelModel` / `ConsumeMessage` / `Options.Publish`.
 export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFixtures>({
-  boot: bootFixture(),
+  boot: bootFixture({ env: { AMQP_CONNECT_TIMEOUT_MS: "15000" } }),
   serve: async ({ amqpConnectionUrl, boot }, use) => {
     await use(async (handlers = plainHandlers, options) => {
       const app = boot(
@@ -518,7 +524,7 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
       );
       // `runtimeInfo()` resolves once the worker is consuming — await it here
       // so the caller's test body never races the worker's own startup.
-      await app.runtimeInfo();
+      await untilServing(app);
       return app;
     });
   },
@@ -526,7 +532,7 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     await use(async (handlers = plainHandlers) => {
       const observer = recordingObserver();
       const app = boot(observedWorker(amqpConnectionUrl, handlers, observer.member));
-      await app.runtimeInfo();
+      await untilServing(app);
       return { app, taken: observer.taken };
     });
   },
@@ -604,7 +610,7 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
             : { unit: { message: [Provider(Tenant)({ inject: {}, value: { id: stubTenant } })] } },
         ),
       );
-      await app.runtimeInfo();
+      await untilServing(app);
       return app;
     });
   },
@@ -626,7 +632,7 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
           imports: [AppModule],
         }),
       );
-      await app.runtimeInfo();
+      await untilServing(app);
       return app;
     });
   },

@@ -123,7 +123,8 @@ const MARKER =
   /^<!--\s*doctest:\s*(skip\s*[—–-]\s*(?<reason>.+?)|(?<defer>defer)(\s*[—–-].*)?|isolate(\s*[—–-].*)?|signature=(?<signature>\S+)|group=(?<group>[a-z-]+))\s*-->$/;
 
 const parsePage = (file: string): Page | undefined => {
-  const lines = readFileSync(file, "utf8").split("\n");
+  const source = readFileSync(file, "utf8");
+  const lines = (file.endsWith(".ts") ? source.replace(/^[\t ]*\* ?/gm, "") : source).split("\n");
   const fences: Fence[] = [];
   const skips: { line: number; reason: string }[] = [];
   const preludes: string[] = [];
@@ -527,6 +528,7 @@ const main = (): void => {
     join(DOCS_ROOT, "index.md"),
     join(REPO_ROOT, "README.md"),
     ...globSync(join(REPO_ROOT, "packages/*/README.md")),
+    join(REPO_ROOT, "packages/http-server/src/api-key.ts"),
   ];
   const outDir = resolve(out);
   rmSync(outDir, { recursive: true, force: true });

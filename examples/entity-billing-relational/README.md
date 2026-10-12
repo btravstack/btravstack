@@ -32,7 +32,10 @@ rows is a `ConcurrentModification` value, never a silent overwrite.
 
 `placeOrder` saves the placed order and an `OrderPlaced` event in one
 transaction. A failure anywhere in it commits neither. `relayOutbox` publishes
-only committed rows, after the fact.
+only committed rows, after the fact, in batches of at most 100. It publishes
+sequentially and marks each successful row before continuing. A failed
+publication leaves that row and the rest pending. Run only one relay at a
+time; delivery is at-least-once, so subscribers deduplicate by event id.
 
 ## Legacy rows
 

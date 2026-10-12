@@ -231,7 +231,7 @@ export const fulfillOrder = declareWorkflow({
               .tap((placement) => {
                 placed = placement;
               }),
-          () => context.activities.cancelPlacement(order),
+          () => context.activities.cancelPlacement({ ...order, operationId: context.info.runId }),
         )
         .step(
           () => context.activities.reserveStock({ ...order, quantity: args.quantity }),
@@ -280,15 +280,21 @@ need a key that survives it.
 
 `operationId` is optional on the activity's input, and that is the rolling
 deploy: a `place` task the previous workflow version scheduled carries none,
-and the new worker must still accept it. Absent, the placement is insert-only,
-as it was — its retry still meets its own write as a duplicate, which is the
-gap this closes for every task scheduled from here on.
+and the new worker must still accept it. The activity falls back to Temporal's
+native originating workflow run id, so legacy task inputs also recover their
+own writes.
 
 The compensations declare no errors: compensation is the saga un-deciding, and
 a step that could answer "no" would leave it stuck half-done.
 `cancelPlacement` absorbs `OrderNotFound` on purpose — undoing a placement
 that never landed is the no-op a **repeated** compensation performs, and an
-activity Temporal may re-run has to answer the same both times.
+activity Temporal may re-run has to answer the same both times. The workflow
+hands `cancelPlacement` the same `operationId` as `place`; the repository
+matches it in the DELETE, so a late compensation cannot withdraw a new
+placement under a reused order id. The cancellation field is optional for
+tasks already scheduled by an older workflow; the activity recovers their
+originating run id from native metadata. A historical row stored without an
+operation is left alone, since its ownership cannot be verified.
 
 ## The billing saga
 

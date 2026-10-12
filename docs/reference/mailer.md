@@ -61,7 +61,7 @@ There is no templating: `text` and `html` are strings, and what rendered them
 is yours — [Send a formatted email](/how-to/send-a-formatted-email) renders
 one with an escaping template and a message catalogue.
 
-**`send` answers when the transport accepted the message**, which is not the
+**`send` answers when the transport accepted the message for every recipient**, which is not the
 same as delivered. Nothing this side of a mailbox can promise that; an
 application needing those semantics reads its provider's webhooks.
 
@@ -91,6 +91,11 @@ export const notifyOrRetry = (
 `MailNotSent` carries `{ to, subject, reason }` — the envelope and the
 transport's own words, **never the body**, which is the one part of a message
 that is reliably somebody's personal data.
+
+On partial SMTP acceptance, `to` contains only the rejected recipients. The
+others may already have been accepted. Retry the rejected addresses only,
+including addresses originally listed in `cc` or `bcc`, rather than resending
+the original envelope to everybody.
 
 **Retries are not in this package, and that is the decision.** What to do
 about a failed send depends on what is sending: `examples/order-amqp-worker`

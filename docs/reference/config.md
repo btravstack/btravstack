@@ -91,8 +91,8 @@ Semantics shared by every field, in one place:
 | `0x1F90` (integer/port)     | `is not a whole number: "0x1F90"` — decimal only, not read as `8080`     |
 | out of range (integer/port) | `must be between <min> and <max>, got <n>` — both bounds inclusive       |
 | `0` (port)                  | valid — a port's floor is `0` so an ephemeral bind stays expressible     |
-| `issuer.test/jwks` (url)    | `is not a URL: "issuer.test/jwks"` — a URL needs its scheme              |
-| `pg://u:p@h:bad/d` (url)    | `is not a URL: "pg://***@h:bad/d"` — the userinfo is redacted            |
+| `issuer.test/jwks` (url)    | `is not a URL` — a URL needs its scheme                                  |
+| `pg://u:p@h:bad/d` (url)    | `is not a URL` — malformed values are omitted to protect credentials     |
 | `a, b,` (list)              | `["a", "b"]` — trimmed, and a trailing separator is not an entry         |
 | `,` (list)                  | `must list at least 1, got 0` — the `min` floor, named                   |
 

@@ -302,7 +302,7 @@ describe("jwtAuthenticator", () => {
         port: "HttpJwt",
         issues: [
           {
-            message: 'is not a URL: "issuer.example/.well-known/jwks.json"',
+            message: "is not a URL",
             path: ["HTTP_JWT_JWKS_URI"],
           },
         ],

@@ -1,8 +1,22 @@
 import { describe, expect, vi } from "vitest";
 
-import { it } from "./__tests__/test-fixtures.js";
+import { it, untilServing } from "./__tests__/test-fixtures.js";
 
 describe("amqp", () => {
+  it("fails fixture startup with the actual error before waiting for deliveries", async ({
+    serveBroken,
+  }) => {
+    // GIVEN a worker whose broker cannot be reached
+    const app = await serveBroken();
+
+    // WHEN the serving fixture waits for startup
+    // THEN the startup error reaches the runner instead of a later delivery timeout
+    await expect(untilServing(app)).rejects.toMatchObject({
+      _tag: "RuntimeStartFailed",
+      runtime: "amqp",
+    });
+  });
+
   it("publishes the queues it drains", async ({ serve }) => {
     // GIVEN a worker consuming the test contract's one queue
     const app = await serve();

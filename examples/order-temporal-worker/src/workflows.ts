@@ -47,7 +47,7 @@ export const fulfillOrder = declareWorkflow({
               .tap((placement) => {
                 placed = placement;
               }),
-          () => context.activities.cancelPlacement(order),
+          () => context.activities.cancelPlacement({ ...order, operationId: context.info.runId }),
         )
         .step(
           () => context.activities.reserveStock({ ...order, quantity: args.quantity }),

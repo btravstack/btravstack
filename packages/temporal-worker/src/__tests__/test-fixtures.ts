@@ -25,7 +25,7 @@ import {
 } from "@temporal-contract/contract";
 import { Client, Connection, type ScheduleOptions, type ScheduleSpec } from "@temporalio/client";
 import type { Duration } from "@temporalio/common";
-import type { Worker } from "@temporalio/worker";
+import type { NativeConnection, Worker } from "@temporalio/worker";
 import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { inject, test } from "vitest";
 import { z } from "zod";
@@ -35,6 +35,7 @@ import { TemporalActivities, TemporalModule } from "../temporal-module.js";
 import { poll } from "../temporal-runtime.js";
 import {
   TemporalConfig,
+  TemporalConnection,
   type TemporalInfo,
   type TemporalUnreachable,
   type WorkflowSource,
@@ -241,6 +242,30 @@ const configuredOf = () => {
 };
 
 class BoundConfig extends Port("BoundConfig")<ServiceOf<TemporalConfig>> {}
+
+class BoundConnection extends Port("BoundConnection")<NativeConnection> {}
+
+const connectedOf = () => {
+  let bound!: NativeConnection;
+  let close!: () => Promise<void>;
+  const failure = new Error("unexpected connection close failure");
+  return {
+    tap: Provider(BoundConnection)({
+      inject: { connection: TemporalConnection },
+      sync: ({ connection }) => {
+        bound = connection;
+        close = connection.close.bind(connection);
+        return connection;
+      },
+    }),
+    check: () => fromSafePromise(bound.setMetadata({})),
+    failClose: () => {
+      bound.close = () => Promise.reject(failure);
+      return failure;
+    },
+    cleanup: () => close(),
+  };
+};
 
 /**
  * Two workflows, one task queue — a worker whose activities are composed from
@@ -470,7 +495,8 @@ type BootOptions = {
   readonly env?: Environment;
   readonly workflows?: WorkflowSource;
   readonly drainTimeoutMs?: number;
-  readonly tap?: ReturnType<typeof configuredOf>["tap"];
+  readonly stopTimeoutMs?: number;
+  readonly tap?: ReturnType<typeof configuredOf>["tap"] | ReturnType<typeof connectedOf>["tap"];
   readonly unit?: AnyUnitModule;
 };
 
@@ -547,6 +573,7 @@ export type TemporalFixtures = {
   /** An activity that waits on the unit's own `AbortSignal`, read off the ambient record. */
   readonly deadline: ReturnType<typeof deadlineOf>;
   readonly configured: ReturnType<typeof configuredOf>;
+  readonly connected: ReturnType<typeof connectedOf>;
   readonly slices: ReturnType<typeof slicesOf>;
   readonly serveSliced: (slices: ReturnType<typeof slicesOf>) => Promise<{
     readonly app: App;
@@ -647,6 +674,7 @@ const compose = (server: Server, boot: Boot, options: BootOptions) => {
   const app: App = boot(worker, {
     env: options.env ?? { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace },
     ...(options.drainTimeoutMs === undefined ? {} : { drainTimeoutMs: options.drainTimeoutMs }),
+    ...(options.stopTimeoutMs === undefined ? {} : { stopTimeoutMs: options.stopTimeoutMs }),
   });
   return { app, taskQueue };
 };
@@ -774,6 +802,17 @@ export const it = test.extend<TemporalFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   configured: async ({}, use) => {
     await use(configuredOf());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  connected: async ({}, use) => {
+    const connected = connectedOf();
+    await use(connected);
+    // A red cleanup regression must not leak the native client into the next test.
+    await connected.check().match({
+      ok: () => connected.cleanup(),
+      errCases: (matcher) => matcher,
+      defect: () => undefined,
+    });
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   slices: async ({}, use) => {

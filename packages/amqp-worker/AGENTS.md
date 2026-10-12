@@ -12,6 +12,23 @@ page, never this file.
 
 ## Decisions and gotchas
 
+- **Serving fixtures propagate startup failures before waiting for deliveries.**
+  `runtimeInfo()` resolves with `undefined` when startup fails; its resolution
+  alone does not prove a consumer exists. Real-quorum serving fixtures set
+  `AMQP_CONNECT_TIMEOUT_MS` to 15s inside the existing 30s test budget: cold
+  quorum topology under full gate load exceeded the default 5s deadline and was
+  misreported as a delivery timeout. The broken-broker and configuration-binding
+  tests keep their deliberately smaller budgets; delivery waits keep theirs.
+  The slice-only fixtures use classic queues: their subject is DI composition
+  and broadcast routing, and cold quorum cluster formation also hit RabbitMQ's
+  own deadline under full gate load. The runtime fixtures retain quorum coverage.
+
+- **`connectTimeoutMs` covers topology setup as well as the connection.**
+  `@amqp-contract/worker` waits for exchanges, queues and bindings before its
+  channel is ready. A deployment creating several quorum queues may need to tune
+  `AMQP_CONNECT_TIMEOUT_MS` for that initialization cost; the starter defaults to
+  5s.
+
 - **`AmqpModule`'s return type is di's own `Module(name)({...})` over the
   augmented tuples, never a named alias.** A named generic alias was tried and
   removed: declaration emit keeps it unreduced and cannot name imported

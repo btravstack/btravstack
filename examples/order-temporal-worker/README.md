@@ -126,6 +126,16 @@ place ──▶ reserveStock ──▶ arrangeShipping ──▶ done
   │             └── cancelPlacement            └── releaseStock, then cancelPlacement
 ```
 
+Both `place` and `cancelPlacement` receive the workflow's run id as
+`operationId`. Placement recovers a retry's own committed write; cancellation
+matches that operation in the same DELETE that writes the tombstone, so a late
+compensation cannot withdraw another run's placement under a reused id.
+Repeated cancellation absorbs `OrderNotFound` and announces nothing twice.
+The input field remains optional so tasks scheduled by an earlier workflow
+version stay valid; the activity uses Temporal's native originating run id
+when it is absent. A historical row without a stored operation stays untouched,
+since no cancellation can verify that it owns it.
+
 ## The billing saga
 
 The smallest saga that still has a compensation: authorize, then capture —

@@ -13,7 +13,13 @@ import { invariant, type Invariant } from "./invariant.js";
 import { codeOf, keysOf, renderIssue } from "./issues.js";
 import { codec, json } from "./json.js";
 import { attachSchema } from "./schema.js";
-import { plainShape, shape, type OnlyNominal } from "./shape.js";
+import {
+  checkFieldNames,
+  plainShape,
+  shape,
+  type NoReservedFieldNames,
+  type OnlyNominal,
+} from "./shape.js";
 import type {
   AbstractEntity,
   AsyncEntityFactory,
@@ -76,12 +82,15 @@ export function Entity<Tag extends string>(tag: Tag) {
   return function <S extends Fields, A extends Schemas = Record<never, never>>(
     fields: S & OnlyNominal<S>,
     options?: {
-      readonly computed?: { [K in keyof A]: ComputedField<A[K], InputOf<S>> };
+      readonly computed?: {
+        [K in keyof A]: ComputedField<A[K], InputOf<S>>;
+      } & NoReservedFieldNames<NoInfer<A>>;
       // The *declared* fields, not `OutputOf`. A rule cannot read a computed
       // field — see `invariant.ts` for why that is both sound and necessary.
       readonly invariants?: readonly Invariant<InputOf<S>>[];
     },
   ): EntityStatic<Tag, S, A> {
+    checkFieldNames(tag, fields, options?.computed);
     // Two schemas per entity, split by audience (#72). `construction` embeds
     // each nested entity's *class*, so `make` builds nested instances through
     // it. The four public members embed the nested entity's own plain schemas
@@ -225,10 +234,21 @@ export function Entity<Tag extends string>(tag: Tag) {
       ) as OutputShape;
     };
 
-    const parseInput = fromSchema(construction);
+    // Zod's Standard Schema entry point retries a thrown defect asynchronously.
+    const parseFields =
+      <T extends z.ZodObject>(schema: T) =>
+      (state: unknown) =>
+        fromThrowable(
+          () => {
+            const parsed = schema.safeParse(state);
+            return parsed.success ? Ok(parsed.data) : Err(parsed.error.issues as SchemaIssues);
+          },
+          (cause, defect) => defect(cause),
+        )().flatMap((result) => result);
+    const parseInput = parseFields(construction);
     // `construction`, not `createInput`: a nested entity is built under its
     // own rules, and the output is what `factory`'s function accepts.
-    const parseCreateInput = fromSchema(
+    const parseCreateInput = parseFields(
       omitBy(construction as unknown as z.ZodObject<Schemas>, generatedKeys),
     );
 
@@ -601,7 +621,7 @@ export function Entity<Tag extends string>(tag: Tag) {
       }
     }
 
-    attachSchema<Base & DeepReadonly<OutputShape>>(Base, construction);
+    attachSchema<Base & DeepReadonly<OutputShape>>(Base);
     record(Base, fields, options as Record<string, unknown> | undefined);
 
     return Base as unknown as EntityStatic<Tag, S, A>;

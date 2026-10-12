@@ -6,7 +6,7 @@ import type { ComputedField as ComputedFieldOf } from "./computed.js";
 import type { InvalidEntity } from "./errors.js";
 import type { FieldSpec, Flags } from "./field.js";
 import type { Invariant as InvariantOf } from "./invariant.js";
-import type { OnlyNominal } from "./shape.js";
+import type { NoReservedFieldNames, OnlyNominal } from "./shape.js";
 
 /**
  * A field-map entry: a schema, or `Entity.field`'s schema-plus-flags.
@@ -509,7 +509,7 @@ export type AbstractEntity<Name extends string, S extends Fields, A extends Sche
     options?: {
       readonly computed?: {
         [K in keyof A2]: ComputedFieldOf<A2[K], InputOf<MergedFields<S, S2>>>;
-      };
+      } & NoReservedFieldNames<NoInfer<A2>>;
       readonly invariants?: readonly InvariantOf<InputOf<MergedFields<S, S2>>>[];
     },
   ) => EntityStatic<Tag2, MergedFields<S, S2>, MergedComputed<A, A2>, BehaviourOf<This>>;

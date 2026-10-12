@@ -293,7 +293,10 @@ committed, and no committed state can lose its event.
 Publish from the outbox afterwards, in a separate step that only ever sees
 committed rows: select what is undelivered, publish it, mark it delivered.
 Publishing then marking is at-least-once delivery, so consumers deduplicate on
-the event id.
+the event id. The example takes at most 100 rows per invocation, publishes
+sequentially, and marks each successful row before continuing. A failed
+publication leaves that row and every later row pending. It assumes one
+relay at a time; concurrent relays need a database claim.
 
 The events themselves come from the use case, because the command ran:
 

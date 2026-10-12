@@ -27,6 +27,9 @@ fail and the private transport port are the TSDoc of `src/instrument.ts`,
   rather than a policy invented inside a port.
 - **`text` is required, `html` optional.** A mail with only HTML is a mail
   some clients cannot read.
+- **Partial SMTP acceptance is a `MailNotSent`**, with `to` naming rejected
+  recipients only. Accepted recipients may already receive the message; a caller
+  retries the rejected set rather than the original envelope.
 
 ## Health check
 
@@ -55,8 +58,9 @@ try.
 
 Mailpit is a catch-all by design: it accepts even an empty sender, which makes
 it a good fixture for the success path and a useless one for the failure path.
-The `MailNotSent` arm is therefore proved against a relay that is **not
-listening** (`smtp://127.0.0.1:1`), which is the failure a deployment actually
-meets and costs milliseconds.
+Connection failure is proved against a relay that is **not listening**
+(`smtp://127.0.0.1:1`). Partial rejection uses the same shared Mailpit's SMTP
+limit: a message with 101 recipients has its final recipient refused, while
+the others are accepted. No suite changes shared server configuration.
 
 Observation: see the root `AGENTS.md`, **Observability is a set port, never a flag**.

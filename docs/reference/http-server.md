@@ -2201,8 +2201,8 @@ wants the gate composes through `HttpModule`.
 ## The drain
 
 `Serving.drain(signal)` marks the server draining, **retires every open
-response** — an unsent header gets `Connection: close`, a sent
-`text/event-stream` response is destroyed on the spot, any other sent one
+response** — a queued `text/event-stream` response is destroyed on the spot,
+even before its headers flush. Other unsent headers get `Connection: close`, and any other sent response
 ends its socket on `'finish'` — then calls `server.close()` and
 `closeIdleConnections()`. `closeIdleConnections()` alone reaches only
 connections idle at that instant, and node would keep serving keep-alive
