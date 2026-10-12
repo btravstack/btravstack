@@ -16,9 +16,12 @@ import { Config, Env } from "@btravstack/config";
 import { RuntimePort, type Runtime } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { Entity } from "@btravstack/entity";
+import { GraphqlModule, graphql } from "@btravstack/graphql-server";
+import { defineAuth } from "@btravstack/http-server";
 import { HttpModule, defineHttp } from "@btravstack/orpc-server";
 import { OutboxPublisher, outbox } from "@btravstack/outbox";
 import { oc } from "@orpc/contract";
+import { createSchema } from "graphql-yoga";
 import { OkAsync } from "unthrown";
 import { z } from "zod";
 
@@ -90,4 +93,11 @@ export const RelaySlice = Module("RelaySlice")({
   imports: [outbox({ tenants: ["acme"] })],
   provides: [Provider(OutboxPublisher)({ inject: {}, value: { publish: () => OkAsync() } })],
   exports: [OutboxPublisher],
+});
+
+export const ConsumerGraphqlApi = GraphqlModule("ConsumerGraphqlApi")({
+  answerer: graphql(defineAuth(), {
+    schema: createSchema({ typeDefs: "type Query { hello: String }" }),
+  }),
+  imports: [GreetingModule],
 });

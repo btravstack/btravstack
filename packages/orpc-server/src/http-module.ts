@@ -12,8 +12,17 @@ import {
 } from "@btravstack/di";
 import type { HtmxFragmentsPort } from "@btravstack/htmx-server/internal";
 import { htmx } from "@btravstack/htmx-server/internal";
-import { HttpHandler, HttpRuntime, httpServer, type HttpConfig } from "@btravstack/http-server";
-import type { CookieSchemes } from "@btravstack/http-server/internal";
+import {
+  httpServer,
+  type HttpHandler,
+  type HttpRuntime,
+  type HttpConfig,
+} from "@btravstack/http-server";
+import {
+  applicationExports,
+  type ApplicationExports,
+  type CookieSchemes,
+} from "@btravstack/http-server/internal";
 import {
   type AnyUnitModule,
   type HttpServerEnv,
@@ -433,39 +442,40 @@ export const HttpModule =
     // tuples are type parameters, and is computed at the application's own call
     // because `HttpModuleOptions` re-declares it. Spelled out rather than
     // `as never`, which collapses the return to `Module<never, never, never>`.
+    const rootImports = [...imports, starter] as Imports<I, Units>;
+    const rootProvides = [
+      ...(router === undefined ? [] : [router, orpc(options)]),
+      ...(router === undefined || openapi === undefined || openapi === false
+        ? []
+        : [
+            openApiRoutes({
+              ...(options.cors === undefined ? {} : { cors: options.cors }),
+              ...(options.compression === undefined ? {} : { compression: options.compression }),
+              ...(openapi === true ? {} : openapi),
+            }),
+          ]),
+      ...(fragments === undefined
+        ? []
+        : [fragments, htmx({ prefix: options.fragmentsPrefix, login: options.fragmentsLogin })]),
+      ...authenticators,
+      ...pieces,
+      ...provides,
+    ] as unknown as Provides<P, Router, Fragments, I>;
     return Module(name)({
-      imports: [...imports, starter] as Imports<I, Units>,
-      provides: [
-        ...(router === undefined ? [] : [router, orpc(options)]),
-        ...(router === undefined || openapi === undefined || openapi === false
-          ? []
-          : [
-              openApiRoutes({
-                ...(options.cors === undefined ? {} : { cors: options.cors }),
-                ...(options.compression === undefined ? {} : { compression: options.compression }),
-                ...(openapi === true ? {} : openapi),
-              }),
-            ]),
-        ...(fragments === undefined
-          ? []
-          : [fragments, htmx({ prefix: options.fragmentsPrefix, login: options.fragmentsLogin })]),
-        ...authenticators,
-        ...pieces,
-        ...provides,
-      ] as unknown as Provides<P, Router, Fragments, I>,
-      // `HttpHandler` too, and not as a courtesy: the runtime RESOLVES it, so
-      // `start`'s gate refuses a root that does not export it. A second
-      // protocol's answerer lands in the same set from its own provider.
-      exports: [HttpRuntime, HttpHandler, ...exports] as readonly [
-        typeof HttpRuntime,
-        typeof HttpHandler,
+      imports: rootImports,
+      provides: rootProvides,
+      exports: [...applicationExports(rootImports, rootProvides), ...exports] as readonly [
+        ...ApplicationExports<Imports<I, Units>, Provides<P, Router, Fragments, I>>,
         ...X,
       ],
       needs: [...(options.needs ?? []), Env] as EnvAnd<N>,
     } as {
       readonly imports: Imports<I, Units>;
       readonly provides: Provides<P, Router, Fragments, I>;
-      readonly exports: readonly [typeof HttpRuntime, typeof HttpHandler, ...X];
+      readonly exports: readonly [
+        ...ApplicationExports<Imports<I, Units>, Provides<P, Router, Fragments, I>>,
+        ...X,
+      ];
       readonly needs: EnvAnd<N>;
     } & NeedsGate<Imports<I, Units>, Provides<P, Router, Fragments, I>, EnvAnd<N>>);
   };

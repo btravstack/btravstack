@@ -129,7 +129,8 @@ slice already provides and exports is the same provider, which di keys by
 reference, so a root lists its controllers once — in the composing call — and
 the type counts a piece among the root's own providers only when no import
 exports its port, so the root never takes on a slice's needs. It prepends
-`HttpRuntime` and `HttpHandler` to `exports`, and hands the augmented tuples to
+`HttpRuntime` and `HttpHandler` to `exports`, adds `Logger` and `HealthChecks`
+when imports export them or root providers supply them, and hands the augmented tuples to
 di's own `Module(name)`, whose return type is the sugar's. The kernel and both
 gates see a plain module.
 
@@ -154,7 +155,7 @@ gates see a plain module.
 | `unit`             | no       | none                                | kind → module — the module each answerer forks around a request it handles, chosen by the kind that authenticated it; **gated** against the kinds this root can open. See [The unit](#the-unit)                                                 |
 | `imports`          | no       | `[]`                                | the application's modules                                                                                                                                                                                                                       |
 | `provides`         | no       | `[]`                                | the application's own providers                                                                                                                                                                                                                 |
-| `exports`          | no       | `[]`                                | the application's own exports; `HttpRuntime` and `HttpHandler` are added                                                                                                                                                                        |
+| `exports`          | no       | `[]`                                | the application's own exports; runtime ports and available `Logger` / `HealthChecks` are added                                                                                                                                                  |
 
 \* at least one of `router`/`fragments` is required.
 

@@ -38,3 +38,5 @@ export { forLocation, returnTo } from "./redirect.js";
 export { forkUnit, unitScope } from "./unit-scope.js";
 export type { KindOf, Kinds, UnitFor, UnitsOf } from "./unit.js";
 export type { HttpServerEnv } from "./http-runtime.js";
+
+export { applicationExports, type ApplicationExports } from "./application-exports.js";

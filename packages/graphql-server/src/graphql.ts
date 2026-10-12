@@ -379,5 +379,5 @@ export const graphql = <
     | SchemePortsOf<R>
     | Scope
   >;
-  return Object.assign(typed, { authenticators: api.providers });
+  return Object.assign(typed, { authenticators: api.providers, units: options.units });
 };

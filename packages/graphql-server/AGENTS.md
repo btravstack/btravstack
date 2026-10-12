@@ -86,3 +86,12 @@ return is the fourth exception root thesis #6 names.
 transport; `fieldResult` only moves each channel to where GraphQL reads it.
 Deriving a mutation's result union from `E` is declined — see
 `docs/explanation/deferred-decisions.md`.
+
+**`GraphqlModule` owns deployment wiring; `graphql()` remains the answerer.**
+The answerer carries its declared request modules beside its authenticators.
+The module uses that same record for `httpServer`, so the declaration cannot
+part from the runtime's binding. Authentication, plugin contexts and unit-port
+gates stay at `graphql()`'s call. The root adds `Env` to its declaration gate,
+provides the answerer's authenticators, and shares infrastructure export
+handling with `HttpModule`. Business exports and unmet provider dependencies
+stay explicit. Declaration emission is covered by the external consumer gate.
