@@ -1,4 +1,4 @@
-import type { contract } from "@btravstack/example-order-api-contract";
+import { contract } from "@btravstack/example-order-api-contract";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterContractClient } from "@orpc/contract";
@@ -27,4 +27,6 @@ export const createOrderApiClient = (
   prefix: `/${string}` = "/rpc",
   headers: Readonly<Record<string, string>> = {},
 ): OrderApiClient =>
-  createResultClient(createORPCClient<Wire>(new RPCLink({ origin, url: prefix, headers })));
+  createResultClient(createORPCClient<Wire>(new RPCLink({ origin, url: prefix, headers })), {
+    contract,
+  });

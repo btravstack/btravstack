@@ -509,7 +509,7 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   HTTP module, where `Config.integer` validates it before either answerer uses it.
 
   Precedence, spelled once in `corsOf`: a record naming `origin` wins,
-  `HTTP_CORS_ORIGIN` next, oRPC's own default (reflect the request's origin) last.
+  `HTTP_CORS_ORIGIN` next, the starter's default (reflect the request's origin) last.
   `cors: false` pins `""` and is off whatever the deployment says; `HTTP_CORS_ORIGIN`
   alone is enough to turn CORS on, which is what lets a deployment admit a
   browser client without a code change. A comma-separated list becomes the
@@ -1463,8 +1463,7 @@ the two agree by construction: if upstream changes how an id is derived, this
 changes with it.
 
 `StandardJsonSchemaConverter` is what converts the schemas, and it is why no
-`@orpc/zod` is needed: zod v4 is Standard Schema, and `@orpc/zod` publishes no
-`2.0.0-beta.28` to match the catalog's pin anyway.
+`@orpc/zod` is needed: zod v4 already implements Standard Schema.
 
 `openApiRoutes()` is the OpenAPI wire answerer, exported from the same subpath
 and composed by `HttpModule`'s `openapi` option (#470). The option is why
@@ -1486,9 +1485,9 @@ them. `bodyLimit` and `csrf` are configured on the HTTP module, never on this
 answerer. A document is generated separately through `openApiDocument()`; no
 spec or UI route is mounted by default. The installed oRPC reference plugin
 can serve one, but its raw generator would omit this package's authentication
-marker fold, so supply `openApiDocument()` as its `spec` callback. The current
-`2.0.0-beta.28` plugin has no `allow` option: a private document needs an
-ingress gate or another application-owned serving path.
+marker fold, so supply `openApiDocument()` as its `spec` callback. The catalog's
+`2.0.0-beta.34` plugin has an `allow` predicate for both spec and UI routes;
+a private document must use that predicate or an ingress gate.
 
 ## Several answerers, one runtime
 

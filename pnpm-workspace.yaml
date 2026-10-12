@@ -9,16 +9,17 @@ minimumReleaseAge: 4320
 # First-party releases taken inside the window on purpose, each pinned to the
 # exact version reviewed. Drop an entry once it is older than three days.
 minimumReleaseAgeExclude:
-  - unthrown@5.12.0
-  - "@unthrown/oxlint@5.12.0"
-  - "@unthrown/standard-schema@5.12.0"
-  - "@unthrown/vitest@5.12.0"
+  - unthrown@5.12.1
+  - "@unthrown/oxlint@5.12.1"
+  - "@unthrown/standard-schema@5.12.1"
+  - "@unthrown/vitest@5.12.1"
   - "@amqp-contract/client@3.0.0-beta.11"
   - "@amqp-contract/contract@3.0.0-beta.11"
   - "@amqp-contract/core@3.0.0-beta.11"
   - "@amqp-contract/testing@3.0.0-beta.11"
   - "@amqp-contract/worker@3.0.0-beta.11"
-  - "@unthrown/pothos@0.1.0"
+  - "@unthrown/pothos@0.1.2"
+  - "@unthrown/orpc@0.4.2"
 saveExact: true
 strictPeerDependencies: true
 
@@ -31,7 +32,7 @@ packages:
 catalog:
   # `@amqp-contract/{contract,testing,worker}` v3 are still in beta and their
   # `latest` dist-tag is the 2.4.0 line, which peers on `unthrown@^4` while
-  # this repo pins 5.12.0. The exact beta is the contract until v3 goes stable;
+  # this repo pins 5.12.1. The exact beta is the contract until v3 goes stable;
   # raise it deliberately, not on a bot bump.
   "@amqp-contract/client": 3.0.0-beta.11
   "@amqp-contract/contract": 3.0.0-beta.11
@@ -65,13 +66,13 @@ catalog:
   # oRPC v2 is still in beta and its `latest` dist-tag is the 1.x line, while
   # `@unthrown/orpc` peers on `^2.0.0-beta` — an unpinned range resolves 1.x
   # and fails `strictPeerDependencies`. The exact beta is the contract.
-  "@orpc/client": 2.0.0-beta.28
-  "@orpc/contract": 2.0.0-beta.28
-  "@orpc/json-schema": 2.0.0-beta.28
-  "@orpc/openapi": 2.0.0-beta.28
-  "@orpc/server": 2.0.0-beta.28
-  "@orpc/zod": 2.0.0-beta.28
-  "@orpc/tanstack-query": 2.0.0-beta.28
+  "@orpc/client": 2.0.0-beta.34
+  "@orpc/contract": 2.0.0-beta.34
+  "@orpc/json-schema": 2.0.0-beta.34
+  "@orpc/openapi": 2.0.0-beta.34
+  "@orpc/server": 2.0.0-beta.34
+  "@orpc/zod": 2.0.0-beta.34
+  "@orpc/tanstack-query": 2.0.0-beta.34
   # Prisma 8 is a different package family, not a version bump: the runtime is
   # `@prisma/orm-postgres` ("the one package a Postgres application installs")
   # and `@prisma/client` / `@prisma/adapter-pg` / `@prisma/instrumentation` have
@@ -89,7 +90,7 @@ catalog:
   "@prisma/orm-postgres": 8.0.0-rc.11
   "@tanstack/query-core": 5.104.1
   # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
-  # 7.x line, which peers on `unthrown@^4` while this repo pins 5.12.0. 8.x also
+  # 7.x line, which peers on `unthrown@^4` while this repo pins 5.12.1. 8.x also
   # ships the `test-rig` / `workflow-bundle` subpaths the Temporal example's
   # specs are built on. The exact beta is the contract until v8 goes stable.
   "@temporal-contract/client": 8.0.0-beta.11
@@ -110,11 +111,11 @@ catalog:
   "@stryker-mutator/vitest-runner": 10.0.0
   "@types/nodemailer": 8.0.2
   "@types/node": 26.6.4
-  "@unthrown/oxlint": 5.12.0
-  "@unthrown/orpc": 0.2.0
-  "@unthrown/pothos": 0.1.0
-  "@unthrown/standard-schema": 5.12.0
-  "@unthrown/vitest": 5.12.0
+  "@unthrown/oxlint": 5.12.1
+  "@unthrown/orpc": 0.4.2
+  "@unthrown/pothos": 0.1.2
+  "@unthrown/standard-schema": 5.12.1
+  "@unthrown/vitest": 5.12.1
   effect: 3.22.2
   dataloader: 2.2.3
   graphql: 17.0.2
@@ -153,7 +154,7 @@ catalog:
   # by anything: they are invoked as binaries, once per package, from a script.
   publint: 0.3.25
   "@arethetypeswrong/cli": 0.18.5
-  unthrown: 5.12.0
+  unthrown: 5.12.1
   "@vitest/coverage-v8": 5.0.3
   # vitest 5 takes vite as a PEER (4.x shipped its own), and so does the Prisma
   # 8 toolchain; with `autoInstallPeers: false` nothing else provides one, so

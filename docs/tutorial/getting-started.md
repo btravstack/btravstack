@@ -140,27 +140,27 @@ Then install, from the same directory:
 ```sh [pnpm]
 pnpm add @btravstack/core @btravstack/http-server @btravstack/orpc-server \
   @btravstack/htmx-server @btravstack/config @btravstack/di \
-  @btravstack/contract unthrown @unthrown/orpc@^0.2.0 zod \
-  @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @orpc/client@2.0.0-beta.28 \
-  @orpc/openapi@2.0.0-beta.28 @orpc/json-schema@2.0.0-beta.28
+  @btravstack/contract unthrown @unthrown/orpc@^0.4.2 zod \
+  @orpc/server@2.0.0-beta.34 @orpc/contract@2.0.0-beta.34 @orpc/client@2.0.0-beta.34 \
+  @orpc/openapi@2.0.0-beta.34 @orpc/json-schema@2.0.0-beta.34
 pnpm add -D typescript tsx @types/node --allow-build=esbuild
 ```
 
 ```sh [npm]
 npm install @btravstack/core @btravstack/http-server @btravstack/orpc-server \
   @btravstack/htmx-server @btravstack/config @btravstack/di \
-  @btravstack/contract unthrown @unthrown/orpc@^0.2.0 zod \
-  @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @orpc/client@2.0.0-beta.28 \
-  @orpc/openapi@2.0.0-beta.28 @orpc/json-schema@2.0.0-beta.28
+  @btravstack/contract unthrown @unthrown/orpc@^0.4.2 zod \
+  @orpc/server@2.0.0-beta.34 @orpc/contract@2.0.0-beta.34 @orpc/client@2.0.0-beta.34 \
+  @orpc/openapi@2.0.0-beta.34 @orpc/json-schema@2.0.0-beta.34
 npm install -D typescript tsx @types/node
 ```
 
 ```sh [yarn]
 yarn add @btravstack/core @btravstack/http-server @btravstack/orpc-server \
   @btravstack/htmx-server @btravstack/config @btravstack/di \
-  @btravstack/contract unthrown @unthrown/orpc@^0.2.0 zod \
-  @orpc/server@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28 @orpc/client@2.0.0-beta.28 \
-  @orpc/openapi@2.0.0-beta.28 @orpc/json-schema@2.0.0-beta.28
+  @btravstack/contract unthrown @unthrown/orpc@^0.4.2 zod \
+  @orpc/server@2.0.0-beta.34 @orpc/contract@2.0.0-beta.34 @orpc/client@2.0.0-beta.34 \
+  @orpc/openapi@2.0.0-beta.34 @orpc/json-schema@2.0.0-beta.34
 yarn add -D typescript tsx @types/node
 ```
 

@@ -71,14 +71,14 @@ describe("order-api", () => {
       );
 
     // THEN the `Err` channel, not the defect one: the client got a value back.
-    // `inferable` is what makes it one rather than a `Defect` collapsed to
+    // `defined` is what makes it one rather than a `Defect` collapsed to
     // INTERNAL_SERVER_ERROR.
     expect(conflict).toBeErrWith(
       expect.objectContaining({
         constructor: ORPCError,
         code: "CONFLICT",
         data: { id: "0199a1e0-0000-7000-8000-000000000001" },
-        inferable: true,
+        defined: true,
       }),
     );
   });
@@ -103,7 +103,7 @@ describe("order-api", () => {
         constructor: ORPCError,
         code: "INVALID_QUANTITY",
         data: { id: "0199a1e0-0000-7000-8000-000000000002" },
-        inferable: true,
+        defined: true,
       }),
     );
   });
@@ -155,7 +155,7 @@ describe("order-api", () => {
       expect.objectContaining({
         constructor: ORPCError,
         code: "INTERNAL_SERVER_ERROR",
-        inferable: false,
+        defined: false,
         message: expect.not.stringContaining("on fire"),
       }),
     );
@@ -334,7 +334,7 @@ describe("order-api", () => {
     // THEN it was refused before the use case was reached. The contract declares
     // no `UNAUTHORIZED`, so it is not inferable and lands on the defect channel.
     expect(refused).toBeDefectWith(
-      expect.objectContaining({ constructor: ORPCError, code: "UNAUTHORIZED", inferable: false }),
+      expect.objectContaining({ constructor: ORPCError, code: "UNAUTHORIZED", defined: false }),
     );
   });
 
@@ -437,7 +437,7 @@ describe("order-api", () => {
         constructor: ORPCError,
         code: "FORBIDDEN",
         data: { id: orderId, reason: "bulk export is a service operation" },
-        inferable: true,
+        defined: true,
       }),
     );
   });
@@ -464,7 +464,7 @@ describe("order-api", () => {
         constructor: ORPCError,
         code: "NOT_FOUND",
         data: { id: orderId },
-        inferable: true,
+        defined: true,
       }),
     );
   });
@@ -489,7 +489,7 @@ describe("order-api", () => {
         constructor: ORPCError,
         code: "FORBIDDEN",
         data: undefined,
-        inferable: false,
+        defined: false,
       }),
     );
   });
@@ -510,7 +510,7 @@ describe("order-api", () => {
     // THEN the signature verified and `principal` still answered nobody: the
     // brand is claimed after a parse, never on the issuer's word alone
     expect(refused).toBeDefectWith(
-      expect.objectContaining({ constructor: ORPCError, code: "UNAUTHORIZED", inferable: false }),
+      expect.objectContaining({ constructor: ORPCError, code: "UNAUTHORIZED", defined: false }),
     );
   });
 
@@ -525,7 +525,7 @@ describe("order-api", () => {
     // THEN nobody was named: a user id is a non-empty string, and `principal`
     // is where that is decided
     expect(refused).toBeDefectWith(
-      expect.objectContaining({ constructor: ORPCError, code: "UNAUTHORIZED", inferable: false }),
+      expect.objectContaining({ constructor: ORPCError, code: "UNAUTHORIZED", defined: false }),
     );
   });
 
@@ -667,7 +667,7 @@ describe("order-api", () => {
     // clothes. The handler never runs, so this is the non-inferable 400 oRPC
     // mints rather than the one the controller returns
     expect(refused).toBeDefectWith(
-      expect.objectContaining({ constructor: ORPCError, code: "BAD_REQUEST", inferable: false }),
+      expect.objectContaining({ constructor: ORPCError, code: "BAD_REQUEST", defined: false }),
     );
   });
 
@@ -688,7 +688,7 @@ describe("order-api", () => {
       expect.objectContaining({
         constructor: ORPCError,
         code: "BAD_REQUEST",
-        inferable: true,
+        defined: true,
         data: { cursor: "not-a-cursor", reason: "malformed" },
       }),
     );
@@ -711,7 +711,7 @@ describe("order-api", () => {
       expect.objectContaining({
         constructor: ORPCError,
         code: "BAD_REQUEST",
-        inferable: true,
+        defined: true,
         data: { cursor: "sort-mismatch", reason: "sort-mismatch" },
       }),
     );
@@ -786,7 +786,7 @@ describe("order-api", () => {
     // THEN oRPC refused it before dispatch — the property `type<T>()` did not
     // have, under which `"abc"` reached the use case typed `number`
     expect(refused).toBeDefectWith(
-      expect.objectContaining({ constructor: ORPCError, code: "BAD_REQUEST", inferable: false }),
+      expect.objectContaining({ constructor: ORPCError, code: "BAD_REQUEST", defined: false }),
     );
   });
 
@@ -802,7 +802,7 @@ describe("order-api", () => {
     // THEN oRPC refused it before dispatch, the same schema-level defense a
     // malformed quantity gets, now guarding the id's shape too
     expect(refused).toBeDefectWith(
-      expect.objectContaining({ constructor: ORPCError, code: "BAD_REQUEST", inferable: false }),
+      expect.objectContaining({ constructor: ORPCError, code: "BAD_REQUEST", defined: false }),
     );
   });
 
@@ -866,7 +866,7 @@ describe("order-api", () => {
         constructor: ORPCError,
         code: "NOT_FOUND",
         data: { id: "0199a1e0-0000-7000-8000-00000000000e" },
-        inferable: true,
+        defined: true,
       }),
     );
   });
@@ -899,7 +899,7 @@ describe("order-api", () => {
         constructor: ORPCError,
         code: "NOT_FOUND",
         data: { id: "0199a1e0-0000-7000-8000-000000000001" },
-        inferable: true,
+        defined: true,
       }),
     );
   });
@@ -971,7 +971,7 @@ describe("order-api", () => {
         constructor: ORPCError,
         code: "NOT_FOUND",
         data: { id: "0199a1e0-0000-7000-8000-00000000c404" },
-        inferable: true,
+        defined: true,
       }),
     );
   });

@@ -31,10 +31,10 @@ root only composes them — see
 
 ## The two channels survive the wire
 
-oRPC v2 splits failures the way unthrown does. An error a procedure **declares**
-(or returns as a value) is _inferable_ — typed end to end; everything else
-collapses to `INTERNAL_SERVER_ERROR`. That maps onto the variants with no
-adapter in between:
+oRPC v2 splits failures the way unthrown does. The Result client reconciles
+each rejection against its own contract: a declared error with validated data
+is typed end to end on the error channel, and undeclared failures remain
+defects. That maps onto the variants with no adapter in between:
 
 | unthrown     | oRPC                    |
 | ------------ | ----------------------- |

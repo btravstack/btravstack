@@ -4,7 +4,7 @@ import type { RouterContractClient } from "@orpc/contract";
 import { createResultClient, type ResultClient } from "@unthrown/orpc/client";
 import { test, type TestAPI } from "vitest";
 
-import type { contract, OrderView } from "../contract.js";
+import { contract, type OrderView } from "../contract.js";
 
 /**
  * The caller's view of the API, derived from the **contract** —
@@ -28,7 +28,7 @@ const rpc = (status: number, json: unknown): Response =>
   });
 
 /**
- * An error the way the wire carries a **declared** one. `inferable` is the flag
+ * An error the way the wire carries a **declared** one. `defined` is the flag
  * oRPC sets when an error matches the procedure's `.errors({...})` map, and it
  * is what decides whether the client hands it back as a value or collapses it
  * into a defect. Answering the protocol rather than poking the field is the
@@ -36,7 +36,7 @@ const rpc = (status: number, json: unknown): Response =>
  * server's response.
  */
 const declared = (status: number, code: string, id: string): Response =>
-  rpc(status, { defined: true, inferable: true, code, message: code, data: { id } });
+  rpc(status, { defined: true, code, message: code, data: { id } });
 
 /**
  * A server substitute that is not a server: a `fetch` over a `Map`, answering
@@ -89,6 +89,7 @@ export const it: TestAPI<ContractFixtures> = test.extend<ContractFixtures>({
         createORPCClient<RouterContractClient<typeof contract>>(
           new RPCLink({ origin: "http://stub", url: "/rpc", fetch: stubServer() }),
         ),
+        { contract },
       ),
     );
   },

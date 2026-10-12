@@ -34,7 +34,7 @@ describe("contract", () => {
         constructor: ORPCError,
         code: "NOT_FOUND",
         data: { id: "0199a1e0-0000-7000-8000-000000000404" },
-        inferable: true,
+        defined: true,
       }),
     );
   });

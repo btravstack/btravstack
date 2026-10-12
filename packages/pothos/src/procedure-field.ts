@@ -22,10 +22,10 @@ import {
   type ResultFieldOptions,
 } from "@unthrown/pothos";
 import type { ResultConnectionOptions } from "@unthrown/pothos/relay";
-import { GraphQLError } from "graphql";
 import { Err, P, type AsyncResult } from "unthrown";
 import type { z } from "zod";
 
+import { AccessRefusal } from "./access-refusal.js";
 import { contractCall, contractOutput, type InvalidInput } from "./contract.js";
 
 type ErrorClass = new (failure: never) => Error;
@@ -238,7 +238,7 @@ export const refusalsOf = <Failure>(
 
 const accessRefusalOf = (cause: unknown): Error | undefined =>
   cause instanceof ORPCError && (cause.code === "UNAUTHORIZED" || cause.code === "FORBIDDEN")
-    ? new GraphQLError("Service refused access", { extensions: { code: cause.code } })
+    ? new AccessRefusal(cause.code)
     : undefined;
 
 /**
@@ -285,11 +285,12 @@ export const loadProcedure = async <Schema extends z.ZodType, Output, Failure ex
   call: (input: z.input<Schema>) => AsyncResult<unknown, Failure>,
   input: unknown,
   output: z.ZodType<Output>,
-): Promise<Output | Error> =>
-  outcomeOf<Output, Caseable>(
-    callProcedure(procedure, input, call, output),
-    refusalsOf<Caseable>(registry, procedure),
-  );
+): Promise<Output | Error> => {
+  const called = await callProcedure(procedure, input, call, output);
+  return called.isDefect() && called.cause instanceof AccessRefusal
+    ? called.cause
+    : outcomeOf<Output, Caseable>(called, refusalsOf<Caseable>(registry, procedure));
+};
 
 /**
  * The `errors` option of a field that reads `procedure` through

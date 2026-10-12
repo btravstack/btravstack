@@ -121,8 +121,8 @@ export type OrpcOptions = {
 
 /**
  * The CORS options the plugin is built with, or `undefined` for no plugin at
- * all. A record's own `origin` wins over `HTTP_CORS_ORIGIN`, which wins over oRPC's
- * default of reflecting the request's — explicit beats environment beats
+ * all. A record's own `origin` wins over `HTTP_CORS_ORIGIN`, which wins over
+ * this starter's reflection of the request's — explicit beats environment beats
  * default, per field. `cors: false` is off whatever the environment says, and
  * `HTTP_CORS_ORIGIN` alone is enough to turn it on.
  */
@@ -133,8 +133,12 @@ const corsOf = (
   if (option === false) return undefined;
   if (option === undefined && corsOrigin === "") return undefined;
   const record = option === undefined || option === true ? {} : option;
-  if (record.origin !== undefined || corsOrigin === "") return record;
-  return { ...record, origin: corsOrigin.split(",").map((origin) => origin.trim()) };
+  if (record.origin !== undefined) return record;
+  return {
+    ...record,
+    origin:
+      corsOrigin === "" ? (origin) => origin : corsOrigin.split(",").map((origin) => origin.trim()),
+  };
 };
 
 /** The configured policies, ahead of whatever `plugins` the application added. */

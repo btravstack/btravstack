@@ -71,6 +71,7 @@ const inventoryClient = createResultClient(
       headers: ({ context }) => ({ authorization: `Bearer ${context.bearer}` }),
     }),
   ),
+  { contract: inventoryContract },
 );
 
 const INVENTORY = "https://inventory.internal";

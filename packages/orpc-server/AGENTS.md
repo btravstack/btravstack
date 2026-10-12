@@ -20,3 +20,8 @@ declares the error, because a declared custom code (`INVALID_QUANTITY`) falls
 back to `500` with no `errorStatusMap` and is still a refusal. The operation
 has the same shape as `graphql-server`'s masked defect. `Observers` comes from
 `httpServer()`'s `noObserverMember`, so no root gains wiring.
+
+**The Result bridge supports both `@unthrown/orpc` 0.2 and 0.4.2.** The peer
+range retains the older line for existing consumers, while the catalog checks
+the released 0.4.2 fixes with unthrown 5.12.1 and oRPC beta.34. The strict
+consumer gate still checks the older advertised floor.

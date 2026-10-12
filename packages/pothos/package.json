@@ -56,7 +56,9 @@
     "@unthrown/pothos": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "dataloader": "catalog:",
     "graphql": "catalog:",
+    "graphql-yoga": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "typescript-consumer": "catalog:",
@@ -70,9 +72,9 @@
     "@pothos/core": "^4.15.0",
     "@pothos/plugin-errors": "^4.9.0",
     "@pothos/plugin-relay": "^4.8.0",
-    "@unthrown/pothos": "^0.1.0",
+    "@unthrown/pothos": "^0.1.2",
     "graphql": "^16.10.0 || ^17.0.0",
-    "unthrown": "^5.12.0",
+    "unthrown": "^5.12.1",
     "zod": "^4.3.0"
   },
   "engines": {

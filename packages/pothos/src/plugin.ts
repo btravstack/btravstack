@@ -1,10 +1,33 @@
 import SchemaBuilder, { BasePlugin, type SchemaTypes } from "@pothos/core";
+import type { GraphQLFieldResolver } from "graphql";
+import { fromSafePromise } from "unthrown";
 
+import { accessRefusal } from "./access-refusal.js";
 import { defineProcedureFields } from "./procedure-field.js";
 
 const pluginName = "orpc";
 
-class PothosOrpcPlugin<Types extends SchemaTypes> extends BasePlugin<Types> {}
+class PothosOrpcPlugin<Types extends SchemaTypes> extends BasePlugin<Types> {
+  public override wrapArgMappers(
+    resolve: GraphQLFieldResolver<unknown, Types["Context"], object>,
+  ): GraphQLFieldResolver<unknown, Types["Context"], object> {
+    return (parent, args, context, info) =>
+      fromSafePromise(Promise.resolve(resolve(parent, args, context, info)))
+        .map((value) => {
+          const refusal = accessRefusal(value);
+          if (refusal !== undefined) {
+            // oxlint-disable-next-line unthrown/no-throw -- a DataLoader access marker claimed by an Error default still refuses the operation
+            throw refusal;
+          }
+          return value;
+        })
+        .recoverDefect<never, never>((cause) => {
+          // oxlint-disable-next-line unthrown/no-throw -- outside Result and error-union settlement, only our sanitized access marker is public
+          throw accessRefusal(cause) ?? cause;
+        })
+        .get();
+  }
+}
 
 declare global {
   export namespace PothosSchemaTypes {

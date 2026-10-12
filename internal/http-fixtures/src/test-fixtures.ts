@@ -1511,16 +1511,24 @@ const sharedAuthAppOf = () =>
   });
 
 /**
- * A one-procedure `greet` contract, named for the plugin test's own request
- * path: the CORS plugin only decorates a MATCHED response.
+ * Policy routes for CORS responses and the streaming GET path CSRF protects.
  */
 const corsContract = oc.router({
   greet: oc.input(ocType<{ readonly name: string }>()).output(ocType<string>()),
+  ticks: oc.output(eventIterator(z.object({ n: z.number() }))),
 });
 
 const corsRouter = publicApi.OrpcRouter(corsContract)({
   inject: {},
-  sync: () => ({ greet: ({ input }) => OkAsync(`hello ${input.name}`) }),
+  sync: () => ({
+    greet: ({ input }) => OkAsync(`hello ${input.name}`),
+    ticks: () =>
+      OkAsync(
+        (async function* () {
+          yield { n: 1 };
+        })(),
+      ),
+  }),
 });
 
 /** The two ways a `rpcPolicy` test calls `greet`: through fetch, and raw enough to see the encoding. */
@@ -1528,7 +1536,7 @@ type PolicyCalls = {
   readonly url: string;
   /** `POST /rpc/greet` with `name` as its input, plus whatever headers the test adds. */
   readonly greet: (name: string, headers?: Readonly<Record<string, string>>) => Promise<Response>;
-  /** `GET /rpc/greet` — the method oRPC's own CSRF plugin judges, which this package never sends. */
+  /** `GET /rpc/ticks` — the streaming method oRPC's own CSRF plugin judges. */
   readonly read: (headers: Readonly<Record<string, string>>) => Promise<Response>;
   /**
    * The same call over `node:http` with `accept-encoding` set, answering the
@@ -1545,7 +1553,7 @@ const callsOf = (url: string): PolicyCalls => ({
       headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify({ json: { name } }),
     }),
-  read: (headers) => fetch(`${url}/rpc/greet`, { method: "GET", headers }),
+  read: (headers) => fetch(`${url}/rpc/ticks`, { method: "GET", headers }),
   encodingOf: (name) =>
     new Promise((resolve) => {
       const request = httpRequest(

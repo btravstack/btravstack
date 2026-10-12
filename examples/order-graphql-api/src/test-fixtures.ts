@@ -46,7 +46,7 @@ const answer = (response: ServerResponse, status: number, json: unknown): void =
 };
 
 const declared = (response: ServerResponse, status: number, code: string, id: string): void =>
-  answer(response, status, { defined: true, inferable: true, code, message: code, data: { id } });
+  answer(response, status, { defined: true, code, message: code, data: { id } });
 
 /**
  * The order API as its client sees it: oRPC's RPC wire format over a `Map`,
@@ -64,7 +64,6 @@ const orderApiStub = async (): Promise<OrderApiStub & { readonly close: () => Pr
       if (request.headers.authorization !== "Bearer caller")
         return answer(response, 401, {
           defined: false,
-          inferable: false,
           code: "UNAUTHORIZED",
           message: "Unauthorized",
         });
@@ -72,7 +71,6 @@ const orderApiStub = async (): Promise<OrderApiStub & { readonly close: () => Pr
         if (input.id === BROKEN)
           return answer(response, 500, {
             defined: false,
-            inferable: false,
             code: "INTERNAL_SERVER_ERROR",
             message: "Internal server error",
           });
