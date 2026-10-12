@@ -75,7 +75,11 @@ stale the next time a case is added (#192):
   being registered.
 - `pino.spec.ts` — fields pino can index, the `err` serialiser, and every
   level mapping onto pino's own numeric severity (`10`…`60`), so no level of
-  ours silently collapses into another.
+  ours silently collapses into another. Tagged payloads and aggregate members
+  pass through the JSON sink's safe diagnostic renderer via a child logger's
+  serializer, so choosing Pino does not change the redaction boundary. The
+  child logger is pinned at `trace`, leaving the supplied logger's level
+  untouched so `LOG_LEVEL` remains the only filter.
 
 `test-fixtures.ts` carries a `Recorder` (the sink a spec asserts on), a
 `Written` stream, `loggerAt(level)`, a `unitLogging` module forked through

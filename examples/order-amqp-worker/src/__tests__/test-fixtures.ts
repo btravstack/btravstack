@@ -329,6 +329,7 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     // own rows and never another test's on the shared database.
     const env = {
       AMQP_URL: amqpConnectionUrl,
+      AMQP_CONNECT_TIMEOUT_MS: "15000",
       DATABASE_URL: inject("__ORDERS_DATABASE_URL__"),
       SMTP_URL: inject("__TESTCONTAINERS_SMTP_URL__"),
       // The shared RustFS; the tenant in every invoice key is what separates
@@ -345,7 +346,12 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
       const app = boot(module, { env, ...options });
       // `runtimeInfo()` resolves once the worker is consuming — await it here
       // so the caller's test body never races the worker's own startup.
-      await app.runtimeInfo();
+      if ((await app.runtimeInfo()).get() === undefined) {
+        (await app.exited).getOrElse((error) => {
+          // oxlint-disable-next-line unthrown/no-throw -- propagate a generic startup error to the test runner
+          throw error;
+        });
+      }
       return app;
     });
   },

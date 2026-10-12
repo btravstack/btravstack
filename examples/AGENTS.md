@@ -264,6 +264,11 @@ Each composition root is its deployment's module file —
 says why it is shaped the way it is; the slice modules, the unit modules and
 each deployment's `src/main.ts` carry their own.
 
+- The fulfillment workflow uses its run id for both placement and
+  compensation. Repository removal checks that operation id atomically, so a
+  retried cancellation cannot remove a replacement from another run. Activities
+  recover the originating run id from Temporal metadata for persisted inputs
+  without `operationId`; historical rows with no recorded owner are left alone.
 - Each metric an application mints sits at an adapter seam, never in the
   application layer — the billing stand-in's `authorized` counter; the outbox
   relay's publishes are reported to `Observers` by `@btravstack/outbox`

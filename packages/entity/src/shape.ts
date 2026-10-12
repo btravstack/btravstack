@@ -70,17 +70,40 @@ type FieldNameIsReservedByEntity = {
 };
 
 /**
- * Names an entity installs on every instance. A data field taking one of these
- * would shadow it silently — measured: a field called `update` leaves
- * `entity.update` holding a string, with the method simply gone and no error
- * anywhere. Rejecting the name is the only signal available, since the clash
- * is invisible at runtime.
+ * Instance protocol names: data under one would shadow projection, identity
+ * or command dispatch. `constructor` is how update and aggregate decisions
+ * find their class; `emit` is the aggregate's state transition method.
  *
  * Statics (`input`, `make`, …) are deliberately absent: shadowing one takes a
  * `static` declaration the author wrote themselves, so it is visible in a way
  * this is not.
  */
-type ReservedFieldName = "_tag" | "sameIdentityAs" | "toJSON" | "update";
+const reservedFieldNames = [
+  "_tag",
+  "sameIdentityAs",
+  "toJSON",
+  "update",
+  "constructor",
+  "emit",
+] as const;
+type ReservedFieldName = (typeof reservedFieldNames)[number];
+
+export type NoReservedFieldNames<T> = {
+  readonly [K in Extract<keyof T, ReservedFieldName>]: never;
+};
+
+export function checkFieldNames(tag: string, fields: object, computed: object = {}): void {
+  const reserved = new Set<string>(reservedFieldNames);
+  const clashes = [...new Set([...Object.keys(fields), ...Object.keys(computed)])].filter((key) =>
+    reserved.has(key),
+  );
+  if (clashes.length > 0) {
+    // oxlint-disable-next-line unthrown/no-throw — a malformed declaration is a programming defect
+    throw new Error(
+      `${tag}: field name(s) ${clashes.map((key) => JSON.stringify(key)).join(", ")} reserved by the entity instance protocol.`,
+    );
+  }
+}
 
 // Judges the *unwrapped* schema: an inline `Entity.field(...)` spec is nominal
 // exactly when the schema it carries is — unless the spec says

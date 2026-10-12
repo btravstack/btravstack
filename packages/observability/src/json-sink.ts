@@ -17,7 +17,7 @@ const DIAGNOSTIC_FIELDS = [
  * a failure would carry nothing. Walks `cause` chains so a wrapped failure keeps
  * its origin.
  */
-const renderCause = (cause: unknown, depth = 0, parents = new Set<Error>()): unknown => {
+export const renderCause = (cause: unknown, depth = 0, parents = new Set<Error>()): unknown => {
   if (!(cause instanceof Error)) {
     return depth > 0 &&
       cause !== null &&

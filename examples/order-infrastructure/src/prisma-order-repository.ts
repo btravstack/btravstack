@@ -282,13 +282,18 @@ export const prismaOrderRepository = (
      * the transaction back, so a re-run of `cancelPlacement` cannot append a
      * second tombstone.
      *
-     * `placedBefore` rides the SAME delete statement, so the row a sweep
-     * listed and the row it deletes cannot be two lives of one reused id: a
-     * row placed since is not matched, and nothing is written for it.
+     * `operation` and `placedBefore` ride the SAME delete statement,
+     * so a compensation matches only its own operation's placement, and
+     * a sweep cannot delete a newer placement under an id it listed earlier.
+     * A mismatch writes nothing.
      */
-    remove: (id, { placedBefore } = {}) =>
+    remove: (id, { placedBefore, operation } = {}) =>
       pinnedOrDefect(async (tx) => {
-        const named = tx.orm.orders.Order.where({ tenantId, orderId: id });
+        const named = tx.orm.orders.Order.where({
+          tenantId,
+          orderId: id,
+          ...(operation === undefined ? {} : { operationId: operation }),
+        });
         const deleted = await (
           placedBefore === undefined
             ? named

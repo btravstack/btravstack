@@ -35,9 +35,11 @@ export type Mail = {
 };
 
 /**
- * The send did not happen. It carries `to` and `subject` and **never the body**:
+ * The message was not accepted for every recipient. It carries `to` and `subject` and **never the body**:
  * a failure is logged, and a body is the one part of a message that is reliably
  * somebody's personal data.
+ * On partial SMTP acceptance, `to` names only rejected recipients; the others
+ * may already have been accepted, so retry only these recipients.
  */
 export class MailNotSent extends TaggedError("MailNotSent")<{
   readonly to: readonly string[];
@@ -51,7 +53,7 @@ export type MailerService = {
 
 /**
  * The port an application depends on. `send` answers when the transport has
- * ACCEPTED the message, which is not the same as delivered — a caller needing
+ * ACCEPTED the message for every recipient, which is not the same as delivered — a caller needing
  * delivery semantics asks its provider's webhooks.
  *
  * **Retries are not here.** A failed send is a modeled `MailNotSent`, and what

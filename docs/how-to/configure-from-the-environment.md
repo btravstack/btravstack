@@ -115,17 +115,17 @@ Every field goes through the same three-way read, pinned by the package's own
 spec. **An empty or blank value is an error, never the default** — `Number("")`
 is `0`, and `PORT=` would otherwise bind the ephemeral port.
 
-| Variable is…                    | Result                                                                |
-| ------------------------------- | --------------------------------------------------------------------- |
-| unset                           | the `default`, or `is required` without one                           |
-| set to `""` or whitespace       | `is set but empty`                                                    |
-| `abc` for an integer or port    | `is not a whole number: "abc"`                                        |
-| `3.5` for an integer or port    | `is not a whole number: "3.5"`                                        |
-| `0x1F90` for an integer or port | `is not a whole number: "0x1F90"` — decimal only, never `8080`        |
-| outside `min`/`max` (inclusive) | `must be between 1 and 64, got 100`                                   |
-| a port                          | `0..65535` — `0` is legal, an ephemeral bind                          |
-| a URL with no scheme            | `is not a URL: "issuer.test/jwks"`                                    |
-| a URL carrying a password       | the userinfo is redacted — `is not a URL: "postgres://***@db:bad/db"` |
+| Variable is…                        | Result                                                           |
+| ----------------------------------- | ---------------------------------------------------------------- |
+| unset                               | the `default`, or `is required` without one                      |
+| set to `""` or whitespace           | `is set but empty`                                               |
+| `abc` for an integer or port        | `is not a whole number: "abc"`                                   |
+| `3.5` for an integer or port        | `is not a whole number: "3.5"`                                   |
+| `0x1F90` for an integer or port     | `is not a whole number: "0x1F90"` — decimal only, never `8080`   |
+| outside `min`/`max` (inclusive)     | `must be between 1 and 64, got 100`                              |
+| a port                              | `0..65535` — `0` is legal, an ephemeral bind                     |
+| a URL with no scheme                | `is not a URL`                                                   |
+| a malformed URL carrying a password | `is not a URL` — the raw value is omitted to protect credentials |
 
 `Config.port` has a floor of `0` deliberately: `PORT=0` is how a test asks the
 OS for a free port and reads it back from `runtimeInfo()`. `Config.url` keeps

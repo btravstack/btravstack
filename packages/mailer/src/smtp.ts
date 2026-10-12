@@ -3,7 +3,7 @@ import { HealthCheckFailed, HealthChecks } from "@btravstack/core";
 import type { Scope } from "@btravstack/di";
 import { Module, Port, Provider } from "@btravstack/di";
 import { createTransport, type Transporter } from "nodemailer";
-import { Ok, fromPromise } from "unthrown";
+import { Err, Ok, fromPromise } from "unthrown";
 
 /**
  * How long the relay gets to answer before the check is called unhealthy.
@@ -80,7 +80,18 @@ export const smtpMailerBackend = (transport: Transporter): MailerService => ({
           subject: mail.subject,
           reason: cause instanceof Error ? cause.message : String(cause),
         }),
-    ).map(() => undefined),
+    ).flatMap(({ rejected }) =>
+      rejected !== undefined && rejected.length > 0
+        ? Err(
+            new MailNotSent({
+              to: rejected,
+              subject: mail.subject,
+              reason:
+                "SMTP rejected some recipients; other recipients may already have been accepted",
+            }),
+          )
+        : Ok(),
+    ),
 });
 
 /**

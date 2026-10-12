@@ -386,6 +386,31 @@ describe("the transactional outbox", () => {
     ]);
   });
 
+  it("announces no withdrawal of a replacement when an old compensation repeats", async ({
+    decoded,
+    tenant,
+    repository,
+    outbox,
+    anOrder,
+  }) => {
+    // GIVEN an id placed, withdrawn, then reused by a new operation
+    const id = "0199a1e0-0000-7000-8000-000000000611";
+    // WHEN the original operation compensates again
+    const events = await repository
+      .save(anOrder(id, 1), "old-run")
+      .flatMap(() => repository.remove(id))
+      .flatMap(() => repository.save(anOrder(id, 9), "new-run"))
+      .flatMap(() =>
+        repository
+          .remove(id, { operation: "old-run" })
+          .recoverErrCases((matcher) => matcher.with(P.tag("OrderNotFound"), () => undefined)),
+      )
+      .flatMap(() => outbox.pending(tenant, 10))
+      .map((pending) => pending.map(({ payload }) => decoded(payload).order));
+    // THEN subscribers retain the replacement too
+    expect(events).toBeOkWith([{ quantity: 1 }, null, { quantity: 9 }]);
+  });
+
   it("appends no tombstone when there was nothing to remove", async ({
     tenant,
     repository,

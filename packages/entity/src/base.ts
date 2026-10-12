@@ -1,6 +1,6 @@
 import type { ComputedField } from "./computed.js";
 import type { Invariant } from "./invariant.js";
-import type { OnlyNominal } from "./shape.js";
+import { checkFieldNames, type NoReservedFieldNames, type OnlyNominal } from "./shape.js";
 import type { AbstractEntity, Fields, InputOf, Schemas } from "./types.js";
 
 /** The entity builder, loosened. Passed in so this module never imports it. */
@@ -96,8 +96,7 @@ const rebuild = (
 ): { prototype: object } => {
   const parent = declarationOf(receiver);
 
-  // `Object.hasOwn`, not `in`: `in` walks the prototype chain, so a field named
-  // `constructor` (legal — `NoRedeclaredKeys` allows it) tripped a false clash.
+  // `Object.hasOwn` excludes inherited object members from the field map.
   const clashes = Object.keys(nextFields).filter(
     (k) => parent !== undefined && Object.hasOwn(parent.fields, k),
   );
@@ -178,10 +177,13 @@ export const createBase =
   <S extends Fields, A extends Schemas = Record<never, never>>(
     fields: S & OnlyNominal<S>,
     options?: {
-      readonly computed?: { [K in keyof A]: ComputedField<A[K], InputOf<S>> };
+      readonly computed?: {
+        [K in keyof A]: ComputedField<A[K], InputOf<S>>;
+      } & NoReservedFieldNames<NoInfer<A>>;
       readonly invariants?: readonly Invariant<InputOf<S>>[];
     },
   ): AbstractEntity<Name, S, A> => {
+    checkFieldNames(name, fields, options?.computed);
     class Root {
       static readonly entityName = name;
       constructor() {

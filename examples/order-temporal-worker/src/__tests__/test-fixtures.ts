@@ -94,6 +94,7 @@ type Serve = <E>(
     Scope | Env
   >,
   activity?: readonly Provider<never, never, unknown>[],
+  workflowPath?: string,
 ) => Promise<Deployment<E>>;
 
 /**
@@ -201,6 +202,37 @@ const noShippingTemporal = () => {
   );
 
   return { ...base, released: (): readonly string[] => released };
+};
+
+/** The stock refusal lands after another operation has reused the placement's id. */
+const replacedPlacementTemporal = (tenant: TenantId) => {
+  const base = deployment(
+    Module("Fulfillment")({
+      provides: [
+        Provider(StockService)({
+          inject: {},
+          value: {
+            reserve: (orderId, quantity) => {
+              const repository = base.reader(tenant);
+              return repository
+                .remove(orderId)
+                .flatMap(() => repository.save(placeOrder(orderId, 9).getOrThrow(), "new-run"))
+                .mapErrCases((matcher, defect) =>
+                  matcher.with({ _tag: "OrderNotFound" }, { _tag: "DuplicateOrder" }, (error) =>
+                    defect(error),
+                  ),
+                )
+                .flatMap(() => ErrAsync(new OutOfStock({ id: orderId as OrderId, quantity })));
+            },
+            release: () => OkAsync(),
+          },
+        }),
+        Provider(ShippingService)({ inject: {}, value: { arrange: () => OkAsync() } }),
+      ],
+      exports: [StockService, ShippingService],
+    }),
+  );
+  return base;
 };
 
 /**
@@ -312,6 +344,7 @@ export type TemporalFixtures = {
    * through `boot` — so its shutdown is the fixture's, on every exit path.
    */
   readonly serve: Serve;
+  readonly serveLegacy: Serve;
   /**
    * The schedule ids this file's namespace holds for a tenant. Read through
    * Temporal's visibility store, which is eventually consistent — so a spec
@@ -322,6 +355,7 @@ export type TemporalFixtures = {
   readonly outOfStock: ReturnType<typeof outOfStockTemporal>;
   readonly noShipping: ReturnType<typeof noShippingTemporal>;
   readonly lostCompletion: ReturnType<typeof lostCompletionTemporal>;
+  readonly replacedPlacement: ReturnType<typeof replacedPlacementTemporal>;
 };
 
 export const it = test.extend<TemporalFixtures>({
@@ -357,7 +391,8 @@ export const it = test.extend<TemporalFixtures>({
     // still leaves no connection behind on the shared server.
     const connections: Connection[] = [];
 
-    const serve: Serve = async (module, activity = []) => {
+    const serve: Serve = async (module, activity = [], workflowPath) => {
+      const bundle = workflowPath === undefined ? workflowBundle : await bundleFor(workflowPath);
       // A queue of this test's own: the namespace is shared by every test in
       // this file, and two workers polling one queue would race for each
       // other's tasks.
@@ -376,7 +411,7 @@ export const it = test.extend<TemporalFixtures>({
         contract,
         activities: orderActivities,
         unit: { activity: ActivityUnitModule },
-        workflows: { workflowBundle },
+        workflows: { workflowBundle: bundle },
         imports: [
           module,
           BillingModule,
@@ -418,6 +453,12 @@ export const it = test.extend<TemporalFixtures>({
     for (const connection of connections) await connection.close();
   },
 
+  serveLegacy: async ({ serve }, use) => {
+    await use((module, activity) =>
+      serve(module, activity, fixturePath(import.meta.url, "legacy-workflows")),
+    );
+  },
+
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   staleStore: async ({}, use) => {
     await use(staleStoreOf());
@@ -453,6 +494,10 @@ export const it = test.extend<TemporalFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   noShipping: async ({}, use) => {
     await use(noShippingTemporal());
+  },
+
+  replacedPlacement: async ({ tenant }, use) => {
+    await use(replacedPlacementTemporal(tenant));
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

@@ -1,10 +1,63 @@
 import pino from "pino";
+import { TaggedError } from "unthrown";
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
 import { pinoSink } from "./pino.js";
 
 describe("the pino sink", () => {
+  it("keeps diagnostics without copying a tagged error's private payload", ({ written }) => {
+    // GIVEN a tagged failure carrying private request context
+    class Refused extends TaggedError("Refused")<{ token: string; actor: string }> {}
+    const cause = new Refused({ token: "private-token", actor: "private@example.test" });
+
+    // WHEN the failure reaches the Pino sink
+    pinoSink(pino({ level: "trace" }, written))({
+      level: "error",
+      message: "failed",
+      attributes: {},
+      cause,
+      time: 0,
+      unit: undefined,
+    });
+
+    // THEN only the tag and safe error diagnostics survive
+    expect((JSON.parse(written.chunks().join("")) as { err: unknown }).err).toEqual({
+      type: "Refused",
+      name: "Refused",
+      message: cause.message,
+      stack: expect.any(String),
+      _tag: "Refused",
+    });
+  });
+
+  it("redacts private objects inside an aggregate cause", ({ written }) => {
+    // GIVEN an aggregate whose non-error member holds private data
+    const cause = new AggregateError(
+      [{ token: "private-token" }, new Error("diagnostic")],
+      "failed",
+    );
+
+    // WHEN the aggregate reaches the Pino sink
+    pinoSink(pino({ level: "trace" }, written))({
+      level: "error",
+      message: "failed",
+      attributes: {},
+      cause,
+      time: 0,
+      unit: undefined,
+    });
+
+    // THEN nested members use the same bounded redaction as the JSON sink
+    expect((JSON.parse(written.chunks().join("")) as { err: unknown }).err).toEqual({
+      type: "AggregateError",
+      name: "AggregateError",
+      message: "failed",
+      stack: expect.any(String),
+      errors: ["[non-error]", { name: "Error", message: "diagnostic", stack: expect.any(String) }],
+    });
+  });
+
   it("writes the message and the correlation as fields pino can index", ({ written }) => {
     // GIVEN a pino logger over a stream this spec keeps, at pino's own floor —
     // the level filter is `createLogger`'s, so pino must not add a second one
@@ -59,8 +112,9 @@ describe("the pino sink", () => {
   });
 
   it("maps every level onto pino's own, including trace and fatal", ({ written }) => {
-    // GIVEN a pino logger keeping everything
-    const sink = pinoSink(pino({ level: "trace" }, written));
+    // GIVEN the documented Pino setup with its default info floor
+    const parent = pino({}, written);
+    const sink = pinoSink(parent);
 
     // WHEN one line per level is written
     for (const level of ["trace", "debug", "info", "warn", "error", "fatal"] as const) {
@@ -69,13 +123,14 @@ describe("the pino sink", () => {
 
     // THEN pino recorded each at its own numeric severity — no level of ours
     // silently collapses into another
-    expect(
-      written
+    expect({
+      parentLevel: parent.level,
+      levels: written
         .chunks()
         .join("")
         .trim()
         .split("\n")
         .map((line) => (JSON.parse(line) as { readonly level: number }).level),
-    ).toEqual([10, 20, 30, 40, 50, 60]);
+    }).toEqual({ parentLevel: "info", levels: [10, 20, 30, 40, 50, 60] });
   });
 });

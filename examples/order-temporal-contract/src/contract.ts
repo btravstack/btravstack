@@ -94,7 +94,8 @@ const releaseStock = defineActivity({
 });
 
 const cancelPlacement = defineActivity({
-  input: orderTarget,
+  // Optional: an in-flight compensation from the previous workflow carries none.
+  input: orderTarget.extend({ operationId: z.string().optional() }),
   output: z.void(),
   activityOptions: {
     startToCloseTimeout: "1 minute",

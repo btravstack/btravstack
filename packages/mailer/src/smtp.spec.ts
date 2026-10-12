@@ -10,15 +10,36 @@ import { aMail, it } from "./__tests__/test-fixtures.js";
 import { smtpMailer } from "./smtp.js";
 
 describe("smtpMailer", () => {
+  it("reports the recipient refused after the shared relay's limit", async ({
+    smtp,
+    recipient,
+  }) => {
+    // GIVEN one more recipient than Mailpit's SMTP maximum of 100
+    const to = Array.from({ length: 101 }, (_, index) => `${index}-${recipient}`);
+
+    // WHEN the real relay accepts the first 100 and refuses the final recipient
+    const sent = await smtp.send({ ...aMail(recipient), to });
+
+    // THEN the refusal names only the recipient safe to retry
+    expect(sent).toBeErrWith(
+      expect.objectContaining({
+        _tag: "MailNotSent",
+        to: [to[100]],
+        subject: "your order",
+        reason: "SMTP rejected some recipients; other recipients may already have been accepted",
+      }),
+    );
+  });
+
   it("delivers the message to the server", async ({ smtp, recipient, delivered }) => {
     // GIVEN a mailer over the shared SMTP server
     // WHEN a message is sent to this test's own recipient
-    await smtp.send(aMail(recipient));
+    (await smtp.send(aMail(recipient))).getOrThrow();
 
     // THEN the server received it, addressed and titled as sent — waiting on
     // the mailbox rather than asserting through it, so the one expect is the
     // assertion and not the barrier
-    await vi.waitUntil(async () => (await delivered(recipient)).length === 1);
+    await vi.waitUntil(async () => (await delivered(recipient)).length === 1, { timeout: 10_000 });
     expect((await delivered(recipient))[0]).toEqual(
       expect.objectContaining({
         To: [expect.objectContaining({ Address: recipient })],
@@ -30,11 +51,11 @@ describe("smtpMailer", () => {
   it("delivers an html body beside the text one", async ({ smtp, recipient, delivered }) => {
     // GIVEN a message carrying both bodies — the optional half of `Mail`
     // WHEN it is sent
-    await smtp.send({ ...aMail(recipient), html: "<p>thank you</p>" });
+    (await smtp.send({ ...aMail(recipient), html: "<p>thank you</p>" })).getOrThrow();
 
     // THEN the server received one message for this recipient: the html arm
     // rides the same envelope rather than a second send
-    await vi.waitUntil(async () => (await delivered(recipient)).length === 1);
+    await vi.waitUntil(async () => (await delivered(recipient)).length === 1, { timeout: 10_000 });
     expect((await delivered(recipient))[0]).toEqual(
       expect.objectContaining({ Subject: "your order" }),
     );
@@ -45,15 +66,17 @@ describe("smtpMailer", () => {
     const copied = `cc-${recipient}`;
 
     // WHEN it is sent
-    await smtp.send({
-      ...aMail(recipient),
-      cc: [copied],
-      attachments: [{ filename: "invoice.txt", content: "total: 42" }],
-    });
+    (
+      await smtp.send({
+        ...aMail(recipient),
+        cc: [copied],
+        attachments: [{ filename: "invoice.txt", content: "total: 42" }],
+      })
+    ).getOrThrow();
 
     // THEN the server received both, rather than an envelope the adapter
     // quietly dropped on its way to `sendMail`
-    await vi.waitUntil(async () => (await delivered(recipient)).length === 1);
+    await vi.waitUntil(async () => (await delivered(recipient)).length === 1, { timeout: 10_000 });
     expect((await delivered(recipient))[0]).toEqual(
       expect.objectContaining({
         Cc: [expect.objectContaining({ Address: copied })],
@@ -73,23 +96,25 @@ describe("smtpMailer", () => {
     const blind = `bcc-${recipient}`;
 
     // WHEN it is sent
-    await smtp.send({
-      ...aMail(recipient),
-      bcc: [blind],
-      attachments: [
-        {
-          filename: "invoice.pdf",
-          content: new Uint8Array([37, 80, 68, 70]),
-          contentType: "application/pdf",
-        },
-      ],
-    });
+    (
+      await smtp.send({
+        ...aMail(recipient),
+        bcc: [blind],
+        attachments: [
+          {
+            filename: "invoice.pdf",
+            content: new Uint8Array([37, 80, 68, 70]),
+            contentType: "application/pdf",
+          },
+        ],
+      })
+    ).getOrThrow();
 
     // THEN the bytes rode the same envelope. The adapter builds a Buffer VIEW
     // over the caller's memory rather than copying it, which is the line this
     // covers — and `bcc` is by definition invisible on the delivered message,
     // so the assertion is that the message arrived at all with its attachment.
-    await vi.waitUntil(async () => (await delivered(recipient)).length === 1);
+    await vi.waitUntil(async () => (await delivered(recipient)).length === 1, { timeout: 10_000 });
     expect((await delivered(recipient))[0]).toEqual(
       expect.objectContaining({ Subject: "your order", Attachments: 1 }),
     );
@@ -98,11 +123,11 @@ describe("smtpMailer", () => {
   it("delivers an extra header", async ({ smtp, recipient, delivered, headersOf }) => {
     // GIVEN a message carrying a header the port does not name
     // WHEN it is sent
-    await smtp.send({ ...aMail(recipient), headers: { "X-Order-Id": "o-1" } });
+    (await smtp.send({ ...aMail(recipient), headers: { "X-Order-Id": "o-1" } })).getOrThrow();
 
     // THEN the header is on the delivered message — the one place a
     // passthrough is visible, since the summary does not carry it
-    await vi.waitUntil(async () => (await delivered(recipient)).length === 1);
+    await vi.waitUntil(async () => (await delivered(recipient)).length === 1, { timeout: 10_000 });
     const [message] = await delivered(recipient);
     expect(await headersOf(message?.ID ?? "")).toEqual(
       expect.objectContaining({ "X-Order-Id": ["o-1"] }),

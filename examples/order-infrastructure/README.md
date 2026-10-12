@@ -157,6 +157,12 @@ retried after its first attempt committed and then lost its completion: the
 failed insert rolled its outbox row back with it, so the recovery writes
 nothing. Any other operation, or none, is still `DuplicateOrder`.
 
+`remove(id, { operation })` matches `Order.operationId` in the DELETE itself,
+alongside the tenant, order id, and optional `placedBefore` cutoff. A later
+placement under the same id therefore survives a delayed compensation from
+the earlier run. A mismatch is `OrderNotFound` and appends no outbox row;
+a successful removal appends its tombstone in the same transaction.
+
 ## The read path carries no infrastructure error at all
 
 A read answers `null` for a miss rather than failing, and a database that will

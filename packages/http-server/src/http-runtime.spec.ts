@@ -480,6 +480,29 @@ describe("httpRuntime", () => {
     await expect(held.head()).resolves.toContain("Connection: close");
   });
 
+  it("resets an SSE response whose headers are queued when drain starts", async ({
+    serve,
+    queuedSseGate,
+    keepAlive,
+  }) => {
+    // GIVEN an SSE response waiting before its first flush
+    const { app, origin } = await serve(queuedSseGate.handler);
+    const response = await keepAlive.call(origin);
+    await queuedSseGate.arrived;
+    let closed = false;
+    void response.closed().then(() => {
+      closed = true;
+    });
+
+    // WHEN beat three stops accepting while the handler remains held
+    app.requestDrain();
+    await keepAlive.stoppedAccepting(origin);
+    await vi.waitUntil(() => closed);
+
+    // THEN the client connection reset before the handler was released
+    expect(closed).toBe(true);
+  });
+
   it("sets the security headers on a served response", async ({ serve }) => {
     // GIVEN an app with the default security headers
     const { origin } = await serve();

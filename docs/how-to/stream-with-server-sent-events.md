@@ -122,11 +122,11 @@ A stream is a unit: it opened with the request and closes with the
 response. When a drain begins, the runtime **resets** every open
 `text/event-stream` response at beat 3's start — after readiness went false
 and the pre-drain delay gave the ingress time to stop routing here — and
-the client's reconnect lands on a replica that is staying. Once its headers
-have flushed, the unit is counted `completed` rather than `abandoned`, and
-the generator's `finally` runs; a stream still waiting on its first event
-when the drain begins is only marked to close, and is abandoned like any
-other unit still open past `drainTimeoutMs`.
+the client's reconnect lands on a replica that is staying. A response with a
+queued SSE content type is reset even before its headers flush, and its unit
+is counted `completed` rather than `abandoned`. A handler that has not yet
+declared its content type is still an ordinary response to the runtime and
+remains subject to `drainTimeoutMs`.
 
 It is a reset rather than a clean end on purpose: an oRPC client reads a
 clean end as the iterator finishing and does not reconnect. So a client

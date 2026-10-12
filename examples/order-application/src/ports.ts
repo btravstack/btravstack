@@ -41,6 +41,10 @@ export class Tenant extends Port("Tenant")<TenantId> {}
  * its own write, not placing a duplicate. Under any other operation, or none,
  * it is still `DuplicateOrder`.
  *
+ * `remove`'s optional `operation` restricts compensation to the operation
+ * that placed the row. A different operation's row is left alone and answers
+ * `OrderNotFound`, so a repeated compensation cannot delete a replacement.
+ *
  * `remove`'s `placedBefore` is a condition the STORE checks in the same
  * statement that deletes: a row placed at or after it is left alone, no
  * tombstone is written, and the answer is `OrderNotFound`. That is what lets
@@ -55,7 +59,10 @@ export class OrderRepository extends Port("OrderRepository")<{
   ) => AsyncResult<Page<Order>, MalformedCursor | CursorSortMismatch>;
   readonly remove: (
     id: string,
-    condition?: { readonly placedBefore?: Date | undefined },
+    condition?: {
+      readonly placedBefore?: Date | undefined;
+      readonly operation?: string | undefined;
+    },
   ) => AsyncResult<void, OrderNotFound>;
 }> {}
 

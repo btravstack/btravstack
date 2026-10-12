@@ -193,6 +193,8 @@ const durationMs = (duration: Duration | undefined): number | undefined =>
 
 type Provided = TemporalRuntime | TemporalConfig | TemporalConnection;
 
+const workerRuns = new WeakMap<NativeConnection, AsyncResult<void, never>>();
+
 /**
  * The Temporal starter: a module providing the runtime, its configuration
  * (bound from the `TEMPORAL_*` variables unless pinned) and the connection (a
@@ -256,14 +258,13 @@ export const temporal = <
             NativeConnection.connect({ address: bound.address }),
             (cause) => new TemporalUnreachable({ address: bound.address, cause }),
           ),
-        // `close()` refuses with `IllegalStateError` while a Worker still
-        // holds the connection, which is the ordinary state on the
-        // drain-deadline path and not a teardown failure to report. Only that
-        // refusal is absorbed; any other close failure still surfaces.
         release: (connection) =>
-          connection
-            .close()
-            .catch((cause: unknown) => (heldByWorker(cause) ? undefined : Promise.reject(cause))),
+          connection.close().catch((cause: unknown) => {
+            const running = workerRuns.get(connection);
+            if (!heldByWorker(cause) || running === undefined) return Promise.reject(cause);
+            // Await the Result itself: a failed run must still release its connection.
+            return Promise.resolve(running).then(() => connection.close());
+          }),
       }),
       noObserverMember,
       Provider(TemporalRuntime)({
@@ -352,7 +353,7 @@ const createWorker = <C extends ContractDefinition, Unit extends AnyUnitModule |
         startFailed,
       ),
     )
-    .map((worker) => poll(worker, taskQueue, namespace));
+    .map((worker) => poll(worker, taskQueue, namespace, connection));
 };
 
 /**
@@ -367,12 +368,14 @@ export const poll = (
   worker: Worker,
   taskQueue: string,
   namespace: string,
+  connection?: NativeConnection,
 ): Serving<TemporalInfo> => {
   // `run()` moves the worker to RUNNING synchronously, before its first await,
   // which is what lets `stopPolling` trust `getState()`. The result is HELD,
   // not dropped: `run()` can defect, and an empty error channel is not an empty
   // defect channel.
   const running = fromSafePromise(worker.run());
+  if (connection !== undefined) workerRuns.set(connection, running);
 
   // `shutdown()` on a worker that is not RUNNING throws Temporal's
   // `IllegalStateError`, and both methods below can reach it — on the signal

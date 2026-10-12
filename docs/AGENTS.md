@@ -64,6 +64,11 @@ the old repository.
   `scripts/extract-doc-samples.ts`'s header.
   The standalone DI tutorial under `docs/di/` compiles with the core group.
 
+  The API-key authenticator's public TSDoc example is also an extractor source.
+  Comment prefixes are stripped, and its hidden prelude supplies the application
+  types, so TypeDoc's actual example compiles in the HTTP group rather than a
+  hand-copied mirror that could drift from it.
+
   **The entity guide is its own group, `entity`, placed by directory and
   compiled in `examples/entity-billing-domain`** (issue #394). Its pages import
   `zod`, which would otherwise send them to `order-api`, and they document a

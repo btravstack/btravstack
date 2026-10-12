@@ -32,6 +32,7 @@
     "@opentelemetry/sdk-node": "catalog:",
     "@temporal-contract/client": "catalog:",
     "@temporal-contract/worker": "catalog:",
+    "@temporalio/activity": "catalog:",
     "@temporalio/client": "catalog:",
     "@temporalio/worker": "catalog:",
     "@temporalio/workflow": "catalog:",

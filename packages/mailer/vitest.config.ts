@@ -10,6 +10,7 @@ export default mergeConfig(
       // by server: every send names a UUID localpart and asserts through the
       // API by that address.
       globalSetup: ["@btravstack/internal-test-infra/mailpit"],
+      testTimeout: 30_000,
       // The image pull dominates a cold run.
       hookTimeout: 120_000,
       coverage: covered(),

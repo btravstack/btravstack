@@ -48,6 +48,7 @@
       "ignore": ["prisma/migrations/**"]
     },
     "examples/order-temporal-worker": {
+      "entry": ["src/__tests__/legacy-workflows.ts"],
       "ignoreDependencies": ["zod"]
     },
     "internal/consumer-check": {

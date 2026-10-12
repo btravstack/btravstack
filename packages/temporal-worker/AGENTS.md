@@ -14,6 +14,17 @@ page, never this file.
   exposes activity subpaths under `import` alone; a CommonJS build cannot load
   them on any Node. Its Node floor is `>=22.22`, matching that peer.
 
+- **Connection release keeps waiting after a drain deadline.** A worker still
+  holding its externally supplied `NativeConnection` refuses `close()` with
+  `IllegalStateError`. The resource finalizer waits on that connection's held
+  `run()` Result, including a failed run, then closes again. The kernel's existing
+  `stopTimeoutMs` bounds that wait; expiration reports `abandonedAt: "stop"`
+  while the finalizer continues. An unexpected close failure reaches DI's
+  teardown reporter, even after exit: `ExitReport.teardownErrors` is a live
+  array, but the lifecycle emits no further event after `exited`. The private
+  weak map associates a run with its connection without changing the port or
+  taking ownership of an overridden connection provider.
+
 - **`TemporalModule`'s return type is di's own `Module(name)({...})` over the
   augmented tuples, never a named alias.** A named generic alias was tried and
   removed: declaration emit keeps it unreduced and cannot name imported

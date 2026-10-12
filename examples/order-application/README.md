@@ -33,6 +33,12 @@ none, it is still the duplicate. `PlaceOrder.execute` takes it as a named
 `{ operation }` and hands it straight on — named, because a third positional
 `string` after `(id, quantity)` could trade places with the id unnoticed.
 
+`remove(id, { operation, placedBefore })` checks both optional conditions
+atomically with deletion. An operation matches only the placement it saved;
+a cutoff matches only a row placed before it. A mismatch answers
+`OrderNotFound` and writes no tombstone, so a late compensation cannot remove
+another operation's replacement under a reused id.
+
 No method names a tenant, and that is the layer's own design rather than the
 framework's: `Tenant` is a port the unit provides, so the repository a call
 reaches was already built for one tenant and a caller has no slot to name

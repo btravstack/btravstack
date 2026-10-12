@@ -137,6 +137,123 @@ describe("the fulfillment saga", () => {
     });
   });
 
+  it("an old saga compensation leaves another run's placement under the reused id", async ({
+    tenant,
+    serve,
+    replacedPlacement,
+  }) => {
+    // GIVEN a stock refusal that follows replacement by another operation
+    const { client } = await serve(replacedPlacement.module);
+    const id = "0199a1e0-0000-7000-8000-000000000611";
+    // WHEN the old workflow compensates its original placement
+    const remaining = await client
+      .executeWorkflow("fulfillOrder", {
+        workflowId: "wf-replaced-placement",
+        args: { tenantId: tenant, orderId: id, quantity: 1 },
+      })
+      .mapErrCases((matcher, defect) =>
+        matcher
+          .with({ errorName: "OutOfStock" }, (error) => error)
+          .with(
+            { errorName: "InvalidQuantity" },
+            { errorName: "InvalidOrderId" },
+            { errorName: "OrderAlreadyPlaced" },
+            { errorName: "ShippingUnavailable" },
+            P.tag(WORKFLOW_VALIDATION_ERROR_TAG),
+            P.tag(WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG),
+            P.tag(WORKFLOW_ALREADY_STARTED_ERROR_TAG),
+            P.tag(WORKFLOW_FAILED_ERROR_TAG),
+            P.tag(WORKFLOW_CANCELLED_ERROR_TAG),
+            P.tag(WORKFLOW_TERMINATED_ERROR_TAG),
+            P.tag(WORKFLOW_TIMEOUT_ERROR_TAG),
+            P.tag(WORKFLOW_EXECUTION_NOT_FOUND_ERROR_TAG),
+            (error) => defect(error),
+          ),
+      )
+      .recoverErrCases((matcher) => matcher.with({ errorName: "OutOfStock" }, () => undefined))
+      .flatMap(() => replacedPlacement.reader(tenant).find(id));
+    // THEN its compensation cannot withdraw the replacement
+    expect(remaining).toBeOkWith({ id, quantity: 9 });
+  });
+
+  it("a legacy cancellation without operationId leaves another run's replacement alone", async ({
+    tenant,
+    serveLegacy,
+    replacedPlacement,
+  }) => {
+    // GIVEN a stock refusal that follows replacement by another operation
+    const { client } = await serveLegacy(replacedPlacement.module);
+    const id = "0199a1e0-0000-7000-8000-000000000611";
+    // WHEN the old workflow compensates its original placement
+    const remaining = await client
+      .executeWorkflow("fulfillOrder", {
+        workflowId: "wf-replaced-placement",
+        args: { tenantId: tenant, orderId: id, quantity: 1 },
+      })
+      .mapErrCases((matcher, defect) =>
+        matcher
+          .with({ errorName: "OutOfStock" }, (error) => error)
+          .with(
+            { errorName: "InvalidQuantity" },
+            { errorName: "InvalidOrderId" },
+            { errorName: "OrderAlreadyPlaced" },
+            { errorName: "ShippingUnavailable" },
+            P.tag(WORKFLOW_VALIDATION_ERROR_TAG),
+            P.tag(WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG),
+            P.tag(WORKFLOW_ALREADY_STARTED_ERROR_TAG),
+            P.tag(WORKFLOW_FAILED_ERROR_TAG),
+            P.tag(WORKFLOW_CANCELLED_ERROR_TAG),
+            P.tag(WORKFLOW_TERMINATED_ERROR_TAG),
+            P.tag(WORKFLOW_TIMEOUT_ERROR_TAG),
+            P.tag(WORKFLOW_EXECUTION_NOT_FOUND_ERROR_TAG),
+            (error) => defect(error),
+          ),
+      )
+      .recoverErrCases((matcher) => matcher.with({ errorName: "OutOfStock" }, () => undefined))
+      .flatMap(() => replacedPlacement.reader(tenant).find(id));
+    // THEN its compensation cannot withdraw the replacement
+    expect(remaining).toBeOkWith({ id, quantity: 9 });
+  });
+
+  it("a legacy cancellation uses native workflow identity to remove its own placement", async ({
+    tenant,
+    serveLegacy,
+    outOfStock,
+  }) => {
+    // GIVEN a legacy workflow that places and compensates without operationId
+    const { client } = await serveLegacy(outOfStock.module);
+    const id = "0199a1e0-0000-7000-8000-000000000611";
+    // WHEN the old workflow compensates its original placement
+    const remaining = await client
+      .executeWorkflow("fulfillOrder", {
+        workflowId: "wf-replaced-placement",
+        args: { tenantId: tenant, orderId: id, quantity: 1 },
+      })
+      .mapErrCases((matcher, defect) =>
+        matcher
+          .with({ errorName: "OutOfStock" }, (error) => error)
+          .with(
+            { errorName: "InvalidQuantity" },
+            { errorName: "InvalidOrderId" },
+            { errorName: "OrderAlreadyPlaced" },
+            { errorName: "ShippingUnavailable" },
+            P.tag(WORKFLOW_VALIDATION_ERROR_TAG),
+            P.tag(WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG),
+            P.tag(WORKFLOW_ALREADY_STARTED_ERROR_TAG),
+            P.tag(WORKFLOW_FAILED_ERROR_TAG),
+            P.tag(WORKFLOW_CANCELLED_ERROR_TAG),
+            P.tag(WORKFLOW_TERMINATED_ERROR_TAG),
+            P.tag(WORKFLOW_TIMEOUT_ERROR_TAG),
+            P.tag(WORKFLOW_EXECUTION_NOT_FOUND_ERROR_TAG),
+            (error) => defect(error),
+          ),
+      )
+      .recoverErrCases((matcher) => matcher.with({ errorName: "OutOfStock" }, () => undefined))
+      .flatMap(() => outOfStock.reader(tenant).find(id));
+    // THEN native activity metadata identifies the placement it may remove
+    expect(remaining).toBeErrTagged("OrderNotFound", { id });
+  });
+
   it("compensates a shipping refusal in reverse order: release, then cancel", async ({
     tenant,
     serve,

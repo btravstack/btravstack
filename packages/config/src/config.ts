@@ -332,21 +332,13 @@ const integerIn = (min: number, max: number) => {
       : invalid(`is not a whole number: ${JSON.stringify(value)}`);
 };
 
-// Credentials live in URLs — `postgres://user:hunter2@host/db` is the ordinary
-// shape of `DATABASE_URL`, `REDIS_URL`, `SMTP_URL` and `AMQP_URL` — and this
-// message reaches stderr through `runMain`'s `startFailed` line. The authority's
-// userinfo goes; the rest stays, because an operator still has to see WHICH
-// part they got wrong. `[^/?#]*` is bounded to the authority, so a password
-// containing `@` takes the last one rather than eating the path.
-const USERINFO = /(\/\/)[^/?#]*@/;
-const withoutCredentials = (value: string): string => value.replace(USERINFO, "$1***@");
-
 // `URL.canParse` rather than a regex or a try/catch around `new URL`: it is the
 // same parser every consumer eventually runs, and it does not throw.
 const absoluteUrl = (value: string): Result<string, ConfigFieldInvalid> =>
   URL.canParse(value)
     ? Ok(value)
-    : invalid(`is not a URL: ${JSON.stringify(withoutCredentials(value))}`);
+    : // Malformed URLs cannot be reliably redacted, so the raw value never reaches diagnostics.
+      invalid("is not a URL");
 
 const atLeast =
   (min: number) =>

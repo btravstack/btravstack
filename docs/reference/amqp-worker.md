@@ -355,13 +355,19 @@ composition still carries `ConfigInvalid` in its error channel.
 Bound through [`Config.provider`](/reference/config); each option pins its
 field — explicit > environment > default, per field.
 
-| Variable                  | Default                 | Parsed by        | Notes                                                                          |
-| ------------------------- | ----------------------- | ---------------- | ------------------------------------------------------------------------------ |
-| `AMQP_URL`                | `amqp://127.0.0.1:5672` | `Config.string`  | the broker                                                                     |
-| `AMQP_CONNECT_TIMEOUT_MS` | `5000`                  | `Config.integer` | how long `create` waits before an unreachable broker is a `RuntimeStartFailed` |
+| Variable                  | Default                 | Parsed by        | Notes                                                                 |
+| ------------------------- | ----------------------- | ---------------- | --------------------------------------------------------------------- |
+| `AMQP_URL`                | `amqp://127.0.0.1:5672` | `Config.string`  | the broker                                                            |
+| `AMQP_CONNECT_TIMEOUT_MS` | `5000`                  | `Config.integer` | how long `create` waits for the connection and topology to initialize |
 
 A blank value is a `ConfigInvalid` — `startFailed` and exit `78` under
 `runMain`.
+
+The startup deadline includes queue declaration and quorum leader election.
+Creating several quorum queues can exceed five seconds even when the broker
+is reachable. Set `connectTimeoutMs` or `AMQP_CONNECT_TIMEOUT_MS` to fit the
+topology and the deployment's startup budget; an expired deadline is a
+`RuntimeStartFailed`.
 
 ## `AmqpRuntime` and `AmqpInfo`
 

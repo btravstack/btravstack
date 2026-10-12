@@ -8,7 +8,7 @@ import { isFieldSpec } from "./field.js";
 import { deepFreeze, omitsUndefined } from "./freeze.js";
 import type { Invariant } from "./invariant.js";
 import { keysOf, renderIssue } from "./issues.js";
-import type { OnlyNominal } from "./shape.js";
+import type { NoReservedFieldNames, OnlyNominal } from "./shape.js";
 import type {
   AggregateStatic,
   EventNamed,
@@ -30,7 +30,8 @@ type Event = { readonly type: string };
 /**
  * What an aggregate instance has not saved yet: the version its state was
  * loaded at, and every event decided since. Kept beside the instance rather
- * than on it, so no field name is reserved and nothing reaches `toJSON()`.
+ * than on it, so version and pending remain ordinary domain field names
+ * and nothing reaches `toJSON()`.
  * Every instance an aggregate hands out has an entry: `make` and `replay` set
  * one with nothing pending, `start` and `emit` carry one forward. `ended` is
  * whether a terminal event is behind this state, pending or replayed.
@@ -94,7 +95,9 @@ export const createAggregate =
         event: EventNamed<Ev, K>,
       ) => RecordOf<S>;
     };
-    readonly computed?: { [K in keyof A]: ComputedField<A[K], InputOf<S>> };
+    readonly computed?: { [K in keyof A]: ComputedField<A[K], InputOf<S>> } & NoReservedFieldNames<
+      NoInfer<A>
+    >;
     readonly invariants?: readonly Invariant<InputOf<S>>[];
   }): AggregateStatic<Tag, S, A, Ev, O, End> => {
     // The same rule at runtime, for a caller the types did not reach — the

@@ -53,7 +53,7 @@ export type AmqpInfo = { readonly queues: readonly string[] };
  */
 export class AmqpConfig extends Port("AmqpConfig")<{
   readonly url: string;
-  /** How long `create` waits for the connection before failing. */
+  /** How long `create` waits for the connection and topology setup before failing. */
   readonly connectTimeoutMs: number;
 }> {}
 
@@ -135,7 +135,7 @@ export type AmqpTuning<Unit extends AnyUnitModule | undefined = undefined> = {
   /**
    * Pins `AmqpConfig.connectTimeoutMs` instead of reading
    * `AMQP_CONNECT_TIMEOUT_MS` (default {@link DEFAULT_CONNECT_TIMEOUT_MS}) —
-   * how long `create` waits for the connection before failing. Passed straight
+   * how long `create` waits for the connection and topology setup before failing. Passed straight
    * through as a top-level `CreateWorkerOptions` field, NOT nested under
    * `connectionOptions`, where setting it is silently inert.
    */

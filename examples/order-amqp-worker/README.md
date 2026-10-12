@@ -228,6 +228,11 @@ background sweep has no delivery behind it, so there is nothing to read a
 tenant from — and "whatever is in the table" is how one deployment starts
 broadcasting another's facts.
 
+Serving fixtures use a 15s `AMQP_CONNECT_TIMEOUT_MS` for cold quorum topology
+under the full gate's concurrency and propagate startup errors before a test
+waits for delivery. The production default remains 5s; delivery waits retain
+their own budgets.
+
 The fixtures are [`@btravstack/testing`](../../packages/testing)'s: `serve`
 boots the worker against the test's own vhost through the `boot` fixture, so
 it is stopped when the test ends, and `tapped` hands back the very

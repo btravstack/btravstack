@@ -202,6 +202,8 @@ carries `chargeOrder` and the scheduled `sweepStaleOrders` too, not
 `fulfillOrder` alone:
 
 ```ts
+import { Context } from "@temporalio/activity";
+
 export const orderActivities = TemporalActivities(orderContract)({
   inject: {
     stock: StockService,
@@ -213,7 +215,7 @@ export const orderActivities = TemporalActivities(orderContract)({
     fulfillOrder: {
       place: ({ errors, context, input }) =>
         context.unit.place
-          .execute(input.orderId, input.quantity, { operation: input.operationId })
+          .execute(input.orderId, input.quantity, { operation: input.operationId ?? Context.current().info.workflowExecution!.runId })
           .map((order) => ({ id: order.id, quantity: order.quantity }))
           .mapErrCases((matcher) =>
             matcher
@@ -246,7 +248,7 @@ export const orderActivities = TemporalActivities(orderContract)({
       releaseStock: ({ input }) => stock.release(input.orderId),
       cancelPlacement: ({ context, input }) =>
         context.unit.repository
-          .remove(input.orderId)
+          .remove(input.orderId, { operation: input.operationId ?? Context.current().info.workflowExecution!.runId })
           .recoverErrCases((matcher) =>
             matcher.with(P.tag("OrderNotFound"), () => undefined),
           ),
@@ -364,7 +366,7 @@ const orderFulfillment = TemporalWorkflowActivities(
   sync: ({ stock, shipping }) => ({
     place: ({ errors, context, input }) =>
       context.unit.place
-        .execute(input.orderId, input.quantity, { operation: input.operationId })
+        .execute(input.orderId, input.quantity, { operation: input.operationId ?? Context.current().info.workflowExecution!.runId })
         .map((order) => ({ id: order.id, quantity: order.quantity }))
         .mapErrCases((matcher) =>
           matcher
@@ -467,10 +469,14 @@ on every exit path, startup failure included. A service that will not answer
 is the modeled `TemporalUnreachable { address, cause }` — exit `1` under
 `runMain`, a startup `Err` an operator can act on, not the `70` a defect earns.
 
-On release, one refusal is absorbed: `close()` throws `IllegalStateError`
-while a Worker still holds the connection, which is exactly the state the
-deadline path leaves it in (see the drain below); any other close failure is
-still the finaliser's to surface as a `teardownError`.
+If `close()` refuses with `IllegalStateError` because the worker still holds
+the connection after a drain deadline, the finalizer waits for `worker.run()`
+to settle, whether successful or failed, then closes again. The existing
+`stopTimeoutMs` bounds the kernel's wait for that finalizer. If it expires,
+the report names `abandonedAt: "stop"` while cleanup continues in the background.
+An unexpected close failure still reaches `ExitReport.teardownErrors`; this
+live array can grow after `exited` settles, although no further lifecycle
+event is emitted after `exited`.
 
 ## `TemporalRuntime` and `TemporalInfo`
 
@@ -502,8 +508,8 @@ the undos are its own business rather than each step's:
 context
   .saga()
   .step(
-    () => context.activities.place(order),
-    () => context.activities.cancelPlacement(order),
+    () => context.activities.place({ ...order, operationId: context.info.runId }),
+    () => context.activities.cancelPlacement({ ...order, operationId: context.info.runId }),
   )
   .step(
     () => context.activities.reserveStock(order),
@@ -649,9 +655,11 @@ When the deadline wins, the runtime returns and the worker is still alive.
 (`Worker.forceShutdown$` is `protected`, `Runtime.shutdown()` is
 process-global), so stopping the wait is the only escalation: the kernel gets
 its thread back on time, reports the activity `abandoned`, and the worker
-keeps winding down on Temporal's clock until the process exits. The losing
-branch's `Result` is dropped — the kernel has already settled `exited` — and
-it is the one drop in the package.
+keeps winding down on Temporal's clock. Its held `run()` Result also keeps
+connection release ordered after worker completion. The kernel waits for that
+release within `stopTimeoutMs`, then reports `abandonedAt: "stop"` if cleanup
+still has not finished; the finalizer continues and closes the connection when
+the worker releases it.
 
 **The process does not end on its own after that**, and the page used to leave
 that implicit. `runMain` sets an exit code and never calls `process.exit()`;
@@ -664,8 +672,9 @@ the pod ends at `terminationGracePeriodSeconds`, with SIGKILL, and exit `2` is
 what the report says rather than what the orchestrator observes. **Outside that
 lifecycle** there is no SIGKILL at all: a drain that hits its deadline in a
 test, a dev loop or an embedder leaves the process alive until the worker
-finishes on Temporal's own clock. Either way the report reaches stderr first,
-which is what `kubectl logs --previous` is for.
+finishes on Temporal's own clock and the finalizer closes its connection.
+A worker that never settles can still keep the process alive. The report
+reaches stderr first, which is what `kubectl logs --previous` is for.
 
 `stop()` with no prior `drain` (the `RunningApp.stop()` path) has no deadline
 to race and waits on `run()` alone, which is where `forceAfter` decides when

@@ -628,15 +628,19 @@ import { pinoSink } from "@btravstack/observability/pino";
 observability({ sink: pinoSink(pino({ level: "trace" })) });
 ```
 
-Configure pino at `trace`. **The level filter stays this package's**:
+The child logger is pinned at `trace` without changing the supplied logger.
+**The level filter stays this package's**:
 `createLogger` has already decided the line is worth writing by the time a
 sink sees it, so one filter is in the process, and it is the one `LOG_LEVEL`
 validated at startup. Two filters that can disagree is the failure this
 avoids.
 
 The attributes and the unit's ids ride as pino **fields**, not as a message
-prefix, so they stay indexable; the cause is handed over as `err`, which
-pino's own serialiser renders with the stack. Each of the six levels maps onto
+prefix, so they stay indexable; the cause is rendered as `err` through the same
+safe diagnostic whitelist and bounded cause walk as `jsonSink`. The error's
+`type`, `name`, message, stack and safe diagnostics survive; arbitrary payloads
+do not. This sink uses a child logger at a `trace` floor to install that
+serializer without changing the supplied logger. Each of the six levels maps onto
 pino's own method of the same name — `10` through `60` — so no level of ours
 collapses into another.
 
