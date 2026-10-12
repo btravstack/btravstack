@@ -140,6 +140,131 @@ describe("procedureField", () => {
     `);
   });
 
+  it.for([
+    ["anonymous", "UNAUTHORIZED"],
+    ["reserved", "FORBIDDEN"],
+  ])("keeps %s access refusal public under Yoga masking", async ([title, code], { askMasked }) => {
+    // GIVEN a service refusing access
+    // WHEN its procedure field is executed by Yoga with default masking
+    const answer = await askMasked(`{ book(title: "${title}") { __typename } }`);
+
+    // THEN the safe access code is still public
+    expect(answer).toEqual({
+      data: { book: null },
+      errors: [
+        {
+          message: "Service refused access",
+          locations: [{ line: 1, column: 3 }],
+          path: ["book"],
+          extensions: { code },
+        },
+      ],
+    });
+  });
+
+  it("masks a genuine GraphQLError defect carrying an access code", async ({ askMasked }) => {
+    // GIVEN a service bug throwing a GraphQL error with private details
+    // WHEN its procedure field is executed by Yoga
+    const answer = await askMasked('{ book(title: "leaked") { __typename } }');
+
+    // THEN neither the private details nor their misleading access code escape
+    expect(answer).toEqual({
+      data: { book: null },
+      errors: [
+        {
+          message: "Unexpected error.",
+          locations: [{ line: 1, column: 3 }],
+          path: ["book"],
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        },
+      ],
+    });
+  });
+
+  it.for([
+    ["anonymous", "UNAUTHORIZED"],
+    ["reserved", "FORBIDDEN"],
+  ])(
+    "keeps a loaded %s access refusal public under Yoga masking",
+    async ([title, code], { askMasked }) => {
+      // GIVEN a DataLoader backed by the service procedure
+      // WHEN the service refuses access to a key
+      const answer = await askMasked(`{ loadedBook(title: "${title}") { __typename } }`);
+
+      // THEN only that key fails with the sanitized access code
+      expect(answer).toEqual({
+        data: { loadedBook: null },
+        errors: [
+          {
+            message: "Service refused access",
+            locations: [{ line: 1, column: 3 }],
+            path: ["loadedBook"],
+            extensions: { code },
+          },
+        ],
+      });
+    },
+  );
+
+  it("masks a genuine GraphQLError defect loaded through a DataLoader", async ({ askMasked }) => {
+    // GIVEN a service bug carrying private details
+    // WHEN the broken key is loaded
+    const answer = await askMasked('{ loadedBook(title: "leaked") { __typename } }');
+
+    // THEN the loader retains defect masking
+    expect(answer).toEqual({
+      data: { loadedBook: null },
+      errors: [
+        {
+          message: "Unexpected error.",
+          locations: [{ line: 1, column: 3 }],
+          path: ["loadedBook"],
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        },
+      ],
+    });
+  });
+
+  it("keeps access refusal out of a default Error union", async ({ askMaskedWithDefaults }) => {
+    // GIVEN a builder whose default errors claim any Error
+    // WHEN the service refuses access
+    const answer = await askMaskedWithDefaults('{ book(title: "reserved") { __typename } }');
+
+    // THEN the access refusal is still an operation error
+    expect(answer).toEqual({
+      data: { book: null },
+      errors: [
+        {
+          message: "Service refused access",
+          locations: [{ line: 1, column: 3 }],
+          path: ["book"],
+          extensions: { code: "FORBIDDEN" },
+        },
+      ],
+    });
+  });
+
+  it("masks a raw thrown business refusal instead of answering a union member", async ({
+    askMasked,
+  }) => {
+    // GIVEN a raw throw rather than a modeled business failure
+    // WHEN the procedure field executes
+    const answer = await askMasked('{ book(title: "thrown") { __typename } }');
+
+    // THEN the unmodeled failure stays masked
+    expect(answer).toEqual({
+      data: { book: null },
+      errors: [
+        {
+          message: "Unexpected error.",
+          locations: [{ line: 1, column: 3 }],
+          path: ["book"],
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        },
+      ],
+    });
+  });
+
   it("answers an output breaking the contract as a defect", async ({ readBook }) => {
     // GIVEN a book whose page count is no number
     // WHEN it is read
@@ -202,6 +327,31 @@ describe("procedureConnection", () => {
       }
     `);
   });
+
+  it.for([
+    ["anonymous", "UNAUTHORIZED"],
+    ["reserved", "FORBIDDEN"],
+  ])(
+    "keeps a connection's %s access refusal public under Yoga masking",
+    async ([shelf, code], { askMasked }) => {
+      // GIVEN a procedure connection
+      // WHEN its service refuses access
+      const answer = await askMasked(`{ loans(shelf: "${shelf}") { __typename } }`);
+
+      // THEN the access code remains public
+      expect(answer).toEqual({
+        data: { loans: null },
+        errors: [
+          {
+            message: "Service refused access",
+            locations: [{ line: 1, column: 3 }],
+            path: ["loans"],
+            extensions: { code },
+          },
+        ],
+      });
+    },
+  );
 
   it("answers a refusal the procedure declares", async ({ ask }) => {
     // GIVEN a shelf the library does not have

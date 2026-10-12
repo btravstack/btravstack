@@ -38,13 +38,12 @@ has no member for it (`procedure-field.spec.ts`).
 
 **Access refusals are GraphQL's own error, never a union member and never a
 masked defect.** `UNAUTHORIZED` and `FORBIDDEN` refuse the caller, not the
-operation: declared ones are moved to the defect channel, then every defect
-carrying one of those codes is rethrown as a `GraphQLError` with
-`extensions.code`. It is `graphql`'s own class rather than Yoga's
-`createGraphQLError`, so the package has no Yoga peer; with the single
-`graphql` copy the peer guarantees, Yoga passes it through unmasked, as it
-does any `GraphQLError` a resolver throws (measured against Yoga's default
-`maskError`).
+operation. `callProcedure` converts only those oRPC codes to a private
+`AccessRefusal` marker with a fixed message and no service details. The plugin
+restores that marker at `wrapArgMappers`, outside Result settlement and the
+errors plugin, so even a base `Error` default cannot claim it. `loadProcedure`
+returns the marker directly. An ordinary `GraphQLError` defect, including one
+carrying either access code, stays masked by `@unthrown/pothos`.
 
 **`contractInput` throws, and only at schema build.** A procedure whose
 contract does not hold exactly one Zod input schema is a mistake in the

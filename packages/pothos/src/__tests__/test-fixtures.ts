@@ -4,13 +4,16 @@ import SchemaBuilder from "@pothos/core";
 import ErrorsPlugin from "@pothos/plugin-errors";
 import RelayPlugin from "@pothos/plugin-relay";
 import UnthrownPlugin from "@unthrown/pothos";
-import { graphql, type ExecutionResult } from "graphql";
+import DataLoader from "dataloader";
+import { GraphQLError, graphql, type ExecutionResult } from "graphql";
+import { createYoga } from "graphql-yoga";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
 import { z } from "zod";
 
 import type { InvalidInput } from "../contract.js";
 import OrpcPlugin from "../plugin.js";
+import { loadProcedure, procedureErrors } from "../procedure-field.js";
 
 const Reason = z.object({ reason: z.string() });
 
@@ -65,6 +68,16 @@ export const books = (input: { readonly title: string }): AsyncResult<unknown, B
       return fromSafePromise(Promise.reject(new ORPCError("UNAUTHORIZED")));
     case "reserved":
       return ErrAsync(new ORPCError("FORBIDDEN", { data: { reason: "Reading room only" } }));
+    case "thrown":
+      return fromSafePromise(
+        Promise.reject(new ORPCError("NOT_FOUND", { data: { reason: "Private lookup details" } })),
+      );
+    case "leaked":
+      return fromSafePromise(
+        Promise.reject(
+          new GraphQLError("Private service details", { extensions: { code: "FORBIDDEN" } }),
+        ),
+      );
     case "torn":
       return OkAsync({ title: input.title, pages: "some" });
     default:
@@ -76,12 +89,16 @@ const loans = (input: {
   readonly shelf: string;
   readonly first?: number | undefined;
 }): AsyncResult<unknown, ORPCError<"NOT_FOUND", { readonly reason: string }>> =>
-  input.shelf === "closed"
-    ? ErrAsync(new ORPCError("NOT_FOUND", { data: { reason: "No such shelf" } }))
-    : OkAsync({
-        loans: Array.from({ length: input.first ?? 0 }, (_, index) => ({ id: `loan-${index}` })),
-        more: true,
-      });
+  input.shelf === "anonymous" || input.shelf === "reserved"
+    ? fromSafePromise(
+        Promise.reject(new ORPCError(input.shelf === "anonymous" ? "UNAUTHORIZED" : "FORBIDDEN")),
+      )
+    : input.shelf === "closed"
+      ? ErrAsync(new ORPCError("NOT_FOUND", { data: { reason: "No such shelf" } }))
+      : OkAsync({
+          loans: Array.from({ length: input.first ?? 0 }, (_, index) => ({ id: `loan-${index}` })),
+          more: true,
+        });
 
 type Library = {
   Context: { readonly tapped: string[] };
@@ -89,12 +106,21 @@ type Library = {
   Refusals: typeof registry;
 };
 
-const libraryOf = (registered: boolean) => {
+const libraryOf = (registered: boolean, defaults = false) => {
   const builder = new SchemaBuilder<Library>({
     plugins: [RelayPlugin, ErrorsPlugin, UnthrownPlugin, OrpcPlugin],
-    errors: { directResult: true },
+    errors: { directResult: true, defaultTypes: defaults ? [Error] : [] },
     ...(registered ? { orpc: { refusals: registry } } : {}),
   });
+  if (defaults) {
+    builder.objectType(Error, {
+      name: "Error",
+      fields: (fields) => ({ message: fields.exposeString("message") }),
+    });
+  }
+  const loader = new DataLoader<string, z.output<typeof Book>>(async (titles) =>
+    Promise.all(titles.map((title) => loadProcedure(registry, getBook, books, { title }, Book))),
+  );
   builder.objectType(NotFoundError, {
     name: "NotFound",
     fields: (fields) => ({ message: fields.exposeString("message") }),
@@ -112,6 +138,12 @@ const libraryOf = (registered: boolean) => {
   builder.objectType("Loan", { fields: (fields) => ({ id: fields.exposeID("id") }) });
   builder.queryType({
     fields: (fields) => ({
+      loadedBook: fields.field({
+        type: "Book",
+        args: { title: fields.arg.string({ required: true }) },
+        errors: procedureErrors(registry, getBook),
+        resolve: (_, { title }) => loader.load(title),
+      }),
       book: fields.procedureField(getBook, {
         type: "Book",
         args: { title: fields.arg.string({ required: true }) },
@@ -147,6 +179,8 @@ export const it = test.extend<{
   readonly tapped: string[];
   readonly ask: (source: string) => Promise<ExecutionResult>;
   readonly askUnregistered: (source: string) => Promise<ExecutionResult>;
+  readonly askMaskedWithDefaults: (source: string) => Promise<ExecutionResult>;
+  readonly askMasked: (source: string) => Promise<ExecutionResult>;
   readonly readBook: (title: string) => Promise<ExecutionResult>;
 }>({
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
@@ -160,6 +194,28 @@ export const it = test.extend<{
   askUnregistered: async ({ tapped }, use) => {
     const schema = libraryOf(false);
     await use((source) => graphql({ schema, source, contextValue: { tapped } }));
+  },
+  askMasked: async ({ tapped }, use) => {
+    const yoga = createYoga({ schema: libraryOf(true), context: { tapped }, logging: false });
+    await use(async (query) => {
+      const response = await yoga.fetch("http://localhost/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+      return response.json() as Promise<ExecutionResult>;
+    });
+  },
+  askMaskedWithDefaults: async ({ tapped }, use) => {
+    const yoga = createYoga({ schema: libraryOf(true, true), context: { tapped }, logging: false });
+    await use(async (query) => {
+      const response = await yoga.fetch("http://localhost/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+      return response.json() as Promise<ExecutionResult>;
+    });
   },
   readBook: async ({ ask }, use) => {
     await use((title) =>

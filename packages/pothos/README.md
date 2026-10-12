@@ -24,7 +24,7 @@ Every dependency is a peer: Pothos plugins and `graphql` each need one copy.
 
 ```sh
 pnpm add @btravstack/pothos @pothos/core @pothos/plugin-errors @pothos/plugin-relay \
-  @unthrown/pothos@^0.1.0 graphql unthrown zod \
+  @unthrown/pothos@^0.1.2 graphql unthrown zod \
   @orpc/client@2.0.0-beta.28 @orpc/contract@2.0.0-beta.28
 ```
 
