@@ -123,6 +123,7 @@ const tokenFetches = (
   const cached = new Map<string, { readonly token: AccessToken; readonly refreshAt: number }>();
   const inFlight = new Map<string, AsyncResult<AccessToken, TokenError>>();
   const failing = new Map<string, string>();
+  const latestFetch = new Map<string, symbol>();
 
   const discover = (): AsyncResult<Configuration, TokenIssuerUnavailable> => {
     // Inside the promise: a pinned value skips validation, and `new URL` or
@@ -181,6 +182,8 @@ const tokenFetches = (
   const fetchToken = (key: string, request: TokenRequest): AsyncResult<AccessToken, TokenError> => {
     const asked = clock.now();
     const healthKey = JSON.stringify([request.audience, request.scope ?? null]);
+    const generation = Symbol();
+    latestFetch.set(healthKey, generation);
     const fetched = observed(observers, fetching(request), () =>
       discover().flatMap((config) => grant(request, config)),
     )
@@ -193,13 +196,19 @@ const tokenFetches = (
       })
       .tap((entry) => {
         inFlight.delete(key);
-        failing.delete(healthKey);
+        if (latestFetch.get(healthKey) === generation) {
+          latestFetch.delete(healthKey);
+          failing.delete(healthKey);
+        }
         cached.set(key, entry);
         if (cached.size > CACHE_CAPACITY) cached.delete(cached.keys().next().value!);
       })
       .tapFailure((failure) => {
         inFlight.delete(key);
-        failing.set(healthKey, reasonOf(request.audience, failure));
+        if (latestFetch.get(healthKey) === generation) {
+          latestFetch.delete(healthKey);
+          failing.set(healthKey, reasonOf(request.audience, failure));
+        }
       })
       .map((entry) => entry.token);
     inFlight.set(key, fetched);
@@ -208,7 +217,24 @@ const tokenFetches = (
 
   return {
     source: {
-      token: (request) => {
+      token: (input) => {
+        const { audience, scope, onBehalfOf } = input;
+        const actor = onBehalfOf?.actor;
+        const request: TokenRequest = {
+          audience,
+          ...(scope === undefined ? {} : { scope }),
+          ...(onBehalfOf === undefined
+            ? {}
+            : {
+                onBehalfOf: {
+                  token: onBehalfOf.token,
+                  tokenType: onBehalfOf.tokenType,
+                  ...(actor === undefined
+                    ? {}
+                    : { actor: { token: actor.token, tokenType: actor.tokenType } }),
+                },
+              }),
+        };
         const key = createHash("sha256")
           .update(
             JSON.stringify([
@@ -254,10 +280,12 @@ const tokenFetches = (
  *   the same one while it is being fetched share that one request. A failure
  *   is never kept. The source keeps at most 1024 tokens, evicting the oldest
  *   insertion at capacity and removing stale entries when accessed.
+ *   The complete request is snapshotted at entry, so caller mutation cannot
+ *   change the credential or grant associated with its cache key.
  * - **Every fetch is reported to `Observers`** (`component: "oauth-client"`);
  *   a token served from memory reports nothing.
  * - **It contributes the `oauth-client` health check**, failing while the
- *   last fetch of any audience failed — a rotated secret and an unreachable
+ *   newest-started fetch of any audience/scope pair failed — a rotated secret and an unreachable
  *   issuer both show there, where a reachability probe would see only the
  *   second.
  */

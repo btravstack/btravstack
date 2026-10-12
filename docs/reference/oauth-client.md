@@ -173,6 +173,9 @@ A response without `expires_in` is not kept. At most 1024 tokens are retained:
 FIFO eviction removes the oldest insertion at capacity, and stale entries are
 removed on access. Keys hash every credential and
 its token type; changing any of them cannot reuse another subject's token.
+The complete request, including nested subject and actor credentials, is
+snapshotted when `token()` is called. Its cache key, observation and grant use
+that same snapshot, so later caller mutation cannot change the token fetched.
 Neither credentials nor subject identities are put in observation details or
 health-check reasons.
 
@@ -184,10 +187,14 @@ request.** A failure is never kept.
 `btravstack.oauth.audience` and the scope as the detail
 `btravstack.oauth.scope`. A token served from memory reports nothing.
 
-**The `oauth-client` health check fails while the last fetch for any audience
+**The `oauth-client` health check fails while the newest-started fetch for any audience
 and scope failed**, naming each one and the issuer's error code, and recovers
 when that pair next fetches successfully. Health keys omit credentials, so a
-valid replacement clears an obsolete subject token's failure. It is healthy before the first fetch. It reports
+valid replacement clears an obsolete subject token's failure. It is healthy
+before the first fetch. It reports
+the newest-started fetch's result even when older requests finish afterwards.
+Generation markers exist only while their fetch is pending, so completed pairs
+retain no generation bookkeeping. It reports
 the fetches rather than probing the issuer, because a rotated secret leaves
 the issuer reachable and every call refused.
 

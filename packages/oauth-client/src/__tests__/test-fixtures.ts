@@ -35,6 +35,12 @@ export type Observation = {
   settled?: Settled;
 };
 
+type ControlledGrant = {
+  readonly parameters: Record<string, string>;
+  readonly succeed: () => void;
+  readonly refuse: () => void;
+};
+
 /** A graph around `oauthClient(options)`, over the fixtures' clock and observer, run for the length of `body`. */
 export type Tokens = <T, E>(
   options: OAuthClientOptions & { readonly env: Environment },
@@ -64,6 +70,12 @@ export type OAuthFixtures = {
     readonly challenging: string;
     readonly failing: string;
     readonly issuing: string;
+    readonly controlled: {
+      readonly issuer: string;
+      readonly discoveryReached: Promise<void>;
+      readonly releaseDiscovery: () => void;
+      readonly nextGrant: () => Promise<ControlledGrant>;
+    };
   };
 };
 
@@ -116,13 +128,56 @@ export const it = test.extend<OAuthFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   scripted: async ({}, use) => {
     let issued = 0;
+    let reachedDiscovery!: () => void;
+    const discoveryReached = new Promise<void>((resolve) => {
+      reachedDiscovery = resolve;
+    });
+    let releaseDiscovery!: () => void;
+    const discoveryReleased = new Promise<void>((resolve) => {
+      releaseDiscovery = resolve;
+    });
+    const grants: ControlledGrant[] = [];
+    const waiting: Array<(grant: ControlledGrant) => void> = [];
     const server = createServer((request, response) => {
       const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
       const [, name, rest] = (request.url ?? "").split(/^\/(\w+)/);
       response.setHeader("content-type", "application/json");
       if (rest === "/.well-known/openid-configuration") {
         const issuer = `${base}/${name}`;
-        response.end(JSON.stringify({ issuer, token_endpoint: `${issuer}/token` }));
+        const answer = () =>
+          response.end(JSON.stringify({ issuer, token_endpoint: `${issuer}/token` }));
+        if (name === "controlled") {
+          reachedDiscovery();
+          void discoveryReleased.then(answer);
+        } else answer();
+        return;
+      }
+      if (name === "controlled") {
+        let body = "";
+        request.on("data", (chunk: Buffer) => {
+          body += chunk.toString();
+        });
+        request.on("end", () => {
+          const parameters = Object.fromEntries(new URLSearchParams(body));
+          const grant = {
+            parameters,
+            succeed: () =>
+              response.end(
+                JSON.stringify({
+                  access_token: JSON.stringify(parameters),
+                  token_type: "Bearer",
+                  expires_in: 3600,
+                }),
+              ),
+            refuse: () => {
+              response.statusCode = 400;
+              response.end(JSON.stringify({ error: "invalid_request" }));
+            },
+          };
+          const next = waiting.shift();
+          if (next === undefined) grants.push(grant);
+          else next(grant);
+        });
         return;
       }
       if (name === "issuing") {
@@ -151,6 +206,17 @@ export const it = test.extend<OAuthFixtures>({
       challenging: `${base}/challenging`,
       failing: `${base}/failing`,
       issuing: `${base}/issuing`,
+      controlled: {
+        issuer: `${base}/controlled`,
+        discoveryReached,
+        releaseDiscovery,
+        nextGrant: () => {
+          const grant = grants.shift();
+          return grant === undefined
+            ? new Promise<ControlledGrant>((resolve) => waiting.push(resolve))
+            : Promise.resolve(grant);
+        },
+      },
     });
     await new Promise((closed) => server.close(closed));
   },

@@ -154,6 +154,39 @@ describe("the JSON sink", () => {
     });
   });
 
+  it("keeps sibling diagnostics without invoking indexed aggregate accessors", ({ written }) => {
+    // GIVEN an indexed accessor between valid aggregate members and a missing slot
+    const cause = new AggregateError(
+      [new Error("operation failed"), undefined, new Error("observer failed")],
+      "failed batch",
+    );
+    Object.defineProperty(cause.errors, "1", { get: () => JSON.parse("broken accessor") });
+    cause.errors.length = 4;
+
+    // WHEN the diagnostic line is rendered
+    jsonSink(written)({
+      level: "error",
+      message: "failed",
+      attributes: {},
+      cause,
+      time: 0,
+      unit: undefined,
+    });
+
+    // THEN malformed positions cannot discard or reorder the valid siblings
+    expect(lineOf(written)["cause"]).toEqual({
+      name: "AggregateError",
+      message: "failed batch",
+      stack: expect.any(String),
+      errors: [
+        expect.objectContaining({ message: "operation failed" }),
+        null,
+        expect.objectContaining({ message: "observer failed" }),
+        null,
+      ],
+    });
+  });
+
   for (const errors of [undefined, null, "invalid", { token: "private-token" }]) {
     it(`keeps the diagnostic when aggregate errors is ${JSON.stringify(errors)}`, ({ written }) => {
       // GIVEN an aggregate whose writable errors property is malformed

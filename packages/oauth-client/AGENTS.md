@@ -27,6 +27,9 @@ recipe.
   and its RFC 8693 token type, plus an optional actor credential for issuers
   requiring explicit delegation. Cache and single-flight keys include every
   credential and token type, hashed so their keys retain no raw token.
+  The complete request, including nested subject and actor credentials, is
+  snapshotted once at entry; the key, observation and grant use that snapshot,
+  so mutation while discovery waits cannot cache one subject's token for another.
   The cache is capped at 1024 entries with FIFO eviction and removes stale
   entries on access, so user credential turnover cannot retain tokens forever.
 - **The issuer owns authorization and actor claims.** Sending a subject token
@@ -61,8 +64,8 @@ recipe.
   still validated at boot — a missing variable or a cleartext issuer is a
   `ConfigInvalid` and exit `78` — because those are the deployment's mistakes,
   not the issuer's weather. A failed discovery is not memoised either.
-- **The health check reports the last fetch per (audience, scope).** It fails
-  while any key's most recent fetch failed, naming the audience and the
+- **The health check reports the newest-started fetch per (audience, scope).** It fails
+  while any key's newest-started fetch failed, naming the audience and the
   issuer's code, and recovers when that key next fetches. A probe of the
   issuer was declined: it proves reachability only, and the failure an
   operator meets most — a rotated secret — leaves the issuer reachable and
@@ -70,6 +73,10 @@ recipe.
   replacement token's success must clear a failed obsolete credential, rather
   than leave a failure no future request can name. Before the first fetch it
   is healthy: nothing is known.
+  A unique generation marker is installed before each fetch starts, and only
+  that generation can update health. Its marker is removed when it settles:
+  older completions cannot overwrite it, and completed pairs retain no
+  generation bookkeeping. The map is bounded by pending audience/scope pairs.
 - **`TokenRefused` vs `TokenIssuerUnavailable` is decided by the error class
   and its status.** Under 500, two answers are refusals: an OAuth error body
   (`ResponseBodyError` — Hydra answers `invalid_client` as 401, an ungranted

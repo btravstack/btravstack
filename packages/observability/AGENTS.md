@@ -50,7 +50,8 @@ stale the next time a case is added (#192):
   `Error`'s `message`/`stack`/`cause` chain surviving, a caller's attribute not
   rewriting `level`/`message`/`traceId`, bounded aggregate constituents, tagged
   identity without arbitrary payload fields, cycles through error members and
-  causes, malformed aggregate member lists omitted without invoking accessors and nested non-error payloads
+  causes, malformed aggregate member lists omitted without invoking accessors,
+  indexed accessors skipped without losing siblings, and nested non-error payloads
   redacted without running serializers, BigInt reasons replaced without dropping
   sibling diagnostics, a circular cause, a BigInt
   attribute and a `toJSON` that refuses only under its own key each dropped and named in `unserialisable` while the rest of the

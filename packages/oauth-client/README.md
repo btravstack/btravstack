@@ -81,7 +81,9 @@ minute before it expires, with fixed FIFO capacity so subject turnover stays
 bounded; that a refusal (`TokenRefused`, with the issuer's
 `error` code) and an outage (`TokenIssuerUnavailable`) are two typed errors;
 that every fetch is reported to `Observers`; and that an `oauth-client` health
-check fails while an audience's last fetch failed.
+check follows the newest-started fetch per audience and scope, even when
+responses finish out of order. Each request is snapshotted at entry so caller
+mutation cannot change its grant or poison another credential's cache.
 
 **It does not decide** what a failure means for your call — retrying belongs
 to your transport. On behalf of a subject, `token({ audience, onBehalfOf:

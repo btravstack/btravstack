@@ -16,6 +16,121 @@ const AFTER_SKEW_MS = 3_541_000;
 
 describe("oauthClient", () => {
   describe("token exchange", () => {
+    it("snapshots every request field before discovery so mutation cannot poison a subject's cache", async ({
+      tokens,
+      scripted,
+      observations,
+    }) => {
+      // GIVEN a mutable request and discovery held at the HTTP boundary
+      const issuer = scripted.controlled;
+      const env = {
+        OAUTH_ISSUER: issuer.issuer,
+        OAUTH_CLIENT_ID: "client",
+        OAUTH_CLIENT_SECRET: "secret",
+      };
+      const actor = { token: "alice-actor", tokenType: "actor-type" };
+      const subject = { token: "alice", tokenType: "subject-type", actor };
+      const request = { audience: "orders", scope: "read", onBehalfOf: subject };
+
+      // WHEN the caller mutates fields and replaces nested records while discovery waits
+      const answer = await tokens({ env }, (ctx) =>
+        fromSafePromise(
+          (async () => {
+            const source = ctx.get(TokenSource);
+            const pending = source.token(request);
+            await issuer.discoveryReached;
+            request.audience = "billing";
+            request.scope = "write";
+            subject.token = "bob";
+            subject.tokenType = "changed-subject-type";
+            actor.token = "bob-actor";
+            actor.tokenType = "changed-actor-type";
+            subject.actor = { token: "replacement-actor", tokenType: "replacement-actor-type" };
+            request.onBehalfOf = {
+              token: "replacement",
+              tokenType: "replacement-type",
+              actor: subject.actor,
+            };
+            issuer.releaseDiscovery();
+            const grant = await issuer.nextGrant();
+            grant.succeed();
+            const first = (await pending).getOrThrow();
+            const cached = (
+              await source.token({
+                audience: "orders",
+                scope: "read",
+                onBehalfOf: {
+                  token: "alice",
+                  tokenType: "subject-type",
+                  actor: { token: "alice-actor", tokenType: "actor-type" },
+                },
+              })
+            ).getOrThrow();
+            return {
+              bearer: first.bearer,
+              reused: first.bearer === cached.bearer,
+              fetches: observations.length,
+            };
+          })(),
+        ),
+      );
+
+      // THEN the cached token belongs to the complete original credential and request
+      expect(answer).toBeOkWith({
+        bearer: JSON.stringify({
+          audience: "orders",
+          scope: "read",
+          subject_token: "alice",
+          subject_token_type: "subject-type",
+          requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
+          actor_token: "alice-actor",
+          actor_token_type: "actor-type",
+          grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        }),
+        reused: true,
+        fetches: 1,
+      });
+    });
+
+    it("keeps an initially service-only request service-only when the caller later adds delegation", async ({
+      tokens,
+      scripted,
+    }) => {
+      // GIVEN a service request with absent optional fields
+      const issuer = scripted.controlled;
+      const env = {
+        OAUTH_ISSUER: issuer.issuer,
+        OAUTH_CLIENT_ID: "client",
+        OAUTH_CLIENT_SECRET: "secret",
+      };
+      const request: {
+        audience: string;
+        scope?: string;
+        onBehalfOf?: { token: string; tokenType: string };
+      } = { audience: "orders" };
+
+      // WHEN optional fields are added before discovery completes
+      const answer = await tokens({ env }, (ctx) =>
+        fromSafePromise(
+          (async () => {
+            const pending = ctx.get(TokenSource).token(request);
+            await issuer.discoveryReached;
+            request.scope = "write";
+            request.onBehalfOf = { token: "bob", tokenType: "subject-type" };
+            issuer.releaseDiscovery();
+            const grant = await issuer.nextGrant();
+            grant.succeed();
+            return (await pending).getOrThrow();
+          })(),
+        ),
+      );
+
+      // THEN the original request still uses client credentials without a scope
+      expect(answer).toBeOkWith({
+        bearer: JSON.stringify({ audience: "orders", grant_type: "client_credentials" }),
+      });
+    });
+
     it("authenticates the service and preserves the subject with the issuer's actor claim", async ({
       tokens,
       exchange,
@@ -553,6 +668,131 @@ describe("oauthClient", () => {
   });
 
   describe("the health check", () => {
+    it("keeps a fresh generation after the newest fetch settled while an older fetch is still pending", async ({
+      tokens,
+      scripted,
+    }) => {
+      // GIVEN an old request pending across a successful replacement
+      const issuer = scripted.controlled;
+      const env = {
+        OAUTH_ISSUER: issuer.issuer,
+        OAUTH_CLIENT_ID: "client",
+        OAUTH_CLIENT_SECRET: "secret",
+      };
+      issuer.releaseDiscovery();
+
+      // WHEN another fetch starts after that replacement and the old request completes before it
+      const report = await tokens({ env }, (ctx) =>
+        fromSafePromise(
+          (async () => {
+            const source = ctx.get(TokenSource);
+            const request = (token: string) => ({
+              audience: "orders",
+              onBehalfOf: { token, tokenType: "subject-type" },
+            });
+            const older = source.token(request("old"));
+            const oldGrant = await issuer.nextGrant();
+            const replacement = source.token(request("replacement"));
+            (await issuer.nextGrant()).succeed();
+            await replacement;
+            const fresh = source.token(request("fresh"));
+            const freshGrant = await issuer.nextGrant();
+            oldGrant.succeed();
+            await older;
+            freshGrant.refuse();
+            await fresh;
+            return (await runHealthChecks(ctx.get(HealthChecks))).get();
+          })(),
+        ),
+      );
+
+      // THEN cleanup of earlier fetches cannot remove or reuse the fresh generation
+      expect(report).toBeOkWith({
+        status: "unhealthy",
+        components: [
+          {
+            name: "oauth-client",
+            status: "unhealthy",
+            reason: "orders: refused (invalid_request)",
+          },
+        ],
+      });
+    });
+
+    for (const { olderFails, newestFirst } of [
+      { olderFails: true, newestFirst: true },
+      { olderFails: true, newestFirst: false },
+      { olderFails: false, newestFirst: true },
+      { olderFails: false, newestFirst: false },
+    ])
+      it(`keeps the newest-started fetch's health when olderFails=${olderFails} and newestFirst=${newestFirst}`, async ({
+        tokens,
+        scripted,
+      }) => {
+        // GIVEN two different credentials fetching the same audience and scope
+        const issuer = scripted.controlled;
+        const env = {
+          OAUTH_ISSUER: issuer.issuer,
+          OAUTH_CLIENT_ID: "client",
+          OAUTH_CLIENT_SECRET: "secret",
+        };
+        issuer.releaseDiscovery();
+
+        // WHEN their responses finish in either order
+        const report = await tokens({ env }, (ctx) =>
+          fromSafePromise(
+            (async () => {
+              const source = ctx.get(TokenSource);
+              const older = source.token({
+                audience: "orders",
+                scope: "read",
+                onBehalfOf: { token: "old", tokenType: "subject-type" },
+              });
+              const oldGrant = await issuer.nextGrant();
+              const newer = source.token({
+                audience: "orders",
+                scope: "read",
+                onBehalfOf: { token: "new", tokenType: "subject-type" },
+              });
+              const newGrant = await issuer.nextGrant();
+              const finishOld = () => (olderFails ? oldGrant.refuse() : oldGrant.succeed());
+              const finishNew = () => (olderFails ? newGrant.succeed() : newGrant.refuse());
+              if (newestFirst) {
+                finishNew();
+                await newer;
+                finishOld();
+                await older;
+              } else {
+                finishOld();
+                await older;
+                finishNew();
+                await newer;
+              }
+              return (await runHealthChecks(ctx.get(HealthChecks))).get();
+            })(),
+          ),
+        );
+
+        // THEN only the latest-started credential determines this pair's health
+        expect(report).toBeOkWith(
+          olderFails
+            ? {
+                status: "healthy",
+                components: [{ name: "oauth-client", status: "healthy" }],
+              }
+            : {
+                status: "unhealthy",
+                components: [
+                  {
+                    name: "oauth-client",
+                    status: "unhealthy",
+                    reason: "orders: refused (invalid_request)",
+                  },
+                ],
+              },
+        );
+      });
+
     it("is healthy once a token was fetched", async ({ tokens, env }) => {
       // GIVEN a source that has fetched a token
       // WHEN the kernel runs the health checks

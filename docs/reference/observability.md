@@ -260,7 +260,8 @@ Three rules:
   attributes explicitly. Aggregate errors keep up to sixteen `errors` members
   per level, with `omittedErrors` naming any remainder. A malformed non-array
   `errors` property is omitted. Only an own data-valued array is read; an
-  `errors` accessor is never invoked. Non-error objects, functions and BigInts nested in
+  `errors` accessor and indexed member accessors are never invoked. Missing or
+  accessor-valued members render as `null`, preserving sibling positions. Non-error objects, functions and BigInts nested in
   members or cause chains render as `"[non-error]"` without invoking getters or
   serializers; JSON-compatible scalar reasons remain visible. Cycles render as
   `"[circular]"`; both member trees and `cause` chains are walked up to four

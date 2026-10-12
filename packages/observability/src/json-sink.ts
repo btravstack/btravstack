@@ -50,9 +50,10 @@ const renderCause = (cause: unknown, depth = 0, parents = new Set<Error>()): unk
       : { cause: renderCause(cause.cause, depth + 1, ancestors) }),
     ...(Array.isArray(errors) && depth < 4
       ? {
-          errors: errors
-            .slice(0, 16)
-            .map((error: unknown) => renderCause(error, depth + 1, ancestors)),
+          errors: Array.from({ length: Math.min(errors.length, 16) }, (_, index) => {
+            const member: unknown = Object.getOwnPropertyDescriptor(errors, String(index))?.value;
+            return renderCause(member, depth + 1, ancestors);
+          }),
           ...(errors.length > 16 ? { omittedErrors: errors.length - 16 } : {}),
         }
       : {}),
