@@ -15,6 +15,32 @@ of this example, not a framework requirement. A Pothos schema whose fields call
 oRPC procedures can take
 [`@btravstack/pothos`](/how-to/resolve-graphql-fields-from-orpc).
 
+Declare the deployment with `GraphqlModule`; keep schema and authentication
+options on its `graphql()` answerer:
+
+```ts
+import { GraphqlModule, graphql } from "@btravstack/graphql-server";
+import { defineAuth } from "@btravstack/http-server";
+import { createSchema } from "graphql-yoga";
+
+const schema = createSchema({
+  typeDefs: "type Query { hello: String! }",
+  resolvers: { Query: { hello: () => "world" } },
+});
+
+export const GatewayApi = GraphqlModule("GatewayApi")({
+  answerer: graphql(defineAuth(), { schema }),
+});
+```
+
+`GraphqlModule` accepts the HTTP runtime's socket options and ordinary module
+imports, providers, needs and exports. Set CORS on `graphql()`; the module
+excludes `cors` and `compression`, since the answerer does not apply HTTP
+compression. It supplies the answerer's authenticators
+and exports the runtime ports plus available `Logger` and `HealthChecks`.
+Business ports still need explicit exports. A root that imports no logger
+gets no logger provider or logger export.
+
 The [GraphQL gateway](https://github.com/btravstack/btravstack/blob/main/examples/order-graphql-api/src/module.ts)
 boots its own `HttpRuntime` and mounts the schema at `/graphql`. Its
 [resolvers](https://github.com/btravstack/btravstack/blob/main/examples/order-graphql-api/src/graphql-schema.ts)
@@ -27,8 +53,9 @@ runtime and GraphQL packages; it does not install the oRPC server.
 authenticate the whole mount through the shared HTTP auth registry, and pass
 `unit` to inject request-scoped services into resolvers. Declare the selected
 unit modules with `units: { anonymous: RequestModule }` in the same
-`graphql()` call, and pass that same record to `httpServer({ unit: units })` so
-the runtime can report its units and apply test overrides. The compiler then
+`graphql()` call. `GraphqlModule` binds that record to the runtime so it can
+report its units and apply test overrides. A manually composed root passes the
+same record to `httpServer({ unit: units })`. The compiler then
 refuses a port that module does not export. In a
 manual composition, include `...answerer.authenticators` in `provides` when
 the mount has `requires`. The resolver context

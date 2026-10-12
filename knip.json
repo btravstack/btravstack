@@ -39,7 +39,9 @@
         "@unthrown/pothos",
         "graphql",
         "@tanstack/query-core",
-        "@prisma/orm-postgres"
+        "@prisma/orm-postgres",
+        "@btravstack/graphql-server",
+        "graphql-yoga"
       ]
     },
     "examples/order-infrastructure": {

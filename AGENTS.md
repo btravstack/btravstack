@@ -222,6 +222,13 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    escaper shared with `@btravstack/http-server` would make it depend on the
    HTTP server. `docs/how-to/send-a-formatted-email.md` is the pattern.
 
+   **HTTP application roots own runtime export plumbing.** `HttpModule` and
+   `GraphqlModule` add the HTTP runtime ports and the `Logger` / `HealthChecks`
+   their imports export or their own providers supply. This convenience is
+   confined to deployment roots: ordinary modules still export their business
+   ports explicitly, and private infrastructure is never made public by walking
+   an imported module's providers.
+
    **The auth seam is protocol-neutral.** `resolvePrincipal` is one walk every
    answerer shares, and a protocol with no contract declares its requirements
    as data on the route, gated by `RequiresGate` — so a GraphQL answerer

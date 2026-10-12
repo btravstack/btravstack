@@ -914,6 +914,9 @@ importers:
       '@btravstack/example-order-graphql-api':
         specifier: workspace:*
         version: link:../order-graphql-api
+      '@btravstack/graphql-server':
+        specifier: workspace:*
+        version: link:../../packages/graphql-server
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
@@ -962,6 +965,9 @@ importers:
       graphql:
         specifier: 'catalog:'
         version: 17.0.2
+      graphql-yoga:
+        specifier: 'catalog:'
+        version: 5.24.1(graphql@17.0.2)
       tsx:
         specifier: 'catalog:'
         version: 4.23.15

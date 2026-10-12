@@ -25,3 +25,7 @@ has the same shape as `graphql-server`'s masked defect. `Observers` comes from
 range retains the older line for existing consumers, while the catalog checks
 the released 0.4.2 fixes with unthrown 5.12.1 and oRPC beta.34. The strict
 consumer gate still checks the older advertised floor.
+
+`HttpModule` shares application-root exports with `GraphqlModule`: runtime
+ports are automatic, as are available `Logger` and `HealthChecks` ports.
+Business exports remain explicit; private imported providers remain private.

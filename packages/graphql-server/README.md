@@ -6,9 +6,34 @@ A GraphQL Yoga answerer for the protocol-neutral
 server dependency. `graphql(defineAuth(), { schema })` contributes a
 `HttpHandler` member. A request-scoped unit and the Node incoming request are
 available to resolvers.
+Use `GraphqlModule` for a deployment root:
+
+```ts
+import { GraphqlModule, graphql } from "@btravstack/graphql-server";
+import { defineAuth } from "@btravstack/http-server";
+import { createSchema } from "graphql-yoga";
+
+const schema = createSchema({
+  typeDefs: "type Query { hello: String! }",
+  resolvers: { Query: { hello: () => "world" } },
+});
+
+export const GatewayApi = GraphqlModule("GatewayApi")({
+  answerer: graphql(defineAuth(), { schema }),
+});
+```
+
+The module composes the listener, authenticators and declared request modules.
+It exports the runtime ports and available `Logger` / `HealthChecks` without
+exposing business ports automatically. Its socket options are the HTTP
+runtime's, excluding `cors` and `compression`. Set CORS on `graphql()`; the
+answerer does not apply HTTP compression. Schema, authentication and Yoga
+options stay on `graphql()`.
+
 Pass `units` with `unit` to check each injected port against the module the
-selected request kind actually forks. Pass the same `units` record to
-`httpServer({ unit: units })` so the runtime can apply unit test overrides.
+selected request kind actually forks. `GraphqlModule` binds that record to
+the runtime automatically; a manually composed root passes the same `units`
+record to `httpServer({ unit: units })`.
 Yoga plugins and CORS policy are explicit
 options; the wildcard CORS default and Yoga console logging are disabled, and
 a masked defect is reported to `Observers` instead. GraphiQL,

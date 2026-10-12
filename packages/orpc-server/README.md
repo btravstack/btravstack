@@ -5,6 +5,8 @@
 > handlers from the contract; `HttpModule` composes the router, optional htmx
 > fragments, and the HTTP runtime — and, with `openapi: true`, the same router
 > as OpenAPI routes. The document generator is on `/openapi`.
+> Runtime ports and available `Logger` / `HealthChecks` are exported automatically;
+> application business ports remain explicit.
 
 The [order API example](../../examples/order-api) serves oRPC and htmx under
 one listener. The [GraphQL example](../../examples/order-graphql-api) runs in

@@ -10,6 +10,16 @@ the corresponding protocol package. The public surface is in
 `docs/reference/http-server.md` and the package READMEs. Authentication is in
 `AUTH.md`. Keep these descriptions aligned with code.
 
+## Application-root infrastructure exports
+
+`applicationExports`, on the internal subpath, is shared by `HttpModule` and
+`GraphqlModule`. It exposes `HttpRuntime` and `HttpHandler`, and adds `Logger`
+and `HealthChecks` only when the application's own providers or its imports'
+public exports make them available. It follows whole-module re-exports, never
+private providers. The conditional types mirror that walk, so a root without
+a logger cannot resolve one, and business ports still require explicit exports.
+This does not change ordinary di module visibility.
+
 ## Decisions and gotchas, by surface
 
 - The Node floor is `>=22.12`: the CommonJS build and protocol packages use
