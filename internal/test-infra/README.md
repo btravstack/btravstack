@@ -17,6 +17,7 @@ rather than one per workspace.
 | `nginx:1.29-alpine`                | the dev loop's JWKS endpoint, and `src/dev-issuer.spec.ts`                                                  |
 | `oryd/hydra:v2.3.0`                | the OpenID provider the backend-for-frontend authorises against, and `packages/oauth-client`'s token issuer |
 | `oryd/kratos:v1.3.1`               | the identity provider Hydra delegates login to                                                              |
+| `quay.io/keycloak/keycloak:26.8.0` | `packages/oauth-client` native RFC 8693 delegation, isolated per realm                                      |
 | `node:24-alpine`                   | `src/ory-consent.mjs`, the consent and logout endpoint                                                      |
 
 One container per backing service — the table above is the list, and the
@@ -150,6 +151,7 @@ break.
 | `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal` / `sharedRedis` / `sharedMailpit` / `sharedRustFs`, plus `postgresUrl`, `provisionApplicationRole`, `migrateOrders` and the credentials each one is started with |
 | `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                                                                                                                                                                      |
 | `@btravstack/internal-test-infra/ory`        | `sharedOry` / `provisionOry` / `createIdentity` / `createServiceClient` / `registerRedirectUri`, the issuer and client constants, and `ORY_USERS`                                                                       |
+| `@btravstack/internal-test-infra/keycloak`   | `sharedKeycloak` / `createExchangeClient`, the native delegation issuer and per-test credentials                                                                                                                        |
 | `@btravstack/internal-test-infra/ory-login`  | `oryClient()`, `headlessLogin({ authorizationUrl, user })`, `browserLogin(origin, user)` and `followRedirects(from, until)`                                                                                             |
 | `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                                                                                                                                                                   |
 
@@ -503,3 +505,14 @@ workspace is `private` and reaches none. So the trade was fifteen lines of
 RFC 9562 layout, verified once and unlikely to be read again, against a
 zero-dependency package that also orders ids minted within the same
 millisecond — which nothing needs today.
+
+## Token exchange issuer
+
+`src/keycloak.ts` reuses one Keycloak server, with its preview delegation and
+parameterized-scope features enabled. Each OAuth exchange fixture provisions a
+UUID realm, two subjects and a confidential service account. A fixed `may_act`
+mapper grants the fixture subjects that service actor; the server validates
+subject and actor access tokens and mints the native `act` claim. Production
+permission and consent configuration remains the issuer's responsibility.
+The fixture verifies token activity and signed JWT claims separately because
+Keycloak introspection omits `act`.

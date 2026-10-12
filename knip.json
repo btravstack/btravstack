@@ -57,6 +57,23 @@
     },
     "packages/prisma": {
       "ignoreDependencies": ["@prisma/orm-postgres"]
+    },
+    "templates/http-app": {
+      "entry": ["src/main.ts"],
+      "project": ["src/**/*.ts"],
+      "ignoreDependencies": [
+        "@btravstack/config",
+        "@btravstack/contract",
+        "@btravstack/di",
+        "@btravstack/htmx-server",
+        "@btravstack/http-server",
+        "@orpc/client",
+        "@orpc/json-schema",
+        "@orpc/openapi",
+        "@orpc/server",
+        "@unthrown/orpc"
+      ],
+      "ignoreBinaries": ["tsc"]
     }
   }
 }

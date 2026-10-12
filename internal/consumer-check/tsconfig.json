@@ -8,6 +8,6 @@
   // temporary project, under TypeScript 5.9.3 and `declaration: true`,
   // which is the whole point. Compiling it here would resolve the workspace
   // links instead and answer the question this gate exists to ask differently.
-  "include": ["src/check.ts"],
+  "include": ["src/check.ts", "src/check-template.ts"],
   "exclude": ["node_modules"]
 }

@@ -1,8 +1,8 @@
 # @btravstack/oauth-client
 
 > A `TokenSource` port for [`@btravstack/core`](../core): a bearer token so a
-> service calls another as itself, over the OAuth 2.0 client credentials
-> grant — kept per audience until shortly before it expires, one fetch shared
+> service calls another as itself or for a subject, over client credentials
+> or RFC 8693 token exchange — kept per audience until shortly before it expires, one fetch shared
 > by concurrent callers, and a static adapter for tests.
 
 📖 **[Documentation](https://btravstack.github.io/btravstack/reference/oauth-client)** ·
@@ -77,14 +77,19 @@ which is this list's one detailed home.
 
 **It decides** that discovery is lazy, so an issuer down at deploy fails the
 calls that need a token rather than the boot; that a token is reused until a
-minute before it expires; that a refusal (`TokenRefused`, with the issuer's
+minute before it expires, with fixed FIFO capacity so subject turnover stays
+bounded; that a refusal (`TokenRefused`, with the issuer's
 `error` code) and an outage (`TokenIssuerUnavailable`) are two typed errors;
 that every fetch is reported to `Observers`; and that an `oauth-client` health
-check fails while an audience's last fetch failed.
+check follows the newest-started fetch per audience and scope, even when
+responses finish out of order. Each request is snapshotted at entry so caller
+mutation cannot change its grant or poison another credential's cache.
 
 **It does not decide** what a failure means for your call — retrying belongs
-to your transport — and it does not yet mint a token on behalf of a user
-(RFC 8693 token exchange is deferred). The reasoning is in
+to your transport. On behalf of a subject, `token({ audience, onBehalfOf:
+{ token, tokenType, actor? } })` uses RFC 8693 exchange. The issuer must
+authorize delegation and mint the `act` claim; an actor credential is supplied
+when it requires one. The reasoning is in
 [`AGENTS.md`](./AGENTS.md).
 
 ## License

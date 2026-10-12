@@ -77,3 +77,19 @@ hypothetical: it is what this repository's first automated release run did.
 `GEMINI.md`. A local `pnpm run version` never showed it, because a repository
 installs a current reader and only the action's bundled copy was old — so the
 failure existed in CI and nowhere else.
+
+## The standalone template follows the release
+
+`templates/http-app` is outside the workspace, so Changesets cannot update its
+pins. The root `version` script runs `.changeset/sync-template.mjs` after
+Changesets to copy each framework package's new version into the template,
+leaving third-party pins unchanged. The release workflow uses that script,
+so the release PR carries the template update too.
+
+The consumer gate rejects template pins that differ from repository versions.
+It installs the declared versions from npm once published. A release PR's
+version is not published yet: only an npm `E404` selects source tarballs for
+that stage's strict-peer install, compiler, endpoint and SIGTERM check. Other
+registry errors fail; the stage is named in the output. The retained version
+regression runs through the consumer-check workspace's `test` script with
+real Changesets patch and minor bumps in a temporary copy.

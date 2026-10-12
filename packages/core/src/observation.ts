@@ -1,5 +1,5 @@
 import { Port } from "@btravstack/di";
-import type { AsyncResult, FailureView } from "unthrown";
+import { Ok, OkAsync, fromSafeThrowable, type AsyncResult, type FailureView } from "unthrown";
 
 import type { Attributes } from "./observability.js";
 
@@ -99,17 +99,29 @@ export const noObserver = (): Settle => () => {};
  * matters because the settling call sites are error paths, where a `tap` and a
  * `tapFailure` on the same chain, or a retry, is exactly the shape that fires
  * twice and doubles a failure count.
+ *
+ * A broken observer is dropped independently, on startup and settlement. No
+ * recursive reporting is attempted: telemetry must never alter the operation
+ * or prevent another observer from settling.
  */
 export const observe = (
   observers: readonly ((operation: Operation) => Settle)[],
   operation: Operation,
 ): Settle => {
-  const settlers = observers.map((observer) => observer(operation));
+  const settlers = observers.map((observer) =>
+    fromSafeThrowable(observer)(operation)
+      .recoverDefect(() => Ok(noObserver()))
+      .get(),
+  );
   let done = false;
   return (settled) => {
     if (done) return;
     done = true;
-    for (const settle of settlers) settle(settled);
+    for (const settle of settlers) {
+      fromSafeThrowable(settle)(settled)
+        .recoverDefect(() => Ok())
+        .get();
+    }
   };
 };
 
@@ -122,7 +134,8 @@ export const observe = (
  *
  * `settled` replaces either default where a starter has more to say: `ok`
  * receives the value (a cache reports a hit or a miss), `failure` the
- * `FailureView` (a store reports a missing object as an ordinary answer).
+ * `FailureView` (a store reports a missing object as an ordinary answer). A
+ * throwing shaping hook is dropped and the ordinary settlement is used.
  */
 export const observed = <T, E>(
   observers: readonly ((operation: Operation) => Settle)[],
@@ -134,14 +147,23 @@ export const observed = <T, E>(
   } = {},
 ): AsyncResult<T, E> => {
   const settle = observe(observers, operation);
-  return call()
-    .tap((value) => settle(settled.ok?.(value) ?? { outcome: "ok" }))
-    .tapFailure((failure) =>
+  return OkAsync()
+    .flatMap(call)
+    .tap((value) => {
+      const rendered = fromSafeThrowable(() => settled.ok?.(value))()
+        .recoverDefect(() => Ok(undefined))
+        .get();
+      settle(rendered ?? { outcome: "ok" });
+    })
+    .tapFailure((failure) => {
+      const rendered = fromSafeThrowable(() => settled.failure?.(failure))()
+        .recoverDefect(() => Ok(undefined))
+        .get();
       settle(
-        settled.failure?.(failure) ?? {
+        rendered ?? {
           outcome: "error",
           cause: failure.tag === "Err" ? failure.error : failure.cause,
         },
-      ),
-    );
+      );
+    });
 };

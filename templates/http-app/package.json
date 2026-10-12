@@ -1,0 +1,34 @@
+{
+  "name": "hello-btravstack",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@btravstack/config": "0.29.0",
+    "@btravstack/contract": "0.29.0",
+    "@btravstack/core": "0.29.0",
+    "@btravstack/di": "0.29.0",
+    "@btravstack/htmx-server": "0.29.0",
+    "@btravstack/http-server": "0.29.0",
+    "@btravstack/orpc-server": "0.29.0",
+    "@orpc/client": "2.0.0-beta.28",
+    "@orpc/contract": "2.0.0-beta.28",
+    "@orpc/json-schema": "2.0.0-beta.28",
+    "@orpc/openapi": "2.0.0-beta.28",
+    "@orpc/server": "2.0.0-beta.28",
+    "@unthrown/orpc": "0.2.0",
+    "unthrown": "5.12.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.7",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

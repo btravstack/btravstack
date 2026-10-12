@@ -6,9 +6,9 @@ export default mergeConfig(
   shared,
   defineConfig({
     test: {
-      // The one Hydra the gate shares; each test mints a client of its own.
+      // Shared issuers; tests own a Hydra client or a Keycloak realm.
       globalSetup: ["src/__tests__/ory-setup.ts"],
-      // The image pulls and Hydra's migration dominate a cold run.
+      // Image pulls, Hydra migration and Keycloak rebuild dominate cold setup.
       hookTimeout: 180_000,
       testTimeout: 30_000,
       coverage: covered(),

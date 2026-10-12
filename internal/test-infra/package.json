@@ -16,7 +16,8 @@
     "./rabbitmq": "./src/rabbitmq.ts",
     "./rustfs": "./src/rustfs.ts",
     "./redis": "./src/redis.ts",
-    "./temporal": "./src/temporal.ts"
+    "./temporal": "./src/temporal.ts",
+    "./keycloak": "./src/keycloak.ts"
   },
   "scripts": {
     "dev:env": "tsx src/dev-env.ts",

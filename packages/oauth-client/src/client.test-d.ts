@@ -11,7 +11,7 @@ import type { Module } from "@btravstack/di";
 import { expectTypeOf } from "vitest";
 
 import { oauthClient } from "./client.js";
-import type { TokenSource } from "./token-source.js";
+import type { TokenRequest, TokenSource } from "./token-source.js";
 
 expectTypeOf(oauthClient()).toEqualTypeOf<
   Module<
@@ -40,3 +40,29 @@ expectTypeOf(oauthClient({ issuer: maybe })).toEqualTypeOf<
 
 // @ts-expect-error — `issuerUrl` is not an option; the issuer is `issuer`.
 oauthClient({ issuerUrl: "https://issuer.example/" });
+
+const delegated: TokenRequest = {
+  audience: "orders",
+  onBehalfOf: {
+    token: "subject-token",
+    tokenType: "urn:ietf:params:oauth:token-type:access_token",
+    actor: { token: "actor-token", tokenType: "urn:ietf:params:oauth:token-type:access_token" },
+  },
+};
+expectTypeOf(delegated).toEqualTypeOf<TokenRequest>();
+
+// @ts-expect-error — a subject token always states its RFC 8693 token type.
+const untypedSubject: TokenRequest = { audience: "orders", onBehalfOf: { token: "subject" } };
+
+const untypedActor: TokenRequest = {
+  audience: "orders",
+  onBehalfOf: {
+    token: "subject",
+    tokenType: "urn:ietf:params:oauth:token-type:access_token",
+    // @ts-expect-error — an actor token always states its RFC 8693 token type.
+    actor: { token: "actor" },
+  },
+};
+
+void untypedSubject;
+void untypedActor;

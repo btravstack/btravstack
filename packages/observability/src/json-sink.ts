@@ -1,22 +1,62 @@
 import type { Line, Sink } from "./logger.js";
 
+const DIAGNOSTIC_FIELDS = [
+  "_tag",
+  "sqlState",
+  "constraint",
+  "table",
+  "database",
+  "role",
+  "bypass",
+  "port",
+];
+
 /**
  * An `Error`'s `message` and `stack` are **non-enumerable**, so
  * `JSON.stringify` renders a thrown one as `{}` — the line that exists to carry
  * a failure would carry nothing. Walks `cause` chains so a wrapped failure keeps
  * its origin.
  */
-const renderCause = (cause: unknown, depth = 0): unknown => {
-  if (!(cause instanceof Error)) return cause;
+const renderCause = (cause: unknown, depth = 0, parents = new Set<Error>()): unknown => {
+  if (!(cause instanceof Error)) {
+    return depth > 0 &&
+      cause !== null &&
+      (typeof cause === "object" || typeof cause === "function" || typeof cause === "bigint")
+      ? "[non-error]"
+      : cause;
+  }
+  if (parents.has(cause)) return "[circular]";
+  const ancestors = new Set(parents).add(cause);
+  const errors: unknown =
+    cause instanceof AggregateError
+      ? Object.getOwnPropertyDescriptor(cause, "errors")?.value
+      : undefined;
   return {
     name: cause.name,
     message: cause.message,
     stack: cause.stack,
-    // Bounded: an error whose `cause` points back at itself is fatal to a
-    // renderer that follows it.
+    // A fixed scalar whitelist avoids copying secret-bearing or personal payload fields.
+    ...Object.fromEntries(
+      DIAGNOSTIC_FIELDS.flatMap((key) => {
+        const descriptor = Object.getOwnPropertyDescriptor(cause, key);
+        const value: unknown = descriptor?.value;
+        return typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+          ? [[key, value]]
+          : [];
+      }),
+    ),
     ...(cause.cause === undefined || depth >= 4
       ? {}
-      : { cause: renderCause(cause.cause, depth + 1) }),
+      : { cause: renderCause(cause.cause, depth + 1, ancestors) }),
+    ...(Array.isArray(errors) && depth < 4
+      ? {
+          errors: Array.from({ length: Math.min(errors.length, 16) }, (_, index) => {
+            const member: unknown = Object.getOwnPropertyDescriptor(errors, String(index))?.value;
+            return renderCause(member, depth + 1, ancestors);
+          }),
+          ...(errors.length > 16 ? { omittedErrors: errors.length - 16 } : {}),
+        }
+      : {}),
   };
 };
 

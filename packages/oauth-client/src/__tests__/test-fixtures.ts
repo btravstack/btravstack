@@ -10,6 +10,7 @@ import {
   type Settled,
 } from "@btravstack/core";
 import { Module, Provider, type Context } from "@btravstack/di";
+import { createExchangeClient } from "@btravstack/internal-test-infra/keycloak";
 import {
   ORY_ISSUER,
   createServiceClient,
@@ -34,6 +35,12 @@ export type Observation = {
   settled?: Settled;
 };
 
+type ControlledGrant = {
+  readonly parameters: Record<string, string>;
+  readonly succeed: () => void;
+  readonly refuse: () => void;
+};
+
 /** A graph around `oauthClient(options)`, over the fixtures' clock and observer, run for the length of `body`. */
 export type Tokens = <T, E>(
   options: OAuthClientOptions & { readonly env: Environment },
@@ -41,6 +48,7 @@ export type Tokens = <T, E>(
 ) => AsyncResult<T, E | ConfigInvalid>;
 
 export type OAuthFixtures = {
+  readonly exchange: Awaited<ReturnType<typeof createExchangeClient>>;
   readonly clock: FakeClock;
   /** A client of this test's own, allowed {@link AUDIENCE} and {@link SCOPE}. */
   readonly client: OryServiceClient;
@@ -52,15 +60,30 @@ export type OAuthFixtures = {
   /** What Hydra says a token it issued is. */
   readonly introspect: (token: string) => Promise<unknown>;
   /**
-   * Two issuers answering what the gate's Hydra never does: `challenging`
+   * Scripted issuers answering what the gate's Hydra never does: `challenging`
    * refuses every client as RFC 6749 §5.2 spells it for Basic authentication —
    * `401` with a `WWW-Authenticate` challenge — and `failing` answers every
-   * token request with a `503` and an OAuth error body.
+   * token request with a `503` and an OAuth error body. `issuing` answers each
+   * token request with a fresh bearer.
    */
-  readonly scripted: { readonly challenging: string; readonly failing: string };
+  readonly scripted: {
+    readonly challenging: string;
+    readonly failing: string;
+    readonly issuing: string;
+    readonly controlled: {
+      readonly issuer: string;
+      readonly discoveryReached: Promise<void>;
+      readonly releaseDiscovery: () => void;
+      readonly nextGrant: () => Promise<ControlledGrant>;
+    };
+  };
 };
 
 export const it = test.extend<OAuthFixtures>({
+  // oxlint-disable-next-line no-empty-pattern -- a fixture with no dependencies still takes vitest's destructured first parameter
+  exchange: async ({}, use) => {
+    await use(await createExchangeClient());
+  },
   // oxlint-disable-next-line no-empty-pattern -- vitest's fixture signature: one that names no other fixture still takes the destructured first parameter
   clock: async ({}, use) => {
     await use(createFakeClock());
@@ -104,13 +127,68 @@ export const it = test.extend<OAuthFixtures>({
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   scripted: async ({}, use) => {
+    let issued = 0;
+    let reachedDiscovery!: () => void;
+    const discoveryReached = new Promise<void>((resolve) => {
+      reachedDiscovery = resolve;
+    });
+    let releaseDiscovery!: () => void;
+    const discoveryReleased = new Promise<void>((resolve) => {
+      releaseDiscovery = resolve;
+    });
+    const grants: ControlledGrant[] = [];
+    const waiting: Array<(grant: ControlledGrant) => void> = [];
     const server = createServer((request, response) => {
       const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
       const [, name, rest] = (request.url ?? "").split(/^\/(\w+)/);
       response.setHeader("content-type", "application/json");
       if (rest === "/.well-known/openid-configuration") {
         const issuer = `${base}/${name}`;
-        response.end(JSON.stringify({ issuer, token_endpoint: `${issuer}/token` }));
+        const answer = () =>
+          response.end(JSON.stringify({ issuer, token_endpoint: `${issuer}/token` }));
+        if (name === "controlled") {
+          reachedDiscovery();
+          void discoveryReleased.then(answer);
+        } else answer();
+        return;
+      }
+      if (name === "controlled") {
+        let body = "";
+        request.on("data", (chunk: Buffer) => {
+          body += chunk.toString();
+        });
+        request.on("end", () => {
+          const parameters = Object.fromEntries(new URLSearchParams(body));
+          const grant = {
+            parameters,
+            succeed: () =>
+              response.end(
+                JSON.stringify({
+                  access_token: JSON.stringify(parameters),
+                  token_type: "Bearer",
+                  expires_in: 3600,
+                }),
+              ),
+            refuse: () => {
+              response.statusCode = 400;
+              response.end(JSON.stringify({ error: "invalid_request" }));
+            },
+          };
+          const next = waiting.shift();
+          if (next === undefined) grants.push(grant);
+          else next(grant);
+        });
+        return;
+      }
+      if (name === "issuing") {
+        issued += 1;
+        response.end(
+          JSON.stringify({
+            access_token: `test-bearer-${issued}`,
+            token_type: "Bearer",
+            expires_in: 3600,
+          }),
+        );
         return;
       }
       if (name === "challenging") {
@@ -124,7 +202,22 @@ export const it = test.extend<OAuthFixtures>({
     });
     await new Promise<void>((listening) => server.listen(0, "127.0.0.1", listening));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    await use({ challenging: `${base}/challenging`, failing: `${base}/failing` });
+    await use({
+      challenging: `${base}/challenging`,
+      failing: `${base}/failing`,
+      issuing: `${base}/issuing`,
+      controlled: {
+        issuer: `${base}/controlled`,
+        discoveryReached,
+        releaseDiscovery,
+        nextGrant: () => {
+          const grant = grants.shift();
+          return grant === undefined
+            ? new Promise<ControlledGrant>((resolve) => waiting.push(resolve))
+            : Promise.resolve(grant);
+        },
+      },
+    });
     await new Promise((closed) => server.close(closed));
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
