@@ -94,4 +94,5 @@ part from the runtime's binding. Authentication, plugin contexts and unit-port
 gates stay at `graphql()`'s call. The root adds `Env` to its declaration gate,
 provides the answerer's authenticators, and shares infrastructure export
 handling with `HttpModule`. Business exports and unmet provider dependencies
-stay explicit. Declaration emission is covered by the external consumer gate.
+stay explicit. Root options exclude `cors` and `compression`: CORS belongs to
+`graphql()`, and the answerer does not consume HTTP compression. Declaration emission is covered by the external consumer gate.

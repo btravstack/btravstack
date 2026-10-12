@@ -26,7 +26,9 @@ export const GatewayApi = GraphqlModule("GatewayApi")({
 The module composes the listener, authenticators and declared request modules.
 It exports the runtime ports and available `Logger` / `HealthChecks` without
 exposing business ports automatically. Its socket options are the HTTP
-runtime's; schema, authentication and Yoga options stay on `graphql()`.
+runtime's, excluding `cors` and `compression`. Set CORS on `graphql()`; the
+answerer does not apply HTTP compression. Schema, authentication and Yoga
+options stay on `graphql()`.
 
 Pass `units` with `unit` to check each injected port against the module the
 selected request kind actually forks. `GraphqlModule` binds that record to

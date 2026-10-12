@@ -61,7 +61,7 @@ export const GraphqlModule =
     const X extends readonly Exportable<Imports<I, A>, Provides<P, A>>[] = [],
     const N extends readonly AnyPort[] = [],
   >(
-    options: Omit<HttpOptions, "unit"> & {
+    options: Omit<HttpOptions, "unit" | "cors" | "compression"> & {
       readonly answerer: A;
       readonly imports?: I;
       readonly provides?: P;

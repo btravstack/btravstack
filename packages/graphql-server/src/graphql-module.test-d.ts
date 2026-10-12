@@ -55,3 +55,22 @@ const unfinished = GraphqlModule("NeedsGraphqlLogger")({
 });
 // @ts-expect-error -- UNSATISFIED DEPENDENCIES: declaring a logger need does not provide it
 void start(unfinished);
+
+GraphqlModule("UnsupportedModuleCors")({
+  answerer: graphql(defineAuth(), { schema }),
+  // @ts-expect-error -- CORS belongs to the GraphQL answerer
+  cors: true,
+});
+GraphqlModule("UnsupportedModuleCorsRecord")({
+  answerer: graphql(defineAuth(), { schema }),
+  // @ts-expect-error -- a CORS record belongs to the GraphQL answerer
+  cors: { origin: "https://example.com" },
+});
+GraphqlModule("UnsupportedModuleCompression")({
+  answerer: graphql(defineAuth(), { schema }),
+  // @ts-expect-error -- the GraphQL answerer does not apply HTTP compression
+  compression: true,
+});
+GraphqlModule("AnswererCors")({
+  answerer: graphql(defineAuth(), { schema, cors: { origin: "https://example.com" } }),
+});

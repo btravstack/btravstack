@@ -34,7 +34,9 @@ export const GatewayApi = GraphqlModule("GatewayApi")({
 ```
 
 `GraphqlModule` accepts the HTTP runtime's socket options and ordinary module
-imports, providers, needs and exports. It supplies the answerer's authenticators
+imports, providers, needs and exports. Set CORS on `graphql()`; the module
+excludes `cors` and `compression`, since the answerer does not apply HTTP
+compression. It supplies the answerer's authenticators
 and exports the runtime ports plus available `Logger` and `HealthChecks`.
 Business ports still need explicit exports. A root that imports no logger
 gets no logger provider or logger export.
