@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,13 @@ try {
     1,
     "framework packages upgrade together",
   );
+  for (const [name, version] of family) {
+    const pkg = join(root, "packages", name.slice("@btravstack/".length));
+    const current = JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")) as {
+      version: string;
+    };
+    assert.equal(version, current.version, "template pins must match repository package versions");
+  }
   const orpc = Object.entries(manifest.dependencies).filter(([name]) => name.startsWith("@orpc/"));
   assert.equal(
     new Set(orpc.map(([, version]) => version)).size,
@@ -39,10 +46,36 @@ try {
     );
   }
 
+  const registry = spawnSync(
+    "npm",
+    ["view", `@btravstack/core@${manifest.dependencies["@btravstack/core"]}`, "version", "--json"],
+    { cwd: work, encoding: "utf8" },
+  );
+  const unpublished = registry.status !== 0 && registry.stderr.includes("E404");
+  assert.ok(registry.status === 0 || unpublished, registry.stderr);
+  if (unpublished) {
+    for (const [name] of family) {
+      const pkg = join(root, "packages", name.slice("@btravstack/".length));
+      const packed = JSON.parse(
+        execFileSync("pnpm", ["pack", "--json", "--pack-destination", work], {
+          cwd: pkg,
+          encoding: "utf8",
+        }),
+      ) as { filename: string };
+      manifest.dependencies[name] = `file:${packed.filename}`;
+    }
+    writeFileSync(join(work, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  }
   run("npm", ["install", "--ignore-scripts", "--strict-peer-deps"]);
   const floor = manifest.engines.node.replace(/^>=/, "");
-  run("pnpm", ["add", `node@runtime:${floor}`, "--config.minimum-release-age=0"]);
-  const node = join(work, "node_modules", ".bin", "node");
+  const runtime = join(work, "node-runtime");
+  mkdirSync(runtime);
+  writeFileSync(join(runtime, "package.json"), JSON.stringify({ private: true }));
+  execFileSync("pnpm", ["add", `node@runtime:${floor}`, "--config.minimum-release-age=0"], {
+    cwd: runtime,
+    stdio: "inherit",
+  });
+  const node = join(runtime, "node_modules", ".bin", "node");
   run(node, ["node_modules/typescript/bin/tsc", "--noEmit"]);
   run(node, ["node_modules/typescript/bin/tsc"]);
 
@@ -127,7 +160,7 @@ null
     assert.match(stderr, /"type":"drained"/);
     assert.match(stderr, /"type":"exited"/);
     process.stdout.write(
-      `[template-check] published packages install, typecheck, build, answer and drain on Node ${floor}\n`,
+      `[template-check] ${unpublished ? "unpublished release tarballs" : "published packages"} install, typecheck, build, answer and drain on Node ${floor}\n`,
     );
   } finally {
     if (child.exitCode === null) child.kill("SIGKILL");

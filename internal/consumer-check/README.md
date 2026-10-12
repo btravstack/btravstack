@@ -151,10 +151,16 @@ export. It checks each advertised module format and ignores `node10`.
 
 `src/check-template.ts`, the final step of `typecheck`, copies
 `templates/http-app` outside the monorepo and installs its exact published
-versions from npm with strict peer validation. It runs the compiler and built
+versions from npm with strict peer validation. The gate checks every framework
+pin against its repository package version. `pnpm run version` synchronizes
+those pins after Changesets bumps the fixed group. Before that release exists
+on npm, the gate instead packs and installs the template's framework packages
+from source; an npm error other than a missing version still fails the gate.
+The output names which stage was checked. It runs the compiler and built
 entry point on the manifest's Node floor, calls the validated HTTP endpoint,
 and signals the actual Node process with SIGTERM. The endpoint answer,
 drained/exited events and exit `0` are assertions, so a broken boot or lifecycle
 cannot pass as a template that merely compiles. Temporary files are removed on
-every path. This check uses registry releases, while `check.ts` checks the
-current source tarballs; neither can substitute for the other.
+every path. For published versions this check uses registry releases, while `check.ts`
+checks current source tarballs; a successful release-PR tarball check does not
+claim that the new version has been published.

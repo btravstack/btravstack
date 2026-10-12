@@ -131,6 +131,29 @@ describe("the JSON sink", () => {
     });
   });
 
+  it("keeps aggregate diagnostics without invoking an errors accessor", ({ written }) => {
+    // GIVEN a dependency error whose member accessor throws
+    const cause = new AggregateError([], "failed batch");
+    Object.defineProperty(cause, "errors", { get: () => JSON.parse("broken accessor") });
+
+    // WHEN the diagnostic line is rendered
+    jsonSink(written)({
+      level: "error",
+      message: "failed",
+      attributes: {},
+      cause,
+      time: 0,
+      unit: undefined,
+    });
+
+    // THEN the error's diagnostic survives and the accessor is never executed
+    expect(lineOf(written)["cause"]).toEqual({
+      name: "AggregateError",
+      message: "failed batch",
+      stack: expect.any(String),
+    });
+  });
+
   for (const errors of [undefined, null, "invalid", { token: "private-token" }]) {
     it(`keeps the diagnostic when aggregate errors is ${JSON.stringify(errors)}`, ({ written }) => {
       // GIVEN an aggregate whose writable errors property is malformed

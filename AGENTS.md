@@ -87,8 +87,9 @@ version of "green gate, no consumer can build" this repo has met. Do not
 judge the workspace by the example half; a reader who does concludes it is
 redundant with `order-api`, and takes the emit gate with it. `docs/` is the documentation site (see **Documentation
 site** below); it is a workspace but not a published package. `templates/http-app` is a copyable standalone application, outside the
-workspace graph, tested by the consumer gate against published packages on
-its declared Node floor. It blesses neither a workspace tool nor a generator.
+workspace graph, synchronized by the root version script and tested by the
+consumer gate against published packages (source tarballs before publication)
+on its declared Node floor. It blesses neither a workspace tool nor a generator.
 Knip follows its `src/main.ts` but ignores the explicitly installed required
 peers and its `tsc` binary: they are needed by the published starter, and are
 installed only outside the workspace by `check-template.ts`. The strict peer

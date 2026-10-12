@@ -27,6 +27,10 @@ const renderCause = (cause: unknown, depth = 0, parents = new Set<Error>()): unk
   }
   if (parents.has(cause)) return "[circular]";
   const ancestors = new Set(parents).add(cause);
+  const errors: unknown =
+    cause instanceof AggregateError
+      ? Object.getOwnPropertyDescriptor(cause, "errors")?.value
+      : undefined;
   return {
     name: cause.name,
     message: cause.message,
@@ -44,12 +48,12 @@ const renderCause = (cause: unknown, depth = 0, parents = new Set<Error>()): unk
     ...(cause.cause === undefined || depth >= 4
       ? {}
       : { cause: renderCause(cause.cause, depth + 1, ancestors) }),
-    ...(cause instanceof AggregateError && Array.isArray(cause.errors) && depth < 4
+    ...(Array.isArray(errors) && depth < 4
       ? {
-          errors: cause.errors
+          errors: errors
             .slice(0, 16)
             .map((error: unknown) => renderCause(error, depth + 1, ancestors)),
-          ...(cause.errors.length > 16 ? { omittedErrors: cause.errors.length - 16 } : {}),
+          ...(errors.length > 16 ? { omittedErrors: errors.length - 16 } : {}),
         }
       : {}),
   };
