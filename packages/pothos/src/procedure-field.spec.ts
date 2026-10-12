@@ -265,6 +265,27 @@ describe("procedureField", () => {
     });
   });
 
+  it("keeps a loaded access refusal out of a default Error union", async ({
+    askMaskedWithDefaults,
+  }) => {
+    // GIVEN a loader field whose builder handles any Error
+    // WHEN the service refuses access to its key
+    const answer = await askMaskedWithDefaults('{ loadedBook(title: "reserved") { __typename } }');
+
+    // THEN the access refusal still fails the operation
+    expect(answer).toEqual({
+      data: { loadedBook: null },
+      errors: [
+        {
+          message: "Service refused access",
+          locations: [{ line: 1, column: 3 }],
+          path: ["loadedBook"],
+          extensions: { code: "FORBIDDEN" },
+        },
+      ],
+    });
+  });
+
   it("answers an output breaking the contract as a defect", async ({ readBook }) => {
     // GIVEN a book whose page count is no number
     // WHEN it is read

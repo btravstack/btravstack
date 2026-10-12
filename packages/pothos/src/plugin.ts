@@ -13,6 +13,14 @@ class PothosOrpcPlugin<Types extends SchemaTypes> extends BasePlugin<Types> {
   ): GraphQLFieldResolver<unknown, Types["Context"], object> {
     return (parent, args, context, info) =>
       fromSafePromise(Promise.resolve(resolve(parent, args, context, info)))
+        .map((value) => {
+          const refusal = accessRefusal(value);
+          if (refusal !== undefined) {
+            // oxlint-disable-next-line unthrown/no-throw -- a DataLoader access marker claimed by an Error default still refuses the operation
+            throw refusal;
+          }
+          return value;
+        })
         .recoverDefect<never, never>((cause) => {
           // oxlint-disable-next-line unthrown/no-throw -- outside Result and error-union settlement, only our sanitized access marker is public
           throw accessRefusal(cause) ?? cause;
