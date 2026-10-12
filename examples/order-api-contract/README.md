@@ -38,8 +38,8 @@ because the directive stops being used.
 `RouterClient<typeof orderRouter>` — and drives it over a stub `fetch` that
 answers the RPC protocol with a `Map` behind it. Nothing from `order-api` is
 imported, and both channels survive: the declared `NOT_FOUND` arrives as an
-`Err` carrying its `data`, because the response marks it _inferable_ exactly as
-a real server would.
+`Err` carrying its validated `data`, because the client reconciles it against
+the contract's declared error schema.
 
 `@orpc/client` and `@unthrown/orpc` are **dev** dependencies here. A client
 picks them itself; what it takes from this package is the contract.

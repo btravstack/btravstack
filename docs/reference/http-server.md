@@ -145,7 +145,7 @@ gates see a plain module.
 | `headersTimeoutMs` | no       | read from `HTTP_HEADERS_TIMEOUT_MS` | pins how long a client may take to send its headers, in ms; past it the listener answers `408`                                                                                                                                                  |
 | `requestTimeoutMs` | no       | read from `HTTP_REQUEST_TIMEOUT_MS` | pins how long a client may take to send a whole request, in ms; bounds what the client sends, never the response                                                                                                                                |
 | `hostname`         | no       | read from `HOST`                    | pins the host instead of reading it                                                                                                                                                                                                             |
-| `cors`             | no       | read from `HTTP_CORS_ORIGIN`        | pins the CORS policy — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                                                                                  |
+| `cors`             | no       | read from `HTTP_CORS_ORIGIN`        | pins the CORS policy — `true` to reflect the request origin, or its options record; applies only when `router` is served                                                                                                                        |
 | `bodyLimit`        | no       | read from `HTTP_BODY_LIMIT`         | pins the largest request body a procedure or a fragment POST reads, in bytes; `false` is unbounded                                                                                                                                              |
 | `compression`      | no       | read from `HTTP_COMPRESSION`        | pins response compression — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                                                                             |
 | `plugins`          | no       | `[]`                                | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                                                                                                                                        |
@@ -1537,7 +1537,7 @@ option pins it** — exactly as `port` pins `PORT`:
 So a deployment admits a browser client by setting `HTTP_CORS_ORIGIN`, with no code
 change; a test pins `cors` instead. Explicit beats environment beats default,
 per field: a `CORSHandlerPluginOptions` record naming `origin` wins over
-`HTTP_CORS_ORIGIN`, which wins over oRPC's own default of reflecting the request's
+`HTTP_CORS_ORIGIN`, which wins over the starter's default of reflecting the request's
 origin, and `cors: false` is off whatever the environment says.
 
 The **shapes** stay composition-time — a record's allowed methods and headers,

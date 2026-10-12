@@ -41,7 +41,7 @@ ship your handlers with it.
 ## Step 2 — build the client from the contract
 
 ```ts
-import type { contract } from "@btravstack/example-order-api-contract";
+import { contract } from "@btravstack/example-order-api-contract";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterContractClient } from "@orpc/contract";
@@ -59,11 +59,12 @@ export const createClient = (origin: string, bearer: string): OrderApiClient =>
         headers: { authorization: `Bearer ${bearer}` },
       }),
     ),
+    { contract },
   );
 ```
 
-`createResultClient` is what keeps the two channels intact across the wire: a
-declared error comes back on the `Err` channel typed by `code`, and everything
+`createResultClient` is what keeps the two channels intact across the wire: an
+error declared by the caller's contract comes back on the `Err` channel typed by `code`, and everything
 else — a network failure, a defect the server collapsed to
 `INTERNAL_SERVER_ERROR` — comes back as a `Defect`. A component therefore never
 writes `try`/`catch`, and never mistakes "the order already exists" for "the

@@ -108,6 +108,17 @@ describe("csrf", () => {
     expect(answered.status).toBe(403);
   });
 
+  it("allows a same-origin streaming GET when the check is on", async ({ rpcPolicy }) => {
+    // GIVEN the streaming RPC route with CSRF enabled
+    const calls = await rpcPolicy({ csrf: true });
+
+    // WHEN a same-origin GET reaches the route
+    const answered = await calls.read({ "sec-fetch-site": "same-origin" });
+
+    // THEN the stream is served
+    expect(answered.status).toBe(200);
+  });
+
   it("is on where the option says so, with no cookie scheme composed", async ({ csrf }) => {
     // GIVEN the header-scheme deployment with `csrf: true`
     const calls = await csrf.headers(true);

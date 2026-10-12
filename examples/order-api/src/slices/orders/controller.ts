@@ -52,7 +52,7 @@ export const ordersController = api.OrpcController(
             // either — `placeOrder`'s own signature takes a bare `string`.
             //
             // Two paths reach this status: here, and oRPC's own pre-dispatch
-            // refusal. What tells them apart is `inferable`, set only when a
+            // refusal. What tells them apart is `defined`, set only when a
             // handler RETURNS an `ORPCError`, which is why one arrives on the
             // error channel and the other on the defect channel.
             .with(P.tag("InvalidOrderId"), (error) =>

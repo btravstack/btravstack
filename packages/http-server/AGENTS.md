@@ -509,7 +509,7 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   HTTP module, where `Config.integer` validates it before either answerer uses it.
 
   Precedence, spelled once in `corsOf`: a record naming `origin` wins,
-  `HTTP_CORS_ORIGIN` next, oRPC's own default (reflect the request's origin) last.
+  `HTTP_CORS_ORIGIN` next, the starter's default (reflect the request's origin) last.
   `cors: false` pins `""` and is off whatever the deployment says; `HTTP_CORS_ORIGIN`
   alone is enough to turn CORS on, which is what lets a deployment admit a
   browser client without a code change. A comma-separated list becomes the
