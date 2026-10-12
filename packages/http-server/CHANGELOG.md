@@ -1,5 +1,16 @@
 # @btravstack/http-server
 
+## 0.32.0
+
+### Patch Changes
+
+- edbd7a3: Share application infrastructure export discovery across HTTP, GraphQL, AMQP, and Temporal roots. Worker modules automatically export visible Logger and HealthChecks ports while keeping business exports explicit and private providers hidden.
+- Updated dependencies [edbd7a3]
+  - @btravstack/core@0.32.0
+  - @btravstack/config@0.32.0
+  - @btravstack/contract@0.32.0
+  - @btravstack/di@0.32.0
+
 ## 0.31.0
 
 ### Minor Changes
