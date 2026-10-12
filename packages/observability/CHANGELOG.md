@@ -1,5 +1,15 @@
 # @btravstack/observability
 
+## 0.30.0
+
+### Patch Changes
+
+- a590301: Keep bounded aggregate error constituents and tagged identities in JSON diagnostics, without copying arbitrary secret-bearing payload fields. Redact nested non-error objects, functions and BigInt reasons, and omit malformed or accessor-valued aggregate member lists without losing the diagnostic. Read indexed members through own data descriptors so an accessor cannot drop valid siblings.
+- Updated dependencies [a590301]
+  - @btravstack/core@0.30.0
+  - @btravstack/config@0.30.0
+  - @btravstack/di@0.30.0
+
 ## 0.29.0
 
 ### Patch Changes

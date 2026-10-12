@@ -1,5 +1,14 @@
 # @btravstack/prisma
 
+## 0.30.0
+
+### Patch Changes
+
+- Updated dependencies [a590301]
+  - @btravstack/core@0.30.0
+  - @btravstack/config@0.30.0
+  - @btravstack/di@0.30.0
+
 ## 0.29.0
 
 ### Minor Changes
