@@ -131,7 +131,10 @@ enabled (a preview feature of that issuer). Each test provisions its own realm,
 subjects, and confidential client. A fixture mapper grants those subjects
 `may_act` for the service account; Keycloak validates both credentials and
 produces `act` itself. This is controlled test authorization, not a production
-consent policy. Introspection proves active status and JOSE verifies the signed
+consent policy. Its HTTP readiness has a three-minute startup budget: a cold
+Quarkus rebuild must finish while the CI runner shares CPU with other services.
+A container that exits fails immediately with its logs. This budget belongs to
+testcontainers, independently of Vitest's fixture timeout. Introspection proves active status and JOSE verifies the signed
 JWT claims, since Keycloak introspection omits `act`.
 
 Observation: see the root `AGENTS.md`, **Observability is a set port, never a flag**.

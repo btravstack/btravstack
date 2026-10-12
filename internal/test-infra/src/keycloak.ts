@@ -15,7 +15,12 @@ export const sharedKeycloak = () =>
         KC_BOOTSTRAP_ADMIN_PASSWORD: "admin",
       })
       .withCommand(["start-dev", "--features=token-exchange-delegation,parameterized-scopes"])
-      .withWaitStrategy(Wait.forHttp("/realms/master/.well-known/openid-configuration", 8080)),
+      .withStartupTimeout(180_000)
+      .withWaitStrategy(
+        Wait.forHttp("/realms/master/.well-known/openid-configuration", 8080, {
+          abortOnContainerExit: true,
+        }),
+      ),
   );
 
 const checked = async (response: Response): Promise<Response> => {
