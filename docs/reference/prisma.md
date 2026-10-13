@@ -24,6 +24,54 @@ declare const contractJson: unknown;
 > starter's own query middleware, and a client whose pool is the application
 > scope's. Prisma **8** — the runtime is `@prisma/orm-postgres`.
 
+## Production dependency closure
+
+The pinned Prisma 8 Postgres facade has **no supported toolchain-free
+production install**. Importing `@prisma/orm-postgres/runtime` selects the
+runtime JavaScript entry point; it does not select a smaller package manifest.
+The [published Postgres manifest](https://registry.npmjs.org/@prisma/orm-postgres/8.0.0-rc.11)
+requires `@prisma/orm-toolchain`, whose
+[published manifest](https://registry.npmjs.org/@prisma/orm-toolchain/8.0.0-rc.11)
+requires the `@prisma/cli-engine` peer and declares build-tool dependencies.
+
+Keep the application manifest split by responsibility:
+
+| Manifest section  | Packages                                                                               | Purpose                                                                                                               |
+| ----------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `dependencies`    | `@btravstack/prisma`, its required framework peers, `unthrown`, `@prisma/orm-postgres` | Boot the typed client from the emitted contract and retain the starter's connection, role and teardown checks.        |
+| `devDependencies` | `prisma`, `@prisma/cli-engine`, TypeScript and the application's compiler              | Emit contracts and compile in the build stage; run migrations and verification in a separate deployment image or Job. |
+
+This is the split the order infrastructure example uses. It does **not** make
+Prisma's transitive toolchain development-only: a frozen, strict-peer
+`pnpm deploy --prod` still includes the dependencies and resolved peers of
+production packages. A minimal reproduction with only the Postgres facade as
+an application dependency includes the toolchain, CLI engine, TypeScript,
+esbuild and Prettier in the deployed tree even when the application's direct
+CLI-engine and TypeScript entries are development dependencies.
+
+Keep peer validation enabled. Removing the starter's required Prisma peer,
+using a subpath, or changing the application's direct tooling entries cannot
+remove that upstream dependency. Deleting transitive packages after deployment
+or weakening peer checks is not a supported runtime surface.
+
+The upstream dependency is tracked by
+[btravstack #561](https://github.com/btravstack/btravstack/issues/561).
+[Prisma #30437](https://github.com/prisma/orm/issues/30437) tracks the related
+CLI-engine coupling through `orm-toolchain` for Composer; its scope does not
+yet establish a runtime-only Postgres facade. The required upstream change is
+a published runtime dependency surface that consumes emitted contracts without
+requiring the authoring toolchain or its CLI-engine peer.
+
+Once that surface is published, validation must emit and typecheck the contract
+in a build stage, deploy the frozen production closure with strict peers, and
+boot it against PostgreSQL as a non-owner role in a non-root distroless Node
+image. The closure must contain no compiler, bundler or formatter binaries.
+Until then, a distroless image can omit a shell and package manager, but this
+starter cannot promise that its installed Prisma dependency tree contains no
+build tooling. `prismaDatabase` continues to probe the database, refuse
+row-security-bypassing roles and close the pool; those guarantees do not depend
+on contract emission or migrations running inside the application process.
+
 ## `prismaDatabase(name)({ client })`
 
 ```ts
