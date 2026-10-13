@@ -13,6 +13,11 @@ one listener. The [GraphQL example](../../examples/order-graphql-api) runs in
 a separate process and uses the typed oRPC client, without installing this
 server package.
 
+For OpenAPI routes, named errors declare their HTTP `status` beside `data` or
+`message` in the contract's `.errors(...)` entries. The answerer and document
+generator honor each procedure's declaration without an application-wide map.
+See [custom error statuses](https://btravstack.github.io/btravstack/reference/http-server#custom-error-statuses).
+
 ```sh
 pnpm add @btravstack/orpc-server @btravstack/http-server @btravstack/htmx-server \
   @btravstack/core @btravstack/config @btravstack/di @btravstack/contract \

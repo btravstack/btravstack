@@ -682,8 +682,8 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   `errorStatusMap`, so `@orpc/server` falls back to its own
   `COMMON_ERROR_STATUS_MAP` — a fixed dictionary of the standard codes — and a
   **custom** code outside it resolves to `DEFAULT_ERROR_STATUS`, `500`. The
-  contract's own `status` field (an OpenAPI-handler concept) is never read by
-  this handler. `INVALID_QUANTITY` is the code in the running examples that
+  contract's own `status` field is read by the OpenAPI answerer and document
+  generator (see `../orpc-server/AGENTS.md`), never by this RPC handler. `INVALID_QUANTITY` is the code in the running examples that
   hits this today, a declared client-input error that therefore answers `500`
   rather than a `4xx`, tripping any 5xx-keyed retry or circuit breaker a
   caller has — and `examples/order-api/src/api.spec.ts`'s
@@ -1490,7 +1490,10 @@ module's `cors: true` silently left `/api` closed. `plugins` are not forwarded �
 they are each protocol's own. `openapi` without `router` is refused at its key,
 against `"OPENAPI WITHOUT A ROUTER — …"`. It injects the already-built `OrpcRouterPort` and contributes one `HttpHandler`
 member under `/api` by default; `orpc()` remains under `/rpc`. Both use the
-same handler policy builder for CORS, body limit, and compression. The runtime
+same handler policy builder for CORS, body limit, and compression. Named
+error statuses come from each procedure's `.errors(...)` entries, local to
+that procedure on the OpenAPI wire and in its generated document; the RPC
+answerer retains its default map. The runtime
 owns the unit and cookie-based CSRF check. OpenAPI GET routes follow HTTP's
 safe-method contract, so the RPC streaming GET CSRF plugin does not apply to
 them. `bodyLimit` and `csrf` are configured on the HTTP module, never on this

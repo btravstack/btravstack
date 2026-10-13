@@ -2371,7 +2371,7 @@ the same document is the route list:
 
 `openApiRoutes({ prefix?, cors?, compression?, plugins? })`
 contributes one `HttpHandler` member under `/api` by default. It uses
-`@orpc/openapi/node`'s `OpenAPIHandler` over the same `OrpcRouterPort` as
+oRPC's OpenAPI codec and Node adapter over the same `OrpcRouterPort` as
 `orpc()`, so a contract can serve TypeScript RPC clients at `/rpc` and generic
 HTTP clients at `/api` in one process. `HttpModule`'s `openapi` option composes
 it — `openapi: true`, or `openapi: { prefix, cors, compression, plugins }`; a
@@ -2391,3 +2391,37 @@ by field; `plugins` are per answerer, and the module's stay with RPC. Set
 `bodyLimit` and `csrf` on `HttpModule` for both answerers. The HTTP runtime still owns cookie-based CSRF
 checks, the request unit, security headers, and drain. See
 [Serve an oRPC contract as OpenAPI routes](/how-to/serve-an-openapi-contract).
+
+### Custom error statuses
+
+Declare `status` beside a named error's `data` or `message` in the procedure's
+`.errors(...)` map. The OpenAPI answerer and `openApiDocument()` read that
+declaration from each procedure; no application-wide status map is needed.
+
+<!-- doctest: isolate -->
+
+```ts
+import { oc } from "@orpc/contract";
+import { openapi } from "@orpc/openapi";
+import { z } from "zod";
+
+const itemsContract = {
+  find: oc
+    .meta(openapi({ method: "GET", path: "/items/{id}" }))
+    .input(z.object({ id: z.string() }))
+    .output(z.object({ id: z.string() }))
+    .errors({ ITEM_MISSING: { status: 404, data: z.object({ id: z.string() }) } }),
+};
+```
+
+Returning `ErrAsync(errors.ITEM_MISSING({ data: { id } }))` from the handler
+answers HTTP `404` with the named code and typed data. Other procedures may
+give the same code a different status. Entries without an integer status in
+`400`–`599` keep oRPC's standard code mapping, or `500` for an unknown code.
+Only errors oRPC recognizes as declared use the local status: input validation,
+access failures and unexpected defects retain their normal responses. Defects
+stay masked and reported to `Observers`; declared refusals are not defects,
+including a refusal deliberately declared as `503`.
+
+This declaration applies to OpenAPI routes and their document. The `/rpc`
+answerer retains oRPC's standard status mapping.
