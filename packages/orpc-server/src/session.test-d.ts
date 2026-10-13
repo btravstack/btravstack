@@ -3,6 +3,7 @@
 // handed a session without a lifetime — which is what stops a caller minting one
 // that outlives the policy. Each `@ts-expect-error` is an assertion.
 import type { ConfigInvalid, EnvReading } from "@btravstack/config";
+import { start } from "@btravstack/core";
 import type { Provider } from "@btravstack/di";
 import { html } from "@btravstack/htmx-server";
 import type { Authenticator } from "@btravstack/http-server";
@@ -113,11 +114,12 @@ void HttpModule("SessionRoot")({
   provides: [exports, sessionCodec()],
 });
 
-// @ts-expect-error -- UNDECLARED NEEDS: nothing discharges `SessionCodec`
-void HttpModule("SessionRootWithoutCodec")({
+const sessionRootWithoutCodec = HttpModule("SessionRootWithoutCodec")({
   fragments: api.HtmxFragments([exports]),
   provides: [exports],
 });
+// @ts-expect-error -- UNSATISFIED DEPENDENCIES: nothing discharges `SessionCodec`
+void start(sessionRootWithoutCodec);
 
 // Negative: a scope outside the vocabulary, refused at the route's own mint.
 api.HtmxGet("/admin", {

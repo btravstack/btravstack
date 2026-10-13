@@ -1,4 +1,3 @@
-import { Logger } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import {
   OrderApplicationModule,
@@ -7,7 +6,7 @@ import {
   Tenant,
 } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
-import { OrderDatabase, OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
+import { OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { UnitSpanModule } from "@btravstack/observability/otel";
 import { ActivityInput } from "@btravstack/temporal-worker";
@@ -28,7 +27,6 @@ import { ActivityInput } from "@btravstack/temporal-worker";
  * the whole attempt.
  */
 export const ActivityUnitModule = Module("ActivityUnit")({
-  needs: [ActivityInput(orderContract), OrderDatabase, Logger],
   imports: [UnitSpanModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({

@@ -104,7 +104,6 @@ root that is a `Module(...)` which also knows about it:
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
   imports: [OrdersSlice, CustomersSlice, observability()],
-  exports: [Logger],
 });
 ```
 
@@ -173,10 +172,6 @@ built per request, in the `user` kind's module:
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
-  // The controller writes a line itself, so `Logger` is this slice's own
-  // provider's need. The use cases are not: a leaf reaches them off
-  // `context.unit`, never through `inject`.
-  needs: [Logger],
   provides: [ordersController, orderRowFragment],
   exports: [ordersController, orderRowFragment],
 });

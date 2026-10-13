@@ -69,9 +69,10 @@ const Application = Module("Application")({
 await Module.scoped(Application, (ctx) => ctx.get(GetOrder).execute("o-1"));
 ```
 
-A module also declares what it expects from outside — `needs: [Logger]` — and
-one that owes a port and names none does not compile, so a slice never quietly
-absorbs whatever the composition root happens to hold.
+What a module expects from outside is inferred from its providers' `inject`
+records and carried in its type, so the entry point refuses a graph that leaves
+one unsupplied, naming the port. A module may also state its boundary —
+`needs: [Logger]` — and is then checked against it at its own declaration.
 
 The five provider arms — `value`, `sync`, `make` (may fail, with a modeled
 error), `class`, `acquire`/`release` (a resource, released when the scope

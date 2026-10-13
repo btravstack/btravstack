@@ -222,8 +222,6 @@ export const OrdersApi = HttpModule("OrdersApi")({
   },
   imports: [OrderPersistenceModule, observability(), otel()],
   provides: [sessionCodec()],
-  // Everything a forked kind reads out of the application scope.
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 
@@ -247,7 +245,7 @@ Module("OrdersApi")({
     http({ unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule } }),
   ],
   provides: [ordersRouter, ...ordersRouter.authenticators, sessionCodec()],
-  exports: [HttpRuntime, Logger, Tracer, Meter, OrderDatabase],
+  exports: [HttpRuntime],
 });
 ```
 

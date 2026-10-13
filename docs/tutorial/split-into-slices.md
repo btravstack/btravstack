@@ -179,20 +179,18 @@ import { Greeter } from "../../greeter.js";
 import { farewellsController } from "./controller.js";
 
 export const FarewellsSlice = Module("FarewellsSlice")({
-  // "Some root supplies this": the slice has no vertical of its own, so it
-  // names what it expects instead of importing one.
-  needs: [Greeter],
   provides: [farewellsController],
   exports: [farewellsController],
 });
 ```
 
 `GreetingsSlice` **imports** the vertical it owns. `FarewellsSlice` owns none
-— it borrows `Greeter` — so it declares the need instead; leave `needs` off
-and the `Module(...)` call refuses to compile, naming the port
-([di's `NeedsGate`](/reference/di/modules)). Either way, a slice directory is
-readable on its own: which ports come from outside, without naming who
-supplies them.
+— it borrows `Greeter`, which its controller injects — so the slice owes it,
+and its type says so: `Module<…, never, Greeter>`. Nothing restates that: a
+root that supplies no `Greeter` is refused at `runMain`, naming the port
+([inferred needs](/reference/di/modules#inferred-needs-and-the-declaration-gate)).
+A slice that wants its boundary checked at its own declaration may still write
+`needs: [Greeter]`.
 
 ## Step 4 — The composed router and the new root
 

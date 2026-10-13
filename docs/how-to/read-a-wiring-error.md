@@ -53,15 +53,16 @@ you can act on, and it sits where your eye ends up.
 | `UNCOVERED CONTROLLERS` / `HANDLERS` / `ACTIVITIES`                                | An array of pieces leaves a contract leaf unimplemented. The leaf is named beside the marker.                                                                                                                                       | The array: add the missing piece.                                                                |
 | `OVERLAPPING CONTROLLERS`                                                          | One piece's path sits inside another's, so both would implement the same procedures.                                                                                                                                                | The array: drop one, or mint them at sibling paths.                                              |
 | `UNSLICEABLE CONTRACT KEY`                                                         | A top-level contract key contains a dot, which a piece path cannot encode.                                                                                                                                                          | Serve that contract with the `{ inject, sync }` form instead.                                    |
-| `UNDECLARED NEEDS — name it in \`needs\` (a slice), or import/provide it (a root)` | A provider in THIS module reads a port the module neither provides nor imports nor names. The port is named by its instance type.                                                                                                   | Two, and the sentence says both — see below.                                                     |
+| `UNDECLARED NEEDS — name it in \`needs\` (a slice), or import/provide it (a root)` | THIS module states a boundary in `needs`, and one of its providers reads a port the module neither provides nor imports nor lists. The port is named by its instance type.                                                          | Two, and the sentence says both — see below.                                                     |
 | `UNDECLARED UNIT KIND`                                                             | A `unit:` record binds a kind the starter does not know. The misspelt kind is named beside the marker, so `"anonymuos"` reads back at you.                                                                                          | The `unit` record's key.                                                                         |
 | `UNGRANTABLE SCOPE`                                                                | A route or procedure requires a scope its scheme's vocabulary does not contain, so no credential could ever satisfy it.                                                                                                             | The scheme's `scopes` array, or the requirement.                                                 |
 | `SERVES NOTHING`                                                                   | A composed answerer covers no route at all.                                                                                                                                                                                         | What you handed it: an empty array, or a contract fragment with no leaves.                       |
 
 ### `UNDECLARED NEEDS` names two fixes, and which one is yours depends on what you are writing
 
-This is the marker most likely to send you the wrong way, so the sentence
-carries both halves:
+It only fires at a module that wrote `needs` — without the list, what a module
+owes is inferred and reported at the entry point as `UNSATISFIED DEPENDENCIES`.
+When it does fire, the sentence carries both halves:
 
 - **A slice** — a module that owns one piece of the surface and expects the
   root to supply the rest — names the port in `needs`. That is the whole
@@ -72,10 +73,9 @@ carries both halves:
   `UNSATISFIED DEPENDENCIES — nothing provides`, and changes nothing else. Add
   the module to `imports`, or the provider to `provides`.
 
-**This gate fires FIRST**, at the `Module`/`HttpModule` call, and the one that
-names the real fix for a root fires below it. So a root author who reads only
-the first sentence adds `needs: [Greeter]`, recompiles, and meets the second
-error having made no progress.
+A root rarely writes `needs` at all; one that does meets this gate first, at
+the `Module`/`HttpModule` call, and `start`'s below it. Adding the port to
+`needs` there moves the error, it does not fix it.
 
 ## An unmet dependency
 

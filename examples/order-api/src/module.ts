@@ -1,8 +1,7 @@
 import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
-import { Logger, Meter, Tracer } from "@btravstack/core";
 import { contract } from "@btravstack/example-order-api-contract";
-import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { oidc } from "@btravstack/http-server/oidc";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
@@ -42,7 +41,8 @@ export const orderFragments = api.HtmxFragments([orderRowFragment]);
  * API key, whose tenant is the one the key was cut for, and `session` for a
  * browser holding the cookie the login answerer sealed, which is `user`'s own
  * shape over the other principal. Each is forked over this scope, so
- * every need they carry is discharged from what is exported below.
+ * every need they carry — the logger, the database client — is discharged by
+ * what this root imports, with nothing re-exported for them.
  * Configuration is read inside the graph, so a spec boots this module with
  * `env: { PORT: "0" }`.
  */
@@ -68,8 +68,4 @@ export const OrderApi = HttpModule("OrderApi")({
   // scheme reading the cookie rides `fragments` like the other two ride
   // `router`, and the codec is what ties the two halves to one key list.
   provides: [sessionCodec(), ...oidc()({ principal, scope: "openid orders:export" })],
-  // Everything a forked kind reads out of the application scope: the three
-  // observability ports and the one database client every request's
-  // repository is built over.
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });

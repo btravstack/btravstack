@@ -198,7 +198,6 @@ export const OrderApi = HttpModule("OrderApi")({
     otel(),
   ],
   provides: [sessionCodec(), ...oidc()({ principal, scope: "openid orders:export" })],
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 
@@ -1515,7 +1514,6 @@ export const OrderApi = HttpModule("OrderApi")({
   unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule },
   provides: [sessionCodec()],
   imports: [OrdersSlice, CustomersSlice, OrderPersistenceModule, observability(), otel()],
-  exports: [Logger, Tracer, Meter, OrderDatabase],
   cors: { origin: "https://orders.example", credentials: true },
   bodyLimit: 5_000_000,
   compression: true,
@@ -2075,7 +2073,6 @@ export class Tenant extends Port("Tenant")<TenantId> {}
 
 // `auth.principals.user` carries `userAuth`'s own principal type.
 export const User = Module("User")({
-  needs: [auth.principals.user],
   provides: [
     Provider(Tenant)({
       inject: { principal: auth.principals.user },
@@ -2089,10 +2086,10 @@ export const api = auth.units<{ anonymous: typeof Anonymous; user: typeof User }
 ```
 
 `principals` is a port per scheme, typed by the principal that scheme's
-authenticator declared. It is a **port**, not a value: a unit module names it
-in `needs` and injects it, and the seed lands on it once per unit — so a module
-naming it owes the composition root nothing for it, while everything else it
-needs still surfaces at `start`'s `UNSATISFIED DEPENDENCIES`.
+authenticator declared. It is a **port**, not a value: a unit module's provider
+injects it, and the seed lands on it once per unit — so a module reading it
+owes the composition root nothing for it, while everything else it needs still
+surfaces at `start`'s `UNSATISFIED DEPENDENCIES`.
 
 **`units<…>()` is a second call, and that is the whole design.** A unit module
 names `auth.principals.<scheme>`, so its type depends on `typeof auth`; if

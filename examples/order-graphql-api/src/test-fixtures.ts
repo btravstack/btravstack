@@ -22,13 +22,15 @@ type Known = {
 type OrderApiStub = {
   /** Every call, in order, as `procedure:id`. */
   readonly calls: readonly string[];
+  /** Every call's order id beside the `authorization` header it carried. */
+  readonly outbound: readonly { readonly id: string; readonly authorization?: string }[];
   readonly seed: (order: OrderView) => void;
   readonly url: string;
 };
 
 type Gateway = (
   query: string,
-  credentials?: "bearer" | "none",
+  credentials?: "bearer" | "none" | `Bearer ${string}`,
   operationName?: string,
 ) => Promise<{ readonly data?: unknown; readonly errors?: readonly unknown[] }>;
 
@@ -56,12 +58,17 @@ const declared = (response: ServerResponse, status: number, code: string, id: st
 const orderApiStub = async (): Promise<OrderApiStub & { readonly close: () => Promise<void> }> => {
   const stored = new Map<string, OrderView>();
   const calls: string[] = [];
+  const outbound: { readonly id: string; readonly authorization?: string }[] = [];
   const server = createServer((request, response) => {
     void bodyOf(request).then(({ json }) => {
       const input = json as { readonly id: string; readonly quantity?: number };
       const procedure = request.url?.replace("/rpc/orders/", "") ?? "";
+      const { authorization } = request.headers;
       calls.push(`${procedure}:${input.id}`);
-      if (request.headers.authorization !== "Bearer caller")
+      outbound.push(
+        authorization === undefined ? { id: input.id } : { id: input.id, authorization },
+      );
+      if (authorization?.startsWith("Bearer ") !== true)
         return answer(response, 401, {
           defined: false,
           code: "UNAUTHORIZED",
@@ -90,6 +97,7 @@ const orderApiStub = async (): Promise<OrderApiStub & { readonly close: () => Pr
   const { port } = server.address() as AddressInfo;
   return {
     calls,
+    outbound,
     seed: (order) => void stored.set(order.id, order),
     url: `http://127.0.0.1:${String(port)}`,
     close: async () => {
@@ -136,7 +144,9 @@ export const it = test.extend<{
             // previous test's gateway and be reused on its recycled port.
             connection: "close",
             "content-type": "application/json",
-            ...(credentials === "bearer" ? { authorization: "Bearer caller" } : {}),
+            ...(credentials === "none"
+              ? {}
+              : { authorization: credentials === "bearer" ? "Bearer caller" : credentials }),
           },
           body: JSON.stringify({ query, operationName }),
         })

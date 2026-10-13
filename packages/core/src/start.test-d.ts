@@ -181,3 +181,56 @@ const unnamed = Module("StartUnnamedApp")({
 });
 
 start(unnamed, { env: { ANYTHING: "goes", ELSE: "too" } });
+
+// Application-scoped infrastructure reaches a unit with no forwarding: the unit
+// module declares no `needs`, its provider's `inject` is what it owes, and the
+// root discharges it by providing the port — nothing is re-exported for it.
+class RequestHandle extends Port("RequestHandle")<{ readonly greeting: string }> {}
+const handle = Provider(RequestHandle)({
+  inject: { greeting: Greeting },
+  sync: ({ greeting }) => ({ greeting: greeting.text }),
+});
+const InferredUnit = Module("InferredUnit")({ provides: [handle], exports: [RequestHandle] });
+const inferredRuntime = testRuntime("inferred", { unit: InferredUnit });
+expectTypeOf(
+  start(
+    Module("InferredRoot")({
+      imports: [inferredRuntime.module, AppModule],
+      exports: [TestRuntimePort],
+    }),
+  ),
+).toEqualTypeOf<RunningApp<never, TestRuntimeInfo>>();
+
+// Configuration is application-scoped. A `Config.provider` cannot sit in a unit
+// module at all — its `ConfigInvalid` channel is refused by `AnyUnitModule` —
+// and a provider reading `Env` itself would read it per unit, so the need it
+// carries is a refusal nothing provides, and `start` names it.
+class UnitLimit extends Port("UnitLimit")<number> {}
+const ConfiguringUnit = Module("ConfiguringUnit")({
+  provides: [
+    Provider(UnitLimit)({ inject: { env: Env }, sync: ({ env }) => Number(env["APP_LIMIT"]) }),
+  ],
+  exports: [UnitLimit],
+});
+start(
+  // @ts-expect-error — UNIT READS CONFIGURATION: Env is application-scoped
+  Module("ConfiguringRoot")({
+    imports: [testRuntime("configuring", { unit: ConfiguringUnit }).module],
+    exports: [TestRuntimePort],
+  }),
+);
+
+// An application-scoped provider cannot capture a unit-scoped port: the root
+// never holds what a unit module provides, so the capture is an unmet need.
+const capturing = Provider(Clock)({
+  inject: { handle: RequestHandle },
+  sync: () => ({ now: () => 0 }),
+});
+start(
+  // @ts-expect-error — UNSATISFIED DEPENDENCIES: RequestHandle exists only inside a unit
+  Module("CapturingRoot")({
+    imports: [inferredRuntime.module, AppModule],
+    provides: [capturing],
+    exports: [TestRuntimePort],
+  }),
+);

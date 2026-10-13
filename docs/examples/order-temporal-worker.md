@@ -164,8 +164,6 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   // Forked once per activity attempt, after it is invoked and before the body
   // runs — which is where the input's `tenantId` becomes the fork's `Tenant`.
   unit: { activity: ActivityUnitModule },
-  // Everything the fork reads out of the application scope.
-  exports: [Tracer, Logger, OrderDatabase],
 });
 ```
 

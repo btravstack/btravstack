@@ -42,7 +42,7 @@ import {
   type Serving,
   type UnitHost,
 } from "./runtime.js";
-import { UnitOverrides, provides, unitSubstitutes } from "./unit-overrides.js";
+import { UnitOverrides, provides, refuseRebuiltPorts, unitSubstitutes } from "./unit-overrides.js";
 import { createUnitRegistry, currentUnit, settleUnit, type UnitOutcome } from "./units.js";
 
 export type TeardownError = { readonly port: string; readonly cause: unknown };
@@ -656,9 +656,10 @@ export const start = <X, E, N>(
 
     const runtimeCtx = ctx as unknown as Context<InstanceType<Resolves>>;
 
-    // Before `runtime.start`, so a drifted override is a defect at boot
-    // rather than at the first unit of its kind. A throw here is one:
-    // this callback runs inside di's `flatMap`.
+    // Before `runtime.start`, so a drifted override or a unit rebuilding an
+    // application port is a defect at boot rather than at the first unit of
+    // its kind. A throw here is one: this callback runs inside di's `flatMap`.
+    refuseRebuiltPorts(runtime.name, runtime.units ?? {}, root);
     const substitutes = unitSubstitutes(
       runtime.name,
       runtime.units ?? {},

@@ -60,7 +60,7 @@ export type AmqpModuleOptions<
     Imports<I, TContract, Unit>,
     Provides<P, TContract, HandlersError, HandlersNeeds>
   >[],
-  N extends readonly AnyPort[],
+  N extends readonly AnyPort[] | undefined,
 > = AmqpTuning<Unit> & {
   readonly contract: TContract;
   /**
@@ -122,7 +122,7 @@ export const AmqpModule =
       Imports<I, TContract, Unit>,
       Provides<P, TContract, HandlersError, HandlersNeeds>
     >[] = [],
-    const N extends readonly AnyPort[] = [],
+    const N extends readonly AnyPort[] | undefined = undefined,
   >(
     options: AmqpModuleOptions<TContract, HandlersError, HandlersNeeds, Declared, Unit, I, P, X, N>,
   ) => {

@@ -126,7 +126,6 @@ import {
 import { OrderTenantPersistence } from "@btravstack/example-order-infrastructure";
 
 export const SessionModule = Module("Session")({
-  needs: [auth.principals.session],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({
@@ -170,7 +169,6 @@ export const BrowserApi = HttpModule("BrowserApi")({
     ...oidc()({ principal, scope: "openid orders:export" }),
   ],
   imports: [OrderPersistenceModule, observability(), otel()],
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 

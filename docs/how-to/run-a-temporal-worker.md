@@ -196,7 +196,6 @@ import { FulfillmentModule } from "./fulfillment.js";
 // scope rather than importing the database module: one client per process,
 // not one per attempt.
 export const ActivityUnitModule = Module("ActivityUnit")({
-  needs: [ActivityInput(orderContract), OrderDatabase, Logger],
   imports: [OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({
@@ -223,7 +222,6 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
     otel(),
   ],
   unit: { activity: ActivityUnitModule },
-  exports: [Logger, OrderDatabase],
 });
 ```
 
@@ -294,7 +292,6 @@ export const Pinned = TemporalModule("OrderTemporalWorkerLocal")({
     otel(),
   ],
   unit: { activity: ActivityUnitModule },
-  exports: [Logger, OrderDatabase],
 });
 ```
 

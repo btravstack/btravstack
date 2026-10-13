@@ -790,11 +790,11 @@ authenticator cannot grant it": "order:export"`). `VocabFrom<A>` reads the
   counts as declared (`EnvAnd<N>`), which is legal because di's `needs` array is
   type-level only and over-declaring is free. Another starter's sugar makes no
   such promise: an `AmqpModule` root that provides a `Config.provider` of its
-  own says `needs: [Env]`. The sugar
-  **re-declares di's `NeedsGate`** over its augmented tuples, so a root whose
-  own provider owes a port it does not name is refused at THIS call rather than
-  slipping past into `start`; see `packages/di/AGENTS.md`'s **Module
-  visibility**.
+  own owes `Env` by inference, and states it only with a `needs` list. The sugar
+  **re-declares di's `NeedsGate`** over its augmented tuples, so a root that
+  states `needs` is checked at THIS call; one that does not (the usual root)
+  has its needs inferred and `start` names any it leaves unsupplied — see
+  `packages/di/AGENTS.md`'s **Module visibility**.
 
   For every scheme `schemesOf(contract)` found, that scheme's port joins the
   provider's `inject` record under the **namespaced**

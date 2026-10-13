@@ -111,13 +111,13 @@ export const OrderApi = HttpModule("OrderApi")({
   unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule },
   provides: [sessionCodec()],
   imports: [OrdersSlice, CustomersSlice, OrderPersistenceModule, observability(), otel()],
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 
 `observability()` is an ordinary import beside the application's own modules,
-which is the point: a starter with no sugar of its own is still a starter, and
-`Logger` is exported here only because the per-request module reads it.
+which is the point: a starter with no sugar of its own is still a starter.
+Nothing is exported for the per-request module either — a unit reads whatever
+the application scope can see.
 
 The kernel and both gates see nothing new — `OrderApi` is a `Module`, and
 `await runMain(OrderApi)` is the whole `main.ts`, once `HttpModule`'s own

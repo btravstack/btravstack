@@ -59,9 +59,10 @@ This does not change ordinary di module visibility.
   an authenticator union is one type per scheme, and a tuple takes one rest
   element, not two. Nothing downstream wants the arity — di reads
   `P[number]` throughout — and putting the authenticators in `provides` is what
-  carries **their own needs** (a `JwtVerifier`, a key set) into `NeedsGate`, so
-  a root that satisfies none is refused at THIS call exactly as a hand-listed
-  provider would be (`auth.test-d.ts`'s arms 11 and 12). A scheme the contract
+  carries **their own needs** (a `JwtVerifier`, a key set) into the root's
+  `Needs`, so a root that satisfies none is refused exactly as a hand-listed
+  provider would be — at `start` (`auth.test-d.ts`'s arms 11 and 12), or at
+  this call when the root states `needs`. A scheme the contract
   names that the registry has no authenticator for is di's own unmet need on
   `HttpAuthenticator:<scheme>`, not a gate this package writes — and the
   identity comparison the old `authenticator` option performed is gone with it,
@@ -82,7 +83,7 @@ This does not change ordinary di module visibility.
   `developerTools` pins `GRAPHQL_DEVELOPER_TOOLS`, which turns GraphiQL,
   introspection and field suggestions on together and is off by default, and
   `maxTokens` pins `GRAPHQL_MAX_TOKENS`; the answerer reads `Env`,
-  so a root providing it declares `needs: [Env]`. The reasoning is in
+  which a root providing it owes by inference. The reasoning is in
   `../graphql-server/AGENTS.md`.
 - **`OrpcRouterPort`** (`orpc.ts`, exported from the file for the package's
   own tests, **not** from `index.ts`) — the router's port, one id, the
@@ -210,8 +211,9 @@ not cover"` marker, and what the marker names is a procedure path
   the root's own `provides` puts its needs on the root — a slice's controller
   reading a use case the slice composes privately would otherwise become the
   root's undeclared need. A piece no import provides is the root's own
-  provider, so its unmet need is di's `UNDECLARED NEEDS` at the `HttpModule`
-  call. `http()` is not sugar and adds nothing: its root spreads
+  provider, so its unmet need joins the root's and `start` names it (di's
+  `UNDECLARED NEEDS` at the `HttpModule` call only when the root states
+  `needs`). `http()` is not sugar and adds nothing: its root spreads
   `router.pieces` as it spreads `router.authenticators`. Coverage
   is not uniqueness, but with paths the split moved: a piece **inside**
   another piece's fragment is caught at the call (the

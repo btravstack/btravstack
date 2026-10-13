@@ -169,7 +169,6 @@ export const OrderFragmentsApi = HttpModule("OrderFragmentsApi")({
   unit: { anonymous: RequestModule, user: UserModule },
   provides: [orderRowFragment, sessionCodec()],
   imports: [OrderApplicationModule, OrderPersistenceModule, observability(), otel()],
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 

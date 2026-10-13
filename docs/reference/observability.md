@@ -327,7 +327,6 @@ export const OrderApi = HttpModule("OrderApi")({
     otel(),
   ],
   provides: [sessionCodec()],
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 

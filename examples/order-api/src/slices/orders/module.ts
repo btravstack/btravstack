@@ -1,4 +1,3 @@
-import { Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 
 import { ordersController } from "./controller.js";
@@ -19,10 +18,6 @@ import { orderRowFragment } from "./fragment.js";
  * so there is no class to name.
  */
 export const OrdersSlice = Module("OrdersSlice")({
-  // The controller writes a line itself, so `Logger` is this slice's own
-  // provider's need. The use cases are not: they reach a leaf off
-  // `context.unit`, never through `inject`.
-  needs: [Logger],
   provides: [ordersController, orderRowFragment],
   exports: [ordersController, orderRowFragment],
 });

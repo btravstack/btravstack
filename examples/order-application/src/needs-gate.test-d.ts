@@ -33,6 +33,7 @@ import {
   OrderApplicationModule,
   OrderRepository,
   PlaceOrder,
+  Tenant,
   tenantOf,
 } from "./index.js";
 
@@ -123,12 +124,13 @@ const _tenantless = Module.scoped(TenantlessOrders, (ctx) =>
   ctx.get(FindOrder).execute("0199a1e0-0000-7000-8000-000000000001"),
 );
 
-// Negative, and the OTHER gate — the distinction the two draw. Here the
-// use cases are this module's OWN providers rather than an import's, so
-// `OrderRepository` and `Logger` are its to name, and leaving `needs` out is
-// refused at the declaration instead of at `Module.scoped`.
-// @ts-expect-error — UNDECLARED NEEDS: Logger | OrderRepository | Tenant.
+// Negative, and the OTHER gate — the distinction the two draw. A module that
+// states its boundary in `needs` is checked against it at the declaration:
+// these use cases are its OWN providers, so leaving `OrderRepository` and
+// `Logger` out of the list is refused here instead of at `Module.scoped`.
+// @ts-expect-error — UNDECLARED NEEDS: Logger | OrderRepository.
 const UndeclaredOrders = Module("UndeclaredOrders")({
+  needs: [Tenant],
   provides: [PlaceOrder, FindOrder],
   exports: [PlaceOrder, FindOrder],
 });

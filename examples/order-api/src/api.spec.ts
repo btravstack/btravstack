@@ -1,5 +1,5 @@
 import { ORPCError } from "@orpc/client";
-import { Ok } from "unthrown";
+import { Ok, allAsync } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -902,6 +902,44 @@ describe("order-api", () => {
         defined: true,
       }),
     );
+  });
+
+  it("keeps concurrent callers on their own tenants while sharing one database client", async ({
+    otherTenant,
+    tokenFor,
+    serve,
+    clientFor,
+    clientWith,
+    api,
+  }) => {
+    // GIVEN two callers on one app, each holding a token for its own tenant
+    const app = serve(api);
+    const alice = await clientFor(app);
+    const bob = await clientWith(
+      app,
+      `Bearer ${await tokenFor({ tenant: otherTenant, sub: "u-2" })}`,
+    );
+
+    // WHEN their writes interleave, and then their listings
+    const listed = await allAsync([
+      alice.orders.place({ id: "0199a1e0-0000-7000-8000-000000000101", quantity: 1 }),
+      bob.orders.place({ id: "0199a1e0-0000-7000-8000-000000000201", quantity: 4 }),
+      alice.orders.place({ id: "0199a1e0-0000-7000-8000-000000000102", quantity: 2 }),
+      bob.orders.place({ id: "0199a1e0-0000-7000-8000-000000000202", quantity: 5 }),
+    ]).flatMap(() => allAsync([alice.orders.list({ limit: 10 }), bob.orders.list({ limit: 10 })]));
+
+    // THEN each unit was bound to its own caller's tenant: the database client
+    // is the application's, the repository over it is the request's
+    expect(listed.map(([mine, theirs]) => ({ alice: mine.items, bob: theirs.items }))).toBeOkWith({
+      alice: [
+        { id: "0199a1e0-0000-7000-8000-000000000102", quantity: 2 },
+        { id: "0199a1e0-0000-7000-8000-000000000101", quantity: 1 },
+      ],
+      bob: [
+        { id: "0199a1e0-0000-7000-8000-000000000202", quantity: 5 },
+        { id: "0199a1e0-0000-7000-8000-000000000201", quantity: 4 },
+      ],
+    });
   });
 
   it("serves the customers slice alongside the orders slice", async ({

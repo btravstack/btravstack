@@ -752,6 +752,25 @@ fork }` and never opens a second scope, zero overhead beyond the `fork`
   runtime, where `Runtime.units` is one optional field a runtime that never
   meets an override can omit.
 
+- **Placement is lifetime, and the kernel holds both edges of it** (#548). The
+  root builds once per running app; a unit module once per unit, over the
+  application context, which holds every service — so a unit reads root
+  infrastructure with nothing forwarded. `refuseRebuiltPorts`
+  (`unit-overrides.ts`) runs at boot beside `unitSubstitutes`, over the
+  `Kernel` wrap (so `Env` counts): a unit module providing an ordinary port the
+  application tree already provides is the boot's defect, since the fork would
+  shadow the application's instance with one built and released per unit. Set
+  ports are exempt — members accumulate, and `noObserverMember` is shared by
+  design. The other edge is a type: `UnitNeedsOf` turns a unit's `Env` need
+  into a port nothing provides, whose id is the sentence `start` prints, so
+  configuration is never parsed per unit; a `Config.provider` cannot sit in a
+  unit at all, since `AnyUnitModule`'s error channel is `never`. An application
+  provider capturing a unit-scoped port needs no rule: the root never holds
+  one, so it is an ordinary unmet need. Guarded by `application-scope.spec.ts`
+  (one parse across units, two simultaneous apps apart, an invalid value only
+  a unit reads failing the boot, each scope's release once, the rebuild
+  refusal) and `start.test-d.ts`'s three arms after `InferredUnit`.
+
 - **`options.signals === false` disables the uncaught handlers too.** One flag,
   two handler families, because both are process-global and a test harness needs
   all of them off together. Worth knowing before reading the option's name as

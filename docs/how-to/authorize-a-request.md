@@ -101,7 +101,6 @@ scheme, and let the repositories and use cases be built over it:
 import { auth } from "./auth.js";
 
 export const UserModule = Module("User")({
-  needs: [auth.principals.user],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({
@@ -113,7 +112,6 @@ export const UserModule = Module("User")({
 });
 
 export const ServiceModule = Module("Service")({
-  needs: [auth.principals.service],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({

@@ -193,8 +193,8 @@ const _verified = HttpModule("Verified")({
 //     authenticator's need is real, not erased by riding in on the router, and
 //     `HttpModule` carrying `Env` for its schemes does not widen that hole —
 //     no `needs` line here, and the diagnostic still names `Verifier`.
-// @ts-expect-error — UNDECLARED NEEDS: the authenticator's own `Verifier`
-void HttpModule("Unverified")({ router: verifiedRouter });
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: the authenticator's own `Verifier`
+void start(HttpModule("Unverified")({ router: verifiedRouter }), options);
 
 void _verified;
 

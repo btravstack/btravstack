@@ -603,8 +603,6 @@ export const OrderApi = HttpModule("OrderApi")({
   ],
   // The session cookie's codec and the login answerer that seals it.
   provides: [sessionCodec(), ...oidc()({ principal, scope: "openid orders:export" })],
-  // Everything a forked kind reads out of the application scope.
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 
@@ -627,10 +625,6 @@ caller's own tenant:
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
-  // The controller writes a line itself, so `Logger` is this slice's own
-  // provider's need. The use cases are not: a leaf reaches them off
-  // `context.unit`, never through `inject`.
-  needs: [Logger],
   provides: [ordersController, orderRowFragment],
   exports: [ordersController, orderRowFragment],
 });
@@ -702,7 +696,6 @@ export class RequestSpan extends Port("RequestSpan")<{
 }> {}
 
 export const RequestModule = Module("Request")({
-  needs: [Logger],
   imports: [UnitSpanModule],
   provides: [
     Provider(RequestSpan)({
@@ -866,7 +859,7 @@ spread is exactly what `HttpModule` does for a root that uses the sugar.
 ```ts
 const RouterlessApi = Module("RouterlessApi")({
   imports: [OrdersSlice, CustomersSlice, observability(), http()],
-  exports: [HttpRuntime, Logger],
+  exports: [HttpRuntime],
 });
 
 // @ts-expect-error — the composition needs the router port and nothing provides it.

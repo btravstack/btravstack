@@ -22,6 +22,38 @@ export const provides = (module: AnyModule, portId: string): boolean =>
   module.provides.some((provider) => provider.port.portId === portId) ||
   module.imports.some((imported) => provides(imported, portId));
 
+/** The ordinary ports `module`'s tree provides; a set port's members accumulate, so they are left out. */
+const providedPorts = (module: AnyModule): readonly string[] => [
+  ...module.imports.flatMap(providedPorts),
+  ...module.provides.flatMap((provider) =>
+    provider.port.many === true ? [] : [provider.port.portId],
+  ),
+];
+
+/**
+ * Refuses a unit module that provides a port the application scope already
+ * provides. A fork builds its whole module tree per unit, so such a provider
+ * would shadow the application's instance with a fresh one per unit, released
+ * per unit — the application's configuration re-parsed, its clients reopened.
+ */
+export const refuseRebuiltPorts = (
+  runtime: string,
+  units: Readonly<Record<string, AnyUnitModule | undefined>>,
+  application: AnyModule,
+): void => {
+  const owned = new Set(providedPorts(application));
+  for (const [kind, module] of Object.entries(units)) {
+    const rebuilt =
+      module === undefined ? undefined : providedPorts(module).find((id) => owned.has(id));
+    if (rebuilt !== undefined) {
+      // oxlint-disable-next-line unthrown/no-throw -- a wiring bug; `start` calls this inside di's `flatMap`, which turns the throw into the boot's defect
+      throw new Error(
+        `[core] unit kind "${kind}" of runtime "${runtime}" provides port ${JSON.stringify(rebuilt)}, which the application scope already provides — a unit would rebuild it per unit; remove it from the unit module and let the unit read the application's`,
+      );
+    }
+  }
+};
+
 /**
  * Each overridden kind's module, mapped to the module the kernel forks in its
  * place. Keyed by module IDENTITY, because `UnitHost.fork` is handed the

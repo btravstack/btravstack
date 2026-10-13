@@ -6,8 +6,6 @@ import {
   type RunningApp,
   type StartOptions,
   Logger,
-  type Meter,
-  type Tracer,
   type StartEnvironment,
 } from "@btravstack/core";
 import { Provider, type Module, type Scope, type ServiceOf } from "@btravstack/di";
@@ -27,7 +25,6 @@ import {
   type CustomerId,
   type OrderId,
 } from "@btravstack/example-order-domain";
-import type { OrderDatabase } from "@btravstack/example-order-infrastructure";
 import type { HttpHandler, HttpInfo, HttpRuntime } from "@btravstack/http-server";
 import type { Claims } from "@btravstack/http-server/jwt";
 import {
@@ -287,11 +284,7 @@ export type ApiFixtures = {
    * in the module's own exports.
    */
   readonly serve: <E>(
-    module: Module<
-      HttpRuntime | HttpHandler | Logger | Tracer | Meter | InstanceType<typeof OrderDatabase>,
-      E,
-      Scope | Env
-    >,
+    module: Module<HttpRuntime | HttpHandler | Logger, E, Scope | Env>,
     options?: Pick<StartOptions, "drainTimeoutMs" | "probes">,
   ) => RunningApp<E, HttpInfo>;
   /**

@@ -471,7 +471,6 @@ export const OrderApi = HttpModule("OrderApi")({
   unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule },
   provides: [sessionCodec()],
   imports: [OrdersSlice, CustomersSlice, OrderPersistenceModule, observability(), otel()],
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 

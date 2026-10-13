@@ -84,7 +84,7 @@ export type TemporalModuleOptions<
     Imports<I, C, Unit>,
     Provides<P, C, ActivitiesError, ActivitiesNeeds>
   >[],
-  N extends readonly AnyPort[],
+  N extends readonly AnyPort[] | undefined,
 > = TemporalTuning<Unit> & {
   /** The `temporal-contract` contract; the task queue this worker polls is read off it. */
   readonly contract: C;
@@ -145,7 +145,7 @@ export const TemporalModule =
       Imports<I, C, Unit>,
       Provides<P, C, ActivitiesError, ActivitiesNeeds>
     >[] = [],
-    const N extends readonly AnyPort[] = [],
+    const N extends readonly AnyPort[] | undefined = undefined,
   >(
     options: TemporalModuleOptions<C, ActivitiesError, ActivitiesNeeds, Declared, Unit, I, P, X, N>,
   ) => {

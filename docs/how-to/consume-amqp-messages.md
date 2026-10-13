@@ -182,7 +182,6 @@ import { orderHandlers } from "./handlers.js";
 // Forked per delivery and seeded with the validated message, so the envelope's
 // own `tenantId` is claimed once rather than at every handler.
 export const MessageUnitModule = Module("MessageUnit")({
-  needs: [AmqpMessage(orderContract)],
   provides: [
     Provider(Tenant)({
       inject: { message: AmqpMessage(orderContract) },

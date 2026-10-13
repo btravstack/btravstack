@@ -81,7 +81,6 @@ const Persistence = Module("Persistence")({
 Any module importing `Persistence` sees exactly one port:
 
 ```ts
-// @ts-expect-error — UNDECLARED NEEDS: `Pool` is neither provided, imported, nor named in `needs`.
 const App = Module("App")({
   imports: [Persistence],
   provides: [
@@ -93,24 +92,27 @@ const App = Module("App")({
   ],
   exports: [GetOrder],
 });
+
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing visible to `App` provides `Pool`.
+Module.build(App);
 ```
 
 The second provider does not wire: `Pool` is not among what `App` can see —
-its own provides plus its imports' exports — so the dependency is unmet, and
-`App` neither provides it nor names it in `needs`. That is refused **at this
-module**, and the diagnostic names the port:
+its own provides plus its imports' exports — so the dependency stays in
+`App`'s needs, and building it is refused with the port named:
 
 ```text
-Property '"UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)"' is missing in type
-  '{ imports: [...]; provides: [...]; exports: [...]; }' but required in type
-  '{ readonly "UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)": Pool; }'.
+Property '"UNSATISFIED DEPENDENCIES — nothing provides"' is missing in type
+  'Module<GetOrder, never, Pool>' but required in type
+  '{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": Pool; }'.
 ```
 
-Naming it in `needs` is not a way round the boundary — it does not make
-`Persistence`'s `Pool` visible; it says _some composition root supplies a
-`Pool`_, and one has to, or nothing can build `App`. The privacy holds either
-way: what `Persistence` exports is still the only thing an importer can reach
-through it.
+A module that states its boundary with `needs` is refused earlier, at its own
+declaration, with `UNDECLARED NEEDS` naming the port. Naming `Pool` there is
+not a way round the boundary either — it does not make `Persistence`'s `Pool`
+visible; it says _some composition root supplies a `Pool`_, and one has to, or
+nothing can build `App`. The privacy holds either way: what `Persistence`
+exports is still the only thing an importer can reach through it.
 
 And on a built context:
 

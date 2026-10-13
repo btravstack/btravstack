@@ -142,10 +142,11 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   `DependencyGate` is exported for the one consumer that wraps `forkScope`, the
   kernel, so it can state the same gate without re-declaring it.
 
-  `needs` is the fourth tuple and the subject of **Module visibility** below:
-  what this module expects a composition root to supply, named. Anything it
-  owes and did not name is refused at the `Module(name)({...})` call by
-  `NeedsGate`, which rides an intersection on the options parameter. What
+  `needs` is the optional fourth tuple and the subject of **Module visibility**
+  below: a boundary a module may state. Without it, what the module owes is
+  inferred into its `Needs` channel; with it, anything the module's own
+  providers owe and the list leaves out is refused at the `Module(name)({...})`
+  call by `NeedsGate`, which rides an intersection on the options parameter. What
   `exports` accepts is `docs/reference/di/modules.md`'s.
 
 - **`build.ts`** — `flatten` (dedupe by provider reference), `plan` (levels
@@ -207,28 +208,37 @@ forked-scope example is ever wanted again, write it from `src/many.spec.ts`
 and `src/fork.spec.ts` rather than restoring a workspace whose tests were
 duplicates.
 
-## Module visibility: a need is DECLARED, never absorbed
+## Module visibility: a need is inferred, and a boundary is opt-in
 
-**Decided in #50: a module states what its OWN providers expect from outside,
-and anything they owe and it did not state is a compile error at that module.**
-`needs` is the explicit stand-in for NestJS's `@Global` — a composition root
-may supply a port to a module it imports, but only one that module asked for by
-name.
+**Decided in #548, revising #50: a module's external requirements are what its
+providers inject and its imports owe, computed into its `Needs` channel, and
+`needs` is an optional boundary.** Without `needs`, nothing is written twice:
+a slice whose controller injects `Logger` owes `Logger` because the controller
+says so, and the obligation travels to whoever composes it. With `needs`, the
+module states its boundary and `NeedsGate` refuses any port its OWN providers
+read that the list leaves out — the stand-in for NestJS's `@Global` that #50
+made mandatory, kept for a module whose boundary is worth checking on its own
+(an application layer's port list, a published package).
 
-**An import's own unmet needs are not the importer's to re-declare**, and that
-half is deliberate. They are already published in the import's type — the
-`imports` entry a reader is looking at says `Module<X, E, Env>` — and `start`
-still refuses a root that has not discharged them, so leaving them out hides
-nothing. Re-declaring them bought one line per module per hop: measured on this
-repo, **12 of 22 declarations were pure propagation**, and dropping them leaves
-exactly the modules that read the port. `Env` is the case that showed it — six
-declarations in `order-api`, one of them the feature that reads
-`DATABASE_URL`. This is the per-feature shape NestJS's
-`ConfigModule.forFeature` has, reached without a global.
+What #50 bought survives inference, because it never lived in the list:
+**privacy is the `exports` channel.** A slice still sees only its own
+providers and its imports' exports; a need it owes is discharged only by
+something an ancestor can see; and a need nothing discharges is still refused
+— at the root, by `start` or `Module.build`, with the port named. What changed
+is where a forgotten port is reported: at the composition root rather than at
+the slice, unless the slice declared a boundary. #50 measured 12 of 22
+declarations as pure propagation; #548 measured the remaining ten as pure
+restatement of `inject` records, each a line that drifted when a provider
+changed.
+
+Units make this the default rather than a convenience: a unit module forked
+per request reads the application scope's services, and a `needs` list there
+restated the provider's `inject` a second time and forced the root to forward
+a third (an `exports` entry per infrastructure port, which the runtime never
+needed: the built context holds every service).
 
 ```ts
 export const AuditSlice = Module("AuditSlice")({
-  needs: [Logger],
   provides: [orderAudit],
   exports: [orderAudit],
 });
@@ -261,16 +271,20 @@ const rootNeedsNothing: Equal<Channels<typeof Root>[2], never> = true; // compil
 ```
 
 So a slice genuinely did see providers from the root, and `slices/audit/` said
-nothing about where its `Logger` came from. Both halves are gone: the module
-names the port, and a root that offers one nobody asked for is offering it to
-nobody.
+nothing about where its `Logger` came from. #50 closed that by making the slice
+write the port down; #548 keeps the record in the type instead — the slice's
+`Needs` channel names `Logger`, at the `imports` entry a reader is looking at —
+and leaves the written list to modules that want their boundary checked.
 
 ### How it is spelled
 
-`ModuleDeclaration` takes a fourth tuple, `needs: N`, and intersects
-`NeedsGate<I, P, N>` onto the options parameter — `unknown` when satisfied, so
-the parameter type is untouched; an object with one required property when
-not. **The property, rather than `StartGate`'s bare string, is what makes the
+`ModuleDeclaration` takes an optional fourth tuple, `needs: N`, defaulting to
+`undefined`, and intersects `NeedsGate<I, P, N>` onto the options parameter —
+`unknown` when `needs` is absent or satisfied, so the parameter type is
+untouched; an object with one required property when a declared boundary
+leaves a port out. `needs: []` is a boundary too: "this module owes nothing".
+The four starter sugars thread the same optional tuple, so a root written
+without `needs` skips the gate and `start` names what is missing. **The property, rather than `StartGate`'s bare string, is what makes the
 diagnostic name the port** (measured, both ways):
 
 ```text
@@ -283,9 +297,10 @@ Property '"UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide 
 the port in `needs` and lets whoever composes it supply one; a composition
 ROOT has no ancestor, so naming it there moves the complaint one line down to
 `start`'s own `UNSATISFIED DEPENDENCIES` and changes nothing else. Measured on
-a beginner's first `HttpModule`, this gate fires FIRST — at the module call —
-and the one naming the real fix for a root fires below it, so the older
-"name it in `needs`" sent a root author the wrong way twice in a row.
+a beginner's first `HttpModule` while the gate was mandatory, it fired FIRST —
+at the module call — and the one naming the real fix for a root fired below
+it, so the older "name it in `needs`" sent a root author the wrong way twice
+in a row. A root without `needs` now meets only `start`'s.
 
 Two details in that type are load-bearing and both were measured after they
 broke something:
@@ -314,11 +329,12 @@ never something an ancestor supplies; `Module.scoped` and `start` discharge it
 by opening one. A resourceful module therefore declares nothing.
 
 `Env` is **not** exempt, and exempting it was refused: the module that reads
-the environment says `needs: [Env]` — `DatabaseModule`, `observability()`, each
-starter — and from there it travels through importers without being restated,
-up to the root `start` hands one to. Naming it at the feature is what a
-`@Global` would have hidden; naming it at every hop was what made the first cut
-of this gate noisy.
+the environment owes it through the provider that reads it — `DatabaseModule`,
+`observability()`, each starter, several of which also write `needs: [Env]` as
+their boundary — and from there it travels through importers without being
+restated, up to the root `start` hands one to. A unit module may not owe it at
+all: `@btravstack/core`'s `UnitNeedsOf` turns `Env` into a refusal `start`
+names, since a fork would parse configuration per unit.
 
 ### The gate cannot be computed generically — and that is why the casts exist
 
@@ -344,10 +360,10 @@ A starter's port — `OrpcRouterPort`, the AMQP handlers port, the Temporal
 activities port — is owed by the **starter**, which an application _imports_.
 So those three are the KERNEL's gate, on the needs channel at `start`, not
 di's declaration one, and the three `needs-gate.test-d.ts` negatives say so.
-The declaration gate catches the other half: a module whose OWN provider reads
-a port nothing here satisfies —
-`examples/order-temporal-worker`'s `FulfillmentlessSlice`, whose `fulfillOrder`
-piece names `StockService` and `ShippingService`. Both are pinned, side by side,
+The declaration gate catches the other half, for a module that declared its
+boundary: one whose OWN provider reads a port nothing here satisfies and the
+list leaves out — `examples/order-temporal-worker`'s `FulfillmentlessSlice`,
+whose `fulfillOrder` piece names `StockService` and `ShippingService`. Both are pinned, side by side,
 because conflating them is easy.
 
 ## Binding design rules

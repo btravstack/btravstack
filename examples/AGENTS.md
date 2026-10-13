@@ -29,8 +29,10 @@ is the index of the workspaces themselves.
   (it was a rest-tuple arity error printing `Expected 5 arguments, but got 2`
   and nothing else).
   A **fourth** mechanism joined them in #50 and is pinned beside the third:
-  di's `NeedsGate`, which fires when a module's OWN provider reads a port
-  nothing local satisfies and `needs` does not name it —
+  di's `NeedsGate`, which fires when a module that STATES a boundary in `needs`
+  has an OWN provider reading a port nothing local satisfies and the list does
+  not name — optional since #548, so the deployments' slices and unit modules
+  write no `needs` and their needs are inferred —
   `order-temporal-worker`'s `FulfillmentlessSlice`, printing
   ``'{ readonly "UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)": StockService | ShippingService; }'``.
   **Four** mechanisms, easy to conflate — and since #93 every one of them

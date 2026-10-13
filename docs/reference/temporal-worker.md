@@ -140,7 +140,6 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
     otel(),
   ],
   unit: { activity: ActivityUnitModule },
-  exports: [Tracer, Logger, OrderDatabase],
 });
 ```
 

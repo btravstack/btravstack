@@ -1,4 +1,5 @@
-import type { AnyPort, Context, Module, Scope, ServiceOf } from "@btravstack/di";
+import type { Env } from "@btravstack/config";
+import type { AnyPort, Context, Module, PortInstance, Scope, ServiceOf } from "@btravstack/di";
 import type { AsyncResult } from "unthrown";
 
 import { observed, type Operation, type Settle } from "./observation.js";
@@ -19,10 +20,22 @@ export type AnyUnitModule = Module<never, never, unknown>;
  * The needs a bound unit module still owes, or `never` when none is bound.
  * `Scope` is excluded, since nothing can ever provide it — the same exemption
  * `NeedsGate` itself carries — and so is `Seeded`, the port the runtime's own
- * fork seed discharges.
+ * fork seed discharges. `Env` is replaced by a refusal nothing provides, so
+ * `start` names it: a unit forks per unit of work, so configuration read there
+ * would be parsed per request rather than once at boot. Inline rather than a
+ * named alias, so a consumer's declaration emit never has to name it.
  */
 export type UnitNeedsOf<Unit, Seeded = never> =
-  Unit extends Module<never, never, infer N> ? Exclude<N, Scope | Seeded> : never;
+  Unit extends Module<never, never, infer N>
+    ?
+        | Exclude<N, Scope | Seeded | Env>
+        | ([Extract<N, Env>] extends [never]
+            ? never
+            : PortInstance<
+                "UNIT READS CONFIGURATION — Env is application-scoped: parse it in a root provider and inject the result",
+                never
+              >)
+    : never;
 
 /** What a bound unit module exports — the port instances a piece of that kind may read. */
 export type UnitExportsOf<M> = M extends Module<infer X, never, unknown> ? X : never;

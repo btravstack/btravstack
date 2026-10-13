@@ -81,7 +81,6 @@ const OrderApi = HttpModule("OrderApi")({
     observability(),
     otel(),
   ],
-  exports: [Logger],
 });
 
 // The kernel's own events, in the same stream and the same shape. The logger
