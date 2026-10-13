@@ -188,7 +188,13 @@ export const it = test.extend<PersistenceFixtures>({
       .execute(
         sql(`CREATE ROLE "${migrator}" NOLOGIN NOSUPERUSER NOBYPASSRLS`).affectedCount().build(),
       );
-    await admin.runtime().execute(sql(`GRANT "${owner}" TO "${migrator}"`).affectedCount().build());
+    await admin
+      .runtime()
+      .execute(
+        sql(`GRANT "${owner}" TO "${migrator}" WITH SET TRUE, INHERIT FALSE`)
+          .affectedCount()
+          .build(),
+      );
     await admin
       .runtime()
       .execute(

@@ -66,23 +66,84 @@ describe("tenant listing under forced row security", () => {
     expect({ before, after }).toEqual({ before: [{ result: false }], after: [{ result: true }] });
   });
 
-  it("works when forced RLS applies to the table owner itself", async ({ listing }) => {
-    // GIVEN the function owner becoming the owner of a table still under FORCE
-    const { admin, declaration, app, schema, owner } = listing;
-    const sql = `ALTER TABLE "${schema}".records OWNER TO "${owner}"`;
+  it.for(["PUBLIC", "inherited", "table-owner"])(
+    "rejects effective payload access through %s",
+    async (source, { listing }) => {
+      // GIVEN a listing whose owner originally has tenant-column access only
+      const { admin, declaration, schema, owner, outsider } = listing;
+      const commands =
+        source === "table-owner"
+          ? [`ALTER TABLE "${schema}".records OWNER TO "${owner}"`]
+          : source === "PUBLIC"
+            ? [`GRANT SELECT ON "${schema}".records TO PUBLIC`]
+            : [
+                `GRANT SELECT (secret) ON "${schema}".records TO "${outsider}"`,
+                `GRANT "${outsider}" TO "${owner}" WITH INHERIT TRUE`,
+              ];
+      const sql = (text: string) => admin.raw.sql(Object.assign([text], { raw: [text] }));
+      const pending = tenantListing({
+        schema,
+        table: "records",
+        tenantColumn: "organization",
+        name: "pending_listing",
+        owner,
+        role: "orders_app",
+      }).getOrThrow();
 
-    // WHEN its security-definer function reads the table
-    const result = await tryQuery(() =>
-      admin.runtime().execute(
-        admin.raw
-          .sql(Object.assign([sql], { raw: [sql] }))
+      // WHEN payload privileges are added and both installation checks run
+      for (const command of commands)
+        await admin.runtime().execute(sql(command).affectedCount().build());
+      const checks = [];
+      for (const check of [pending.migration.precheck[0]!, declaration.migration.postcheck[0]!])
+        checks.push(
+          await admin.runtime().query(sql(check.sql).returnsRow({ result: "pg/bool@1" }).build()),
+        );
+
+      // THEN neither a new installation nor an existing one is accepted
+      expect(checks).toEqual([[{ result: false }], [{ result: false }]]);
+    },
+  );
+
+  it("rejects a same-name overload with defaulted arguments", async ({ listing }) => {
+    // GIVEN an overload that makes a one-argument call ambiguous
+    const { admin, schema, declaration, owner } = listing;
+    const sql = (text: string) => admin.raw.sql(Object.assign([text], { raw: [text] }));
+    await admin
+      .runtime()
+      .execute(
+        sql(
+          `CREATE FUNCTION "${schema}".tenant_ids(text, integer DEFAULT 0) RETURNS SETOF text LANGUAGE sql AS 'SELECT $1'`,
+        )
           .affectedCount()
           .build(),
-      ),
-    ).flatMap(() => declaration.list(app));
+      );
+    await admin
+      .runtime()
+      .execute(
+        sql(
+          `CREATE FUNCTION "${schema}".pending_listing(text, integer DEFAULT 0) RETURNS SETOF text LANGUAGE sql AS 'SELECT $1'`,
+        )
+          .affectedCount()
+          .build(),
+      );
+    const pending = tenantListing({
+      schema,
+      table: "records",
+      tenantColumn: "organization",
+      name: "pending_listing",
+      owner,
+      role: "orders_app",
+    }).getOrThrow();
 
-    // THEN its explicit owner policy supplies the listing despite forced RLS
-    expect(result).toBeOkWith(["acme", "other"]);
+    // WHEN preflight and installed-object checks inspect all same-name functions
+    const checks = [];
+    for (const check of [pending.migration.precheck[0]!, declaration.migration.postcheck[0]!])
+      checks.push(
+        await admin.runtime().query(sql(check.sql).returnsRow({ result: "pg/bool@1" }).build()),
+      );
+
+    // THEN an unused exact signature cannot hide a conflicting overload
+    expect(checks).toEqual([[{ result: false }], [{ result: false }]]);
   });
 
   it("ignores a caller's temporary table and hostile search path", async ({ listing }) => {

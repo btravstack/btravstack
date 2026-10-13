@@ -369,11 +369,15 @@ the owner's permissive listing policy. Owner and caller must already exist;
 the deployment owns role provisioning. Prechecks require the executing migrator
 to be able to SET ROLE to the owner (`pg_has_role` with `SET`). An ordinary
 migrator needs that membership provisioned before applying the operation.
-The owner receives SELECT on the tenant column only, plus schema usage. It can be the table owner under FORCE, but a
-dedicated NOLOGIN role need not receive payload access at all.
+The owner receives SELECT on the tenant column only, plus schema usage.
+Effective SELECT on any other column is refused, including PUBLIC, inherited
+and table-owner privileges. Use a dedicated NOLOGIN owner.
 
-CREATE, owner assignment, PUBLIC revocation and the narrow EXECUTE grant run in
-Prisma's migration transaction. CREATE never replaces an existing object.
+CREATE, PUBLIC revocation, the narrow EXECUTE grant and finally owner assignment
+run in Prisma's migration transaction. CREATE never replaces an existing object;
+any same-name overload is refused,
+and postchecks require exactly one same-name function. Grant changes precede
+ownership transfer so SET-only membership suffices without INHERIT.
 Postchecks compare the function body, signature, settings, policy and ACL,
 including grant options; a wider default grant fails closed instead of being
 silently inherited. The checks also guard Prisma's postcheck-before-precheck
@@ -381,7 +385,8 @@ skip behavior. The table's existing RLS and FORCE settings are not changed.
 
 Unit specs pin declaration validation and the query boundary. Real PostgreSQL
 proofs live in `examples/order-infrastructure/src/tenant-listing.spec.ts`:
-bounded cursor discovery, ordinary-role installation, forced-owner reads,
+bounded cursor discovery, ordinary-role installation with SET-only membership,
+payload-grant refusal,
 payload isolation, public denial, temporary-table shadowing,
 and rejection of widened grants or restrictive policies. Each fixture owns
 unique schema and role names on the shared database; nothing alters the

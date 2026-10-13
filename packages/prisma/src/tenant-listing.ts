@@ -16,7 +16,7 @@ export type TenantListingOptions = {
   readonly tenantColumn?: string;
   /** A new paged function in `schema`; also names its select policy. */
   readonly name: string;
-  /** Trusted function owner, neither superuser nor BYPASSRLS; must be able to create in the schema. */
+  /** Trusted function owner with no payload SELECT, superuser or BYPASSRLS; needs schema CREATE. */
   readonly owner: string;
   /** Application role granted execution, with no membership in `owner` and no schema CREATE privilege. */
   readonly role: string;
@@ -89,7 +89,7 @@ const statement = (parts: string[]): TemplateStringsArray =>
  * Roles and the table must already exist. The migrator must be able to SET ROLE
  * to the owner; provision that membership for an ordinary migration role.
  * The migration refuses a privileged application or function-owner role, caller membership in the owner, schema
- * CREATE for the caller, or a name collision. Its postcheck verifies the
+ * CREATE for the caller, owner payload SELECT, or any same-name function overload. Its postcheck verifies the
  * function, policy and execution grants before Prisma records it as applied.
  * Apply the operation transactionally; the function is initially private only
  * once the REVOKE runs. Do not grant the application the owner role afterwards.
@@ -142,6 +142,12 @@ export const tenantListing = (
     WHERE c.oid = ${tableRef} AND c.relrowsecurity AND a.attname = ${literal(names.tenantColumn)} AND a.attnum > 0 AND NOT a.attisdropped
       AND NOT o.rolsuper AND NOT o.rolbypassrls AND NOT r.rolsuper AND NOT r.rolbypassrls
       AND NOT pg_catalog.pg_has_role(r.oid, o.oid, 'MEMBER')
+      AND NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_attribute payload
+        WHERE payload.attrelid = c.oid AND payload.attnum > 0 AND NOT payload.attisdropped
+          AND payload.attname <> ${literal(names.tenantColumn)}
+          AND pg_catalog.has_column_privilege(o.oid, c.oid, payload.attname, 'SELECT')
+      )
       AND pg_catalog.has_schema_privilege(o.oid, ${literal(names.schema)}, 'CREATE')
       AND NOT pg_catalog.has_schema_privilege(r.oid, ${literal(names.schema)}, 'CREATE')
       AND NOT EXISTS (
@@ -151,7 +157,8 @@ export const tenantListing = (
             WHERE CASE WHEN inherited.role = 0 THEN true ELSE pg_catalog.pg_has_role(o.oid, inherited.role, 'USAGE') END)
       )
   )`;
-  const ready = `SELECT ${requirements} AND EXISTS (
+  const functions = `SELECT p.oid FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = ${literal(names.schema)} AND p.proname = ${literal(names.name)}`;
+  const ready = `SELECT ${requirements} AND (SELECT count(*) FROM (${functions}) candidates) = 1 AND EXISTS (
     SELECT 1 FROM pg_catalog.pg_proc p
     WHERE p.oid = ${functionRef}
       AND p.prosecdef AND p.proretset AND p.pronargs = 1 AND p.pronargdefaults = 1 AND pg_catalog.pg_get_expr(p.proargdefaults, 0) = 'NULL::text' AND p.provolatile = 's'
@@ -195,7 +202,7 @@ export const tenantListing = (
         {
           description:
             "require a row-secured table, restricted roles, and unused function and policy names",
-          sql: `SELECT ${requirements} AND pg_catalog.pg_has_role(CURRENT_USER, ${ownerRef}, 'SET') AND ${functionRef} IS NULL AND pg_catalog.to_regprocedure(${literal(`${fn}()`)}) IS NULL AND NOT EXISTS (
+          sql: `SELECT ${requirements} AND pg_catalog.pg_has_role(CURRENT_USER, ${ownerRef}, 'SET') AND NOT EXISTS (${functions}) AND NOT EXISTS (
           SELECT 1 FROM pg_catalog.pg_policy WHERE polrelid = ${tableRef} AND polname = ${literal(names.name)}
         ) AS "result"`,
         },
@@ -218,16 +225,16 @@ export const tenantListing = (
           sql: `CREATE FUNCTION ${fn}("after" pg_catalog.text DEFAULT NULL) RETURNS TABLE ("tenantId" pg_catalog.text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp SET row_security = on AS ${literal(body)}`,
         },
         {
-          description: "assign the restricted function owner",
-          sql: `ALTER FUNCTION ${fn}(text) OWNER TO ${owner}`,
-        },
-        {
           description: "remove public execution",
           sql: `REVOKE ALL ON FUNCTION ${fn}(text) FROM PUBLIC`,
         },
         {
           description: "grant execution to the application role",
           sql: `GRANT EXECUTE ON FUNCTION ${fn}(text) TO ${role}`,
+        },
+        {
+          description: "assign the restricted function owner",
+          sql: `ALTER FUNCTION ${fn}(text) OWNER TO ${owner}`,
         },
       ],
       postcheck: [

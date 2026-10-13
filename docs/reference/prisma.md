@@ -594,10 +594,11 @@ and SELECT on the tenant column, creates the SQL function with
 `search_path = pg_catalog, pg_temp` and `row_security = on`, revokes PUBLIC
 execution, and grants execution to `role`. It grants **no application table
 privilege**. Existing policies, including FORCE ROW LEVEL SECURITY, remain in
-place. A dedicated NOLOGIN owner that does not own the table needs no payload
-column grant; a table owner may also own the function, including under FORCE.
+place. The owner must have no effective SELECT privilege on any non-tenant column,
+including through PUBLIC or inherited roles. A table owner has payload
+privileges and is therefore refused; use a dedicated NOLOGIN function owner.
 
-Prechecks require the table and roles to exist and names to be unused.
+Prechecks require the table and roles to exist and the function name to have no overloads and the policy name to be unused.
 Applicable restrictive SELECT/ALL policies must exclude the function owner:
 a permissive owner policy cannot override them, so installation refuses them
 rather than silently producing an incomplete tenant list. Postchecks verify
