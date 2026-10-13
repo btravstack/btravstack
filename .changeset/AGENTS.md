@@ -32,6 +32,15 @@ config, and neither was the `updateInternalDependencies` this repo's
 result). The internal peers still cannot become ordinary dependencies — the
 dual-copy hazard is what they exist to prevent.
 
+## Documentation changes can require an empty changeset
+
+The CI Changeset job runs `changeset status --since=origin/main`. A package
+README or guidance edit counts as a changed package even when no runtime or
+manifest changed. Add an empty changeset (`---` followed by `---`, with no
+package entries) for such documentation-only changes. It satisfies that gate
+without releasing the fixed package group. A user-facing runtime change still
+names its package and release type.
+
 ## A private workspace package still needs a `version`
 
 `pnpm publish` rewrites every `workspace:` dependency into a concrete range —
