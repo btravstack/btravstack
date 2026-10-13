@@ -1,6 +1,7 @@
 ---
 "@btravstack/di": minor
 "@btravstack/core": minor
+"@btravstack/http-server": minor
 "@btravstack/orpc-server": minor
 "@btravstack/graphql-server": minor
 "@btravstack/amqp-worker": minor
