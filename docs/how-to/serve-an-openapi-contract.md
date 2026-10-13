@@ -10,7 +10,7 @@ description: Keep one contract for TypeScript callers and conventional HTTP clie
 > client. See [Serve an oRPC contract over HTTP](/how-to/serve-orpc-over-http) for
 > the router and composition root.
 
-Install the `/openapi` subpath's two optional peers,
+Install the answerer's two required peers,
 `@orpc/openapi@2.0.0-beta.34` and `@orpc/json-schema@2.0.0-beta.34`, in the
 application. The contract package also needs `@orpc/openapi` for its routing
 metadata.
@@ -50,6 +50,15 @@ router, authentication walk, unit lifecycle, and HTTP listener as the RPC
 answerer. The default mounts are `/api` for OpenAPI and `/rpc` for RPC, so the
 example above answers `GET /api/items/42`, `POST /api/items`, and the original
 RPC procedures. A document by itself does not add these routes.
+
+For a named refusal, put its HTTP `status` beside its `data` or `message` in
+the procedure's `.errors(...)` entry, for example
+`ITEM_MISSING: { status: 404, data: z.object({ id: z.string() }) }`.
+The OpenAPI answerer and document generator use it locally to that procedure,
+so each domain keeps its own declarations. The handler still returns its typed
+`ErrAsync(errors.ITEM_MISSING({ data: { id } }))`; no root-level registry or
+server import is needed in the contract. See
+[Custom error statuses](/reference/http-server#custom-error-statuses).
 
 <!-- doctest: skip — routerProvider is the application's existing router -->
 

@@ -403,6 +403,13 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    Nothing in this package may grow a status code, a retry policy, or a
    serialisation format.
 
+   **Named OpenAPI refusals carry their HTTP status in their own contract.**
+   A procedure's `.errors(...)` entry may declare `status` beside `data` or
+   `message`; `@btravstack/orpc-server` uses it on OpenAPI routes and in their
+   generated document, local to each procedure. Triage still chooses the
+   contract error in the application's handler, and the kernel maps nothing.
+   The RPC answerer keeps oRPC's standard code mapping.
+
    **Declining the mapping is not declining the help — the help is the `Err`
    channel's own type** (issue #69's question, answered by measurement).
    `placeOrder`'s union (`InvalidQuantity | InvalidOrderId | DuplicateOrder`)

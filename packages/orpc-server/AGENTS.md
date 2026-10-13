@@ -17,7 +17,7 @@ reasoning is in the HTTP family's `AGENTS.md`.
 interceptor: the handler's also sees a body it failed to decode, which it
 answers `400`. It reports what oRPC would answer with a 5xx unless the contract
 declares the error, because a declared custom code (`INVALID_QUANTITY`) falls
-back to `500` with no `errorStatusMap` and is still a refusal. The operation
+back to `500` without a local status and is still a refusal. The operation
 has the same shape as `graphql-server`'s masked defect. `Observers` comes from
 `httpServer()`'s `noObserverMember`, so no root gains wiring.
 
@@ -29,3 +29,22 @@ consumer gate still checks the older advertised floor.
 `HttpModule` shares application-root exports with `GraphqlModule`: runtime
 ports are automatic, as are available `Logger` and `HealthChecks` ports.
 Business exports remain explicit; private imported providers remain private.
+
+**OpenAPI error statuses belong beside each procedure's error declaration.**
+oRPC preserves extra `status` properties in `.errors(...)` entries but its
+default codec and generator ignore them. `errorStatusesOf` reads only integer
+HTTP error statuses (`400`–`599`). The OpenAPI codec uses the matched
+procedure's entry only for an error oRPC recognizes as declared, leaving
+validation, access failures and defects on the default mapping. It composes
+oRPC's public `StandardHandler` and `NodeHttpHandler`, keeping plugins and
+defect reporting on the same hooks as its default OpenAPI handler.
+
+The generator's map is global, whereas domains may reuse a code with different
+statuses. `openApiDocument` generates unannotated procedures together, then
+each annotated procedure with its own map, passing the accumulated document as
+the next generator's base. oRPC owns schema registration and collision handling
+on every pass; no response-schema rewriting or global code registry is needed.
+Only annotated procedures pay for extra passes. Object and function operation
+`spec` overrides keep oRPC's own behavior. The RPC answerer retains its default
+map. A declaration needs `data` or `message` alongside `status` to satisfy
+oRPC's error-entry type without importing the server into a contract package.

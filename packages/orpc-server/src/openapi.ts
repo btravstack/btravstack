@@ -1,8 +1,11 @@
 import { isAuthenticated, type Requirements } from "@btravstack/contract";
-import type { RouterContract } from "@orpc/contract";
+import type { AnyProcedureContract, RouterContract } from "@orpc/contract";
 import { StandardJsonSchemaConverter } from "@orpc/json-schema";
 import { OpenAPIGenerator, getOpenAPIMeta } from "@orpc/openapi";
+import { COMMON_ERROR_STATUS_MAP, walkProcedureContractsSync } from "@orpc/server";
 import { fromSafePromise, type AsyncResult } from "unthrown";
+
+import { errorStatusesOf } from "./error-status.js";
 
 export { openApiRoutes, type OpenApiRoutesOptions } from "./openapi-routes.js";
 
@@ -83,7 +86,9 @@ const requirementsByPath = (
 
 /**
  * The contract as an OpenAPI document, with the `@btravstack/contract` marker
- * folded into each operation's `security`.
+ * folded into each operation's `security`. Each procedure's `.errors(...)`
+ * entries may declare an integer HTTP error `status` in `400`–`599`; the
+ * generated responses use those local statuses, as {@link openApiRoutes} does.
  *
  * ```ts
  * const document = (
@@ -118,7 +123,29 @@ export const openApiDocument = (
   options: OpenApiOptions = {},
 ): AsyncResult<OpenApiDocument, never> => {
   const generator = new OpenAPIGenerator({ converters: [new StandardJsonSchemaConverter()] });
-  return fromSafePromise(generator.generate(contract, { base: options.base })).map((document) => {
+  const localStatuses = new Map<AnyProcedureContract, Record<string, number>>();
+  walkProcedureContractsSync(contract, (procedure) => {
+    const statuses = errorStatusesOf(procedure);
+    if (Object.keys(statuses).length > 0) localStatuses.set(procedure, statuses);
+  });
+  let generated = fromSafePromise(
+    generator.generate(contract, {
+      base: options.base,
+      filter: (procedure) => !localStatuses.has(procedure),
+    }),
+  );
+  for (const [procedure, statuses] of localStatuses) {
+    generated = generated.flatMap((document) =>
+      fromSafePromise(
+        generator.generate(contract, {
+          base: document,
+          filter: (candidate) => candidate === procedure,
+          errorStatusMap: { ...COMMON_ERROR_STATUS_MAP, ...statuses },
+        }),
+      ),
+    );
+  }
+  return generated.map((document) => {
     const byPath = new Map<string, Requirements>();
     requirementsByPath(contract, undefined, [], byPath);
     if (byPath.size === 0 && options.securitySchemes === undefined) return document;
