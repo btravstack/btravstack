@@ -136,6 +136,19 @@ TemporalWorkflowActivities(
   sync: () => ({ echo: ({ input }) => OkAsync(input) }),
 });
 
+// A `fork` typed as either of two modules forks whichever it is, so every one
+// of them must export the declared ports.
+declare const eitherUnit: typeof TenantUnit | typeof ElsewhereUnit;
+TemporalWorkflowActivities(
+  pinContract,
+  "runEcho",
+  // @ts-expect-error -- UNIT DOES NOT PROVIDE: `ElsewhereUnit`, one arm of the union, exports no `Tenant`
+)({
+  unit: { tenant: Tenant },
+  fork: eitherUnit,
+  sync: () => ({ echo: ({ input }) => OkAsync(input) }),
+});
+
 // A `fork` that may be `undefined` falls back to `unit.activity` at runtime,
 // so the root's gate still checks the declared ports: a root binding no
 // worker-wide module is refused.

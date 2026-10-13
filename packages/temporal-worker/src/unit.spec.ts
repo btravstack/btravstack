@@ -33,6 +33,17 @@ describe("unitsOf", () => {
     ]);
   });
 
+  it("refuses a piece forking the module unit.activity already binds, naming the piece", () => {
+    // GIVEN a piece whose fork is the worker-wide module itself
+    const worker = Module("Worker")({});
+    const activities = { listTenants: withFork(() => {}, worker) };
+
+    // WHEN / THEN building the units record refuses the redundant fork
+    expect(() => unitsOf(worker, activities)).toThrow(
+      'the "listTenants" piece forks "Worker", the module `unit.activity` already binds',
+    );
+  });
+
   it("refuses two different modules sharing a name, which an override could not tell apart", () => {
     // GIVEN two pieces naming two modules called the same
     const activities = {

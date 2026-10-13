@@ -45,19 +45,26 @@ export type UnitRecordOf<U extends Readonly<Record<string, AnyPort>>> = {
   readonly [N in keyof U]: ServiceOf<InstanceType<U[N]>>;
 };
 
+// Per module: a union of modules covers a port only when every one of them
+// exports it, since the attempt forks whichever one it is.
+type UnprovidedBy<Unit, Declared> = [Unit] extends [never]
+  ? NonNullable<Declared>
+  : Unit extends unknown
+    ? Exclude<NonNullable<Declared>, UnitExportsOf<Unit>>
+    : never;
+
 /**
  * A piece injecting a port the bound unit module does not export. `unknown`
  * when every declared port is covered — including the empty case, so a worker
- * whose pieces declare no `unit:` is gated on nothing.
+ * whose pieces declare no `unit:` is gated on nothing. A union of modules is
+ * checked module by module.
  */
-export type UnitGate<Unit, Declared> = [
-  Exclude<NonNullable<Declared>, UnitExportsOf<Unit>>,
-] extends [never]
+export type UnitGate<Unit, Declared> = [UnprovidedBy<Unit, Declared>] extends [never]
   ? unknown
   : {
-      readonly "UNIT DOES NOT PROVIDE — a piece injects a port the bound unit module does not export": Exclude<
-        NonNullable<Declared>,
-        UnitExportsOf<Unit>
+      readonly "UNIT DOES NOT PROVIDE — a piece injects a port the bound unit module does not export": UnprovidedBy<
+        Unit,
+        Declared
       >;
     };
 

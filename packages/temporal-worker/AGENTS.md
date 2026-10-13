@@ -98,7 +98,14 @@ activityName` — Temporal hands the middleware the workflow key a
     boot-checks what `units` lists and overrides key on it; a contract key
     would list a module several pieces share several times, which
     `unitSubstitutes` refuses, so the module's name is the key and two
-    different modules sharing one are refused as the runtime is built.
+    different modules sharing one are refused as the runtime is built. A
+    piece forking the very module `unit.activity` binds is refused there too:
+    listing it under both keys would make every override of it a
+    `unitSubstitutes` refusal, and listing it under one would leave the other
+    key unbound, while the `fork` itself changes nothing.
+  - **The gate is per module.** `UnitGate` distributes over a union, so a
+    `fork` typed as one of several modules is accepted only when every one of
+    them exports the declared ports — the attempt forks whichever it is.
 
   The record arm takes no `fork`: one record is one scope, which is
   `unit.activity`. `@btravstack/amqp-worker` has the same one-module shape and

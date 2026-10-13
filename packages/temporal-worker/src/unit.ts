@@ -32,8 +32,15 @@ export const unitsOf = (
   activities: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, AnyUnitModule | undefined>> => {
   const units = new Map<string, AnyUnitModule | undefined>([["activity", activity]]);
-  for (const fork of Object.values(activities).map(forkOf)) {
-    if (fork === undefined || fork === activity) continue;
+  for (const [key, entry] of Object.entries(activities)) {
+    const fork = forkOf(entry);
+    if (fork === undefined) continue;
+    if (fork === activity) {
+      // oxlint-disable-next-line unthrown/no-throw -- a wiring bug found as the runtime is built, inside di's construction, which turns the throw into the boot's defect
+      throw new Error(
+        `[temporal-worker] the "${key}" piece forks "${fork.name}", the module \`unit.activity\` already binds — drop the piece's \`fork\`, which adds nothing`,
+      );
+    }
     const bound = units.get(fork.name);
     if (bound !== undefined && bound !== fork) {
       // oxlint-disable-next-line unthrown/no-throw -- a wiring bug found as the runtime is built, inside di's construction, which turns the throw into the boot's defect
