@@ -46,7 +46,7 @@ import { withUnit } from "./unit.js";
 export type AmqpInfo = { readonly queues: readonly string[] };
 
 /**
- * The broker, as a service: `amqp()` binds it from `AMQP_URL` (default
+ * The broker, as a service: the starter binds it from `AMQP_URL` (default
  * `amqp://127.0.0.1:5672`) and `AMQP_CONNECT_TIMEOUT_MS` (default `5_000`)
  * unless pinned, and anything else in the graph may read it — a publisher
  * sharing the consumer's broker, say.
@@ -64,7 +64,7 @@ export class AmqpConfig extends Port("AmqpConfig")<{
  */
 const DEFAULT_CONNECT_TIMEOUT_MS = 5_000;
 
-/** The runtime's port: what `amqp()` provides, and what the module `start` boots must export. */
+/** The runtime's port: what the starter provides, and what `AmqpModule` exports for `start` to boot. */
 export class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}
 
 /** The needs a bound `unit.message` module still owes, less the delivery the fork's seed discharges. */
@@ -121,7 +121,7 @@ export type AmqpOptions<
 } & AmqpTuning<Unit>;
 
 /**
- * What an AMQP deployment tunes, shared verbatim by `amqp()` and `AmqpModule` —
+ * What an AMQP deployment tunes, shared verbatim by the starter and `AmqpModule` —
  * spelled once so the two cannot drift, which is what a second copy of an
  * option list always eventually does.
  */

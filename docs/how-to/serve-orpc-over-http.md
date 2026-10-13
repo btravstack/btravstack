@@ -5,9 +5,6 @@ description: Implement an oRPC contract as a di-provided router, compose it with
 
 <!-- doctest: prelude
 import { start, type StartEnvironment } from "@btravstack/core";
-import { Module } from "@btravstack/di";
-import { HttpRuntime } from "@btravstack/http-server";
-import { http } from "@btravstack/orpc-server";
 import { api } from "../../auth.js";
 import { RequestModule, ServiceModule, UserModule } from "../../request-scope.js";
 // The rest of what this root reads, beside the two the sample sets.
@@ -222,64 +219,37 @@ export const OrdersApi = HttpModule("OrdersApi")({
   },
   imports: [OrderPersistenceModule, observability(), otel()],
   provides: [sessionCodec()],
-  // Everything a forked kind reads out of the application scope.
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 
-`HttpModule` is `Module(name)({...})` plus `router`: it imports the starter
-(`http()`), provides the router **and the scheme authenticators the router
-carries**, and exports
-`HttpRuntime`, and returns exactly the module the hand-written form would:
-
-```ts
-import { Env } from "@btravstack/config";
-
-Module("OrdersApi")({
-  // `HttpModule` carries this for every provider in the root — a scheme bound
-  // from the environment, a config field — so the sugar's form writes no
-  // `needs` line at all.
-  needs: [Env],
-  imports: [
-    OrderPersistenceModule,
-    observability(),
-    otel(),
-    http({ unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule } }),
-  ],
-  provides: [ordersRouter, ...ordersRouter.authenticators, sessionCodec()],
-  exports: [HttpRuntime, Logger, Tracer, Meter, OrderDatabase],
-});
-```
-
-Two things the hand-written form does NOT get. The gate on `unit`: `http()`
-takes the router as a need rather than a value, so it cannot check the kinds
-against what the api declared, where `HttpModule` can. And `Env`, which it has
-to declare itself — the sugar adds it, which is why a root composing a scheme
-that binds `HTTP_JWT_ISSUER` still names no port of its own.
+`HttpModule` is the only way to compose the HTTP starter into a root. Beyond
+`Module(name)({...})`, it imports the starter, provides the router **and the
+scheme authenticators the router carries**, checks `unit` against the kinds the
+api declared, adds `Env` to a written `needs` list, and exports `HttpRuntime` —
+`start` reads which runtime a root boots off the root's exports, so the sugar
+writes that export so the application does not.
 
 There is **no authenticator to list**: it rides the router, which is what needs
 it, so a scheme cannot be forgotten and cannot be wired to the wrong router.
 What the compiler still checks is di's own gate — the router declares one
 dependency per scheme its contract names, so a scheme with nobody behind it is
 an unmet need `start` refuses, naming the port
-(`Type '"HttpAuthenticator:user"' is not assignable to type '"@di/Scope"'`).
+(`{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "HttpAuthenticator:user"; }`).
 
 [`observability()`](/reference/observability) is the other starter here: it
 brings the `Logger` the use cases and the request scope write to, bound from
 `LOG_LEVEL`, one JSON object per line on stdout, every line carrying the
-trace id of the unit `http()` opened around the request. It is exported
-because every unit kind reads it once forked, as `OrderDatabase` is.
+trace id of the unit the starter opened around the request. Nothing is exported
+for the unit kinds: once forked, they read it — and `OrderDatabase` — from the
+application scope.
 
-Three gates hold at compile time, now that the contract is marked. A root that
-forgets the starter exports no runtime port and `start` refuses it against
-`"NO RUNTIME — the module exports no port declared over RuntimePort"`. A root
-that imports `http()` without providing the router
-carries an unmet need — the starter's runtime provider depends on its router
-port through di — and `start` refuses the module, naming the port
-(`Type 'OrpcRouterPort' is not assignable to type 'Env | Scope'`). And a root serving a **marked**
-contract whose `defineHttp` declared no authenticator for one of its schemes
-carries that scheme's port as a second unmet
-need, refused the same way; drop the marker and that third gate goes with it.
+Three gates hold at compile time, now that the contract is marked. A plain
+`Module` root exports no runtime port and `start` refuses it against
+`"NO RUNTIME — the module exports no port declared over RuntimePort"`.
+`HttpModule` without a `router` does not compile. And a root serving a
+**marked** contract whose `defineHttp` declared no authenticator for one of its
+schemes carries that scheme's port as an unmet need, refused the same way;
+drop the marker and that third gate goes with it.
 
 ## Step 4 — `main.ts`
 
@@ -322,9 +292,7 @@ stream rather than the default JSON on stderr; see
 There is no `authenticator` option: the scheme authenticators ride the router
 and the sugar puts them in `provides` itself.
 
-`http({ prefix?, port?, hostname? })` takes the last three; the router is not
-an option but the module's need, provided by the root. Pinning is per field —
-`port: 0` still reads `HOST`.
+Pinning is per field — `port: 0` still reads `HOST`.
 
 ## What the package decides
 

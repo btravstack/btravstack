@@ -64,6 +64,10 @@ const GUIDE_SIDEBAR = [
           },
           { text: "Log and correlate", link: "/how-to/log-and-correlate" },
           { text: "Use request-scoped services", link: "/how-to/use-request-scoped-services" },
+          {
+            text: "Share application infrastructure with units",
+            link: "/how-to/share-application-infrastructure-with-units",
+          },
           { text: "Open a per-request scope", link: "/how-to/open-a-per-request-scope" },
           { text: "Manage a resource's lifetime", link: "/how-to/manage-a-resource" },
           { text: "Talk to a database", link: "/how-to/talk-to-the-database" },

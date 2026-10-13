@@ -46,12 +46,12 @@ page, never this file.
 - **`AmqpModule` also takes `needs`**, forwarded to di's own — what this
   root's OWN providers expect from outside. The starter's `Env` is not among them: the
   starter is an import, and an import's needs travel without being restated. A
-  root that provides a config provider of its own does declare it, as
-  `needs: [Env]`, since that provider is the root's own. The sugar
-  **re-declares di's `NeedsGate`** over its augmented tuples, so a root whose
-  own provider owes a port it does not name is refused at THIS call rather than
-  slipping past into `start`; see `packages/di/AGENTS.md`'s **Module
-  visibility**.
+  root that provides a config provider of its own owes it, inferred, and may
+  state it as `needs: [Env]`. The sugar
+  **re-declares di's `NeedsGate`** over its augmented tuples, so a root that
+  states `needs` is checked at THIS call; one that does not (the usual root)
+  has its needs inferred and `start` names any it leaves unsupplied — see
+  `packages/di/AGENTS.md`'s **Module visibility**.
 
 - **The `context.unit` record is built by a wrapper on the piece, not by the
   middleware**, and that is the decision. `messageUnits` leaves the forked `Context` on the
@@ -72,6 +72,11 @@ page, never this file.
   `verbatimModuleSyntax` — while `amqp-runtime.ts` imports `HANDLER_PREFIX`
   from `handler.ts` as a value, so the two files reference each other in the
   type graph with **no runtime cycle**.
+
+- **`amqp()` is not exported; `AmqpModule` is the only root.** `start` reads
+  the runtime off a root's exports, so a plain `Module` over the bare starter
+  had to export `AmqpRuntime` by hand — a technical export the sugar writes
+  itself — and the sugar requires `handlers`, so no root can omit them.
 
 - **`unit?: { message?: Unit }`**, on `AmqpModule` and `amqp()` — the module
   that `messageUnits`, the worker's dispatch middleware, forks around every delivery, **seeded with the

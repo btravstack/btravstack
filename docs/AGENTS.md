@@ -153,8 +153,7 @@ the old repository.
 
   **What stays skipped is what has no exported symbol to check against**, and
   each says which: `api.OrpcController` (minted by `defineHttp`, and its type
-  names internal `FragmentAt` / `Schemes`), `http()` (its needs channel names
-  the unexported `OrpcRouterPort`), `amqp()` (`AnyAmqpContract`), `tapped`
+  names internal `FragmentAt` / `Schemes`), `tapped`
   (`TapGate`) and `overridden` (di's `AnyProviderFor`). A skip reason that
   says "a signature display" and nothing more is now the wrong reason: it means
   either the marker or an export is missing.

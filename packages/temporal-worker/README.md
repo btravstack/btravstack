@@ -200,11 +200,9 @@ this stack at all:
 
 ## Options
 
-`TemporalModule(name)({...})` takes `temporal()`'s options plus `activities`
-and the module lists (`imports`, `provides`, `exports`, `needs`). The
-`temporal()` primitive does not take `activities` as an option — it **needs**
-the activities provider on its own port, which is how the composition root
-supplies it:
+`TemporalModule(name)({...})` takes the starter's options plus `activities`
+and the module lists (`imports`, `provides`, `exports`, `needs`). It is the
+only way to compose the starter, which is not exported:
 
 | Option        | What it is                                                                                                              |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------- |

@@ -132,8 +132,8 @@ defect at build. `orderHandlers`'s pieces are the composed provider's own
 **imports both slice modules**, `NotificationsSlice` and `AuditSlice`, even
 though nothing in the root names `orderNotifications` or `orderAudit`
 directly. That still fails to compile if forgotten: `AmqpHandlers` declares
-each piece's port as one of its **own** `deps`, so a missing import is an
-undeclared need at the `AmqpModule(...)` call, refused with the exact port
+each piece's port as one of its **own** `deps`, so a missing import leaves
+that port an unmet need of the root, refused at `start` with the exact port
 named — `pnpm typecheck` catches it, not a runtime `WiringDefect`.
 
 The `payload === null` branch is the whole point of the envelope: one handler,
@@ -196,7 +196,7 @@ class OrderAmqpClient extends Port("OrderAmqpClient")<
 export const orderAmqpClient = amqpClient(OrderAmqpClient, orderContract, AmqpConfig);
 ```
 
-It depends on `AmqpConfig` — the broker `amqp()` bound — so the publisher and
+It depends on `AmqpConfig` — the broker the starter bound — so the publisher and
 the consumer read one `AMQP_URL`. The upstream client and worker hold separate
 connections. The
 publisher turns an outbox row into the contract's envelope:
@@ -396,42 +396,11 @@ an exchange, never a consumer.
 
 ## The gate
 
-`needs-gate.test-d.ts` pins `NO RUNTIME — …`, and the unmet-need refusal
-spelled with the `amqp()` primitive — the sugar cannot leave the handlers out,
-which is what it is for:
-
-<!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the unmet-handlers arm -->
-
-```ts
-const HandlerlessAmqp = Module("HandlerlessAmqp")({
-  imports: [
-    OrderPersistenceModule,
-    observability(),
-    amqp({ contract: orderContract }),
-  ],
-  exports: [AmqpRuntime, OutboxStore, Logger],
-});
-
-// @ts-expect-error — the module's needs channel carries the handlers port, which nothing provides.
-const _missingHandlers = start(HandlerlessAmqp, options);
-```
-
-Two arms of the same marker, worth telling apart. The first is `NO RUNTIME`:
-the module argument fails to match
+`needs-gate.test-d.ts` pins `NO RUNTIME — …`: a plain `Module` root fails to
+match
 `Module<…> & "NO RUNTIME — the module exports no port declared over RuntimePort"`,
-and the sentence is the last line. The second is the `Needs` channel: the
-handlers port is owed by `amqp()`, an **import** — so di's
-[declaration gate](/explanation/modules-and-privacy) has nothing to say, since
-an import's needs travel without being restated — and `start` answers it in
-di's own words, ending on
-
-```text
-{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "AmqpHandlers" }
-```
-
-The line is wide, because the contract expands into the module type either
-way; what fits is the part that matters, since the port is named by its **id**
-rather than by `HandlersInstanceOf<…>`.
+and the sentence is the last line. There is no unmet-handlers arm: `AmqpModule`
+is the only way to compose the starter, and it requires `handlers`.
 
 ## Where to go next
 

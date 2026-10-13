@@ -1,6 +1,6 @@
 ---
 title: Modules
-description: "Module(name)({ imports, provides, exports, needs }) — what each list means, how the Exports/E/Needs channels are computed, the declaration gate that refuses an unnamed need, and the AnyModule/Exportable bounds a shaped module is built from."
+description: "Module(name)({ imports, provides, exports, needs }) — what each list means, how the Exports/E/Needs channels are computed and inferred, the optional declaration gate a stated boundary gets, and the AnyModule/Exportable bounds a shaped module is built from."
 ---
 
 <!-- doctest: prelude
@@ -64,12 +64,12 @@ const Persistence = Module("Persistence")({
 
 All four lists are optional and default to empty.
 
-| List       | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `imports`  | Modules whose **exports** become visible inside this one. A diamond — two imports that both import a third — is fine: providers are de-duplicated by reference at build time, so the shared module's services construct once.                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `provides` | This module's own providers. A provider here may depend on anything **available** in this module: ports provided here, plus ports exported by the imports. Order within the list does not matter for correctness — dependency order is computed at build time — but it is what makes error selection deterministic when several fail at once.                                                                                                                                                                                                                                                                                                         |
-| `needs`    | The ports **this module's own providers** expect a composition root to supply. A provider here may depend on a declared need and have it satisfied by whatever an ancestor supplies; what declaring does **not** do is provide the port locally, so it is not `Available` and cannot be exported. Nor does it manufacture an obligation — it is permission for a real one to travel outward. Anything this module's providers owe and it does not name here is a compile error **at this call** (below). An **import's** own needs travel without being restated — they are already in that import's type. `Scope` is exempt: nothing can provide it. |
-| `exports`  | The ports outside code may see. Each entry must be an **available port** — provided here, or exported by an import — a **provider for one**, which is normalised to `provider.port`, or an **imported module**, a whole-module re-export forwarding that module's own `exports` (never its internals). Anything else is a compile error at the declaration.                                                                                                                                                                                                                                                                                           |
+| List       | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `imports`  | Modules whose **exports** become visible inside this one. A diamond — two imports that both import a third — is fine: providers are de-duplicated by reference at build time, so the shared module's services construct once.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `provides` | This module's own providers. A provider here may depend on anything **available** in this module: ports provided here, plus ports exported by the imports. Order within the list does not matter for correctness — dependency order is computed at build time — but it is what makes error selection deterministic when several fail at once.                                                                                                                                                                                                                                                                                                                                   |
+| `needs`    | **Optional — a boundary, not a requirement.** Without it, what this module's providers inject and nothing here supplies is inferred into its `Needs` channel and travels to whoever composes it. With it, the list states the ports **this module's own providers** expect a composition root to supply, and anything they owe that the list leaves out is a compile error **at this call** (below). Declaring does **not** provide the port locally, so it is not `Available` and cannot be exported; nor does it manufacture an obligation. An **import's** own needs are never restated — they are already in that import's type. `Scope` is exempt: nothing can provide it. |
+| `exports`  | The ports outside code may see. Each entry must be an **available port** — provided here, or exported by an import — a **provider for one**, which is normalised to `provider.port`, or an **imported module**, a whole-module re-export forwarding that module's own `exports` (never its internals). Anything else is a compile error at the declaration.                                                                                                                                                                                                                                                                                                                     |
 
 Exporting a provider means exactly what exporting its port class means — same
 `Exports` channel, same gates — and it is the only spelling available when the
@@ -90,25 +90,38 @@ flat map at runtime, unnameable through the built `Context`'s type.
 
 `Module<Exports, E, Needs>`:
 
-| Channel   | Computed as                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Exports` | The union of exported ports' instance types, whole-module re-exports contributing their own `Exports`. This becomes the `Context<X>` channel an entry point hands back.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `E`       | Every way construction can fail: the union of all providers' error channels, here and in every import, transitively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `Needs`   | Everything still unmet: the union of all providers' needs and all imports' needs, **minus** what is available here. A dependency satisfied by a sibling provider or an import's export disappears from `Needs`; one nothing supplies travels outward — declared by the module whose own providers read it, then inherited by importers without being restated — until some module satisfies it, or is refused at the entry point by the [`UNSATISFIED DEPENDENCIES` gate](/reference/di/entry-points#the-gate). `Scope`, once introduced by a resourceful provider, travels the same way without being declared, and is discharged only by `Module.scoped`, `Module.forkScope` or `start`. |
+| Channel   | Computed as                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Exports` | The union of exported ports' instance types, whole-module re-exports contributing their own `Exports`. This becomes the `Context<X>` channel an entry point hands back.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `E`       | Every way construction can fail: the union of all providers' error channels, here and in every import, transitively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `Needs`   | Everything still unmet: the union of all providers' needs and all imports' needs, **minus** what is available here. A dependency satisfied by a sibling provider or an import's export disappears from `Needs`; one nothing supplies travels outward — inferred from the provider that reads it, then inherited by importers without being restated — until some module satisfies it, or is refused at the entry point by the [`UNSATISFIED DEPENDENCIES` gate](/reference/di/entry-points#the-gate). `Scope`, once introduced by a resourceful provider, travels the same way without being declared, and is discharged only by `Module.scoped`, `Module.forkScope` or `start`. |
 
-## The declaration gate
+## Inferred needs, and the declaration gate
 
-A module that depends on a port it neither provides nor imports must say so:
+A module that depends on a port it neither provides nor imports owes it, and
+says nothing more than its provider already does:
 
 ```ts
 const Slice = Module("Slice")({
-  needs: [Logger], // "some root supplies this"
+  provides: [auditHandler], // injects `Logger`
+  exports: [auditHandler],
+});
+// Slice: Module<AuditHandler, never, Logger> — the need is in its type
+```
+
+A module may also **state its boundary**. Then every port its own providers
+read from outside must be in the list:
+
+```ts
+const BoundedSlice = Module("BoundedSlice")({
+  needs: [Logger], // "some root supplies this, and nothing else"
   provides: [auditHandler],
   exports: [auditHandler],
 });
 ```
 
-Leave it out and the call does not compile, and the diagnostic names the port:
+Leave a port out of a stated boundary and the call does not compile, and the
+diagnostic names the port:
 
 ```text
 Property '"UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)"' is missing in type
@@ -118,13 +131,10 @@ Property '"UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide 
 
 The gate reads **this module's own providers only**. A module that merely
 imports `Slice` restates nothing — the obligation is in `Slice`'s type, and the
-entry point is still what refuses a root that has not discharged it. So the
-declaration lands on the feature that reads the port, once, rather than on every
-module between it and the root.
-
-This is why a slice directory can be read on its own: it names the ports that
-come from outside without naming who supplies them, so the same slice still
-composes into any root that answers them. See
+entry point is what refuses a root that has not discharged it, with the port
+named. Either way the same slice composes into any root that answers what it
+owes; the list is for a module whose boundary is worth checking at its own
+declaration, such as an application layer's port list. See
 [Modules and privacy](/explanation/modules-and-privacy) for why the rule is
 this shape rather than NestJS's, and why there is no `@Global`.
 
@@ -157,8 +167,8 @@ be computed while `I` is still a type parameter, so a **generic** seam has to
 assert past it — and it may only do so honestly, which is what constraining the
 adapter to owe at most `Scope` says. A shaped module — a starter's
 `HttpModule(name)({ … })` — does the same thing one level up: it re-declares
-`NeedsGate` on its own options, so the gate still fires at the application's
-call, and asserts past it internally.
+`NeedsGate` on its own options, so a boundary the application states is still
+checked at its own call, and asserts past it internally.
 
 Any module exporting `OrderRepository` fits, and whatever it may fail with or
 still need flows through `E`/`N` into the result — invisibly to the seam,

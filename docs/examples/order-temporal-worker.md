@@ -164,8 +164,6 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   // Forked once per activity attempt, after it is invoked and before the body
   // runs — which is where the input's `tenantId` becomes the fork's `Tenant`.
   unit: { activity: ActivityUnitModule },
-  // Everything the fork reads out of the application scope.
-  exports: [Tracer, Logger, OrderDatabase],
 });
 ```
 
@@ -175,9 +173,9 @@ A wiring rule worth stating because the reason isn't obvious:
 never from a provider's own `deps`. The root **must** import every slice, even though nothing in it names
 `fulfillOrder`, `chargeOrder` or `sweepStaleOrders` directly. Forgetting one still fails to
 compile: `TemporalActivities` declares each piece's port as one of its own
-`deps`, so a missing import is an undeclared need at the
-`TemporalModule(...)` call, refused with the exact port named — `pnpm
-typecheck` catches it, not a runtime `WiringDefect`.
+`deps`, so a missing import leaves that port an unmet need of the root,
+refused at `start` with the exact port named — `pnpm typecheck` catches it,
+not a runtime `WiringDefect`.
 
 ## The fulfillment saga
 
@@ -536,29 +534,15 @@ shutdown to escalate to. See
 
 ## The gate
 
-`needs-gate.test-d.ts` pins `NO RUNTIME — …` (the graph without the starter
-fails to match the sentence intersected onto `start`'s `module` parameter) and
-the unmet-need refusal spelled with the `temporal()` primitive, since the sugar
-cannot leave the activities out at all:
-
-<!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the unmet-need arm -->
-
-```ts
-// @ts-expect-error — UNMET NEED: the module's needs channel carries the activities port, which nothing provides.
-const _missingActivities = start(ActivitylessTemporal, options);
-```
-
-That second one is the `Needs` channel, not di's `UNSATISFIED DEPENDENCIES`
-dependency gate: `start`'s `module` parameter accepts only `Scope | Env`
-outstanding, so the activities port fails to assign and the diagnostic ends on
-`Type '"TemporalActivities"' is not assignable to type '"@di/Scope"'` — the
-port named, after several lines of the contract expanding.
+`needs-gate.test-d.ts` pins `NO RUNTIME — …`: the graph without the starter
+fails to match the sentence intersected onto `start`'s `module` parameter.
+There is no missing-activities arm: `TemporalModule` is the only way to
+compose the starter, and it requires `activities`.
 
 Dropping one slice's import while still providing the composed activities
 fails the same way: `TemporalActivities` carries each piece's port as one
-of its own `deps`, so the missing import is an undeclared need at the
-`TemporalModule(...)` call — the wiring rule above — refused by di's
-`NeedsGate` and, again, by `start`'s `module` parameter. No spec needs to
+of its own `deps`, so the missing import leaves that port an unmet need of the
+root — the wiring rule above — refused by `start`, naming it. No spec needs to
 pin it; `pnpm typecheck` already does.
 
 ## Where to go next

@@ -311,27 +311,23 @@ npm run typecheck
 ```
 
 `tsc` prints nothing and exits `0`. Now delete `imports: [GreetingModule]` and
-run it again: the call fails to compile, because the router's provider declares
-`Greeter` and nothing supplies it. That is di's gate
+run it again: the `runMain` call fails to compile, because the router's
+provider injects `Greeter` and nothing supplies it. That is the kernel's gate
 ([Compile errors, not surprises](/explanation/compile-time-wiring)), and it
 fires before any process exists.
 
-**Read the sentence, and read it whole.** The error is at the `HttpModule`
-call, and it ends by naming what is missing — the marker, and `Greeter` as its
-value:
+**Read the sentence, and read it whole.** It ends by naming what is missing —
+the marker, and `Greeter` as its value:
 
 ```text
-src/app.ts(6,38): error TS2345: Argument of type '{ router: Built<never, Greeter, Record<never, never>>; }' is not assignable to parameter of type …
-  Property '"UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)"' is missing in type … but required in type '{ readonly "UNDECLARED NEEDS …": Greeter; }'.
+src/main.ts(5,15): error TS2345: Argument of type 'Module<HttpHandler | HttpRuntime, ConfigInvalid, Greeter | HttpServerEnv>' is not assignable to parameter of type …
+  Property '"UNSATISFIED DEPENDENCIES — nothing provides"' is missing in type … but required in type '{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "Greeter"; }'.
 ```
 
-Two fixes, because two readers meet this. A **slice** names the port in
-`needs` and lets whoever composes it supply one. A **composition root** — which
-`App` is — has nobody above it, so naming it in `needs` only moves the
-complaint one line down, to `runMain`'s own
-`UNSATISFIED DEPENDENCIES — nothing provides`. Put the module back in
-`imports`. [Read a wiring error](/how-to/read-a-wiring-error) has the marker
-table and where each fix goes.
+`App` never mentions `Greeter`: its router does, and what a module owes is
+inferred from what its providers inject. Put the module back in `imports`.
+[Read a wiring error](/how-to/read-a-wiring-error) has the marker table and
+where each fix goes.
 
 ## Step 6 — Write `main.ts`
 

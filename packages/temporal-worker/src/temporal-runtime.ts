@@ -60,7 +60,7 @@ export type WorkflowSource =
   | { readonly workflowBundle: WorkflowBundleWithSourceMap };
 
 /**
- * Where the Temporal service is, as a service: `temporal()` binds it from the
+ * Where the Temporal service is, as a service: the starter binds it from the
  * environment — `TEMPORAL_ADDRESS` (default `127.0.0.1:7233`),
  * `TEMPORAL_NAMESPACE` (default `default`) and the shutdown budgets below —
  * unless pinned, and anything else in the graph may read it.
@@ -93,7 +93,7 @@ export class TemporalUnreachable extends TaggedError("TemporalUnreachable")<{
   override message = `the Temporal service at ${this.address} did not answer`;
 }
 
-/** The runtime's port: what `temporal()` provides, and what the module `start` boots must export. */
+/** The runtime's port: what the starter provides, and what `TemporalModule` exports for `start` to boot. */
 export class TemporalRuntime extends RuntimePort<Runtime<never, TemporalInfo>> {}
 
 /** The needs a bound `unit.activity` module still owes, less the input the fork's seed discharges. */
@@ -133,7 +133,7 @@ export type ActivitiesInstanceOf<C extends ContractDefinition> = PortInstance<
 >;
 
 /**
- * What a Temporal deployment tunes, shared verbatim by `temporal()` and
+ * What a Temporal deployment tunes, shared verbatim by the starter and
  * `TemporalModule` — spelled once so the two cannot drift, which is what a
  * second copy of an option list always eventually does.
  */

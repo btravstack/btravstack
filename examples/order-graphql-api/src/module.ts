@@ -9,7 +9,6 @@ import { OrderApiOrigin, OrderReads, orderReads } from "./order-reads.js";
 
 /** What every request forks: its own order reads, and with them its own cache. */
 const GraphqlRequest = Module("GraphqlRequest")({
-  needs: [OrderApiOrigin],
   provides: [orderReads],
   exports: [OrderReads],
 });
@@ -28,5 +27,4 @@ export const OrderGraphqlApi = GraphqlModule("OrderGraphqlApi")({
       Config.object({ url: Config.url("ORDER_API_URL", { default: "http://127.0.0.1:3000" }) }),
     ),
   ],
-  exports: [OrderApiOrigin],
 });

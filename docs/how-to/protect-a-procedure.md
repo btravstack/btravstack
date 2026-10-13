@@ -255,7 +255,7 @@ Answering `undefined` **refuses** the token, which is the hook for a claim this
 endpoint requires and the standard does not.
 
 **`jwks`, `issuer` and `audience` are the deployment's, and each option pins
-its variable** — `http({ port })`'s own shape against `PORT`. Left unset above,
+its variable** — `HttpModule`'s `port` against `PORT`, the same shape. Left unset above,
 they bind from `HTTP_JWT_JWKS_URI`, `HTTP_JWT_ISSUER` and `HTTP_JWT_AUDIENCE`;
 a variable nobody pinned and nobody set is a `ConfigInvalid` naming it at
 **startup** — exit `78` under `runMain` — rather than a 401 for every caller in
@@ -471,7 +471,6 @@ export const OrderApi = HttpModule("OrderApi")({
   unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule },
   provides: [sessionCodec()],
   imports: [OrdersSlice, CustomersSlice, OrderPersistenceModule, observability(), otel()],
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 

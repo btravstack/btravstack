@@ -5,7 +5,7 @@
 // `sessionCodec()` is di's own unmet need, and `principal` is the one option it
 // cannot be built without. Each `@ts-expect-error` is an assertion.
 import { Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
-import type { Observers } from "@btravstack/core";
+import { start, type Observers } from "@btravstack/core";
 import { Module, Port, type AnyProvider, type Provider } from "@btravstack/di";
 import { html } from "@btravstack/htmx-server";
 import { HttpHandler } from "@btravstack/http-server";
@@ -14,7 +14,7 @@ import { oidc, type OidcUnreachable } from "@btravstack/http-server/oidc";
 import { SessionCodec, sessionAuthenticator, sessionCodec } from "@btravstack/http-server/session";
 import { defineHttp } from "@btravstack/orpc-server";
 import { HttpModule } from "@btravstack/orpc-server";
-import { http } from "@btravstack/orpc-server";
+import { http } from "@btravstack/orpc-server/internal";
 import { oc } from "@orpc/contract";
 import type { IDToken } from "openid-client";
 import { OkAsync } from "unthrown";
@@ -121,11 +121,12 @@ void HttpModule("PublicWithLogin")({
   provides: [status, sessionCodec(), ...oidc()({ principal: identityOf })],
 });
 
-// @ts-expect-error -- UNSATISFIED DEPENDENCIES: nothing discharges `SessionCodec`, which only `oidc()` needs here
-void HttpModule("PublicWithLoginNoCodec")({
+const publicWithLoginNoCodec = HttpModule("PublicWithLoginNoCodec")({
   fragments: publicApi.HtmxFragments([status]),
   provides: [status, ...oidc()({ principal: identityOf })],
 });
+// @ts-expect-error -- UNSATISFIED DEPENDENCIES: nothing discharges `SessionCodec`, which only `oidc()` needs here
+void start(publicWithLoginNoCodec);
 
 // `http()` exports `Observers` too, so a root that imports the oRPC sugar and
 // provides `oidc()` beside it discharges the answerer's own need without

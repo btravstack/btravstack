@@ -135,7 +135,6 @@ gives any provider:
 
 ```ts
 export const NotificationsSlice = Module("NotificationsSlice")({
-  needs: [Logger],
   provides: [orderNotifications],
   exports: [orderNotifications],
 });
@@ -145,7 +144,6 @@ export const NotificationsSlice = Module("NotificationsSlice")({
 
 ```ts
 export const BillingSlice = Module("BillingSlice")({
-  needs: [Logger],
   imports: [BillingModule],
   provides: [chargeOrder],
   exports: [chargeOrder],
@@ -207,16 +205,16 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   // Forked per delivery, after the message is validated: where the envelope's
   // `tenantId` becomes the fork's `Tenant`.
   unit: { message: MessageUnitModule },
-  // Everything the fork reads out of the application scope, and the store a
-  // spec reads the outbox back through.
-  exports: [OutboxStore, OrderDatabase, Logger, Tracer],
+  // What a spec reads back out of the application scope. The fork needs no
+  // export: a unit reads whatever this root can see.
+  exports: [OutboxStore, OrderDatabase],
 });
 ```
 
 Dropping a slice's import here still fails to compile: `AmqpHandlers` /
 `TemporalActivities` declare each piece's port as one of the composed
-provider's own `deps`, so a missing import is an undeclared need at this
-very call, and di's `NeedsGate` refuses the module, naming the exact port —
+provider's own `deps`, so a missing import leaves that port an unmet need of
+the root, and `start` refuses it, naming the exact port —
 caught by `pnpm typecheck`, not by a runtime `WiringDefect`.
 
 ## Sequencing a saga: `context.saga()`, never sibling `const`s

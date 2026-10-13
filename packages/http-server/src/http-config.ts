@@ -1,7 +1,7 @@
 import { Port } from "@btravstack/di";
 
 /**
- * What the transport is bound and configured with, as a service: `http()`
+ * What the transport is bound and configured with, as a service: the starter
  * binds it from `PORT` (default `3000`; `0` lets the OS pick), `HOST` (default
  * `0.0.0.0`), `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
  * `HTTP_HEADERS_TIMEOUT_MS` and `HTTP_REQUEST_TIMEOUT_MS`, each pinned by the

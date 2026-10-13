@@ -20,7 +20,6 @@ import { OkAsync } from "unthrown";
  * nothing behind it can honestly do.
  */
 export const BillingModule = Module("Billing")({
-  needs: [Logger, Meter],
   provides: [
     Provider(PaymentService)({
       inject: { logger: Logger, meter: Meter },

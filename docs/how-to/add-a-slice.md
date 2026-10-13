@@ -44,9 +44,9 @@ Then rename, in the two files you copied:
   becomes the key you declared in step 1;
 - **the export names** — `orderAudit` → `orderInvoicing`,
   `AuditSlice` → `InvoicingSlice`, and the `Module("…")` name with it;
-- **the body** — the leaf itself, and the module's `needs` and `imports`,
-  which say what **this** slice's providers take from outside and which
-  vertical it owns.
+- **the body** — the leaf itself, and the module's `imports`, which say which
+  vertical it owns. What **this** slice's providers take from outside is
+  their own `inject` record; the module restates none of it.
 
 The file to copy is named for its transport, and so is the call inside it:
 
@@ -79,12 +79,12 @@ Run `pnpm typecheck`. Every step above but one has its own error, at the
 place that step lives, so a forgotten one is named rather than discovered at
 boot:
 
-| Forgot                         | What `pnpm typecheck` reports                                         |
-| ------------------------------ | --------------------------------------------------------------------- |
-| step 1, the contract key       | the mint call refuses a key the contract does not declare             |
-| step 3, the piece in the array | `UNCOVERED HANDLERS` (or `CONTROLLERS`, `ACTIVITIES`), naming the key |
-| step 3, the slice in `imports` | the root has an `UNDECLARED NEEDS` naming the piece's port            |
-| the new slice's own `needs`    | the slice module has an `UNDECLARED NEEDS` naming the port it reads   |
+| Forgot                         | What `pnpm typecheck` reports                                                     |
+| ------------------------------ | --------------------------------------------------------------------------------- |
+| step 1, the contract key       | the mint call refuses a key the contract does not declare                         |
+| step 3, the piece in the array | `UNCOVERED HANDLERS` (or `CONTROLLERS`, `ACTIVITIES`), naming the key             |
+| step 3, the slice in `imports` | `start` reports `UNSATISFIED DEPENDENCIES` naming the piece's port                |
+| a port the slice's pieces read | `start` reports `UNSATISFIED DEPENDENCIES` naming it, unless the root supplies it |
 
 [Read a wiring error](/how-to/read-a-wiring-error) says where in each message
 the name is.

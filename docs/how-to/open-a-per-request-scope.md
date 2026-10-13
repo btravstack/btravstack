@@ -58,9 +58,9 @@ export class RequestSpan extends Port("RequestSpan")<{
 }> {}
 
 export const RequestModule = Module("Request")({
-  // The fork seam, declared: `Logger` comes from the application scope this
-  // per-request module is forked from, never from inside it.
-  needs: [Logger],
+  // `Logger` comes from the application scope this per-request module is
+  // forked from, never from inside it: the provider injects it, and the root
+  // that imports `observability()` supplies it — nothing is forwarded.
   provides: [
     Provider(RequestSpan)({
       inject: { logger: Logger },
@@ -100,7 +100,6 @@ export const OrderApi = HttpModule("OrderApi")({
   fragments: orderFragments,
   unit: { anonymous: RequestModule },
   imports: [OrdersSlice, CustomersSlice, observability(), otel()],
-  exports: [Logger, Tracer, Meter],
 });
 ```
 
@@ -157,12 +156,10 @@ export const auth = defineHttp({ authenticators: { user: userAuth } });
 
 // The `user` kind. `auth.principals.user` carries `userAuth`'s own principal
 // type, and the fork seeds it — so this module owes the composition root
-// nothing for it, and names nothing else: `OrderDatabase` and `Logger` are
-// owed by the modules it imports, which say so themselves, and are read out
-// of the application scope this fork sits over — one Prisma client per
-// process rather than one per request.
+// nothing for it. `OrderDatabase` and `Logger` are owed by the modules it
+// imports, and are read out of the application scope this fork sits over —
+// one Prisma client per process rather than one per request.
 const UserUnit = Module("UserUnit")({
-  needs: [auth.principals.user],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({
@@ -226,9 +223,6 @@ export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
   unit: { anonymous: RequestModule, user: UserUnit },
   imports: [OrdersSlice, CustomersSlice, OrderPersistenceModule, observability(), otel()],
-  // `OrderDatabase` beside the three observability ports: everything a forked
-  // kind reads out of the application scope has to be exported from it.
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 

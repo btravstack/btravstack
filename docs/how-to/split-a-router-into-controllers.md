@@ -199,10 +199,6 @@ controller, the same privacy di already gives any provider:
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
-  // The controller writes a line itself, so `Logger` is this slice's own
-  // provider's need. The use cases are not: a leaf reaches them off
-  // `context.unit`, never through `inject`.
-  needs: [Logger],
   provides: [ordersController],
   exports: [ordersController],
 });
@@ -246,7 +242,6 @@ export const OrderApi = HttpModule("OrderApi")({
   },
   provides: [sessionCodec()],
   imports: [OrdersSlice, CustomersSlice, OrderPersistenceModule, observability()],
-  exports: [Logger, OrderDatabase],
 });
 ```
 
@@ -297,7 +292,6 @@ export const OrdersApi = HttpModule("OrdersApi")({
   unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule },
   provides: [sessionCodec()],
   imports: [OrdersSlice, OrderPersistenceModule, observability(), otel()],
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 

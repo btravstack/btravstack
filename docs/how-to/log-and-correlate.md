@@ -76,8 +76,6 @@ export const OrderApi = HttpModule("OrderApi")({
     otel(),
   ],
   provides: [sessionCodec()],
-  // Everything a forked kind reads out of the application scope.
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 
@@ -300,7 +298,6 @@ const RecordingApi = HttpModule("RecordingApi")({
     otel(),
   ],
   provides: [sessionCodec()],
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 

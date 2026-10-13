@@ -1,7 +1,4 @@
-import { Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
-import { Mailer } from "@btravstack/mailer";
-import { Storage } from "@btravstack/storage";
 
 import { orderNotifications } from "./handler.js";
 
@@ -21,7 +18,6 @@ import { orderNotifications } from "./handler.js";
  * name.
  */
 export const NotificationsSlice = Module("NotificationsSlice")({
-  needs: [Logger, Mailer, Storage],
   provides: [orderNotifications],
   exports: [orderNotifications],
 });

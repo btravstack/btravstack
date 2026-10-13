@@ -42,7 +42,7 @@ import {
   type Serving,
   type UnitHost,
 } from "./runtime.js";
-import { UnitOverrides, provides, unitSubstitutes } from "./unit-overrides.js";
+import { UnitOverrides, provides, rebuildGuard, unitSubstitutes } from "./unit-overrides.js";
 import { createUnitRegistry, currentUnit, settleUnit, type UnitOutcome } from "./units.js";
 
 export type TeardownError = { readonly port: string; readonly cause: unknown };
@@ -656,9 +656,15 @@ export const start = <X, E, N>(
 
     const runtimeCtx = ctx as unknown as Context<InstanceType<Resolves>>;
 
-    // Before `runtime.start`, so a drifted override is a defect at boot
-    // rather than at the first unit of its kind. A throw here is one:
-    // this callback runs inside di's `flatMap`.
+    // Before `runtime.start`, so a drifted override or a unit rebuilding an
+    // application port is a defect at boot rather than at the first unit of
+    // its kind. A throw here is one: this callback runs inside di's `flatMap`.
+    const rebuilt = rebuildGuard(runtime.name, root);
+    for (const unit of Object.values(runtime.units ?? {})) {
+      const refusal = unit === undefined ? undefined : rebuilt(unit);
+      // oxlint-disable-next-line unthrown/no-throw -- a wiring bug; this callback runs inside di's `flatMap`, which turns the throw into the boot's defect
+      if (refusal !== undefined) throw refusal;
+    }
     const substitutes = unitSubstitutes(
       runtime.name,
       runtime.units ?? {},
@@ -692,6 +698,10 @@ export const start = <X, E, N>(
               Promise.reject(new Error("a unit forks its scope once")),
             ) as never;
           }
+          // Again here, not only at boot: `Runtime.units` is optional, and a
+          // runtime may fork a module it never listed.
+          const refusal = rebuilt(module as never);
+          if (refusal !== undefined) return fromSafePromise(Promise.reject(refusal)) as never;
           const ready = Promise.withResolvers<Context<never>>();
           // `use` resolves the context to the caller and then holds the
           // scope open until the unit settles; that is what keeps the

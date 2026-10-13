@@ -40,9 +40,9 @@ export const clearCookie = (name: string): string => setCookie(name, "", 0);
  * `false` member that keeps the set from being the empty dependency di refuses,
  * so a graph composing no scheme at all still starts.
  *
- * A set port rather than a marker `HttpModule` folds: `http()` never sees an
- * application's authenticators — the root composes them itself — so a signal
- * read off the options record would leave that surface silently unprotected.
+ * A set port rather than a marker `HttpModule` folds: the starter never sees an
+ * application's authenticators — the module sugar provides them — so a signal
+ * read off the options record would leave a scheme it did not see unprotected.
  * A `ctx.get` at start could not answer it either: di's `Context` has no `has`.
  *
  * A member is owed by anything that READS OR WRITES a cookie, which is wider

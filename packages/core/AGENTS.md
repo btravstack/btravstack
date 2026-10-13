@@ -91,8 +91,9 @@ PORTS`, a correct diagnosis of the second mistake that reads as a wrong one
   `start`'s marker above for why that phantom is gone). The structural form
   survives the revert because it is the sturdier one regardless, not because
   `Runtime` is back to two parameters. Every
-  runtime package ships its port and a starter — `HttpRuntime`/`http()`,
-  `TemporalRuntime`/`temporal()`, `AmqpRuntime`/`amqp()` — and none of them
+  runtime package ships its port and a starter behind its module sugar —
+  `HttpRuntime`/`HttpModule`, `TemporalRuntime`/`TemporalModule`,
+  `AmqpRuntime`/`AmqpModule` — and none of them
   has a `resolves` any more: each takes the application's router / activities /
   handlers as a **port its runtime provider depends on** through di — the
   starter's own fixed port (`OrpcRouterPort`, `TemporalActivitiesPort`,
@@ -751,6 +752,32 @@ fork }` and never opens a second scope, zero overhead beyond the `fork`
   signature to carry a kind would have been a contract change for every
   runtime, where `Runtime.units` is one optional field a runtime that never
   meets an override can omit.
+
+- **Placement is lifetime, and the kernel holds both edges of it** (#548). The
+  root builds once per running app; a unit module once per unit, over the
+  application context, which holds every service — so a unit reads root
+  infrastructure with nothing forwarded. `rebuildGuard` (`unit-overrides.ts`)
+  compares a unit module's tree with the `Kernel` wrap's (so `Env` counts): a
+  unit module providing a port the application tree already provides would
+  shadow the application's instance with one built and released per unit. It
+  runs at boot over every module `Runtime.units` lists, beside
+  `unitSubstitutes`, and again at `fork` over the module actually forked —
+  `units` is optional and a runtime may fork a module it never listed — so the
+  refusal is the boot's defect or that fork's, and a module is walked once.
+  The one exemption is a member of the SAME set port, keyed by class rather
+  than id: the fork appends it to the application's members (`noObserverMember`
+  is shared by design). A set port meeting an ordinary one under one id, or
+  two classes sharing an id, is refused like a rebuild — the fork would spread
+  a scalar or overwrite a set. The other edge is a type: `UnitNeedsOf` turns a unit's `Env` need
+  into a port nothing provides, whose id is the sentence `start` prints, so
+  configuration is never parsed per unit; a `Config.provider` cannot sit in a
+  unit at all, since `AnyUnitModule`'s error channel is `never`. An application
+  provider capturing a unit-scoped port needs no rule: the root never holds
+  one, so it is an ordinary unmet need. Guarded by `application-scope.spec.ts`
+  (one parse across units, two simultaneous apps apart, an invalid value only
+  a unit reads failing the boot, each scope's release once, the rebuild
+  refusal at boot and at an unlisted fork, the set/ordinary collision, and a
+  same-set member allowed) and `start.test-d.ts`'s three arms after `InferredUnit`.
 
 - **`options.signals === false` disables the uncaught handlers too.** One flag,
   two handler families, because both are process-global and a test harness needs

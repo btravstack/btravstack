@@ -1,5 +1,4 @@
 import { AmqpHandlers, AmqpModule } from "@btravstack/amqp-worker";
-import { Tracer } from "@btravstack/core";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { mailer } from "@btravstack/mailer";
@@ -54,10 +53,9 @@ export const logSink = pinoSink(pino({ level: "trace" }));
  * drained, and before the client it publishes through, which di releases in
  * reverse order of acquisition.
  *
- * The exports are what the message fork and the specs read out of the
- * application scope. `PlaceOrder` and `OrderRepository` are not among them:
- * nothing at the root can build a tenant-bound repository, so a writer in the
- * same process composes its own scope over `OrderDatabase`.
+ * `PlaceOrder` and `OrderRepository` are not at the root: nothing there can
+ * build a tenant-bound repository, so a writer in the same process composes
+ * its own scope over `OrderDatabase`.
  *
  * Tenancy is the CONTRACT's, not the transport's: the envelope carries
  * `tenantId`, which `MessageUnitModule` turns into the fork's `Tenant`, and
@@ -83,7 +81,7 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   // The worker forks this once per delivery, after the message is validated —
   // which is where the envelope's `tenantId` becomes the fork's `Tenant`.
   unit: { message: MessageUnitModule },
-  // Everything the fork reads out of the application scope, and the store a
-  // spec reads the outbox back through.
-  exports: [OutboxStore, OrderDatabase, Tracer],
+  // What a spec reads back out of the application scope. The fork needs no
+  // export: a unit reads whatever this root can see.
+  exports: [OutboxStore, OrderDatabase],
 });

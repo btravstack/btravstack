@@ -104,7 +104,6 @@ root that is a `Module(...)` which also knows about it:
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
   imports: [OrdersSlice, CustomersSlice, observability()],
-  exports: [Logger],
 });
 ```
 
@@ -114,7 +113,7 @@ fragment, so the router declares one dependency per scheme that fragment names
 providers that discharge them, which `HttpModule` puts in `provides` itself. A
 scheme with nobody behind it is an unmet dependency `start` refuses, naming the
 port. Both are ordinary providers, so an authenticator that declares a need of
-its own carries it into the graph, refused at this very call if nothing
+its own carries it into the root's needs, refused at `start` if nothing
 satisfies it. `Env` is the one need never yours to declare: `userAuth` binds
 its three `HTTP_JWT_*` variables from it, and `HttpModule` carries `Env` for
 every provider in the root.
@@ -173,10 +172,6 @@ built per request, in the `user` kind's module:
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
-  // The controller writes a line itself, so `Logger` is this slice's own
-  // provider's need. The use cases are not: a leaf reaches them off
-  // `context.unit`, never through `inject`.
-  needs: [Logger],
   provides: [ordersController, orderRowFragment],
   exports: [ordersController, orderRowFragment],
 });
@@ -193,16 +188,14 @@ rather than a client of its own.
 `exports` takes the provider itself, not `ordersController.port`:
 `api.OrpcController` minted that port, so there is no class to spell back off it.
 
-`HttpModule` is sugar over the same primitives: it imports the starter
-(`http()` — the whole surface), provides the
-router and exports `HttpRuntime`, and returns exactly the di module
-`Module("OrderApi")({ imports: [OrdersSlice, CustomersSlice, observability(),
-http()], provides: [orderRouter], exports: [HttpRuntime, Logger] })` would
-have. `observability()` is the starter that provides the
+`HttpModule` imports the starter, provides the router and exports
+`HttpRuntime` — the export `start` reads the runtime from, which is why a
+deployment root is always written with the sugar. `observability()` is the starter that provides the
 `Logger` the use cases and the request scope write to — `LOG_LEVEL` bound from
 the environment, one JSON object per line on stdout, and every line stamped
-with the unit the runtime opened around it. It is exported because every unit
-kind reads it once forked, as `OrderDatabase` is. The runtime provider depends on the router port
+with the unit the runtime opened around it. Nothing is exported for the unit
+kinds: once forked they read it, and `OrderDatabase`, from the application
+scope. The runtime provider depends on the router port
 through di, so even the transport wiring exists because the composition root
 said so — a composition that imports the starter without providing
 `orderRouter` carries an unmet need
@@ -357,7 +350,7 @@ it("lets an in-flight call finish while draining", async ({ serve, clientFor, ga
 ```
 
 `serve` boots whatever composition it is handed with that `env` — the real
-`OrderApi` included, since `http()` reads its
+`OrderApi` included, since the starter reads its
 port from the environment the kernel provides — the unit kinds are forked by
 the answerers themselves, per `OrderApi`'s own `unit` option, not by anything
 `serve` supplies — and `clientFor` reads the port
@@ -381,7 +374,7 @@ nothing to write the two events that matter most with. This is the one example
 that wires it, so the pattern is visible once; the other two `main.ts` files
 stay a single line.
 
-Configuration is read **inside the graph**: `http()` binds `PORT` (default
+Configuration is read **inside the graph**: the starter binds `PORT` (default
 `3000`) and `HOST` (default `0.0.0.0`) from the `Env` port the kernel provides,
 `observability()` binds `LOG_LEVEL` (default `info`),
 `OrderPersistenceModule` binds `DATABASE_URL` (required — a migration aimed at

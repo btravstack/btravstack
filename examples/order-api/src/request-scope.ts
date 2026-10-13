@@ -33,10 +33,6 @@ export class RequestSpan extends Port("RequestSpan")<{ readonly finish: () => vo
  * authenticated under no scheme still gets a span and a finish line.
  */
 export const RequestModule = Module("Request")({
-  // The fork seam: both are read out of the application scope this module is
-  // forked from. `UnitSpanModule` rides along, so every request also opens a
-  // span carrying the same unit ids the logger stamps.
-  needs: [Logger],
   imports: [UnitSpanModule],
   provides: [
     Provider(RequestSpan)({
@@ -73,7 +69,6 @@ export const RequestModule = Module("Request")({
  * request.
  */
 export const UserModule = Module("User")({
-  needs: [auth.principals.user],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({
@@ -91,7 +86,6 @@ export const UserModule = Module("User")({
  * sealed, read by `browserAuth` — differs, and that is the one line that does.
  */
 export const SessionModule = Module("Session")({
-  needs: [auth.principals.session],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({
@@ -114,7 +108,6 @@ export const SessionModule = Module("Session")({
  * what its kinds export.
  */
 export const ServiceModule = Module("Service")({
-  needs: [auth.principals.service],
   imports: [RequestModule, OrderTenantPersistence, OrderApplicationModule],
   provides: [
     Provider(Tenant)({

@@ -222,6 +222,21 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    escaper shared with `@btravstack/http-server` would make it depend on the
    HTTP server. `docs/how-to/send-a-formatted-email.md` is the pattern.
 
+   **Application infrastructure reaches units with no forwarding** (#548). A
+   unit module is forked over the application scope, so a provider in it
+   injects what the root provides — the logger, a configuration value, a
+   client — and neither the unit module's `needs` nor the root's `exports`
+   restate it. Lifetime is placement: the root builds once per running app,
+   a unit module once per unit. Two rules keep placement honest: a unit that
+   reads `Env` is refused at `start` (configuration is parsed once, at boot —
+   `UnitNeedsOf`'s refusal), and a unit module providing a port the
+   application scope already provides is refused (`rebuildGuard`, at boot for
+   the modules a runtime lists and at `fork` for any other), since the fork
+   would rebuild it per unit. An application provider cannot
+   capture a unit-scoped port: the root never holds one, so it is an unmet
+   need. `docs/how-to/share-application-infrastructure-with-units.md` is the
+   pattern and the migration guide.
+
    **Application roots own runtime export plumbing.** `HttpModule`,
    `GraphqlModule`, `AmqpModule` and `TemporalModule` add their runtime ports
    and the `Logger` / `HealthChecks` their imports export or their own providers
@@ -791,7 +806,7 @@ since malformed credentials cannot be reliably separated from the URL.
 
 CORS, body limits, compression, security headers, authentication and CSRF are
 **handler configuration, not a middleware slot** — thesis #3's refusal, narrowed
-to what it was always about, and named options on `http()` / `HttpModule` for
+to what it was always about, and named options on `HttpModule` for
 all six. CSRF was the stated exception while nothing here read a cookie; a
 session scheme does, so `csrf` is an option like the rest, **on by default
 exactly when a composed scheme reads one** — a set port each cookie-reading
@@ -957,16 +972,15 @@ in its place.
   Temporal workflow and its activities, an AMQP consumer and its handler — and
   (if it needs one) its own adapter, and ships as an ordinary di `Module` that
   exports only that piece's port — everything else about the slice stays
-  private. It also **declares what its own providers expect from the
-  root**, in `needs`: `AuditSlice` is `needs: [Logger]` because its handler
-  reads one, `OrdersSlice` is `needs: [Logger]` because its controller does,
-  and a slice whose provider owed a port and named none does not compile (#50,
-  di's `NeedsGate` — the full rule is in `packages/di/AGENTS.md`). An
-  **import's** needs are not restated: `OrdersSlice` says nothing about `Env`,
-  because the module that reads `DATABASE_URL` is `DatabaseModule` and it says
-  so there. That is what makes a slice directory readable on its own — which
-  ports come from outside, without naming who supplies them — and what keeps a
-  `needs` list one line per feature instead of one per hop. `@btravstack/http-server`'s
+  private. **What its own providers expect from the root is inferred** from
+  their `inject` records into the slice's `Needs` channel: `AuditSlice` owes
+  `Logger` because its handler injects one, and writes nothing else down
+  (#548, revising #50's mandatory list — the full rule is in
+  `packages/di/AGENTS.md`). `needs` remains an opt-in boundary, checked at the
+  module's own declaration, which `order-application` keeps for its port list.
+  An **import's** needs are never restated: the module that reads
+  `DATABASE_URL` is `DatabaseModule`, and its type says so. A root that leaves
+  a port unsupplied is refused at `start`, with the port named. `@btravstack/http-server`'s
   `api.OrpcController(contract, path)({ inject: { name: Dep }, sync })` mints a piece
   from the contract path it serves — `api` being the application's one
   `defineHttp(...)` binding; the root composes every slice's piece into one

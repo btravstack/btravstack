@@ -1,4 +1,4 @@
-import { AmqpHandlers, AmqpModule, AmqpRuntime, amqp } from "@btravstack/amqp-worker";
+import { AmqpHandlers, AmqpModule } from "@btravstack/amqp-worker";
 /**
  * The compile-time half of the broadcast deployment: `start` resolves its
  * runtime from the `AmqpRuntime` port `@btravstack/amqp-worker`'s starter provides
@@ -7,14 +7,9 @@ import { AmqpHandlers, AmqpModule, AmqpRuntime, amqp } from "@btravstack/amqp-wo
  * parameter. Type-checked by this package's `typecheck` script,
  * never executed.
  *
- * There is no UNSATISFIED RUNTIME PORTS negative any more: the runtime
- * resolves nothing. What it used to resolve — the handlers, and what they
- * read — is now
- * the starter's own handlers port, which the starter DEPENDS on, so a
- * composition without a provider for it is the needs channel, not the marker
- * and not di's `UNSATISFIED DEPENDENCIES` dependency gate: the module's needs
- * channel carries that port, `start` accepts only `Scope | Env` there, and the
- * assignability failure names the port.
+ * There is no handlers negative: `AmqpModule` is the only way to compose the
+ * starter, and it requires `handlers`, so a root without them does not get as
+ * far as `start`.
  *
  * The third negative is about **slices**, and it is the mirror of
  * `order-temporal-worker`'s `FulfillmentlessSlice`. Composing pieces into one
@@ -58,22 +53,6 @@ const RuntimelessAmqp = Module("RuntimelessAmqp")({
 // argument cannot satisfy, so the call fails to typecheck against it.
 // @ts-expect-error — NO RUNTIME: the module exports no port declared over RuntimePort.
 const _noRuntime = start(RuntimelessAmqp, options);
-
-// The starter without the handlers it depends on. Spelled with the `amqp()`
-// primitive rather than `AmqpModule`, since the sugar cannot leave the
-// handlers out — that is what it is for.
-//
-// The port is owed by the STARTER, which is an import — so di's declaration
-// gate has nothing to say here, and the refusal is the kernel's, on the needs
-// channel. That is the division the two gates draw: a module declares what its
-// OWN providers read, and an import's needs travel published in its type.
-const HandlerlessAmqp = Module("HandlerlessAmqp")({
-  imports: [OrderPersistenceModule, observability(), amqp({ contract: orderContract })],
-  exports: [AmqpRuntime, OutboxStore, Logger],
-});
-
-// @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides the handlers port.
-const _missingHandlers = start(HandlerlessAmqp, options);
 
 // The two real slices, composed into a root that forgets `observability()`.
 // Neither slice imports it — a subscriber owns no vertical, so `Logger` is the

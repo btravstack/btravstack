@@ -168,13 +168,22 @@ describe("Module algebra", () => {
     void typed;
   });
 
-  test("an undeclared need is an error at the module that owes it", () => {
-    // `OrderRepositoryProvider` needs `Database`, nothing here provides or
-    // imports it, and `needs` does not name it — an error HERE rather than an
-    // obligation that travels to whoever composes the module. The marker is an
-    // object with one required property so `Database` reaches the message.
+  test("without a `needs` list, a provider's injected port is inferred into Needs", () => {
+    const Inferred = Module("Inferred")({
+      provides: [OrderRepositoryProvider],
+      exports: [OrderRepository],
+    });
+
+    const needsIsDatabase: Equal<ChannelsOf<typeof Inferred>[2], Database> = true;
+    void needsIsDatabase;
+  });
+
+  test("a declared boundary that omits a need is an error at the module that owes it", () => {
+    // The marker is an object with one required property so `Database`
+    // reaches the message.
     // @ts-expect-error UNDECLARED NEEDS — name it in `needs`: Database
     Module("Undeclared")({
+      needs: [],
       provides: [OrderRepositoryProvider],
       exports: [OrderRepository],
     });

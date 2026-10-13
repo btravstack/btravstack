@@ -154,7 +154,7 @@ variable at boot.
 
 `Config.pinned` is what a starter's options do to its own fields, so
 precedence is **explicit > environment > default, per field**:
-`http({ port: 0 })` pins `PORT` and still reads `HOST`.
+`HttpModule`'s `port: 0` pins `PORT` and still reads `HOST`.
 
 A pin is **validated by the field's own `check`**, where the field has one.
 `Config.pinned(-1, bodyLimit)` is a `ConfigInvalid` at graph build, with the
@@ -164,7 +164,7 @@ in silence (`size > NaN` is `false`). Defaults are checked on the same rule.
 
 `integer`, `port` and `url` carry a `check`; **`string` does not**, and that is
 deliberate: "set but empty" is a rule about the raw variable — a deployment
-mistake — where a pinned `""` is a decision, and `http({ cors: false })` pins
+mistake — where a pinned `""` is a decision, and `HttpModule`'s `cors: false` pins
 exactly that as its off switch. A field written by hand without a `check`
 likewise accepts whatever it is pinned, so nothing about the shape above stops
 compiling.

@@ -46,9 +46,6 @@ import { defineHttp } from "@btravstack/orpc-server";
 export const auth = defineHttp({ authenticators: { user: userAuth } });
 
 export const UserServices = Module("UserServices")({
-  // The caller this request was authenticated as. The runtime supplies it, so
-  // the composition root owes nothing for it.
-  needs: [auth.principals.user],
   // `OrderTenantPersistence` builds the repository over `Tenant` and over the
   // ONE `OrderDatabase` the application scope holds — read, never rebuilt.
   imports: [OrderTenantPersistence, OrderApplicationModule],
@@ -88,8 +85,6 @@ export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
   unit: { user: UserServices },
   imports: [OrdersSlice, OrderPersistenceModule, observability(), otel()],
-  // What the request scope reads from the application scope is exported.
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 

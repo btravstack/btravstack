@@ -1,24 +1,18 @@
 /**
  * The compile-time half of the transport layer: `start` resolves its runtime
- * from the `HttpRuntime` port the composition root exports, and
- * `http()`'s runtime provider depends on the router port through
- * di. Two gates, both at compile time and NOT the same mechanism: `start`'s
- * phantom marker, intersected onto `module`, turns a module that exports no
- * runtime into a `TS2345` whose last line is the arm's own sentence; and di's
- * `Module` typing turns a composition that imports the starter without
- * providing its router into an unmet need the same parameter refuses by
- * assignability, naming the port. Neither is di's `UNSATISFIED DEPENDENCIES`
- * gate. Type-checked by
- * this package's `typecheck` script, never executed.
+ * from the `HttpRuntime` port `HttpModule` exports, so a module that exports
+ * no runtime is a `TS2345` whose last line is the `NO RUNTIME` sentence. A
+ * root cannot leave the router out: `HttpModule` is the only way to compose
+ * the starter, and it requires one. Type-checked by this package's
+ * `typecheck` script, never executed.
  */
 import { cache, memoryCache } from "@btravstack/cache";
 import { Env } from "@btravstack/config";
 import { start, Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
-import { HttpRuntime } from "@btravstack/http-server";
 import { sessionCodec } from "@btravstack/http-server/session";
 import { observability } from "@btravstack/observability";
-import { HttpModule, http } from "@btravstack/orpc-server";
+import { HttpModule } from "@btravstack/orpc-server";
 
 import { OrderApi, orderRouter } from "./module.js";
 import { RequestModule, ServiceModule, SessionModule, UserModule } from "./request-scope.js";
@@ -37,7 +31,7 @@ const options = { signals: false, probes: false } as const;
 // nothing extra to say so.
 const _wired = start(OrderApi, options);
 
-// The same graph without `http(...)`: nothing declared over `RuntimePort` is
+// The same graph without `HttpModule`: nothing declared over `RuntimePort` is
 // exported, so there is no runtime for `start` to resolve.
 const RuntimelessApi = Module("RuntimelessApi")({
   needs: [Env],
@@ -54,21 +48,6 @@ const RuntimelessApi = Module("RuntimelessApi")({
 // argument cannot satisfy, so the call fails to typecheck against it.
 // @ts-expect-error — NO RUNTIME: the module exports no port declared over RuntimePort.
 const _missingRuntime = start(RuntimelessApi, options);
-
-// The starter imported without its router provided: `http()`'s runtime
-// provider depends on the starter's own router port (the one
-// `OrpcRouter(contract)({ inject: { name: Dep }, sync })` provides), so the composition owes it.
-//
-// It is the KERNEL's gate rather than di's declaration one, and the division
-// is the point: the port is owed by `http()`, an IMPORT, and an import's needs
-// travel published in its type rather than being re-declared here.
-const RouterlessApi = Module("RouterlessApi")({
-  imports: [OrdersSlice, CustomersSlice, observability(), http()],
-  exports: [HttpRuntime, Logger],
-});
-
-// @ts-expect-error — the composition needs the router port and nothing provides it.
-const _missingRouter = start(RouterlessApi, options);
 
 // The `unit` needs-propagation gate: a bound kind's own unmet needs join
 // `HttpModule`'s own Needs channel (an import's own unmet needs are not

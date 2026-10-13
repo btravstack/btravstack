@@ -54,11 +54,8 @@ authenticate the whole mount through the shared HTTP auth registry, and pass
 `unit` to inject request-scoped services into resolvers. Declare the selected
 unit modules with `units: { anonymous: RequestModule }` in the same
 `graphql()` call. `GraphqlModule` binds that record to the runtime so it can
-report its units and apply test overrides. A manually composed root passes the
-same record to `httpServer({ unit: units })`. The compiler then
-refuses a port that module does not export. In a
-manual composition, include `...answerer.authenticators` in `provides` when
-the mount has `requires`. The resolver context
+report its units and apply test overrides. The compiler then
+refuses a port that module does not export. The resolver context
 receives `principal`, `unit`, `signal`, and the Node `incoming` request. The
 example forwards its bearer header to the backend, which enforces the order
 contract's authentication and authorization.

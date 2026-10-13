@@ -14,14 +14,9 @@ is the index of the workspaces themselves.
   `needs-gate.test-d.ts` files pin
   **`start`'s** gate (`order-api`, `order-temporal-worker`,
   `order-amqp-worker` — its `NO RUNTIME` arm; `order-api`'s also pins the
-  `unit` halves) and
-  the **unmet need** on the starter's port (a composition importing `http()` /
-  `temporal({ contract, workflows })` / `amqp({ contract })` without providing
-  the router / activities / handlers carries the starter's port in `Needs`, and
-  `start`'s `module` parameter takes only `Scope | Env`, so it fails to assign —
-  the starter is an IMPORT, and an import's needs travel without the importer
-  re-declaring them, so di's declaration gate has nothing to say and this stays
-  the kernel's); the fourth, `order-application`'s, pins **di's**
+  `unit` halves). A root without its router / activities / handlers has no
+  arm: the bare starters are not exported, and `HttpModule` / `TemporalModule`
+  / `AmqpModule` require them at the call. The fourth, `order-application`'s, pins **di's**
   `UNSATISFIED DEPENDENCIES` gate on `Module.scoped` — `DependencyGate`, a
   marker on the `module` parameter since issue #93, whose message ends on the
   missing ports:
@@ -29,8 +24,10 @@ is the index of the workspaces themselves.
   (it was a rest-tuple arity error printing `Expected 5 arguments, but got 2`
   and nothing else).
   A **fourth** mechanism joined them in #50 and is pinned beside the third:
-  di's `NeedsGate`, which fires when a module's OWN provider reads a port
-  nothing local satisfies and `needs` does not name it —
+  di's `NeedsGate`, which fires when a module that STATES a boundary in `needs`
+  has an OWN provider reading a port nothing local satisfies and the list does
+  not name — optional since #548, so the deployments' slices and unit modules
+  write no `needs` and their needs are inferred —
   `order-temporal-worker`'s `FulfillmentlessSlice`, printing
   ``'{ readonly "UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)": StockService | ShippingService; }'``.
   **Four** mechanisms, easy to conflate — and since #93 every one of them

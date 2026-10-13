@@ -477,10 +477,10 @@ const _slicedPieces = start(
 );
 void _slicedPieces;
 
-// The piece is this root's own provider now, so its unmet need is di's
-// declaration gate at the call rather than `start`'s.
-// @ts-expect-error — UNDECLARED NEEDS: the `greetings` piece needs `Greeter`
-void HttpModule("UnprovidedPieceNeed")({ router: piecesRouter, port: 0 });
+// The piece is this root's own provider now, and its need is inferred into
+// the root's, so `start` names it.
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: the `greetings` piece needs `Greeter`
+void start(HttpModule("UnprovidedPieceNeed")({ router: piecesRouter, port: 0 }), startOptions);
 
 // `openapi` serves the router, so it is refused where there is none.
 void HttpModule("OpenApiWithRouter")({ router, port: 0, openapi: { prefix: "/v1" } });

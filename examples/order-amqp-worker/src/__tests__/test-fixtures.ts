@@ -10,13 +10,7 @@ import {
 } from "@aws-sdk/client-s3";
 import type { AmqpInfo, AmqpRuntime } from "@btravstack/amqp-worker";
 import type { Env } from "@btravstack/config";
-import {
-  currentUnit,
-  Logger,
-  type RunningApp,
-  type StartOptions,
-  type Tracer,
-} from "@btravstack/core";
+import { currentUnit, Logger, type RunningApp, type StartOptions } from "@btravstack/core";
 import { Module, Provider, type Context, type Scope } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import {
@@ -50,7 +44,7 @@ type ServeOptions = Pick<StartOptions, "drainTimeoutMs" | "preDrainDelayMs">;
  */
 type Serve = <E>(
   module: Module<
-    AmqpRuntime | OutboxStore | Logger | Tracer | InstanceType<typeof OrderDatabase>,
+    AmqpRuntime | OutboxStore | Logger | InstanceType<typeof OrderDatabase>,
     E,
     Scope | Env
   >,

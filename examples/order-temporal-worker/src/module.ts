@@ -1,5 +1,4 @@
-import { Tracer } from "@btravstack/core";
-import { OrderDatabase, OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
@@ -38,8 +37,8 @@ export const orderActivities = TemporalActivities(orderContract)([
  * their pieces: `orderActivities`'s `deps` are the pieces' PORTS, and `flatten`
  * walks `imports` and `provides` only, never a provider's own `deps`. Drop one
  * import and `orderActivities` still type-checks — but `TemporalActivities`
- * carries those ports as its OWN `deps`, so the root below sees an undeclared
- * need and fails to compile, naming the exact port, not a runtime surprise.
+ * carries those ports as its OWN `deps`, so the root below owes them and
+ * `start` refuses it, naming the exact port, not a runtime surprise.
  *
  * `workflowsPath` names `./workflows.ts`, not `.js`: it is a **filesystem** path
  * Temporal's bundler stats, not an import specifier the `.js` convention applies
@@ -63,6 +62,4 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   // runs, which is what lets the span wrap the whole attempt — and what binds
   // the orders vertical to the tenant the attempt's input names.
   unit: { activity: ActivityUnitModule },
-  // Everything the fork reads out of the application scope.
-  exports: [Tracer, OrderDatabase],
 });

@@ -78,16 +78,16 @@ starter.
 ## Configurable where deployments differ
 
 What differs between deployments is the environment, and a starter binds its
-own slice of it. `http()` binds `PORT` and `HOST` onto `HttpConfig`,
-`temporal()` binds `TEMPORAL_ADDRESS` and `TEMPORAL_NAMESPACE` onto
-`TemporalConfig`, `amqp()` binds `AMQP_URL` onto `AmqpConfig`,
+own slice of it. The HTTP starter binds `PORT` and `HOST` onto `HttpConfig`,
+the Temporal starter binds `TEMPORAL_ADDRESS` and `TEMPORAL_NAMESPACE` onto
+`TemporalConfig`, the AMQP starter binds `AMQP_URL` onto `AmqpConfig`,
 `observability()` binds `LOG_LEVEL` onto `LoggerConfig` — each through
 `Config.provider` reading the `Env` port the kernel provides, validated once as
 the graph is built, and each a modeled `ConfigInvalid` naming its variables
 when wrong. An application binds whatever else it needs onto ports of its own
 the same way; nothing reaches for `process.env`.
 
-Where an option is passed explicitly — `http({ port: 0 })` in a test — it is a
+Where an option is passed explicitly — `HttpModule`'s `port: 0` in a test — it is a
 **pin**: `Config.pinned(value, field)` answers the value and reads nothing. The
 precedence is explicit > environment > default, per field, and it is one
 helper in `@btravstack/config` rather than a local copy in each starter.
@@ -111,21 +111,22 @@ export const OrderApi = HttpModule("OrderApi")({
   unit: { anonymous: RequestModule, user: UserModule, service: ServiceModule },
   provides: [sessionCodec()],
   imports: [OrdersSlice, CustomersSlice, OrderPersistenceModule, observability(), otel()],
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 
 `observability()` is an ordinary import beside the application's own modules,
-which is the point: a starter with no sugar of its own is still a starter, and
-`Logger` is exported here only because the per-request module reads it.
+which is the point: a starter with no sugar of its own is still a starter.
+Nothing is exported for the per-request module either — a unit reads whatever
+the application scope can see.
 
 The kernel and both gates see nothing new — `OrderApi` is a `Module`, and
 `await runMain(OrderApi)` is the whole `main.ts`, once `HttpModule`'s own
 `unit: { anonymous: RequestModule }` field has bound the per-request module.
 The
-plain starter (`http()`, `temporal({...})`, `amqp({...})`) stays
-exported as the primitive the sugar delegates to; the sugar is syntax over
-the same module, not a second way.
+plain starter the sugar delegates to is not exported: `start` reads the
+runtime off a root's exports, so a root built on it would have to export the
+runtime port by hand. The sugar writes that export, and is the one way to
+write a deployment root.
 
 ## The port-and-provider sugar
 
@@ -186,10 +187,8 @@ application's router port is" — could not ship its port: `HttpRuntime` has to
 be one class in `@btravstack/http-server`, and its type cannot mention a port only
 the application knows. Making the router a dependency of the runtime's
 provider moves that knowledge to where it exists — the composition root that
-provides the router — and the `Needs` channel checks it there: a root that
-imports `http()` without providing the router carries an unmet need `start`
-refuses, naming the port
-(`Type 'OrpcRouterPort' is not assignable to type 'Env | Scope'`). The kernel keeps `Runtime.resolves`, `RunUnit`'s typed `ctx` and the
+provides the router — and `HttpModule` requires one, so a root cannot leave
+it out. The kernel keeps `Runtime.resolves`, `RunUnit`'s typed `ctx` and the
 `UNSATISFIED RUNTIME PORTS` arm as the general contract for a hand-rolled
 runtime; the starters simply do not use them.
 

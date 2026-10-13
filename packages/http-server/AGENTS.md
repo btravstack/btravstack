@@ -59,9 +59,10 @@ This does not change ordinary di module visibility.
   an authenticator union is one type per scheme, and a tuple takes one rest
   element, not two. Nothing downstream wants the arity — di reads
   `P[number]` throughout — and putting the authenticators in `provides` is what
-  carries **their own needs** (a `JwtVerifier`, a key set) into `NeedsGate`, so
-  a root that satisfies none is refused at THIS call exactly as a hand-listed
-  provider would be (`auth.test-d.ts`'s arms 11 and 12). A scheme the contract
+  carries **their own needs** (a `JwtVerifier`, a key set) into the root's
+  `Needs`, so a root that satisfies none is refused exactly as a hand-listed
+  provider would be — at `start` (`auth.test-d.ts`'s arms 11 and 12), or at
+  this call when the root states `needs`. A scheme the contract
   names that the registry has no authenticator for is di's own unmet need on
   `HttpAuthenticator:<scheme>`, not a gate this package writes — and the
   identity comparison the old `authenticator` option performed is gone with it,
@@ -82,7 +83,7 @@ This does not change ordinary di module visibility.
   `developerTools` pins `GRAPHQL_DEVELOPER_TOOLS`, which turns GraphiQL,
   introspection and field suggestions on together and is off by default, and
   `maxTokens` pins `GRAPHQL_MAX_TOKENS`; the answerer reads `Env`,
-  so a root providing it declares `needs: [Env]`. The reasoning is in
+  which a root providing it owes by inference. The reasoning is in
   `../graphql-server/AGENTS.md`.
 - **`OrpcRouterPort`** (`orpc.ts`, exported from the file for the package's
   own tests, **not** from `index.ts`) — the router's port, one id, the
@@ -125,8 +126,7 @@ PortInstance<…> }`) rather than the class's own type because a class
   may read off `context.unit`, typed per leaf by its own kind — see
   **`context.unit` and `UnitFor`**.
   Only the `sync` arm: a router is built, not
-  acquired. `HttpModule({ router: orderRouter })`, or `http()` next to
-  `provides: [orderRouter]`, take it from there. Covered by the `rpc` fixture's
+  acquired. `HttpModule({ router: orderRouter })` takes it from there. Covered by the `rpc` fixture's
   `greetingRouter` (a bare-procedure `oc.router`, one nested) and the stray-key
   guard by `strayRouter` (the same implementation with an undeclared key,
   cast past the types).
@@ -210,9 +210,9 @@ not cover"` marker, and what the marker names is a procedure path
   the root's own `provides` puts its needs on the root — a slice's controller
   reading a use case the slice composes privately would otherwise become the
   root's undeclared need. A piece no import provides is the root's own
-  provider, so its unmet need is di's `UNDECLARED NEEDS` at the `HttpModule`
-  call. `http()` is not sugar and adds nothing: its root spreads
-  `router.pieces` as it spreads `router.authenticators`. Coverage
+  provider, so its unmet need joins the root's and `start` names it (di's
+  `UNDECLARED NEEDS` at the `HttpModule` call only when the root states
+  `needs`). Coverage
   is not uniqueness, but with paths the split moved: a piece **inside**
   another piece's fragment is caught at the call (the
   `OVERLAPPING CONTROLLERS` gate above), while two pieces at the **same**
@@ -646,13 +646,9 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   `start`'s phantom marker — intersected onto `module` — turns
   a composition exporting no `HttpRuntime` into a `TS2345` whose last line is
   `"NO RUNTIME — the module exports no port declared over RuntimePort"`; and
-  because the runtime provider depends on the router port **through di**,
-  a composition that imports `http()` without providing the router
-  carries `OrpcRouterPort` as an unmet need `start` refuses on the same
-  parameter's `Module<X, E, Scope | Env>` half, ending on
-  `Type '"OrpcRouter"' is not assignable to type '"@di/Scope"'`. Neither is
-  di's `UNSATISFIED DEPENDENCIES` dependency gate.
-  `examples/order-api/src/needs-gate.test-d.ts` pins both, plus a third —
+  a root cannot leave the router out, because `HttpModule` requires one and
+  the bare starter is not exported.
+  `examples/order-api/src/needs-gate.test-d.ts` pins that arm, plus a second —
   `HttpModule`'s own `unit.anonymous` needs-propagation gate, the same shape
   as the two workers' — now that the answerers-fork change (below) retired the
   kernel-level `StartOptions.unit` gate it used to show instead.
@@ -914,9 +910,9 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
 
   **`http()` and `httpServer()` stay un-gated**, and that is structural: they
   take the router as a NEED (`OrpcRouterPort`), never as a value, so their
-  `unit` has nothing to check against. Their option keeps the wide
-  `Readonly<Record<string, AnyUnitModule>>`. A hand-rolled composition that
-  wants the gate composes through `HttpModule`.
+  `unit` has nothing to check against. Neither is on a public entry point —
+  they are `/internal`, and the module sugars are the only roots — so no
+  application meets the un-gated path.
 
 - **Drain**: `stopAccepting` retires every open response — a queued
   `text/event-stream` response is **destroyed** on the spot, whether or not
@@ -954,12 +950,13 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   to put a no-op member of its own, so without the export the set port every
   other starter here gets for free would have been the one thing a login
   answerer charged a root for. The
-  package's own transport specs, and a fragments-only graph, compose
-  `httpServer` directly, with no oRPC router anywhere: a set port makes a
-  single answerer welded to the socket the wrong default, and a fragments-only
-  application would otherwise have to compose `http()` and declare an oRPC
-  router it does not have. `httpRuntime`, the runtime value's factory, stays
-  internal.
+  package's own transport specs compose `httpServer` directly, with no oRPC
+  router anywhere: a set port makes a single answerer welded to the socket the
+  wrong default. It is exported from `/internal` only, beside `http()` on
+  `@btravstack/orpc-server/internal`: `start` reads the runtime off a root's
+  exports, so a plain `Module` root over either would have to export
+  `HttpRuntime` by hand, and `HttpModule` / `GraphqlModule` write that export
+  for it. `httpRuntime`, the runtime value's factory, stays internal.
 - **`htmx(options)`** (`htmx.ts`) — the second answerer: fragments. Its
   signature, options, injects and what it matches, forks and writes are in the
   reference page.
@@ -1114,14 +1111,15 @@ export const api = auth.units<{ anonymous: typeof Anonymous; user: typeof User }
     so the one runtime refusal on offer is a duplicate provider on the
     internal `HttpUnit` port — a defect naming a port the application never
     sees. Without it the first binding silently wins.
-  - **It removes no spelling.** `http()` and `httpServer()` take the router as
-    a need, never a value, so they keep `unit:`, and `HttpModule` would have
-    to refuse `unit:` beside a carried binding.
+  - **It removes no spelling.** The internal `http()` and `httpServer()` take
+    the router as a need, never a value, so they keep `unit:`, and
+    `HttpModule` would have to refuse `unit:` beside a carried binding.
 
   What it would buy is the root's restatement of the record, and the case-1
   gate's served-kinds arm (above) now refuses that restatement drifting. It
   reopens if a root that must bind its kinds stops being one the gate can
-  see — a hand-rolled `http()` root becoming the common shape.
+  see — which no public entry point allows, now that the bare starters are
+  internal.
   `context.unit` keeps its name for the same leaf-shape reason the
   `docs/explanation/deferred-decisions.md` gives: it is one record on all
   three transports, and the guides say "request-scoped services" before they

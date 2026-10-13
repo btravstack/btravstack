@@ -347,14 +347,14 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   (`Cannot access 'auth' before initialization`), so a third file is
   mandatory with no diagnostic; two bindings with equal types and different
   modules can be refused only through a duplicate provider on an internal
-  port; and `http()`/`httpServer()` keep `unit:` anyway. What the duplicate
+  port; and the starters underneath keep `unit:` anyway. What the duplicate
   record had actually cost — a root binding fewer kinds than `units<…>()`
   declared, compiling and answering `500` — is closed by the gate instead: a
   declared kind the root serves must be bound. The measurements are
   `packages/http-server/AGENTS.md`'s; the teaching half shipped as
   `docs/how-to/use-request-scoped-services.md`. The trigger would be a root
-  that must bind its kinds where the gate cannot see it — a hand-rolled
-  `http()` root becoming the common shape.
+  that must bind its kinds where the gate cannot see it — and the bare
+  starters are no longer exported, so no root can.
 
 - **A per-request deadline (`HTTP_REQUEST_DEADLINE_MS`) is declined** (issue
   #501). Its disconnect half shipped: the kernel aborts a unit's signal once

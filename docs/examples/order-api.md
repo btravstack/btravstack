@@ -603,8 +603,6 @@ export const OrderApi = HttpModule("OrderApi")({
   ],
   // The session cookie's codec and the login answerer that seals it.
   provides: [sessionCodec(), ...oidc()({ principal, scope: "openid orders:export" })],
-  // Everything a forked kind reads out of the application scope.
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 
@@ -627,10 +625,6 @@ caller's own tenant:
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
-  // The controller writes a line itself, so `Logger` is this slice's own
-  // provider's need. The use cases are not: a leaf reaches them off
-  // `context.unit`, never through `inject`.
-  needs: [Logger],
   provides: [ordersController, orderRowFragment],
   exports: [ordersController, orderRowFragment],
 });
@@ -657,10 +651,10 @@ that one client. `exports` takes the provider rather than
 `ordersController.port` — `OrpcController` minted that port, so there is no
 class to spell back off it.
 
-`HttpModule` imports the starter (`http()` — `HttpRuntime`, `HttpConfig` bound
+`HttpModule` imports the starter (`HttpRuntime`, `HttpConfig` bound
 from `PORT` / `HOST`, the router mounted under `/rpc`, needing the router the
-root provides), provides `orderRouter` and exports `HttpRuntime`, and returns
-exactly the module `Module("OrderApi")({...})` would have.
+root provides), provides `orderRouter` and exports `HttpRuntime` — the export
+`start` reads the runtime from, which is why a root is written with the sugar.
 [`observability()`](/reference/observability) brings the `Logger` the
 interactors and the request scope write to — bound from `LOG_LEVEL`, one JSON
 object per line on stdout, every line carrying the unit's trace id — and
@@ -702,7 +696,6 @@ export class RequestSpan extends Port("RequestSpan")<{
 }> {}
 
 export const RequestModule = Module("Request")({
-  needs: [Logger],
   imports: [UnitSpanModule],
   provides: [
     Provider(RequestSpan)({
@@ -851,7 +844,7 @@ declaration gate, and the unit needs-propagation gate, side by side:
 const _missingRuntime = start(RuntimelessApi, options);
 ```
 
-`RuntimelessApi` is the same list of slices without `http(...)`: `start`'s
+`RuntimelessApi` is the same list of slices as a plain `Module`, without `HttpModule`: `start`'s
 phantom marker becomes the sentence
 `"NO RUNTIME — the module exports no port declared over RuntimePort"`, and the
 module argument fails to match its parameter type — the sentence is the error's
@@ -861,29 +854,9 @@ marks `orders`, so a graph carrying the router without them has an
 unmet need too, and an arm that could fail either way pins neither gate. That
 spread is exactly what `HttpModule` does for a root that uses the sugar.
 
-<!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the missing-router arm -->
-
-```ts
-const RouterlessApi = Module("RouterlessApi")({
-  imports: [OrdersSlice, CustomersSlice, observability(), http()],
-  exports: [HttpRuntime, Logger],
-});
-
-// @ts-expect-error — the composition needs the router port and nothing provides it.
-const _missingRouter = start(RouterlessApi, options);
-```
-
-This one is the **`Needs` channel**, not the kernel's marker and not di's
-declaration gate either: the port is owed by `http()`, an **import**, and an
-import's needs travel without the importer re-declaring them. `start` — whose
-`module` parameter accepts only `Scope | Env` outstanding — is what refuses it,
-and the diagnostic names the port:
-`Type 'OrpcRouterPort' is not assignable to type 'Env | Scope'`, down to
-`Type '"OrpcRouter"' is not assignable to type '"@di/Scope"'`. It is **not** di's
-`UNSATISFIED DEPENDENCIES` dependency gate, which guards `Module.build` and
-`Module.scoped`; conflating the two is easy and the distinction is the point of
-having both pinned here. There is no `UNSATISFIED RUNTIME PORTS` arm, because
-the shipped runtime resolves nothing.
+There is no missing-router arm: `HttpModule` is the only way to compose the
+starter, and it requires a router, so that root does not compile at the
+`HttpModule` call.
 
 <!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the unit needs-propagation arm -->
 

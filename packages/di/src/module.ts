@@ -89,11 +89,12 @@ type ResolvedExports<X extends readonly unknown[]> =
   | ExportsOfModule<Extract<X[number], AnyModule>>;
 
 /**
- * The declaration gate. A port **this module's own providers** read, and that
- * nothing here satisfies, is an error unless it is named in `needs` — so a
- * provider can never silently receive a service from whoever composed the
- * module. Named, it may: the provider is handed whatever an ancestor supplies.
- * What naming does not do is make the port `Available` here, so a declared
+ * The optional declaration gate. Without `needs`, a module's external
+ * requirements are inferred from its providers' `inject` records and its
+ * imports, and travel in its `Needs` channel to whoever composes it. With
+ * `needs`, the module states its boundary: a port **this module's own
+ * providers** read, and that nothing here satisfies, is an error unless it is
+ * named there. Naming a port does not make it `Available` here, so a declared
  * need is still not exportable.
  *
  * An import's own unmet needs are not this module's to re-declare; `Scope` is
@@ -106,18 +107,22 @@ type ResolvedExports<X extends readonly unknown[]> =
 export type NeedsGate<
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
-  N extends readonly AnyPort[],
-> = [Exclude<NeedOf<P[number]>, Available<I, P>>] extends [InstanceType<N[number]> | Scope]
-  ? unknown
-  : {
-      // Inline, never a named alias: an alias prints unreduced and the reader
-      // gets their own tuples back instead of the port. Both fixes stay in the
-      // sentence: a root cannot discharge a need by naming it.
-      readonly "UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)": Exclude<
-        Exclude<NeedOf<P[number]>, Available<I, P>>,
-        InstanceType<N[number]> | Scope
-      >;
-    };
+  N extends readonly AnyPort[] | undefined,
+> = [N] extends [readonly AnyPort[]]
+  ? [Exclude<NeedOf<P[number]>, Available<I, P>>] extends [
+      InstanceType<NonNullable<N>[number]> | Scope,
+    ]
+    ? unknown
+    : {
+        // Inline, never a named alias: an alias prints unreduced and the reader
+        // gets their own tuples back instead of the port. Both fixes stay in the
+        // sentence: a root cannot discharge a need by naming it.
+        readonly "UNDECLARED NEEDS — name it in `needs` (a slice), or import/provide it (a root)": Exclude<
+          Exclude<NeedOf<P[number]>, Available<I, P>>,
+          InstanceType<NonNullable<N>[number]> | Scope
+        >;
+      }
+  : unknown;
 
 /**
  * Unexported, so `Module.build` and friends have a value to `Object.assign`
@@ -129,7 +134,7 @@ function ModuleDeclaration<const Name extends string>(name: Name) {
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
     const X extends readonly Exportable<I, P>[] = [],
-    const N extends readonly AnyPort[] = [],
+    const N extends readonly AnyPort[] | undefined = undefined,
   >(
     options: {
       readonly imports?: I;

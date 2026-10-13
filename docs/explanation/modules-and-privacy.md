@@ -94,7 +94,7 @@ This is privacy in exactly the sense TypeScript itself uses everywhere else:
 `internal` API are all names withheld rather than bytes hidden. `di` extends
 the convention to wiring.
 
-## A need is declared, never absorbed
+## A need is inferred from the provider that reads it
 
 The same computation answers a question NestJS answers differently. There, a
 provider sees only what its own module declares or imports, and a need nothing
@@ -103,23 +103,28 @@ needs `@Global`, a way for a cross-cutting module to be visible without being
 imported.
 
 `di` splits that differently. A module may be handed a port by whoever composes
-it — but only one **its own providers asked for by name**:
+it — and what it owes is what **its own providers** inject, nothing more:
 
 ```ts
 export const AuditSlice = Module("AuditSlice")({
-  needs: [Logger],
-  provides: [orderAudit],
+  provides: [orderAudit], // injects `Logger`
   exports: [orderAudit],
 });
 ```
 
-The provider may depend on that `Logger` and will be handed whatever an ancestor
-supplies. What `needs` does **not** do is provide the port here: it stays
-outside what the module can see, so it cannot be exported, and it manufactures
-no obligation for a root that owes nothing. It says: _the provider in this
-module depends on a `Logger` it does not build, and something above it has to_. Leave it out and the module does not compile at all — the diagnostic
-names the port — so a slice can never quietly absorb whatever the composition
-root happens to be holding.
+The provider depends on a `Logger` it does not build, so `AuditSlice`'s type
+says so — `Module<…, never, Logger>` — and something above it has to supply
+one. The slice never quietly absorbs whatever the root happens to hold: the
+need is in its type, an ancestor can discharge it only with a port it can see,
+and a root that supplies none is refused at the
+[entry point](/reference/di/entry-points) with the port named.
+
+A module may also **state its boundary** with `needs: [Logger]`. That list is
+checked at the module's own declaration — leave a port out and the call does
+not compile, naming the port — and it is worth writing where the boundary is
+the point, as in an application layer's port list. It does not provide the
+port here: a declared need stays outside what the module can see, so it cannot
+be exported, and it manufactures no obligation for a root that owes nothing.
 
 **An import's needs travel on their own.** A module that merely imports
 `AuditSlice` does not restate `Logger`: the obligation is already in
@@ -130,17 +135,17 @@ between the reader of a port and the root that supplies it — for `Env`, that
 was six declarations in the order API and only one of them a module that reads
 an environment variable.
 
-So the declaration lands where the feature is:
+So the obligation lands where the feature is:
 
 ```ts
-// reads DATABASE_URL — declares it
+// reads DATABASE_URL — owes it, and states that boundary
 const DatabaseModule = Module("Database")({
   needs: [Env],
   provides: [databaseConfig, orderDatabaseProvider],
   exports: [OrderDatabase],
 });
 
-// only imports it — declares nothing
+// only imports it — restates nothing
 export const OrderPersistenceModule = Module("OrderPersistence")({
   imports: [DatabaseModule],
   provides: [orderRepositoryProvider, outboxProvider],
@@ -150,10 +155,10 @@ export const OrderPersistenceModule = Module("OrderPersistence")({
 
 That is NestJS's `ConfigModule.forFeature` shape without a global to reach it
 through — and it is the whole difference from `@Global`. A global module is
-invisible plumbing: a slice benefits from it without mentioning it, and reading
-`slices/audit/` still tells you nothing. A declared need is the opposite — the
-slice states the port and stays silent about the supplier, which is exactly the
-pair that lets it be recomposed. The same `AuditSlice` drops into a different
+invisible plumbing: a slice benefits from it without mentioning it, and its
+type tells you nothing. An inferred need is the opposite — the slice's type
+names the port and stays silent about the supplier, which is exactly the pair
+that lets it be recomposed. The same `AuditSlice` drops into a different
 root, or [lifts into a process of its own](/how-to/split-a-router-into-controllers),
 with no edit: any root that answers `Logger` will do.
 

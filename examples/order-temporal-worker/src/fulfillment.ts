@@ -18,7 +18,6 @@ import { OkAsync, fromSafePromise } from "unthrown";
  * of time", where `ShippingUnavailable` is a permanent no.
  */
 export const FulfillmentModule = Module("Fulfillment")({
-  needs: [Logger],
   provides: [
     Provider(StockService)({
       inject: { logger: Logger },

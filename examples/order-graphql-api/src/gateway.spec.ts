@@ -54,6 +54,36 @@ describe("the order GraphQL gateway", () => {
     expect(orderApi.calls).toEqual([`find:${known.placed.id}`, `find:${known.placed.id}`]);
   });
 
+  it("forwards each concurrent caller's own bearer token, never another's", async ({
+    known,
+    gateway,
+    orderApi,
+  }) => {
+    // GIVEN two callers, each holding their own token and asking for their own order
+    orderApi.seed(known.placed);
+    const callers = [
+      { authorization: "Bearer alice", id: known.placed.id },
+      { authorization: "Bearer bob", id: known.missing },
+    ] as const;
+
+    // WHEN their requests interleave on one gateway
+    await Promise.all(
+      [...callers, ...callers, ...callers].map(({ authorization, id }) =>
+        gateway(`{ order(id: "${id}") { id } }`, authorization),
+      ),
+    );
+
+    // THEN every outbound call carried the token of the request that made it:
+    // the application-scoped origin is shared, the per-request client is not
+    expect(
+      orderApi.outbound.map(({ id, authorization }) => `${authorization} ${id}`).toSorted(),
+    ).toEqual(
+      [...callers, ...callers, ...callers]
+        .map(({ authorization, id }) => `${authorization} ${id}`)
+        .toSorted(),
+    );
+  });
+
   it("reads a write back in the same operation, without calling the API again", async ({
     known,
     gateway,

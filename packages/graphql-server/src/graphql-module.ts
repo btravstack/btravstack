@@ -10,7 +10,6 @@ import {
   type Provider,
 } from "@btravstack/di";
 import {
-  httpServer,
   type HttpConfig,
   type HttpHandler,
   type HttpOptions,
@@ -18,6 +17,7 @@ import {
 } from "@btravstack/http-server";
 import {
   applicationExports,
+  httpServer,
   type ApplicationExports,
   type AnyUnitModule,
   type CookieSchemes,
@@ -44,7 +44,9 @@ type HttpStarter<Units> = Module<
 >;
 type Imports<I extends readonly AnyModule[], A> = readonly [...I, HttpStarter<UnitsOf<A>>];
 type Provides<P extends readonly AnyProvider[], A> = readonly (A | AuthOf<A> | P[number])[];
-type EnvAnd<N extends readonly AnyPort[]> = readonly [...N, typeof Env];
+type EnvAnd<N extends readonly AnyPort[] | undefined> = N extends readonly AnyPort[]
+  ? readonly [...N, typeof Env]
+  : undefined;
 type Exports<
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
@@ -59,7 +61,7 @@ export const GraphqlModule =
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
     const X extends readonly Exportable<Imports<I, A>, Provides<P, A>>[] = [],
-    const N extends readonly AnyPort[] = [],
+    const N extends readonly AnyPort[] | undefined = undefined,
   >(
     options: Omit<HttpOptions, "unit" | "cors" | "compression"> & {
       readonly answerer: A;
@@ -85,7 +87,9 @@ export const GraphqlModule =
         Provides<P, A>,
         X
       >,
-      needs: [...(options.needs ?? []), Env] as EnvAnd<N>,
+      needs: (options.needs === undefined
+        ? undefined
+        : [...options.needs, Env]) as unknown as EnvAnd<N>,
     } as {
       readonly imports: Imports<I, A>;
       readonly provides: Provides<P, A>;

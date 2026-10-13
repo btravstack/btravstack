@@ -12,14 +12,10 @@ import {
 } from "@btravstack/di";
 import type { HtmxFragmentsPort } from "@btravstack/htmx-server/internal";
 import { htmx } from "@btravstack/htmx-server/internal";
-import {
-  httpServer,
-  type HttpHandler,
-  type HttpRuntime,
-  type HttpConfig,
-} from "@btravstack/http-server";
+import { type HttpHandler, type HttpRuntime, type HttpConfig } from "@btravstack/http-server";
 import {
   applicationExports,
+  httpServer,
   type ApplicationExports,
   type CookieSchemes,
 } from "@btravstack/http-server/internal";
@@ -292,7 +288,7 @@ export type HttpModuleOptions<
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
   X extends readonly Exportable<Imports<I, Units>, Provides<P, Router, Fragments, I>>[],
-  N extends readonly AnyPort[],
+  N extends readonly AnyPort[] | undefined,
 > = Omit<OrpcHttpOptions, "unit"> & {
   /**
    * The unit module each KIND binds — `anonymous` for a request no leaf asked
@@ -373,7 +369,9 @@ export type HttpModuleOptions<
  * providers — and its gate only asks that the unmet set be a SUBSET of the
  * declared one, so adding a port nothing needs costs nothing.
  */
-type EnvAnd<N extends readonly AnyPort[]> = readonly [...N, typeof Env];
+type EnvAnd<N extends readonly AnyPort[] | undefined> = N extends readonly AnyPort[]
+  ? readonly [...N, typeof Env]
+  : undefined;
 
 /**
  * `Module(name)({...})` for an HTTP deployment: everything a di module takes,
@@ -405,7 +403,7 @@ export const HttpModule =
     const P extends readonly AnyProvider[] = [],
     const X extends readonly Exportable<Imports<I, Units>, Provides<P, Router, Fragments, I>>[] =
       [],
-    const N extends readonly AnyPort[] = [],
+    const N extends readonly AnyPort[] | undefined = undefined,
   >(
     options: HttpModuleOptions<Router, Fragments, Units, I, P, X, N>,
   ) => {
@@ -468,7 +466,9 @@ export const HttpModule =
         ...ApplicationExports<Imports<I, Units>, Provides<P, Router, Fragments, I>>,
         ...X,
       ],
-      needs: [...(options.needs ?? []), Env] as EnvAnd<N>,
+      needs: (options.needs === undefined
+        ? undefined
+        : [...options.needs, Env]) as unknown as EnvAnd<N>,
     } as {
       readonly imports: Imports<I, Units>;
       readonly provides: Provides<P, Router, Fragments, I>;

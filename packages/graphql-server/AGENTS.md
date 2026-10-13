@@ -91,7 +91,7 @@ Deriving a mutation's result union from `E` is declined — see
 The answerer carries its declared request modules beside its authenticators.
 The module uses that same record for `httpServer`, so the declaration cannot
 part from the runtime's binding. Authentication, plugin contexts and unit-port
-gates stay at `graphql()`'s call. The root adds `Env` to its declaration gate,
+gates stay at `graphql()`'s call. The root adds `Env` to its declaration gate when it states `needs`,
 provides the answerer's authenticators, and shares infrastructure export
 handling with `HttpModule`. Business exports and unmet provider dependencies
 stay explicit. Root options exclude `cors` and `compression`: CORS belongs to

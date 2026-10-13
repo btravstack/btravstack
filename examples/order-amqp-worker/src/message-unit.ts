@@ -19,7 +19,6 @@ import { UnitSpanModule } from "@btravstack/observability/otel";
  * committed, so nothing in this deployment places an order off a message.
  */
 export const MessageUnitModule = Module("MessageUnit")({
-  needs: [AmqpMessage(orderContract)],
   imports: [UnitSpanModule],
   provides: [
     Provider(Tenant)({

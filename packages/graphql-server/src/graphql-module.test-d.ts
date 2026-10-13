@@ -43,11 +43,12 @@ const exposed = GraphqlModule("ExposedGraphql")({
 declare const exposedContext: Context<Exports<typeof exposed>>;
 exposedContext.get(Business);
 const dependent = Provider(Business)({ inject: { logger: Logger }, sync: () => "business" });
-// @ts-expect-error -- UNDECLARED NEEDS: the application's own provider needs a logger
-GraphqlModule("MissingGraphqlLogger")({
+const missingLogger = GraphqlModule("MissingGraphqlLogger")({
   answerer: graphql(defineAuth(), { schema }),
   provides: [dependent],
 });
+// @ts-expect-error -- UNSATISFIED DEPENDENCIES: the application's own provider needs a logger
+void start(missingLogger);
 const unfinished = GraphqlModule("NeedsGraphqlLogger")({
   answerer: graphql(defineAuth(), { schema }),
   provides: [dependent],

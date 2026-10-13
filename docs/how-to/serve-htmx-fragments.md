@@ -169,7 +169,6 @@ export const OrderFragmentsApi = HttpModule("OrderFragmentsApi")({
   unit: { anonymous: RequestModule, user: UserModule },
   provides: [orderRowFragment, sessionCodec()],
   imports: [OrderApplicationModule, OrderPersistenceModule, observability(), otel()],
-  exports: [Logger, Tracer, Meter, OrderDatabase],
 });
 ```
 
@@ -264,7 +263,7 @@ is about. That is why the protection was inert until
 [`sessionAuthenticator`](/reference/http-server#the-session-cookie) shipped: it bites only
 on a request carrying a cookie, and nothing here read one.
 
-It is now the `csrf` option on `http()` and `HttpModule`, **on by default when
+It is now the `csrf` option on `HttpModule`, **on by default when
 a composed scheme reads a cookie**. A state-changing request that carries
 cookies must say it is same-site — `Sec-Fetch-Site: same-origin` or
 `same-site`, or, for a client sending no fetch metadata, an `Origin` whose host

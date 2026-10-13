@@ -327,7 +327,9 @@ this module knows, so neither worker carries the key.
 
 `AnyUnitModule` is the bound every starter's `unit` option constrains its type
 parameter to. Beside it, `UnitNeedsOf<Unit, Seeded>` is what a bound module
-still owes less `Scope` and the seeded port, `UnitRecordOf<U>` the record a
+still owes less `Scope` and the seeded port — with `Env` replaced by a port
+nothing provides, so `start` refuses a unit that reads configuration with
+`UNIT READS CONFIGURATION — Env is application-scoped`; `UnitRecordOf<U>` the record a
 piece reads, and `UnitGate<Unit, Declared>` the `"UNIT DOES NOT PROVIDE — …"`
 refusal a worker's sugar rides on its options.
 
