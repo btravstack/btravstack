@@ -91,7 +91,11 @@ export const temporalServer =
             POSTGRES_USER: "temporal",
             POSTGRES_PASSWORD: password,
           })
-          .withHealthCheck({ test: ["CMD-SHELL", "pg_isready -U temporal"], ...healthCheck })
+          .withHealthCheck({
+            // Over TCP: the socket answers from the entrypoint's temporary init server, which then restarts.
+            test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U temporal"],
+            ...healthCheck,
+          })
           .withWaitStrategy(Wait.forHealthCheck())
           .withStartupTimeout(startupTimeoutMs)
           .start(),

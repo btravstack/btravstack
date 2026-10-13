@@ -47,6 +47,18 @@ describe("temporalServer", () => {
     },
   );
 
+  it("waits for PostgreSQL's TCP listener, not its init server's socket", async ({ runServer }) => {
+    // GIVEN the global setup
+    // WHEN it starts the containers
+    const { configured } = await runServer();
+
+    // THEN the database is healthy only once Temporal could connect to it
+    expect(configured[0]).toMatchObject({
+      image: "postgres:18.1",
+      healthCheck: { test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U temporal"] },
+    });
+  });
+
   it("stops what already started when a later container fails, and fails the run", async ({
     runServer,
   }) => {
