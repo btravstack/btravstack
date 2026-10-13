@@ -577,13 +577,13 @@ migration as usual. Apply through `prisma db migrate`, whose transaction keeps
 function creation and public-execution revocation atomic. This helper does not
 run migrations at application startup.
 
-| Option            | Meaning                                                                                                                  |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `schema`, `table` | Physical names of one existing row-secured table.                                                                        |
-| `tenantColumn`    | Physical tenant column; defaults to `tenantId`.                                                                          |
-| `name`            | New paged function in `schema`; also names its SELECT policy.                                                            |
-| `owner`           | Existing trusted function-owner role, without superuser or BYPASSRLS. It needs CREATE in the schema to accept ownership. |
-| `role`            | Existing application role granted execution, without superuser, BYPASSRLS, schema CREATE, or membership in `owner`.      |
+| Option            | Meaning                                                                                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema`, `table` | Physical names of one existing row-secured table.                                                                                                           |
+| `tenantColumn`    | Physical tenant column; defaults to `tenantId`.                                                                                                             |
+| `name`            | New paged function in `schema`; also names its SELECT policy.                                                                                               |
+| `owner`           | Existing trusted function-owner role, without superuser or BYPASSRLS. It needs CREATE in the schema to accept ownership.                                    |
+| `role`            | Existing application role granted execution, without superuser, BYPASSRLS, schema CREATE (including through roles it can assume), or membership in `owner`. |
 
 Identifiers are quoted and must be valid UTF-8, non-empty, NUL-free, and at
 most PostgreSQL's 63-byte identifier limit. Owner and caller must differ.

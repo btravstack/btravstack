@@ -129,12 +129,14 @@ export const tenantListing = (
   const owner = identifier(names.owner);
   const role = identifier(names.role);
   const column = identifier(names.tenantColumn);
-  const functionRef = `pg_catalog.to_regprocedure(${literal(`${fn}(text)`)})`;
+  const functionRef = `pg_catalog.to_regprocedure(${literal(`${fn}(pg_catalog.text)`)})`;
   const tableRef = `pg_catalog.to_regclass(${literal(table)})`;
   const ownerRef = `(SELECT oid FROM pg_catalog.pg_roles WHERE rolname = ${literal(names.owner)})`;
   const roleRef = `(SELECT oid FROM pg_catalog.pg_roles WHERE rolname = ${literal(names.role)})`;
   const body = `SELECT DISTINCT ${column}::pg_catalog.text COLLATE pg_catalog."C" AS "tenantId" FROM ${table} WHERE ${column} IS NOT NULL AND ($1 IS NULL OR ${column}::pg_catalog.text COLLATE pg_catalog."C" > $1 COLLATE pg_catalog."C") ORDER BY "tenantId" LIMIT 100`;
   const policy = `CURRENT_USER = ${literal(names.owner)}::pg_catalog.name`;
+  const assumption =
+    "CASE WHEN pg_catalog.current_setting('server_version_num')::pg_catalog.int4 >= 160000 THEN 'SET' ELSE 'MEMBER' END";
   const requirements = `EXISTS (
     SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
     JOIN pg_catalog.pg_roles o ON o.rolname = ${literal(names.owner)}
@@ -149,7 +151,11 @@ export const tenantListing = (
           AND pg_catalog.has_column_privilege(o.oid, c.oid, payload.attname, 'SELECT')
       )
       AND pg_catalog.has_schema_privilege(o.oid, ${literal(names.schema)}, 'CREATE')
-      AND NOT pg_catalog.has_schema_privilege(r.oid, ${literal(names.schema)}, 'CREATE')
+      AND NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_roles creator
+        WHERE pg_catalog.pg_has_role(r.oid, creator.oid, ${assumption})
+          AND pg_catalog.has_schema_privilege(creator.oid, ${literal(names.schema)}, 'CREATE')
+      )
       AND NOT EXISTS (
         SELECT 1 FROM pg_catalog.pg_policy blocked WHERE blocked.polrelid = c.oid
           AND NOT blocked.polpermissive AND blocked.polcmd IN ('r', '*')
@@ -161,7 +167,7 @@ export const tenantListing = (
   const ready = `SELECT ${requirements} AND (SELECT count(*) FROM (${functions}) candidates) = 1 AND EXISTS (
     SELECT 1 FROM pg_catalog.pg_proc p
     WHERE p.oid = ${functionRef}
-      AND p.prosecdef AND NOT p.proisstrict AND p.proretset AND p.pronargs = 1 AND p.pronargdefaults = 1 AND pg_catalog.pg_get_expr(p.proargdefaults, 0) = 'NULL::text' AND p.provolatile = 's'
+      AND p.prosecdef AND NOT p.proisstrict AND p.proretset AND p.pronargs = 1 AND p.pronargdefaults = 1 AND pg_catalog.pg_get_expr(p.proargdefaults, 0) IN ('NULL::text', 'NULL::pg_catalog.text') AND p.provolatile = 's'
       AND p.prolang = (SELECT oid FROM pg_catalog.pg_language WHERE lanname = 'sql')
       AND p.proowner = ${ownerRef} AND p.prosrc = ${literal(body)}
       AND p.proallargtypes = ARRAY['pg_catalog.text'::pg_catalog.regtype, 'pg_catalog.text'::pg_catalog.regtype]::pg_catalog.oid[]
@@ -202,7 +208,7 @@ export const tenantListing = (
         {
           description:
             "require a row-secured table, restricted roles, and unused function and policy names",
-          sql: `SELECT ${requirements} AND pg_catalog.pg_has_role(CURRENT_USER, ${ownerRef}, CASE WHEN pg_catalog.current_setting('server_version_num')::pg_catalog.int4 >= 160000 THEN 'SET' ELSE 'MEMBER' END) AND NOT EXISTS (${functions}) AND NOT EXISTS (
+          sql: `SELECT ${requirements} AND pg_catalog.pg_has_role(CURRENT_USER, ${ownerRef}, ${assumption}) AND NOT EXISTS (${functions}) AND NOT EXISTS (
           SELECT 1 FROM pg_catalog.pg_policy WHERE polrelid = ${tableRef} AND polname = ${literal(names.name)}
         ) AS "result"`,
         },
@@ -226,15 +232,15 @@ export const tenantListing = (
         },
         {
           description: "remove public execution",
-          sql: `REVOKE ALL ON FUNCTION ${fn}(text) FROM PUBLIC`,
+          sql: `REVOKE ALL ON FUNCTION ${fn}(pg_catalog.text) FROM PUBLIC`,
         },
         {
           description: "grant execution to the application role",
-          sql: `GRANT EXECUTE ON FUNCTION ${fn}(text) TO ${role}`,
+          sql: `GRANT EXECUTE ON FUNCTION ${fn}(pg_catalog.text) TO ${role}`,
         },
         {
           description: "assign the restricted function owner",
-          sql: `ALTER FUNCTION ${fn}(text) OWNER TO ${owner}`,
+          sql: `ALTER FUNCTION ${fn}(pg_catalog.text) OWNER TO ${owner}`,
         },
       ],
       postcheck: [

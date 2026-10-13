@@ -207,8 +207,14 @@ export const it = test.extend<PersistenceFixtures>({
       .execute(
         sql(`ALTER TABLE "${schema}".records OWNER TO "${migrator}"`).affectedCount().build(),
       );
+    await admin
+      .runtime()
+      .execute(sql(`CREATE DOMAIN "${schema}".text AS pg_catalog.text`).affectedCount().build());
     await admin.transaction(async (tx) => {
       await tx.execute(sql(`SET LOCAL ROLE "${migrator}"`).affectedCount().build());
+      await tx.execute(
+        sql(`SET LOCAL search_path = "${schema}", pg_catalog`).affectedCount().build(),
+      );
       for (const check of declaration.migration.precheck) {
         const rows = await tx.query(sql(check.sql).returnsRow({ result: "pg/bool@1" }).build());
         assert.equal(rows[0]?.result, true, check.description);

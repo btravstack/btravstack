@@ -55,7 +55,7 @@ describe("tenant listing under forced row security", () => {
         admin.transaction(async (tx) => {
           await tx.execute(sql(`SET LOCAL ROLE "${outsider}"`).affectedCount().build());
           // Exercise both privilege vocabularies on the shared PostgreSQL server.
-          const branch = check.sql.replace(
+          const branch = check.sql.replaceAll(
             "pg_catalog.current_setting('server_version_num')::pg_catalog.int4",
             String(version),
           );
@@ -152,6 +152,54 @@ describe("tenant listing under forced row security", () => {
 
     // THEN an unused exact signature cannot hide a conflicting overload
     expect(checks).toEqual([[{ result: false }], [{ result: false }]]);
+  });
+
+  it("rejects schema CREATE through a SET-only role", async ({ listing }) => {
+    // GIVEN an application role with no inherited schema CREATE
+    const { admin, schema, owner, outsider, declaration } = listing;
+    const sql = (text: string) => admin.raw.sql(Object.assign([text], { raw: [text] }));
+    const pending = tenantListing({
+      schema,
+      table: "records",
+      tenantColumn: "organization",
+      name: "pending_listing",
+      owner,
+      role: "orders_app",
+    }).getOrThrow();
+
+    // WHEN that caller can assume a different role with CREATE on this isolated schema
+    await admin
+      .runtime()
+      .execute(sql(`GRANT CREATE ON SCHEMA "${schema}" TO "${outsider}"`).affectedCount().build());
+    await admin
+      .runtime()
+      .execute(
+        sql(`GRANT "${outsider}" TO orders_app WITH SET TRUE, INHERIT FALSE`)
+          .affectedCount()
+          .build(),
+      );
+    const inherited = await admin
+      .runtime()
+      .query(
+        sql(`SELECT pg_catalog.has_schema_privilege('orders_app', '${schema}', 'CREATE') AS result`)
+          .returnsRow({ result: "pg/bool@1" })
+          .build(),
+      );
+    const precheck = await admin
+      .runtime()
+      .query(sql(pending.migration.precheck[0]!.sql).returnsRow({ result: "pg/bool@1" }).build());
+    const postcheck = await admin
+      .runtime()
+      .query(
+        sql(declaration.migration.postcheck[0]!.sql).returnsRow({ result: "pg/bool@1" }).build(),
+      );
+
+    // THEN the non-inherited privilege still blocks both migration checks
+    expect({ inherited, precheck, postcheck }).toEqual({
+      inherited: [{ result: false }],
+      precheck: [{ result: false }],
+      postcheck: [{ result: false }],
+    });
   });
 
   it("rejects a function altered to skip NULL input", async ({ listing }) => {

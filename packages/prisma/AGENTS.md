@@ -359,11 +359,14 @@ configuration, never query parameters. The function takes an optional text
 cursor and returns at most 100 distinct IDs in bytewise (`C`) order, in one
 text column only. Resume after the last ID until a page is empty; discovery
 does not freeze concurrent writes. Its body qualifies the table and builtin cast,
-fixes the search path and enables row security for its own duration.
+fixes the search path and enables row security for its own duration. Function
+identity signatures also qualify `pg_catalog.text`; installation is tested
+with a shadowing text domain before pg_catalog in the migrator search path.
 
 The owner policy checks `CURRENT_USER` as well as its role, so inheriting that
 role does not silently broaden an application's ordinary reads. Installation
-also refuses caller membership in the owner, caller schema CREATE, superuser
+also refuses caller membership in the owner, schema CREATE through any role
+the caller can assume (including SET-only paths), superuser
 or BYPASSRLS roles, and applicable restrictive read policies that would defeat
 the owner's permissive listing policy. Owner and caller must already exist;
 the deployment owns role provisioning. Prechecks require the executing migrator
