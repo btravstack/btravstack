@@ -306,7 +306,6 @@ const relayModule = <const O extends OutboxOptions, const Standalone extends boo
       let running: ReturnType<typeof startRelay> | undefined;
       let keepAlive: ReturnType<typeof setInterval> | undefined;
       const stop = () => {
-        clearInterval(keepAlive);
         return running?.stop() ?? OkAsync();
       };
       const service: Runtime = {
@@ -325,7 +324,11 @@ const relayModule = <const O extends OutboxOptions, const Standalone extends boo
           });
         },
       };
-      finalizers.set(service, () => stop().get());
+      finalizers.set(service, () =>
+        stop()
+          .get()
+          .finally(() => clearInterval(keepAlive)),
+      );
       return OkAsync(service);
     },
     release: (service) => finalizers.get(service)!(),

@@ -218,4 +218,19 @@ describe("standalone outbox runtime", () => {
       releases: ["publisher", "store"],
     });
   });
+  it("keeps a standalone process alive through shutdown deadlines and teardown", async ({
+    shutdownProcess,
+  }) => {
+    // GIVEN a subprocess whose publisher waits on an unresolved promise
+    await vi.waitUntil(() => shutdownProcess.output().includes('"type":"serving"'));
+    // WHEN SIGTERM requests drain
+    shutdownProcess.drain();
+    await vi.waitUntil(() => shutdownProcess.output().includes("store released"));
+    // THEN the process reported the abandoned claim and stop deadline before releasing its store
+    expect(shutdownProcess.output()).toEqual(
+      expect.stringMatching(
+        /"abandoned":1[\s\S]*"type":"stoppedWaiting"[\s\S]*shutdown reported[\s\S]*store released/,
+      ),
+    );
+  });
 });

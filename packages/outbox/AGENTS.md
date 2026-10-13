@@ -327,7 +327,9 @@ root exports the runtime and health checks explicitly.
 
 The standalone provider acquires dependencies at graph construction but starts
 polling only at runtime startup. A referenced timer belongs to the runtime and
-is cleared when stop is requested; the poll clock remains unref'ed. Claims run
+stays referenced through drain and is cleared only when the relay finalizer
+settles; the poll clock remains unref'ed. A held publish must not let Node
+exit before the kernel reports its deadlines. Claims run
 as kernel units so deadline accounting includes deliveries. Drain stops future
 claims and prunes and races current claims against its signal. It does not
 cancel publishing or free the claim early: the resource finalizer still awaits

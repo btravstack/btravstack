@@ -1,4 +1,6 @@
+import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 
 import { Env, type ConfigInvalid } from "@btravstack/config";
 import {
@@ -100,6 +102,7 @@ export type Stub = (answers: {
 }) => StubDatabase;
 
 export type OutboxFixtures = {
+  readonly shutdownProcess: { readonly output: () => string; readonly drain: () => void };
   readonly boot: Boot;
   readonly releases: string[];
   readonly launch: (options?: Omit<StartOptions, "signals" | "env">) => RunningApp<ConfigInvalid>;
@@ -120,6 +123,59 @@ export type OutboxFixtures = {
 };
 
 export const it = test.extend<OutboxFixtures>({
+  // oxlint-disable-next-line no-empty-pattern -- an independent Vitest fixture
+  shutdownProcess: async ({}, use) => {
+    const script = `
+      import { registerHooks } from "node:module";
+      registerHooks({ resolve(specifier, context, next) {
+        if (specifier.startsWith(".") && specifier.endsWith(".js") && context.parentURL?.includes("/packages/outbox/src/")) specifier = specifier.slice(0, -3) + ".ts";
+        return next(specifier, context);
+      }});
+      const { outboxRuntime, OutboxRuntime } = await import(${JSON.stringify(new URL("../relay.ts", import.meta.url).href)});
+      const { OutboxStore, OutboxPublisher } = await import(${JSON.stringify(new URL("../outbox.ts", import.meta.url).href)});
+      const { memoryOutboxStore } = await import(${JSON.stringify(new URL("../memory.ts", import.meta.url).href)});
+      const { Module, Provider } = await import("@btravstack/di");
+      const { runMain } = await import("@btravstack/core");
+      const { fromSafePromise, OkAsync } = await import("unthrown");
+      const store = memoryOutboxStore();
+      store.append({ tenantId: "acme", kind: "order", subjectId: "a", payload: "{}" });
+      let release;
+      const pending = new Promise(resolve => { release = resolve; });
+      const root = Module("ShutdownProcess")({
+        imports: [outboxRuntime({ tenants: ["acme"] })],
+        provides: [
+          Provider(OutboxStore)({ inject: {}, acquire: () => OkAsync(store), release: () => console.log("store released") }),
+          Provider(OutboxPublisher)({ inject: {}, value: { publish: () => fromSafePromise(pending) } }),
+        ],
+        exports: [OutboxRuntime],
+      });
+      await runMain(root, { probes: false, preDrainDelayMs: 0, drainTimeoutMs: 10, stopTimeoutMs: 10 });
+      console.log("shutdown reported");
+      release();
+    `;
+    const child = spawn(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: fileURLToPath(new URL("../../", import.meta.url)),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    const exited = new Promise<void>((resolve) => {
+      child.on("exit", () => resolve());
+    });
+    await use({
+      output: () => output,
+      drain: () => {
+        child.kill("SIGTERM");
+      },
+    });
+    child.kill("SIGKILL");
+    await exited;
+  },
   boot: bootFixture(),
   // oxlint-disable-next-line no-empty-pattern -- an independent Vitest fixture
   releases: async ({}, use) => {
