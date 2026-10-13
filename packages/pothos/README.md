@@ -6,12 +6,14 @@ contract-first services. The default export is the plugin, listed after
 `@unthrown/pothos`'s:
 `plugins: [RelayPlugin, ErrorsPlugin, UnthrownPlugin, OrpcPlugin]`.
 
-- `t.procedureField(procedure, { type, call, input, output })` validates the
+- `t.procedureField(procedure, { type, call, input, output, refusals? })` validates the
   field's input through the procedure's own contract before calling it,
   decodes the answer with `output`, and answers each error the procedure
-  declares as the GraphQL error class the builder's `orpc: { refusals }`
-  registers for its code — a member of the field's result union. A registry
-  that misses a code `call` can fail with does not compile.
+  declares as the GraphQL error class registered for its code — a member of
+  the field's result union. Field-local `refusals` override the builder's
+  shared `orpc: { refusals }` defaults. Together the maps must cover every
+  error `call` can return and `InvalidInput`; a missing code does not compile.
+  A declared error handled by a narrower `call` needs no entry.
 - `t.procedureConnection(procedure, { …, connection })` is the same for a
   Relay connection, with the decoded page folded by `connection`.
 - `UNAUTHORIZED` and `FORBIDDEN` are answered as GraphQL's own error, with

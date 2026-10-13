@@ -24,17 +24,31 @@ mean moving `procedureConnection` behind a subpath of its own, the way
 `@unthrown/pothos` does. `sideEffects` names the entry, since importing it is
 what registers the plugin and the two field methods.
 
-**The registry is one per builder, and its coverage is a compile error.**
-`orpc.refusals` maps an error code to the GraphQL error class built from that
-failure. A field's refusals are the codes its procedure declares, read from
+**Refusal maps may belong to fields; coverage is still a compile error.**
+`orpc.refusals` holds shared builder defaults. `procedureField` and
+`procedureConnection` accept their own `refusals`, merged over those defaults,
+so each resource keeps its business refusals locally. The type side uses
+`Omit<Shared, keyof Local> & Local`, matching the runtime spread's precedence:
+an incompatible local override cannot hide behind a compatible shared entry.
+The optional local map defaults to `{}` in the field's generics, preserving
+existing builder-only calls and the published options types' type arguments.
+An empty `Local` permits only an empty local map. Without that guard, explicit
+type arguments defaulting `Local` to `{}` could pass a non-empty map whose
+overrides the coverage check never sees. The guard is intersected with `Local`
+so ordinary field calls still infer their map's exact keys.
+
+A field's refusals are the codes its procedure declares, read from
 the contract's `errorMap`, plus `InvalidInput`, less the two access codes; a
-code its `call` can fail with that the registry lacks fails the field with
+code its `call` can fail with that the merged map lacks fails the field with
 `uncovered: "<CODE>"` (`procedure-field.test-d.ts` pins it under both
 compilers). Coverage follows `call`'s failure rather than the `errorMap`: a
 declared code a narrower `call` handles itself never reaches the field, and a
-code the registry lacks adds no member to its union. A builder given no registry at runtime answers
-every declared error as an error of the operation, because the field's union
-has no member for it (`procedure-field.spec.ts`).
+code the merged map lacks adds no member to its union. A field given neither
+shared nor local mappings at runtime answers every declared error as an error
+of the operation, because its union has no member for it
+(`procedure-field.spec.ts`). `loadProcedure` and `procedureErrors` keep their
+explicit map argument; a loader passes the merged shared and resource-local
+map itself.
 
 **Access refusals are GraphQL's own error, never a union member and never a
 masked defect.** `UNAUTHORIZED` and `FORBIDDEN` refuse the caller, not the

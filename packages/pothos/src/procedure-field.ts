@@ -49,8 +49,8 @@ type Covered<Registry, Failure> =
 
 /**
  * `t.procedureField`'s options: `resultField`'s, with `call`, `input` and
- * `output` in place of `resolve`, and the builder's `orpc.refusals` in place
- * of `refusals`. The registry must cover every error `call` can return but
+ * `output` in place of `resolve`. Field-local `refusals` override the builder's
+ * `orpc.refusals`. Together they must cover every error `call` can return but
  * the access refusals, and `InvalidInput`; an uncovered case is a compile
  * error naming it. A declared error `call` handles itself needs no entry.
  */
@@ -63,24 +63,30 @@ export type ProcedureFieldOptions<
   Kind extends FieldKind,
   Schema extends z.ZodType,
   Failure,
+  Local extends Readonly<Record<string, ErrorClass>> = {},
 > = Omit<
   ResultFieldOptions<Types, ParentShape, Type, Nullable, Args, Kind, Failure>,
   "refusals" | "resolve"
 > & {
   readonly call: Call<Types["Context"], z.input<Schema>, Failure>;
+  /** Local refusal classes, overriding the builder's shared defaults by code. */
+  readonly refusals?: Local &
+    ([keyof Local] extends [never] ? Readonly<Record<string, never>> : unknown);
   readonly input: (
     args: InputShapeFromFields<Args>,
     parent: ParentShape,
   ) => NoInfer<z.input<Schema>>;
   readonly output: z.ZodType<ShapeFromTypeParam<Types, Type, false>>;
   readonly tap?: (value: ShapeFromTypeParam<Types, Type, false>, context: Types["Context"]) => void;
-} & Covered<Types["Refusals"], Exclude<Failure, Access> | InvalidInput>;
+} & Covered<Omit<Types["Refusals"], keyof Local> & Local, Exclude<Failure, Access> | InvalidInput>;
 
 /**
  * `t.procedureConnection`'s options: `resultConnection`'s, with `call`,
  * `input` and `output` in place of `resolve`, `connection` folding the
  * decoded page into the connection's shape, and an optional `connectionType`
- * for fields beside its edges and page info.
+ * for fields beside its edges and page info. Local `refusals` override the
+ * builder's shared defaults, together covering `call`'s failures and input
+ * validation.
  */
 export type ProcedureConnectionOptions<
   Types extends SchemaTypes,
@@ -96,6 +102,7 @@ export type ProcedureConnectionOptions<
   Failure,
   Connection extends ConnectionShapeForType<Types, Type, false, EdgeNullability, NodeNullability> =
     ConnectionShapeForType<Types, Type, false, EdgeNullability, NodeNullability>,
+  Local extends Readonly<Record<string, ErrorClass>> = {},
 > = Omit<
   ResultConnectionOptions<
     Types,
@@ -112,6 +119,9 @@ export type ProcedureConnectionOptions<
   "refusals" | "resolve"
 > & {
   readonly call: Call<Types["Context"], z.input<Schema>, Failure>;
+  /** Local refusal classes, overriding the builder's shared defaults by code. */
+  readonly refusals?: Local &
+    ([keyof Local] extends [never] ? Readonly<Record<string, never>> : unknown);
   readonly input: (
     args: DefaultConnectionArguments & InputShapeFromFields<Args>,
     parent: ParentShape,
@@ -122,7 +132,7 @@ export type ProcedureConnectionOptions<
     page: Page,
     args: DefaultConnectionArguments & InputShapeFromFields<Args>,
   ) => Connection;
-} & Covered<Types["Refusals"], Exclude<Failure, Access> | InvalidInput>;
+} & Covered<Omit<Types["Refusals"], keyof Local> & Local, Exclude<Failure, Access> | InvalidInput>;
 
 declare global {
   export namespace PothosSchemaTypes {
@@ -161,6 +171,7 @@ declare global {
         Failure,
         Nullable extends FieldNullability<Type> = Types["DefaultFieldNullability"],
         Args extends InputFieldMap = {},
+        const Local extends Readonly<Record<string, ErrorClass>> = {},
       >(
         procedure: Procedure<Schema>,
         options: ProcedureFieldOptions<
@@ -171,7 +182,8 @@ declare global {
           Args,
           Kind,
           Schema,
-          Failure
+          Failure,
+          Local
         >,
       ) => FieldRef<Types, ShapeFromTypeParam<Types, Type, Nullable>, Kind>;
 
@@ -195,6 +207,7 @@ declare global {
           EdgeNullability,
           NodeNullability
         > = ConnectionShapeForType<Types, Type, false, EdgeNullability, NodeNullability>,
+        const Local extends Readonly<Record<string, ErrorClass>> = {},
       >(
         procedure: Procedure<Schema>,
         options: ProcedureConnectionOptions<
@@ -209,7 +222,8 @@ declare global {
           Schema,
           Page,
           Failure,
-          Connection
+          Connection,
+          Local
         >,
       ) => FieldRef<
         Types,
@@ -312,11 +326,11 @@ export const defineProcedureFields = (): void => {
 
   fieldBuilder.procedureField = function procedureField(
     procedure,
-    { call, input, output, tap, ...options },
+    { call, input, output, tap, refusals, ...options },
   ) {
     return this.resultField({
       ...options,
-      refusals: refusalsOf(this.builder.options.orpc?.refusals ?? {}, procedure),
+      refusals: refusalsOf({ ...this.builder.options.orpc?.refusals, ...refusals }, procedure),
       resolve: (parent: unknown, args: object, context: object) =>
         callProcedure(procedure, input(args as never, parent), call(context), output).tap(
           (value) => {
@@ -328,12 +342,12 @@ export const defineProcedureFields = (): void => {
 
   fieldBuilder.procedureConnection = function procedureConnection(
     procedure,
-    { call, input, output, connection, connectionType, ...options },
+    { call, input, output, connection, connectionType, refusals, ...options },
   ) {
     return this.resultConnection(
       {
         ...options,
-        refusals: refusalsOf(this.builder.options.orpc?.refusals ?? {}, procedure),
+        refusals: refusalsOf({ ...this.builder.options.orpc?.refusals, ...refusals }, procedure),
         resolve: (parent: unknown, args: object, context: object) =>
           callProcedure(procedure, input(args as never, parent), call(context), output).map(
             (page): object => connection(page, args as never),

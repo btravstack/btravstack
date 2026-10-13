@@ -4,6 +4,40 @@ import { Book, books, getBook, it, registry } from "./__tests__/test-fixtures.js
 import { callProcedure, loadProcedure, procedureErrors, refusalsOf } from "./procedure-field.js";
 
 describe("procedureField", () => {
+  it.for([false, true])(
+    "uses the field-local refusal with shared business defaults %s",
+    async (override, { askLocal }) => {
+      // GIVEN a book field owning its refusal, with optional shared business defaults
+      // WHEN the catalogue refuses the title
+      const answer = await askLocal(
+        '{ book(title: "lost") { __typename ... on MissingBook { message } } }',
+        override,
+      );
+
+      // THEN only the book field's own member answers the refusal
+      expect(answer).toEqual({
+        data: { book: { __typename: "MissingBook", message: "No such book" } },
+      });
+    },
+  );
+
+  it("inherits shared input refusals beside a field-local business refusal", async ({
+    askLocal,
+  }) => {
+    // GIVEN a field declaring only its business refusal
+    // WHEN its input fails validation
+    const answer = await askLocal(
+      '{ book(title: "") { __typename ... on BadRequest { message } } }',
+    );
+
+    // THEN the builder's input refusal is retained
+    expect(answer).toEqual({
+      data: {
+        book: { __typename: "BadRequest", message: "Input does not satisfy the service contract" },
+      },
+    });
+  });
+
   it("answers the procedure's output, decoded", async ({ readBook }) => {
     // GIVEN a field over the catalogue
     // WHEN a book is read
@@ -307,6 +341,41 @@ describe("procedureField", () => {
 });
 
 describe("procedureConnection", () => {
+  it.for([false, true])(
+    "uses the connection-local refusal with shared business defaults %s",
+    async (override, { askLocal }) => {
+      // GIVEN a connection owning the same code as the book field
+      // WHEN the service refuses the shelf
+      const answer = await askLocal(
+        '{ loans(shelf: "closed") { __typename ... on MissingShelf { message } } }',
+        override,
+      );
+
+      // THEN the connection's member wins independently of the book and shared defaults
+      expect(answer).toEqual({
+        data: { loans: { __typename: "MissingShelf", message: "No such shelf" } },
+      });
+    },
+  );
+
+  it("lets a connection override the shared input refusal", async ({ askLocal }) => {
+    // GIVEN a connection declaring its own input refusal
+    // WHEN the contract refuses a zero page size
+    const answer = await askLocal(
+      '{ loans(shelf: "poetry", first: 0) { __typename ... on BadLoanInput { message } } }',
+    );
+
+    // THEN its local input refusal overrides the builder default
+    expect(answer).toEqual({
+      data: {
+        loans: {
+          __typename: "BadLoanInput",
+          message: "Input does not satisfy the service contract",
+        },
+      },
+    });
+  });
+
   it("answers the procedure's page as a connection", async ({ ask }) => {
     // GIVEN a connection over a shelf's loans
     // WHEN its first page is read
