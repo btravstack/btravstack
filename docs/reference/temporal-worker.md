@@ -55,25 +55,25 @@ import { currentUnit } from "@btravstack/core";
 
 `packages/temporal-worker/src/index.ts` exports exactly this:
 
-| Export                           | Kind  | What it is                                                                                                                                                                                                                                                                              |
-| -------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                                                         |
-| `TemporalModuleOptions`          | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                                                                                         |
-| `TemporalActivities`             | value | `TemporalActivities(contract)` — the builder on the starter's own activities port, typed for `contract`, so the next call is `{ inject: { name: Dep }, unit?, sync }`, or `([pieces])` to compose one provider per workflow                                                             |
-| `ActivitiesPortOf<C>`            | type  | The activities port's class typed for `C` — what a composed `orderActivities`'s `.port` is                                                                                                                                                                                              |
-| `ActivitiesInstanceOf<C>`        | type  | That port's instance typed for `C`                                                                                                                                                                                                                                                      |
-| `TemporalWorkflowActivities`     | value | `TemporalWorkflowActivities(contract, key)` — one workflow's activities (or a contract-global activity) as a provider of its own, typed by `key` alone; the next call is `{ inject: { name: Dep }, unit?, sync }`, and the piece is what `TemporalActivities(contract)([...])` composes |
-| `WorkflowActivitiesPortOf<C, K>` | type  | One piece's port class, typed for the one key `K` it implements                                                                                                                                                                                                                         |
-| `ActivityInput`                  | value | `ActivityInput(contract)` — the port the validated invocation is **seeded** on, typed by that contract's own activity inputs; a unit module names it in `needs` and injects it                                                                                                          |
-| `ActivityInputOf<C>`             | type  | The union of every activity input `C` declares, workflow-local and contract-global alike — what `ActivityInput(C)` carries                                                                                                                                                              |
-| `ActivityInputPortOf<C>`         | type  | `ActivityInput(C)`'s port class, typed for `C`                                                                                                                                                                                                                                          |
-| `TemporalOptions`                | type  | the starter's own options, which `TemporalModule` takes beside `activities` and the module lists                                                                                                                                                                                        |
-| `TemporalRuntime`                | value | `class TemporalRuntime extends RuntimePort<Runtime<never, TemporalInfo>> {}` — the runtime's port                                                                                                                                                                                       |
-| `TemporalConfig`                 | value | `class TemporalConfig extends Port("TemporalConfig")<{ address: string; namespace: string; gracePeriodMs: number; forceAfterMs: number }> {}` — where the service is and what its shutdown budget is, bound from the environment                                                        |
-| `TemporalConnection`             | value | `class TemporalConnection extends Port("TemporalConnection")<NativeConnection> {}` — the connection, a resource of the graph                                                                                                                                                            |
-| `TemporalUnreachable`            | value | `TaggedError("TemporalUnreachable")<{ address: string; cause: unknown }>` — the service did not answer                                                                                                                                                                                  |
-| `TemporalInfo`                   | type  | `{ readonly taskQueue: string; readonly namespace: string }` — published on `Serving.info` once polling                                                                                                                                                                                 |
-| `WorkflowSource`                 | type  | `{ workflowsPath: string } \| { workflowBundle: WorkflowBundleWithSourceMap }` — where the sandbox's code comes from                                                                                                                                                                    |
+| Export                           | Kind  | What it is                                                                                                                                                                                                                                                                                     |
+| -------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                                                                |
+| `TemporalModuleOptions`          | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                                                                                                |
+| `TemporalActivities`             | value | `TemporalActivities(contract)` — the builder on the starter's own activities port, typed for `contract`, so the next call is `{ inject: { name: Dep }, unit?, sync }`, or `([pieces])` to compose one provider per workflow                                                                    |
+| `ActivitiesPortOf<C>`            | type  | The activities port's class typed for `C` — what a composed `orderActivities`'s `.port` is                                                                                                                                                                                                     |
+| `ActivitiesInstanceOf<C>`        | type  | That port's instance typed for `C`                                                                                                                                                                                                                                                             |
+| `TemporalWorkflowActivities`     | value | `TemporalWorkflowActivities(contract, key)` — one workflow's activities (or a contract-global activity) as a provider of its own, typed by `key` alone; the next call is `{ inject: { name: Dep }, unit?, fork?, sync }`, and the piece is what `TemporalActivities(contract)([...])` composes |
+| `WorkflowActivitiesPortOf<C, K>` | type  | One piece's port class, typed for the one key `K` it implements                                                                                                                                                                                                                                |
+| `ActivityInput`                  | value | `ActivityInput(contract)` — the port the validated invocation is **seeded** on, typed by that contract's own activity inputs; a unit module names it in `needs` and injects it                                                                                                                 |
+| `ActivityInputOf<C>`             | type  | The union of every activity input `C` declares, workflow-local and contract-global alike — what `ActivityInput(C)` carries                                                                                                                                                                     |
+| `ActivityInputPortOf<C>`         | type  | `ActivityInput(C)`'s port class, typed for `C`                                                                                                                                                                                                                                                 |
+| `TemporalOptions`                | type  | the starter's own options, which `TemporalModule` takes beside `activities` and the module lists                                                                                                                                                                                               |
+| `TemporalRuntime`                | value | `class TemporalRuntime extends RuntimePort<Runtime<never, TemporalInfo>> {}` — the runtime's port                                                                                                                                                                                              |
+| `TemporalConfig`                 | value | `class TemporalConfig extends Port("TemporalConfig")<{ address: string; namespace: string; gracePeriodMs: number; forceAfterMs: number }> {}` — where the service is and what its shutdown budget is, bound from the environment                                                               |
+| `TemporalConnection`             | value | `class TemporalConnection extends Port("TemporalConnection")<NativeConnection> {}` — the connection, a resource of the graph                                                                                                                                                                   |
+| `TemporalUnreachable`            | value | `TaggedError("TemporalUnreachable")<{ address: string; cause: unknown }>` — the service did not answer                                                                                                                                                                                         |
+| `TemporalInfo`                   | type  | `{ readonly taskQueue: string; readonly namespace: string }` — published on `Serving.info` once polling                                                                                                                                                                                        |
+| `WorkflowSource`                 | type  | `{ workflowsPath: string } \| { workflowBundle: WorkflowBundleWithSourceMap }` — where the sandbox's code comes from                                                                                                                                                                           |
 
 `ActivitiesPortOf<C>` / `ActivitiesInstanceOf<C>` / `WorkflowActivitiesPortOf<C,
 K>` are exported as **types only**, and only because declaration emit forces
@@ -340,9 +340,10 @@ activity whose input has drifted is a compile error here rather than at
 startup. There is no name to give and nothing minted by hand: the provider
 carries its port as `provider.port` (`WorkflowActivitiesPortOf<C, K>`).
 
-The options are `{ inject?, unit?, sync }` — this package's own record, not
-di's whole arm set. `unit` names the ports the activities read off
-`context.unit`, and `sync`'s return is typed by that record while the port it
+The options are `{ inject?, unit?, fork?, sync }` — this package's own record,
+not di's whole arm set. `fork` names a unit module of the piece's own — see
+[A piece's own module](#a-piece-s-own-module-fork). `unit` names the ports the
+activities read off `context.unit`, and `sync`'s return is typed by that record while the port it
 lands on keeps the context-free shape `declareActivitiesHandler` takes. The
 narrowing is for consistency with `@btravstack/http-server`'s `OrpcController`
 and `@btravstack/amqp-worker`'s `AmqpHandler` — one arm across the three
@@ -594,6 +595,30 @@ marker, carrying the offending port. The gate rides the **whole options
 record**, not the `unit` property, because a gate on a property is not read
 when the property is absent — and a root that declares a piece's `unit:` and
 then binds no module at all is exactly the case worth catching.
+
+### A piece's own module: `fork`
+
+`TemporalWorkflowActivities(contract, key)({ inject?, unit?, fork?, sync })`
+takes `fork`: the unit module **this piece's** attempts fork, in place of
+`unit.activity`, seeded the same way. The middleware picks the module per
+attempt by the piece's contract key — the workflow, or the contract-global
+activity — so a worker whose activities differ in scope forks a tenant's
+module for the per-tenant pieces and the worker-wide one, or nothing, for the
+rest. Only the piece form takes it; the whole-record arm is one scope by
+construction, which is `unit.activity`.
+
+- **Gated at the piece.** The piece's `unit:` is checked against its own
+  module at its own call, with the same `UNIT DOES NOT PROVIDE` marker, and
+  contributes nothing to the root's gate on `unit.activity`.
+- **Needs travel with the piece.** The module's unmet needs, less the seed,
+  join the piece provider's own, so the root that provides the piece owes them
+  and `start` names any it leaves out. A module reading `Env` is refused, as
+  `unit.activity` is.
+- **Listed on `Runtime.units` under the module's name**, beside `activity`, so
+  the kernel checks it at boot for a port the application already provides,
+  and `overridden(root, providers, { unit: { [module.name]: [...] } })`
+  substitutes inside it. A module several pieces share is one entry; two
+  different modules sharing a name are refused as the runtime is built.
 
 ## The drain, and the deadline
 

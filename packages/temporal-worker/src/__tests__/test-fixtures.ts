@@ -464,6 +464,66 @@ const wholeScopedOf = () => {
   };
 };
 
+export class Listing extends Port("Listing")<{ readonly via: string }> {}
+
+/**
+ * The fan-out #551 names, on the scoped contract: `audit` lists (its input
+ * carries no tenant) and reads the worker-wide module, while `runAudited`'s
+ * `echo` acts for one tenant and names its own `fork`, whose `Tenant` records
+ * every input it was built from — so a tenant derived for the listing
+ * activity would show up in `seen`.
+ */
+const fanOutOf = () => {
+  const seen: string[] = [];
+  const ListingUnit = Module("ListingUnit")({
+    provides: [Provider(Listing)({ inject: {}, value: { via: "worker" } })],
+    exports: [Listing],
+  });
+  const FanOutTenant = Module("FanOutTenant")({
+    provides: [
+      Provider(Tenant)({
+        inject: { input: ScopedInput },
+        sync: ({ input }) => {
+          seen.push(`tenant:${input}`);
+          return { id: input };
+        },
+      }),
+    ],
+    exports: [Tenant],
+  });
+  const perTenant = TemporalWorkflowActivities(
+    scopedContract,
+    "runAudited",
+  )({
+    unit: { tenant: Tenant },
+    fork: FanOutTenant,
+    sync: () => ({
+      echo: ({ context, input }) => {
+        seen.push(`echo:${context.unit.tenant.id}`);
+        return OkAsync(input);
+      },
+    }),
+  });
+  const listing = TemporalWorkflowActivities(
+    scopedContract,
+    "audit",
+  )({
+    unit: { listing: Listing },
+    sync:
+      () =>
+      ({ context, input }) => {
+        seen.push(`audit:${context.unit.listing.via}`);
+        return OkAsync(input);
+      },
+  });
+  return {
+    module: ListingUnit,
+    pieces: [perTenant, listing] as const,
+    activities: TemporalActivities(scopedContract)([perTenant, listing]),
+    seen: (): readonly string[] => seen,
+  };
+};
+
 type App = RunningApp<ConfigInvalid | TemporalUnreachable, TemporalInfo>;
 
 let queueSeq = 0;
@@ -584,6 +644,20 @@ export type TemporalFixtures = {
   readonly scoped: ReturnType<typeof scopedOf>;
   /** The same seed read through the whole-record arm's own `unit:`, no piece involved. */
   readonly wholeScoped: ReturnType<typeof wholeScopedOf>;
+  /** A listing activity on the worker-wide module beside a per-tenant piece forking its own. */
+  readonly fanOut: ReturnType<typeof fanOutOf>;
+  /**
+   * Serves the fan-out; given `stubTenant`, through `overridden` with the
+   * per-tenant piece's own module's `Tenant` replaced, keyed by that module's name.
+   */
+  readonly serveFanOut: (
+    fanOut: ReturnType<typeof fanOutOf>,
+    stubTenant?: string,
+  ) => Promise<{
+    readonly app: App;
+    readonly client: Client;
+    readonly taskQueue: string;
+  }>;
   /**
    * Serves a scoped worker; given `stubTenant`, through `overridden` with the
    * `activity` kind's `Tenant` replaced by one answering that id.
@@ -842,6 +916,37 @@ export const it = test.extend<TemporalFixtures>({
           stubTenant === undefined
             ? {}
             : { unit: { activity: [Provider(Tenant)({ inject: {}, value: { id: stubTenant } })] } },
+        ),
+        { env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace } },
+      );
+      await app.runtimeInfo();
+      return { app, client, taskQueue };
+    });
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  fanOut: async ({}, use) => {
+    await use(fanOutOf());
+  },
+  serveFanOut: async ({ server, client, boot }, use) => {
+    await use(async (fanOut, stubTenant) => {
+      const taskQueue = nextTaskQueue();
+      const app: App = boot(
+        overridden(
+          TemporalModule("FanOut")({
+            contract: withTaskQueue(scopedContract, taskQueue),
+            activities: fanOut.activities,
+            workflows: echoWorkflows,
+            provides: [...fanOut.pieces],
+            unit: { activity: fanOut.module },
+          }),
+          [],
+          stubTenant === undefined
+            ? {}
+            : {
+                unit: {
+                  FanOutTenant: [Provider(Tenant)({ inject: {}, value: { id: stubTenant } })],
+                },
+              },
         ),
         { env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace } },
       );

@@ -1,4 +1,4 @@
-import { mintPiece, type UnitRecordOf } from "@btravstack/core";
+import { mintPiece, type AnyUnitModule, type UnitGate, type UnitRecordOf } from "@btravstack/core";
 import {
   Port,
   type Provider,
@@ -10,8 +10,8 @@ import {
 import type { ContractDefinition } from "@temporal-contract/contract";
 import type { EmptyContext } from "@temporal-contract/worker/activity";
 
-import type { ActivitiesOf } from "./temporal-runtime.js";
-import { withUnit } from "./unit.js";
+import type { ActivitiesOf, UnitNeedsOf } from "./temporal-runtime.js";
+import { withFork, withUnit } from "./unit.js";
 
 /**
  * `ActivitiesOf<C, …>` is a `NoInfer`-wrapped conditional TypeScript refuses to
@@ -98,16 +98,21 @@ export type WorkflowActivitiesPortOf<
   K extends ActivitiesKeyOf<C>,
 > = PortClassOf<`${typeof WORKFLOW_ACTIVITIES_PREFIX}${K}`, ActivitiesRecordOf<C>[K]>;
 
-/** What a minted piece returns. */
+/**
+ * What a minted piece returns. A piece naming its own `fork` owes that
+ * module's unmet needs, and leaves nothing for the root's `unit.activity` to
+ * export — its declared ports were checked against its own module at the call.
+ */
 type MintedActivities<
   C extends ContractDefinition,
   K extends ActivitiesKeyOf<C>,
   N,
   U extends Readonly<Record<string, AnyPort>>,
-> = Provider<InstanceType<WorkflowActivitiesPortOf<C, K>>, never, N> & {
+  M extends AnyUnitModule | undefined,
+> = Provider<InstanceType<WorkflowActivitiesPortOf<C, K>>, never, N | UnitNeedsOf<M>> & {
   readonly port: WorkflowActivitiesPortOf<C, K>;
   /** Phantom: the ports this piece injects, which the root's `unit.activity` must export. */
-  readonly _declared?: InstanceType<U[keyof U]>;
+  readonly _declared?: undefined extends M ? InstanceType<U[keyof U]> : never;
 };
 
 /** The activities `sync` hands back, typed by the record THIS piece declared. */
@@ -137,6 +142,13 @@ type ScopedActivitiesOf<
  * `unit` declares the ports the activities read off `context.unit`, resolved
  * out of the fork the attempt opened; the root's `unit.activity` module must
  * export every one of them.
+ *
+ * `fork` names the unit module THESE activities fork per attempt instead of
+ * the root's `unit.activity` — seeded with the validated input on
+ * `ActivityInput(contract)` the same way — for a worker whose activities do
+ * not all carry the same scope: a listing activity with no tenant in its
+ * input beside a fan-out whose activities each act for one. The ports `unit`
+ * declares are then checked against this module, here.
  */
 export const TemporalWorkflowActivities = <
   C extends ContractDefinition,
@@ -152,19 +164,26 @@ export const TemporalWorkflowActivities = <
   const port = class extends Port(`${WORKFLOW_ACTIVITIES_PREFIX}${key}`)<
     ActivitiesRecordOf<C>[K]
   > {};
-  const mint = mintPiece(port, withUnit);
-
   return <
     const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
     const U extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+    M extends AnyUnitModule | undefined = undefined,
   >(
     options: {
       readonly inject?: D;
       /** The unit-scoped ports these activities read off `context.unit`. */
       readonly unit?: U;
+      /** The unit module these activities fork per attempt, in place of the root's `unit.activity`. */
+      readonly fork?: M;
       readonly sync: (services: {
         readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
       }) => ScopedActivitiesOf<C, K, U>;
-    } & ([keyof D] extends [never] ? unknown : { readonly inject: D }),
-  ): MintedActivities<C, K, InstanceType<D[keyof D]>, U> => mint(options as never) as never;
+    } & ([keyof D] extends [never] ? unknown : { readonly inject: D }) &
+      ([Exclude<M, undefined>] extends [never]
+        ? unknown
+        : UnitGate<Exclude<M, undefined>, InstanceType<U[keyof U]>>),
+  ): MintedActivities<C, K, InstanceType<D[keyof D]>, U, M> =>
+    mintPiece(port, (record, entry) => withFork(withUnit(record, entry), options.fork))(
+      options as never,
+    ) as never;
 };

@@ -1,4 +1,4 @@
-import { withUnitRecord } from "@btravstack/core";
+import { withUnitRecord, type AnyUnitModule } from "@btravstack/core";
 import type { AnyPort } from "@btravstack/di";
 
 type Implementation = (helpers: never, input: never) => unknown;
@@ -17,3 +17,38 @@ export const withUnit = (record: Readonly<Record<string, AnyPort>>, entry: unkno
           ([name, implementation]) => [name, withUnitRecord(record, implementation)],
         ),
       );
+
+// A symbol, so no key of an activities record can collide with it.
+const PIECE_UNIT: unique symbol = Symbol("@btravstack/temporal-worker/piece-unit");
+
+export const withFork = (entry: unknown, fork: AnyUnitModule | undefined): unknown =>
+  fork === undefined ? entry : Object.defineProperty(entry as object, PIECE_UNIT, { value: fork });
+
+export const forkOf = (entry: unknown): AnyUnitModule | undefined =>
+  (entry as { readonly [PIECE_UNIT]?: AnyUnitModule } | undefined)?.[PIECE_UNIT];
+
+export const unitsOf = (
+  activity: AnyUnitModule | undefined,
+  activities: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, AnyUnitModule | undefined>> => {
+  const units = new Map<string, AnyUnitModule | undefined>([["activity", activity]]);
+  for (const [key, entry] of Object.entries(activities)) {
+    const fork = forkOf(entry);
+    if (fork === undefined) continue;
+    if (fork === activity) {
+      // oxlint-disable-next-line unthrown/no-throw -- a wiring bug found as the runtime is built, inside di's construction, which turns the throw into the boot's defect
+      throw new Error(
+        `[temporal-worker] the "${key}" piece forks "${fork.name}", the module \`unit.activity\` already binds — drop the piece's \`fork\`, which adds nothing`,
+      );
+    }
+    const bound = units.get(fork.name);
+    if (bound !== undefined && bound !== fork) {
+      // oxlint-disable-next-line unthrown/no-throw -- a wiring bug found as the runtime is built, inside di's construction, which turns the throw into the boot's defect
+      throw new Error(
+        `[temporal-worker] two unit modules named "${fork.name}" — an override keyed by that name could not tell them apart; rename one`,
+      );
+    }
+    units.set(fork.name, fork);
+  }
+  return Object.fromEntries(units);
+};

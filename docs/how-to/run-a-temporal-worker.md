@@ -350,6 +350,110 @@ Temporal's clock alone decides when `Serving.stop` returns. The package cannot
 do this for you: `drainTimeoutMs` is a `StartOptions` field the runtime never
 sees.
 
+## Activities that differ in scope: a piece's own unit module
+
+`unit.activity` is one module for the whole worker, forked around every
+attempt. That breaks down when the activities do not share a scope — a
+scheduled job fanned out per tenant, say: the parent's activity lists the
+tenants and has no tenant in its input, while each child's activities act for
+one. A `Tenant` derived from the input in the worker-wide module would be
+built for the listing activity too.
+
+A piece names its own module with `fork`. Its attempts fork that module —
+seeded with the validated input on `ActivityInput(contract)`, like
+`unit.activity` — and every other piece keeps the worker-wide one:
+
+<!-- doctest: isolate
+import { Module, Port, Provider } from "@btravstack/di";
+import { ActivityInput, TemporalActivities, TemporalModule, TemporalWorkflowActivities } from "@btravstack/temporal-worker";
+import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
+import { OkAsync } from "unthrown";
+import { z } from "zod";
+class Tenant extends Port("Tenant")<string> {}
+class Tenants extends Port("Tenants")<{ readonly list: () => readonly string[] }> {}
+-->
+
+```ts
+const activityOptions = { startToCloseTimeout: "30 seconds" } as const;
+
+const contract = defineContract({
+  taskQueue: "invoicing",
+  workflows: {
+    invoiceAll: defineWorkflow({
+      input: z.object({}),
+      output: z.number(),
+      startPolicy: "allow-duplicate",
+      activities: {
+        listTenants: defineActivity({
+          input: z.object({}),
+          output: z.array(z.string()),
+          activityOptions,
+        }),
+      },
+    }),
+    invoiceTenant: defineWorkflow({
+      input: z.object({ tenantId: z.string() }),
+      output: z.void(),
+      startPolicy: "allow-duplicate",
+      activities: {
+        issueInvoices: defineActivity({
+          input: z.object({ tenantId: z.string() }),
+          output: z.void(),
+          activityOptions,
+        }),
+      },
+    }),
+  },
+});
+
+const Input = ActivityInput(contract);
+
+// Built per attempt of the pieces that name it, and only those.
+const TenantUnit = Module("TenantUnit")({
+  provides: [
+    Provider(Tenant)({
+      inject: { input: Input },
+      sync: ({ input }) => ("tenantId" in input ? input.tenantId : ""),
+    }),
+  ],
+  exports: [Tenant],
+});
+
+const listing = TemporalWorkflowActivities(
+  contract,
+  "invoiceAll",
+)({
+  inject: { tenants: Tenants },
+  sync: ({ tenants }) => ({ listTenants: () => OkAsync([...tenants.list()]) }),
+});
+
+const perTenant = TemporalWorkflowActivities(
+  contract,
+  "invoiceTenant",
+)({
+  unit: { tenant: Tenant },
+  fork: TenantUnit,
+  sync: () => ({ issueInvoices: ({ context }) => (void context.unit.tenant, OkAsync()) }),
+});
+
+export const InvoicingWorker = TemporalModule("InvoicingWorker")({
+  contract,
+  activities: TemporalActivities(contract)([listing, perTenant]),
+  workflows: { workflowsPath: "./workflows.js" },
+  provides: [
+    listing,
+    perTenant,
+    Provider(Tenants)({ inject: {}, value: { list: () => ["acme", "globex"] } }),
+  ],
+});
+```
+
+The ports `unit` declares are checked against the piece's own module, at the
+piece's call — `UNIT DOES NOT PROVIDE` there, rather than at the root — and
+the module's own unmet needs reach `start` exactly as `unit.activity`'s do. A
+spec overrides inside it by the module's name:
+`overridden(root, [], { unit: { TenantUnit: [stub] } })`.
+
 ## The unit boundary
 
 One unit per activity **attempt**, not per execution: `UnitMeta.id` is

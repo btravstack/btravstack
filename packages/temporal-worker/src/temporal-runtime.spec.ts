@@ -358,6 +358,44 @@ describe("temporal", () => {
     expect(scoped.seen()).toEqual(["echo:stubbed", "audit:stubbed"]);
   });
 
+  it("forks a piece's own module for its attempts and the worker-wide one for the rest", async ({
+    serveFanOut,
+    fanOut,
+  }) => {
+    // GIVEN a listing activity reading the worker-wide module, and a
+    // per-tenant piece naming its own module, which records each tenant it builds
+    const { client, taskQueue } = await serveFanOut(fanOut);
+
+    // WHEN one workflow drives the per-tenant activity, then the listing one
+    await client.workflow.execute("runAudited", {
+      taskQueue,
+      workflowId: `fan-out-${taskQueue}`,
+      args: ["acme"],
+    });
+
+    // THEN a tenant was built once, for the per-tenant attempt alone, and the
+    // listing attempt read the worker-wide module
+    expect(fanOut.seen()).toEqual(["tenant:acme", "echo:acme", "audit:worker"]);
+  });
+
+  it("forks the overridden provider in a piece's own module, keyed by the module's name", async ({
+    serveFanOut,
+    fanOut,
+  }) => {
+    // GIVEN the same worker, with `FanOutTenant`'s `Tenant` overridden
+    const { client, taskQueue } = await serveFanOut(fanOut, "stubbed");
+
+    // WHEN one workflow drives both activities
+    await client.workflow.execute("runAudited", {
+      taskQueue,
+      workflowId: `fan-out-overridden-${taskQueue}`,
+      args: ["acme"],
+    });
+
+    // THEN the per-tenant activity read the override, and the real provider never ran
+    expect(fanOut.seen()).toEqual(["echo:stubbed", "audit:worker"]);
+  });
+
   it("hands the whole-record arm the ports it declared, built from the seeded input", async ({
     serveScoped,
     wholeScoped,
