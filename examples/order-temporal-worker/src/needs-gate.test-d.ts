@@ -10,11 +10,10 @@ import { start, Logger } from "@btravstack/core";
  * refused by `start`'s `Module<X, E, Scope | Env>` parameter, which names the
  * port, and NOT di's `UNSATISFIED DEPENDENCIES` dependency gate.
  *
- * Two distinct negatives, at two distinct levels. `orderActivities`'s own
+ * A root cannot leave the activities out: `TemporalModule` is the only way to
+ * compose the starter, and it requires them. `orderActivities`'s own
  * `deps` are the two pieces' PORTS (`fulfillOrder.port | chargeOrder.port`),
- * so a root that provides nothing at all for the starter's activities port
- * fails with THAT port unmet — `ActivitylessTemporal` below, coarse but
- * genuine. But `TemporalWorkflowActivities(contract, key)`'s own `deps` are
+ * but `TemporalWorkflowActivities(contract, key)`'s own `deps` are
  * the REAL ports named in its `sync` call
  * (`packages/temporal-worker/src/workflow-activities.ts`), not the piece's port —
  * that shielding is the composed provider's, one level up, and does NOT
@@ -35,12 +34,7 @@ import { ShippingService, StockService } from "@btravstack/example-order-applica
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
 import { Storage } from "@btravstack/storage";
-import {
-  TemporalActivities,
-  TemporalModule,
-  TemporalRuntime,
-  temporal,
-} from "@btravstack/temporal-worker";
+import { TemporalActivities, TemporalModule } from "@btravstack/temporal-worker";
 import { OkAsync } from "unthrown";
 
 import { ActivityUnitModule } from "./activity-unit.js";
@@ -73,31 +67,11 @@ const RuntimelessTemporal = Module("RuntimelessTemporal")({
 // @ts-expect-error — NO RUNTIME: the module exports no port declared over RuntimePort.
 const _noRuntime = start(RuntimelessTemporal, options);
 
-// The starter without the activities it depends on at all. Spelled with the
-// `temporal()` primitive rather than `TemporalModule`, since the sugar cannot
-// leave the activities out — that is what it is for.
-//
-// The KERNEL's gate rather than di's declaration one: the port is owed by
-// `temporal()`, an IMPORT, and an import's needs travel published in its type
-// rather than being re-declared here.
-const ActivitylessTemporal = Module("ActivitylessTemporal")({
-  imports: [
-    temporal({
-      contract: orderContract,
-      workflows: { workflowsPath: "./workflows.js" },
-    }),
-  ],
-  exports: [TemporalRuntime],
-});
-
-// @ts-expect-error — UNMET NEED: the module's needs channel carries the activities port.
-const _missingActivities = start(ActivitylessTemporal, options);
-
 // The real `fulfillOrder` piece, composed into a slice that forgets
 // `FulfillmentModule`: the piece's own `deps` (`StockService`,
 // `ShippingService`, `Storage`) are real ports, and none of them is met here.
 // The slice's OWN provider is what reads them, so this one IS di's declaration
-// gate — the distinction the two negatives above draw.
+// gate.
 // @ts-expect-error — UNDECLARED NEEDS: StockService | ShippingService (which
 // `FulfillmentModule` would have provided) and Storage (which the root
 // composes), all three read by the slice's own activities provider.

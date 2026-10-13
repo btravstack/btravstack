@@ -70,7 +70,7 @@ export const procedures = openApi().map((document) =>
 ```
 
 `contract` is the one the root composes its router from,
-`@btravstack/example-order-api-contract`'s. `/rpc` is `http()`'s default
+`@btravstack/example-order-api-contract`'s. `/rpc` is `HttpModule`'s default
 `prefix`, the mount oRPC's answerer is routed under. The path after it is the
 procedure's — the document writes `/orders/place` for `orders.place`, and the
 RPC handler serves it at `/rpc/orders/place` — which is also how a document

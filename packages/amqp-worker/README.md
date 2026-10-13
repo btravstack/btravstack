@@ -183,10 +183,9 @@ workspace reuses. Nothing else here does.
 
 ## Options
 
-`AmqpModule(name)({...})` takes `amqp()`'s options plus `handlers` and the
-module lists (`imports`, `provides`, `exports`, `needs`). The `amqp()`
-primitive does not take `handlers` as an option — it **needs** the handlers
-provider on its own port, which is how the composition root supplies it:
+`AmqpModule(name)({...})` takes the starter's options plus `handlers` and the
+module lists (`imports`, `provides`, `exports`, `needs`). It is the only way to
+compose the starter, which is not exported:
 
 | Option                   | What it is                                                                                                                                          |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |

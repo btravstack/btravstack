@@ -110,9 +110,8 @@ contract's consumer names, so a consumer with no piece is a compile error and
 two pieces claiming one key are di's duplicate-provider defect at build. The
 composition root is `AmqpModule("OrderAmqpWorker")({ contract: orderContract,
 handlers: orderHandlers, imports, provides, exports })` — a `Module(...)` that
-also takes the handlers provider: under the hood it imports the starter
-(`amqp({ contract: orderContract })`, the runtime on
-`AmqpRuntime` and the broker on `AmqpConfig`), provides `orderHandlers`, and
+also takes the handlers provider: under the hood it imports the starter (the
+runtime on `AmqpRuntime` and the broker on `AmqpConfig`), provides `orderHandlers`, and
 exports `AmqpRuntime` for `start` to resolve. Its `imports` also names
 `NotificationsSlice` and `AuditSlice` themselves — not just their handlers —
 because that is the only way di's `flatten` discovers the two pieces at all
@@ -157,10 +156,8 @@ without `observability()` still owe `Logger` at `start`, because
 `AmqpHandler(contract, key)` declares the real ports its `sync` call names.
 Composition shields a piece's deps from the root; being inside a slice shields
 nothing. It pins that `start` finds the
-runtime, and that a composition which forgets to provide `orderHandlers` is
-refused — by di's needs channel now, since the runtime itself has no needs
-left for `start`'s gate to check (spelled with the `amqp()` primitive, since
-the sugar cannot leave the handlers out).
+runtime; a root cannot forget `orderHandlers`, since `AmqpModule` requires
+them.
 
 ## The environment
 

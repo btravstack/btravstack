@@ -161,8 +161,8 @@ one id at the value level and typed per contract at the type level, so a
 provider built for one contract cannot be handed to a module declaring
 another — what a starter is, and why it owns its ports, is
 [Starters](/explanation/starters). It rules out a `router` /
-`activities` / `handlers` option on `http()` / `temporal()` / `amqp()` — the
-primitives simply **need** the port — and a per-application port class for
+`activities` / `handlers` option on the starters themselves — they simply
+**need** the port, and the module sugar provides it — and a per-application port class for
 what the starter consumes. `Config.provider("Name")(schema)` keeps its name
 on purpose: several config slices per application is normal, and the name is
 what `ConfigInvalid` prints.

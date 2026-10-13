@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/amqp-worker"
-description: The AMQP starter — AmqpModule, AmqpHandlers, amqp(), AmqpRuntime, AmqpConfig and AmqpInfo, the unit per delivery, the drain with one deadline, and the three-way ack/nack/dead-letter split it declines to own.
+description: The AMQP starter — AmqpModule, AmqpHandlers, AmqpRuntime, AmqpConfig and AmqpInfo, the unit per delivery, the drain with one deadline, and the three-way ack/nack/dead-letter split it declines to own.
 ---
 
 <!-- doctest: prelude
@@ -46,8 +46,7 @@ import { NotificationsSlice } from "../../slices/notifications/module.js";
 | `AmqpMessage`           | value | `AmqpMessage(contract)` — the port the delivery is **seeded** on, typed by that contract's own messages; a unit module names it in `needs` and injects it                                                                         |
 | `AmqpMessageOf<C>`      | type  | The union of every message `C` declares — what `AmqpMessage(C)` carries                                                                                                                                                           |
 | `AmqpMessagePortOf<C>`  | type  | `AmqpMessage(C)`'s port class, typed for `C`                                                                                                                                                                                      |
-| `amqp`                  | value | `amqp({ contract, … })` — the starter module itself, needing the handlers port for `contract`; what `AmqpModule` imports                                                                                                          |
-| `AmqpOptions`           | type  | `amqp()`'s options                                                                                                                                                                                                                |
+| `AmqpOptions`           | type  | the starter's own options, which `AmqpModule` takes beside `handlers` and the module lists                                                                                                                                        |
 | `AmqpConnectionOptions` | type  | The connection tuning `TypedAmqpWorker.create` accepts — heartbeat, reconnect interval, `findServers`, TLS/socket options; reached by index, since the library does not export it by name                                         |
 | `AmqpRuntime`           | value | `class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}` — the runtime's port                                                                                                                                         |
 | `AmqpConfig`            | value | `class AmqpConfig extends Port("AmqpConfig")<{ url: string; connectTimeoutMs: number }> {}` — the broker, bound from `AMQP_URL` and `AMQP_CONNECT_TIMEOUT_MS`; a publisher sharing the consumer's broker reads it too             |
@@ -78,10 +77,10 @@ reached as `provider.port` when a caller needs it.
 ## `AmqpModule(name)({...})`
 
 Everything `Module(name)({...})` takes, plus the contract, the handlers
-provider and the starter's own options. It appends
-`amqp({ contract, … })` to `imports`, prepends
-`handlers` to `provides`, prepends `AmqpRuntime` to `exports`, and hands the
-augmented tuples to di's own `Module(name)`.
+provider and the starter's own options. It is the only way to compose the
+starter: it imports it, prepends `handlers` to `provides`, prepends
+`AmqpRuntime` to `exports` — `start` reads the runtime off the root's exports —
+and hands the augmented tuples to di's own `Module(name)`.
 
 | Option                   | Required | Default                                                       | What it is                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ------------------------ | -------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -322,34 +321,6 @@ const orderHandlers = AmqpHandlers(orderContract)([
 ]);
 ```
 
-## `amqp(options)`
-
-<!-- doctest: skip — the quoted signature names `AnyAmqpContract` and `UnitNeedsOf`, which this package declares for its own type parameters and does not re-export, so there is nothing a signature check could name them by -->
-
-```ts
-const amqp: <TContract extends AnyAmqpContract, Unit extends AnyUnitModule | undefined = undefined>(
-  options: AmqpOptions<TContract, Unit>,
-) => Module<
-  AmqpRuntime | AmqpConfig,
-  ConfigInvalid,
-  Env | HandlersInstanceOf<TContract> | UnitNeedsOf<Unit>
->;
-```
-
-The primitive `AmqpModule` delegates to. `AmqpOptions<TContract, Unit>` has the
-sugar's fields minus `handlers` / `imports` / `provides` / `exports`: the
-handlers are not an option but the module's need. It provides and exports
-`AmqpRuntime` and `AmqpConfig`, and **needs** `Env` (the kernel discharges
-it), the handlers port typed for `contract` (`HandlersInstanceOf<TContract>`)
-— the runtime provider depends on it through di, so a root that imports the
-starter without providing the handlers, or provides one built for another
-contract, is refused at `start`, whose `module` parameter accepts no need but
-`Env` and `Scope` — and a bound `unit.message` module's own unmet needs
-(`UnitNeedsOf<Unit>`).
-
-The declared type is the same with `url` pinned or not, so a pinned
-composition still carries `ConfigInvalid` in its error channel.
-
 ## `AmqpConfig`, and the environment
 
 Bound through [`Config.provider`](/reference/config); each option pins its
@@ -480,18 +451,6 @@ marker, carrying the offending port. The gate rides the **whole options
 record**, not the `unit` property, because a gate on a property is not read
 when the property is absent — and a root that declares a piece's `unit:` and
 then binds no module at all is exactly the case worth catching.
-
-**`amqp()` is not gated**, structurally: it takes its handlers as a **need**,
-never as a value, so there is nothing to read the declarations off. That is
-the one path where a declared port goes unchecked, and it fails two ways. With
-no module bound the record is empty, so `context.unit.tenant` is `undefined`
-and the next property access throws a `TypeError`; with a module bound that
-does not export `Tenant`, the getter runs and di throws
-`[di] no service registered for port …`, naming the port. Either way the
-handler is invoked from inside one of the library's own combinators, so even a
-synchronous throw is qualified as a **Defect**: the delivery is nacked once and
-goes straight to the dead-letter queue with that error in the report — loud, on
-the first message, never a silent wrong answer.
 
 ## The drain, and the one deadline
 

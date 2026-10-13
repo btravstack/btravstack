@@ -16,6 +16,6 @@ export { HttpHandler } from "./handler.js";
 export type { HttpAnswerer } from "./handler.js";
 export type { Kinds, UnitsOf } from "./unit.js";
 export { HttpConfig } from "./http-config.js";
-export { HttpRuntime, httpServer } from "./http-runtime.js";
+export { HttpRuntime } from "./http-runtime.js";
 export type { HttpInfo, HttpOptions } from "./http-runtime.js";
 export type { Principal, SchemesOf } from "./principal.js";

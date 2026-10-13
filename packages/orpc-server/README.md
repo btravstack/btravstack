@@ -252,12 +252,11 @@ are on the verifying side. Details:
 
 ## Options
 
-`HttpModule(name)({...})` takes `http()`'s options plus `router`, `fragments`,
-`fragmentsPrefix`, `openapi` and the module lists (`imports`, `provides`, `exports`,
-`needs`) — supply `router`, `fragments`, or both; supplying neither is refused
-at the call. Neither `http()` nor `htmx()` takes its answerer's provider as an
-option — each **needs** its own port, which is how the composition root
-supplies it:
+`HttpModule(name)({...})` takes the HTTP starter's options plus `router`,
+`fragments`, `fragmentsPrefix`, `openapi` and the module lists (`imports`,
+`provides`, `exports`, `needs`) — supply `router`, `fragments`, or both;
+supplying neither is refused at the call. It is the only way to compose the
+starter, which is not exported:
 
 | Option             | What it is                                                                                                             |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------- |

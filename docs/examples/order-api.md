@@ -651,10 +651,10 @@ that one client. `exports` takes the provider rather than
 `ordersController.port` — `OrpcController` minted that port, so there is no
 class to spell back off it.
 
-`HttpModule` imports the starter (`http()` — `HttpRuntime`, `HttpConfig` bound
+`HttpModule` imports the starter (`HttpRuntime`, `HttpConfig` bound
 from `PORT` / `HOST`, the router mounted under `/rpc`, needing the router the
-root provides), provides `orderRouter` and exports `HttpRuntime`, and returns
-exactly the module `Module("OrderApi")({...})` would have.
+root provides), provides `orderRouter` and exports `HttpRuntime` — the export
+`start` reads the runtime from, which is why a root is written with the sugar.
 [`observability()`](/reference/observability) brings the `Logger` the
 interactors and the request scope write to — bound from `LOG_LEVEL`, one JSON
 object per line on stdout, every line carrying the unit's trace id — and
@@ -844,7 +844,7 @@ declaration gate, and the unit needs-propagation gate, side by side:
 const _missingRuntime = start(RuntimelessApi, options);
 ```
 
-`RuntimelessApi` is the same list of slices without `http(...)`: `start`'s
+`RuntimelessApi` is the same list of slices as a plain `Module`, without `HttpModule`: `start`'s
 phantom marker becomes the sentence
 `"NO RUNTIME — the module exports no port declared over RuntimePort"`, and the
 module argument fails to match its parameter type — the sentence is the error's
@@ -854,37 +854,9 @@ marks `orders`, so a graph carrying the router without them has an
 unmet need too, and an arm that could fail either way pins neither gate. That
 spread is exactly what `HttpModule` does for a root that uses the sugar.
 
-<!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the missing-router arm -->
-
-```ts
-const RouterlessApi = Module("RouterlessApi")({
-  imports: [
-    OrdersSlice,
-    CustomersSlice,
-    observability(),
-    cache({ adapter: memoryCache() }),
-    http(),
-  ],
-  exports: [HttpRuntime],
-});
-
-// @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides "OrpcRouter".
-const _missingRouter = start(RouterlessApi, options);
-```
-
-Everything but the router is supplied, so the router is the one fault this
-pins. `HttpRuntime` is still exported because this is a plain `Module`: `start`
-finds the runtime among the root's exports, and only the starter sugars
-(`HttpModule` and its siblings) add it for you. Without it the diagnostic would
-not change — `start` checks unmet needs first — but the root would be faulty
-twice, and a test that could fail either way pins neither.
-
-This one is the **`Needs` channel**, not di's declaration gate: the port is
-owed by `http()`, an **import**, and an import's needs travel without the
-importer re-declaring them. `start` refuses it and the diagnostic ends on the
-port's id:
-`{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "OrpcRouter"; }`. There is no `UNSATISFIED RUNTIME PORTS` arm, because
-the shipped runtime resolves nothing.
+There is no missing-router arm: `HttpModule` is the only way to compose the
+starter, and it requires a router, so that root does not compile at the
+`HttpModule` call.
 
 <!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the unit needs-propagation arm -->
 

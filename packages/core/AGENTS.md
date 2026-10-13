@@ -91,8 +91,9 @@ PORTS`, a correct diagnosis of the second mistake that reads as a wrong one
   `start`'s marker above for why that phantom is gone). The structural form
   survives the revert because it is the sturdier one regardless, not because
   `Runtime` is back to two parameters. Every
-  runtime package ships its port and a starter — `HttpRuntime`/`http()`,
-  `TemporalRuntime`/`temporal()`, `AmqpRuntime`/`amqp()` — and none of them
+  runtime package ships its port and a starter behind its module sugar —
+  `HttpRuntime`/`HttpModule`, `TemporalRuntime`/`TemporalModule`,
+  `AmqpRuntime`/`AmqpModule` — and none of them
   has a `resolves` any more: each takes the application's router / activities /
   handlers as a **port its runtime provider depends on** through di — the
   starter's own fixed port (`OrpcRouterPort`, `TemporalActivitiesPort`,

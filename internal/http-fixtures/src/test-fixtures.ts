@@ -84,11 +84,10 @@ import {
 import { headlessLogin } from "@btravstack/internal-test-infra/ory-login";
 import {
   defineHttp,
-  http,
   HttpModule,
   type OrpcHttpOptions as HttpOptions,
 } from "@btravstack/orpc-server";
-import type { Implementation } from "@btravstack/orpc-server/internal";
+import { http, type Implementation } from "@btravstack/orpc-server/internal";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import { localIssuer, type LocalIssuer } from "@btravstack/testing/jwt";
 import { createORPCClient } from "@orpc/client";

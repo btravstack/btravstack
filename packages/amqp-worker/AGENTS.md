@@ -73,6 +73,11 @@ page, never this file.
   from `handler.ts` as a value, so the two files reference each other in the
   type graph with **no runtime cycle**.
 
+- **`amqp()` is not exported; `AmqpModule` is the only root.** `start` reads
+  the runtime off a root's exports, so a plain `Module` over the bare starter
+  had to export `AmqpRuntime` by hand — a technical export the sugar writes
+  itself — and the sugar requires `handlers`, so no root can omit them.
+
 - **`unit?: { message?: Unit }`**, on `AmqpModule` and `amqp()` — the module
   that `messageUnits`, the worker's dispatch middleware, forks around every delivery, **seeded with the
   validated message on `AmqpMessage(contract)`**.

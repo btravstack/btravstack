@@ -14,14 +14,9 @@ is the index of the workspaces themselves.
   `needs-gate.test-d.ts` files pin
   **`start`'s** gate (`order-api`, `order-temporal-worker`,
   `order-amqp-worker` — its `NO RUNTIME` arm; `order-api`'s also pins the
-  `unit` halves) and
-  the **unmet need** on the starter's port (a composition importing `http()` /
-  `temporal({ contract, workflows })` / `amqp({ contract })` without providing
-  the router / activities / handlers carries the starter's port in `Needs`, and
-  `start`'s `module` parameter takes only `Scope | Env`, so it fails to assign —
-  the starter is an IMPORT, and an import's needs travel without the importer
-  re-declaring them, so di's declaration gate has nothing to say and this stays
-  the kernel's); the fourth, `order-application`'s, pins **di's**
+  `unit` halves). A root without its router / activities / handlers has no
+  arm: the bare starters are not exported, and `HttpModule` / `TemporalModule`
+  / `AmqpModule` require them at the call. The fourth, `order-application`'s, pins **di's**
   `UNSATISFIED DEPENDENCIES` gate on `Module.scoped` — `DependencyGate`, a
   marker on the `module` parameter since issue #93, whose message ends on the
   missing ports:

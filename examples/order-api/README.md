@@ -188,12 +188,9 @@ rather than a client of its own.
 `exports` takes the provider itself, not `ordersController.port`:
 `api.OrpcController` minted that port, so there is no class to spell back off it.
 
-`HttpModule` is sugar over the same primitives: it imports the starter
-(`http()` — the whole surface), provides the
-router and exports `HttpRuntime`, and returns exactly the di module
-`Module("OrderApi")({ imports: [OrdersSlice, CustomersSlice, observability(),
-http()], provides: [orderRouter], exports: [HttpRuntime] })` would
-have. `observability()` is the starter that provides the
+`HttpModule` imports the starter, provides the router and exports
+`HttpRuntime` — the export `start` reads the runtime from, which is why a
+deployment root is always written with the sugar. `observability()` is the starter that provides the
 `Logger` the use cases and the request scope write to — `LOG_LEVEL` bound from
 the environment, one JSON object per line on stdout, and every line stamped
 with the unit the runtime opened around it. Nothing is exported for the unit
@@ -353,7 +350,7 @@ it("lets an in-flight call finish while draining", async ({ serve, clientFor, ga
 ```
 
 `serve` boots whatever composition it is handed with that `env` — the real
-`OrderApi` included, since `http()` reads its
+`OrderApi` included, since the starter reads its
 port from the environment the kernel provides — the unit kinds are forked by
 the answerers themselves, per `OrderApi`'s own `unit` option, not by anything
 `serve` supplies — and `clientFor` reads the port
@@ -377,7 +374,7 @@ nothing to write the two events that matter most with. This is the one example
 that wires it, so the pattern is visible once; the other two `main.ts` files
 stay a single line.
 
-Configuration is read **inside the graph**: `http()` binds `PORT` (default
+Configuration is read **inside the graph**: the starter binds `PORT` (default
 `3000`) and `HOST` (default `0.0.0.0`) from the `Env` port the kernel provides,
 `observability()` binds `LOG_LEVEL` (default `info`),
 `OrderPersistenceModule` binds `DATABASE_URL` (required — a migration aimed at

@@ -75,9 +75,7 @@ export const App = HttpModule("App")({
 takes `cors`, `compression`, and `plugins`. `HttpModule`'s own `cors` and
 `compression` apply to both answerers unless the record pins its own;
 `plugins` stay per answerer. Set `bodyLimit` and `csrf` on `HttpModule` for
-both answerers. A root built on `http()` instead of `HttpModule` adds
-`openApiRoutes()` from `@btravstack/orpc-server/openapi` to its `provides`,
-with the same options. Deployed
+both answerers. Deployed
 `HTTP_CORS_ORIGIN`, `HTTP_BODY_LIMIT`, and `HTTP_COMPRESSION` values are read by
 both. The listener's security headers,
 cookie-based CSRF check, request unit, and drain apply to both answerers.

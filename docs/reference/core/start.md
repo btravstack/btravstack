@@ -129,12 +129,12 @@ error TS2345: Argument of type 'Module<Greeter, never, never>' is not assignable
   Type 'Module<Greeter, never, never>' is not assignable to type '"NO RUNTIME — the module exports no port declared over RuntimePort"'.
 ```
 
-And the unmet-need arm, on a root that imports `http()` and forgets
-`provides: [router]` — the mistake a hand-rolled root makes most:
+And the unmet-need arm, on an `HttpModule` root whose router injects `Logger`
+and which composes no `observability()`:
 
 ```text
-error TS2345: Argument of type 'Module<any, ConfigInvalid, Env | OrpcRouterPort>' is not assignable to parameter of type 'Module<any, ConfigInvalid, Env | OrpcRouterPort> & { readonly "UNSATISFIED DEPENDENCIES — nothing provides": "OrpcRouter"; }'.
-  Property '"UNSATISFIED DEPENDENCIES — nothing provides"' is missing in type 'Module<any, ConfigInvalid, Env | OrpcRouterPort>' but required in type '{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "OrpcRouter"; }'.
+error TS2345: Argument of type 'Module<HttpHandler | HttpRuntime, ConfigInvalid, Logger | HttpServerEnv>' is not assignable to parameter of type 'Module<HttpHandler | HttpRuntime, ConfigInvalid, Logger | HttpServerEnv> & { readonly "UNSATISFIED DEPENDENCIES — nothing provides": "Logger"; }'.
+  Property '"UNSATISFIED DEPENDENCIES — nothing provides"' is missing in type 'Module<HttpHandler | HttpRuntime, ConfigInvalid, Logger | HttpServerEnv>' but required in type '{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "Logger"; }'.
 ```
 
 The port is named by its **id**, not by its type: `AmqpHandlers` as a type is

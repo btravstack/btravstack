@@ -32,11 +32,11 @@ export type { AnyUnitModule, UnitsNeedsOf } from "./unit.js";
 export type HttpInfo = { readonly port: number };
 
 /**
- * `http()`'s options: `orpc()`'s own — where the router is mounted, and the
- * transport policy — plus what a caller pins on the socket instead of reading
- * it from the environment. Declared as one intersection so each option is
- * spelled ONCE across the three surfaces that take it (`orpc()`, `http()`,
- * `HttpModule`), which is what the six-concerns claim drifted against when
+ * The HTTP transport's options: `orpc()`'s own — where the router is mounted,
+ * and the transport policy — plus what a caller pins on the socket instead of
+ * reading it from the environment. Declared as one intersection so each option
+ * is spelled ONCE across the surfaces that take it (`orpc()`, `HttpModule`,
+ * `GraphqlModule`), which is what the six-concerns claim drifted against when
  * they were three parallel records.
  *
  * The router itself is not an option — it is the provider the composition root
@@ -110,8 +110,8 @@ const DEFAULT_SECURITY_HEADERS: Readonly<Record<string, string>> = {
 };
 
 /**
- * The runtime's port: what `http()` provides, and what the module `start` boots
- * must export.
+ * The runtime's port: what the starter provides, and what `HttpModule` and
+ * `GraphqlModule` export for `start` to boot.
  *
  * It **resolves `HttpHandler`**, which is why a root exporting it is now part of
  * `start`'s gate: the answerers are contributed by sibling modules — oRPC here,

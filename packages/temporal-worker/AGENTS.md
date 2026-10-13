@@ -63,6 +63,12 @@ page, never this file.
   wraps a function directly and maps a record's values. Both are covered by
   the `scoped` fixture's pair of pieces, driven by one workflow.
 
+- **`temporal()` is not exported; `TemporalModule` is the only root.**
+  `start` reads the runtime off a root's exports, so a plain `Module` over the
+  bare starter had to export `TemporalRuntime` by hand — a technical export the
+  sugar writes itself — and the sugar requires `activities`, so no root can
+  omit them.
+
 - **`unit?: { activity?: Unit }`**, on `TemporalModule` and `temporal()` —
   the module that `activityUnits`, the worker's dispatch middleware, forks around every activity attempt, **seeded
   with the validated input on `ActivityInput(contract)`**.

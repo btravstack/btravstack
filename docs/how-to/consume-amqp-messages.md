@@ -204,7 +204,7 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
 ```
 
 `AmqpModule` is `Module(name)({...})` plus `contract` and `handlers`: it
-imports `amqp({ contract })`, provides the handlers and exports
+imports the AMQP starter for `contract`, provides the handlers and exports
 `AmqpRuntime`. [`observability()`](/reference/observability) is the other
 starter in that list — the `Logger` the handlers write to, bound
 from `LOG_LEVEL`, JSON per line on stdout, every line carrying the delivery's
@@ -228,9 +228,8 @@ await runMain(OrderAmqpWorker);
 
 ## Configuration and options
 
-`amqp()` provides `AmqpRuntime` and `AmqpConfig` (`{ url, connectTimeoutMs }`),
-and needs the
-handlers port. Options on `AmqpModule` and `amqp()` alike:
+The starter provides `AmqpRuntime` and `AmqpConfig` (`{ url, connectTimeoutMs }`),
+and needs the handlers port `AmqpModule` provides. Options on `AmqpModule`:
 
 | Variable / option        | Default                                | Notes                                                                                                                      |
 | ------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |

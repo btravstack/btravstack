@@ -32,7 +32,7 @@ have written `spring-boot-starter-web`, `@ConfigurationProperties` and a
 | `@MockBean` in a slice test                                                                                                                                                                                                                               | `overridden(root, [provider])` — the double typed against the port                             |
 
 Two of those are closer than they look. A **starter** here is the same bargain:
-compose `http()` and you get a runtime, a config port bound from `PORT`/`HOST`,
+compose `HttpModule` and you get a runtime, a config port bound from `PORT`/`HOST`,
 and a drain that stops accepting before it stops running — none of which you
 wrote. And `Config.object` is `@ConfigurationProperties` with the validation
 non-optional: the **validated object is the injected value**, so a field that
@@ -63,7 +63,7 @@ resolution. Configuration is **the environment**, read through `Config`, and
 what varies per deployment is a variable — that is
 [twelve-factor](https://12factor.net/config) taken literally rather than
 partially. A value that is a _decision_ rather than a deployment's is pinned in
-code at the composition root (`http({ cors: false })`), where it is visible and
+code at the composition root (`HttpModule`'s `cors: false`), where it is visible and
 type-checked, instead of living in a YAML file that ships in the image.
 
 What that costs: no `@Value("${...}")` sprinkled through the code, no

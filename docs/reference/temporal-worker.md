@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/temporal-worker"
-description: The Temporal worker starter — TemporalModule, TemporalActivities, TemporalWorkflowActivities, temporal(), its three ports, TemporalUnreachable, WorkflowSource, the unit per activity attempt, and the drain raced against the kernel's deadline.
+description: The Temporal worker starter — TemporalModule, TemporalActivities, TemporalWorkflowActivities, its three ports, TemporalUnreachable, WorkflowSource, the unit per activity attempt, and the drain raced against the kernel's deadline.
 ---
 
 <!-- doctest: prelude
@@ -67,8 +67,7 @@ import { currentUnit } from "@btravstack/core";
 | `ActivityInput`                  | value | `ActivityInput(contract)` — the port the validated invocation is **seeded** on, typed by that contract's own activity inputs; a unit module names it in `needs` and injects it                                                                                                          |
 | `ActivityInputOf<C>`             | type  | The union of every activity input `C` declares, workflow-local and contract-global alike — what `ActivityInput(C)` carries                                                                                                                                                              |
 | `ActivityInputPortOf<C>`         | type  | `ActivityInput(C)`'s port class, typed for `C`                                                                                                                                                                                                                                          |
-| `temporal`                       | value | `temporal({ contract, workflows, … })` — the starter module itself, needing the activities port for `contract`; what `TemporalModule` imports                                                                                                                                           |
-| `TemporalOptions`                | type  | `temporal()`'s options                                                                                                                                                                                                                                                                  |
+| `TemporalOptions`                | type  | the starter's own options, which `TemporalModule` takes beside `activities` and the module lists                                                                                                                                                                                        |
 | `TemporalRuntime`                | value | `class TemporalRuntime extends RuntimePort<Runtime<never, TemporalInfo>> {}` — the runtime's port                                                                                                                                                                                       |
 | `TemporalConfig`                 | value | `class TemporalConfig extends Port("TemporalConfig")<{ address: string; namespace: string; gracePeriodMs: number; forceAfterMs: number }> {}` — where the service is and what its shutdown budget is, bound from the environment                                                        |
 | `TemporalConnection`             | value | `class TemporalConnection extends Port("TemporalConnection")<NativeConnection> {}` — the connection, a resource of the graph                                                                                                                                                            |
@@ -100,10 +99,10 @@ name, and the string prefix a piece's port id carries.
 ## `TemporalModule(name)({...})`
 
 Everything `Module(name)({...})` takes, plus the contract, the activities
-provider and the workflow source. It appends
-`temporal({ contract, workflows, … })` to
-`imports`, prepends `activities` to `provides`, prepends `TemporalRuntime` to
-`exports`, and hands the augmented tuples to di's own `Module(name)`.
+provider and the workflow source. It is the only way to compose the starter:
+it imports it, prepends `activities` to `provides`, prepends `TemporalRuntime`
+to `exports` — `start` reads the runtime off the root's exports — and hands
+the augmented tuples to di's own `Module(name)`.
 
 | Option        | Required | Default                              | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ------------- | -------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -411,35 +410,6 @@ const orderActivities = TemporalActivities(orderContract)([
 ]);
 ```
 
-## `temporal(options)`
-
-<!-- doctest: skip — the quoted signature names `UnitNeedsOf`, which this package declares for its own `Unit` type parameter and does not re-export, so there is nothing a signature check could name them by -->
-
-```ts
-const temporal: <C extends ContractDefinition, Unit extends AnyUnitModule | undefined = undefined>(
-  options: TemporalOptions<C, Unit>,
-) => Module<
-  TemporalRuntime | TemporalConfig | TemporalConnection,
-  ConfigInvalid | TemporalUnreachable,
-  Env | Scope | ActivitiesInstanceOf<C> | UnitNeedsOf<Unit>
->;
-```
-
-The primitive `TemporalModule` delegates to. `TemporalOptions<C, Unit>` has the
-same fields as the sugar minus `activities` / `imports` / `provides` /
-`exports`: the activities are not an option but the module's need. It
-provides and exports all three ports, and **needs** `Env` (the kernel
-discharges it), `Scope` (the connection is a resource; `start` discharges it
-too), the activities port typed for
-`contract` (`ActivitiesInstanceOf<C>`)
-— the runtime provider depends on it through di, so a root that does not
-provide it, or provides one built for another contract, is refused at
-`start` — and a bound `unit.activity` module's own unmet needs
-(`UnitNeedsOf<Unit>`).
-
-The declared type is the same pinned or not: `Env`, `ConfigInvalid` and
-`TemporalUnreachable` stay in the signature whatever is pinned.
-
 ## `TemporalConfig`, and the environment
 
 Bound through [`Config.provider`](/reference/config); every option pins its
@@ -624,20 +594,6 @@ marker, carrying the offending port. The gate rides the **whole options
 record**, not the `unit` property, because a gate on a property is not read
 when the property is absent — and a root that declares a piece's `unit:` and
 then binds no module at all is exactly the case worth catching.
-
-**`temporal()` is not gated**, structurally: it takes its activities as a
-**need**, never as a value, so there is nothing to read the declarations off.
-That is the one path where a declared port goes unchecked, and it fails two
-ways. With no module bound the record is empty, so `context.unit.tenant` is
-`undefined` and the next property access throws a `TypeError`; with a module
-bound that does not export `Tenant`, the getter runs and di throws
-`[di] no service registered for port …`, naming the port. Either way it is a
-throw out of the activity body — and a synchronous one never reaches
-`declareActivitiesHandler`'s `defect` arm at all, since the implementation is
-called inside the wrapped activity's own `async` function. The outcome is the
-arm's own: Temporal fails the attempt with the raw error rather than a modeled
-`ApplicationFailure`, and the contract's retry policy decides whether it comes
-back. Loud, on the first attempt, never a silent wrong answer.
 
 ## The drain, and the deadline
 

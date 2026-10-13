@@ -12,14 +12,10 @@ import {
 } from "@btravstack/di";
 import type { HtmxFragmentsPort } from "@btravstack/htmx-server/internal";
 import { htmx } from "@btravstack/htmx-server/internal";
-import {
-  httpServer,
-  type HttpHandler,
-  type HttpRuntime,
-  type HttpConfig,
-} from "@btravstack/http-server";
+import { type HttpHandler, type HttpRuntime, type HttpConfig } from "@btravstack/http-server";
 import {
   applicationExports,
+  httpServer,
   type ApplicationExports,
   type CookieSchemes,
 } from "@btravstack/http-server/internal";

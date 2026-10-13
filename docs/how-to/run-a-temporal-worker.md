@@ -226,7 +226,7 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
 ```
 
 `TemporalModule` is `Module(name)({...})` plus the starter's fields: it
-imports `temporal({ contract, workflows, … })`, provides the activities and
+imports the Temporal starter for `contract` and `workflows`, provides the activities and
 exports `TemporalRuntime`. [`observability()`](/reference/observability) is the
 other starter in the list — the `Logger` the use case, the fulfillment
 services and the billing stand-in write to, bound from `LOG_LEVEL`, JSON per
@@ -257,7 +257,7 @@ await runMain(OrderTemporalWorker);
 
 ## Configuration and options
 
-`temporal()` provides three ports: `TemporalRuntime`, `TemporalConfig`
+The starter provides three ports: `TemporalRuntime`, `TemporalConfig`
 (`{ address, namespace }`) and `TemporalConnection` — the `NativeConnection`
 as a **resource**, opened with the scope and closed on every exit path,
 startup failure included.

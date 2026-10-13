@@ -14,7 +14,7 @@ import { oidc, type OidcUnreachable } from "@btravstack/http-server/oidc";
 import { SessionCodec, sessionAuthenticator, sessionCodec } from "@btravstack/http-server/session";
 import { defineHttp } from "@btravstack/orpc-server";
 import { HttpModule } from "@btravstack/orpc-server";
-import { http } from "@btravstack/orpc-server";
+import { http } from "@btravstack/orpc-server/internal";
 import { oc } from "@orpc/contract";
 import type { IDToken } from "openid-client";
 import { OkAsync } from "unthrown";

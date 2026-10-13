@@ -386,7 +386,7 @@ The two rules this half exists to state, before the detail:
   `defineHttp` turns that into a `CookieSchemes` member beside the scheme's
   own provider, and the HTTP listener refuses a cross-site state change
   carrying cookies with a bodyless `403` before any answerer sees it. Nothing
-  is written at the composition root, and `csrf: false` on `http()` /
+  is written at the composition root, and `csrf: false` on
   `HttpModule` is what turns it back off — see `csrf` in
   `packages/http-server/AGENTS.md`. The other two shipped schemes read a
   header, and a caller presenting a header credential is not a CSRF target, so

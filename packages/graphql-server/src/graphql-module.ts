@@ -10,7 +10,6 @@ import {
   type Provider,
 } from "@btravstack/di";
 import {
-  httpServer,
   type HttpConfig,
   type HttpHandler,
   type HttpOptions,
@@ -18,6 +17,7 @@ import {
 } from "@btravstack/http-server";
 import {
   applicationExports,
+  httpServer,
   type ApplicationExports,
   type AnyUnitModule,
   type CookieSchemes,

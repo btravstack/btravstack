@@ -801,7 +801,7 @@ since malformed credentials cannot be reliably separated from the URL.
 
 CORS, body limits, compression, security headers, authentication and CSRF are
 **handler configuration, not a middleware slot** — thesis #3's refusal, narrowed
-to what it was always about, and named options on `http()` / `HttpModule` for
+to what it was always about, and named options on `HttpModule` for
 all six. CSRF was the stated exception while nothing here read a cookie; a
 session scheme does, so `csrf` is an option like the rest, **on by default
 exactly when a composed scheme reads one** — a set port each cookie-reading

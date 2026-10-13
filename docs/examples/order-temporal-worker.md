@@ -534,22 +534,10 @@ shutdown to escalate to. See
 
 ## The gate
 
-`needs-gate.test-d.ts` pins `NO RUNTIME — …` (the graph without the starter
-fails to match the sentence intersected onto `start`'s `module` parameter) and
-the unmet-need refusal spelled with the `temporal()` primitive, since the sugar
-cannot leave the activities out at all:
-
-<!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the unmet-need arm -->
-
-```ts
-// @ts-expect-error — UNMET NEED: the module's needs channel carries the activities port, which nothing provides.
-const _missingActivities = start(ActivitylessTemporal, options);
-```
-
-That second one is the `Needs` channel: the activities port is owed by the
-starter, an import, and `start` refuses it with the diagnostic ending on
-`{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "TemporalActivities"; }` — the port's id rather than its type, which
-would be the contract expanded.
+`needs-gate.test-d.ts` pins `NO RUNTIME — …`: the graph without the starter
+fails to match the sentence intersected onto `start`'s `module` parameter.
+There is no missing-activities arm: `TemporalModule` is the only way to
+compose the starter, and it requires `activities`.
 
 Dropping one slice's import while still providing the composed activities
 fails the same way: `TemporalActivities` carries each piece's port as one

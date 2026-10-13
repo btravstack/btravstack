@@ -79,24 +79,25 @@ the `Module`/`HttpModule` call, and `start`'s below it. Adding the port to
 
 ## An unmet dependency
 
-A root that imports `http()` and forgets to provide the router:
+A root whose router injects `Logger`, composed without `observability()`:
 
 <!-- doctest: skip — a deliberately broken composition; the gate that refuses it is pinned by packages/core/src/start.test-d.ts -->
 
 ```ts
-const OrderApi = Module("OrderApi")({
-  imports: [http()],
-  exports: [HttpHandler],
+const router = api.OrpcRouter(contract)({
+  inject: { logger: Logger },
+  sync: ({ logger }) => ({ ping: () => (logger.info("ping"), OkAsync("pong")) }),
 });
 
-await runMain(OrderApi);
+await runMain(HttpModule("App")({ router }));
 ```
 
 ```text
-error TS2345: Argument of type 'Module<HttpHandler, ConfigInvalid, Env | OrpcRouterPort>' is not assignable to parameter of type 'Module<HttpHandler, ConfigInvalid, Env | OrpcRouterPort> & { readonly "UNSATISFIED DEPENDENCIES — nothing provides": "OrpcRouter" }'.
+error TS2345: Argument of type 'Module<HttpHandler | HttpRuntime, ConfigInvalid, Logger | HttpServerEnv>' is not assignable to parameter of type 'Module<HttpHandler | HttpRuntime, ConfigInvalid, Logger | HttpServerEnv> & { readonly "UNSATISFIED DEPENDENCIES — nothing provides": "Logger"; }'.
+  Property '"UNSATISFIED DEPENDENCIES — nothing provides"' is missing in type 'Module<HttpHandler | HttpRuntime, ConfigInvalid, Logger | HttpServerEnv>' but required in type '{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "Logger"; }'.
 ```
 
-`"OrpcRouter"` is the port's **id** — what someone wrote in `Port("…")` — not
+`"Logger"` is the port's **id** — what someone wrote in `Port("…")` — not
 its type. That is deliberate: a starter's own generic port is its whole
 contract as a type, hundreds of characters that truncate before a name is
 reached. Several unmet ports print as a union: `"Logger" | "Mailer"`.

@@ -5,7 +5,6 @@ export {
   TemporalConnection,
   TemporalRuntime,
   TemporalUnreachable,
-  temporal,
 } from "./temporal-runtime.js";
 export type {
   ActivitiesInstanceOf,

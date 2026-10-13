@@ -90,8 +90,7 @@ export const awaitExit = async <E>(
  *
  * @example
  * ```ts
- * // `OrderApi` imports the application next to `http()` and exports
- * // `HttpRuntime`. `PORT`, `HOST` and `PROBE_PORT` are read inside the graph.
+ * // `OrderApi` is an `HttpModule`, which exports `HttpRuntime`. `PORT`, `HOST` and `PROBE_PORT` are read inside the graph.
  * await runMain(OrderApi);
  * ```
  */

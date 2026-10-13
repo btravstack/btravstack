@@ -32,8 +32,7 @@ options stay on `graphql()`.
 
 Pass `units` with `unit` to check each injected port against the module the
 selected request kind actually forks. `GraphqlModule` binds that record to
-the runtime automatically; a manually composed root passes the same `units`
-record to `httpServer({ unit: units })`.
+the runtime automatically.
 Yoga plugins and CORS policy are explicit
 options; the wildcard CORS default and Yoga console logging are disabled, and
 a masked defect is reported to `Observers` instead. GraphiQL,
