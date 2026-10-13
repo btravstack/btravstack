@@ -652,9 +652,31 @@ fine, which is worse than the advice.
 `@temporal-contract/client` as an **optional** peer that only the
 `@btravstack/temporal-worker/schedule` subpath reads — a consumer that never
 imports `ensureSchedule` installs nothing for it (see
-[Run something on a schedule](/how-to/run-something-on-a-schedule)). Node
+[Run something on a schedule](/how-to/run-something-on-a-schedule)).
+`vitest` and `testcontainers` are optional peers of the `/testing` subpath
+alone. Node
 `>=22.22`; the package exports ESM only because its required contract peer has
 import-only subpaths.
+
+## `@btravstack/temporal-worker/testing`
+
+What a consumer's own specs run a worker against —
+[Test a Temporal worker](/how-to/test-a-temporal-worker) is the recipe.
+`vitest` and `testcontainers` are **optional** peers only this subpath reads,
+and both are imported when a setup or fixture runs, not when the entry loads.
+
+| Export                  | Kind  | What it is                                                                                                                                                                                                     |
+| ----------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `temporalServer`        | value | `temporalServer({ startupTimeoutMs? })` — a Vitest `globalSetup` starting one PostgreSQL and one `temporalio/auto-setup:1.29.1` container for the run, providing their address, stopping both at the run's end |
+| default export          | value | `temporalServer()`, so `globalSetup: ["@btravstack/temporal-worker/testing"]` is the whole configuration                                                                                                       |
+| `TemporalServerOptions` | type  | `{ readonly startupTimeoutMs?: number }` — each container's health-check start period, retry count and `testcontainers` wait, default `300_000`                                                                |
+| `temporalEnvironment`   | value | `temporalEnvironment(prefix = "spec")` — a file-scoped `test.extend` fixture registering `<prefix>-<uuid>` and answering a `TemporalEnvironment` once every Temporal service can use it                        |
+| `TemporalEnvironment`   | type  | `{ readonly TEMPORAL_ADDRESS: string; readonly TEMPORAL_NAMESPACE: string }` — spread into `start`'s or `boot`'s `env`                                                                                         |
+
+A spec file is isolated by its namespace: the starter reads its task queue off
+the contract, so two files booting one worker poll one queue. A setup that
+fails part-way stops whatever it had already started and rejects, which fails
+the run.
 
 ## Deliberately not included
 
@@ -672,8 +694,8 @@ import-only subpaths.
 The package's own suite needs a **Docker daemon**: `temporal-runtime.spec.ts`
 and `workflow-activities.spec.ts` boot a real `@temporalio/worker` Worker
 against a real Temporal server — one `temporalio/auto-setup` container shared
-by the whole repository, with a **namespace per spec file** for isolation
-(see [Order Temporal worker](/examples/order-temporal-worker) for the same
+by the whole repository, with a **namespace per spec file** minted by this
+package's own `temporalEnvironment` fixture (see [Order Temporal worker](/examples/order-temporal-worker) for the same
 choice and its measured cost). It replaced a time-skipping test server started
 per vitest worker; neither suite ever advanced a clock, so the skippable clock
 bought nothing a private namespace does not. `temporal-runtime.spec.ts`
