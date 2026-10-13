@@ -602,14 +602,16 @@ Prechecks require the table and roles to exist and the function name to have no 
 Applicable restrictive SELECT/ALL policies must exclude the function owner:
 a permissive owner policy cannot override them, so installation refuses them
 rather than silently producing an incomplete tenant list. Postchecks verify
-the function's body, return column, owner, language, settings, policy and
+the function's body, return column, owner, language, NULL-input execution, settings, policy and
 execution grants. Broader default function grants fail that check and roll
 back the migration; adjust those defaults before installing. An existing
 object with the same name and a different definition is refused, never
 replaced. Do not subsequently grant the caller the owner role or schema CREATE.
 
-The migration precheck requires `pg_has_role(CURRENT_USER, owner, 'SET')`: provision
-owner membership with SET permission for an ordinary migrator before deployment.
+The migration precheck verifies the migrator can assume the function owner:
+`pg_has_role` uses `SET` on PostgreSQL 16 and later, and `MEMBER` on earlier
+versions, where membership itself permits SET ROLE. Provision that membership
+for an ordinary migrator before deployment.
 
 Each call returns at most 100 IDs in bytewise (`C`) order. Pass the last ID as
 `after` to fetch the next page, and stop on an empty page. Process each page

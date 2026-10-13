@@ -36,35 +36,43 @@ describe("tenant listing under forced row security", () => {
     });
   });
 
-  it("requires SET permission for an ordinary migration role", async ({ listing }) => {
-    // GIVEN an ordinary role without membership in the function owner
-    const { admin, schema, owner, outsider } = listing;
-    const declaration = tenantListing({
-      schema,
-      table: "records",
-      tenantColumn: "organization",
-      name: "another_listing",
-      owner,
-      role: "orders_app",
-    }).getOrThrow();
-    const sql = (text: string) => admin.raw.sql(Object.assign([text], { raw: [text] }));
-    const check = declaration.migration.precheck[0]!;
-    const checkAsMigrator = () =>
-      admin.transaction(async (tx) => {
-        await tx.execute(sql(`SET LOCAL ROLE "${outsider}"`).affectedCount().build());
-        return tx.query(sql(check.sql).returnsRow({ result: "pg/bool@1" }).build());
-      });
+  it.for([150000, 160000])(
+    "requires owner-assumption permission with version branch %i",
+    async (version, { listing }) => {
+      // GIVEN an ordinary role without membership in the function owner
+      const { admin, schema, owner, outsider } = listing;
+      const declaration = tenantListing({
+        schema,
+        table: "records",
+        tenantColumn: "organization",
+        name: "another_listing",
+        owner,
+        role: "orders_app",
+      }).getOrThrow();
+      const sql = (text: string) => admin.raw.sql(Object.assign([text], { raw: [text] }));
+      const check = declaration.migration.precheck[0]!;
+      const checkAsMigrator = () =>
+        admin.transaction(async (tx) => {
+          await tx.execute(sql(`SET LOCAL ROLE "${outsider}"`).affectedCount().build());
+          // Exercise both privilege vocabularies on the shared PostgreSQL server.
+          const branch = check.sql.replace(
+            "pg_catalog.current_setting('server_version_num')::pg_catalog.int4",
+            String(version),
+          );
+          return tx.query(sql(branch).returnsRow({ result: "pg/bool@1" }).build());
+        });
 
-    // WHEN SET membership is provisioned between the two checks
-    const before = await checkAsMigrator();
-    await admin
-      .runtime()
-      .execute(sql(`GRANT "${owner}" TO "${outsider}" WITH SET TRUE`).affectedCount().build());
-    const after = await checkAsMigrator();
+      // WHEN SET membership is provisioned between the two checks
+      const before = await checkAsMigrator();
+      await admin
+        .runtime()
+        .execute(sql(`GRANT "${owner}" TO "${outsider}" WITH SET TRUE`).affectedCount().build());
+      const after = await checkAsMigrator();
 
-    // THEN preflight refuses before ownership transfer can fail, and accepts afterwards
-    expect({ before, after }).toEqual({ before: [{ result: false }], after: [{ result: true }] });
-  });
+      // THEN preflight refuses before ownership transfer can fail, and accepts afterwards
+      expect({ before, after }).toEqual({ before: [{ result: false }], after: [{ result: true }] });
+    },
+  );
 
   it.for(["PUBLIC", "inherited", "table-owner"])(
     "rejects effective payload access through %s",
@@ -144,6 +152,25 @@ describe("tenant listing under forced row security", () => {
 
     // THEN an unused exact signature cannot hide a conflicting overload
     expect(checks).toEqual([[{ result: false }], [{ result: false }]]);
+  });
+
+  it("rejects a function altered to skip NULL input", async ({ listing }) => {
+    // GIVEN an installed listing changed to STRICT
+    const { admin, app, schema, declaration } = listing;
+    const sql = (text: string) => admin.raw.sql(Object.assign([text], { raw: [text] }));
+    await admin
+      .runtime()
+      .execute(sql(`ALTER FUNCTION "${schema}".tenant_ids(text) STRICT`).affectedCount().build());
+
+    // WHEN initial discovery and the installed-object check run
+    const firstPage = (await declaration.list(app)).getOrThrow();
+    const check = declaration.migration.postcheck[0]!;
+    const checked = await admin
+      .runtime()
+      .query(sql(check.sql).returnsRow({ result: "pg/bool@1" }).build());
+
+    // THEN the silent empty page cannot be accepted as a valid installation
+    expect({ firstPage, checked }).toEqual({ firstPage: [], checked: [{ result: false }] });
   });
 
   it("ignores a caller's temporary table and hostile search path", async ({ listing }) => {

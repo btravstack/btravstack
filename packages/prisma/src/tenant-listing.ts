@@ -161,7 +161,7 @@ export const tenantListing = (
   const ready = `SELECT ${requirements} AND (SELECT count(*) FROM (${functions}) candidates) = 1 AND EXISTS (
     SELECT 1 FROM pg_catalog.pg_proc p
     WHERE p.oid = ${functionRef}
-      AND p.prosecdef AND p.proretset AND p.pronargs = 1 AND p.pronargdefaults = 1 AND pg_catalog.pg_get_expr(p.proargdefaults, 0) = 'NULL::text' AND p.provolatile = 's'
+      AND p.prosecdef AND NOT p.proisstrict AND p.proretset AND p.pronargs = 1 AND p.pronargdefaults = 1 AND pg_catalog.pg_get_expr(p.proargdefaults, 0) = 'NULL::text' AND p.provolatile = 's'
       AND p.prolang = (SELECT oid FROM pg_catalog.pg_language WHERE lanname = 'sql')
       AND p.proowner = ${ownerRef} AND p.prosrc = ${literal(body)}
       AND p.proallargtypes = ARRAY['pg_catalog.text'::pg_catalog.regtype, 'pg_catalog.text'::pg_catalog.regtype]::pg_catalog.oid[]
@@ -202,7 +202,7 @@ export const tenantListing = (
         {
           description:
             "require a row-secured table, restricted roles, and unused function and policy names",
-          sql: `SELECT ${requirements} AND pg_catalog.pg_has_role(CURRENT_USER, ${ownerRef}, 'SET') AND NOT EXISTS (${functions}) AND NOT EXISTS (
+          sql: `SELECT ${requirements} AND pg_catalog.pg_has_role(CURRENT_USER, ${ownerRef}, CASE WHEN pg_catalog.current_setting('server_version_num')::pg_catalog.int4 >= 160000 THEN 'SET' ELSE 'MEMBER' END) AND NOT EXISTS (${functions}) AND NOT EXISTS (
           SELECT 1 FROM pg_catalog.pg_policy WHERE polrelid = ${tableRef} AND polname = ${literal(names.name)}
         ) AS "result"`,
         },

@@ -367,7 +367,8 @@ also refuses caller membership in the owner, caller schema CREATE, superuser
 or BYPASSRLS roles, and applicable restrictive read policies that would defeat
 the owner's permissive listing policy. Owner and caller must already exist;
 the deployment owns role provisioning. Prechecks require the executing migrator
-to be able to SET ROLE to the owner (`pg_has_role` with `SET`). An ordinary
+to be able to SET ROLE to the owner (`pg_has_role` with `SET` on PostgreSQL 16+,
+`MEMBER` before 16). An ordinary
 migrator needs that membership provisioned before applying the operation.
 The owner receives SELECT on the tenant column only, plus schema usage.
 Effective SELECT on any other column is refused, including PUBLIC, inherited
@@ -379,6 +380,7 @@ any same-name overload is refused,
 and postchecks require exactly one same-name function. Grant changes precede
 ownership transfer so SET-only membership suffices without INHERIT.
 Postchecks compare the function body, signature, settings, policy and ACL,
+and require non-STRICT execution so the initial NULL cursor runs the body,
 including grant options; a wider default grant fails closed instead of being
 silently inherited. The checks also guard Prisma's postcheck-before-precheck
 skip behavior. The table's existing RLS and FORCE settings are not changed.
