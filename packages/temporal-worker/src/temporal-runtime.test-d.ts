@@ -136,6 +136,27 @@ TemporalWorkflowActivities(
   sync: () => ({ echo: ({ input }) => OkAsync(input) }),
 });
 
+// A `fork` that may be `undefined` falls back to `unit.activity` at runtime,
+// so the root's gate still checks the declared ports: a root binding no
+// worker-wide module is refused.
+declare const maybeTenantUnit: typeof TenantUnit | undefined;
+const maybeForkedPiece = TemporalWorkflowActivities(
+  pinContract,
+  "runEcho",
+)({
+  unit: { tenant: Tenant },
+  fork: maybeTenantUnit,
+  sync: () => ({ echo: ({ input }) => OkAsync(input) }),
+});
+const _maybeForked = {
+  contract: pinContract,
+  activities: TemporalActivities(pinContract)([maybeForkedPiece]),
+  workflows,
+  provides: [maybeForkedPiece],
+} as const;
+// @ts-expect-error -- UNIT DOES NOT PROVIDE: the fallback arm reaches an unbound `unit.activity`
+TemporalModule("PinMaybeForked")(_maybeForked);
+
 // A piece's module owes what it does not provide, exactly as a bound
 // `unit.activity` does: the root must supply it, and `start` names it.
 class Ledger extends Port("PinLedger")<{ readonly owner: string }> {}

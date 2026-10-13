@@ -18,6 +18,21 @@ describe("unitsOf", () => {
     expect(units).toEqual({ activity: worker, Shared: shared });
   });
 
+  it("lists a module named after an Object.prototype member as its own entry", () => {
+    // GIVEN one piece forking a module named like an inherited property
+    const named = Module("constructor")({});
+    const activities = { a: withFork(() => {}, named) };
+
+    // WHEN the runtime's units record is built
+    const units = unitsOf(undefined, activities);
+
+    // THEN it is listed, not refused as a duplicate of the inherited member
+    expect(Object.entries(units)).toEqual([
+      ["activity", undefined],
+      ["constructor", named],
+    ]);
+  });
+
   it("refuses two different modules sharing a name, which an override could not tell apart", () => {
     // GIVEN two pieces naming two modules called the same
     const activities = {

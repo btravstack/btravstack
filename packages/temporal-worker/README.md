@@ -161,7 +161,7 @@ startup `Err`, not a defect. `runtimeInfo()` reads `{ taskQueue, namespace }`
 back once the worker is polling.
 
 A worker polling for several workflows can be several slices instead of one
-record: `TemporalWorkflowActivities(contract, key)({ inject: { name: Dep }, unit, sync })` mints a
+record: `TemporalWorkflowActivities(contract, key)({ inject: { name: Dep }, unit, fork, sync })` mints a
 provider for ONE workflow's activities (or a contract-global activity),
 typed by the key alone, and `TemporalActivities(contract)([...])` composes an
 array of them into the same activities provider `TemporalModule` takes — the
@@ -183,6 +183,14 @@ so a worker that has not outgrown one function reaches `context.unit` without
 slicing first. The root is checked against what was declared either way: bind a
 module that does not export one of those ports and `TemporalModule` refuses it,
 naming the port.
+
+A piece whose activities carry a different scope from the rest names its own
+module on `fork`: its attempts fork THAT module, seeded the same way, instead of
+`unit.activity` — a listing activity with no tenant in its input beside a
+fan-out whose activities each act for one. The piece's `unit` is then checked
+against its own module at the piece's call, the module's unmet needs become the
+root's (named by `start`), and an override reaches it under the module's name:
+`overridden(root, providers, { unit: { TenantUnit: [...] } })`.
 
 Its own test suite needs a **Docker daemon**: the specs run against the shared
 `temporalio/auto-setup` container `internal/test-infra` starts once per machine and every

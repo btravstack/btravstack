@@ -112,7 +112,7 @@ type MintedActivities<
 > = Provider<InstanceType<WorkflowActivitiesPortOf<C, K>>, never, N | UnitNeedsOf<M>> & {
   readonly port: WorkflowActivitiesPortOf<C, K>;
   /** Phantom: the ports this piece injects, which the root's `unit.activity` must export. */
-  readonly _declared?: [M] extends [undefined] ? InstanceType<U[keyof U]> : never;
+  readonly _declared?: undefined extends M ? InstanceType<U[keyof U]> : never;
 };
 
 /** The activities `sync` hands back, typed by the record THIS piece declared. */
@@ -179,7 +179,9 @@ export const TemporalWorkflowActivities = <
         readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
       }) => ScopedActivitiesOf<C, K, U>;
     } & ([keyof D] extends [never] ? unknown : { readonly inject: D }) &
-      ([M] extends [undefined] ? unknown : UnitGate<M, InstanceType<U[keyof U]>>),
+      ([Exclude<M, undefined>] extends [never]
+        ? unknown
+        : UnitGate<Exclude<M, undefined>, InstanceType<U[keyof U]>>),
   ): MintedActivities<C, K, InstanceType<D[keyof D]>, U, M> =>
     mintPiece(port, (record, entry) => withFork(withUnit(record, entry), options.fork))(
       options as never,
