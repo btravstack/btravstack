@@ -164,3 +164,13 @@ cannot pass as a template that merely compiles. Temporary files are removed on
 every path. For published versions this check uses registry releases, while `check.ts`
 checks current source tarballs; a successful release-PR tarball check does not
 claim that the new version has been published.
+
+## Release regressions
+
+The `test` script runs the Node test files under `.changeset/`. Besides the
+real Changesets patch/minor template checks, release preparation is checked
+against mixed and empty-only inputs. Empty documentation changesets are removed
+only from the runner checkout before the release action reads them; named
+release entries, guidance and package versions are preserved. This prevents a
+successful no-op release run from leaving an already-versioned package
+unpublished.

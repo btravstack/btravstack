@@ -73,7 +73,7 @@ dependency's devDependencies — and it is the standard cost of this fix.
 ## Releasing is CI's job from 0.4.0 onward
 
 `.github/workflows/release.yml`'s own comments describe the flow: the
-reusable workflow, the chain off a green CI run, the `head_sha` pin, changesets'
+local release steps, the chain off a green CI run, the `head_sha` pin, changesets'
 two-step, and the two things it needs outside the file (`RELEASE_PAT` and a
 Trusted Publisher per package). One gotcha lives only here.
 
@@ -108,3 +108,22 @@ package contents. Tests run alongside builds and packing: pnpm's temporary
 files can disappear during a recursive directory walk, so filtering those
 walks with `statSync` made the Node 24 CI row fail with `ENOENT`. The release
 fixture needs only manifests, not generated output or package sources.
+
+## Empty changesets must not suppress publication
+
+`changesets/action` v2.1.2 returns successfully without publishing when every
+remaining changeset is empty. A docs-only changeset can survive the version
+PR, leaving already-versioned packages unpublished despite a green release
+job. The release workflow removes standard empty-frontmatter changesets from
+its runner checkout before invoking the action. Named releases and guidance
+files remain; committed changesets are untouched. With no pending release
+entries the action attempts to publish unpublished versions, and an existing
+published version remains a no-op.
+
+The workflow keeps its own pinned steps because the shared workflow offers
+no preparation hook before the action reads changesets. It preserves the
+successful own-repository push guard, tested-commit checkout, PAT and npm OIDC
+permissions. The consumer-check test command runs the cleanup regression
+alongside the template version regression. A new named changeset is not added
+for this workflow repair: 0.34.0 is already versioned and must not be bumped
+again merely to publish it.

@@ -7,7 +7,7 @@
   "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
   "type": "module",
   "scripts": {
-    "test": "node --test ../../.changeset/sync-template.spec.mjs",
+    "test": "node --test ../../.changeset/*.spec.mjs",
     "typecheck": "tsx src/check.ts && tsx src/check-template.ts"
   },
   "devDependencies": {
