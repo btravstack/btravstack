@@ -1,10 +1,71 @@
 import { tryQuery } from "@btravstack/prisma/result";
-import { tenantPinned } from "@btravstack/prisma/rls";
+import { tenantListing, tenantPinned } from "@btravstack/prisma/rls";
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
 
 describe("tenant listing under forced row security", () => {
+  it("bounds discovery and resumes after the last ID without duplicates", async ({ listing }) => {
+    // GIVEN more tenant IDs than one page can hold
+    const { admin, app, schema, declaration } = listing;
+    const sql = `INSERT INTO "${schema}".records SELECT 'tenant-' || lpad(n::text, 3, '0'), 'private' FROM generate_series(1, 205) n`;
+    await admin.runtime().execute(
+      admin.raw
+        .sql(Object.assign([sql], { raw: [sql] }))
+        .affectedCount()
+        .build(),
+    );
+
+    // WHEN each bounded page supplies the next cursor
+    const first = (await declaration.list(app)).getOrThrow();
+    const second = (await declaration.list(app, first.at(-1))).getOrThrow();
+    const third = (await declaration.list(app, second.at(-1))).getOrThrow();
+    const last = (await declaration.list(app, third.at(-1))).getOrThrow();
+
+    // THEN all distinct IDs are visited once and discovery terminates
+    expect({
+      sizes: [first.length, second.length, third.length, last.length],
+      ids: [...first, ...second, ...third],
+    }).toEqual({
+      sizes: [100, 100, 7, 0],
+      ids: [
+        "acme",
+        "other",
+        ...Array.from({ length: 205 }, (_, i) => `tenant-${String(i + 1).padStart(3, "0")}`),
+      ],
+    });
+  });
+
+  it("requires SET permission for an ordinary migration role", async ({ listing }) => {
+    // GIVEN an ordinary role without membership in the function owner
+    const { admin, schema, owner, outsider } = listing;
+    const declaration = tenantListing({
+      schema,
+      table: "records",
+      tenantColumn: "organization",
+      name: "another_listing",
+      owner,
+      role: "orders_app",
+    }).getOrThrow();
+    const sql = (text: string) => admin.raw.sql(Object.assign([text], { raw: [text] }));
+    const check = declaration.migration.precheck[0]!;
+    const checkAsMigrator = () =>
+      admin.transaction(async (tx) => {
+        await tx.execute(sql(`SET LOCAL ROLE "${outsider}"`).affectedCount().build());
+        return tx.query(sql(check.sql).returnsRow({ result: "pg/bool@1" }).build());
+      });
+
+    // WHEN SET membership is provisioned between the two checks
+    const before = await checkAsMigrator();
+    await admin
+      .runtime()
+      .execute(sql(`GRANT "${owner}" TO "${outsider}" WITH SET TRUE`).affectedCount().build());
+    const after = await checkAsMigrator();
+
+    // THEN preflight refuses before ownership transfer can fail, and accepts afterwards
+    expect({ before, after }).toEqual({ before: [{ result: false }], after: [{ result: true }] });
+  });
+
   it("works when forced RLS applies to the table owner itself", async ({ listing }) => {
     // GIVEN the function owner becoming the owner of a table still under FORCE
     const { admin, declaration, app, schema, owner } = listing;
@@ -59,7 +120,7 @@ describe("tenant listing under forced row security", () => {
   it("rejects a listing whose execution grant was widened to PUBLIC", async ({ listing }) => {
     // GIVEN a previously installed listing
     const { admin, declaration, schema } = listing;
-    const grant = `GRANT EXECUTE ON FUNCTION "${schema}".tenant_ids() TO PUBLIC`;
+    const grant = `GRANT EXECUTE ON FUNCTION "${schema}".tenant_ids(text) TO PUBLIC`;
     const check = declaration.migration.postcheck[0]!;
 
     // WHEN its public execution privilege is widened

@@ -19,18 +19,44 @@ describe("tenantListing", () => {
     // WHEN its typed query runs
     const result = await listing.list(db);
 
-    // THEN it calls the zero-argument capability and returns only IDs
+    // THEN it calls the paged capability and returns only IDs
     expect({ result: result.getOrThrow(), queries: db.ran() }).toEqual({
       result: ["acme", "other"],
       queries: [
         {
-          sql: 'SELECT "tenantId" FROM "orders"."order_tenants"()',
+          sql: 'SELECT "tenantId" FROM "orders"."order_tenants"(NULL) ORDER BY "tenantId" COLLATE pg_catalog."C"',
           values: [],
           kind: "row",
           tx: undefined,
         },
       ],
     });
+  });
+
+  it("binds the continuation cursor as data", async ({ stub }) => {
+    // GIVEN a cursor containing SQL punctuation
+    const listing = tenantListing({
+      schema: "orders",
+      table: "Order",
+      name: "order_tenants",
+      owner: "migrator",
+      role: "app",
+    }).getOrThrow();
+    const db = stub.client({ url: "postgres://localhost/orders", middleware: [] });
+    const after = "tenant'); DROP TABLE orders; --";
+
+    // WHEN discovery resumes after that ID
+    await listing.list(db, after);
+
+    // THEN the cursor remains a bound text value
+    expect(db.ran()).toEqual([
+      {
+        sql: 'SELECT "tenantId" FROM "orders"."order_tenants"(?) ORDER BY "tenantId" COLLATE pg_catalog."C"',
+        values: [after],
+        kind: "row",
+        tx: undefined,
+      },
+    ]);
   });
 
   it("qualifies a denied function call", async ({ stub, sqlError }) => {
@@ -105,7 +131,7 @@ describe("tenantListing", () => {
     // THEN every name remains one quoted identifier
     expect(db.ran()).toEqual([
       {
-        sql: 'SELECT "tenantId" FROM "odd""schema"."list""; SELECT 1; --"()',
+        sql: 'SELECT "tenantId" FROM "odd""schema"."list""; SELECT 1; --"(NULL) ORDER BY "tenantId" COLLATE pg_catalog."C"',
         values: [],
         kind: "row",
         tx: undefined,

@@ -14,7 +14,7 @@ export type TenantListingOptions = {
   readonly table: string;
   /** The physical tenant column. Default `tenantId`. */
   readonly tenantColumn?: string;
-  /** A new zero-argument function in `schema`; also names its select policy. */
+  /** A new paged function in `schema`; also names its select policy. */
   readonly name: string;
   /** Trusted function owner, neither superuser nor BYPASSRLS; must be able to create in the schema. */
   readonly owner: string;
@@ -43,15 +43,22 @@ export type TenantListing = {
     readonly execute: readonly Statement[];
     readonly postcheck: readonly Statement[];
   };
-  readonly list: (db: {
-    readonly raw: { readonly sql: unknown };
-    readonly runtime: unknown;
-  }) => AsyncResult<readonly string[], SqlError>;
+  /** At most 100 IDs in bytewise order. Resume with the last ID; stop on an empty page. */
+  readonly list: (
+    db: {
+      readonly raw: { readonly sql: unknown };
+      readonly runtime: unknown;
+    },
+    after?: string,
+  ) => AsyncResult<readonly string[], SqlError>;
 };
 
 type ListingClient = {
   readonly raw: {
-    readonly sql: (strings: TemplateStringsArray) => {
+    readonly sql: (
+      strings: TemplateStringsArray,
+      ...values: readonly string[]
+    ) => {
       readonly returnsRow: (spec: { readonly tenantId: "pg/text@1" }) => {
         readonly build: () => unknown;
       };
@@ -65,11 +72,13 @@ type ListingClient = {
 const identifier = (value: string): string => `"${value.replaceAll('"', '""')}"`;
 const literal = (value: string): string =>
   `E'${value.replaceAll("\\", "\\\\").replaceAll("'", "''")}'`;
-const statement = (sql: string): TemplateStringsArray => Object.assign([sql], { raw: [sql] });
+const statement = (parts: string[]): TemplateStringsArray =>
+  Object.assign(parts, { raw: [...parts] });
 
 /**
- * Declare a zero-argument SECURITY DEFINER function returning distinct, non-null
- * tenant IDs as text, and a typed query calling only that function.
+ * Declare a paged SECURITY DEFINER function returning distinct, non-null
+ * tenant IDs as text, and a typed query calling only that function. Each page
+ * holds at most 100 IDs in bytewise order; resume after its last ID until empty.
  *
  * Pass `migration` to Prisma 8's `rawSql` inside a reviewed migration. Its
  * transaction installs an owner-only SELECT policy, grants the owner access
@@ -77,8 +86,9 @@ const statement = (sql: string): TemplateStringsArray => Object.assign([sql], { 
  * execution and grants execution to `role`. Existing table policies and FORCE
  * ROW LEVEL SECURITY are left intact. No application table privilege is added.
  *
- * Roles and the table must already exist. The migration refuses a privileged
- * application or function-owner role, caller membership in the owner, schema
+ * Roles and the table must already exist. The migrator must be able to SET ROLE
+ * to the owner; provision that membership for an ordinary migration role.
+ * The migration refuses a privileged application or function-owner role, caller membership in the owner, schema
  * CREATE for the caller, or a name collision. Its postcheck verifies the
  * function, policy and execution grants before Prisma records it as applied.
  * Apply the operation transactionally; the function is initially private only
@@ -119,11 +129,11 @@ export const tenantListing = (
   const owner = identifier(names.owner);
   const role = identifier(names.role);
   const column = identifier(names.tenantColumn);
-  const functionRef = `pg_catalog.to_regprocedure(${literal(`${fn}()`)})`;
+  const functionRef = `pg_catalog.to_regprocedure(${literal(`${fn}(text)`)})`;
   const tableRef = `pg_catalog.to_regclass(${literal(table)})`;
   const ownerRef = `(SELECT oid FROM pg_catalog.pg_roles WHERE rolname = ${literal(names.owner)})`;
   const roleRef = `(SELECT oid FROM pg_catalog.pg_roles WHERE rolname = ${literal(names.role)})`;
-  const body = `SELECT DISTINCT ${column}::pg_catalog.text AS "tenantId" FROM ${table} WHERE ${column} IS NOT NULL ORDER BY "tenantId"`;
+  const body = `SELECT DISTINCT ${column}::pg_catalog.text COLLATE pg_catalog."C" AS "tenantId" FROM ${table} WHERE ${column} IS NOT NULL AND ($1 IS NULL OR ${column}::pg_catalog.text COLLATE pg_catalog."C" > $1 COLLATE pg_catalog."C") ORDER BY "tenantId" LIMIT 100`;
   const policy = `CURRENT_USER = ${literal(names.owner)}::pg_catalog.name`;
   const requirements = `EXISTS (
     SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
@@ -144,11 +154,11 @@ export const tenantListing = (
   const ready = `SELECT ${requirements} AND EXISTS (
     SELECT 1 FROM pg_catalog.pg_proc p
     WHERE p.oid = ${functionRef}
-      AND p.prosecdef AND p.proretset AND p.pronargs = 0 AND p.provolatile = 's'
+      AND p.prosecdef AND p.proretset AND p.pronargs = 1 AND p.pronargdefaults = 1 AND pg_catalog.pg_get_expr(p.proargdefaults, 0) = 'NULL::text' AND p.provolatile = 's'
       AND p.prolang = (SELECT oid FROM pg_catalog.pg_language WHERE lanname = 'sql')
       AND p.proowner = ${ownerRef} AND p.prosrc = ${literal(body)}
-      AND p.proallargtypes = ARRAY['pg_catalog.text'::pg_catalog.regtype]::pg_catalog.oid[]
-      AND p.proargnames = ARRAY['tenantId']::pg_catalog.text[] AND p.proargmodes = ARRAY['t']::pg_catalog."char"[]
+      AND p.proallargtypes = ARRAY['pg_catalog.text'::pg_catalog.regtype, 'pg_catalog.text'::pg_catalog.regtype]::pg_catalog.oid[]
+      AND p.proargnames = ARRAY['after', 'tenantId']::pg_catalog.text[] AND p.proargmodes = ARRAY['i', 't']::pg_catalog."char"[]
       AND p.proconfig = ARRAY['search_path=pg_catalog, pg_temp', 'row_security=on']::pg_catalog.text[]
       AND pg_catalog.has_function_privilege(${roleRef}, p.oid, 'EXECUTE')
       AND pg_catalog.has_schema_privilege(${roleRef}, ${literal(names.schema)}, 'USAGE')
@@ -165,7 +175,7 @@ export const tenantListing = (
           AND pg_catalog.pg_get_expr(pol.polqual, pol.polrelid) = '(CURRENT_USER = ' || pg_catalog.quote_literal(${literal(names.owner)}) || '::name)'
       )
   ) AS "result"`;
-  const sql = `SELECT "tenantId" FROM ${fn}()`;
+  const parts = [`SELECT "tenantId" FROM ${fn}(`, `) ORDER BY "tenantId" COLLATE pg_catalog."C"`];
 
   return Ok({
     migration: {
@@ -185,7 +195,7 @@ export const tenantListing = (
         {
           description:
             "require a row-secured table, restricted roles, and unused function and policy names",
-          sql: `SELECT ${requirements} AND ${functionRef} IS NULL AND NOT EXISTS (
+          sql: `SELECT ${requirements} AND pg_catalog.pg_has_role(CURRENT_USER, ${ownerRef}, 'SET') AND ${functionRef} IS NULL AND pg_catalog.to_regprocedure(${literal(`${fn}()`)}) IS NULL AND NOT EXISTS (
           SELECT 1 FROM pg_catalog.pg_policy WHERE polrelid = ${tableRef} AND polname = ${literal(names.name)}
         ) AS "result"`,
         },
@@ -205,19 +215,19 @@ export const tenantListing = (
         },
         {
           description: "create the tenant-id-only function with a fixed search path",
-          sql: `CREATE FUNCTION ${fn}() RETURNS TABLE ("tenantId" pg_catalog.text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp SET row_security = on AS ${literal(body)}`,
+          sql: `CREATE FUNCTION ${fn}("after" pg_catalog.text DEFAULT NULL) RETURNS TABLE ("tenantId" pg_catalog.text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp SET row_security = on AS ${literal(body)}`,
         },
         {
           description: "assign the restricted function owner",
-          sql: `ALTER FUNCTION ${fn}() OWNER TO ${owner}`,
+          sql: `ALTER FUNCTION ${fn}(text) OWNER TO ${owner}`,
         },
         {
           description: "remove public execution",
-          sql: `REVOKE ALL ON FUNCTION ${fn}() FROM PUBLIC`,
+          sql: `REVOKE ALL ON FUNCTION ${fn}(text) FROM PUBLIC`,
         },
         {
           description: "grant execution to the application role",
-          sql: `GRANT EXECUTE ON FUNCTION ${fn}() TO ${role}`,
+          sql: `GRANT EXECUTE ON FUNCTION ${fn}(text) TO ${role}`,
         },
       ],
       postcheck: [
@@ -227,10 +237,14 @@ export const tenantListing = (
         },
       ],
     },
-    list: (db) =>
+    list: (db, after) =>
       tryQuery(() => {
         const client = db as ListingClient;
-        const plan = client.raw.sql(statement(sql)).returnsRow({ tenantId: "pg/text@1" }).build();
+        const query =
+          after === undefined
+            ? client.raw.sql(statement([`${parts[0]}NULL${parts[1]}`]))
+            : client.raw.sql(statement(parts), after);
+        const plan = query.returnsRow({ tenantId: "pg/text@1" }).build();
         return client.runtime().query(plan);
       }).map((rows) => rows.map((row) => row.tenantId)),
   });

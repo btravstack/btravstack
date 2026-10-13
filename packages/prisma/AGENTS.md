@@ -346,7 +346,7 @@ TSDoc and the root's **Health checks** section say why.
 ### A narrow tenant-listing capability
 
 `tenantListing` on `/rls` returns a Result containing a structural `rawSql`
-operation definition and a typed `list(db)` query. The package still imports
+operation definition and a typed `list(db, after?)` query. The package still imports
 no Prisma runtime. The operation targets the table's `rlsPolicy`, because the
 installed Prisma target's metadata has no function object kind. Functions are
 not contract elements; the generated raw operation belongs in the application's
@@ -355,8 +355,10 @@ reviewed migration, never in process boot.
 The declaration quotes identifiers and literals separately, validates the
 PostgreSQL byte limit and UTF-8 round trip, and encodes coordinate separators
 in its operation ID so dotted physical names cannot collide. Names are
-configuration, never query parameters. The function takes no arguments and
-returns one text column only; its body qualifies the table and builtin cast,
+configuration, never query parameters. The function takes an optional text
+cursor and returns at most 100 distinct IDs in bytewise (`C`) order, in one
+text column only. Resume after the last ID until a page is empty; discovery
+does not freeze concurrent writes. Its body qualifies the table and builtin cast,
 fixes the search path and enables row security for its own duration.
 
 The owner policy checks `CURRENT_USER` as well as its role, so inheriting that
@@ -364,8 +366,10 @@ role does not silently broaden an application's ordinary reads. Installation
 also refuses caller membership in the owner, caller schema CREATE, superuser
 or BYPASSRLS roles, and applicable restrictive read policies that would defeat
 the owner's permissive listing policy. Owner and caller must already exist;
-the deployment owns role provisioning. The owner receives SELECT on the tenant
-column only, plus schema usage. It can be the table owner under FORCE, but a
+the deployment owns role provisioning. Prechecks require the executing migrator
+to be able to SET ROLE to the owner (`pg_has_role` with `SET`). An ordinary
+migrator needs that membership provisioned before applying the operation.
+The owner receives SELECT on the tenant column only, plus schema usage. It can be the table owner under FORCE, but a
 dedicated NOLOGIN role need not receive payload access at all.
 
 CREATE, owner assignment, PUBLIC revocation and the narrow EXECUTE grant run in
@@ -377,7 +381,8 @@ skip behavior. The table's existing RLS and FORCE settings are not changed.
 
 Unit specs pin declaration validation and the query boundary. Real PostgreSQL
 proofs live in `examples/order-infrastructure/src/tenant-listing.spec.ts`:
-forced-owner reads, payload isolation, public denial, temporary-table shadowing,
+bounded cursor discovery, ordinary-role installation, forced-owner reads,
+payload isolation, public denial, temporary-table shadowing,
 and rejection of widened grants or restrictive policies. Each fixture owns
 unique schema and role names on the shared database; nothing alters the
 application's production tables or starts another server.

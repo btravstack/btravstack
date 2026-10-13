@@ -164,7 +164,8 @@ carries the DDL and the smaller lines that fail the same way.
 
 ## Tenant discovery for scheduled work
 
-`tenantListing` on `/rls` declares a zero-argument, tenant-ID-only query and a
+`tenantListing` on `/rls` declares a tenant-ID-only query (100 IDs per page,
+resuming after the last ID) and a
 checked Prisma migration installing its function, owner policy and execution
 grant. It works under forced row-level security while ordinary application
 reads remain tenant-scoped. Shared data does not require a privileged

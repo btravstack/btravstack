@@ -544,9 +544,9 @@ that is the difference the policy buys on the other two.
 `tenantListing(options)` on `@btravstack/prisma/rls` declares a narrow
 capability for per-tenant scheduled work. It returns
 `Result<TenantListing, TenantListingInvalid>`: a migration operation definition
-and `list(db): AsyncResult<readonly string[], SqlError>`. The function returns
-distinct non-null IDs as text from one physical table; it accepts no arguments
-and returns no payload columns. Each call reads current data.
+and `list(db, after?): AsyncResult<readonly string[], SqlError>`. The function returns
+distinct non-null IDs as text from one physical table; it accepts an optional
+last-ID cursor and returns no payload columns. Each call reads current data.
 
 <!-- doctest: isolate
 declare const db: { readonly raw: { readonly sql: unknown }; readonly runtime: unknown };
@@ -581,7 +581,7 @@ run migrations at application startup.
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `schema`, `table` | Physical names of one existing row-secured table.                                                                        |
 | `tenantColumn`    | Physical tenant column; defaults to `tenantId`.                                                                          |
-| `name`            | New zero-argument function in `schema`; also names its SELECT policy.                                                    |
+| `name`            | New paged function in `schema`; also names its SELECT policy.                                                            |
 | `owner`           | Existing trusted function-owner role, without superuser or BYPASSRLS. It needs CREATE in the schema to accept ownership. |
 | `role`            | Existing application role granted execution, without superuser, BYPASSRLS, schema CREATE, or membership in `owner`.      |
 
@@ -607,7 +607,15 @@ back the migration; adjust those defaults before installing. An existing
 object with the same name and a different definition is refused, never
 replaced. Do not subsequently grant the caller the owner role or schema CREATE.
 
-Use `list(db)` in the application's adapter for its tenant-listing port. A
+The migration precheck requires `pg_has_role(CURRENT_USER, owner, 'SET')`: provision
+owner membership with SET permission for an ordinary migrator before deployment.
+
+Each call returns at most 100 IDs in bytewise (`C`) order. Pass the last ID as
+`after` to fetch the next page, and stop on an empty page. Process each page
+before fetching the next; do not collect the entire discovery into an array.
+Concurrent writes can change later pages; discovery is not a snapshot.
+
+Use `list(db, after?)` in the application's adapter for its tenant-listing port. A
 scheduled parent workflow calls an activity backed by that port, then starts a
 child per ID. Each child's data work still uses its own tenant scope and
 `tenantPinned`. A listing of one table discovers tenants with data in that
