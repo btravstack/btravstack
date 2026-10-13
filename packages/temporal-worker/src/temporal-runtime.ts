@@ -41,6 +41,7 @@ import {
 } from "unthrown";
 
 import { activityUnits } from "./activity-units.js";
+import { forkOf, unitsOf } from "./unit.js";
 import type { ActivityInputInstance } from "./workflow-activities.js";
 
 /** What the worker publishes once it is polling, read back through `RunningApp.runtimeInfo()`. */
@@ -282,7 +283,7 @@ export const temporal = <
         }): Runtime<never, TemporalInfo> => ({
           name: "temporal",
           resolves: [],
-          units: { activity: options.unit?.activity },
+          units: unitsOf(options.unit?.activity, impls as Readonly<Record<string, unknown>>),
           start: (host) => createWorker(host, connection, bound, impls, options, observers),
         }),
       }),
@@ -333,7 +334,13 @@ const createWorker = <C extends ContractDefinition, Unit extends AnyUnitModule |
     () =>
       declareActivitiesHandler({
         contract: options.contract,
-        middleware: activityUnits(host, observers, options.unit?.activity),
+        middleware: activityUnits(
+          host,
+          observers,
+          (key) =>
+            forkOf((activities as Readonly<Record<string, unknown>>)[key]) ??
+            options.unit?.activity,
+        ),
         activities,
       }),
     startFailed,

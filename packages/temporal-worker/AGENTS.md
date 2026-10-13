@@ -78,6 +78,32 @@ page, never this file.
   scheme, so no fallback question arises and an unbound `unit` simply forks
   nothing.
 
+- **A piece may name its own module, as `fork`** (#551). A worker whose
+  activities do not share a scope — a listing activity beside a per-tenant
+  fan-out — cannot bind that scope in one worker-wide module, since the
+  module is built for every attempt. `fork` is the name because `unit` is
+  already taken by the ports a leaf reads, and what the option does is the
+  kernel's own verb: the attempt forks this module. Three choices carry it:
+  - **The middleware picks the module by contract key**, `workflowName ??
+activityName` — Temporal hands the middleware the workflow key a
+    workflow's activity was registered under, so no flat-name translation is
+    needed. The piece tags its wrapped entry with the module under a symbol,
+    and the runtime reads it off the composed record it already holds.
+  - **The gate moves to the piece.** Both halves are known at the piece's
+    call, so its `unit:` is checked there and its `_declared` phantom is
+    `never`, leaving the root's gate on `unit.activity` to the pieces that
+    name no module. The module's unmet needs ride the piece provider's own
+    Needs, so they reach `start` the way any provider's do.
+  - **`Runtime.units` lists each module under its own name.** The kernel
+    boot-checks what `units` lists and overrides key on it; a contract key
+    would list a module several pieces share several times, which
+    `unitSubstitutes` refuses, so the module's name is the key and two
+    different modules sharing one are refused as the runtime is built.
+
+  The record arm takes no `fork`: one record is one scope, which is
+  `unit.activity`. `@btravstack/amqp-worker` has the same one-module shape and
+  no `fork` yet.
+
 - **The kernel's per-unit `AbortSignal` reaches an activity through the
   ambient `currentUnit()` record, and only through it.**
   `examples/order-temporal-worker`'s `ShippingService.arrange` is the worked

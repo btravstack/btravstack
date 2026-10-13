@@ -12,8 +12,9 @@ import { activityInfo } from "@temporalio/activity";
 import { ActivityInputPort } from "./workflow-activities.js";
 
 /**
- * Open one kernel unit per activity attempt, forking `unit` — when one is
- * bound — after the activity is invoked, before it runs; the fork is torn down
+ * Open one kernel unit per activity attempt, forking the module `unitFor`
+ * answers for the attempt's contract key — the piece's own, else the
+ * worker-wide one, when either is bound — after the activity is invoked, before it runs; the fork is torn down
  * when the unit closes. It is seeded with the validated input on
  * `ActivityInput(contract)`, so a unit module derives a tenant from the
  * invocation rather than reading one off an ambient record. With no `unit`
@@ -38,7 +39,7 @@ export const activityUnits =
   (
     host: RuntimeHost<never>,
     observers: readonly ((operation: Operation) => Settle)[],
-    unit: AnyUnitModule | undefined,
+    unitFor: (key: string) => AnyUnitModule | undefined,
   ): ActivityMiddleware =>
   (invocation, next) =>
     dispatchUnit({
@@ -54,7 +55,8 @@ export const activityUnits =
         attributes: { activity: activityInfo().activityType },
       },
       meta: metaFor(),
-      unit,
+      // A workflow's activities are keyed by the workflow, a contract-global one by its own name.
+      unit: unitFor(invocation.workflowName ?? invocation.activityName),
       seed: [ActivityInputPort, invocation.input],
       next,
     });

@@ -10,6 +10,7 @@
  * `@unthrown/vitest`'s matcher augmentation, which this file's own
  * `tsconfig.test-d.json` — `src/**\/*.test-d.ts` only — never loads.
  */
+import { Env } from "@btravstack/config";
 import { HealthChecks, Logger, start } from "@btravstack/core";
 import { Module, Port, Provider, type Context } from "@btravstack/di";
 import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
@@ -100,6 +101,99 @@ const _noUnit = {
 } as const;
 // @ts-expect-error -- UNIT DOES NOT PROVIDE: nothing is bound, so `Tenant` is nowhere
 TemporalModule("PinUnitUnbound")(_noUnit);
+
+// A piece naming its own `fork` is gated against THAT module, at its own call,
+// and leaves the root's gate nothing to check: no `unit.activity` is bound
+// below, and the root still starts.
+const forkedPiece = TemporalWorkflowActivities(
+  pinContract,
+  "runEcho",
+)({
+  unit: { tenant: Tenant },
+  fork: TenantUnit,
+  sync: () => ({
+    echo: ({ context, input }) => OkAsync(`${context.unit.tenant.id}:${input}`),
+  }),
+});
+const _forkedPieceStarts = start(
+  TemporalModule("PinForked")({
+    contract: pinContract,
+    activities: TemporalActivities(pinContract)([forkedPiece]),
+    workflows,
+    provides: [forkedPiece],
+  }),
+  { signals: false, probes: false },
+);
+void _forkedPieceStarts;
+
+TemporalWorkflowActivities(
+  pinContract,
+  "runEcho",
+  // @ts-expect-error -- UNIT DOES NOT PROVIDE: the piece's own `ElsewhereUnit` exports no `Tenant`
+)({
+  unit: { tenant: Tenant },
+  fork: ElsewhereUnit,
+  sync: () => ({ echo: ({ input }) => OkAsync(input) }),
+});
+
+// A piece's module owes what it does not provide, exactly as a bound
+// `unit.activity` does: the root must supply it, and `start` names it.
+class Ledger extends Port("PinLedger")<{ readonly owner: string }> {}
+const LedgerUnit = Module("PinLedgerUnit")({
+  provides: [
+    Provider(Tenant)({ inject: { ledger: Ledger }, sync: ({ ledger }) => ({ id: ledger.owner }) }),
+  ],
+  exports: [Tenant],
+});
+const ledgerPiece = TemporalWorkflowActivities(
+  pinContract,
+  "runEcho",
+)({
+  unit: { tenant: Tenant },
+  fork: LedgerUnit,
+  sync: () => ({ echo: ({ input }) => OkAsync(input) }),
+});
+const ledgerless = TemporalModule("PinLedgerless")({
+  contract: pinContract,
+  activities: TemporalActivities(pinContract)([ledgerPiece]),
+  workflows,
+  provides: [ledgerPiece],
+});
+// @ts-expect-error -- UNSATISFIED DEPENDENCIES: nothing provides "PinLedger", which the piece's module needs
+start(ledgerless, { signals: false, probes: false });
+
+const _ledgerSupplied = start(
+  TemporalModule("PinLedgerSupplied")({
+    contract: pinContract,
+    activities: TemporalActivities(pinContract)([ledgerPiece]),
+    workflows,
+    provides: [ledgerPiece, Provider(Ledger)({ inject: {}, value: { owner: "acme" } })],
+  }),
+  { signals: false, probes: false },
+);
+void _ledgerSupplied;
+
+// A piece's module reads no configuration, as `unit.activity` reads none.
+const ConfiguringUnit = Module("PinConfiguringUnit")({
+  provides: [Provider(Tenant)({ inject: { env: Env }, sync: () => ({ id: "env" }) })],
+  exports: [Tenant],
+});
+const configuringPiece = TemporalWorkflowActivities(
+  pinContract,
+  "runEcho",
+)({
+  unit: { tenant: Tenant },
+  fork: ConfiguringUnit,
+  sync: () => ({ echo: ({ input }) => OkAsync(input) }),
+});
+const configuring = TemporalModule("PinConfiguring")({
+  contract: pinContract,
+  activities: TemporalActivities(pinContract)([configuringPiece]),
+  workflows,
+  provides: [configuringPiece],
+});
+// @ts-expect-error -- UNIT READS CONFIGURATION: the piece's module injects `Env`
+start(configuring, { signals: false, probes: false });
 
 // The RECORD arm declares `unit:` too, and it reaches the root's gate exactly
 // as a piece's does: `sync` sees `context.unit` typed by what the record
