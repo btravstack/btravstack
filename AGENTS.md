@@ -673,6 +673,12 @@ fail quietly: Prisma 8 authors no `GRANT`s, and it cannot express `FORCE ROW
 LEVEL SECURITY`, so a deployment must connect as a role that is neither the
 table's owner nor a superuser. `packages/prisma/AGENTS.md` carries both.
 
+`@btravstack/prisma/rls` also declares narrow tenant discovery for scheduled
+work: `tenantListing` generates a checked migration and a tenant-ID-only
+query. Its privileged function does not grant cross-tenant access to
+application payload rows, and child work still pins its own tenant. Migration
+execution and role provisioning remain deployment operations.
+
 **A repository base class would smuggle a persistence shape into the
 application's ports**, which is the coupling the hexagonal examples exist to
 prevent. A port does not say where its data lives (thesis #2's transaction

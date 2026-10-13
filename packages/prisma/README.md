@@ -162,9 +162,19 @@ nor a superuser — the boot refuses either with `RowSecurityBypassed`. The
 [reference page](https://btravstack.github.io/btravstack/reference/prisma)
 carries the DDL and the smaller lines that fail the same way.
 
+## Tenant discovery for scheduled work
+
+`tenantListing` on `/rls` declares a tenant-ID-only query (100 IDs per page,
+resuming after the last ID) and a
+checked Prisma migration installing its function, owner policy and execution
+grant. It works under forced row-level security while ordinary application
+reads remain tenant-scoped. Shared data does not require a privileged
+application connection. See
+[tenant listing](https://btravstack.github.io/btravstack/reference/prisma#list-tenants-without-cross-tenant-row-access).
+
 ## What it does not
 
-**Migrations.** A deployment runs `prisma db migrate` against the same database
+**Running migrations.** A deployment runs `prisma db migrate` against the same database
 _before the process starts_ — and, where row security is on, as its **owner**
 rather than the role `DATABASE_URL` carries. An application that migrates itself
 at boot races every other replica.
@@ -184,13 +194,15 @@ package's.
 
 ## Options
 
-| Option         | Where                                                      | What it is                                                                               |
-| -------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `name`         | `prismaDatabase(name)`                                     | the port's id and the health check's name — required                                     |
-| `client`       | `prismaDatabase(name)({ client })`                         | builds your client from the URL and middleware this package bound — required             |
-| `DATABASE_URL` | environment, read by `prismaDatabase(name)`                | the connection string — required, validated at graph build; blank is an error, exit `78` |
-| `setting`      | `tenantPinned(db, tenant, work, { setting })`              | the PostgreSQL run-time setting the policy reads — default `app.tenant_id`               |
-| `raises`       | `tryQuery(run, { raises })`, `tenantPinned(…, { raises })` | SQLSTATEs modeled as `RaisedException` rather than defects — default none                |
+| Option                            | Where                                                      | What it is                                                                               |
+| --------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `name`                            | `prismaDatabase(name)`                                     | the port's id and the health check's name — required                                     |
+| `client`                          | `prismaDatabase(name)({ client })`                         | builds your client from the URL and middleware this package bound — required             |
+| `DATABASE_URL`                    | environment, read by `prismaDatabase(name)`                | the connection string — required, validated at graph build; blank is an error, exit `78` |
+| `setting`                         | `tenantPinned(db, tenant, work, { setting })`              | the PostgreSQL run-time setting the policy reads — default `app.tenant_id`               |
+| `raises`                          | `tryQuery(run, { raises })`, `tenantPinned(…, { raises })` | SQLSTATEs modeled as `RaisedException` rather than defects — default none                |
+| `schema`, `table`, `tenantColumn` | `tenantListing(options)`                                   | the physical table and tenant column for a narrow listing                                |
+| `name`, `owner`, `role`           | `tenantListing(options)`                                   | the listing function, its trusted owner and application caller                           |
 
 There is **no `instrumented` flag**: observation is a set port every call is
 handed to, so a graph composing no observability pays one inert call and no

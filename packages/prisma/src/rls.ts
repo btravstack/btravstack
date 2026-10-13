@@ -2,6 +2,13 @@ import type { AsyncResult } from "unthrown";
 
 import { tryQuery, type QualifyOptions, type Raised, type SqlError } from "./result.js";
 
+export {
+  tenantListing,
+  TenantListingInvalid,
+  type TenantListing,
+  type TenantListingOptions,
+} from "./tenant-listing.js";
+
 /**
  * Options of {@link tenantPinned}: `raises`, as {@link tryQuery} takes it,
  * and the setting the pin writes.

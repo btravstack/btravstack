@@ -1,3 +1,5 @@
+import assert from "node:assert/strict";
+
 import { Env } from "@btravstack/config";
 import type { ConfigInvalid } from "@btravstack/config";
 import { Module, Provider, type ServiceOf } from "@btravstack/di";
@@ -10,6 +12,7 @@ import {
   type DatabaseUnreachable,
   type RowSecurityBypassed,
 } from "@btravstack/prisma";
+import { tenantListing, type TenantListing } from "@btravstack/prisma/rls";
 import postgres from "@prisma/orm-postgres/runtime";
 import type { AsyncResult } from "unthrown";
 import { uuidv7 } from "uuidv7";
@@ -92,9 +95,140 @@ export type PersistenceFixtures = {
     work: (db: OrderDatabaseClient) => AsyncResult<A, never>,
     url?: string,
   ) => AsyncResult<A, ConfigInvalid | DatabaseUnreachable | RowSecurityBypassed>;
+  readonly listing: {
+    readonly declaration: TenantListing;
+    readonly app: OrderDatabaseClient;
+    readonly admin: OrderDatabaseClient;
+    readonly schema: string;
+    readonly owner: string;
+    readonly outsider: string;
+  };
 };
 
 export const it = test.extend<PersistenceFixtures>({
+  listing: async ({ db }, use) => {
+    const admin = postgres<Contract>({
+      contractJson,
+      url: inject("__ORDERS_OWNER_DATABASE_URL__"),
+    });
+    const suffix = uuidv7().replaceAll("-", "");
+    const schema = `listing_${suffix}`;
+    const owner = `listing_owner_${suffix}`;
+    const outsider = `listing_other_${suffix}`;
+    const declaration = tenantListing({
+      schema,
+      table: "records",
+      tenantColumn: "organization",
+      name: "tenant_ids",
+      owner,
+      role: "orders_app",
+    }).getOrThrow();
+    const sql = (text: string) => admin.raw.sql(Object.assign([text], { raw: [text] }));
+    await admin
+      .runtime()
+      .execute(
+        sql(`CREATE ROLE "${owner}" NOLOGIN NOSUPERUSER NOBYPASSRLS`).affectedCount().build(),
+      );
+    await admin
+      .runtime()
+      .execute(
+        sql(`CREATE ROLE "${outsider}" NOLOGIN NOSUPERUSER NOBYPASSRLS`).affectedCount().build(),
+      );
+    await admin
+      .runtime()
+      .execute(sql(`CREATE SCHEMA "${schema}" AUTHORIZATION "${owner}"`).affectedCount().build());
+    await admin
+      .runtime()
+      .execute(
+        sql(`CREATE TABLE "${schema}".records (organization text, secret text NOT NULL)`)
+          .affectedCount()
+          .build(),
+      );
+    await admin
+      .runtime()
+      .execute(
+        sql(`ALTER TABLE "${schema}".records ENABLE ROW LEVEL SECURITY`).affectedCount().build(),
+      );
+    await admin
+      .runtime()
+      .execute(
+        sql(`ALTER TABLE "${schema}".records FORCE ROW LEVEL SECURITY`).affectedCount().build(),
+      );
+    await admin
+      .runtime()
+      .execute(
+        sql(
+          `CREATE POLICY tenant_rows ON "${schema}".records FOR ALL TO orders_app USING (organization = current_setting('app.tenant_id', true)) WITH CHECK (organization = current_setting('app.tenant_id', true))`,
+        )
+          .affectedCount()
+          .build(),
+      );
+    await admin
+      .runtime()
+      .execute(
+        sql(`GRANT SELECT, INSERT, UPDATE, DELETE ON "${schema}".records TO orders_app`)
+          .affectedCount()
+          .build(),
+      );
+    await admin
+      .runtime()
+      .execute(sql(`GRANT USAGE ON SCHEMA "${schema}" TO "${outsider}"`).affectedCount().build());
+    await admin
+      .runtime()
+      .execute(
+        sql(
+          `INSERT INTO "${schema}".records VALUES ('acme', 'private-a'), ('acme', 'private-b'), ('other', 'private-c'), (NULL, 'unassigned')`,
+        )
+          .affectedCount()
+          .build(),
+      );
+    const migrator = `listing_migrator_${suffix}`;
+    await admin
+      .runtime()
+      .execute(
+        sql(`CREATE ROLE "${migrator}" NOLOGIN NOSUPERUSER NOBYPASSRLS`).affectedCount().build(),
+      );
+    await admin
+      .runtime()
+      .execute(
+        sql(`GRANT "${owner}" TO "${migrator}" WITH SET TRUE, INHERIT FALSE`)
+          .affectedCount()
+          .build(),
+      );
+    await admin
+      .runtime()
+      .execute(
+        sql(`GRANT USAGE, CREATE ON SCHEMA "${schema}" TO "${migrator}" WITH GRANT OPTION`)
+          .affectedCount()
+          .build(),
+      );
+    await admin
+      .runtime()
+      .execute(
+        sql(`ALTER TABLE "${schema}".records OWNER TO "${migrator}"`).affectedCount().build(),
+      );
+    await admin
+      .runtime()
+      .execute(sql(`CREATE DOMAIN "${schema}".text AS pg_catalog.text`).affectedCount().build());
+    await admin.transaction(async (tx) => {
+      await tx.execute(sql(`SET LOCAL ROLE "${migrator}"`).affectedCount().build());
+      await tx.execute(
+        sql(`SET LOCAL search_path = "${schema}", pg_catalog`).affectedCount().build(),
+      );
+      for (const check of declaration.migration.precheck) {
+        const rows = await tx.query(sql(check.sql).returnsRow({ result: "pg/bool@1" }).build());
+        assert.equal(rows[0]?.result, true, check.description);
+      }
+      for (const step of declaration.migration.execute)
+        await tx.execute(sql(step.sql).affectedCount().build());
+      for (const check of declaration.migration.postcheck) {
+        const rows = await tx.query(sql(check.sql).returnsRow({ result: "pg/bool@1" }).build());
+        assert.equal(rows[0]?.result, true, check.description);
+      }
+    });
+    await use({ declaration, app: db, admin, schema, owner, outsider });
+    await admin.runtime().close();
+  },
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   db: async ({}, use) => {
     // `.get()` compiles only on a `Result<T, never>`, which is exactly what

@@ -93,3 +93,9 @@ that stage's strict-peer install, compiler, endpoint and SIGTERM check. Other
 registry errors fail; the stage is named in the output. The retained version
 regression runs through the consumer-check workspace's `test` script with
 real Changesets patch and minor bumps in a temporary copy.
+
+The version regression copies workspace manifests directly, without walking
+package contents. Tests run alongside builds and packing: pnpm's temporary
+files can disappear during a recursive directory walk, so filtering those
+walks with `statSync` made the Node 24 CI row fail with `ENOENT`. The release
+fixture needs only manifests, not generated output or package sources.
