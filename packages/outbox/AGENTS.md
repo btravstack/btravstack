@@ -336,3 +336,9 @@ cancel publishing or free the claim early: the resource finalizer still awaits
 the loop before di releases dependencies, with the kernel's stop deadline
 bounding that wait. Store and publisher failures keep retrying; an unexpected
 loop end is reported through `Serving.stopped`, withdrawn on requested stop.
+
+The fail-fast loop aggregate feeds `Serving.stopped`, while a separate
+all-loops-settled barrier guards stop and finalization. One tenant's defect
+must notify shutdown promptly without releasing dependencies beneath another
+tenant's surviving claim. Stop aborts idle loops, waits for every loop, then
+preserves the original failure for the shutdown path.

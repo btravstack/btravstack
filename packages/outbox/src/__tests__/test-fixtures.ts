@@ -299,15 +299,27 @@ export const it = test.extend<OutboxFixtures>({
     });
   },
 
-  standalone: async ({ clock, store, publisher }, use) => {
+  standalone: async ({ clock, store, publisher, releases }, use) => {
     await use((body, options = {}) =>
       Module.scoped(
         Module("Standalone")({
           imports: [outboxRuntime({ tenants: ["acme"], clock, ...options })],
           provides: [
             Provider(Env)({ inject: {}, value: {} }),
-            Provider(OutboxStore)({ inject: {}, value: store }),
-            Provider(OutboxPublisher)({ inject: {}, value: publisher }),
+            Provider(OutboxStore)({
+              inject: {},
+              acquire: () => OkAsync(store),
+              release: () => {
+                releases.push("store");
+              },
+            }),
+            Provider(OutboxPublisher)({
+              inject: { store: OutboxStore },
+              acquire: () => OkAsync(publisher),
+              release: () => {
+                releases.push("publisher");
+              },
+            }),
           ],
           exports: [OutboxRuntime, HealthChecks],
         }),

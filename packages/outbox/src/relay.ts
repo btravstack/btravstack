@@ -205,40 +205,40 @@ const startRelay = (
 
   // One loop per tenant keeps claims serial within a tenant; the slots bound
   // how many claims and prunes, and so pooled connections, are held at once.
-  const running = Promise.all(
-    tenants.map(async (tenantId) => {
-      let due = clock.now();
-      let pruneDue = retainMs > 0 ? clock.now() : Number.POSITIVE_INFINITY;
-      let swept: Swept = "idle";
-      let failures = 0;
-      while (!signal.aborted) {
-        const wait = Math.min(due, pruneDue) - clock.now();
-        if (wait > 0) await clock.sleep(wait, signal);
-        if (signal.aborted || !(await take())) break;
-        // One slot covers the sweep and the prune: each holds the tenant's
-        // lock on a pooled connection.
-        try {
-          // A slot handed over as the stop landed goes back unused.
-          if (signal.aborted) break;
-          // Two deadlines: waking to prune must not retry a publish its backoff
-          // still holds back.
-          if (clock.now() >= due) {
-            swept = await sweep(tenantId);
-            failures = swept === "failed" ? failures + 1 : 0;
-            due = clock.now() + (swept === "full" ? 0 : backoff(failures));
-          }
-          // Not after a full batch, so a backlog publishes first; after a failed
-          // one too, since a refused head message must not hold retention back.
-          if (!signal.aborted && swept !== "full" && clock.now() >= pruneDue) {
-            const backlog = await prune(tenantId);
-            pruneDue = clock.now() + (backlog ? PRUNE_BACKLOG_MS : PRUNE_EVERY_MS);
-          }
-        } finally {
-          give();
+  const loops = tenants.map(async (tenantId) => {
+    let due = clock.now();
+    let pruneDue = retainMs > 0 ? clock.now() : Number.POSITIVE_INFINITY;
+    let swept: Swept = "idle";
+    let failures = 0;
+    while (!signal.aborted) {
+      const wait = Math.min(due, pruneDue) - clock.now();
+      if (wait > 0) await clock.sleep(wait, signal);
+      if (signal.aborted || !(await take())) break;
+      // One slot covers the sweep and the prune: each holds the tenant's
+      // lock on a pooled connection.
+      try {
+        // A slot handed over as the stop landed goes back unused.
+        if (signal.aborted) break;
+        // Two deadlines: waking to prune must not retry a publish its backoff
+        // still holds back.
+        if (clock.now() >= due) {
+          swept = await sweep(tenantId);
+          failures = swept === "failed" ? failures + 1 : 0;
+          due = clock.now() + (swept === "full" ? 0 : backoff(failures));
         }
+        // Not after a full batch, so a backlog publishes first; after a failed
+        // one too, since a refused head message must not hold retention back.
+        if (!signal.aborted && swept !== "full" && clock.now() >= pruneDue) {
+          const backlog = await prune(tenantId);
+          pruneDue = clock.now() + (backlog ? PRUNE_BACKLOG_MS : PRUNE_EVERY_MS);
+        }
+      } finally {
+        give();
       }
-    }),
-  );
+    }
+  });
+  const running = Promise.all(loops);
+  const settled = Promise.allSettled(loops);
 
   return {
     finished: fromSafePromise(running).map(() => undefined),
@@ -246,6 +246,8 @@ const startRelay = (
       fromSafePromise(
         (async () => {
           stopping.abort();
+          // Promise.all can reject while another tenant still holds a claim.
+          await settled;
           await running;
         })(),
       ),

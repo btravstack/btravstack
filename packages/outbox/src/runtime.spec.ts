@@ -235,4 +235,60 @@ describe("standalone outbox runtime", () => {
       );
     },
   );
+  it("retains dependencies until surviving claims settle after another tenant defects", async ({
+    standalone,
+    publisher,
+    store,
+    clock,
+    releases,
+  }) => {
+    // GIVEN one failing loop and another tenant's held publish
+    store.append({ tenantId: "acme", kind: "order", subjectId: "a", payload: "{}" });
+    const held = publisher.hold("a");
+    let first = true;
+    const broken = {
+      ...clock,
+      now: () => {
+        if (first) {
+          first = false;
+          // oxlint-disable-next-line unthrown/no-throw -- a single tenant loop failure is the subject under test
+          throw new Error("one tenant failed");
+        }
+        return clock.now();
+      },
+    };
+    let notified = false;
+    // WHEN the first failure notifies shutdown and scope teardown begins
+    const result = standalone(
+      (runtime, _ctx, host) =>
+        runtime.start(host).flatMap((serving) =>
+          fromSafePromise(held.entered).flatMap(() =>
+            serving.stopped!().tapFailure(() => {
+              notified = true;
+            }),
+          ),
+        ),
+      { tenants: ["broken", "acme"], clock: broken },
+    );
+    await held.entered;
+    await vi.waitUntil(() => notified);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const during = releases.slice();
+    held.release();
+    const failure = await result;
+    // THEN teardown retained both dependencies until the surviving claim finished
+    expect({
+      notified,
+      during,
+      defect: failure.isDefect(),
+      sent: publisher.sent(),
+      releases,
+    }).toEqual({
+      notified: true,
+      during: [],
+      defect: true,
+      sent: ["a"],
+      releases: ["publisher", "store"],
+    });
+  });
 });
