@@ -7,7 +7,6 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -34,12 +33,21 @@ describe("template release pins", () => {
         }
       }
       for (const folder of ["packages", "examples", "internal", "docs"]) {
-        cpSync(join(root, folder), join(work, folder), {
-          recursive: true,
-          filter: (source) =>
-            !source.includes("node_modules") &&
-            (source.endsWith("package.json") || statSync(source).isDirectory()),
-        });
+        mkdirSync(join(work, folder), { recursive: true });
+        if (folder === "docs") {
+          cpSync(join(root, folder, "package.json"), join(work, folder, "package.json"));
+          continue;
+        }
+        // Only workspace manifests are inputs; package contents can change during packing.
+        for (const entry of readdirSync(join(root, folder), { withFileTypes: true })) {
+          if (!entry.isDirectory()) continue;
+          const name = entry.name;
+          mkdirSync(join(work, folder, name), { recursive: true });
+          cpSync(
+            join(root, folder, name, "package.json"),
+            join(work, folder, name, "package.json"),
+          );
+        }
       }
       for (const name of readdirSync(join(work, "packages"))) {
         const path = join(work, "packages", name, "package.json");
@@ -95,12 +103,13 @@ describe("template release pins", () => {
     mkdirSync(join(work, "internal", "consumer-check", "src"), { recursive: true });
     cpSync(join(root, "internal", "consumer-check", "src", "check-template.ts"), script);
     cpSync(join(root, "templates"), join(work, "templates"), { recursive: true });
-    cpSync(join(root, "packages"), join(work, "packages"), {
-      recursive: true,
-      filter: (source) =>
-        !source.includes("node_modules") &&
-        (source.endsWith("package.json") || statSync(source).isDirectory()),
-    });
+    for (const name of readdirSync(join(root, "packages"))) {
+      mkdirSync(join(work, "packages", name), { recursive: true });
+      cpSync(
+        join(root, "packages", name, "package.json"),
+        join(work, "packages", name, "package.json"),
+      );
+    }
     const templatePath = join(work, "templates", "http-app", "package.json");
     const manifest = JSON.parse(readFileSync(templatePath, "utf8"));
     for (const name of Object.keys(manifest.dependencies)) {
