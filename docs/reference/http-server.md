@@ -1273,12 +1273,10 @@ is therefore an ordinary unmet need at `start`, not a gate this package
 invented, and the diagnostic **names the port**:
 
 ```text
-Type '"HttpAuthenticator:user"' is not assignable to type '"@di/Scope"'
+{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "HttpAuthenticator:user"; }
 ```
 
-(Not di's `UNSATISFIED DEPENDENCIES` dependency gate: that one guards
-`Module.build`/`Module.scoped`, and `start` types the need out on its parameter
-instead.)
+(`start`'s gate, in the same words di's `Module.build`/`Module.scoped` use.)
 
 There is nothing left for a second gate to check. The registry that types the
 handlers and the providers that discharge those ports come from the **same**

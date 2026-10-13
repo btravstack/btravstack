@@ -858,24 +858,32 @@ spread is exactly what `HttpModule` does for a root that uses the sugar.
 
 ```ts
 const RouterlessApi = Module("RouterlessApi")({
-  imports: [OrdersSlice, CustomersSlice, observability(), http()],
+  imports: [
+    OrdersSlice,
+    CustomersSlice,
+    observability(),
+    cache({ adapter: memoryCache() }),
+    http(),
+  ],
   exports: [HttpRuntime],
 });
 
-// @ts-expect-error — the composition needs the router port and nothing provides it.
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides "OrpcRouter".
 const _missingRouter = start(RouterlessApi, options);
 ```
 
-This one is the **`Needs` channel**, not the kernel's marker and not di's
-declaration gate either: the port is owed by `http()`, an **import**, and an
-import's needs travel without the importer re-declaring them. `start` — whose
-`module` parameter accepts only `Scope | Env` outstanding — is what refuses it,
-and the diagnostic names the port:
-`Type 'OrpcRouterPort' is not assignable to type 'Env | Scope'`, down to
-`Type '"OrpcRouter"' is not assignable to type '"@di/Scope"'`. It is **not** di's
-`UNSATISFIED DEPENDENCIES` dependency gate, which guards `Module.build` and
-`Module.scoped`; conflating the two is easy and the distinction is the point of
-having both pinned here. There is no `UNSATISFIED RUNTIME PORTS` arm, because
+Everything but the router is supplied, so the router is the one fault this
+pins. `HttpRuntime` is still exported because this is a plain `Module`: `start`
+finds the runtime among the root's exports, and only the starter sugars
+(`HttpModule` and its siblings) add it for you. Without it the diagnostic would
+not change — `start` checks unmet needs first — but the root would be faulty
+twice, and a test that could fail either way pins neither.
+
+This one is the **`Needs` channel**, not di's declaration gate: the port is
+owed by `http()`, an **import**, and an import's needs travel without the
+importer re-declaring them. `start` refuses it and the diagnostic ends on the
+port's id:
+`{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "OrpcRouter"; }`. There is no `UNSATISFIED RUNTIME PORTS` arm, because
 the shipped runtime resolves nothing.
 
 <!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the unit needs-propagation arm -->

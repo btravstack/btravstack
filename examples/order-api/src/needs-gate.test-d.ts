@@ -62,12 +62,20 @@ const _missingRuntime = start(RuntimelessApi, options);
 // It is the KERNEL's gate rather than di's declaration one, and the division
 // is the point: the port is owed by `http()`, an IMPORT, and an import's needs
 // travel published in its type rather than being re-declared here.
+// Everything else is supplied — the customers slice's `Cache`, and the runtime
+// exported for `start` to find — so the router is the one fault this pins.
 const RouterlessApi = Module("RouterlessApi")({
-  imports: [OrdersSlice, CustomersSlice, observability(), http()],
-  exports: [HttpRuntime, Logger],
+  imports: [
+    OrdersSlice,
+    CustomersSlice,
+    observability(),
+    cache({ adapter: memoryCache() }),
+    http(),
+  ],
+  exports: [HttpRuntime],
 });
 
-// @ts-expect-error — the composition needs the router port and nothing provides it.
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides "OrpcRouter".
 const _missingRouter = start(RouterlessApi, options);
 
 // The `unit` needs-propagation gate: a bound kind's own unmet needs join

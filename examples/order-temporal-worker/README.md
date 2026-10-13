@@ -110,9 +110,9 @@ never from a provider's own `deps`. So the root **must** import both
 `FulfillmentSlice` and `BillingSlice`, even though nothing in the root ever
 names `fulfillOrder` or `chargeOrder` directly. But `TemporalActivities`
 itself declares each piece's port as one of its own `deps`, so dropping
-either import is an undeclared need at the `TemporalModule(...)` call, and
-`pnpm typecheck` refuses it, naming the exact port — a compile error, not a
-runtime surprise.
+either import leaves that port an unmet need of the root, and `start`
+refuses it under `pnpm typecheck`, naming the exact port — a compile error,
+not a runtime surprise.
 
 ## The fulfillment saga
 

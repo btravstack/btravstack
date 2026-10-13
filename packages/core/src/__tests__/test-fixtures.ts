@@ -26,6 +26,8 @@ class Span extends Port("UnitFixtureSpan")<{ readonly openedIn: string | undefin
 class Greeter extends Port("UnitOverrideGreeter")<{ readonly text: string }> {}
 class AppClient extends Port("ScopeFixtureClient")<{ readonly app: string }> {}
 class RequestService extends Port("ScopeFixtureService")<Record<never, never>> {}
+class Hooks extends Port.many("ScopeFixtureHooks")<string> {}
+class OrdinaryHooks extends Port("ScopeFixtureHooks")<string> {}
 class Farewell extends Port("UnitOverrideFarewell")<{ readonly text: string }> {}
 
 /**
@@ -163,6 +165,8 @@ export type ScopedApp = {
   readonly runtime: TestRuntime<AnyUnitModule>;
   /** Runs `count` units to completion, one after another. */
   readonly units: (count: number) => Promise<void>;
+  /** Opens one unit that forks the unit module itself, as a runtime that never listed it would. */
+  readonly fork: () => AsyncResult<unknown, never>;
   /** How often the policy was parsed, what each unit read, and each scope's releases. */
   readonly seen: {
     parses: number;
@@ -173,14 +177,25 @@ export type ScopedApp = {
 };
 
 /**
- * Boots a root holding a configuration provider and a client, with a unit
- * module that injects both and declares no `needs`. `rebuilding` binds a unit
- * module that also provides the client, which the kernel must refuse.
+ * What the unit module provides beside its service: nothing, the root's own
+ * client again, another member of the root's set port, or an ordinary port
+ * sharing that set port's id.
+ */
+export type ScopedUnitShape = "plain" | "rebuilding" | "member" | "ordinaryOverSet";
+
+/**
+ * Boots a root holding a configuration provider, a client and a set port, with
+ * a unit module that injects the first two and declares no `needs`. `listed:
+ * false` leaves the module off `Runtime.units`, so only `fork()` reaches it.
  */
 export type ApplicationScopeKit = {
   readonly boot: (
     env: Environment,
-    options?: { readonly name?: string; readonly rebuilding?: boolean },
+    options?: {
+      readonly name?: string;
+      readonly unit?: ScopedUnitShape;
+      readonly listed?: boolean;
+    },
   ) => ScopedApp;
 };
 
@@ -243,7 +258,7 @@ export const it = test.extend<{
   applicationScope: async ({}, use) => {
     const started: RunningApp<unknown, unknown>[] = [];
     await use({
-      boot: (env, { name = "app", rebuilding = false } = {}) => {
+      boot: (env, { name = "app", unit: shape = "plain", listed = true } = {}) => {
         const seen: ScopedApp["seen"] = { parses: 0, appStops: 0, unitStops: 0, units: [] };
         const schema = Config.object({
           maxItems: Config.integer("APP_MAX_ITEMS", { min: 1 }),
@@ -275,17 +290,24 @@ export const it = test.extend<{
             seen.unitStops += 1;
           },
         });
+        const hook = Provider.member(Hooks)({ inject: {}, value: "application" });
+        const extra = {
+          plain: [],
+          rebuilding: [client],
+          member: [Provider.member(Hooks)({ inject: {}, value: "unit" })],
+          ordinaryOverSet: [Provider(OrdinaryHooks)({ inject: {}, value: "unit" })],
+        }[shape];
         const unit = Module("ScopeFixtureRequest")({
-          provides: rebuilding ? [client, service] : [service],
+          provides: [service, ...extra],
           exports: [RequestService],
-        }) as unknown as AnyUnitModule;
-        const runtime = testRuntime("test", { unit });
+        } as never) as unknown as AnyUnitModule;
+        const runtime = testRuntime("test", listed ? { unit } : {});
         const app = (
           start as unknown as (module: never, options: object) => RunningApp<unknown, unknown>
         )(
           Module("ScopeFixtureApp")({
             imports: [runtime.module],
-            provides: [policy, client],
+            provides: [policy, client, hook],
             exports: [TestRuntimePort],
           }) as never,
           { env, signals: false, probes: false, onEvent: () => {} },
@@ -298,7 +320,11 @@ export const it = test.extend<{
             await submitted.result;
           }
         };
-        return { app, runtime, units, seen };
+        const fork = (): AsyncResult<unknown, never> =>
+          runtime
+            .host()
+            .run({ kind: "test", id: "forked" }, (host) => host.fork(unit as never, []));
+        return { app, runtime: runtime as TestRuntime<AnyUnitModule>, units, fork, seen };
       },
     });
     for (const app of started) {

@@ -138,11 +138,13 @@ at its own declaration may still write `needs` — see
 | the root provides nothing for a port a unit injects     | `start` / `runMain`: `UNSATISFIED DEPENDENCIES — nothing provides`, naming the port                                                                               |
 | an application provider injects a port only a unit has  | the same, naming the unit's port: the root never holds what a fork builds                                                                                         |
 | a unit provider reads `Env`                             | the same, naming `UNIT READS CONFIGURATION — Env is application-scoped`; a `Config.provider` cannot sit in a unit at all, since a unit's error channel is `never` |
-| a unit module provides a port the root already provides | boot defect: `unit kind "…" of runtime "…" provides port "…", which the application scope already provides`                                                       |
+| a unit module provides a port the root already provides | defect: `unit module "…" of runtime "…" provides port "…", which the application scope already provides`                                                          |
 
-The last one is a boot-time check rather than a compile error: it compares the
-two module trees once, before the runtime starts, so a unit that would rebuild
-the application's client or logger per request never serves one.
+The last one is a runtime check rather than a compile error. It compares the
+two module trees before the runtime starts, for every unit module the runtime
+lists, so a unit that would rebuild the application's client or logger never
+serves one; a module forked without being listed is checked at its first fork.
+A unit may still add a member to one of the application's set ports.
 
 ## Migrate an existing application
 

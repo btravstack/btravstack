@@ -230,8 +230,9 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    a unit module once per unit. Two rules keep placement honest: a unit that
    reads `Env` is refused at `start` (configuration is parsed once, at boot —
    `UnitNeedsOf`'s refusal), and a unit module providing a port the
-   application scope already provides is a boot defect (`refuseRebuiltPorts`),
-   since the fork would rebuild it per unit. An application provider cannot
+   application scope already provides is refused (`rebuildGuard`, at boot for
+   the modules a runtime lists and at `fork` for any other), since the fork
+   would rebuild it per unit. An application provider cannot
    capture a unit-scoped port: the root never holds one, so it is an unmet
    need. `docs/how-to/share-application-infrastructure-with-units.md` is the
    pattern and the migration guide.

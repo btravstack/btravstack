@@ -81,16 +81,67 @@ describe("application-scoped infrastructure", () => {
     applicationScope,
   }) => {
     // GIVEN a unit module that also provides the root's client
-    const { app } = applicationScope.boot({ APP_MAX_ITEMS: "5" }, { rebuilding: true });
+    const { app } = applicationScope.boot({ APP_MAX_ITEMS: "5" }, { unit: "rebuilding" });
 
     // WHEN the application settles
-    // THEN the boot is a defect naming the kind, the runtime and the port
+    // THEN the boot is a defect naming the module, the runtime and the port
     await expect(app.exited).toBeDefectWith(
       expect.objectContaining({
         message: expect.stringContaining(
-          '[core] unit kind "test" of runtime "test" provides port "ScopeFixtureClient", which the application scope already provides',
+          '[core] unit module "ScopeFixtureRequest" of runtime "test" provides port "ScopeFixtureClient", which the application scope already provides',
         ),
       }),
     );
+  });
+
+  it("refuses the rebuild at the fork for a module the runtime never listed", async ({
+    applicationScope,
+  }) => {
+    // GIVEN a runtime that lists no unit module, serving
+    const { runtime, fork } = applicationScope.boot(
+      { APP_MAX_ITEMS: "5" },
+      { unit: "rebuilding", listed: false },
+    );
+    await runtime.untilStarted();
+
+    // WHEN a unit forks the rebuilding module anyway
+    // THEN the fork is a defect, before anything in it is built
+    await expect(fork()).toBeDefectWith(
+      expect.objectContaining({
+        message: expect.stringContaining('provides port "ScopeFixtureClient"'),
+      }),
+    );
+  });
+
+  it("refuses an ordinary port sharing the id of the application's set port", async ({
+    applicationScope,
+  }) => {
+    // GIVEN a unit module providing an ordinary port under the set port's id
+    const { app } = applicationScope.boot({ APP_MAX_ITEMS: "5" }, { unit: "ordinaryOverSet" });
+
+    // WHEN the application settles
+    // THEN the boot is a defect naming the shared id
+    await expect(app.exited).toBeDefectWith(
+      expect.objectContaining({
+        message: expect.stringContaining('provides port "ScopeFixtureHooks"'),
+      }),
+    );
+  });
+
+  it("lets a unit contribute another member to the application's own set port", async ({
+    applicationScope,
+  }) => {
+    // GIVEN a unit module adding a member to the root's set port
+    const { runtime, units, seen } = applicationScope.boot(
+      { APP_MAX_ITEMS: "5" },
+      { unit: "member" },
+    );
+    await runtime.untilStarted();
+
+    // WHEN a unit runs
+    await units(1);
+
+    // THEN it was built: a member of the same set port shadows nothing
+    expect(seen.units).toEqual([{ maxItems: 5, client: "app" }]);
   });
 });

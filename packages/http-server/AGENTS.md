@@ -650,10 +650,9 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   `"NO RUNTIME — the module exports no port declared over RuntimePort"`; and
   because the runtime provider depends on the router port **through di**,
   a composition that imports `http()` without providing the router
-  carries `OrpcRouterPort` as an unmet need `start` refuses on the same
-  parameter's `Module<X, E, Scope | Env>` half, ending on
-  `Type '"OrpcRouter"' is not assignable to type '"@di/Scope"'`. Neither is
-  di's `UNSATISFIED DEPENDENCIES` dependency gate.
+  carries `OrpcRouterPort` as an unmet need `start` refuses through the same
+  marker's first arm, ending on
+  `{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "OrpcRouter"; }`.
   `examples/order-api/src/needs-gate.test-d.ts` pins both, plus a third —
   `HttpModule`'s own `unit.anonymous` needs-propagation gate, the same shape
   as the two workers' — now that the answerers-fork change (below) retired the

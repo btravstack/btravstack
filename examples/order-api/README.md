@@ -113,7 +113,7 @@ fragment, so the router declares one dependency per scheme that fragment names
 providers that discharge them, which `HttpModule` puts in `provides` itself. A
 scheme with nobody behind it is an unmet dependency `start` refuses, naming the
 port. Both are ordinary providers, so an authenticator that declares a need of
-its own carries it into the graph, refused at this very call if nothing
+its own carries it into the root's needs, refused at `start` if nothing
 satisfies it. `Env` is the one need never yours to declare: `userAuth` binds
 its three `HTTP_JWT_*` variables from it, and `HttpModule` carries `Env` for
 every provider in the root.
@@ -192,12 +192,13 @@ rather than a client of its own.
 (`http()` — the whole surface), provides the
 router and exports `HttpRuntime`, and returns exactly the di module
 `Module("OrderApi")({ imports: [OrdersSlice, CustomersSlice, observability(),
-http()], provides: [orderRouter], exports: [HttpRuntime, Logger] })` would
+http()], provides: [orderRouter], exports: [HttpRuntime] })` would
 have. `observability()` is the starter that provides the
 `Logger` the use cases and the request scope write to — `LOG_LEVEL` bound from
 the environment, one JSON object per line on stdout, and every line stamped
-with the unit the runtime opened around it. It is exported because every unit
-kind reads it once forked, as `OrderDatabase` is. The runtime provider depends on the router port
+with the unit the runtime opened around it. Nothing is exported for the unit
+kinds: once forked they read it, and `OrderDatabase`, from the application
+scope. The runtime provider depends on the router port
 through di, so even the transport wiring exists because the composition root
 said so — a composition that imports the starter without providing
 `orderRouter` carries an unmet need

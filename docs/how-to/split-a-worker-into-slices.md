@@ -213,8 +213,8 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
 
 Dropping a slice's import here still fails to compile: `AmqpHandlers` /
 `TemporalActivities` declare each piece's port as one of the composed
-provider's own `deps`, so a missing import is an undeclared need at this
-very call, and di's `NeedsGate` refuses the module, naming the exact port —
+provider's own `deps`, so a missing import leaves that port an unmet need of
+the root, and `start` refuses it, naming the exact port —
 caught by `pnpm typecheck`, not by a runtime `WiringDefect`.
 
 ## Sequencing a saga: `context.saga()`, never sibling `const`s

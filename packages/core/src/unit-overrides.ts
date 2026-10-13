@@ -1,4 +1,4 @@
-import { Module, Port, type AnyModule, type AnyProvider } from "@btravstack/di";
+import { Module, Port, type AnyModule, type AnyPort, type AnyProvider } from "@btravstack/di";
 
 import type { AnyUnitModule } from "./unit-record.js";
 
@@ -22,36 +22,44 @@ export const provides = (module: AnyModule, portId: string): boolean =>
   module.provides.some((provider) => provider.port.portId === portId) ||
   module.imports.some((imported) => provides(imported, portId));
 
-/** The ordinary ports `module`'s tree provides; a set port's members accumulate, so they are left out. */
-const providedPorts = (module: AnyModule): readonly string[] => [
+/** Every port `module`'s tree provides, by its class. */
+const providedPorts = (module: AnyModule): readonly AnyPort[] => [
   ...module.imports.flatMap(providedPorts),
-  ...module.provides.flatMap((provider) =>
-    provider.port.many === true ? [] : [provider.port.portId],
-  ),
+  ...module.provides.map((provider) => provider.port),
 ];
 
 /**
- * Refuses a unit module that provides a port the application scope already
- * provides. A fork builds its whole module tree per unit, so such a provider
- * would shadow the application's instance with a fresh one per unit, released
- * per unit — the application's configuration re-parsed, its clients reopened.
+ * A check, per unit module, that it provides no port the application scope
+ * already provides. A fork builds its whole module tree per unit, so such a
+ * provider would shadow the application's instance with a fresh one per unit,
+ * released per unit — the application's configuration re-parsed, its clients
+ * reopened. A unit's member of the SAME set port is the one exemption, since
+ * the fork appends it to the application's members; a set port meeting an
+ * ordinary one, or two classes sharing an id, is refused like any other.
+ *
+ * Answers the refusal rather than throwing it, so the boot can throw it and a
+ * fork can reject with it. A module is walked once, however often it forks.
  */
-export const refuseRebuiltPorts = (
+export const rebuildGuard = (
   runtime: string,
-  units: Readonly<Record<string, AnyUnitModule | undefined>>,
   application: AnyModule,
-): void => {
-  const owned = new Set(providedPorts(application));
-  for (const [kind, module] of Object.entries(units)) {
-    const rebuilt =
-      module === undefined ? undefined : providedPorts(module).find((id) => owned.has(id));
-    if (rebuilt !== undefined) {
-      // oxlint-disable-next-line unthrown/no-throw -- a wiring bug; `start` calls this inside di's `flatMap`, which turns the throw into the boot's defect
-      throw new Error(
-        `[core] unit kind "${kind}" of runtime "${runtime}" provides port ${JSON.stringify(rebuilt)}, which the application scope already provides — a unit would rebuild it per unit; remove it from the unit module and let the unit read the application's`,
-      );
+): ((module: AnyModule) => Error | undefined) => {
+  const owned = new Map(providedPorts(application).map((port) => [port.portId, port]));
+  const clean = new WeakSet<AnyModule>();
+  return (module) => {
+    if (clean.has(module)) return undefined;
+    const rebuilt = providedPorts(module).find((port) => {
+      const owner = owned.get(port.portId);
+      return owner !== undefined && !(owner === port && port.many === true);
+    });
+    if (rebuilt === undefined) {
+      clean.add(module);
+      return undefined;
     }
-  }
+    return new Error(
+      `[core] unit module "${module.name}" of runtime "${runtime}" provides port ${JSON.stringify(rebuilt.portId)}, which the application scope already provides — a unit would rebuild it per unit; remove it from the unit module and let the unit read the application's`,
+    );
+  };
 };
 
 /**

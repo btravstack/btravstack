@@ -61,8 +61,9 @@ provider's own `deps`. So the root **must** import both `NotificationsSlice`
 and `AuditSlice`, even though nothing in the root ever names
 `orderNotifications` or `orderAudit` directly. But `AmqpHandlers` itself
 declares each piece's port as one of its own `deps`, so dropping either import
-is an undeclared need at the `AmqpModule(...)` call, and `pnpm typecheck`
-refuses it, naming the exact port — a compile error, not a runtime surprise.
+leaves that port an unmet need of the root, and `start` refuses it under
+`pnpm typecheck`, naming the exact port — a compile error, not a runtime
+surprise.
 
 ## The pattern, in three places
 

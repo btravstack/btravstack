@@ -189,7 +189,7 @@ provider moves that knowledge to where it exists — the composition root that
 provides the router — and the `Needs` channel checks it there: a root that
 imports `http()` without providing the router carries an unmet need `start`
 refuses, naming the port
-(`Type 'OrpcRouterPort' is not assignable to type 'Env | Scope'`). The kernel keeps `Runtime.resolves`, `RunUnit`'s typed `ctx` and the
+(`{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "OrpcRouter"; }`). The kernel keeps `Runtime.resolves`, `RunUnit`'s typed `ctx` and the
 `UNSATISFIED RUNTIME PORTS` arm as the general contract for a hand-rolled
 runtime; the starters simply do not use them.
 

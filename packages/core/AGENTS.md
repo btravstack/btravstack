@@ -755,13 +755,19 @@ fork }` and never opens a second scope, zero overhead beyond the `fork`
 - **Placement is lifetime, and the kernel holds both edges of it** (#548). The
   root builds once per running app; a unit module once per unit, over the
   application context, which holds every service — so a unit reads root
-  infrastructure with nothing forwarded. `refuseRebuiltPorts`
-  (`unit-overrides.ts`) runs at boot beside `unitSubstitutes`, over the
-  `Kernel` wrap (so `Env` counts): a unit module providing an ordinary port the
-  application tree already provides is the boot's defect, since the fork would
-  shadow the application's instance with one built and released per unit. Set
-  ports are exempt — members accumulate, and `noObserverMember` is shared by
-  design. The other edge is a type: `UnitNeedsOf` turns a unit's `Env` need
+  infrastructure with nothing forwarded. `rebuildGuard` (`unit-overrides.ts`)
+  compares a unit module's tree with the `Kernel` wrap's (so `Env` counts): a
+  unit module providing a port the application tree already provides would
+  shadow the application's instance with one built and released per unit. It
+  runs at boot over every module `Runtime.units` lists, beside
+  `unitSubstitutes`, and again at `fork` over the module actually forked —
+  `units` is optional and a runtime may fork a module it never listed — so the
+  refusal is the boot's defect or that fork's, and a module is walked once.
+  The one exemption is a member of the SAME set port, keyed by class rather
+  than id: the fork appends it to the application's members (`noObserverMember`
+  is shared by design). A set port meeting an ordinary one under one id, or
+  two classes sharing an id, is refused like a rebuild — the fork would spread
+  a scalar or overwrite a set. The other edge is a type: `UnitNeedsOf` turns a unit's `Env` need
   into a port nothing provides, whose id is the sentence `start` prints, so
   configuration is never parsed per unit; a `Config.provider` cannot sit in a
   unit at all, since `AnyUnitModule`'s error channel is `never`. An application
@@ -769,7 +775,8 @@ fork }` and never opens a second scope, zero overhead beyond the `fork`
   one, so it is an ordinary unmet need. Guarded by `application-scope.spec.ts`
   (one parse across units, two simultaneous apps apart, an invalid value only
   a unit reads failing the boot, each scope's release once, the rebuild
-  refusal) and `start.test-d.ts`'s three arms after `InferredUnit`.
+  refusal at boot and at an unlisted fork, the set/ordinary collision, and a
+  same-set member allowed) and `start.test-d.ts`'s three arms after `InferredUnit`.
 
 - **`options.signals === false` disables the uncaught handlers too.** One flag,
   two handler families, because both are process-global and a test harness needs

@@ -260,13 +260,14 @@ it, so a scheme cannot be forgotten and cannot be wired to the wrong router.
 What the compiler still checks is di's own gate — the router declares one
 dependency per scheme its contract names, so a scheme with nobody behind it is
 an unmet need `start` refuses, naming the port
-(`Type '"HttpAuthenticator:user"' is not assignable to type '"@di/Scope"'`).
+(`{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "HttpAuthenticator:user"; }`).
 
 [`observability()`](/reference/observability) is the other starter here: it
 brings the `Logger` the use cases and the request scope write to, bound from
 `LOG_LEVEL`, one JSON object per line on stdout, every line carrying the
-trace id of the unit `http()` opened around the request. It is exported
-because every unit kind reads it once forked, as `OrderDatabase` is.
+trace id of the unit `http()` opened around the request. Nothing is exported
+for the unit kinds: once forked, they read it — and `OrderDatabase` — from the
+application scope.
 
 Three gates hold at compile time, now that the contract is marked. A root that
 forgets the starter exports no runtime port and `start` refuses it against
@@ -274,7 +275,7 @@ forgets the starter exports no runtime port and `start` refuses it against
 that imports `http()` without providing the router
 carries an unmet need — the starter's runtime provider depends on its router
 port through di — and `start` refuses the module, naming the port
-(`Type 'OrpcRouterPort' is not assignable to type 'Env | Scope'`). And a root serving a **marked**
+(`{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "OrpcRouter"; }`). And a root serving a **marked**
 contract whose `defineHttp` declared no authenticator for one of its schemes
 carries that scheme's port as a second unmet
 need, refused the same way; drop the marker and that third gate goes with it.

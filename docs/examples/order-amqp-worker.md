@@ -132,8 +132,8 @@ defect at build. `orderHandlers`'s pieces are the composed provider's own
 **imports both slice modules**, `NotificationsSlice` and `AuditSlice`, even
 though nothing in the root names `orderNotifications` or `orderAudit`
 directly. That still fails to compile if forgotten: `AmqpHandlers` declares
-each piece's port as one of its **own** `deps`, so a missing import is an
-undeclared need at the `AmqpModule(...)` call, refused with the exact port
+each piece's port as one of its **own** `deps`, so a missing import leaves
+that port an unmet need of the root, refused at `start` with the exact port
 named — `pnpm typecheck` catches it, not a runtime `WiringDefect`.
 
 The `payload === null` branch is the whole point of the envelope: one handler,
