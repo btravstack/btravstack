@@ -545,12 +545,24 @@ export type Stubbed = {
   readonly stopped: () => AsyncResult<void, never>;
 };
 
+const messagesOf = (error: Error): string =>
+  error instanceof AggregateError
+    ? [error.message, ...error.errors.map((inner: Error) => messagesOf(inner))].join(" / ")
+    : error.message;
+
 /**
  * `testcontainers` as `temporalServer` reaches it, recording what each
  * container was configured with and the order things start and stop in.
- * `failing` makes the Temporal container refuse to start.
+ * `failing` makes the Temporal container refuse to start; `unstoppable` names
+ * the resources whose stop rejects.
  */
-const fakeContainersOf = (failing: boolean) => {
+const fakeContainersOf = (failing: boolean, unstoppable: readonly string[]) => {
+  const stopping = (name: string) => () => {
+    events.push(`stop ${name}`);
+    return unstoppable.includes(name)
+      ? Promise.reject(new Error(`${name} did not stop`))
+      : Promise.resolve();
+  };
   const events: string[] = [];
   const configured: { image: string; healthCheck?: unknown; startupTimeoutMs?: number }[] = [];
   class GenericContainer {
@@ -590,14 +602,14 @@ const fakeContainersOf = (failing: boolean) => {
       return Promise.resolve({
         getHost: () => "localhost",
         getMappedPort: () => 7233,
-        stop: () => Promise.resolve(events.push(`stop ${image}`)),
+        stop: stopping(image),
       });
     }
   }
   class Network {
     start() {
       events.push("start network");
-      return Promise.resolve({ stop: () => Promise.resolve(events.push("stop network")) });
+      return Promise.resolve({ stop: stopping("network") });
     }
   }
   return {
@@ -679,7 +691,11 @@ export type TemporalFixtures = {
   /** A client on the server's `default` namespace — not this file's. */
   readonly foreign: Client;
   /** `temporalServer` run over a fake `testcontainers`, then torn down. */
-  readonly runServer: (options?: TemporalServerOptions, failing?: boolean) => Promise<ServerRun>;
+  readonly runServer: (
+    options?: TemporalServerOptions,
+    failing?: boolean,
+    unstoppable?: readonly string[],
+  ) => Promise<ServerRun>;
 };
 
 /**
@@ -960,8 +976,8 @@ export const it = test.extend<TemporalFixtures>({
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   runServer: async ({}, use) => {
-    await use(async (options, failing = false) => {
-      const fake = fakeContainersOf(failing);
+    await use(async (options, failing = false, unstoppable = []) => {
+      const fake = fakeContainersOf(failing, unstoppable);
       vi.doMock("testcontainers", () => fake.module);
       const provided: Record<string, unknown> = {};
       const project = {
@@ -970,11 +986,12 @@ export const it = test.extend<TemporalFixtures>({
         },
       } as unknown as TestProject;
       const outcome = await temporalServer(options)(project).then(
-        async (teardown) => {
-          await teardown();
-          return "ok";
-        },
-        (cause: Error) => `failed: ${cause.message}`,
+        (teardown) =>
+          teardown().then(
+            () => "ok",
+            (cause: Error) => `teardown failed: ${messagesOf(cause)}`,
+          ),
+        (cause: Error) => `failed: ${messagesOf(cause)}`,
       );
       return { outcome, provided, events: fake.events, configured: fake.configured };
     });

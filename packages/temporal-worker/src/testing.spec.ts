@@ -60,6 +60,41 @@ describe("temporalServer", () => {
       events: ["start network", "start postgres:18.1", "stop postgres:18.1", "stop network"],
     });
   });
+
+  it("still stops the database and network when the Temporal container will not stop", async ({
+    runServer,
+  }) => {
+    // GIVEN a Temporal container whose stop fails
+    // WHEN the run starts and then ends
+    const run = await runServer({}, false, ["temporalio/auto-setup:1.29.1"]);
+
+    // THEN every stop was attempted, and the teardown reports the one that failed
+    expect(run).toMatchObject({
+      outcome:
+        "teardown failed: [temporal-worker] the Temporal test server did not stop cleanly / temporalio/auto-setup:1.29.1 did not stop",
+      events: [
+        "start network",
+        "start postgres:18.1",
+        "start temporalio/auto-setup:1.29.1",
+        "stop temporalio/auto-setup:1.29.1",
+        "stop postgres:18.1",
+        "stop network",
+      ],
+    });
+  });
+
+  it("keeps the startup failure when cleaning up after it fails too", async ({ runServer }) => {
+    // GIVEN a Temporal container that never becomes healthy, and a database that will not stop
+    // WHEN the setup runs
+    const run = await runServer({}, true, ["postgres:18.1"]);
+
+    // THEN the network was still stopped, and the startup failure leads the report
+    expect(run).toMatchObject({
+      outcome:
+        "failed: [temporal-worker] the Temporal test server failed to start, and what had started did not stop cleanly / temporalio/auto-setup:1.29.1 is unhealthy / postgres:18.1 did not stop",
+      events: ["start network", "start postgres:18.1", "stop postgres:18.1", "stop network"],
+    });
+  });
 });
 
 describe("temporalEnvironment", () => {

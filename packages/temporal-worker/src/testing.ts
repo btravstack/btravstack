@@ -61,8 +61,22 @@ export const temporalServer =
     };
     const password = randomUUID();
     const started: { stop: () => Promise<unknown> }[] = [];
+    // Every resource is stopped even when an earlier stop fails, so one
+    // container that will not stop cannot leave the others running.
+    const stopAll = async (): Promise<unknown[]> => {
+      const failures: unknown[] = [];
+      for (const resource of started.toReversed())
+        await resource.stop().then(undefined, (failure: unknown) => failures.push(failure));
+      return failures;
+    };
     const teardown = async (): Promise<void> => {
-      for (const resource of started.toReversed()) await resource.stop();
+      const failures = await stopAll();
+      if (failures.length > 0)
+        // oxlint-disable-next-line unthrown/no-throw -- a Vitest `globalSetup` teardown reports failure by rejecting; there is no Result channel here
+        throw new AggregateError(
+          failures,
+          "[temporal-worker] the Temporal test server did not stop cleanly",
+        );
     };
 
     try {
@@ -108,9 +122,14 @@ export const temporalServer =
       );
       return teardown;
     } catch (cause) {
-      await teardown();
+      const failures = await stopAll();
       // oxlint-disable-next-line unthrown/no-throw -- a Vitest `globalSetup` reports failure by rejecting; there is no Result channel here
-      throw cause;
+      throw failures.length === 0
+        ? cause
+        : new AggregateError(
+            [cause, ...failures],
+            "[temporal-worker] the Temporal test server failed to start, and what had started did not stop cleanly",
+          );
     }
   };
 
