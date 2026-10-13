@@ -1,5 +1,17 @@
 # @btravstack/outbox
 
+## 0.34.0
+
+### Minor Changes
+
+- 9366004: Add `outboxRuntime()` and `OutboxRuntime` for standalone relay processes using `runMain`, kernel probes, deadline-aware drain and scope teardown. Keep `outbox()` for embedded relays.
+
+### Patch Changes
+
+- @btravstack/config@0.34.0
+  - @btravstack/core@0.34.0
+  - @btravstack/di@0.34.0
+
 ## 0.33.0
 
 ### Patch Changes
