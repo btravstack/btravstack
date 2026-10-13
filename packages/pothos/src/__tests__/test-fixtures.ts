@@ -85,7 +85,7 @@ export const books = (input: { readonly title: string }): AsyncResult<unknown, B
   }
 };
 
-const loans = (input: {
+export const loans = (input: {
   readonly shelf: string;
   readonly first?: number | undefined;
 }): AsyncResult<unknown, ORPCError<"NOT_FOUND", { readonly reason: string }>> =>
@@ -175,6 +175,79 @@ const libraryOf = (registered: boolean, defaults = false) => {
   return builder.toSchema();
 };
 
+class MissingBookError extends NotFoundError {}
+class MissingShelfError extends NotFoundError {}
+class BadLoanInputError extends BadRequestError {}
+
+const localLibraryOf = (override: boolean) => {
+  const shared = {
+    InvalidInput: BadRequestError,
+    ...(override ? { NOT_FOUND: NotFoundError } : {}),
+  };
+  const builder = new SchemaBuilder<{
+    Objects: Library["Objects"];
+    Refusals: typeof shared;
+  }>({
+    plugins: [RelayPlugin, ErrorsPlugin, UnthrownPlugin, OrpcPlugin],
+    errors: { directResult: true },
+    orpc: { refusals: shared },
+  });
+  builder.objectType(NotFoundError, {
+    name: "NotFound",
+    fields: (fields) => ({ message: fields.exposeString("message") }),
+  });
+  builder.objectType(MissingBookError, {
+    name: "MissingBook",
+    fields: (fields) => ({ message: fields.exposeString("message") }),
+  });
+  builder.objectType(MissingShelfError, {
+    name: "MissingShelf",
+    fields: (fields) => ({ message: fields.exposeString("message") }),
+  });
+  builder.objectType(BadRequestError, {
+    name: "BadRequest",
+    fields: (fields) => ({ message: fields.exposeString("message") }),
+  });
+  builder.objectType(BadLoanInputError, {
+    name: "BadLoanInput",
+    fields: (fields) => ({ message: fields.exposeString("message") }),
+  });
+  builder.objectType("Book", {
+    fields: (fields) => ({ title: fields.exposeString("title") }),
+  });
+  builder.objectType("Loan", { fields: (fields) => ({ id: fields.exposeID("id") }) });
+  builder.queryType({
+    fields: (fields) => ({
+      book: fields.procedureField(getBook, {
+        type: "Book",
+        refusals: { NOT_FOUND: MissingBookError },
+        args: { title: fields.arg.string({ required: true }) },
+        call: () => books,
+        input: ({ title }) => ({ title }),
+        output: Book,
+      }),
+      loans: fields.procedureConnection(listLoans, {
+        type: "Loan",
+        refusals: { NOT_FOUND: MissingShelfError, InvalidInput: BadLoanInputError },
+        args: { shelf: fields.arg.string({ required: true }) },
+        call: () => loans,
+        input: ({ shelf, first }) => ({ shelf, first: first ?? undefined }),
+        output: LoanPage,
+        connection: (page) => ({
+          edges: page.loans.map((loan) => ({ cursor: loan.id, node: loan })),
+          pageInfo: {
+            hasNextPage: page.more,
+            hasPreviousPage: false,
+            startCursor: page.loans.at(0)?.id ?? null,
+            endCursor: page.loans.at(-1)?.id ?? null,
+          },
+        }),
+      }),
+    }),
+  });
+  return builder.toSchema();
+};
+
 export const it = test.extend<{
   readonly tapped: string[];
   readonly ask: (source: string) => Promise<ExecutionResult>;
@@ -182,6 +255,7 @@ export const it = test.extend<{
   readonly askMaskedWithDefaults: (source: string) => Promise<ExecutionResult>;
   readonly askMasked: (source: string) => Promise<ExecutionResult>;
   readonly readBook: (title: string) => Promise<ExecutionResult>;
+  readonly askLocal: (source: string, override?: boolean) => Promise<ExecutionResult>;
 }>({
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   tapped: async ({}, use) => {
@@ -190,6 +264,13 @@ export const it = test.extend<{
   ask: async ({ tapped }, use) => {
     const schema = libraryOf(true);
     await use((source) => graphql({ schema, source, contextValue: { tapped } }));
+  },
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  askLocal: async ({}, use) => {
+    const schemas = [localLibraryOf(false), localLibraryOf(true)];
+    await use((source, override = false) =>
+      graphql({ schema: schemas[override ? 1 : 0]!, source }),
+    );
   },
   askUnregistered: async ({ tapped }, use) => {
     const schema = libraryOf(false);

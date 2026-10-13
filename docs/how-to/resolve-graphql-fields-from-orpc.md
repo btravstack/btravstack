@@ -21,12 +21,13 @@ pnpm add @btravstack/pothos @pothos/core @pothos/plugin-errors @pothos/plugin-re
 The schema is any server's: serve it with
 [`@btravstack/graphql-server`](/how-to/serve-graphql) or another one.
 
-## Register a refusal per error code
+## Register shared defaults and field-local refusals
 
-A procedure's contract declares its errors by code. The builder's
-`orpc: { refusals }` maps each code to the GraphQL error class built from that
-failure, plus `InvalidInput`, the contract refusing a field's input before the
-call:
+A procedure's contract declares its errors by code. Each field's `refusals`
+maps its business codes to GraphQL error classes. Keep shared defaults such as
+`InvalidInput` in the builder's `orpc: { refusals }`: it answers the contract
+refusing a field's input before the call. Each resource can then own its
+business refusal classes without a central file importing every domain.
 
 ```ts
 import OrpcPlugin, { type InvalidInput } from "@btravstack/pothos";
@@ -58,7 +59,7 @@ class BadRequest extends Error {
   }
 }
 
-const refusals = { NOT_FOUND: NotFound, InvalidInput: BadRequest } as const;
+const refusals = { InvalidInput: BadRequest } as const;
 
 type Catalogue = {
   readonly getBook: (input: {
@@ -104,6 +105,7 @@ builder.queryType({
   fields: (t) => ({
     book: t.procedureField(getBook, {
       type: "Book",
+      refusals: { NOT_FOUND: NotFound },
       args: { title: t.arg.string({ required: true }) },
       call: ({ catalogue }) => catalogue.getBook,
       input: ({ title }) => ({ title }),
@@ -113,17 +115,21 @@ builder.queryType({
 });
 ```
 
-The field's type is the union `Book | NotFound | BadRequest`. What happens on
-each path:
+The field's type is the union `Book | NotFound | BadRequest`. Local entries
+override shared entries for the same code; shared entries not overridden
+remain available. Existing builders may keep their whole map in
+`orpc.refusals` and omit the field option. What happens on each path:
 
 - **The input is the contract's.** It is parsed by the procedure's own input
   schema — its defaults applied, its codecs run — and encoded back for the
   wire before `call` runs; a schema with a `.transform()` has no wire spelling,
   so `call` gets the input as given. An input the contract refuses is `BadRequest`, and
   the service is never called.
-- **A declared error is its registered member.** A registry that misses a code
-  `call` can fail with does not compile: the options demand an `uncovered`
-  property naming the code.
+- **A declared error is its registered member.** Together the shared and local
+  maps must cover every code `call` can fail with, plus `InvalidInput`. A
+  missing code does not compile: the options demand an `uncovered` property
+  naming it. A narrower `call` that handles a declared error itself needs no
+  entry for that error. Each constructor must accept its own case's failure.
 - **An access refusal is an error of the operation.** `UNAUTHORIZED` and
   `FORBIDDEN`, declared or not, become a `GraphQLError` with that code in
   `extensions.code`, which a server masking unexpected errors passes through.
@@ -137,7 +143,9 @@ cache after a read or a write.
 
 `procedureConnection` takes the same options, and `connection` folds the
 decoded page into Relay's shape; `connectionType` adds fields of your own
-beside its edges and page info.
+beside its edges and page info. Its `refusals` option merges with the same
+builder defaults, with local entries taking precedence and the same coverage
+check against the connection's `call`.
 
 ## Load through a DataLoader
 
@@ -147,3 +155,7 @@ procedure, call, input, output)` is that answer, the refusal instance for a
 declared error so one key's failure never fails the batch, and
 `procedureErrors(refusals, procedure)` is the field's `errors` option, the
 same union `procedureField` would have built.
+
+For the book field above, pass `{ ...refusals, NOT_FOUND: NotFound }` to both
+helpers. They already accept a map at the call, so the loader's business
+refusals can stay with its resource too.

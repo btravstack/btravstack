@@ -410,6 +410,11 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    contract error in the application's handler, and the kernel maps nothing.
    The RPC answerer keeps oRPC's standard code mapping.
 
+   Pothos gateways keep business refusal maps on `procedureField` and
+   `procedureConnection`, merged over shared builder defaults such as
+   `InvalidInput`. Their coverage follows the failures each field's `call`
+   can return, so a domain need not register an error its call handles itself.
+
    **Declining the mapping is not declining the help — the help is the `Err`
    channel's own type** (issue #69's question, answered by measurement).
    `placeOrder`'s union (`InvalidQuantity | InvalidOrderId | DuplicateOrder`)
