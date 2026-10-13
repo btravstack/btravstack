@@ -38,7 +38,8 @@ finer than "a server of my own":
 
 - **A vhost per test.** `@amqp-contract/testing`'s `it` extension already
   minted one from the management API; only the container was ever duplicated.
-- **A namespace per spec file.** `createNamespace` registers one and waits for
+- **A namespace per spec file.** `@btravstack/temporal-worker/testing`'s
+  published `temporalEnvironment` fixture registers one and waits for
   every Temporal service's registry to catch up before returning it — a
   `startWorkflow` issued the instant `registerNamespace` resolves fails with
   `NamespaceNotFound` until they do, and `describeNamespace` answers from the
@@ -147,9 +148,8 @@ break.
 | Import                                       | What it is                                                                                                                                                                                                              |
 | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@btravstack/internal-test-infra/rabbitmq`   | a vitest `globalSetup` providing `@amqp-contract/testing`'s inject keys                                                                                                                                                 |
-| `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@temporal-contract/testing`'s                                                                                                                                                         |
+| `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@btravstack/temporal-worker/testing`'s address key, over the shared server                                                                                                            |
 | `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal` / `sharedRedis` / `sharedMailpit` / `sharedRustFs`, plus `postgresUrl`, `provisionApplicationRole`, `migrateOrders` and the credentials each one is started with |
-| `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                                                                                                                                                                      |
 | `@btravstack/internal-test-infra/ory`        | `sharedOry` / `provisionOry` / `createIdentity` / `createServiceClient` / `registerRedirectUri`, the issuer and client constants, and `ORY_USERS`                                                                       |
 | `@btravstack/internal-test-infra/keycloak`   | `sharedKeycloak` / `createExchangeClient`, the native delegation issuer and per-test credentials                                                                                                                        |
 | `@btravstack/internal-test-infra/ory-login`  | `oryClient()`, `headlessLogin({ authorizationUrl, user })`, `browserLogin(origin, user)` and `followRedirects(from, until)`                                                                                             |
@@ -468,8 +468,13 @@ re-provisions on every run regardless, since a wiped database is empty.
 
 The two setup modules are drop-in replacements for
 `@amqp-contract/testing/global-setup` and
-`@temporal-contract/testing/global-setup`: they provide the **same** inject
-keys, so both upstream `it` extensions keep working unchanged.
+`@btravstack/temporal-worker/testing`'s `temporalServer`: they provide the
+**same** inject keys, so `@amqp-contract/testing`'s `it` extension and the
+published `temporalEnvironment` fixture work unchanged against the shared
+servers. The Temporal one is not the published setup itself: a server shared
+across workspaces and runs, on the PostgreSQL the example's database lives on,
+behind the reuse lock, is this repository's shape, and none of it belongs in a
+consumer's suite.
 
 **Each setup declares the keys it provides**, in its own module, and a
 workspace pulls in the augmentation for exactly the setups it registers — so

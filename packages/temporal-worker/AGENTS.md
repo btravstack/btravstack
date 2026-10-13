@@ -143,6 +143,43 @@ activityName` — Temporal hands the middleware the workflow key a
   Temporal's own OpenTelemetry interceptors beside `otel()`, not through this
   package.
 
+## The test server — from `@btravstack/temporal-worker/testing`
+
+**It lives here, not in `@btravstack/testing`**, because peers are
+per-package: `@btravstack/testing` peers on the kernel alone, and a Temporal
+server needs `@temporalio/worker` to register a namespace — which this package
+already peers on. `vitest` and `testcontainers` are optional peers, and both
+are imported inside the setup and the fixture rather than at the top of the
+module, so the entry loads with neither installed and the consumer check needs
+no adapter entry for it.
+
+**It does not wrap `@temporal-contract/testing`.** Consumers depended on that
+package's global setup and pinned its beta to the one the starters were tested
+against; owning the containers here makes the version of the typed Temporal
+layer this package's concern alone. The images are pinned by tag, the same
+ones `internal/test-infra` runs.
+
+**One budget, `startupTimeoutMs`, drives both waits.** `auto-setup` creates its
+schemas on first boot, and a loaded Docker host stretches that past the ~30 s a
+1 s × 30 health check allowed (btravstack/temporal-contract#464). The Docker
+health check's start period and retry count, and `testcontainers`' own startup
+timeout (60 s by default), all take the budget, default five minutes: a knob
+for each would let one of them stay short.
+
+**The namespace is the isolation, never the task queue**: the starter reads
+its queue off the contract, so two spec files booting one worker poll one
+queue. Registration is retried with `vi.waitFor` until a namespace-scoped
+read answers, so a namespace that never becomes usable fails the file with
+the server's last error.
+
+**The repository's own specs use the published fixture**, not a copy: the
+internal `globalSetup` provides the same inject key over the server every
+workspace shares. The setup itself stays separate — cross-workspace reuse,
+the reuse lock and the PostgreSQL shared with the example's database are this
+repository's shape, not a consumer's. `testing.spec.ts` therefore covers the
+published setup over a fake `testcontainers`, since starting a second server
+in the gate is what rule 7 forbids.
+
 ## `ensureSchedule` — from `@btravstack/temporal-worker/schedule`
 
 `ensureSchedule(schedules, workflowName, options)` →

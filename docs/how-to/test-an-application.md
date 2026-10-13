@@ -466,11 +466,11 @@ Every suite that needs a broker, a workflow platform or a database shares
 **one** of each across the whole repository, and isolates itself by the
 boundary that system already has:
 
-| System     | What a test gets     | Minted by                                   |
-| ---------- | -------------------- | ------------------------------------------- |
-| RabbitMQ   | a vhost per test     | `@amqp-contract/testing`'s `it` extension   |
-| Temporal   | a namespace per file | `@btravstack/internal-test-infra/namespace` |
-| PostgreSQL | a tenant per test    | the workspace's own fixture, a UUID         |
+| System     | What a test gets     | Minted by                                                     |
+| ---------- | -------------------- | ------------------------------------------------------------- |
+| RabbitMQ   | a vhost per test     | `@amqp-contract/testing`'s `it` extension                     |
+| Temporal   | a namespace per file | `@btravstack/temporal-worker/testing`'s `temporalEnvironment` |
+| PostgreSQL | a tenant per test    | the workspace's own fixture, a UUID                           |
 
 Starting a server per workspace instead is what made `pnpm test` intermittently
 red at turbo's default concurrency, and it bought an isolation these boundaries

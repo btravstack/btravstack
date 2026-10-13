@@ -21,7 +21,6 @@ import {
   prismaOrderRepository,
 } from "@btravstack/example-order-infrastructure";
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
-import { createNamespace } from "@btravstack/internal-test-infra/namespace";
 import { observability, type Line, type Sink } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { tenantPinned } from "@btravstack/prisma/rls";
@@ -36,6 +35,7 @@ import {
   type TemporalInfo,
   type TemporalUnreachable,
 } from "@btravstack/temporal-worker";
+import { temporalEnvironment, type TemporalEnvironment } from "@btravstack/temporal-worker/testing";
 import { bootFixture, overridden, tapped, type Boot } from "@btravstack/testing";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
 import {
@@ -327,6 +327,8 @@ export type TemporalFixtures = {
    * id placed again — freshly — between the sweep's listing and its removal.
    */
   readonly racedStore: ReturnType<typeof staleStoreOf>;
+  /** `@btravstack/temporal-worker/testing`'s environment: the shared server and this file's namespace. */
+  readonly temporal: TemporalEnvironment;
   /** Where the shared server is, and the namespace this spec file owns on it. */
   readonly server: Server;
   /**
@@ -359,15 +361,11 @@ export type TemporalFixtures = {
 };
 
 export const it = test.extend<TemporalFixtures>({
+  temporal: temporalEnvironment("order-worker"),
   server: [
-    // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-    async ({}, use) => {
-      const address = `${inject("__TESTCONTAINERS_TEMPORAL_IP__")}:${inject("__TESTCONTAINERS_TEMPORAL_PORT_7233__")}`;
-      await use({ address, namespace: await createNamespace(address, "order-worker") });
+    async ({ temporal }, use) => {
+      await use({ address: temporal.TEMPORAL_ADDRESS, namespace: temporal.TEMPORAL_NAMESPACE });
     },
-    // Per FILE, not per test: registering a namespace costs a registry refresh
-    // on every Temporal service, while the per-test task queue below is what
-    // separates the tests inside one file.
     { scope: "file" },
   ],
   boot: bootFixture(),

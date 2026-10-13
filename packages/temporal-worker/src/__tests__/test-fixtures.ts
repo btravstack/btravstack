@@ -14,7 +14,6 @@ import {
   type UnitRecord,
 } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
-import { createNamespace } from "@btravstack/internal-test-infra/namespace";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import { TypedClient } from "@temporal-contract/client";
 import {
@@ -27,7 +26,8 @@ import { Client, Connection, type ScheduleOptions, type ScheduleSpec } from "@te
 import type { Duration } from "@temporalio/common";
 import type { NativeConnection, Worker } from "@temporalio/worker";
 import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
-import { inject, test } from "vitest";
+import { test, vi } from "vitest";
+import type { TestProject } from "vitest/node";
 import { z } from "zod";
 
 import { ensureSchedule } from "../schedule.js";
@@ -40,6 +40,12 @@ import {
   type TemporalUnreachable,
   type WorkflowSource,
 } from "../temporal-runtime.js";
+import {
+  temporalEnvironment,
+  temporalServer,
+  type TemporalEnvironment,
+  type TemporalServerOptions,
+} from "../testing.js";
 import { ActivityInput, TemporalWorkflowActivities } from "../workflow-activities.js";
 
 /**
@@ -599,6 +605,88 @@ export type Stubbed = {
   readonly stopped: () => AsyncResult<void, never>;
 };
 
+const messagesOf = (error: Error): string =>
+  error instanceof AggregateError
+    ? [error.message, ...error.errors.map((inner: Error) => messagesOf(inner))].join(" / ")
+    : error.message;
+
+/**
+ * `testcontainers` as `temporalServer` reaches it, recording what each
+ * container was configured with and the order things start and stop in.
+ * `failing` makes the Temporal container refuse to start; `unstoppable` names
+ * the resources whose stop rejects.
+ */
+const fakeContainersOf = (failing: boolean, unstoppable: readonly string[]) => {
+  const stopping = (name: string) => () => {
+    events.push(`stop ${name}`);
+    return unstoppable.includes(name)
+      ? Promise.reject(new Error(`${name} did not stop`))
+      : Promise.resolve();
+  };
+  const events: string[] = [];
+  const configured: { image: string; healthCheck?: unknown; startupTimeoutMs?: number }[] = [];
+  class GenericContainer {
+    readonly #config: { image: string; healthCheck?: unknown; startupTimeoutMs?: number };
+    constructor(image: string) {
+      this.#config = { image };
+    }
+    withNetwork(): this {
+      return this;
+    }
+    withNetworkAliases(): this {
+      return this;
+    }
+    withEnvironment(): this {
+      return this;
+    }
+    withExposedPorts(): this {
+      return this;
+    }
+    withWaitStrategy(): this {
+      return this;
+    }
+    withHealthCheck(healthCheck: unknown): this {
+      this.#config.healthCheck = healthCheck;
+      return this;
+    }
+    withStartupTimeout(startupTimeoutMs: number): this {
+      this.#config.startupTimeoutMs = startupTimeoutMs;
+      return this;
+    }
+    start() {
+      const { image } = this.#config;
+      configured.push(this.#config);
+      if (failing && image.startsWith("temporalio/"))
+        return Promise.reject(new Error(`${image} is unhealthy`));
+      events.push(`start ${image}`);
+      return Promise.resolve({
+        getHost: () => "localhost",
+        getMappedPort: () => 7233,
+        stop: stopping(image),
+      });
+    }
+  }
+  class Network {
+    start() {
+      events.push("start network");
+      return Promise.resolve({ stop: stopping("network") });
+    }
+  }
+  return {
+    module: { GenericContainer, Network, Wait: { forHealthCheck: () => ({}) } },
+    events,
+    configured,
+  };
+};
+
+/** What one `temporalServer` run did, with its teardown already run when setup succeeded. */
+export type ServerRun = {
+  readonly outcome: string;
+  readonly provided: Readonly<Record<string, unknown>>;
+  readonly events: readonly string[];
+  readonly configured: readonly unknown[];
+};
+
 export type TemporalFixtures = {
   /**
    * A `poll()` over a STUB worker. The arm it exists for is `run()` rejecting
@@ -607,6 +695,8 @@ export type TemporalFixtures = {
    * other spec here.
    */
   readonly stubbed: () => Stubbed;
+  /** `@btravstack/temporal-worker/testing`'s environment: the shared server and this file's namespace. */
+  readonly temporal: TemporalEnvironment;
   /** Where the shared server is, and the namespace this spec file owns on it. */
   readonly server: Server;
   /** A client bound to {@link server}'s namespace. */
@@ -672,6 +762,14 @@ export type TemporalFixtures = {
   }>;
   /** A unit module counting its builds and teardowns, to bind on `serve`'s `unit`. */
   readonly counting: ReturnType<typeof countingUnit>;
+  /** A client on the server's `default` namespace — not this file's. */
+  readonly foreign: Client;
+  /** `temporalServer` run over a fake `testcontainers`, then torn down. */
+  readonly runServer: (
+    options?: TemporalServerOptions,
+    failing?: boolean,
+    unstoppable?: readonly string[],
+  ) => Promise<ServerRun>;
 };
 
 /**
@@ -804,15 +902,11 @@ export const it = test.extend<TemporalFixtures>({
       return { run: { settle }, serving, stopped: channel };
     });
   },
+  temporal: temporalEnvironment("temporal-pkg"),
   server: [
-    // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-    async ({}, use) => {
-      const address = `${inject("__TESTCONTAINERS_TEMPORAL_IP__")}:${inject("__TESTCONTAINERS_TEMPORAL_PORT_7233__")}`;
-      await use({ address, namespace: await createNamespace(address, "temporal-pkg") });
+    async ({ temporal }, use) => {
+      await use({ address: temporal.TEMPORAL_ADDRESS, namespace: temporal.TEMPORAL_NAMESPACE });
     },
-    // Per FILE, not per test: registering a namespace costs a registry refresh
-    // on every Temporal service, while a task queue per test (which `compose`
-    // already mints) is what separates the tests inside one file.
     { scope: "file" },
   ],
   client: async ({ server }, use) => {
@@ -979,5 +1073,33 @@ export const it = test.extend<TemporalFixtures>({
       await app.runtimeInfo();
       return { app, client, taskQueue };
     });
+  },
+  foreign: async ({ server }, use) => {
+    const connection = await Connection.connect({ address: server.address });
+    await use(new Client({ connection, namespace: "default" }));
+    await connection.close();
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  runServer: async ({}, use) => {
+    await use(async (options, failing = false, unstoppable = []) => {
+      const fake = fakeContainersOf(failing, unstoppable);
+      vi.doMock("testcontainers", () => fake.module);
+      const provided: Record<string, unknown> = {};
+      const project = {
+        provide: (key: string, value: unknown) => {
+          provided[key] = value;
+        },
+      } as unknown as TestProject;
+      const outcome = await temporalServer(options)(project).then(
+        (teardown) =>
+          teardown().then(
+            () => "ok",
+            (cause: Error) => `teardown failed: ${messagesOf(cause)}`,
+          ),
+        (cause: Error) => `failed: ${messagesOf(cause)}`,
+      );
+      return { outcome, provided, events: fake.events, configured: fake.configured };
+    });
+    vi.doUnmock("testcontainers");
   },
 });

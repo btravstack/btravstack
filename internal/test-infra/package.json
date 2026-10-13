@@ -10,7 +10,6 @@
     "./containers": "./src/containers.ts",
     "./lock": "./src/lock.ts",
     "./mailpit": "./src/mailpit.ts",
-    "./namespace": "./src/namespace.ts",
     "./ory": "./src/ory.ts",
     "./ory-login": "./src/ory-login.ts",
     "./rabbitmq": "./src/rabbitmq.ts",
@@ -28,8 +27,6 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "catalog:",
-    "@temporalio/client": "catalog:",
-    "@temporalio/common": "catalog:",
     "jose": "catalog:",
     "openid-client": "catalog:",
     "testcontainers": "catalog:"

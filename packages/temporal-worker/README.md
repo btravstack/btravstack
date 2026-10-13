@@ -206,6 +206,16 @@ subpath. Why scheduled work costs a cluster here, and when it should not be
 this stack at all:
 [Run something on a schedule](https://btravstack.github.io/btravstack/how-to/run-something-on-a-schedule).
 
+## Testing
+
+`@btravstack/temporal-worker/testing` runs a worker's specs against one real
+Temporal server per test run: `temporalServer` is the Vitest `globalSetup`
+(the entry's default export), and `temporalEnvironment(prefix)` a file-scoped
+fixture answering `{ TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE }` for a namespace of
+the spec file's own. It needs Docker, and `vitest` and `testcontainers` as
+optional peers. See
+[Test a Temporal worker](https://btravstack.github.io/btravstack/how-to/test-a-temporal-worker).
+
 ## Options
 
 `TemporalModule(name)({...})` takes the starter's options plus `activities`

@@ -1489,12 +1489,6 @@ importers:
       '@aws-sdk/client-s3':
         specifier: 'catalog:'
         version: 3.1146.0
-      '@temporalio/client':
-        specifier: 'catalog:'
-        version: 1.24.0
-      '@temporalio/common':
-        specifier: 'catalog:'
-        version: 1.24.0
       jose:
         specifier: 'catalog:'
         version: 6.2.12
@@ -2531,6 +2525,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
+      testcontainers:
+        specifier: 'catalog:'
+        version: 12.2.0(supports-color@8.1.1)
       tsdown:
         specifier: 'catalog:'
         version: 0.23.0(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
