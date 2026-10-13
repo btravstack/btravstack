@@ -102,7 +102,12 @@ export type Stub = (answers: {
 }) => StubDatabase;
 
 export type OutboxFixtures = {
-  readonly shutdownProcess: { readonly output: () => string; readonly drain: () => void };
+  readonly shutdownProcess: {
+    readonly output: () => string;
+    readonly untilStarted: AsyncResult<void, never>;
+    readonly untilReleased: AsyncResult<void, never>;
+    readonly drain: () => void;
+  };
   readonly boot: Boot;
   readonly releases: string[];
   readonly launch: (options?: Omit<StartOptions, "signals" | "env">) => RunningApp<ConfigInvalid>;
@@ -158,17 +163,46 @@ export const it = test.extend<OutboxFixtures>({
       stdio: ["ignore", "pipe", "pipe"],
     });
     let output = "";
-    child.stdout.on("data", (chunk: Buffer) => {
+    let start!: () => void;
+    let release!: () => void;
+    let rejectStart!: (cause: Error) => void;
+    let rejectRelease!: (cause: Error) => void;
+    const untilStarted = fromSafePromise(
+      new Promise<void>((resolve, reject) => {
+        start = resolve;
+        rejectStart = reject;
+      }),
+    );
+    const untilReleased = fromSafePromise(
+      new Promise<void>((resolve, reject) => {
+        release = resolve;
+        rejectRelease = reject;
+      }),
+    );
+    const record = (chunk: Buffer) => {
       output += chunk.toString();
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      output += chunk.toString();
-    });
+      if (output.includes('"type":"serving"')) start();
+      if (output.includes("store released")) release();
+    };
+    child.stdout.on("data", record);
+    child.stderr.on("data", record);
     const exited = new Promise<void>((resolve) => {
-      child.on("exit", () => resolve());
+      child.on("exit", (code, signal) => {
+        const failure = new Error(`shutdown subprocess exited (${code ?? signal}): ${output}`);
+        rejectStart(failure);
+        rejectRelease(failure);
+        resolve();
+      });
+      child.on("error", (failure) => {
+        rejectStart(failure);
+        rejectRelease(failure);
+        resolve();
+      });
     });
     await use({
       output: () => output,
+      untilStarted,
+      untilReleased,
       drain: () => {
         child.kill("SIGTERM");
       },
