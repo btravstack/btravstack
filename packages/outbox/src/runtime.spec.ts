@@ -171,15 +171,25 @@ describe("standalone outbox runtime", () => {
       releases: ["publisher", "store"],
     });
   });
-  it("refuses invalid configuration before polling", async ({ standalone, publisher }) => {
+  it("refuses invalid configuration before polling", async ({ standalone }) => {
     // GIVEN an invalid polling interval
     // WHEN the graph is constructed
     const result = await standalone(() => OkAsync(), { pollMs: 0 });
-    // THEN startup fails with the configuration error before a publish
-    expect({ configInvalid: result.isErr() && result.error._tag, sent: publisher.sent() }).toEqual({
-      configInvalid: "ConfigInvalid",
-      sent: [],
-    });
+    // THEN startup fails with the configuration error
+    expect(result).toBeErrTagged("ConfigInvalid");
+  });
+
+  it("does not publish pending messages when configuration is invalid", async ({
+    standalone,
+    publisher,
+    store,
+  }) => {
+    // GIVEN a pending message and an invalid polling interval
+    store.append({ tenantId: "acme", kind: "order", subjectId: "a", payload: "{}" });
+    // WHEN the graph is constructed
+    await standalone(() => OkAsync(), { pollMs: 0 }).getOrNull();
+    // THEN no message was published
+    expect(publisher.sent()).toEqual([]);
   });
 
   it("drains a current claim cleanly before releasing dependencies", async ({
