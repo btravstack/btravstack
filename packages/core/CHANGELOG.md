@@ -1,5 +1,25 @@
 # @btravstack/core
 
+## 0.33.0
+
+### Minor Changes
+
+- f5ae34d: Application infrastructure now reaches request and job units with no forwarding. A module's `needs` list is optional: without it, what a module owes is inferred from its providers' `inject` records and its imports, and a root that leaves a port unsupplied is refused at `start`, naming the port. A `needs` list still states and checks an explicit boundary. A unit module reads whatever the application root provides, so the root no longer exports `Logger`, a database client or a configuration port for a unit's sake.
+
+  Two placement rules are now enforced. A unit module that reads `Env` is refused at `start` (`UNIT READS CONFIGURATION — Env is application-scoped`), so configuration is parsed once, at boot. A unit module that provides a port the application scope already provides is refused (at boot for the modules a runtime lists, at the fork otherwise), since each unit would rebuild it; adding a member to one of the application's set ports stays allowed. The migration guide is the new how-to, _Share application infrastructure with units_.
+
+  The bare starters are no longer public. `http` (`@btravstack/orpc-server`), `httpServer` (`@btravstack/http-server`), `amqp` and `temporal` left the packages' entry points, so a deployment root is always `HttpModule`, `GraphqlModule`, `AmqpModule` or `TemporalModule`. Each of those exports its runtime port for `start` to read, so no application writes that export by hand. A root that imported a bare starter becomes the matching module sugar, with the router, handlers or activities passed as its option.
+
+### Patch Changes
+
+- f690c1c: A Temporal piece can name its own unit module. `TemporalWorkflowActivities(contract, key)({ unit, fork: TenantUnit, sync })` forks `TenantUnit` for that piece's attempts, seeded with the validated input on `ActivityInput(contract)`, while every other piece keeps the worker-wide `unit.activity`. A worker whose activities differ in scope, such as a listing activity beside a per-tenant fan-out, no longer builds a tenant for the listing attempt. The piece's `unit:` is checked against its own module at the piece's call, the module's unmet needs reach `start`, and specs override inside it by the module's name: `overridden(root, [], { unit: { TenantUnit: [...] } })`. A piece whose `fork` is the module `unit.activity` already binds is refused when the runtime is built, since the fork changes nothing.
+
+  `UnitGate` now checks a union of unit modules module by module, so a `fork` (or a bound `unit.activity` / `unit.message`) typed as one of several modules is accepted only when every one of them exports the declared ports.
+
+- Updated dependencies [f5ae34d]
+  - @btravstack/di@0.33.0
+  - @btravstack/config@0.33.0
+
 ## 0.32.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @btravstack/pothos
 
+## 0.33.0
+
+### Minor Changes
+
+- e74f94e: Allow `procedureField` and `procedureConnection` to declare field-local refusal maps, merged over shared builder defaults. Local entries take precedence, while compile-time coverage still follows each call's actual failures and input validation.
+
 ## 0.32.0
 
 No changes in this release.

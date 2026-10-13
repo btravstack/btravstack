@@ -1,5 +1,12 @@
 # @btravstack/config
 
+## 0.33.0
+
+### Patch Changes
+
+- Updated dependencies [f5ae34d]
+  - @btravstack/di@0.33.0
+
 ## 0.32.0
 
 ### Patch Changes
