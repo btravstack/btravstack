@@ -1,5 +1,19 @@
 # @btravstack/prisma
 
+## 0.33.0
+
+### Minor Changes
+
+- 1570b97: Add `tenantListing` on `/rls`: declare a narrow tenant-ID capability once, generate a checked Prisma migration installing its security-definer function, owner policy and execution grant, and page through tenant IDs (at most 100 per call) through a typed Result-returning query while ordinary application reads remain row-secured.
+
+### Patch Changes
+
+- Updated dependencies [f5ae34d]
+- Updated dependencies [f690c1c]
+  - @btravstack/di@0.33.0
+  - @btravstack/core@0.33.0
+  - @btravstack/config@0.33.0
+
 ## 0.32.0
 
 ### Patch Changes
