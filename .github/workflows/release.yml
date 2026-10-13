@@ -1,18 +1,14 @@
 name: Release
 
-# Publish the fifteen packages once CI is green on main, through the same
-# reusable workflow the sibling repositories call. Chaining off CI rather than
-# off the push is `deploy-docs.yml`'s rule, and the checkout is pinned to the
+# Publish the fixed package group once CI is green on main. Chaining off CI
+# rather than off the push is `deploy-docs.yml`'s rule, and the checkout is pinned to the
 # commit that run measured — so a version is never cut from one CI did not
 # validate. It matters more here than for the docs: a tarball is permanent.
-# The `ref` input that makes the pinning possible landed in
-# btravstack/tools#6, together with the `changesets/action@v2` bump that file
-# needed.
 #
 # The flow is changesets' own two-step. A push to main carrying changesets opens
 # (or updates) a release PR with the version bumps and rendered CHANGELOGs;
 # merging it is what publishes. That PR is the review gate, and it is
-# load-bearing rather than ceremonial: the fifteen move as one `fixed` group, so
+# load-bearing rather than ceremonial: the packages move as one `fixed` group, so
 # the bump it shows is the whole family's, and `1.0.0` must stay a decision
 # rather than somewhere a stray `major` changeset arrives on its own.
 #
@@ -23,7 +19,7 @@ name: Release
 #      `GITHUB_TOKEN` cannot be used: events it triggers do not start new
 #      workflow runs, so the release PR would skip CI — the one thing this
 #      workflow exists to guarantee.
-#   2. A Trusted Publisher on npmjs.com for EACH of the fifteen packages,
+#   2. A Trusted Publisher on npmjs.com for EACH published package,
 #      pointing at this repository and this workflow file. Publishing rides the
 #      OIDC token `id-token: write` mints; there is no `NPM_TOKEN`. A package
 #      must already exist on npm before a Trusted Publisher can be configured
@@ -41,17 +37,43 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 jobs:
   release:
     # A `workflow_run` fires on ANY CI conclusion (failure, cancelled); release
-    # only after a successful one.
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # only after a successful one. Changesets also uses github.sha for branches
+    # and tags, so skip stale CI runs whose tested commit differs from it.
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_repository.full_name == github.repository &&
+          github.sha == github.event.workflow_run.head_sha }}
+    runs-on: ubuntu-latest
     permissions:
-      contents: write # the release PR's branch and the tags
-      pull-requests: write # open and update the release PR
-      id-token: write # the OIDC token npm Trusted Publishing rides
-    uses: btravstack/tools/.github/workflows/release-reusable.yml@workflows-v1
-    with:
-      # The exact commit the green CI run measured. Without it a `workflow_run`
-      # checkout takes the default branch's CURRENT tip, which a push landing
-      # after CI went green can have moved.
-      ref: ${{ github.event.workflow_run.head_sha }}
-    secrets:
-      RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout the tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          token: ${{ secrets.RELEASE_PAT }}
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Remove empty documentation changesets from the release checkout
+        run: node .changeset/remove-empty.mjs
+      - name: Create Release Pull Request or Publish to npm
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          github-token: ${{ secrets.RELEASE_PAT }}
+          version-script: pnpm run version
+          publish-script: pnpm run release
+          commit-message: "chore: release packages"
+          pr-title: "chore: release packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
