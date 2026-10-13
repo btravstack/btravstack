@@ -32,6 +32,11 @@ declare const contractJson: unknown;
 > an application, and reach it through a port your domain owns. For the
 > starter's full surface, see [`@btravstack/prisma`](/reference/prisma).
 
+For production dependency placement and the pinned facade's upstream
+runtime-only packaging blocker, see
+[Production dependency closure](/reference/prisma#production-dependency-closure).
+Contract emission belongs in the build stage and migrations in deployment Jobs.
+
 ## 1. Compose the starter
 
 `prismaDatabase(name)({ client })` is a **module**: it binds `DATABASE_URL`

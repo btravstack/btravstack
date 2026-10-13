@@ -17,8 +17,8 @@ is — the surface moves between candidates.
 belongs upstream rather than here: Prisma ships three release trains and pins
 across them exactly, so `prisma@8.0.0-rc.15` depends on
 `@prisma/cli-engine@0.4.0` and `@prisma/orm-toolchain@8.0.0-rc.11`, while
-`@prisma/orm-postgres`'s own `latest` is `8.0.0-rc.11`. Each entry is the head
-of its own train. Do not "fix" them to one number — for two of the three it
+the catalog pins `@prisma/orm-postgres` to `8.0.0-rc.11`. These are the
+versions adopted together, not a claim about the current dist-tags. Do not "fix" them to one number — for two of the three it
 names a version that was never published.
 
 **`@prisma/orm-postgres` ships its own agent skill**, at
@@ -29,6 +29,24 @@ anything remembered about Prisma. Read it before changing anything here;
 client factory and middleware, `references/queries-postgres.md` the two lanes,
 and `references/supabase.md` the RLS authoring surface — which is core PSL
 despite living on that page.
+
+## Production packaging is blocked by the facade manifest (#561)
+
+The Postgres facade's required dependency on `@prisma/orm-toolchain` includes
+a required CLI-engine peer and authoring dependencies. Subpath exports choose
+code, not dependency closures, so importing `/runtime` does not exclude that
+toolchain from a frozen strict-peer production deploy. The example's direct
+CLI and compiler entries stay development dependencies; pnpm still deploys
+the resolved peers of its production facade. The reference page states the
+manifest split and the upstream dependency, with Prisma #30437 as a related
+Composer-specific report rather than proof of a fixed Postgres surface.
+
+Do not make this starter's Prisma peer optional, delete transitive packages,
+or disable strict peers to label the deployment runtime-only. The peer declares
+which client behavior this starter supports. An upstream runtime package or
+manifest split must come first; its adoption must retain typed emitted-contract
+consumption, the database-role probe and pool teardown, and pass a frozen
+production deploy and non-owner PostgreSQL boot in a non-root distroless image.
 
 ## Public surface
 

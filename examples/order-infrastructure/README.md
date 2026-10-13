@@ -20,6 +20,17 @@ src/module.ts                      OrderTenantPersistence, OrderPersistenceModul
 src/__tests__/test-fixtures.ts               the in-memory database and the repositories, as Vitest fixtures
 ```
 
+## Production dependency placement
+
+The manifest keeps `@prisma/orm-postgres` in `dependencies` and `prisma`,
+`@prisma/cli-engine` and TypeScript in `devDependencies`. Emit contracts and
+compile in the build stage; migrate and verify with a separate deployment
+image. The pinned facade still requires its toolchain and CLI-engine peer
+transitively, so `pnpm deploy --prod` does not produce a toolchain-free tree.
+The [Prisma reference](https://btravstack.github.io/btravstack/reference/prisma#production-dependency-closure)
+tracks that upstream blocker and the validation required before claiming a
+runtime-only distroless image.
+
 ## The schema is migrated, not hand-created
 
 `prisma/migrations/` is planned by `prisma migration plan` from

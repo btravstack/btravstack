@@ -33,8 +33,8 @@ the old repository.
   merged release PR publishes: an API change merged with its changeset deploys
   at once, while npm still serves the previous version until
   `changeset-release/main` merges. Coupling the deploy to publication was
-  declined — a docs-only fix carries no changeset, so it would wait for an
-  unrelated release. Instead `config.ts` reads, at build time, the version in
+  declined — a docs-only fix uses an empty changeset, which releases no
+  package, so it would wait for an unrelated release. Instead `config.ts` reads, at build time, the version in
   `packages/core/package.json`, the ref and commit (`DOCS_REF` /
   `DOCS_COMMIT`, else `git rev-parse`), and whether a pending changeset names
   a package (an empty `---\n---` one releases nothing), and the navigation's

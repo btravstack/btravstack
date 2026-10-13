@@ -38,8 +38,9 @@ COPY . .
 RUN pnpm install --frozen-lockfile --offline
 RUN pnpm build
 # `pnpm deploy` writes a self-contained directory with the workspace's own
-# build output and its PRODUCTION dependencies only — the compiler, the test
-# harness and every other devDependency stay in this stage.
+# build output and its PRODUCTION dependency closure. Direct devDependencies
+# stay in this stage; tooling required transitively by a production package
+# is still copied.
 RUN pnpm --filter @acme/orders deploy --prod --legacy /out
 
 FROM node:22-alpine AS runtime
@@ -59,6 +60,15 @@ WORKDIR /app
 # `prisma.config.ts` is — from `/app`, the CLI would find no config.
 CMD ["pnpm", "--filter", "@acme/orders", "exec", "prisma", "db", "migrate"]
 ```
+
+For Prisma-backed applications, the pinned `@prisma/orm-postgres` facade
+requires its authoring toolchain transitively. Keeping the CLI and compiler in
+`devDependencies` separates the application's build commands, but does not
+remove that transitive tooling from `/out`. See
+[Production dependency closure](/reference/prisma#production-dependency-closure)
+for the manifest boundary and upstream blocker before treating this recipe as
+a toolchain-free runtime image. Continue to emit the contract in the build
+stage and run migrations with the deployment image; keep strict peers enabled.
 
 **Build each image by its target.** `migrate` is the file's last stage, so a
 `docker build` that names no target produces the migration image, not the one

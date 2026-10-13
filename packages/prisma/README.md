@@ -17,6 +17,14 @@ copy of each. The `prisma` CLI is yours, as a dev dependency: the client is
 built from _your_ emitted contract, so there is none for this package to ship.
 Node `>=22.12`.
 
+**Production packaging:** the pinned Postgres facade requires
+`@prisma/orm-toolchain`, including its CLI-engine peer and build-tool
+closure. A `/runtime` import and `pnpm deploy --prod` do not remove those
+transitive dependencies. Keep contract emission in the build stage and
+migrations in a deployment Job, with strict peers enabled; a toolchain-free
+runtime install remains [blocked upstream](https://btravstack.github.io/btravstack/reference/prisma#production-dependency-closure).
+That section documents the manifest split and the tracked dependency.
+
 **This is Prisma 8**, which is a different package family rather than a version
 bump — `@prisma/orm-postgres` replaces `@prisma/client` and `@prisma/adapter-pg`
 both, and there is no `@prisma/instrumentation`. For Prisma 7 use
