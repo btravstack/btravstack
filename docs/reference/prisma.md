@@ -539,9 +539,87 @@ not read another tenant's customer" — **a spec, not the database**. A
 hand-filter bug there is caught by a test run, not refused by PostgreSQL, and
 that is the difference the policy buys on the other two.
 
+## List tenants without cross-tenant row access
+
+`tenantListing(options)` on `@btravstack/prisma/rls` declares a narrow
+capability for per-tenant scheduled work. It returns
+`Result<TenantListing, TenantListingInvalid>`: a migration operation definition
+and `list(db): AsyncResult<readonly string[], SqlError>`. The function returns
+distinct non-null IDs as text from one physical table; it accepts no arguments
+and returns no payload columns. Each call reads current data.
+
+<!-- doctest: isolate
+declare const db: { readonly raw: { readonly sql: unknown }; readonly runtime: unknown };
+-->
+
+```ts
+import { tenantListing } from "@btravstack/prisma/rls";
+import { rawSql } from "@prisma/orm-postgres/migration";
+
+const declaration = tenantListing({
+  schema: "orders",
+  table: "order",
+  tenantColumn: "tenantId",
+  name: "order_tenants",
+  owner: "tenant_listing_owner",
+  role: "orders_app",
+});
+
+const operation = declaration.map((listing) => rawSql(listing.migration));
+const tenants = declaration.toAsync().flatMap((listing) => listing.list(db));
+```
+
+In a migration scaffold created by `prisma migration new`, include
+`rawSql(listing.migration)` in its `operations` getter. Validate the declaration
+once and handle `TenantListingInvalid`; `getOrThrow()` at the migration CLI
+boundary can terminate emission for an invalid declaration. Self-emit the
+migration as usual. Apply through `prisma db migrate`, whose transaction keeps
+function creation and public-execution revocation atomic. This helper does not
+run migrations at application startup.
+
+| Option            | Meaning                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `schema`, `table` | Physical names of one existing row-secured table.                                                                        |
+| `tenantColumn`    | Physical tenant column; defaults to `tenantId`.                                                                          |
+| `name`            | New zero-argument function in `schema`; also names its SELECT policy.                                                    |
+| `owner`           | Existing trusted function-owner role, without superuser or BYPASSRLS. It needs CREATE in the schema to accept ownership. |
+| `role`            | Existing application role granted execution, without superuser, BYPASSRLS, schema CREATE, or membership in `owner`.      |
+
+Identifiers are quoted and must be valid UTF-8, non-empty, NUL-free, and at
+most PostgreSQL's 63-byte identifier limit. Owner and caller must differ.
+Invalid declarations name the offending option in `TenantListingInvalid`.
+
+The migration adds an owner-only SELECT policy, grants the owner schema usage
+and SELECT on the tenant column, creates the SQL function with
+`search_path = pg_catalog, pg_temp` and `row_security = on`, revokes PUBLIC
+execution, and grants execution to `role`. It grants **no application table
+privilege**. Existing policies, including FORCE ROW LEVEL SECURITY, remain in
+place. A dedicated NOLOGIN owner that does not own the table needs no payload
+column grant; a table owner may also own the function, including under FORCE.
+
+Prechecks require the table and roles to exist and names to be unused.
+Applicable restrictive SELECT/ALL policies must exclude the function owner:
+a permissive owner policy cannot override them, so installation refuses them
+rather than silently producing an incomplete tenant list. Postchecks verify
+the function's body, return column, owner, language, settings, policy and
+execution grants. Broader default function grants fail that check and roll
+back the migration; adjust those defaults before installing. An existing
+object with the same name and a different definition is refused, never
+replaced. Do not subsequently grant the caller the owner role or schema CREATE.
+
+Use `list(db)` in the application's adapter for its tenant-listing port. A
+scheduled parent workflow calls an activity backed by that port, then starts a
+child per ID. Each child's data work still uses its own tenant scope and
+`tenantPinned`. A listing of one table discovers tenants with data in that
+table, not every tenant registered anywhere in the application.
+
+The security constraints follow PostgreSQL's
+[definer-function guidance](https://www.postgresql.org/docs/current/sql-createfunction.html#SQL-CREATEFUNCTION-SECURITY)
+and [row-security rules](https://www.postgresql.org/docs/current/ddl-rowsecurity.html).
+
 ## Not included, deliberately
 
-**Migrations.** A deployment runs `prisma db migrate` against the same database
+**Running migrations.** A deployment runs `prisma db migrate` against the same database
 _before the process starts_ — and, where row security is on, as its **owner**
 rather than the role `DATABASE_URL` carries. An application that migrates itself
 at boot races every other replica.

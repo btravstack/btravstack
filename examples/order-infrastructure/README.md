@@ -3,6 +3,11 @@
 The adapter side. This layer speaks Prisma, PostgreSQL and SQLSTATEs, and its
 job is to make sure none of that vocabulary reaches the layers above it.
 
+`tenant-listing.spec.ts` also exercises `@btravstack/prisma/rls`'s generated
+tenant-listing migration against forced RLS and restricted roles. Its fixtures
+create unique schemas and roles on the same shared PostgreSQL server; the
+application's own tables are unchanged.
+
 ```text
 src/prisma/contract.prisma         the Order, Customer and OutboxMessage models, and the RLS policies on Order and OutboxMessage
 prisma/migrations/                 planned from the contract, committed, applied by db:migrate

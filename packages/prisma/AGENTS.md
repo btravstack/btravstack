@@ -179,11 +179,10 @@ port (issue #327). An extension would have to consume the SPI, which is a
 
 ### `@btravstack/prisma/rls`
 
-**Row-level security is now two declarations, and this package owns the
-smaller one.** The POLICY is in the application's contract — `@@rls` on the
+**Policies stay in the application's contract.** `@@rls` on the
 model plus a `policy_<operation>` block — and Prisma's planner emits `ENABLE
 ROW LEVEL SECURITY` and `CREATE POLICY` as ordinary migration operations. What
-is left here is the PIN.
+is left here is the PIN, plus an optional narrow tenant-listing capability.
 
 - **`tenantPinned(db, tenant, work, { setting? })`** runs `work` inside a
   transaction whose connection carries
@@ -341,8 +340,47 @@ dependency the example does not need.
 counter-example: it opens one transaction to pin a setting on, and the work
 inside it is the caller's.
 
-Migrations and a readiness contribution are not here either: `src/prisma.ts`'s
+Running migrations and a readiness contribution are not here either: `src/prisma.ts`'s
 TSDoc and the root's **Health checks** section say why.
+
+### A narrow tenant-listing capability
+
+`tenantListing` on `/rls` returns a Result containing a structural `rawSql`
+operation definition and a typed `list(db)` query. The package still imports
+no Prisma runtime. The operation targets the table's `rlsPolicy`, because the
+installed Prisma target's metadata has no function object kind. Functions are
+not contract elements; the generated raw operation belongs in the application's
+reviewed migration, never in process boot.
+
+The declaration quotes identifiers and literals separately, validates the
+PostgreSQL byte limit and UTF-8 round trip, and encodes coordinate separators
+in its operation ID so dotted physical names cannot collide. Names are
+configuration, never query parameters. The function takes no arguments and
+returns one text column only; its body qualifies the table and builtin cast,
+fixes the search path and enables row security for its own duration.
+
+The owner policy checks `CURRENT_USER` as well as its role, so inheriting that
+role does not silently broaden an application's ordinary reads. Installation
+also refuses caller membership in the owner, caller schema CREATE, superuser
+or BYPASSRLS roles, and applicable restrictive read policies that would defeat
+the owner's permissive listing policy. Owner and caller must already exist;
+the deployment owns role provisioning. The owner receives SELECT on the tenant
+column only, plus schema usage. It can be the table owner under FORCE, but a
+dedicated NOLOGIN role need not receive payload access at all.
+
+CREATE, owner assignment, PUBLIC revocation and the narrow EXECUTE grant run in
+Prisma's migration transaction. CREATE never replaces an existing object.
+Postchecks compare the function body, signature, settings, policy and ACL,
+including grant options; a wider default grant fails closed instead of being
+silently inherited. The checks also guard Prisma's postcheck-before-precheck
+skip behavior. The table's existing RLS and FORCE settings are not changed.
+
+Unit specs pin declaration validation and the query boundary. Real PostgreSQL
+proofs live in `examples/order-infrastructure/src/tenant-listing.spec.ts`:
+forced-owner reads, payload isolation, public denial, temporary-table shadowing,
+and rejection of widened grants or restrictive policies. Each fixture owns
+unique schema and role names on the shared database; nothing alters the
+application's production tables or starts another server.
 
 **No pool or timeout options** (issue #497). Each one is already expressible
 below the starter, and a second spelling would have to agree with the first:
