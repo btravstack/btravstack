@@ -623,9 +623,9 @@ export type TemporalFixtures = {
    * other spec here.
    */
   readonly stubbed: () => Stubbed;
-  /** Where the shared server is, and the namespace this spec file owns on it. */
   /** `@btravstack/temporal-worker/testing`'s environment: the shared server and this file's namespace. */
   readonly temporal: TemporalEnvironment;
+  /** Where the shared server is, and the namespace this spec file owns on it. */
   readonly server: Server;
   /** A client bound to {@link server}'s namespace. */
   readonly client: Client;

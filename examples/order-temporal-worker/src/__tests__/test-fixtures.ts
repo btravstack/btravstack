@@ -327,9 +327,9 @@ export type TemporalFixtures = {
    * id placed again — freshly — between the sweep's listing and its removal.
    */
   readonly racedStore: ReturnType<typeof staleStoreOf>;
-  /** Where the shared server is, and the namespace this spec file owns on it. */
   /** `@btravstack/temporal-worker/testing`'s environment: the shared server and this file's namespace. */
   readonly temporal: TemporalEnvironment;
+  /** Where the shared server is, and the namespace this spec file owns on it. */
   readonly server: Server;
   /**
    * This test's tenant, and nobody else's. The database is shared by every

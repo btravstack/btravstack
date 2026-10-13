@@ -42,6 +42,9 @@ export default defineConfig({
     globalSetup: ["@btravstack/temporal-worker/testing"],
     // The first run pulls two images and creates Temporal's schemas.
     hookTimeout: 300_000,
+    // A fixture runs inside the first test that names it, and registering
+    // its namespace may take most of a minute on a loaded server.
+    testTimeout: 90_000,
   },
 });
 ```

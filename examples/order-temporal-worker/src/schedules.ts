@@ -9,7 +9,11 @@ import {
   type WorkflowNotInContractError,
   type WorkflowValidationError,
 } from "@temporal-contract/client";
-import type { Client, Connection } from "@temporalio/client";
+import {
+  ScheduleNotFoundError as ScheduleGone,
+  type Client,
+  type Connection,
+} from "@temporalio/client";
 import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 const scheduleConfig = Config.provider("ScheduleConfig")(
@@ -53,11 +57,24 @@ const retireAllBut = (
 ): AsyncResult<readonly string[], never> =>
   fromSafePromise(
     (async () => {
-      const retired: string[] = [];
+      const listed: string[] = [];
       for await (const schedule of client.schedule.list())
         if (schedule.scheduleId.startsWith(PREFIX) && !kept.includes(schedule.scheduleId))
-          retired.push(schedule.scheduleId);
-      for (const id of retired) await client.schedule.getHandle(id).delete();
+          listed.push(schedule.scheduleId);
+      const retired: string[] = [];
+      for (const id of listed)
+        // The listing is eventually consistent: a schedule another deploy just
+        // deleted can still be listed, and is already retired.
+        if (
+          await client.schedule
+            .getHandle(id)
+            .delete()
+            .then(
+              () => true,
+              (error: unknown) => (error instanceof ScheduleGone ? false : Promise.reject(error)),
+            )
+        )
+          retired.push(id);
       return retired;
     })(),
   );

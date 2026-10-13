@@ -662,8 +662,9 @@ import-only subpaths.
 
 What a consumer's own specs run a worker against —
 [Test a Temporal worker](/how-to/test-a-temporal-worker) is the recipe.
-`vitest` and `testcontainers` are **optional** peers only this subpath reads,
-and both are imported when a setup or fixture runs, not when the entry loads.
+`vitest` (`>=3.2.0`, the first release with file-scoped fixtures) and
+`testcontainers` are **optional** peers only this subpath reads, and both are
+imported when a setup or fixture runs, not when the entry loads.
 
 | Export                  | Kind  | What it is                                                                                                                                                                                                     |
 | ----------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
