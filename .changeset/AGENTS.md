@@ -123,7 +123,11 @@ published version remains a no-op.
 The workflow keeps its own pinned steps because the shared workflow offers
 no preparation hook before the action reads changesets. It preserves the
 successful own-repository push guard, tested-commit checkout, PAT and npm OIDC
-permissions. The consumer-check test command runs the cleanup regression
+permissions. It skips stale CI runs when `github.sha` differs from the tested
+`head_sha`: the action uses the former for release branches and publication
+tags. Checkout does not persist the PAT; the action receives it separately,
+so dependency installation has no saved write credential to read.
+The consumer-check test command runs the cleanup regression
 alongside the template version regression. A new named changeset is not added
 for this workflow repair: 0.34.0 is already versioned and must not be bumped
 again merely to publish it.

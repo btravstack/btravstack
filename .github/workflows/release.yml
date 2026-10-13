@@ -37,11 +37,13 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 jobs:
   release:
     # A `workflow_run` fires on ANY CI conclusion (failure, cancelled); release
-    # only after a successful one.
+    # only after a successful one. Changesets also uses github.sha for branches
+    # and tags, so skip stale CI runs whose tested commit differs from it.
     if: >-
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.event == 'push' &&
-          github.event.workflow_run.head_repository.full_name == github.repository }}
+          github.event.workflow_run.head_repository.full_name == github.repository &&
+          github.sha == github.event.workflow_run.head_sha }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -53,6 +55,7 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           token: ${{ secrets.RELEASE_PAT }}
+          persist-credentials: false
       - name: Setup pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - name: Setup Node.js
