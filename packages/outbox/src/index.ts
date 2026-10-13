@@ -7,5 +7,5 @@ export type {
 } from "./outbox.js";
 export { memoryOutboxStore } from "./memory.js";
 export type { MemoryOutboxStore, OutboxAppend } from "./memory.js";
-export { outbox } from "./relay.js";
+export { outbox, outboxRuntime, OutboxRuntime } from "./relay.js";
 export type { OutboxOptions } from "./relay.js";

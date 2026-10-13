@@ -4,12 +4,14 @@ import { Env, type ConfigInvalid } from "@btravstack/config";
 import {
   HealthChecks,
   Observers,
+  type RunningApp,
+  type StartOptions,
   type Attributes,
   type Operation,
   type Settle,
 } from "@btravstack/core";
 import { Module, Provider, type Context } from "@btravstack/di";
-import { createFakeClock, type FakeClock } from "@btravstack/testing";
+import { bootFixture, createFakeClock, type Boot, type FakeClock } from "@btravstack/testing";
 import { ErrAsync, OkAsync, TaggedError, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
 
@@ -21,7 +23,7 @@ import {
   type OutboxPublisherService,
   type OutboxStoreService,
 } from "../outbox.js";
-import { outbox, type OutboxOptions } from "../relay.js";
+import { outbox, outboxRuntime, OutboxRuntime, type OutboxOptions } from "../relay.js";
 
 class Refused extends TaggedError("Refused") {}
 
@@ -98,15 +100,54 @@ export type Stub = (answers: {
 }) => StubDatabase;
 
 export type OutboxFixtures = {
+  readonly boot: Boot;
+  readonly releases: string[];
+  readonly launch: (options?: Omit<StartOptions, "signals" | "env">) => RunningApp<ConfigInvalid>;
   readonly clock: FakeClock;
   readonly store: MemoryOutboxStore;
   readonly observations: Observation[];
   readonly publisher: Publisher;
   readonly relaying: Relaying;
+  readonly standalone: <T, E>(
+    body: (
+      runtime: import("@btravstack/core").Runtime,
+      ctx: Context<OutboxRuntime | HealthChecks>,
+      host: import("@btravstack/core").RuntimeHost<never>,
+    ) => AsyncResult<T, E>,
+    options?: OutboxOptions,
+  ) => AsyncResult<T, E | ConfigInvalid>;
   readonly stub: Stub;
 };
 
 export const it = test.extend<OutboxFixtures>({
+  boot: bootFixture(),
+  // oxlint-disable-next-line no-empty-pattern -- an independent Vitest fixture
+  releases: async ({}, use) => {
+    await use([]);
+  },
+  launch: async ({ boot, clock, store, publisher, releases }, use) => {
+    const root = Module("StandaloneProcess")({
+      imports: [outboxRuntime({ tenants: ["acme"], clock })],
+      provides: [
+        Provider(OutboxStore)({
+          inject: {},
+          acquire: () => OkAsync(store),
+          release: () => {
+            releases.push("store");
+          },
+        }),
+        Provider(OutboxPublisher)({
+          inject: { store: OutboxStore },
+          acquire: () => OkAsync(publisher),
+          release: () => {
+            releases.push("publisher");
+          },
+        }),
+      ],
+      exports: [OutboxRuntime, HealthChecks],
+    });
+    await use((options = {}) => boot(root, { clock, ...options }));
+  },
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   clock: async ({}, use) => {
     await use(createFakeClock(1_000_000));
@@ -166,6 +207,41 @@ export const it = test.extend<OutboxFixtures>({
         return { entered, release };
       },
     });
+  },
+
+  standalone: async ({ clock, store, publisher }, use) => {
+    await use((body, options = {}) =>
+      Module.scoped(
+        Module("Standalone")({
+          imports: [outboxRuntime({ tenants: ["acme"], clock, ...options })],
+          provides: [
+            Provider(Env)({ inject: {}, value: {} }),
+            Provider(OutboxStore)({ inject: {}, value: store }),
+            Provider(OutboxPublisher)({ inject: {}, value: publisher }),
+          ],
+          exports: [OutboxRuntime, HealthChecks],
+        }),
+        (ctx) =>
+          body(ctx.get(OutboxRuntime), ctx, {
+            ctx,
+            run: (_meta, work) =>
+              fromSafePromise(
+                Promise.resolve(
+                  work(
+                    {
+                      ctx,
+                      fork: () => {
+                        // oxlint-disable-next-line unthrown/no-throw -- the relay never forks; reaching this is fixture misuse
+                        throw new Error("the relay cannot fork in this fixture");
+                      },
+                    },
+                    new AbortController().signal,
+                  ),
+                ),
+              ).flatMap((result) => result),
+          }),
+      ),
+    );
   },
 
   relaying: async ({ clock, store, observations, publisher }, use) => {

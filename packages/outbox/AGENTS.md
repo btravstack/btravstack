@@ -197,7 +197,7 @@ same spec published them 132 times.
   relay pins nothing (`systemClock`'s timer is unref'ed), and a spec drives the
   loop with `createFakeClock`. There is no `Clock` PORT in the kernel, so the
   clock is an option rather than an injection.
-- **Started by `acquire`, stopped by `release`** — so it publishes before the
+- **Embedded relays: started by `acquire`, stopped by `release`** — so it publishes before the
   runtime accepts anything, and is stopped after the runtime has drained and
   before anything it depends on (the publisher's client) is released, which is
   di's reverse-acquisition order and no code of this package's.
@@ -283,8 +283,9 @@ delivery state, and a published row may carry data that must be erasable.
 
 ## Why tenants are configuration
 
-The relay runs outside any unit, so there is no tenant to read off anything,
-and sweeping "whatever is in the table" is how one deployment broadcasts
+The relay's tenant list is boot configuration, independent of any caller's
+unit. Embedded relays run outside units; standalone claims open units carrying
+the configured tenant for infrastructure correlation. Sweeping "whatever is in the table" is how one deployment broadcasts
 another's facts. `OUTBOX_TENANTS` has no default for that reason, and naming
 them is also how relays are sharded. A single-tenant application names one.
 
@@ -316,3 +317,20 @@ has run in a deployment; the register entry carries the trigger.
 - **A partial index.** The store's queries filter on `tenantId` and
   `publishedAt IS NULL` and order by `id`; an index for that is the
   application's migration, sized by its own table.
+
+## Standalone relay lifetime
+
+`outboxRuntime()` exports the kernel's runtime port under `OutboxRuntime`,
+sharing configuration, health checks and the poll loop with `outbox()`. It is
+a delivery deployment, not a fourth transport or a scheduler. The application
+root exports the runtime and health checks explicitly.
+
+The standalone provider acquires dependencies at graph construction but starts
+polling only at runtime startup. A referenced timer belongs to the runtime and
+is cleared when stop is requested; the poll clock remains unref'ed. Claims run
+as kernel units so deadline accounting includes deliveries. Drain stops future
+claims and prunes and races current claims against its signal. It does not
+cancel publishing or free the claim early: the resource finalizer still awaits
+the loop before di releases dependencies, with the kernel's stop deadline
+bounding that wait. Store and publisher failures keep retrying; an unexpected
+loop end is reported through `Serving.stopped`, withdrawn on requested stop.

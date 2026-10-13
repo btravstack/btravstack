@@ -6,13 +6,13 @@
  * Type-checked by this package's `typecheck` script, never executed.
  */
 import { Env } from "@btravstack/config";
-import { HealthChecks } from "@btravstack/core";
+import { HealthChecks, runMain } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import { OkAsync } from "unthrown";
 
 import { memoryOutboxStore } from "./memory.js";
 import { OutboxPublisher, OutboxStore } from "./outbox.js";
-import { outbox } from "./relay.js";
+import { outbox, outboxRuntime, OutboxRuntime } from "./relay.js";
 
 const env = Provider(Env)({ inject: {}, value: {} });
 const store = Provider(OutboxStore)({ inject: {}, value: memoryOutboxStore() });
@@ -47,3 +47,10 @@ const _storeless = Module.scoped(Storeless, () => OkAsync());
 void _wired;
 void _unpublished;
 void _storeless;
+
+const Standalone = Module("Standalone")({
+  imports: [outboxRuntime({ tenants: ["acme"] })],
+  provides: [store, publisher],
+  exports: [OutboxRuntime, HealthChecks],
+});
+void runMain(Standalone, { signals: false, probes: false });

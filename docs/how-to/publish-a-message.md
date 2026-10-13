@@ -314,48 +314,29 @@ them take turns per tenant. The kernel serves `/livez`, `/readyz` and
 check is on `/healthz` with nothing more to wire, and the relay stops in the
 application scope's teardown, after the runtime has drained.
 
-**A process that runs only the relay** needs a runtime too — `runMain` boots
-one — and the one it needs does nothing but hold the process open. Nothing
-else does: the probe server and the relay's sleep are both unreferenced, so
-without a referenced handle the event loop empties, `runMain`'s top-level
-`await` never settles, and Node exits `13`. A pooled database connection may
-hold the loop for a while, until the pool reaps it as idle, which is not
-something to stand a process on. Following
-[Write a runtime](/how-to/write-a-runtime), it is one timer, cleared on `stop`:
+**A process that runs only the relay** uses `outboxRuntime()` with the same
+store and publisher. The starter supplies the runtime and holds the process
+open; the application needs no timer or lifetime adapter:
 
 ```ts
-import { RuntimePort, runMain, type Runtime } from "@btravstack/core";
-
-class Background extends RuntimePort<Runtime> {}
-
-const background: Runtime = {
-  name: "background",
-  resolves: [],
-  start: () => {
-    const alive = setInterval(() => {}, 2 ** 30);
-    return OkAsync({
-      drain: () => OkAsync(),
-      stop: () => {
-        clearInterval(alive);
-        return OkAsync();
-      },
-    });
-  },
-};
+import { HealthChecks, runMain } from "@btravstack/core";
+import { OutboxRuntime, outboxRuntime } from "@btravstack/outbox";
 
 export const RelayProcess = Module("RelayProcess")({
-  imports: [OrderPersistenceModule, OrderAmqpClientModule, Producer],
-  provides: [Provider(Background)({ inject: {}, value: background })],
-  exports: [Background],
+  imports: [OrderPersistenceModule, OrderAmqpClientModule, outboxRuntime()],
+  provides: [store, publisher],
+  exports: [OutboxRuntime, HealthChecks],
 });
 
 await runMain(RelayProcess);
 ```
 
 Set `PRE_DRAIN_DELAY_MS=0` on that deployment. The pre-drain delay waits out
-a Service's endpoint removal, and a relay is behind no Service; with no units
-of its own to drain, it goes straight to teardown, which waits for the batches
-in flight.
+a Service's endpoint removal, and a relay is behind no Service. Drain stops
+new claims and waits for current claims within the configured kernel deadline.
+Scope teardown waits for those claims before releasing the publisher and
+database; `STOP_TIMEOUT_MS` bounds that wait. A deadline stops waiting rather
+than cancelling a publish, so the publisher must still bound transport calls.
 
 ## Where to go next
 

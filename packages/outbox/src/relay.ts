@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   Config,
   Env,
@@ -10,6 +12,10 @@ import {
 import {
   HealthCheckFailed,
   HealthChecks,
+  RuntimePort,
+  releasedBy,
+  type Runtime,
+  type RuntimeHost,
   Observers,
   noObserverMember,
   observed,
@@ -125,6 +131,7 @@ const startRelay = (
     readonly retainMs: number;
     readonly concurrency: number;
   },
+  run?: RuntimeHost<never>["run"],
 ) => {
   const stopping = new AbortController();
   const { signal } = stopping;
@@ -162,17 +169,25 @@ const startRelay = (
 
   const sweep = async (tenantId: string): Promise<Swept> => {
     let swept: Swept = "idle";
-    const claimed = await observed(observers, claiming(tenantId), () =>
-      store.claim(tenantId, BATCH, (batch) =>
-        fromSafePromise(
-          publishInOrder(batch).then((published) => {
-            swept =
-              published.length < batch.length ? "failed" : batch.length === BATCH ? "full" : "idle";
-            return published;
-          }),
+    const claim = () =>
+      observed(observers, claiming(tenantId), () =>
+        store.claim(tenantId, BATCH, (batch) =>
+          fromSafePromise(
+            publishInOrder(batch).then((published) => {
+              swept =
+                published.length < batch.length
+                  ? "failed"
+                  : batch.length === BATCH
+                    ? "full"
+                    : "idle";
+              return published;
+            }),
+          ),
         ),
-      ),
-    );
+      );
+    const claimed = await (run
+      ? run({ id: randomUUID(), kind: "outbox", tenantId }, claim)
+      : claim());
     return claimed.isOk() ? swept : "failed";
   };
 
@@ -214,7 +229,7 @@ const startRelay = (
           }
           // Not after a full batch, so a backlog publishes first; after a failed
           // one too, since a refused head message must not hold retention back.
-          if (swept !== "full" && clock.now() >= pruneDue) {
+          if (!signal.aborted && swept !== "full" && clock.now() >= pruneDue) {
             const backlog = await prune(tenantId);
             pruneDue = clock.now() + (backlog ? PRUNE_BACKLOG_MS : PRUNE_EVERY_MS);
           }
@@ -226,6 +241,7 @@ const startRelay = (
   );
 
   return {
+    finished: fromSafePromise(running).map(() => undefined),
     stop: () =>
       fromSafePromise(
         (async () => {
@@ -236,47 +252,12 @@ const startRelay = (
   };
 };
 
-/**
- * The outbox relay: the other half of a write that recorded its fact in the
- * same transaction as the row it describes. It claims each tenant's oldest
- * pending messages, hands them to the application's {@link OutboxPublisher}
- * in outbox order, marks published what was published, and sleeps.
- *
- * ```ts
- * outbox({ tenants: ["acme"] });
- * ```
- *
- * **At-least-once, with replicas taking turns.** A crash between a publish and
- * its mark re-publishes on the next claim, and so does a claiming session the
- * database ends mid-batch, so a subscriber must tolerate a repeat, keyed by the
- * outbox id. What the claim rules out is replicas racing: a tenant is held by
- * one relay while its claiming session lives and skipped by the rest, so its
- * committed facts go out in outbox order — which is not commit order: an id
- * still in an open transaction surfaces after a higher one that committed.
- *
- * **A refused publish stops the tenant's batch** and backs that tenant off,
- * doubling from the poll interval to 30 seconds, so a later fact never
- * overtakes an earlier one. A message the publisher refuses forever therefore
- * holds its tenant's outbox — which is what the health check is for: it
- * reports a tenant whose oldest pending message is older than `maxLagMs`.
- *
- * **At most `concurrency` tenants hold a claim or a prune at once**, each on
- * one pooled connection for its whole batch; the rest wait their turn in
- * order. The
- * default of 4 leaves most of a 10-connection pool to the publisher and the
- * requests sharing it. A publish that never settles holds its slot, so a
- * publisher that can hang answers `Err` on a timeout of its own.
- *
- * Started as the graph builds, before the runtime accepts anything, and
- * stopped when the application scope closes, after the runtime has drained.
- * Every claim and publish is reported to `Observers`; the module holds no
- * logger of its own.
- */
-export const outbox = <const O extends OutboxOptions = Record<never, never>>(
+const relayModule = <const O extends OutboxOptions, const Standalone extends boolean>(
+  standalone: Standalone,
   // `{}` only when the argument is omitted, which is when `O` is `{}` too.
   options: O & OptionsAs<O, OutboxOptions> = {} as never,
 ): Module<
-  HealthChecks,
+  HealthChecks | (Standalone extends true ? OutboxRuntime : never),
   ConfigInvalid,
   | EnvReading<
       Unpinned<O, "tenants", "OUTBOX_TENANTS">,
@@ -312,6 +293,43 @@ export const outbox = <const O extends OutboxOptions = Record<never, never>>(
       ),
     }),
   );
+
+  const finalizers = new WeakMap<Runtime, () => Promise<void>>();
+  const runtime = Provider(OutboxRuntime)({
+    inject: {
+      store: OutboxStore,
+      publisher: OutboxPublisher,
+      observers: Observers,
+      config: OutboxConfig,
+    },
+    acquire: ({ store, publisher, observers, config: bound }) => {
+      let running: ReturnType<typeof startRelay> | undefined;
+      let keepAlive: ReturnType<typeof setInterval> | undefined;
+      const stop = () => {
+        clearInterval(keepAlive);
+        return running?.stop() ?? OkAsync();
+      };
+      const service: Runtime = {
+        name: "outbox",
+        resolves: [],
+        start: (host) => {
+          running = startRelay(store, publisher, observers, clock, bound, host.run);
+          const active = running;
+          keepAlive = setInterval(Boolean, 2 ** 30);
+          return OkAsync({
+            drain: (signal) => releasedBy(signal, stop()),
+            stop,
+            // A loop completes normally only after stop; defects still pass through.
+            stopped: () =>
+              active.finished.flatMap(() => fromSafePromise(new Promise<void>(() => {}))),
+          });
+        },
+      };
+      finalizers.set(service, () => stop().get());
+      return OkAsync(service);
+    },
+    release: (service) => finalizers.get(service)!(),
+  });
 
   const relay = Provider(OutboxRelay)({
     inject: {
@@ -355,7 +373,61 @@ export const outbox = <const O extends OutboxOptions = Record<never, never>>(
   // required unless pinned.
   return Module("Outbox")({
     needs: [Env, OutboxStore, OutboxPublisher],
-    provides: [config, noObserverMember, relay, healthCheck],
-    exports: [HealthChecks],
+    provides: [config, noObserverMember, ...(standalone ? [runtime] : [relay]), healthCheck],
+    exports: [HealthChecks, ...(standalone ? [OutboxRuntime] : [])],
   }) as never;
 };
+
+/** The standalone relay's runtime port, sharing the kernel's one runtime id. */
+export class OutboxRuntime extends RuntimePort<Runtime> {}
+
+/**
+ * The outbox relay: the other half of a write that recorded its fact in the
+ * same transaction as the row it describes. It claims each tenant's oldest
+ * pending messages, hands them to the application's {@link OutboxPublisher}
+ * in outbox order, marks published what was published, and sleeps.
+ *
+ * ```ts
+ * outbox({ tenants: ["acme"] });
+ * ```
+ *
+ * **At-least-once, with replicas taking turns.** A crash between a publish and
+ * its mark re-publishes on the next claim, and so does a claiming session the
+ * database ends mid-batch, so a subscriber must tolerate a repeat, keyed by the
+ * outbox id. What the claim rules out is replicas racing: a tenant is held by
+ * one relay while its claiming session lives and skipped by the rest, so its
+ * committed facts go out in outbox order — which is not commit order: an id
+ * still in an open transaction surfaces after a higher one that committed.
+ *
+ * **A refused publish stops the tenant's batch** and backs that tenant off,
+ * doubling from the poll interval to 30 seconds, so a later fact never
+ * overtakes an earlier one. A message the publisher refuses forever therefore
+ * holds its tenant's outbox — which is what the health check is for: it
+ * reports a tenant whose oldest pending message is older than `maxLagMs`.
+ *
+ * **At most `concurrency` tenants hold a claim or a prune at once**, each on
+ * one pooled connection for its whole batch; the rest wait their turn in
+ * order. The
+ * default of 4 leaves most of a 10-connection pool to the publisher and the
+ * requests sharing it. A publish that never settles holds its slot, so a
+ * publisher that can hang answers `Err` on a timeout of its own.
+ *
+ * Started as the graph builds, before the runtime accepts anything, and
+ * stopped when the application scope closes, after the runtime has drained.
+ * Every claim and publish is reported to `Observers`; the module holds no
+ * logger of its own.
+ */
+export const outbox = <const O extends OutboxOptions = Record<never, never>>(
+  options: O & OptionsAs<O, OutboxOptions> = {} as never,
+) => relayModule(false, options);
+
+/**
+ * Run the relay as the process's only runtime. Export `OutboxRuntime` and
+ * `HealthChecks` from the application root and pass it to `runMain`.
+ * Polling starts at runtime startup, stops at drain, and the current claims
+ * are awaited up to the drain deadline. Scope teardown still waits for claims
+ * before releasing the store and publisher, bounded by `stopTimeoutMs`.
+ */
+export const outboxRuntime = <const O extends OutboxOptions = Record<never, never>>(
+  options: O & OptionsAs<O, OutboxOptions> = {} as never,
+) => relayModule(true, options);
