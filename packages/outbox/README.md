@@ -68,6 +68,19 @@ export const Relay = Module("Relay")({
 });
 ```
 
+## A standalone relay process
+
+Use `outboxRuntime()` in place of `outbox()` and export `OutboxRuntime` and
+`HealthChecks` from the root passed to `runMain`. It starts polling at runtime
+startup, keeps the process alive, and stops new claims during SIGTERM drain.
+Drain waits for current claims up to the kernel's deadline; scope teardown waits
+for them before releasing database and publisher resources, bounded by the
+kernel's stop deadline. The same options and outbox lag check apply.
+
+The [standalone example](https://btravstack.github.io/btravstack/reference/outbox#standalone-processes-outboxruntime-options)
+shows the complete root. Keep `outbox()` when embedding a relay in an HTTP or
+worker process.
+
 ## Options
 
 | Option               | Where                         | What it is                                                                       |

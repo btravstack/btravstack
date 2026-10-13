@@ -307,16 +307,13 @@ CursorRefused` — a union the adapter must branch on, discriminated by
   on the reference page. The issuer authorizes delegation and produces `act`,
   rather than the client inventing an identity assertion.
 
-- **A background runtime is deferred** (issue #508). A process whose only work
-  is `outbox()`'s relay would want a runtime with probes and a drain and no
-  answerer. Composing the relay into the API or the consumer process already
-  gives it both — replicas take turns per tenant, the kernel serves the probes
-  for any runtime, and the relay stops in the scope's teardown — and a
-  relay-only process is a few lines of
-  `docs/how-to/write-a-runtime.md`: a runtime holding one referenced timer,
-  cleared in `stop` (`docs/how-to/publish-a-message.md`, "Where the relay
-  runs"). A shipped runtime for one starter's loop would be a fourth runtime
-  by default. The trigger is a second starter growing a loop of its own.
+- **Standalone outbox delivery shipped** (issue #559, narrowing #508).
+  `outboxRuntime()` supplies the runtime for a relay-only process, with the
+  kernel's probes, claim accounting and deadline-aware drain. `outbox()` stays
+  the resourceful composition for relays embedded in an API or consumer.
+  The runtime belongs to this starter's delivery loop; a generic background
+  runtime for arbitrary jobs remains deferred. Scheduling and orchestration
+  remain Temporal's, and a new transport still needs a role-map decision.
 
 - **The outbox's tenants from a port is deferred** (issue #495). The relay
   serves the tenants `OUTBOX_TENANTS` names, so onboarding one is a

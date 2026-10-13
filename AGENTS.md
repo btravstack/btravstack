@@ -47,7 +47,8 @@ adapter behind its own subpath; it IMPLEMENTS the `Logger`, `Tracer` and
 one shape — a port, a real adapter, an in-process adapter, and one
 composition function), `outbox` (the transactional outbox's relay — the poll
 loop, a per-tenant claim, a lag health check and a Prisma 8 store behind a
-`/prisma` subpath; the application keeps the transaction that writes the row
+`/prisma` subpath; `outboxRuntime()` also boots a standalone delivery process
+through the same kernel runtime contract, while `outbox()` embeds the relay; the application keeps the transaction that writes the row
 and says what publishing means), and the three
 **servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus three HTTP answerer packages: `orpc-server`, `htmx-server` and `graphql-server`, and `pothos`, the Pothos plugin a GraphQL gateway builds its schema with when its fields call oRPC procedures. The calling side has `amqp-client` and `temporal-client`, which bind upstream typed clients to application ports and release connections with the DI scope without a worker dependency, and `oauth-client`, a `TokenSource` port over client credentials and RFC 8693 token exchange, so a service calls another as itself or for a subject. `di` was its own repository until it was merged here
 **with its history**; it, `contract`, `entity` and `pothos` are the four packages that depend on
@@ -318,7 +319,9 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    `tenantId` **permissible** on the record, and it is not what the examples
    do: `examples/order-application` declares a `Tenant` **port**, each
    deployment's unit module provides it from what the unit was opened for, and
-   `UnitRecord.tenantId` stays unset by every shipped starter. A tenant is a
+   `UnitRecord.tenantId` stays unset by the HTTP, Temporal and AMQP starters.
+   The standalone outbox runtime sets it from its configured claim tenant for
+   infrastructure correlation; its tenant list is boot configuration. A tenant is a
    capability — declared, injected, substitutable, and a missing one is a
    compile error — so it belongs on the `Context` side of this very line; the
    field is there for a hand-rolled runtime whose author has answered what

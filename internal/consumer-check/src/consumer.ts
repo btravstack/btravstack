@@ -13,13 +13,20 @@
 // them would ever see the error this file exists to catch.
 
 import { Config, Env } from "@btravstack/config";
-import { RuntimePort, type Runtime } from "@btravstack/core";
+import { HealthChecks, RuntimePort, type Runtime } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { Entity } from "@btravstack/entity";
 import { GraphqlModule, graphql } from "@btravstack/graphql-server";
 import { defineAuth } from "@btravstack/http-server";
 import { HttpModule, defineHttp } from "@btravstack/orpc-server";
-import { OutboxPublisher, outbox } from "@btravstack/outbox";
+import {
+  OutboxPublisher,
+  OutboxRuntime,
+  OutboxStore,
+  memoryOutboxStore,
+  outbox,
+  outboxRuntime,
+} from "@btravstack/outbox";
 import { oc } from "@orpc/contract";
 import { createSchema } from "graphql-yoga";
 import { OkAsync } from "unthrown";
@@ -100,4 +107,13 @@ export const ConsumerGraphqlApi = GraphqlModule("ConsumerGraphqlApi")({
     schema: createSchema({ typeDefs: "type Query { hello: String }" }),
   }),
   imports: [GreetingModule],
+});
+
+export const StandaloneRelay = Module("StandaloneRelay")({
+  imports: [outboxRuntime({ tenants: ["acme"] })],
+  provides: [
+    Provider(OutboxStore)({ inject: {}, value: memoryOutboxStore() }),
+    Provider(OutboxPublisher)({ inject: {}, value: { publish: () => OkAsync() } }),
+  ],
+  exports: [OutboxRuntime, HealthChecks],
 });

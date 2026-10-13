@@ -6,9 +6,9 @@ description: The complete surface of @btravstack/outbox — outbox(), the Outbox
 <!-- doctest: group=order-amqp-worker -->
 <!-- doctest: prelude
 import { Env } from "@btravstack/config";
-import { HealthChecks, runHealthChecks } from "@btravstack/core";
+import { HealthChecks, runHealthChecks, runMain } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
-import { OutboxPublisher, OutboxStore, memoryOutboxStore, outbox } from "@btravstack/outbox";
+import { OutboxPublisher, OutboxStore, memoryOutboxStore, outbox, outboxRuntime, OutboxRuntime } from "@btravstack/outbox";
 import { prismaOutboxStore, type OutboxDatabase } from "@btravstack/outbox/prisma";
 import { createFakeClock } from "@btravstack/testing";
 import { OkAsync, TaggedError, type AsyncResult } from "unthrown";
@@ -77,6 +77,39 @@ A message is the row, as the relay reads it:
 | `subjectId`  | which one, and the key a reader compacts on                                        |
 | `payload`    | your own encoding, handed to the publisher untouched — `null` is the **tombstone** |
 | `occurredAt` | when the row was written, as a `Date`                                              |
+
+## Standalone processes: `outboxRuntime(options)`
+
+Use `outboxRuntime` with the same options and dependencies as `outbox` when
+this process owns only the relay. Export its `OutboxRuntime` and the health
+checks from the application root:
+
+```ts
+export const StandaloneRelay = Module("StandaloneRelay")({
+  imports: [outboxRuntime({ tenants: ["acme"] })],
+  provides: [
+    Provider(OutboxStore)({ inject: {}, value: memoryOutboxStore() }),
+    Provider(OutboxPublisher)({ inject: {}, value: { publish: () => OkAsync() } }),
+  ],
+  exports: [OutboxRuntime, HealthChecks],
+});
+await runMain(StandaloneRelay);
+```
+
+Replace those in-process providers with your database and publisher providers
+in production. The runtime keeps the process alive without an application
+timer. The kernel provides `/livez`, `/readyz` and `/healthz`, including the
+outbox lag check. Kernel drain and probe configuration remains on `runMain`.
+
+Polling begins at runtime startup. SIGTERM first withdraws readiness and waits
+`preDrainDelayMs`; drain then stops new claims and prunes, wakes idle loops,
+and waits for current claims until `drainTimeoutMs`. Each claim is a kernel
+unit, so unfinished claims appear as abandoned in the drain report. The
+signal stops waiting; it cannot cancel a publisher or database transaction.
+Scope teardown still waits for claims before releasing their dependencies,
+bounded by `stopTimeoutMs`. A publisher must bound its own transport calls.
+Unexpected loop termination reaches the runtime's stopped channel; ordinary
+store or publish failures retain the existing retry and lag-check behavior.
 
 ## `outbox(options)`
 

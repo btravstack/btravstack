@@ -1,15 +1,19 @@
+import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 
 import { Env, type ConfigInvalid } from "@btravstack/config";
 import {
   HealthChecks,
   Observers,
+  type RunningApp,
+  type StartOptions,
   type Attributes,
   type Operation,
   type Settle,
 } from "@btravstack/core";
 import { Module, Provider, type Context } from "@btravstack/di";
-import { createFakeClock, type FakeClock } from "@btravstack/testing";
+import { bootFixture, createFakeClock, type Boot, type FakeClock } from "@btravstack/testing";
 import { ErrAsync, OkAsync, TaggedError, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
 
@@ -21,7 +25,7 @@ import {
   type OutboxPublisherService,
   type OutboxStoreService,
 } from "../outbox.js";
-import { outbox, type OutboxOptions } from "../relay.js";
+import { outbox, outboxRuntime, OutboxRuntime, type OutboxOptions } from "../relay.js";
 
 class Refused extends TaggedError("Refused") {}
 
@@ -98,15 +102,142 @@ export type Stub = (answers: {
 }) => StubDatabase;
 
 export type OutboxFixtures = {
+  readonly shutdownProcess: {
+    readonly output: () => string;
+    readonly untilStarted: AsyncResult<void, never>;
+    readonly untilReleased: AsyncResult<void, never>;
+    readonly drain: () => void;
+  };
+  readonly boot: Boot;
+  readonly releases: string[];
+  readonly launch: (options?: Omit<StartOptions, "signals" | "env">) => RunningApp<ConfigInvalid>;
   readonly clock: FakeClock;
   readonly store: MemoryOutboxStore;
   readonly observations: Observation[];
   readonly publisher: Publisher;
   readonly relaying: Relaying;
+  readonly standalone: <T, E>(
+    body: (
+      runtime: import("@btravstack/core").Runtime,
+      ctx: Context<OutboxRuntime | HealthChecks>,
+      host: import("@btravstack/core").RuntimeHost<never>,
+    ) => AsyncResult<T, E>,
+    options?: OutboxOptions,
+  ) => AsyncResult<T, E | ConfigInvalid>;
   readonly stub: Stub;
 };
 
 export const it = test.extend<OutboxFixtures>({
+  // oxlint-disable-next-line no-empty-pattern -- an independent Vitest fixture
+  shutdownProcess: async ({}, use) => {
+    const script = `
+      import { registerHooks } from "node:module";
+      registerHooks({ resolve(specifier, context, next) {
+        if (specifier.startsWith(".") && specifier.endsWith(".js") && context.parentURL?.includes("/packages/outbox/src/")) specifier = specifier.slice(0, -3) + ".ts";
+        return next(specifier, context);
+      }});
+      const { outboxRuntime, OutboxRuntime } = await import(${JSON.stringify(new URL("../relay.ts", import.meta.url).href)});
+      const { OutboxStore, OutboxPublisher } = await import(${JSON.stringify(new URL("../outbox.ts", import.meta.url).href)});
+      const { memoryOutboxStore } = await import(${JSON.stringify(new URL("../memory.ts", import.meta.url).href)});
+      const { Module, Provider } = await import("@btravstack/di");
+      const { runMain } = await import("@btravstack/core");
+      const { fromSafePromise, OkAsync } = await import("unthrown");
+      const store = memoryOutboxStore();
+      store.append({ tenantId: "acme", kind: "order", subjectId: "a", payload: "{}" });
+      let release;
+      const pending = new Promise(resolve => { release = resolve; });
+      const root = Module("ShutdownProcess")({
+        imports: [outboxRuntime({ tenants: ["acme"] })],
+        provides: [
+          Provider(OutboxStore)({ inject: {}, acquire: () => OkAsync(store), release: () => console.log("store released") }),
+          Provider(OutboxPublisher)({ inject: {}, value: { publish: () => fromSafePromise(pending) } }),
+        ],
+        exports: [OutboxRuntime],
+      });
+      await runMain(root, { probes: false, preDrainDelayMs: 0, drainTimeoutMs: 10, stopTimeoutMs: 10 });
+      console.log("shutdown reported");
+      release();
+    `;
+    const child = spawn(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: fileURLToPath(new URL("../../", import.meta.url)),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    let start!: () => void;
+    let release!: () => void;
+    let rejectStart!: (cause: Error) => void;
+    let rejectRelease!: (cause: Error) => void;
+    const untilStarted = fromSafePromise(
+      new Promise<void>((resolve, reject) => {
+        start = resolve;
+        rejectStart = reject;
+      }),
+    );
+    const untilReleased = fromSafePromise(
+      new Promise<void>((resolve, reject) => {
+        release = resolve;
+        rejectRelease = reject;
+      }),
+    );
+    const record = (chunk: Buffer) => {
+      output += chunk.toString();
+      if (output.includes('"type":"serving"')) start();
+      if (output.includes("store released")) release();
+    };
+    child.stdout.on("data", record);
+    child.stderr.on("data", record);
+    const exited = new Promise<void>((resolve) => {
+      child.on("exit", (code, signal) => {
+        const failure = new Error(`shutdown subprocess exited (${code ?? signal}): ${output}`);
+        rejectStart(failure);
+        rejectRelease(failure);
+        resolve();
+      });
+      child.on("error", (failure) => {
+        rejectStart(failure);
+        rejectRelease(failure);
+        resolve();
+      });
+    });
+    await use({
+      output: () => output,
+      untilStarted,
+      untilReleased,
+      drain: () => {
+        child.kill("SIGTERM");
+      },
+    });
+    child.kill("SIGKILL");
+    await exited;
+  },
+  boot: bootFixture(),
+  // oxlint-disable-next-line no-empty-pattern -- an independent Vitest fixture
+  releases: async ({}, use) => {
+    await use([]);
+  },
+  launch: async ({ boot, clock, store, publisher, releases }, use) => {
+    const root = Module("StandaloneProcess")({
+      imports: [outboxRuntime({ tenants: ["acme"], clock })],
+      provides: [
+        Provider(OutboxStore)({
+          inject: {},
+          acquire: () => OkAsync(store),
+          release: () => {
+            releases.push("store");
+          },
+        }),
+        Provider(OutboxPublisher)({
+          inject: { store: OutboxStore },
+          acquire: () => OkAsync(publisher),
+          release: () => {
+            releases.push("publisher");
+          },
+        }),
+      ],
+      exports: [OutboxRuntime, HealthChecks],
+    });
+    await use((options = {}) => boot(root, { clock, ...options }));
+  },
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   clock: async ({}, use) => {
     await use(createFakeClock(1_000_000));
@@ -166,6 +297,53 @@ export const it = test.extend<OutboxFixtures>({
         return { entered, release };
       },
     });
+  },
+
+  standalone: async ({ clock, store, publisher, releases }, use) => {
+    await use((body, options = {}) =>
+      Module.scoped(
+        Module("Standalone")({
+          imports: [outboxRuntime({ tenants: ["acme"], clock, ...options })],
+          provides: [
+            Provider(Env)({ inject: {}, value: {} }),
+            Provider(OutboxStore)({
+              inject: {},
+              acquire: () => OkAsync(store),
+              release: () => {
+                releases.push("store");
+              },
+            }),
+            Provider(OutboxPublisher)({
+              inject: { store: OutboxStore },
+              acquire: () => OkAsync(publisher),
+              release: () => {
+                releases.push("publisher");
+              },
+            }),
+          ],
+          exports: [OutboxRuntime, HealthChecks],
+        }),
+        (ctx) =>
+          body(ctx.get(OutboxRuntime), ctx, {
+            ctx,
+            run: (_meta, work) =>
+              fromSafePromise(
+                Promise.resolve(
+                  work(
+                    {
+                      ctx,
+                      fork: () => {
+                        // oxlint-disable-next-line unthrown/no-throw -- the relay never forks; reaching this is fixture misuse
+                        throw new Error("the relay cannot fork in this fixture");
+                      },
+                    },
+                    new AbortController().signal,
+                  ),
+                ),
+              ).flatMap((result) => result),
+          }),
+      ),
+    );
   },
 
   relaying: async ({ clock, store, observations, publisher }, use) => {
