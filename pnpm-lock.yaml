@@ -333,8 +333,8 @@ catalogs:
       specifier: 17.0.2
       version: 17.0.2
     graphql-yoga:
-      specifier: 5.24.1
-      version: 5.24.1
+      specifier: 5.24.4
+      version: 5.24.4
     jose:
       specifier: 6.2.12
       version: 6.2.12
@@ -970,7 +970,7 @@ importers:
         version: 17.0.2
       graphql-yoga:
         specifier: 'catalog:'
-        version: 5.24.1(graphql@17.0.2)
+        version: 5.24.4(graphql@17.0.2)
       tsx:
         specifier: 'catalog:'
         version: 4.23.15
@@ -1166,7 +1166,7 @@ importers:
         version: 17.0.2
       graphql-yoga:
         specifier: 'catalog:'
-        version: 5.24.1(graphql@17.0.2)
+        version: 5.24.4(graphql@17.0.2)
       unthrown:
         specifier: 'catalog:'
         version: 5.12.1
@@ -1885,7 +1885,7 @@ importers:
         version: 17.0.2
       graphql-yoga:
         specifier: 'catalog:'
-        version: 5.24.1(graphql@17.0.2)
+        version: 5.24.4(graphql@17.0.2)
       tsdown:
         specifier: 'catalog:'
         version: 0.23.0(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
@@ -2311,7 +2311,7 @@ importers:
         version: 17.0.2
       graphql-yoga:
         specifier: 'catalog:'
-        version: 5.24.1(graphql@17.0.2)
+        version: 5.24.4(graphql@17.0.2)
       tsdown:
         specifier: 'catalog:'
         version: 0.23.0(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
@@ -7720,8 +7720,8 @@ packages:
   graphmatch@1.1.1:
     resolution: {integrity: sha512-5ykVn/EXM1hF0XCaWh05VbYvEiOL2lY1kBxZtaYsyvjp7cmWOU1XsAdfQBwClraEofXDT197lFbXOEVMHpvQOg==}
 
-  graphql-yoga@5.24.1:
-    resolution: {integrity: sha512-NA2aQ4sZvR/bniCCLOlMG6OSZf5hPg3mUf3Phm33ObqRMZEq6WtZrj2hTcHfT2ZEFVV5FRCbcMb4NB1w7BIKaA==}
+  graphql-yoga@5.24.4:
+    resolution: {integrity: sha512-jnpLm2g9BfnP18VKL+Yao8YRQYgDjXdAkFgZso/tnKFcRcAtOeUKLDVc1XnYiE3uooXzfIQzsvpKR+fC3we4QA==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       graphql: ^15.2.0 || ^16.0.0 || ^17.0.0
@@ -14986,7 +14986,7 @@ snapshots:
 
   graphmatch@1.1.1: {}
 
-  graphql-yoga@5.24.1(graphql@17.0.2):
+  graphql-yoga@5.24.4(graphql@17.0.2):
     dependencies:
       '@envelop/core': 5.6.1
       '@envelop/instrumentation': 1.0.1
