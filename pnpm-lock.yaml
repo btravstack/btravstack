@@ -417,8 +417,8 @@ catalogs:
       specifier: 5.0.3
       version: 5.0.3
     zod:
-      specifier: 4.6.5
-      version: 4.6.5
+      specifier: 4.6.6
+      version: 4.6.6
   typedoc:
     typescript:
       specifier: 6.0.3
@@ -561,10 +561,10 @@ importers:
         version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       '@orpc/zod':
         specifier: 'catalog:'
-        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)(zod@4.6.5)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)(zod@4.6.6)
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -592,14 +592,14 @@ importers:
         version: 5.12.1
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.4.0
       '@orpc/zod':
         specifier: 'catalog:'
-        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)(zod@4.6.5)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)(zod@4.6.6)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -641,7 +641,7 @@ importers:
         version: 5.12.1
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -675,7 +675,7 @@ importers:
         version: 5.12.1
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -706,7 +706,7 @@ importers:
         version: 3.0.0-beta.11
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -834,7 +834,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
 
   examples/order-api:
     dependencies:
@@ -988,7 +988,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
 
   examples/order-api-client:
     dependencies:
@@ -1022,7 +1022,7 @@ importers:
         version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
     devDependencies:
       '@btravstack/contract':
         specifier: workspace:*
@@ -1105,7 +1105,7 @@ importers:
         version: 5.12.1
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -1266,7 +1266,7 @@ importers:
         version: 8.0.0-beta.11(unthrown@5.12.1)
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -1397,7 +1397,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
 
   internal/consumer-check:
     devDependencies:
@@ -1466,7 +1466,7 @@ importers:
         version: 5.12.1
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -1612,7 +1612,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
 
   packages/cache:
     devDependencies:
@@ -1732,7 +1732,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
 
   packages/core:
     devDependencies:
@@ -1819,7 +1819,7 @@ importers:
         version: 0.4.0
       '@orpc/zod':
         specifier: 'catalog:'
-        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)(zod@4.6.5)
+        version: 2.0.0-beta.34(@opentelemetry/api@1.9.1)(zod@4.6.6)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -1849,7 +1849,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
 
   packages/graphql-server:
     devDependencies:
@@ -1948,7 +1948,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
 
   packages/http-server:
     devDependencies:
@@ -2002,7 +2002,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
 
   packages/mailer:
     devDependencies:
@@ -2230,7 +2230,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
 
   packages/outbox:
     devDependencies:
@@ -2329,7 +2329,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
 
   packages/prisma:
     devDependencies:
@@ -2545,7 +2545,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
 
   packages/testing:
     devDependencies:
@@ -9913,6 +9913,9 @@ packages:
   zod@4.6.5:
     resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
+  zod@4.6.6:
+    resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
+
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
@@ -12261,11 +12264,11 @@ snapshots:
       - fastify
       - swagger-ui
 
-  '@orpc/zod@2.0.0-beta.34(@opentelemetry/api@1.9.1)(zod@4.6.5)':
+  '@orpc/zod@2.0.0-beta.34(@opentelemetry/api@1.9.1)(zod@4.6.6)':
     dependencies:
       '@openapi-spec/types': 0.1.0
       '@orpc/json-schema': 2.0.0-beta.34(@opentelemetry/api@1.9.1)
-      zod: 4.6.5
+      zod: 4.6.6
     transitivePeerDependencies:
       - '@opentelemetry/api'
       - crossws
@@ -17420,5 +17423,7 @@ snapshots:
       readable-stream: 4.7.0
 
   zod@4.6.5: {}
+
+  zod@4.6.6: {}
 
   zwitch@2.0.4: {}
