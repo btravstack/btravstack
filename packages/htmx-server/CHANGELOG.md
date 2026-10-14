@@ -1,5 +1,15 @@
 # @btravstack/htmx-server
 
+## 0.35.0
+
+### Patch Changes
+
+- @btravstack/config@0.35.0
+  - @btravstack/contract@0.35.0
+  - @btravstack/core@0.35.0
+  - @btravstack/di@0.35.0
+  - @btravstack/http-server@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes
