@@ -1,5 +1,13 @@
 # @btravstack/temporal-worker
 
+## 0.35.1
+
+### Patch Changes
+
+- @btravstack/config@0.35.1
+  - @btravstack/core@0.35.1
+  - @btravstack/di@0.35.1
+
 ## 0.35.0
 
 ### Minor Changes
