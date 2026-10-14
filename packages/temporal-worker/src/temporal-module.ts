@@ -85,7 +85,6 @@ export type TemporalModuleOptions<
   ActivitiesNeeds,
   Declared,
   Unit extends AnyUnitModule | undefined,
-  Converter extends DataConverterPort,
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
   X extends readonly Exportable<
@@ -93,6 +92,7 @@ export type TemporalModuleOptions<
     Provides<P, C, ActivitiesError, ActivitiesNeeds>
   >[],
   N extends readonly AnyPort[] | undefined,
+  Converter extends DataConverterPort = never,
 > = TemporalTuning<Unit, Converter> & {
   /** The `temporal-contract` contract; the task queue this worker polls is read off it. */
   readonly contract: C;
@@ -147,7 +147,6 @@ export const TemporalModule =
     ActivitiesNeeds,
     Declared = never,
     Unit extends AnyUnitModule | undefined = undefined,
-    Converter extends DataConverterPort = never,
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
     const X extends readonly Exportable<
@@ -155,6 +154,7 @@ export const TemporalModule =
       Provides<P, C, ActivitiesError, ActivitiesNeeds>
     >[] = [],
     const N extends readonly AnyPort[] | undefined = undefined,
+    Converter extends DataConverterPort = never,
   >(
     options: TemporalModuleOptions<
       C,
@@ -162,11 +162,11 @@ export const TemporalModule =
       ActivitiesNeeds,
       Declared,
       Unit,
-      Converter,
       I,
       P,
       X,
-      N
+      N,
+      Converter
     >,
   ) => {
     const { activities } = options;

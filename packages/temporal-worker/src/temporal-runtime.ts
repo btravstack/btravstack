@@ -133,14 +133,14 @@ export type ActivitiesInstanceOf<C extends ContractDefinition> = PortInstance<
   ActivitiesOf<C>
 >;
 
+/** An application-declared port carrying the Temporal `DataConverter` a worker and its clients share. */
+export type DataConverterPort = PortClassOf<string, DataConverter>;
+
 /**
  * What a Temporal deployment tunes, shared verbatim by the starter and
  * `TemporalModule` — spelled once so the two cannot drift, which is what a
  * second copy of an option list always eventually does.
  */
-/** An application-declared port carrying the Temporal `DataConverter` a worker and its clients share. */
-export type DataConverterPort = PortClassOf<string, DataConverter>;
-
 export type TemporalTuning<
   Unit extends AnyUnitModule | undefined = undefined,
   Converter extends DataConverterPort = never,
