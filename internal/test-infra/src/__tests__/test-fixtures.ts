@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,7 +15,7 @@ import {
   randomState,
   type Configuration,
 } from "openid-client";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 
 import { devKeyPair, jwksUri, sharedJwks } from "../dev-issuer.js";
 import { headlessLogin, oryClient } from "../ory-login.js";
@@ -31,6 +31,10 @@ type Lock = {
   readonly name: string;
   /** Leave a lock behind as `pid` would have, without going through `withLock`. */
   readonly plant: (pid: number) => void;
+  /** Whether a lock directory is there at all, whoever holds it. */
+  readonly present: () => boolean;
+  /** Leave the lock, or a breaker's guard over it, as a taker killed before writing its owner would: no `pid`, and an hour old. */
+  readonly abandon: (what: "lock" | "guard") => void;
 };
 
 /** The dev issuer, minted into a throwaway cache so a spec never touches `<repo>/.cache/dev-issuer`. */
@@ -47,6 +51,8 @@ type Login = (user: OryUser) => Promise<Awaited<ReturnType<typeof authorizationC
 export const it = test.extend<{
   lock: Lock;
   deadPid: number;
+  /** Moves `Date` and interval timers forward without waiting; `node:timers/promises` stays real. */
+  advanceClock: (ms: number) => void;
   keyCache: URL;
   issuer: DevIssuer;
   ory: Ory;
@@ -62,8 +68,22 @@ export const it = test.extend<{
         mkdirSync(path, { recursive: true });
         writeFileSync(`${path}/pid`, String(pid), "utf8");
       },
+      present: () => existsSync(path),
+      abandon: (what) => {
+        const dir = what === "lock" ? path : `${path}.break`;
+        mkdirSync(dir, { recursive: true });
+        const old = new Date(Date.now() - 3_600_000);
+        utimesSync(dir, old, old);
+      },
     });
     rmSync(path, { recursive: true, force: true });
+    rmSync(`${path}.break`, { recursive: true, force: true });
+  },
+
+  advanceClock: async ({}, use) => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    await use((ms) => vi.advanceTimersByTime(ms));
+    vi.useRealTimers();
   },
 
   // A pid that is certainly not running, rather than one assumed too high to

@@ -33,6 +33,64 @@ describe("withLock", () => {
     await expect(withLock(lock.name, () => Promise.resolve("taken"))).resolves.toBe("taken");
   });
 
+  it("keeps a working holder's lock past the staleness window", async ({ lock, advanceClock }) => {
+    // GIVEN a holder still working when the clock has moved past STALE_MS
+    const events: string[] = [];
+    let finish = (): void => undefined;
+    const holding = withLock(lock.name, async () => {
+      events.push("enter:a");
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      events.push("exit:a");
+    });
+    advanceClock(130_000);
+
+    // WHEN another caller asks for it, and the holder later finishes
+    const waiting = withLock(lock.name, async () => {
+      events.push("enter:b");
+    });
+    await delay(300);
+    finish();
+    await Promise.all([holding, waiting]);
+
+    // THEN the heartbeat kept the lock fresh, so the caller waited its turn
+    expect(events).toEqual(["enter:a", "exit:a", "enter:b"]);
+  });
+
+  it("leaves a successor's lock in place when a displaced holder finishes", async ({ lock }) => {
+    // GIVEN a holder whose lock was broken and re-taken while it worked
+    // WHEN that holder finishes and releases
+    await withLock(lock.name, async () => {
+      lock.plant(process.pid);
+    });
+
+    // THEN the release named its own acquisition, so the successor still holds the lock
+    expect(lock.present()).toBe(true);
+  });
+
+  it("breaks a lock whose taker died before writing its owner", async ({ lock }) => {
+    // GIVEN a lock directory with no owner, older than the staleness window
+    lock.abandon("lock");
+
+    // WHEN another caller asks for it
+    // THEN its age alone freed it
+    await expect(withLock(lock.name, () => Promise.resolve("taken"))).resolves.toBe("taken");
+  });
+
+  it("reclaims a breaker's guard whose taker died before writing its owner", async ({
+    lock,
+    deadPid,
+  }) => {
+    // GIVEN a dead holder's lock, behind a guard nobody finished taking
+    lock.plant(deadPid);
+    lock.abandon("guard");
+
+    // WHEN another caller asks for the lock
+    // THEN the ownerless guard aged out, so the dead holder's lock could be broken
+    await expect(withLock(lock.name, () => Promise.resolve("taken"))).resolves.toBe("taken");
+  });
+
   it("releases the lock when the work fails", async ({ lock }) => {
     // GIVEN a holder whose work rejected
     await withLock(lock.name, () => Promise.reject(new Error("boom"))).catch(() => undefined);

@@ -70,7 +70,7 @@
     "zod": "catalog:"
   },
   "peerDependencies": {
-    "zod": "catalog:"
+    "zod": "^4.3.0"
   },
   "peerDependenciesMeta": {
     "zod": {

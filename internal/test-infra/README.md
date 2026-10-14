@@ -143,6 +143,21 @@ deliberately **shorter** than the wait: a stale window longer than the wait can
 never self-heal, because every waiter gives up before the lock is old enough to
 break.
 
+**A holder refreshes its lock while it works**, so that window measures a
+heartbeat that stopped, not a hold that ran long. It used to measure the hold:
+a cold Ory start passed the two minutes on a loaded runner, the waiters broke a
+lock whose holder was alive, and two workspaces started the same containers.
+Breaking deletes the lock in place, one breaker at a time under a short-lived
+`.break` guard, and judges it again under that guard, so the name is never free
+while a lock is being judged and two waiters breaking at once cannot delete a
+lock a third has just taken. Every lock and guard carries a token naming its
+one acquisition, and a release, a heartbeat or a break acts only while the
+directory still carries the token it expects — so a holder or breaker that
+resumes after being suspended past a staleness window cannot touch its
+successor's lock. What remains is a check and a delete that are two calls, not
+one: exclusion that survives arbitrary suspension needs a kernel lock, which
+Node does not expose.
+
 ## Entry points
 
 | Import                                       | What it is                                                                                                                                                                                                              |
