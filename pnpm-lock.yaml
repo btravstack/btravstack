@@ -354,8 +354,8 @@ catalogs:
       specifier: 0.23.3
       version: 0.23.3
     nodemailer:
-      specifier: 10.0.14
-      version: 10.0.14
+      specifier: 10.1.0
+      version: 10.1.0
     openid-client:
       specifier: 6.8.8
       version: 6.8.8
@@ -2050,7 +2050,7 @@ importers:
         version: 5.0.3(vitest@5.0.3)
       nodemailer:
         specifier: 'catalog:'
-        version: 10.0.14
+        version: 10.1.0
       tsdown:
         specifier: 'catalog:'
         version: 0.23.0(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
@@ -8533,8 +8533,8 @@ packages:
     resolution: {integrity: sha512-kQK9LGGFiHtrWiNhZtA7Qbw17AQz+dmsEKODRIVTXA9+e5MS/2gZEBhYJt13GrAz5/IOZKddH/0Z3TP/Zgo+yw==}
     engines: {node: '>=18'}
 
-  nodemailer@10.0.14:
-    resolution: {integrity: sha512-eJoLFKg55fesSlzUekmfOv/SBXh4KUYT8oiQc2RLP0tfG0rbNMJBK7wgHJwXTJwqyKlSJMz9UzDZ4v+aHEvo8g==}
+  nodemailer@10.1.0:
+    resolution: {integrity: sha512-fXW8AulB25aOTuwfRYV6lqHyfz2VM4rr4SGXH03mE7x5znEUpzL5mu6anARUpZN7744Ziwkmr4AxSLPJsBQspg==}
     engines: {node: '>=20.0.0'}
 
   nopt@8.1.0:
@@ -15827,7 +15827,7 @@ snapshots:
 
   node-releases@2.0.57: {}
 
-  nodemailer@10.0.14: {}
+  nodemailer@10.1.0: {}
 
   nopt@8.1.0:
     dependencies:

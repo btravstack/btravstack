@@ -129,7 +129,7 @@ catalog:
   oxfmt: 0.71.0
   oxlint: 1.86.0
   pino: 10.4.0
-  nodemailer: 10.0.14
+  nodemailer: 10.1.0
   openid-client: 6.8.8
   prisma: 8.0.0-rc.15
   uuidv7: 1.2.1
