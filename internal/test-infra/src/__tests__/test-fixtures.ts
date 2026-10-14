@@ -15,7 +15,7 @@ import {
   randomState,
   type Configuration,
 } from "openid-client";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 
 import { devKeyPair, jwksUri, sharedJwks } from "../dev-issuer.js";
 import { headlessLogin, oryClient } from "../ory-login.js";
@@ -47,6 +47,8 @@ type Login = (user: OryUser) => Promise<Awaited<ReturnType<typeof authorizationC
 export const it = test.extend<{
   lock: Lock;
   deadPid: number;
+  /** Moves `Date` and interval timers forward without waiting; `node:timers/promises` stays real. */
+  advanceClock: (ms: number) => void;
   keyCache: URL;
   issuer: DevIssuer;
   ory: Ory;
@@ -64,6 +66,12 @@ export const it = test.extend<{
       },
     });
     rmSync(path, { recursive: true, force: true });
+  },
+
+  advanceClock: async ({}, use) => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    await use((ms) => vi.advanceTimersByTime(ms));
+    vi.useRealTimers();
   },
 
   // A pid that is certainly not running, rather than one assumed too high to

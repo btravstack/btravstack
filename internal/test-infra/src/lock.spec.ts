@@ -33,6 +33,31 @@ describe("withLock", () => {
     await expect(withLock(lock.name, () => Promise.resolve("taken"))).resolves.toBe("taken");
   });
 
+  it("keeps a working holder's lock past the staleness window", async ({ lock, advanceClock }) => {
+    // GIVEN a holder still working when the clock has moved past STALE_MS
+    const events: string[] = [];
+    let finish = (): void => undefined;
+    const holding = withLock(lock.name, async () => {
+      events.push("enter:a");
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      events.push("exit:a");
+    });
+    advanceClock(130_000);
+
+    // WHEN another caller asks for it, and the holder later finishes
+    const waiting = withLock(lock.name, async () => {
+      events.push("enter:b");
+    });
+    await delay(300);
+    finish();
+    await Promise.all([holding, waiting]);
+
+    // THEN the heartbeat kept the lock fresh, so the caller waited its turn
+    expect(events).toEqual(["enter:a", "exit:a", "enter:b"]);
+  });
+
   it("releases the lock when the work fails", async ({ lock }) => {
     // GIVEN a holder whose work rejected
     await withLock(lock.name, () => Promise.reject(new Error("boom"))).catch(() => undefined);

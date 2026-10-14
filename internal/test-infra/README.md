@@ -143,6 +143,13 @@ deliberately **shorter** than the wait: a stale window longer than the wait can
 never self-heal, because every waiter gives up before the lock is old enough to
 break.
 
+**A holder refreshes its lock while it works**, so that window measures a
+heartbeat that stopped, not a hold that ran long. It used to measure the hold:
+a cold Ory start passed the two minutes on a loaded runner, the waiters broke a
+lock whose holder was alive, and two workspaces started the same containers.
+Breaking moves the lock aside and judges it again there before deleting it, so
+two waiters breaking at once cannot delete a lock a third has just taken.
+
 ## Entry points
 
 | Import                                       | What it is                                                                                                                                                                                                              |

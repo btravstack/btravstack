@@ -1,4 +1,13 @@
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
@@ -25,6 +34,9 @@ const WAIT_MS = 600_000;
 const STALE_MS = 120_000;
 
 const POLL_MS = 100;
+
+/** How often a holder refreshes its lock's mtime, so only a lock nobody is refreshing ages past {@link STALE_MS}. */
+const HEARTBEAT_MS = 10_000;
 
 /** Whether the process that took a lock is still running. `signal 0` checks liveness without delivering anything. */
 const alive = (pid: number): boolean => {
@@ -70,6 +82,29 @@ const isStale = (path: string): boolean => {
 };
 
 /**
+ * Moved aside before it is deleted, and judged again once it is: a waiter that
+ * judged the lock stale may lose a race to another that already broke and
+ * re-took it, and deleting in place would delete that live lock.
+ */
+const breakStale = (path: string): void => {
+  const aside = `${path}.${randomUUID()}.stale`;
+  try {
+    renameSync(path, aside);
+  } catch {
+    return;
+  }
+  if (isStale(aside)) {
+    rmSync(aside, { recursive: true, force: true });
+    return;
+  }
+  try {
+    renameSync(aside, path);
+  } catch {
+    // A third waiter took the name in the instant it was free; nothing is left to restore.
+  }
+};
+
+/**
  * Hold `name` across **processes** while `run` executes.
  *
  * testcontainers' own reuse lock is in-process, which does nothing about the
@@ -83,7 +118,7 @@ export const withLock = async <T>(name: string, run: () => Promise<T>): Promise<
 
   const deadline = Date.now() + WAIT_MS;
   while (!tryTake(path)) {
-    if (isStale(path)) rmSync(path, { recursive: true, force: true });
+    if (isStale(path)) breakStale(path);
     else if (Date.now() > deadline)
       // oxlint-disable-next-line unthrown/no-throw -- a vitest `globalSetup` reports failure by rejecting; there is no Result channel here, and a lock nobody released in ten minutes must fail the run loudly rather than race
       throw new Error(
@@ -92,9 +127,19 @@ export const withLock = async <T>(name: string, run: () => Promise<T>): Promise<
     else await delay(POLL_MS);
   }
 
+  const heartbeat = setInterval(() => {
+    const now = new Date();
+    try {
+      utimesSync(path, now, now);
+    } catch {
+      // Gone already: the release below is about to run.
+    }
+  }, HEARTBEAT_MS);
+  heartbeat.unref();
   try {
     return await run();
   } finally {
+    clearInterval(heartbeat);
     rmSync(path, { recursive: true, force: true });
   }
 };
