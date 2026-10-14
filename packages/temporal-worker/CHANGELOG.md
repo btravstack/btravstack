@@ -1,5 +1,17 @@
 # @btravstack/temporal-worker
 
+## 0.35.0
+
+### Minor Changes
+
+- 42fe1f1: Install a Temporal `DataConverter` (payload codecs) on both starters. `TemporalModule` takes `dataConverter`, an application-declared port whose `DataConverter` is handed to `Worker.create`; `temporalClient` takes the same port as an optional fourth argument and hands it to `new Client`. One provider, injected where the codec's key store lives, keeps the worker and its clients on one converter.
+
+### Patch Changes
+
+- @btravstack/config@0.35.0
+  - @btravstack/core@0.35.0
+  - @btravstack/di@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

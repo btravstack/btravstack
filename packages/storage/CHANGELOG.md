@@ -1,5 +1,13 @@
 # @btravstack/storage
 
+## 0.35.0
+
+### Patch Changes
+
+- @btravstack/config@0.35.0
+  - @btravstack/core@0.35.0
+  - @btravstack/di@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes
