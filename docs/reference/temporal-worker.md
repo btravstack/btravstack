@@ -464,9 +464,52 @@ argument takes the same port, so the worker and every client that starts or
 queries its workflows resolve one provider and cannot drift apart; a side
 without it reads the other's payloads as ciphertext.
 
-`payloadConverterPath` runs inside the workflow sandbox: with
-`{ workflowsPath }`, Temporal bundles it from the converter; with a prebuilt
-`{ workflowBundle }`, the bundle must have been built with it.
+<!-- doctest: isolate
+import { TemporalModule, type ActivitiesInstanceOf } from "@btravstack/temporal-worker";
+import { temporalClient, type TemporalClientSettings } from "@btravstack/temporal-client";
+import { Port, Provider, type Module, type ServiceOf } from "@btravstack/di";
+import type { TypedClient } from "@temporal-contract/client";
+import type { Connection, DataConverter } from "@temporalio/client";
+import { orderContract } from "@btravstack/example-order-temporal-contract";
+class KeyStore extends Port("KeyStore")<{ readonly keyFor: (tenantId: string) => Uint8Array }> {}
+declare const KeyStoreModule: Module<KeyStore, never, never>;
+declare const encryptingCodecs: (keys: ServiceOf<KeyStore>) => NonNullable<DataConverter["payloadCodecs"]>;
+declare const orderActivities: Provider<ActivitiesInstanceOf<typeof orderContract>, never, never>;
+class OrderClient extends Port("OrderClient")<TypedClient> {}
+class OrderConnection extends Port("OrderConnection")<Connection> {}
+class OrderSettings extends Port("OrderSettings")<TemporalClientSettings> {}
+-->
+
+```ts
+class OrderConverter extends Port("OrderConverter")<DataConverter> {}
+
+const orderConverter = Provider(OrderConverter)({
+  inject: { keys: KeyStore },
+  sync: ({ keys }) => ({ payloadCodecs: encryptingCodecs(keys) }),
+});
+
+export const OrderWorker = TemporalModule("OrderWorker")({
+  contract: orderContract,
+  activities: orderActivities,
+  workflows: { workflowsPath: "./workflows.js" },
+  dataConverter: OrderConverter,
+  imports: [KeyStoreModule],
+  provides: [orderConverter],
+});
+
+// Beside it, in every process that starts or queries those workflows:
+export const orderClient = temporalClient(
+  OrderClient,
+  OrderConnection,
+  OrderSettings,
+  OrderConverter,
+);
+```
+
+`payloadConverterPath` and `failureConverterPath` run inside the workflow
+sandbox: with `{ workflowsPath }`, Temporal bundles both from the converter;
+with a prebuilt `{ workflowBundle }`, the bundle must have been built with
+both, or the workflows serialise with Temporal's defaults.
 
 ## `TemporalRuntime` and `TemporalInfo`
 
