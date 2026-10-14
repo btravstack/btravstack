@@ -111,6 +111,15 @@ activityName` — Temporal hands the middleware the workflow key a
   `unit.activity`. `@btravstack/amqp-worker` has the same one-module shape and
   no `fork` yet.
 
+- **`dataConverter` takes an application-declared port, never a converter**
+  (#577). A codec usually needs a service to construct — a key store for
+  per-tenant crypto-shredding — and a value would be built at module scope,
+  outside the graph. A port also gives the worker and `temporalClient` one
+  provider to agree on. It is the application's port rather than one this
+  package exports, because `@btravstack/temporal-client` must not depend on
+  the serving half. The runtime provider injects it only when named, so the
+  port is in this module's `Needs` exactly then.
+
 - **The kernel's per-unit `AbortSignal` reaches an activity through the
   ambient `currentUnit()` record, and only through it.**
   `examples/order-temporal-worker`'s `ShippingService.arrange` is the worked
