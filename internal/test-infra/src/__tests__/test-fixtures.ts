@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,6 +33,8 @@ type Lock = {
   readonly plant: (pid: number) => void;
   /** Whether a lock directory is there at all, whoever holds it. */
   readonly present: () => boolean;
+  /** Leave the lock, or a breaker's guard over it, as a taker killed before writing its owner would: no `pid`, and an hour old. */
+  readonly abandon: (what: "lock" | "guard") => void;
 };
 
 /** The dev issuer, minted into a throwaway cache so a spec never touches `<repo>/.cache/dev-issuer`. */
@@ -67,8 +69,15 @@ export const it = test.extend<{
         writeFileSync(`${path}/pid`, String(pid), "utf8");
       },
       present: () => existsSync(path),
+      abandon: (what) => {
+        const dir = what === "lock" ? path : `${path}.break`;
+        mkdirSync(dir, { recursive: true });
+        const old = new Date(Date.now() - 3_600_000);
+        utimesSync(dir, old, old);
+      },
     });
     rmSync(path, { recursive: true, force: true });
+    rmSync(`${path}.break`, { recursive: true, force: true });
   },
 
   advanceClock: async ({}, use) => {

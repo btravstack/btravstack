@@ -69,6 +69,28 @@ describe("withLock", () => {
     expect(lock.present()).toBe(true);
   });
 
+  it("breaks a lock whose taker died before writing its owner", async ({ lock }) => {
+    // GIVEN a lock directory with no owner, older than the staleness window
+    lock.abandon("lock");
+
+    // WHEN another caller asks for it
+    // THEN its age alone freed it
+    await expect(withLock(lock.name, () => Promise.resolve("taken"))).resolves.toBe("taken");
+  });
+
+  it("reclaims a breaker's guard whose taker died before writing its owner", async ({
+    lock,
+    deadPid,
+  }) => {
+    // GIVEN a dead holder's lock, behind a guard nobody finished taking
+    lock.plant(deadPid);
+    lock.abandon("guard");
+
+    // WHEN another caller asks for the lock
+    // THEN the ownerless guard aged out, so the dead holder's lock could be broken
+    await expect(withLock(lock.name, () => Promise.resolve("taken"))).resolves.toBe("taken");
+  });
+
   it("releases the lock when the work fails", async ({ lock }) => {
     // GIVEN a holder whose work rejected
     await withLock(lock.name, () => Promise.reject(new Error("boom"))).catch(() => undefined);

@@ -63,6 +63,20 @@ const releaseIfOwned = (dir: string, owner: string): boolean => {
 };
 
 /**
+ * A directory whose taker was killed between `mkdir` and writing its owner has
+ * no token to check, so its age alone frees it. Returns whether it deleted.
+ */
+const releaseIfAbandoned = (dir: string, ageMs: number): boolean => {
+  try {
+    if (ownerOf(dir) !== undefined || Date.now() - statSync(dir).mtimeMs <= ageMs) return false;
+  } catch {
+    return false;
+  }
+  rmSync(dir, { recursive: true, force: true });
+  return true;
+};
+
+/**
  * `mkdir` is the primitive: it either creates the directory or fails with
  * `EEXIST`, atomically, which is the whole of a mutex. Returns whether this
  * call is the one that took the lock.
@@ -80,16 +94,16 @@ const tryTake = (path: string, owner: string): boolean => {
 /**
  * A lock nobody is holding any more. The pid is what makes this quick: a holder
  * killed mid-work never reaches the `finally` that would release, so process
- * LIVENESS is the honest signal and the clock only the fallback.
+ * LIVENESS is the honest signal and the clock only the fallback — for a pid
+ * that cannot answer, and for a lock whose taker died before writing one. A
+ * lock still being written is fresh, so the clock leaves it alone.
  */
 const isStale = (path: string): boolean => {
+  const pid = Number(ownerOf(path)?.split(" ")[0]);
+  if (Number.isInteger(pid) && pid > 0 && !alive(pid)) return true;
   try {
-    const pid = Number(readFileSync(`${path}/pid`, "utf8").trim().split(" ")[0]);
-    if (Number.isInteger(pid) && pid > 0 && !alive(pid)) return true;
     return Date.now() - statSync(path).mtimeMs > STALE_MS;
   } catch {
-    // Gone, or half-written, between the failed `mkdir` and this read —
-    // whoever held it is releasing, so the next `tryTake` is what decides.
     return false;
   }
 };
@@ -111,8 +125,8 @@ const takeGuard = (guard: string, owner: string): boolean => {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     const held = ownerOf(guard);
     try {
-      if (held !== undefined && Date.now() - statSync(guard).mtimeMs > GUARD_STALE_MS)
-        releaseIfOwned(guard, held);
+      if (held === undefined) releaseIfAbandoned(guard, GUARD_STALE_MS);
+      else if (Date.now() - statSync(guard).mtimeMs > GUARD_STALE_MS) releaseIfOwned(guard, held);
     } catch {
       // Released between the failed `mkdir` and this read.
     }
@@ -132,7 +146,9 @@ const breakStale = (path: string): boolean => {
   if (!takeGuard(guard, self)) return false;
   try {
     const judged = ownerOf(path);
-    return judged !== undefined && isStale(path) && releaseIfOwned(path, judged);
+    return judged === undefined
+      ? releaseIfAbandoned(path, STALE_MS)
+      : isStale(path) && releaseIfOwned(path, judged);
   } finally {
     releaseIfOwned(guard, self);
   }
