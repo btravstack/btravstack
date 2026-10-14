@@ -85,7 +85,7 @@ page, never this file.
   already taken by the ports a leaf reads, and what the option does is the
   kernel's own verb: the attempt forks this module. Three choices carry it:
   - **The middleware picks the module by contract key**, `workflowName ??
-activityName` — Temporal hands the middleware the workflow key a
+    activityName` — Temporal hands the middleware the workflow key a
     workflow's activity was registered under, so no flat-name translation is
     needed. The piece tags its wrapped entry with the module under a symbol,
     and the runtime reads it off the composed record it already holds.

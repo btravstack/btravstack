@@ -21,7 +21,7 @@ sync with the code in the same commit.
   failure printing `Type 'HttpRouterPort' is not assignable to type 'Scope'` —
   an internal phantom a reader has never heard of — and when the port was
   missing from `exports` too, the arm that fired was `UNSATISFIED RUNTIME
-PORTS`, a correct diagnosis of the second mistake that reads as a wrong one
+  PORTS`, a correct diagnosis of the second mistake that reads as a wrong one
   of the first and steers the fix into `exports` when it belongs in `provides`.
   The id rather than the port type is what keeps a starter's own generic port
   readable: `AmqpHandlers` as a TYPE is its contract expanded, hundreds of
@@ -300,7 +300,7 @@ Beyond the nine:
   `handle` un-awaited, so a disconnected client used to leave that work
   orphaned: out of `open`, uncounted by the drain, never aborted. The abort
   sits in `registry.run`'s `finally`, with an `AbortError` reading `"The unit
-has settled"`; four things ride that placement. It comes after
+  has settled"`; four things ride that placement. It comes after
   `open.delete`, so `abandoned` still means "open at the deadline" and nothing
   else. It comes after the fork's teardown — `start.ts`'s wrapper awaits
   `closing` inside the work — so `UnitSpanModule`'s `onStop`, which marks a
@@ -427,7 +427,7 @@ Type-level invariants live in `start.test-d.ts` and are checked by
   `NO RUNTIME — …`; a port the module does not export fails to match
   `UNSATISFIED RUNTIME PORTS — …`; a module whose own needs are unprovided
   fails to match `{ "UNSATISFIED DEPENDENCIES — nothing provides": <the port's
-id> }`, which is checked before either.
+  id> }`, which is checked before either.
   Each arm's diagnostic is pinned by an `expectTypeOf<StartGate<…>>` in
   `start.test-d.ts` — `@ts-expect-error` accepts any error, so the sentence a
   reader is shown is asserted there or nowhere.
@@ -485,7 +485,7 @@ id> }`, which is checked before either.
   business listening on every interface of the machine running it.
 
   The failure is wrapped in `RuntimeStartFailed({ runtime: "kernel", cause:
-ConfigInvalid })` rather than widening `exited`'s error union for every
+  ConfigInvalid })` rather than widening `exited`'s error union for every
   caller; `runMain`'s `isConfig` reads through that one level. The timings fall
   back to their defaults when the read fails, which changes nothing observable:
   the same failure is what `exited` reports, and no drain happens after it.
@@ -724,7 +724,7 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   (_"recovers a fork's construction failure onto the caller's defect
   path"_). A unit forks once: a second `fork` call sees `closing` already set
   and short-circuits into a rejected promise, `"a unit forks its scope
-once"` (_"reports a second fork in one unit as a defect"_) — two open
+  once"` (_"reports a second fork in one unit as a defect"_) — two open
   scopes per unit is the design this rejects, not an oversight. A fork
   issued **after** the unit has settled is a defect on its own separate
   latch (`hasSettled`, set in the same `finally` that resolves `settled`),
@@ -732,7 +732,7 @@ once"` (_"reports a second fork in one unit as a defect"_) — two open
   scope, so nothing would supervise its `onStop` (_"reports a fork issued
   after the unit has already settled as a defect"_). With no
   runtime-side `fork` call at all, the work receives `{ ctx: runtimeCtx,
-fork }` and never opens a second scope, zero overhead beyond the `fork`
+  fork }` and never opens a second scope, zero overhead beyond the `fork`
   closure itself.
 
 - **A unit override is applied at boot and substituted at the fork, by module

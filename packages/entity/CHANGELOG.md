@@ -690,7 +690,7 @@ No changes in this release.
   further along: an exported `const` holding an `Entity.union(...)` had no
   top-level name either, so TypeScript expanded its members structurally and
   reached `$brand` through any branded field — `TS4023: Exported variable 'X' has
-or is using name '$brand' … but cannot be named`. Reported as the second error
+  or is using name '$brand' … but cannot be named`. Reported as the second error
   in [#32], and reproduced by declaring a union over an entity with a branded
   `Money` field.
 

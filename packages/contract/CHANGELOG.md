@@ -80,7 +80,7 @@ No changes in this release.
   `sortableBy(item, keys)` checks the vocabulary against the item's own schema —
   a name outside its shape, or a nullable or optional key, is a compile error
   rather than a runtime surprise. `pageRequestOf(filters, { sortableBy,
-defaultSort })` takes it beside a listing's filters; `defaultSort` is
+  defaultSort })` takes it beside a listing's filters; `defaultSort` is
   **required** alongside `sortableBy`, because an implicit default is a listing
   sorted by something nobody chose:
 

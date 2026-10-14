@@ -1123,7 +1123,7 @@ in its place.
   `drain.spec.ts` and `health.spec.ts` mint — `Defect` has no public
   constructor, so a throw inside a combinator is the only way). The kinds are
   what a reader needs; **the tally is not here on purpose** — `rg
-"unthrown/no-throw"` answers it against the code, where a number in this file
+  "unthrown/no-throw"` answers it against the code, where a number in this file
   answers it against whenever it was last counted (#192). `no-get-or-throw` is switched off for the `**/*.spec.ts` **and
   `**/test-fixtures.ts`** globs through an `overrides` entry — the exemption the
   rule's own diagnostic prescribes, since `getOrThrow()` is the right tool in a
@@ -1207,7 +1207,7 @@ in its place.
   `pnpm typecheck` runs. **Every workspace whose type tests pin a marker
   sentence runs them twice**, the second time under `typescript-consumer`
   (`node ./node_modules/typescript-consumer/bin/tsc --noEmit -p
-tsconfig.test-d.json`, the alias a devDependency), because a consumer
+  tsconfig.test-d.json`, the alias a devDependency), because a consumer
   compiles with the stable line and several markers rest on compiler
   heuristics rather than type semantics — the last overload's failure being
   the one reported, the equal-length refusal tuple, the alias-variance fast
@@ -1335,12 +1335,12 @@ that can skip the comparison, not about the operator.
 5. **One deep `expect` per test, asserting once against one resource.** Not a
    scatter of shallow assertions, and never an assertion that can decline to
    run. The failure mode is concrete: `expect(r).toBeErr(); if (r.isErr()) {
-expect(r.error.code)… }` passes on the outer assertion alone the moment the
+   expect(r.error.code)… }` passes on the outer assertion alone the moment the
    narrowing is false — every assertion inside silently does not run, and the
    test still goes green. So does `descriptor?.writable`, and so does any
    assertion reached through an `&&` guard. A single deep assertion has no such
    hole: `await expect(call()).toBeErrWith(expect.objectContaining({ code:
-"CONFLICT", data: { id } }))` either matches or fails. In practice:
+   "CONFLICT", data: { id } }))` either matches or fails. In practice:
    - Collapse several properties of one resource into one deep assertion, with
      `@unthrown/vitest`'s matchers (`toBeOkWith`, `toBeErrWith`,
      `toBeErrTagged`, `toBeDefectWith`) plus `expect.objectContaining` /

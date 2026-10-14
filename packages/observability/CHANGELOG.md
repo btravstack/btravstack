@@ -221,7 +221,7 @@
 
   **`client` now receives a binding rather than a driver adapter.**
   `prismaDatabase(name)({ client: ({ url, middleware }) => postgres({
-contractJson, url, middleware }) })`. The middleware in that binding is the
+  contractJson, url, middleware }) })`. The middleware in that binding is the
   starter's own observability hook — spread it in, or the queries go unobserved.
   `PrismaLike` requires `raw` and `runtime` to exist and describes neither, which
   is measured rather than lazy: a parameter is contravariant, and the real
@@ -365,7 +365,7 @@ contractJson, url, middleware }) })`. The middleware in that binding is the
 
   `UnitSpanModule` moves with them: it is no longer composed as `start`'s
   `unit`, but bound on a starter's own option — `unit: { anonymous:
-UnitSpanModule }` — and forked by the runtime around every unit it opens.
+  UnitSpanModule }` — and forked by the runtime around every unit it opens.
 
   Behaviour change: both HTTP answerers now fork **exactly once dispatch has
   cleared every guard**, so a request that never reaches a handler never opens

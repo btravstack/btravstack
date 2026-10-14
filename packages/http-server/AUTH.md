@@ -709,7 +709,7 @@ The two rules this half exists to state, before the detail:
   onto its `contract` parameter — `unknown` when satisfied, an object with one
   required property when not, which is what makes the diagnostic end on the
   offending scope (measured: `… "UNGRANTABLE SCOPE — its scheme's
-authenticator cannot grant it": "order:export"`). `VocabFrom<A>` reads the
+  authenticator cannot grant it": "order:export"`). `VocabFrom<A>` reads the
   vocabulary off the same authenticators `SchemesFrom<A>` reads the principals
   off — two projections because they answer different questions at different
   call sites: the principal types the handler, the vocabulary checks the

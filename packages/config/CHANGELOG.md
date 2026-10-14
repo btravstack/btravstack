@@ -315,7 +315,7 @@
   page shows) keeps compiling and accepts whatever it is handed. `Config.object`
   now collects `AnyConfigField`, whose `check` takes `never`: a function is
   contravariant in its parameter, and without that a `Record<string,
-ConfigField<unknown>>` constraint would no longer admit a `ConfigField<number>`.
+  ConfigField<unknown>>` constraint would no longer admit a `ConfigField<number>`.
 
   `Config.pinned(0, Config.port(…))` still binds the ephemeral port — the floor is
   `0`, not `1`.

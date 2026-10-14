@@ -337,7 +337,7 @@
 
   `UnitSpanModule` moves with them: it is no longer composed as `start`'s
   `unit`, but bound on a starter's own option — `unit: { anonymous:
-UnitSpanModule }` — and forked by the runtime around every unit it opens.
+  UnitSpanModule }` — and forked by the runtime around every unit it opens.
 
   Behaviour change: both HTTP answerers now fork **exactly once dispatch has
   cleared every guard**, so a request that never reaches a handler never opens
@@ -956,9 +956,9 @@ UnitSpanModule }` — and forked by the runtime around every unit it opens.
   intersected onto the `module` parameter, and `tapped` gates an unexported
   port with `TapGate` on its `ports` array — replacing the conditional rest
   tuples whose failure was a bare arity line (`Expected 3 arguments, but got
-1.`) that named neither the label nor the port. The message now ends on what
+  1.`) that named neither the label nor the port. The message now ends on what
   is missing: `required in type '{ readonly "UNSATISFIED DEPENDENCIES — nothing
-provides": Cfg; }'`. Every gate a composing application meets is now the same
+  provides": Cfg; }'`. Every gate a composing application meets is now the same
   marker mechanism, and every one prints a name. The phantom rest arguments are
   gone from the signatures; nothing could ever pass values for them.
 - 9af980d: The compile-time gates name what is missing. `start`'s markers rode a phantom
@@ -1158,17 +1158,17 @@ provides": Cfg; }'`. Every gate a composing application meets is now the same
 
 - 5a271c0: **Breaking.** The runtime is a service the module provides, not an option.
   `StartOptions.runtime` is gone: `start(module, options?)`, `runMain(module,
-options?, exit?)` and `withApp(module, options, use)` build the module,
+  options?, exit?)` and `withApp(module, options, use)` build the module,
   resolve its runtime through the kernel's new **`RuntimePort`** — `Port("Runtime")`,
   exported generic so a runtime package (or an application) declares its own
   concrete port over it, `class HttpRuntime extends
-RuntimePort<Runtime<never, HttpInfo>> {}` — and drive what they find. The kernel is DI
+  RuntimePort<Runtime<never, HttpInfo>> {}` — and drive what they find. The kernel is DI
   initialisation and lifecycle, nothing else; every runtime port shares one id,
   which is how a graph holds exactly one.
 
   The phantom gate grows a third arm: `NO RUNTIME` when the module exports no
   runtime port, alongside `UNSATISFIED RUNTIME NEEDS` and `UNSATISFIED UNIT
-NEEDS`. `Needs` and `Info` are read off the module (`RuntimeInfoOf<X>` is exported), so
+  NEEDS`. `Needs` and `Info` are read off the module (`RuntimeInfoOf<X>` is exported), so
   `RunningApp<E, RuntimeInfoOf<X>>` types `runtimeInfo()` from the composition
   alone.
 
@@ -1190,7 +1190,7 @@ NEEDS`. `Needs` and `Info` are read off the module (`RuntimeInfoOf<X>` is export
     modeled `Err` passes through.
   - **`tapped(module, [Port, …])`** — read services out of a booted application
     (`start` hands the context to the runtime alone). Returns `{ module,
-services() }`; the gate refuses a port `module` does not export, and
+    services() }`; the gate refuses a port `module` does not export, and
     `services()` is loud before the graph is built.
 
   The kernel's own specs, the three starters' and the three deployment

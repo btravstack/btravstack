@@ -126,8 +126,8 @@ catalog:
   knip: 6.41.0
   markdownlint-cli2: 0.23.3
   lefthook: 2.2.1
-  oxfmt: 0.71.0
-  oxlint: 1.86.0
+  oxfmt: 0.72.0
+  oxlint: 1.87.0
   pino: 10.4.0
   nodemailer: 10.1.0
   openid-client: 6.8.8
