@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -39,16 +40,37 @@ const alive = (pid: number): boolean => {
   }
 };
 
+/** A pid, so a waiter can tell a working holder from a dead one, then a token naming this one acquisition. */
+const ownerId = (): string => `${process.pid} ${randomUUID()}`;
+
+const ownerOf = (dir: string): string | undefined => {
+  try {
+    return readFileSync(`${dir}/pid`, "utf8").trim();
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Only while `dir` still names `owner`: a holder or breaker that resumes after
+ * being displaced — suspended past a staleness window — must not delete the
+ * lock of whoever took it since. Returns whether it deleted.
+ */
+const releaseIfOwned = (dir: string, owner: string): boolean => {
+  if (ownerOf(dir) !== owner) return false;
+  rmSync(dir, { recursive: true, force: true });
+  return true;
+};
+
 /**
  * `mkdir` is the primitive: it either creates the directory or fails with
- * `EEXIST`, atomically, which is the whole of a mutex. The pid goes inside so
- * a waiter can tell a working holder from a dead one. Returns whether this
+ * `EEXIST`, atomically, which is the whole of a mutex. Returns whether this
  * call is the one that took the lock.
  */
-const tryTake = (path: string): boolean => {
+const tryTake = (path: string, owner: string): boolean => {
   try {
     mkdirSync(path, { recursive: false });
-    writeFileSync(`${path}/pid`, String(process.pid), "utf8");
+    writeFileSync(`${path}/pid`, owner, "utf8");
     return true;
   } catch {
     return false;
@@ -62,7 +84,7 @@ const tryTake = (path: string): boolean => {
  */
 const isStale = (path: string): boolean => {
   try {
-    const pid = Number(readFileSync(`${path}/pid`, "utf8").trim());
+    const pid = Number(readFileSync(`${path}/pid`, "utf8").trim().split(" ")[0]);
     if (Number.isInteger(pid) && pid > 0 && !alive(pid)) return true;
     return Date.now() - statSync(path).mtimeMs > STALE_MS;
   } catch {
@@ -79,16 +101,18 @@ const isStale = (path: string): boolean => {
 const GUARD_STALE_MS = 10_000;
 
 /** Whether this call took `guard`; another breaker holding it is the only refusal that is not an error. */
-const takeGuard = (guard: string): boolean => {
+const takeGuard = (guard: string, owner: string): boolean => {
   try {
     mkdirSync(guard);
+    writeFileSync(`${guard}/pid`, owner, "utf8");
     return true;
   } catch (error) {
     // oxlint-disable-next-line unthrown/no-throw -- a guard that cannot be made for any reason but contention is a filesystem fault the run must fail on, not a wait to spin through
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    const held = ownerOf(guard);
     try {
-      if (Date.now() - statSync(guard).mtimeMs > GUARD_STALE_MS)
-        rmSync(guard, { recursive: true, force: true });
+      if (held !== undefined && Date.now() - statSync(guard).mtimeMs > GUARD_STALE_MS)
+        releaseIfOwned(guard, held);
     } catch {
       // Released between the failed `mkdir` and this read.
     }
@@ -104,13 +128,13 @@ const takeGuard = (guard: string): boolean => {
  */
 const breakStale = (path: string): boolean => {
   const guard = `${path}.break`;
-  if (!takeGuard(guard)) return false;
+  const self = ownerId();
+  if (!takeGuard(guard, self)) return false;
   try {
-    if (!isStale(path)) return false;
-    rmSync(path, { recursive: true, force: true });
-    return true;
+    const judged = ownerOf(path);
+    return judged !== undefined && isStale(path) && releaseIfOwned(path, judged);
   } finally {
-    rmSync(guard, { recursive: true, force: true });
+    releaseIfOwned(guard, self);
   }
 };
 
@@ -126,8 +150,9 @@ export const withLock = async <T>(name: string, run: () => Promise<T>): Promise<
   mkdirSync(LOCKS, { recursive: true });
   const path = `${LOCKS}${name}.lock`;
 
+  const self = ownerId();
   const deadline = Date.now() + WAIT_MS;
-  while (!tryTake(path)) {
+  while (!tryTake(path, self)) {
     if (Date.now() > deadline)
       // oxlint-disable-next-line unthrown/no-throw -- a vitest `globalSetup` reports failure by rejecting; there is no Result channel here, and a lock nobody released in ten minutes must fail the run loudly rather than race
       throw new Error(
@@ -139,7 +164,7 @@ export const withLock = async <T>(name: string, run: () => Promise<T>): Promise<
   const heartbeat = setInterval(() => {
     const now = new Date();
     try {
-      utimesSync(path, now, now);
+      if (ownerOf(path) === self) utimesSync(path, now, now);
     } catch {
       // Gone already: the release below is about to run.
     }
@@ -149,6 +174,6 @@ export const withLock = async <T>(name: string, run: () => Promise<T>): Promise<
     return await run();
   } finally {
     clearInterval(heartbeat);
-    rmSync(path, { recursive: true, force: true });
+    releaseIfOwned(path, self);
   }
 };

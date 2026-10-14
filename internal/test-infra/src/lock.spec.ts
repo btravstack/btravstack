@@ -58,6 +58,17 @@ describe("withLock", () => {
     expect(events).toEqual(["enter:a", "exit:a", "enter:b"]);
   });
 
+  it("leaves a successor's lock in place when a displaced holder finishes", async ({ lock }) => {
+    // GIVEN a holder whose lock was broken and re-taken while it worked
+    // WHEN that holder finishes and releases
+    await withLock(lock.name, async () => {
+      lock.plant(process.pid);
+    });
+
+    // THEN the release named its own acquisition, so the successor still holds the lock
+    expect(lock.present()).toBe(true);
+  });
+
   it("releases the lock when the work fails", async ({ lock }) => {
     // GIVEN a holder whose work rejected
     await withLock(lock.name, () => Promise.reject(new Error("boom"))).catch(() => undefined);

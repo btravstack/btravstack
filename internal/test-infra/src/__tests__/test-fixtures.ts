@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,6 +31,8 @@ type Lock = {
   readonly name: string;
   /** Leave a lock behind as `pid` would have, without going through `withLock`. */
   readonly plant: (pid: number) => void;
+  /** Whether a lock directory is there at all, whoever holds it. */
+  readonly present: () => boolean;
 };
 
 /** The dev issuer, minted into a throwaway cache so a spec never touches `<repo>/.cache/dev-issuer`. */
@@ -64,6 +66,7 @@ export const it = test.extend<{
         mkdirSync(path, { recursive: true });
         writeFileSync(`${path}/pid`, String(pid), "utf8");
       },
+      present: () => existsSync(path),
     });
     rmSync(path, { recursive: true, force: true });
   },
