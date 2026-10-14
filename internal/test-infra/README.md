@@ -147,8 +147,10 @@ break.
 heartbeat that stopped, not a hold that ran long. It used to measure the hold:
 a cold Ory start passed the two minutes on a loaded runner, the waiters broke a
 lock whose holder was alive, and two workspaces started the same containers.
-Breaking moves the lock aside and judges it again there before deleting it, so
-two waiters breaking at once cannot delete a lock a third has just taken.
+Breaking deletes the lock in place, one breaker at a time under a short-lived
+`.break` guard, and judges it again under that guard, so the name is never free
+while a lock is being judged and two waiters breaking at once cannot delete a
+lock a third has just taken.
 
 ## Entry points
 

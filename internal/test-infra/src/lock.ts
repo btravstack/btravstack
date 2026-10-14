@@ -1,13 +1,4 @@
-import { randomUUID } from "node:crypto";
-import {
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-  utimesSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
@@ -82,25 +73,44 @@ const isStale = (path: string): boolean => {
 };
 
 /**
- * Moved aside before it is deleted, and judged again once it is: a waiter that
- * judged the lock stale may lose a race to another that already broke and
- * re-took it, and deleting in place would delete that live lock.
+ * A breaker is synchronous from taking its guard to releasing it, so a guard
+ * older than this was left by a breaker killed inside that window.
  */
-const breakStale = (path: string): void => {
-  const aside = `${path}.${randomUUID()}.stale`;
+const GUARD_STALE_MS = 10_000;
+
+/** Whether this call took `guard`; another breaker holding it is the only refusal that is not an error. */
+const takeGuard = (guard: string): boolean => {
   try {
-    renameSync(path, aside);
-  } catch {
-    return;
+    mkdirSync(guard);
+    return true;
+  } catch (error) {
+    // oxlint-disable-next-line unthrown/no-throw -- a guard that cannot be made for any reason but contention is a filesystem fault the run must fail on, not a wait to spin through
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    try {
+      if (Date.now() - statSync(guard).mtimeMs > GUARD_STALE_MS)
+        rmSync(guard, { recursive: true, force: true });
+    } catch {
+      // Released between the failed `mkdir` and this read.
+    }
+    return false;
   }
-  if (isStale(aside)) {
-    rmSync(aside, { recursive: true, force: true });
-    return;
-  }
+};
+
+/**
+ * Whether it broke the lock. Deleted in place, never moved: the name stays occupied until the lock is
+ * gone, so no waiter can take it while it is being judged. One breaker at a
+ * time, and the lock judged again under the guard, because another breaker may
+ * already have broken it and a third re-taken it since this one looked.
+ */
+const breakStale = (path: string): boolean => {
+  const guard = `${path}.break`;
+  if (!takeGuard(guard)) return false;
   try {
-    renameSync(aside, path);
-  } catch {
-    // A third waiter took the name in the instant it was free; nothing is left to restore.
+    if (!isStale(path)) return false;
+    rmSync(path, { recursive: true, force: true });
+    return true;
+  } finally {
+    rmSync(guard, { recursive: true, force: true });
   }
 };
 
@@ -118,13 +128,12 @@ export const withLock = async <T>(name: string, run: () => Promise<T>): Promise<
 
   const deadline = Date.now() + WAIT_MS;
   while (!tryTake(path)) {
-    if (isStale(path)) breakStale(path);
-    else if (Date.now() > deadline)
+    if (Date.now() > deadline)
       // oxlint-disable-next-line unthrown/no-throw -- a vitest `globalSetup` reports failure by rejecting; there is no Result channel here, and a lock nobody released in ten minutes must fail the run loudly rather than race
       throw new Error(
         `Timed out after ${WAIT_MS}ms waiting for the '${name}' test-infrastructure lock. If no other test run is active, delete ${path}.`,
       );
-    else await delay(POLL_MS);
+    if (!(isStale(path) && breakStale(path))) await delay(POLL_MS);
   }
 
   const heartbeat = setInterval(() => {
