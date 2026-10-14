@@ -88,7 +88,7 @@ This does not change ordinary di module visibility.
 - **`OrpcRouterPort`** (`orpc.ts`, exported from the file for the package's
   own tests, **not** from `index.ts`) — the router's port, one id, the
   starter's own: `Port("OrpcRouter")` cast to di's `PortClassOf<"OrpcRouter",
-Router<Record<never, never>>>`, with the matching `PortInstance` alias. A
+  Router<Record<never, never>>>`, with the matching `PortInstance` alias. A
   process serves one router as it boots one runtime (thesis #1), so there is
   nothing to name, and the port is framework-owned like `HttpConfig` and
   `HttpRuntime`; two router providers in one graph are di's duplicate-provider
@@ -100,7 +100,7 @@ Router<Record<never, never>>>`, with the matching `PortInstance` alias. A
   router provider. `Implementation<C, Schemes>` is the record type: recursing the
   contract's shape, each `ProcedureContract<I, O, E>` becomes
   `Parameters<ProcedureImplementer<DefaultInitialContext & object, ContextOf<C, R, Schemes>,
-I, O, E>["result"]>[0]` — the `.result()` handler `@unthrown/orpc` gives that
+  I, O, E>["result"]>[0]` — the `.result()` handler `@unthrown/orpc` gives that
   procedure's implementer (`import "@unthrown/orpc/extensions/result"` here;
   `@orpc/contract` and `@unthrown/orpc` are peers for it) — so `sync`'s return
   is typed by the contract at the call. At runtime `implement(contract)` is
@@ -113,9 +113,9 @@ I, O, E>["result"]>[0]` — the `.result()` handler `@unthrown/orpc` gives that
   second call is di's `Provider(OrpcRouterPort)({ inject: { name: Dep }, sync })` with the
   router built from what `sync` returns; there is no name to give. The
   return is `Provider<PortInstance<"OrpcRouter", Router<…>>, never,
-InstanceType<D[keyof D]>> & { port: PortClassOf<"OrpcRouter", Router<…>> }`,
+  InstanceType<D[keyof D]>> & { port: PortClassOf<"OrpcRouter", Router<…>> }`,
   spelled through di's `PortInstance` / `PortClassOf` (`{ portId; new ():
-PortInstance<…> }`) rather than the class's own type because a class
+  PortInstance<…> }`) rather than the class's own type because a class
   expression's type expands the brand keys in a consumer's declaration emit
   (TS4023, measured on `examples/order-api`) — which is also why
   `OrpcRouterPort` itself is a cast `Port("OrpcRouter")` and not a `class`.
@@ -143,7 +143,7 @@ PortInstance<…> }`) rather than the class's own type because a class
   of depths composes — `[v1Orders, v1Customers, health]` and `[v1, health]`
   alike. An uncovered leaf is refused against the
   `"UNCOVERED CONTROLLERS — the contract declares a procedure this array does
-not cover"` marker, and what the marker names is a procedure path
+  not cover"` marker, and what the marker names is a procedure path
   (`"v1.customers.find"`), not a fragment. Declared last is load-bearing
   (measured in `packages/amqp-worker`, same mechanism): TypeScript reports the
   last overload's failure, so a non-covering array fails against the marker
@@ -423,7 +423,7 @@ not cover"` marker, and what the marker names is a procedure path
   contract fold removed, since `requires` is data rather than a tree to walk
   — so a scope the scheme's authenticator cannot grant is refused at the mint
   against the same `"UNGRANTABLE SCOPE — its scheme's authenticator cannot
-grant it"` sentence oRPC's `routerFor` gives — and each requirement is also
+  grant it"` sentence oRPC's `routerFor` gives — and each requirement is also
   intersected with `@btravstack/contract`'s `OneScheme`, the same constraint
   `authenticated()` carries, so a two-scheme requirement (OpenAPI's AND, which
   `resolvePrincipal`'s first-match walk would execute as OR) is refused at
@@ -469,7 +469,7 @@ grant it"` sentence oRPC's `routerFor` gives — and each requirement is also
   `readonly authenticators` the same way the router does, so `HttpModule` can
   read both and deduplicate a scheme shared between them by reference. The
   composed port, `HtmxFragmentsPort`, is unchanged: `{ routes: readonly
-FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
+  FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   principal and the decoded input to `unknown` — the answerer's own concern,
   not the piece's.
 
@@ -1025,7 +1025,7 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   own, on purpose — and `htmx()`'s own TSDoc states this.
 
   **The POST body decodes through `Object.fromEntries(new
-URLSearchParams(...))`, which keeps only the LAST value for a repeated key.**
+  URLSearchParams(...))`, which keeps only the LAST value for a repeated key.**
   A `<select multiple>` or a checkbox group — both mainstream htmx shapes —
   collapse to their last selection rather than an array. This is a stated
   limitation, not a bug: a route wanting every value has no seam here but its

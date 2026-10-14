@@ -47,7 +47,7 @@ All runtime code lives in `packages/di/src`, one concept per file:
   on the schema, not the port, because a refused port argument falls through
   to the string overload and reports that one's mismatch instead (measured:
   `TS2769 … The last overload gave the following error … not assignable to
-parameter of type 'string'`).
+  parameter of type 'string'`).
 
   **`inject` rides in the same options object, and it is REQUIRED** (issue
   #227). One signature, one runtime path reading one key: the two overloads
@@ -64,9 +64,9 @@ parameter of type 'string'`).
 
   **The keyed form costs point-free, and that is accepted rather than a
   formatting accident.** `Provider(OrderRepository)([Database], { sync:
-prismaOrderRepository })` handed the factory straight to `sync`; the same
+  prismaOrderRepository })` handed the factory straight to `sync`; the same
   provider now has to spell `{ inject: { db: OrderDatabase }, sync: ({ db }) =>
-prismaOrderRepository(db) }` — an adapter factory takes the client, not a
+  prismaOrderRepository(db) }` — an adapter factory takes the client, not a
   record, so the wrapper arrow is unavoidable. That is inherent to naming
   dependencies:
   a name only exists at a call site if something writes it. One shape was the
@@ -120,11 +120,11 @@ prismaOrderRepository(db) }` — an adapter factory takes the client, not a
   marker intersected onto each entry point's `module` parameter (issue #93):
   `unknown` when the remaining `Needs` is `never` — invisible in an
   intersection — and `{ readonly "UNSATISFIED DEPENDENCIES — nothing
-provides": N }` otherwise, so the argument fails assignability and the
+  provides": N }` otherwise, so the argument fails assignability and the
   message **ends on the missing ports** (measured:
   `Property '"UNSATISFIED DEPENDENCIES — nothing provides"' is missing in
-type 'Module<Repo, never, Cfg>' but required in type '{ readonly
-"UNSATISFIED DEPENDENCIES — nothing provides": Cfg; }'`). It replaced a
+  type 'Module<Repo, never, Cfg>' but required in type '{ readonly
+  "UNSATISFIED DEPENDENCIES — nothing provides": Cfg; }'`). It replaced a
   conditional rest tuple whose failure was the arity line alone —
   `error TS2554: Expected 3 arguments, but got 1.` — with the label and ports
   unreachable in the message and four documents teaching how to hand-spell

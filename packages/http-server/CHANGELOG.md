@@ -349,7 +349,7 @@
   header, and it subsumes the non-blank check.
 
   **An absolute-form request target routes to its mount.** `GET
-http://host/rpc/x`, which some forward proxies send, was split on `?` and
+  http://host/rpc/x`, which some forward proxies send, was split on `?` and
   prefix-matched, so it matched no answerer and took the runtime's own `404`.
   Routing now reads `URL.parse(request.url, "http://x").pathname` — `URL.parse`
   rather than `new URL`, so a target no parser accepts cannot throw out of the
@@ -673,7 +673,7 @@ http://host/rpc/x`, which some forward proxies send, was split on `?` and
 
   `UnitSpanModule` moves with them: it is no longer composed as `start`'s
   `unit`, but bound on a starter's own option — `unit: { anonymous:
-UnitSpanModule }` — and forked by the runtime around every unit it opens.
+  UnitSpanModule }` — and forked by the runtime around every unit it opens.
 
   Behaviour change: both HTTP answerers now fork **exactly once dispatch has
   cleared every guard**, so a request that never reaches a handler never opens
@@ -1900,7 +1900,7 @@ UnitSpanModule }` — and forked by the runtime around every unit it opens.
   is answered: **oRPC, over its own node adapter**. `http()` mounts the
   application's router under `prefix` (default `/rpc`) and provides the runtime
   on **`HttpRuntime`** (declared over core's `RuntimePort`, `Runtime<never,
-HttpInfo>` — no `needs`), which the composition root imports and exports so
+  HttpInfo>` — no `needs`), which the composition root imports and exports so
   `start` finds it. The router is not an option: it is a **provider on the
   starter's own router port** — one id, `Port("HttpRouter")`, framework-owned
   like `HttpConfig`, since a process serves one router as it boots one runtime —

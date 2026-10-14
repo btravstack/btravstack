@@ -26,7 +26,7 @@ and `docs/reference/storage.md` is the reader's page.
 - **`PresignNotSupported` shares the result and NOT the words.** It is the
   same class — a "no" the caller can act on, not an outage — so both settle
   `result: "not_found"`. But its `reason` attribute says `"this store cannot
-mint a url"` where a missing object's says `"the object was not there"`,
+  mint a url"` where a missing object's says `"the object was not there"`,
   because the object may be sitting exactly where it was put, and an operator
   reading the latter would go hunting for nothing. The `result` separates
   ordinary from faulty; the `reason` has to say what actually happened.

@@ -337,7 +337,7 @@
 
   `UnitSpanModule` moves with them: it is no longer composed as `start`'s
   `unit`, but bound on a starter's own option — `unit: { anonymous:
-UnitSpanModule }` — and forked by the runtime around every unit it opens.
+  UnitSpanModule }` — and forked by the runtime around every unit it opens.
 
   Behaviour change: both HTTP answerers now fork **exactly once dispatch has
   cleared every guard**, so a request that never reaches a handler never opens

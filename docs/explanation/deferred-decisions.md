@@ -68,7 +68,7 @@ trigger, the answer is no.
   `docs/reference/http-server.md` and `docs/how-to/serve-orpc-over-http.md`, none of
   which puts a controller in between. Every deps record it compiles is
   **keyed**, di's one shape since `feat(di)!: a provider declares its
-dependencies by name`; a positional array is refused as
+  dependencies by name`; a positional array is refused as
   `not assignable to parameter of type 'Readonly<Record<string, AnyPort>>'`,
   which is what several pages outside this gate carried until the
   doc-samples gate swept them.
@@ -217,14 +217,14 @@ dependencies by name`; a positional array is refused as
   handling, and then a translator into Prisma or SQL — a query builder those
   libraries already are, and thesis #8's territory. It has no trigger. A
   listing declaring its own filter fields through `pageRequestOf({
-minQuantity })` is the narrow version, and it ships.
+  minQuantity })` is the narrow version, and it ships.
 
   ~~Sorting is deferred with its cursor rule already chosen.~~ **Closed by
   shipping** (issue #261): `sortableBy(item, keys)` is a curated vocabulary
   checked against the item's own schema, `pageRequestOf(filters, {
-sortableBy, defaultSort })` takes it beside the filters with `defaultSort`
+  sortableBy, defaultSort })` takes it beside the filters with `defaultSort`
   required, and a sorted `keyset(request)` answers `SortedKeyset<F> |
-CursorRefused` — a union the adapter must branch on, discriminated by
+  CursorRefused` — a union the adapter must branch on, discriminated by
   `resumable`. The cursor rule this entry used to name as decided-but-unbuilt
   is now how it ships: a cursor is valid only for the sort it was issued
   under (`field:direction`, carried verbatim rather than hashed — the

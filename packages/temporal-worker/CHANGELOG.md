@@ -275,7 +275,7 @@
   header, and it subsumes the non-blank check.
 
   **An absolute-form request target routes to its mount.** `GET
-http://host/rpc/x`, which some forward proxies send, was split on `?` and
+  http://host/rpc/x`, which some forward proxies send, was split on `?` and
   prefix-matched, so it matched no answerer and took the runtime's own `404`.
   Routing now reads `URL.parse(request.url, "http://x").pathname` — `URL.parse`
   rather than `new URL`, so a target no parser accepts cannot throw out of the
@@ -410,7 +410,7 @@ http://host/rpc/x`, which some forward proxies send, was split on `?` and
 
   `UnitSpanModule` moves with them: it is no longer composed as `start`'s
   `unit`, but bound on a starter's own option — `unit: { anonymous:
-UnitSpanModule }` — and forked by the runtime around every unit it opens.
+  UnitSpanModule }` — and forked by the runtime around every unit it opens.
 
   Behaviour change: both HTTP answerers now fork **exactly once dispatch has
   cleared every guard**, so a request that never reaches a handler never opens
@@ -1381,8 +1381,8 @@ UnitSpanModule }` — and forked by the runtime around every unit it opens.
 
 - f9d48ec: **`@btravstack/temporal-worker` becomes a starter, and everything is a provider.**
   `temporal({ contract, workflows, address?, namespace?, gracePeriod?,
-forceAfter? })` is a module providing `TemporalRuntime` (a `Runtime<never,
-TemporalInfo>` on the package's own port over `RuntimePort`), `TemporalConfig`
+  forceAfter? })` is a module providing `TemporalRuntime` (a `Runtime<never,
+  TemporalInfo>` on the package's own port over `RuntimePort`), `TemporalConfig`
   (`{ address, namespace }`, bound from `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE`
   unless pinned — explicit beats environment beats default, per field, through
   `Config.pinned`; a pinned field reads nothing from the environment, and the
@@ -1412,7 +1412,7 @@ TemporalInfo>` on the package's own port over `RuntimePort`), `TemporalConfig`
 
   **`TemporalModule(name)({...})` is the way an application writes its worker
   root.** `TemporalModule(name)({ contract, activities, workflows, address?,
-namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports? })` is
+  namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports? })` is
   `Module(name)({...})` for a Temporal worker: `activities` is the **provider**
   on the starter's activities port for `contract` (what `TemporalActivities`
   returns; one built for another contract is refused), and the sugar imports the starter,

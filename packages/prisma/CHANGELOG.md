@@ -217,7 +217,7 @@
 
   **`client` now receives a binding rather than a driver adapter.**
   `prismaDatabase(name)({ client: ({ url, middleware }) => postgres({
-contractJson, url, middleware }) })`. The middleware in that binding is the
+  contractJson, url, middleware }) })`. The middleware in that binding is the
   starter's own observability hook — spread it in, or the queries go unobserved.
   `PrismaLike` requires `raw` and `runtime` to exist and describes neither, which
   is measured rather than lazy: a parameter is contravariant, and the real
@@ -316,7 +316,7 @@ contractJson, url, middleware }) })`. The middleware in that binding is the
 ### Minor Changes
 
 - d124f8b: A new subpath, `@btravstack/prisma/rls`, exporting `tenantScoped(tenant, {
-setting })` — a Prisma client extension pinning **every** statement, raw SQL
+  setting })` — a Prisma client extension pinning **every** statement, raw SQL
   included, to `tenant` through a transaction-local
   `set_config('app.tenant_id', tenant, true)`, so a PostgreSQL row-level-security
   policy reading `current_setting('app.tenant_id', true)` sees it. `setting`
@@ -1039,7 +1039,7 @@ setting })` — a Prisma client extension pinning **every** statement, raw SQL
   so naming it is what puts the SDK up first.
 
   Not included, deliberately: migrations (a deployment runs `prisma migrate
-deploy` before the process starts; an application that migrates at boot races
+  deploy` before the process starts; an application that migrates at boot races
   its own replicas), transactions (commit boundaries belong to the adapter, and
   `$tryTransaction` is already the primitive), a repository base class, and a
   health contribution — `/readyz` answers from the kernel's phase and has no hook

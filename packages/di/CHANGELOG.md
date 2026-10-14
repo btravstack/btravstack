@@ -130,7 +130,7 @@ No changes in this release.
   header, and it subsumes the non-blank check.
 
   **An absolute-form request target routes to its mount.** `GET
-http://host/rpc/x`, which some forward proxies send, was split on `?` and
+  http://host/rpc/x`, which some forward proxies send, was split on `?` and
   prefix-matched, so it matched no answerer and took the runtime's own `404`.
   Routing now reads `URL.parse(request.url, "http://x").pathname` — `URL.parse`
   rather than `new URL`, so a target no parser accepts cannot throw out of the
@@ -204,7 +204,7 @@ No changes in this release.
 
   `UnitSpanModule` moves with them: it is no longer composed as `start`'s
   `unit`, but bound on a starter's own option — `unit: { anonymous:
-UnitSpanModule }` — and forked by the runtime around every unit it opens.
+  UnitSpanModule }` — and forked by the runtime around every unit it opens.
 
   Behaviour change: both HTTP answerers now fork **exactly once dispatch has
   cleared every guard**, so a request that never reaches a handler never opens
@@ -756,9 +756,9 @@ UnitSpanModule }` — and forked by the runtime around every unit it opens.
   intersected onto the `module` parameter, and `tapped` gates an unexported
   port with `TapGate` on its `ports` array — replacing the conditional rest
   tuples whose failure was a bare arity line (`Expected 3 arguments, but got
-1.`) that named neither the label nor the port. The message now ends on what
+  1.`) that named neither the label nor the port. The message now ends on what
   is missing: `required in type '{ readonly "UNSATISFIED DEPENDENCIES — nothing
-provides": Cfg; }'`. Every gate a composing application meets is now the same
+  provides": Cfg; }'`. Every gate a composing application meets is now the same
   marker mechanism, and every one prints a name. The phantom rest arguments are
   gone from the signatures; nothing could ever pass values for them.
 - 41aa1fb: `Module(name)({ exports })` now accepts a provider as well as a port class,
@@ -777,7 +777,7 @@ provides": Cfg; }'`. Every gate a composing application meets is now the same
   unchanged.
 
   It matters most where there is no class to name: `HttpController(contract,
-path)`, `Config.provider(name)(schema)`, `HttpRouter(contract)(…)`,
+  path)`, `Config.provider(name)(schema)`, `HttpRouter(contract)(…)`,
   `TemporalActivities` and `AmqpHandlers` all mint their own port and hand back a
   provider carrying it.
 
@@ -913,7 +913,7 @@ path)`, `Config.provider(name)(schema)`, `HttpRouter(contract)(…)`,
   fixed port through.
 
   `Provider(port)(deps, arm)` now returns `Provider<P, E, N> & { readonly port:
-typeof port }` — the provider carries the port class it was declared for,
+  typeof port }` — the provider carries the port class it was declared for,
   typed, so a helper that returns a provider on a port it owns (a starter's
   `HttpRouter(contract)(deps, arm)`, `Config.provider(name)(schema)`) hands back
   one value and `provider.port` is what a dependent lists in its deps. Purely

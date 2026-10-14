@@ -62,8 +62,8 @@ and this package peers on `@btravstack/core`. Listing it as a devDependency of
 core would be a **package-graph cycle turbo refuses**, so it is not one:
 
 - `packages/core/tsconfig.json` maps `paths: { "@btravstack/testing":
-["../testing/dist/index.d.mts"], "@btravstack/testing/jwt":
-["../testing/dist/jwt.d.mts"] }` for the type checker (the built
+  ["../testing/dist/index.d.mts"], "@btravstack/testing/jwt":
+  ["../testing/dist/jwt.d.mts"] }` for the type checker (the built
   declarations — the source would fall outside core's `rootDir`); a doc
   sample naming a subpath needs its own entry here, which is how `/jwt`
   joined the map. `tsconfig.build.json` (what `tsdown` compiles) empties
@@ -76,5 +76,5 @@ core would be a **package-graph cycle turbo refuses**, so it is not one:
   (`test` and `build` need no edge: vitest reads the source, `tsdown` never
   sees the import).
 - `knip.json`'s `packages/core` entry carries `ignoreDependencies:
-["@btravstack/testing"]`, since the import resolves through neither
+  ["@btravstack/testing"]`, since the import resolves through neither
   `package.json`.
