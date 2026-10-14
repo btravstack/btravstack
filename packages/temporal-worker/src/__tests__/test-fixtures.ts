@@ -23,7 +23,7 @@ import {
   type ContractDefinition,
 } from "@temporal-contract/contract";
 import { Client, Connection, type ScheduleOptions, type ScheduleSpec } from "@temporalio/client";
-import type { Duration } from "@temporalio/common";
+import type { DataConverter, Duration, Payload, PayloadCodec } from "@temporalio/common";
 import type { NativeConnection, Worker } from "@temporalio/worker";
 import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { test, vi } from "vitest";
@@ -679,6 +679,29 @@ const fakeContainersOf = (failing: boolean, unstoppable: readonly string[]) => {
   };
 };
 
+class Converter extends Port("Converter")<DataConverter> {}
+
+const reversed = (data: Payload["data"]): Uint8Array | null =>
+  data === null || data === undefined ? null : Uint8Array.from(data).reverse();
+
+/** A codec reversing each payload's bytes, so a side without it cannot read the other's payloads. */
+const reversing: PayloadCodec = {
+  encode: (payloads) =>
+    Promise.resolve(
+      payloads.map((payload) => ({
+        metadata: { ...payload.metadata, reversed: new Uint8Array([1]) },
+        data: reversed(payload.data),
+      })),
+    ),
+  decode: (payloads) =>
+    Promise.resolve(
+      payloads.map(({ metadata, data }) => {
+        const { reversed: mark, ...rest } = metadata ?? {};
+        return { metadata: rest, data: mark === undefined ? (data ?? null) : reversed(data) };
+      }),
+    ),
+};
+
 /** What one `temporalServer` run did, with its teardown already run when setup succeeded. */
 export type ServerRun = {
   readonly outcome: string;
@@ -706,6 +729,8 @@ export type TemporalFixtures = {
     readonly client: Client;
     readonly taskQueue: string;
   }>;
+  /** A worker resolving a reversing codec through its `dataConverter` port, and a client sharing it. */
+  readonly serveEncoded: () => Promise<{ readonly client: Client; readonly taskQueue: string }>;
   readonly serveBroken: (options?: BootOptions) => Promise<App>;
   /** The starter served over an observer that records what it was handed. */
   readonly serveObserved: (failing?: boolean) => Promise<{
@@ -923,6 +948,29 @@ export const it = test.extend<TemporalFixtures>({
       const { app, taskQueue } = compose(server, boot, options);
       await app.runtimeInfo();
       return { app, client, taskQueue };
+    });
+  },
+  serveEncoded: async ({ server, client, boot }, use) => {
+    await use(async () => {
+      const taskQueue = nextTaskQueue();
+      const converter = { payloadCodecs: [reversing] };
+      const app: App = boot(
+        TemporalModule("Encoded")({
+          contract: { ...echoContract, taskQueue },
+          activities: echoing,
+          workflows: echoWorkflows,
+          dataConverter: Converter,
+          provides: [Provider(Converter)({ inject: {}, value: converter })],
+        }),
+        { env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace } },
+      );
+      await app.runtimeInfo();
+      const encoded = new Client({
+        connection: client.connection,
+        namespace: server.namespace,
+        dataConverter: converter,
+      });
+      return { client: encoded, taskQueue };
     });
   },
   serveObserved: async ({ server, client, boot }, use) => {

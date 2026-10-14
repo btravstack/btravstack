@@ -27,6 +27,7 @@ import {
   type ActivitiesInstanceOf,
   type ActivitiesOf,
   type ActivitiesPortOf,
+  type DataConverterPort,
   type TemporalConfig,
   type TemporalConnection,
   type TemporalTuning,
@@ -42,7 +43,11 @@ import {
 } from "./workflow-activities.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
-type TemporalStarter<C extends ContractDefinition, Unit extends AnyUnitModule | undefined> = Module<
+type TemporalStarter<
+  C extends ContractDefinition,
+  Unit extends AnyUnitModule | undefined,
+  Converter extends DataConverterPort,
+> = Module<
   TemporalRuntime | TemporalConfig | TemporalConnection,
   ConfigInvalid | TemporalUnreachable,
   | EnvReading<
@@ -55,6 +60,7 @@ type TemporalStarter<C extends ContractDefinition, Unit extends AnyUnitModule | 
   | Scope
   | ActivitiesInstanceOf<C>
   | UnitNeedsOf<Unit>
+  | InstanceType<Converter>
 >;
 
 /** The application's imports plus the starter — the tuple `Module(name)` is handed. */
@@ -62,7 +68,8 @@ type Imports<
   I extends readonly AnyModule[],
   C extends ContractDefinition,
   Unit extends AnyUnitModule | undefined,
-> = readonly [...I, TemporalStarter<C, Unit>];
+  Converter extends DataConverterPort,
+> = readonly [...I, TemporalStarter<C, Unit, Converter>];
 
 /** The activities provider plus the application's own — the tuple `Module(name)` is handed. */
 type Provides<
@@ -81,11 +88,12 @@ export type TemporalModuleOptions<
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
   X extends readonly Exportable<
-    Imports<I, C, Unit>,
+    Imports<I, C, Unit, Converter>,
     Provides<P, C, ActivitiesError, ActivitiesNeeds>
   >[],
   N extends readonly AnyPort[] | undefined,
-> = TemporalTuning<Unit> & {
+  Converter extends DataConverterPort = never,
+> = TemporalTuning<Unit, Converter> & {
   /** The `temporal-contract` contract; the task queue this worker polls is read off it. */
   readonly contract: C;
   readonly workflows: WorkflowSource;
@@ -107,7 +115,7 @@ export type TemporalModuleOptions<
    * over the augmented tuples below, so forgetting one is an error at THIS call.
    */
   readonly needs?: N;
-} & NeedsGate<Imports<I, C, Unit>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N> &
+} & NeedsGate<Imports<I, C, Unit, Converter>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N> &
   // Riding the whole options record rather than `unit.activity`: a root that
   // declares a piece's `unit:` and then binds NO module at all is the case
   // worth catching, and a gate on the property is not read when the property
@@ -142,12 +150,24 @@ export const TemporalModule =
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
     const X extends readonly Exportable<
-      Imports<I, C, Unit>,
+      Imports<I, C, Unit, Converter>,
       Provides<P, C, ActivitiesError, ActivitiesNeeds>
     >[] = [],
     const N extends readonly AnyPort[] | undefined = undefined,
+    Converter extends DataConverterPort = never,
   >(
-    options: TemporalModuleOptions<C, ActivitiesError, ActivitiesNeeds, Declared, Unit, I, P, X, N>,
+    options: TemporalModuleOptions<
+      C,
+      ActivitiesError,
+      ActivitiesNeeds,
+      Declared,
+      Unit,
+      I,
+      P,
+      X,
+      N,
+      Converter
+    >,
   ) => {
     const { activities } = options;
     const imports = (options.imports ?? []) as I;
@@ -163,7 +183,7 @@ export const TemporalModule =
     // tuples are type parameters, and is computed at the application's own call
     // because the options type re-declares it. Spelled out rather than
     // `as never`, which collapses the return to `Module<never, never, never>`.
-    const rootImports = [...imports, starter] as Imports<I, C, Unit>;
+    const rootImports = [...imports, starter] as Imports<I, C, Unit, Converter>;
     const rootProvides = [activities, ...provides] as Provides<
       P,
       C,
@@ -180,25 +200,29 @@ export const TemporalModule =
       ] as readonly [
         typeof TemporalRuntime,
         ...InfrastructureExports<
-          Imports<I, C, Unit>,
+          Imports<I, C, Unit, Converter>,
           Provides<P, C, ActivitiesError, ActivitiesNeeds>
         >,
         ...X,
       ],
       needs: (options.needs ?? []) as N,
     } as {
-      readonly imports: Imports<I, C, Unit>;
+      readonly imports: Imports<I, C, Unit, Converter>;
       readonly provides: Provides<P, C, ActivitiesError, ActivitiesNeeds>;
       readonly exports: readonly [
         typeof TemporalRuntime,
         ...InfrastructureExports<
-          Imports<I, C, Unit>,
+          Imports<I, C, Unit, Converter>,
           Provides<P, C, ActivitiesError, ActivitiesNeeds>
         >,
         ...X,
       ];
       readonly needs: N;
-    } & NeedsGate<Imports<I, C, Unit>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N>);
+    } & NeedsGate<
+      Imports<I, C, Unit, Converter>,
+      Provides<P, C, ActivitiesError, ActivitiesNeeds>,
+      N
+    >);
   };
 
 /** One piece of the activities record — what `TemporalWorkflowActivities(contract, key)(…)` returns. */

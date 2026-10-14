@@ -1,6 +1,7 @@
 import { Provider, type PortClassOf, type ServiceOf } from "@btravstack/di";
 import { TypedClient } from "@temporal-contract/client";
 import { Client, Connection } from "@temporalio/client";
+import type { DataConverter } from "@temporalio/common";
 import { TaggedError, fromPromise } from "unthrown";
 import type { AsyncResult } from "unthrown";
 
@@ -37,22 +38,35 @@ export const temporalConnection = <
     release: (connection) => connection.close(),
   });
 
-/** Bind the typed Temporal client; callers choose a contract with `client.for(contract)`. */
+/**
+ * Bind the typed Temporal client; callers choose a contract with `client.for(contract)`.
+ * `dataConverter`, when given, is the application's port for the `DataConverter`
+ * the client encodes and decodes payloads with — the same port the worker resolves.
+ */
 export const temporalClient = <
   Settings extends TemporalClientSettings,
   const ClientId extends string,
   const ConnectionId extends string,
   const SettingsId extends string,
+  Converter extends PortClassOf<string, DataConverter> = never,
 >(
   port: PortClassOf<ClientId, TypedClient>,
   connection: PortClassOf<ConnectionId, Connection>,
   settings: PortClassOf<SettingsId, Settings>,
+  dataConverter?: Converter,
 ) =>
   Provider(port)({
-    inject: { connection, settings },
-    make: ({ connection, settings: { namespace } }) =>
-      TypedClient.create({ client: new Client({ connection, namespace }) }) as AsyncResult<
-        ServiceOf<typeof port>,
-        never
-      >,
+    inject: {
+      connection,
+      settings,
+      ...((dataConverter === undefined ? {} : { dataConverter }) as { dataConverter: Converter }),
+    },
+    make: ({ connection, settings: { namespace }, dataConverter: converter }) =>
+      TypedClient.create({
+        client: new Client({
+          connection,
+          namespace,
+          ...(converter === undefined ? {} : { dataConverter: converter }),
+        }),
+      }) as AsyncResult<ServiceOf<typeof port>, never>,
   });

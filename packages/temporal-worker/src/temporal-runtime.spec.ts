@@ -258,6 +258,29 @@ describe("temporal", () => {
     expect(contractSeam.greeting()).toBe("hello");
   });
 
+  it("encodes every payload through the data converter its port resolves", async ({
+    serveEncoded,
+  }) => {
+    // GIVEN a worker and a client sharing a codec that reverses each payload's bytes
+    const { client, taskQueue } = await serveEncoded();
+
+    // WHEN a workflow runs, and the history the server stored is read back
+    const handle = await client.workflow.start("runEcho", {
+      taskQueue,
+      workflowId: "wf-encoded",
+      args: ["secret"],
+    });
+    const output = await handle.result();
+    const { events } = await handle.fetchHistory();
+    const stored = events?.[0]?.workflowExecutionStartedEventAttributes?.input?.payloads?.[0];
+
+    // THEN both sides read each other, and the server holds only the encoded bytes
+    expect({ output, stored: new TextDecoder().decode(stored?.data ?? undefined) }).toEqual({
+      output: "secret",
+      stored: '"terces"',
+    });
+  });
+
   it("lets an in-flight activity finish while draining", async ({ serve, gate }) => {
     // GIVEN an activity held open inside the application. `start`, not
     // `execute`: a drained worker stops polling Workflow Tasks too, so the

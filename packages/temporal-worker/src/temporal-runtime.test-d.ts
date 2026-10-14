@@ -14,6 +14,7 @@ import { Env } from "@btravstack/config";
 import { HealthChecks, Logger, start } from "@btravstack/core";
 import { Module, Port, Provider, type Context } from "@btravstack/di";
 import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
+import type { DataConverter } from "@temporalio/common";
 import { OkAsync } from "unthrown";
 import { z } from "zod";
 
@@ -360,3 +361,27 @@ const businessRoot = TemporalModule("BusinessRoot")({
 });
 declare const businessContext: Context<ApplicationPorts<typeof businessRoot>>;
 businessContext.get(infrastructureBusiness);
+
+// The converter port joins the root's needs: naming one nobody provides is refused.
+class PinConverter extends Port("PinConverter")<DataConverter> {}
+const unconverted = TemporalModule("PinUnconverted")({
+  contract: pinContract,
+  activities: TemporalActivities(pinContract)([plainPiece]),
+  provides: [plainPiece],
+  workflows,
+  dataConverter: PinConverter,
+});
+// @ts-expect-error -- UNSATISFIED DEPENDENCIES: nothing provides "PinConverter", which the starter injects
+start(unconverted, { signals: false, probes: false });
+
+const _converted = start(
+  TemporalModule("PinConverted")({
+    contract: pinContract,
+    activities: TemporalActivities(pinContract)([plainPiece]),
+    provides: [plainPiece, Provider(PinConverter)({ inject: {}, value: {} })],
+    workflows,
+    dataConverter: PinConverter,
+  }),
+  { signals: false, probes: false },
+);
+void _converted;

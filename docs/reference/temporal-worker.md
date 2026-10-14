@@ -57,7 +57,7 @@ import { currentUnit } from "@btravstack/core";
 
 | Export                           | Kind  | What it is                                                                                                                                                                                                                                                                                     |
 | -------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                                                                |
+| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, unit?, dataConverter?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                                                |
 | `TemporalModuleOptions`          | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                                                                                                |
 | `TemporalActivities`             | value | `TemporalActivities(contract)` — the builder on the starter's own activities port, typed for `contract`, so the next call is `{ inject: { name: Dep }, unit?, sync }`, or `([pieces])` to compose one provider per workflow                                                                    |
 | `ActivitiesPortOf<C>`            | type  | The activities port's class typed for `C` — what a composed `orderActivities`'s `.port` is                                                                                                                                                                                                     |
@@ -104,19 +104,20 @@ it imports it, prepends `activities` to `provides`, prepends `TemporalRuntime`
 to `exports` — `start` reads the runtime off the root's exports — and hands
 the augmented tuples to di's own `Module(name)`.
 
-| Option        | Required | Default                              | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ------------- | -------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `contract`    | yes      | —                                    | a `temporal-contract` `ContractDefinition`; the task queue this worker polls is read off it                                                                                                                                                                                                                                                                                                                                                |
-| `activities`  | yes      | —                                    | the activities **provider** — a `Provider<ActivitiesInstanceOf<C>, E, N>`, what `TemporalActivities(contract)({ inject: { name: Dep }, unit?, sync })` returns for **this** `contract`; one built for another contract fails at the call                                                                                                                                                                                                   |
-| `workflows`   | yes      | —                                    | a `WorkflowSource`                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `address`     | no       | read from `TEMPORAL_ADDRESS`         | pins `TemporalConfig.address`                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `namespace`   | no       | read from `TEMPORAL_NAMESPACE`       | pins `TemporalConfig.namespace`                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `gracePeriod` | no       | read from `TEMPORAL_GRACE_PERIOD_MS` | pins Temporal's `shutdownGraceTime`, a `Duration` (default `10_000` ms)                                                                                                                                                                                                                                                                                                                                                                    |
-| `forceAfter`  | no       | read from `TEMPORAL_FORCE_AFTER_MS`  | pins Temporal's `shutdownForceTime`, a `Duration` (default `15_000` ms); keep it at or below the kernel's `drainTimeoutMs`                                                                                                                                                                                                                                                                                                                 |
-| `unit`        | no       | unset — dispatch runs unchanged      | `{ activity?: Unit }`, the unit module forked around every activity attempt and **seeded with the validated input on `ActivityInput(contract)`** — built after the activity is invoked, before it runs, torn down when the unit closes; a bound module's own unmet needs join this root's (less the seeded port), refused the same way an unmet activities port is. **Gated** against what the pieces declared — see [The unit](#the-unit) |
-| `imports`     | no       | `[]`                                 | the application's modules                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `provides`    | no       | `[]`                                 | the application's own providers                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `exports`     | no       | `[]`                                 | the application's own exports; `TemporalRuntime` is added                                                                                                                                                                                                                                                                                                                                                                                  |
+| Option          | Required | Default                              | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------- | -------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `contract`      | yes      | —                                    | a `temporal-contract` `ContractDefinition`; the task queue this worker polls is read off it                                                                                                                                                                                                                                                                                                                                                |
+| `activities`    | yes      | —                                    | the activities **provider** — a `Provider<ActivitiesInstanceOf<C>, E, N>`, what `TemporalActivities(contract)({ inject: { name: Dep }, unit?, sync })` returns for **this** `contract`; one built for another contract fails at the call                                                                                                                                                                                                   |
+| `workflows`     | yes      | —                                    | a `WorkflowSource`                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `address`       | no       | read from `TEMPORAL_ADDRESS`         | pins `TemporalConfig.address`                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `namespace`     | no       | read from `TEMPORAL_NAMESPACE`       | pins `TemporalConfig.namespace`                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `gracePeriod`   | no       | read from `TEMPORAL_GRACE_PERIOD_MS` | pins Temporal's `shutdownGraceTime`, a `Duration` (default `10_000` ms)                                                                                                                                                                                                                                                                                                                                                                    |
+| `forceAfter`    | no       | read from `TEMPORAL_FORCE_AFTER_MS`  | pins Temporal's `shutdownForceTime`, a `Duration` (default `15_000` ms); keep it at or below the kernel's `drainTimeoutMs`                                                                                                                                                                                                                                                                                                                 |
+| `unit`          | no       | unset — dispatch runs unchanged      | `{ activity?: Unit }`, the unit module forked around every activity attempt and **seeded with the validated input on `ActivityInput(contract)`** — built after the activity is invoked, before it runs, torn down when the unit closes; a bound module's own unmet needs join this root's (less the seeded port), refused the same way an unmet activities port is. **Gated** against what the pieces declared — see [The unit](#the-unit) |
+| `dataConverter` | no       | unset — Temporal's default converter | the application's port for a `@temporalio/common` `DataConverter`, handed to `Worker.create` — see [The data converter](#the-data-converter); the port joins this root's needs                                                                                                                                                                                                                                                             |
+| `imports`       | no       | `[]`                                 | the application's modules                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `provides`      | no       | `[]`                                 | the application's own providers                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `exports`       | no       | `[]`                                 | the application's own exports; `TemporalRuntime` is added                                                                                                                                                                                                                                                                                                                                                                                  |
 
 The worked composition root, from
 `examples/order-temporal-worker/src/module.ts`:
@@ -447,6 +448,68 @@ the report names `abandonedAt: "stop"` while cleanup continues in the background
 An unexpected close failure still reaches `ExitReport.teardownErrors`; this
 live array can grow after `exited` settles, although no further lifecycle
 event is emitted after `exited`.
+
+## The data converter
+
+Temporal keeps every workflow and activity input and result in an event
+history nobody can edit. A **payload codec** on the data converter — one
+encrypting each payload with a key per tenant, say — is how that history
+holds only ciphertext, and erasing a key makes what it encrypted unreadable.
+
+`dataConverter` takes a **port the application declares**,
+`class OrderConverter extends Port("OrderConverter")<DataConverter> {}`, not
+the converter itself: a codec usually needs a service to construct — a key
+store — so its provider injects one like any other. `temporalClient`'s fourth
+argument takes the same port, so the worker and every client that starts or
+queries its workflows resolve one provider and cannot drift apart; a side
+without it reads the other's payloads as ciphertext.
+
+<!-- doctest: isolate
+import { TemporalModule, type ActivitiesInstanceOf } from "@btravstack/temporal-worker";
+import { temporalClient, type TemporalClientSettings } from "@btravstack/temporal-client";
+import { Port, Provider, type Module, type ServiceOf } from "@btravstack/di";
+import type { TypedClient } from "@temporal-contract/client";
+import type { Connection, DataConverter } from "@temporalio/client";
+import { orderContract } from "@btravstack/example-order-temporal-contract";
+class KeyStore extends Port("KeyStore")<{ readonly keyFor: (tenantId: string) => Uint8Array }> {}
+declare const KeyStoreModule: Module<KeyStore, never, never>;
+declare const encryptingCodecs: (keys: ServiceOf<KeyStore>) => NonNullable<DataConverter["payloadCodecs"]>;
+declare const orderActivities: Provider<ActivitiesInstanceOf<typeof orderContract>, never, never>;
+class OrderClient extends Port("OrderClient")<TypedClient> {}
+class OrderConnection extends Port("OrderConnection")<Connection> {}
+class OrderSettings extends Port("OrderSettings")<TemporalClientSettings> {}
+-->
+
+```ts
+class OrderConverter extends Port("OrderConverter")<DataConverter> {}
+
+const orderConverter = Provider(OrderConverter)({
+  inject: { keys: KeyStore },
+  sync: ({ keys }) => ({ payloadCodecs: encryptingCodecs(keys) }),
+});
+
+export const OrderWorker = TemporalModule("OrderWorker")({
+  contract: orderContract,
+  activities: orderActivities,
+  workflows: { workflowsPath: "./workflows.js" },
+  dataConverter: OrderConverter,
+  imports: [KeyStoreModule],
+  provides: [orderConverter],
+});
+
+// Beside it, in every process that starts or queries those workflows:
+export const orderClient = temporalClient(
+  OrderClient,
+  OrderConnection,
+  OrderSettings,
+  OrderConverter,
+);
+```
+
+`payloadConverterPath` and `failureConverterPath` run inside the workflow
+sandbox: with `{ workflowsPath }`, Temporal bundles both from the converter;
+with a prebuilt `{ workflowBundle }`, the bundle must have been built with
+both, or the workflows serialise with Temporal's defaults.
 
 ## `TemporalRuntime` and `TemporalInfo`
 

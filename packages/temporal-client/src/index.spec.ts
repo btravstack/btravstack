@@ -1,6 +1,7 @@
 import { Module, Port, Provider } from "@btravstack/di";
 import { TypedClient } from "@temporal-contract/client";
 import { Client, Connection } from "@temporalio/client";
+import type { DataConverter } from "@temporalio/common";
 import { OkAsync } from "unthrown";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -9,6 +10,7 @@ import { temporalClient, temporalConnection, type TemporalClientSettings } from 
 class Settings extends Port("TemporalClientTestSettings")<TemporalClientSettings> {}
 class ConnectionPort extends Port("TemporalClientTestConnection")<Connection> {}
 class ClientPort extends Port("TemporalClientTestClient")<TypedClient> {}
+class ConverterPort extends Port("TemporalClientTestConverter")<DataConverter> {}
 
 const moduleWith = (settings: TemporalClientSettings) =>
   Module("TemporalClientTest")({
@@ -75,4 +77,33 @@ test("qualifies a failed native connection with the attempted address and cause"
       cause,
     }),
   );
+});
+
+test("hands the native client the data converter the graph provides", async () => {
+  // GIVEN a converter port provided beside the connection and the client
+  vi.spyOn(Connection, "connect").mockResolvedValue({
+    close: () => Promise.resolve(),
+  } as unknown as Connection);
+  const create = vi.spyOn(TypedClient, "create").mockReturnValue(OkAsync({} as TypedClient));
+  const codec = {
+    encode: (p: never) => Promise.resolve(p),
+    decode: (p: never) => Promise.resolve(p),
+  };
+  const encoded = Module("TemporalClientConverterTest")({
+    provides: [
+      Provider(Settings)({ inject: {}, value: { address: "temporal:7233", namespace: "orders" } }),
+      Provider(ConverterPort)({ inject: {}, value: { payloadCodecs: [codec] } }),
+      temporalConnection(ConnectionPort, Settings),
+      temporalClient(ClientPort, ConnectionPort, Settings, ConverterPort),
+    ],
+    exports: [ClientPort],
+  });
+
+  // WHEN the application scope opens
+  await Module.scoped(encoded, (ctx) => OkAsync(ctx.get(ClientPort)));
+
+  // THEN the native client encodes through that converter's codecs
+  expect(create.mock.calls[0]?.[0].client.options.loadedDataConverter.payloadCodecs).toEqual([
+    codec,
+  ]);
 });
