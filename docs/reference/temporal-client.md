@@ -17,5 +17,11 @@ namespace. Bind an application contract with `client.for(contract)`; use
 The [schedule deployment](/examples/order-temporal-worker) is the worked
 composition.
 
+`temporalClient(clientPort, connectionPort, settingsPort, dataConverterPort)`
+also hands the native client the `DataConverter` that port resolves — the
+port the worker's own `dataConverter` option names, so both sides encode and
+decode payloads with one codec. See the worker's
+[data converter](/reference/temporal-worker#the-data-converter).
+
 This package requires `@temporal-contract/client`, `@temporalio/client`,
 `@temporalio/common`, `@btravstack/di`, and `unthrown`. It has no worker peer.

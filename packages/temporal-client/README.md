@@ -8,6 +8,10 @@ providers. Settings supply `address` and `namespace`. The connection closes
 with the module scope; an unreachable service returns the modeled
 `TemporalClientUnreachable` error.
 
+Pass a fourth port, `temporalClient(clientPort, connectionPort, settingsPort, dataConverterPort)`,
+to encode payloads with the `DataConverter` it resolves — the same port the
+worker's `dataConverter` option names.
+
 Call `client.for(contract)` to obtain the typed workflow and schedule API.
 The [schedule deployment](../../examples/order-temporal-worker/src/schedules.ts)
 shows the providers in a real module. Workflow arguments and schedule policy

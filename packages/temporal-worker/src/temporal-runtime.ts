@@ -28,7 +28,7 @@ import {
   type DeclareActivitiesHandlerOptions,
   type EmptyContext,
 } from "@temporal-contract/worker/activity";
-import { msToNumber, type Duration } from "@temporalio/common";
+import { msToNumber, type DataConverter, type Duration } from "@temporalio/common";
 import { NativeConnection, Worker, type WorkflowBundleWithSourceMap } from "@temporalio/worker";
 import {
   Ok,
@@ -138,7 +138,13 @@ export type ActivitiesInstanceOf<C extends ContractDefinition> = PortInstance<
  * `TemporalModule` — spelled once so the two cannot drift, which is what a
  * second copy of an option list always eventually does.
  */
-export type TemporalTuning<Unit extends AnyUnitModule | undefined = undefined> = {
+/** An application-declared port carrying the Temporal `DataConverter` a worker and its clients share. */
+export type DataConverterPort = PortClassOf<string, DataConverter>;
+
+export type TemporalTuning<
+  Unit extends AnyUnitModule | undefined = undefined,
+  Converter extends DataConverterPort = never,
+> = {
   /** Pins `TemporalConfig.address` instead of reading `TEMPORAL_ADDRESS`. */
   readonly address?: string;
   /** Pins `TemporalConfig.namespace` instead of reading `TEMPORAL_NAMESPACE`. */
@@ -165,12 +171,20 @@ export type TemporalTuning<Unit extends AnyUnitModule | undefined = undefined> =
    * `unit:` record.
    */
   readonly unit?: { readonly activity?: Unit };
+  /**
+   * The application's port for the `DataConverter` handed to `Worker.create`
+   * — a payload codec encrypting each payload, for instance. Every client of
+   * the worker's workflows must resolve the same one, or each side reads the
+   * other's payloads as ciphertext. The port joins this module's needs.
+   */
+  readonly dataConverter?: Converter;
 };
 
 export type TemporalOptions<
   C extends ContractDefinition,
   Unit extends AnyUnitModule | undefined = undefined,
-> = TemporalTuning<Unit> & {
+  Converter extends DataConverterPort = never,
+> = TemporalTuning<Unit, Converter> & {
   /**
    * The contract; the task queue this worker polls is read off it, and the
    * activities port is typed by it. The starter calls
@@ -210,8 +224,9 @@ const workerRuns = new WeakMap<NativeConnection, AsyncResult<void, never>>();
 export const temporal = <
   C extends ContractDefinition,
   Unit extends AnyUnitModule | undefined = undefined,
+  Converter extends DataConverterPort = never,
 >(
-  options: TemporalOptions<C, Unit>,
+  options: TemporalOptions<C, Unit, Converter>,
 ): Module<
   Provided,
   ConfigInvalid | TemporalUnreachable,
@@ -225,6 +240,7 @@ export const temporal = <
   | Scope
   | ActivitiesInstanceOf<C>
   | UnitNeedsOf<Unit>
+  | InstanceType<Converter>
 > => {
   const { address, namespace } = options;
   const activities = TemporalActivitiesPort as ActivitiesPortOf<C>;
@@ -274,17 +290,26 @@ export const temporal = <
           config: TemporalConfig,
           activities,
           observers: Observers,
+          ...(options.dataConverter === undefined ? {} : { dataConverter: options.dataConverter }),
         },
         sync: ({
           connection,
           config: bound,
           activities: impls,
           observers,
+          dataConverter,
+        }: {
+          readonly connection: NativeConnection;
+          readonly config: ServiceOf<TemporalConfig>;
+          readonly activities: ActivitiesOf<C>;
+          readonly observers: readonly ((operation: Operation) => Settle)[];
+          readonly dataConverter?: DataConverter;
         }): Runtime<never, TemporalInfo> => ({
           name: "temporal",
           resolves: [],
           units: unitsOf(options.unit?.activity, impls as Readonly<Record<string, unknown>>),
-          start: (host) => createWorker(host, connection, bound, impls, options, observers),
+          start: (host) =>
+            createWorker(host, connection, bound, impls, options, observers, dataConverter),
         }),
       }),
     ],
@@ -307,6 +332,7 @@ export const temporal = <
     | Scope
     | ActivitiesInstanceOf<C>
     | UnitNeedsOf<Unit>
+    | InstanceType<Converter>
   >;
 };
 
@@ -316,13 +342,18 @@ const startFailed = (cause: unknown): RuntimeStartFailed =>
 const heldByWorker = (cause: unknown): boolean =>
   cause instanceof Error && cause.name === "IllegalStateError";
 
-const createWorker = <C extends ContractDefinition, Unit extends AnyUnitModule | undefined>(
+const createWorker = <
+  C extends ContractDefinition,
+  Unit extends AnyUnitModule | undefined,
+  Converter extends DataConverterPort,
+>(
   host: RuntimeHost<never>,
   connection: NativeConnection,
   config: ServiceOf<TemporalConfig>,
   activities: ActivitiesOf<C>,
-  options: TemporalOptions<C, Unit>,
+  options: TemporalOptions<C, Unit, Converter>,
   observers: readonly ((operation: Operation) => Settle)[],
+  dataConverter: DataConverter | undefined,
 ): AsyncResult<Serving<TemporalInfo>, RuntimeStartFailed> => {
   const { taskQueue } = options.contract;
   const { namespace } = config;
@@ -356,6 +387,7 @@ const createWorker = <C extends ContractDefinition, Unit extends AnyUnitModule |
           activities: handler,
           shutdownGraceTime: config.gracePeriodMs,
           shutdownForceTime: config.forceAfterMs,
+          ...(dataConverter === undefined ? {} : { dataConverter }),
         }),
         startFailed,
       ),
