@@ -146,6 +146,32 @@ describe("protectedResource", () => {
     expect(answered.status).toBe(404);
   });
 
+  it("does not challenge an origin-form path that merely looks like an authority", async ({
+    protectedResource,
+  }) => {
+    // GIVEN the resource at https://api.test/mcp
+    const get = await protectedResource(MCP);
+
+    // WHEN the path sent is `//alias.test/mcp`, which a base would read as a host
+    const answered = await get("//alias.test/mcp");
+
+    // THEN it is compared as sent, and is not /mcp
+    expect(answered.challenge).toBeNull();
+  });
+
+  it("serves the metadata of a resource with a trailing slash at that path alone", async ({
+    protectedResource,
+  }) => {
+    // GIVEN a resource identified with a trailing slash
+    const get = await protectedResource({ ...MCP, resource: "https://api.test/mcp/" });
+
+    // WHEN the metadata URL of the slashless resource is fetched
+    const answered = await get("/.well-known/oauth-protected-resource/mcp");
+
+    // THEN there is nothing there: this document describes /mcp/
+    expect(answered.status).toBe(404);
+  });
+
   it("does not challenge a refusal for the same path without its slash", async ({
     protectedResource,
   }) => {

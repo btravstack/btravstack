@@ -14,7 +14,7 @@ import {
 import { Port, Provider, type AnyProvider, type ServiceOf } from "@btravstack/di";
 import { Err, Ok, type Result } from "unthrown";
 
-import { HttpHandler, pathUnder, send } from "./handler.js";
+import { HttpHandler, send } from "./handler.js";
 
 /**
  * A `WWW-Authenticate` challenge, and the request whose refusals carry it: its
@@ -44,6 +44,14 @@ const queryOf = (url: string): string => (url.includes("?") ? url.slice(url.inde
  * 22's fetch does not), which is also why an identifier ending in one is
  * refused at boot rather than matched loosely.
  */
+/**
+ * The request's path as sent. An absolute-form target is parsed for it; an
+ * origin-form one is read as is, since resolving it against a base would turn
+ * `//alias.test/mcp` into `/mcp` and drop a trailing slash's meaning.
+ */
+const requestPath = (url: string): string =>
+  URL.parse(url)?.pathname ?? (url.includes("?") ? url.slice(0, url.indexOf("?")) : url);
+
 // The query as a target compares it: a bare `?` is no query.
 const comparedQuery = (url: string): string => {
   const query = queryOf(url);
@@ -77,7 +85,7 @@ export const challengeOn = (
     // terminates TLS the listener cannot know it — so it is the challenge's.
     const absolute = URL.parse(request.url ?? "");
     const host = absolute?.host ?? request.headers.host ?? "";
-    const path = pathUnder(request.url, "/");
+    const path = requestPath(request.url ?? "");
     const value = live
       .filter(({ target }) => {
         const scheme = absolute?.protocol ?? target.slice(0, target.indexOf("//"));
@@ -285,7 +293,7 @@ export const protectedResource = <const O extends ProtectedResourceOptions = Rec
         handle: (request, response) => {
           if (
             request.method === "GET" &&
-            pathUnder(request.url, prefix) === "/" &&
+            requestPath(request.url ?? "") === prefix &&
             comparedQuery(request.url ?? "") === query
           ) {
             response.writeHead(200, { "content-type": "application/json" });
