@@ -551,8 +551,7 @@ The two rules this half exists to state, before the detail:
 
   **The challenge rides a `401` for the resource's own URL, and nothing
   else.** RFC 9728 §3.3 has a client discard metadata whose `resource` is not
-  identical to the URL it called, so any other URL — another host, a path
-  below the resource, the same path without its trailing slash or under
+  identical to the URL it called, so any other URL — another scheme where the request line names one, another host, a path below the resource, the same path without its trailing slash or under
   another query — is another resource, and a
   challenge there points the client at a document it must refuse. Matching
   the path and everything below it was tried second and was wrong for that

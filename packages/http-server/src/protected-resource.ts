@@ -18,7 +18,7 @@ import { HttpHandler, pathUnder, send } from "./handler.js";
 
 /**
  * A `WWW-Authenticate` challenge, and the request whose refusals carry it: its
- * host, its path and its query, as sent.
+ * scheme, host, path and query, as sent.
  */
 export type HttpChallenge = { readonly target: string; readonly value: string };
 
@@ -43,9 +43,9 @@ const queryOf = (url: string): string => (url.includes("?") ? url.slice(url.inde
  * A bare `?` is the one thing dropped: clients disagree on sending it (Node
  * 22's fetch does not), and it names no other resource.
  */
-const targetOf = (host: string, path: string, url: string): string => {
+const targetOf = (scheme: string, host: string, path: string, url: string): string => {
   const query = queryOf(url);
-  return `${host.toLowerCase()}${path}${query === "?" ? "" : query}`;
+  return `${scheme}//${host.toLowerCase()}${path}${query === "?" ? "" : query}`;
 };
 
 /**
@@ -63,14 +63,17 @@ export const challengeOn = (
 ): ((request: IncomingMessage, response: ServerResponse) => void) => {
   const live = challenges.filter(({ value }) => value !== "");
   return (request, response) => {
-    // An absolute-form target names its own authority, which wins over `Host`.
-    const target = targetOf(
-      URL.parse(request.url ?? "")?.host ?? request.headers.host ?? "",
-      pathUnder(request.url, "/"),
-      request.url ?? "",
-    );
+    // An absolute-form target names its own scheme and authority, which win
+    // over `Host`. An origin-form one names no scheme — behind a proxy that
+    // terminates TLS the listener cannot know it — so it is the challenge's.
+    const absolute = URL.parse(request.url ?? "");
+    const host = absolute?.host ?? request.headers.host ?? "";
+    const path = pathUnder(request.url, "/");
     const value = live
-      .filter((challenge) => challenge.target === target)
+      .filter(({ target }) => {
+        const scheme = absolute?.protocol ?? target.slice(0, target.indexOf("//"));
+        return target === targetOf(scheme, host, path, request.url ?? "");
+      })
       .map((challenge) => challenge.value)
       .join(", ");
     if (value === "") return;
@@ -276,6 +279,7 @@ export const protectedResource = <const O extends ProtectedResourceOptions = Rec
     inject: { bound: ProtectedResource },
     sync: ({ bound }) => ({
       target: targetOf(
+        new URL(bound.resource).protocol,
         new URL(bound.resource).host,
         new URL(bound.resource).pathname,
         bound.resource,

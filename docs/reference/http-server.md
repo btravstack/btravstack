@@ -710,7 +710,7 @@ export const resource = protectedResource({ scopes: ["orders:read"] });
 - **A `401` for the resource's own URL carries
   `WWW-Authenticate: Bearer resource_metadata="<that URL>"`**, whichever
   answerer wrote it — oRPC, GraphQL, fragments — without any of them knowing.
-  Nothing else carries it: any other URL — another host, a path below it, the
+  Nothing else carries it: any other URL — another scheme where the request line names one, another host, a path below it, the
   same path without its trailing slash, another query — is another resource,
   whose metadata a client must discard (RFC 9728 §3.3). A bare trailing `?` is
   the one difference ignored, since clients disagree on sending it and it

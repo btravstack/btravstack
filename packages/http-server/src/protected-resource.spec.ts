@@ -107,6 +107,19 @@ describe("protectedResource", () => {
     expect(answered.challenge).toBeNull();
   });
 
+  it("does not challenge an absolute-form target under another scheme", async ({
+    protectedResource,
+  }) => {
+    // GIVEN the resource at https://api.test/mcp
+    const get = await protectedResource(MCP);
+
+    // WHEN a forward proxy asks for the same host and path over http
+    const answered = await get("http://api.test/mcp");
+
+    // THEN that is another URL, so another resource
+    expect(answered.challenge).toBeNull();
+  });
+
   it("does not challenge a refusal for the same path without its slash", async ({
     protectedResource,
   }) => {
