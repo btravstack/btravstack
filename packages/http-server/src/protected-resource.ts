@@ -17,8 +17,8 @@ import { Err, Ok, type Result } from "unthrown";
 import { HttpHandler, pathUnder, send } from "./handler.js";
 
 /**
- * A `WWW-Authenticate` challenge, and the request target whose refusals carry
- * it: a path without trailing slashes, and the query as sent.
+ * A `WWW-Authenticate` challenge, and the request whose refusals carry it: its
+ * host, its path and its query, as sent.
  */
 export type HttpChallenge = { readonly target: string; readonly value: string };
 
@@ -38,14 +38,14 @@ const queryOf = (url: string): string => (url.includes("?") ? url.slice(url.inde
 
 /**
  * RFC 9728 §3.3: a client discards metadata whose `resource` is not the URL it
- * called, so a challenge answers that URL alone — not a path below it, not
- * another query.
+ * called, so a challenge answers that URL alone — not another host, not a
+ * path below it or beside it (a trailing slash included), not another query.
+ * A bare `?` is the one thing dropped: clients disagree on sending it (Node
+ * 22's fetch does not), and it names no other resource.
  */
-// A bare `?` is dropped from the target: clients disagree on sending it
-// (Node 22's fetch does not), and it names no other resource.
-const targetOf = (path: string, url: string): string => {
+const targetOf = (host: string, path: string, url: string): string => {
   const query = queryOf(url);
-  return `${path.replace(/\/+$/, "")}${query === "?" ? "" : query}`;
+  return `${host.toLowerCase()}${path}${query === "?" ? "" : query}`;
 };
 
 /**
@@ -63,7 +63,11 @@ export const challengeOn = (
 ): ((request: IncomingMessage, response: ServerResponse) => void) => {
   const live = challenges.filter(({ value }) => value !== "");
   return (request, response) => {
-    const target = targetOf(pathUnder(request.url, "/"), request.url ?? "");
+    const target = targetOf(
+      request.headers.host ?? "",
+      pathUnder(request.url, "/"),
+      request.url ?? "",
+    );
     const value = live
       .filter((challenge) => challenge.target === target)
       .map((challenge) => challenge.value)
@@ -155,13 +159,13 @@ const checked = (
         ? refused(SERVERS)
         : []),
   ];
+  // Published as serialized, so the document, the challenge and the URL a
+  // client requests all spell it the same way (`東京` percent-encoded).
   return issues.length === 0
     ? Ok({
-        resource,
+        resource: url.href,
         authorizationServers,
-        // An explicitly empty query is kept, `?` and all (RFC 9728 §3.1).
-        // Serialized, so the query is percent-encoded as it goes on the wire.
-        metadata: `${url.origin}${metadataPath(resource)}${queryOf(url.href)}`,
+        metadata: `${url.origin}${metadataPath(url.href)}${queryOf(url.href)}`,
       })
     : Err(new ConfigInvalid({ port: "HttpProtectedResource", issues }));
 };
@@ -248,7 +252,11 @@ export const protectedResource = <const O extends ProtectedResourceOptions = Rec
   const challenge = Provider.member(HttpChallenges)({
     inject: { bound: ProtectedResource },
     sync: ({ bound }) => ({
-      target: targetOf(new URL(bound.resource).pathname, new URL(bound.resource).href),
+      target: targetOf(
+        new URL(bound.resource).host,
+        new URL(bound.resource).pathname,
+        bound.resource,
+      ),
       // RFC 9110 §5.6.4: a quoted string escapes its quotes and backslashes.
       value: `Bearer resource_metadata="${bound.metadata.replace(/["\\]/g, "\\$&")}"`,
     }),

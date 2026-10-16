@@ -710,9 +710,11 @@ export const resource = protectedResource({ scopes: ["orders:read"] });
 - **A `401` for the resource's own URL carries
   `WWW-Authenticate: Bearer resource_metadata="<that URL>"`**, whichever
   answerer wrote it — oRPC, GraphQL, fragments — without any of them knowing.
-  Nothing else carries it: any other URL, a path below it or another query
-  included, is another resource, whose metadata a client must discard (RFC
-  9728 §3.3), and a
+  Nothing else carries it: any other URL — another host, a path below it, the
+  same path without its trailing slash, another query — is another resource,
+  whose metadata a client must discard (RFC 9728 §3.3). A bare trailing `?` is
+  the one difference ignored, since clients disagree on sending it and it
+  names no other resource. And a
   challenge on a served answer reads as "the metadata changed, fetch it
   again" (§5.2). The value rides `HttpChallenges`, a set port the starter
   reads the way it reads `CookieSchemes`, so a root composing no protected
@@ -720,7 +722,7 @@ export const resource = protectedResource({ scopes: ["orders:read"] });
 
 It reads two variables, each pinned by the option of the same name:
 `HTTP_RESOURCE_URI`, the resource identifier — the audience its JWT scheme
-requires, by RFC 8707 — and `HTTP_RESOURCE_AUTHORIZATION_SERVERS`, a
+requires, by RFC 8707, published as the URL parser serializes it — and `HTTP_RESOURCE_AUTHORIZATION_SERVERS`, a
 comma-separated list of the issuers it accepts tokens from. Both are checked
 by `@btravstack/config`'s `cleartext` rule at boot: a client follows these URLs
 with its credentials, so an `http:` one that is not on a loopback host is a

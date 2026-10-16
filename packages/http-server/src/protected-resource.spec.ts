@@ -83,6 +83,45 @@ describe("protectedResource", () => {
     });
   });
 
+  it("does not challenge a refusal for another host", async ({ protectedResource }) => {
+    // GIVEN the resource at https://api.test/mcp
+    const get = await protectedResource(MCP);
+
+    // WHEN the same path is refused through another host name
+    const answered = await get("/mcp", undefined, "alias.test");
+
+    // THEN that is another resource's URL, and it is not pointed at this one's metadata
+    expect(answered.challenge).toBeNull();
+  });
+
+  it("does not challenge a refusal for the same path without its slash", async ({
+    protectedResource,
+  }) => {
+    // GIVEN a resource identified with a trailing slash
+    const get = await protectedResource({ ...MCP, resource: "https://api.test/mcp/" });
+
+    // WHEN the path without it is refused
+    const answered = await get("/mcp");
+
+    // THEN that is another URL, so another resource
+    expect(answered.challenge).toBeNull();
+  });
+
+  it("publishes the resource identifier as serialized", async ({ protectedResource }) => {
+    // GIVEN a resource whose query is not ASCII
+    const get = await protectedResource({ ...MCP, resource: "https://api.test/mcp?tenant=東京" });
+
+    // WHEN a client fetches its metadata
+    const answered = await get(
+      "/.well-known/oauth-protected-resource/mcp?tenant=%E6%9D%B1%E4%BA%AC",
+    );
+
+    // THEN the document names it as the client requests it
+    expect(JSON.parse(answered.body)).toEqual(
+      expect.objectContaining({ resource: "https://api.test/mcp?tenant=%E6%9D%B1%E4%BA%AC" }),
+    );
+  });
+
   it("does not challenge a refusal under another query", async ({ protectedResource }) => {
     // GIVEN a resource identified by its query
     const get = await protectedResource({ ...MCP, resource: "https://api.test/mcp?tenant=a" });
@@ -330,6 +369,19 @@ describe("protectedResource", () => {
     // THEN it boots and challenges as configured
     expect(answered.challenge).toBe(
       'Bearer resource_metadata="http://api.test/.well-known/oauth-protected-resource/mcp"',
+    );
+  });
+
+  it("challenges through the low-level http() module too", async ({ protectedRpc }) => {
+    // GIVEN `http()` imported, and the protected resource composed beside it
+    const get = await protectedRpc();
+
+    // WHEN the resource refuses a caller
+    const answered = await get("/mcp");
+
+    // THEN the runtime inside `http()` saw the challenge it re-exports
+    expect(answered.challenge).toBe(
+      'Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/mcp"',
     );
   });
 

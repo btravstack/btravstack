@@ -551,8 +551,9 @@ The two rules this half exists to state, before the detail:
 
   **The challenge rides a `401` for the resource's own URL, and nothing
   else.** RFC 9728 §3.3 has a client discard metadata whose `resource` is not
-  identical to the URL it called, so any other URL — a path below the
-  resource, the same path under another query — is another resource, and a
+  identical to the URL it called, so any other URL — another host, a path
+  below the resource, the same path without its trailing slash or under
+  another query — is another resource, and a
   challenge there points the client at a document it must refuse. Matching
   the path and everything below it was tried second and was wrong for that
   reason; an MCP client calls exactly the resource's URL, so nothing needs
@@ -571,8 +572,9 @@ The two rules this half exists to state, before the detail:
   **It reaches the runtime through `HttpChallenges`, `CookieSchemes`' shape**: a
   set port the starter keeps non-empty with an empty member and reads at
   composition, because the runtime never sees the providers a root puts beside
-  it, and di's `Context` has no `has`. Each member carries the request target it
-  answers — the path without trailing slashes, and the query as serialized —
+  it, and di's `Context` has no `has`. Each member carries the request it
+  answers — its host, its path and its query, with a bare `?` ignored because
+  clients disagree on sending it —
   beside its value; an empty challenge is dropped, so a root composing none
   sends no header and wraps nothing.
 

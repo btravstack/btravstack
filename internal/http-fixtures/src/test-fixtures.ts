@@ -1713,15 +1713,76 @@ const protectedAppOf = (options: ProtectedResourceOptions) =>
     exports: [HttpRuntime, HttpHandler],
   });
 
-/** One `GET` against a protected resource, with how to answer it, and what came back. */
+/**
+ * One `GET` against a protected resource, with how to answer it and the `Host`
+ * it names (`api.test` unless given), and what came back.
+ */
 export type ProtectedCall = (
   path: string,
   answer?: "ok" | "explicit",
+  host?: string,
 ) => Promise<{
   readonly status: number;
   readonly challenge: string | null;
   readonly body: string;
 }>;
+
+// `node:http` rather than `fetch`, which refuses to name a `Host`.
+const protectedCallOf =
+  (port: number): ProtectedCall =>
+  (path, answer, host = "api.test") =>
+    new Promise((done, failed) => {
+      const request = httpRequest(
+        {
+          host: "127.0.0.1",
+          port,
+          path,
+          headers: { host, ...(answer === undefined ? {} : { "x-answer": answer }) },
+        },
+        (response) => {
+          let body = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk: string) => (body += chunk));
+          response.on("end", () =>
+            done({
+              status: response.statusCode ?? 0,
+              challenge: response.headers["www-authenticate"] ?? null,
+              body,
+            }),
+          );
+        },
+      );
+      request.on("error", failed);
+      request.end();
+    });
+
+/**
+ * The low-level `http()` module with a protected resource composed BESIDE it,
+ * at the root, and an answerer at `/mcp` refusing every caller: what reaches
+ * the runtime inside `http()` is what that module re-exports.
+ */
+const protectedRpcAppOf = () =>
+  Module("ProtectedRpcApp")({
+    needs: [Env],
+    imports: [http({ port: 0, hostname: "127.0.0.1" })],
+    provides: [
+      greetingRouter,
+      Provider(Greeter)({ inject: {}, value: { greet: (name) => `hello ${name}` } }),
+      answering(
+        (_request, response) =>
+          new Promise<void>((done) => {
+            response.statusCode = 401;
+            response.end(() => done());
+          }),
+        "/mcp",
+      ),
+      ...protectedResource({
+        resource: "https://api.test/mcp",
+        authorizationServers: ["https://login.test/"],
+      }),
+    ],
+    exports: [HttpRuntime, HttpHandler],
+  });
 
 /**
  * Two schemes, dedicated to the fixtures below and kept SEPARATE from `api`'s
@@ -1988,6 +2049,8 @@ export type HttpFixtures = {
   readonly protectedApp: (options: ProtectedResourceOptions, env?: Environment) => App;
   /** The same app, booted on pins alone, as a `GET` against it. */
   readonly protectedResource: (options: ProtectedResourceOptions) => Promise<ProtectedCall>;
+  /** `protectedRpcAppOf()`, booted, as a `GET` against it. */
+  readonly protectedRpc: () => Promise<ProtectedCall>;
   /**
    * An app whose starter binds `HttpConfig` from `env` (plus whatever `options`
    * pins), and what it bound. Shut down by the fixture; a startup failure is
@@ -2587,16 +2650,15 @@ export const it = test.extend<HttpFixtures>({
     await use(async (options) => {
       const info = (await protectedApp(options).runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
-      return async (path, answer) => {
-        const response = await fetch(`http://127.0.0.1:${info.port}${path}`, {
-          headers: answer === undefined ? {} : { "x-answer": answer },
-        });
-        return {
-          status: response.status,
-          challenge: response.headers.get("www-authenticate"),
-          body: await response.text(),
-        };
-      };
+      return protectedCallOf(info.port);
+    });
+  },
+
+  protectedRpc: async ({ boot }, use) => {
+    await use(async () => {
+      const info = (await boot(protectedRpcAppOf()).runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return protectedCallOf(info.port);
     });
   },
 
