@@ -127,15 +127,18 @@ const isRecord = (json: unknown): json is Record<string, unknown> =>
 const answerOf = (value: unknown): Result<CallToolResult, UnencodableAnswer> =>
   typeof value === "string"
     ? Ok({ content: [{ type: "text", text: value }] })
-    : fromThrowable(
-        () => JSON.stringify(value) as string | undefined,
+    : // All of it inside, `String` included: a value whose JSON is `undefined`
+      // can still throw on coercion, and that too is the tool's defect.
+      fromThrowable(
+        (): CallToolResult => {
+          const json = JSON.stringify(value) as string | undefined;
+          const parsed: unknown = json === undefined ? undefined : JSON.parse(json);
+          return isRecord(parsed)
+            ? { content: [{ type: "text", text: json! }], structuredContent: parsed }
+            : { content: [{ type: "text", text: json ?? String(value) }] };
+        },
         (cause) => new UnencodableAnswer({ cause }),
-      )().map((json): CallToolResult => {
-        const parsed: unknown = json === undefined ? undefined : JSON.parse(json);
-        return isRecord(parsed)
-          ? { content: [{ type: "text", text: json! }], structuredContent: parsed }
-          : { content: [{ type: "text", text: json ?? String(value) }] };
-      });
+      )();
 
 const toolResultFor = (observers: readonly ((operation: Operation) => Settle)[]) => {
   const defect = (cause: unknown): CallToolResult => {

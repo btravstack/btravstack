@@ -79,6 +79,20 @@ describe("mcp answerer", () => {
     });
   });
 
+  it("answers a value that cannot even be coerced as a defect", async ({ served }) => {
+    // GIVEN the same client
+    const client = await (await served()).connect("k-1");
+
+    // WHEN a tool answers a value with no JSON whose coercion throws
+    const answered = await client.callTool({ name: "hostile", arguments: {} });
+
+    // THEN the model learns only that it failed, not the thrown message
+    expect(answered).toEqual({
+      content: [{ type: "text", text: "The tool failed." }],
+      isError: true,
+    });
+  });
+
   it("reads the service this request's unit provides", async ({ served }) => {
     // GIVEN the same client
     const client = await (await served()).connect("k-1");

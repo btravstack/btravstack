@@ -23,10 +23,12 @@ response's `'close'`.
 
 **`toolResult` is `fieldResult`'s twin, and carries the observers.** A tool
 answers through it so a modeled failure is never thrown by hand: `Ok` is the
-answer (text for a string, structured content beside its JSON text otherwise,
-as the specification asks), `Err` is a `ToolRefused` whose `text` the tool's
-own triage wrote — thesis #3: the package maps nothing — and a defect is
-reported to `Observers` and answered with a fixed text. It rides the context
+answer (text for a string; structured content beside its JSON text when that
+JSON is an object, as the specification requires; its JSON text alone
+otherwise, an array or a number included), `Err` is a `ToolRefused` whose `text` the tool's
+own triage wrote — thesis #3: the package maps nothing — and a defect — or a
+value JSON cannot encode or `String` cannot coerce — is reported to
+`Observers` and answered with a fixed text. It rides the context
 rather than being a free function because reporting needs the observers, and
 the SDK catches a thrown tool error into a tool error carrying its message,
 which would put a defect's cause in front of the model.

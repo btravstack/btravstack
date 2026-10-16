@@ -86,6 +86,17 @@ const protectedAnswerer = mcp(auth, {
     server.registerTool("epoch", { inputSchema: {} }, () => toolResult(OkAsync(new Date(0))));
     server.registerTool("huge", { inputSchema: {} }, () => toolResult(OkAsync(1n)));
     server.registerTool("nothing", { inputSchema: {} }, () => toolResult(OkAsync(undefined)));
+    server.registerTool("hostile", { inputSchema: {} }, () =>
+      toolResult(
+        OkAsync({
+          toJSON: () => undefined,
+          toString: () => {
+            // oxlint-disable-next-line unthrown/no-throw -- the subject under test: a value whose coercion throws
+            throw new Error("coercion-boom");
+          },
+        }),
+      ),
+    );
     server.registerTool("greet", { inputSchema: {} }, () => toolResult(OkAsync(services.message)));
     server.registerTool("refuse", { inputSchema: {} }, () =>
       toolResult(ErrAsync(new ToolRefused({ text: "not yours" }))),
