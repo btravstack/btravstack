@@ -80,4 +80,7 @@ Prompts and resources are the SDK's too: `server.registerPrompt` and
 `server.registerResource` work unchanged. What the server would ask of the
 client — sampling, elicitation, roots — is not available: the server is
 stateless and answers JSON, so it neither keeps the capabilities the client
-declared at `initialize` nor holds a stream to send a request on.
+declared at `initialize` nor holds a stream to send a request on. For the same
+reason a `notifications/cancelled` reaches no running call; a client cancels by
+dropping its request, which aborts `signal`, so a long-running tool should read
+it.

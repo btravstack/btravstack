@@ -60,8 +60,11 @@ decision.** Sampling, elicitation and roots are requests the server sends the
 client, and the SDK checks them against the capabilities the client declared
 at `initialize` — on the instance that answered it, which a stateless server
 does not keep, and over a stream a JSON answer does not hold open. A tool here
-answers from what it was called with. A session store and an SSE transport are
-what would reopen it.
+answers from what it was called with. `notifications/cancelled` is out of reach
+for the same reason: it arrives as another POST, to another instance that never
+saw the call it names. What cancels a call is the client dropping its request,
+which aborts the context's `signal`; a tool that runs long reads it. A session
+store and an SSE transport are what would reopen both.
 
 **Not included, deliberately:** sessions and resumable streams (the
 statelessness above), and DNS-rebinding protection (a guard for servers on a

@@ -248,6 +248,9 @@ export const mcp = <
             // oxlint-disable-next-line unthrown/no-throw -- the handler has no defect channel
             throw forked.cause;
           }
+          // A client gone while the unit was forked already fired `'close'`, so
+          // the cleanup below would never run: build nothing for it.
+          if (response.closed) return;
           const server = options.server({
             principal:
               requirements === undefined ? undefined : principalOf(requirements, resolved!),
