@@ -23,7 +23,7 @@ import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from
 import { CookieSchemes, crossSite, csrfOn } from "./cookie.js";
 import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
-import { HttpChallenges } from "./protected-resource.js";
+import { HttpChallenges, challengeOn, type HttpChallenge } from "./protected-resource.js";
 import { HttpSchemes, withFallback } from "./unit-scope.js";
 import type { AnyUnitModule, UnitsNeedsOf } from "./unit.js";
 
@@ -160,7 +160,7 @@ export const _internal_httpRuntime = (
   securityHeaders: HttpOptions["securityHeaders"],
   observers: readonly ((operation: Operation) => Settle)[],
   csrf = false,
-  challenges: readonly string[] = [],
+  challenges: readonly HttpChallenge[] = [],
 ): Runtime<typeof HttpHandler, HttpInfo> => ({
   name: "http",
   resolves: [HttpHandler],
@@ -248,7 +248,7 @@ export const httpServer = <
       // cookie scheme leaves this set with only this `false` in it.
       Provider.member(CookieSchemes)({ inject: {}, value: false }),
       // And again: a root composing no protected resource challenges nobody.
-      Provider.member(HttpChallenges)({ inject: {}, value: "" }),
+      Provider.member(HttpChallenges)({ inject: {}, value: { path: "/", value: "" } }),
       Provider(HttpRuntime)({
         inject: {
           config: HttpConfig,
@@ -364,7 +364,7 @@ const listen = (
   securityHeaders: HttpOptions["securityHeaders"],
   observers: readonly ((operation: Operation) => Settle)[],
   csrf: boolean,
-  challenges: readonly string[],
+  challenges: readonly HttpChallenge[],
 ): AsyncResult<Serving<HttpInfo>, RuntimeStartFailed> =>
   routesOf(answerers)
     .toAsync()
@@ -378,11 +378,8 @@ const listen = (
               : securityHeaders === true || securityHeaders === undefined
                 ? DEFAULT_SECURITY_HEADERS
                 : securityHeaders;
-          const challenge = challenges.filter((value) => value !== "").join(", ");
-          const headers = [
-            ...Object.entries(headerRecord),
-            ...(challenge === "" ? [] : [["www-authenticate", challenge] as const]),
-          ];
+          const headers = Object.entries(headerRecord);
+          const challenge = challengeOn(challenges);
 
           // `close()` waits for every connection to end, and a keep-alive client
           // holds one open long after its response. Tracking sockets is what lets
@@ -428,6 +425,7 @@ const listen = (
               // FIRST, before dispatch: covers the runtime's own 404/500 and a
               // drained response alike, not only what oRPC matched.
               for (const [name, value] of headers) response.setHeader(name, value);
+              challenge(request, response);
               open.add(response);
               response.once("close", () => open.delete(response));
               const answerer = answererFor(routes, request.url);

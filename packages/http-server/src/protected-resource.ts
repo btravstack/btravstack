@@ -1,9 +1,11 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
+
 import {
   Config,
+  ConfigInvalid,
   cleartext,
   cleartextRefused,
   Env,
-  type ConfigInvalid,
   type EnvReading,
   type MaybePinned,
   type OptionsAs,
@@ -14,16 +16,55 @@ import { Err, Ok, type Result } from "unthrown";
 
 import { HttpHandler, pathUnder, send } from "./handler.js";
 
+/** A `WWW-Authenticate` challenge, and the path whose refusals carry it. */
+export type HttpChallenge = { readonly path: string; readonly value: string };
+
 /**
- * The challenges every response carries in `WWW-Authenticate`, one member per
- * composed surface. `httpServer` contributes the empty member that keeps the
- * set from being the empty dependency di refuses; an empty challenge is
- * dropped, so a graph composing no protected resource sends no header.
+ * The challenges a `401` carries, one member per composed surface.
+ * `httpServer` contributes the empty member that keeps the set from being the
+ * empty dependency di refuses; an empty challenge is dropped, so a graph
+ * composing no protected resource sends no header.
  *
  * A set port for `CookieSchemes`' reason: the runtime never sees what the
  * root provides beside it, so the header is a fact about the graph.
  */
-export class HttpChallenges extends Port.many("HttpChallenges")<string> {}
+export class HttpChallenges extends Port.many("HttpChallenges")<HttpChallenge> {}
+
+// `/mcp` covers `/mcp` and `/mcp/x`, never `/mcpx`; the root covers everything.
+const covers = (path: string, resource: string): boolean => {
+  const mount = resource.replace(/\/+$/, "");
+  return path === mount || path.startsWith(`${mount}/`);
+};
+
+/**
+ * What the runtime applies to each response before dispatch: a `401` for a
+ * path a challenge covers carries it, and nothing else does.
+ *
+ * `writeHead` is wrapped on the response rather than the header set up front,
+ * because the status is decided by whichever answerer refuses — oRPC, `htmx()`,
+ * Yoga — and RFC 9728 §5.2 reads a challenge on any other response as "the
+ * metadata changed, fetch it again". Node's implicit header path calls
+ * `writeHead` too, so `statusCode = 401; end()` is covered.
+ */
+export const challengeOn = (
+  challenges: readonly HttpChallenge[],
+): ((request: IncomingMessage, response: ServerResponse) => void) => {
+  const live = challenges.filter(({ value }) => value !== "");
+  return (request, response) => {
+    const path = pathUnder(request.url, "/");
+    const value = live
+      .filter((challenge) => covers(path, challenge.path))
+      .map((challenge) => challenge.value)
+      .join(", ");
+    if (value === "") return;
+    const writeHead = response.writeHead.bind(response) as (...args: unknown[]) => ServerResponse;
+    response.writeHead = ((...args: unknown[]) => {
+      if (args[0] === 401 && !response.hasHeader("www-authenticate"))
+        response.setHeader("www-authenticate", value);
+      return writeHead(...args);
+    }) as ServerResponse["writeHead"];
+  };
+};
 
 /** What {@link protectedResource} was configured with, once the boot has checked it. */
 export class ProtectedResource extends Port("HttpProtectedResource")<{
@@ -42,7 +83,7 @@ export type ProtectedResourceOptions = {
   readonly resource?: string | undefined;
   /** Pins `HTTP_RESOURCE_AUTHORIZATION_SERVERS`: the issuers whose tokens it accepts. */
   readonly authorizationServers?: readonly string[] | undefined;
-  /** Advertised as `scopes_supported`. Omitted from the document when absent. */
+  /** Advertised as `scopes_supported`. Omitted from the document when absent or empty. */
   readonly scopes?: readonly string[];
   /**
    * Accept an `http:` resource or authorization server that is NOT on a
@@ -54,11 +95,19 @@ export type ProtectedResourceOptions = {
 
 const WELL_KNOWN = "/.well-known/oauth-protected-resource";
 
-/** RFC 9728 §3.1: the well-known suffix goes between the host and the resource's own path. */
+/**
+ * RFC 9728 §3.1: the well-known suffix goes between the host and the
+ * resource's own path and query, dropping only the slash after the host.
+ */
 const metadataPath = (resource: string): `/${string}` => {
-  const path = new URL(resource).pathname.replace(/\/+$/, "");
-  return `${WELL_KNOWN}${path}`;
+  const { pathname } = new URL(resource);
+  return `${WELL_KNOWN}${pathname === "/" ? "" : pathname}`;
 };
+
+const invalid = (variable: string, message: string) =>
+  Err(
+    new ConfigInvalid({ port: "HttpProtectedResource", issues: [{ message, path: [variable] }] }),
+  );
 
 const checked = (
   resource: string,
@@ -75,13 +124,20 @@ const checked = (
         what: "a client sends its access token to it",
       }),
     );
+  const url = new URL(resource);
+  // RFC 9728 §1.2: a resource identifier has no fragment, which no request carries.
+  if (url.hash !== "") return invalid("HTTP_RESOURCE_URI", "must not carry a fragment");
   if (cleartext(resource, allowInsecure) === "refused") return refused("HTTP_RESOURCE_URI");
+  // `Config.list` splits and trims; whether an entry is a URL is asked here.
+  // The value stays out of the message: a URL may carry credentials.
+  if (!authorizationServers.every((server) => URL.canParse(server)))
+    return invalid("HTTP_RESOURCE_AUTHORIZATION_SERVERS", "must list absolute URLs");
   if (authorizationServers.some((server) => cleartext(server, allowInsecure) === "refused"))
     return refused("HTTP_RESOURCE_AUTHORIZATION_SERVERS");
   return Ok({
     resource,
     authorizationServers,
-    metadata: new URL(metadataPath(resource), resource).href,
+    metadata: `${url.origin}${metadataPath(resource)}${url.search}`,
   });
 };
 
@@ -99,9 +155,9 @@ export type ProtectedResourceProvider<O> = Provider<
 
 /**
  * This API as an OAuth 2.0 protected resource: it serves its Protected
- * Resource Metadata (RFC 9728) and challenges every caller with where to find
- * it, so a client that holds no token — an MCP client is the usual one —
- * discovers which authorization server to sign in with.
+ * Resource Metadata (RFC 9728) and tells a refused caller where to find it, so
+ * a client that holds no token — an MCP client is the usual one — discovers
+ * which authorization server to sign in with.
  *
  * ```ts
  * export const Api = HttpModule("Api")({
@@ -115,11 +171,11 @@ export type ProtectedResourceProvider<O> = Provider<
  *   given, `scopes_supported`. `<path>` is the resource identifier's own, so a
  *   resource at `https://api.test/mcp` is described at
  *   `/.well-known/oauth-protected-resource/mcp`.
- * - Every response carries
- *   `WWW-Authenticate: Bearer resource_metadata="<that URL>"`. RFC 9110 §11.6.1
- *   requires it on a `401` and permits it elsewhere; setting it before
- *   dispatch is what reaches the `401` of every answerer, oRPC, GraphQL and
- *   fragments alike, without any of them knowing.
+ * - A `401` for a path at or under the resource's carries
+ *   `WWW-Authenticate: Bearer resource_metadata="<that URL>"`, whichever
+ *   answerer refused — oRPC, GraphQL or fragments — without any of them
+ *   knowing. A path outside it is another resource, whose metadata this is
+ *   not (RFC 9728 §3.3).
  *
  * It answers THREE providers, which is why it is spread: the configuration,
  * the answerer and the {@link HttpChallenges} member.
@@ -152,7 +208,8 @@ export const protectedResource = <const O extends ProtectedResourceOptions = Rec
         resource: bound.resource,
         authorization_servers: bound.authorizationServers,
         bearer_methods_supported: ["header"],
-        ...(options.scopes === undefined ? {} : { scopes_supported: options.scopes }),
+        // RFC 9728 §3.2: a parameter with zero values is omitted.
+        ...(options.scopes?.length ? { scopes_supported: options.scopes } : {}),
       });
       const prefix = metadataPath(bound.resource);
       return {
@@ -169,7 +226,10 @@ export const protectedResource = <const O extends ProtectedResourceOptions = Rec
   });
   const challenge = Provider.member(HttpChallenges)({
     inject: { bound: ProtectedResource },
-    sync: ({ bound }) => `Bearer resource_metadata="${bound.metadata}"`,
+    sync: ({ bound }) => ({
+      path: new URL(bound.resource).pathname,
+      value: `Bearer resource_metadata="${bound.metadata}"`,
+    }),
   });
   // Cast for the needs alone: over generic options the schema's own needs type
   // cannot resolve, so `ProtectedResourceProvider` states the two variables.

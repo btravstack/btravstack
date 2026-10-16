@@ -20,4 +20,8 @@ export { HttpRuntime } from "./http-runtime.js";
 export type { HttpInfo, HttpOptions } from "./http-runtime.js";
 export type { Principal, SchemesOf } from "./principal.js";
 export { HttpChallenges, ProtectedResource, protectedResource } from "./protected-resource.js";
-export type { ProtectedResourceOptions, ProtectedResourceProvider } from "./protected-resource.js";
+export type {
+  HttpChallenge,
+  ProtectedResourceOptions,
+  ProtectedResourceProvider,
+} from "./protected-resource.js";

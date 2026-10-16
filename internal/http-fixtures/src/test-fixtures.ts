@@ -1688,15 +1688,22 @@ const churnCall = (agent: Agent, origin: string, path: string): Promise<void> =>
 const noop: Handler = (_request, response, _signal) =>
   new Promise<void>((done) => response.end("ok", () => done()));
 
-/** A protected resource over one answerer at the root that refuses every caller. */
+/**
+ * A protected resource over one answerer at the root: `/mcp/ok` is served,
+ * `/mcp/explicit` refused through `writeHead`, and anything else refused
+ * through Node's implicit header.
+ */
 const protectedAppOf = (options: ProtectedResourceOptions) =>
   Module("ProtectedApp")({
     imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
     provides: [
       answering(
-        (_request, response) =>
+        (request, response) =>
           new Promise<void>((done) => {
-            response.statusCode = 401;
+            if (request.url === "/mcp/ok") response.statusCode = 200;
+            else if (request.url === "/mcp/explicit")
+              response.writeHead(401, { "content-type": "text/plain" });
+            else response.statusCode = 401;
             response.end(() => done());
           }),
       ),

@@ -13,7 +13,8 @@ description: Fetch an OAuth 2.0 client credentials token for another service wit
 
 This is the service's **own** identity. A call made for the user who triggered
 the work is the same source asked with `onBehalfOf` — an RFC 8693 token
-exchange whose `act` claim names the caller — described in
+exchange that keeps the user as the subject and names this service in the
+`act` claim — described in
 [the reference](/reference/oauth-client).
 
 ## Register the client
