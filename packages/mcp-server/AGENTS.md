@@ -19,7 +19,10 @@ any of them — the deployment model of every other answerer here. JSON rather
 than an SSE stream per call, because a call is a request and the runtime's
 drain already retires streams: a tool that needs progress notifications or a
 long-lived stream is the case that would reopen this. Both are closed on the
-response's `'close'`.
+response's `'close'`. Every method but POST is a `405` before anything is
+built: the SDK answers a GET with a standalone SSE stream whatever
+`enableJsonResponse` says, which would hold the request's server and unit open
+indefinitely.
 
 **`toolResult` is `fieldResult`'s twin, and carries the observers.** A tool
 answers through it so a modeled failure is never thrown by hand: `Ok` is the

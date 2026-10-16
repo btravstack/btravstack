@@ -175,6 +175,17 @@ describe("mcp answerer", () => {
     expect(response.status).toBe(403);
   });
 
+  it("answers a GET with 405 rather than a stream it would hold open", async ({ served }) => {
+    // GIVEN the server
+    const server = await served();
+
+    // WHEN an authenticated caller opens the standalone stream the SDK would serve
+    const response = await server.post("k-1", undefined, "GET");
+
+    // THEN it is refused before any server or unit is built
+    expect(response.status).toBe(405);
+  });
+
   it("refuses a body over the deployment's limit", async ({ served }) => {
     // GIVEN a deployment bounding request bodies to 256 bytes
     const server = await served({ bodyLimit: 256 });

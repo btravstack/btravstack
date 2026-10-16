@@ -214,6 +214,14 @@ export const mcp = <
       return {
         prefix,
         handle: async (request, response, signal, host) => {
+          // POST alone, before anything is built: the SDK answers a GET with a
+          // standalone SSE stream whatever `enableJsonResponse` says, which
+          // would hold this request's server and unit open, and a DELETE ends
+          // a session a stateless server never keeps.
+          if (request.method !== "POST") {
+            send(response, 405, { allow: "POST" });
+            return;
+          }
           let resolved: Resolved | undefined;
           if (requirements !== undefined) {
             const result = await resolveScheme(

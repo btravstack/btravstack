@@ -205,10 +205,11 @@ const INITIALIZE = {
 export type Served = {
   /** An SDK client connected with this key, or none, closed by the fixture. */
   readonly connect: (key?: string) => Promise<Client>;
-  /** One raw POST to the mount, with this key or none, carrying `body`, as `api.test`. */
+  /** One raw request to the mount — a POST unless `method` says otherwise — with this key or none, carrying `body`, as `api.test`. */
   readonly post: (
     key?: string,
     body?: unknown,
+    method?: string,
   ) => Promise<{ readonly status: number; readonly challenge: string | null }>;
   readonly seen: readonly Observation[];
 };
@@ -257,11 +258,11 @@ export const it = test.extend<McpFixtures>({
         },
         // `node:http` rather than `fetch`, which refuses to name the `Host`
         // the protected resource is identified by.
-        post: (key, body = INITIALIZE) =>
+        post: (key, body = INITIALIZE, method = "POST") =>
           new Promise((done, failed) => {
             const request = httpRequest(
               {
-                method: "POST",
+                method,
                 host: url.hostname,
                 port: url.port,
                 path: url.pathname,
