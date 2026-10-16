@@ -63,8 +63,9 @@ export const challengeOn = (
 ): ((request: IncomingMessage, response: ServerResponse) => void) => {
   const live = challenges.filter(({ value }) => value !== "");
   return (request, response) => {
+    // An absolute-form target names its own authority, which wins over `Host`.
     const target = targetOf(
-      request.headers.host ?? "",
+      URL.parse(request.url ?? "")?.host ?? request.headers.host ?? "",
       pathUnder(request.url, "/"),
       request.url ?? "",
     );
@@ -129,8 +130,20 @@ const SERVERS = "HTTP_RESOURCE_AUTHORIZATION_SERVERS";
  */
 // The raw text, not `url.search` or `url.hash`: both read `""` for a bare
 // trailing `?` or `#`, which is still a component a client must reject.
-const isIssuer = (server: string): boolean =>
-  URL.canParse(server) && !server.includes("?") && !server.includes("#");
+const isIssuer = (server: string): boolean => {
+  const url = URL.parse(server);
+  // Published as written, since an issuer is compared to the server's own
+  // `issuer` exactly: a spelling the parser would rewrite (whitespace, a
+  // missing `//`) is refused rather than corrected, a trailing slash aside.
+  return (
+    url !== null &&
+    (url.href === server || url.href === `${server}/`) &&
+    url.username === "" &&
+    url.password === "" &&
+    !server.includes("?") &&
+    !server.includes("#")
+  );
+};
 
 // Every offending variable in one `ConfigInvalid`, so a boot names them all.
 // A value stays out of every message: a URL may carry credentials.
@@ -151,10 +164,20 @@ const checked = (
   const issues = [
     // RFC 9728 §1.2: a resource identifier has no fragment, which no request carries.
     ...(resource.includes("#") ? [{ message: "must not carry a fragment", path: [RESOURCE] }] : []),
+    // The document is public: credentials in the identifier would be published.
+    ...(url.username === "" && url.password === ""
+      ? []
+      : [{ message: "must not carry credentials", path: [RESOURCE] }]),
     ...(cleartext(resource, allowInsecure) === "refused" ? refused(RESOURCE) : []),
     // `Config.list` splits and trims; whether an entry is an issuer is asked here.
     ...(!authorizationServers.every(isIssuer)
-      ? [{ message: "must list absolute URLs with no query or fragment", path: [SERVERS] }]
+      ? [
+          {
+            message:
+              "must list issuer identifiers: absolute URLs as the parser spells them, with no credentials, query or fragment",
+            path: [SERVERS],
+          },
+        ]
       : authorizationServers.some((server) => cleartext(server, allowInsecure) === "refused")
         ? refused(SERVERS)
         : []),

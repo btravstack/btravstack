@@ -727,8 +727,8 @@ comma-separated list of the issuers it accepts tokens from. Both are checked
 by `@btravstack/config`'s `cleartext` rule at boot: a client follows these URLs
 with its credentials, so an `http:` one that is not on a loopback host is a
 `ConfigInvalid` naming the variable unless `allowInsecure: true` is pinned at
-the call. A resource identifier carrying a fragment, or an authorization
-server that is not an issuer identifier (an absolute URL with no query or
+the call. A resource identifier carrying a fragment or credentials, or an
+authorization server that is not an issuer identifier (an absolute URL with no query or
 fragment, RFC 8414 §2), is a `ConfigInvalid` too, and one boot names every
 offending variable. The metadata URL
 keeps the identifier's path and query, dropping only the slash after the host

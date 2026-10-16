@@ -94,6 +94,19 @@ describe("protectedResource", () => {
     expect(answered.challenge).toBeNull();
   });
 
+  it("reads the authority of an absolute-form target over its Host", async ({
+    protectedResource,
+  }) => {
+    // GIVEN the resource at https://api.test/mcp
+    const get = await protectedResource(MCP);
+
+    // WHEN a forward proxy names another authority in the target itself
+    const answered = await get("http://alias.test/mcp");
+
+    // THEN that authority is the one requested, and it is another resource's
+    expect(answered.challenge).toBeNull();
+  });
+
   it("does not challenge a refusal for the same path without its slash", async ({
     protectedResource,
   }) => {
@@ -310,7 +323,8 @@ describe("protectedResource", () => {
         port: "HttpProtectedResource",
         issues: [
           {
-            message: "must list absolute URLs with no query or fragment",
+            message:
+              "must list issuer identifiers: absolute URLs as the parser spells them, with no credentials, query or fragment",
             path: ["HTTP_RESOURCE_AUTHORIZATION_SERVERS"],
           },
         ],
@@ -318,21 +332,25 @@ describe("protectedResource", () => {
     );
   });
 
-  it.for(["https://login.test/?tenant=a", "https://login.test/?", "https://login.test/#"])(
-    "refuses the authorization server %s at boot",
-    async (server, { protectedApp }) => {
-      // GIVEN an issuer a client could not derive the server's metadata URL from
-      const app = protectedApp({ ...MCP, authorizationServers: [server] });
+  it.for([
+    "https://login.test/?tenant=a",
+    "https://login.test/?",
+    "https://login.test/#",
+    " https://login.test",
+    "https:login.test",
+    "https://user:secret@login.test",
+  ])("refuses the authorization server %s at boot", async (server, { protectedApp }) => {
+    // GIVEN an issuer a client could not derive the server's metadata URL from
+    const app = protectedApp({ ...MCP, authorizationServers: [server] });
 
-      // WHEN the application boots
-      // THEN it is refused, as RFC 8414 §2 refuses such an issuer identifier
-      await expect(app.exited).toBeErrWith(
-        expect.objectContaining({
-          issues: [expect.objectContaining({ path: ["HTTP_RESOURCE_AUTHORIZATION_SERVERS"] })],
-        }),
-      );
-    },
-  );
+    // WHEN the application boots
+    // THEN it is refused, as RFC 8414 §2 refuses such an issuer identifier
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        issues: [expect.objectContaining({ path: ["HTTP_RESOURCE_AUTHORIZATION_SERVERS"] })],
+      }),
+    );
+  });
 
   it("names every offending variable in one boot", async ({ protectedApp }) => {
     // GIVEN a resource with a fragment and an authorization server that is not a URL
@@ -349,6 +367,19 @@ describe("protectedResource", () => {
           expect.objectContaining({ path: ["HTTP_RESOURCE_URI"] }),
           expect.objectContaining({ path: ["HTTP_RESOURCE_AUTHORIZATION_SERVERS"] }),
         ],
+      }),
+    );
+  });
+
+  it("refuses a resource identifier carrying credentials at boot", async ({ protectedApp }) => {
+    // GIVEN credentials in the identifier a public document would publish
+    const app = protectedApp({ ...MCP, resource: "https://user:secret@api.test/mcp" });
+
+    // WHEN the application boots
+    // THEN it does not, and the variable is named
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        issues: [{ message: "must not carry credentials", path: ["HTTP_RESOURCE_URI"] }],
       }),
     );
   });
