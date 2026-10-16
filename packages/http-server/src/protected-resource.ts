@@ -40,8 +40,9 @@ const queryOf = (url: string): string => (url.includes("?") ? url.slice(url.inde
  * RFC 9728 §3.3: a client discards metadata whose `resource` is not the URL it
  * called, so a challenge answers that URL alone — not another host, not a
  * path below it or beside it (a trailing slash included), not another query.
- * A bare `?` is the one thing dropped: clients disagree on sending it (Node
- * 22's fetch does not), and it names no other resource.
+ * A request's bare `?` reads as no query: clients disagree on sending it (Node
+ * 22's fetch does not), which is also why an identifier ending in one is
+ * refused at boot rather than matched loosely.
  */
 // The query as a target compares it: a bare `?` is no query.
 const comparedQuery = (url: string): string => {
@@ -179,6 +180,11 @@ const checked = (
     ...(url.username === "" && url.password === ""
       ? []
       : [{ message: "must not carry credentials", path: [RESOURCE] }]),
+    // RFC 3986 tells an empty query from none, and clients disagree on sending
+    // it, so such an identifier could not be matched or discovered reliably.
+    ...(resource.endsWith("?")
+      ? [{ message: "must not end in an empty query", path: [RESOURCE] }]
+      : []),
     ...(cleartext(resource, allowInsecure) === "refused" ? refused(RESOURCE) : []),
     // `Config.list` splits and trims; whether an entry is an issuer is asked here.
     ...(!authorizationServers.every(isIssuer)

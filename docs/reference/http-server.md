@@ -712,9 +712,9 @@ export const resource = protectedResource({ scopes: ["orders:read"] });
   answerer wrote it — oRPC, GraphQL, fragments — without any of them knowing.
   Nothing else carries it: any other URL — another scheme where the request line names one, another host, a path below it, the
   same path without its trailing slash, another query — is another resource,
-  whose metadata a client must discard (RFC 9728 §3.3). A bare trailing `?` is
-  the one difference ignored, since clients disagree on sending it and it
-  names no other resource. And a
+  whose metadata a client must discard (RFC 9728 §3.3). A request's bare
+  trailing `?` reads as no query, since clients disagree on sending it — and
+  for that reason a resource identifier ending in one is refused at boot. And a
   challenge on a served answer reads as "the metadata changed, fetch it
   again" (§5.2). The value rides `HttpChallenges`, a set port the starter
   reads the way it reads `CookieSchemes`, so a root composing no protected

@@ -572,8 +572,9 @@ The two rules this half exists to state, before the detail:
   set port the starter keeps non-empty with an empty member and reads at
   composition, because the runtime never sees the providers a root puts beside
   it, and di's `Context` has no `has`. Each member carries the request it
-  answers — its host, its path and its query, with a bare `?` ignored because
-  clients disagree on sending it —
+  answers — its host, its path and its query, a request's bare `?` read as no
+  query because clients disagree on sending it, and an identifier ending in
+  one refused at boot for the same reason —
   beside its value; an empty challenge is dropped, so a root composing none
   sends no header and wraps nothing.
 

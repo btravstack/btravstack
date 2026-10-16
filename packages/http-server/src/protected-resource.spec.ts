@@ -227,16 +227,29 @@ describe("protectedResource", () => {
     );
   });
 
-  it("keeps an explicitly empty query in the metadata URL", async ({ protectedResource }) => {
-    // GIVEN a resource identifier ending in a bare `?`
-    const get = await protectedResource({ ...MCP, resource: "https://api.test/mcp?" });
+  it("refuses a resource identifier ending in an empty query at boot", async ({ protectedApp }) => {
+    // GIVEN an identifier ending in a bare `?`, which some clients drop
+    const app = protectedApp({ ...MCP, resource: "https://api.test/mcp?" });
 
-    // WHEN a caller with no token reaches it, by a client that may drop the `?`
-    const answered = await get("/mcp");
+    // WHEN the application boots
+    // THEN it does not: no request could be matched to it reliably
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        issues: [{ message: "must not end in an empty query", path: ["HTTP_RESOURCE_URI"] }],
+      }),
+    );
+  });
 
-    // THEN the empty query is still the identifier's, and the URL keeps it
+  it("reads a request's bare ? as no query", async ({ protectedResource }) => {
+    // GIVEN the resource at https://api.test/mcp
+    const get = await protectedResource(MCP);
+
+    // WHEN a client sends the URL with an empty query
+    const answered = await get("/mcp?");
+
+    // THEN it is the same request target, and challenged
     expect(answered.challenge).toBe(
-      'Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/mcp?"',
+      'Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/mcp"',
     );
   });
 
