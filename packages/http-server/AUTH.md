@@ -549,16 +549,20 @@ The two rules this half exists to state, before the detail:
   `WWW-Authenticate: Bearer resource_metadata="…"` challenge. Like `oidc()`, it
   verifies nothing and mints nothing; it says where a credential comes from.
 
-  **The challenge rides a `401` for a path the resource covers, and nothing
-  else.** A path outside the resource is another resource: RFC 9728 §3.3 has a
-  client discard metadata whose `resource` is not the URL it called, so a
-  challenge there points it at a document it must refuse. And §5.2 reads a
+  **The challenge rides a `401` for the resource's own URL, and nothing
+  else.** RFC 9728 §3.3 has a client discard metadata whose `resource` is not
+  identical to the URL it called, so any other URL — a path below the
+  resource, the same path under another query — is another resource, and a
+  challenge there points the client at a document it must refuse. Matching
+  the path and everything below it was tried second and was wrong for that
+  reason; an MCP client calls exactly the resource's URL, so nothing needs
+  more. And §5.2 reads a
   challenge on any answer as "the metadata changed, fetch it again", so one on
   every `200` costs a conforming client a refetch per call. Setting the header
   up front, beside `securityHeaders`, was tried first and was wrong on both
   counts.
 
-  **So the runtime wraps `writeHead` on a covered request's response**, before
+  **So the runtime wraps `writeHead` on a matching request's response**, before
   dispatch: the status is decided by whichever answerer refuses — oRPC's error
   serializer, `htmx()`, Yoga — none of which this package can reach after the
   fact, and Node's implicit header (`statusCode = 401; end()`) goes through
@@ -567,7 +571,8 @@ The two rules this half exists to state, before the detail:
   **It reaches the runtime through `HttpChallenges`, `CookieSchemes`' shape**: a
   set port the starter keeps non-empty with an empty member and reads at
   composition, because the runtime never sees the providers a root puts beside
-  it, and di's `Context` has no `has`. Each member carries the path it covers
+  it, and di's `Context` has no `has`. Each member carries the request target it
+  answers — the path without trailing slashes, and the query as serialized —
   beside its value; an empty challenge is dropped, so a root composing none
   sends no header and wraps nothing.
 

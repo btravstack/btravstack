@@ -1689,9 +1689,9 @@ const noop: Handler = (_request, response, _signal) =>
   new Promise<void>((done) => response.end("ok", () => done()));
 
 /**
- * A protected resource over one answerer at the root: `/mcp/ok` is served,
- * `/mcp/explicit` refused through `writeHead`, and anything else refused
- * through Node's implicit header.
+ * A protected resource over one answerer at the root, answering as its
+ * `x-answer` header says: `ok` is served, `explicit` refused through
+ * `writeHead`, and anything else refused through Node's implicit header.
  */
 const protectedAppOf = (options: ProtectedResourceOptions) =>
   Module("ProtectedApp")({
@@ -1700,8 +1700,9 @@ const protectedAppOf = (options: ProtectedResourceOptions) =>
       answering(
         (request, response) =>
           new Promise<void>((done) => {
-            if (request.url === "/mcp/ok") response.statusCode = 200;
-            else if (request.url === "/mcp/explicit")
+            const answer = request.headers["x-answer"];
+            if (answer === "ok") response.statusCode = 200;
+            else if (answer === "explicit")
               response.writeHead(401, { "content-type": "text/plain" });
             else response.statusCode = 401;
             response.end(() => done());
@@ -1712,8 +1713,11 @@ const protectedAppOf = (options: ProtectedResourceOptions) =>
     exports: [HttpRuntime, HttpHandler],
   });
 
-/** One `GET` against a protected resource, and what came back. */
-export type ProtectedCall = (path: string) => Promise<{
+/** One `GET` against a protected resource, with how to answer it, and what came back. */
+export type ProtectedCall = (
+  path: string,
+  answer?: "ok" | "explicit",
+) => Promise<{
   readonly status: number;
   readonly challenge: string | null;
   readonly body: string;
@@ -2583,8 +2587,10 @@ export const it = test.extend<HttpFixtures>({
     await use(async (options) => {
       const info = (await protectedApp(options).runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
-      return async (path) => {
-        const response = await fetch(`http://127.0.0.1:${info.port}${path}`);
+      return async (path, answer) => {
+        const response = await fetch(`http://127.0.0.1:${info.port}${path}`, {
+          headers: answer === undefined ? {} : { "x-answer": answer },
+        });
         return {
           status: response.status,
           challenge: response.headers.get("www-authenticate"),

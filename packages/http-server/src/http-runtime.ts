@@ -248,7 +248,7 @@ export const httpServer = <
       // cookie scheme leaves this set with only this `false` in it.
       Provider.member(CookieSchemes)({ inject: {}, value: false }),
       // And again: a root composing no protected resource challenges nobody.
-      Provider.member(HttpChallenges)({ inject: {}, value: { path: "/", value: "" } }),
+      Provider.member(HttpChallenges)({ inject: {}, value: { target: "", value: "" } }),
       Provider(HttpRuntime)({
         inject: {
           config: HttpConfig,

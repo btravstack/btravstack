@@ -67,7 +67,7 @@ These symbols are exported across the three packages. `defineHttp`, `HttpModule`
 | `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                                                                                                                                                                                                  |
 | `protectedResource`    | value | `protectedResource({ resource?, authorizationServers?, scopes?, allowInsecure? })` — three providers, spread: the API as an OAuth 2.0 protected resource, serving its RFC 9728 metadata and challenging every caller with where it is; see [The protected resource](#the-protected-resource)                                                                                                                                |
 | `ProtectedResource`    | value | the port `protectedResource()` provides — the resource identifier, its authorization servers and the metadata URL, as the boot checked them                                                                                                                                                                                                                                                                                 |
-| `HttpChallenges`       | value | `class HttpChallenges extends Port.many("HttpChallenges")<HttpChallenge> {}` — the `WWW-Authenticate` challenges a `401` carries, each with the path it covers; the starter contributes an empty one                                                                                                                                                                                                                        |
+| `HttpChallenges`       | value | `class HttpChallenges extends Port.many("HttpChallenges")<HttpChallenge> {}` — the `WWW-Authenticate` challenges a `401` carries, each with the request target it answers; the starter contributes an empty one                                                                                                                                                                                                             |
 | `apiKeyAuthenticator`  | value | `apiKeyAuthenticator<P>()({ header?, keys })` — an API-key scheme with a constant-time compare over SHA-256 digests, no early return, and a missing header on the same path as a wrong key                                                                                                                                                                                                                                  |
 | `HttpOptions`          | type  | the transport options `HttpModule` and `GraphqlModule` take — see [Transport options](#transport-options)                                                                                                                                                                                                                                                                                                                   |
 | `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}` — the runtime's port; what the starter provides and `HttpModule` / `GraphqlModule` export. It **resolves `HttpHandler`**, so the root must export that too                                                                                                                                                                                |
@@ -701,17 +701,18 @@ export const resource = protectedResource({ scopes: ["orders:read"] });
 ```
 
 - **`GET /.well-known/oauth-protected-resource<path>` answers the metadata
-  document**: `resource`, `authorization_servers`,
-  `bearer_methods_supported: ["header"]` and, when `scopes` is given,
-  `scopes_supported`. `<path>` is the resource identifier's own, as RFC 9728
+  document**: `resource`, `authorization_servers` and, when `scopes` is
+  given, `scopes_supported`. `bearer_methods_supported` is left out: the
+  scheme that reads the token decides where it is sent, not this document. `<path>` is the resource identifier's own, as RFC 9728
   §3.1 places it: a resource at `https://api.test/mcp` is described at
   `/.well-known/oauth-protected-resource/mcp`. Anything else below that mount
   is a `404`.
-- **A `401` for a path at or under the resource's carries
+- **A `401` for the resource's own URL carries
   `WWW-Authenticate: Bearer resource_metadata="<that URL>"`**, whichever
   answerer wrote it — oRPC, GraphQL, fragments — without any of them knowing.
-  Nothing else carries it: a path outside the resource is another resource,
-  which a client must not take this metadata for (RFC 9728 §3.3), and a
+  Nothing else carries it: any other URL, a path below it or another query
+  included, is another resource, whose metadata a client must discard (RFC
+  9728 §3.3), and a
   challenge on a served answer reads as "the metadata changed, fetch it
   again" (§5.2). The value rides `HttpChallenges`, a set port the starter
   reads the way it reads `CookieSchemes`, so a root composing no protected

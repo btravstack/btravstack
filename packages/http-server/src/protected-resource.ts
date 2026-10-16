@@ -16,8 +16,11 @@ import { Err, Ok, type Result } from "unthrown";
 
 import { HttpHandler, pathUnder, send } from "./handler.js";
 
-/** A `WWW-Authenticate` challenge, and the path whose refusals carry it. */
-export type HttpChallenge = { readonly path: string; readonly value: string };
+/**
+ * A `WWW-Authenticate` challenge, and the request target whose refusals carry
+ * it: a path without trailing slashes, and the query as sent.
+ */
+export type HttpChallenge = { readonly target: string; readonly value: string };
 
 /**
  * The challenges a `401` carries, one member per composed surface.
@@ -30,15 +33,20 @@ export type HttpChallenge = { readonly path: string; readonly value: string };
  */
 export class HttpChallenges extends Port.many("HttpChallenges")<HttpChallenge> {}
 
-// `/mcp` covers `/mcp` and `/mcp/x`, never `/mcpx`; the root covers everything.
-const covers = (path: string, resource: string): boolean => {
-  const mount = resource.replace(/\/+$/, "");
-  return path === mount || path.startsWith(`${mount}/`);
-};
+// The raw query, `?` included: WHATWG's `search` reads `""` for a bare `?`.
+const queryOf = (url: string): string => (url.includes("?") ? url.slice(url.indexOf("?")) : "");
+
+/**
+ * RFC 9728 §3.3: a client discards metadata whose `resource` is not the URL it
+ * called, so a challenge answers that URL alone — not a path below it, not
+ * another query.
+ */
+const targetOf = (path: string, url: string): string =>
+  `${path.replace(/\/+$/, "")}${queryOf(url)}`;
 
 /**
  * What the runtime applies to each response before dispatch: a `401` for a
- * path a challenge covers carries it, and nothing else does.
+ * challenge's own target carries it, and nothing else does.
  *
  * `writeHead` is wrapped on the response rather than the header set up front,
  * because the status is decided by whichever answerer refuses — oRPC, `htmx()`,
@@ -51,9 +59,9 @@ export const challengeOn = (
 ): ((request: IncomingMessage, response: ServerResponse) => void) => {
   const live = challenges.filter(({ value }) => value !== "");
   return (request, response) => {
-    const path = pathUnder(request.url, "/");
+    const target = targetOf(pathUnder(request.url, "/"), request.url ?? "");
     const value = live
-      .filter((challenge) => covers(path, challenge.path))
+      .filter((challenge) => challenge.target === target)
       .map((challenge) => challenge.value)
       .join(", ");
     if (value === "") return;
@@ -148,7 +156,8 @@ const checked = (
         resource,
         authorizationServers,
         // An explicitly empty query is kept, `?` and all (RFC 9728 §3.1).
-        metadata: `${url.origin}${metadataPath(resource)}${resource.includes("?") ? resource.slice(resource.indexOf("?")) : ""}`,
+        // Serialized, so the query is percent-encoded as it goes on the wire.
+        metadata: `${url.origin}${metadataPath(resource)}${queryOf(url.href)}`,
       })
     : Err(new ConfigInvalid({ port: "HttpProtectedResource", issues }));
 };
@@ -179,15 +188,15 @@ export type ProtectedResourceProvider<O> = Provider<
  * ```
  *
  * - `GET /.well-known/oauth-protected-resource<path>` answers the document:
- *   `resource`, `authorization_servers`, `bearer_methods_supported` and, when
+ *   `resource`, `authorization_servers` and, when
  *   given, `scopes_supported`. `<path>` is the resource identifier's own, so a
  *   resource at `https://api.test/mcp` is described at
  *   `/.well-known/oauth-protected-resource/mcp`.
- * - A `401` for a path at or under the resource's carries
+ * - A `401` for the resource's own URL carries
  *   `WWW-Authenticate: Bearer resource_metadata="<that URL>"`, whichever
  *   answerer refused — oRPC, GraphQL or fragments — without any of them
- *   knowing. A path outside it is another resource, whose metadata this is
- *   not (RFC 9728 §3.3).
+ *   knowing. Any other URL, a path below it or another query included, is
+ *   another resource, whose metadata this is not (RFC 9728 §3.3).
  *
  * It answers THREE providers, which is why it is spread: the configuration,
  * the answerer and the {@link HttpChallenges} member.
@@ -216,7 +225,6 @@ export const protectedResource = <const O extends ProtectedResourceOptions = Rec
       const body = JSON.stringify({
         resource: bound.resource,
         authorization_servers: bound.authorizationServers,
-        bearer_methods_supported: ["header"],
         // RFC 9728 §3.2: a parameter with zero values is omitted.
         ...(options.scopes?.length ? { scopes_supported: options.scopes } : {}),
       });
@@ -236,8 +244,9 @@ export const protectedResource = <const O extends ProtectedResourceOptions = Rec
   const challenge = Provider.member(HttpChallenges)({
     inject: { bound: ProtectedResource },
     sync: ({ bound }) => ({
-      path: new URL(bound.resource).pathname,
-      value: `Bearer resource_metadata="${bound.metadata}"`,
+      target: targetOf(new URL(bound.resource).pathname, new URL(bound.resource).href),
+      // RFC 9110 §5.6.4: a quoted string escapes its quotes and backslashes.
+      value: `Bearer resource_metadata="${bound.metadata.replace(/["\\]/g, "\\$&")}"`,
     }),
   });
   // Cast for the needs alone: over generic options the schema's own needs type

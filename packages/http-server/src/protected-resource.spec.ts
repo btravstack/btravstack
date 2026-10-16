@@ -22,7 +22,6 @@ describe("protectedResource", () => {
       document: {
         resource: "https://api.test/mcp",
         authorization_servers: ["https://login.test/"],
-        bearer_methods_supported: ["header"],
         scopes_supported: ["orders:read"],
       },
     });
@@ -48,7 +47,7 @@ describe("protectedResource", () => {
     const get = await protectedResource(MCP);
 
     // WHEN its answerer refuses with an explicit `writeHead(401, headers)`
-    const answered = await get("/mcp/explicit");
+    const answered = await get("/mcp", "explicit");
 
     // THEN the challenge rides that answer as well
     expect(answered.challenge).toBe(
@@ -70,12 +69,50 @@ describe("protectedResource", () => {
     });
   });
 
+  it("does not challenge a refusal below the resource", async ({ protectedResource }) => {
+    // GIVEN the resource at /mcp
+    const get = await protectedResource(MCP);
+
+    // WHEN a path below it is refused
+    const answered = await get("/mcp/orders");
+
+    // THEN no challenge: a client would discard metadata naming /mcp (RFC 9728 §3.3)
+    expect({ status: answered.status, challenge: answered.challenge }).toEqual({
+      status: 401,
+      challenge: null,
+    });
+  });
+
+  it("does not challenge a refusal under another query", async ({ protectedResource }) => {
+    // GIVEN a resource identified by its query
+    const get = await protectedResource({ ...MCP, resource: "https://api.test/mcp?tenant=a" });
+
+    // WHEN the same path is refused under another one
+    const answered = await get("/mcp?tenant=b");
+
+    // THEN that is another resource, and it is not pointed at this one's metadata
+    expect(answered.challenge).toBeNull();
+  });
+
+  it("percent-encodes the query it puts in the challenge", async ({ protectedResource }) => {
+    // GIVEN a resource whose query is not ASCII
+    const get = await protectedResource({ ...MCP, resource: "https://api.test/mcp?tenant=東京" });
+
+    // WHEN a caller with no token reaches it, as a client sends it
+    const answered = await get("/mcp?tenant=%E6%9D%B1%E4%BA%AC");
+
+    // THEN the header carries the URL serialized, as a header must
+    expect(answered.challenge).toBe(
+      'Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/mcp?tenant=%E6%9D%B1%E4%BA%AC"',
+    );
+  });
+
   it("does not challenge an answer that is not a refusal", async ({ protectedResource }) => {
     // GIVEN the resource at /mcp
     const get = await protectedResource(MCP);
 
-    // WHEN a path under it is served
-    const answered = await get("/mcp/ok");
+    // WHEN its own URL is served
+    const answered = await get("/mcp", "ok");
 
     // THEN it carries no challenge, which a client would read as metadata to refetch
     expect({ status: answered.status, challenge: answered.challenge }).toEqual({
@@ -91,7 +128,7 @@ describe("protectedResource", () => {
     const get = await protectedResource({ ...MCP, resource: "https://api.test/mcp/?tenant=a" });
 
     // WHEN a caller with no token reaches it
-    const answered = await get("/mcp/");
+    const answered = await get("/mcp/?tenant=a");
 
     // THEN only the slash after the host was dropped (RFC 9728 §3.1)
     expect(answered.challenge).toBe(
@@ -104,7 +141,7 @@ describe("protectedResource", () => {
     const get = await protectedResource({ ...MCP, resource: "https://api.test/mcp?" });
 
     // WHEN a caller with no token reaches it
-    const answered = await get("/mcp");
+    const answered = await get("/mcp?");
 
     // THEN the empty query is still the identifier's, and the URL keeps it
     expect(answered.challenge).toBe(
@@ -152,7 +189,6 @@ describe("protectedResource", () => {
     expect(JSON.parse(answered.body)).toEqual({
       resource: "https://api.test/",
       authorization_servers: ["https://login.test/"],
-      bearer_methods_supported: ["header"],
     });
   });
 
