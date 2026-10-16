@@ -530,6 +530,7 @@ const main = (): void => {
     join(DOCS_ROOT, "index.md"),
     join(REPO_ROOT, "README.md"),
     ...globSync(join(REPO_ROOT, "packages/*/README.md")),
+    ...globSync(join(REPO_ROOT, "skills/**/*.md")),
     join(REPO_ROOT, "packages/http-server/src/api-key.ts"),
   ];
   const outDir = resolve(out);

@@ -10,6 +10,7 @@
         "../../docs/scripts/extract-doc-samples.ts",
         "../../README.md",
         "../../packages/*/README.md",
+        "../../skills/**/*.md",
         "../../packages/http-server/src/api-key.ts"
       ],
       "outputs": ["src/generated/**"]

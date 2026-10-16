@@ -58,8 +58,8 @@ the old repository.
   `reference/packages.md` point at the menu.
 
 - **Every `ts` fence in the framework, DI and entity guide directories, in the
-  root README and in the package READMEs is compiled by `pnpm typecheck`,
-  continuously.**
+  root README, in the package READMEs and in the agent skill under `skills/`
+  is compiled by `pnpm typecheck`, continuously.**
   The markers, the groups and how a page becomes one module are
   `scripts/extract-doc-samples.ts`'s header.
   The standalone DI tutorial under `docs/di/` compiles with the core group.

@@ -153,6 +153,10 @@ land on the latest release only — read
 before adopting. Each release's notes, migration steps included, are on its
 [release pull request](https://github.com/btravstack/btravstack/pulls?q=is%3Apr+is%3Amerged+head%3Achangeset-release%2Fmain).
 
+Working with a coding agent? Install the framework's
+[agent skill](skills/README.md):
+`npx skills add btravstack/btravstack --skill btravstack`.
+
 ## Quick example
 
 An HTTP API is a contract, a router that implements it from the use cases it
