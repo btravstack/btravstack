@@ -1,5 +1,13 @@
 # @btravstack/mailer
 
+## 0.37.0
+
+### Patch Changes
+
+- @btravstack/config@0.37.0
+  - @btravstack/core@0.37.0
+  - @btravstack/di@0.37.0
+
 ## 0.36.0
 
 ### Patch Changes
