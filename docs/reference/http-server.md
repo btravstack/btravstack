@@ -705,12 +705,15 @@ export const resource = protectedResource({ scopes: ["orders:read"] });
   given, `scopes_supported`. `bearer_methods_supported` is left out: the
   scheme that reads the token decides where it is sent, not this document. `<path>` is the resource identifier's own, as RFC 9728
   §3.1 places it: a resource at `https://api.test/mcp` is described at
-  `/.well-known/oauth-protected-resource/mcp`. Anything else below that mount
+  `/.well-known/oauth-protected-resource/mcp`, under the resource's own scheme,
+  host and query alone. `scopes` must be OAuth scope tokens (RFC 6749 §3.3). Anything else below that mount
   is a `404`.
 - **A `401` for the resource's own URL carries
   `WWW-Authenticate: Bearer resource_metadata="<that URL>"`**, whichever
   answerer wrote it — oRPC, GraphQL, fragments — without any of them knowing.
-  Nothing else carries it: any other URL — another scheme where the request line names one, another host, a path below it, the
+  A challenge the answerer wrote itself, such as
+  `Bearer error="invalid_token"`, keeps its place, and discovery is appended
+  to it (RFC 9728 §5.4). Nothing else carries it: any other URL — another scheme where the request line names one, another host, a path below it, the
   same path without its trailing slash, another query — is another resource,
   whose metadata a client must discard (RFC 9728 §3.3). A request's bare
   trailing `?` reads as no query, since clients disagree on sending it — and

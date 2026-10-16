@@ -69,6 +69,64 @@ describe("protectedResource", () => {
     });
   });
 
+  it.for(["challenged", "challenged-explicit"] as const)(
+    "appends discovery to a challenge the answerer wrote itself (%s)",
+    async (answer, { protectedResource }) => {
+      // GIVEN the resource, and an answerer refusing with its own challenge
+      const get = await protectedResource(MCP);
+
+      // WHEN it refuses, through `setHeader` or through `writeHead`
+      const answered = await get("/mcp", answer);
+
+      // THEN both challenges reach the client (RFC 9728 §5.4)
+      expect(answered.challenge).toBe(
+        'Bearer error="invalid_token", Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/mcp"',
+      );
+    },
+  );
+
+  it("does not serve the metadata through another host", async ({ protectedResource }) => {
+    // GIVEN the resource at https://api.test/mcp
+    const get = await protectedResource(MCP);
+
+    // WHEN its metadata URL is fetched through another host name
+    const answered = await get(
+      "/.well-known/oauth-protected-resource/mcp",
+      undefined,
+      "alias.test",
+    );
+
+    // THEN there is nothing there: that URL derives another resource
+    expect(answered.status).toBe(404);
+  });
+
+  it("does not serve the metadata under another scheme", async ({ protectedResource }) => {
+    // GIVEN the resource at https://api.test/mcp
+    const get = await protectedResource(MCP);
+
+    // WHEN a forward proxy asks for its metadata over http
+    const answered = await get("http://api.test/.well-known/oauth-protected-resource/mcp");
+
+    // THEN there is nothing there either
+    expect(answered.status).toBe(404);
+  });
+
+  it.for(["orders read", "", 'orders"read', "commandes:lecture-é"])(
+    "refuses the advertised scope %j at boot",
+    async (scope, { protectedApp }) => {
+      // GIVEN a scope a client would send as two, or could not send at all
+      const app = protectedApp({ ...MCP, scopes: [scope] });
+
+      // WHEN the application boots
+      // THEN it does not, and the option is named
+      await expect(app.exited).toBeErrWith(
+        expect.objectContaining({
+          issues: [{ message: "must list OAuth scope tokens", path: ["scopes"] }],
+        }),
+      );
+    },
+  );
+
   it("does not challenge a refusal below the resource", async ({ protectedResource }) => {
     // GIVEN the resource at /mcp
     const get = await protectedResource(MCP);
@@ -333,9 +391,9 @@ describe("protectedResource", () => {
     expect(answered.status).toBe(404);
   });
 
-  it("reads the resource and its issuers from the environment", async ({ protectedApp }) => {
+  it("reads the resource and its issuers from the environment", async ({ protectedResource }) => {
     // GIVEN no pins, and a deployment setting both variables
-    const app = protectedApp(
+    const get = await protectedResource(
       {},
       {
         HTTP_RESOURCE_URI: "https://api.test/mcp",
@@ -344,13 +402,10 @@ describe("protectedResource", () => {
     );
 
     // WHEN the metadata is fetched
-    const info = (await app.runtimeInfo()).get();
-    const response = await fetch(
-      `http://127.0.0.1:${info?.port}/.well-known/oauth-protected-resource/mcp`,
-    );
+    const answered = await get("/.well-known/oauth-protected-resource/mcp");
 
     // THEN it describes what the environment said
-    await expect(response.json()).resolves.toEqual(
+    expect(JSON.parse(answered.body)).toEqual(
       expect.objectContaining({
         resource: "https://api.test/mcp",
         authorization_servers: ["https://login.test/", "https://partners.test/"],

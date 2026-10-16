@@ -66,6 +66,22 @@ const targetOf = (scheme: string, host: string, path: string, url: string): stri
 };
 
 /**
+ * Whether a request is for a target: an absolute-form target names its own
+ * scheme and authority, which win over `Host`; an origin-form one names no
+ * scheme — behind a proxy that terminates TLS the listener cannot know it — so
+ * it is the target's own.
+ */
+const requestIsFor = (request: IncomingMessage): ((target: string) => boolean) => {
+  const url = request.url ?? "";
+  const absolute = URL.parse(url);
+  const host = absolute?.host ?? request.headers.host ?? "";
+  const path = requestPath(url);
+  return (target) =>
+    target ===
+    targetOf(absolute?.protocol ?? target.slice(0, target.indexOf("//")), host, path, url);
+};
+
+/**
  * What the runtime applies to each response before dispatch: a `401` for a
  * challenge's own target carries it, and nothing else does.
  *
@@ -80,24 +96,35 @@ export const challengeOn = (
 ): ((request: IncomingMessage, response: ServerResponse) => void) => {
   const live = challenges.filter(({ value }) => value !== "");
   return (request, response) => {
-    // An absolute-form target names its own scheme and authority, which win
-    // over `Host`. An origin-form one names no scheme — behind a proxy that
-    // terminates TLS the listener cannot know it — so it is the challenge's.
-    const absolute = URL.parse(request.url ?? "");
-    const host = absolute?.host ?? request.headers.host ?? "";
-    const path = requestPath(request.url ?? "");
+    const isFor = requestIsFor(request);
     const value = live
-      .filter(({ target }) => {
-        const scheme = absolute?.protocol ?? target.slice(0, target.indexOf("//"));
-        return target === targetOf(scheme, host, path, request.url ?? "");
-      })
+      .filter(({ target }) => isFor(target))
       .map((challenge) => challenge.value)
       .join(", ");
     if (value === "") return;
     const writeHead = response.writeHead.bind(response) as (...args: unknown[]) => ServerResponse;
+    // Appended to a challenge the answerer wrote itself (`Bearer
+    // error="invalid_token"`), never in its place: RFC 9728 §5.4 has discovery
+    // coexist with other challenges. Headers handed to `writeHead` win over
+    // `setHeader`'s, so a challenge there is appended to as well, on a copy.
     response.writeHead = ((...args: unknown[]) => {
-      if (args[0] === 401 && !response.hasHeader("www-authenticate"))
-        response.setHeader("www-authenticate", value);
+      if (args[0] === 401) {
+        const own = response.getHeader("www-authenticate");
+        response.setHeader(
+          "www-authenticate",
+          own === undefined ? value : `${String(own)}, ${value}`,
+        );
+        const at = args.findIndex(
+          (arg, index) =>
+            index > 0 && typeof arg === "object" && arg !== null && !Array.isArray(arg),
+        );
+        const headers = at === -1 ? {} : { ...(args[at] as Record<string, unknown>) };
+        const key = Object.keys(headers).find((name) => name.toLowerCase() === "www-authenticate");
+        if (key !== undefined) {
+          headers[key] = `${String(headers[key])}, ${value}`;
+          args[at] = headers;
+        }
+      }
       return writeHead(...args);
     }) as ServerResponse["writeHead"];
   };
@@ -167,9 +194,13 @@ const isIssuer = (server: string): boolean => {
 
 // Every offending variable in one `ConfigInvalid`, so a boot names them all.
 // A value stays out of every message: a URL may carry credentials.
+// RFC 6749 §3.3's scope-token: printable ASCII, no space, `"` or `\`.
+const SCOPE_TOKEN = /^[\x21\x23-\x5B\x5D-\x7E]+$/;
+
 const checked = (
   resource: string,
   authorizationServers: readonly string[],
+  scopes: readonly string[],
   allowInsecure: boolean,
 ): Result<ServiceOf<ProtectedResource>, ConfigInvalid> => {
   const refused = (variable: string) =>
@@ -206,6 +237,10 @@ const checked = (
       : authorizationServers.some((server) => cleartext(server, allowInsecure) === "refused")
         ? refused(SERVERS)
         : []),
+    // A scope a client would send as two, or could not send at all, is not one.
+    ...(scopes.every((scope) => SCOPE_TOKEN.test(scope))
+      ? []
+      : [{ message: "must list OAuth scope tokens", path: ["scopes"] }]),
   ];
   // Published as serialized, so the document, the challenge and the URL a
   // client requests all spell it the same way (`東京` percent-encoded).
@@ -272,7 +307,12 @@ export const protectedResource = <const O extends ProtectedResourceOptions = Rec
         "HttpProtectedResource",
         schema,
       )(env).flatMap(({ resource, authorizationServers }) =>
-        checked(resource, authorizationServers, options.allowInsecure ?? false),
+        checked(
+          resource,
+          authorizationServers,
+          options.scopes ?? [],
+          options.allowInsecure ?? false,
+        ),
       ),
   });
   const answerer = Provider.member(HttpHandler)({
@@ -285,17 +325,14 @@ export const protectedResource = <const O extends ProtectedResourceOptions = Rec
         ...(options.scopes?.length ? { scopes_supported: options.scopes } : {}),
       });
       const prefix = metadataPath(bound.resource);
-      // The document describes one resource, query included (RFC 9728 §3.3):
-      // the same path under another query is another resource's metadata URL.
-      const query = comparedQuery(bound.resource);
+      // The document describes one resource (RFC 9728 §3.3): its metadata URL
+      // under another scheme, host or query derives another resource.
+      const url = new URL(bound.resource);
+      const target = targetOf(url.protocol, url.host, prefix, bound.resource);
       return {
         prefix,
         handle: (request, response) => {
-          if (
-            request.method === "GET" &&
-            requestPath(request.url ?? "") === prefix &&
-            comparedQuery(request.url ?? "") === query
-          ) {
+          if (request.method === "GET" && requestIsFor(request)(target)) {
             response.writeHead(200, { "content-type": "application/json" });
             response.end(body);
           } else send(response, 404);

@@ -1691,7 +1691,9 @@ const noop: Handler = (_request, response, _signal) =>
 /**
  * A protected resource over one answerer at the root, answering as its
  * `x-answer` header says: `ok` is served, `explicit` refused through
- * `writeHead`, and anything else refused through Node's implicit header.
+ * `writeHead`, `challenged` and `challenged-explicit` refused with a
+ * challenge of their own through `setHeader` and `writeHead`, and anything
+ * else refused through Node's implicit header.
  */
 const protectedAppOf = (options: ProtectedResourceOptions) =>
   Module("ProtectedApp")({
@@ -1701,10 +1703,16 @@ const protectedAppOf = (options: ProtectedResourceOptions) =>
         (request, response) =>
           new Promise<void>((done) => {
             const answer = request.headers["x-answer"];
+            const invalid = 'Bearer error="invalid_token"';
             if (answer === "ok") response.statusCode = 200;
             else if (answer === "explicit")
               response.writeHead(401, { "content-type": "text/plain" });
-            else response.statusCode = 401;
+            else if (answer === "challenged-explicit")
+              response.writeHead(401, { "WWW-Authenticate": invalid });
+            else if (answer === "challenged") {
+              response.setHeader("www-authenticate", invalid);
+              response.statusCode = 401;
+            } else response.statusCode = 401;
             response.end(() => done());
           }),
       ),
@@ -1719,7 +1727,7 @@ const protectedAppOf = (options: ProtectedResourceOptions) =>
  */
 export type ProtectedCall = (
   path: string,
-  answer?: "ok" | "explicit",
+  answer?: "ok" | "explicit" | "challenged" | "challenged-explicit",
   host?: string,
 ) => Promise<{
   readonly status: number;
@@ -2048,7 +2056,10 @@ export type HttpFixtures = {
    */
   readonly protectedApp: (options: ProtectedResourceOptions, env?: Environment) => App;
   /** The same app, booted on pins alone, as a `GET` against it. */
-  readonly protectedResource: (options: ProtectedResourceOptions) => Promise<ProtectedCall>;
+  readonly protectedResource: (
+    options: ProtectedResourceOptions,
+    env?: Environment,
+  ) => Promise<ProtectedCall>;
   /** `protectedRpcAppOf()`, booted, as a `GET` against it. */
   readonly protectedRpc: () => Promise<ProtectedCall>;
   /**
@@ -2647,8 +2658,8 @@ export const it = test.extend<HttpFixtures>({
   },
 
   protectedResource: async ({ protectedApp }, use) => {
-    await use(async (options) => {
-      const info = (await protectedApp(options).runtimeInfo()).get();
+    await use(async (options, env) => {
+      const info = (await protectedApp(options, env).runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return protectedCallOf(info.port);
     });
