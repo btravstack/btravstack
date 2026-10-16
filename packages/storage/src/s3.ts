@@ -67,9 +67,14 @@ const unavailable = (
   });
 
 /** S3's answer to `If-None-Match: *` on a key that is held: HTTP 412. */
-const isPreconditionFailed = (cause: unknown): boolean =>
-  (cause as { $metadata?: { httpStatusCode?: number } } | null | undefined)?.$metadata
-    ?.httpStatusCode === 412;
+const isPreconditionFailed = (cause: unknown): boolean => {
+  const error = cause as
+    | { name?: string; $metadata?: { httpStatusCode?: number } }
+    | null
+    | undefined;
+  // Some S3-compatible stores and SDK paths name the error without a usable status.
+  return error?.$metadata?.httpStatusCode === 412 || error?.name === "PreconditionFailed";
+};
 
 /** A missing key is S3's `NoSuchKey`, which is a different fact from "the store is down". */
 const isMissing = (cause: unknown): boolean =>

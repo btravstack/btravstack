@@ -1,6 +1,48 @@
+import type { S3Client } from "@aws-sdk/client-s3";
 import { describe, expect } from "vitest";
 
 import { aDocument, it } from "./__tests__/test-fixtures.js";
+import { s3StorageBackend } from "./s3.js";
+
+describe("s3StorageBackend putIfAbsent classification", () => {
+  const rejecting = (cause: unknown) =>
+    s3StorageBackend({ send: () => Promise.reject(cause) } as unknown as S3Client, "b");
+  const answer = async (cause: unknown) => {
+    const result = await rejecting(cause).putIfAbsent("k", new Uint8Array(), {
+      contentType: "text/plain",
+    });
+    return result.tag === "Err" ? result.error._tag : result.tag;
+  };
+
+  it("should answer ObjectExists for a 412 status", async () => {
+    // GIVEN a client rejecting with HTTP 412 and no name
+    // WHEN a conditional put is sent
+    // THEN the held key is reported
+    expect(await answer({ $metadata: { httpStatusCode: 412 } })).toBe("ObjectExists");
+  });
+
+  it("should answer ObjectExists for a PreconditionFailed name without a status", async () => {
+    // GIVEN a client rejecting with the error name only
+    // WHEN a conditional put is sent
+    // THEN the held key is reported
+    expect(await answer(Object.assign(new Error("x"), { name: "PreconditionFailed" }))).toBe(
+      "ObjectExists",
+    );
+  });
+
+  it.each([
+    ["a 403", { $metadata: { httpStatusCode: 403 } }],
+    ["a 409 conditional conflict", { $metadata: { httpStatusCode: 409 } }],
+    ["a 500", { $metadata: { httpStatusCode: 500 } }],
+    ["a null rejection", null],
+    ["an undefined rejection", undefined],
+  ])("should answer StorageUnavailable for %s", async (_name, cause) => {
+    // GIVEN a client rejecting with something that is not a held key
+    // WHEN a conditional put is sent
+    // THEN the store is reported unavailable
+    expect(await answer(cause)).toBe("StorageUnavailable");
+  });
+});
 
 describe("s3Storage", () => {
   it("answers a stored object with its bytes and its type", async ({ s3, keyPrefix }) => {

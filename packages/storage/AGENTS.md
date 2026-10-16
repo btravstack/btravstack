@@ -29,7 +29,10 @@ and `docs/reference/storage.md` is the reader's page.
   the error name, is the test, since S3-compatible stores differ on the name.
   Losing the race is the answer the caller asked for, so it writes no fault
   line. Any other failure is `StorageUnavailable` with `operation:
-  "putIfAbsent"`. The gate's RustFS honours the header (the s3 spec proves a
+  "putIfAbsent"`. Real AWS S3 can answer `409
+  ConditionalRequestConflict` when two conditional writes race; that is a
+  `StorageUnavailable` the caller retries, and the retry then sees the held key
+  as `ObjectExists`. The gate's RustFS honours the header (the s3 spec proves a
   second write is refused and a race has one winner).
 - **`PresignNotSupported` shares the result and NOT the words.** It is the
   same class — a "no" the caller can act on, not an outage — so both settle

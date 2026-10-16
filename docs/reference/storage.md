@@ -71,7 +71,9 @@ export const documents = Provider(
 **`putIfAbsent` is the first-writer-wins write.** It stores the object only if
 no object holds the key, atomically in the store: the S3 adapter sends
 `If-None-Match: *` and maps the store's `412 Precondition Failed` to
-`ObjectExists`, the memory adapter checks and sets in one step. Two concurrent
+`ObjectExists`, the memory adapter checks and sets in one step. Real AWS S3 may answer a racing pair with `409 ConditionalRequestConflict` for
+the loser; the adapter reports that as `StorageUnavailable`, and retrying
+then meets the held key as `ObjectExists`. Two concurrent
 calls on one key answer exactly one `Ok` and one `ObjectExists`, and the first
 bytes stay. Use it to publish an artifact once per request at a key derived
 from the request id, without a database to decide the winner.
