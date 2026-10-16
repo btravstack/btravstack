@@ -218,7 +218,42 @@ describe("protectedResource", () => {
       expect.objectContaining({
         port: "HttpProtectedResource",
         issues: [
-          { message: "must list absolute URLs", path: ["HTTP_RESOURCE_AUTHORIZATION_SERVERS"] },
+          {
+            message: "must list absolute URLs with no query or fragment",
+            path: ["HTTP_RESOURCE_AUTHORIZATION_SERVERS"],
+          },
+        ],
+      }),
+    );
+  });
+
+  it("refuses an authorization server carrying a query at boot", async ({ protectedApp }) => {
+    // GIVEN an issuer a client could not derive the server's metadata URL from
+    const app = protectedApp({ ...MCP, authorizationServers: ["https://login.test/?tenant=a"] });
+
+    // WHEN the application boots
+    // THEN it is refused, as RFC 8414 §2 refuses such an issuer identifier
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        issues: [expect.objectContaining({ path: ["HTTP_RESOURCE_AUTHORIZATION_SERVERS"] })],
+      }),
+    );
+  });
+
+  it("names every offending variable in one boot", async ({ protectedApp }) => {
+    // GIVEN a resource with a fragment and an authorization server that is not a URL
+    const app = protectedApp({
+      resource: "https://api.test/mcp#section",
+      authorizationServers: ["login.test"],
+    });
+
+    // WHEN the application boots
+    // THEN both are reported together, so one fix-and-restart is enough
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        issues: [
+          expect.objectContaining({ path: ["HTTP_RESOURCE_URI"] }),
+          expect.objectContaining({ path: ["HTTP_RESOURCE_AUTHORIZATION_SERVERS"] }),
         ],
       }),
     );

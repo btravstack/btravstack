@@ -104,41 +104,52 @@ const metadataPath = (resource: string): `/${string}` => {
   return `${WELL_KNOWN}${pathname === "/" ? "" : pathname}`;
 };
 
-const invalid = (variable: string, message: string) =>
-  Err(
-    new ConfigInvalid({ port: "HttpProtectedResource", issues: [{ message, path: [variable] }] }),
-  );
+const RESOURCE = "HTTP_RESOURCE_URI";
+const SERVERS = "HTTP_RESOURCE_AUTHORIZATION_SERVERS";
 
+/**
+ * RFC 8414 §2: an issuer identifier is an absolute URL with no query and no
+ * fragment, since a client derives the server's own metadata URL from it.
+ */
+const isIssuer = (server: string): boolean => {
+  const url = URL.parse(server);
+  return url !== null && url.search === "" && url.hash === "";
+};
+
+// Every offending variable in one `ConfigInvalid`, so a boot names them all.
+// A value stays out of every message: a URL may carry credentials.
 const checked = (
   resource: string,
   authorizationServers: readonly string[],
   allowInsecure: boolean,
 ): Result<ServiceOf<ProtectedResource>, ConfigInvalid> => {
   const refused = (variable: string) =>
-    Err(
-      cleartextRefused({
-        port: "HttpProtectedResource",
-        variable,
-        option: "allowInsecure",
-        on: "protectedResource()",
-        what: "a client sends its access token to it",
-      }),
-    );
+    cleartextRefused({
+      port: "HttpProtectedResource",
+      variable,
+      option: "allowInsecure",
+      on: "protectedResource()",
+      what: "a client sends its access token to it",
+    }).issues;
   const url = new URL(resource);
-  // RFC 9728 §1.2: a resource identifier has no fragment, which no request carries.
-  if (url.hash !== "") return invalid("HTTP_RESOURCE_URI", "must not carry a fragment");
-  if (cleartext(resource, allowInsecure) === "refused") return refused("HTTP_RESOURCE_URI");
-  // `Config.list` splits and trims; whether an entry is a URL is asked here.
-  // The value stays out of the message: a URL may carry credentials.
-  if (!authorizationServers.every((server) => URL.canParse(server)))
-    return invalid("HTTP_RESOURCE_AUTHORIZATION_SERVERS", "must list absolute URLs");
-  if (authorizationServers.some((server) => cleartext(server, allowInsecure) === "refused"))
-    return refused("HTTP_RESOURCE_AUTHORIZATION_SERVERS");
-  return Ok({
-    resource,
-    authorizationServers,
-    metadata: `${url.origin}${metadataPath(resource)}${url.search}`,
-  });
+  const issues = [
+    // RFC 9728 §1.2: a resource identifier has no fragment, which no request carries.
+    ...(url.hash === "" ? [] : [{ message: "must not carry a fragment", path: [RESOURCE] }]),
+    ...(cleartext(resource, allowInsecure) === "refused" ? refused(RESOURCE) : []),
+    // `Config.list` splits and trims; whether an entry is an issuer is asked here.
+    ...(!authorizationServers.every(isIssuer)
+      ? [{ message: "must list absolute URLs with no query or fragment", path: [SERVERS] }]
+      : authorizationServers.some((server) => cleartext(server, allowInsecure) === "refused")
+        ? refused(SERVERS)
+        : []),
+  ];
+  return issues.length === 0
+    ? Ok({
+        resource,
+        authorizationServers,
+        metadata: `${url.origin}${metadataPath(resource)}${url.search}`,
+      })
+    : Err(new ConfigInvalid({ port: "HttpProtectedResource", issues }));
 };
 
 /** The provider of {@link ProtectedResource}, its variables required unless pinned. */
@@ -185,11 +196,8 @@ export const protectedResource = <const O extends ProtectedResourceOptions = Rec
 ): readonly [ProtectedResourceProvider<O>, AnyProvider, AnyProvider] => {
   const options: ProtectedResourceOptions = given ?? {};
   const schema = Config.object({
-    resource: Config.pinned(options.resource, Config.url("HTTP_RESOURCE_URI")),
-    authorizationServers: Config.pinned(
-      options.authorizationServers,
-      Config.list("HTTP_RESOURCE_AUTHORIZATION_SERVERS"),
-    ),
+    resource: Config.pinned(options.resource, Config.url(RESOURCE)),
+    authorizationServers: Config.pinned(options.authorizationServers, Config.list(SERVERS)),
   });
   const configuration = Provider(ProtectedResource)({
     inject: { env: Env },

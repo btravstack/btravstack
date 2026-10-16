@@ -725,7 +725,9 @@ by `@btravstack/config`'s `cleartext` rule at boot: a client follows these URLs
 with its credentials, so an `http:` one that is not on a loopback host is a
 `ConfigInvalid` naming the variable unless `allowInsecure: true` is pinned at
 the call. A resource identifier carrying a fragment, or an authorization
-server that is not an absolute URL, is a `ConfigInvalid` too. The metadata URL
+server that is not an issuer identifier (an absolute URL with no query or
+fragment, RFC 8414 §2), is a `ConfigInvalid` too, and one boot names every
+offending variable. The metadata URL
 keeps the identifier's path and query, dropping only the slash after the host
 (§3.1), and an empty `scopes` list is omitted from the document (§3.2).
 
