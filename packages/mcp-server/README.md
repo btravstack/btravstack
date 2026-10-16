@@ -31,7 +31,7 @@ export const answerer = mcp(defineAuth(), {
 stateless and answers JSON, so any replica answers any request. It is handed
 the `principal` that `requires` resolved, the `unit` record read off the
 forked kind, the request's `signal`, and `toolResult`, which answers a tool
-from a `Result` — `Ok` as text or structured content, `Err` — a `ToolRefused` — as a tool
+from a `Result` — `Ok` as text, or structured content for a plain object, `Err` — a `ToolRefused` — as a tool
 error whose `text` the model reads, a defect as a generic tool error reported to `Observers`.
 
 `McpModule("Name")({ answerer })` is the deployment root, as `GraphqlModule`

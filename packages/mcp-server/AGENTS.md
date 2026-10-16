@@ -50,6 +50,14 @@ MCP-only deployment needs a root of its own; the one `GraphqlModule` carried
 knew nothing about GraphQL, so it moved to `@btravstack/http-server/internal`
 as `AnswererModule` and both names are it.
 
+**What the server asks of the client is out of reach, and that is the same
+decision.** Sampling, elicitation and roots are requests the server sends the
+client, and the SDK checks them against the capabilities the client declared
+at `initialize` — on the instance that answered it, which a stateless server
+does not keep, and over a stream a JSON answer does not hold open. A tool here
+answers from what it was called with. A session store and an SSE transport are
+what would reopen it.
+
 **Not included, deliberately:** sessions and resumable streams (the
 statelessness above), and DNS-rebinding protection (a guard for servers on a
 user's machine, while this one sits behind authentication).

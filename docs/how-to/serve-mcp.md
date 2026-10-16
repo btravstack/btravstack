@@ -72,4 +72,7 @@ export const McpApi = McpModule("McpApi")({
 - **The body is bounded by `HTTP_BODY_LIMIT`**, as for every answerer.
 
 Prompts and resources are the SDK's too: `server.registerPrompt` and
-`server.registerResource` work unchanged.
+`server.registerResource` work unchanged. What the server would ask of the
+client — sampling, elicitation, roots — is not available: the server is
+stateless and answers JSON, so it neither keeps the capabilities the client
+declared at `initialize` nor holds a stream to send a request on.

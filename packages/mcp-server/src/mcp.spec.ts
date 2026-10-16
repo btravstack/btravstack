@@ -28,6 +28,17 @@ describe("mcp answerer", () => {
     });
   });
 
+  it("answers a value that is not an object as its JSON text alone", async ({ served }) => {
+    // GIVEN the same client
+    const client = await (await served()).connect("k-1");
+
+    // WHEN a tool answers an array
+    const answered = await client.callTool({ name: "count", arguments: {} });
+
+    // THEN it is text, since structured content must be an object
+    expect(answered).toEqual({ content: [{ type: "text", text: "[1,2]" }] });
+  });
+
   it("reads the service this request's unit provides", async ({ served }) => {
     // GIVEN the same client
     const client = await (await served()).connect("k-1");

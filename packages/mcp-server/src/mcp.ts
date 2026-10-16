@@ -53,7 +53,7 @@ export type McpContext<Principal = unknown, Unit = Readonly<Record<string, unkno
   readonly signal: AbortSignal;
   /**
    * `Ok` is the tool's answer — text for a string, structured content beside
-   * its JSON text for anything else. `Err` is a tool error carrying the
+   * its JSON text for a plain object, its JSON text alone for anything else. `Err` is a tool error carrying the
    * refusal's `text`.
    * A defect is reported to `Observers` and answered as a tool error saying
    * nothing about its cause.
@@ -112,13 +112,17 @@ const DEFECT: CallToolResult = {
   isError: true,
 };
 
+// `structuredContent` is an object in the specification, so only a plain
+// object is one; any other value is its JSON text alone.
 const answerOf = (value: unknown): CallToolResult =>
   typeof value === "string"
     ? { content: [{ type: "text", text: value }] }
-    : {
-        content: [{ type: "text", text: JSON.stringify(value) }],
-        structuredContent: value as Record<string, unknown>,
-      };
+    : typeof value === "object" && value !== null && !Array.isArray(value)
+      ? {
+          content: [{ type: "text", text: JSON.stringify(value) }],
+          structuredContent: value as Record<string, unknown>,
+        }
+      : { content: [{ type: "text", text: JSON.stringify(value) ?? String(value) }] };
 
 const toolResultFor =
   (observers: readonly ((operation: Operation) => Settle)[]) =>
