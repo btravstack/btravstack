@@ -53,7 +53,10 @@ export const McpApi = McpModule("McpApi")({
 - **`McpModule` is the deployment root**, as `GraphqlModule` is GraphQL's: it
   composes the listener, the answerer's authenticators and its declared
   request modules. To serve MCP beside an oRPC router instead, put the
-  answerer and its `authenticators` in that `HttpModule`'s `provides`.
+  answerer and its `authenticators` in that `HttpModule`'s `provides` — when
+  the answerer declares no `units` of its own: `HttpModule` binds the kinds
+  its router and fragments declare, so an MCP answerer with units for another
+  scheme belongs in its own `McpModule` deployment.
 - **Each request gets its own server**, over a stateless transport answering
   JSON, so any replica answers any request and nothing outlives the call.
 - **`server` is handed the call's context**: `principal`, what `requires`
@@ -61,9 +64,11 @@ export const McpApi = McpModule("McpApi")({
   `units` and `unit` exactly as for [GraphQL](/how-to/serve-graphql); the
   request's `signal`; and `toolResult`.
 - **`toolResult` answers a tool from a `Result`.** `Ok` is text for a string,
-  structured content beside its JSON text otherwise. `Err` is a
+  structured content beside its JSON text when that JSON is an object, and
+  its JSON text alone for anything else — an array or a number included. `Err` is a
   `ToolRefused` your triage minted — an exhaustive `mapErrCases` over the use
-  case's errors — and its `text` is the tool error the model reads. A defect is reported to `Observers` and answered with a fixed
+  case's errors — and its `text` is the tool error the model reads. A defect, or a value JSON cannot encode, is reported to
+  `Observers` and answered with a fixed
   text, so its cause never reaches the model.
 - **A refused caller gets a bare `401` or `403`.**
   [`protectedResource()`](/reference/http-server#the-protected-resource) adds
