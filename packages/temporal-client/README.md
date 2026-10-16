@@ -20,6 +20,8 @@ remain in the application.
 `client.for(contract)` also runs a contract's activity with no workflow around
 it (Temporal Server 1.32 or later):
 
+<!-- doctest: skip — fragment: `client` and `pdfContract` are the application's -->
+
 ```ts
 const result = await client.for(pdfContract).executeActivity("renderInvoice", {
   activityId: `invoice-${invoiceId}`,
