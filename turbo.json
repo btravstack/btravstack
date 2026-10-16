@@ -22,7 +22,7 @@
       "dependsOn": ["build", "generate", "^generate"]
     },
     "@btravstack/core#typecheck": {
-      "dependsOn": ["build", "@btravstack/testing#build"]
+      "dependsOn": ["build", "generate", "@btravstack/testing#build"]
     },
     "@btravstack/http-server#typecheck": {
       "dependsOn": ["build", "@btravstack/internal-http-fixtures#build"]
