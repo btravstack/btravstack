@@ -2,6 +2,7 @@ export { memoryStorage, memoryStorageBackend, memoryStorageProvider } from "./me
 export { storage } from "./module.js";
 export type { StorageOptions } from "./module.js";
 export {
+  ObjectExists,
   ObjectNotFound,
   PresignNotSupported,
   Storage,

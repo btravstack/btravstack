@@ -11,6 +11,7 @@ import { Module, Port, Provider } from "@btravstack/di";
 import { Ok, fromPromise } from "unthrown";
 
 import {
+  ObjectExists,
   ObjectNotFound,
   StorageBackend,
   StorageUnavailable,
@@ -55,7 +56,7 @@ class S3Connection extends Port("S3Connection")<{
 }> {}
 
 const unavailable = (
-  operation: "put" | "get" | "delete" | "presignedUrl" | "presignedUpload",
+  operation: "put" | "putIfAbsent" | "get" | "delete" | "presignedUrl" | "presignedUpload",
   key: string,
   cause: unknown,
 ): StorageUnavailable =>
@@ -64,6 +65,11 @@ const unavailable = (
     key,
     reason: cause instanceof Error ? cause.message : String(cause),
   });
+
+/** S3's answer to `If-None-Match: *` on a key that is held: HTTP 412. */
+const isPreconditionFailed = (cause: unknown): boolean =>
+  (cause as { $metadata?: { httpStatusCode?: number } } | null | undefined)?.$metadata
+    ?.httpStatusCode === 412;
 
 /** A missing key is S3's `NoSuchKey`, which is a different fact from "the store is down". */
 const isMissing = (cause: unknown): boolean =>
@@ -86,6 +92,22 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
         }),
       ),
       (cause) => unavailable("put", key, cause),
+    ).map(() => undefined),
+  putIfAbsent: (key, bytes, options) =>
+    fromPromise(
+      client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: bytes,
+          ContentType: options.contentType,
+          IfNoneMatch: "*",
+        }),
+      ),
+      (cause): ObjectExists | StorageUnavailable =>
+        isPreconditionFailed(cause)
+          ? new ObjectExists({ key })
+          : unavailable("putIfAbsent", key, cause),
     ).map(() => undefined),
   get: (key) =>
     fromPromise(

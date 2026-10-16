@@ -19,6 +19,8 @@ import { Storage, StorageBackend, StorageUnavailable, type StorageService } from
 /** An adapter whose store is down, so the failure arms are reachable without breaking the shared one. */
 const failingBackend: StorageService = {
   put: (key) => ErrAsync(new StorageUnavailable({ operation: "put", key, reason: "no route" })),
+  putIfAbsent: (key) =>
+    ErrAsync(new StorageUnavailable({ operation: "putIfAbsent", key, reason: "no route" })),
   get: (key) => ErrAsync(new StorageUnavailable({ operation: "get", key, reason: "no route" })),
   delete: (key) =>
     ErrAsync(new StorageUnavailable({ operation: "delete", key, reason: "no route" })),

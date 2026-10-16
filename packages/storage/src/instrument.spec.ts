@@ -182,4 +182,32 @@ describe("storage, instrumented, when the client defects", () => {
       spans: ["storage.get"],
     });
   });
+
+  it("counts an existing object as exists, and does not log it as a fault", async ({
+    instrumented,
+  }) => {
+    // GIVEN an instrumented store already holding the key
+    // WHEN a conditional put meets it
+    await instrumented.run(memoryStorage(), (service) =>
+      service
+        .put("a/b.json", new Uint8Array([1]), { contentType: "application/json" })
+        .flatMap(() =>
+          service.putIfAbsent("a/b.json", new Uint8Array([2]), { contentType: "application/json" }),
+        ),
+    );
+
+    // THEN losing the race is an ordinary answer: ok, counted apart as exists
+    expect(
+      instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
+    ).toEqual([
+      { operation: "put", result: "ok", outcome: "ok", value: 1 },
+      {
+        operation: "put_if_absent",
+        result: "exists",
+        reason: "an object already held the key",
+        outcome: "ok",
+        value: 1,
+      },
+    ]);
+  });
 });

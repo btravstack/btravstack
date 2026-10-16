@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/storage"
-description: The complete surface of @btravstack/storage — the Storage and StorageBackend ports, StoredObject, ObjectNotFound, StorageUnavailable and PresignNotSupported, the memory and S3 adapters, storage(), the Observers seam it reports through, and the STORAGE_S3_* variables.
+description: The complete surface of @btravstack/storage — the Storage and StorageBackend ports, StoredObject, ObjectNotFound, ObjectExists, StorageUnavailable and PresignNotSupported, the memory and S3 adapters, storage(), the Observers seam it reports through, and the STORAGE_S3_* variables.
 ---
 
 <!-- doctest: group=order-temporal-worker -->
@@ -62,10 +62,19 @@ export const documents = Provider(
 | Method                                                        | Answers                                                           |
 | ------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `put(key, bytes, { contentType })`                            | `AsyncResult<void, StorageUnavailable>`                           |
+| `putIfAbsent(key, bytes, { contentType })`                    | `AsyncResult<void, ObjectExists \| StorageUnavailable>`           |
 | `get(key)`                                                    | `AsyncResult<StoredObject, ObjectNotFound \| StorageUnavailable>` |
 | `delete(key)`                                                 | `AsyncResult<void, StorageUnavailable>`                           |
 | `presignedUrl(key, { ttlMs })`                                | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`  |
 | `presignedUpload(key, { ttlMs, contentType, contentLength })` | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`  |
+
+**`putIfAbsent` is the first-writer-wins write.** It stores the object only if
+no object holds the key, atomically in the store: the S3 adapter sends
+`If-None-Match: *` and maps the store's `412 Precondition Failed` to
+`ObjectExists`, the memory adapter checks and sets in one step. Two concurrent
+calls on one key answer exactly one `Ok` and one `ObjectExists`, and the first
+bytes stay. Use it to publish an artifact once per request at a key derived
+from the request id, without a database to decide the winner.
 
 `ttlMs` is **required on both presign arms** — there is no default, because a
 link's lifetime is a security decision and a framework guessing at it is a
@@ -86,13 +95,14 @@ is what the Temporal example composes, by hand, because a store is an
 application service and the framework has no concept of a tenant to put in a
 slot.
 
-## Three failures, because they are three different facts
+## Four failures, because they are four different facts
 
-| Error                 | Means                          | What a caller does                                   |
-| --------------------- | ------------------------------ | ---------------------------------------------------- |
-| `ObjectNotFound`      | the key is not there           | gives up, or writes it                               |
-| `StorageUnavailable`  | the store could not answer     | retries, degrades, or fails the request              |
-| `PresignNotSupported` | this adapter cannot mint a URL | serves the bytes itself, or composes another adapter |
+| Error                 | Means                          | What a caller does                                     |
+| --------------------- | ------------------------------ | ------------------------------------------------------ |
+| `ObjectExists`        | the key is already held        | treats the write as already done, or picks another key |
+| `ObjectNotFound`      | the key is not there           | gives up, or writes it                                 |
+| `StorageUnavailable`  | the store could not answer     | retries, degrades, or fails the request                |
+| `PresignNotSupported` | this adapter cannot mint a URL | serves the bytes itself, or composes another adapter   |
 
 Collapsing them would cost the distinction that matters: a caller retries an
 outage and does not retry an absence.
@@ -176,12 +186,12 @@ export const DocumentsApp = Module("ReferenceDocumentsApp")({
 });
 ```
 
-| Signal    | Name                                                                        | Attributes                                                                                                                                        |
-| --------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| span      | `storage.put` / `.get` / `.delete` / `.presigned_url` / `.presigned_upload` | `btravstack.storage.key`; error status on a failure                                                                                               |
-| counter   | `btravstack.storage.operations`                                             | `{ operation, outcome, result }` — `outcome` is `ok` or `error`; `result` is `ok`, `not_found` or `error`, and a `not_found` carries its `reason` |
-| histogram | `btravstack.storage.duration`                                               | the same as the counter                                                                                                                           |
-| log       | `"storage.<operation> failed"` at `error`, for `StorageUnavailable` only    | `operation`, the key and `result`, with the failure as the cause                                                                                  |
+| Signal    | Name                                                                                           | Attributes                                                                                                                                                         |
+| --------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| span      | `storage.put` / `.put_if_absent` / `.get` / `.delete` / `.presigned_url` / `.presigned_upload` | `btravstack.storage.key`; error status on a failure                                                                                                                |
+| counter   | `btravstack.storage.operations`                                                                | `{ operation, outcome, result }` — `outcome` is `ok` or `error`; `result` is `ok`, `exists`, `not_found` or `error`; `exists` and `not_found` carry their `reason` |
+| histogram | `btravstack.storage.duration`                                                                  | the same as the counter                                                                                                                                            |
+| log       | `"storage.<operation> failed"` at `error`, for `StorageUnavailable` only                       | `operation`, the key and `result`, with the failure as the cause                                                                                                   |
 
 **A missing object settles `ok`, counted apart by `result: "not_found"`, and
 writes no line.** Asking for something that is not there is an ordinary answer
@@ -195,6 +205,10 @@ class of answer, so both carry `result: "not_found"` — but its `reason` says
 `"this store cannot mint a url"` where a missing object's says `"the object
 was not there"`, because the object may be sitting exactly where it was put,
 and an operator reading the latter would go hunting for nothing.
+
+**A held key settles `ok` with `result: "exists"`** and its own `reason`
+(`"an object already held the key"`), for the same reason: losing a first-writer
+race is the answer the caller asked for, not an outage.
 
 **Observation is a set port, not a flag.** Every call is handed to whatever
 contributed to `Observers`, and this module contributes a no-op member of its
