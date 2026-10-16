@@ -385,3 +385,27 @@ const _converted = start(
   { signals: false, probes: false },
 );
 void _converted;
+
+// WORKFLOWS ARE REQUIRED EXACTLY WHEN THE CONTRACT DECLARES ONE. A worker booted
+// over a workflow-bearing contract with no source polls the queue and can run
+// none of them; an activity-only contract has nothing to bundle.
+const activitiesOnlyContract = defineContract({
+  taskQueue: "pin-activities-only",
+  workflows: {},
+  activities: { echo: step },
+});
+
+TemporalModule("PinActivitiesOnly")({
+  contract: activitiesOnlyContract,
+  activities: TemporalActivities(activitiesOnlyContract)({
+    inject: {},
+    sync: () => ({ echo: ({ input }) => OkAsync(input) }),
+  }),
+});
+
+const _withoutWorkflows = {
+  contract: pinContract,
+  activities: scopedActivities,
+} as const;
+// @ts-expect-error -- WORKFLOWS REQUIRED: `pinContract` declares `runEcho`, and no workflow source is given
+TemporalModule("PinWorkflowsMissing")(_withoutWorkflows);

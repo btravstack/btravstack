@@ -81,8 +81,8 @@ export const ensureSchedule = <
             }))
             .map((): ScheduleOutcome => "updated"),
         )
-        // Named rather than left to a wildcard: the matcher has none, so a
-        // fourth error added upstream fails this file instead of being
+        // Named rather than left to a wildcard: the matcher has none, so an
+        // error `create` gains upstream fails this file instead of being
         // silently recovered into a schedule nobody registered.
         .with(P.tag("@temporal-contract/WorkflowValidationError"), (error) => ErrAsync(error)),
     );

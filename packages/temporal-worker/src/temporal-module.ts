@@ -33,7 +33,7 @@ import {
   type TemporalTuning,
   type TemporalUnreachable,
   type UnitNeedsOf,
-  type WorkflowSource,
+  type WorkflowsOption,
 } from "./temporal-runtime.js";
 import { withUnit } from "./unit.js";
 import {
@@ -96,7 +96,6 @@ export type TemporalModuleOptions<
 > = TemporalTuning<Unit, Converter> & {
   /** The `temporal-contract` contract; the task queue this worker polls is read off it. */
   readonly contract: C;
-  readonly workflows?: WorkflowSource;
   /**
    * The application's activity implementations — what
    * `TemporalActivities(contract)(…)` returns. Its `_declaredUnit` phantom
@@ -115,7 +114,8 @@ export type TemporalModuleOptions<
    * over the augmented tuples below, so forgetting one is an error at THIS call.
    */
   readonly needs?: N;
-} & NeedsGate<Imports<I, C, Unit, Converter>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N> &
+} & WorkflowsOption<C> &
+  NeedsGate<Imports<I, C, Unit, Converter>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N> &
   // Riding the whole options record rather than `unit.activity`: a root that
   // declares a piece's `unit:` and then binds NO module at all is the case
   // worth catching, and a gate on the property is not read when the property

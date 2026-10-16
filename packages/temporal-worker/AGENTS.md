@@ -152,6 +152,16 @@ page, never this file.
   Temporal's own OpenTelemetry interceptors beside `otel()`, not through this
   package.
 
+## Activity-only workers
+
+`workflows` is typed by the contract (`WorkflowsOption<C>`): required when
+`keyof C["workflows"]` is non-empty, optional when the contract declares none.
+A workflow-bearing contract without a source would boot and run nothing, so it
+is a type error (`temporal-runtime.test-d.ts` pins both sides). Without a
+source, `Worker.create` receives neither `workflowsPath` nor `workflowBundle`,
+which is Temporal's activity-only worker. `temporal-runtime.spec.ts` proves one
+serves an activity called from a workflow on another queue.
+
 ## The test server — from `@btravstack/temporal-worker/testing`
 
 **It lives here, not in `@btravstack/testing`**, because peers are
@@ -230,10 +240,14 @@ Two things it deliberately does not do:
   create. `workflowType` is written beside them because it is what selects the
   schema they are checked against.
 
-- **It recovers exactly one error.** The matcher has no wildcard, so the other
-  two arms are named and re-erred, and a fourth error added upstream fails this
-  file rather than being silently recovered into a schedule nobody registered.
-  Both arms are covered by `schedule.spec.ts`, reached past the types.
+- **It recovers exactly one error.** The matcher has no wildcard, so
+  `WorkflowValidationError` (from `create`) is named and re-erred, and an error
+  `create` gains upstream fails this file rather than being silently recovered
+  into a schedule nobody registered. `ScheduleNotFoundError` (from the `update`
+  path) rides the return type. An undeclared workflow name is a defect since
+  `@temporal-contract/client` 8.0.0-beta.12, not an error arm.
+  `schedule.spec.ts` covers the validation arm and the defect, reached past the
+  types.
 
 The worked consumer is `examples/order-temporal-worker`'s
 `pnpm deploy:schedules`, whose spec runs the deploy twice on a namespace of
