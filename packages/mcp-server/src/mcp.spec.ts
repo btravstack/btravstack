@@ -103,10 +103,7 @@ describe("mcp answerer", () => {
     const response = await server.post();
 
     // THEN it is a bare 401 telling the client where to sign in
-    expect({
-      status: response.status,
-      challenge: response.headers.get("www-authenticate"),
-    }).toEqual({
+    expect(response).toEqual({
       status: 401,
       challenge:
         'Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/mcp"',

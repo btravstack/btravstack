@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { request as httpRequest } from "node:http";
 
 import { Env } from "@btravstack/config";
 import { Observers, start, type Operation, type RunningApp, type Settled } from "@btravstack/core";
@@ -190,8 +191,11 @@ const INITIALIZE = {
 export type Served = {
   /** An SDK client connected with this key, or none, closed by the fixture. */
   readonly connect: (key?: string) => Promise<Client>;
-  /** One raw POST to the mount, with this key or none, carrying `body`. */
-  readonly post: (key?: string, body?: unknown) => Promise<Response>;
+  /** One raw POST to the mount, with this key or none, carrying `body`, as `api.test`. */
+  readonly post: (
+    key?: string,
+    body?: unknown,
+  ) => Promise<{ readonly status: number; readonly challenge: string | null }>;
   readonly seen: readonly Observation[];
 };
 
@@ -237,15 +241,35 @@ export const it = test.extend<McpFixtures>({
           await client.connect(transport as unknown as Transport);
           return client;
         },
+        // `node:http` rather than `fetch`, which refuses to name the `Host`
+        // the protected resource is identified by.
         post: (key, body = INITIALIZE) =>
-          fetch(url, {
-            method: "POST",
-            headers: {
-              accept: "application/json, text/event-stream",
-              "content-type": "application/json",
-              ...headers(key),
-            },
-            body: JSON.stringify(body),
+          new Promise((done, failed) => {
+            const request = httpRequest(
+              {
+                method: "POST",
+                host: url.hostname,
+                port: url.port,
+                path: url.pathname,
+                headers: {
+                  host: "api.test",
+                  accept: "application/json, text/event-stream",
+                  "content-type": "application/json",
+                  ...headers(key),
+                },
+              },
+              (response) => {
+                response.resume();
+                response.on("end", () =>
+                  done({
+                    status: response.statusCode ?? 0,
+                    challenge: response.headers["www-authenticate"] ?? null,
+                  }),
+                );
+              },
+            );
+            request.on("error", failed);
+            request.end(JSON.stringify(body));
           }),
       };
     });
