@@ -186,12 +186,12 @@ export const DocumentsApp = Module("ReferenceDocumentsApp")({
 });
 ```
 
-| Signal    | Name                                                                                           | Attributes                                                                                                                                                               |
-| --------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| span      | `storage.put` / `.put_if_absent` / `.get` / `.delete` / `.presigned_url` / `.presigned_upload` | `btravstack.storage.key`; error status on a failure                                                                                                                      |
-| counter   | `btravstack.storage.operations`                                                                | `{ operation, outcome, result }` — `outcome` is `ok` or `error`; `result` is `ok`, `exists`, `not_found` or `error`, and the last two ordinary ones carry their `reason` |
-| histogram | `btravstack.storage.duration`                                                                  | the same as the counter                                                                                                                                                  |
-| log       | `"storage.<operation> failed"` at `error`, for `StorageUnavailable` only                       | `operation`, the key and `result`, with the failure as the cause                                                                                                         |
+| Signal    | Name                                                                                           | Attributes                                                                                                                                                         |
+| --------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| span      | `storage.put` / `.put_if_absent` / `.get` / `.delete` / `.presigned_url` / `.presigned_upload` | `btravstack.storage.key`; error status on a failure                                                                                                                |
+| counter   | `btravstack.storage.operations`                                                                | `{ operation, outcome, result }` — `outcome` is `ok` or `error`; `result` is `ok`, `exists`, `not_found` or `error`; `exists` and `not_found` carry their `reason` |
+| histogram | `btravstack.storage.duration`                                                                  | the same as the counter                                                                                                                                            |
+| log       | `"storage.<operation> failed"` at `error`, for `StorageUnavailable` only                       | `operation`, the key and `result`, with the failure as the cause                                                                                                   |
 
 **A missing object settles `ok`, counted apart by `result: "not_found"`, and
 writes no line.** Asking for something that is not there is an ordinary answer
