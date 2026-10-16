@@ -20,6 +20,11 @@ minimumReleaseAgeExclude:
   - "@amqp-contract/worker@3.0.0-beta.11"
   - "@unthrown/pothos@0.1.2"
   - "@unthrown/orpc@0.4.2"
+  # Until 2026-10-17T12:53Z, three days after publish.
+  - "@temporal-contract/client@8.0.0-beta.14"
+  - "@temporal-contract/contract@8.0.0-beta.14"
+  - "@temporal-contract/testing@8.0.0-beta.14"
+  - "@temporal-contract/worker@8.0.0-beta.14"
 saveExact: true
 strictPeerDependencies: true
 
@@ -93,10 +98,10 @@ catalog:
   # 7.x line, which peers on `unthrown@^4` while this repo pins 5.12.1. 8.x also
   # ships the `test-rig` / `workflow-bundle` subpaths the Temporal example's
   # specs are built on. The exact beta is the contract until v8 goes stable.
-  "@temporal-contract/client": 8.0.0-beta.11
-  "@temporal-contract/contract": 8.0.0-beta.11
-  "@temporal-contract/testing": 8.0.0-beta.11
-  "@temporal-contract/worker": 8.0.0-beta.11
+  "@temporal-contract/client": 8.0.0-beta.14
+  "@temporal-contract/contract": 8.0.0-beta.14
+  "@temporal-contract/testing": 8.0.0-beta.14
+  "@temporal-contract/worker": 8.0.0-beta.14
   "@temporalio/activity": 1.24.0
   "@temporalio/client": 1.24.0
   "@temporalio/common": 1.24.0

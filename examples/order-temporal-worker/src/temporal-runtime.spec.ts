@@ -3,7 +3,6 @@ import {
   WORKFLOW_CANCELLED_ERROR_TAG,
   WORKFLOW_EXECUTION_NOT_FOUND_ERROR_TAG,
   WORKFLOW_FAILED_ERROR_TAG,
-  WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG,
   WORKFLOW_TERMINATED_ERROR_TAG,
   WORKFLOW_TIMEOUT_ERROR_TAG,
   WORKFLOW_VALIDATION_ERROR_TAG,
@@ -112,7 +111,6 @@ describe("the fulfillment saga", () => {
             // for everywhere else in this repository
             .with(
               P.tag(WORKFLOW_VALIDATION_ERROR_TAG),
-              P.tag(WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG),
               P.tag(WORKFLOW_ALREADY_STARTED_ERROR_TAG),
               (error) => `start:${error._tag}`,
             )
@@ -160,7 +158,6 @@ describe("the fulfillment saga", () => {
             { errorName: "OrderAlreadyPlaced" },
             { errorName: "ShippingUnavailable" },
             P.tag(WORKFLOW_VALIDATION_ERROR_TAG),
-            P.tag(WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG),
             P.tag(WORKFLOW_ALREADY_STARTED_ERROR_TAG),
             P.tag(WORKFLOW_FAILED_ERROR_TAG),
             P.tag(WORKFLOW_CANCELLED_ERROR_TAG),
@@ -199,7 +196,6 @@ describe("the fulfillment saga", () => {
             { errorName: "OrderAlreadyPlaced" },
             { errorName: "ShippingUnavailable" },
             P.tag(WORKFLOW_VALIDATION_ERROR_TAG),
-            P.tag(WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG),
             P.tag(WORKFLOW_ALREADY_STARTED_ERROR_TAG),
             P.tag(WORKFLOW_FAILED_ERROR_TAG),
             P.tag(WORKFLOW_CANCELLED_ERROR_TAG),
@@ -238,7 +234,6 @@ describe("the fulfillment saga", () => {
             { errorName: "OrderAlreadyPlaced" },
             { errorName: "ShippingUnavailable" },
             P.tag(WORKFLOW_VALIDATION_ERROR_TAG),
-            P.tag(WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG),
             P.tag(WORKFLOW_ALREADY_STARTED_ERROR_TAG),
             P.tag(WORKFLOW_FAILED_ERROR_TAG),
             P.tag(WORKFLOW_CANCELLED_ERROR_TAG),
@@ -286,7 +281,6 @@ describe("the fulfillment saga", () => {
             // for everywhere else in this repository
             .with(
               P.tag(WORKFLOW_VALIDATION_ERROR_TAG),
-              P.tag(WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG),
               P.tag(WORKFLOW_ALREADY_STARTED_ERROR_TAG),
               (error) => `start:${error._tag}`,
             )
@@ -393,7 +387,6 @@ describe("the fulfillment saga", () => {
             // for everywhere else in this repository
             .with(
               P.tag(WORKFLOW_VALIDATION_ERROR_TAG),
-              P.tag(WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG),
               P.tag(WORKFLOW_ALREADY_STARTED_ERROR_TAG),
               (error) => `start:${error._tag}`,
             )
@@ -442,7 +435,6 @@ describe("the fulfillment saga", () => {
             .with({ errorName: "ShippingUnavailable" }, () => "WRONG ERROR")
             .with(
               P.tag(WORKFLOW_VALIDATION_ERROR_TAG),
-              P.tag(WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG),
               P.tag(WORKFLOW_ALREADY_STARTED_ERROR_TAG),
               (error) => `start:${error._tag}`,
             )

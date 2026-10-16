@@ -180,6 +180,15 @@ export type TemporalTuning<
   readonly dataConverter?: Converter;
 };
 
+/**
+ * The workflow source a worker needs: required when the contract declares a
+ * workflow, which the worker would otherwise boot and never run, and optional
+ * only for a contract that declares none (an activity-only worker).
+ */
+export type WorkflowsOption<C extends ContractDefinition> = [keyof C["workflows"]] extends [never]
+  ? { readonly workflows?: WorkflowSource }
+  : { readonly workflows: WorkflowSource };
+
 export type TemporalOptions<
   C extends ContractDefinition,
   Unit extends AnyUnitModule | undefined = undefined,
@@ -191,8 +200,7 @@ export type TemporalOptions<
    * `declareActivitiesHandler` itself, with its unit middleware in place.
    */
   readonly contract: C;
-  readonly workflows: WorkflowSource;
-};
+} & WorkflowsOption<C>;
 
 const DEFAULT_GRACE_MS = 10_000;
 const DEFAULT_FORCE_MS = 15_000;
@@ -383,7 +391,7 @@ const createWorker = <
           connection,
           namespace,
           taskQueue,
-          ...options.workflows,
+          ...(options.workflows ?? {}),
           activities: handler,
           shutdownGraceTime: config.gracePeriodMs,
           shutdownForceTime: config.forceAfterMs,

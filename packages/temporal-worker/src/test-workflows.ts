@@ -27,3 +27,16 @@ const { audit } = proxyActivities<{ audit: (value: string) => Promise<string> }>
  */
 export const runAudited = async (value: string): Promise<string> =>
   `${await echo(value)}:${await audit(value)}`;
+
+/**
+ * Calls `echo` on another worker's task queue, which is where an activity-only
+ * contract's pool lives.
+ */
+export const runRemoteEcho = async (queue: string, value: string): Promise<string> => {
+  const { echo: remote } = proxyActivities<{ echo: (value: string) => Promise<string> }>({
+    taskQueue: queue,
+    startToCloseTimeout: "30 seconds",
+    retry: { maximumAttempts: 1 },
+  });
+  return remote(value);
+};

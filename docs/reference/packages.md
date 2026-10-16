@@ -105,7 +105,7 @@ single copy.
 | `@btravstack/pothos`          | `@pothos/core`, `@pothos/plugin-errors`, `@pothos/plugin-relay`, `@unthrown/pothos`, `graphql`, `@orpc/contract`, `@orpc/client`, `zod`, `unthrown`                                                                                            |
 | `@btravstack/temporal-worker` | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`, `@temporal-contract/worker`, `@temporal-contract/contract`                                         |
 | `@btravstack/amqp-worker`     | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@amqp-contract/worker`, `@opentelemetry/api`                                                                                                                          |
-| `@btravstack/temporal-client` | `@btravstack/di`, `@temporal-contract/client`, `@temporalio/client`, `@temporalio/common`, `unthrown`                                                                                                                                          |
+| `@btravstack/temporal-client` | `@btravstack/di`, `@temporal-contract/client`, `@temporal-contract/contract`, `@temporalio/client`, `@temporalio/common`, `unthrown`                                                                                                           |
 | `@btravstack/oauth-client`    | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `openid-client`, `unthrown`                                                                                                                                                        |
 | `@btravstack/amqp-client`     | `@btravstack/di`, `@amqp-contract/client`, `@opentelemetry/api`, `unthrown`                                                                                                                                                                    |
 | `@btravstack/testing`         | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and **not** `vitest`: `bootFixture` is a plain `(ctx, use) => Promise<void>`, vitest's fixture protocol met without the import                                        |
@@ -165,7 +165,7 @@ pnpm add @btravstack/http-server @btravstack/graphql-server @btravstack/core \
 ```sh [Temporal worker]
 pnpm add @btravstack/temporal-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
   @temporalio/worker @temporalio/activity @temporalio/common \
-  @temporal-contract/worker@8.0.0-beta.11 @temporal-contract/contract@8.0.0-beta.11
+  @temporal-contract/worker@8.0.0-beta.14 @temporal-contract/contract@8.0.0-beta.14
 ```
 
 ```sh [AMQP worker]
@@ -175,7 +175,8 @@ pnpm add @btravstack/amqp-worker @btravstack/core @btravstack/config @btravstack
 
 ```sh [Temporal client]
 pnpm add @btravstack/temporal-client @btravstack/di unthrown \
-  @temporal-contract/client@8.0.0-beta.11 @temporalio/client @temporalio/common
+  @temporal-contract/client@8.0.0-beta.14 @temporal-contract/contract@8.0.0-beta.14 \
+  @temporalio/client @temporalio/common
 ```
 
 ```sh [AMQP client]

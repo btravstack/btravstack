@@ -732,6 +732,11 @@ export type TemporalFixtures = {
   /** A worker resolving a reversing codec through its `dataConverter` port, and a client sharing it. */
   readonly serveEncoded: () => Promise<{ readonly client: Client; readonly taskQueue: string }>;
   readonly serveBroken: (options?: BootOptions) => Promise<App>;
+  /** A worker for a contract that declares activities and no workflows, so it has no workflow source. */
+  readonly serveActivitiesOnly: () => Promise<{
+    readonly app: App;
+    readonly taskQueue: string;
+  }>;
   /** The starter served over an observer that records what it was handed. */
   readonly serveObserved: (failing?: boolean) => Promise<{
     readonly app: App;
@@ -983,6 +988,34 @@ export const it = test.extend<TemporalFixtures>({
   },
   schedules: async ({ client }, use) => {
     await use(await schedulesOf(client, echoContract));
+  },
+  serveActivitiesOnly: async ({ server, boot }, use) => {
+    await use(async () => {
+      const taskQueue = nextTaskQueue();
+      const contract = defineContract({
+        taskQueue,
+        workflows: {},
+        activities: {
+          echo: defineActivity({
+            input: z.string(),
+            output: z.string(),
+            activityOptions: { startToCloseTimeout: "10 seconds", retry: { maximumAttempts: 1 } },
+          }),
+        },
+      });
+      const app: App = boot(
+        TemporalModule("ActivitiesOnly")({
+          contract,
+          activities: TemporalActivities(contract)({
+            inject: {},
+            sync: () => ({ echo: ({ input }) => OkAsync(input) }),
+          }),
+        }),
+        { env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace } },
+      );
+      await app.runtimeInfo();
+      return { app, taskQueue };
+    });
   },
   serveBroken: async ({ server, boot }, use) => {
     // A failure under test is served against a workflow module that exists, so

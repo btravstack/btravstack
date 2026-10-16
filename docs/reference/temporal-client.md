@@ -23,5 +23,23 @@ port the worker's own `dataConverter` option names, so both sides encode and
 decode payloads with one codec. See the worker's
 [data converter](/reference/temporal-worker#the-data-converter).
 
-This package requires `@temporal-contract/client`, `@temporalio/client`,
+## Standalone activities
+
+`client.for(contract)` also runs a contract's global activity with no workflow
+around it, on `@temporal-contract/client` 8.0.0-beta.14: `startActivity(name,
+options)`, `executeActivity(name, options)` (start, then the result) and
+`getActivityHandle(name, activityId)`. They need **Temporal Server 1.32 or
+later**; the activity's worker is an
+[activity-only worker](/reference/temporal-worker#an-activity-only-worker).
+
+<!-- doctest: skip — fragment: `client` and `pdfContract` are the application's -->
+
+```ts
+const result = await client.for(pdfContract).executeActivity("renderInvoice", {
+  activityId: `invoice-${invoiceId}`,
+  args: { invoiceId },
+});
+```
+
+This package requires `@temporal-contract/client`, `@temporal-contract/contract`, `@temporalio/client`,
 `@temporalio/common`, `@btravstack/di`, and `unthrown`. It has no worker peer.

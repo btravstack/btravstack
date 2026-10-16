@@ -36,6 +36,7 @@
     "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@temporal-contract/client": "catalog:",
+    "@temporal-contract/contract": "catalog:",
     "@temporalio/client": "catalog:",
     "@temporalio/common": "catalog:",
     "@types/node": "catalog:",
@@ -48,7 +49,8 @@
   },
   "peerDependencies": {
     "@btravstack/di": "workspace:^",
-    "@temporal-contract/client": "^8.0.0-beta.11",
+    "@temporal-contract/client": "^8.0.0-beta.14",
+    "@temporal-contract/contract": "^8.0.0-beta.14",
     "@temporalio/client": "^1.24.0",
     "@temporalio/common": "^1.24.0",
     "unthrown": "^5.12.0"

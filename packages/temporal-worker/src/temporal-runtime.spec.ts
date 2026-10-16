@@ -15,6 +15,39 @@ describe("temporal", () => {
     await expect(info).toBeOkWith({ taskQueue, namespace: server.namespace });
   });
 
+  it("boots a worker for a contract that declares activities only", async ({
+    server,
+    serveActivitiesOnly,
+  }) => {
+    // GIVEN a contract with an activity and no workflow, and no workflow source
+    const { app, taskQueue } = await serveActivitiesOnly();
+
+    // WHEN the kernel is asked what the runtime published about itself
+    const info = app.runtimeInfo();
+
+    // THEN the worker polls the contract's queue
+    await expect(info).toBeOkWith({ taskQueue, namespace: server.namespace });
+  });
+
+  it("serves an activity called from a workflow on another queue when it declares activities only", async ({
+    serve,
+    serveActivitiesOnly,
+  }) => {
+    // GIVEN an activity-only worker on its own queue, and a workflow worker on another
+    const pool = await serveActivitiesOnly();
+    const { client, taskQueue } = await serve();
+
+    // WHEN the workflow calls the activity on the pool's queue
+    const result = await client.workflow.execute("runRemoteEcho", {
+      taskQueue,
+      workflowId: `remote-${pool.taskQueue}`,
+      args: [pool.taskQueue, "pdf"],
+    });
+
+    // THEN the pool answered it
+    expect(result).toBe("pdf");
+  });
+
   it("binds TEMPORAL_ADDRESS and TEMPORAL_NAMESPACE from the environment when nothing is pinned", async ({
     server,
     serve,
