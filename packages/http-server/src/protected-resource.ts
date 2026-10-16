@@ -111,10 +111,10 @@ const SERVERS = "HTTP_RESOURCE_AUTHORIZATION_SERVERS";
  * RFC 8414 §2: an issuer identifier is an absolute URL with no query and no
  * fragment, since a client derives the server's own metadata URL from it.
  */
-const isIssuer = (server: string): boolean => {
-  const url = URL.parse(server);
-  return url !== null && url.search === "" && url.hash === "";
-};
+// The raw text, not `url.search` or `url.hash`: both read `""` for a bare
+// trailing `?` or `#`, which is still a component a client must reject.
+const isIssuer = (server: string): boolean =>
+  URL.canParse(server) && !server.includes("?") && !server.includes("#");
 
 // Every offending variable in one `ConfigInvalid`, so a boot names them all.
 // A value stays out of every message: a URL may carry credentials.
@@ -134,7 +134,7 @@ const checked = (
   const url = new URL(resource);
   const issues = [
     // RFC 9728 §1.2: a resource identifier has no fragment, which no request carries.
-    ...(url.hash === "" ? [] : [{ message: "must not carry a fragment", path: [RESOURCE] }]),
+    ...(resource.includes("#") ? [{ message: "must not carry a fragment", path: [RESOURCE] }] : []),
     ...(cleartext(resource, allowInsecure) === "refused" ? refused(RESOURCE) : []),
     // `Config.list` splits and trims; whether an entry is an issuer is asked here.
     ...(!authorizationServers.every(isIssuer)
@@ -147,7 +147,8 @@ const checked = (
     ? Ok({
         resource,
         authorizationServers,
-        metadata: `${url.origin}${metadataPath(resource)}${url.search}`,
+        // An explicitly empty query is kept, `?` and all (RFC 9728 §3.1).
+        metadata: `${url.origin}${metadataPath(resource)}${resource.includes("?") ? resource.slice(resource.indexOf("?")) : ""}`,
       })
     : Err(new ConfigInvalid({ port: "HttpProtectedResource", issues }));
 };

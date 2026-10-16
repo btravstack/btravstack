@@ -99,6 +99,35 @@ describe("protectedResource", () => {
     );
   });
 
+  it("keeps an explicitly empty query in the metadata URL", async ({ protectedResource }) => {
+    // GIVEN a resource identifier ending in a bare `?`
+    const get = await protectedResource({ ...MCP, resource: "https://api.test/mcp?" });
+
+    // WHEN a caller with no token reaches it
+    const answered = await get("/mcp");
+
+    // THEN the empty query is still the identifier's, and the URL keeps it
+    expect(answered.challenge).toBe(
+      'Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/mcp?"',
+    );
+  });
+
+  it.for(["https://api.test/mcp#section", "https://api.test/mcp#"])(
+    "refuses the resource identifier %s, which carries a fragment",
+    async (resource, { protectedApp }) => {
+      // GIVEN a resource identifier with a fragment, empty or not
+      const app = protectedApp({ ...MCP, resource });
+
+      // WHEN the application boots
+      // THEN it does not, and the variable is named
+      await expect(app.exited).toBeErrWith(
+        expect.objectContaining({
+          issues: [expect.objectContaining({ path: ["HTTP_RESOURCE_URI"] })],
+        }),
+      );
+    },
+  );
+
   it("omits scopes_supported when the list is empty", async ({ protectedResource }) => {
     // GIVEN a resource advertising an empty list of scopes
     const get = await protectedResource({ ...MCP, scopes: [] });
@@ -195,19 +224,6 @@ describe("protectedResource", () => {
     );
   });
 
-  it("refuses a resource identifier carrying a fragment at boot", async ({ protectedApp }) => {
-    // GIVEN a resource identifier no request can carry whole
-    const app = protectedApp({ ...MCP, resource: "https://api.test/mcp#section" });
-
-    // WHEN the application boots
-    // THEN it does not, and the variable is named
-    await expect(app.exited).toBeErrWith(
-      expect.objectContaining({
-        issues: [expect.objectContaining({ path: ["HTTP_RESOURCE_URI"] })],
-      }),
-    );
-  });
-
   it("refuses an authorization server that is not a URL at boot", async ({ protectedApp }) => {
     // GIVEN an entry `Config.list` accepts and no client could follow
     const app = protectedApp({ ...MCP, authorizationServers: ["login.test"] });
@@ -227,18 +243,21 @@ describe("protectedResource", () => {
     );
   });
 
-  it("refuses an authorization server carrying a query at boot", async ({ protectedApp }) => {
-    // GIVEN an issuer a client could not derive the server's metadata URL from
-    const app = protectedApp({ ...MCP, authorizationServers: ["https://login.test/?tenant=a"] });
+  it.for(["https://login.test/?tenant=a", "https://login.test/?", "https://login.test/#"])(
+    "refuses the authorization server %s at boot",
+    async (server, { protectedApp }) => {
+      // GIVEN an issuer a client could not derive the server's metadata URL from
+      const app = protectedApp({ ...MCP, authorizationServers: [server] });
 
-    // WHEN the application boots
-    // THEN it is refused, as RFC 8414 §2 refuses such an issuer identifier
-    await expect(app.exited).toBeErrWith(
-      expect.objectContaining({
-        issues: [expect.objectContaining({ path: ["HTTP_RESOURCE_AUTHORIZATION_SERVERS"] })],
-      }),
-    );
-  });
+      // WHEN the application boots
+      // THEN it is refused, as RFC 8414 §2 refuses such an issuer identifier
+      await expect(app.exited).toBeErrWith(
+        expect.objectContaining({
+          issues: [expect.objectContaining({ path: ["HTTP_RESOURCE_AUTHORIZATION_SERVERS"] })],
+        }),
+      );
+    },
+  );
 
   it("names every offending variable in one boot", async ({ protectedApp }) => {
     // GIVEN a resource with a fragment and an authorization server that is not a URL
