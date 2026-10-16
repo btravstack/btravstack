@@ -23,6 +23,14 @@ and `docs/reference/storage.md` is the reader's page.
   and a dashboard that treats it as a fault teaches its readers to ignore the
   fault line. `StorageUnavailable` is what pages somebody, and the only failure
   that settles `error`.
+- **`putIfAbsent` is the store's own conditional write, and `ObjectExists`
+  settles `ok` with `result: "exists"`.** The S3 adapter sends
+  `If-None-Match: *` and reads HTTP 412 as the held key; the status code, not
+  the error name, is the test, since S3-compatible stores differ on the name.
+  Losing the race is the answer the caller asked for, so it writes no fault
+  line. Any other failure is `StorageUnavailable` with `operation:
+  "putIfAbsent"`. The gate's RustFS honours the header (the s3 spec proves a
+  second write is refused and a race has one winner).
 - **`PresignNotSupported` shares the result and NOT the words.** It is the
   same class — a "no" the caller can act on, not an outage — so both settle
   `result: "not_found"`. But its `reason` attribute says `"this store cannot

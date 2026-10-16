@@ -12,9 +12,14 @@ export class ObjectNotFound extends TaggedError("ObjectNotFound")<{
   readonly key: string;
 }> {}
 
+/** An object already holds the key. Only `putIfAbsent` answers it. */
+export class ObjectExists extends TaggedError("ObjectExists")<{
+  readonly key: string;
+}> {}
+
 /** The store could not answer — the endpoint is down, the credentials were refused, the bucket is gone. */
 export class StorageUnavailable extends TaggedError("StorageUnavailable")<{
-  readonly operation: "put" | "get" | "delete" | "presignedUrl" | "presignedUpload";
+  readonly operation: "put" | "putIfAbsent" | "get" | "delete" | "presignedUrl" | "presignedUpload";
   readonly key: string;
   readonly reason: string;
 }> {}
@@ -30,6 +35,12 @@ export type StorageService = {
     bytes: Uint8Array,
     options: { readonly contentType: string },
   ) => AsyncResult<void, StorageUnavailable>;
+  /** Writes the object only if no object holds the key: the first writer wins, atomically, in the store. */
+  readonly putIfAbsent: (
+    key: string,
+    bytes: Uint8Array,
+    options: { readonly contentType: string },
+  ) => AsyncResult<void, ObjectExists | StorageUnavailable>;
   readonly get: (key: string) => AsyncResult<StoredObject, ObjectNotFound | StorageUnavailable>;
   /** Deleting a key nobody stored is `Ok`: delete is idempotent, which is S3's own behaviour rather than a fiction over it. */
   readonly delete: (key: string) => AsyncResult<void, StorageUnavailable>;

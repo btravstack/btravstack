@@ -258,4 +258,57 @@ describe("s3Storage, when the store cannot be reached", () => {
       expect.objectContaining({ operation: "presignedUpload", key: "a/b.json" }),
     );
   });
+
+  it("writes on the first putIfAbsent and refuses the second, keeping the first bytes", async ({
+    s3,
+    keyPrefix,
+  }) => {
+    // GIVEN a key nobody holds
+    const key = `${keyPrefix}once.json`;
+    const first = aDocument();
+    const second = new TextEncoder().encode(`{"ok":false}`);
+
+    // WHEN two conditional puts follow on that key
+    const firstWrite = await s3.putIfAbsent(key, first.bytes, { contentType: first.contentType });
+    const secondWrite = await s3.putIfAbsent(key, second, { contentType: first.contentType });
+
+    // THEN the first wrote, the second met ObjectExists, and the first bytes remain
+    expect({
+      first: firstWrite.tag,
+      second: secondWrite.tag === "Err" ? secondWrite.error._tag : secondWrite.tag,
+      stored: (await s3.get(key)).getOrThrow().bytes,
+    }).toEqual({ first: "Ok", second: "ObjectExists", stored: first.bytes });
+  });
+
+  it("lets exactly one of two concurrent putIfAbsent win", async ({ s3, keyPrefix }) => {
+    // GIVEN a key nobody holds
+    const key = `${keyPrefix}once.json`;
+    const document = aDocument();
+
+    // WHEN two conditional puts race on it
+    const settled = await Promise.all([
+      s3.putIfAbsent(key, document.bytes, { contentType: document.contentType }),
+      s3.putIfAbsent(key, document.bytes, { contentType: document.contentType }),
+    ]);
+
+    // THEN one is Ok and the other ObjectExists
+    expect(
+      settled.map((result) => (result.tag === "Err" ? result.error._tag : result.tag)).sort(),
+    ).toEqual(["ObjectExists", "Ok"]);
+  });
+
+  it("answers StorageUnavailable when the store cannot be reached for a putIfAbsent", async ({
+    unreachable,
+  }) => {
+    // GIVEN an endpoint that is not listening
+    // WHEN a conditional put is attempted
+    const written = unreachable.putIfAbsent("a/b.json", new Uint8Array([1]), {
+      contentType: "application/json",
+    });
+
+    // THEN it is an outage, not a held key
+    await expect(written).toBeErrWith(
+      expect.objectContaining({ operation: "putIfAbsent", key: "a/b.json" }),
+    );
+  });
 });

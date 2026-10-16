@@ -79,4 +79,43 @@ describe("memoryStorageBackend", () => {
     // presigned flow fails here rather than uploading into a fiction
     await expect(url).toBeErrWith(expect.objectContaining({ key: "a/b.json" }));
   });
+
+  it("writes on the first putIfAbsent and refuses the second, keeping the first bytes", async ({
+    memory,
+  }) => {
+    // GIVEN a key nobody holds
+    const key = "a/once.json";
+    const first = aDocument();
+    const second = new TextEncoder().encode(`{"ok":false}`);
+
+    // WHEN two conditional puts follow on that key
+    const firstWrite = await memory.putIfAbsent(key, first.bytes, {
+      contentType: first.contentType,
+    });
+    const secondWrite = await memory.putIfAbsent(key, second, { contentType: first.contentType });
+
+    // THEN the first wrote, the second met ObjectExists, and the first bytes remain
+    expect({
+      first: firstWrite.tag,
+      second: secondWrite.tag === "Err" ? secondWrite.error._tag : secondWrite.tag,
+      stored: (await memory.get(key)).getOrThrow().bytes,
+    }).toEqual({ first: "Ok", second: "ObjectExists", stored: first.bytes });
+  });
+
+  it("lets exactly one of two concurrent putIfAbsent win", async ({ memory }) => {
+    // GIVEN a key nobody holds
+    const key = "a/once.json";
+    const document = aDocument();
+
+    // WHEN two conditional puts race on it
+    const settled = await Promise.all([
+      memory.putIfAbsent(key, document.bytes, { contentType: document.contentType }),
+      memory.putIfAbsent(key, document.bytes, { contentType: document.contentType }),
+    ]);
+
+    // THEN one is Ok and the other ObjectExists
+    expect(
+      settled.map((result) => (result.tag === "Err" ? result.error._tag : result.tag)).sort(),
+    ).toEqual(["ObjectExists", "Ok"]);
+  });
 });

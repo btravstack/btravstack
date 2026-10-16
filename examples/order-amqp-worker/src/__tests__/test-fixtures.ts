@@ -140,6 +140,7 @@ const stalledAmqp = () => {
               ),
             );
           },
+          putIfAbsent: () => OkAsync(),
           get: () => OkAsync({ bytes: new Uint8Array(), contentType: "text/plain" }),
           delete: () => OkAsync(),
           presignedUrl: () => OkAsync("http://invoices.test/stalled"),

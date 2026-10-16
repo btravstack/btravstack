@@ -7,14 +7,15 @@ import {
 import type { AsyncResult, FailureView } from "unthrown";
 
 import type {
+  ObjectExists,
   ObjectNotFound,
   PresignNotSupported,
   StorageService,
   StorageUnavailable,
 } from "./storage.js";
 
-type Operation = "put" | "get" | "delete" | "presigned_url" | "presigned_upload";
-type Failure = ObjectNotFound | PresignNotSupported | StorageUnavailable;
+type Operation = "put" | "put_if_absent" | "get" | "delete" | "presigned_url" | "presigned_upload";
+type Failure = ObjectExists | ObjectNotFound | PresignNotSupported | StorageUnavailable;
 
 /**
  * **A missing object settles `ok` with `result: "not_found"`, not `error`.**
@@ -30,14 +31,16 @@ const failed = <T>(failure: FailureView<Failure, T>): Settled => {
   const ordinary =
     failure.tag !== "Err"
       ? undefined
-      : failure.error._tag === "ObjectNotFound"
-        ? "the object was not there"
-        : failure.error._tag === "PresignNotSupported"
-          ? "this store cannot mint a url"
-          : undefined;
+      : failure.error._tag === "ObjectExists"
+        ? ({ result: "exists", reason: "an object already held the key" } as const)
+        : failure.error._tag === "ObjectNotFound"
+          ? ({ result: "not_found", reason: "the object was not there" } as const)
+          : failure.error._tag === "PresignNotSupported"
+            ? ({ result: "not_found", reason: "this store cannot mint a url" } as const)
+            : undefined;
   return ordinary === undefined
     ? { outcome: "error", attributes: { result: "error" }, cause }
-    : { outcome: "ok", attributes: { result: "not_found", reason: ordinary } };
+    : { outcome: "ok", attributes: ordinary };
 };
 
 /** The KEY is a detail, not a dimension: on the span and the line, never on an instrument. */
@@ -64,6 +67,8 @@ export const instrument = (
   const observe = through(observers);
   return {
     put: (key, bytes, options) => observe("put", key, () => backend.put(key, bytes, options)),
+    putIfAbsent: (key, bytes, options) =>
+      observe("put_if_absent", key, () => backend.putIfAbsent(key, bytes, options)),
     get: (key) => observe("get", key, () => backend.get(key)),
     delete: (key) => observe("delete", key, () => backend.delete(key)),
     presignedUrl: (key, options) =>
