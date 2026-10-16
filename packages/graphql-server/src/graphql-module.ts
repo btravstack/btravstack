@@ -21,6 +21,7 @@ import {
   type ApplicationExports,
   type AnyUnitModule,
   type CookieSchemes,
+  type HttpChallenges,
   type HttpServerEnv,
   type HttpUnit,
   type UnitsNeedsOf,
@@ -38,6 +39,7 @@ type HttpStarter<Units> = Module<
   | InstanceType<typeof HttpHandler>
   | HttpUnit
   | CookieSchemes
+  | HttpChallenges
   | Observers,
   ConfigInvalid,
   HttpServerEnv | UnitsNeedsOf<Units>

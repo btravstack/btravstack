@@ -542,6 +542,33 @@ The two rules this half exists to state, before the detail:
   cookie-bearing state change. Every redirect it writes is a `303`, `htmx()`'s
   own ruling.
 
+- **`protectedResource({ resource?, authorizationServers?, scopes?, allowInsecure? })`**
+  (`protected-resource.ts`, on the main entry point — no peer) — discovery for a
+  client that holds no token, as RFC 9728 states it: the metadata document under
+  `/.well-known/oauth-protected-resource<path>`, and a
+  `WWW-Authenticate: Bearer resource_metadata="…"` challenge. Like `oidc()`, it
+  verifies nothing and mints nothing; it says where a credential comes from.
+
+  **The challenge is on every response, not on `401`s alone, and that is the
+  decision.** RFC 9110 §11.6.1 requires it on a `401` and permits it elsewhere,
+  and the `401` is written by whichever answerer refused — oRPC's error
+  serializer, `htmx()`, Yoga — none of which this package can reach after the
+  fact. Set before dispatch, beside `securityHeaders`, it reaches all of them
+  with no answerer knowing. Restricting it to `401` would mean wrapping
+  `writeHead` per response, which is a patch on Node's object in place of a
+  header the standard already allows.
+
+  **It reaches the runtime through `HttpChallenges`, `CookieSchemes`' shape**: a
+  set port the starter keeps non-empty with an empty member and reads at
+  composition, because the runtime never sees the providers a root puts beside
+  it, and di's `Context` has no `has`. An empty challenge is dropped, so a root
+  composing none sends no header.
+
+  **Both URLs are checked by the `cleartext` rule at boot**, under one
+  `allowInsecure` option: a client sends its token to the resource and its
+  credentials to the authorization server, so either in cleartext off a loopback
+  host is a `ConfigInvalid` naming its variable.
+
 - **Password hashing and credential ISSUING are out of scope, deliberately.**
   All three authenticators above are on the **verifying** side, and that is
   the line: the credential is minted by whoever owns the identity — an OIDC

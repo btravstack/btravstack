@@ -65,6 +65,9 @@ These symbols are exported across the three packages. `defineHttp`, `HttpModule`
 | `resolvePrincipal`     | value | the protocol-neutral authentication walk, shared by every answerer                                                                                                                                                                                                                                                                                                                                                          |
 | `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                                                                                                                                                                                                    |
 | `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                                                                                                                                                                                                  |
+| `protectedResource`    | value | `protectedResource({ resource?, authorizationServers?, scopes?, allowInsecure? })` — three providers, spread: the API as an OAuth 2.0 protected resource, serving its RFC 9728 metadata and challenging every caller with where it is; see [The protected resource](#the-protected-resource)                                                                                                                                |
+| `ProtectedResource`    | value | the port `protectedResource()` provides — the resource identifier, its authorization servers and the metadata URL, as the boot checked them                                                                                                                                                                                                                                                                                 |
+| `HttpChallenges`       | value | `class HttpChallenges extends Port.many("HttpChallenges")<string> {}` — the `WWW-Authenticate` challenges every response carries; the starter contributes an empty one                                                                                                                                                                                                                                                      |
 | `apiKeyAuthenticator`  | value | `apiKeyAuthenticator<P>()({ header?, keys })` — an API-key scheme with a constant-time compare over SHA-256 digests, no early return, and a missing header on the same path as a wrong key                                                                                                                                                                                                                                  |
 | `HttpOptions`          | type  | the transport options `HttpModule` and `GraphqlModule` take — see [Transport options](#transport-options)                                                                                                                                                                                                                                                                                                                   |
 | `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}` — the runtime's port; what the starter provides and `HttpModule` / `GraphqlModule` export. It **resolves `HttpHandler`**, so the root must export that too                                                                                                                                                                                |
@@ -681,6 +684,51 @@ spent the moment a callback has been seen. The consequence is worth knowing —
 and is refused. The cookie is the whole memory of the flow, and a browser has
 one of it.
 
+### The protected resource
+
+A client that holds no token has to learn where to get one. An MCP client is
+the usual case: it calls the API, is refused, and must find the authorization
+server on its own. `protectedResource()` answers that question the way RFC 9728
+specifies, and needs no peer:
+
+<!-- doctest: isolate -->
+
+```ts
+import { protectedResource } from "@btravstack/http-server";
+
+// Spread into the root's `provides`, beside the router or the answerer it protects.
+export const resource = protectedResource({ scopes: ["orders:read"] });
+```
+
+- **`GET /.well-known/oauth-protected-resource<path>` answers the metadata
+  document**: `resource`, `authorization_servers`,
+  `bearer_methods_supported: ["header"]` and, when `scopes` is given,
+  `scopes_supported`. `<path>` is the resource identifier's own, as RFC 9728
+  §3.1 places it: a resource at `https://api.test/mcp` is described at
+  `/.well-known/oauth-protected-resource/mcp`. Anything else below that mount
+  is a `404`.
+- **Every response carries
+  `WWW-Authenticate: Bearer resource_metadata="<that URL>"`.** RFC 9110
+  §11.6.1 requires the header on a `401` and permits it on any other
+  response, and setting it before dispatch, as `securityHeaders` are, is what
+  reaches the `401` of every answerer — oRPC, GraphQL, fragments — without
+  any of them knowing. The value rides `HttpChallenges`, a set port the
+  starter reads the way it reads `CookieSchemes`, so a root composing no
+  protected resource sends no header.
+
+It reads two variables, each pinned by the option of the same name:
+`HTTP_RESOURCE_URI`, the resource identifier — the audience its JWT scheme
+requires, by RFC 8707 — and `HTTP_RESOURCE_AUTHORIZATION_SERVERS`, a
+comma-separated list of the issuers it accepts tokens from. Both are checked
+by `@btravstack/config`'s `cleartext` rule at boot: a client follows these URLs
+with its credentials, so an `http:` one that is not on a loopback host is a
+`ConfigInvalid` naming the variable unless `allowInsecure: true` is pinned at
+the call.
+
+It serves discovery and nothing more. Verifying the token stays the JWT
+scheme's, and exchanging it for a downstream token is
+[`@btravstack/oauth-client`](/reference/oauth-client)'s `onBehalfOf`.
+
 ## `api.OrpcRouter(contract)({ inject: deps, sync })`
 
 Contract-first: `contract` is an oRPC router record (`Record<string,
@@ -1293,7 +1341,9 @@ a caller satisfies wins.
 | an authenticator returned a `Defect`                            | oRPC's `INTERNAL_SERVER_ERROR`, walk stopped |
 
 Neither refusal carries a message: oRPC serializes `message` to the client, and
-a refusal has nothing a caller is entitled to. A requirement naming scopes is
+a refusal has nothing a caller is entitled to. A root composing
+[`protectedResource()`](#the-protected-resource) adds the one thing a refused
+caller is entitled to: where to get a token. A requirement naming scopes is
 **not** satisfied by a credential reporting none — a scheme declared without a
 vocabulary answers bare, and admitting it there would admit the caller
 outright. An empty scope list still passes trivially. A `Defect` is a bug in
@@ -1784,7 +1834,9 @@ under `runMain`. Anything in the graph may depend on `HttpConfig`.
 and `HTTP_JWT_AUDIENCE`, each required unless the matching option pins it —
 but not through `HttpConfig`: a scheme is not a provider, so it parses its own
 [in its `make` arm](#the-authenticators-that-ship), and a graph composing no
-JWT scheme reads none of them.
+JWT scheme reads none of them. [`protectedResource()`](#the-protected-resource)
+binds `HTTP_RESOURCE_URI` and `HTTP_RESOURCE_AUTHORIZATION_SERVERS` the same
+way.
 
 ## `HttpHandler`, and several answerers
 

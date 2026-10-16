@@ -18,6 +18,7 @@ import {
   httpServer,
   type ApplicationExports,
   type CookieSchemes,
+  type HttpChallenges,
 } from "@btravstack/http-server/internal";
 import {
   type AnyUnitModule,
@@ -32,7 +33,7 @@ import { orpc, type OrpcRouterPort } from "./orpc.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
 type HttpStarter<Units> = Module<
-  HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers,
+  HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | HttpChallenges | Observers,
   ConfigInvalid,
   HttpServerEnv | UnitsNeedsOf<Units>
 >;

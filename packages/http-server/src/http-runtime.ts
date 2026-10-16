@@ -23,6 +23,7 @@ import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from
 import { CookieSchemes, crossSite, csrfOn } from "./cookie.js";
 import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
+import { HttpChallenges } from "./protected-resource.js";
 import { HttpSchemes, withFallback } from "./unit-scope.js";
 import type { AnyUnitModule, UnitsNeedsOf } from "./unit.js";
 
@@ -159,11 +160,12 @@ export const _internal_httpRuntime = (
   securityHeaders: HttpOptions["securityHeaders"],
   observers: readonly ((operation: Operation) => Settle)[],
   csrf = false,
+  challenges: readonly string[] = [],
 ): Runtime<typeof HttpHandler, HttpInfo> => ({
   name: "http",
   resolves: [HttpHandler],
   start: (host) =>
-    listen(host, config, host.ctx.get(HttpHandler), securityHeaders, observers, csrf),
+    listen(host, config, host.ctx.get(HttpHandler), securityHeaders, observers, csrf, challenges),
 });
 
 /**
@@ -192,7 +194,7 @@ export const httpServer = <
 >(
   options: Omit<SocketOptions, "unit"> & { readonly unit?: Units } = {},
 ): Module<
-  HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers,
+  HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | HttpChallenges | Observers,
   ConfigInvalid,
   HttpServerEnv | UnitsNeedsOf<Units>
 > => {
@@ -245,19 +247,23 @@ export const httpServer = <
       // The same no-op-member move, for the same reason: a root composing no
       // cookie scheme leaves this set with only this `false` in it.
       Provider.member(CookieSchemes)({ inject: {}, value: false }),
+      // And again: a root composing no protected resource challenges nobody.
+      Provider.member(HttpChallenges)({ inject: {}, value: "" }),
       Provider(HttpRuntime)({
         inject: {
           config: HttpConfig,
           observers: Observers,
           cookieSchemes: CookieSchemes,
+          challenges: HttpChallenges,
           units: HttpUnit,
         },
-        sync: ({ config: bound, observers, cookieSchemes, units }) => ({
+        sync: ({ config: bound, observers, cookieSchemes, challenges, units }) => ({
           ..._internal_httpRuntime(
             bound,
             securityHeaders,
             observers,
             csrfOn(options.csrf, cookieSchemes),
+            challenges,
           ),
           units,
         }),
@@ -273,7 +279,15 @@ export const httpServer = <
     // the same set — `oidc()` is the first — without every such provider
     // having to contribute a no-op member of its own to a port this module
     // already keeps non-empty.
-    exports: [HttpRuntime, HttpConfig, HttpHandler, HttpUnit, CookieSchemes, Observers],
+    exports: [
+      HttpRuntime,
+      HttpConfig,
+      HttpHandler,
+      HttpUnit,
+      CookieSchemes,
+      HttpChallenges,
+      Observers,
+    ],
     // `as never`/`as unknown as Module<…>`, below: `exports` includes
     // `HttpHandler`, a set port, though this module provides no member of it
     // itself — a sibling module's answerer does. The Needs channel carries every
@@ -283,7 +297,7 @@ export const httpServer = <
     // composition root must supply, and this is what makes di's own
     // `UNSATISFIED DEPENDENCIES` gate say so.
   } as never) as unknown as Module<
-    HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | Observers,
+    HttpRuntime | HttpConfig | HttpHandler | HttpUnit | CookieSchemes | HttpChallenges | Observers,
     ConfigInvalid,
     HttpServerEnv | UnitsNeedsOf<Units>
   >;
@@ -350,6 +364,7 @@ const listen = (
   securityHeaders: HttpOptions["securityHeaders"],
   observers: readonly ((operation: Operation) => Settle)[],
   csrf: boolean,
+  challenges: readonly string[],
 ): AsyncResult<Serving<HttpInfo>, RuntimeStartFailed> =>
   routesOf(answerers)
     .toAsync()
@@ -363,7 +378,11 @@ const listen = (
               : securityHeaders === true || securityHeaders === undefined
                 ? DEFAULT_SECURITY_HEADERS
                 : securityHeaders;
-          const headers = Object.entries(headerRecord);
+          const challenge = challenges.filter((value) => value !== "").join(", ");
+          const headers = [
+            ...Object.entries(headerRecord),
+            ...(challenge === "" ? [] : [["www-authenticate", challenge] as const]),
+          ];
 
           // `close()` waits for every connection to end, and a keep-alive client
           // holds one open long after its response. Tracking sockets is what lets

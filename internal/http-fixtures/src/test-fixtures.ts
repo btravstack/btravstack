@@ -42,7 +42,11 @@ import {
 } from "@btravstack/core";
 import { Module, Port, Provider, type PortClassOf, type ServiceOf } from "@btravstack/di";
 import { html, HtmxFragmentsPort, htmx } from "@btravstack/htmx-server";
-import { apiKeyAuthenticator } from "@btravstack/http-server";
+import {
+  apiKeyAuthenticator,
+  protectedResource,
+  type ProtectedResourceOptions,
+} from "@btravstack/http-server";
 import {
   HttpAuthenticator,
   Unauthenticated,
@@ -1684,6 +1688,30 @@ const churnCall = (agent: Agent, origin: string, path: string): Promise<void> =>
 const noop: Handler = (_request, response, _signal) =>
   new Promise<void>((done) => response.end("ok", () => done()));
 
+/** A protected resource over one answerer at the root that refuses every caller. */
+const protectedAppOf = (options: ProtectedResourceOptions) =>
+  Module("ProtectedApp")({
+    imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+    provides: [
+      answering(
+        (_request, response) =>
+          new Promise<void>((done) => {
+            response.statusCode = 401;
+            response.end(() => done());
+          }),
+      ),
+      ...protectedResource(options),
+    ],
+    exports: [HttpRuntime, HttpHandler],
+  });
+
+/** One `GET` against a protected resource, and what came back. */
+export type ProtectedCall = (path: string) => Promise<{
+  readonly status: number;
+  readonly challenge: string | null;
+  readonly body: string;
+}>;
+
 /**
  * Two schemes, dedicated to the fixtures below and kept SEPARATE from `api`'s
  * own registry: `orderRowFragment` and `healthFragment` require "user",
@@ -1941,6 +1969,14 @@ export type HttpFixtures = {
     handler?: Handler,
     securityHeaders?: HttpOptions["securityHeaders"],
   ) => Promise<{ readonly app: App; readonly origin: string }>;
+  /**
+   * `protectedResource()` over whatever options and environment a test hands
+   * it, beside an answerer refusing every caller. Shut down by the fixture; a
+   * startup failure is the test's to assert on `app.exited`.
+   */
+  readonly protectedApp: (options: ProtectedResourceOptions, env?: Environment) => App;
+  /** The same app, booted on pins alone, as a `GET` against it. */
+  readonly protectedResource: (options: ProtectedResourceOptions) => Promise<ProtectedCall>;
   /**
    * An app whose starter binds `HttpConfig` from `env` (plus whatever `options`
    * pins), and what it bound. Shut down by the fixture; a startup failure is
@@ -2528,6 +2564,26 @@ export const it = test.extend<HttpFixtures>({
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return { app, origin: `http://127.0.0.1:${info.port}` };
+    });
+  },
+
+  protectedApp: async ({ boot }, use) => {
+    // The environment a spec hands over, complete or not, as for `jwtApp`.
+    await use((options, env = {}) => boot(protectedAppOf(options), { env: env as never }));
+  },
+
+  protectedResource: async ({ protectedApp }, use) => {
+    await use(async (options) => {
+      const info = (await protectedApp(options).runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return async (path) => {
+        const response = await fetch(`http://127.0.0.1:${info.port}${path}`);
+        return {
+          status: response.status,
+          challenge: response.headers.get("www-authenticate"),
+          body: await response.text(),
+        };
+      };
     });
   },
 
