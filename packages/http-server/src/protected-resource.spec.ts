@@ -120,6 +120,32 @@ describe("protectedResource", () => {
     expect(answered.challenge).toBeNull();
   });
 
+  it("challenges a Host naming the scheme's default port", async ({ protectedResource }) => {
+    // GIVEN the resource at https://api.test/mcp
+    const get = await protectedResource(MCP);
+
+    // WHEN a proxy forwards the external port explicitly
+    const answered = await get("/mcp", undefined, "api.test:443");
+
+    // THEN it is the same authority, so the same resource
+    expect(answered.challenge).toBe(
+      'Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/mcp"',
+    );
+  });
+
+  it("serves the metadata of a query-selected resource under that query alone", async ({
+    protectedResource,
+  }) => {
+    // GIVEN a resource identified by its query
+    const get = await protectedResource({ ...MCP, resource: "https://api.test/mcp?tenant=a" });
+
+    // WHEN the metadata URL of another query is fetched
+    const answered = await get("/.well-known/oauth-protected-resource/mcp?tenant=b");
+
+    // THEN there is nothing there: this document describes tenant a
+    expect(answered.status).toBe(404);
+  });
+
   it("does not challenge a refusal for the same path without its slash", async ({
     protectedResource,
   }) => {

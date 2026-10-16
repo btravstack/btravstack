@@ -43,9 +43,17 @@ const queryOf = (url: string): string => (url.includes("?") ? url.slice(url.inde
  * A bare `?` is the one thing dropped: clients disagree on sending it (Node
  * 22's fetch does not), and it names no other resource.
  */
-const targetOf = (scheme: string, host: string, path: string, url: string): string => {
+// The query as a target compares it: a bare `?` is no query.
+const comparedQuery = (url: string): string => {
   const query = queryOf(url);
-  return `${scheme}//${host.toLowerCase()}${path}${query === "?" ? "" : query}`;
+  return query === "?" ? "" : query;
+};
+
+const targetOf = (scheme: string, host: string, path: string, url: string): string => {
+  // Through the parser, so the authority is spelled as the resource's is: an
+  // explicit default port (`api.test:443` under https) is dropped, the case folded.
+  const authority = URL.parse(`${scheme}//${host}`)?.host ?? host.toLowerCase();
+  return `${scheme}//${authority}${path}${comparedQuery(url)}`;
 };
 
 /**
@@ -263,10 +271,17 @@ export const protectedResource = <const O extends ProtectedResourceOptions = Rec
         ...(options.scopes?.length ? { scopes_supported: options.scopes } : {}),
       });
       const prefix = metadataPath(bound.resource);
+      // The document describes one resource, query included (RFC 9728 §3.3):
+      // the same path under another query is another resource's metadata URL.
+      const query = comparedQuery(bound.resource);
       return {
         prefix,
         handle: (request, response) => {
-          if (request.method === "GET" && pathUnder(request.url, prefix) === "/") {
+          if (
+            request.method === "GET" &&
+            pathUnder(request.url, prefix) === "/" &&
+            comparedQuery(request.url ?? "") === query
+          ) {
             response.writeHead(200, { "content-type": "application/json" });
             response.end(body);
           } else send(response, 404);
