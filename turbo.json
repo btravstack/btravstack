@@ -36,6 +36,9 @@
     "@btravstack/graphql-server#typecheck": {
       "dependsOn": ["build", "@btravstack/internal-http-fixtures#build"]
     },
+    "@btravstack/mcp-server#typecheck": {
+      "dependsOn": ["build", "@btravstack/internal-http-fixtures#build"]
+    },
     "@btravstack/internal-consumer-check#typecheck": {
       "cache": false,
       "dependsOn": [
@@ -51,6 +54,7 @@
         "@btravstack/orpc-server#build",
         "@btravstack/htmx-server#build",
         "@btravstack/graphql-server#build",
+        "@btravstack/mcp-server#build",
         "@btravstack/pothos#build",
         "@btravstack/mailer#build",
         "@btravstack/observability#build",
@@ -80,6 +84,10 @@
       "cache": false
     },
     "@btravstack/graphql-server#test": {
+      "dependsOn": ["^build", "@btravstack/internal-http-fixtures#build"],
+      "cache": false
+    },
+    "@btravstack/mcp-server#test": {
       "dependsOn": ["^build", "@btravstack/internal-http-fixtures#build"],
       "cache": false
     },
@@ -114,6 +122,7 @@
         "@btravstack/orpc-server#build",
         "@btravstack/htmx-server#build",
         "@btravstack/graphql-server#build",
+        "@btravstack/mcp-server#build",
         "@btravstack/pothos#build",
         "@btravstack/temporal-worker#build",
         "@btravstack/amqp-worker#build",

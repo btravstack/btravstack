@@ -41,3 +41,4 @@ export type { KindOf, Kinds, UnitFor, UnitsOf } from "./unit.js";
 export type { HttpServerEnv } from "./http-runtime.js";
 
 export { applicationExports, type ApplicationExports } from "./application-exports.js";
+export { AnswererModule } from "./answerer-module.js";

@@ -31,7 +31,7 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds twenty-two published packages,
+pnpm workspace + turbo monorepo. `packages/` holds twenty-three published packages,
 `entity` (optional domain modelling on Zod; sealed entities and aggregates, derived schemas, and Result-returning construction), `contract` (the contract tier: markers and normed shapes a client and the
 server that implements it both need — the `authenticated` marker and a cursor
 page, with the page's schema behind a `/zod` subpath so the root keeps its
@@ -50,7 +50,7 @@ loop, a per-tenant claim, a lag health check and a Prisma 8 store behind a
 `/prisma` subpath; `outboxRuntime()` also boots a standalone delivery process
 through the same kernel runtime contract, while `outbox()` embeds the relay; the application keeps the transaction that writes the row
 and says what publishing means), and the three
-**servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus three HTTP answerer packages: `orpc-server`, `htmx-server` and `graphql-server`, and `pothos`, the Pothos plugin a GraphQL gateway builds its schema with when its fields call oRPC procedures. The calling side has `amqp-client` and `temporal-client`, which bind upstream typed clients to application ports and release connections with the DI scope without a worker dependency, and `oauth-client`, a `TokenSource` port over client credentials and RFC 8693 token exchange, so a service calls another as itself or for a subject. `di` was its own repository until it was merged here
+**servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus four HTTP answerer packages: `orpc-server`, `htmx-server`, `graphql-server` and `mcp-server`, and `pothos`, the Pothos plugin a GraphQL gateway builds its schema with when its fields call oRPC procedures. The calling side has `amqp-client` and `temporal-client`, which bind upstream typed clients to application ports and release connections with the DI scope without a worker dependency, and `oauth-client`, a `TokenSource` port over client credentials and RFC 8693 token exchange, so a service calls another as itself or for a subject. `di` was its own repository until it was merged here
 **with its history**; it, `contract`, `entity` and `pothos` are the four packages that depend on
 nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
@@ -148,9 +148,9 @@ pnpm dev              # the four example deployments, one process each, watching
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
-## Versioning: all twenty-two packages move as one
+## Versioning: all twenty-three packages move as one
 
-The twenty-two published packages share **one version number**, enforced by a
+The twenty-three published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. **Do not downgrade `@changesets/cli`
 below 3.0.0** — on 2.x the next `pnpm run version` silently ships a major. The
 measurements behind both rules are in `.changeset/AGENTS.md`.
@@ -200,7 +200,9 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    `{ prefix, handle }`, routed by longest matching prefix. Protocol packages
    contribute members: `@btravstack/orpc-server` supplies oRPC and opt-in
    OpenAPI routes, `@btravstack/htmx-server` supplies escaped HTML fragments,
-   and `@btravstack/graphql-server` supplies Yoga over a caller-built schema.
+   `@btravstack/graphql-server` supplies Yoga over a caller-built schema, and
+   `@btravstack/mcp-server` supplies a Model Context Protocol server built with
+   the official SDK.
    The OIDC login remains in `@btravstack/http-server/oidc`. These packages
    declare their peers explicitly. The order API serves oRPC and htmx in one
    process; the GraphQL gateway is another process and calls it through
@@ -1057,7 +1059,7 @@ in its place.
 - **`packages/core`'s specs use `@btravstack/testing` without depending on
   it** — that would be a package-graph cycle turbo refuses — so four configs
   carry the wiring and move together: see `packages/testing/AGENTS.md`.
-- `declarationMap: false` on all twenty-two published packages — the published
+- `declarationMap: false` on all twenty-three published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **A deployment extends `@btravstack/tsconfig/app.json`; everything that
   exports something keeps `base.json`.** The two differ in one thing,
