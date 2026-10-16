@@ -41,8 +41,12 @@ const queryOf = (url: string): string => (url.includes("?") ? url.slice(url.inde
  * called, so a challenge answers that URL alone — not a path below it, not
  * another query.
  */
-const targetOf = (path: string, url: string): string =>
-  `${path.replace(/\/+$/, "")}${queryOf(url)}`;
+// A bare `?` is dropped from the target: clients disagree on sending it
+// (Node 22's fetch does not), and it names no other resource.
+const targetOf = (path: string, url: string): string => {
+  const query = queryOf(url);
+  return `${path.replace(/\/+$/, "")}${query === "?" ? "" : query}`;
+};
 
 /**
  * What the runtime applies to each response before dispatch: a `401` for a

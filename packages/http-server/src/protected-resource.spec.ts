@@ -140,8 +140,8 @@ describe("protectedResource", () => {
     // GIVEN a resource identifier ending in a bare `?`
     const get = await protectedResource({ ...MCP, resource: "https://api.test/mcp?" });
 
-    // WHEN a caller with no token reaches it
-    const answered = await get("/mcp?");
+    // WHEN a caller with no token reaches it, by a client that may drop the `?`
+    const answered = await get("/mcp");
 
     // THEN the empty query is still the identifier's, and the URL keeps it
     expect(answered.challenge).toBe(
