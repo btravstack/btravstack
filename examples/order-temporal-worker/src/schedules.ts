@@ -6,7 +6,6 @@ import { ensureSchedule, type ScheduleOutcome } from "@btravstack/temporal-worke
 import {
   type TypedClient,
   type ScheduleNotFoundError,
-  type WorkflowNotInContractError,
   type WorkflowValidationError,
 } from "@temporal-contract/client";
 import {
@@ -24,7 +23,7 @@ const scheduleConfig = Config.provider("ScheduleConfig")(
   }),
 );
 
-type SweepNotEnsured = WorkflowNotInContractError | WorkflowValidationError | ScheduleNotFoundError;
+type SweepNotEnsured = WorkflowValidationError | ScheduleNotFoundError;
 
 class ScheduleConnection extends Port("ScheduleConnection")<Connection> {}
 

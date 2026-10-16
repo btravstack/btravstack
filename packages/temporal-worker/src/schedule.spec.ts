@@ -99,7 +99,7 @@ describe("ensureSchedule", () => {
     expect(outcome).toBeErrTagged("@temporal-contract/WorkflowValidationError");
   });
 
-  it("passes a workflow the contract never declared through, still typed", async ({
+  it("treats a workflow the contract never declared as a defect, not a modeled error", async ({
     schedules,
   }) => {
     // GIVEN a workflow name reached past the types — a widened contract, or a
@@ -107,9 +107,10 @@ describe("ensureSchedule", () => {
     // WHEN it is ensured
     const outcome = await schedules.ensureUnknown({ cronExpressions: ["0 3 * * *"] });
 
-    // THEN it is the library's own error on the channel, not a schedule
-    // recovered into existence: only the already-exists case is recovered here
-    expect(outcome).toBeErrTagged("@temporal-contract/WorkflowNotInContractError");
+    // THEN it is a defect, as temporal-contract 8.0.0-beta.12 made it, not a
+    // schedule recovered into existence: only the already-exists case is
+    // recovered here
+    expect(outcome).toBeDefect();
   });
 
   it("passes args the workflow's schema refuses through, still typed", async ({ schedules }) => {

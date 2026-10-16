@@ -96,7 +96,7 @@ export type TemporalModuleOptions<
 > = TemporalTuning<Unit, Converter> & {
   /** The `temporal-contract` contract; the task queue this worker polls is read off it. */
   readonly contract: C;
-  readonly workflows: WorkflowSource;
+  readonly workflows?: WorkflowSource;
   /**
    * The application's activity implementations — what
    * `TemporalActivities(contract)(…)` returns. Its `_declaredUnit` phantom

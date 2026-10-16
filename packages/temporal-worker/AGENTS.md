@@ -192,7 +192,7 @@ in the gate is what rule 7 forbids.
 ## `ensureSchedule` — from `@btravstack/temporal-worker/schedule`
 
 `ensureSchedule(schedules, workflowName, options)` →
-`AsyncResult<"created" | "updated", WorkflowNotInContractError | WorkflowValidationError | ScheduleNotFoundError>`,
+`AsyncResult<"created" | "updated", WorkflowValidationError | ScheduleNotFoundError>`,
 where `schedules` is `@temporal-contract/client`'s `TypedScheduleClient` —
 reached as `typedClient.for(contract).schedule` — and `options` is its own
 `TypedScheduleCreateOptions`. `@temporal-contract/client` is an **optional

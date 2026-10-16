@@ -3,7 +3,6 @@ import {
   type ScheduleNotFoundError,
   type TypedScheduleClient,
   type TypedScheduleCreateOptions,
-  type WorkflowNotInContractError,
   type WorkflowValidationError,
 } from "@temporal-contract/client";
 import type { ContractDefinition } from "@temporal-contract/contract";
@@ -65,10 +64,7 @@ export const ensureSchedule = <
   schedules: TypedScheduleClient<C>,
   workflow: W,
   options: TypedScheduleCreateOptions<C, W>,
-): AsyncResult<
-  ScheduleOutcome,
-  WorkflowNotInContractError | WorkflowValidationError | ScheduleNotFoundError
-> =>
+): AsyncResult<ScheduleOutcome, WorkflowValidationError | ScheduleNotFoundError> =>
   schedules
     .create(workflow, options)
     .map((): ScheduleOutcome => "created")
@@ -88,6 +84,5 @@ export const ensureSchedule = <
         // Named rather than left to a wildcard: the matcher has none, so a
         // fourth error added upstream fails this file instead of being
         // silently recovered into a schedule nobody registered.
-        .with(P.tag("@temporal-contract/WorkflowNotInContractError"), (error) => ErrAsync(error))
         .with(P.tag("@temporal-contract/WorkflowValidationError"), (error) => ErrAsync(error)),
     );

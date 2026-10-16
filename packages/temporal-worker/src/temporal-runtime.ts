@@ -191,7 +191,7 @@ export type TemporalOptions<
    * `declareActivitiesHandler` itself, with its unit middleware in place.
    */
   readonly contract: C;
-  readonly workflows: WorkflowSource;
+  readonly workflows?: WorkflowSource;
 };
 
 const DEFAULT_GRACE_MS = 10_000;
@@ -383,7 +383,7 @@ const createWorker = <
           connection,
           namespace,
           taskQueue,
-          ...options.workflows,
+          ...(options.workflows ?? {}),
           activities: handler,
           shutdownGraceTime: config.gracePeriodMs,
           shutdownForceTime: config.forceAfterMs,
