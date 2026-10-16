@@ -1,5 +1,17 @@
 # @btravstack/temporal-worker
 
+## 0.36.0
+
+### Minor Changes
+
+- 7b844ad: Adopt `@temporal-contract/*` 8.0.0-beta.14: cross-queue `context.executeActivity` from workflows and standalone activities from clients. `TemporalModule`'s `workflows` is optional, so an activity-only contract (a rendering pool's queue) boots a worker with no workflow bundle. `ensureSchedule` no longer answers `WorkflowNotInContractError`, which beta.12 removed: an undeclared name is a defect.
+
+### Patch Changes
+
+- @btravstack/config@0.36.0
+  - @btravstack/core@0.36.0
+  - @btravstack/di@0.36.0
+
 ## 0.35.1
 
 ### Patch Changes
