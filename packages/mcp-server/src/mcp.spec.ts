@@ -39,6 +39,46 @@ describe("mcp answerer", () => {
     expect(answered).toEqual({ content: [{ type: "text", text: "[1,2]" }] });
   });
 
+  it("answers an object whose JSON is not one as text alone", async ({ served }) => {
+    // GIVEN the same client
+    const client = await (await served()).connect("k-1");
+
+    // WHEN a tool answers a Date, which serializes to a string
+    const answered = await client.callTool({ name: "epoch", arguments: {} });
+
+    // THEN there is no structured content, which must be an object
+    expect(answered).toEqual({ content: [{ type: "text", text: '"1970-01-01T00:00:00.000Z"' }] });
+  });
+
+  it("answers undefined, which has no JSON, as its text", async ({ served }) => {
+    // GIVEN the same client
+    const client = await (await served()).connect("k-1");
+
+    // WHEN a tool answers nothing
+    const answered = await client.callTool({ name: "nothing", arguments: {} });
+
+    // THEN the text still exists, since a tool's content cannot be empty text
+    expect(answered).toEqual({ content: [{ type: "text", text: "undefined" }] });
+  });
+
+  it("answers a value JSON cannot encode as a defect, reported", async ({ served }) => {
+    // GIVEN the server, recording what its observers are handed
+    const server = await served();
+    const client = await server.connect("k-1");
+
+    // WHEN a tool answers a bigint
+    const answered = await client.callTool({ name: "huge", arguments: {} });
+
+    // THEN the model learns only that it failed, and the cause is reported
+    expect({
+      answered,
+      reported: server.seen.filter(({ operation }) => operation.component === "mcp").length,
+    }).toEqual({
+      answered: { content: [{ type: "text", text: "The tool failed." }], isError: true },
+      reported: 1,
+    });
+  });
+
   it("reads the service this request's unit provides", async ({ served }) => {
     // GIVEN the same client
     const client = await (await served()).connect("k-1");

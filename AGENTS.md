@@ -531,7 +531,7 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    `TestRuntime.untilStarted` and `ProbeServer.close` all carry `E = never`.
    `unthrown/prefer-async-result` cannot enforce this — it only flags a
    `Promise<Result<T, E>>`, and a `Promise<void>` is not Result-bearing — so it
-   is a convention held by review. There are exactly **five** exceptions, each
+   is a convention held by review. There are exactly **six** exceptions, each
    documented where it lives:
    - **`runMain`** returns `Promise<void>`. Its whole job is to leave the Result
      world and become a process exit code; it is the boundary, and a top-level
@@ -549,6 +549,10 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
      A GraphQL resolver answers a value or a promise and reports a field's
      error by rejecting, so `fieldResult` is where a `Result` leaves for
      GraphQL's own channel — the boundary, as `runMain` is for a process.
+   - **`@btravstack/mcp-server`'s `toolResult`** returns
+     `Promise<CallToolResult>`. The SDK's tool callback answers a value or a
+     promise, so `toolResult` is where a tool's `Result` leaves for MCP's own
+     answer — `fieldResult`'s boundary, for another protocol.
    - **`@btravstack/pothos`'s `loadProcedure`** returns `Promise<T | Error>`.
      A DataLoader's batch function answers a value or an `Error` per key, so
      that is where one key's `Result` leaves for the loader's own channel.
@@ -1087,8 +1091,8 @@ in its place.
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
 - Published packages state the lowest Node version their required dependencies
-  and entry points support: most claim `>=22`, while `http-server`, `prisma` and
-  `oauth-client` claim `>=22.12`, and `amqp-worker` and `temporal-worker` claim
+  and entry points support: most claim `>=22`, while `http-server`, `prisma`,
+  `oauth-client` and `mcp-server` claim `>=22.12`, and `amqp-worker` and `temporal-worker` claim
   `>=22.22`.
   The root claims `>=22.22` for the dev toolchain. A package's floor is a
   compatibility promise to consumers; the consumer check tests each package

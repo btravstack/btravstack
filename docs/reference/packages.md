@@ -211,8 +211,8 @@ pnpm add @btravstack/di unthrown
 
 :::
 
-Most published packages require Node `>=22`; `http-server`, `prisma` and
-`oauth-client` require `>=22.12`; `graphql-server` requires `>=22.15`, while `amqp-worker`,
+Most published packages require Node `>=22`; `http-server`, `prisma`,
+`oauth-client` and `mcp-server` require `>=22.12`; `graphql-server` requires `>=22.15`, while `amqp-worker`,
 `temporal-worker`, `amqp-client`, and `temporal-client` require `>=22.22`.
 Each floor is checked against that package's required peers. The
 repository's own development floor is `>=22.22`.

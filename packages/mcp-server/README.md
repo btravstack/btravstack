@@ -9,7 +9,8 @@ the body limit.
 
 ```sh
 pnpm add @btravstack/mcp-server @btravstack/http-server @btravstack/core \
-  @btravstack/di @btravstack/contract @modelcontextprotocol/sdk unthrown
+  @btravstack/config @btravstack/di @btravstack/contract \
+  @modelcontextprotocol/sdk unthrown
 ```
 
 ```ts

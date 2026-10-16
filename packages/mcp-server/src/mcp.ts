@@ -29,7 +29,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { P, TaggedError, type AsyncResult, type Result } from "unthrown";
+import { Ok, P, TaggedError, fromThrowable, type AsyncResult, type Result } from "unthrown";
 
 /**
  * A tool's refusal, as the model reads it. A tool's own triage mints it from
@@ -53,10 +53,13 @@ export type McpContext<Principal = unknown, Unit = Readonly<Record<string, unkno
   readonly signal: AbortSignal;
   /**
    * `Ok` is the tool's answer — text for a string, structured content beside
-   * its JSON text for a plain object, its JSON text alone for anything else. `Err` is a tool error carrying the
+   * its JSON text when that JSON is an object, its JSON text alone otherwise. `Err` is a tool error carrying the
    * refusal's `text`.
-   * A defect is reported to `Observers` and answered as a tool error saying
-   * nothing about its cause.
+   * A defect — or a value JSON cannot encode — is reported to `Observers` and
+   * answered as a tool error saying nothing about its cause.
+   *
+   * It answers a `Promise`, and that is the boundary: the SDK's tool callback
+   * answers a value or a promise, as a GraphQL resolver does for `fieldResult`.
    */
   readonly toolResult: <T>(outcome: ToolOutcome<T>) => Promise<CallToolResult>;
 };
@@ -112,33 +115,44 @@ const DEFECT: CallToolResult = {
   isError: true,
 };
 
-// `structuredContent` is an object in the specification, so only a plain
-// object is one; any other value is its JSON text alone.
-const answerOf = (value: unknown): CallToolResult =>
-  typeof value === "string"
-    ? { content: [{ type: "text", text: value }] }
-    : typeof value === "object" && value !== null && !Array.isArray(value)
-      ? {
-          content: [{ type: "text", text: JSON.stringify(value) }],
-          structuredContent: value as Record<string, unknown>,
-        }
-      : { content: [{ type: "text", text: JSON.stringify(value) ?? String(value) }] };
+/** A tool's value JSON cannot encode — a `bigint`, a cycle: a defect of the tool's, reported. */
+class UnencodableAnswer extends TaggedError("UnencodableAnswer")<{ readonly cause: unknown }> {}
 
-const toolResultFor =
-  (observers: readonly ((operation: Operation) => Settle)[]) =>
-  async <T>(outcome: ToolOutcome<T>): Promise<CallToolResult> => {
-    const settled = await outcome;
-    if (settled.isDefect()) {
-      observe(observers, { component: "mcp", name: "defect", attributes: {}, traced: false })({
-        outcome: "error",
-        cause: settled.cause,
+const isRecord = (json: unknown): json is Record<string, unknown> =>
+  typeof json === "object" && json !== null && !Array.isArray(json);
+
+// `structuredContent` is an object in the specification, so it is the value's
+// JSON form when that is a record — a `Date` serializes to a string and is
+// text alone, as is every other value.
+const answerOf = (value: unknown): Result<CallToolResult, UnencodableAnswer> =>
+  typeof value === "string"
+    ? Ok({ content: [{ type: "text", text: value }] })
+    : fromThrowable(
+        () => JSON.stringify(value) as string | undefined,
+        (cause) => new UnencodableAnswer({ cause }),
+      )().map((json): CallToolResult => {
+        const parsed: unknown = json === undefined ? undefined : JSON.parse(json);
+        return isRecord(parsed)
+          ? { content: [{ type: "text", text: json! }], structuredContent: parsed }
+          : { content: [{ type: "text", text: json ?? String(value) }] };
       });
-      return DEFECT;
-    }
+
+const toolResultFor = (observers: readonly ((operation: Operation) => Settle)[]) => {
+  const defect = (cause: unknown): CallToolResult => {
+    observe(observers, { component: "mcp", name: "defect", attributes: {}, traced: false })({
+      outcome: "error",
+      cause,
+    });
+    return DEFECT;
+  };
+  return async <T>(outcome: ToolOutcome<T>): Promise<CallToolResult> => {
+    const settled = await outcome;
+    if (settled.isDefect()) return defect(settled.cause);
     if (settled.isErr())
       return { content: [{ type: "text", text: settled.error.text }], isError: true };
-    return answerOf(settled.value);
+    return answerOf(settled.value).getOrElse((unencodable) => defect(unencodable.cause));
   };
+};
 
 /**
  * An MCP server as one answerer: Streamable HTTP, stateless, answering JSON,

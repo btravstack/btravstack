@@ -83,6 +83,9 @@ const protectedAnswerer = mcp(auth, {
       toolResult(OkAsync({ id, quantity: 2 })),
     );
     server.registerTool("count", { inputSchema: {} }, () => toolResult(OkAsync([1, 2])));
+    server.registerTool("epoch", { inputSchema: {} }, () => toolResult(OkAsync(new Date(0))));
+    server.registerTool("huge", { inputSchema: {} }, () => toolResult(OkAsync(1n)));
+    server.registerTool("nothing", { inputSchema: {} }, () => toolResult(OkAsync(undefined)));
     server.registerTool("greet", { inputSchema: {} }, () => toolResult(OkAsync(services.message)));
     server.registerTool("refuse", { inputSchema: {} }, () =>
       toolResult(ErrAsync(new ToolRefused({ text: "not yours" }))),
