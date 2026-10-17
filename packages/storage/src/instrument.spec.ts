@@ -240,3 +240,68 @@ describe("storage, instrumented, when the client defects", () => {
     ]);
   });
 });
+
+describe("storage options observation", () => {
+  it("keeps metadata out of routine observations", async ({ instrumented }) => {
+    // GIVEN an instrumented memory store
+    // WHEN confidential metadata is written and headed
+    await instrumented.run(memoryStorage(), (service) =>
+      service
+        .put("key", aDocument().bytes, {
+          contentType: "application/json",
+          metadata: { confidential: "private-description" },
+        })
+        .flatMap(() => service.head("key")),
+    );
+    // THEN observation carries only the operation and object key
+    expect({
+      spans: instrumented.spans().map((span) => span.attributes),
+      lines: instrumented.lines(),
+      points: instrumented.points().map((point) => point.attributes),
+    }).toEqual({
+      spans: [
+        {
+          operation: "put",
+          "btravstack.storage.key": "key",
+        },
+        {
+          operation: "head",
+          "btravstack.storage.key": "key",
+        },
+      ],
+      lines: [],
+      points: [
+        { operation: "put", result: "ok", outcome: "ok" },
+        { operation: "head", result: "ok", outcome: "ok" },
+      ],
+    });
+  });
+
+  it.for(["invalid", "0".repeat(64)])(
+    "reports checksum refusal %s as an error without input details",
+    async (sha256, { instrumented }) => {
+      // GIVEN a digest the store will refuse
+      // WHEN the write fails input validation or body verification
+      await instrumented.run(memoryStorage(), (service) =>
+        service.put("key", aDocument().bytes, {
+          contentType: "application/json",
+          sha256,
+          metadata: { confidential: "private-description" },
+        }),
+      );
+      // THEN failure is counted and the line does not contain the digest or metadata
+      expect({
+        points: instrumented.points().map((point) => point.attributes),
+        lines: instrumented.lines().map((line) => ({ level: line.level, message: line.message })),
+        inputLeaked: JSON.stringify({
+          spans: instrumented.spans().map((span) => span.attributes),
+          lines: instrumented.lines(),
+        }).includes("private-description"),
+      }).toEqual({
+        points: [{ operation: "put", result: "error", outcome: "error" }],
+        lines: [{ level: "error", message: "storage.put failed" }],
+        inputLeaked: false,
+      });
+    },
+  );
+});

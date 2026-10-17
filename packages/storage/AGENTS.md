@@ -21,16 +21,17 @@ and `docs/reference/storage.md` is the reader's page.
   line.** Asking for something that is not there is an ordinary answer — a
   caller checking whether a document exists yet meets it on the happy path —
   and a dashboard that treats it as a fault teaches its readers to ignore the
-  fault line. `StorageUnavailable` is what pages somebody, and the only failure
-  that settles `error`.
+  fault line. `StorageUnavailable` is what pages somebody. Invalid options and checksum
+  mismatches also settle `error`, without recording their inputs.
 - **`putIfAbsent` is the store's own conditional write, and `ObjectExists`
   settles `ok` with `result: "exists"`.** The S3 adapter sends
   `If-None-Match: *` and reads HTTP 412 as the held key; the status code, not
   the error name, is the test, since S3-compatible stores differ on the name.
   Losing the race is the answer the caller asked for, so it writes no fault
-  line. Any other failure is `StorageUnavailable` with `operation:
-  "putIfAbsent"`. The gate's RustFS honours the header (the s3 spec proves a
-  second write is refused and a race has one winner).
+  line. Invalid options are refused before writing; checksum refusals become
+  `ChecksumMismatch`. Other failures are `StorageUnavailable` with
+  `operation: "putIfAbsent"`. RustFS proves a second write is refused and
+  a race has one winner.
 - **`PresignNotSupported` shares the result and NOT the words.** It is the
   same class — a "no" the caller can act on, not an outage — so both settle
   `result: "not_found"`. But its `reason` attribute says `"this store cannot
@@ -71,6 +72,21 @@ and `docs/reference/storage.md` is the reader's page.
   the source (settled `ok`/`not_found` like `get` and `head`). `kmsKeyId` on
   writes and copy sends `ServerSideEncryption: aws:kms` + `SSEKMSKeyId`; RustFS
   has no KMS, so the spec captures the commands at the SDK middleware.
+- **Write digests and copy algorithms are different options.** Writes send
+  `ChecksumSHA256`, with malformed hex refused before the request and
+  `BadDigest` / `InvalidDigest` modeled as `ChecksumMismatch`. Copy sends
+  `ChecksumAlgorithm: SHA256`. Neither accepts the other's checksum option.
+  Memory verifies before mutating its map and preserves its always-computed
+  full-object `head` checksum; S3 excludes multipart composite checksums.
+- **Metadata is an owned object description, never an observation attribute.**
+  Keys are lowercase ASCII HTTP tokens; uppercase is refused, so case collisions
+  cannot silently overwrite a value. The caller owns S3's 2 KB UTF-8 key/value
+  budget. `head` answers an empty map by default and a snapshot otherwise;
+  copy replaces metadata with the destination map, empty when omitted.
+- **Presigned KMS headers stay signed and unhoisted**, like the checksum header.
+  Both encryption headers are mandatory. RustFS proves that changing or dropping
+  either breaks the signature; SDK command assertions prove what key and mode
+  are requested. Neither proves encryption, since RustFS has no KMS.
 - **The memory adapter refuses to presign** rather than minting a `file://`
   URL. A fake URL is the worst kind of double: it passes locally and fails in
   the deployment for a reason no test could have shown. The arm exists in the
@@ -92,7 +108,7 @@ port are the TSDoc and comments of `src/storage.ts` and `src/s3.ts`.
   not to do. `copy` and `head` arrived with a consumer: a document store that
   moves a verified upload to its final key and encrypts it, with no bytes
   through the process.
-- **No metadata beyond the content type**, and no tags.
+- **No tags.** User metadata is atomic object description only.
 - **No bucket management.** Creating one is deployment, not runtime — the
   test infrastructure creates the gate's bucket, and a deployment creates its
   own.

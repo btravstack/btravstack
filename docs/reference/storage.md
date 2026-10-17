@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/storage"
-description: The complete surface of @btravstack/storage — the Storage and StorageBackend ports, StoredObject, ObjectNotFound, ObjectExists, StorageUnavailable and PresignNotSupported, the memory and S3 adapters, storage(), the Observers seam it reports through, and the STORAGE_S3_* variables.
+description: The complete surface of @btravstack/storage — the Storage and StorageBackend ports, StoredObject, ObjectHead, WriteOptions, CopyOptions and the modeled storage failures, the memory and S3 adapters, storage(), the Observers seam it reports through, and the STORAGE_S3_* variables.
 ---
 
 <!-- doctest: group=order-temporal-worker -->
@@ -26,8 +26,7 @@ declare const RealApp: Module<Storage, never, never>;
 # @btravstack/storage
 
 > **Reference.** A complete, structured description of `@btravstack/storage`:
-> the `Storage` port an application depends on, the three modeled failures and
-> why they are three, the in-memory and S3-compatible adapters, and the one
+> the `Storage` port an application depends on, the modeled failures, the in-memory and S3-compatible adapters, and the one
 > composition function that binds them together.
 
 ## The port
@@ -45,7 +44,7 @@ export const documents = Provider(
       store
         .put(key, pdf, { contentType: "application/pdf" })
         .recoverErrCases((matcher) =>
-          matcher.with(P.tag("StorageUnavailable"), () => undefined),
+          matcher.with(P.tag("StorageUnavailable"), P.tag("InvalidStorageOptions"), P.tag("ChecksumMismatch"), () => undefined),
         ),
     link: (key) =>
       store
@@ -59,16 +58,61 @@ export const documents = Provider(
 });
 ```
 
-| Method                                                                 | Answers                                                           |
-| ---------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `put(key, bytes, { contentType, kmsKeyId? })`                          | `AsyncResult<void, StorageUnavailable>`                           |
-| `putIfAbsent(key, bytes, { contentType, kmsKeyId? })`                  | `AsyncResult<void, ObjectExists \| StorageUnavailable>`           |
-| `get(key)`                                                             | `AsyncResult<StoredObject, ObjectNotFound \| StorageUnavailable>` |
-| `copy(from, to, { contentType, kmsKeyId? })`                           | `AsyncResult<void, ObjectNotFound \| StorageUnavailable>`         |
-| `head(key)`                                                            | `AsyncResult<ObjectHead, ObjectNotFound \| StorageUnavailable>`   |
-| `delete(key)`                                                          | `AsyncResult<void, StorageUnavailable>`                           |
-| `presignedUrl(key, { ttlMs })`                                         | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`  |
-| `presignedUpload(key, { ttlMs, contentType, contentLength, sha256? })` | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`  |
+| Method                                                                            | Answers                                                                                              |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `put(key, bytes, options: WriteOptions)`                                          | `AsyncResult<void, InvalidStorageOptions \| ChecksumMismatch \| StorageUnavailable>`                 |
+| `putIfAbsent(key, bytes, options: WriteOptions)`                                  | `AsyncResult<void, ObjectExists \| InvalidStorageOptions \| ChecksumMismatch \| StorageUnavailable>` |
+| `get(key)`                                                                        | `AsyncResult<StoredObject, ObjectNotFound \| StorageUnavailable>`                                    |
+| `copy(from, to, options: CopyOptions)`                                            | `AsyncResult<void, ObjectNotFound \| InvalidStorageOptions \| StorageUnavailable>`                   |
+| `head(key)`                                                                       | `AsyncResult<ObjectHead, ObjectNotFound \| StorageUnavailable>`                                      |
+| `delete(key)`                                                                     | `AsyncResult<void, StorageUnavailable>`                                                              |
+| `presignedUrl(key, { ttlMs })`                                                    | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`                                     |
+| `presignedUpload(key, { ttlMs, contentType, contentLength, sha256?, kmsKeyId? })` | `AsyncResult<string, PresignNotSupported \| InvalidStorageOptions \| StorageUnavailable>`            |
+
+`WriteOptions` requires `contentType` and accepts `kmsKeyId`, `sha256` and
+`metadata`. `CopyOptions` requires `contentType` and accepts `kmsKeyId`,
+`metadata` and `checksum: "sha256"`. A write verifies a supplied digest;
+a copy asks the store to compute one. Passing a write digest to `copy`, or a
+copy algorithm to a write, is a type error even when options are held in a variable.
+
+**Write checksums are verified before publication.** `sha256` is lowercase,
+64-character hexadecimal. Malformed input returns `InvalidStorageOptions`
+with `reason: "invalid_sha256"` before a request or signature is attempted.
+S3 receives the base64 digest as `ChecksumSHA256`; its `BadDigest` and
+`InvalidDigest` refusals become `ChecksumMismatch`. Memory verifies the bytes
+before changing its map. A mismatch cannot create an object or replace a
+successful object, including through `putIfAbsent`.
+
+**Metadata belongs to the same atomic write as the bytes.** `metadata` is a
+`Readonly<Record<string, string>>` of user metadata, without the `x-amz-meta-`
+prefix. Keys must be nonempty lowercase ASCII HTTP tokens (letters `a-z`,
+digits, or `!#$%&'*+-.^_` plus the backtick and `|~`). Keys are not normalized:
+uppercase, whitespace and non-ASCII keys return `InvalidStorageOptions` with
+`reason: "invalid_metadata_key"`. This refuses case collisions rather than
+silently choosing one value. The caller respects S3's **2 KB limit, measured
+as the sum of UTF-8 bytes of keys and values**. Metadata is not copied into
+observations or log attributes. Memory snapshots the map on write and `head`
+returns an owned snapshot, so mutating either map cannot change stored metadata.
+
+```ts
+export const publishArtifact = (
+  store: StorageService,
+  key: string,
+  bytes: Uint8Array,
+  sha256: string,
+) => store.putIfAbsent(key, bytes, {
+  contentType: "application/pdf",
+  sha256,
+  metadata: { producer: "report-builder", revision: "v1" },
+});
+
+export const promoteArtifact = (store: StorageService) =>
+  store.copy("staging/report.pdf", "published/report.pdf", {
+    contentType: "application/pdf",
+    checksum: "sha256",
+    metadata: { producer: "publisher" },
+  }).flatMap(() => store.head("published/report.pdf"));
+```
 
 **`putIfAbsent` is the first-writer-wins write.** It stores the object only if
 no object holds the key, atomically in the store: the S3 adapter sends
@@ -80,27 +124,35 @@ from the request id, without a database to decide the winner.
 
 **`copy` moves no bytes through the process.** The S3 adapter sends
 `CopyObject` with `MetadataDirective: REPLACE`, so the copy takes the
-`contentType` you give rather than the source's. A missing source answers
+`contentType` and metadata you give rather than the source's. Omitted metadata
+means an empty destination description. `checksum: "sha256"` sends
+`ChecksumAlgorithm: SHA256` so S3 computes the full-object digest server side;
+without it, S3 retains its own default checksum behavior. A missing source answers
 `ObjectNotFound` naming the source key; an existing destination is overwritten,
 and neither the source's tags nor its annotations are carried over
 (`TaggingDirective: REPLACE`, `AnnotationDirective: EXCLUDE`).
 
-**`kmsKeyId` selects SSE-KMS.** On `put`, `putIfAbsent` and `copy`, the S3
+**`kmsKeyId` selects SSE-KMS.** On `put`, `putIfAbsent`, `copy` and `presignedUpload`, the S3
 adapter sends `ServerSideEncryption: aws:kms` and `SSEKMSKeyId`; absent, no
 encryption header is sent and the bucket's default applies. The memory adapter
 accepts and ignores it. The gate's RustFS has no KMS, so the s3 spec asserts
-the sent commands rather than the stored encryption.
+the sent commands and mandatory signed headers rather than the stored encryption.
+A presigned client must send both `x-amz-server-side-encryption: aws:kms` and
+`x-amz-server-side-encryption-aws-kms-key-id: <exact kmsKeyId>`. Both headers
+are signed and unhoisted: omitting or changing either invalidates the signature.
+RustFS proves those signature refusals, not KMS encryption.
 
 **`head` answers what the store knows without reading the object:** `size`,
-`contentType` and `sha256`. S3 reports the checksum base64-encoded
+`contentType`, `metadata` (empty when none was written) and optional `sha256`. S3 reports the checksum base64-encoded
 (`ChecksumSHA256`, requested with `ChecksumMode: ENABLED`); the adapter returns
 it as **lowercase hex**, and omits a multipart object's composite checksum,
 which is not a digest of the bytes. Requesting the checksum of an SSE-KMS
 object needs `kms:GenerateDataKey` and `kms:Decrypt` on its key, in the identity
 policy and the key policy, besides `s3:GetObject`. Like `get`, a
 missing key is `ok`/`not_found` in the signals. `sha256` is absent when the object was written without
-a SHA-256 checksum (a plain `put` stores none; an upload through
-`presignedUpload` with `sha256` does). The memory adapter always computes it.
+a SHA-256 checksum (`put`, `putIfAbsent` or `presignedUpload` with `sha256`,
+or `copy` with `checksum: "sha256"` requests one). A plain `put` retains the
+SDK/store default checksum behavior. The memory adapter always computes it.
 
 `ttlMs` is **required on both presign arms** — there is no default, because a
 link's lifetime is a security decision and a framework guessing at it is a
@@ -121,14 +173,16 @@ is what the Temporal example composes, by hand, because a store is an
 application service and the framework has no concept of a tenant to put in a
 slot.
 
-## Four failures, because they are four different facts
+## Modeled failures
 
-| Error                 | Means                          | What a caller does                                     |
-| --------------------- | ------------------------------ | ------------------------------------------------------ |
-| `ObjectExists`        | the key is already held        | treats the write as already done, or picks another key |
-| `ObjectNotFound`      | the key is not there           | gives up, or writes it                                 |
-| `StorageUnavailable`  | the store could not answer     | retries, degrades, or fails the request                |
-| `PresignNotSupported` | this adapter cannot mint a URL | serves the bytes itself, or composes another adapter   |
+| Error                   | Means                             | What a caller does                                     |
+| ----------------------- | --------------------------------- | ------------------------------------------------------ |
+| `InvalidStorageOptions` | malformed digest or metadata key  | corrects the options before retrying                   |
+| `ChecksumMismatch`      | the digest did not match the body | supplies the correct digest or bytes                   |
+| `ObjectExists`          | the key is already held           | treats the write as already done, or picks another key |
+| `ObjectNotFound`        | the key is not there              | gives up, or writes it                                 |
+| `StorageUnavailable`    | the store could not answer        | retries, degrades, or fails the request                |
+| `PresignNotSupported`   | this adapter cannot mint a URL    | serves the bytes itself, or composes another adapter   |
 
 Collapsing them would cost the distinction that matters: a caller retries an
 outage and does not retry an absence.
@@ -223,14 +277,14 @@ export const DocumentsApp = Module("ReferenceDocumentsApp")({
 | span      | `storage.put` / `.put_if_absent` / `.get` / `.copy` / `.head` / `.delete` / `.presigned_url` / `.presigned_upload` | `btravstack.storage.key`; error status on a failure                                                                                                                |
 | counter   | `btravstack.storage.operations`                                                                                    | `{ operation, outcome, result }` — `outcome` is `ok` or `error`; `result` is `ok`, `exists`, `not_found` or `error`; `exists` and `not_found` carry their `reason` |
 | histogram | `btravstack.storage.duration`                                                                                      | the same as the counter                                                                                                                                            |
-| log       | `"storage.<operation> failed"` at `error`, for `StorageUnavailable` only                                           | `operation`, the key and `result`, with the failure as the cause                                                                                                   |
+| log       | `"storage.<operation> failed"` at `error`, for unavailable stores, invalid options or checksum mismatches          | `operation`, the key and `result`, with the failure as the cause                                                                                                   |
 
 **A missing object settles `ok`, counted apart by `result: "not_found"`, and
 writes no line.** Asking for something that is not there is an ordinary answer
 — a caller checking whether a document exists yet meets it on the happy path —
 and a dashboard that treats it as a fault teaches its readers to ignore the
-fault line. `StorageUnavailable` is what pages somebody, and the only failure
-that settles `error`.
+fault line. `StorageUnavailable` is what pages somebody, and settles `error`. Invalid options and checksum mismatches also settle
+`error`, with safe errors that contain neither body, digest nor metadata.
 
 **A presign refusal shares that result and not its words.** It is the same
 class of answer, so both carry `result: "not_found"` — but its `reason` says
@@ -264,5 +318,5 @@ export const Plain = Module("ReferencePlainStorage")({
   application that has answered it.
 - **No listing and no S3 multipart upload.** Each is a real S3 feature, and
   neither has a consumer here yet.
-- **No metadata beyond the content type**, and no tags.
+- **No tags.** User metadata is an atomic object description, not a tag index.
 - **No bucket management.** Creating one is deployment, not runtime.

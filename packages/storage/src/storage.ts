@@ -17,6 +17,17 @@ export class ObjectExists extends TaggedError("ObjectExists")<{
   readonly key: string;
 }> {}
 
+/** Invalid options are refused before any write or signature is attempted. */
+export class InvalidStorageOptions extends TaggedError("InvalidStorageOptions")<{
+  readonly key: string;
+  readonly reason: "invalid_sha256" | "invalid_metadata_key";
+}> {}
+
+/** The supplied SHA-256 did not match the body; no object was written. */
+export class ChecksumMismatch extends TaggedError("ChecksumMismatch")<{
+  readonly key: string;
+}> {}
+
 /** The store could not answer — the endpoint is down, the credentials were refused, the bucket is gone. */
 export class StorageUnavailable extends TaggedError("StorageUnavailable")<{
   readonly operation:
@@ -40,8 +51,10 @@ export class PresignNotSupported extends TaggedError("PresignNotSupported")<{
 /** What the store knows about an object without sending its bytes. */
 export type ObjectHead = {
   readonly size: number;
+  /** An owned snapshot of user metadata; empty when none was written. */
+  readonly metadata: Readonly<Record<string, string>>;
   readonly contentType: string;
-  /** Lowercase hex of the SHA-256 the store holds for the object; absent when none was supplied at write time. */
+  /** Lowercase hex of a full-object SHA-256; absent when the store holds none. Composite multipart checksums are excluded. */
   readonly sha256?: string;
 };
 
@@ -52,6 +65,20 @@ export type ObjectHead = {
 export type WriteOptions = {
   readonly contentType: string;
   readonly kmsKeyId?: string;
+  /** Lowercase, 64-character hex. The store verifies the body before publishing it. */
+  readonly sha256?: string;
+  /** Lowercase ASCII HTTP-token keys, without `x-amz-meta-`. No normalization; uppercase keys (and thus case collisions) are refused. The caller respects S3's 2 KB UTF-8 key/value limit. */
+  readonly metadata?: Readonly<Record<string, string>>;
+  readonly checksum?: never;
+};
+
+/** A destination description and optional server-computed checksum; no write digest is accepted. */
+export type CopyOptions = {
+  readonly contentType: string;
+  readonly kmsKeyId?: string;
+  readonly metadata?: Readonly<Record<string, string>>;
+  readonly checksum?: "sha256";
+  readonly sha256?: never;
 };
 
 export type StorageService = {
@@ -59,28 +86,31 @@ export type StorageService = {
     key: string,
     bytes: Uint8Array,
     options: WriteOptions,
-  ) => AsyncResult<void, StorageUnavailable>;
+  ) => AsyncResult<void, InvalidStorageOptions | ChecksumMismatch | StorageUnavailable>;
   /** Writes the object only if no object holds the key: the first writer wins, atomically, in the store. */
   readonly putIfAbsent: (
     key: string,
     bytes: Uint8Array,
     options: WriteOptions,
-  ) => AsyncResult<void, ObjectExists | StorageUnavailable>;
+  ) => AsyncResult<
+    void,
+    ObjectExists | InvalidStorageOptions | ChecksumMismatch | StorageUnavailable
+  >;
   readonly get: (key: string) => AsyncResult<StoredObject, ObjectNotFound | StorageUnavailable>;
   /**
    * Copies `from` to `to` inside the store: no bytes pass through this process.
-   * The copy takes `contentType` (the source's is replaced) and, with
+   * The copy replaces metadata (empty when omitted) and `contentType`, and, with
    * `kmsKeyId`, is encrypted with that key. An existing `to` is overwritten.
    */
   readonly copy: (
     from: string,
     to: string,
-    options: WriteOptions,
-  ) => AsyncResult<void, ObjectNotFound | StorageUnavailable>;
+    options: CopyOptions,
+  ) => AsyncResult<void, ObjectNotFound | InvalidStorageOptions | StorageUnavailable>;
   /**
    * Size, type and checksum of an object, without reading it. `sha256` is
    * present only if the store holds one: S3 keeps it for an object written with
-   * a SHA-256 checksum (such as through `presignedUpload` with `sha256`), and
+   * a SHA-256 checksum (write/presign `sha256`, or copy `checksum`), and
    * reports it base64-encoded, which the adapter converts to hex.
    */
   readonly head: (key: string) => AsyncResult<ObjectHead, ObjectNotFound | StorageUnavailable>;
@@ -116,6 +146,11 @@ export type StorageService = {
    * hash to it, and keeps it for `head`. The client must send the same value as
    * `x-amz-checksum-sha256` (base64 of the digest).
    *
+   * With `kmsKeyId`, both `x-amz-server-side-encryption: aws:kms` and
+   * `x-amz-server-side-encryption-aws-kms-key-id` are mandatory signed headers.
+   * The client sends the exact key id used here. Omitting or changing either
+   * breaks the signature. Malformed `sha256` returns `InvalidStorageOptions`.
+   *
    * The application still decides every input: whether this caller may write
    * this key, how long the URL lives, and what size it is willing to accept.
    * The adapter computes a signature over that decision and nothing more.
@@ -127,8 +162,9 @@ export type StorageService = {
       readonly contentType: string;
       readonly contentLength: number;
       readonly sha256?: string;
+      readonly kmsKeyId?: string;
     },
-  ) => AsyncResult<string, PresignNotSupported | StorageUnavailable>;
+  ) => AsyncResult<string, PresignNotSupported | InvalidStorageOptions | StorageUnavailable>;
 };
 
 /**

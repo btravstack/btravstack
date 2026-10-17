@@ -248,7 +248,7 @@ describe("s3Storage, server-side copy, head and checksums", () => {
     const head = await s3.head(`${keyPrefix}h.json`);
 
     // THEN size and type come back and no sha256 is invented
-    expect(head.getOrThrow()).toEqual({ size: 11, contentType: "application/json" });
+    expect(head.getOrThrow()).toEqual({ metadata: {}, size: 11, contentType: "application/json" });
   });
 
   it("answers ObjectNotFound when heading a missing key", async ({ s3, keyPrefix }) => {
@@ -290,6 +290,7 @@ describe("s3Storage, server-side copy, head and checksums", () => {
       s3.head(`${keyPrefix}c.json`).map((head) => ({ status: response.status, ...head })),
     ).toBeOkWith({
       status: 200,
+      metadata: {},
       size: 11,
       contentType: "application/json",
       sha256: sha256Hex(document.bytes),

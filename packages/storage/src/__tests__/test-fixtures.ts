@@ -74,6 +74,7 @@ export type Instrumented = {
 export type StorageFixtures = {
   /** The in-memory adapter's service, for a spec that wants no graph. */
   readonly memory: StorageService;
+  readonly sdkClient: S3Client;
   /** This test's own key space in the shared bucket — a UUID, so nothing collides and nothing needs deleting. */
   readonly keyPrefix: string;
   /** The S3 adapter's service, connected for the length of the test. */
@@ -87,6 +88,17 @@ export type StorageFixtures = {
 };
 
 export const it = test.extend<StorageFixtures>({
+  // oxlint-disable-next-line no-empty-pattern -- a fixture with no dependencies still takes vitest's context
+  sdkClient: async ({}, use) => {
+    const client = new S3Client({
+      endpoint: "http://127.0.0.1:1",
+      region: "us-east-1",
+      forcePathStyle: true,
+      credentials: { accessKeyId: "none", secretAccessKey: "none" },
+    });
+    await use(client);
+    client.destroy();
+  },
   // oxlint-disable-next-line no-empty-pattern -- vitest's fixture signature: one that names no other fixture still takes the destructured first parameter
   memory: async ({}, use) => {
     const served = await Module.scoped(

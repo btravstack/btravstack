@@ -95,7 +95,12 @@ export const fulfillOrder = TemporalWorkflowActivities(
             // instrumented: the error line and the counter still happen,
             // one layer down, without this activity carrying a logger.
             .recoverErrCases((matcher) =>
-              matcher.with(P.tag("StorageUnavailable"), () => undefined),
+              matcher.with(
+                P.tag("StorageUnavailable"),
+                P.tag("InvalidStorageOptions"),
+                P.tag("ChecksumMismatch"),
+                () => undefined,
+              ),
             ),
         )
         .mapErrCases((matcher) =>

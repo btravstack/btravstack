@@ -155,6 +155,7 @@ describe("memoryStorageBackend", () => {
 
     // THEN the size, the type and the hex digest of the bytes come back
     await expect(head).toBeOkWith({
+      metadata: {},
       size: 11,
       contentType: "application/json",
       sha256: "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",

@@ -12,7 +12,9 @@ import type { Scope } from "@btravstack/di";
 import { Module, Port, Provider } from "@btravstack/di";
 import { Ok, fromPromise } from "unthrown";
 
+import { validateOptions } from "./options.js";
 import {
+  ChecksumMismatch,
   ObjectExists,
   ObjectNotFound,
   StorageBackend,
@@ -20,7 +22,6 @@ import {
   type ObjectHead,
   type StorageService,
   type StoredObject,
-  type WriteOptions,
 } from "./storage.js";
 
 /** What the graph bound from the environment for the S3 adapter. */
@@ -75,12 +76,15 @@ const isPreconditionFailed = (cause: unknown): boolean =>
   (cause as { $metadata?: { httpStatusCode?: number } } | null | undefined)?.$metadata
     ?.httpStatusCode === 412;
 
+const isChecksumMismatch = (cause: unknown): boolean =>
+  cause instanceof Error && (cause.name === "BadDigest" || cause.name === "InvalidDigest");
+
 /** A missing key is S3's `NoSuchKey`, which is a different fact from "the store is down". */
 const isMissing = (cause: unknown): boolean =>
   cause instanceof Error && (cause.name === "NoSuchKey" || cause.name === "NotFound");
 
 /** SSE-KMS parameters when a key is named; none otherwise, so the bucket's default applies. */
-const encryption = (options: WriteOptions) =>
+const encryption = (options: { readonly kmsKeyId?: string }) =>
   options.kmsKeyId === undefined
     ? {}
     : { ServerSideEncryption: "aws:kms" as const, SSEKMSKeyId: options.kmsKeyId };
@@ -95,21 +99,29 @@ const base64ToHex = (base64: string): string => Buffer.from(base64, "base64").to
  * fiction layered over it.
  */
 export const s3StorageBackend = (client: S3Client, bucket: string): StorageService => ({
-  put: (key, bytes, options) =>
-    fromPromise(
+  put: (key, bytes, options) => {
+    const validated = validateOptions(key, options);
+    if (!validated.isOk()) return validated.toAsync();
+    return fromPromise(
       client.send(
         new PutObjectCommand({
           Bucket: bucket,
           Key: key,
           Body: bytes,
           ContentType: options.contentType,
+          Metadata: { ...options.metadata },
+          ...(options.sha256 === undefined ? {} : { ChecksumSHA256: hexToBase64(options.sha256) }),
           ...encryption(options),
         }),
       ),
-      (cause) => unavailable("put", key, cause),
-    ).map(() => undefined),
-  putIfAbsent: (key, bytes, options) =>
-    fromPromise(
+      (cause) =>
+        isChecksumMismatch(cause) ? new ChecksumMismatch({ key }) : unavailable("put", key, cause),
+    ).map(() => undefined);
+  },
+  putIfAbsent: (key, bytes, options) => {
+    const validated = validateOptions(key, options);
+    if (!validated.isOk()) return validated.toAsync();
+    return fromPromise(
       client.send(
         new PutObjectCommand({
           Bucket: bucket,
@@ -117,14 +129,19 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
           Body: bytes,
           ContentType: options.contentType,
           IfNoneMatch: "*",
+          Metadata: { ...options.metadata },
+          ...(options.sha256 === undefined ? {} : { ChecksumSHA256: hexToBase64(options.sha256) }),
           ...encryption(options),
         }),
       ),
-      (cause): ObjectExists | StorageUnavailable =>
-        isPreconditionFailed(cause)
-          ? new ObjectExists({ key })
-          : unavailable("putIfAbsent", key, cause),
-    ).map(() => undefined),
+      (cause): ObjectExists | ChecksumMismatch | StorageUnavailable =>
+        isChecksumMismatch(cause)
+          ? new ChecksumMismatch({ key })
+          : isPreconditionFailed(cause)
+            ? new ObjectExists({ key })
+            : unavailable("putIfAbsent", key, cause),
+    ).map(() => undefined);
+  },
   get: (key) =>
     fromPromise(
       client
@@ -140,8 +157,10 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
       (cause): ObjectNotFound | StorageUnavailable =>
         isMissing(cause) ? new ObjectNotFound({ key }) : unavailable("get", key, cause),
     ),
-  copy: (from, to, options) =>
-    fromPromise(
+  copy: (from, to, options) => {
+    const validated = validateOptions(to, options);
+    if (!validated.isOk()) return validated.toAsync();
+    return fromPromise(
       // Async so that a key `encodeURIComponent` refuses (an unpaired
       // surrogate) is a rejection mapped below, not a synchronous throw.
       (async () =>
@@ -156,22 +175,28 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
             // Annotations are copied by default and need extra permissions; the package has none.
             AnnotationDirective: "EXCLUDE",
             ContentType: options.contentType,
+            Metadata: { ...options.metadata },
+            ...(options.checksum === undefined ? {} : { ChecksumAlgorithm: "SHA256" as const }),
             ...encryption(options),
           }),
         ))(),
       (cause): ObjectNotFound | StorageUnavailable =>
         isMissing(cause) ? new ObjectNotFound({ key: from }) : unavailable("copy", from, cause),
-    ).map(() => undefined),
+    ).map(() => undefined);
+  },
   head: (key) =>
     fromPromise(
       client
         .send(new HeadObjectCommand({ Bucket: bucket, Key: key, ChecksumMode: "ENABLED" }))
         .then((response): ObjectHead => ({
+          metadata: { ...response.Metadata },
           size: response.ContentLength ?? 0,
           contentType: response.ContentType ?? "application/octet-stream",
           // A multipart object's COMPOSITE checksum is a digest of part
           // digests, not of the bytes: it is not a sha256 of the object.
-          ...(response.ChecksumSHA256 === undefined || response.ChecksumType === "COMPOSITE"
+          ...(response.ChecksumSHA256 === undefined ||
+          response.ChecksumType === "COMPOSITE" ||
+          !/^[A-Za-z0-9+/]{43}=$/.test(response.ChecksumSHA256)
             ? {}
             : { sha256: base64ToHex(response.ChecksumSHA256) }),
         })),
@@ -191,33 +216,35 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
       }),
       (cause) => unavailable("presignedUrl", key, cause),
     ),
-  presignedUpload: (key, options) =>
-    fromPromise(
-      getSignedUrl(
-        client,
-        new PutObjectCommand({
-          Bucket: bucket,
-          Key: key,
-          ContentType: options.contentType,
-          ContentLength: options.contentLength,
-          ...(options.sha256 === undefined ? {} : { ChecksumSHA256: hexToBase64(options.sha256) }),
-        }),
-        // The presigner leaves `content-type` unsigned by default even when it
-        // is set on the command; without naming it here a client could PUT any
-        // type at a URL minted for one.
-        {
-          expiresIn: Math.ceil(options.ttlMs / 1_000),
-          signableHeaders: new Set(["content-type"]),
-          // Hoisted into the query string the checksum would be unsigned and
-          // swappable by the client; kept as a header it is signed, the client
-          // must send it, and the store verifies the body against it.
-          ...(options.sha256 === undefined
-            ? {}
-            : { unhoistableHeaders: new Set(["x-amz-checksum-sha256"]) }),
-        },
-      ),
-      (cause) => unavailable("presignedUpload", key, cause),
-    ),
+  presignedUpload: (key, options) => {
+    const command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      ContentType: options.contentType,
+      ContentLength: options.contentLength,
+      ...encryption(options),
+      ...(options.sha256 === undefined ? {} : { ChecksumSHA256: hexToBase64(options.sha256) }),
+    });
+    const expiresIn = Math.ceil(options.ttlMs / 1_000);
+    return validateOptions(key, options)
+      .toAsync()
+      .flatMap(() =>
+        fromPromise(
+          getSignedUrl(client, command, {
+            expiresIn,
+            // The presigner leaves content-type unsigned unless explicitly named.
+            signableHeaders: new Set(["content-type"]),
+            // These headers must stay signed headers; hoisting would permit replacement.
+            unhoistableHeaders: new Set([
+              "x-amz-checksum-sha256",
+              "x-amz-server-side-encryption",
+              "x-amz-server-side-encryption-aws-kms-key-id",
+            ]),
+          }),
+          (cause) => unavailable("presignedUpload", key, cause),
+        ),
+      );
+  },
 });
 
 /**

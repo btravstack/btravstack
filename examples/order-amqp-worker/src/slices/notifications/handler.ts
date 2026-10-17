@@ -5,7 +5,13 @@ import type { ServiceOf } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { Tenant } from "@btravstack/example-order-application";
 import { Mailer } from "@btravstack/mailer";
-import { Storage, type PresignNotSupported, type StorageUnavailable } from "@btravstack/storage";
+import {
+  Storage,
+  type InvalidStorageOptions,
+  type ChecksumMismatch,
+  type PresignNotSupported,
+  type StorageUnavailable,
+} from "@btravstack/storage";
 import { ErrAsync, OkAsync, P, TaggedError, type AsyncResult } from "unthrown";
 
 import { INVOICE_RETENTION_DAYS, invoiceKey } from "../../invoice-retention.js";
@@ -39,7 +45,11 @@ const invoiceLink = (
   lastAttempt: boolean,
 ): AsyncResult<
   string | undefined,
-  StorageUnavailable | PresignNotSupported | InvoiceNotYetStored
+  | StorageUnavailable
+  | InvalidStorageOptions
+  | ChecksumMismatch
+  | PresignNotSupported
+  | InvoiceNotYetStored
 > => {
   const key = invoiceKey(tenantId, id, placementId);
   const issued =
@@ -169,6 +179,8 @@ export const orderNotifications = AmqpHandler(
             )
             .with(
               P.tag("PresignNotSupported"),
+              P.tag("InvalidStorageOptions"),
+              P.tag("ChecksumMismatch"),
               () => new NonRetryableError(`the invoice store cannot link order ${id}'s invoice`),
             ),
         )
