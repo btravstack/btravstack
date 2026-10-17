@@ -67,7 +67,7 @@ export const invoices = InvoiceProvider(Invoices)({
         // is swallowed because an observer already recorded it and
         // counted it one layer down.
         .recoverErrCases((matcher) =>
-          matcher.with(P.tag("StorageUnavailable"), () => undefined),
+          matcher.with(P.tag("StorageUnavailable"), P.tag("InvalidStorageOptions"), P.tag("ChecksumMismatch"), () => undefined),
         ),
     // Serving bytes through your own process is the anti-pattern this arm
     // exists to avoid: the caller fetches the object directly, for a minute.
@@ -106,13 +106,16 @@ export const InvoicesApp = Module("InvoicesApp")({
 
 ## Options
 
-| Option                                                      | Where                              | What it is                                               |
-| ----------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------- |
-| `adapter`                                                   | `storage({ adapter })`             | the adapter module providing `StorageBackend` — required |
-| `STORAGE_S3_ENDPOINT`                                       | environment, read by `s3Storage()` | the store's endpoint — required                          |
-| `STORAGE_S3_BUCKET`                                         | environment                        | the bucket — required                                    |
-| `STORAGE_S3_ACCESS_KEY_ID` / `STORAGE_S3_SECRET_ACCESS_KEY` | environment                        | the credentials — required                               |
-| `STORAGE_S3_REGION`                                         | environment                        | default `us-east-1`                                      |
+| Option                                                      | Where                              | What it is                                                                    |
+| ----------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------- |
+| `sha256` / `metadata`                                       | `put` / `putIfAbsent`              | verify the write digest and atomically describe the object                    |
+| `checksum` / `metadata`                                     | `copy`                             | compute SHA-256 server side and replace the description                       |
+| `kmsKeyId`                                                  | writes, copy and `presignedUpload` | select per-object SSE-KMS; upload clients send both signed encryption headers |
+| `adapter`                                                   | `storage({ adapter })`             | the adapter module providing `StorageBackend` — required                      |
+| `STORAGE_S3_ENDPOINT`                                       | environment, read by `s3Storage()` | the store's endpoint — required                                               |
+| `STORAGE_S3_BUCKET`                                         | environment                        | the bucket — required                                                         |
+| `STORAGE_S3_ACCESS_KEY_ID` / `STORAGE_S3_SECRET_ACCESS_KEY` | environment                        | the credentials — required                                                    |
+| `STORAGE_S3_REGION`                                         | environment                        | default `us-east-1`                                                           |
 
 The full table — defaults, semantics and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/storage),
@@ -121,7 +124,7 @@ which is this list's one detailed home.
 ## What it decides, and what it does not
 
 **It decides** that a missing object is an ordinary answer rather than a fault
-(counted `not_found`, logged at `info`), that a held key under `putIfAbsent` is an ordinary answer (`ObjectExists`, counted `exists`), that `delete` is idempotent, that `copy` and `head` never move the bytes through the process, that
+(counted `not_found`, without a fault line), that a held key under `putIfAbsent` is an ordinary answer (`ObjectExists`, counted `exists`), that `delete` is idempotent, that `copy` and `head` never move the bytes through the process, that writes can verify SHA-256 and publish user metadata atomically, that copies replace metadata and can compute SHA-256 server side, that presigned uploads can require a per-object KMS key, that
 presigning asks the store nothing — and that an adapter which cannot presign
 says so instead of minting a URL that would fail only in production.
 

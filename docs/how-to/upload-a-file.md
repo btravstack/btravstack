@@ -6,7 +6,7 @@ description: Hand the client a presigned URL to write straight to the store, the
 <!-- doctest: group=order-temporal-worker -->
 <!-- doctest: prelude
 import { Port, Provider } from "@btravstack/di";
-import { Storage, StorageUnavailable, storage } from "@btravstack/storage";
+import { Storage, StorageUnavailable, InvalidStorageOptions, storage } from "@btravstack/storage";
 import { s3Storage } from "@btravstack/storage/s3";
 import { Module, type AnyPort } from "@btravstack/di";
 import { OkAsync, P, TaggedError, type AsyncResult } from "unthrown";
@@ -67,6 +67,24 @@ length. With one (lowercase hex, 64 characters), `x-amz-checksum-sha256` is
 signed too: the client must send its base64 form, the store refuses a body that
 does not hash to it, and `head` later answers the stored digest.
 
+For a tenant's encryption key, pass `kmsKeyId` to `presignedUpload`. The client
+must also send these exact signed headers on its PUT:
+
+```sh
+curl -X PUT --upload-file avatar.png \
+  -H 'content-type: image/png' \
+  -H 'x-amz-server-side-encryption: aws:kms' \
+  -H "x-amz-server-side-encryption-aws-kms-key-id: $KMS_KEY_ID" \
+  "$URL"
+```
+
+Omitting or changing either encryption header breaks the signature. When both
+`kmsKeyId` and `sha256` were supplied, the client sends all three `x-amz-*`
+headers. Retrieving an encrypted object's checksum with `head` also requires
+`kms:GenerateDataKey` and `kms:Decrypt` on that key alongside `s3:GetObject`.
+The [storage reference](/reference/storage) covers write verification,
+server-side checksum copies, atomic metadata and the KMS test boundary.
+
 It is **time-limited, not single-use**: until `ttlMs` runs out, the same URL
 can `PUT` that key again and replace the object with different bytes of the
 same size and type (with a `sha256`, bytes hashing to the signed digest).
@@ -78,7 +96,7 @@ class Attachments extends Port("Attachments")<{
     tenantId: TenantId,
     name: string,
     file: { readonly contentType: string; readonly sizeBytes: number },
-  ) => AsyncResult<string, TooLarge | UnsupportedType | StorageUnavailable>;
+  ) => AsyncResult<string, TooLarge | UnsupportedType | InvalidStorageOptions | StorageUnavailable>;
   readonly download: (
     tenantId: TenantId,
     name: string,
@@ -128,7 +146,8 @@ const attachments = Provider(Attachments)({
                       reason: "this store cannot mint a url",
                     }),
                 )
-                .with(P.tag("StorageUnavailable"), (failure) => failure),
+                .with(P.tag("StorageUnavailable"), (failure) => failure)
+                .with(P.tag("InvalidStorageOptions"), (failure) => failure),
             ),
         ),
     // The same move in reverse: a time-limited read the client follows

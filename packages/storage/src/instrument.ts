@@ -7,6 +7,8 @@ import {
 import type { AsyncResult, FailureView } from "unthrown";
 
 import type {
+  ChecksumMismatch,
+  InvalidStorageOptions,
   ObjectExists,
   ObjectNotFound,
   PresignNotSupported,
@@ -23,14 +25,20 @@ type Operation =
   | "delete"
   | "presigned_url"
   | "presigned_upload";
-type Failure = ObjectExists | ObjectNotFound | PresignNotSupported | StorageUnavailable;
+type Failure =
+  | InvalidStorageOptions
+  | ChecksumMismatch
+  | ObjectExists
+  | ObjectNotFound
+  | PresignNotSupported
+  | StorageUnavailable;
 
 /**
  * **A missing object settles `ok` with `result: "not_found"`, not `error`.**
  * Asking for something that is not there is an ordinary answer, and a dashboard
  * that treats it as a fault teaches its readers to ignore the fault line.
- * `StorageUnavailable` is what pages somebody, and it is the only one that
- * settles as an error. The two ordinary answers keep their own words in
+ * `StorageUnavailable` is what pages somebody; invalid options and checksum
+ * mismatches also settle as errors. The two ordinary answers keep their own words in
  * `reason`, so an operator is not left hunting an object sitting where they put
  * it.
  */
@@ -74,11 +82,19 @@ export const instrument = (
 ): StorageService => {
   const observe = through(observers);
   return {
-    put: (key, bytes, options) => observe("put", key, () => backend.put(key, bytes, options)),
-    putIfAbsent: (key, bytes, options) =>
-      observe("put_if_absent", key, () => backend.putIfAbsent(key, bytes, options)),
+    put: (key, bytes, options) => {
+      const snapshot = { ...options, metadata: { ...options.metadata } };
+      return observe("put", key, () => backend.put(key, bytes, snapshot));
+    },
+    putIfAbsent: (key, bytes, options) => {
+      const snapshot = { ...options, metadata: { ...options.metadata } };
+      return observe("put_if_absent", key, () => backend.putIfAbsent(key, bytes, snapshot));
+    },
     get: (key) => observe("get", key, () => backend.get(key)),
-    copy: (from, to, options) => observe("copy", from, () => backend.copy(from, to, options)),
+    copy: (from, to, options) => {
+      const snapshot = { ...options, metadata: { ...options.metadata } };
+      return observe("copy", from, () => backend.copy(from, to, snapshot));
+    },
     head: (key) => observe("head", key, () => backend.head(key)),
     delete: (key) => observe("delete", key, () => backend.delete(key)),
     presignedUrl: (key, options) =>

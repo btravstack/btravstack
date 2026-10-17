@@ -143,7 +143,7 @@ const stalledAmqp = () => {
           putIfAbsent: () => OkAsync(),
           get: () => OkAsync({ bytes: new Uint8Array(), contentType: "text/plain" }),
           copy: () => OkAsync(),
-          head: () => OkAsync({ size: 0, contentType: "text/plain" }),
+          head: () => OkAsync({ size: 0, contentType: "text/plain", metadata: {} }),
           delete: () => OkAsync(),
           presignedUrl: () => OkAsync("http://invoices.test/stalled"),
           presignedUpload: () => OkAsync("http://invoices.test/stalled"),
