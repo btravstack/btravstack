@@ -1,5 +1,17 @@
 # @btravstack/graphql-server
 
+## 0.39.0
+
+### Patch Changes
+
+- dfe5898: Challenge verified Bearer credentials missing a route scope with `insufficient_scope`, one sufficient scope alternative and matching protected-resource metadata. Preserve application challenges and keep business, cookie and API-key refusals separate. Custom Bearer authenticators opt in with `bearer: true`.
+- Updated dependencies [dfe5898]
+  - @btravstack/http-server@0.39.0
+  - @btravstack/config@0.39.0
+  - @btravstack/contract@0.39.0
+  - @btravstack/core@0.39.0
+  - @btravstack/di@0.39.0
+
 ## 0.38.0
 
 ### Patch Changes

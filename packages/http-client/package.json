@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/http-client",
-  "version": "0.38.0",
+  "version": "0.39.0",
   "description": "Policy-bound outbound HTTPS with exact application-approved origins, connection-time destination checks and bounded responses",
   "keywords": [
     "dependency-injection",
