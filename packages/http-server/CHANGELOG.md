@@ -1,5 +1,18 @@
 # @btravstack/http-server
 
+## 0.38.0
+
+### Minor Changes
+
+- f1eb578: Add `protectedResource()`, which makes an API an OAuth 2.0 protected resource a client without a token can discover (RFC 9728): it serves the metadata document under `/.well-known/oauth-protected-resource<path>` from `HTTP_RESOURCE_URI` and `HTTP_RESOURCE_AUTHORIZATION_SERVERS`, and a `401` for the resource's own URL carries `WWW-Authenticate: Bearer resource_metadata="…"` through the new `HttpChallenges` set port. A cleartext resource or authorization server is refused at boot unless `allowInsecure` is pinned.
+
+### Patch Changes
+
+- @btravstack/config@0.38.0
+  - @btravstack/contract@0.38.0
+  - @btravstack/core@0.38.0
+  - @btravstack/di@0.38.0
+
 ## 0.37.0
 
 ### Patch Changes
