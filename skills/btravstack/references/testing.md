@@ -1,11 +1,16 @@
 # Testing an application
 
 A spec boots the real composition root, on an ephemeral port, with an
-environment it chooses, and stops it when the test ends. Install
-`@btravstack/testing`, `vitest`, `@unthrown/vitest` and `@orpc/client` (the
-client the specs call through), and register the
-matchers once, at runtime in the vitest config and for the compiler in a
-`src/vitest.d.ts`:
+environment it chooses, and stops it when the test ends. Install the test
+dependencies and the client the specs call through:
+
+```sh
+pnpm add -D @btravstack/testing vitest @unthrown/vitest @orpc/client@2.0.0-beta.34
+```
+
+Keep all `@orpc/*` packages on that same beta; an unversioned install resolves
+the older 1.x line. Register the matchers once, at runtime in the vitest config
+and for the compiler in a `src/vitest.d.ts`:
 
 **`vitest.config.ts`**
 

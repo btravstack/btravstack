@@ -42,7 +42,9 @@ installed, the installed types win.
 
 | The work is…                                              | Use                                                                           |
 | --------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| answering a caller (RPC, REST, HTML fragments, GraphQL)   | `@btravstack/orpc-server`, `htmx-server`, `graphql-server` over HTTP          |
+| answering an RPC or REST caller                           | `@btravstack/orpc-server` over HTTP                                           |
+| serving HTML fragments                                    | `@btravstack/htmx-server` over HTTP                                           |
+| answering GraphQL operations                              | `@btravstack/graphql-server` over HTTP                                        |
 | tools for a language-model client (MCP)                   | `@btravstack/mcp-server` over HTTP, stateless; never stdio                    |
 | server-to-client push                                     | an oRPC procedure returning an `eventIterator` (SSE), never a WebSocket       |
 | a job, a retry, a delay, a schedule, a multi-step process | `@btravstack/temporal-worker` (Temporal Schedules are the cron)               |
@@ -61,10 +63,11 @@ ingress limits). Do not build one inside the application.
 ## Add a capability
 
 1. **Declare it in the contract package** — an oRPC procedure, an AMQP
-   consumer, or a Temporal workflow and its activities. For oRPC and Temporal,
-   name every refusal a caller must handle in `.errors({...})`. An AMQP
-   contract declares a committed fact; the producing use case's `Err` never
-   crosses the broker.
+   consumer, or a Temporal workflow and its activities. For oRPC, name caller
+   refusals in `.errors({...})`. For Temporal, put `errors: { ... }` in the
+   options passed to `defineWorkflow` or `defineActivity`. An AMQP contract
+   declares a committed fact; the producing use case's `Err` never crosses
+   the broker.
 2. **Write the use case as a port** whose methods return `AsyncResult` with a
    union of concrete `TaggedError`s, and a provider that builds it.
 3. **Mint the transport piece from the contract key** —
@@ -180,4 +183,4 @@ substitute providers with `overridden`, and drive time with
 
 1. `tsc --noEmit` passes, with no marker left in its output.
 2. The specs pass, including one that boots the root you changed.
-3. Every `.errors({...})` entry you added is reached by a `mapErrCases` arm.
+3. Every modeled refusal you added is reached by a `mapErrCases` arm.

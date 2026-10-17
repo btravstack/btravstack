@@ -193,7 +193,8 @@ the old repository.
 - **`scripts/check-install-pins.ts` refuses an install snippet that names a
   package whose `latest` dist-tag is an older major.** An unversioned `pnpm add`
   of such a package resolves the wrong one, and a new user's first run dies in
-  type errors.
+  type errors. It reads `skills/` too, so the agent skill's testing prerequisites
+  stay on the catalog's oRPC beta.
 
   **It checks the MAJOR, not merely that a version is present.**
   `@orpc/server@^1.0.0` carries an `@` and is the exact bug the guard exists to
