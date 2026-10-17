@@ -76,8 +76,12 @@ const requestIsFor = (request: IncomingMessage): ((target: string) => boolean) =
   const absolute = URL.parse(url);
   const host = absolute?.host ?? request.headers.host ?? "";
   const path = requestPath(url);
-  // A target carrying credentials names another URL than any resource here.
-  if (absolute !== null && (absolute.username !== "" || absolute.password !== ""))
+  // A target carrying credentials or a fragment names another URL than any
+  // resource here, neither of which the comparison below would see.
+  if (
+    absolute !== null &&
+    (absolute.username !== "" || absolute.password !== "" || url.includes("#"))
+  )
     return () => false;
   return (target) =>
     target ===
@@ -227,8 +231,9 @@ const checked = (
       : [{ message: "must not carry credentials", path: [RESOURCE] }]),
     // RFC 3986 tells an empty query from none, and clients disagree on sending
     // it, so such an identifier could not be matched or discovered reliably.
-    // Read off the serialization: `mcp? ` is `mcp?` once parsed.
-    ...(url.href.endsWith("?")
+    // Read off the parse: `mcp? ` is `mcp?` once parsed, and `mcp?tenant=?`
+    // has a query that merely ends in `?`. Empty is a delimiter and nothing.
+    ...(url.search === "" && url.href.includes("?")
       ? [{ message: "must not end in an empty query", path: [RESOURCE] }]
       : []),
     ...(cleartext(resource, allowInsecure) === "refused" ? refused(RESOURCE) : []),

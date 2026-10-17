@@ -243,6 +243,20 @@ describe("protectedResource", () => {
     expect(answered.challenge).toBeNull();
   });
 
+  it.for(["https://api.test/mcp#section", "https://api.test/mcp#"])(
+    "does not challenge the absolute-form target %s, which carries a fragment",
+    async (target, { protectedResource }) => {
+      // GIVEN the resource at https://api.test/mcp
+      const get = await protectedResource(MCP);
+
+      // WHEN a forward proxy names the same URL with a fragment
+      const answered = await get(target);
+
+      // THEN that is another URL, so another resource
+      expect(answered.challenge).toBeNull();
+    },
+  );
+
   it("does not challenge a refusal for the same path without its slash", async ({
     protectedResource,
   }) => {
@@ -351,6 +365,22 @@ describe("protectedResource", () => {
       }),
     );
   });
+
+  it.for(["https://api.test/mcp?tenant=?", "https://api.test/mcp??"])(
+    "takes the identifier %s, whose query merely ends in ?",
+    async (resource, { protectedResource }) => {
+      // GIVEN an identifier whose nonempty query ends in a literal `?`
+      const get = await protectedResource({ ...MCP, resource });
+
+      // WHEN its metadata is fetched under that query
+      const answered = await get(
+        `/.well-known/oauth-protected-resource/mcp${resource.slice(resource.indexOf("?"))}`,
+      );
+
+      // THEN it booted and serves it (RFC 3986 §3.4 allows a `?` in a query)
+      expect(answered.status).toBe(200);
+    },
+  );
 
   it("reads a request's bare ? as no query", async ({ protectedResource }) => {
     // GIVEN the resource at https://api.test/mcp
