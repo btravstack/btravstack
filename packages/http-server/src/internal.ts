@@ -12,6 +12,7 @@ export {
 export type { Authenticator, Grant } from "./auth.js";
 export type { RequiresGate, SchemePortsOf, SchemesIn } from "./auth-gates.js";
 export { CookieSchemes, csrfOn } from "./cookie.js";
+export { HttpChallenges } from "./protected-resource.js";
 export { defineAuth } from "./define-auth.js";
 export type {
   Authenticators,
@@ -40,3 +41,4 @@ export type { KindOf, Kinds, UnitFor, UnitsOf } from "./unit.js";
 export type { HttpServerEnv } from "./http-runtime.js";
 
 export { applicationExports, type ApplicationExports } from "./application-exports.js";
+export { AnswererModule } from "./answerer-module.js";

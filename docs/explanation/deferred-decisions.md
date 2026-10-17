@@ -243,6 +243,23 @@ trigger, the answer is no.
   would reopen it is a client-to-server stream a request cannot carry. The
   position is the root `AGENTS.md`'s, thesis #1.
 
+- ~~An MCP answerer is deferred, and would be a subpath over `orpc-mcp`.~~
+  **Closed by shipping, as a package over the official SDK** (#587). The
+  trigger fired: a downstream deployment had to expose its use cases to
+  agents. Model Context Protocol over Streamable HTTP is an answerer — one
+  `HttpHandler` member, stateless, so it passes the N-pods test — and stdio
+  stays declined, since a subprocess an agent launches is not a deployment.
+  The protocol is still not ours to write; what changed is whose it is.
+  `@modelcontextprotocol/sdk` is the specification's own, maintained with it,
+  where `orpc-mcp` is young and single-author, and resting on it means tools
+  are the SDK's `registerTool` rather than procedures marked in a contract a
+  client deployment shares. So it is `@btravstack/mcp-server`, not an
+  `orpc-server` subpath, with no oRPC peer, owning only the wiring the deferral
+  named: the unit per request, `resolveScheme` over the shared schemes, the
+  protected-resource challenge (`protectedResource()` in
+  `@btravstack/http-server`), `Observers` for a tool's defect, and the body
+  limit. The `order-api` example the trigger expected is not part of it yet.
+
 - **Rate limiting is declined; it belongs to the ingress** (issue #502). A
   per-process counter is the wrong unit: an `api` deployment is N pods, so a
   per-process budget is N independent budgets and none of them is the limit

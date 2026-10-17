@@ -12,8 +12,10 @@ description: Fetch an OAuth 2.0 client credentials token for another service wit
 > `Result`.
 
 This is the service's **own** identity. A call made for the user who triggered
-the work — a token exchange whose `act` claim names the caller — is
-[deferred](/explanation/deferred-decisions).
+the work is the same source asked with `onBehalfOf` — an RFC 8693 token
+exchange that keeps the user as the subject. Whether the issued token also
+names this service in an `act` claim is the issuer's policy, not something
+the exchange guarantees; see [the reference](/reference/oauth-client).
 
 ## Register the client
 

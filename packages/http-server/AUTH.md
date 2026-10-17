@@ -542,6 +542,47 @@ The two rules this half exists to state, before the detail:
   cookie-bearing state change. Every redirect it writes is a `303`, `htmx()`'s
   own ruling.
 
+- **`protectedResource({ resource?, authorizationServers?, scopes?, allowInsecure? })`**
+  (`protected-resource.ts`, on the main entry point — no peer) — discovery for a
+  client that holds no token, as RFC 9728 states it: the metadata document under
+  `/.well-known/oauth-protected-resource<path>`, and a
+  `WWW-Authenticate: Bearer resource_metadata="…"` challenge. Like `oidc()`, it
+  verifies nothing and mints nothing; it says where a credential comes from.
+
+  **The challenge rides a `401` for the resource's own URL, and nothing
+  else.** RFC 9728 §3.3 has a client discard metadata whose `resource` is not
+  identical to the URL it called, so any other URL — another scheme where the request line names one, another host, a path below the resource, the same path without its trailing slash or under
+  another query — is another resource, and a
+  challenge there points the client at a document it must refuse. Matching
+  the path and everything below it was tried second and was wrong for that
+  reason; an MCP client calls exactly the resource's URL, so nothing needs
+  more. And §5.2 reads a
+  challenge on any answer as "the metadata changed, fetch it again", so one on
+  every `200` costs a conforming client a refetch per call. Setting the header
+  up front, beside `securityHeaders`, was tried first and was wrong on both
+  counts.
+
+  **So the runtime wraps `writeHead` on a matching request's response**, before
+  dispatch: the status is decided by whichever answerer refuses — oRPC's error
+  serializer, `htmx()`, Yoga — none of which this package can reach after the
+  fact, and Node's implicit header (`statusCode = 401; end()`) goes through
+  `writeHead` as well. A header the answerer set itself is left alone.
+
+  **It reaches the runtime through `HttpChallenges`, `CookieSchemes`' shape**: a
+  set port the starter keeps non-empty with an empty member and reads at
+  composition, because the runtime never sees the providers a root puts beside
+  it, and di's `Context` has no `has`. Each member carries the request it
+  answers — its host, its path and its query, a request's bare `?` read as no
+  query because clients disagree on sending it, and an identifier ending in
+  one refused at boot for the same reason —
+  beside its value; an empty challenge is dropped, so a root composing none
+  sends no header and wraps nothing.
+
+  **Both URLs are checked by the `cleartext` rule at boot**, under one
+  `allowInsecure` option: a client sends its token to the resource and its
+  credentials to the authorization server, so either in cleartext off a loopback
+  host is a `ConfigInvalid` naming its variable.
+
 - **Password hashing and credential ISSUING are out of scope, deliberately.**
   All three authenticators above are on the **verifying** side, and that is
   the line: the credential is minted by whoever owns the identity — an OIDC

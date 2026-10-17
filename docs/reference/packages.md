@@ -1,11 +1,11 @@
 ---
 title: Packages and install
-description: The twenty-two published packages grouped by the job each does, who peers on what, and one install command per kind of deployment.
+description: The twenty-three published packages grouped by the job each does, who peers on what, and one install command per kind of deployment.
 ---
 
 # Packages and install
 
-> **Reference.** The twenty-two published packages, grouped by the job each does,
+> **Reference.** The twenty-three published packages, grouped by the job each does,
 > their peer-dependency matrix and the install command for each kind of
 > deployment. For _why_ everything is a peer
 > dependency, see [Peer dependencies](/explanation/peer-dependencies); for what
@@ -16,15 +16,15 @@ description: The twenty-two published packages grouped by the job each does, who
 The names carry the grouping, so a package's job is legible before you open
 its page:
 
-| Group                                          | Packages                                                 | When you install one                                                                             |
-| ---------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| **Domain modelling**                           | `entity`                                                 | When the application benefits from validated domain entities and aggregate decisions.            |
-| **The kernel and its plumbing**                | `core`, `di`, `config`, `contract`                       | Always — `core` boots the process, and the other three are what it boots.                        |
-| **Runtime servers**                            | `http-server`, `temporal-worker`, `amqp-worker`          | One, and exactly one: a process boots a single runtime.                                          |
-| **Capability ports**, a contract plus adapters | `observability`, `cache`, `mailer`, `storage`, `outbox`  | When the application needs that capability. Each is independent of the others.                   |
-| **HTTP answerers**                             | `orpc-server`, `htmx-server`, `graphql-server`, `pothos` | Add the protocols this deployment serves; `pothos` builds a GraphQL schema over oRPC procedures. |
-| **Outbound clients**                           | `temporal-client`, `amqp-client`, `oauth-client`         | Bind a typed remote client to the application scope without its worker, or a token to call as.   |
-| **The harness**                                | `testing`                                                | As a dev dependency, always.                                                                     |
+| Group                                          | Packages                                                               | When you install one                                                                             |
+| ---------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| **Domain modelling**                           | `entity`                                                               | When the application benefits from validated domain entities and aggregate decisions.            |
+| **The kernel and its plumbing**                | `core`, `di`, `config`, `contract`                                     | Always — `core` boots the process, and the other three are what it boots.                        |
+| **Runtime servers**                            | `http-server`, `temporal-worker`, `amqp-worker`                        | One, and exactly one: a process boots a single runtime.                                          |
+| **Capability ports**, a contract plus adapters | `observability`, `cache`, `mailer`, `storage`, `outbox`                | When the application needs that capability. Each is independent of the others.                   |
+| **HTTP answerers**                             | `orpc-server`, `htmx-server`, `graphql-server`, `mcp-server`, `pothos` | Add the protocols this deployment serves; `pothos` builds a GraphQL schema over oRPC procedures. |
+| **Outbound clients**                           | `temporal-client`, `amqp-client`, `oauth-client`                       | Bind a typed remote client to the application scope without its worker, or a token to call as.   |
+| **The harness**                                | `testing`                                                              | As a dev dependency, always.                                                                     |
 
 **The shortest real application is `core` + `di` + `config` + one server.**
 Everything else arrives when something needs it.
@@ -54,6 +54,7 @@ packages, so an outbound caller does not install a worker.
 | `@btravstack/orpc-server`     | The oRPC answerer, `defineHttp`, `HttpModule`, and OpenAPI routes.                                                                                                                                                                         | [Serve oRPC](/how-to/serve-orpc-over-http)                                                                                                                                                       |
 | `@btravstack/htmx-server`     | Escaped HTML fragments under the HTTP runtime.                                                                                                                                                                                             | [Serve fragments](/how-to/serve-htmx-fragments)                                                                                                                                                  |
 | `@btravstack/graphql-server`  | Yoga answerer for any `GraphQLSchema`, with explicit GraphQL peers.                                                                                                                                                                        | [Serve GraphQL](/how-to/serve-graphql)                                                                                                                                                           |
+| `@btravstack/mcp-server`      | A Model Context Protocol answerer over the official SDK: Streamable HTTP, stateless, authenticated through the shared schemes, one unit per request, and `toolResult` turning a tool's `Result` into its answer.                           | [Serve MCP](/how-to/serve-mcp)                                                                                                                                                                   |
 | `@btravstack/pothos`          | A Pothos plugin whose fields call oRPC procedures: input validated by the procedure's contract, each declared error a typed member of the field's union, access refusals GraphQL's own error. Depends on no other package here.            | [Resolve GraphQL fields from oRPC](/how-to/resolve-graphql-fields-from-orpc)                                                                                                                     |
 | `@btravstack/temporal-worker` | The Temporal starter: a Worker as the runtime, one unit per activity attempt, a drain that honours the kernel's deadline.                                                                                                                  | [@btravstack/temporal-worker](/reference/temporal-worker)                                                                                                                                        |
 | `@btravstack/amqp-worker`     | The AMQP starter: the handlers as a port, one unit per delivery, ack/nack/dead-letter routed by the contract.                                                                                                                              | [@btravstack/amqp-worker](/reference/amqp-worker)                                                                                                                                                |
@@ -102,6 +103,7 @@ single copy.
 | `@btravstack/orpc-server`     | `@btravstack/http-server`, `@btravstack/htmx-server`, `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `@btravstack/contract`, `unthrown`, `@orpc/server`, `@orpc/contract`, `@orpc/openapi`, `@orpc/json-schema`, `@unthrown/orpc` |
 | `@btravstack/htmx-server`     | `@btravstack/http-server`, `@btravstack/core`, `@btravstack/di`, `@btravstack/contract`, `unthrown`                                                                                                                                            |
 | `@btravstack/graphql-server`  | `@btravstack/http-server`, `@btravstack/di`, `@btravstack/contract`, `unthrown`, `graphql`, `graphql-yoga`                                                                                                                                     |
+| `@btravstack/mcp-server`      | `@btravstack/http-server`, `@btravstack/core`, `@btravstack/di`, `@btravstack/contract`, `unthrown`, `@modelcontextprotocol/sdk` — and `zod`, the SDK's own required peer                                                                      |
 | `@btravstack/pothos`          | `@pothos/core`, `@pothos/plugin-errors`, `@pothos/plugin-relay`, `@unthrown/pothos`, `graphql`, `@orpc/contract`, `@orpc/client`, `zod`, `unthrown`                                                                                            |
 | `@btravstack/temporal-worker` | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`, `@temporal-contract/worker`, `@temporal-contract/contract`                                         |
 | `@btravstack/amqp-worker`     | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@amqp-contract/worker`, `@opentelemetry/api`                                                                                                                          |
@@ -209,8 +211,8 @@ pnpm add @btravstack/di unthrown
 
 :::
 
-Most published packages require Node `>=22`; `http-server`, `prisma` and
-`oauth-client` require `>=22.12`; `graphql-server` requires `>=22.15`, while `amqp-worker`,
+Most published packages require Node `>=22`; `http-server`, `prisma`,
+`oauth-client` and `mcp-server` require `>=22.12`; `graphql-server` requires `>=22.15`, while `amqp-worker`,
 `temporal-worker`, `amqp-client`, and `temporal-client` require `>=22.22`.
 Each floor is checked against that package's required peers. The
 repository's own development floor is `>=22.22`.

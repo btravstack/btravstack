@@ -88,6 +88,8 @@ Deriving a mutation's result union from `E` is declined — see
 `docs/explanation/deferred-decisions.md`.
 
 **`GraphqlModule` owns deployment wiring; `graphql()` remains the answerer.**
+It is `AnswererModule` from `@btravstack/http-server/internal`, which
+`McpModule` is too: nothing in the root is GraphQL's.
 The answerer carries its declared request modules beside its authenticators.
 The module uses that same record for `httpServer`, so the declaration cannot
 part from the runtime's binding. Authentication, plugin contexts and unit-port

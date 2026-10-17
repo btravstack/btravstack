@@ -1,0 +1,7 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/mcp-server",
+  "entryPoints": ["../packages/mcp-server/src/index.ts"],
+  "tsconfig": "../packages/mcp-server/tsconfig.json",
+  "out": "api/mcp-server"
+}
