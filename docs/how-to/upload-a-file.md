@@ -62,12 +62,15 @@ through the `@btravstack/storage/s3` subpath.
 
 `presignedUpload` signs the key, the content type and the content length. A
 request with a different key, declared type or length is refused by the store.
-The signature does not constrain which bytes fill that length.
+Without a `sha256`, the signature does not constrain which bytes fill that
+length. With one (lowercase hex, 64 characters), `x-amz-checksum-sha256` is
+signed too: the client must send its base64 form, the store refuses a body that
+does not hash to it, and `head` later answers the stored digest.
 
 It is **time-limited, not single-use**: until `ttlMs` runs out, the same URL
 can `PUT` that key again and replace the object with different bytes of the
-same size and type. The signature does not bind the bytes or prove that any
-upload happened.
+same size and type (with a `sha256`, bytes hashing to the signed digest).
+The signature does not prove that any upload happened.
 
 ```ts
 class Attachments extends Port("Attachments")<{
@@ -156,6 +159,16 @@ The client then writes the bytes itself:
 ```sh
 curl -X PUT --upload-file avatar.png \
   -H 'content-type: image/png' \
+  "$URL"
+```
+
+When the URL was minted with a `sha256`, the client also sends the digest,
+base64-encoded, as a signed header:
+
+```sh
+curl -X PUT --upload-file avatar.png \
+  -H 'content-type: image/png' \
+  -H "x-amz-checksum-sha256: $(openssl dgst -sha256 -binary avatar.png | base64)" \
   "$URL"
 ```
 

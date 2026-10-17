@@ -55,13 +55,22 @@ and `docs/reference/storage.md` is the reader's page.
   length was always signed. A presigned POST policy WOULD
   express a range, at the cost of a third optional peer and a form-encoded
   return shape; it is not here because nothing has asked for a range.
-- **There is no `stat`/HEAD; accepting an upload belongs to the application.**
+- **`head` reports; accepting an upload still belongs to the application.**
   A signed URL proves neither that a write happened nor which bytes remain at
-  its key. An application that cares about the contents reads a unique staging
+  its key. `head` answers size, type and the stored SHA-256 (hex; S3 reports
+  base64, converted once in the adapter) without reading the object, and a
+  `presignedUpload` with `sha256` signs `x-amz-checksum-sha256` as an
+  unhoisted header — hoisted into the query it was unsigned and a client could
+  swap it (the s3 spec proves the swap is refused). An application that cares about the contents reads a unique staging
   key with `get`, validates those bytes, writes them to a final key that was
   never presigned, and only then records acceptance. A replay can replace the
   staging object until expiry, but cannot replace the accepted final object
   through that URL. `docs/how-to/upload-a-file.md` shows the boundary.
+- **`copy` is S3 `CopyObject` with `MetadataDirective: REPLACE`**, so the
+  content type is the caller's, and a missing source is `ObjectNotFound` naming
+  the source (settled `ok`/`not_found` like `get` and `head`). `kmsKeyId` on
+  writes and copy sends `ServerSideEncryption: aws:kms` + `SSEKMSKeyId`; RustFS
+  has no KMS, so the spec captures the commands at the SDK middleware.
 - **The memory adapter refuses to presign** rather than minting a `file://`
   URL. A fake URL is the worst kind of double: it passes locally and fails in
   the deployment for a reason no test could have shown. The arm exists in the
@@ -78,9 +87,11 @@ port are the TSDoc and comments of `src/storage.ts` and `src/s3.ts`.
   that transits the process is a unit held open for the length of a transfer.
   Presigned writes are what replaced that, and they ship — see the
   `presignedUpload` entry above for what the adapter does and does not decide.
-- **No listing, no copy, and no S3 multipart upload.** Each is a real S3 feature and none
-  has a consumer here; adding them speculatively is what issue #62 says not
-  to do.
+- **No listing and no S3 multipart upload.** Each is a real S3 feature and
+  neither has a consumer here; adding them speculatively is what issue #62 says
+  not to do. `copy` and `head` arrived with a consumer: a document store that
+  moves a verified upload to its final key and encrypts it, with no bytes
+  through the process.
 - **No metadata beyond the content type**, and no tags.
 - **No bucket management.** Creating one is deployment, not runtime — the
   test infrastructure creates the gate's bucket, and a deployment creates its

@@ -1,6 +1,14 @@
+import { createHash } from "node:crypto";
+
+import { S3Client } from "@aws-sdk/client-s3";
 import { describe, expect } from "vitest";
 
 import { aDocument, it } from "./__tests__/test-fixtures.js";
+import { s3StorageBackend } from "./s3.js";
+
+const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+const sha256Base64 = (bytes: Uint8Array): string =>
+  createHash("sha256").update(bytes).digest("base64");
 
 describe("s3Storage", () => {
   it("answers a stored object with its bytes and its type", async ({ s3, keyPrefix }) => {
@@ -190,6 +198,209 @@ describe("s3Storage", () => {
   });
 });
 
+describe("s3Storage, server-side copy, head and checksums", () => {
+  it("copies an object inside the store, keeping the bytes and setting the type", async ({
+    s3,
+    keyPrefix,
+  }) => {
+    // GIVEN a stored JSON document, under a key that needs URL encoding
+    const document = aDocument();
+    const from = `${keyPrefix}from é.json`;
+    await s3.put(from, document.bytes, { contentType: document.contentType });
+
+    // WHEN it is copied under another type
+    const read = s3
+      .copy(from, `${keyPrefix}to.bin`, { contentType: "application/octet-stream" })
+      .flatMap(() => s3.get(`${keyPrefix}to.bin`));
+
+    // THEN the bytes are the source's and the type is the one given
+    await expect(read).toBeOkWith({
+      bytes: document.bytes,
+      contentType: "application/octet-stream",
+    });
+  });
+
+  it("answers ObjectNotFound naming the source when copying a missing key", async ({
+    s3,
+    keyPrefix,
+  }) => {
+    // GIVEN nothing under this prefix
+    // WHEN an absent key is copied
+    const copied = s3.copy(`${keyPrefix}absent.json`, `${keyPrefix}to.json`, {
+      contentType: "application/json",
+    });
+
+    // THEN it is a modeled absence of the source
+    await expect(copied).toBeErrWith(
+      expect.objectContaining({ _tag: "ObjectNotFound", key: `${keyPrefix}absent.json` }),
+    );
+  });
+
+  it("heads an object with its size and type, and no sha256 when none was supplied", async ({
+    s3,
+    keyPrefix,
+  }) => {
+    // GIVEN a document put without a checksum
+    const document = aDocument();
+    await s3.put(`${keyPrefix}h.json`, document.bytes, { contentType: document.contentType });
+
+    // WHEN it is headed
+    const head = await s3.head(`${keyPrefix}h.json`);
+
+    // THEN size and type come back and no sha256 is invented
+    expect(head.getOrThrow()).toEqual({ size: 11, contentType: "application/json" });
+  });
+
+  it("answers ObjectNotFound when heading a missing key", async ({ s3, keyPrefix }) => {
+    // GIVEN nothing under this prefix
+    // WHEN an absent key is headed
+    const head = s3.head(`${keyPrefix}absent.json`);
+
+    // THEN the store's 404 is a modeled absence
+    await expect(head).toBeErrWith(
+      expect.objectContaining({ _tag: "ObjectNotFound", key: `${keyPrefix}absent.json` }),
+    );
+  });
+
+  it("accepts the signed bytes, and heads them with their sha256 in hex", async ({
+    s3,
+    keyPrefix,
+  }) => {
+    // GIVEN an upload url signed with the digest of a document
+    const document = aDocument();
+    const url = await s3.presignedUpload(`${keyPrefix}c.json`, {
+      ttlMs: 60_000,
+      contentType: document.contentType,
+      contentLength: document.bytes.byteLength,
+      sha256: sha256Hex(document.bytes),
+    });
+
+    // WHEN the client PUTs those bytes with the checksum header
+    const response = await fetch(url.getOrThrow(), {
+      method: "PUT",
+      headers: {
+        "content-type": document.contentType,
+        "x-amz-checksum-sha256": sha256Base64(document.bytes),
+      },
+      body: document.bytes,
+    });
+
+    // THEN the store took them and head answers the same digest in hex
+    await expect(
+      s3.head(`${keyPrefix}c.json`).map((head) => ({ status: response.status, ...head })),
+    ).toBeOkWith({
+      status: 200,
+      size: 11,
+      contentType: "application/json",
+      sha256: sha256Hex(document.bytes),
+    });
+  });
+
+  it("refuses other bytes than the signed digest", async ({ s3, keyPrefix }) => {
+    // GIVEN an upload url signed with the digest of a document
+    const document = aDocument();
+    const other = new TextEncoder().encode(`{"ok":null}`);
+    const url = await s3.presignedUpload(`${keyPrefix}x.json`, {
+      ttlMs: 60_000,
+      contentType: document.contentType,
+      contentLength: other.byteLength,
+      sha256: sha256Hex(document.bytes),
+    });
+
+    // WHEN a client sends other bytes of the same size, under the signed header
+    const response = await fetch(url.getOrThrow(), {
+      method: "PUT",
+      headers: {
+        "content-type": document.contentType,
+        "x-amz-checksum-sha256": sha256Base64(document.bytes),
+      },
+      body: other,
+    });
+
+    // THEN the store refuses them and stored nothing
+    const stored = await s3.get(`${keyPrefix}x.json`);
+    expect({ refused: response.status >= 400, stored: stored.isOk() }).toEqual({
+      refused: true,
+      stored: false,
+    });
+  });
+
+  it("refuses a client that swaps the checksum header for the digest of its own bytes", async ({
+    s3,
+    keyPrefix,
+  }) => {
+    // GIVEN an upload url signed with the digest of a document
+    const document = aDocument();
+    const other = new TextEncoder().encode(`{"ok":null}`);
+    const url = await s3.presignedUpload(`${keyPrefix}y.json`, {
+      ttlMs: 60_000,
+      contentType: document.contentType,
+      contentLength: other.byteLength,
+      sha256: sha256Hex(document.bytes),
+    });
+
+    // WHEN a client sends other bytes with their own, consistent digest
+    const response = await fetch(url.getOrThrow(), {
+      method: "PUT",
+      headers: {
+        "content-type": document.contentType,
+        "x-amz-checksum-sha256": sha256Base64(other),
+      },
+      body: other,
+    });
+
+    // THEN the signature no longer matches and nothing is stored
+    const stored = await s3.get(`${keyPrefix}y.json`);
+    expect({ refused: response.status >= 400, stored: stored.isOk() }).toEqual({
+      refused: true,
+      stored: false,
+    });
+  });
+
+  it("sends the SSE-KMS key on put, putIfAbsent and copy, and none when no key is named", async () => {
+    // GIVEN a client whose commands are captured at the SDK boundary, since
+    // the real store has no KMS to encrypt with
+    const sent: Record<string, unknown>[] = [];
+    const client = new S3Client({
+      endpoint: "http://127.0.0.1:1",
+      region: "us-east-1",
+      forcePathStyle: true,
+      credentials: { accessKeyId: "none", secretAccessKey: "none" },
+    });
+    client.middlewareStack.add(
+      (_next) => async (args) => {
+        sent.push(args.input as Record<string, unknown>);
+        return { output: { $metadata: {} }, response: {} };
+      },
+      { step: "deserialize", name: "capture" },
+    );
+    const backend = s3StorageBackend(client, "bucket");
+    const bytes = new Uint8Array([1]);
+
+    // WHEN the three writes name a key, and one write does not
+    await backend.put("a", bytes, { contentType: "t", kmsKeyId: "key-1" });
+    await backend.putIfAbsent("b", bytes, { contentType: "t", kmsKeyId: "key-2" });
+    await backend.copy("a", "c", { contentType: "t", kmsKeyId: "key-3" });
+    await backend.put("d", bytes, { contentType: "t" });
+
+    // THEN the encryption rides the command of each, and is absent when not asked for
+    expect(
+      sent.map((input) => ({
+        key: input["Key"],
+        sse: input["ServerSideEncryption"],
+        kms: input["SSEKMSKeyId"],
+        tagging: input["TaggingDirective"],
+        annotation: input["AnnotationDirective"],
+      })),
+    ).toEqual([
+      { key: "a", sse: "aws:kms", kms: "key-1", tagging: undefined, annotation: undefined },
+      { key: "b", sse: "aws:kms", kms: "key-2", tagging: undefined, annotation: undefined },
+      { key: "c", sse: "aws:kms", kms: "key-3", tagging: "REPLACE", annotation: "EXCLUDE" },
+      { key: "d", sse: undefined, kms: undefined, tagging: undefined, annotation: undefined },
+    ]);
+  });
+});
+
 describe("s3Storage, when the store cannot be reached", () => {
   it("answers StorageUnavailable on a write", async ({ unreachable }) => {
     // GIVEN an adapter pointed at an endpoint that is not listening
@@ -310,5 +521,38 @@ describe("s3Storage, when the store cannot be reached", () => {
     await expect(written).toBeErrWith(
       expect.objectContaining({ operation: "putIfAbsent", key: "a/b.json" }),
     );
+  });
+
+  it("answers StorageUnavailable naming copy when the store cannot be reached", async ({
+    unreachable,
+  }) => {
+    // GIVEN an endpoint that is not listening
+    // WHEN a copy is attempted
+    const copied = unreachable.copy("a", "b", { contentType: "application/json" });
+
+    // THEN it is an outage naming copy
+    await expect(copied).toBeErrWith(expect.objectContaining({ operation: "copy", key: "a" }));
+  });
+
+  it("answers StorageUnavailable naming head when the store cannot be reached", async ({
+    unreachable,
+  }) => {
+    // GIVEN an endpoint that is not listening
+    // WHEN a head is attempted
+    const head = unreachable.head("a");
+
+    // THEN it is an outage naming head
+    await expect(head).toBeErrWith(expect.objectContaining({ operation: "head", key: "a" }));
+  });
+
+  it("answers StorageUnavailable, not a throw, for a copy source that cannot be encoded", async ({
+    unreachable,
+  }) => {
+    // GIVEN a key holding an unpaired surrogate, which encodeURIComponent refuses
+    // WHEN it is copied
+    const copied = unreachable.copy("\ud800", "b", { contentType: "application/json" });
+
+    // THEN the refusal is a modeled outage rather than an exception
+    await expect(copied).toBeErrWith(expect.objectContaining({ operation: "copy" }));
   });
 });

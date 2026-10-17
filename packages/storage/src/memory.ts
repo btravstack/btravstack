@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { Module, Provider } from "@btravstack/di";
 import { ErrAsync, OkAsync } from "unthrown";
 
@@ -17,6 +19,8 @@ import {
  * which would be the worst kind of double — one that passes locally and fails in
  * the deployment for a reason no test could have shown.
  *
+ * `kmsKeyId` is accepted and ignored: nothing is encrypted at rest here.
+ *
  * ponytail: no size limit, so a process storing unbounded objects grows
  * unbounded. The upgrade path is the S3 adapter.
  */
@@ -25,19 +29,42 @@ export const memoryStorageBackend = (): StorageService => {
 
   return {
     put: (key, bytes, options) => {
-      objects.set(key, { bytes, contentType: options.contentType });
+      // Owned copy: a caller transferring or reusing its buffer must not change, or detach, what is stored.
+      objects.set(key, { bytes: bytes.slice(), contentType: options.contentType });
       return OkAsync();
     },
     putIfAbsent: (key, bytes, options) => {
       if (objects.has(key)) {
         return ErrAsync(new ObjectExists({ key }));
       }
-      objects.set(key, { bytes, contentType: options.contentType });
+      // Owned copy: a caller transferring or reusing its buffer must not change, or detach, what is stored.
+      objects.set(key, { bytes: bytes.slice(), contentType: options.contentType });
       return OkAsync();
+    },
+    copy: (from, to, options) => {
+      const object = objects.get(from);
+      if (object === undefined) {
+        return ErrAsync(new ObjectNotFound({ key: from }));
+      }
+      objects.set(to, { bytes: object.bytes.slice(), contentType: options.contentType });
+      return OkAsync();
+    },
+    head: (key) => {
+      const object = objects.get(key);
+      return object === undefined
+        ? ErrAsync(new ObjectNotFound({ key }))
+        : OkAsync({
+            size: object.bytes.byteLength,
+            contentType: object.contentType,
+            sha256: createHash("sha256").update(object.bytes).digest("hex"),
+          });
     },
     get: (key) => {
       const object = objects.get(key);
-      return object === undefined ? ErrAsync(new ObjectNotFound({ key })) : OkAsync(object);
+      // A snapshot, so a reader mutating or transferring what it got cannot touch the store.
+      return object === undefined
+        ? ErrAsync(new ObjectNotFound({ key }))
+        : OkAsync({ ...object, bytes: object.bytes.slice() });
     },
     delete: (key) => {
       objects.delete(key);

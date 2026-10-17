@@ -9,4 +9,4 @@ export {
   StorageBackend,
   StorageUnavailable,
 } from "./storage.js";
-export type { StorageService, StoredObject } from "./storage.js";
+export type { ObjectHead, StorageService, StoredObject, WriteOptions } from "./storage.js";

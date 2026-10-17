@@ -7,7 +7,7 @@ export type StoredObject = {
   readonly contentType: string;
 };
 
-/** The key is not there. Only `get` answers it — see `delete` and `presignedUrl` below. */
+/** The key is not there. Only `get`, `head` and `copy` (its source) answer it — see `delete` and `presignedUrl` below. */
 export class ObjectNotFound extends TaggedError("ObjectNotFound")<{
   readonly key: string;
 }> {}
@@ -19,7 +19,15 @@ export class ObjectExists extends TaggedError("ObjectExists")<{
 
 /** The store could not answer — the endpoint is down, the credentials were refused, the bucket is gone. */
 export class StorageUnavailable extends TaggedError("StorageUnavailable")<{
-  readonly operation: "put" | "putIfAbsent" | "get" | "delete" | "presignedUrl" | "presignedUpload";
+  readonly operation:
+    | "put"
+    | "putIfAbsent"
+    | "get"
+    | "copy"
+    | "head"
+    | "delete"
+    | "presignedUrl"
+    | "presignedUpload";
   readonly key: string;
   readonly reason: string;
 }> {}
@@ -29,19 +37,53 @@ export class PresignNotSupported extends TaggedError("PresignNotSupported")<{
   readonly key: string;
 }> {}
 
+/** What the store knows about an object without sending its bytes. */
+export type ObjectHead = {
+  readonly size: number;
+  readonly contentType: string;
+  /** Lowercase hex of the SHA-256 the store holds for the object; absent when none was supplied at write time. */
+  readonly sha256?: string;
+};
+
+/**
+ * Written with `kmsKeyId`, an object is encrypted at rest with that KMS key
+ * (SSE-KMS); without it, the store's own default applies.
+ */
+export type WriteOptions = {
+  readonly contentType: string;
+  readonly kmsKeyId?: string;
+};
+
 export type StorageService = {
   readonly put: (
     key: string,
     bytes: Uint8Array,
-    options: { readonly contentType: string },
+    options: WriteOptions,
   ) => AsyncResult<void, StorageUnavailable>;
   /** Writes the object only if no object holds the key: the first writer wins, atomically, in the store. */
   readonly putIfAbsent: (
     key: string,
     bytes: Uint8Array,
-    options: { readonly contentType: string },
+    options: WriteOptions,
   ) => AsyncResult<void, ObjectExists | StorageUnavailable>;
   readonly get: (key: string) => AsyncResult<StoredObject, ObjectNotFound | StorageUnavailable>;
+  /**
+   * Copies `from` to `to` inside the store: no bytes pass through this process.
+   * The copy takes `contentType` (the source's is replaced) and, with
+   * `kmsKeyId`, is encrypted with that key. An existing `to` is overwritten.
+   */
+  readonly copy: (
+    from: string,
+    to: string,
+    options: WriteOptions,
+  ) => AsyncResult<void, ObjectNotFound | StorageUnavailable>;
+  /**
+   * Size, type and checksum of an object, without reading it. `sha256` is
+   * present only if the store holds one: S3 keeps it for an object written with
+   * a SHA-256 checksum (such as through `presignedUpload` with `sha256`), and
+   * reports it base64-encoded, which the adapter converts to hex.
+   */
+  readonly head: (key: string) => AsyncResult<ObjectHead, ObjectNotFound | StorageUnavailable>;
   /** Deleting a key nobody stored is `Ok`: delete is idempotent, which is S3's own behaviour rather than a fiction over it. */
   readonly delete: (key: string) => AsyncResult<void, StorageUnavailable>;
   /**
@@ -69,6 +111,11 @@ export type StorageService = {
    * length would allow an unbounded single write, and there is no ceiling a
    * presigned PUT can express other than the exact number.
    *
+   * **`sha256` (lowercase hex, 64 characters) is optional.** When given, the
+   * checksum header is signed too, so the store refuses any body that does not
+   * hash to it, and keeps it for `head`. The client must send the same value as
+   * `x-amz-checksum-sha256` (base64 of the digest).
+   *
    * The application still decides every input: whether this caller may write
    * this key, how long the URL lives, and what size it is willing to accept.
    * The adapter computes a signature over that decision and nothing more.
@@ -79,6 +126,7 @@ export type StorageService = {
       readonly ttlMs: number;
       readonly contentType: string;
       readonly contentLength: number;
+      readonly sha256?: string;
     },
   ) => AsyncResult<string, PresignNotSupported | StorageUnavailable>;
 };

@@ -14,7 +14,15 @@ import type {
   StorageUnavailable,
 } from "./storage.js";
 
-type Operation = "put" | "put_if_absent" | "get" | "delete" | "presigned_url" | "presigned_upload";
+type Operation =
+  | "put"
+  | "put_if_absent"
+  | "get"
+  | "copy"
+  | "head"
+  | "delete"
+  | "presigned_url"
+  | "presigned_upload";
 type Failure = ObjectExists | ObjectNotFound | PresignNotSupported | StorageUnavailable;
 
 /**
@@ -70,6 +78,8 @@ export const instrument = (
     putIfAbsent: (key, bytes, options) =>
       observe("put_if_absent", key, () => backend.putIfAbsent(key, bytes, options)),
     get: (key) => observe("get", key, () => backend.get(key)),
+    copy: (from, to, options) => observe("copy", from, () => backend.copy(from, to, options)),
+    head: (key) => observe("head", key, () => backend.head(key)),
     delete: (key) => observe("delete", key, () => backend.delete(key)),
     presignedUrl: (key, options) =>
       observe("presigned_url", key, () => backend.presignedUrl(key, options)),
