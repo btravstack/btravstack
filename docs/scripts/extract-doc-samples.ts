@@ -89,6 +89,7 @@ const classify = (imports: readonly string[]): Group => {
       "@modelcontextprotocol/",
       "@btravstack/pothos",
       "@btravstack/oauth-client",
+      "@btravstack/http-client",
       "@btravstack/contract",
       "@btravstack/observability",
       "zod",

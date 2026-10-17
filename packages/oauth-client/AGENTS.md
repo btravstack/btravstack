@@ -145,3 +145,13 @@ testcontainers, independently of Vitest's fixture timeout. Introspection proves 
 JWT claims, since Keycloak introspection omits `act`.
 
 Observation: see the root `AGENTS.md`, **Observability is a set port, never a flag**.
+
+## Optional outbound policy boundary
+
+`fetch` is the upstream native fetch seam, applied to both discovery and the
+resulting configuration's grants. An application can compose
+`@btravstack/http-client`'s `httpClientFetch` for tenant-configured integrations;
+a discovery document cannot expand that client's approved origins. The root
+package never imports or names http-client, so fixed deployment-owned issuers
+keep working without that package. The existing cleartext option does not weaken
+a composed policy client's HTTPS-only rule.
