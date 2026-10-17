@@ -7,7 +7,9 @@ client the specs call through), and register the
 matchers once, at runtime in the vitest config and for the compiler in a
 `src/vitest.d.ts`:
 
-<!-- doctest: skip — a vitest config, not part of the application -->
+**`vitest.config.ts`**
+
+<!-- doctest: isolate -->
 
 ```ts
 import { defineConfig } from "vitest/config";
@@ -17,7 +19,9 @@ export default defineConfig({
 });
 ```
 
-<!-- doctest: skip — an ambient declaration file, not part of the application -->
+**`src/vitest.d.ts`**
+
+<!-- doctest: isolate -->
 
 ```ts
 import type {} from "@unthrown/vitest";

@@ -40,14 +40,20 @@ installed, the installed types win.
 
 ## Which runtime
 
-| The work is…                                              | Use                                                                     |
-| --------------------------------------------------------- | ----------------------------------------------------------------------- |
-| answering a caller (RPC, REST, HTML fragments, GraphQL)   | `@btravstack/orpc-server`, `htmx-server`, `graphql-server` over HTTP    |
-| tools for a language-model client (MCP)                   | `@btravstack/mcp-server` over HTTP, stateless; never stdio              |
-| server-to-client push                                     | an oRPC procedure returning an `eventIterator` (SSE), never a WebSocket |
-| a job, a retry, a delay, a schedule, a multi-step process | `@btravstack/temporal-worker` (Temporal Schedules are the cron)         |
-| announcing a committed fact to whoever listens            | `@btravstack/amqp-worker`, fed by `@btravstack/outbox`                  |
-| calling one of the above from another service             | `@btravstack/amqp-client`, `temporal-client`, `oauth-client`            |
+| The work is…                                              | Use                                                                           |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| answering a caller (RPC, REST, HTML fragments, GraphQL)   | `@btravstack/orpc-server`, `htmx-server`, `graphql-server` over HTTP          |
+| tools for a language-model client (MCP)                   | `@btravstack/mcp-server` over HTTP, stateless; never stdio                    |
+| server-to-client push                                     | an oRPC procedure returning an `eventIterator` (SSE), never a WebSocket       |
+| a job, a retry, a delay, a schedule, a multi-step process | `@btravstack/temporal-worker` (Temporal Schedules are the cron)               |
+| announcing a committed fact to whoever listens            | `@btravstack/amqp-worker`, fed by `@btravstack/outbox`                        |
+| calling an HTTP/oRPC API                                  | `@orpc/client`, wrapped by `@unthrown/orpc/client` for `Result`s              |
+| calling a GraphQL API                                     | `fetch` with the schema's operations, or a GraphQL client                     |
+| calling an MCP server                                     | `Client` and `StreamableHTTPClientTransport` from `@modelcontextprotocol/sdk` |
+| publishing an AMQP fact or starting a Temporal workflow   | `@btravstack/amqp-client` or `@btravstack/temporal-client`                    |
+
+When an outbound call needs a bearer token, compose `@btravstack/oauth-client`
+for its `TokenSource`.
 
 There is no job-queue runtime, no scheduler runtime and no rate limiter (the
 ingress limits). Do not build one inside the application.
@@ -55,15 +61,18 @@ ingress limits). Do not build one inside the application.
 ## Add a capability
 
 1. **Declare it in the contract package** — an oRPC procedure, an AMQP
-   consumer, or a Temporal workflow and its activities. Name every refusal a
-   caller must handle in `.errors({...})`.
+   consumer, or a Temporal workflow and its activities. For oRPC and Temporal,
+   name every refusal a caller must handle in `.errors({...})`. An AMQP
+   contract declares a committed fact; the producing use case's `Err` never
+   crosses the broker.
 2. **Write the use case as a port** whose methods return `AsyncResult` with a
    union of concrete `TaggedError`s, and a provider that builds it.
 3. **Mint the transport piece from the contract key** —
    `api.OrpcController(contract, path)`, `AmqpHandler(contract, key)`,
    `TemporalWorkflowActivities(contract, key)` — and triage the use case's
-   error union there with an exhaustive `mapErrCases`. That leaf is the one
-   place a domain error becomes a transport error; never use `P._` in it.
+   error union there with an exhaustive `mapErrCases`. An AMQP handler maps
+   its own failures to `RetryableError` or `NonRetryableError`. That leaf is
+   where a use-case error becomes a transport outcome; never use `P._` in it.
    An MCP tool is the SDK's own `server.registerTool`, inside `mcp(auth, {
    server })`, answering through `toolResult` with `Err` triaged to
    `ToolRefused`.
@@ -74,7 +83,7 @@ ingress limits). Do not build one inside the application.
    the slice to the root's `imports`.
 6. **Run `tsc`** and read the marker (below). Then add a booted spec.
 
-The HTTP walk-through, compiled, is [references/http.md](references/http.md).
+The HTTP walk-through, compiled, is [references/http.md](./references/http.md).
 For workers, follow
 <https://btravstack.github.io/btravstack/how-to/split-a-worker-into-slices>; a
 worker whose contract declares no workflows (an activity pool) omits
@@ -165,7 +174,7 @@ The full table: <https://btravstack.github.io/btravstack/how-to/read-a-wiring-er
 
 Boot the real root with `bootFixture`, call it through the contract's client,
 substitute providers with `overridden`, and drive time with
-`createFakeClock`. Compiled samples: [references/testing.md](references/testing.md).
+`createFakeClock`. Compiled samples: [references/testing.md](./references/testing.md).
 
 ## Verify before finishing
 
