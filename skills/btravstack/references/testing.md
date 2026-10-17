@@ -3,7 +3,8 @@
 A spec boots the real composition root, on an ephemeral port, with an
 environment it chooses, and stops it when the test ends. Install
 `@btravstack/testing`, `vitest` and `@unthrown/vitest`, and register the
-matchers once:
+matchers once, at runtime in the vitest config and for the compiler in a
+`src/vitest.d.ts`:
 
 <!-- doctest: skip — a vitest config, not part of the application -->
 
@@ -13,6 +14,12 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: { setupFiles: ["@unthrown/vitest"] },
 });
+```
+
+<!-- doctest: skip — an ambient declaration file, not part of the application -->
+
+```ts
+import type {} from "@unthrown/vitest";
 ```
 
 ## The application under test
@@ -55,10 +62,15 @@ export const App = HttpModule("App")({
 ## Fixtures
 
 Put the extended `it` in one `test-fixtures.ts` beside the specs, and import
-it instead of vitest's. `bootFixture` boots with signals off and stops the
-application on every exit path, so a spec needs no `try`/`finally`.
+it instead of vitest's. `bootFixture` boots with signals off, no pre-drain
+delay, and stops the application on every exit path, so a spec needs no
+`try`/`finally`. A helper that reads the bound port keeps its guard here, out
+of the test body.
 
 ```ts
+import assert from "node:assert/strict";
+import type { RunningApp } from "@btravstack/core";
+import type { HttpInfo } from "@btravstack/http-server";
 import { bootFixture } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
@@ -69,8 +81,16 @@ export const it = test.extend({
   boot: bootFixture({ env: { PORT: "0", HOST: "127.0.0.1" } }),
 });
 
-export const clientAt = (port: number): RouterContractClient<typeof contract> =>
-  createORPCClient(new RPCLink({ origin: `http://127.0.0.1:${port}`, url: "/rpc" }));
+export const clientOf = async <E>(
+  app: RunningApp<E, HttpInfo>,
+): Promise<RouterContractClient<typeof contract>> => {
+  const info = (await app.runtimeInfo()).get();
+  assert.ok(info !== undefined, "the runtime published no Serving.info");
+  const client: RouterContractClient<typeof contract> = createORPCClient(
+    new RPCLink({ origin: `http://127.0.0.1:${info.port}`, url: "/rpc" }),
+  );
+  return client;
+};
 ```
 
 A call's `env` **replaces** the fixture's rather than merging with it, so a
@@ -83,7 +103,6 @@ deeply, on one resource. An assertion behind an `if` or a `?.` can decline to
 run and still pass.
 
 ```ts
-import assert from "node:assert/strict";
 import { Provider } from "@btravstack/di";
 import { createFakeClock, overridden } from "@btravstack/testing";
 import { describe, expect } from "vitest";
@@ -91,12 +110,10 @@ import { describe, expect } from "vitest";
 describe("the greeting service", () => {
   it("greets over real HTTP", async ({ boot }) => {
     // GIVEN the real root, serving on an ephemeral port
-    const app = boot(App);
-    const info = (await app.runtimeInfo()).get();
-    assert.ok(info !== undefined, "the runtime published no Serving.info");
+    const client = await clientOf(boot(App));
 
     // WHEN the procedure is called through the contract's client
-    const answer = clientAt(info.port).hello({ name: "world" });
+    const answer = client.hello({ name: "world" });
 
     // THEN it answers what the contract declares
     await expect(answer).resolves.toEqual({ message: "Hello, world!" });
@@ -104,25 +121,26 @@ describe("the greeting service", () => {
 
   it("greets with a substituted provider", async ({ boot }) => {
     // GIVEN the real root with only its Greeter replaced
-    const app = boot(
-      overridden(App, [
-        Provider(Greeter)({ inject: {}, value: { greet: (name) => `Ahoy, ${name}!` } }),
-      ]),
+    const client = await clientOf(
+      boot(
+        overridden(App, [
+          Provider(Greeter)({ inject: {}, value: { greet: (name) => `Ahoy, ${name}!` } }),
+        ]),
+      ),
     );
-    const info = (await app.runtimeInfo()).get();
-    assert.ok(info !== undefined, "the runtime published no Serving.info");
 
     // WHEN the procedure is called
-    const answer = clientAt(info.port).hello({ name: "world" });
+    const answer = client.hello({ name: "world" });
 
     // THEN the substitute answered
     await expect(answer).resolves.toEqual({ message: "Ahoy, world!" });
   });
 
   it("drains clean when idle", async ({ boot }) => {
-    // GIVEN the application serving, on a clock the test owns
+    // GIVEN the application serving, on a clock the test owns, with the
+    // production pre-drain delay restored
     const clock = createFakeClock();
-    const app = boot(App, { clock });
+    const app = boot(App, { clock, preDrainDelayMs: 5_000 });
     await app.runtimeInfo();
 
     // WHEN a drain is requested and the pre-drain delay is advanced

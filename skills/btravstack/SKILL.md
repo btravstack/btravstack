@@ -28,7 +28,8 @@ installed, the installed types win.
   restate it; write `needs: [...]` only to check a slice's boundary at its own
   declaration.
 - **The root of a deployment is a runtime module**: `HttpModule` from
-  `@btravstack/orpc-server`, `TemporalModule`, `AmqpModule`. `main.ts` is one
+  `@btravstack/orpc-server`, `GraphqlModule`, `McpModule`, `TemporalModule`,
+  `AmqpModule`. `main.ts` is one
   line: `await runMain(App)`. `runMain` sets the exit code; never call
   `process.exit`.
 - **One process boots exactly one runtime.** An API and a worker are two
@@ -42,6 +43,7 @@ installed, the installed types win.
 | The work is…                                              | Use                                                                     |
 | --------------------------------------------------------- | ----------------------------------------------------------------------- |
 | answering a caller (RPC, REST, HTML fragments, GraphQL)   | `@btravstack/orpc-server`, `htmx-server`, `graphql-server` over HTTP    |
+| tools for a language-model client (MCP)                   | `@btravstack/mcp-server` over HTTP, stateless; never stdio              |
 | server-to-client push                                     | an oRPC procedure returning an `eventIterator` (SSE), never a WebSocket |
 | a job, a retry, a delay, a schedule, a multi-step process | `@btravstack/temporal-worker` (Temporal Schedules are the cron)         |
 | announcing a committed fact to whoever listens            | `@btravstack/amqp-worker`, fed by `@btravstack/outbox`                  |
@@ -62,6 +64,9 @@ ingress limits). Do not build one inside the application.
    `TemporalWorkflowActivities(contract, key)` — and triage the use case's
    error union there with an exhaustive `mapErrCases`. That leaf is the one
    place a domain error becomes a transport error; never use `P._` in it.
+   An MCP tool is the SDK's own `server.registerTool`, inside `mcp(auth, {
+   server })`, answering through `toolResult` with `Err` triaged to
+   `ToolRefused`.
 4. **Ship the piece in a slice module** that provides and exports it, and
    imports the vertical it owns.
 5. **Add the piece to the root's array** (`api.OrpcRouter(contract)([...])`,
@@ -71,7 +76,10 @@ ingress limits). Do not build one inside the application.
 
 The HTTP walk-through, compiled, is [references/http.md](references/http.md).
 For workers, follow
-<https://btravstack.github.io/btravstack/how-to/split-a-worker-into-slices>.
+<https://btravstack.github.io/btravstack/how-to/split-a-worker-into-slices>; a
+worker whose contract declares no workflows (an activity pool) omits
+`workflows`. For MCP,
+<https://btravstack.github.io/btravstack/how-to/serve-mcp>.
 
 ## Configuration
 
@@ -125,7 +133,7 @@ naming what is wrong. Read the whole message; the name is beside the marker.
 | --------------------------------------------------- | ---------------------------------------------------------- |
 | `UNSATISFIED DEPENDENCIES — nothing provides`       | `provides`, or `imports` a module that provides it         |
 | `UNSATISFIED RUNTIME PORTS`                         | `exports` on the root                                      |
-| `NO RUNTIME`                                        | compose `HttpModule`, `TemporalModule` or `AmqpModule`     |
+| `NO RUNTIME`                                        | make the root a runtime module (`HttpModule`, …)           |
 | `UNCOVERED CONTROLLERS` / `HANDLERS` / `ACTIVITIES` | add the missing piece to the array                         |
 | `OVERLAPPING CONTROLLERS`                           | mint the two pieces at sibling paths                       |
 | `UNDECLARED NEEDS`                                  | add the port to the slice's `needs`, or provide it         |
