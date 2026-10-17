@@ -59,14 +59,16 @@ export const documents = Provider(
 });
 ```
 
-| Method                                                        | Answers                                                           |
-| ------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `put(key, bytes, { contentType })`                            | `AsyncResult<void, StorageUnavailable>`                           |
-| `putIfAbsent(key, bytes, { contentType })`                    | `AsyncResult<void, ObjectExists \| StorageUnavailable>`           |
-| `get(key)`                                                    | `AsyncResult<StoredObject, ObjectNotFound \| StorageUnavailable>` |
-| `delete(key)`                                                 | `AsyncResult<void, StorageUnavailable>`                           |
-| `presignedUrl(key, { ttlMs })`                                | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`  |
-| `presignedUpload(key, { ttlMs, contentType, contentLength })` | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`  |
+| Method                                                                 | Answers                                                           |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `put(key, bytes, { contentType, kmsKeyId? })`                          | `AsyncResult<void, StorageUnavailable>`                           |
+| `putIfAbsent(key, bytes, { contentType, kmsKeyId? })`                  | `AsyncResult<void, ObjectExists \| StorageUnavailable>`           |
+| `get(key)`                                                             | `AsyncResult<StoredObject, ObjectNotFound \| StorageUnavailable>` |
+| `copy(from, to, { contentType, kmsKeyId? })`                           | `AsyncResult<void, ObjectNotFound \| StorageUnavailable>`         |
+| `head(key)`                                                            | `AsyncResult<ObjectHead, ObjectNotFound \| StorageUnavailable>`   |
+| `delete(key)`                                                          | `AsyncResult<void, StorageUnavailable>`                           |
+| `presignedUrl(key, { ttlMs })`                                         | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`  |
+| `presignedUpload(key, { ttlMs, contentType, contentLength, sha256? })` | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`  |
 
 **`putIfAbsent` is the first-writer-wins write.** It stores the object only if
 no object holds the key, atomically in the store: the S3 adapter sends
@@ -75,6 +77,24 @@ no object holds the key, atomically in the store: the S3 adapter sends
 calls on one key answer exactly one `Ok` and one `ObjectExists`, and the first
 bytes stay. Use it to publish an artifact once per request at a key derived
 from the request id, without a database to decide the winner.
+
+**`copy` moves no bytes through the process.** The S3 adapter sends
+`CopyObject` with `MetadataDirective: REPLACE`, so the copy takes the
+`contentType` you give rather than the source's. A missing source answers
+`ObjectNotFound` naming the source key; an existing destination is overwritten.
+
+**`kmsKeyId` selects SSE-KMS.** On `put`, `putIfAbsent` and `copy`, the S3
+adapter sends `ServerSideEncryption: aws:kms` and `SSEKMSKeyId`; absent, no
+encryption header is sent and the bucket's default applies. The memory adapter
+accepts and ignores it. The gate's RustFS has no KMS, so the s3 spec asserts
+the sent commands rather than the stored encryption.
+
+**`head` answers what the store knows without reading the object:** `size`,
+`contentType` and `sha256`. S3 reports the checksum base64-encoded
+(`ChecksumSHA256`, requested with `ChecksumMode: ENABLED`); the adapter returns
+it as **lowercase hex**. `sha256` is absent when the object was written without
+a SHA-256 checksum (a plain `put` stores none; an upload through
+`presignedUpload` with `sha256` does). The memory adapter always computes it.
 
 `ttlMs` is **required on both presign arms** — there is no default, because a
 link's lifetime is a security decision and a framework guessing at it is a
@@ -116,6 +136,12 @@ the object at that key with different bytes of the signed size and type. Those
 headers do not prove the contents. `contentLength` is required: it is the only
 ceiling a presigned PUT can express, and an optional one would allow an
 unbounded single write. Replays can still multiply the total bytes transferred.
+With the optional `sha256` (lowercase hex, 64 characters), the checksum is
+signed too: the client must send `x-amz-checksum-sha256` (base64 of the digest),
+the store refuses a body that does not hash to it, a client swapping the header
+for the digest of its own bytes breaks the signature, and the digest is kept for
+`head`. The S3 adapter keeps that header out of the query string, where it would
+be unsigned. The gate's RustFS enforces both refusals.
 The S3 adapter names `content-type` in the signature explicitly,
 because the AWS presigner leaves it unsigned by default even when the command
 sets it — an adapter of your own over that SDK must do the same, or the type

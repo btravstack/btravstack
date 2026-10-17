@@ -118,4 +118,55 @@ describe("memoryStorageBackend", () => {
       settled.map((result) => (result.tag === "Err" ? result.error._tag : result.tag)).sort(),
     ).toEqual(["ObjectExists", "Ok"]);
   });
+
+  it("copies an object under a new key with the type given", async ({ memory }) => {
+    // GIVEN a stored document
+    const document = aDocument();
+    await memory.put("a/b.json", document.bytes, { contentType: document.contentType });
+
+    // WHEN it is copied with another type
+    const read = memory
+      .copy("a/b.json", "c/d.bin", { contentType: "application/octet-stream" })
+      .flatMap(() => memory.get("c/d.bin"));
+
+    // THEN the bytes are the source's and the type is the one asked for
+    await expect(read).toBeOkWith({
+      bytes: document.bytes,
+      contentType: "application/octet-stream",
+    });
+  });
+
+  it("answers ObjectNotFound naming the source when copying a missing key", async ({ memory }) => {
+    // GIVEN nothing stored
+    // WHEN an absent key is copied
+    const copied = memory.copy("absent", "c/d.bin", { contentType: "application/json" });
+
+    // THEN the source is named
+    await expect(copied).toBeErrWith(expect.objectContaining({ key: "absent" }));
+  });
+
+  it("heads an object with its size, type and sha256", async ({ memory }) => {
+    // GIVEN a stored document
+    const document = aDocument();
+    await memory.put("a/b.json", document.bytes, { contentType: document.contentType });
+
+    // WHEN it is headed
+    const head = memory.head("a/b.json");
+
+    // THEN the size, the type and the hex digest of the bytes come back
+    await expect(head).toBeOkWith({
+      size: 11,
+      contentType: "application/json",
+      sha256: "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
+    });
+  });
+
+  it("answers ObjectNotFound when heading a missing key", async ({ memory }) => {
+    // GIVEN nothing stored
+    // WHEN an absent key is headed
+    const head = memory.head("absent");
+
+    // THEN it is a modeled absence
+    await expect(head).toBeErrWith(expect.objectContaining({ key: "absent" }));
+  });
 });

@@ -22,6 +22,9 @@ const failingBackend: StorageService = {
   putIfAbsent: (key) =>
     ErrAsync(new StorageUnavailable({ operation: "putIfAbsent", key, reason: "no route" })),
   get: (key) => ErrAsync(new StorageUnavailable({ operation: "get", key, reason: "no route" })),
+  copy: (from) =>
+    ErrAsync(new StorageUnavailable({ operation: "copy", key: from, reason: "no route" })),
+  head: (key) => ErrAsync(new StorageUnavailable({ operation: "head", key, reason: "no route" })),
   delete: (key) =>
     ErrAsync(new StorageUnavailable({ operation: "delete", key, reason: "no route" })),
   presignedUrl: (key) =>

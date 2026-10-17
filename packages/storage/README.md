@@ -121,7 +121,7 @@ which is this list's one detailed home.
 ## What it decides, and what it does not
 
 **It decides** that a missing object is an ordinary answer rather than a fault
-(counted `not_found`, logged at `info`), that a held key under `putIfAbsent` is an ordinary answer (`ObjectExists`, counted `exists`), that `delete` is idempotent, that
+(counted `not_found`, logged at `info`), that a held key under `putIfAbsent` is an ordinary answer (`ObjectExists`, counted `exists`), that `delete` is idempotent, that `copy` and `head` never move the bytes through the process, that
 presigning asks the store nothing — and that an adapter which cannot presign
 says so instead of minting a URL that would fail only in production.
 

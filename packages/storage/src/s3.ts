@@ -1,6 +1,8 @@
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -15,8 +17,10 @@ import {
   ObjectNotFound,
   StorageBackend,
   StorageUnavailable,
+  type ObjectHead,
   type StorageService,
   type StoredObject,
+  type WriteOptions,
 } from "./storage.js";
 
 /** What the graph bound from the environment for the S3 adapter. */
@@ -56,7 +60,7 @@ class S3Connection extends Port("S3Connection")<{
 }> {}
 
 const unavailable = (
-  operation: "put" | "putIfAbsent" | "get" | "delete" | "presignedUrl" | "presignedUpload",
+  operation: StorageUnavailable["operation"],
   key: string,
   cause: unknown,
 ): StorageUnavailable =>
@@ -75,6 +79,16 @@ const isPreconditionFailed = (cause: unknown): boolean =>
 const isMissing = (cause: unknown): boolean =>
   cause instanceof Error && (cause.name === "NoSuchKey" || cause.name === "NotFound");
 
+/** SSE-KMS parameters when a key is named; none otherwise, so the bucket's default applies. */
+const encryption = (options: WriteOptions) =>
+  options.kmsKeyId === undefined
+    ? {}
+    : { ServerSideEncryption: "aws:kms" as const, SSEKMSKeyId: options.kmsKeyId };
+
+/** S3 reports and takes checksums in base64; the port speaks hex. */
+const hexToBase64 = (hex: string): string => Buffer.from(hex, "hex").toString("base64");
+const base64ToHex = (base64: string): string => Buffer.from(base64, "base64").toString("hex");
+
 /**
  * The adapter's service over a client and a bucket. A delete of a key nobody
  * stored answers `Ok`, which is S3's own idempotent behaviour rather than a
@@ -89,6 +103,7 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
           Key: key,
           Body: bytes,
           ContentType: options.contentType,
+          ...encryption(options),
         }),
       ),
       (cause) => unavailable("put", key, cause),
@@ -102,6 +117,7 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
           Body: bytes,
           ContentType: options.contentType,
           IfNoneMatch: "*",
+          ...encryption(options),
         }),
       ),
       (cause): ObjectExists | StorageUnavailable =>
@@ -123,6 +139,35 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
         })),
       (cause): ObjectNotFound | StorageUnavailable =>
         isMissing(cause) ? new ObjectNotFound({ key }) : unavailable("get", key, cause),
+    ),
+  copy: (from, to, options) =>
+    fromPromise(
+      client.send(
+        new CopyObjectCommand({
+          Bucket: bucket,
+          Key: to,
+          CopySource: `${bucket}/${from.split("/").map(encodeURIComponent).join("/")}`,
+          MetadataDirective: "REPLACE",
+          ContentType: options.contentType,
+          ...encryption(options),
+        }),
+      ),
+      (cause): ObjectNotFound | StorageUnavailable =>
+        isMissing(cause) ? new ObjectNotFound({ key: from }) : unavailable("copy", from, cause),
+    ).map(() => undefined),
+  head: (key) =>
+    fromPromise(
+      client
+        .send(new HeadObjectCommand({ Bucket: bucket, Key: key, ChecksumMode: "ENABLED" }))
+        .then((response): ObjectHead => ({
+          size: response.ContentLength ?? 0,
+          contentType: response.ContentType ?? "application/octet-stream",
+          ...(response.ChecksumSHA256 === undefined
+            ? {}
+            : { sha256: base64ToHex(response.ChecksumSHA256) }),
+        })),
+      (cause): ObjectNotFound | StorageUnavailable =>
+        isMissing(cause) ? new ObjectNotFound({ key }) : unavailable("head", key, cause),
     ),
   delete: (key) =>
     fromPromise(client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })), (cause) =>
@@ -146,6 +191,7 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
           Key: key,
           ContentType: options.contentType,
           ContentLength: options.contentLength,
+          ...(options.sha256 === undefined ? {} : { ChecksumSHA256: hexToBase64(options.sha256) }),
         }),
         // The presigner leaves `content-type` unsigned by default even when it
         // is set on the command; without naming it here a client could PUT any
@@ -153,6 +199,12 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
         {
           expiresIn: Math.ceil(options.ttlMs / 1_000),
           signableHeaders: new Set(["content-type"]),
+          // Hoisted into the query string the checksum would be unsigned and
+          // swappable by the client; kept as a header it is signed, the client
+          // must send it, and the store verifies the body against it.
+          ...(options.sha256 === undefined
+            ? {}
+            : { unhoistableHeaders: new Set(["x-amz-checksum-sha256"]) }),
         },
       ),
       (cause) => unavailable("presignedUpload", key, cause),

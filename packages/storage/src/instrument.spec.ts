@@ -210,4 +210,33 @@ describe("storage, instrumented, when the client defects", () => {
       },
     ]);
   });
+
+  it("counts a copy and a head of a missing key as ok with not_found", async ({ instrumented }) => {
+    // GIVEN an instrumented in-memory store with nothing in it
+    // WHEN a missing key is copied and headed
+    await instrumented.run(memoryStorage(), async (service) => {
+      await service.copy("a", "b", { contentType: "application/json" });
+      await service.head("a");
+    });
+
+    // THEN both settle ok, counted apart as not_found
+    expect(
+      instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
+    ).toEqual([
+      {
+        operation: "copy",
+        result: "not_found",
+        reason: "the object was not there",
+        outcome: "ok",
+        value: 1,
+      },
+      {
+        operation: "head",
+        result: "not_found",
+        reason: "the object was not there",
+        outcome: "ok",
+        value: 1,
+      },
+    ]);
+  });
 });
