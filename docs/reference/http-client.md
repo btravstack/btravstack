@@ -35,10 +35,12 @@ the origins and limits. Invalid origins or non-positive/non-integer limits retur
 
 `HttpClientService.request` takes `url`, optional `method`, `headers`, `body`
 (string or Uint8Array), and `signal`. It returns an `AsyncResult` containing a
-complete `{ status, headers, body }` response. Non-redirect HTTP errors, including
-401 and 500, remain responses for the protocol caller to interpret. Headers are
-lowercase; repeated values are joined with a comma. This client has no cookie jar.
+complete `{ status, headers, body }` response. HTTP statuses other than redirects,
+including 304, 401 and 500, remain responses for the protocol caller to interpret.
+Headers are lowercase; repeated values are joined with a comma. This client has no cookie jar.
 Request headers cannot override Host, framing, connection management or upgrades.
+Methods are GET, HEAD, POST, PUT, PATCH, DELETE and OPTIONS; other runtime values
+are refused before network work, including calls from JavaScript.
 
 Approvals compare normalized exact HTTPS origins, including ports. URL
 credentials and unsupported schemes are refused before transmission. A different
@@ -64,7 +66,7 @@ open a socket after the operation has settled.
 | -------------------------- | ----------------------------------------------------------------------------- |
 | `HttpPolicyRejected`       | Invalid URL, scheme, credentials, origin, headers or unsupported fetch shape. |
 | `HttpDestinationForbidden` | Literal or any DNS answer is private/reserved.                                |
-| `HttpRedirectRefused`      | Redirect status, with no retained Location.                                   |
+| `HttpRedirectRefused`      | A 3xx status other than 304, with no retained Location.                       |
 | `HttpEncodingRefused`      | Response is not identity encoded.                                             |
 | `HttpResponseTooLarge`     | Streaming bytes exceeded the policy limit.                                    |
 | `HttpDeadlineExceeded`     | Whole-operation budget expired.                                               |
@@ -99,7 +101,9 @@ A discovery document naming `https://another.example/token` cannot approve that
 origin: the application must already have allowed it. A refused discovery or
 token request becomes OAuth's `TokenIssuerUnavailable`. The adapter supports
 URL/string inputs, the listed methods, Headers, string/URLSearchParams/Uint8Array
-bodies, signals and redirect metadata (redirects are always refused). Other
+bodies, signals and redirect metadata (redirects are always refused). String and
+URLSearchParams bodies receive fetch's standard Content-Type when the caller has
+not supplied one; Uint8Array bodies receive no inferred type. Other
 RequestInit options and Request objects are refused. This is a narrow fetch
 adapter, not a replacement for the full browser fetch API.
 

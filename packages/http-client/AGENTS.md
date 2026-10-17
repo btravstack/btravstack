@@ -27,8 +27,9 @@ registries and snapshot date live on the reference page. This cannot detect a
 network administrator routing public addresses into a private network; network
 egress enforcement remains the deployment's second boundary.
 
-Redirect responses are refused without retaining Location. Only identity content
-encoding is supported. Responses are buffered under an application byte limit,
+3xx responses other than 304 are conservatively refused without retaining Location.
+304 is an ordinary bodyless response. The same method allowlist gates the direct
+client and fetch edge at runtime. Only identity content encoding is supported. Responses are buffered under an application byte limit,
 counted from every streamed chunk regardless of Content-Length, and a single
 whole-operation deadline covers DNS, connect, TLS, headers and body. Cancellation
 and expiry destroy the request/socket; the OS DNS lookup itself is not cancellable,
@@ -38,8 +39,10 @@ but a late result cannot initiate a connection.
 with no URL, headers, bodies or causes in its operation. `createHttpClient` builds
 the same boundary without DI. The fetch adapter is only the upstream protocol
 edge: unsupported shapes reject, concrete Results become rejections, ordinary
-HTTP error statuses remain Responses. OAuth accepts it through its native fetch
-seam with no package dependency in either direction.
+HTTP error statuses remain Responses. String and URLSearchParams bodies gain the
+standard fetch Content-Type only when the caller supplied none; byte bodies gain
+no inferred type. OAuth accepts it through its native fetch seam with no package
+dependency in either direction.
 
 Tests use a real local TLS server. Only DNS answers and the final socket address
 are controlled in test fixtures: the production lookup validates fixture DNS

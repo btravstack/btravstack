@@ -76,3 +76,26 @@ describe("request approvals", () => {
     expect(result).toBeErrTagged("HttpPolicyRejected");
   });
 });
+
+describe("runtime request methods", () => {
+  it.each(["TRACE", "CONNECT", "extension", "GET\ninvalid", 42, null])(
+    "refuses untyped method %j before transport",
+    async (method) => {
+      // GIVEN
+      const client = createHttpClient({
+        origins: ["https://api.example"],
+        maxResponseBytes: 100,
+        deadlineMs: 1000,
+      }).getOrThrow();
+      // WHEN
+      const result = await client.request({
+        url: "https://api.example",
+        method: method as NonNullable<import("./index.js").HttpRequest["method"]>,
+      });
+      // THEN
+      expect(result).toBeErrWith(
+        expect.objectContaining({ _tag: "HttpPolicyRejected", reason: "request" }),
+      );
+    },
+  );
+});

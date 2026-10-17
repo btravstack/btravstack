@@ -16,6 +16,7 @@ import {
   HttpRedirectRefused,
   HttpResponseTooLarge,
   HttpUnavailable,
+  supportedMethod,
   type HttpClientService,
   type HttpFailure,
   type HttpPolicy,
@@ -92,7 +93,7 @@ const exchange = (url: URL, input: HttpRequest, policy: HttpPolicy) =>
       request = https.request(url, options, (response) => {
         response.on("error", () => finish(Err(new HttpUnavailable())));
         const status = response.statusCode!;
-        if (status >= 300 && status < 400) {
+        if (status >= 300 && status < 400 && status !== 304) {
           finish(Err(new HttpRedirectRefused({ status })));
           return;
         }
@@ -167,6 +168,8 @@ export const createHttpClient = (
   return Ok({
     request: (request) => {
       const input = snapshotRequest(request);
+      if (input.method !== undefined && !supportedMethod(input.method))
+        return ErrAsync(new HttpPolicyRejected({ reason: "request" }));
       return parseUrl(input.url)
         .toAsync()
         .flatMap((url) => {

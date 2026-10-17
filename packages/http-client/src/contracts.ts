@@ -54,6 +54,10 @@ export type HttpRequest = {
   readonly body?: string | Uint8Array;
   readonly signal?: AbortSignal;
 };
+export const supportedMethod = (method: unknown): method is NonNullable<HttpRequest["method"]> =>
+  typeof method === "string" &&
+  ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"].includes(method);
+
 /** A complete body within the policy limit; HTTP error statuses remain ordinary responses. */
 export type HttpResponse = {
   readonly status: number;

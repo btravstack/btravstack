@@ -67,17 +67,20 @@ describe("outbound HTTPS", () => {
     // THEN
     expect(result).toBeErrTagged("HttpDestinationForbidden");
   });
-  it.for([301, 302, 303, 307, 308])("refuses redirect %s", async (status, { network }) => {
-    // GIVEN
-    network.respond = (_req, res) => {
-      res.writeHead(status, { location: "https://127.0.0.1/secret" });
-      res.end();
-    };
-    // WHEN
-    const result = await network.client().request({ url: network.origin });
-    // THEN
-    expect(result).toBeErrWith(expect.objectContaining({ _tag: "HttpRedirectRefused", status }));
-  });
+  it.for([300, 301, 302, 303, 305, 306, 307, 308, 399])(
+    "refuses redirect %s",
+    async (status, { network }) => {
+      // GIVEN
+      network.respond = (_req, res) => {
+        res.writeHead(status, { location: "https://127.0.0.1/secret" });
+        res.end();
+      };
+      // WHEN
+      const result = await network.client().request({ url: network.origin });
+      // THEN
+      expect(result).toBeErrWith(expect.objectContaining({ _tag: "HttpRedirectRefused", status }));
+    },
+  );
   it("bounds streamed chunked bytes without Content-Length", async ({ network }) => {
     // GIVEN
     network.respond = (_req, res) => {
@@ -314,4 +317,63 @@ describe("injected request ownership", () => {
       expect.objectContaining({ url: "/original", authorization: "Bearer original", body: "A" }),
     );
   });
+});
+
+describe("fetch response and body compatibility", () => {
+  it("preserves a conditional 304 response as an empty response", async ({ network }) => {
+    // GIVEN
+    network.respond = (_req, res) => {
+      res.writeHead(304, { etag: '"version"' });
+      res.end();
+    };
+    const fetch = httpClientFetch(network.client());
+    // WHEN
+    const response = await fetch(network.origin, { headers: { "if-none-match": '"version"' } });
+    // THEN
+    expect({
+      status: response.status,
+      etag: response.headers.get("etag"),
+      body: await response.text(),
+    }).toEqual({ status: 304, etag: '"version"', body: "" });
+  });
+  it.for([
+    { body: "hello", want: "text/plain;charset=UTF-8" },
+    {
+      body: new URLSearchParams({ grant_type: "client_credentials" }),
+      want: "application/x-www-form-urlencoded;charset=UTF-8",
+    },
+    { body: new Uint8Array([65]), want: "none" },
+    { body: null, want: "none" },
+  ])(
+    "defaults Content-Type only for typed fetch bodies: $want",
+    async ({ body, want }, { network }) => {
+      // GIVEN
+      network.respond = (req, res) => {
+        res.end(req.headers["content-type"] ?? "none");
+      };
+      const fetch = httpClientFetch(network.client());
+      // WHEN
+      const response = await fetch(network.origin, { method: "POST", body });
+      // THEN
+      expect(await response.text()).toBe(want);
+    },
+  );
+  it.for(["hello", new URLSearchParams({ value: "1" })])(
+    "preserves caller Content-Type",
+    async (body, { network }) => {
+      // GIVEN
+      network.respond = (req, res) => {
+        res.end(req.headers["content-type"] ?? "none");
+      };
+      const fetch = httpClientFetch(network.client());
+      // WHEN
+      const response = await fetch(network.origin, {
+        method: "POST",
+        body,
+        headers: { "Content-Type": "application/custom" },
+      });
+      // THEN
+      expect(await response.text()).toBe("application/custom");
+    },
+  );
 });

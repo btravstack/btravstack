@@ -1,4 +1,4 @@
-import { HttpPolicyRejected, type HttpClientService, type HttpRequest } from "./contracts.js";
+import { HttpPolicyRejected, supportedMethod, type HttpClientService } from "./contracts.js";
 
 /**
  * Adapt this boundary to the platform fetch protocol (including openid-client's customFetch).
@@ -21,8 +21,7 @@ export const httpClientFetch =
     )
       return unsupported();
     const method = init?.method?.toUpperCase() ?? "GET";
-    if (!["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"].includes(method))
-      return unsupported();
+    if (!supportedMethod(method)) return unsupported();
     const body = init?.body;
     if (
       body !== undefined &&
@@ -32,10 +31,16 @@ export const httpClientFetch =
       !(body instanceof Uint8Array)
     )
       return unsupported();
+    const headers = new Headers(init?.headers);
+    if (!headers.has("content-type")) {
+      if (body instanceof URLSearchParams)
+        headers.set("content-type", "application/x-www-form-urlencoded;charset=UTF-8");
+      else if (typeof body === "string") headers.set("content-type", "text/plain;charset=UTF-8");
+    }
     const response = await client.request({
       url: input,
-      method: method as NonNullable<HttpRequest["method"]>,
-      headers: Object.fromEntries(new Headers(init?.headers)),
+      method,
+      headers: Object.fromEntries(headers),
       ...(body === undefined || body === null
         ? {}
         : { body: body instanceof URLSearchParams ? body.toString() : body }),
