@@ -76,6 +76,9 @@ const requestIsFor = (request: IncomingMessage): ((target: string) => boolean) =
   const absolute = URL.parse(url);
   const host = absolute?.host ?? request.headers.host ?? "";
   const path = requestPath(url);
+  // A target carrying credentials names another URL than any resource here.
+  if (absolute !== null && (absolute.username !== "" || absolute.password !== ""))
+    return () => false;
   return (target) =>
     target ===
     targetOf(absolute?.protocol ?? target.slice(0, target.indexOf("//")), host, path, url);
@@ -106,26 +109,29 @@ export const challengeOn = (
     // Appended to a challenge the answerer wrote itself (`Bearer
     // error="invalid_token"`), never in its place: RFC 9728 §5.4 has discovery
     // coexist with other challenges. Headers handed to `writeHead` win over
-    // `setHeader`'s, so a challenge there is appended to as well, on a copy.
+    // `setHeader`'s, so a challenge there is appended to as well, in both forms
+    // `writeHead` takes: a record, and a flat name-value list.
+    const isChallenge = (name: unknown): boolean =>
+      typeof name === "string" && name.toLowerCase() === "www-authenticate";
+    const appended = (challenge: unknown): string => `${String(challenge)}, ${value}`;
+    const merged = (headers: unknown): unknown =>
+      Array.isArray(headers)
+        ? headers.map((field: unknown, at) =>
+            at % 2 === 1 && isChallenge(headers[at - 1]) ? appended(field) : field,
+          )
+        : typeof headers === "object" && headers !== null
+          ? Object.fromEntries(
+              Object.entries(headers).map(([name, field]) => [
+                name,
+                isChallenge(name) ? appended(field) : field,
+              ]),
+            )
+          : headers;
     response.writeHead = ((...args: unknown[]) => {
-      if (args[0] === 401) {
-        const own = response.getHeader("www-authenticate");
-        response.setHeader(
-          "www-authenticate",
-          own === undefined ? value : `${String(own)}, ${value}`,
-        );
-        const at = args.findIndex(
-          (arg, index) =>
-            index > 0 && typeof arg === "object" && arg !== null && !Array.isArray(arg),
-        );
-        const headers = at === -1 ? {} : { ...(args[at] as Record<string, unknown>) };
-        const key = Object.keys(headers).find((name) => name.toLowerCase() === "www-authenticate");
-        if (key !== undefined) {
-          headers[key] = `${String(headers[key])}, ${value}`;
-          args[at] = headers;
-        }
-      }
-      return writeHead(...args);
+      if (args[0] !== 401) return writeHead(...args);
+      const own = response.getHeader("www-authenticate");
+      response.setHeader("www-authenticate", own === undefined ? value : appended(own));
+      return writeHead(...args.map((arg, at) => (at === 0 ? arg : merged(arg))));
     }) as ServerResponse["writeHead"];
   };
 };
@@ -221,7 +227,8 @@ const checked = (
       : [{ message: "must not carry credentials", path: [RESOURCE] }]),
     // RFC 3986 tells an empty query from none, and clients disagree on sending
     // it, so such an identifier could not be matched or discovered reliably.
-    ...(resource.endsWith("?")
+    // Read off the serialization: `mcp? ` is `mcp?` once parsed.
+    ...(url.href.endsWith("?")
       ? [{ message: "must not end in an empty query", path: [RESOURCE] }]
       : []),
     ...(cleartext(resource, allowInsecure) === "refused" ? refused(RESOURCE) : []),

@@ -69,7 +69,7 @@ describe("protectedResource", () => {
     });
   });
 
-  it.for(["challenged", "challenged-explicit"] as const)(
+  it.for(["challenged", "challenged-explicit", "challenged-raw"] as const)(
     "appends discovery to a challenge the answerer wrote itself (%s)",
     async (answer, { protectedResource }) => {
       // GIVEN the resource, and an answerer refusing with its own challenge
@@ -230,6 +230,19 @@ describe("protectedResource", () => {
     expect(answered.status).toBe(404);
   });
 
+  it("does not challenge an absolute-form target carrying credentials", async ({
+    protectedResource,
+  }) => {
+    // GIVEN the resource at https://api.test/mcp
+    const get = await protectedResource(MCP);
+
+    // WHEN a forward proxy names the same URL with credentials in it
+    const answered = await get("https://user:secret@api.test/mcp");
+
+    // THEN that is another URL, so another resource
+    expect(answered.challenge).toBeNull();
+  });
+
   it("does not challenge a refusal for the same path without its slash", async ({
     protectedResource,
   }) => {
@@ -317,6 +330,21 @@ describe("protectedResource", () => {
 
     // WHEN the application boots
     // THEN it does not: no request could be matched to it reliably
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        issues: [{ message: "must not end in an empty query", path: ["HTTP_RESOURCE_URI"] }],
+      }),
+    );
+  });
+
+  it("refuses a pinned identifier that parses to an empty query at boot", async ({
+    protectedApp,
+  }) => {
+    // GIVEN an identifier whose trailing space the parser strips, leaving `?`
+    const app = protectedApp({ ...MCP, resource: "https://api.test/mcp? " });
+
+    // WHEN the application boots
+    // THEN it is refused as the bare `?` it serializes to
     await expect(app.exited).toBeErrWith(
       expect.objectContaining({
         issues: [{ message: "must not end in an empty query", path: ["HTTP_RESOURCE_URI"] }],

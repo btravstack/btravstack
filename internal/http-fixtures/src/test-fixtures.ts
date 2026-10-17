@@ -1691,8 +1691,8 @@ const noop: Handler = (_request, response, _signal) =>
 /**
  * A protected resource over one answerer at the root, answering as its
  * `x-answer` header says: `ok` is served, `explicit` refused through
- * `writeHead`, `challenged` and `challenged-explicit` refused with a
- * challenge of their own through `setHeader` and `writeHead`, and anything
+ * `writeHead`, the `challenged` ones refused with a challenge of their own
+ * through `setHeader` or each header form `writeHead` takes, and anything
  * else refused through Node's implicit header.
  */
 const protectedAppOf = (options: ProtectedResourceOptions) =>
@@ -1709,6 +1709,8 @@ const protectedAppOf = (options: ProtectedResourceOptions) =>
               response.writeHead(401, { "content-type": "text/plain" });
             else if (answer === "challenged-explicit")
               response.writeHead(401, { "WWW-Authenticate": invalid });
+            else if (answer === "challenged-raw")
+              response.writeHead(401, ["WWW-Authenticate", invalid]);
             else if (answer === "challenged") {
               response.setHeader("www-authenticate", invalid);
               response.statusCode = 401;
@@ -1727,7 +1729,7 @@ const protectedAppOf = (options: ProtectedResourceOptions) =>
  */
 export type ProtectedCall = (
   path: string,
-  answer?: "ok" | "explicit" | "challenged" | "challenged-explicit",
+  answer?: "ok" | "explicit" | "challenged" | "challenged-explicit" | "challenged-raw",
   host?: string,
 ) => Promise<{
   readonly status: number;
