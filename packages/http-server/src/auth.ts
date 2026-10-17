@@ -22,7 +22,15 @@ export class Unauthenticated extends TaggedError("Unauthenticated") {}
  * Distinct from {@link Unauthenticated} because the answers differ: an
  * anonymous caller gets `401`, an under-scoped one `403`.
  */
-export class UnderScoped extends TaggedError("UnderScoped") {}
+export class UnderScoped extends TaggedError("UnderScoped") {
+  /** One sufficient Bearer alternative, in declaration order; absent for other credentials. */
+  readonly scopes: readonly string[] | undefined;
+
+  constructor(scopes?: readonly string[]) {
+    super();
+    this.scopes = scopes;
+  }
+}
 
 // Module-private, so `granted` is the only thing that mints a grant. The type
 // parameter is erased at runtime, so structure is all the middleware has to go
@@ -89,9 +97,12 @@ export const grantOf = (
  * Headers, not the request: an authenticator has no business reading a body,
  * and the narrower argument is what keeps it testable without a socket.
  */
-export type AuthenticatorService<P, Scope extends string = never> = (
+export type AuthenticatorService<P, Scope extends string = never> = ((
   headers: IncomingHttpHeaders,
-) => AsyncResult<Granted<P, Scope>, Unauthenticated>;
+) => AsyncResult<Granted<P, Scope>, Unauthenticated>) & {
+  /** Verifies an RFC 6750 Bearer credential from Authorization. */
+  readonly bearer?: true;
+};
 
 const ports = new Map<string, unknown>();
 
@@ -257,8 +268,22 @@ export const HttpAuthenticator = <P, Scope extends string = never>() => {
     const D extends Readonly<Record<string, AnyPort>>,
     O extends SyncArm<D, P, Scope> | MakeArm<D, P, Scope>,
   >(
-    options: { readonly inject: D } & O,
-  ): Authenticator<P, Scope, InstanceType<D[keyof D]>, ErrorOfArm<O>> => ({ options }) as never;
+    options: { readonly inject: D; readonly bearer?: true } & O,
+  ): Authenticator<P, Scope, InstanceType<D[keyof D]>, ErrorOfArm<O>> => {
+    // Mark the built service, where the shared authentication walk can see it.
+    // Wrap rather than mutate a service the application's factory may share.
+    const marked = (service: AuthenticatorService<P, Scope>): AuthenticatorService<P, Scope> =>
+      Object.assign((headers: IncomingHttpHeaders) => service(headers), { bearer: true as const });
+    if (options.bearer !== true) return { options } as never;
+    return {
+      options: {
+        ...options,
+        ...(options.sync !== undefined
+          ? { sync: (services: ServicesOf<D>) => marked(options.sync!(services)) }
+          : { make: (services: ServicesOf<D>) => options.make!(services).map(marked) }),
+      },
+    } as never;
+  };
 };
 
 /** Which scheme answered, and what it answered with — the unit kind a request opens under. */
@@ -310,6 +335,7 @@ const walk = async (
   // oxlint-disable-next-line unthrown/prefer-async-result -- module-private; resolveScheme wraps it in fromSafePromise, which is the AsyncResult surface callers see
 ): Promise<Result<Resolved, Unauthenticated | UnderScoped>> => {
   let underScoped = false;
+  let scopes: readonly string[] | undefined;
   for (const requirement of requirements) {
     for (const [scheme, required] of Object.entries(requirement)) {
       // Asserted, not guarded: the router declares one dep per scheme its
@@ -334,11 +360,14 @@ const walk = async (
       const scopesGranted = scoped?.scopes ?? [];
       if (!required.every((scope) => scopesGranted.includes(scope))) {
         underScoped = true;
+        // Alternatives are OR: advertise one complete requirement which would
+        // suffice, never the union, and only from a verifier that accepted it.
+        if (scopes === undefined && authenticate.bearer === true) scopes = [...required];
         continue;
       }
       const identity = scoped === undefined ? answer : scoped.identity;
       return Ok({ scheme, identity });
     }
   }
-  return Err(underScoped ? new UnderScoped() : new Unauthenticated());
+  return Err(underScoped ? new UnderScoped(scopes) : new Unauthenticated());
 };

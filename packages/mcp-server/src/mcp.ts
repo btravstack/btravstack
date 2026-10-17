@@ -7,7 +7,7 @@ import {
   HttpHandler,
   HttpUnit,
   principalOf,
-  resolveScheme,
+  resolveRequestScheme,
   schemeDeps,
   schemeServices,
   send,
@@ -232,10 +232,10 @@ export const mcp = <
           }
           let resolved: Resolved | undefined;
           if (requirements !== undefined) {
-            const result = await resolveScheme(
+            const result = await resolveRequestScheme(
               requirements,
               authenticators,
-              request.headers,
+              request,
             ).mapErrCases((matcher) =>
               matcher
                 .with(P.tag("Unauthenticated"), () => 401 as const)

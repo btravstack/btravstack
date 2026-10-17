@@ -1,9 +1,46 @@
 import assert from "node:assert/strict";
 
+import { resolvePrincipal } from "@btravstack/http-server";
 import { it } from "@btravstack/internal-http-fixtures";
 import { describe, expect } from "vitest";
 
 describe("jwtAuthenticator", () => {
+  it("advertises a default-header JWT requirement only after verifying the token", async ({
+    issuer,
+    scopedJwtService,
+  }) => {
+    // GIVEN a genuinely signed token with no granted scope
+    const token = await issuer.sign({ sub: "u-1", tenant: "acme" }).get();
+    // WHEN the shipped make-service checks its route requirement
+    const resolved = await resolvePrincipal(
+      [{ user: ["orders:export"] }],
+      { user: scopedJwtService },
+      { authorization: `Bearer ${token}` },
+    );
+    // THEN the typed refusal carries the Bearer scope hint
+    expect(resolved).toBeErrWith(
+      expect.objectContaining({ _tag: "UnderScoped", scopes: ["orders:export"] }),
+    );
+  });
+
+  it("does not advertise a custom-header JWT refusal as RFC 6750 Bearer", async ({
+    issuer,
+    customHeaderScopedJwtService,
+  }) => {
+    // GIVEN the same signed credential presented in the application's custom header
+    const token = await issuer.sign({ sub: "u-1", tenant: "acme" }).get();
+    // WHEN the shipped make-service checks its route requirement
+    const resolved = await resolvePrincipal(
+      [{ user: ["orders:export"] }],
+      { user: customHeaderScopedJwtService },
+      { "x-token": `Bearer ${token}` },
+    );
+    // THEN it is under-scoped without misleading Authorization challenge data
+    expect(resolved).toBeErrWith(
+      expect.objectContaining({ _tag: "UnderScoped", scopes: undefined }),
+    );
+  });
+
   it("names the caller its claims describe, over a real JWKS fetch", async ({
     issuer,
     jwtService,

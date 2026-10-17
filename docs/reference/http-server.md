@@ -713,7 +713,7 @@ export const resource = protectedResource({ scopes: ["orders:read"] });
   answerer wrote it — oRPC, GraphQL, fragments — without any of them knowing.
   A challenge the answerer wrote itself, such as
   `Bearer error="invalid_token"`, keeps its place, and discovery is appended
-  to it (RFC 9728 §5.4). Nothing else carries it: any other URL — another scheme where the request line names one, another host, a path below it, the
+  to it (RFC 9728 §5.4). Any other URL — another scheme where the request line names one, another host, a path below it, the
   same path without its trailing slash, another query — is another resource,
   whose metadata a client must discard (RFC 9728 §3.3). A request's bare
   trailing `?` reads as no query, since clients disagree on sending it — and
@@ -722,6 +722,19 @@ export const resource = protectedResource({ scopes: ["orders:read"] });
   again" (§5.2). The value rides `HttpChallenges`, a set port the starter
   reads the way it reads `CookieSchemes`, so a root composing no protected
   resource sends no header.
+
+A verified Bearer credential missing a required scope gets a `403` with
+`WWW-Authenticate: Bearer resource_metadata="<that URL>", error="insufficient_scope", scope="<required scopes>"`.
+The scope is the complete **first unsatisfied alternative whose Bearer verifier
+accepted the token**, in route declaration order. Alternatives are OR, so their
+scopes are never combined. This works for oRPC, htmx, GraphQL and MCP. Cookie/API-key
+scope refusals, business authorization refusals, plain `403` responses and another
+resource receive no OAuth scope error. An existing application challenge remains.
+`jwtAuthenticator` identifies its standard Authorization-header verifier as Bearer;
+a custom `HttpAuthenticator` opts in with `bearer: true`. A custom JWT header is
+outside RFC 6750's Authorization mechanism and does not opt in automatically.
+Invalid custom scope tokens omit the `scope` attribute rather than writing unsafe
+header bytes. The error itself remains `insufficient_scope`.
 
 It reads two variables, each pinned by the option of the same name:
 `HTTP_RESOURCE_URI`, the resource identifier — the audience its JWT scheme
@@ -737,7 +750,7 @@ offending variable. The metadata URL
 keeps the identifier's path and query, dropping only the slash after the host
 (§3.1), and an empty `scopes` list is omitted from the document (§3.2).
 
-It serves discovery and nothing more. Verifying the token stays the JWT
+It serves metadata and refusal challenges. Verifying the token stays the JWT
 scheme's, and exchanging it for a downstream token is
 [`@btravstack/oauth-client`](/reference/oauth-client)'s `onBehalfOf`.
 
@@ -1157,9 +1170,9 @@ const granted: <P, const Scope extends string = never>(
   scopes: readonly Scope[],
 ) => Grant<P, Scope>;
 
-type AuthenticatorService<P, Scope extends string = never> = (
+type AuthenticatorService<P, Scope extends string = never> = ((
   headers: IncomingHttpHeaders,
-) => AsyncResult<Granted<P, Scope>, Unauthenticated>;
+) => AsyncResult<Granted<P, Scope>, Unauthenticated>) & { readonly bearer?: true };
 ```
 
 **Headers, not the request**: an authenticator has no business reading a body,
@@ -1355,7 +1368,8 @@ a caller satisfies wins.
 Neither refusal carries a message: oRPC serializes `message` to the client, and
 a refusal has nothing a caller is entitled to. A root composing
 [`protectedResource()`](#the-protected-resource) adds the one thing a refused
-caller is entitled to: where to get a token. A requirement naming scopes is
+caller needs: where to get a token, and one sufficient scope alternative for
+a verified Bearer credential that lacked scope. A requirement naming scopes is
 **not** satisfied by a credential reporting none — a scheme declared without a
 vocabulary answers bare, and admitting it there would admit the caller
 outright. An empty scope list still passes trivially. A `Defect` is a bug in

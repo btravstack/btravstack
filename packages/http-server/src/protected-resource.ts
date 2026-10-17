@@ -15,15 +15,22 @@ import { Port, Provider, type AnyProvider, type ServiceOf } from "@btravstack/di
 import { Err, Ok, type Result } from "unthrown";
 
 import { HttpHandler, send } from "./handler.js";
+import { scopeChallengeOf } from "./scope-challenge.js";
 
 /**
  * A `WWW-Authenticate` challenge, and the request whose refusals carry it: its
  * scheme, host, path and query, as sent.
  */
-export type HttpChallenge = { readonly target: string; readonly value: string };
+export type HttpChallenge = {
+  readonly target: string;
+  readonly value: string;
+  /** Metadata URL for typed Bearer scope refusals, set by protectedResource(). */
+  readonly resourceMetadata?: string;
+};
 
 /**
- * The challenges a `401` carries, one member per composed surface.
+ * The challenges a `401` carries, one member per composed surface. Protected
+ * resources also identify their metadata for typed Bearer scope refusals.
  * `httpServer` contributes the empty member that keeps the set from being the
  * empty dependency di refuses; an empty challenge is dropped, so a graph
  * composing no protected resource sends no header.
@@ -90,7 +97,8 @@ const requestIsFor = (request: IncomingMessage): ((target: string) => boolean) =
 
 /**
  * What the runtime applies to each response before dispatch: a `401` for a
- * challenge's own target carries it, and nothing else does.
+ * challenge's own target carries it. A typed Bearer scope refusal gets the
+ * matching resource's metadata and insufficient_scope error on its `403`.
  *
  * `writeHead` is wrapped on the response rather than the header set up front,
  * because the status is decided by whichever answerer refuses — oRPC, `htmx()`,
@@ -117,7 +125,8 @@ export const challengeOn = (
     // `writeHead` takes: a record, and a flat name-value list.
     const isChallenge = (name: unknown): boolean =>
       typeof name === "string" && name.toLowerCase() === "www-authenticate";
-    const appended = (challenge: unknown): string => `${String(challenge)}, ${value}`;
+    let applied = value;
+    const appended = (challenge: unknown): string => `${String(challenge)}, ${applied}`;
     const merged = (headers: unknown): unknown =>
       Array.isArray(headers)
         ? headers.map((field: unknown, at) =>
@@ -132,9 +141,22 @@ export const challengeOn = (
             )
           : headers;
     response.writeHead = ((...args: unknown[]) => {
-      if (args[0] !== 401) return writeHead(...args);
+      if (args[0] === 403) {
+        const scope = scopeChallengeOf(request);
+        if (scope === undefined) return writeHead(...args);
+        // Each composed challenge remains a complete Bearer alternative with
+        // its own discovery URL, alongside any challenge the answerer wrote.
+        applied = live
+          .filter(({ target, resourceMetadata }) => isFor(target) && resourceMetadata !== undefined)
+          .map(
+            ({ resourceMetadata }) =>
+              `Bearer resource_metadata="${resourceMetadata!.replace(/["\\]/g, "\\$&")}", ${scope}`,
+          )
+          .join(", ");
+        if (applied === "") return writeHead(...args);
+      } else if (args[0] !== 401) return writeHead(...args);
       const own = response.getHeader("www-authenticate");
-      response.setHeader("www-authenticate", own === undefined ? value : appended(own));
+      response.setHeader("www-authenticate", own === undefined ? applied : appended(own));
       return writeHead(...args.map((arg, at) => (at === 0 ? arg : merged(arg))));
     }) as ServerResponse["writeHead"];
   };
@@ -364,6 +386,7 @@ export const protectedResource = <const O extends ProtectedResourceOptions = Rec
       ),
       // RFC 9110 §5.6.4: a quoted string escapes its quotes and backslashes.
       value: `Bearer resource_metadata="${bound.metadata.replace(/["\\]/g, "\\$&")}"`,
+      resourceMetadata: bound.metadata,
     }),
   });
   // Cast for the needs alone: over generic options the schema's own needs type

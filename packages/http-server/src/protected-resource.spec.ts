@@ -7,6 +7,107 @@ const MCP = {
 } as const;
 
 describe("protectedResource", () => {
+  it("challenges the actual scope refusal with one sufficient alternative", async ({
+    protectedResource,
+  }) => {
+    // GIVEN a protected resource with two alternative scope requirements
+    const get = await protectedResource(MCP);
+    // WHEN a verified Bearer credential satisfies neither
+    const answered = await get("/mcp", "scope");
+    // THEN the first alternative and discovery metadata describe a useful retry
+    expect({ status: answered.status, challenge: answered.challenge }).toEqual({
+      status: 403,
+      challenge:
+        'Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/mcp", error="insufficient_scope", scope="orders:read"',
+    });
+  });
+
+  it.for(["scope-challenged", "scope-explicit", "scope-raw"] as const)(
+    "preserves an application's challenge on a scope refusal (%s)",
+    async (answer, { protectedResource }) => {
+      // GIVEN an answerer with its own challenge
+      const get = await protectedResource(MCP);
+      // WHEN it refuses a verified Bearer credential
+      const answered = await get("/mcp", answer);
+      // THEN the original challenge survives in each Node header form
+      expect(answered.challenge).toBe(
+        'Basic realm="legacy", Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/mcp", error="insufficient_scope", scope="orders:read"',
+      );
+    },
+  );
+
+  it.for(["forbidden", "key-scoped"] as const)(
+    "does not mistake a different refusal for an OAuth scope error (%s)",
+    async (answer, { protectedResource }) => {
+      // GIVEN a resource beside a business refusal or a valid but under-scoped API key
+      const get = await protectedResource(MCP);
+      // WHEN that request is forbidden
+      const answered = await get("/mcp", answer);
+      // THEN a bare status is insufficient evidence for an OAuth error
+      expect({ status: answered.status, challenge: answered.challenge }).toEqual({
+        status: 403,
+        challenge: null,
+      });
+    },
+  );
+
+  it("does not advertise scope metadata belonging to another resource", async ({
+    protectedResource,
+  }) => {
+    // GIVEN metadata for /mcp
+    const get = await protectedResource(MCP);
+    // WHEN a verified credential lacks a scope at another endpoint
+    const answered = await get("/other", "scope");
+    // THEN that refusal cannot point a client at /mcp's metadata
+    expect({ status: answered.status, challenge: answered.challenge }).toEqual({
+      status: 403,
+      challenge: null,
+    });
+  });
+
+  it("clears a previous scope failure when a later authentication succeeds", async ({
+    protectedResource,
+  }) => {
+    // GIVEN two resolutions on the same request, the second accepting its caller
+    const get = await protectedResource(MCP);
+    // WHEN later business logic answers 403
+    const answered = await get("/mcp", "scope-then-ok");
+    // THEN a stale scope failure cannot turn it into an OAuth error
+    expect({ status: answered.status, challenge: answered.challenge }).toEqual({
+      status: 403,
+      challenge: null,
+    });
+  });
+
+  it("does not append OAuth attributes to a generic challenge member", async ({
+    protectedResource,
+  }) => {
+    // GIVEN an unrelated Basic challenge composed for another resource
+    const get = await protectedResource(MCP);
+    // WHEN that endpoint has a typed Bearer scope refusal
+    const answered = await get("/custom", "scope");
+    // THEN no protected-resource metadata exists for its 403
+    expect({ status: answered.status, challenge: answered.challenge }).toEqual({
+      status: 403,
+      challenge: null,
+    });
+  });
+
+  it("omits an unsafe scope string without losing the typed refusal", async ({
+    protectedResource,
+  }) => {
+    // GIVEN an application-defined scope containing a quote and CRLF
+    const get = await protectedResource(MCP);
+    // WHEN its valid Bearer caller lacks that scope
+    const answered = await get("/mcp", "scope-invalid");
+    // THEN no invalid bytes enter a header or turn the refusal into a 500
+    expect({ status: answered.status, challenge: answered.challenge }).toEqual({
+      status: 403,
+      challenge:
+        'Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/mcp", error="insufficient_scope"',
+    });
+  });
+
   it("serves its metadata under the well-known path, suffixed with the resource's own", async ({
     protectedResource,
   }) => {

@@ -322,6 +322,28 @@ under a single unscoped scheme then reads. The shipped schemes call `granted`
 themselves, from the `scopes` array or the matched key's own, which is why
 neither fence above mentions it.
 
+A custom scheme that verifies an RFC 6750 Bearer token in `Authorization`
+opts in to insufficient-scope challenges with `bearer: true`. This describes the
+credential it actually verifies; leave it absent for cookies and API-key headers.
+The shipped `jwtAuthenticator` sets it for its default Authorization header.
+
+<!-- doctest: isolate
+import { HttpAuthenticator, type AuthenticatorService } from "@btravstack/http-server";
+declare const verifyBearer: AuthenticatorService<{ readonly subject: string }, "orders:read">;
+-->
+
+```ts
+export const bearerAuth = HttpAuthenticator<
+  { readonly subject: string },
+  "orders:read"
+>()({ bearer: true, inject: {}, sync: () => verifyBearer });
+```
+
+Compose [`protectedResource()`](/reference/http-server#the-protected-resource)
+for the resource's exact URL. Its verified Bearer scope refusal then carries
+`error="insufficient_scope"`, the metadata URL and the first sufficient scope
+alternative. A business authorization `403` receives no scope challenge.
+
 Building a scheme can also **fail**, and `make` is the arm for that:
 `jwtAuthenticator` is `HttpAuthenticator` over `{ inject: { env: Env }, make }`,
 whose `AsyncResult` carries `ConfigInvalid` into the graph's own error channel —

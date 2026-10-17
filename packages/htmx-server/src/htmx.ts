@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { Provider } from "@btravstack/di";
-import { principalOf, resolveScheme, type Resolved } from "@btravstack/http-server/internal";
+import { principalOf, resolveRequestScheme, type Resolved } from "@btravstack/http-server/internal";
 import { HttpHandler, pathUnder, send } from "@btravstack/http-server/internal";
 import { HttpConfig } from "@btravstack/http-server/internal";
 import { HttpUnit } from "@btravstack/http-server/internal";
@@ -62,12 +62,12 @@ export const htmx = (options: HtmxOptions = {}) => {
         let principal: unknown;
         let authenticated: Resolved | undefined;
         if (route.requirements !== undefined) {
-          // Exhaustive on `resolveScheme`'s Err union: a third case added there
+          // Exhaustive on `resolveRequestScheme`'s Err union: a third case added there
           // fails this compile rather than silently falling through to 401.
-          const resolved = await resolveScheme(
+          const resolved = await resolveRequestScheme(
             route.requirements,
             fragments.authenticators,
-            request.headers,
+            request,
           ).mapErrCases((matcher) =>
             matcher
               .with(P.tag("Unauthenticated"), (): Refusal => refusalOf(options.login, request.url))

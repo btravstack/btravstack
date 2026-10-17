@@ -549,8 +549,7 @@ The two rules this half exists to state, before the detail:
   `WWW-Authenticate: Bearer resource_metadata="…"` challenge. Like `oidc()`, it
   verifies nothing and mints nothing; it says where a credential comes from.
 
-  **The challenge rides a `401` for the resource's own URL, and nothing
-  else.** RFC 9728 §3.3 has a client discard metadata whose `resource` is not
+  **Discovery rides a `401` for the resource's own URL.** RFC 9728 §3.3 has a client discard metadata whose `resource` is not
   identical to the URL it called, so any other URL — another scheme where the request line names one, another host, a path below the resource, the same path without its trailing slash or under
   another query — is another resource, and a
   challenge there points the client at a document it must refuse. Matching
@@ -561,6 +560,18 @@ The two rules this half exists to state, before the detail:
   every `200` costs a conforming client a refetch per call. Setting the header
   up front, beside `securityHeaders`, was tried first and was wrong on both
   counts.
+
+  **A verified Bearer credential missing a required scope gets a `403`
+  challenge** with `error="insufficient_scope"`, the same `resource_metadata`
+  and the complete first unsatisfied Bearer alternative as `scope`. Alternatives
+  are OR: their scopes are never unioned, and a scheme that rejected the token
+  supplies no hint. `jwtAuthenticator` marks its standard Authorization-header
+  service as Bearer; a custom `HttpAuthenticator` opts in with `bearer: true`.
+  Cookie/API-key scope refusals, business refusals and bare `403` responses do
+  not acquire this error. Invalid custom scope tokens omit only `scope`, never
+  write unsafe header bytes. All four HTTP answerers use `resolveRequestScheme`,
+  which marks the request only after the shared walk returns `UnderScoped`;
+  a private global symbol lets the runtime read that mark across entrypoints.
 
   **So the runtime wraps `writeHead` on a matching request's response**, before
   dispatch: the status is decided by whichever answerer refuses — oRPC's error
@@ -702,9 +713,9 @@ The two rules this half exists to state, before the detail:
     passes trivially.
   - **`UnderScoped` is not `Unauthenticated`.** A credential that was valid but
     under-scoped answers `UnderScoped`; only a caller no requirement accepted
-    at all answers `Unauthenticated`. Neither carries a reason: the refusal is
-    typed, not messaged, so what a caller is told is each answerer's own
-    decision. **The distinction is what makes `htmx({ login })` possible**:
+    at all answers `Unauthenticated`. Neither carries a message. `UnderScoped.scopes` optionally carries one
+    complete verified Bearer requirement so HTTP can advertise a useful retry;
+    `new UnderScoped()` remains valid and carries no scope hint. **The distinction is what makes `htmx({ login })` possible**:
     only `Unauthenticated` is a caller a login can help, so that is the one
     case sent to the login ROUTE — `/auth/login`, not the `/auth` mount
     `oidc()` sits on — and an `UnderScoped` caller — logged in, and still
