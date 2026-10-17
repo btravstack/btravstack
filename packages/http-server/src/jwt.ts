@@ -263,6 +263,7 @@ export const jwtAuthenticator =
     // required unless pinned, absent when certainly pinned.
     return HttpAuthenticator<P, Scopes[number]>()({
       inject: { env: Env, observers: Observers, ...injectedDeps(options.inject) },
+      ...(header === "authorization" ? { bearer: true } : {}),
       make: ({ env, observers, ...services }) =>
         Config.parse(
           "HttpJwt",

@@ -1,6 +1,7 @@
 /** @internal Shared transport seams for the protocol packages. */
-export { principalOf, resolveScheme, schemeDeps, schemeServices } from "./auth.js";
+export { principalOf, schemeDeps, schemeServices } from "./auth.js";
 export type { AuthenticatorService, Resolved } from "./auth.js";
+export { resolveRequestScheme } from "./scope-challenge.js";
 export {
   HttpAuthenticator,
   Unauthenticated,

@@ -3,7 +3,7 @@ import type { IncomingMessage } from "node:http";
 import type { Requirements } from "@btravstack/contract";
 import {
   principalOf,
-  resolveScheme,
+  resolveRequestScheme,
   type AuthenticatorService,
   type Resolved,
 } from "@btravstack/http-server/internal";
@@ -25,10 +25,10 @@ export const principalMiddleware =
       readonly context: { readonly principal: unknown; readonly resolved: Resolved };
     }) => Promise<unknown>;
   }): Promise<unknown> => {
-    const resolved = await resolveScheme(
+    const resolved = await resolveRequestScheme(
       requirements,
       authenticators,
-      options.context.request.headers,
+      options.context.request,
     );
     if (resolved.isDefect()) {
       // oxlint-disable-next-line unthrown/no-throw -- the only way to hand a defect back to oRPC, whose middleware protocol has no returned-error arm

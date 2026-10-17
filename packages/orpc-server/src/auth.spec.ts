@@ -1,10 +1,112 @@
-import { Unauthenticated, granted, resolvePrincipal } from "@btravstack/http-server";
+import { authenticated } from "@btravstack/contract";
+import {
+  HttpAuthenticator,
+  Unauthenticated,
+  granted,
+  protectedResource,
+  resolvePrincipal,
+} from "@btravstack/http-server";
 import { it } from "@btravstack/internal-http-fixtures";
+import { defineHttp, HttpModule } from "@btravstack/orpc-server";
 import { principalMiddleware } from "@btravstack/orpc-server/internal";
+import { oc, type as ocType } from "@orpc/contract";
 import { ErrAsync, OkAsync } from "unthrown";
 import { describe, expect } from "vitest";
 
 describe("an authenticated procedure", () => {
+  it("challenges a Bearer scope refusal through the oRPC answerer", async ({
+    boot,
+    resourceCall,
+  }) => {
+    // GIVEN an oRPC procedure protected by the Bearer scheme
+    const api = defineHttp({
+      authenticators: {
+        user: HttpAuthenticator<{}, "read">()({
+          bearer: true,
+          inject: {},
+          sync: () => () => OkAsync(granted({}, [] as readonly "read"[])),
+        }),
+      },
+    });
+    const router = api.OrpcRouter({
+      whoami: authenticated({ user: ["read"] })(oc.output(ocType<string>())),
+    })({
+      inject: {},
+      sync: () => ({ whoami: () => OkAsync("never") }),
+    });
+    const app = boot(
+      HttpModule("ScopeChallengeRpc")({
+        router,
+        port: 0,
+        hostname: "127.0.0.1",
+        provides: [
+          ...protectedResource({
+            resource: "https://api.test/rpc/whoami",
+            authorizationServers: ["https://login.test/"],
+          }),
+        ],
+      }),
+    );
+    const info = (await app.runtimeInfo()).get();
+    // WHEN a verified but under-scoped token calls it
+    const response = await resourceCall(info!.port)("/rpc/whoami", undefined, undefined, {
+      method: "POST",
+      body: '{"json":{}}',
+      headers: { "content-type": "application/json", authorization: "Bearer valid" },
+    });
+    // THEN the protocol's 403 carries the shared scope/discovery challenge
+    expect({ status: response.status, challenge: response.challenge }).toEqual({
+      status: 403,
+      challenge:
+        'Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/rpc/whoami", error="insufficient_scope", scope="read"',
+    });
+  });
+
+  it("reports one verified Bearer alternative rather than the union of alternatives", async ({
+    headers,
+  }) => {
+    // GIVEN two alternative Bearer scope sets and an earlier unrelated API-key scheme
+    const authenticators = {
+      key: () => OkAsync(granted({ userId: "key" }, [])),
+      user: Object.assign(() => OkAsync(granted({ userId: "u-1" }, [])), { bearer: true as const }),
+    };
+
+    // WHEN no alternative is satisfied by the valid credentials
+    const resolved = await resolvePrincipal(
+      [{ key: ["admin"] }, { user: ["orders:read", "orders:export"] }, { user: ["orders:admin"] }],
+      authenticators,
+      headers,
+    );
+
+    // THEN the first verified Bearer alternative is sufficient by itself
+    expect(resolved).toBeErrWith(
+      expect.objectContaining({
+        _tag: "UnderScoped",
+        scopes: ["orders:read", "orders:export"],
+      }),
+    );
+  });
+
+  it("does not advertise a scope from a scheme that rejected the token", async ({ headers }) => {
+    // GIVEN a rejected Bearer credential and an accepted but under-scoped API key
+    const authenticators = {
+      user: Object.assign(() => ErrAsync(new Unauthenticated()), { bearer: true as const }),
+      key: () => OkAsync(granted({ userId: "key" }, [])),
+    };
+
+    // WHEN authentication fails its scope check only for the key
+    const resolved = await resolvePrincipal(
+      [{ user: ["orders:export"] }, { key: ["admin"] }],
+      authenticators,
+      headers,
+    );
+
+    // THEN there is no OAuth scope hint
+    expect(resolved).toBeErrWith(
+      expect.objectContaining({ _tag: "UnderScoped", scopes: undefined }),
+    );
+  });
+
   it("hands the handler the identity its scheme resolves", async ({ rpcAuthed }) => {
     // GIVEN a client presenting a token the authenticator accepts
     const client = rpcAuthed.clientWith("good");

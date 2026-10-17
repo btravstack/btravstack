@@ -172,7 +172,20 @@ describe("mcp answerer", () => {
     const response = await server.post("k-2");
 
     // THEN it is forbidden rather than unauthenticated
-    expect(response.status).toBe(403);
+    expect(response).toEqual({ status: 403, challenge: null });
+  });
+
+  it("challenges a valid Bearer credential missing the MCP mount's scope", async ({ served }) => {
+    // GIVEN the same protected resource using a Bearer verifier
+    const server = await served({ deployment: "bearer" });
+    // WHEN the verified token lacks tools:call
+    const response = await server.post("k-2");
+    // THEN the actual SDK-facing refusal tells the client what scope is needed
+    expect(response).toEqual({
+      status: 403,
+      challenge:
+        'Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/mcp", error="insufficient_scope", scope="tools:call"',
+    });
   });
 
   it("answers a GET with 405 rather than a stream it would hold open", async ({ served }) => {

@@ -73,7 +73,9 @@ export const McpApi = McpModule("McpApi")({
 - **A refused caller gets a bare `401` or `403`.**
   [`protectedResource()`](/reference/http-server#the-protected-resource) adds
   the challenge that tells an MCP client which authorization server to sign
-  in with.
+  in with. A verified Bearer token lacking the mount's scope gets
+  `error="insufficient_scope"` and one sufficient required scope alternative;
+  an API-key refusal or a tool's business refusal gets no OAuth scope error.
 - **The body is bounded by `HTTP_BODY_LIMIT`**, as for every answerer.
 
 Prompts and resources are the SDK's too: `server.registerPrompt` and

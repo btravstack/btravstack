@@ -6,9 +6,11 @@ import { Observers, start, type Operation, type RunningApp, type Settled } from 
 import { Module, Port, Provider, type AnyProvider } from "@btravstack/di";
 import {
   HttpAuthenticator,
+  Unauthenticated,
   apiKeyAuthenticator,
   defineAuth,
   protectedResource,
+  granted,
 } from "@btravstack/http-server";
 import { HttpHandler, HttpRuntime, httpServer } from "@btravstack/http-server/internal";
 import { bootFixture, type Boot } from "@btravstack/testing";
@@ -150,6 +152,29 @@ const unclosableAnswerer = mcp(auth, {
 });
 
 const deployments = {
+  bearer: (() => {
+    const api = defineAuth({
+      authenticators: {
+        service: HttpAuthenticator<{}, "tools:call">()({
+          bearer: true,
+          inject: {},
+          sync: () => (headers) =>
+            headers.authorization === "Bearer k-2"
+              ? OkAsync(granted({}, [] as readonly "tools:call"[]))
+              : ErrAsync(new Unauthenticated()),
+        }),
+      },
+    });
+    return {
+      answerer: mcp(api, {
+        requires: [{ service: ["tools:call"] }],
+        server: () => new McpServer({ name: "never", version: "1" }),
+      }),
+      providers: api.providers,
+      unit,
+      path: "/mcp",
+    };
+  })(),
   protected: { answerer: protectedAnswerer, providers: auth.providers, unit, path: "/mcp" },
   public: { answerer: publicAnswerer, providers: [], unit, path: "/agents" },
   brokenScheme: {
@@ -257,7 +282,12 @@ export const it = test.extend<McpFixtures>({
       const info = (await boot(appOf(deployment, bodyLimit, seen)).runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       const url = new URL(`http://127.0.0.1:${info.port}${deployments[deployment].path}`);
-      const headers = (key: string | undefined) => (key === undefined ? {} : { "x-api-key": key });
+      const headers = (key: string | undefined) =>
+        key === undefined
+          ? {}
+          : deployment === "bearer"
+            ? { authorization: `Bearer ${key}` }
+            : { "x-api-key": key };
       return {
         seen,
         connect: async (key) => {

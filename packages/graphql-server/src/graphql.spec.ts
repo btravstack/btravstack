@@ -2,7 +2,12 @@ import { Env } from "@btravstack/config";
 import { start } from "@btravstack/core";
 import { Observers, type Settled } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
-import { HttpAuthenticator, Unauthenticated, granted } from "@btravstack/http-server";
+import {
+  HttpAuthenticator,
+  Unauthenticated,
+  granted,
+  protectedResource,
+} from "@btravstack/http-server";
 import { defineAuth } from "@btravstack/http-server";
 import { HttpHandler } from "@btravstack/http-server/internal";
 import { HttpRuntime, httpServer } from "@btravstack/http-server/internal";
@@ -16,6 +21,54 @@ import { fieldResult } from "./field.js";
 import { graphql } from "./graphql.js";
 
 describe("graphql answerer", () => {
+  it("challenges a Bearer scope refusal through Yoga", async ({ boot, resourceCall }) => {
+    // GIVEN a GraphQL mount requiring a scope the verified token lacks
+    const api = defineAuth({
+      authenticators: {
+        user: HttpAuthenticator<{}, "read">()({
+          bearer: true,
+          inject: {},
+          sync: () => () => OkAsync(granted({}, [] as readonly "read"[])),
+        }),
+      },
+    });
+    const answerer = graphql(api, {
+      requires: [{ user: ["read"] }],
+      schema: createSchema({
+        typeDefs: "type Query { hello: String }",
+        resolvers: { Query: { hello: () => "never" } },
+      }),
+    });
+    const app = boot(
+      Module("ScopeChallengeGraphql")({
+        needs: [Env],
+        imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+        provides: [
+          answerer,
+          ...answerer.authenticators,
+          ...protectedResource({
+            resource: "https://api.test/graphql",
+            authorizationServers: ["https://login.test/"],
+          }),
+        ],
+        exports: [HttpRuntime, HttpHandler],
+      }),
+    );
+    const info = (await app.runtimeInfo()).get();
+    // WHEN a query arrives with that token
+    const response = await resourceCall(info!.port)("/graphql", undefined, undefined, {
+      method: "POST",
+      body: '{"query":"{ hello }"}',
+      headers: { "content-type": "application/json", authorization: "Bearer valid" },
+    });
+    // THEN the actual Yoga refusal advertises the required scope
+    expect({ status: response.status, challenge: response.challenge }).toEqual({
+      status: 403,
+      challenge:
+        'Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/graphql", error="insufficient_scope", scope="read"',
+    });
+  });
+
   it("serves a query through the existing HTTP runtime", async ({ boot }) => {
     // GIVEN a GraphQL schema mounted beside the HTTP runtime
     const schema = createSchema({

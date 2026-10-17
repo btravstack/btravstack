@@ -50,6 +50,8 @@ import {
 import {
   HttpAuthenticator,
   Unauthenticated,
+  resolveRequestScheme,
+  HttpChallenges,
   authenticatorPort,
   granted,
   type Authenticator,
@@ -1699,26 +1701,53 @@ const protectedAppOf = (options: ProtectedResourceOptions) =>
   Module("ProtectedApp")({
     imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
     provides: [
-      answering(
-        (request, response) =>
-          new Promise<void>((done) => {
-            const answer = request.headers["x-answer"];
-            const invalid = 'Bearer error="invalid_token"';
-            if (answer === "ok") response.statusCode = 200;
-            else if (answer === "explicit")
-              response.writeHead(401, { "content-type": "text/plain" });
-            else if (answer === "challenged-explicit")
-              response.writeHead(401, { "WWW-Authenticate": invalid });
-            else if (answer === "challenged-raw")
-              response.writeHead(401, ["WWW-Authenticate", invalid]);
-            else if (answer === "challenged") {
-              response.setHeader("www-authenticate", invalid);
-              response.statusCode = 401;
-            } else response.statusCode = 401;
-            response.end(() => done());
-          }),
-      ),
+      answering(async (request, response) => {
+        const answer = request.headers["x-answer"];
+        const scopeRefusal = typeof answer === "string" && answer.startsWith("scope");
+        if (scopeRefusal || answer === "key-scoped") {
+          const authenticate = Object.assign(
+            () => OkAsync(granted({}, [])),
+            scopeRefusal ? { bearer: true as const } : {},
+          );
+          await resolveRequestScheme(
+            [
+              { user: [answer === "scope-invalid" ? 'orders"\r\nread' : "orders:read"] },
+              { user: ["orders:admin"] },
+            ],
+            { user: authenticate },
+            request,
+          );
+          if (answer === "scope-then-ok")
+            await resolveRequestScheme([{ user: [] }], { user: authenticate }, request);
+        }
+        await new Promise<void>((done) => {
+          const invalid = 'Bearer error="invalid_token"';
+          if (scopeRefusal && answer === "scope-explicit")
+            response.writeHead(403, { "WWW-Authenticate": 'Basic realm="legacy"' });
+          else if (scopeRefusal && answer === "scope-raw")
+            response.writeHead(403, ["WWW-Authenticate", 'Basic realm="legacy"']);
+          else if (scopeRefusal || answer === "key-scoped" || answer === "forbidden") {
+            if (answer === "scope-challenged")
+              response.setHeader("www-authenticate", 'Basic realm="legacy"');
+            response.statusCode = 403;
+          } else if (answer === "ok") response.statusCode = 200;
+          else if (answer === "explicit") response.writeHead(401, { "content-type": "text/plain" });
+          else if (answer === "challenged-explicit")
+            response.writeHead(401, { "WWW-Authenticate": invalid });
+          else if (answer === "challenged-raw")
+            response.writeHead(401, ["WWW-Authenticate", invalid]);
+          else if (answer === "challenged") {
+            response.setHeader("www-authenticate", invalid);
+            response.statusCode = 401;
+          } else response.statusCode = 401;
+          response.end(() => done());
+        });
+      }),
       ...protectedResource(options),
+      Provider.member(HttpChallenges)({
+        inject: {},
+        value: { target: "https://api.test/custom", value: 'Basic realm="legacy"' },
+      }),
     ],
     exports: [HttpRuntime, HttpHandler],
   });
@@ -1729,8 +1758,26 @@ const protectedAppOf = (options: ProtectedResourceOptions) =>
  */
 export type ProtectedCall = (
   path: string,
-  answer?: "ok" | "explicit" | "challenged" | "challenged-explicit" | "challenged-raw",
+  answer?:
+    | "ok"
+    | "explicit"
+    | "challenged"
+    | "challenged-explicit"
+    | "challenged-raw"
+    | "scope"
+    | "scope-explicit"
+    | "scope-raw"
+    | "scope-challenged"
+    | "scope-invalid"
+    | "scope-then-ok"
+    | "key-scoped"
+    | "forbidden",
   host?: string,
+  options?: {
+    readonly method?: string;
+    readonly body?: string;
+    readonly headers?: Readonly<Record<string, string>>;
+  },
 ) => Promise<{
   readonly status: number;
   readonly challenge: string | null;
@@ -1740,14 +1787,19 @@ export type ProtectedCall = (
 // `node:http` rather than `fetch`, which refuses to name a `Host`.
 const protectedCallOf =
   (port: number): ProtectedCall =>
-  (path, answer, host = "api.test") =>
+  (path, answer, host = "api.test", options = {}) =>
     new Promise((done, failed) => {
       const request = httpRequest(
         {
           host: "127.0.0.1",
           port,
           path,
-          headers: { host, ...(answer === undefined ? {} : { "x-answer": answer }) },
+          method: options.method,
+          headers: {
+            host,
+            ...options.headers,
+            ...(answer === undefined ? {} : { "x-answer": answer }),
+          },
         },
         (response) => {
           let body = "";
@@ -1763,7 +1815,7 @@ const protectedCallOf =
         },
       );
       request.on("error", failed);
-      request.end();
+      request.end(options.body);
     });
 
 /**
@@ -2041,6 +2093,8 @@ const htmxAnswererOf = (): AsyncResult<HttpAnswerer, never> =>
   );
 
 export type HttpFixtures = {
+  readonly resourceCall: (port: number) => ProtectedCall;
+  readonly scopeFragment: () => Promise<ProtectedCall>;
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
   /**
@@ -2443,6 +2497,8 @@ export type HttpFixtures = {
   readonly jwtService: AuthenticatorService<JwtIdentity>;
   /** The JWT scheme declaring `orders:export`, where `scopes` is required. */
   readonly scopedJwtService: AuthenticatorService<JwtIdentity, "orders:export">;
+  /** The same verifier reading a custom header, outside RFC 6750 Authorization. */
+  readonly customHeaderScopedJwtService: AuthenticatorService<JwtIdentity, "orders:export">;
   /**
    * The JWT scheme pointed at a JWKS endpoint that is not there, over a
    * recording observer — an ISSUER outage rather than a bad token, and the one
@@ -2493,6 +2549,44 @@ export type HttpFixtures = {
 };
 
 export const it = test.extend<HttpFixtures>({
+  scopeFragment: async ({ boot }, use) => {
+    await use(async () => {
+      const api = defineHttp({
+        authenticators: {
+          user: HttpAuthenticator<{}, "read">()({
+            bearer: true,
+            inject: {},
+            sync: () => () => OkAsync(granted({}, [] as readonly "read"[])),
+          }),
+        },
+      });
+      const fragment = api.HtmxGet("/scope", { requires: [{ user: ["read"] }] })({
+        inject: {},
+        sync: () => () => OkAsync(html`never`),
+      });
+      const app = boot(
+        HttpModule("ScopeFragment")({
+          fragments: api.HtmxFragments([fragment]),
+          port: 0,
+          hostname: "127.0.0.1",
+          provides: [
+            fragment,
+            ...protectedResource({
+              resource: "https://api.test/scope",
+              authorizationServers: ["https://login.test/"],
+            }),
+          ],
+        }),
+      );
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return protectedCallOf(info.port);
+    });
+  },
+  // oxlint-disable-next-line no-empty-pattern -- Vitest requires a destructuring fixture argument
+  resourceCall: async ({}, use) => {
+    await use(protectedCallOf);
+  },
   boot: bootFixture(),
 
   observed: async ({ boot }, use) => {
@@ -2566,6 +2660,24 @@ export const it = test.extend<HttpFixtures>({
             issuer: issuer.issuer,
             audience: issuer.audience,
             scopes: ["orders:export"],
+            principal: jwtPrincipal,
+          }),
+          {},
+        )
+      ).getOrThrow(),
+    );
+  },
+
+  customHeaderScopedJwtService: async ({ issuer }, use) => {
+    await use(
+      (
+        await jwtServiceOf(
+          jwtAuthenticator<JwtIdentity>()({
+            jwks: issuer.jwks,
+            issuer: issuer.issuer,
+            audience: issuer.audience,
+            scopes: ["orders:export"],
+            header: "x-token",
             principal: jwtPrincipal,
           }),
           {},

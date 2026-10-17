@@ -6,7 +6,7 @@ import { Observers, observe } from "@btravstack/core";
 import { Provider, type AnyPort, type Scope } from "@btravstack/di";
 import {
   principalOf,
-  resolveScheme,
+  resolveRequestScheme,
   schemeDeps,
   schemeServices,
   type Resolved,
@@ -317,10 +317,10 @@ export const graphql = <
             }
             let resolved: Resolved | undefined;
             if (requirements !== undefined) {
-              const result = await resolveScheme(
+              const result = await resolveRequestScheme(
                 requirements,
                 authenticators,
-                request.headers,
+                request,
               ).mapErrCases((matcher) =>
                 matcher
                   .with(P.tag("Unauthenticated"), () => 401 as const)

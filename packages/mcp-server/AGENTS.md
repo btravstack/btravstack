@@ -37,7 +37,7 @@ the SDK catches a thrown tool error into a tool error carrying its message,
 which would put a defect's cause in front of the model.
 
 **A refusal is a bare `401` or `403`, before the SDK sees the request.** The
-runtime's challenge (`protectedResource()`, `HttpChallenges`) rides the `401`,
+runtime's challenge (`protectedResource()`, `HttpChallenges`) rides the `401` and the typed Bearer scope refusal's `403`,
 which is how an MCP client discovers the authorization server. An
 authenticator's defect, or a fork that cannot be built, is the runtime's `500`.
 

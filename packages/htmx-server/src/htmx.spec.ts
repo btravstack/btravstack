@@ -7,6 +7,23 @@ import { it } from "@btravstack/internal-http-fixtures";
 import { describe, expect, vi } from "vitest";
 
 describe("htmx", () => {
+  it("challenges a verified Bearer caller refused by the fragment's scope requirement", async ({
+    scopeFragment,
+  }) => {
+    // GIVEN a protected fragment requiring read
+    const get = await scopeFragment();
+    // WHEN its Bearer verifier accepts a caller granted nothing
+    const response = await get("/scope", undefined, undefined, {
+      headers: { authorization: "Bearer valid" },
+    });
+    // THEN its actual 403 advertises the scope and metadata
+    expect({ status: response.status, challenge: response.challenge }).toEqual({
+      status: 403,
+      challenge:
+        'Bearer resource_metadata="https://api.test/.well-known/oauth-protected-resource/scope", error="insufficient_scope", scope="read"',
+    });
+  });
+
   it("serves a GET fragment with its path parameter bound", async ({ htmxServer }) => {
     // GIVEN the htmx answerer serving an unmarked GET route
     const { origin } = await htmxServer();
