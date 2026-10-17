@@ -153,6 +153,8 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
             MetadataDirective: "REPLACE",
             // The tagging directive defaults to COPY; the package has no tags, so none are inherited.
             TaggingDirective: "REPLACE",
+            // Annotations are copied by default and need extra permissions; the package has none.
+            AnnotationDirective: "EXCLUDE",
             ContentType: options.contentType,
             ...encryption(options),
           }),

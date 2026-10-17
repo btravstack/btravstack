@@ -82,7 +82,8 @@ from the request id, without a database to decide the winner.
 `CopyObject` with `MetadataDirective: REPLACE`, so the copy takes the
 `contentType` you give rather than the source's. A missing source answers
 `ObjectNotFound` naming the source key; an existing destination is overwritten,
-and the source's tags are not carried over (`TaggingDirective: REPLACE`).
+and neither the source's tags nor its annotations are carried over
+(`TaggingDirective: REPLACE`, `AnnotationDirective: EXCLUDE`).
 
 **`kmsKeyId` selects SSE-KMS.** On `put`, `putIfAbsent` and `copy`, the S3
 adapter sends `ServerSideEncryption: aws:kms` and `SSEKMSKeyId`; absent, no
@@ -95,7 +96,8 @@ the sent commands rather than the stored encryption.
 (`ChecksumSHA256`, requested with `ChecksumMode: ENABLED`); the adapter returns
 it as **lowercase hex**, and omits a multipart object's composite checksum,
 which is not a digest of the bytes. Requesting the checksum of an SSE-KMS
-object needs `kms:Decrypt` on its key, besides `s3:GetObject`. Like `get`, a
+object needs `kms:GenerateDataKey` and `kms:Decrypt` on its key, in the identity
+policy and the key policy, besides `s3:GetObject`. Like `get`, a
 missing key is `ok`/`not_found` in the signals. `sha256` is absent when the object was written without
 a SHA-256 checksum (a plain `put` stores none; an upload through
 `presignedUpload` with `sha256` does). The memory adapter always computes it.
