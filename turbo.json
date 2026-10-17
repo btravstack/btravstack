@@ -139,6 +139,7 @@
         "../README.md",
         "../packages/*/README.md",
         "../examples/**/README.md",
+        "../skills/**/*.md",
         "../.changeset/*.md"
       ],
       "env": ["DOCS_COMMIT", "DOCS_REF"],
