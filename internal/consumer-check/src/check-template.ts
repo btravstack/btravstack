@@ -46,13 +46,15 @@ try {
     );
   }
 
-  const registry = spawnSync(
-    "npm",
-    ["view", `@btravstack/core@${manifest.dependencies["@btravstack/core"]}`, "version", "--json"],
-    { cwd: work, encoding: "utf8" },
-  );
-  const unpublished = registry.status !== 0 && registry.stderr.includes("E404");
-  assert.ok(registry.status === 0 || unpublished, registry.stderr);
+  const published = family.map(([name, version]) => {
+    const registry = spawnSync("npm", ["view", `${name}@${version}`, "version", "--json"], {
+      cwd: work,
+      encoding: "utf8",
+    });
+    assert.ok(registry.status === 0 || registry.stderr.includes("E404"), registry.stderr);
+    return registry.status === 0;
+  });
+  const unpublished = published.includes(false);
   if (unpublished) {
     for (const [name] of family) {
       const pkg = join(root, "packages", name.slice("@btravstack/".length));

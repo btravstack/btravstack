@@ -153,9 +153,10 @@ export. It checks each advertised module format and ignores `node10`.
 `templates/http-app` outside the monorepo and installs its exact published
 versions from npm with strict peer validation. The gate checks every framework
 pin against its repository package version. `pnpm run version` synchronizes
-those pins after Changesets bumps the fixed group. Before that release exists
-on npm, the gate instead packs and installs the template's framework packages
-from source; an npm error other than a missing version still fails the gate.
+those pins after Changesets bumps the fixed group. It checks every framework
+pin: until all are published on npm, the gate instead packs and installs the
+template's framework packages from source; an npm error other than a missing
+version still fails the gate.
 The output names which stage was checked. It runs the compiler and built
 entry point on the manifest's Node floor, calls the validated HTTP endpoint,
 and signals the actual Node process with SIGTERM. The endpoint answer,
@@ -167,9 +168,10 @@ claim that the new version has been published.
 
 ## Release regressions
 
-The `test` script runs the Node test files under `.changeset/`. Besides the
-real Changesets patch/minor template checks, release preparation is checked
-against mixed and empty-only inputs. Empty documentation changesets are removed
+The `test` script runs the Node test files under `.changeset/`. Template checks
+cover real Changesets patch/minor bumps, partial publication and registry
+failures. Release preparation is checked against mixed and empty-only inputs.
+Empty documentation changesets are removed
 only from the runner checkout before the release action reads them; named
 release entries, guidance and package versions are preserved. This prevents a
 successful no-op release run from leaving an already-versioned package

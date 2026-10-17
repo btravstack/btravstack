@@ -87,7 +87,10 @@ because the examples carried `declaration: false` — which is the sharpest
 version of "green gate, no consumer can build" this repo has met. Do not
 judge the workspace by the example half; a reader who does concludes it is
 redundant with `order-api`, and takes the emit gate with it. `docs/` is the documentation site (see **Documentation
-site** below); it is a workspace but not a published package. `templates/http-app` is a copyable standalone application, outside the
+site** below); it is a workspace but not a published package. `skills/` is
+the agent skill published through `npx skills add`, procedural rather than a
+copy of the reference, its samples held by the same doc-samples gate.
+`templates/http-app` is a copyable standalone application, outside the
 workspace graph, synchronized by the root version script and tested by the
 consumer gate against published packages (source tarballs before publication)
 on its declared Node floor. It blesses neither a workspace tool nor a generator.

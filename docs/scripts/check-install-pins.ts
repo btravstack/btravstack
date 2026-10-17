@@ -21,7 +21,7 @@ const isInstallLine = (line: string) =>
   /^(?:pnpm add|npm install|npm i|yarn add|bun add)\b/.test(line) || /^\s+@[\w-]+\//.test(line);
 
 const files = globSync(
-  ["README.md", "docs/**/*.md", "packages/*/README.md", "examples/**/README.md"],
+  ["README.md", "docs/**/*.md", "packages/*/README.md", "examples/**/README.md", "skills/**/*.md"],
   {
     cwd: fileURLToPath(root),
     exclude: (name) => name === "node_modules",

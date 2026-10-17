@@ -58,8 +58,8 @@ the old repository.
   `reference/packages.md` point at the menu.
 
 - **Every `ts` fence in the framework, DI and entity guide directories, in the
-  root README and in the package READMEs is compiled by `pnpm typecheck`,
-  continuously.**
+  root README, in the package READMEs and in the agent skill under `skills/`
+  is compiled by `pnpm typecheck`, continuously.**
   The markers, the groups and how a page becomes one module are
   `scripts/extract-doc-samples.ts`'s header.
   The standalone DI tutorial under `docs/di/` compiles with the core group.
@@ -193,7 +193,8 @@ the old repository.
 - **`scripts/check-install-pins.ts` refuses an install snippet that names a
   package whose `latest` dist-tag is an older major.** An unversioned `pnpm add`
   of such a package resolves the wrong one, and a new user's first run dies in
-  type errors.
+  type errors. It reads `skills/` too, so the agent skill's testing prerequisites
+  stay on the catalog's oRPC beta.
 
   **It checks the MAJOR, not merely that a version is present.**
   `@orpc/server@^1.0.0` carries an `@` and is the exact bug the guard exists to
