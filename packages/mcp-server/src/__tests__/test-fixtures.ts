@@ -137,6 +137,18 @@ const brokenUnitAnswerer = mcp(auth, {
   server: () => new McpServer({ name: "never", version: "1.0.0" }),
 });
 
+/** A server whose `close` rejects, the cleanup failure the answerer reports. */
+class UnclosableServer extends McpServer {
+  override close(): Promise<void> {
+    return Promise.reject(new Error("close-boom"));
+  }
+}
+
+const unclosableAnswerer = mcp(auth, {
+  requires: [{ service: [] }],
+  server: () => new UnclosableServer({ name: "unclosable", version: "1.0.0" }),
+});
+
 const deployments = {
   protected: { answerer: protectedAnswerer, providers: auth.providers, unit, path: "/mcp" },
   public: { answerer: publicAnswerer, providers: [], unit, path: "/agents" },
@@ -152,6 +164,7 @@ const deployments = {
     unit: brokenUnit,
     path: "/mcp",
   },
+  unclosable: { answerer: unclosableAnswerer, providers: auth.providers, unit, path: "/mcp" },
 } as const;
 
 type Deployment = keyof typeof deployments;
@@ -219,8 +232,9 @@ type McpFixtures = {
   /**
    * One deployment on an ephemeral port, over whatever body limit a test pins:
    * `protected` requires the `service` scheme and composes everything,
-   * `public` requires nothing at `/agents`, and `brokenScheme` and
-   * `brokenUnit` fail in their scheme and in their fork.
+   * `public` requires nothing at `/agents`, `brokenScheme` and
+   * `brokenUnit` fail in their scheme and in their fork, and `unclosable`'s
+   * server rejects its `close`.
    */
   readonly served: (options?: {
     readonly deployment?: Deployment;

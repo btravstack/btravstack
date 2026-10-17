@@ -1,4 +1,4 @@
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
 
@@ -248,6 +248,28 @@ describe("mcp answerer", () => {
 
     // THEN it is the runtime's 500
     expect(response.status).toBe(500);
+  });
+
+  it("reports a server that fails to close, once the response is done", async ({ served }) => {
+    // GIVEN a deployment whose server rejects its `close`
+    const server = await served({ deployment: "unclosable" });
+
+    // WHEN a request is answered and its response closes
+    await server.post("k-1");
+    await vi.waitUntil(() =>
+      server.seen.some(({ operation, settled }) => operation.name === "close" && settled),
+    );
+
+    // THEN the failure is reported, not left to reject unhandled
+    expect(server.seen.filter(({ operation }) => operation.name === "close")).toEqual([
+      {
+        operation: expect.objectContaining({ component: "mcp", name: "close" }),
+        settled: {
+          outcome: "error",
+          cause: expect.objectContaining({ message: "close-boom" }),
+        },
+      },
+    ]);
   });
 
   it("refuses to start when the declared unit differs from the runtime's", async ({

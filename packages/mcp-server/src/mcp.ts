@@ -29,7 +29,15 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { Ok, P, TaggedError, fromThrowable, type AsyncResult, type Result } from "unthrown";
+import {
+  Ok,
+  P,
+  TaggedError,
+  fromPromise,
+  fromThrowable,
+  type AsyncResult,
+  type Result,
+} from "unthrown";
 
 /**
  * A tool's refusal, as the model reads it. A tool's own triage mints it from
@@ -263,9 +271,15 @@ export const mcp = <
             enableJsonResponse: true,
             maxRequestBodySize,
           });
+          // Once, through the server, which closes its transport itself; a
+          // failure is reported rather than left to reject unhandled.
           response.once("close", () => {
-            void transport.close();
-            void server.close();
+            void fromPromise(server.close(), (cause: unknown) => cause).tapFailure((failure) =>
+              observe(observers, { component: "mcp", name: "close", attributes: {} })({
+                outcome: "error",
+                cause: failure.isErr() ? failure.error : failure.cause,
+              }),
+            );
           });
           // The SDK's own declarations disagree under `exactOptionalPropertyTypes`.
           await server.connect(transport as unknown as Transport);
