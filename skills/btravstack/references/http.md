@@ -1,14 +1,16 @@
 # An HTTP capability, end to end
 
 One procedure that can be refused, implemented in a slice and composed into a
-root. The files are shown in the order you write them; in a real project the
-contract lives in its own package. Every fence on this page is compiled
-against the framework.
+root. The files are shown in the order you write them, each with the imports
+it needs; in a real project the contract lives in its own package. Every fence
+on this page is compiled against the framework.
 
 ## The use case
 
 A port whose method answers an `AsyncResult` over concrete errors. The adapter
 behind it is a provider like any other.
+
+**`src/orders.ts`**
 
 ```ts
 import { Module, Port, Provider } from "@btravstack/di";
@@ -61,6 +63,8 @@ export const OrdersModule = Module("Orders")({
 Each refusal a caller must handle is named in `.errors`, with the data it
 carries. A fragment such as `orders` is itself a valid contract.
 
+**`src/contract.ts`**
+
 ```ts
 import { oc } from "@orpc/contract";
 import { z } from "zod";
@@ -86,9 +90,13 @@ export const contract = {
 leaf maps every case of the use case's error union to a contract error, and
 the matcher has no wildcard, so a new domain error fails to compile here.
 
+**`src/orders-controller.ts`**
+
 ```ts
 import { defineHttp } from "@btravstack/orpc-server";
 import { P } from "unthrown";
+import { contract } from "./contract.js";
+import { PlaceOrder } from "./orders.js";
 
 export const api = defineHttp();
 
@@ -124,8 +132,14 @@ The slice provides and exports its piece and imports the vertical it owns. The
 root composes every piece in one array, which must cover the contract exactly,
 and imports every slice.
 
+**`src/module.ts`**
+
 ```ts
+import { Module } from "@btravstack/di";
 import { HttpModule } from "@btravstack/orpc-server";
+import { contract } from "./contract.js";
+import { api, ordersController } from "./orders-controller.js";
+import { OrdersModule } from "./orders.js";
 
 export const OrdersSlice = Module("OrdersSlice")({
   imports: [OrdersModule],

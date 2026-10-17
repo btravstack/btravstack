@@ -2,7 +2,8 @@
 
 A spec boots the real composition root, on an ephemeral port, with an
 environment it chooses, and stops it when the test ends. Install
-`@btravstack/testing`, `vitest` and `@unthrown/vitest`, and register the
+`@btravstack/testing`, `vitest`, `@unthrown/vitest` and `@orpc/client` (the
+client the specs call through), and register the
 matchers once, at runtime in the vitest config and for the compiler in a
 `src/vitest.d.ts`:
 
@@ -23,6 +24,8 @@ import type {} from "@unthrown/vitest";
 ```
 
 ## The application under test
+
+**`src/app.ts`**
 
 ```ts
 import { Module, Port, Provider } from "@btravstack/di";
@@ -61,11 +64,13 @@ export const App = HttpModule("App")({
 
 ## Fixtures
 
-Put the extended `it` in one `test-fixtures.ts` beside the specs, and import
-it instead of vitest's. `bootFixture` boots with signals off, no pre-drain
+Put the extended `it` in one `src/__tests__/test-fixtures.ts`, and import it
+instead of vitest's. `bootFixture` boots with signals off, no pre-drain
 delay, and stops the application on every exit path, so a spec needs no
 `try`/`finally`. A helper that reads the bound port keeps its guard here, out
 of the test body.
+
+**`src/__tests__/test-fixtures.ts`**
 
 ```ts
 import assert from "node:assert/strict";
@@ -76,6 +81,7 @@ import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterContractClient } from "@orpc/contract";
 import { test } from "vitest";
+import { contract } from "../app.js";
 
 export const it = test.extend({
   boot: bootFixture({ env: { PORT: "0", HOST: "127.0.0.1" } }),
@@ -102,10 +108,14 @@ Every test body carries `// GIVEN`, `// WHEN`, `// THEN`, and asserts once,
 deeply, on one resource. An assertion behind an `if` or a `?.` can decline to
 run and still pass.
 
+**`src/app.spec.ts`**
+
 ```ts
 import { Provider } from "@btravstack/di";
 import { createFakeClock, overridden } from "@btravstack/testing";
 import { describe, expect } from "vitest";
+import { clientOf, it } from "./__tests__/test-fixtures.js";
+import { App, Greeter } from "./app.js";
 
 describe("the greeting service", () => {
   it("greets over real HTTP", async ({ boot }) => {
