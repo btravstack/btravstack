@@ -44,7 +44,7 @@ export const memoryStorageBackend = (): StorageService => {
       if (object === undefined) {
         return ErrAsync(new ObjectNotFound({ key: from }));
       }
-      objects.set(to, { bytes: object.bytes, contentType: options.contentType });
+      objects.set(to, { bytes: object.bytes.slice(), contentType: options.contentType });
       return OkAsync();
     },
     head: (key) => {

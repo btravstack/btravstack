@@ -87,9 +87,11 @@ port are the TSDoc and comments of `src/storage.ts` and `src/s3.ts`.
   that transits the process is a unit held open for the length of a transfer.
   Presigned writes are what replaced that, and they ship — see the
   `presignedUpload` entry above for what the adapter does and does not decide.
-- **No listing, no copy, and no S3 multipart upload.** Each is a real S3 feature and none
-  has a consumer here; adding them speculatively is what issue #62 says not
-  to do.
+- **No listing and no S3 multipart upload.** Each is a real S3 feature and
+  neither has a consumer here; adding them speculatively is what issue #62 says
+  not to do. `copy` and `head` arrived with a consumer: a document store that
+  moves a verified upload to its final key and encrypts it, with no bytes
+  through the process.
 - **No metadata beyond the content type**, and no tags.
 - **No bucket management.** Creating one is deployment, not runtime — the
   test infrastructure creates the gate's bucket, and a deployment creates its

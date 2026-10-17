@@ -231,7 +231,9 @@ describe("s3Storage, server-side copy, head and checksums", () => {
     });
 
     // THEN it is a modeled absence of the source
-    await expect(copied).toBeErrWith(expect.objectContaining({ key: `${keyPrefix}absent.json` }));
+    await expect(copied).toBeErrWith(
+      expect.objectContaining({ _tag: "ObjectNotFound", key: `${keyPrefix}absent.json` }),
+    );
   });
 
   it("heads an object with its size and type, and no sha256 when none was supplied", async ({
@@ -255,7 +257,9 @@ describe("s3Storage, server-side copy, head and checksums", () => {
     const head = s3.head(`${keyPrefix}absent.json`);
 
     // THEN the store's 404 is a modeled absence
-    await expect(head).toBeErrWith(expect.objectContaining({ key: `${keyPrefix}absent.json` }));
+    await expect(head).toBeErrWith(
+      expect.objectContaining({ _tag: "ObjectNotFound", key: `${keyPrefix}absent.json` }),
+    );
   });
 
   it("accepts the signed bytes, and heads them with their sha256 in hex", async ({
@@ -517,16 +521,36 @@ describe("s3Storage, when the store cannot be reached", () => {
     );
   });
 
-  it("answers StorageUnavailable naming copy and head when the store cannot be reached", async ({
+  it("answers StorageUnavailable naming copy when the store cannot be reached", async ({
     unreachable,
   }) => {
     // GIVEN an endpoint that is not listening
-    // WHEN a copy and a head are attempted
+    // WHEN a copy is attempted
     const copied = unreachable.copy("a", "b", { contentType: "application/json" });
+
+    // THEN it is an outage naming copy
+    await expect(copied).toBeErrWith(expect.objectContaining({ operation: "copy", key: "a" }));
+  });
+
+  it("answers StorageUnavailable naming head when the store cannot be reached", async ({
+    unreachable,
+  }) => {
+    // GIVEN an endpoint that is not listening
+    // WHEN a head is attempted
     const head = unreachable.head("a");
 
-    // THEN each is an outage naming its own operation
-    await expect(copied).toBeErrWith(expect.objectContaining({ operation: "copy", key: "a" }));
+    // THEN it is an outage naming head
     await expect(head).toBeErrWith(expect.objectContaining({ operation: "head", key: "a" }));
+  });
+
+  it("answers StorageUnavailable, not a throw, for a copy source that cannot be encoded", async ({
+    unreachable,
+  }) => {
+    // GIVEN a key holding an unpaired surrogate, which encodeURIComponent refuses
+    // WHEN it is copied
+    const copied = unreachable.copy("\ud800", "b", { contentType: "application/json" });
+
+    // THEN the refusal is a modeled outage rather than an exception
+    await expect(copied).toBeErrWith(expect.objectContaining({ operation: "copy" }));
   });
 });

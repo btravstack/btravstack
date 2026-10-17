@@ -142,16 +142,19 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
     ),
   copy: (from, to, options) =>
     fromPromise(
-      client.send(
-        new CopyObjectCommand({
-          Bucket: bucket,
-          Key: to,
-          CopySource: `${bucket}/${from.split("/").map(encodeURIComponent).join("/")}`,
-          MetadataDirective: "REPLACE",
-          ContentType: options.contentType,
-          ...encryption(options),
-        }),
-      ),
+      // Async so that a key `encodeURIComponent` refuses (an unpaired
+      // surrogate) is a rejection mapped below, not a synchronous throw.
+      (async () =>
+        client.send(
+          new CopyObjectCommand({
+            Bucket: bucket,
+            Key: to,
+            CopySource: `${bucket}/${from.split("/").map(encodeURIComponent).join("/")}`,
+            MetadataDirective: "REPLACE",
+            ContentType: options.contentType,
+            ...encryption(options),
+          }),
+        ))(),
       (cause): ObjectNotFound | StorageUnavailable =>
         isMissing(cause) ? new ObjectNotFound({ key: from }) : unavailable("copy", from, cause),
     ).map(() => undefined),
@@ -162,7 +165,9 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
         .then((response): ObjectHead => ({
           size: response.ContentLength ?? 0,
           contentType: response.ContentType ?? "application/octet-stream",
-          ...(response.ChecksumSHA256 === undefined
+          // A multipart object's COMPOSITE checksum is a digest of part
+          // digests, not of the bytes: it is not a sha256 of the object.
+          ...(response.ChecksumSHA256 === undefined || response.ChecksumType === "COMPOSITE"
             ? {}
             : { sha256: base64ToHex(response.ChecksumSHA256) }),
         })),

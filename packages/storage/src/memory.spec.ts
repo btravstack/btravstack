@@ -169,4 +169,20 @@ describe("memoryStorageBackend", () => {
     // THEN it is a modeled absence
     await expect(head).toBeErrWith(expect.objectContaining({ key: "absent" }));
   });
+
+  it("gives a copy its own bytes", async ({ memory }) => {
+    // GIVEN a stored document and a copy of it
+    const document = aDocument();
+    await memory.put("a/b.json", document.bytes, { contentType: document.contentType });
+    await memory.copy("a/b.json", "c/d.json", { contentType: document.contentType });
+
+    // WHEN the copy's bytes are mutated by whoever holds them
+    (await memory.get("c/d.json")).getOrThrow().bytes.fill(0);
+
+    // THEN the source is untouched
+    await expect(memory.get("a/b.json")).toBeOkWith({
+      bytes: aDocument().bytes,
+      contentType: "application/json",
+    });
+  });
 });

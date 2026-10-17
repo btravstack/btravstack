@@ -92,7 +92,10 @@ the sent commands rather than the stored encryption.
 **`head` answers what the store knows without reading the object:** `size`,
 `contentType` and `sha256`. S3 reports the checksum base64-encoded
 (`ChecksumSHA256`, requested with `ChecksumMode: ENABLED`); the adapter returns
-it as **lowercase hex**. `sha256` is absent when the object was written without
+it as **lowercase hex**, and omits a multipart object's composite checksum,
+which is not a digest of the bytes. Requesting the checksum of an SSE-KMS
+object needs `kms:Decrypt` on its key, besides `s3:GetObject`. Like `get`, a
+missing key is `ok`/`not_found` in the signals. `sha256` is absent when the object was written without
 a SHA-256 checksum (a plain `put` stores none; an upload through
 `presignedUpload` with `sha256` does). The memory adapter always computes it.
 
@@ -212,12 +215,12 @@ export const DocumentsApp = Module("ReferenceDocumentsApp")({
 });
 ```
 
-| Signal    | Name                                                                                           | Attributes                                                                                                                                                         |
-| --------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| span      | `storage.put` / `.put_if_absent` / `.get` / `.delete` / `.presigned_url` / `.presigned_upload` | `btravstack.storage.key`; error status on a failure                                                                                                                |
-| counter   | `btravstack.storage.operations`                                                                | `{ operation, outcome, result }` — `outcome` is `ok` or `error`; `result` is `ok`, `exists`, `not_found` or `error`; `exists` and `not_found` carry their `reason` |
-| histogram | `btravstack.storage.duration`                                                                  | the same as the counter                                                                                                                                            |
-| log       | `"storage.<operation> failed"` at `error`, for `StorageUnavailable` only                       | `operation`, the key and `result`, with the failure as the cause                                                                                                   |
+| Signal    | Name                                                                                                               | Attributes                                                                                                                                                         |
+| --------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| span      | `storage.put` / `.put_if_absent` / `.get` / `.copy` / `.head` / `.delete` / `.presigned_url` / `.presigned_upload` | `btravstack.storage.key`; error status on a failure                                                                                                                |
+| counter   | `btravstack.storage.operations`                                                                                    | `{ operation, outcome, result }` — `outcome` is `ok` or `error`; `result` is `ok`, `exists`, `not_found` or `error`; `exists` and `not_found` carry their `reason` |
+| histogram | `btravstack.storage.duration`                                                                                      | the same as the counter                                                                                                                                            |
+| log       | `"storage.<operation> failed"` at `error`, for `StorageUnavailable` only                                           | `operation`, the key and `result`, with the failure as the cause                                                                                                   |
 
 **A missing object settles `ok`, counted apart by `result: "not_found"`, and
 writes no line.** Asking for something that is not there is an ordinary answer
