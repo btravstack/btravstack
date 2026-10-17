@@ -61,7 +61,10 @@ export const memoryStorageBackend = (): StorageService => {
     },
     get: (key) => {
       const object = objects.get(key);
-      return object === undefined ? ErrAsync(new ObjectNotFound({ key })) : OkAsync(object);
+      // A snapshot, so a reader mutating or transferring what it got cannot touch the store.
+      return object === undefined
+        ? ErrAsync(new ObjectNotFound({ key }))
+        : OkAsync({ ...object, bytes: object.bytes.slice() });
     },
     delete: (key) => {
       objects.delete(key);

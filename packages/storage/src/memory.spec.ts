@@ -200,4 +200,17 @@ describe("memoryStorageBackend", () => {
       contentType: "application/json",
     });
   });
+
+  it("keeps what it stored when a reader mutates the bytes get returned", async ({ memory }) => {
+    // GIVEN a stored document that was read once
+    const document = aDocument();
+    await memory.put("a/b.json", document.bytes, { contentType: document.contentType });
+    (await memory.get("a/b.json")).getOrThrow().bytes.fill(0);
+
+    // WHEN it is read again
+    const read = memory.get("a/b.json");
+
+    // THEN the original bytes come back
+    await expect(read).toBeOkWith({ bytes: aDocument().bytes, contentType: "application/json" });
+  });
 });
