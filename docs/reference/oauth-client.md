@@ -211,3 +211,13 @@ failing — the shape `overridden` takes. The overridden root still builds
 `oauthClient()`'s configuration, so its environment sets the three variables;
 a spec that wants none composes `staticTokenSource` in place of
 `oauthClient()` instead.
+
+## Application-owned outbound policy
+
+The optional `fetch` option supplies the native fetch boundary for discovery and
+all token requests. For tenant-configured integrations, compose
+[`httpClientFetch`](/reference/http-client#oauth-composition) from an
+application-approved policy client. Discovery metadata cannot authorize a new
+token endpoint origin. A policy refusal becomes `TokenIssuerUnavailable` before
+credentials reach an unapproved destination. Fixed deployment-owned issuers keep
+the existing default and require no HTTP-client package.

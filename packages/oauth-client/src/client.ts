@@ -29,9 +29,11 @@ import {
   WWWAuthenticateChallengeError,
   allowInsecureRequests,
   clientCredentialsGrant,
+  customFetch,
   discovery,
   genericGrantRequest,
   type Configuration,
+  type CustomFetch,
 } from "openid-client";
 import { ErrAsync, OkAsync, fromPromise, type AsyncResult, type FailureView } from "unthrown";
 
@@ -61,6 +63,8 @@ export type OAuthClientOptions = {
   readonly allowInsecureIssuer?: boolean;
   /** What a token's lifetime is measured against (default: the kernel's `systemClock`). */
   readonly clock?: Clock | undefined;
+  /** Application-owned fetch boundary, used for both discovery and token requests. */
+  readonly fetch?: typeof fetch;
 };
 
 /**
@@ -118,7 +122,13 @@ const tokenFetches = (
   settings: Settings,
   observers: readonly Observer[],
   clock: Clock,
+  transport: typeof fetch | undefined,
 ): Fetches => {
+  const fetch: CustomFetch | undefined =
+    transport === undefined
+      ? undefined
+      : (url, { body, ...options }) =>
+          transport(url, { ...options, ...(body === undefined ? {} : { body }) });
   let configuration: AsyncResult<Configuration, TokenIssuerUnavailable> | undefined;
   const cached = new Map<string, { readonly token: AccessToken; readonly refreshAt: number }>();
   const inFlight = new Map<string, AsyncResult<AccessToken, TokenError>>();
@@ -135,7 +145,10 @@ const tokenFetches = (
           settings.clientId,
           undefined,
           ClientSecretBasic(settings.clientSecret),
-          { execute: settings.insecure ? [allowInsecureRequests] : [] },
+          {
+            execute: settings.insecure ? [allowInsecureRequests] : [],
+            ...(fetch === undefined ? {} : { [customFetch]: fetch }),
+          },
         ),
       ),
       (cause) => new TokenIssuerUnavailable({ issuer: settings.issuer, cause }),
@@ -143,6 +156,7 @@ const tokenFetches = (
       .map((config) => {
         // The `execute` option does not reach the configuration it answers.
         if (settings.insecure) allowInsecureRequests(config);
+        if (fetch !== undefined) config[customFetch] = fetch;
         return config;
       })
       .tapFailure(() => {
@@ -329,7 +343,7 @@ export const oauthClient = <const O extends OAuthClientOptions = Record<never, n
                 what: "it sends the client secret and every token in the open",
               }),
             )
-          : OkAsync(tokenFetches({ ...bound, insecure }, observers, clock));
+          : OkAsync(tokenFetches({ ...bound, insecure }, observers, clock, options.fetch));
       }),
   });
 

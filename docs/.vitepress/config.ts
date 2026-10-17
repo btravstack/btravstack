@@ -223,6 +223,7 @@ const GUIDE_SIDEBAR = [
         items: [
           { text: "@btravstack/temporal-client", link: "/reference/temporal-client" },
           { text: "@btravstack/amqp-client", link: "/reference/amqp-client" },
+          { text: "@btravstack/http-client", link: "/reference/http-client" },
           { text: "@btravstack/oauth-client", link: "/reference/oauth-client" },
         ],
       },
@@ -545,6 +546,7 @@ export default defineConfig({
             { text: "@btravstack/amqp-worker", link: "/api/amqp-worker/" },
             { text: "@btravstack/temporal-client", link: "/api/temporal-client/" },
             { text: "@btravstack/amqp-client", link: "/api/amqp-client/" },
+            { text: "@btravstack/http-client", link: "/api/http-client/" },
             { text: "@btravstack/oauth-client", link: "/api/oauth-client/" },
           ],
         },

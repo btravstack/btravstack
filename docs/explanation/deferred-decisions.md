@@ -381,3 +381,11 @@ trigger, the answer is no.
   does — so a second clock in the process would only have to be kept below
   the first. The trigger would be a deployment with no ingress in front of it,
   or one whose ingress has no response timeout that closes the connection.
+
+- **Policy-bound outbound HTTPS shipped** (#565). Tenant-configured integrations
+  need a destination boundary before credentials leave the process, not a URL
+  schema. `@btravstack/http-client` owns exact application approvals,
+  connection-time DNS checks, TLS, redirect refusal, complete response limits and
+  deadlines. It has no proxy, pooling or decompression knobs; OAuth can compose
+  its fetch adapter for discovery and token calls without a package dependency
+  cycle. It is a deployment boundary, not generic middleware or computation.

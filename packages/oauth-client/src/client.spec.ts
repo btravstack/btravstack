@@ -919,3 +919,40 @@ describe("oauthClient", () => {
     });
   });
 });
+
+describe("application fetch boundary", () => {
+  it("uses the composed fetch for both discovery and the credential-bearing grant", async ({
+    tokens,
+    scripted,
+  }) => {
+    // GIVEN
+    const requests: { method: string | undefined; credential: boolean }[] = [];
+    const transport: typeof fetch = (url, options) => {
+      requests.push({
+        method: options?.method,
+        credential: new Headers(options?.headers).has("authorization"),
+      });
+      return fetch(url, options);
+    };
+    // WHEN
+    const result = await tokens(
+      {
+        env: {
+          OAUTH_ISSUER: scripted.issuing,
+          OAUTH_CLIENT_ID: "client",
+          OAUTH_CLIENT_SECRET: "secret",
+        },
+        fetch: transport,
+      },
+      (ctx) => ctx.get(TokenSource).token({ audience: "orders" }),
+    );
+    // THEN
+    expect(result.map(({ bearer }) => ({ bearer, requests }))).toBeOkWith({
+      bearer: "test-bearer-1",
+      requests: [
+        { method: "GET", credential: false },
+        { method: "POST", credential: true },
+      ],
+    });
+  });
+});

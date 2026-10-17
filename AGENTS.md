@@ -31,7 +31,7 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds twenty-three published packages,
+pnpm workspace + turbo monorepo. `packages/` holds twenty-four published packages,
 `entity` (optional domain modelling on Zod; sealed entities and aggregates, derived schemas, and Result-returning construction), `contract` (the contract tier: markers and normed shapes a client and the
 server that implements it both need — the `authenticated` marker and a cursor
 page, with the page's schema behind a `/zod` subpath so the root keeps its
@@ -50,12 +50,12 @@ loop, a per-tenant claim, a lag health check and a Prisma 8 store behind a
 `/prisma` subpath; `outboxRuntime()` also boots a standalone delivery process
 through the same kernel runtime contract, while `outbox()` embeds the relay; the application keeps the transaction that writes the row
 and says what publishing means), and the three
-**servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus four HTTP answerer packages: `orpc-server`, `htmx-server`, `graphql-server` and `mcp-server`, and `pothos`, the Pothos plugin a GraphQL gateway builds its schema with when its fields call oRPC procedures. The calling side has `amqp-client` and `temporal-client`, which bind upstream typed clients to application ports and release connections with the DI scope without a worker dependency, and `oauth-client`, a `TokenSource` port over client credentials and RFC 8693 token exchange, so a service calls another as itself or for a subject. `di` was its own repository until it was merged here
+**servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus four HTTP answerer packages: `orpc-server`, `htmx-server`, `graphql-server` and `mcp-server`, and `pothos`, the Pothos plugin a GraphQL gateway builds its schema with when its fields call oRPC procedures. The calling side has `amqp-client` and `temporal-client`, which bind upstream typed clients to application ports and release connections with the DI scope without a worker dependency, and `http-client`, an application-policy-bound outbound HTTPS capability, and `oauth-client`, a `TokenSource` port over client credentials and RFC 8693 token exchange, so a service calls another as itself or for a subject. `di` was its own repository until it was merged here
 **with its history**; it, `contract`, `entity` and `pothos` are the four packages that depend on
 nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
 back, with `testing`, `observability`, the three application-service ports,
-`outbox`, `oauth-client` and the three servers on `core`. Its own spec is `packages/di/AGENTS.md`; `contract`'s is
+`outbox`, `http-client`, `oauth-client` and the three servers on `core`. Its own spec is `packages/di/AGENTS.md`; `contract`'s is
 `packages/contract/AGENTS.md`; the harness's is
 `packages/testing/AGENTS.md`; the logging starter's is
 `packages/observability/AGENTS.md`; the relay's is `packages/outbox/AGENTS.md`.
@@ -151,9 +151,9 @@ pnpm dev              # the four example deployments, one process each, watching
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
-## Versioning: all twenty-three packages move as one
+## Versioning: all twenty-four packages move as one
 
-The twenty-three published packages share **one version number**, enforced by a
+The twenty-four published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. **Do not downgrade `@changesets/cli`
 below 3.0.0** — on 2.x the next `pnpm run version` silently ships a major. The
 measurements behind both rules are in `.changeset/AGENTS.md`.
@@ -856,6 +856,7 @@ copy with no gate is the copy that lies.
 | `@btravstack/storage`         | `packages/storage/AGENTS.md`                                                 | `/reference/storage`         |
 | `@btravstack/prisma`          | `packages/prisma/AGENTS.md`                                                  | `/reference/prisma`          |
 | `@btravstack/outbox`          | `packages/outbox/AGENTS.md`                                                  | `/reference/outbox`          |
+| `@btravstack/http-client`     | `packages/http-client/AGENTS.md`                                             | `/reference/http-client`     |
 | `@btravstack/oauth-client`    | `packages/oauth-client/AGENTS.md`                                            | `/reference/oauth-client`    |
 | `@btravstack/http-server`     | `packages/http-server/AGENTS.md` (auth half: `packages/http-server/AUTH.md`) | `/reference/http-server`     |
 | `@btravstack/temporal-worker` | `packages/temporal-worker/AGENTS.md`                                         | `/reference/temporal-worker` |
@@ -1066,7 +1067,7 @@ in its place.
 - **`packages/core`'s specs use `@btravstack/testing` without depending on
   it** — that would be a package-graph cycle turbo refuses — so four configs
   carry the wiring and move together: see `packages/testing/AGENTS.md`.
-- `declarationMap: false` on all twenty-three published packages — the published
+- `declarationMap: false` on all twenty-four published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **A deployment extends `@btravstack/tsconfig/app.json`; everything that
   exports something keeps `base.json`.** The two differ in one thing,

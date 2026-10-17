@@ -65,7 +65,8 @@
         "@btravstack/storage#build",
         "@btravstack/temporal-worker#build",
         "@btravstack/temporal-client#build",
-        "@btravstack/testing#build"
+        "@btravstack/testing#build",
+        "@btravstack/http-client#build"
       ]
     },
     "test": {
@@ -128,7 +129,8 @@
         "@btravstack/temporal-worker#build",
         "@btravstack/amqp-worker#build",
         "@btravstack/temporal-client#build",
-        "@btravstack/amqp-client#build"
+        "@btravstack/amqp-client#build",
+        "@btravstack/http-client#build"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",

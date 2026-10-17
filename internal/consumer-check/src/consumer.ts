@@ -17,6 +17,7 @@ import { HealthChecks, RuntimePort, type Runtime } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { Entity } from "@btravstack/entity";
 import { GraphqlModule, graphql } from "@btravstack/graphql-server";
+import { httpClient, HttpClient, type HttpPolicy } from "@btravstack/http-client";
 import { defineAuth } from "@btravstack/http-server";
 import { mcp } from "@btravstack/mcp-server";
 import { HttpModule, defineHttp } from "@btravstack/orpc-server";
@@ -122,4 +123,16 @@ export const StandaloneRelay = Module("StandaloneRelay")({
     Provider(OutboxPublisher)({ inject: {}, value: { publish: () => OkAsync() } }),
   ],
   exports: [OutboxRuntime, HealthChecks],
+});
+
+export class OutboundPolicy extends Port("ConsumerOutboundPolicy")<HttpPolicy> {}
+export const OutboundHttp = Module("ConsumerOutboundHttp")({
+  imports: [httpClient(OutboundPolicy)],
+  provides: [
+    Provider(OutboundPolicy)({
+      inject: {},
+      value: { origins: ["https://api.example"], deadlineMs: 1000, maxResponseBytes: 1024 },
+    }),
+  ],
+  exports: [HttpClient],
 });

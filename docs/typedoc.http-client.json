@@ -1,0 +1,7 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/http-client",
+  "entryPoints": ["../packages/http-client/src/index.ts"],
+  "tsconfig": "../packages/http-client/tsconfig.json",
+  "out": "api/http-client"
+}
