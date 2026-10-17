@@ -53,6 +53,8 @@ const allowed: Readonly<Record<string, string>> = {
     "the shared HTTP test fixture reads this documented runtime default to verify configuration",
   "@btravstack/http-server:_internal_httpRuntime":
     "the shared HTTP test fixture mounts the raw runtime to exercise listener behavior independently of answerers",
+  "@btravstack/http-server:AnswererModule":
+    "re-exported, not imported, as `GraphqlModule` and `McpModule`, which the specs and doc samples exercise under those names",
   "@btravstack/prisma:qualify":
     "the SQLSTATE triage `tryQuery` is built on, exported for an adapter whose query runs outside `tryQuery`; `result.spec.ts` exercises it through `tryQuery`",
 };

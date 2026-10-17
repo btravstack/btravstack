@@ -48,6 +48,7 @@ const consumerPeers = (): readonly string[] | undefined => {
     "@unthrown/orpc",
     "graphql",
     "graphql-yoga",
+    "@modelcontextprotocol/sdk",
   ];
   const versions = [...peers, "typescript-consumer"].map(catalogVersion);
   if (versions.includes(undefined)) return undefined;

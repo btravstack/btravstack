@@ -18,6 +18,7 @@ import { Module, Port, Provider } from "@btravstack/di";
 import { Entity } from "@btravstack/entity";
 import { GraphqlModule, graphql } from "@btravstack/graphql-server";
 import { defineAuth } from "@btravstack/http-server";
+import { mcp } from "@btravstack/mcp-server";
 import { HttpModule, defineHttp } from "@btravstack/orpc-server";
 import {
   OutboxPublisher,
@@ -27,6 +28,7 @@ import {
   outbox,
   outboxRuntime,
 } from "@btravstack/outbox";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { oc } from "@orpc/contract";
 import { createSchema } from "graphql-yoga";
 import { OkAsync } from "unthrown";
@@ -107,6 +109,10 @@ export const ConsumerGraphqlApi = GraphqlModule("ConsumerGraphqlApi")({
     schema: createSchema({ typeDefs: "type Query { hello: String }" }),
   }),
   imports: [GreetingModule],
+});
+
+export const consumerMcp = mcp(defineAuth(), {
+  server: () => new McpServer({ name: "consumer", version: "1.0.0" }),
 });
 
 export const StandaloneRelay = Module("StandaloneRelay")({
