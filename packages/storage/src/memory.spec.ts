@@ -185,4 +185,19 @@ describe("memoryStorageBackend", () => {
       contentType: "application/json",
     });
   });
+
+  it("keeps what it stored when the caller later mutates its buffer", async ({ memory }) => {
+    // GIVEN a document put from a buffer the caller keeps
+    const document = aDocument();
+    await memory.put("a/b.json", document.bytes, { contentType: document.contentType });
+
+    // WHEN the caller overwrites its buffer
+    document.bytes.fill(0);
+
+    // THEN the store still holds the original bytes
+    await expect(memory.get("a/b.json")).toBeOkWith({
+      bytes: aDocument().bytes,
+      contentType: "application/json",
+    });
+  });
 });

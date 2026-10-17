@@ -81,7 +81,8 @@ from the request id, without a database to decide the winner.
 **`copy` moves no bytes through the process.** The S3 adapter sends
 `CopyObject` with `MetadataDirective: REPLACE`, so the copy takes the
 `contentType` you give rather than the source's. A missing source answers
-`ObjectNotFound` naming the source key; an existing destination is overwritten.
+`ObjectNotFound` naming the source key; an existing destination is overwritten,
+and the source's tags are not carried over (`TaggingDirective: REPLACE`).
 
 **`kmsKeyId` selects SSE-KMS.** On `put`, `putIfAbsent` and `copy`, the S3
 adapter sends `ServerSideEncryption: aws:kms` and `SSEKMSKeyId`; absent, no
@@ -259,7 +260,7 @@ export const Plain = Module("ReferencePlainStorage")({
 - **No streaming, and no multipart parsing.** A presigned PUT is a different
   security decision — who may write what, for how long — and belongs to an
   application that has answered it.
-- **No listing, no copy, and no S3 multipart upload.** Each is a real S3 feature, and none
-  has a consumer here yet.
+- **No listing and no S3 multipart upload.** Each is a real S3 feature, and
+  neither has a consumer here yet.
 - **No metadata beyond the content type**, and no tags.
 - **No bucket management.** Creating one is deployment, not runtime.

@@ -389,12 +389,13 @@ describe("s3Storage, server-side copy, head and checksums", () => {
         key: input["Key"],
         sse: input["ServerSideEncryption"],
         kms: input["SSEKMSKeyId"],
+        tagging: input["TaggingDirective"],
       })),
     ).toEqual([
-      { key: "a", sse: "aws:kms", kms: "key-1" },
-      { key: "b", sse: "aws:kms", kms: "key-2" },
-      { key: "c", sse: "aws:kms", kms: "key-3" },
-      { key: "d", sse: undefined, kms: undefined },
+      { key: "a", sse: "aws:kms", kms: "key-1", tagging: undefined },
+      { key: "b", sse: "aws:kms", kms: "key-2", tagging: undefined },
+      { key: "c", sse: "aws:kms", kms: "key-3", tagging: "REPLACE" },
+      { key: "d", sse: undefined, kms: undefined, tagging: undefined },
     ]);
   });
 });

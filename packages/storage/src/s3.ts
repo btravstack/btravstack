@@ -151,6 +151,8 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
             Key: to,
             CopySource: `${bucket}/${from.split("/").map(encodeURIComponent).join("/")}`,
             MetadataDirective: "REPLACE",
+            // The tagging directive defaults to COPY; the package has no tags, so none are inherited.
+            TaggingDirective: "REPLACE",
             ContentType: options.contentType,
             ...encryption(options),
           }),

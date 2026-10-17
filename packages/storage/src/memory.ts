@@ -29,14 +29,16 @@ export const memoryStorageBackend = (): StorageService => {
 
   return {
     put: (key, bytes, options) => {
-      objects.set(key, { bytes, contentType: options.contentType });
+      // Owned copy: a caller transferring or reusing its buffer must not change, or detach, what is stored.
+      objects.set(key, { bytes: bytes.slice(), contentType: options.contentType });
       return OkAsync();
     },
     putIfAbsent: (key, bytes, options) => {
       if (objects.has(key)) {
         return ErrAsync(new ObjectExists({ key }));
       }
-      objects.set(key, { bytes, contentType: options.contentType });
+      // Owned copy: a caller transferring or reusing its buffer must not change, or detach, what is stored.
+      objects.set(key, { bytes: bytes.slice(), contentType: options.contentType });
       return OkAsync();
     },
     copy: (from, to, options) => {
