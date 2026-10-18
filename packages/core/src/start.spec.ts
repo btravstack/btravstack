@@ -926,17 +926,20 @@ describe("start", () => {
     },
   );
 
-  it("stops a runtime whose start finishes after the build was abandoned", async () => {
+  it("aborts late units before stopping a runtime whose start finishes after abandonment", async () => {
     // GIVEN a runtime held inside start
-    const starting = Promise.withResolvers<void>();
+    const starting = Promise.withResolvers<RuntimeHost<never>>();
     const started = Promise.withResolvers<void>();
     const stopped = Promise.withResolvers<void>();
+    const unitSettled = Promise.withResolvers<void>();
+    let lateSignal: AbortSignal | undefined;
+    let abortedBeforeStop = false;
     let watched = false;
     const root = runtimeModule({
       name: "late-start",
       resolves: [],
-      start: () => {
-        starting.resolve();
+      start: (host) => {
+        starting.resolve(host);
         return fromSafePromise(started.promise).map(() => ({
           info: { name: "late" },
           stopped: () => {
@@ -945,6 +948,7 @@ describe("start", () => {
           },
           drain: () => OkAsync(),
           stop: () => {
+            abortedBeforeStop = lateSignal?.aborted === true;
             stopped.resolve();
             return OkAsync();
           },
@@ -952,25 +956,39 @@ describe("start", () => {
       },
     });
     const app = start(root, { probes: false, onEvent: () => {} });
-    await starting.promise;
+    const host = await starting.promise;
 
-    // WHEN start finishes after the second signal ended the lifecycle
+    // WHEN start opens a unit and finishes after the second signal ended the lifecycle
     process.emit("SIGTERM");
     process.emit("SIGTERM");
-    await app.exited;
+    const originalExit = (await app.exited).getOrThrow();
+    const lateUnit = host.run({ kind: "late", id: "late-unit" }, (_unit, signal) => {
+      lateSignal = signal;
+      return fromSafePromise(unitSettled.promise);
+    });
     started.resolve();
     await stopped.promise;
+    unitSettled.resolve();
+    (await lateUnit).get();
 
-    // THEN its serving information never revives the exited application
+    // THEN the late unit aborts before stop, without changing the original exit or publishing info
     expect({
       phase: app.phase(),
       ready: app.ready(),
       watched,
+      abortedBeforeStop,
+      sameExit: (await app.exited).getOrThrow() === originalExit,
+      exit: await app.exited,
       info: await app.runtimeInfo(),
     }).toEqual({
       phase: "exited",
       ready: false,
       watched: false,
+      abortedBeforeStop: true,
+      sameExit: true,
+      exit: expect.toBeOkWith(
+        expect.objectContaining({ reason: "signal", abandonedAt: "build", drain: undefined }),
+      ),
       info: expect.toBeOkWith(undefined),
     });
   });

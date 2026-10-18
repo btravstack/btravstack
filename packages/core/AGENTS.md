@@ -219,7 +219,9 @@ Beyond the nine:
   `serve` skips runtime startup and lets the application scope close. If
   `runtime.start` was already pending, its eventual `Serving` is stopped
   directly, without publishing information or observing its stopped channel.
-  `start.spec.ts` guards both late acquisition paths and the late start path.
+  The registry is aborted again before that stop, since the pending start can
+  open units after abandonment's first abort. `start.spec.ts` guards both late
+  acquisition paths and aborting late units before stopping the late runtime.
 
   **`stopping` lasts until the finalisers do, on the serving path and the
   startup-failure path alike.** `disposeAll` — the signal handlers, the move to

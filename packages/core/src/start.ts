@@ -764,6 +764,7 @@ export const start = <X, E, N>(
 
     return runtime.start(host).flatMap((serving: Serving<Info>) => {
       if (abandonedBuildReason !== undefined) {
+        registry.abortAll();
         const reason = abandonedBuildReason;
         return serving.stop().map(() => ({ reason, drain: undefined }));
       }
