@@ -1005,6 +1005,9 @@ in its place.
   `defineHttp(...)` binding; the root composes every slice's piece into one
   router with `api.OrpcRouter(contract)([...])`, an array whose paths must
   partition the contract's procedures (see `packages/http-server/AGENTS.md`).
+  Controller ports are namespaced by contract object identity, so unrelated
+  contracts can reuse a resource key in one process. The same contract and
+  path reuse a port across API bindings; wire paths stay unchanged.
   **A fragment is itself a valid contract**,
   so a slice lifts out of the modulith into a process of its own without its
   controller changing at all: the lifted root is

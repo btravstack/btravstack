@@ -30,6 +30,18 @@ consumer gate still checks the older advertised floor.
 ports are automatic, as are available `Logger` and `HealthChecks` ports.
 Business exports remain explicit; private imported providers remain private.
 
+**Controller ports are namespaced by contract object identity.** A weak map
+assigns each contract a UUID namespace and caches one port per dotted path,
+shared across `defineHttp` bindings and package copies through a `Symbol.for`
+registry on `globalThis`, including mixed ESM/CommonJS loads. Separate contracts can reuse resource
+names in one process without duplicate-port warnings; two providers for the
+same contract and path still fail as duplicate ownership. Keep the contract
+object shared between slices. The port id is
+`OrpcController:<namespace>:<path>`; the router strips the prefix and namespace
+before nesting the implementation. Only the namespace separator is consumed,
+so a colon in the resource key survives. RPC keys and OpenAPI paths never
+include the namespace.
+
 **OpenAPI error statuses belong beside each procedure's error declaration.**
 oRPC preserves extra `status` properties in `.errors(...)` entries but its
 default codec and generator ignore them. `errorStatusesOf` reads only integer

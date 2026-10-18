@@ -999,14 +999,14 @@ const OrpcController: <
   }) => Implementation<FragmentAt<C, K>, Schemes, never, Units, U>;
 } & ([keyof D] extends [never] ? unknown : { readonly inject: D })) => Provider<
   PortInstance<
-    `OrpcController:${K}`,
+    `OrpcController:${string}:${K}`,
     Implementation<FragmentAt<C, K>, Schemes>
   >,
   never,
   InstanceType<D[keyof D]>
 > & {
   readonly port: PortClassOf<
-    `OrpcController:${K}`,
+    `OrpcController:${string}:${K}`,
     Implementation<FragmentAt<C, K>, Schemes>
   >;
   readonly unit: U;
@@ -1017,8 +1017,8 @@ One node of a contract, at any depth, as a provider over a port minted for
 it — the same two-call shape as
 `api.OrpcRouter(contract)({ inject: { name: Dep }, sync })`, aimed at one `path` into
 `contract` rather than the whole tree: a top-level fragment (`"orders"`), a
-nested one (`"v1.orders"`), or a bare procedure (`"health"`). `contract` is
-read for its **type** only: `path` is checked against `ControllerKeyOf<C>` —
+nested one (`"v1.orders"`), or a bare procedure (`"health"`). `contract` also
+namespaces the port by object identity. `path` is checked against `ControllerKeyOf<C>` —
 every path into the contract tree — so a path the contract does not declare is
 refused **at this call**, with nothing to type the key by:
 
@@ -1028,9 +1028,15 @@ error TS2345: Argument of type '"billing"' is not assignable to parameter of typ
 
 `path` also shapes `sync`'s return through `FragmentAt<C, K>`, so a procedure
 the node does not declare, or a handler whose input or output has drifted, is
-a compile error inside the piece. There is no name to give: the path **is**
-the port's name, minted as `` `OrpcController:${path}` `` — the same move
-`AmqpHandler(contract, key)` makes — and carried back on `provider.port`, the
+a compile error inside the piece. No namespace option is needed: each contract
+object receives an opaque namespace, and the port id is
+`` `OrpcController:${namespace}:${path}` ``. Separate contracts can reuse a
+resource name such as `payments` without colliding in one process. The same
+contract object and path reuse one port across API bindings, so two providers
+claiming that path still fail as duplicate providers. Share the contract object
+between slices; reconstructing an equivalent object creates a new namespace.
+The namespace affects only DI identity: RPC resource keys and public HTTP paths
+stay unchanged. The port is carried back on `provider.port`, the
 shape `Config.provider(name)(schema)` has too, so a slice's
 module exports `controller.port` rather than naming a port of its own:
 

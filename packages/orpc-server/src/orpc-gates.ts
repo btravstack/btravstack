@@ -93,7 +93,7 @@ export type Built<Auth, N, Units, Kinds = string, Pieces = never> = Provider<
 export type PieceOf<C extends Record<string, RouterContract>, Schemes> = {
   readonly [K in ControllerKeyOf<C>]: {
     readonly port: {
-      readonly portId: `${typeof CONTROLLER_PREFIX}${K}`;
+      readonly portId: `${typeof CONTROLLER_PREFIX}${string}:${K}`;
       new (): InstanceType<ControllerPortOf<C, K, Schemes>>;
     };
   };
@@ -101,7 +101,7 @@ export type PieceOf<C extends Record<string, RouterContract>, Schemes> = {
 
 /** The key a piece carries, read back off its port id. */
 export type KeyOfPiece<P> = P extends {
-  readonly port: { readonly portId: `${typeof CONTROLLER_PREFIX}${infer K}` };
+  readonly port: { readonly portId: `${typeof CONTROLLER_PREFIX}${string}:${infer K}` };
 }
   ? K
   : never;

@@ -296,7 +296,7 @@ void publicApi.OrpcController(deep, "v1.billing");
 
 // The port id carries the whole path.
 type _PathPortId = Expect<
-  typeof v1Orders.port.portId extends "OrpcController:v1.orders" ? true : false
+  typeof v1Orders.port.portId extends `OrpcController:${string}:v1.orders` ? true : false
 >;
 
 // The requirements fold down a dotted path: a mark on `v1` reaches a piece

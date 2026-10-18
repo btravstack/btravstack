@@ -178,7 +178,7 @@ This does not change ordinary di module visibility.
   and are di's duplicate-provider defect — so di cannot see them conflicting,
   and the `nest` rebuild below would silently let one win. This gate is the
   only thing standing between a dotted path and that silent overwrite.
-  `Uncovered` reads each piece's path by stripping `CONTROLLER_PREFIX` back
+  `Uncovered` reads each piece's path by stripping `CONTROLLER_PREFIX` and its contract namespace back
   off its port id (`KeyOfPiece`), so the path is never spelled twice; and
   `PieceOf`'s port type is spelled **inline**, not as
   `ControllerPortOf<C, K, Schemes>` — a regression guard against a hole that
@@ -278,7 +278,7 @@ This does not change ordinary di module visibility.
   The depth block at the file's tail pins the dotted paths themselves: pieces
   at mixed depths partitioning the leaves compose, an uncovered procedure and
   a nested piece are each refused against their marker, and the port id
-  carries the whole path (`"OrpcController:v1.orders"`).
+  carries the whole path (`"OrpcController:<namespace>:v1.orders"`).
   Covered at runtime by the `rpcSliced` fixture — `helloController` over
   `slicedContract`'s `greetings` fragment and `echoesController` minted by
   the DOTTED path `"echoes.ping"`, so `nest`'s rebuild answers a real
@@ -289,14 +289,15 @@ This does not change ordinary di module visibility.
   (`controller.ts`, minted by
   `defineHttp`) — one
   node of a contract, at any depth, as a provider on a port of its own. There
-  is no name to give: the dotted path IS the port's name, minted as
-  `` `${CONTROLLER_PREFIX}${key}` `` (`CONTROLLER_PREFIX = "OrpcController:"`,
-  exported from `controller.ts` only) — the move `AmqpHandler(contract, key)`
-  and `authenticatorPort(scheme)` both make. The port id carrying the path is
-  what makes two slices claiming one node di's duplicate-provider defect
-  rather than a silent merge, and what lets the composing form recover each
-  piece's path without it being spelled again. The first call fixes the
-  contract's type — read for its **type** only, so a path the contract does
+  is no name to give: the contract object owns an opaque namespace, and its
+  dotted path selects a cached port within it, minted as
+  `` `${CONTROLLER_PREFIX}${namespace}:${key}` `` (`CONTROLLER_PREFIX = "OrpcController:"`,
+  exported from `controller.ts` only). The cache is shared across API bindings;
+  unrelated contract objects can reuse resource names without port collisions.
+  Two slices claiming one node of the same contract still target one port and
+  fail as di's duplicate-provider defect. The composing form strips the prefix
+  and namespace to recover each piece's path. The first call also fixes the
+  contract's type, so a path the contract does
   not declare is refused at the call (`ControllerKeyOf<C>`, the union of
   **every path** into the contract tree — a fragment or a procedure, dotted
   at each level, less the marker's phantom key; the former top-level keys are

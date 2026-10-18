@@ -433,7 +433,7 @@ export const routerFor =
         // `nest` folds those paths back into the contract's own tree before
         // the `routerOf` walk.
         const pathOf = (piece: (typeof pieces)[number]): string =>
-          piece.port.portId.slice(CONTROLLER_PREFIX.length);
+          piece.port.portId.slice(piece.port.portId.indexOf(":", CONTROLLER_PREFIX.length) + 1);
         return provide(
           Object.fromEntries(pieces.map((piece) => [pathOf(piece), piece.port])),
           nest,

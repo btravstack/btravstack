@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { PrincipalKey, Requirements } from "@btravstack/contract";
 import { Port, Provider, type AnyPort, type PortClassOf, type ServiceOf } from "@btravstack/di";
 import type { ProcedureContract, RouterContract } from "@orpc/contract";
@@ -82,16 +84,28 @@ type FragmentAt<
  * The port one piece targets. Its id carries the contract path, which is what
  * makes two slices claiming one fragment di's duplicate-provider defect rather
  * than a silent merge, and what lets the composing form recover each piece's
- * path by stripping the prefix rather than needing it spelled again.
+ * path by stripping the prefix and namespace rather than needing it spelled again.
  */
 export type ControllerPortOf<
   C extends Record<string, RouterContract>,
   K extends ControllerKeyOf<C>,
   Schemes = never,
-> = PortClassOf<`${typeof CONTROLLER_PREFIX}${K}`, Implementation<FragmentAt<C, K>, Schemes>>;
+> = PortClassOf<
+  `${typeof CONTROLLER_PREFIX}${string}:${K}`,
+  Implementation<FragmentAt<C, K>, Schemes>
+>;
 
-/** The prefix a piece's port id carries; the composing form strips it to recover the path. */
+/** The prefix before the contract namespace and path in a piece's port id. */
 export const CONTROLLER_PREFIX = "OrpcController:";
+
+type ControllerPorts = WeakMap<
+  object,
+  { readonly namespace: string; readonly ports: Map<string, AnyPort> }
+>;
+// Share identity across ESM/CJS and package copies, or duplicate ownership escapes detection.
+const KEY: unique symbol = Symbol.for("@btravstack/orpc-server/controller-ports") as never;
+const store = globalThis as unknown as { [KEY]?: ControllerPorts };
+const contracts = (store[KEY] ??= new WeakMap());
 
 /** What a minted controller returns. */
 type Minted<
@@ -112,13 +126,13 @@ type Minted<
  * A large API is several pieces, each owning one node of the contract tree —
  * named by a dotted path, `"orders"` or `"v1.orders"` — and declaring the use
  * cases its procedures call; `OrpcRouter(contract)([...])` composes them.
- * `contract` is read for its TYPE only, and types both `key` and the
+ * `contract` namespaces the port by object identity and types both `key` and the
  * handlers — so a path the contract does not declare, or a procedure the
  * fragment does not, is a compile error here rather than at the root.
  *
- * There is no name to give: the path IS the port's name, minted as
- * `` `${CONTROLLER_PREFIX}${key}` `` — the move `AmqpHandler(contract, key)`
- * makes. `FragmentAt` carries every ancestor mark down to the piece, so a
+ * The same contract and path reuse one port; unrelated contracts may share
+ * resource names. The generated namespace never changes HTTP paths.
+ * `FragmentAt` carries every ancestor mark down to the piece, so a
  * marked ancestor types `context.principal` where the handler is written.
  */
 export const controllerFor =
@@ -134,13 +148,16 @@ export const controllerFor =
     contract: C,
     key: K & SliceableGate<C, K>,
   ) => {
-    // Named rather than `_`-prefixed so it reads as `contract` in the published
-    // `.d.ts`; nothing needs its value.
-    void contract;
-    // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
-    const port = class extends Port(`${CONTROLLER_PREFIX}${key as K}`)<
-      Implementation<FragmentAt<C, Key>, Schemes>
-    > {};
+    let entry = contracts.get(contract);
+    if (entry === undefined) {
+      entry = { namespace: randomUUID(), ports: new Map() };
+      contracts.set(contract, entry);
+    }
+    let port = entry.ports.get(key);
+    if (port === undefined) {
+      port = Port(`${CONTROLLER_PREFIX}${entry.namespace}:${key as K}`);
+      entry.ports.set(key, port);
+    }
 
     return <
       const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,

@@ -4,6 +4,7 @@ import { ErrAsync } from "unthrown";
 import { z } from "zod";
 
 import { defineHttp } from "./define-http.js";
+import type { ControllerPortOf } from "./index.js";
 
 const contract = {
   find: oc
@@ -21,6 +22,19 @@ defineHttp().OrpcRouter(contract)({
 
 declare const client: RouterContractClient<typeof contract>;
 const output: Promise<{ id: string }> = client.find({ id: "42" });
+
+const controller = defineHttp().OrpcController(
+  contract,
+  "find",
+)({
+  sync:
+    () =>
+    ({ errors }, input) =>
+      ErrAsync(errors.ITEM_MISSING({ data: { id: input.id } })),
+});
+const controllerPort: ControllerPortOf<typeof contract, "find"> = controller.port;
+const controllerId: `OrpcController:${string}:find` = controllerPort.portId;
+defineHttp().OrpcRouter(contract)([controller]);
 
 defineHttp().OrpcRouter(contract)({
   sync: () => ({
