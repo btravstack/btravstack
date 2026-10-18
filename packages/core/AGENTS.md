@@ -215,7 +215,11 @@ Beyond the nine:
   `clock.sleep` RESOLVES on abort, so reading the signal instead of the flag
   reported a timeout on every clean stop. A FIRST signal mid-build stays
   buffered — invariant "spends only what is left of preDrainDelayMs" depends on
-  it.
+  it. An abandoned build stays abandoned if acquisition later completes:
+  `serve` skips runtime startup and lets the application scope close. If
+  `runtime.start` was already pending, its eventual `Serving` is stopped
+  directly, without publishing information or observing its stopped channel.
+  `start.spec.ts` guards both late acquisition paths and the late start path.
 
   **`stopping` lasts until the finalisers do, on the serving path and the
   startup-failure path alike.** `disposeAll` — the signal handlers, the move to

@@ -243,33 +243,6 @@ test("replay omits explicit undefined optionals between folds", () => {
   );
 });
 
-test("replay preserves a schema defect in a stored event", () => {
-  // GIVEN a schema whose Standard Schema validator defects synchronously
-  const events = z.discriminatedUnion("type", [
-    z.object({ type: z.literal("Opened"), id: z.uuid() }),
-    z.object({ type: z.literal("Closed") }),
-  ]);
-  Object.defineProperty(events, "~standard", {
-    value: {
-      validate: () => {
-        // oxlint-disable-next-line unthrown/no-throw -- a defective validator is the subject under test
-        throw new Error("broken validator");
-      },
-    },
-  });
-  class BrokenSchema extends Entity.aggregate("BrokenSchema")({
-    id: Entity.field(CartId, { identity: true }),
-  })({
-    events,
-    opens: { Opened: (e) => ({ id: e.id }) },
-    evolve: { Closed: (r) => r },
-  }) {}
-  // WHEN the event is replayed
-  const result = BrokenSchema.replay([{ type: "Opened", id }]);
-  // THEN parsing's defect stays separate from InvalidEntity
-  expect(channel(result)).toBe("defect");
-});
-
 test("replay reports a throwing evolution handler as a defect", () => {
   // GIVEN a valid stream whose evolution handler fails
   class BrittleReplay extends Entity.aggregate("BrittleReplay")({
@@ -624,3 +597,39 @@ test("a stream ending at its terminal event replays to an aggregate nothing can 
   // THEN it is a defect
   expect(result).toBeDefect();
 });
+
+test.each(["start", "emit", "replay"] as const)(
+  "%s preserves a thrown event refinement as the original defect",
+  (operation) => {
+    // GIVEN an event schema with a buggy synchronous refinement
+    const cause = new Error("event refinement failed");
+    const events = z
+      .discriminatedUnion("type", [
+        z.object({ type: z.literal("Opened") }),
+        z.object({ type: z.literal("Changed") }),
+      ])
+      .superRefine(() => {
+        // oxlint-disable-next-line unthrown/no-throw -- the thrown schema defect is the subject under test
+        throw cause;
+      });
+    class Broken extends Entity.aggregate("Broken")({
+      id: Entity.field(CartId, { identity: true }),
+    })({
+      events,
+      opens: { Opened: () => ({ id }) },
+      evolve: { Changed: (record) => record },
+    }) {}
+    const state = Broken.make({ id }, { version: 1 }).getOrThrow();
+
+    // WHEN an event enters through each public event parser
+    const result =
+      operation === "start"
+        ? Broken.start({ type: "Opened" })
+        : operation === "emit"
+          ? state.emit({ type: "Changed" })
+          : Broken.replay([{ type: "Opened" }]);
+
+    // THEN the original bug stays inside the Result defect channel
+    expect(result).toBeDefectWith(cause);
+  },
+);

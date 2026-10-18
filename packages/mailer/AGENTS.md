@@ -29,7 +29,9 @@ fail and the private transport port are the TSDoc of `src/instrument.ts`,
   some clients cannot read.
 - **Partial SMTP acceptance is a `MailNotSent`**, with `to` naming rejected
   recipients only. Accepted recipients may already receive the message; a caller
-  retries the rejected set rather than the original envelope.
+  retries the rejected set rather than the original envelope. A rejected send also
+  preserves the transport's rejected list when available; a connection failure
+  retains every `to`, `cc` and `bcc` recipient in `MailNotSent.to`.
 
 ## Health check
 

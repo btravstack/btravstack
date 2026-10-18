@@ -178,7 +178,7 @@ export const createBase =
     fields: S & OnlyNominal<S>,
     options?: {
       readonly computed?: {
-        [K in keyof A]: ComputedField<A[K], InputOf<S>>;
+        [K in keyof A]: ComputedField<A[K], InputOf<S>> & (K extends keyof S ? never : unknown);
       } & NoReservedFieldNames<NoInfer<A>>;
       readonly invariants?: readonly Invariant<InputOf<S>>[];
     },

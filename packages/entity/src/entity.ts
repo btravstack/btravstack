@@ -83,7 +83,7 @@ export function Entity<Tag extends string>(tag: Tag) {
     fields: S & OnlyNominal<S>,
     options?: {
       readonly computed?: {
-        [K in keyof A]: ComputedField<A[K], InputOf<S>>;
+        [K in keyof A]: ComputedField<A[K], InputOf<S>> & (K extends keyof S ? never : unknown);
       } & NoReservedFieldNames<NoInfer<A>>;
       // The *declared* fields, not `OutputOf`. A rule cannot read a computed
       // field — see `invariant.ts` for why that is both sound and necessary.

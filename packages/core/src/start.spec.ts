@@ -879,6 +879,102 @@ describe("start", () => {
     });
   });
 
+  it.each(["signal", "uncaught"] as const)(
+    "releases a late-built graph after abandoning it on %s",
+    async (reason) => {
+      // GIVEN a resource whose acquisition finishes after the build is abandoned
+      const runtime = testRuntime();
+      const acquiring = Promise.withResolvers<void>();
+      const acquired = Promise.withResolvers<void>();
+      const released = Promise.withResolvers<void>();
+      const root = Module("LateBuild")({
+        imports: [runtime.module],
+        provides: [
+          Provider(Greeting)({
+            inject: {},
+            acquire: () => {
+              acquiring.resolve();
+              return fromSafePromise(acquired.promise).map(() => ({ text: "hello" }));
+            },
+            release: () => {
+              released.resolve();
+            },
+          }),
+        ],
+        exports: [TestRuntimePort],
+      });
+      const app = start(root, { probes: false, onEvent: () => {} });
+      await acquiring.promise;
+
+      // WHEN the abandoned acquisition eventually finishes
+      if (reason === "signal") {
+        process.emit("SIGTERM");
+        process.emit("SIGTERM");
+      } else {
+        process.emit("uncaughtException", new Error("boom"));
+      }
+      await app.exited;
+      acquired.resolve();
+      await released.promise;
+
+      // THEN the graph closes without ever starting its runtime
+      expect({ started: runtime.started(), phase: app.phase(), ready: app.ready() }).toEqual({
+        started: false,
+        phase: "exited",
+        ready: false,
+      });
+    },
+  );
+
+  it("stops a runtime whose start finishes after the build was abandoned", async () => {
+    // GIVEN a runtime held inside start
+    const starting = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<void>();
+    const stopped = Promise.withResolvers<void>();
+    let watched = false;
+    const root = runtimeModule({
+      name: "late-start",
+      resolves: [],
+      start: () => {
+        starting.resolve();
+        return fromSafePromise(started.promise).map(() => ({
+          info: { name: "late" },
+          stopped: () => {
+            watched = true;
+            return fromSafePromise(new Promise(() => {}));
+          },
+          drain: () => OkAsync(),
+          stop: () => {
+            stopped.resolve();
+            return OkAsync();
+          },
+        }));
+      },
+    });
+    const app = start(root, { probes: false, onEvent: () => {} });
+    await starting.promise;
+
+    // WHEN start finishes after the second signal ended the lifecycle
+    process.emit("SIGTERM");
+    process.emit("SIGTERM");
+    await app.exited;
+    started.resolve();
+    await stopped.promise;
+
+    // THEN its serving information never revives the exited application
+    expect({
+      phase: app.phase(),
+      ready: app.ready(),
+      watched,
+      info: await app.runtimeInfo(),
+    }).toEqual({
+      phase: "exited",
+      ready: false,
+      watched: false,
+      info: expect.toBeOkWith(undefined),
+    });
+  });
+
   it("gives up on a build a second signal has given up on", async () => {
     // GIVEN a boot that hangs — an unreachable dependency acquired at
     // construction — where the FIRST signal is deliberately buffered for the

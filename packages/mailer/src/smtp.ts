@@ -76,7 +76,15 @@ export const smtpMailerBackend = (transport: Transporter): MailerService => ({
       }),
       (cause) =>
         new MailNotSent({
-          to: mail.to,
+          to:
+            typeof cause === "object" &&
+            cause !== null &&
+            "rejected" in cause &&
+            Array.isArray(cause.rejected) &&
+            cause.rejected.length > 0 &&
+            cause.rejected.every((recipient: unknown) => typeof recipient === "string")
+              ? cause.rejected
+              : [...mail.to, ...(mail.cc ?? []), ...(mail.bcc ?? [])],
           subject: mail.subject,
           reason: cause instanceof Error ? cause.message : String(cause),
         }),
