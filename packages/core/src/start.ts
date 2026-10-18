@@ -521,6 +521,7 @@ export const start = <X, E, N>(
   };
 
   const abandoningBuild = Promise.withResolvers<ExitReport["reason"]>();
+  let abandonedBuildReason: ExitReport["reason"] | undefined;
   // A shutdown requested before the runtime serves has no `finish` to reach:
   // `shutdown.promise` is read inside `runtime.start`'s own `flatMap`, which a
   // graph that never finished building never reaches — and the handlers have
@@ -539,8 +540,10 @@ export const start = <X, E, N>(
     });
   const abandonBuild = (reason: ExitReport["reason"]): void => {
     const phase = tracker.current();
-    if (phase === "building" || phase === "starting" || (reason === "uncaught" && startupFailing))
+    if (phase === "building" || phase === "starting" || (reason === "uncaught" && startupFailing)) {
+      abandonedBuildReason = reason;
       abandoningBuild.resolve(reason);
+    }
   };
 
   emit({ type: "building" });
@@ -638,6 +641,8 @@ export const start = <X, E, N>(
   };
 
   const serve = (ctx: Context<X>): AsyncResult<Stopped, RuntimeStartFailed> => {
+    if (abandonedBuildReason !== undefined)
+      return OkAsync({ reason: abandonedBuildReason, drain: undefined });
     tracker.advanceTo("starting");
 
     // Both casts restate, where the checker cannot see it, what the
@@ -758,6 +763,11 @@ export const start = <X, E, N>(
     const host = { ctx: runtimeCtx, run };
 
     return runtime.start(host).flatMap((serving: Serving<Info>) => {
+      if (abandonedBuildReason !== undefined) {
+        registry.abortAll();
+        const reason = abandonedBuildReason;
+        return serving.stop().map(() => ({ reason, drain: undefined }));
+      }
       servingInfo = serving.info;
       tracker.advanceTo("serving");
       runtimePublished.resolve(serving.info);

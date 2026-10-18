@@ -150,6 +150,28 @@ describe("smtpMailer", () => {
     );
   });
 
+  it.for([
+    {
+      to: ["to@example.test"],
+      cc: ["cc@example.test"],
+      bcc: ["bcc@example.test"],
+      expected: ["to@example.test", "cc@example.test", "bcc@example.test"],
+    },
+    { to: [], cc: ["cc@example.test"], expected: ["cc@example.test"] },
+  ])(
+    "keeps every envelope recipient on connection failure: $expected",
+    async ({ to, cc, bcc, expected }, { unreachable, recipient }) => {
+      // GIVEN a mailer pointed at a relay that is not listening
+      const mail = { ...aMail(recipient), to, cc, ...(bcc === undefined ? {} : { bcc }) };
+
+      // WHEN the transport fails before accepting any recipient
+      const sent = await unreachable.send(mail);
+
+      // THEN every intended recipient remains available to the caller's retry
+      expect(sent).toBeErrWith(expect.objectContaining({ to: expected }));
+    },
+  );
+
   it("contributes a health check the kernel folds into /healthz", async () => {
     // GIVEN the adapter composed over the shared SMTP server
     const env = { SMTP_URL: inject("__TESTCONTAINERS_SMTP_URL__") };

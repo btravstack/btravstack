@@ -94,13 +94,13 @@ export type NoReservedFieldNames<T> = {
 
 export function checkFieldNames(tag: string, fields: object, computed: object = {}): void {
   const reserved = new Set<string>(reservedFieldNames);
-  const clashes = [...new Set([...Object.keys(fields), ...Object.keys(computed)])].filter((key) =>
-    reserved.has(key),
+  const clashes = [...new Set([...Object.keys(fields), ...Object.keys(computed)])].filter(
+    (key) => reserved.has(key) || (Object.hasOwn(fields, key) && Object.hasOwn(computed, key)),
   );
   if (clashes.length > 0) {
     // oxlint-disable-next-line unthrown/no-throw — a malformed declaration is a programming defect
     throw new Error(
-      `${tag}: field name(s) ${clashes.map((key) => JSON.stringify(key)).join(", ")} reserved by the entity instance protocol.`,
+      `${tag}: field name(s) ${clashes.map((key) => JSON.stringify(key)).join(", ")} must be distinct across declared and computed fields and cannot be reserved by the entity instance protocol.`,
     );
   }
 }

@@ -879,6 +879,120 @@ describe("start", () => {
     });
   });
 
+  it.each(["signal", "uncaught"] as const)(
+    "releases a late-built graph after abandoning it on %s",
+    async (reason) => {
+      // GIVEN a resource whose acquisition finishes after the build is abandoned
+      const runtime = testRuntime();
+      const acquiring = Promise.withResolvers<void>();
+      const acquired = Promise.withResolvers<void>();
+      const released = Promise.withResolvers<void>();
+      const root = Module("LateBuild")({
+        imports: [runtime.module],
+        provides: [
+          Provider(Greeting)({
+            inject: {},
+            acquire: () => {
+              acquiring.resolve();
+              return fromSafePromise(acquired.promise).map(() => ({ text: "hello" }));
+            },
+            release: () => {
+              released.resolve();
+            },
+          }),
+        ],
+        exports: [TestRuntimePort],
+      });
+      const app = start(root, { probes: false, onEvent: () => {} });
+      await acquiring.promise;
+
+      // WHEN the abandoned acquisition eventually finishes
+      if (reason === "signal") {
+        process.emit("SIGTERM");
+        process.emit("SIGTERM");
+      } else {
+        process.emit("uncaughtException", new Error("boom"));
+      }
+      await app.exited;
+      acquired.resolve();
+      await released.promise;
+
+      // THEN the graph closes without ever starting its runtime
+      expect({ started: runtime.started(), phase: app.phase(), ready: app.ready() }).toEqual({
+        started: false,
+        phase: "exited",
+        ready: false,
+      });
+    },
+  );
+
+  it("aborts late units before stopping a runtime whose start finishes after abandonment", async () => {
+    // GIVEN a runtime held inside start
+    const starting = Promise.withResolvers<RuntimeHost<never>>();
+    const started = Promise.withResolvers<void>();
+    const stopped = Promise.withResolvers<void>();
+    const unitSettled = Promise.withResolvers<void>();
+    let lateSignal: AbortSignal | undefined;
+    let abortedBeforeStop = false;
+    let watched = false;
+    const root = runtimeModule({
+      name: "late-start",
+      resolves: [],
+      start: (host) => {
+        starting.resolve(host);
+        return fromSafePromise(started.promise).map(() => ({
+          info: { name: "late" },
+          stopped: () => {
+            watched = true;
+            return fromSafePromise(new Promise(() => {}));
+          },
+          drain: () => OkAsync(),
+          stop: () => {
+            abortedBeforeStop = lateSignal?.aborted === true;
+            stopped.resolve();
+            return OkAsync();
+          },
+        }));
+      },
+    });
+    const app = start(root, { probes: false, onEvent: () => {} });
+    const host = await starting.promise;
+
+    // WHEN start opens a unit and finishes after the second signal ended the lifecycle
+    process.emit("SIGTERM");
+    process.emit("SIGTERM");
+    const originalExit = (await app.exited).getOrThrow();
+    const lateUnit = host.run({ kind: "late", id: "late-unit" }, (_unit, signal) => {
+      lateSignal = signal;
+      return fromSafePromise(unitSettled.promise);
+    });
+    started.resolve();
+    await stopped.promise;
+    unitSettled.resolve();
+    (await lateUnit).get();
+
+    // THEN the late unit aborts before stop, without changing the original exit or publishing info
+    expect({
+      phase: app.phase(),
+      ready: app.ready(),
+      watched,
+      abortedBeforeStop,
+      sameExit: (await app.exited).getOrThrow() === originalExit,
+      exit: await app.exited,
+      info: await app.runtimeInfo(),
+    }).toEqual({
+      phase: "exited",
+      ready: false,
+      watched: false,
+      abortedBeforeStop: true,
+      sameExit: true,
+      exit: expect.toBeOkWith(
+        expect.objectContaining({ reason: "signal", abandonedAt: "build", drain: undefined }),
+      ),
+      info: expect.toBeOkWith(undefined),
+    });
+  });
+
   it("gives up on a build a second signal has given up on", async () => {
     // GIVEN a boot that hangs — an unreachable dependency acquired at
     // construction — where the FIRST signal is deliberately buffered for the

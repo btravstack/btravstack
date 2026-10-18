@@ -242,3 +242,30 @@ test("the dead-end classes still type as entities where suppressed", () => {
     StillTyped,
   ];
 });
+
+const CollisionId = z.string().brand("CollisionId");
+const collisionId = Entity.field(CollisionId, { identity: true });
+const collisionComputed = Entity.computed(CollisionId, () => "replacement");
+// @ts-expect-error a computed field cannot replace a declared identity
+Entity("Collision")({ id: collisionId }, { computed: { id: collisionComputed } });
+// @ts-expect-error an abstract root cannot compute a declared field
+Entity.abstract("CollisionRoot")({ id: collisionId }, { computed: { id: collisionComputed } });
+abstract class CollisionRoot extends Entity.abstract("CollisionRoot")(
+  { id: collisionId },
+  {
+    computed: { label: collisionComputed },
+  },
+) {}
+// @ts-expect-error a variant cannot compute an inherited declared field
+CollisionRoot.extend("Variant")({}, { computed: { id: collisionComputed } });
+// @ts-expect-error a variant cannot compute its own declared field
+CollisionRoot.extend("Variant")({ extra: CollisionId }, { computed: { extra: collisionComputed } });
+// @ts-expect-error a variant cannot declare an inherited computed field
+CollisionRoot.extend("Variant")({ label: CollisionId });
+Entity.aggregate("Collision")({ id: collisionId })({
+  events: z.object({ type: z.literal("Opened") }),
+  opens: { Opened: () => ({ id: "original" }) },
+  evolve: {},
+  // @ts-expect-error an aggregate cannot compute a declared identity
+  computed: { id: collisionComputed },
+});

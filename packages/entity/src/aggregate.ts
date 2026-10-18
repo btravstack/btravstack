@@ -1,5 +1,5 @@
-import { fromSchema, type SchemaIssues } from "@unthrown/standard-schema";
-import { Err, P, all, fromThrowable, type Result } from "unthrown";
+import type { SchemaIssues } from "@unthrown/standard-schema";
+import { Err, Ok, P, all, fromThrowable, type Result } from "unthrown";
 import type { z } from "zod";
 
 import type { ComputedField } from "./computed.js";
@@ -95,9 +95,9 @@ export const createAggregate =
         event: EventNamed<Ev, K>,
       ) => RecordOf<S>;
     };
-    readonly computed?: { [K in keyof A]: ComputedField<A[K], InputOf<S>> } & NoReservedFieldNames<
-      NoInfer<A>
-    >;
+    readonly computed?: {
+      [K in keyof A]: ComputedField<A[K], InputOf<S>> & (K extends keyof S ? never : unknown);
+    } & NoReservedFieldNames<NoInfer<A>>;
     readonly invariants?: readonly Invariant<InputOf<S>>[];
   }): AggregateStatic<Tag, S, A, Ev, O, End> => {
     // The same rule at runtime, for a caller the types did not reach — the
@@ -153,7 +153,14 @@ export const createAggregate =
     Reflect.deleteProperty(Base, "factoryAsync");
     Reflect.deleteProperty(Base, "parseCreate");
 
-    const parseEvent = fromSchema(events);
+    const parseEvent = (event: unknown) =>
+      fromThrowable(
+        () => {
+          const parsed = events.safeParse(event);
+          return parsed.success ? Ok(parsed.data) : Err(parsed.error.issues as SchemaIssues);
+        },
+        (cause, defect) => defect(cause),
+      )().flatMap((result) => result);
     const terminal = new Set<string>(ends);
     const isTerminal = (e: Event) => terminal.has(e.type);
     const openers = opens as unknown as Handlers;

@@ -1,4 +1,4 @@
-import { P } from "unthrown";
+import { P, fromThrowable } from "unthrown";
 import { expect, test } from "vitest";
 import { z } from "zod";
 
@@ -213,4 +213,63 @@ test("a field transform is applied exactly once, not once per validation pass", 
   class Once extends Entity("Once")({ id: PersonId, first: Counted }) {}
   Once.make({ id: raw.id, first: "Ada" }).getOrThrow();
   expect(calls).toBe(1);
+});
+
+test("declared fields cannot also be computed in any builder", () => {
+  // GIVEN a dynamic computed map that bypasses literal type checking
+  const id = Entity.field(PersonId, { identity: true });
+  const computed = { [String("id")]: Entity.computed(PersonId, () => raw.id) };
+  abstract class Root extends Entity.abstract("Root")({ id }) {}
+  const declarations = [
+    () => Entity("Collision")({ id }, { computed }),
+    () => Entity.abstract("CollisionRoot")({ id }, { computed }),
+    () => Root.extend("CollisionVariant")({}, { computed }),
+    () =>
+      Entity.aggregate("CollisionAggregate")({ id })({
+        events: z.object({ type: z.literal("Opened") }),
+        opens: { Opened: () => ({ id: raw.id }) },
+        evolve: {},
+        computed,
+      }),
+  ];
+
+  // WHEN each declaration is evaluated
+  const results = declarations.map((declare) =>
+    fromThrowable(
+      () => declare(),
+      (cause, defect) => defect(cause),
+    )(),
+  );
+
+  // THEN no computed value can overwrite an identity field
+  expect(results).toEqual(
+    declarations.map(() =>
+      expect.toBeDefectWith(
+        expect.objectContaining({
+          message: expect.stringContaining('"id"'),
+        }),
+      ),
+    ),
+  );
+});
+
+test("a variant cannot declare a field its root computes", () => {
+  // GIVEN a root carrying a computed value
+  abstract class Root extends Entity.abstract("Root")(
+    { id: PersonId },
+    {
+      computed: { [String("label")]: Entity.computed(FullName, () => "root") },
+    },
+  ) {}
+
+  // WHEN a variant declares the same name as stored data
+  const result = fromThrowable(
+    () => Root.extend("Variant")({ label: FullName } as never),
+    (cause, defect) => defect(cause),
+  )();
+
+  // THEN the inherited computed field cannot replace the variant's data
+  expect(result).toBeDefectWith(
+    expect.objectContaining({ message: expect.stringContaining('"label"') }),
+  );
 });

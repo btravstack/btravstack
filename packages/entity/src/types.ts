@@ -505,10 +505,11 @@ export type AbstractEntity<Name extends string, S extends Fields, A extends Sche
     this: This,
     tag: Tag2,
   ): <S2 extends Fields, A2 extends Schemas = Record<never, never>>(
-    fields: S2 & OnlyNominal<S2> & NoRedeclaredKeys<S, S2>,
+    fields: S2 & OnlyNominal<S2> & NoRedeclaredKeys<S & A, S2>,
     options?: {
       readonly computed?: {
-        [K in keyof A2]: ComputedFieldOf<A2[K], InputOf<MergedFields<S, S2>>>;
+        [K in keyof A2]: ComputedFieldOf<A2[K], InputOf<MergedFields<S, S2>>> &
+          (K extends keyof S | keyof S2 ? never : unknown);
       } & NoReservedFieldNames<NoInfer<A2>>;
       readonly invariants?: readonly InvariantOf<InputOf<MergedFields<S, S2>>>[];
     },
