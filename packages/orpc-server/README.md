@@ -167,12 +167,31 @@ export const ordersController = api.OrpcController(contract, "orders")({
 export const orderRouter = api.OrpcRouter(contract)([ordersController, customersController]);
 ```
 
-The key rides the piece's own port id, so a piece cannot sit under the wrong
+The key rides the piece itself, so a piece cannot sit under the wrong
 one; an uncovered procedure and a piece nested inside another's fragment are
 each refused at the array, naming what is missing. And because a **fragment is
 itself a valid contract**, a slice lifts into a process of its own with its
 piece unchanged — which is what makes a modulith a starting point rather than a
 trap.
+
+When several APIs share a resource name in one process, give each API a distinct
+literal namespace:
+
+```ts
+import { defineHttp } from "@btravstack/orpc-server";
+
+const paymentsApi = defineHttp({ namespace: "payments-api" });
+const billingApi = defineHttp({ namespace: "billing-api" });
+```
+
+An unnamed API keeps `OrpcController:<path>` port IDs; a named API uses
+`OrpcController[<namespace>]:<path>`. The same namespace and path reuse one port,
+even across equivalent contract objects or package copies. Contract object
+identity does not define the port. The namespace stays literal in DI's types,
+so one API cannot satisfy another's controller dependency. Dynamic strings,
+unions, and names containing `]` are refused. A router composes controllers
+from its own namespace and rejects duplicate paths. RPC resource keys and
+OpenAPI HTTP paths are unchanged.
 
 The worked recipe, with the slice modules and the lifted root:
 [Split a router into controllers](https://btravstack.github.io/btravstack/how-to/split-a-router-into-controllers).
@@ -251,6 +270,10 @@ are on the verifying side. Details:
 [the reference page](https://btravstack.github.io/btravstack/reference/http-server).
 
 ## Options
+
+`defineHttp({ namespace })` fixes controller DI identity for an API; see
+[Splitting a large API into slices](#splitting-a-large-api-into-slices). It is
+independent of the deployment options below.
 
 `HttpModule(name)({...})` takes the HTTP starter's options plus `router`,
 `fragments`, `fragmentsPrefix`, `openapi` and the module lists (`imports`,

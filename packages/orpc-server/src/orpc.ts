@@ -51,10 +51,10 @@ import {
 } from "@orpc/server/plugins";
 import { RPC_DEFAULT_ALLOW_METHODS } from "@orpc/server/standard";
 
-import { CONTROLLER_PREFIX } from "./controller.js";
 import type {
   AllRequirementsOf,
   Built,
+  ComposedRouterOf,
   Erroneous,
   KeyOfPiece,
   Overlapping,
@@ -280,6 +280,7 @@ export const routerFor =
     Auth extends AnyProvider = never,
     Vocab = Record<never, never>,
     Units = Record<never, never>,
+    Namespace extends string = "",
   >(
     authenticators: readonly Auth[],
     principals: Readonly<Record<string, AnyPort>> = {},
@@ -316,7 +317,7 @@ export const routerFor =
     // `packages/amqp-worker`, same mechanism). The marker is a sentence
     // because it is the only actionable part of the diagnostic and it prints
     // last, past the caller's own wide piece type.
-    function build<const T extends readonly PieceOf<C, Schemes>[]>(
+    function build<const T extends readonly PieceOf<C, Schemes, Namespace>[]>(
       pieces: Erroneous<T> extends true
         ? T
         : [Unsliceable<C>] extends [never]
@@ -338,13 +339,7 @@ export const routerFor =
               "UNSLICEABLE CONTRACT KEY — a top-level key contains a dot, which a piece path cannot encode; serve this contract with the { inject, sync } form instead",
               Unsliceable<C>
             >,
-    ): Built<
-      Auth,
-      InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<C>>,
-      Units,
-      KindsIn<C>,
-      T[number]
-    >;
+    ): ComposedRouterOf<C, Auth, Units, T>;
     function build(depsOrPieces: unknown): unknown {
       const schemes = schemesOf(contract);
 
@@ -426,18 +421,24 @@ export const routerFor =
       // a record — so `Array.isArray` alone identifies the composing arm.
       if (Array.isArray(depsOrPieces)) {
         const pieces = depsOrPieces as readonly {
+          readonly key: string;
           readonly port: AnyPort;
           readonly unit: Readonly<Record<string, AnyPort>>;
         }[];
-        // Each piece is declared under the dotted path its port id carries;
-        // `nest` folds those paths back into the contract's own tree before
-        // the `routerOf` walk.
-        const pathOf = (piece: (typeof pieces)[number]): string =>
-          piece.port.portId.slice(CONTROLLER_PREFIX.length);
+        const paths = pieces.map((piece) => piece.key);
+        const duplicate = paths.find((path, index) => paths.indexOf(path) !== index);
         return provide(
-          Object.fromEntries(pieces.map((piece) => [pathOf(piece), piece.port])),
-          nest,
-          new Map(pieces.map((piece) => [pathOf(piece), piece.unit])),
+          Object.fromEntries(pieces.map((piece, index) => [index, piece.port])),
+          (own) => {
+            if (duplicate !== undefined) {
+              // oxlint-disable-next-line unthrown/no-throw -- Provider.sync captures invalid router wiring as a Defect
+              throw new Error(
+                `[orpc-server] duplicate controller path ${JSON.stringify(duplicate)}`,
+              );
+            }
+            return nest(Object.fromEntries(paths.map((path, index) => [path, own[index]])));
+          },
+          new Map(pieces.map((piece) => [piece.key, piece.unit])),
           depsOrPieces as readonly AnyProvider[],
         );
       }

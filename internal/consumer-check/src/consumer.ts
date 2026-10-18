@@ -66,10 +66,23 @@ export const SettingsModule = Module("Settings")({
 //    unexported `FragmentAt` and `Schemes`, which is the case the http-server
 //    signature gate skips and therefore never compiled from outside.
 export const api = defineHttp();
+export const namespacedApi = defineHttp({ namespace: "consumer" });
 
 const contract = {
   hello: oc.input(z.object({ name: z.string() })).output(z.object({ message: z.string() })),
 };
+
+export const namespacedController = namespacedApi.OrpcController(
+  contract,
+  "hello",
+)({
+  inject: { greeter: Greeter },
+  sync:
+    ({ greeter }) =>
+    (_helpers, input) =>
+      OkAsync({ message: greeter.greet(input.name) }),
+});
+export const namespacedRouter = namespacedApi.OrpcRouter(contract)([namespacedController]);
 
 export const greetingRouter = api.OrpcRouter(contract)({
   inject: { greeter: Greeter },

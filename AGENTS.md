@@ -1005,6 +1005,10 @@ in its place.
   `defineHttp(...)` binding; the root composes every slice's piece into one
   router with `api.OrpcRouter(contract)([...])`, an array whose paths must
   partition the contract's procedures (see `packages/http-server/AGENTS.md`).
+  `defineHttp({ namespace: "payments-api" })` gives controllers a literal API
+  namespace in both their types and values, so separate APIs can reuse resource
+  keys in one process. The same namespace and path reuse a port; wire paths
+  stay unchanged. Unnamed APIs retain their existing controller IDs.
   **A fragment is itself a valid contract**,
   so a slice lifts out of the modulith into a process of its own without its
   controller changing at all: the lifted root is

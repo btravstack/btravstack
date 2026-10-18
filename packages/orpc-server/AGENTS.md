@@ -30,6 +30,29 @@ consumer gate still checks the older advertised floor.
 ports are automatic, as are available `Logger` and `HealthChecks` ports.
 Business exports remain explicit; private imported providers remain private.
 
+**Controller namespaces are literal API names, never runtime object identity.**
+`defineHttp({ namespace: "payments-api" })` keeps the namespace in `Http` and
+`ControllerPortOf`, including after `units()`, so di cannot mistake one API's
+controller for another. Dynamic strings and union names are refused. Unnamed
+APIs retain `OrpcController:<path>`; named ones use
+`OrpcController[<namespace>]:<path>`. A namespace cannot contain `]`, so these
+identities stay unambiguous even when a resource key contains colons or brackets.
+A `Symbol.for` map on `globalThis` caches ports by the complete ID across
+bindings and ESM/CommonJS copies; contract object identity is irrelevant.
+An automatic UUID was rejected because two UUIDs widen to the same static type,
+allowing a graph the compiler accepts but di cannot construct.
+
+Pieces carry their `key` separately from their port ID. Router arrays accept
+their own API namespace only, and dependencies are indexed so duplicate paths
+cannot disappear in `Object.fromEntries`. Construction checks for duplicate
+keys before creating a path-keyed record, reporting a `Defect` through di's
+existing `sync` boundary. RPC resource keys and OpenAPI paths stay unchanged.
+
+`ControllerProviderOf` and `ComposedRouterOf` are exported return-type names
+so a library consumer can export a controller or composed router and emit
+portable declarations. Their handler and dependency calculations stay behind
+those names rather than exposing a pnpm-specific peer path.
+
 **OpenAPI error statuses belong beside each procedure's error declaration.**
 oRPC preserves extra `status` properties in `.errors(...)` entries but its
 default codec and generator ignore them. `errorStatusesOf` reads only integer

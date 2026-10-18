@@ -547,3 +547,49 @@ void publicApi.OrpcRouter(contract)<{ db: typeof PinDb }>(
     }),
   },
 );
+
+const firstNamespace = defineHttp({ namespace: "first" });
+const secondNamespace = defineHttp({ namespace: "second" });
+const firstPaymentsContract = { payments: { sync: oc } };
+const secondPaymentsContract = { payments: { sync: oc } };
+const firstPayments = firstNamespace.OrpcController(
+  firstPaymentsContract,
+  "payments",
+)({
+  sync: () => ({ sync: () => OkAsync("first") }),
+});
+const secondPayments = secondNamespace.OrpcController(
+  secondPaymentsContract,
+  "payments",
+)({
+  sync: () => ({ sync: () => OkAsync("second") }),
+});
+expectTypeOf(firstPayments.port.portId).toEqualTypeOf<"OrpcController[first]:payments">();
+expectTypeOf(secondPayments.port.portId).toEqualTypeOf<"OrpcController[second]:payments">();
+
+class NamespaceReader extends Port("NamespaceReader")<string> {}
+const readsSecondPayments = Provider(NamespaceReader)({
+  inject: { payments: secondPayments.port },
+  sync: () => "read",
+});
+const missingSecondNamespace = Module("MissingControllerNamespace")({
+  provides: [firstPayments, readsSecondPayments],
+});
+// @ts-expect-error -- the first namespace cannot satisfy a dependency on the second
+void Module.build(missingSecondNamespace);
+void Module.build(
+  Module("BothControllerNamespaces")({
+    provides: [firstPayments, secondPayments, readsSecondPayments],
+  }),
+);
+// @ts-expect-error -- a router composes only controllers from its API namespace
+void firstNamespace.OrpcRouter(firstPaymentsContract)([secondPayments]);
+
+const kindedNamespace = firstNamespace.units<Record<never, never>>();
+const kindedPayment = kindedNamespace.OrpcController(
+  firstPaymentsContract,
+  "payments",
+)({
+  sync: () => ({ sync: () => OkAsync("first") }),
+});
+expectTypeOf(kindedPayment.port.portId).toEqualTypeOf<"OrpcController[first]:payments">();

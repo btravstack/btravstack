@@ -26,6 +26,7 @@ describe("defineHttp", () => {
   test("an application with no auth needs no argument", () => {
     const api = defineHttp();
     expectTypeOf(api.authenticators).toEqualTypeOf<Record<never, never>>();
+    expectTypeOf(defineHttp(undefined).authenticators).toEqualTypeOf<Record<never, never>>();
   });
 
   test("an authenticator's own dependencies ride through to the graph", () => {
@@ -112,3 +113,22 @@ const bare = defineHttp();
 bare.units<{ anonymous: typeof Anonymous }>();
 // @ts-expect-error — no scheme named "user" on a bare defineHttp
 bare.units<{ user: typeof User }>();
+
+const dynamicNamespace: string = "dynamic";
+// @ts-expect-error -- runtime-selected names cannot carry distinct DI identity types
+void defineHttp({ namespace: dynamicNamespace });
+declare const patternedNamespace: `api-${string}`;
+// @ts-expect-error -- open-ended template strings cannot distinguish API identities either
+void defineHttp({ namespace: patternedNamespace });
+declare const numberedNamespace: `api-${number}`;
+// @ts-expect-error -- numeric template patterns are not single literal names
+void defineHttp({ namespace: numberedNamespace });
+declare const unionNamespace: "first" | "second";
+// @ts-expect-error -- a namespace must identify one API, not a runtime choice
+void defineHttp({ namespace: unionNamespace });
+// @ts-expect-error -- closing brackets separate the namespace from the resource key
+void defineHttp({ namespace: "first]second" });
+// @ts-expect-error -- an explicit non-default namespace type requires its value
+void defineHttp<Record<never, never>, "first">({});
+// @ts-expect-error -- the no-argument overload cannot manufacture a namespace type
+void defineHttp<Record<never, never>, "first">();

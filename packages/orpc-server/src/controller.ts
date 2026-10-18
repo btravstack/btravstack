@@ -80,28 +80,40 @@ type FragmentAt<
 
 /**
  * The port one piece targets. Its id carries the contract path, which is what
- * makes two slices claiming one fragment di's duplicate-provider defect rather
- * than a silent merge, and what lets the composing form recover each piece's
- * path by stripping the prefix rather than needing it spelled again.
+ * makes two slices claiming one fragment in the same API namespace di's
+ * duplicate-provider defect rather than a silent merge. The piece carries
+ * its contract path separately for router composition.
  */
 export type ControllerPortOf<
   C extends Record<string, RouterContract>,
   K extends ControllerKeyOf<C>,
   Schemes = never,
-> = PortClassOf<`${typeof CONTROLLER_PREFIX}${K}`, Implementation<FragmentAt<C, K>, Schemes>>;
+  Namespace extends string = "",
+> = PortClassOf<
+  Namespace extends "" ? `${typeof CONTROLLER_PREFIX}${K}` : `OrpcController[${Namespace}]:${K}`,
+  Implementation<FragmentAt<C, K>, Schemes>
+>;
 
-/** The prefix a piece's port id carries; the composing form strips it to recover the path. */
+/** The prefix of an unnamed API's controller port id. */
 export const CONTROLLER_PREFIX = "OrpcController:";
 
+// Share identity across ESM/CJS and package copies, or duplicate ownership escapes detection.
+const KEY: unique symbol = Symbol.for("@btravstack/orpc-server/named-controller-ports") as never;
+const store = globalThis as unknown as { [KEY]?: Map<string, AnyPort> };
+const ports = (store[KEY] ??= new Map());
+
 /** What a minted controller returns. */
-type Minted<
+export type ControllerProviderOf<
   C extends Record<string, RouterContract>,
   K extends ControllerKeyOf<C>,
   Schemes,
   N,
   U,
-> = Provider<InstanceType<ControllerPortOf<C, K, Schemes>>, never, N> & {
-  readonly port: ControllerPortOf<C, K, Schemes>;
+  Namespace extends string,
+> = Provider<InstanceType<ControllerPortOf<C, K, Schemes, Namespace>>, never, N> & {
+  readonly port: ControllerPortOf<C, K, Schemes, Namespace>;
+  /** The contract path, independent of the port's namespace. */
+  readonly key: K;
   /** The declared `unit:` record, which `OrpcRouter`'s array arm reads back off the piece. */
   readonly unit: U;
 };
@@ -112,17 +124,17 @@ type Minted<
  * A large API is several pieces, each owning one node of the contract tree —
  * named by a dotted path, `"orders"` or `"v1.orders"` — and declaring the use
  * cases its procedures call; `OrpcRouter(contract)([...])` composes them.
- * `contract` is read for its TYPE only, and types both `key` and the
- * handlers — so a path the contract does not declare, or a procedure the
+ * `contract` types both `key` and the handlers — so a path the contract does
+ * not declare, or a procedure the
  * fragment does not, is a compile error here rather than at the root.
  *
- * There is no name to give: the path IS the port's name, minted as
- * `` `${CONTROLLER_PREFIX}${key}` `` — the move `AmqpHandler(contract, key)`
- * makes. `FragmentAt` carries every ancestor mark down to the piece, so a
+ * The same API namespace and path reuse one port; unrelated APIs choose
+ * distinct namespaces. The namespace never changes HTTP paths.
+ * `FragmentAt` carries every ancestor mark down to the piece, so a
  * marked ancestor types `context.principal` where the handler is written.
  */
 export const controllerFor =
-  <Schemes, Units = Record<never, never>>() =>
+  <Schemes, Units = Record<never, never>, Namespace extends string = "">(namespace: Namespace) =>
   <
     const C extends Record<string, RouterContract>,
     const K extends AnyKeyOf<C>,
@@ -134,13 +146,16 @@ export const controllerFor =
     contract: C,
     key: K & SliceableGate<C, K>,
   ) => {
-    // Named rather than `_`-prefixed so it reads as `contract` in the published
-    // `.d.ts`; nothing needs its value.
     void contract;
-    // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
-    const port = class extends Port(`${CONTROLLER_PREFIX}${key as K}`)<
-      Implementation<FragmentAt<C, Key>, Schemes>
-    > {};
+    const id =
+      namespace === ""
+        ? `${CONTROLLER_PREFIX}${key as K}`
+        : `OrpcController[${namespace}]:${key as K}`;
+    let port = ports.get(id);
+    if (port === undefined) {
+      port = Port(id);
+      ports.set(id, port);
+    }
 
     return <
       const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
@@ -154,10 +169,11 @@ export const controllerFor =
           readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
         }) => Implementation<FragmentAt<C, Key>, Schemes, never, Units, U>;
       } & ([keyof D] extends [never] ? unknown : { readonly inject: D }),
-    ): Minted<C, Key, Schemes, InstanceType<D[keyof D]>, U> =>
+    ): ControllerProviderOf<C, Key, Schemes, InstanceType<D[keyof D]>, U, Namespace> =>
       Object.assign(
         Provider(port as never)({ ...options, inject: options.inject ?? {} } as never),
         {
+          key,
           unit: options.unit ?? {},
         },
       ) as never;

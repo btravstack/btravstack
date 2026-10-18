@@ -1,5 +1,6 @@
 import type { IsMarked, PrincipalKey, RequirementsOf } from "@btravstack/contract";
-import type { PortClassOf, PortInstance, Provider } from "@btravstack/di";
+import type { AnyPort, PortClassOf, PortInstance, Provider } from "@btravstack/di";
+import type { SchemePortsOf } from "@btravstack/http-server/internal";
 import type { IsUnion } from "@btravstack/http-server/internal";
 import type { RequiresGate, SchemesIn } from "@btravstack/http-server/internal";
 import type { ProcedureContract, RouterContract } from "@orpc/contract";
@@ -75,6 +76,20 @@ export type Built<Auth, N, Units, Kinds = string, Pieces = never> = Provider<
   readonly _kinds?: Kinds;
 };
 
+/** Keeps inferred controller needs nameable when a consumer emits declarations. */
+export type ComposedRouterOf<
+  C,
+  Auth,
+  Units,
+  T extends readonly { readonly port: AnyPort }[],
+> = Built<
+  Auth,
+  InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<C>>,
+  Units,
+  KindsIn<C>,
+  T[number]
+>;
+
 /**
  * One piece of the router — what `OrpcController(contract, key)(…)` returns, as
  * the composing form consumes it. The port stays spelled INLINE rather than as
@@ -90,18 +105,21 @@ export type Built<Auth, N, Units, Kinds = string, Pieces = never> = Provider<
  * `controller.test-d.ts`'s refused
  * `api.OrpcRouter(contract)([markedOrders, markedUsers])`.
  */
-export type PieceOf<C extends Record<string, RouterContract>, Schemes> = {
+export type PieceOf<C extends Record<string, RouterContract>, Schemes, Namespace extends string> = {
   readonly [K in ControllerKeyOf<C>]: {
+    readonly key: K;
     readonly port: {
-      readonly portId: `${typeof CONTROLLER_PREFIX}${K}`;
-      new (): InstanceType<ControllerPortOf<C, K, Schemes>>;
+      readonly portId: Namespace extends ""
+        ? `${typeof CONTROLLER_PREFIX}${K}`
+        : `OrpcController[${Namespace}]:${K}`;
+      new (): InstanceType<ControllerPortOf<C, K, Schemes, Namespace>>;
     };
   };
 }[ControllerKeyOf<C>];
 
-/** The key a piece carries, read back off its port id. */
+/** The contract path a piece carries independently of its port namespace. */
 export type KeyOfPiece<P> = P extends {
-  readonly port: { readonly portId: `${typeof CONTROLLER_PREFIX}${infer K}` };
+  readonly key: infer K extends string;
 }
   ? K
   : never;
