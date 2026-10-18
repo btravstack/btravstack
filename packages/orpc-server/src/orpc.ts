@@ -54,6 +54,7 @@ import { RPC_DEFAULT_ALLOW_METHODS } from "@orpc/server/standard";
 import type {
   AllRequirementsOf,
   Built,
+  ComposedRouterOf,
   Erroneous,
   KeyOfPiece,
   Overlapping,
@@ -338,13 +339,7 @@ export const routerFor =
               "UNSLICEABLE CONTRACT KEY — a top-level key contains a dot, which a piece path cannot encode; serve this contract with the { inject, sync } form instead",
               Unsliceable<C>
             >,
-    ): Built<
-      Auth,
-      InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<C>>,
-      Units,
-      KindsIn<C>,
-      T[number]
-    >;
+    ): ComposedRouterOf<C, Auth, Units, T>;
     function build(depsOrPieces: unknown): unknown {
       const schemes = schemesOf(contract);
 

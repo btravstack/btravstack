@@ -1,5 +1,6 @@
 import type { IsMarked, PrincipalKey, RequirementsOf } from "@btravstack/contract";
-import type { PortClassOf, PortInstance, Provider } from "@btravstack/di";
+import type { AnyPort, PortClassOf, PortInstance, Provider } from "@btravstack/di";
+import type { SchemePortsOf } from "@btravstack/http-server/internal";
 import type { IsUnion } from "@btravstack/http-server/internal";
 import type { RequiresGate, SchemesIn } from "@btravstack/http-server/internal";
 import type { ProcedureContract, RouterContract } from "@orpc/contract";
@@ -74,6 +75,20 @@ export type Built<Auth, N, Units, Kinds = string, Pieces = never> = Provider<
   /** Phantom: the kinds a request here opens under, read by `HttpModule`, never at runtime. */
   readonly _kinds?: Kinds;
 };
+
+/** Keeps inferred controller needs nameable when a consumer emits declarations. */
+export type ComposedRouterOf<
+  C,
+  Auth,
+  Units,
+  T extends readonly { readonly port: AnyPort }[],
+> = Built<
+  Auth,
+  InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<C>>,
+  Units,
+  KindsIn<C>,
+  T[number]
+>;
 
 /**
  * One piece of the router — what `OrpcController(contract, key)(…)` returns, as

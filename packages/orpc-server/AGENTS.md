@@ -48,6 +48,11 @@ cannot disappear in `Object.fromEntries`. Construction checks for duplicate
 keys before creating a path-keyed record, reporting a `Defect` through di's
 existing `sync` boundary. RPC resource keys and OpenAPI paths stay unchanged.
 
+`ControllerProviderOf` and `ComposedRouterOf` are exported return-type names
+so a library consumer can export a controller or composed router and emit
+portable declarations. Their handler and dependency calculations stay behind
+those names rather than exposing a pnpm-specific peer path.
+
 **OpenAPI error statuses belong beside each procedure's error declaration.**
 oRPC preserves extra `status` properties in `.errors(...)` entries but its
 default codec and generator ignore them. `errorStatusesOf` reads only integer

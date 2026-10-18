@@ -103,7 +103,7 @@ const store = globalThis as unknown as { [KEY]?: Map<string, AnyPort> };
 const ports = (store[KEY] ??= new Map());
 
 /** What a minted controller returns. */
-type Minted<
+export type ControllerProviderOf<
   C extends Record<string, RouterContract>,
   K extends ControllerKeyOf<C>,
   Schemes,
@@ -169,7 +169,7 @@ export const controllerFor =
           readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
         }) => Implementation<FragmentAt<C, Key>, Schemes, never, Units, U>;
       } & ([keyof D] extends [never] ? unknown : { readonly inject: D }),
-    ): Minted<C, Key, Schemes, InstanceType<D[keyof D]>, U, Namespace> =>
+    ): ControllerProviderOf<C, Key, Schemes, InstanceType<D[keyof D]>, U, Namespace> =>
       Object.assign(
         Provider(port as never)({ ...options, inject: options.inject ?? {} } as never),
         {
