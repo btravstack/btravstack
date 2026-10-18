@@ -1,5 +1,13 @@
 # @btravstack/http-client
 
+## 0.39.1
+
+### Patch Changes
+
+- Updated dependencies [1c3e10b]
+  - @btravstack/core@0.39.1
+  - @btravstack/di@0.39.1
+
 ## 0.39.0
 
 ### Minor Changes
