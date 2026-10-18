@@ -7,9 +7,10 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 describe("release registry preflight", () => {
-  for (const [scenario, expected] of [
+  for (const [scenario, name, expected] of [
     [
       "existing",
+      "should publish after checking every package",
       {
         status: 0,
         calls: [
@@ -23,11 +24,16 @@ describe("release registry preflight", () => {
     ],
     [
       "missing",
+      "should stop before publication when a package is missing from the registry",
       { status: 1, calls: ["npm @btravstack/first", "npm @btravstack/second"], diagnostic: true },
     ],
-    ["unavailable", { status: 1, calls: ["npm @btravstack/first"], diagnostic: false }],
+    [
+      "unavailable",
+      "should stop before publication when the registry is unavailable",
+      { status: 1, calls: ["npm @btravstack/first"], diagnostic: false },
+    ],
   ]) {
-    it(`should ${scenario === "existing" ? "publish after checking every package" : `stop before publication when the registry is ${scenario}`}`, (test) => {
+    it(name, (test) => {
       // GIVEN
       const root = fileURLToPath(new URL("../", import.meta.url));
       const work = mkdtempSync(join(tmpdir(), "btravstack-publish-"));
