@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import type { PrincipalKey, Requirements } from "@btravstack/contract";
 import { Port, Provider, type AnyPort, type PortClassOf, type ServiceOf } from "@btravstack/di";
 import type { ProcedureContract, RouterContract } from "@orpc/contract";
@@ -82,30 +80,27 @@ type FragmentAt<
 
 /**
  * The port one piece targets. Its id carries the contract path, which is what
- * makes two slices claiming one fragment di's duplicate-provider defect rather
- * than a silent merge, and what lets the composing form recover each piece's
- * path by stripping the prefix and namespace rather than needing it spelled again.
+ * makes two slices claiming one fragment in the same API namespace di's
+ * duplicate-provider defect rather than a silent merge. The piece carries
+ * its contract path separately for router composition.
  */
 export type ControllerPortOf<
   C extends Record<string, RouterContract>,
   K extends ControllerKeyOf<C>,
   Schemes = never,
+  Namespace extends string = "",
 > = PortClassOf<
-  `${typeof CONTROLLER_PREFIX}${string}:${K}`,
+  Namespace extends "" ? `${typeof CONTROLLER_PREFIX}${K}` : `OrpcController[${Namespace}]:${K}`,
   Implementation<FragmentAt<C, K>, Schemes>
 >;
 
-/** The prefix before the contract namespace and path in a piece's port id. */
+/** The prefix of an unnamed API's controller port id. */
 export const CONTROLLER_PREFIX = "OrpcController:";
 
-type ControllerPorts = WeakMap<
-  object,
-  { readonly namespace: string; readonly ports: Map<string, AnyPort> }
->;
 // Share identity across ESM/CJS and package copies, or duplicate ownership escapes detection.
-const KEY: unique symbol = Symbol.for("@btravstack/orpc-server/controller-ports") as never;
-const store = globalThis as unknown as { [KEY]?: ControllerPorts };
-const contracts = (store[KEY] ??= new WeakMap());
+const KEY: unique symbol = Symbol.for("@btravstack/orpc-server/named-controller-ports") as never;
+const store = globalThis as unknown as { [KEY]?: Map<string, AnyPort> };
+const ports = (store[KEY] ??= new Map());
 
 /** What a minted controller returns. */
 type Minted<
@@ -114,8 +109,11 @@ type Minted<
   Schemes,
   N,
   U,
-> = Provider<InstanceType<ControllerPortOf<C, K, Schemes>>, never, N> & {
-  readonly port: ControllerPortOf<C, K, Schemes>;
+  Namespace extends string,
+> = Provider<InstanceType<ControllerPortOf<C, K, Schemes, Namespace>>, never, N> & {
+  readonly port: ControllerPortOf<C, K, Schemes, Namespace>;
+  /** The contract path, independent of the port's namespace. */
+  readonly key: K;
   /** The declared `unit:` record, which `OrpcRouter`'s array arm reads back off the piece. */
   readonly unit: U;
 };
@@ -126,17 +124,17 @@ type Minted<
  * A large API is several pieces, each owning one node of the contract tree —
  * named by a dotted path, `"orders"` or `"v1.orders"` — and declaring the use
  * cases its procedures call; `OrpcRouter(contract)([...])` composes them.
- * `contract` namespaces the port by object identity and types both `key` and the
- * handlers — so a path the contract does not declare, or a procedure the
+ * `contract` types both `key` and the handlers — so a path the contract does
+ * not declare, or a procedure the
  * fragment does not, is a compile error here rather than at the root.
  *
- * The same contract and path reuse one port; unrelated contracts may share
- * resource names. The generated namespace never changes HTTP paths.
+ * The same API namespace and path reuse one port; unrelated APIs choose
+ * distinct namespaces. The namespace never changes HTTP paths.
  * `FragmentAt` carries every ancestor mark down to the piece, so a
  * marked ancestor types `context.principal` where the handler is written.
  */
 export const controllerFor =
-  <Schemes, Units = Record<never, never>>() =>
+  <Schemes, Units = Record<never, never>, Namespace extends string = "">(namespace: Namespace) =>
   <
     const C extends Record<string, RouterContract>,
     const K extends AnyKeyOf<C>,
@@ -148,15 +146,15 @@ export const controllerFor =
     contract: C,
     key: K & SliceableGate<C, K>,
   ) => {
-    let entry = contracts.get(contract);
-    if (entry === undefined) {
-      entry = { namespace: randomUUID(), ports: new Map() };
-      contracts.set(contract, entry);
-    }
-    let port = entry.ports.get(key);
+    void contract;
+    const id =
+      namespace === ""
+        ? `${CONTROLLER_PREFIX}${key as K}`
+        : `OrpcController[${namespace}]:${key as K}`;
+    let port = ports.get(id);
     if (port === undefined) {
-      port = Port(`${CONTROLLER_PREFIX}${entry.namespace}:${key as K}`);
-      entry.ports.set(key, port);
+      port = Port(id);
+      ports.set(id, port);
     }
 
     return <
@@ -171,10 +169,11 @@ export const controllerFor =
           readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
         }) => Implementation<FragmentAt<C, Key>, Schemes, never, Units, U>;
       } & ([keyof D] extends [never] ? unknown : { readonly inject: D }),
-    ): Minted<C, Key, Schemes, InstanceType<D[keyof D]>, U> =>
+    ): Minted<C, Key, Schemes, InstanceType<D[keyof D]>, U, Namespace> =>
       Object.assign(
         Provider(port as never)({ ...options, inject: options.inject ?? {} } as never),
         {
+          key,
           unit: options.unit ?? {},
         },
       ) as never;

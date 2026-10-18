@@ -270,8 +270,8 @@ describe("a router over a marked contract", () => {
     // never in place of — the caller's own
     expect(authedRouterDeps).toEqual({
       composed: [
-        expect.stringMatching(/^OrpcController:[^:]+:orders$/),
-        expect.stringMatching(/^OrpcController:[^:]+:health$/),
+        "OrpcController:orders",
+        "OrpcController:health",
         "HttpAuthenticator:user",
         "HttpUnit",
       ],
@@ -284,8 +284,8 @@ describe("a router over a marked contract", () => {
     // WHEN its declared dependencies are read
     // THEN nothing was appended — an application with no protected route provides nothing
     expect(controllers.unmarkedRouterDeps).toEqual([
-      expect.stringMatching(/^OrpcController:[^:]+:greetings$/),
-      expect.stringMatching(/^OrpcController:[^:]+:echoes\.ping$/),
+      "OrpcController:greetings",
+      "OrpcController:echoes.ping",
       "HttpUnit",
     ]);
   });

@@ -296,7 +296,7 @@ void publicApi.OrpcController(deep, "v1.billing");
 
 // The port id carries the whole path.
 type _PathPortId = Expect<
-  typeof v1Orders.port.portId extends `OrpcController:${string}:v1.orders` ? true : false
+  typeof v1Orders.port.portId extends "OrpcController:v1.orders" ? true : false
 >;
 
 // The requirements fold down a dotted path: a mark on `v1` reaches a piece
@@ -547,3 +547,49 @@ void publicApi.OrpcRouter(contract)<{ db: typeof PinDb }>(
     }),
   },
 );
+
+const firstNamespace = defineHttp({ namespace: "first" });
+const secondNamespace = defineHttp({ namespace: "second" });
+const firstPaymentsContract = { payments: { sync: oc } };
+const secondPaymentsContract = { payments: { sync: oc } };
+const firstPayments = firstNamespace.OrpcController(
+  firstPaymentsContract,
+  "payments",
+)({
+  sync: () => ({ sync: () => OkAsync("first") }),
+});
+const secondPayments = secondNamespace.OrpcController(
+  secondPaymentsContract,
+  "payments",
+)({
+  sync: () => ({ sync: () => OkAsync("second") }),
+});
+expectTypeOf(firstPayments.port.portId).toEqualTypeOf<"OrpcController[first]:payments">();
+expectTypeOf(secondPayments.port.portId).toEqualTypeOf<"OrpcController[second]:payments">();
+
+class NamespaceReader extends Port("NamespaceReader")<string> {}
+const readsSecondPayments = Provider(NamespaceReader)({
+  inject: { payments: secondPayments.port },
+  sync: () => "read",
+});
+const missingSecondNamespace = Module("MissingControllerNamespace")({
+  provides: [firstPayments, readsSecondPayments],
+});
+// @ts-expect-error -- the first namespace cannot satisfy a dependency on the second
+void Module.build(missingSecondNamespace);
+void Module.build(
+  Module("BothControllerNamespaces")({
+    provides: [firstPayments, secondPayments, readsSecondPayments],
+  }),
+);
+// @ts-expect-error -- a router composes only controllers from its API namespace
+void firstNamespace.OrpcRouter(firstPaymentsContract)([secondPayments]);
+
+const kindedNamespace = firstNamespace.units<Record<never, never>>();
+const kindedPayment = kindedNamespace.OrpcController(
+  firstPaymentsContract,
+  "payments",
+)({
+  sync: () => ({ sync: () => OkAsync("first") }),
+});
+expectTypeOf(kindedPayment.port.portId).toEqualTypeOf<"OrpcController[first]:payments">();

@@ -2,7 +2,8 @@
 "@btravstack/orpc-server": patch
 ---
 
-Namespace generated controller ports by contract object identity so unrelated
-APIs can reuse resource names in one process without duplicate-port warnings.
-The same contract and path reuse one port, preserving duplicate-provider checks.
-RPC resource keys and public HTTP paths are unchanged.
+Add a literal `namespace` option to `defineHttp` so separate APIs can reuse
+resource names without duplicate-port warnings or ambiguous DI types. The same
+namespace and path reuse one port across contract objects and package copies.
+Router construction rejects duplicate controller paths before composing them.
+Existing unnamed controller IDs, RPC keys and public HTTP paths are unchanged.

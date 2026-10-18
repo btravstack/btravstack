@@ -608,6 +608,9 @@ The two rules this half exists to state, before the detail:
   `OrpcRouter`, `authenticators`, `principals` and `units`** (`define-http.ts`)
   — **the one door** to
   the marker-typed entities, and the place a scheme registry is stated.
+  `namespace` optionally names the oRPC controller identity; it is preserved
+  in `Http<A, Units, Namespace>` and through `units()`, and changes no scheme,
+  principal port or wire path. The oRPC package's `AGENTS.md` holds that rule.
   **The contract says which schemes protect a route; this says what each one
   resolves to.** `SchemesFrom<A>` reads the registry off the authenticators
   (`{ [K in keyof A]: A[K]["principal"] }`) rather than having it declared a

@@ -178,8 +178,8 @@ This does not change ordinary di module visibility.
   and are di's duplicate-provider defect — so di cannot see them conflicting,
   and the `nest` rebuild below would silently let one win. This gate is the
   only thing standing between a dotted path and that silent overwrite.
-  `Uncovered` reads each piece's path by stripping `CONTROLLER_PREFIX` and its contract namespace back
-  off its port id (`KeyOfPiece`), so the path is never spelled twice; and
+  `Uncovered` reads each piece's `key` metadata (`KeyOfPiece`), independent
+  of its API namespace and DI port ID; and
   `PieceOf`'s port type is spelled **inline**, not as
   `ControllerPortOf<C, K, Schemes>` — a regression guard against a hole that
   held only on #116's flat `ControllerKeyOf`; on the current recursive-path
@@ -193,9 +193,10 @@ This does not change ordinary di module visibility.
   `sync`-holds-a-function discrimination is gone, and there is nothing left to
   discriminate: the other arm is one options object, as di's own is. The
   composed provider's `deps` are the piece
-  **ports**, keyed by the very dotted path each port id carries — so di
-  builds every piece before the router, and `nest` folds the flat path-keyed
-  services record back into the nesting the contract already has before the
+  **ports**, keyed by array index so no duplicate path disappears. During
+  construction, duplicate keys are refused before a path-keyed record is built.
+  Di builds every piece before the router, and `nest` folds that record back
+  into the nesting the contract already has before the
   walk: `routerOf` walks the same tree it always did, marks,
   inheritance and the stray-key drop included. The walk itself is untouched —
   `nest` lives in the composing arm because the walk is shared with the
@@ -278,7 +279,7 @@ This does not change ordinary di module visibility.
   The depth block at the file's tail pins the dotted paths themselves: pieces
   at mixed depths partitioning the leaves compose, an uncovered procedure and
   a nested piece are each refused against their marker, and the port id
-  carries the whole path (`"OrpcController:<namespace>:v1.orders"`).
+  carries the whole path (`"OrpcController:v1.orders"`, or `"OrpcController[api]:v1.orders"` for a named API).
   Covered at runtime by the `rpcSliced` fixture — `helloController` over
   `slicedContract`'s `greetings` fragment and `echoesController` minted by
   the DOTTED path `"echoes.ping"`, so `nest`'s rebuild answers a real
@@ -289,15 +290,16 @@ This does not change ordinary di module visibility.
   (`controller.ts`, minted by
   `defineHttp`) — one
   node of a contract, at any depth, as a provider on a port of its own. There
-  is no name to give: the contract object owns an opaque namespace, and its
-  dotted path selects a cached port within it, minted as
-  `` `${CONTROLLER_PREFIX}${namespace}:${key}` `` (`CONTROLLER_PREFIX = "OrpcController:"`,
-  exported from `controller.ts` only). The cache is shared across API bindings;
-  unrelated contract objects can reuse resource names without port collisions.
-  Two slices claiming one node of the same contract still target one port and
-  fail as di's duplicate-provider defect. The composing form strips the prefix
-  and namespace to recover each piece's path. The first call also fixes the
-  contract's type, so a path the contract does
+  is no controller name to give: the dotted path selects a cached port within
+  the API namespace. An unnamed API keeps `OrpcController:<path>`; an API bound
+  with `defineHttp({ namespace: "payments-api" })` uses
+  `OrpcController[payments-api]:<path>`. That namespace remains a literal in the
+  port type and survives `units()`. Names containing `]`, dynamic strings and
+  unions are refused, keeping both the ID encoding and the types unambiguous.
+  The cache is shared across API bindings and package copies by complete ID.
+  Contract object identity does not affect it. The composing form reads the
+  path from each piece's `key`, and accepts only its own namespace's pieces.
+  The first call fixes the contract's type, so a path the contract does
   not declare is refused at the call (`ControllerKeyOf<C>`, the union of
   **every path** into the contract tree — a fragment or a procedure, dotted
   at each level, less the marker's phantom key; the former top-level keys are
@@ -337,8 +339,8 @@ This does not change ordinary di module visibility.
   asked about. An optional `unit: { name: Port }` rides beside it — see
   **`context.unit` and `UnitFor`**.
   Returns
-  `Provider<InstanceType<ControllerPortOf<C, K, Schemes>>, never, N> & { readonly port: ControllerPortOf<C, K, Schemes>; readonly unit: U }` —
-  `ControllerPortOf<C, K, Schemes>` being `PortClassOf` over the prefixed
+  `Provider<InstanceType<ControllerPortOf<C, K, Schemes, Namespace>>, never, N> & { readonly port: ControllerPortOf<C, K, Schemes, Namespace>; readonly key: K; readonly unit: U }` —
+  `ControllerPortOf<C, K, Schemes, Namespace>` being `PortClassOf` over the prefixed
   path and `Implementation<FragmentAt<C, K>, Schemes>`, the same
   `PortInstance`/`PortClassOf` spelling `OrpcRouter` uses and for the same
   reason (TS4023 on a class expression's own type). `ControllerKeyOf<C>` and
@@ -353,10 +355,8 @@ This does not change ordinary di module visibility.
   every gate in `controller.test-d.ts` above. `controller.ts` imports
   `Effective`/`Implementation`/`Inherit` from `orpc.ts` with `import type` —
   erased by `verbatimModuleSyntax` — while `orpc.ts` imports
-  `CONTROLLER_PREFIX` from `controller.ts` as a value, so the two files
-  reference each other in the type graph with **no runtime cycle**, the same
-  arrangement `packages/amqp-worker` documents between `handler.ts` and
-  `amqp-runtime.ts`.
+  no value from `controller.ts`, so the two files reference each other only
+  in the type graph with no runtime cycle.
 - **Authentication — the contract marker, `Principal`/`SchemesOf`,
   `HttpAuthenticator`, `defineHttp`, `resolvePrincipal`, `principalMiddleware`,
   the scope rule and the scheme-dependency wiring — is stated in full in

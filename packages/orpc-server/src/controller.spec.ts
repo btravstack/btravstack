@@ -12,7 +12,7 @@ import { defineHttp } from "./define-http.js";
 import { HttpModule } from "./http-module.js";
 
 describe("OrpcController", () => {
-  it("resolves a shared resource name independently for separate contracts", async ({
+  it("resolves a shared resource name independently for separate API namespaces", async ({
     portWarnings,
   }) => {
     // GIVEN two APIs whose contracts both declare payments
@@ -20,13 +20,13 @@ describe("OrpcController", () => {
     const secondContract = { payments: { sync: oc } };
     const firstImplementation = { sync: () => OkAsync("first") };
     const secondImplementation = { sync: () => OkAsync("second") };
-    const first = defineHttp().OrpcController(
+    const first = defineHttp({ namespace: "first" }).OrpcController(
       firstContract,
       "payments",
     )({
       sync: () => firstImplementation,
     });
-    const second = defineHttp().OrpcController(
+    const second = defineHttp({ namespace: "second" }).OrpcController(
       secondContract,
       "payments",
     )({
@@ -51,7 +51,7 @@ describe("OrpcController", () => {
     });
   });
 
-  it("reuses the port for the same contract and path across APIs", ({ portWarnings }) => {
+  it("reuses the port for the same namespace and path across API bindings", ({ portWarnings }) => {
     // GIVEN one contract shared by two API bindings
     const contract = { payments: { sync: oc } };
     const first = defineHttp().OrpcController(
@@ -74,6 +74,34 @@ describe("OrpcController", () => {
       samePort: true,
       warnings: [],
     });
+  });
+
+  it("keeps named API identities separate from colon-containing unnamed keys", () => {
+    // GIVEN an unnamed resource and a named API with similar spelling
+    const unnamed = defineHttp();
+    const named = defineHttp({ namespace: "first" });
+    const unnamedContract = { "first:payments": { sync: oc } };
+    const namedContract = { payments: { sync: oc } };
+
+    // WHEN their controller ports are minted
+    const first = unnamed.OrpcController(
+      unnamedContract,
+      "first:payments",
+    )({
+      sync: () => ({ sync: () => OkAsync("unnamed") }),
+    });
+    const second = named.OrpcController(
+      namedContract,
+      "payments",
+    )({
+      sync: () => ({ sync: () => OkAsync("named") }),
+    });
+
+    // THEN their identifiers cannot alias through a namespace separator
+    expect([first.port.portId, second.port.portId]).toEqual([
+      "OrpcController:first:payments",
+      "OrpcController[first]:payments",
+    ]);
   });
 
   it("still refuses two providers for the same contract path", async () => {
@@ -102,6 +130,25 @@ describe("OrpcController", () => {
     );
   });
 
+  it("refuses duplicate recovered paths from separate contract objects", async () => {
+    // GIVEN compatible contracts each contributing a payments controller
+    const firstContract = { payments: { sync: oc } };
+    const secondContract = { payments: { sync: oc } };
+    const api = defineHttp();
+    const implementation = { sync: () => OkAsync("payment") };
+    const first = api.OrpcController(firstContract, "payments")({ sync: () => implementation });
+    const second = api.OrpcController(secondContract, "payments")({ sync: () => implementation });
+    const router = api.OrpcRouter(firstContract)([first, second]);
+
+    // WHEN the router constructs from both implementations
+    const built = await router.construct([implementation, implementation, {}]);
+
+    // THEN no controller silently replaces the other
+    expect(built).toBeDefectWith(
+      expect.objectContaining({ message: expect.stringContaining("duplicate controller path") }),
+    );
+  });
+
   it("reuses controller identity across separately loaded module copies", async () => {
     // GIVEN a controller minted by the already loaded factory
     const contract = { payments: { sync: oc } };
@@ -115,7 +162,7 @@ describe("OrpcController", () => {
     // WHEN another module instance mints the same contract path
     vi.resetModules();
     const { controllerFor } = await import("./controller.js");
-    const second = controllerFor<never>()(contract, "payments")({
+    const second = controllerFor<never>("")(contract, "payments")({
       sync: () => ({ sync: () => OkAsync("second") }),
     });
 
@@ -131,14 +178,15 @@ describe("OrpcController", () => {
       },
     };
     const secondContract = { ...firstContract };
-    const api = defineHttp();
-    const first = api.OrpcController(
+    const firstApi = defineHttp({ namespace: "wire-first" });
+    const secondApi = defineHttp({ namespace: "wire-second" });
+    const first = firstApi.OrpcController(
       firstContract,
       "payments:internal",
     )({
       sync: () => ({ sync: () => OkAsync("first") }),
     });
-    const second = api.OrpcController(
+    const second = secondApi.OrpcController(
       secondContract,
       "payments:internal",
     )({
@@ -147,7 +195,7 @@ describe("OrpcController", () => {
     const firstInfo = (
       await boot(
         HttpModule("FirstPayments")({
-          router: api.OrpcRouter(firstContract)([first]),
+          router: firstApi.OrpcRouter(firstContract)([first]),
           port: 0,
           hostname: "127.0.0.1",
           openapi: true,
@@ -157,7 +205,7 @@ describe("OrpcController", () => {
     const secondInfo = (
       await boot(
         HttpModule("SecondPayments")({
-          router: api.OrpcRouter(secondContract)([second]),
+          router: secondApi.OrpcRouter(secondContract)([second]),
           port: 0,
           hostname: "127.0.0.1",
           openapi: true,
@@ -194,7 +242,7 @@ describe("OrpcController", () => {
       portId: controller.port.portId,
       deps: controller.deps.map((dep) => dep.portId),
     }).toEqual({
-      portId: expect.stringMatching(/^OrpcController:[^:]+:greetings$/),
+      portId: "OrpcController:greetings",
       deps: ["Greeter"],
     });
   });

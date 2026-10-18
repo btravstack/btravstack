@@ -44,7 +44,7 @@ These symbols are exported across the three packages. `defineHttp`, `HttpModule`
 | Export                 | Kind  | What it is                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ---------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `defineHttp`           | value | `defineHttp({ authenticators })`, or `defineHttp()` for a public API — **the one door**: it declares this deployment's security schemes and hands back `OrpcController`, `OrpcRouter` and `authenticators` typed by them                                                                                                                                                                                                    |
-| `Http`                 | type  | `Http<A, Units>` — what `defineHttp` returns, held as one binding and never destructured; `Units` is the record `auth.units<…>()` binds, empty until that second call                                                                                                                                                                                                                                                       |
+| `Http`                 | type  | `Http<A, Units, Namespace>` — what `defineHttp` returns, held as one binding and never destructured; `Units` is the record `auth.units<…>()` binds, empty until that second call                                                                                                                                                                                                                                            |
 | `Authenticators`       | type  | `Readonly<Record<string, Authenticator<…>>>` — the registry `defineHttp` takes, keyed by scheme name                                                                                                                                                                                                                                                                                                                        |
 | `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                                                                                                                                                                                                                |
 | `HttpModule`           | value | `HttpModule(name)({ router, fragments?, fragmentsPrefix?, fragmentsLogin?, openapi?, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, csrf?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                                                                           |
@@ -999,16 +999,17 @@ const OrpcController: <
   }) => Implementation<FragmentAt<C, K>, Schemes, never, Units, U>;
 } & ([keyof D] extends [never] ? unknown : { readonly inject: D })) => Provider<
   PortInstance<
-    `OrpcController:${string}:${K}`,
+    Namespace extends "" ? `OrpcController:${K}` : `OrpcController[${Namespace}]:${K}`,
     Implementation<FragmentAt<C, K>, Schemes>
   >,
   never,
   InstanceType<D[keyof D]>
 > & {
   readonly port: PortClassOf<
-    `OrpcController:${string}:${K}`,
+    Namespace extends "" ? `OrpcController:${K}` : `OrpcController[${Namespace}]:${K}`,
     Implementation<FragmentAt<C, K>, Schemes>
   >;
+  readonly key: K;
   readonly unit: U;
 };
 ```
@@ -1017,8 +1018,8 @@ One node of a contract, at any depth, as a provider over a port minted for
 it — the same two-call shape as
 `api.OrpcRouter(contract)({ inject: { name: Dep }, sync })`, aimed at one `path` into
 `contract` rather than the whole tree: a top-level fragment (`"orders"`), a
-nested one (`"v1.orders"`), or a bare procedure (`"health"`). `contract` also
-namespaces the port by object identity. `path` is checked against `ControllerKeyOf<C>` —
+nested one (`"v1.orders"`), or a bare procedure (`"health"`). `contract` is
+read for its type. `path` is checked against `ControllerKeyOf<C>` —
 every path into the contract tree — so a path the contract does not declare is
 refused **at this call**, with nothing to type the key by:
 
@@ -1028,15 +1029,19 @@ error TS2345: Argument of type '"billing"' is not assignable to parameter of typ
 
 `path` also shapes `sync`'s return through `FragmentAt<C, K>`, so a procedure
 the node does not declare, or a handler whose input or output has drifted, is
-a compile error inside the piece. No namespace option is needed: each contract
-object receives an opaque namespace, and the port id is
-`` `OrpcController:${namespace}:${path}` ``. Separate contracts can reuse a
-resource name such as `payments` without colliding in one process. The same
-contract object and path reuse one port across API bindings, so two providers
-claiming that path still fail as duplicate providers. Share the contract object
-between slices; reconstructing an equivalent object creates a new namespace.
-The namespace affects only DI identity: RPC resource keys and public HTTP paths
-stay unchanged. The port is carried back on `provider.port`, the
+a compile error inside the piece. `defineHttp({ namespace: "payments-api" })`
+gives the API's controllers literal identities such as
+`OrpcController[payments-api]:payments`. Unnamed APIs retain `OrpcController:payments`.
+The same namespace and path reuse one port across API bindings and equivalent
+contract objects, so two providers claiming that path still fail as duplicates.
+Separate APIs sharing resource names choose distinct namespaces. The namespace
+is preserved by `Http<A, Units, Namespace>` and `ControllerPortOf<C, K, Schemes, Namespace>`,
+so DI refuses a dependency supplied only by another namespace. A namespace must
+be one literal string without `]`; widened strings and unions are refused.
+Router arrays accept their own namespace's controllers and reject duplicate paths
+at construction. RPC resource keys and OpenAPI HTTP paths stay unchanged.
+The contract path is carried separately on `provider.key`, independent of its
+DI identity. The port is carried back on `provider.port`, the
 shape `Config.provider(name)(schema)` has too, so a slice's
 module exports `controller.port` rather than naming a port of its own:
 

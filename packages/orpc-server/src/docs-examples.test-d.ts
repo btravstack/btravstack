@@ -33,7 +33,7 @@ const controller = defineHttp().OrpcController(
       ErrAsync(errors.ITEM_MISSING({ data: { id: input.id } })),
 });
 const controllerPort: ControllerPortOf<typeof contract, "find"> = controller.port;
-const controllerId: `OrpcController:${string}:find` = controllerPort.portId;
+const controllerId: "OrpcController:find" = controllerPort.portId;
 defineHttp().OrpcRouter(contract)([controller]);
 
 defineHttp().OrpcRouter(contract)({
