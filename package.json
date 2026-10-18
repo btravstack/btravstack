@@ -15,7 +15,7 @@
     "knip": "knip",
     "lint": "oxlint . && markdownlint-cli2",
     "prepare": "lefthook install",
-    "release": "pnpm build && changeset publish",
+    "release": "node .changeset/check-publish.mjs && pnpm build && changeset publish",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "version": "changeset version && node .changeset/sync-template.mjs"

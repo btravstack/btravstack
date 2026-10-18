@@ -131,3 +131,24 @@ The consumer-check test command runs the cleanup regression
 alongside the template version regression. A new named changeset is not added
 for this workflow repair: 0.34.0 is already versioned and must not be bumped
 again merely to publish it.
+
+## A new npm package must be bootstrapped before the group publishes
+
+The release script checks every fixed-group name on the configured npm registry
+before building or publishing. A missing or unreadable package stops the whole
+release, and a registry error also stops it; an npm 404 is never permission to
+start a partial publication. The check uses npm's registry and certificate
+configuration. It cannot verify Trusted Publisher settings or make the registry's
+multiple publications atomic.
+
+The 0.39.0 release published the HTTP runtime but left its matching HTTP adapters
+unpublished after the new `http-client` package failed with npm 404. Source and
+consumer gates were green; applications installing the latest published packages
+could not load oRPC because its older adapter imported a removed internal export.
+
+For a new package, an npm maintainer must publish its initial version and configure
+its Trusted Publisher for this repository and `release.yml` before release CI
+runs. Verify registry access first: npm can also hide inaccessible packages with 404. To recover a partially published group, finish that setup and rerun the failed
+release job. Changesets skips the versions already published and publishes those
+still missing. Do not bump the group merely to retry it, and never replace an
+existing tarball. This workflow repair has no named changeset for that reason.
