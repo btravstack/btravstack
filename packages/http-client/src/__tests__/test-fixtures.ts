@@ -8,6 +8,7 @@ import { test, vi } from "vitest";
 import { createHttpClient } from "../index.js";
 
 export const it = test.extend<{
+  mutualTls: boolean;
   blackhole: { origin: string; sockets: Set<Socket> };
   network: {
     origin: string;
@@ -39,6 +40,7 @@ export const it = test.extend<{
       : never;
   };
 }>({
+  mutualTls: false,
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructured context.
   blackhole: async ({}, use) => {
     const sockets = new Set<Socket>();
@@ -53,8 +55,7 @@ export const it = test.extend<{
     for (const socket of sockets) socket.destroy();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   },
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructured context.
-  network: async ({}, use) => {
+  network: async ({ mutualTls }, use) => {
     const cert = readFileSync(new URL("cert.pem", import.meta.url));
     const key = readFileSync(new URL("key.pem", import.meta.url));
     const requests: {
@@ -97,7 +98,7 @@ export const it = test.extend<{
         }).getOrThrow(),
     };
     const server = https.createServer(
-      { key, cert, ca: cert, requestCert: true, rejectUnauthorized: false },
+      { key, cert, ca: cert, requestCert: mutualTls, rejectUnauthorized: true },
       (req, res) => {
         let body = "";
         req.on("data", (chunk: Buffer) => {
@@ -158,3 +159,5 @@ export const it = test.extend<{
     await new Promise<void>((resolve) => server.close(() => resolve()));
   },
 });
+
+export const mtlsIt = it.extend({ mutualTls: true });

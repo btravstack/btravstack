@@ -5,7 +5,7 @@ import { Observers } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { describe, expect, vi } from "vitest";
 
-import { it } from "./__tests__/test-fixtures.js";
+import { mtlsIt as it } from "./__tests__/test-fixtures.js";
 import { createHttpClient, httpClient, HttpClient, type HttpPolicy } from "./index.js";
 
 describe("application-owned TLS identities", () => {
@@ -92,8 +92,6 @@ describe("application-owned TLS identities", () => {
     network,
   }) => {
     // GIVEN
-    network.respond = (req, res) =>
-      res.end(JSON.stringify((req.socket as TLSSocket).getPeerCertificate()));
     const client = createHttpClient({
       origins: [network.origin, "https://bound.example"],
       maxResponseBytes: 100,
@@ -103,7 +101,9 @@ describe("application-owned TLS identities", () => {
     // WHEN
     const result = await client.request({ url: network.origin });
     // THEN
-    expect(result.map(({ body }) => Buffer.from(body).toString())).toBeOkWith("{}");
+    expect({ tag: result.isErr() && result.error._tag, requests: network.requests.length }).toEqual(
+      { tag: "HttpUnavailable", requests: 0 },
+    );
   });
   it("does not forward a client identity along a redirect, even to an approved origin", async ({
     network,
@@ -256,6 +256,42 @@ describe("application-owned TLS identities", () => {
     // THEN
     expect(result.map(({ body }) => Buffer.from(body).toString())).toBeOkWith("account-original");
   });
+  it.for([null, undefined, 42, "invalid", true])(
+    "refuses non-object identity bindings: %j",
+    (binding, { network }) => {
+      // GIVEN
+      const policy = {
+        origins: [network.origin],
+        maxResponseBytes: 100,
+        deadlineMs: 1000,
+        tlsIdentities: [binding] as unknown as NonNullable<HttpPolicy["tlsIdentities"]>,
+      };
+      // WHEN
+      const result = createHttpClient(policy);
+      // THEN
+      expect(result).toBeErrWith(
+        expect.objectContaining({ _tag: "HttpPolicyInvalid", field: "tlsIdentities" }),
+      );
+    },
+  );
+  it.for([null, 42, {}, "invalid"])(
+    "refuses non-array identity lists: %j",
+    (bindings, { network }) => {
+      // GIVEN
+      const policy = {
+        origins: [network.origin],
+        maxResponseBytes: 100,
+        deadlineMs: 1000,
+        tlsIdentities: bindings as unknown as NonNullable<HttpPolicy["tlsIdentities"]>,
+      };
+      // WHEN
+      const result = createHttpClient(policy);
+      // THEN
+      expect(result).toBeErrWith(
+        expect.objectContaining({ _tag: "HttpPolicyInvalid", field: "tlsIdentities" }),
+      );
+    },
+  );
   it.for(["unapproved", "path", "duplicate", "source", "invalid"] as const)(
     "refuses invalid identity binding: %s",
     (mode, { network }) => {

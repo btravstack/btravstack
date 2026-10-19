@@ -213,7 +213,11 @@ export const createHttpClient = (
   }
   if (origins.size === 0) return Err(new HttpPolicyInvalid({ field: "origins" }));
   const identities = new Map<string, () => HttpTlsIdentity>();
+  if (input.tlsIdentities !== undefined && !Array.isArray(input.tlsIdentities))
+    return Err(new HttpPolicyInvalid({ field: "tlsIdentities" }));
   for (const binding of input.tlsIdentities ?? []) {
+    if (binding === null || typeof binding !== "object")
+      return Err(new HttpPolicyInvalid({ field: "tlsIdentities" }));
     const parsed = parseUrl(binding.origin).getOrUndefined();
     if (
       parsed === undefined ||

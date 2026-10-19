@@ -54,6 +54,9 @@ Tests use a real local TLS server. Only DNS answers and the final socket address
 are controlled in test fixtures: the production lookup validates fixture DNS
 answers before a fixture maps the accepted socket to loopback. The certificate
 still verifies `api.example`; the CA is supplied only by the test fixture.
+The mTLS fixture requires and verifies a client certificate; ordinary HTTPS
+fixtures do not request one. Malformed identity lists and non-object bindings
+are modeled policy errors for JavaScript consumers too.
 No production configuration bypasses the policy. Tests require loopback sockets,
 not Docker or public network access.
 
