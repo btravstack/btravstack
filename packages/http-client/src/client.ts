@@ -22,6 +22,7 @@ import {
   type HttpPolicy,
   type HttpRequest,
   type HttpResponse,
+  type HttpTlsIdentity,
 } from "./contracts.js";
 
 const parseUrl = fromThrowable(
@@ -47,7 +48,12 @@ const destination = (url: URL): HttpFailure | undefined => {
   return undefined;
 };
 
-const exchange = (url: URL, input: HttpRequest, policy: HttpPolicy) =>
+const exchange = (
+  url: URL,
+  input: HttpRequest,
+  policy: HttpPolicy,
+  credentials?: () => HttpTlsIdentity,
+) =>
   fromSafePromise(
     new Promise<Result<HttpResponse, HttpFailure>>((resolve) => {
       let finished = false;
@@ -90,42 +96,88 @@ const exchange = (url: URL, input: HttpRequest, policy: HttpPolicy) =>
           });
         },
       };
-      request = https.request(url, options, (response) => {
-        response.on("error", () => finish(Err(new HttpUnavailable())));
-        const status = response.statusCode!;
-        if (status >= 300 && status < 400 && status !== 304) {
-          finish(Err(new HttpRedirectRefused({ status })));
-          return;
-        }
-        const encoding = response.headers["content-encoding"];
-        if (encoding !== undefined && encoding.trim().toLowerCase() !== "identity") {
-          finish(Err(new HttpEncodingRefused()));
-          return;
-        }
-        let size = 0;
-        const chunks: Buffer[] = [];
-        response.on("data", (chunk: Buffer) => {
-          size += chunk.length;
-          if (size > policy.maxResponseBytes) {
-            finish(Err(new HttpResponseTooLarge({ limit: policy.maxResponseBytes })));
-            return;
-          }
-          chunks.push(chunk);
-        });
-        response.on("end", () =>
-          finish(
-            Ok({
-              status,
-              headers: Object.fromEntries(
-                Object.entries(response.headers)
-                  .filter((entry): entry is [string, string | string[]] => entry[1] !== undefined)
-                  .map(([key, value]) => [key, Array.isArray(value) ? value.join(", ") : value]),
-              ),
-              body: Buffer.concat(chunks, size),
-            }),
-          ),
-        );
+      const opened = fromThrowable(
+        () => {
+          if (credentials === undefined) return undefined;
+          const identity = credentials();
+          return { cert: identity.cert, key: identity.key, passphrase: identity.passphrase };
+        },
+        () => new HttpUnavailable(),
+      )().flatMap((identity) => {
+        if (
+          credentials !== undefined &&
+          (identity === undefined ||
+            typeof identity.cert !== "string" ||
+            identity.cert.length === 0 ||
+            typeof identity.key !== "string" ||
+            identity.key.length === 0 ||
+            (identity.passphrase !== undefined && typeof identity.passphrase !== "string"))
+        )
+          return Err(new HttpUnavailable());
+        return fromThrowable(
+          () =>
+            https.request(
+              url,
+              {
+                ...options,
+                ...(identity === undefined
+                  ? {}
+                  : {
+                      cert: identity.cert,
+                      key: identity.key,
+                      passphrase: identity.passphrase,
+                    }),
+              },
+              (response) => {
+                response.on("error", () => finish(Err(new HttpUnavailable())));
+                const status = response.statusCode!;
+                if (status >= 300 && status < 400 && status !== 304) {
+                  finish(Err(new HttpRedirectRefused({ status })));
+                  return;
+                }
+                const encoding = response.headers["content-encoding"];
+                if (encoding !== undefined && encoding.trim().toLowerCase() !== "identity") {
+                  finish(Err(new HttpEncodingRefused()));
+                  return;
+                }
+                let size = 0;
+                const chunks: Buffer[] = [];
+                response.on("data", (chunk: Buffer) => {
+                  size += chunk.length;
+                  if (size > policy.maxResponseBytes) {
+                    finish(Err(new HttpResponseTooLarge({ limit: policy.maxResponseBytes })));
+                    return;
+                  }
+                  chunks.push(chunk);
+                });
+                response.on("end", () =>
+                  finish(
+                    Ok({
+                      status,
+                      headers: Object.fromEntries(
+                        Object.entries(response.headers)
+                          .filter(
+                            (entry): entry is [string, string | string[]] => entry[1] !== undefined,
+                          )
+                          .map(([key, value]) => [
+                            key,
+                            Array.isArray(value) ? value.join(", ") : value,
+                          ]),
+                      ),
+                      body: Buffer.concat(chunks, size),
+                    }),
+                  ),
+                );
+              },
+            ),
+          () => new HttpUnavailable(),
+        )();
       });
+      if (!opened.isOk()) {
+        finish(Err(new HttpUnavailable()));
+        return;
+      }
+      request = opened.value;
       request.on("error", () => finish(Err(new HttpUnavailable())));
       request.end(input.body);
     }),
@@ -160,6 +212,23 @@ export const createHttpClient = (
     origins.add(parsed.origin);
   }
   if (origins.size === 0) return Err(new HttpPolicyInvalid({ field: "origins" }));
+  const identities = new Map<string, () => HttpTlsIdentity>();
+  if (input.tlsIdentities !== undefined && !Array.isArray(input.tlsIdentities))
+    return Err(new HttpPolicyInvalid({ field: "tlsIdentities" }));
+  for (const binding of input.tlsIdentities ?? []) {
+    if (binding === null || typeof binding !== "object")
+      return Err(new HttpPolicyInvalid({ field: "tlsIdentities" }));
+    const parsed = parseUrl(binding.origin).getOrUndefined();
+    if (
+      parsed === undefined ||
+      parsed.href !== parsed.origin + "/" ||
+      !origins.has(parsed.origin) ||
+      identities.has(parsed.origin) ||
+      typeof binding.credentials !== "function"
+    )
+      return Err(new HttpPolicyInvalid({ field: "tlsIdentities" }));
+    identities.set(parsed.origin, binding.credentials);
+  }
   const policy = {
     origins: [...origins],
     maxResponseBytes: input.maxResponseBytes,
@@ -193,7 +262,7 @@ export const createHttpClient = (
             return ErrAsync(new HttpPolicyRejected({ reason: "headers" }));
           return validateHeaders(input.headers)
             .toAsync()
-            .flatMap(() => exchange(url, input, policy));
+            .flatMap(() => exchange(url, input, policy, identities.get(url.origin)));
         });
     },
   });

@@ -1,10 +1,25 @@
 import { Port } from "@btravstack/di";
 import { TaggedError, type AsyncResult } from "unthrown";
 
+/** PEM client identity supplied by the application's secret store. */
+export type HttpTlsIdentity = {
+  readonly cert: string;
+  readonly key: string;
+  readonly passphrase?: string;
+};
+/** An identity bound to one approved origin. The trusted source is read for every connection. */
+export type HttpTlsBinding = {
+  readonly origin: string;
+  /** Read an atomic credential snapshot from an application-owned secret cache; may throw on failure. */
+  readonly credentials: () => HttpTlsIdentity;
+};
+
 /** Application-owned approvals. Tenant configuration must never supply or extend this policy. */
 export type HttpPolicy = {
   /** Exact HTTPS origins, including non-default ports. Snapshotted when the client is built. */
   readonly origins: readonly string[];
+  /** Exact-origin client identities. Sources are captured at construction; credentials may rotate. */
+  readonly tlsIdentities?: readonly HttpTlsBinding[];
   /** Maximum complete response body bytes. Only identity encoding is supported. */
   readonly maxResponseBytes: number;
   /** Whole-operation budget in milliseconds, including DNS, TLS, headers and body. */
@@ -12,7 +27,7 @@ export type HttpPolicy = {
 };
 /** Invalid application policy; contains no input URLs. */
 export class HttpPolicyInvalid extends TaggedError("HttpPolicyInvalid")<{
-  readonly field: "origins" | "maxResponseBytes" | "deadlineMs";
+  readonly field: "origins" | "maxResponseBytes" | "deadlineMs" | "tlsIdentities";
 }> {}
 /** The request was refused before transmission. */
 export class HttpPolicyRejected extends TaggedError("HttpPolicyRejected")<{

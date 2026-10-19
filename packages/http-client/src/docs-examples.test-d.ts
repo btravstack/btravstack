@@ -29,3 +29,23 @@ const oauth = createHttpClient({
   oauthClient({ issuer: "https://login.example", fetch: httpClientFetch(client) }),
 );
 void oauth;
+
+const secretCache: { current: import("./index.js").HttpTlsIdentity } = {
+  current: { cert: "PEM chain", key: "PEM private key" },
+};
+const paymentIdentity: import("./index.js").HttpTlsBinding = {
+  origin: "https://payments.example",
+  credentials: () => secretCache.current,
+};
+const payments = createHttpClient({
+  origins: [paymentIdentity.origin],
+  tlsIdentities: [paymentIdentity],
+  maxResponseBytes: 65536,
+  deadlineMs: 5000,
+});
+void payments;
+
+payments.map((client) => {
+  // @ts-expect-error Request input cannot override TLS verification.
+  client.request({ url: paymentIdentity.origin, rejectUnauthorized: false });
+});

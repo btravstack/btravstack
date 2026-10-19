@@ -13,6 +13,8 @@ export {
 } from "./contracts.js";
 export type {
   HttpPolicy,
+  HttpTlsIdentity,
+  HttpTlsBinding,
   HttpRequest,
   HttpResponse,
   HttpFailure,

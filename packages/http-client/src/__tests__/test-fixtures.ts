@@ -8,6 +8,7 @@ import { test, vi } from "vitest";
 import { createHttpClient } from "../index.js";
 
 export const it = test.extend<{
+  mutualTls: boolean;
   blackhole: { origin: string; sockets: Set<Socket> };
   network: {
     origin: string;
@@ -18,6 +19,8 @@ export const it = test.extend<{
     lookupNever: boolean;
     trusted: boolean;
     closed: number;
+    identity: import("../index.js").HttpTlsIdentity;
+    rotatedIdentity: import("../index.js").HttpTlsIdentity;
     requests: {
       url: string;
       authorization: string | undefined;
@@ -37,6 +40,7 @@ export const it = test.extend<{
       : never;
   };
 }>({
+  mutualTls: false,
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructured context.
   blackhole: async ({}, use) => {
     const sockets = new Set<Socket>();
@@ -51,8 +55,7 @@ export const it = test.extend<{
     for (const socket of sockets) socket.destroy();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   },
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructured context.
-  network: async ({}, use) => {
+  network: async ({ mutualTls }, use) => {
     const cert = readFileSync(new URL("cert.pem", import.meta.url));
     const key = readFileSync(new URL("key.pem", import.meta.url));
     const requests: {
@@ -72,6 +75,15 @@ export const it = test.extend<{
       trusted: true,
       requests,
       closed: 0,
+      identity: {
+        cert: readFileSync(new URL("client-cert.pem", import.meta.url), "utf8"),
+        key: readFileSync(new URL("client-key.pem", import.meta.url), "utf8"),
+      },
+      rotatedIdentity: {
+        cert: readFileSync(new URL("rotated-cert.pem", import.meta.url), "utf8"),
+        key: readFileSync(new URL("rotated-key.pem", import.meta.url), "utf8"),
+        passphrase: "test-only-rotation",
+      },
       respond: (
         _req: import("node:http").IncomingMessage,
         res: import("node:http").ServerResponse,
@@ -85,22 +97,25 @@ export const it = test.extend<{
           deadlineMs: limits.deadlineMs ?? 1000,
         }).getOrThrow(),
     };
-    const server = https.createServer({ key, cert }, (req, res) => {
-      let body = "";
-      req.on("data", (chunk: Buffer) => {
-        body += chunk.toString();
-      });
-      req.on("end", () => {
-        requests.push({
-          url: req.url!,
-          authorization: req.headers.authorization,
-          host: req.headers.host,
-          sni: (req.socket as import("node:tls").TLSSocket).servername || undefined,
-          body,
+    const server = https.createServer(
+      { key, cert, ca: cert, requestCert: mutualTls, rejectUnauthorized: true },
+      (req, res) => {
+        let body = "";
+        req.on("data", (chunk: Buffer) => {
+          body += chunk.toString();
         });
-        state.respond(req, res);
-      });
-    });
+        req.on("end", () => {
+          requests.push({
+            url: req.url!,
+            authorization: req.headers.authorization,
+            host: req.headers.host,
+            sni: (req.socket as import("node:tls").TLSSocket).servername || undefined,
+            body,
+          });
+          state.respond(req, res);
+        });
+      },
+    );
     server.on("connection", (socket) => {
       socket.on("close", () => {
         state.closed++;
@@ -144,3 +159,5 @@ export const it = test.extend<{
     await new Promise<void>((resolve) => server.close(() => resolve()));
   },
 });
+
+export const mtlsIt = it.extend({ mutualTls: true });
