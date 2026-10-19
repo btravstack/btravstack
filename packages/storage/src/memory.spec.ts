@@ -1,6 +1,7 @@
+import { fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
 
-import { aDocument, it } from "./__tests__/test-fixtures.js";
+import { MiB, aDocument, aStream, digestOf, it } from "./__tests__/test-fixtures.js";
 
 describe("memoryStorageBackend", () => {
   it("answers a stored object with its bytes and its type", async ({ memory }) => {
@@ -213,5 +214,105 @@ describe("memoryStorageBackend", () => {
 
     // THEN the original bytes come back
     await expect(read).toBeOkWith({ bytes: aDocument().bytes, contentType: "application/json" });
+  });
+
+  it("round-trips a stream, with its type and size", async ({ memory }) => {
+    // GIVEN a stream of several chunks
+    // WHEN it is written as it streams and read back the same way
+    const read = memory
+      .putStream("a.bin", aStream(MiB), { contentType: "application/octet-stream" })
+      .flatMap(() => memory.getStream("a.bin"))
+      .flatMap(({ stream, contentType, size }) =>
+        fromSafePromise(digestOf(stream)).map((digest) => ({ contentType, size, read: digest })),
+      );
+
+    // THEN every byte came back, in order
+    await expect(read).toBeOkWith({
+      contentType: "application/octet-stream",
+      size: MiB,
+      read: await digestOf(aStream(MiB)),
+    });
+  });
+
+  it("answers StreamInterrupted, carrying the source's error, when the source fails", async ({
+    memory,
+  }) => {
+    // GIVEN a source that breaks partway
+    // WHEN it is written
+    const written = memory.putStream("a.bin", aStream(MiB, { failingAt: 65_536 }), {
+      contentType: "application/octet-stream",
+    });
+
+    // THEN the caller hears its own stream's failure
+    await expect(written).toBeErrWith(
+      expect.objectContaining({
+        _tag: "StreamInterrupted",
+        cause: expect.objectContaining({ message: "the source broke" }),
+      }),
+    );
+  });
+
+  it("stores nothing when the source fails", async ({ memory }) => {
+    // GIVEN a source that breaks partway
+    await memory.putStream("a.bin", aStream(MiB, { failingAt: 65_536 }), {
+      contentType: "application/octet-stream",
+    });
+
+    // WHEN the key is looked for
+    const head = memory.head("a.bin");
+
+    // THEN nothing is there
+    await expect(head).toBeErrTagged("ObjectNotFound");
+  });
+
+  it("refuses a stream whose bytes do not match its sha256", async ({ memory }) => {
+    // GIVEN the digest of another stream
+    const { sha256 } = await digestOf(aStream(2));
+
+    // WHEN a stream is written under it
+    const written = memory.putStream("a.bin", aStream(1), { contentType: "t", sha256 });
+
+    // THEN it is refused
+    await expect(written).toBeErrTagged("ChecksumMismatch");
+  });
+
+  it("refuses invalid options unread, and cancels the stream", async ({ memory }) => {
+    // GIVEN a stream that reports its cancel
+    let cancelled = false;
+    const stream = aStream(MiB, { cancelled: () => (cancelled = true) });
+
+    // WHEN it is written under a malformed digest
+    await memory.putStream("a.bin", stream, { contentType: "t", sha256: "nope" });
+
+    // THEN the source was released
+    expect(cancelled).toBe(true);
+  });
+
+  it("writes on the first putStreamIfAbsent and refuses the second, keeping the first bytes", async ({
+    memory,
+  }) => {
+    // GIVEN a key a stream already holds
+    // WHEN a second, different stream is written to it conditionally
+    const second = await memory
+      .putStreamIfAbsent("a.bin", aStream(2), { contentType: "t" })
+      .flatMap(() => memory.putStreamIfAbsent("a.bin", aStream(3), { contentType: "t" }));
+    const stored = await memory.head("a.bin");
+
+    // THEN the second is refused and the first is what remains
+    expect({
+      second: second.isErr() ? second.error._tag : second.tag,
+      size: stored.getOrThrow().size,
+    }).toEqual({ second: "ObjectExists", size: 2 });
+  });
+
+  it("answers ObjectNotFound when streaming a key nobody stored", async ({ memory }) => {
+    // GIVEN nothing stored
+    // WHEN an absent key is streamed
+    const read = memory.getStream("absent");
+
+    // THEN it is the modeled absence
+    await expect(read).toBeErrWith(
+      expect.objectContaining({ _tag: "ObjectNotFound", key: "absent" }),
+    );
   });
 });

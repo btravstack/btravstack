@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 
-import { S3Client } from "@aws-sdk/client-s3";
+import { ListMultipartUploadsCommand, S3Client } from "@aws-sdk/client-s3";
+import { P, fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
 
-import { aDocument, it } from "./__tests__/test-fixtures.js";
+import { MiB, aDocument, aStream, digestOf, it, peakGrowth } from "./__tests__/test-fixtures.js";
 import { s3StorageBackend } from "./s3.js";
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -555,5 +556,397 @@ describe("s3Storage, when the store cannot be reached", () => {
 
     // THEN the refusal is a modeled outage rather than an exception
     await expect(copied).toBeErrWith(expect.objectContaining({ operation: "copy" }));
+  });
+});
+
+// Tens of MiB against the RustFS the whole gate shares, under turbo's concurrency.
+describe("s3Storage, streamed", { timeout: 60_000 }, () => {
+  it("round-trips a stream longer than one part, with its type and size", async ({
+    s3,
+    keyPrefix,
+  }) => {
+    // GIVEN a 20 MiB stream, three parts of a multipart upload
+    const key = `${keyPrefix}large.bin`;
+
+    // WHEN it is written as it streams, and read back the same way
+    const read = await s3
+      .putStream(key, aStream(20 * MiB), { contentType: "application/octet-stream" })
+      .flatMap(() => s3.getStream(key))
+      .flatMap(({ stream, contentType, size }) =>
+        fromSafePromise(digestOf(stream)).map((digest) => ({ contentType, size, read: digest })),
+      );
+
+    // THEN every byte came back, in order
+    expect(read.getOrThrow()).toEqual({
+      contentType: "application/octet-stream",
+      size: 20 * MiB,
+      read: await digestOf(aStream(20 * MiB)),
+    });
+  });
+
+  it("writes a stream shorter than one part as one object", async ({ s3, keyPrefix }) => {
+    // GIVEN a stream well under one part
+    const key = `${keyPrefix}small.json`;
+    const document = aDocument();
+
+    // WHEN it is written as it streams
+    const read = s3
+      .putStream(key, new Blob([Uint8Array.from(document.bytes)]).stream(), {
+        contentType: document.contentType,
+      })
+      .flatMap(() => s3.get(key));
+
+    // THEN the plain read answers it whole
+    await expect(read).toBeOkWith({ bytes: document.bytes, contentType: "application/json" });
+  });
+
+  it("heads a streamed object with its metadata, and no sha256", async ({ s3, keyPrefix }) => {
+    // GIVEN a multipart write with a verified digest and metadata
+    const key = `${keyPrefix}described.bin`;
+    const { sha256 } = await digestOf(aStream(9 * MiB));
+
+    // WHEN it is headed
+    const head = s3
+      .putStream(key, aStream(9 * MiB), {
+        contentType: "application/pdf",
+        sha256,
+        metadata: { origin: "stream" },
+      })
+      .flatMap(() => s3.head(key));
+
+    // THEN the store kept the description, and no full-object digest
+    await expect(head).toBeOkWith({
+      size: 9 * MiB,
+      contentType: "application/pdf",
+      metadata: { origin: "stream" },
+    });
+  });
+
+  it("answers StreamInterrupted, carrying the source's error, when the source fails midway", async ({
+    s3,
+    keyPrefix,
+  }) => {
+    // GIVEN a source that breaks after its first part has been uploaded
+    const key = `${keyPrefix}broken.bin`;
+
+    // WHEN it is written
+    const written = s3.putStream(key, aStream(20 * MiB, { failingAt: 12 * MiB }), {
+      contentType: "application/octet-stream",
+    });
+
+    // THEN the caller hears its own stream's failure, not the store's
+    await expect(written).toBeErrWith(
+      expect.objectContaining({
+        _tag: "StreamInterrupted",
+        key,
+        cause: expect.objectContaining({ message: "the source broke" }),
+      }),
+    );
+  });
+
+  it("leaves no object when the source fails midway", async ({ s3, keyPrefix }) => {
+    // GIVEN a source that breaks after its first part has been uploaded
+    const key = `${keyPrefix}broken.bin`;
+
+    // WHEN it is written, then looked for
+    const head = s3
+      .putStream(key, aStream(20 * MiB, { failingAt: 12 * MiB }), {
+        contentType: "application/octet-stream",
+      })
+      .flatMapErrCases((matcher) =>
+        matcher.with(
+          P.tag("StreamInterrupted"),
+          P.tag("InvalidStorageOptions"),
+          P.tag("ChecksumMismatch"),
+          P.tag("StorageUnavailable"),
+          () => s3.head(key),
+        ),
+      );
+
+    // THEN nothing is there
+    await expect(head).toBeErrTagged("ObjectNotFound");
+  });
+
+  it("aborts the multipart upload when the source fails midway", async ({
+    s3,
+    keyPrefix,
+    rustfs,
+    bucket,
+  }) => {
+    // GIVEN a source that breaks after its first part has been uploaded
+    const key = `${keyPrefix}broken.bin`;
+    await s3.putStream(key, aStream(20 * MiB, { failingAt: 12 * MiB }), {
+      contentType: "application/octet-stream",
+    });
+
+    // WHEN the store is asked what is still being uploaded under the key
+    const listed = await rustfs.send(
+      new ListMultipartUploadsCommand({ Bucket: bucket, Prefix: key }),
+    );
+
+    // THEN nothing: the parts went with the abort
+    expect(listed.Uploads ?? []).toEqual([]);
+  });
+
+  it("refuses a multipart stream whose bytes do not match its sha256, and stores nothing", async ({
+    s3,
+    keyPrefix,
+  }) => {
+    // GIVEN a stream and the digest of another
+    const key = `${keyPrefix}forged.bin`;
+    const { sha256 } = await digestOf(aStream(10 * MiB));
+
+    // WHEN it is written under that digest
+    const written = await s3.putStream(key, aStream(9 * MiB), {
+      contentType: "application/octet-stream",
+      sha256,
+    });
+
+    // THEN it is refused before the object is completed, and nothing is there
+    expect({
+      written: written.isErr() ? written.error._tag : written.tag,
+      stored: (await s3.head(key)).isOk(),
+    }).toEqual({ written: "ChecksumMismatch", stored: false });
+  });
+
+  it("refuses a one-part stream whose bytes do not match its sha256, and stores nothing", async ({
+    s3,
+    keyPrefix,
+  }) => {
+    // GIVEN a short stream and the digest of another
+    const key = `${keyPrefix}forged.json`;
+    const { sha256 } = await digestOf(aStream(2));
+
+    // WHEN it is written under that digest
+    const written = await s3.putStream(key, aStream(1), {
+      contentType: "application/json",
+      sha256,
+    });
+
+    // THEN it is refused, and nothing is there
+    expect({
+      written: written.isErr() ? written.error._tag : written.tag,
+      stored: (await s3.head(key)).isOk(),
+    }).toEqual({ written: "ChecksumMismatch", stored: false });
+  });
+
+  it("refuses invalid options before reading, and cancels the stream", async ({
+    s3,
+    keyPrefix,
+  }) => {
+    // GIVEN a stream that reports its cancel
+    let cancelled: unknown;
+    const stream = aStream(MiB, { cancelled: (reason) => (cancelled = reason) });
+
+    // WHEN it is written under a malformed digest
+    await s3.putStream(`${keyPrefix}x.bin`, stream, {
+      contentType: "application/octet-stream",
+      sha256: "nope",
+    });
+
+    // THEN the source was released, with the refusal as its reason
+    expect(cancelled).toEqual(
+      expect.objectContaining({ _tag: "InvalidStorageOptions", reason: "invalid_sha256" }),
+    );
+  });
+
+  it("writes on the first putStreamIfAbsent and refuses the second, keeping the first bytes", async ({
+    s3,
+    keyPrefix,
+  }) => {
+    // GIVEN a key a multipart stream already holds
+    const key = `${keyPrefix}once.bin`;
+    const options = { contentType: "application/octet-stream" };
+
+    // WHEN a second, different stream is written to it conditionally
+    const second = await s3
+      .putStreamIfAbsent(key, aStream(9 * MiB), options)
+      .flatMap(() => s3.putStreamIfAbsent(key, aStream(10 * MiB), options));
+    const stored = await s3
+      .getStream(key)
+      .flatMap(({ stream }) => fromSafePromise(digestOf(stream)));
+
+    // THEN the second is refused at completion and the first is what remains
+    expect({
+      second: second.isErr() ? second.error._tag : second.tag,
+      stored: stored.getOrThrow(),
+    }).toEqual({ second: "ObjectExists", stored: await digestOf(aStream(9 * MiB)) });
+  });
+
+  it("refuses a one-part putStreamIfAbsent on a held key", async ({ s3, keyPrefix }) => {
+    // GIVEN a held key
+    const key = `${keyPrefix}once.json`;
+    const document = aDocument();
+
+    // WHEN a short stream is written to it conditionally
+    const second = s3
+      .put(key, document.bytes, { contentType: document.contentType })
+      .flatMap(() => s3.putStreamIfAbsent(key, aStream(1), { contentType: document.contentType }));
+
+    // THEN the store refused it
+    await expect(second).toBeErrTagged("ObjectExists");
+  });
+
+  it("aborts the losing multipart upload of a putStreamIfAbsent", async ({
+    s3,
+    keyPrefix,
+    rustfs,
+    bucket,
+  }) => {
+    // GIVEN a key a stream already holds
+    const key = `${keyPrefix}once.bin`;
+    const options = { contentType: "application/octet-stream" };
+    await s3
+      .putStreamIfAbsent(key, aStream(9 * MiB), options)
+      .flatMap(() => s3.putStreamIfAbsent(key, aStream(9 * MiB), options));
+
+    // WHEN the store is asked what is still being uploaded under the key
+    const listed = await rustfs.send(
+      new ListMultipartUploadsCommand({ Bucket: bucket, Prefix: key }),
+    );
+
+    // THEN the refused upload was aborted rather than left to the lifecycle rule
+    expect(listed.Uploads ?? []).toEqual([]);
+  });
+
+  it("lets exactly one of two concurrent putStreamIfAbsent win", async ({ s3, keyPrefix }) => {
+    // GIVEN a key nobody holds
+    const key = `${keyPrefix}race.bin`;
+    const options = { contentType: "application/octet-stream" };
+
+    // WHEN two multipart streams race on it
+    const settled = await Promise.all([
+      s3.putStreamIfAbsent(key, aStream(9 * MiB), options),
+      s3.putStreamIfAbsent(key, aStream(9 * MiB), options),
+    ]);
+
+    // THEN one is Ok and the other ObjectExists
+    expect(
+      settled.map((result) => (result.isErr() ? result.error._tag : result.tag)).sort(),
+    ).toEqual(["ObjectExists", "Ok"]);
+  });
+
+  it("answers ObjectNotFound when streaming a key nobody stored", async ({ s3, keyPrefix }) => {
+    // GIVEN nothing under this prefix
+    // WHEN an absent key is streamed
+    const read = s3.getStream(`${keyPrefix}absent.bin`);
+
+    // THEN it is the modeled absence, as for get
+    await expect(read).toBeErrWith(
+      expect.objectContaining({ _tag: "ObjectNotFound", key: `${keyPrefix}absent.bin` }),
+    );
+  });
+
+  it("writes 256 MiB without holding it in memory", async ({ s3, keyPrefix }) => {
+    // GIVEN a 256 MiB source
+    const key = `${keyPrefix}huge.bin`;
+
+    // WHEN it is written as it streams
+    const { value, growth } = await peakGrowth(() =>
+      s3.putStream(key, aStream(256 * MiB), { contentType: "application/octet-stream" }),
+    );
+
+    // THEN memory held a few parts at most, never the object
+    expect({ written: value.isOk(), bounded: growth < 128 * MiB }).toEqual({
+      written: true,
+      bounded: true,
+    });
+  });
+
+  it("reads 256 MiB without holding it in memory", async ({ s3, keyPrefix }) => {
+    // GIVEN a stored 256 MiB object
+    const key = `${keyPrefix}huge.bin`;
+    await s3.putStream(key, aStream(256 * MiB), { contentType: "application/octet-stream" });
+
+    // WHEN it is read as it streams
+    const { value, growth } = await peakGrowth(async () =>
+      s3
+        .getStream(key)
+        .flatMap(({ stream }) => fromSafePromise(digestOf(stream)))
+        .then((digest) => digest.getOrThrow()),
+    );
+
+    // THEN memory held a few chunks at most, never the object
+    expect({ read: value.size, bounded: growth < 128 * MiB }).toEqual({
+      read: 256 * MiB,
+      bounded: true,
+    });
+  });
+
+  it("sends the SSE-KMS key on a streamed write, one part or several", async () => {
+    // GIVEN a client whose commands are captured at the SDK boundary
+    const sent: Record<string, unknown>[] = [];
+    const client = new S3Client({
+      endpoint: "http://127.0.0.1:1",
+      region: "us-east-1",
+      forcePathStyle: true,
+      credentials: { accessKeyId: "none", secretAccessKey: "none" },
+    });
+    client.middlewareStack.add(
+      (_next) => async (args) => {
+        sent.push(args.input as Record<string, unknown>);
+        return { output: { $metadata: {} }, response: {} };
+      },
+      { step: "deserialize", name: "capture" },
+    );
+    const backend = s3StorageBackend(client, "bucket");
+
+    // WHEN a short and a long stream name a key
+    await backend.putStream("a", aStream(1), { contentType: "t", kmsKeyId: "key-1" });
+    await backend.putStreamIfAbsent("b", aStream(9 * MiB), { contentType: "t", kmsKeyId: "key-2" });
+
+    // THEN the encryption rides the write that creates each object
+    expect(
+      sent
+        .filter((input) => input["ServerSideEncryption"] !== undefined)
+        .map((input) => ({
+          key: input["Key"],
+          kms: input["SSEKMSKeyId"],
+          part: input["PartNumber"],
+        })),
+    ).toEqual([
+      { key: "a", kms: "key-1", part: undefined },
+      { key: "b", kms: "key-2", part: undefined },
+    ]);
+  });
+});
+
+describe("s3Storage, streamed, when the store cannot be reached", () => {
+  it("answers StorageUnavailable naming putStream", async ({ unreachable }) => {
+    // GIVEN an endpoint that is not listening
+    // WHEN a stream is written
+    const written = unreachable.putStream("a.bin", aStream(1), { contentType: "t" });
+
+    // THEN the failure names the operation
+    await expect(written).toBeErrWith(
+      expect.objectContaining({ operation: "putStream", key: "a.bin" }),
+    );
+  });
+
+  it("answers StorageUnavailable naming putStreamIfAbsent, and cancels the stream", async ({
+    unreachable,
+  }) => {
+    // GIVEN a stream longer than a part, which reports its cancel
+    let cancelled: unknown;
+    const stream = aStream(20 * MiB, { cancelled: (reason) => (cancelled = reason) });
+
+    // WHEN it is written while the store is down
+    await unreachable.putStreamIfAbsent("a.bin", stream, { contentType: "t" });
+
+    // THEN the rest of the source was released, with the store's failure as its reason
+    expect(cancelled).toEqual(
+      expect.objectContaining({ _tag: "StorageUnavailable", operation: "putStreamIfAbsent" }),
+    );
+  });
+
+  it("answers StorageUnavailable naming getStream", async ({ unreachable }) => {
+    // GIVEN an endpoint that is not listening
+    // WHEN a key is streamed
+    const read = unreachable.getStream("a.bin");
+
+    // THEN it is not called missing
+    await expect(read).toBeErrWith(
+      expect.objectContaining({ operation: "getStream", key: "a.bin" }),
+    );
   });
 });

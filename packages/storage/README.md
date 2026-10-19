@@ -2,7 +2,8 @@
 
 > The object-storage port for [`@btravstack/core`](../core): one `Storage` an
 > application depends on, an in-memory adapter, an S3-compatible one with
-> presigned reads and writes, and a span, a count and a log line per operation.
+> presigned reads and writes and streamed ones in bounded memory, and a span, a
+> count and a log line per operation.
 
 📖 **[Documentation](https://btravstack.github.io/btravstack/reference/storage)** ·
 [API Reference](https://btravstack.github.io/btravstack/api/storage/)
@@ -108,7 +109,7 @@ export const InvoicesApp = Module("InvoicesApp")({
 
 | Option                                                      | Where                              | What it is                                                                    |
 | ----------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------- |
-| `sha256` / `metadata`                                       | `put` / `putIfAbsent`              | verify the write digest and atomically describe the object                    |
+| `sha256` / `metadata`                                       | `put` / `putIfAbsent` and streams  | verify the write digest and atomically describe the object                    |
 | `checksum` / `metadata`                                     | `copy`                             | compute SHA-256 server side and replace the description                       |
 | `kmsKeyId`                                                  | writes, copy and `presignedUpload` | select per-object SSE-KMS; upload clients send both signed encryption headers |
 | `adapter`                                                   | `storage({ adapter })`             | the adapter module providing `StorageBackend` — required                      |
@@ -124,13 +125,13 @@ which is this list's one detailed home.
 ## What it decides, and what it does not
 
 **It decides** that a missing object is an ordinary answer rather than a fault
-(counted `not_found`, without a fault line), that a held key under `putIfAbsent` is an ordinary answer (`ObjectExists`, counted `exists`), that `delete` is idempotent, that `copy` and `head` never move the bytes through the process, that writes can verify SHA-256 and publish user metadata atomically, that copies replace metadata and can compute SHA-256 server side, that presigned uploads can require a per-object KMS key, that
+(counted `not_found`, without a fault line), that a held key under `putIfAbsent` is an ordinary answer (`ObjectExists`, counted `exists`), that `delete` is idempotent, that `copy` and `head` never move the bytes through the process, that writes can verify SHA-256 and publish user metadata atomically, that copies replace metadata and can compute SHA-256 server side, that presigned uploads can require a per-object KMS key, that a streamed write never leaves a partial object (a multipart upload, aborted on any failure), that
 presigning asks the store nothing — and that an adapter which cannot presign
 says so instead of minting a URL that would fail only in production.
 
 **It does not decide** what your keys look like, whether a failed write should
-fail your request, or how long a link should live. There is no streaming, no
-listing and no bucket management — each reason is on
+fail your request, or how long a link should live. There is no listing and no
+bucket management — each reason is on
 [the reference page](https://btravstack.github.io/btravstack/reference/storage),
 and the same reasoning is in [`AGENTS.md`](./AGENTS.md) for contributors.
 

@@ -10,11 +10,13 @@ export {
   Storage,
   StorageBackend,
   StorageUnavailable,
+  StreamInterrupted,
 } from "./storage.js";
 export type {
   CopyOptions,
   ObjectHead,
   StorageService,
   StoredObject,
+  StreamedObject,
   WriteOptions,
 } from "./storage.js";

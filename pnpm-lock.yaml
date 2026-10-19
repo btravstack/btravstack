@@ -941,6 +941,9 @@ importers:
       '@btravstack/prisma':
         specifier: workspace:*
         version: link:../../packages/prisma
+      '@btravstack/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       '@btravstack/testing':
         specifier: workspace:*
         version: link:../../packages/testing

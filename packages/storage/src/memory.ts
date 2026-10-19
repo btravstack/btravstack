@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { Module, Provider } from "@btravstack/di";
-import { Err, ErrAsync, Ok, OkAsync } from "unthrown";
+import { Err, ErrAsync, Ok, OkAsync, P, fromPromise, fromSafePromise } from "unthrown";
 
 import { validateOptions } from "./options.js";
 import {
@@ -10,10 +10,31 @@ import {
   ObjectNotFound,
   PresignNotSupported,
   StorageBackend,
+  StreamInterrupted,
   type StorageService,
   type WriteOptions,
   type StoredObject,
 } from "./storage.js";
+
+/** Every byte of the stream, or the stream's own error; a refused option cancels it unread. */
+const collect = (key: string, stream: ReadableStream<Uint8Array>, options: WriteOptions) =>
+  validateOptions(key, options)
+    .toAsync()
+    .flatTapErrCases((matcher) =>
+      matcher.with(P.tag("InvalidStorageOptions"), () =>
+        fromSafePromise(stream.cancel().then(() => undefined)),
+      ),
+    )
+    .flatMap(() =>
+      fromPromise(
+        (async () => {
+          const chunks: Uint8Array[] = [];
+          for await (const chunk of stream) chunks.push(chunk);
+          return Buffer.concat(chunks);
+        })(),
+        (cause) => new StreamInterrupted({ key, cause }),
+      ),
+    );
 
 /**
  * The in-process adapter: a `Map`, and an honest refusal to presign.
@@ -40,31 +61,27 @@ export const memoryStorageBackend = (): StorageService => {
         : Ok(),
     );
 
+  const store = (key: string, bytes: Uint8Array, options: WriteOptions): void => {
+    objects.set(key, {
+      bytes: Uint8Array.from(bytes),
+      contentType: options.contentType,
+      metadata: { ...options.metadata },
+    });
+  };
+  const put = (key: string, bytes: Uint8Array, options: WriteOptions) =>
+    verify(key, bytes, options).map(() => store(key, bytes, options));
+  const putIfAbsent = (key: string, bytes: Uint8Array, options: WriteOptions) =>
+    verify(key, bytes, options).flatMap(() =>
+      objects.has(key) ? Err(new ObjectExists({ key })) : Ok(store(key, bytes, options)),
+    );
+
   return {
-    put: (key, bytes, options) =>
-      verify(key, bytes, options)
-        .map(() => {
-          objects.set(key, {
-            bytes: Uint8Array.from(bytes),
-            contentType: options.contentType,
-            metadata: { ...options.metadata },
-          });
-        })
-        .toAsync(),
-    putIfAbsent: (key, bytes, options) =>
-      verify(key, bytes, options)
-        .flatMap(() => {
-          if (objects.has(key)) {
-            return Err(new ObjectExists({ key }));
-          }
-          objects.set(key, {
-            bytes: Uint8Array.from(bytes),
-            contentType: options.contentType,
-            metadata: { ...options.metadata },
-          });
-          return Ok();
-        })
-        .toAsync(),
+    put: (key, bytes, options) => put(key, bytes, options).toAsync(),
+    putIfAbsent: (key, bytes, options) => putIfAbsent(key, bytes, options).toAsync(),
+    putStream: (key, stream, options) =>
+      collect(key, stream, options).flatMap((bytes) => put(key, bytes, options)),
+    putStreamIfAbsent: (key, stream, options) =>
+      collect(key, stream, options).flatMap((bytes) => putIfAbsent(key, bytes, options)),
     copy: (from, to, options) =>
       validateOptions(to, options)
         .flatMap(() => {
@@ -97,6 +114,16 @@ export const memoryStorageBackend = (): StorageService => {
       return object === undefined
         ? ErrAsync(new ObjectNotFound({ key }))
         : OkAsync({ contentType: object.contentType, bytes: object.bytes.slice() });
+    },
+    getStream: (key) => {
+      const object = objects.get(key);
+      return object === undefined
+        ? ErrAsync(new ObjectNotFound({ key }))
+        : OkAsync({
+            stream: new Blob([object.bytes.slice()]).stream(),
+            contentType: object.contentType,
+            size: object.bytes.byteLength,
+          });
     },
     delete: (key) => {
       objects.delete(key);

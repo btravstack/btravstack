@@ -51,6 +51,7 @@
     "@btravstack/oauth-client": "workspace:*",
     "@btravstack/pothos": "workspace:*",
     "@btravstack/prisma": "workspace:*",
+    "@btravstack/storage": "workspace:*",
     "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@modelcontextprotocol/sdk": "catalog:",

@@ -141,7 +141,11 @@ const stalledAmqp = () => {
             );
           },
           putIfAbsent: () => OkAsync(),
+          putStream: () => OkAsync(),
+          putStreamIfAbsent: () => OkAsync(),
           get: () => OkAsync({ bytes: new Uint8Array(), contentType: "text/plain" }),
+          getStream: () =>
+            OkAsync({ stream: new Blob([]).stream(), contentType: "text/plain", size: 0 }),
           copy: () => OkAsync(),
           head: () => OkAsync({ size: 0, contentType: "text/plain", metadata: {} }),
           delete: () => OkAsync(),

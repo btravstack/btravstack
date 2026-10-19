@@ -31,11 +31,12 @@ class UnsupportedType extends TaggedError("UnsupportedType")<{
 3. The client `PUT`s straight at the store, then tells you it is done.
 
 Nothing in step 3 goes through your process, which is the point: an upload that
-transits the application is a request held open for the length of a transfer, a
-unit the drain has to wait on, and a copy of every byte in a process sized for
-JSON. `@btravstack/storage` therefore has no multipart parsing and no streaming
-request body — the store already accepts writes directly, and a presigned URL
-is your time-limited permission to write a key.
+transits the application is a request held open for the length of a transfer,
+and a unit the drain has to wait on. The store already accepts writes directly,
+and a presigned URL is your time-limited permission to write a key. When the
+application must see the bytes as they pass — to encrypt or verify them before
+they are stored — [stream them through the process](/how-to/stream-a-file)
+instead.
 
 ## 1. Compose the starter
 

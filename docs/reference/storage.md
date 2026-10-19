@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/storage"
-description: The complete surface of @btravstack/storage — the Storage and StorageBackend ports, StoredObject, ObjectHead, WriteOptions, CopyOptions and the modeled storage failures, the memory and S3 adapters, storage(), the Observers seam it reports through, and the STORAGE_S3_* variables.
+description: The complete surface of @btravstack/storage — the Storage and StorageBackend ports, StoredObject, StreamedObject, ObjectHead, WriteOptions, CopyOptions and the modeled storage failures, the memory and S3 adapters, storage(), the Observers seam it reports through, and the STORAGE_S3_* variables.
 ---
 
 <!-- doctest: group=order-temporal-worker -->
@@ -58,16 +58,19 @@ export const documents = Provider(
 });
 ```
 
-| Method                                                                            | Answers                                                                                              |
-| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `put(key, bytes, options: WriteOptions)`                                          | `AsyncResult<void, InvalidStorageOptions \| ChecksumMismatch \| StorageUnavailable>`                 |
-| `putIfAbsent(key, bytes, options: WriteOptions)`                                  | `AsyncResult<void, ObjectExists \| InvalidStorageOptions \| ChecksumMismatch \| StorageUnavailable>` |
-| `get(key)`                                                                        | `AsyncResult<StoredObject, ObjectNotFound \| StorageUnavailable>`                                    |
-| `copy(from, to, options: CopyOptions)`                                            | `AsyncResult<void, ObjectNotFound \| InvalidStorageOptions \| StorageUnavailable>`                   |
-| `head(key)`                                                                       | `AsyncResult<ObjectHead, ObjectNotFound \| StorageUnavailable>`                                      |
-| `delete(key)`                                                                     | `AsyncResult<void, StorageUnavailable>`                                                              |
-| `presignedUrl(key, { ttlMs })`                                                    | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`                                     |
-| `presignedUpload(key, { ttlMs, contentType, contentLength, sha256?, kmsKeyId? })` | `AsyncResult<string, PresignNotSupported \| InvalidStorageOptions \| StorageUnavailable>`            |
+| Method                                                                            | Answers                                                                                                                   |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `put(key, bytes, options: WriteOptions)`                                          | `AsyncResult<void, InvalidStorageOptions \| ChecksumMismatch \| StorageUnavailable>`                                      |
+| `putIfAbsent(key, bytes, options: WriteOptions)`                                  | `AsyncResult<void, ObjectExists \| InvalidStorageOptions \| ChecksumMismatch \| StorageUnavailable>`                      |
+| `putStream(key, stream, options: WriteOptions)`                                   | `AsyncResult<void, InvalidStorageOptions \| ChecksumMismatch \| StreamInterrupted \| StorageUnavailable>`                 |
+| `putStreamIfAbsent(key, stream, options: WriteOptions)`                           | `AsyncResult<void, ObjectExists \| InvalidStorageOptions \| ChecksumMismatch \| StreamInterrupted \| StorageUnavailable>` |
+| `get(key)`                                                                        | `AsyncResult<StoredObject, ObjectNotFound \| StorageUnavailable>`                                                         |
+| `getStream(key)`                                                                  | `AsyncResult<StreamedObject, ObjectNotFound \| StorageUnavailable>`                                                       |
+| `copy(from, to, options: CopyOptions)`                                            | `AsyncResult<void, ObjectNotFound \| InvalidStorageOptions \| StorageUnavailable>`                                        |
+| `head(key)`                                                                       | `AsyncResult<ObjectHead, ObjectNotFound \| StorageUnavailable>`                                                           |
+| `delete(key)`                                                                     | `AsyncResult<void, StorageUnavailable>`                                                                                   |
+| `presignedUrl(key, { ttlMs })`                                                    | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`                                                          |
+| `presignedUpload(key, { ttlMs, contentType, contentLength, sha256?, kmsKeyId? })` | `AsyncResult<string, PresignNotSupported \| InvalidStorageOptions \| StorageUnavailable>`                                 |
 
 `WriteOptions` requires `contentType` and accepts `kmsKeyId`, `sha256` and
 `metadata`. `CopyOptions` requires `contentType` and accepts `kmsKeyId`,
@@ -132,7 +135,7 @@ without it, S3 retains its own default checksum behavior. A missing source answe
 and neither the source's tags nor its annotations are carried over
 (`TaggingDirective: REPLACE`, `AnnotationDirective: EXCLUDE`).
 
-**`kmsKeyId` selects SSE-KMS.** On `put`, `putIfAbsent`, `copy` and `presignedUpload`, the S3
+**`kmsKeyId` selects SSE-KMS.** On `put`, `putIfAbsent`, the streamed writes, `copy` and `presignedUpload`, the S3
 adapter sends `ServerSideEncryption: aws:kms` and `SSEKMSKeyId`; absent, no
 encryption header is sent and the bucket's default applies. The memory adapter
 accepts and ignores it. The gate's RustFS has no KMS, so the s3 spec asserts
@@ -163,10 +166,58 @@ SigV4's ceiling is seven days, and it is the **signer** that enforces it: a
 longer `ttlMs` is rejected locally, before any request reaches the store, and
 arrives as a `StorageUnavailable` like any other failure to produce a URL.
 
-**Bytes, not streams.** An object here is a document — an invoice, a
-confirmation, an export — and `Uint8Array` is what every adapter and every
-caller already has. Streaming would change every signature, adapter and test
-to serve a case (multi-gigabyte media) that wants a different design anyway.
+**Bytes, or a stream when the object must not sit in memory.** `put` and `get`
+hold a document whole — an invoice, a confirmation, an export — because
+`Uint8Array` is what every adapter and caller already has. `putStream`,
+`putStreamIfAbsent` and `getStream` move an object of any size through the
+process in bounded memory, over web `ReadableStream<Uint8Array>`:
+
+```ts
+export const archive = (
+  store: StorageService,
+  key: string,
+  body: ReadableStream<Uint8Array>,
+  sha256: string,
+) => store.putStreamIfAbsent(key, body, { contentType: "application/zip", sha256 });
+
+export const served = (store: StorageService, key: string) =>
+  store.getStream(key).map(
+    ({ stream, contentType, size }) =>
+      new Response(stream, {
+        headers: { "content-type": contentType, "content-length": String(size) },
+      }),
+  );
+```
+
+- **No partial object is ever visible.** The S3 adapter writes a stream that
+  ends within one 8 MiB part with a single `PutObject`, and a longer one as a
+  multipart upload, one part in flight at a time. The object appears only when
+  `CompleteMultipartUpload` succeeds, after the stream has ended. A failure
+  before that (the stream's own error, a `sha256` the bytes do not match, the
+  store) aborts the upload and cancels the stream with the failure as its
+  reason. Parts left behind when the store also refuses the abort are never
+  an object; a bucket lifecycle rule for incomplete multipart uploads reaps
+  them.
+- **`StreamInterrupted` is the source's failure, not the store's.** It carries
+  the stream's error as `cause`, so a caller that errors its own stream (a
+  byte count that does not add up, a client that hangs up) gets that error
+  back. Nothing was written.
+- **`sha256` is verified by the adapter**, hashed as the bytes pass and
+  compared before the object is completed: S3 keeps only a composite checksum
+  for a multipart object, so the store keeps no digest and `head` answers no
+  `sha256` for a streamed object.
+- **`putStreamIfAbsent` is the store's conditional write too.** It sends
+  `If-None-Match: *` on the write that publishes the object, `PutObject` or
+  `CompleteMultipartUpload`, so a held key is refused only once the stream has
+  been sent, and the refused upload is aborted. AWS documents the condition on
+  `CompleteMultipartUpload`, and the gate's RustFS proves it: a second write is
+  refused and a race has one winner.
+- **`getStream` answers once the store has begun sending.** `size` is the
+  object's length and `contentType` falls back to `application/octet-stream`.
+  The stream holds the store's connection until it is read to its end or
+  cancelled, and a read the store breaks off errors it. Its span ends when the
+  stream is answered, not when it is read.
+- The memory adapter reads a stream whole, as a `Map` holds objects whole.
 
 **Keys are yours**, tenant included: `orders/{tenantId}/{orderId}/confirmation.json`
 is what the Temporal example composes, by hand, because a store is an
@@ -181,6 +232,7 @@ slot.
 | `ChecksumMismatch`      | the digest did not match the body | supplies the correct digest or bytes                   |
 | `ObjectExists`          | the key is already held           | treats the write as already done, or picks another key |
 | `ObjectNotFound`        | the key is not there              | gives up, or writes it                                 |
+| `StreamInterrupted`     | the source stream errored         | reads its own `cause`; nothing was written             |
 | `StorageUnavailable`    | the store could not answer        | retries, degrades, or fails the request                |
 | `PresignNotSupported`   | this adapter cannot mint a URL    | serves the bytes itself, or composes another adapter   |
 
@@ -272,12 +324,12 @@ export const DocumentsApp = Module("ReferenceDocumentsApp")({
 });
 ```
 
-| Signal    | Name                                                                                                               | Attributes                                                                                                                                                         |
-| --------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| span      | `storage.put` / `.put_if_absent` / `.get` / `.copy` / `.head` / `.delete` / `.presigned_url` / `.presigned_upload` | `btravstack.storage.key`; error status on a failure                                                                                                                |
-| counter   | `btravstack.storage.operations`                                                                                    | `{ operation, outcome, result }` — `outcome` is `ok` or `error`; `result` is `ok`, `exists`, `not_found` or `error`; `exists` and `not_found` carry their `reason` |
-| histogram | `btravstack.storage.duration`                                                                                      | the same as the counter                                                                                                                                            |
-| log       | `"storage.<operation> failed"` at `error`, for unavailable stores, invalid options or checksum mismatches          | `operation`, the key and `result`, with the failure as the cause                                                                                                   |
+| Signal    | Name                                                                                                                                                                         | Attributes                                                                                                                                                                        |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| span      | `storage.put` / `.put_if_absent` / `.put_stream` / `.put_stream_if_absent` / `.get` / `.get_stream` / `.copy` / `.head` / `.delete` / `.presigned_url` / `.presigned_upload` | `btravstack.storage.key`; error status on a failure                                                                                                                               |
+| counter   | `btravstack.storage.operations`                                                                                                                                              | `{ operation, outcome, result }` — `outcome` is `ok` or `error`; `result` is `ok`, `exists`, `not_found`, `interrupted` or `error`; all but `ok` and `error` carry their `reason` |
+| histogram | `btravstack.storage.duration`                                                                                                                                                | the same as the counter                                                                                                                                                           |
+| log       | `"storage.<operation> failed"` at `error`, for unavailable stores, invalid options or checksum mismatches                                                                    | `operation`, the key and `result`, with the failure as the cause                                                                                                                  |
 
 **A missing object settles `ok`, counted apart by `result: "not_found"`, and
 writes no line.** Asking for something that is not there is an ordinary answer
@@ -296,6 +348,10 @@ and an operator reading the latter would go hunting for nothing.
 (`"an object already held the key"`), for the same reason: losing a first-writer
 race is the answer the caller asked for, not an outage.
 
+**A failed source stream settles `ok` with `result: "interrupted"`** and
+`reason: "the source stream failed"`. A client hanging up or a caller's own
+check refusing the bytes is the caller's answer to give, not the store's fault.
+
 **Observation is a set port, not a flag.** Every call is handed to whatever
 contributed to `Observers`, and this module contributes a no-op member of its
 own — so a graph composing no observability owes nothing, installs nothing and
@@ -313,10 +369,13 @@ export const Plain = Module("ReferencePlainStorage")({
 
 ## What it deliberately does not do
 
-- **No streaming, and no multipart parsing.** A presigned PUT is a different
-  security decision — who may write what, for how long — and belongs to an
-  application that has answered it.
-- **No listing and no S3 multipart upload.** Each is a real S3 feature, and
-  neither has a consumer here yet.
+- **No multipart form parsing.** A streamed write takes the body as a stream;
+  decoding a form is the answerer's. A presigned PUT, which keeps the bytes
+  out of the process entirely, remains the default for an upload the
+  application need not see ([Upload a file](/how-to/upload-a-file)); streaming
+  through the process is for one it must
+  ([Stream a file through the process](/how-to/stream-a-file)).
+- **No listing.** A real S3 feature, with no consumer here yet. Multipart upload
+  exists only inside `putStream`; the port exposes no parts.
 - **No tags.** User metadata is an atomic object description, not a tag index.
 - **No bucket management.** Creating one is deployment, not runtime.

@@ -44,7 +44,8 @@
         "graphql-yoga",
         "@btravstack/mcp-server",
         "@modelcontextprotocol/sdk",
-        "@btravstack/http-client"
+        "@btravstack/http-client",
+        "@btravstack/storage"
       ]
     },
     "examples/order-infrastructure": {

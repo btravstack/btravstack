@@ -1,6 +1,12 @@
 import { describe, expect } from "vitest";
 
-import { aDocument, defectiveStorage, failingStorage, it } from "./__tests__/test-fixtures.js";
+import {
+  aDocument,
+  aStream,
+  defectiveStorage,
+  failingStorage,
+  it,
+} from "./__tests__/test-fixtures.js";
 import { memoryStorage } from "./memory.js";
 
 describe("storage, observed", () => {
@@ -163,6 +169,52 @@ describe("storage, observed", () => {
         },
       ],
       spans: ["storage.presigned_upload"],
+    });
+  });
+  it("counts the streamed operations under their own names", async ({ instrumented }) => {
+    // GIVEN an instrumented store
+    // WHEN a stream is written, written again conditionally, and read
+    await instrumented.run(memoryStorage(), (service) =>
+      service
+        .putStream("a.bin", aStream(1), { contentType: "t" })
+        .flatMap(() => service.putStreamIfAbsent("b.bin", aStream(1), { contentType: "t" }))
+        .flatMap(() => service.getStream("a.bin")),
+    );
+
+    // THEN each is its own operation, so a dashboard tells them from whole-object ones
+    expect({
+      points: instrumented.points().map((point) => point.attributes["operation"]),
+      spans: instrumented.spans().map((span) => span.name),
+    }).toEqual({
+      points: ["put_stream", "put_stream_if_absent", "get_stream"],
+      spans: ["storage.put_stream", "storage.put_stream_if_absent", "storage.get_stream"],
+    });
+  });
+
+  it("counts a failed source as interrupted, and does not log it as a fault", async ({
+    instrumented,
+  }) => {
+    // GIVEN an instrumented store
+    // WHEN a stream that breaks partway is written
+    await instrumented.run(memoryStorage(), (service) =>
+      service.putStream("a.bin", aStream(131_072, { failingAt: 65_536 }), { contentType: "t" }),
+    );
+
+    // THEN the caller's own stream failing is an ordinary answer, not an outage
+    expect({
+      points: instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
+      faults: instrumented.lines().filter((line) => line.level === "error"),
+    }).toEqual({
+      points: [
+        {
+          operation: "put_stream",
+          result: "interrupted",
+          reason: "the source stream failed",
+          outcome: "ok",
+          value: 1,
+        },
+      ],
+      faults: [],
     });
   });
 });
