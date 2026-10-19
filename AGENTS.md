@@ -834,6 +834,11 @@ state-changing request carrying cookies must be same-site by fetch metadata,
 or carry an `Origin` matching the request's own host, and is refused with
 `403` before dispatch. Rate limiting is a stated non-goal. The full reasoning is in `packages/http-server/AGENTS.md`.
 
+Application-owned outbound mutual TLS identities bind credentials to an exact
+approved origin in `@btravstack/http-client`'s policy. Secret sources rotate
+credentials per connection; account authorization remains application-owned.
+Request input cannot override TLS, and server verification remains mandatory.
+
 ## Public surface
 
 Each package's surface is stated **once**, in `docs/reference/*` — compiled by

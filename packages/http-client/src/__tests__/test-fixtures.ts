@@ -18,6 +18,8 @@ export const it = test.extend<{
     lookupNever: boolean;
     trusted: boolean;
     closed: number;
+    identity: import("../index.js").HttpTlsIdentity;
+    rotatedIdentity: import("../index.js").HttpTlsIdentity;
     requests: {
       url: string;
       authorization: string | undefined;
@@ -72,6 +74,15 @@ export const it = test.extend<{
       trusted: true,
       requests,
       closed: 0,
+      identity: {
+        cert: readFileSync(new URL("client-cert.pem", import.meta.url), "utf8"),
+        key: readFileSync(new URL("client-key.pem", import.meta.url), "utf8"),
+      },
+      rotatedIdentity: {
+        cert: readFileSync(new URL("rotated-cert.pem", import.meta.url), "utf8"),
+        key: readFileSync(new URL("rotated-key.pem", import.meta.url), "utf8"),
+        passphrase: "test-only-rotation",
+      },
       respond: (
         _req: import("node:http").IncomingMessage,
         res: import("node:http").ServerResponse,
@@ -85,22 +96,25 @@ export const it = test.extend<{
           deadlineMs: limits.deadlineMs ?? 1000,
         }).getOrThrow(),
     };
-    const server = https.createServer({ key, cert }, (req, res) => {
-      let body = "";
-      req.on("data", (chunk: Buffer) => {
-        body += chunk.toString();
-      });
-      req.on("end", () => {
-        requests.push({
-          url: req.url!,
-          authorization: req.headers.authorization,
-          host: req.headers.host,
-          sni: (req.socket as import("node:tls").TLSSocket).servername || undefined,
-          body,
+    const server = https.createServer(
+      { key, cert, ca: cert, requestCert: true, rejectUnauthorized: false },
+      (req, res) => {
+        let body = "";
+        req.on("data", (chunk: Buffer) => {
+          body += chunk.toString();
         });
-        state.respond(req, res);
-      });
-    });
+        req.on("end", () => {
+          requests.push({
+            url: req.url!,
+            authorization: req.headers.authorization,
+            host: req.headers.host,
+            sni: (req.socket as import("node:tls").TLSSocket).servername || undefined,
+            body,
+          });
+          state.respond(req, res);
+        });
+      },
+    );
     server.on("connection", (socket) => {
       socket.on("close", () => {
         state.closed++;

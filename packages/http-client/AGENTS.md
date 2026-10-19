@@ -14,7 +14,13 @@ selection disabled. Its connection-time lookup resolves ALL answers and refuses
 all of them if any is forbidden. The checked answer itself reaches the socket;
 there is no preflight followed by another resolution. No connections or TLS
 sessions are pooled across operations. Normal TLS certificate verification and
-SNI keep the original hostname. There is no proxy, agent, DNS or TLS override;
+SNI keep the original hostname. Application-owned TLS identities bind a captured credential source to one approved
+exact origin. Only PEM cert/key/passphrase reach TLS; sources refresh atomic
+secret snapshots per connection. No CA, verification, SNI or cipher override is
+exposed. Missing, malformed or throwing credentials fail closed as redacted
+`HttpUnavailable`. Account authorization and secret-store refresh remain the
+application's; rotation changes credentials, never origin approval or account
+identity. Request input has no TLS controls. There is no proxy, agent or DNS override;
 proxy environment variables are ignored by this direct built-in transport.
 
 The address rule is deliberately conservative: every IPv4 IANA special-purpose

@@ -10,7 +10,9 @@ Node >=22 and `moduleResolution: node16` or `nodenext`.
 The application provides a policy port to `httpClient(policyPort)`, and injects
 `HttpClient`. `createHttpClient(policy)` builds the same capability without DI;
 `httpClientFetch(client)` adapts it for `oauthClient({ fetch })` and other native
-fetch consumers. Tenant configuration must never supply or expand the policy.
+fetch consumers. Application-owned `tlsIdentities` bind rotating PEM client
+credentials from a secret store to exact approved origins, with mandatory server
+verification. Tenant configuration must never supply or expand the policy.
 
 See the [reference](https://btravstack.github.io/btravstack/reference/http-client)
 for the compiled composition examples, exact refusal types and address policy.

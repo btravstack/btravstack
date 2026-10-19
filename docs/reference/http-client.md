@@ -52,7 +52,7 @@ one used for the connection, with the original TLS hostname and SNI preserved.
 No redirects are followed. No proxy is used, including one configured through
 proxy environment variables. Each request creates a fresh connection with fresh
 DNS and TLS verification; connections and TLS sessions are not reused. There are
-no caller-supplied agents, resolvers, TLS or proxy settings.
+no request-supplied agents, resolvers, TLS or proxy settings.
 
 Only identity content encoding is supported. `Accept-Encoding: identity` is sent,
 and a server answering another encoding receives `HttpEncodingRefused`. Nothing
@@ -75,6 +75,49 @@ open a socket after the operation has settled.
 
 Refusals retain no request URL, credentials, raw network causes, headers or body.
 The DI composition reports only bounded operation names to `Observers`.
+
+## Mutual TLS identities
+
+`HttpPolicy.tlsIdentities` optionally binds an application-owned credential source
+to an exact approved origin. Bindings cannot extend `origins`; invalid origins,
+paths, duplicate bindings or a missing source return
+`HttpPolicyInvalid({ field: "tlsIdentities" })`. A binding is captured when the
+client is built. Its credentials are read once for each new connection.
+
+```ts
+import { createHttpClient, type HttpTlsIdentity, type HttpTlsBinding } from "@btravstack/http-client";
+
+declare const secretCache: { current: HttpTlsIdentity };
+const paymentIdentity: HttpTlsBinding = {
+  origin: "https://payments.example",
+  credentials: () => secretCache.current,
+};
+const payments = createHttpClient({
+  origins: [paymentIdentity.origin],
+  tlsIdentities: [paymentIdentity],
+  maxResponseBytes: 65_536,
+  deadlineMs: 5_000,
+});
+```
+
+Inject the source from the application's secret store through the policy
+provider, never a request payload. `HttpTlsIdentity` contains PEM `cert` (including
+any intermediate chain), PEM `key` and optional `passphrase`. Load secrets
+asynchronously into an application-owned cache before use; the source itself is
+synchronous and returns one atomic snapshot. To rotate, replace that snapshot
+with newly loaded credentials. New connections use the replacement; in-flight
+connections retain their original identity. Keep the authorized external account
+and its tenant association stable across rotation: those are application data,
+not a certificate fingerprint or a TLS policy setting. Request signing and
+provider protocol mapping remain the application's responsibility.
+
+Only the matching origin receives the identity. Another approved origin gets no
+identity unless explicitly bound; redirects are refused even between approved
+origins. Server trust-chain and hostname checks remain mandatory. This surface
+exposes no CA, servername, verification callback, agent or TLS options bag.
+Empty, malformed, unavailable or throwing credentials return `HttpUnavailable`
+without raw causes or secret material in Results or observer diagnostics.
+The same policy works through `httpClient(policyPort)` and `httpClientFetch`.
 
 ## OAuth composition
 
