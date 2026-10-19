@@ -1,5 +1,16 @@
 # @btravstack/http-client
 
+## 0.40.0
+
+### Minor Changes
+
+- c60a7d5: Support application-owned mutual TLS identities bound to exact approved origins. Credential sources allow rotation without changing application account authorization, while retaining mandatory server verification, destination checks, redirect refusal, response limits, deadlines and redacted failures.
+
+### Patch Changes
+
+- @btravstack/core@0.40.0
+  - @btravstack/di@0.40.0
+
 ## 0.39.1
 
 ### Patch Changes

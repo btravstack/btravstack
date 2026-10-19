@@ -1,5 +1,14 @@
 # @btravstack/mcp-server
 
+## 0.40.0
+
+### Patch Changes
+
+- @btravstack/contract@0.40.0
+  - @btravstack/core@0.40.0
+  - @btravstack/di@0.40.0
+  - @btravstack/http-server@0.40.0
+
 ## 0.39.1
 
 ### Patch Changes
