@@ -532,7 +532,12 @@ This does not change ordinary di module visibility.
   policy a framework guessing is worse than one staying quiet. Over the limit
   is oRPC's `PAYLOAD_TOO_LARGE`, decided on `content-length` when one is sent
   and while streaming otherwise. `bodyLimit: false` pins `0`, which is
-  unbounded — the one value the environment can also carry.
+  unbounded — the one value the environment can also carry. It is an
+  answerer's limit: the runtime reads no body, so a bare `HttpAnswerer`
+  streams one of any size and owes its own ceiling. `http-runtime.spec.ts`
+  holds that, putting 256 MiB through a bare answerer and reading 256 MiB back
+  out of one in bounded live memory. oRPC is no route for a file: it reads a
+  body that declares its length into a `File`, whole.
 
   **`compression` is the RESPONSE half only.** `RequestCompressionHandlerPlugin`
   stays in `plugins`: inflating a body before the limit measures it is an

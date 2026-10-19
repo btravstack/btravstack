@@ -1594,7 +1594,9 @@ one that stays quiet; a body nobody bounded is a request that can consume the
 process. Over the limit is oRPC's `PAYLOAD_TOO_LARGE`, decided on
 `content-length` when one is sent and while streaming otherwise. An application
 serving uploads raises it, and `false` — like `HTTP_BODY_LIMIT=0` — turns it
-off.
+off. It bounds what an answerer reads, not the runtime: a file streamed through
+the process belongs to [an answerer of its own](/how-to/stream-a-file), since
+oRPC reads a body that declares its length into memory whole.
 
 `compression` is the **response** half. Request decompression is a separate
 oRPC plugin (`RequestCompressionHandlerPlugin`), left to `plugins` because
@@ -1909,6 +1911,14 @@ refused, which is why there is no ordering to configure: only a **duplicate**
 mount point is an error, and it is a `RuntimeStartFailed` at `listen` rather
 than a coin toss. A trailing slash is the same mount, so `/rpc` and `/rpc/`
 collide.
+
+**The runtime reads no body.** `bodyLimit` is applied by the answerers that
+read one: oRPC, fragments, GraphQL and MCP. A bare answerer gets `request` as
+it arrives and writes `response` as it goes, so it streams a body of any size
+in bounded memory (the runtime's spec puts 256 MiB through each way) and owes
+its own ceiling. `requestTimeoutMs` still bounds the whole request, body
+included. [Stream a file through the process](/how-to/stream-a-file) is the
+pattern.
 
 `signal` is the unit's own. The unit closes on the response's `'close'`, not
 on `handle` returning, so a client that disconnects settles it while `handle`

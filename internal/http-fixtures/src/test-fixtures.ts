@@ -24,6 +24,8 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { Agent, createServer, request as httpRequest } from "node:http";
 import { connect, type Socket } from "node:net";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 
 import { Config, Env, type ConfigInvalid, type Environment } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
@@ -2092,7 +2094,18 @@ const htmxAnswererOf = (): AsyncResult<HttpAnswerer, never> =>
     },
   );
 
+/** What a spec moving a large body needs: a source, and the memory moving it cost. */
+export type Streamed = {
+  /** `size` zero bytes, as 64 KiB chunks of one shared buffer, so the source itself allocates nothing. */
+  readonly source: (size: number) => ReadableStream<Uint8Array>;
+  /** `work`'s value, and how far the live heap plus array buffers rose while it ran. */
+  readonly peakGrowth: <T>(
+    work: () => Promise<T>,
+  ) => Promise<{ readonly value: T; readonly growth: number }>;
+};
+
 export type HttpFixtures = {
+  readonly streamed: Streamed;
   readonly resourceCall: (port: number) => ProtectedCall;
   readonly scopeFragment: () => Promise<ProtectedCall>;
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
@@ -2549,6 +2562,46 @@ export type HttpFixtures = {
 };
 
 export const it = test.extend<HttpFixtures>({
+  // oxlint-disable-next-line no-empty-pattern -- vitest's fixture signature: one that names no other fixture still takes the destructured first parameter
+  streamed: async ({}, use) => {
+    const chunk = new Uint8Array(65_536);
+    // A full collection before each sample, so what is measured is what the
+    // transfer still holds rather than garbage the collector has not reached.
+    setFlagsFromString("--expose-gc");
+    const collectGarbage = runInNewContext("gc") as () => void;
+    const used = (): number => {
+      const { heapUsed, arrayBuffers } = process.memoryUsage();
+      return heapUsed + arrayBuffers;
+    };
+    await use({
+      source: (size) => {
+        let sent = 0;
+        return new ReadableStream<Uint8Array>({
+          pull: (controller) => {
+            if (sent >= size) {
+              controller.close();
+              return;
+            }
+            const length = Math.min(chunk.byteLength, size - sent);
+            controller.enqueue(chunk.subarray(0, length));
+            sent += length;
+          },
+        });
+      },
+      peakGrowth: async (work) => {
+        collectGarbage();
+        const before = used();
+        let peak = before;
+        const sampling = setInterval(() => {
+          collectGarbage();
+          peak = Math.max(peak, used());
+        }, 20);
+        const value = await work();
+        clearInterval(sampling);
+        return { value, growth: Math.max(peak, used()) - before };
+      },
+    });
+  },
   scopeFragment: async ({ boot }, use) => {
     await use(async () => {
       const api = defineHttp({
