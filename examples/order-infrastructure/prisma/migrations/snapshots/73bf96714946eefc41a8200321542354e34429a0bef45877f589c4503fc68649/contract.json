@@ -151,15 +151,15 @@
           "table": {
             "customer": {
               "columns": {
-                "customerId": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false },
+                "customerId": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false },
                 "id": {
                   "codecId": "pg/int4@1",
+                  "dataType": "pg/int4",
                   "default": { "expression": "autoincrement()", "kind": "function" },
-                  "nativeType": "int4",
                   "nullable": false
                 },
-                "name": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false },
-                "tenantId": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false }
+                "name": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false },
+                "tenantId": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false }
               },
               "foreignKeys": [],
               "indexes": [],
@@ -170,13 +170,13 @@
               "columns": {
                 "id": {
                   "codecId": "pg/int4@1",
+                  "dataType": "pg/int4",
                   "default": { "expression": "autoincrement()", "kind": "function" },
-                  "nativeType": "int4",
                   "nullable": false
                 },
-                "orderId": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false },
-                "quantity": { "codecId": "pg/int4@1", "nativeType": "int4", "nullable": false },
-                "tenantId": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false }
+                "orderId": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false },
+                "quantity": { "codecId": "pg/int4@1", "dataType": "pg/int4", "nullable": false },
+                "tenantId": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false }
               },
               "foreignKeys": [],
               "indexes": [],
@@ -187,25 +187,25 @@
               "columns": {
                 "id": {
                   "codecId": "pg/int4@1",
+                  "dataType": "pg/int4",
                   "default": { "expression": "autoincrement()", "kind": "function" },
-                  "nativeType": "int4",
                   "nullable": false
                 },
-                "kind": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false },
+                "kind": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false },
                 "occurredAt": {
                   "codecId": "pg/timestamptz-string@1",
+                  "dataType": "pg/timestamptz",
                   "default": { "expression": "now()", "kind": "function" },
-                  "nativeType": "timestamptz",
                   "nullable": false
                 },
-                "payload": { "codecId": "pg/text@1", "nativeType": "text", "nullable": true },
+                "payload": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": true },
                 "publishedAt": {
                   "codecId": "pg/timestamptz-string@1",
-                  "nativeType": "timestamptz",
+                  "dataType": "pg/timestamptz",
                   "nullable": true
                 },
-                "subjectId": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false },
-                "tenantId": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false }
+                "subjectId": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false },
+                "tenantId": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false }
               },
               "foreignKeys": [],
               "indexes": [],
@@ -219,7 +219,7 @@
       },
       "public": { "entries": { "table": {} }, "id": "public", "kind": "postgres-schema" }
     },
-    "storageHash": "b449367e57cae35b33b11bfb11b78ee29d3a94235bf8425e3f56b2bb440e8c74"
+    "storageHash": "73bf96714946eefc41a8200321542354e34429a0bef45877f589c4503fc68649"
   },
   "target": "postgres",
   "targetFamily": "sql"

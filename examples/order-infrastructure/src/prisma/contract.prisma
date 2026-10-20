@@ -57,6 +57,7 @@ namespace orders {
 
     @@unique([tenantId, orderId])
     @@rls
+    @@map("order")
   }
 
   // The customers vertical, on the same shape: `customerId` is the business id
@@ -73,6 +74,7 @@ namespace orders {
     name       String
 
     @@unique([tenantId, customerId])
+    @@map("customer")
   }
 
   // The transactional outbox: one row per fact worth broadcasting, written in
@@ -110,6 +112,7 @@ namespace orders {
     publishedAt TimestamptzString?
 
     @@rls
+    @@map("outboxMessage")
   }
 
   // Row security is the DATABASE's answer to "whose row is this", and the
@@ -121,13 +124,13 @@ namespace orders {
   // and cannot legitimately produce one.
   policy_all order_tenant_isolation {
     target    = Order
-    using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
-    withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
+    using     = sql`"tenantId" = current_setting('app.tenant_id', true)`
+    withCheck = sql`"tenantId" = current_setting('app.tenant_id', true)`
   }
 
   policy_all outbox_tenant_isolation {
     target    = OutboxMessage
-    using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
-    withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
+    using     = sql`"tenantId" = current_setting('app.tenant_id', true)`
+    withCheck = sql`"tenantId" = current_setting('app.tenant_id', true)`
   }
 }

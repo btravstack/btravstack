@@ -24,22 +24,37 @@ declare const contractJson: unknown;
 > starter's own query middleware, and a client whose pool is the application
 > scope's. Prisma **8** — the runtime is `@prisma/orm-postgres`.
 
+## Upgrading the pinned release candidates
+
+The catalog uses Prisma CLI `8.0.0-rc.23`, CLI engine `0.7.0` and Postgres
+`8.0.0-rc.18`. The Postgres package requires `temporal-polyfill@^1.0.4`.
+Install the polyfill beside the Postgres facade with strict peer checks enabled.
+
+The rc.18 middleware uses SQL encoding and statement activity hooks. Applications
+that implement middleware must migrate their hooks too. Existing table names
+need explicit `@@map` declarations because the default now preserves model case.
+Prisma's `data-type-in-contract` upgrade script converts stored contract snapshots
+and rewrites their hashes and migration references. After converting an existing
+database's migration history, verify its schema and run `prisma db sign` before
+deploying the upgraded application: its old marker names a replaced hash.
+The example's converted history also supports migration into an empty database.
+
 ## Production dependency closure
 
 The pinned Prisma 8 Postgres facade has **no supported toolchain-free
 production install**. Importing `@prisma/orm-postgres/runtime` selects the
 runtime JavaScript entry point; it does not select a smaller package manifest.
-The [published Postgres manifest](https://registry.npmjs.org/@prisma/orm-postgres/8.0.0-rc.11)
+The [published Postgres manifest](https://registry.npmjs.org/@prisma/orm-postgres/8.0.0-rc.18)
 requires `@prisma/orm-toolchain`, whose
-[published manifest](https://registry.npmjs.org/@prisma/orm-toolchain/8.0.0-rc.11)
+[published manifest](https://registry.npmjs.org/@prisma/orm-toolchain/8.0.0-rc.18)
 requires the `@prisma/cli-engine` peer and declares build-tool dependencies.
 
 Keep the application manifest split by responsibility:
 
-| Manifest section  | Packages                                                                               | Purpose                                                                                                               |
-| ----------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `dependencies`    | `@btravstack/prisma`, its required framework peers, `unthrown`, `@prisma/orm-postgres` | Boot the typed client from the emitted contract and retain the starter's connection, role and teardown checks.        |
-| `devDependencies` | `prisma`, `@prisma/cli-engine`, TypeScript and the application's compiler              | Emit contracts and compile in the build stage; run migrations and verification in a separate deployment image or Job. |
+| Manifest section  | Packages                                                                                                    | Purpose                                                                                                               |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `dependencies`    | `@btravstack/prisma`, its required framework peers, `unthrown`, `@prisma/orm-postgres`, `temporal-polyfill` | Boot the typed client from the emitted contract and retain the starter's connection, role and teardown checks.        |
+| `devDependencies` | `prisma`, `@prisma/cli-engine`, TypeScript and the application's compiler                                   | Emit contracts and compile in the build stage; run migrations and verification in a separate deployment image or Job. |
 
 This is the split the order infrastructure example uses. It does **not** make
 Prisma's transitive toolchain development-only: a frozen, strict-peer
@@ -168,8 +183,8 @@ arrow is where your contract and this starter meet, and the port is typed by
 exactly what it returns.
 
 It receives the URL, already validated, and the starter's own `middleware`.
-Spread that into the client rather than dropping it: it is one `afterQuery`
-hook, and it is where the observation below comes from. Add your own middleware
+Spread that into the client rather than dropping it: it uses the SQL encoding and activity-completion
+hooks, and it is where the observation below comes from. Add your own middleware
 beside it.
 
 This is also why the [`@btravstack/cache`](/reference/cache) shape — a fixed
@@ -191,16 +206,11 @@ a hook sees every statement on **every lane** — the ORM's, the SQL builder's a
 the raw one — without knowing the contract, which is the thing this package
 cannot see. The v7 `$allModels` wrapper saw only the first.
 
-**The operation is opened in `beforeQuery` and settled in `afterQuery`**,
-paired by `ctx.planExecutionId`, so a span an observer opens is one the query
-runs _inside_. That is what `Observers` is for — called at the start, answering
-a finisher — and it is why the runtime's own `latencyMs` is not passed along:
-the observer started the operation, so the duration is its own.
-
-**Both lanes, because there are two.** A read settles through `afterQuery`; a
-write with no `RETURNING` — a SQL-builder `delete()` run through
-`runtime().execute(plan)` — settles through `afterExecute`, and a middleware
-implementing only the query hooks leaves every such write unobserved.
+**The operation opens in `beforeEncode` and settles in `activityEnded`.**
+Prisma's activity-local `ctx.state` holds its finisher, so overlapping statements
+settle independently. Both query and execute lanes use these hooks; transaction
+activities are ignored. Statements refused before SQL encoding open no query
+observation. Rendered SQL is available when the span opens.
 
 The operation is `component: "database"`, `name: "query"`, with `scope`
 (`runtime` / `connection` / `transaction`) and `source` (`driver` /
@@ -209,9 +219,9 @@ on `details`, where an unbounded value rides the span and the failure line but
 never an instrument. The row count is deliberately absent: it is unbounded, and
 one time series per row count is how a metrics bill becomes the incident.
 
-`completed` is what settles the outcome, and a failed statement does reach the
+The statement activity outcome settles the observation, and a failed statement does reach the
 hook — measured against a real database, a duplicate insert arrives as
-`completed: false` before the rejection surfaces.
+`outcome: "failed"` before the rejection surfaces.
 
 **Prisma 8 ships no OpenTelemetry instrumentation of its own**, so this is the
 whole seam rather than a second one. There is no `@prisma/instrumentation`
@@ -455,8 +465,8 @@ namespace orders {
 
   policy_all order_tenant_isolation {
     target    = Order
-    using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
-    withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
+    using     = sql`"tenantId" = current_setting('app.tenant_id', true)`
+    withCheck = sql`"tenantId" = current_setting('app.tenant_id', true)`
   }
 }
 ```
@@ -722,7 +732,7 @@ the index out of band and let the migration find it:
 **Engine-level tracing.** There is no engine. Prisma 8 is a TypeScript runtime
 and ships no instrumentation package, so the `Instrumentations` loader this
 starter contributed under Prisma 7 is gone, and with it the `Logger` it needed
-for one `debug` line. The `afterQuery` middleware is the whole seam, and it
+for one `debug` line. The SQL activity middleware is the whole seam, and it
 carries the runtime's own `latencyMs`.
 
 **Transactions.** Commit boundaries belong to the adapter, spelled at the call;

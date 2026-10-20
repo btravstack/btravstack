@@ -15,9 +15,9 @@ is — the surface moves between candidates.
 
 **The three catalog numbers are deliberately unaligned**, and the alignment
 belongs upstream rather than here: Prisma ships three release trains and pins
-across them exactly, so `prisma@8.0.0-rc.15` depends on
-`@prisma/cli-engine@0.4.0` and `@prisma/orm-toolchain@8.0.0-rc.11`, while
-the catalog pins `@prisma/orm-postgres` to `8.0.0-rc.11`. These are the
+across them exactly, so `prisma@8.0.0-rc.23` depends on
+`@prisma/cli-engine@0.7.0` and `@prisma/orm-toolchain@8.0.0-rc.18`, while
+the catalog pins `@prisma/orm-postgres` to `8.0.0-rc.18`. These are the
 versions adopted together, not a claim about the current dist-tags. Do not "fix" them to one number — for two of the three it
 names a version that was never published.
 
@@ -67,7 +67,13 @@ production deploy and non-owner PostgreSQL boot in a non-root distroless image.
 **Nothing here imports `@prisma/orm-postgres`, and it is still a peer.** Every
 shape this package needs of a client is structural, so there is no import and
 knip reports the dependency unused — `knip.json` ignores it for this workspace
-deliberately. The peer stays because the BEHAVIOUR is version-specific:
+deliberately. The Postgres facade requires `temporal-polyfill` as a peer even when this
+starter imports no facade code. Its development consumers (`packages/prisma`,
+`packages/outbox` and `examples/order-api`) provide that peer explicitly;
+Knip's dependency allowances name it in those workspaces because their own
+source does not import it. The production infrastructure example holds it as
+a runtime dependency. Strict peer installation verifies that it is required.
+The peer stays because the BEHAVIOUR is version-specific:
 `affectedCount().build()`, `middleware` as a construction option,
 `runtime().close()` and the raw lane's tagged template are all Prisma 8's, and
 a range is the only place that can be said to an installer.
@@ -312,28 +318,13 @@ are deleted and `Instrumentations` is no longer in this module's exports.
 middleware sees every lane — the ORM's, the SQL builder's and the raw one —
 where `$allModels` saw only the first.
 
-**It uses `beforeQuery`/`afterQuery` rather than `afterQuery` alone**, paired
-by `ctx.planExecutionId` — the runtime's own correlation id, whose TSDoc names
-tracing and timing as the reason it exists. The port is called at the START and
-answers a finisher precisely so a span can be opened around the work; settling
-an operation started in the same tick gives a zero-width span that is the
-parent of nothing. It also means `latencyMs` is not passed along: the observer
-started the operation, so the duration is its own. `Settled` carries no
-`details` channel anyway — only bounded `attributes` — which is the port
-saying the same thing.
-
-**Both lanes, and the write one is easy to miss.** `beforeExecute` /
-`afterExecute` are a separate pair: a SQL-builder statement with no
-`RETURNING`, run through `runtime().execute(plan)`, never touches the query
-hooks. Measured with a real client: a `delete()` plan produced
-`beforeExecute` / `afterExecute` and no `afterQuery` at all.
-
-**A failed statement DOES reach the hook**, measured rather than assumed: a
-duplicate insert against a real database arrives as
-`afterQuery … completed=false` before the rejection surfaces. That is what the
-in-flight map depends on for its own cleanup, and why it is not a leak. `Logger` left the module's `needs` with
-the loader, since the one `debug` line it existed for ("engine tracing is off
-because the optional peer is absent") has nothing left to report.
+**SQL encoding starts observation; statement activity completion settles it.**
+The Prisma 8 rc.18 hooks are `beforeEncode` and `activityEnded`. The former
+receives rendered SQL for both query and execute lanes. A symbol in
+`ctx.state` holds the observer's finisher for that activity, so concurrent
+statements stay separate without a process-wide map. Transaction activities
+are ignored. A `failed` or `stopped` statement settles `error`; `succeeded`
+settles `ok`. Statements refused before encoding never open an observation.
 
 **The middleware is a CONSTRUCTION option, not a wrapper**, which is why
 `PrismaBinding` carries it: Prisma 8 has no `$extends` to layer one over a
@@ -348,8 +339,9 @@ and no error — that is the one thing this seam cannot enforce.
 every Node before 26.8.2, including every version this repository supports. The
 example's contract therefore uses `TimestamptzString`, which carries
 PostgreSQL's own text, and the adapter converts it to the `Date` its port
-speaks. A `temporal-polyfill` import would be the alternative and is a
-dependency the example does not need.
+speaks. The Postgres facade now requires `temporal-polyfill` for its control plane,
+even when application fields use the string presets. The example installs that
+peer explicitly; it does not install it into the global Temporal slot.
 
 ## Not included, deliberately
 

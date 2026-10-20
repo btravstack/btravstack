@@ -66,6 +66,7 @@
     "@unthrown/vitest": "catalog:",
     "graphql": "catalog:",
     "graphql-yoga": "catalog:",
+    "temporal-polyfill": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
     "typescript-consumer": "catalog:",

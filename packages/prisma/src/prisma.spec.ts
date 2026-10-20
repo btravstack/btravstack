@@ -210,11 +210,18 @@ describe("prismaDatabase", () => {
     await Module.scoped(root, (ctx) => {
       const client = ctx.get(db.port);
       const hook = client.middleware[0];
-      const plan = { planExecutionId: "q1" } as const;
+      const state: Record<string | symbol, unknown> = {};
+      const plan = { state: () => state };
       return OkAsync(
         hook
-          ?.beforeQuery({ sql: "SELECT 1" }, plan)
-          .then(() => hook.afterQuery({}, { completed: true, source: "driver" }, plan)),
+          ?.beforeEncode({ sql: "SELECT 1" }, plan)
+          .then(() =>
+            hook.activityEnded(
+              { kind: "statement" },
+              { kind: "statement", outcome: "succeeded", source: "driver" },
+              plan,
+            ),
+          ),
       );
     });
 

@@ -165,8 +165,8 @@ namespace orders {
 
   policy_all order_tenant_isolation {
     target    = Order
-    using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
-    withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
+    using     = sql`"tenantId" = current_setting('app.tenant_id', true)`
+    withCheck = sql`"tenantId" = current_setting('app.tenant_id', true)`
   }
 }
 ```

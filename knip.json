@@ -45,7 +45,8 @@
         "@btravstack/mcp-server",
         "@modelcontextprotocol/sdk",
         "@btravstack/http-client",
-        "@btravstack/storage"
+        "@btravstack/storage",
+        "temporal-polyfill"
       ]
     },
     "examples/order-infrastructure": {
@@ -63,7 +64,7 @@
       "ignoreDependencies": ["@btravstack/testing"]
     },
     "packages/prisma": {
-      "ignoreDependencies": ["@prisma/orm-postgres"]
+      "ignoreDependencies": ["@prisma/orm-postgres", "temporal-polyfill"]
     },
     "templates/http-app": {
       "entry": ["src/main.ts"],
@@ -81,6 +82,9 @@
         "@unthrown/orpc"
       ],
       "ignoreBinaries": ["tsc"]
+    },
+    "packages/outbox": {
+      "ignoreDependencies": ["temporal-polyfill"]
     }
   }
 }
