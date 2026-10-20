@@ -27,7 +27,6 @@ import type { SchemePortsOf } from "@btravstack/http-server/internal";
 import {
   getAsyncIteratorObjectSchemaDetails,
   type AnyProcedureContract,
-  type AnySchema,
   type ProcedureContract,
   type RouterContract,
 } from "@orpc/contract";
@@ -52,7 +51,6 @@ import {
   type ResponseCompressionHandlerPluginOptions,
 } from "@orpc/server/plugins";
 import { RPC_DEFAULT_ALLOW_METHODS, type StandardHandlerPlugin } from "@orpc/server/standard";
-import { fromThrowable } from "unthrown";
 
 import { bodyLimitPlugin, refusedStream } from "./body-limit.js";
 import type {
@@ -234,51 +232,46 @@ const streamsOutput = (procedure: AnyProcedure): boolean =>
     (schema) => getAsyncIteratorObjectSchemaDetails(schema) !== undefined,
   );
 
-/**
- * Whether a procedure carries a body as a stream, which only its OpenAPI route
- * can: it declares `requestBodyHint` or `responseBodyHint` `"octet-stream"`, or
- * an output schema takes a `ReadableStream` as its answer — or as a detailed
- * answer's `body` — and refuses a plain object there.
- */
+/** Whether a procedure's OpenAPI route declares a body read or answered as a stream. */
 const streamsBody = (procedure: AnyProcedureContract): boolean => {
   const meta = getOpenAPIMeta(procedure);
-  if (meta?.requestBodyHint === "octet-stream" || meta?.responseBodyHint === "octet-stream")
-    return true;
-  const detailed = meta?.outputStructure === "detailed";
-  return (procedure["~orpc"].outputSchemas ?? []).some(
-    (schema) =>
-      refuses(schema, new ReadableStream(), detailed) === false &&
-      refuses(schema, {}, detailed) === true,
-  );
+  return meta?.requestBodyHint === "octet-stream" || meta?.responseBodyHint === "octet-stream";
 };
 
-// Boxed: `fromThrowable` refuses a function that returns a promise, which an asynchronous schema does.
-const probed = fromThrowable(
-  (schema: AnySchema, value: unknown) => ({ answer: schema["~standard"].validate(value) }),
-  () => "unprobeable" as const,
-);
+/** Every `ReadableStream` an answer carries, through its plain objects and arrays. */
+const streamsIn = (value: unknown, seen: Set<unknown>): readonly ReadableStream[] => {
+  if (value instanceof ReadableStream) return [value];
+  if (typeof value !== "object" || value === null || seen.has(value)) return [];
+  const prototype: unknown = Object.getPrototypeOf(value);
+  if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) return [];
+  seen.add(value);
+  return Object.values(value).flatMap((child) => streamsIn(child, seen));
+};
 
-/** Whether `schema` refuses `body` where the answer carries it; `undefined` when it validates asynchronously or throws. */
-const refuses = (schema: AnySchema, body: unknown, detailed: boolean): boolean | undefined => {
-  const result = probed(schema, detailed ? { body } : body).getOr(undefined)?.answer;
-  if (result === undefined) return undefined;
-  if (result instanceof Promise) {
-    // Unread, a probe that rejects would surface as an unhandled rejection.
-    void result.catch(() => undefined);
-    return undefined;
-  }
-  return (result.issues ?? []).some((issue) => {
-    const at = issue.path?.[0];
-    return !detailed || at === undefined || (typeof at === "object" ? at.key : at) === "body";
-  });
+/**
+ * The RPC wire writes a `ReadableStream` as `{}`, so an answer still carrying
+ * one — from a procedure whose route declares no `responseBodyHint` — has its
+ * streams cancelled and fails, which `reportDefects` reports.
+ */
+const cancelStreams: NonNullable<
+  RPCHandlerOptions<DefaultInitialContext>["clientInterceptors"]
+>[number] = async ({ next }) => {
+  const output = await next();
+  const streams = streamsIn(output, new Set());
+  if (streams.length === 0) return output;
+  await Promise.allSettled(streams.map((stream) => stream.cancel()));
+  // oxlint-disable-next-line unthrown/no-throw -- oRPC answers what an interceptor throws, as a defect
+  throw new Error("[orpc-server] a ReadableStream cannot be answered over RPC");
 };
 
 /**
  * The oRPC starter: a provider of `HttpHandler` built from the router port,
  * mounted under `prefix`. A request oRPC does not match resolves unwritten and
- * the runtime answers its `404`, and so does every procedure that streams a
- * body, which `openApiRoutes()` serves instead. Nothing here maps a `Result`
- * to a status.
+ * the runtime answers its `404`, and so does every procedure whose OpenAPI
+ * route declares `requestBodyHint` or `responseBodyHint` `"octet-stream"`,
+ * which `openApiRoutes()` serves instead. An answer that still carries a
+ * `ReadableStream` has it cancelled and answers `500`. Nothing here maps a
+ * `Result` to a status.
  */
 export const orpc = (options: OrpcOptions = {}) => {
   const prefix = options.prefix ?? "/rpc";
@@ -292,7 +285,7 @@ export const orpc = (options: OrpcOptions = {}) => {
     sync: ({ router, config, cookieSchemes, observers }) => {
       const rpc = new RPCHandler(router, {
         plugins: [...pluginsOf(options, config, csrfOn(options.csrf, cookieSchemes))],
-        clientInterceptors: reportDefects(observers),
+        clientInterceptors: [...reportDefects(observers), cancelStreams],
         filter: (procedure) => !streamsBody(procedure),
         allowMethods: (method, procedure) =>
           method === "GET" ? streamsOutput(procedure) : RPC_METHODS.has(method),

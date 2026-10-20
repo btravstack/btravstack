@@ -55,25 +55,27 @@ handler streams into, not memory.
 **A procedure that streams a body is served over OpenAPI only.** The RPC
 serializer ignores `outputStructure: "detailed"` and writes a
 `ReadableStream` as `{}`, so a download over `/rpc` opened a stream nothing
-read or cancelled, holding whatever backed it until a timeout. `orpc()`
-passes oRPC's own `filter` a detector, so such a procedure is never indexed
-and the request resolves unwritten: the runtime's `404`, as for an unknown
-procedure or a disallowed method, decided before decoding or the handler.
-It is detected from the procedure, not a flag a consumer could forget:
-`requestBodyHint` or `responseBodyHint` `"octet-stream"`, or an output
-schema that accepts a `ReadableStream` as the answer (or a detailed answer's
-`body`) and refuses `{}` there. The probe is Standard Schema `validate`, so
-it holds for any vendor; the `{}` half keeps a body that accepts anything
-(`z.unknown()`, an object of optional keys) on RPC. On a detailed answer an
-issue with no path counts against the body too, since the body is all the
-two probes differ in. A schema that validates asynchronously cannot be
-probed synchronously at indexing, so it counts as not streaming, its probe's
-rejection observed so it cannot crash the process; so does a schema that
-throws on a probe value, which would otherwise fail the boot. For both,
-`responseBodyHint` is the declaration. The typed
-RPC client still lists these procedures: removing them from
-`RouterContractClient` would mean a type-level copy of the probe, and its
-`404` is documented instead.
+read or cancelled, holding whatever backed it until a timeout. Two layers
+keep it off. `orpc()` passes oRPC's own `filter` the route's meta: a
+procedure declaring `requestBodyHint` or `responseBodyHint` `"octet-stream"`
+is never indexed, so the request resolves unwritten. That is the runtime's
+`404`, as for an unknown procedure or a disallowed method, decided before
+decoding or the handler. The meta is deterministic, and the route needs it
+anyway: the upload hint is what makes the OpenAPI codec stream the body, and
+the download hint is what an OpenAPI client decodes the answer by. A
+consumer who forgets the download hint meets the second layer:
+`cancelStreams`, a client interceptor inside `reportDefects`, walks the
+answer's plain objects and arrays. It cancels every `ReadableStream` it finds,
+awaiting the cancellations, and throws, so the call answers `500` and is
+reported as a defect, never `{}` over an open socket. It walks only plain
+records because an event iterator, or any other class instance, is
+serialized by its own rules and may wrap a stream it still needs.
+Detecting streams by probing the output schema with fabricated values was
+tried and dropped: every vendor-specific shape (transforms, narrowed or
+branded streams, checks that a missing sibling field skips, asynchronous or
+throwing validators) was another false negative or a boot failure. The
+typed RPC client still lists these procedures; removing them from
+`RouterContractClient` would mean typing the meta, so the `404` is documented.
 
 `HttpModule` shares application-root exports with `GraphqlModule`: runtime
 ports are automatic, as are available `Logger` and `HealthChecks` ports.

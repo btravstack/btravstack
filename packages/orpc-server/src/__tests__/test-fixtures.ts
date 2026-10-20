@@ -5,7 +5,7 @@ import { Observers, type Operation, type Settled } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { CredentialRefused, HttpAuthenticator, Unauthenticated } from "@btravstack/http-server";
 import { it as base, type HttpFixtures } from "@btravstack/internal-http-fixtures";
-import { oc, type Schema } from "@orpc/contract";
+import { oc } from "@orpc/contract";
 import { openapi } from "@orpc/openapi";
 import { RequestCompressionHandlerPlugin } from "@orpc/server/plugins";
 import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
@@ -160,19 +160,6 @@ export const it: TestAPI<HttpFixtures & Fixtures> = base.extend<Fixtures>({
   },
 });
 
-/** Vendor-neutral output schemas that throw on anything but an item, synchronously or by rejecting. */
-const itemOf = (value: unknown) => ({ value: { name: (value as { name: string }).name.trim() } });
-const throwingItem: Schema<{ name: string }> = {
-  "~standard": { version: 1, vendor: "fixture", validate: itemOf },
-};
-const asyncItem: Schema<{ name: string }> = {
-  "~standard": {
-    version: 1,
-    vendor: "fixture",
-    validate: (value) => Promise.resolve().then(() => itemOf(value)),
-  },
-};
-
 const contentContract = {
   content: {
     put: oc
@@ -204,28 +191,21 @@ const contentContract = {
         }),
       )
       .input(z.object({ key: z.string() }))
-      .output(z.object({ body: z.custom<ReadableStream>() })),
+      .output(z.object({ body: z.instanceof(ReadableStream) })),
   },
   items: {
     create: oc
       .meta(openapi({ method: "POST", path: "/items" }))
       .input(z.object({ name: z.string() }))
       .output(z.object({ name: z.string() })),
-    checked: oc.input(z.object({ name: z.string() })).output(asyncItem),
-    strict: oc.input(z.object({ name: z.string() })).output(throwingItem),
-    counted: oc
-      .meta(openapi({ method: "GET", path: "/items/count", outputStructure: "detailed" }))
-      .output(z.object({ body: z.object({ count: z.number().optional() }) })),
-    sized: oc
-      .meta(openapi({ method: "GET", path: "/items/size", outputStructure: "detailed" }))
-      .output(z.object({ body: z.unknown() }).refine(({ body }) => body instanceof ReadableStream)),
   },
 };
 
 /**
  * The `PUT` counts the bytes it reads, calling `sawFirstChunk` on the first; the
  * `GET` streams {@link DOWNLOAD} with its own headers, recording into `downloads`
- * the stream it opened and its cancellation, or errors midway for `broken`.
+ * the stream it opened and its cancellation, or errors midway for `broken`; the
+ * `export` streams it too, from a route declaring `responseBodyHint`.
  */
 const contentRouterOf = (sawFirstChunk: () => void, downloads: ("opened" | "cancelled")[]) =>
   defineHttp().OrpcRouter(contentContract)({
@@ -251,13 +231,7 @@ const contentRouterOf = (sawFirstChunk: () => void, downloads: ("opened" | "canc
           ),
         export: () => OkAsync({ body: recorded(DOWNLOAD, downloads) }),
       },
-      items: {
-        create: (_context, input) => OkAsync(input),
-        checked: (_context, input) => OkAsync(input),
-        strict: (_context, input) => OkAsync(input),
-        counted: () => OkAsync({ body: { count: 1 } }),
-        sized: () => OkAsync({ body: recorded(DOWNLOAD, downloads) }),
-      },
+      items: { create: (_context, input) => OkAsync(input) },
     }),
   });
 

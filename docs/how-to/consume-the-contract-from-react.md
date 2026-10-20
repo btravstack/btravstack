@@ -63,9 +63,10 @@ export const createClient = (origin: string, bearer: string): OrderApiClient =>
   );
 ```
 
-The client lists every procedure of the contract, but `/rpc` serves none that
-streams a body: a file upload or download is refused there with `404`, and is
-called on its OpenAPI route instead
+The client lists every procedure of the contract, but `/rpc` serves none whose
+route declares a streamed body (`requestBodyHint` or `responseBodyHint`
+`"octet-stream"`): a file upload or download is refused there with `404`, and
+is called on its OpenAPI route instead
 ([Stream a binary body](/how-to/serve-an-openapi-contract#stream-a-binary-body)).
 
 `createResultClient` is what keeps the two channels intact across the wire: an

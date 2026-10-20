@@ -86,7 +86,8 @@ for a file the application must see on the way — to encrypt, to hash, to
 store. Declare `requestBodyHint: "octet-stream"` with the `detailed` input
 structure, and the handler gets `body` as a `ReadableStream` while the client
 is still sending. An `outputStructure: "detailed"` answer whose `body` is a
-`ReadableStream` streams out under the `headers` it names.
+`ReadableStream` streams out under the `headers` it names; declare
+`responseBodyHint: "octet-stream"` on that route too.
 
 <!-- doctest: skip — a standalone contract fragment -->
 
@@ -115,7 +116,14 @@ export const contract = {
       )
       .output(z.object({ key: z.string() })),
     download: oc
-      .meta(openapi({ method: "GET", path: "/files/{key}", outputStructure: "detailed" }))
+      .meta(
+        openapi({
+          method: "GET",
+          path: "/files/{key}",
+          outputStructure: "detailed",
+          responseBodyHint: "octet-stream",
+        }),
+      )
       .input(z.object({ key: z.string() }))
       .output(
         z.object({
@@ -140,17 +148,16 @@ request answers `413` whatever the handler made of that error. The hint is
 the route's: a client cannot pick the larger limit by its headers, and the
 RPC wire reads every body under `bodyLimit`.
 
-A procedure that streams a body is served by the OpenAPI routes only. The
-RPC answerer leaves unmatched every procedure declaring
-`requestBodyHint: "octet-stream"` or `responseBodyHint: "octet-stream"`, and
-every one whose output schema takes a `ReadableStream` as its answer, or as a
-detailed answer's `body`, and refuses a plain object there. `/rpc` answers
-such a call `404` before its handler runs, so a download never opens a stream
-nothing would read. A typed RPC client built from the contract still lists
-the procedure, and calling it through `RPCLink` gets that `404`: call it with
-`fetch` or an OpenAPI client on its route instead. A body schema that accepts
-anything (`z.custom()` with no check) or validates asynchronously cannot show
-a stream, so a route like that declares `responseBodyHint: "octet-stream"`.
+A procedure that streams a body is served by the OpenAPI routes only, and
+its route says so: the upload's `requestBodyHint: "octet-stream"`, and
+`responseBodyHint: "octet-stream"` on the download. The RPC answerer leaves
+both unmatched, so `/rpc` answers `404` before the handler runs and a
+download never opens a stream nothing would read. A typed RPC client built
+from the contract still lists them, and calling one through `RPCLink` gets
+that `404`: call it with `fetch` or an OpenAPI client on its route instead.
+A download that forgets `responseBodyHint` still streams over OpenAPI, but
+over `/rpc` its handler runs: the answer's stream is cancelled, and the call
+answers `500`, reported to `Observers` as a defect, rather than `{}`.
 
 A download stream that errors midway resets the connection, so the client's
 read rejects rather than ending cleanly on a short body; response
