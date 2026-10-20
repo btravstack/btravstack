@@ -107,7 +107,12 @@ re-exports what a library consumer exports, under the TypeScript a consumer
 realistically has and `declaration: true`; then installs each package ALONE,
 with only its required peers at the floors it advertises, and loads every
 entry point by `import` and `require` on this Node and on the published
-`engines` floor. Both are documented in their own READMEs.
+`engines` floor. Both are documented in their own READMEs. `prisma-floor`
+holds the oldest Prisma 8 train `@btravstack/prisma`'s peer admits, through
+the `prisma-floor` catalog, with migrations released under it: its spec
+applies and verifies them with that train's own CLI and boots the starter over
+that train's client, so the Tests job runs the floor and the latest train both
+(issue #641).
 
 **That second one exists because `examples/di-hexagonal`'s emit guard covers
 only a di port**, and the three example deployments sit on
@@ -678,6 +683,13 @@ outage. The kernel reports; an operator decides.
 runtime is `@prisma/orm-postgres` rather than `@prisma/client` — and there is
 **no second adapter and no repository base type** — a decision, not a backlog
 item (#156).
+
+**Upgrading it never forces a Prisma upgrade.** Its peer admits every Prisma 8
+train from `8.0.0-rc.11`, and `internal/prisma-floor` holds the floor in CI.
+An application whose migrations were released under an older train can only
+leave it by rewriting them, which a no-edit policy forbids, so a new train is
+adopted in the default catalog and the floor moves only in a major
+(`packages/prisma/AGENTS.md`, _Two Prisma trains_).
 
 **Row-level security is DECLARED, in the application's own contract**: `@@rls`
 on the model and a `policy_<operation>` block beside it, planned and applied as

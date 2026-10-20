@@ -124,9 +124,9 @@ export type PrismaBinding = {
   /** `DATABASE_URL`, read through `Config` rather than by the application. */
   readonly url: string;
   /**
-   * The starter's own middleware — one `afterQuery` hook reporting every
-   * query to `Observers`. Spread it into the client's `middleware` array
-   * beside any of the application's own.
+   * The starter's own middleware — the statement hooks of every supported
+   * Prisma train, reporting every query to `Observers`. Spread it into the
+   * client's `middleware` array beside any of the application's own.
    */
   readonly middleware: readonly SqlMiddlewareLike[];
 };
@@ -236,7 +236,7 @@ export const prismaDatabase =
     // Instrumentation is a MIDDLEWARE the application spreads into its own
     // client, not a wrapper applied here. Prisma 8 has no `$extends` to layer
     // one over a built client, and it needs none: `middleware` is a
-    // construction option, and an `afterQuery` hook sees every query on both
+    // construction option, and a statement hook sees every query on both
     // lanes — the ORM's and the SQL builder's — which is more than the v7
     // `$allModels` wrapper ever did.
     const clientProvider = Provider(port)({

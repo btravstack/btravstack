@@ -1,0 +1,30 @@
+{
+  "name": "@btravstack/internal-prisma-floor",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The oldest Prisma 8 train @btravstack/prisma supports, held as a consumer holds it: migrations released under it, applied and verified by its own CLI, and the starter booted over its own client",
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "type": "module",
+  "scripts": {
+    "generate": "prisma contract emit",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@btravstack/config": "workspace:*",
+    "@btravstack/core": "workspace:*",
+    "@btravstack/di": "workspace:*",
+    "@btravstack/internal-test-infra": "workspace:*",
+    "@btravstack/prisma": "workspace:*",
+    "@btravstack/tsconfig": "catalog:",
+    "@prisma/cli-engine": "catalog:prisma-floor",
+    "@prisma/orm-postgres": "catalog:prisma-floor",
+    "@types/node": "catalog:",
+    "@unthrown/vitest": "catalog:",
+    "prisma": "catalog:prisma-floor",
+    "typescript": "catalog:",
+    "unthrown": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -12,8 +12,17 @@ pnpm add @btravstack/prisma @btravstack/core @btravstack/config @btravstack/di u
   @prisma/orm-postgres@8.0.0-rc.18 temporal-polyfill@1.0.4
 ```
 
-Install the required peers and Postgres polyfill, so the application holds a single
-copy of each. The `prisma` CLI is yours, as a dev dependency: the client is
+Install the required peers, so the application holds a single copy of each;
+`temporal-polyfill` is the Postgres package's own peer from rc.14. The
+`@prisma/orm-postgres` peer is `^8.0.0-rc.11`, and both ends are tested: an
+application already on rc.11 keeps it.
+
+**Upgrading with released migrations:** upgrade `@btravstack/prisma` and its
+`@btravstack/*` peers, and leave Prisma where it is. No contract, migration or
+database marker changes. Upgrading Prisma itself from rc.11 rewrites every
+released migration and re-signs every database, which is Prisma's path rather
+than this package's; see
+[Supported Prisma trains](https://btravstack.github.io/btravstack/reference/prisma#supported-prisma-trains). The `prisma` CLI is yours, as a dev dependency: the client is
 built from _your_ emitted contract, so there is none for this package to ship.
 Node `>=22.12`.
 
@@ -96,7 +105,7 @@ the per-query observation below comes from.
   lane, folded into the kernel's `GET /healthz` with nothing wired. `/readyz`
   does not read it: failing readiness on a dependency every replica shares
   removes them all at once.
-- **Every query handed to `Observers`**, as one SQL activity middleware, so
+- **Every query handed to `Observers`**, as one statement middleware, so
   composing `observability()` writes the failures as lines and `otel()` opens
   the spans and mints the instruments — with no flag here and no port list to
   satisfy when you compose neither. A middleware sees the ORM lane, the SQL
@@ -188,7 +197,7 @@ rather than the role `DATABASE_URL` carries. An application that migrates itself
 at boot races every other replica.
 
 **Engine-level tracing.** There is no engine: Prisma 8 is a TypeScript runtime
-and ships no instrumentation package, so the SQL activity middleware is the
+and ships no instrumentation package, so the statement middleware is the
 whole seam and it already carries the runtime's own latency.
 
 **Transactions.** Commit boundaries belong to the adapter, spelled at the call —
