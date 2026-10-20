@@ -1,7 +1,8 @@
 import { request, type IncomingMessage } from "node:http";
 import { gzipSync } from "node:zlib";
 
-import type { RunningApp } from "@btravstack/core";
+import { Observers, type Operation, type RunningApp } from "@btravstack/core";
+import { Provider } from "@btravstack/di";
 import type { HttpInfo } from "@btravstack/http-server";
 import { it } from "@btravstack/internal-http-fixtures";
 import { oc } from "@orpc/contract";
@@ -84,9 +85,19 @@ const router = defineHttp().OrpcRouter(contract)({
   }),
 });
 
+/** What the apps below reported as defects, cleared by the test that reads it. */
+const defects: Operation[] = [];
+const observer = Provider.member(Observers)({
+  inject: {},
+  sync: () => (operation) => () => {
+    if (operation.name === "defect") defects.push(operation);
+  },
+});
+
 const appOf = (name: string, options: { readonly compression?: boolean } = {}) =>
   HttpModule(name)({
     router,
+    provides: [observer],
     port: 0,
     hostname: "127.0.0.1",
     bodyLimit: 1024,
@@ -137,13 +148,18 @@ describe("body limits by kind", () => {
   it("refuses a chunked stream once it passes the stream limit", async ({ boot }) => {
     // GIVEN a stream limit read from the environment
     const port = await portOf(boot(app, { env: { HTTP_STREAM_BODY_LIMIT: String(STREAM_LIMIT) } }));
+    defects.length = 0;
 
     // WHEN a client sends more than the limit, declaring no length
     const sending = put(port, "/api/content/report", { "transfer-encoding": "chunked" });
     sending.request.end(Buffer.alloc(STREAM_LIMIT + 1, 1));
 
-    // THEN the stream errored past the limit and the route answered 413
-    expect((await sending.answer).status).toBe(413);
+    // THEN the stream errored past the limit, the route answered 413, and the
+    // handler's unmodeled failure was not reported as a defect
+    expect({ status: (await sending.answer).status, defects }).toEqual({
+      status: 413,
+      defects: [],
+    });
   });
 
   it("refuses a declared length over the stream limit before reading", async ({ boot }) => {

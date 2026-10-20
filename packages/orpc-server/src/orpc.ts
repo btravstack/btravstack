@@ -50,7 +50,7 @@ import {
 } from "@orpc/server/plugins";
 import { RPC_DEFAULT_ALLOW_METHODS, type StandardHandlerPlugin } from "@orpc/server/standard";
 
-import { bodyLimitPlugin } from "./body-limit.js";
+import { bodyLimitPlugin, refusedStream } from "./body-limit.js";
 import type {
   AllRequirementsOf,
   Built,
@@ -186,14 +186,19 @@ const STATUS_OF: Readonly<Record<string, number | undefined>> = COMMON_ERROR_STA
  * Reports what oRPC is about to answer a 5xx for to `Observers`, with its
  * cause. An error the contract declares is the caller's answer and is not
  * reported, even where its custom code answers `500`. A client interceptor, so
- * a body oRPC cannot decode never counts as a defect.
+ * a body oRPC cannot decode never counts as a defect; nor does a stream past
+ * `streamBodyLimit`, which answers `413` whatever the handler made of it.
  */
 export const reportDefects = (
   observers: ServiceOf<Observers>,
 ): NonNullable<RPCHandlerOptions<DefaultInitialContext>["clientInterceptors"]> => [
   onError((error, { path }) => {
     const answered = toORPCError(error);
-    if (!answered.defined && (STATUS_OF[answered.code] ?? DEFAULT_ERROR_STATUS) >= 500)
+    if (
+      !answered.defined &&
+      (STATUS_OF[answered.code] ?? DEFAULT_ERROR_STATUS) >= 500 &&
+      !refusedStream(error)
+    )
       observe(observers, {
         component: "orpc",
         name: "defect",

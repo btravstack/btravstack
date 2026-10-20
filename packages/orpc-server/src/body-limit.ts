@@ -17,6 +17,20 @@ const OVER = Symbol("btravstack.streamBodyLimit");
 type Over = { tripped: boolean };
 type Limited = Request & { readonly [OVER]?: Over };
 
+/** The errors a stream past its limit was failed with, so defect reporting can tell them. */
+const refusals = new WeakSet<object>();
+
+/** Whether `error`, or an error in its `cause` chain, is a stream this plugin refused. */
+export const refusedStream = (error: unknown): boolean => {
+  const seen = new Set<unknown>();
+  for (let at = error; typeof at === "object" && at !== null && !seen.has(at);) {
+    if (refusals.has(at)) return true;
+    seen.add(at);
+    at = (at as { readonly cause?: unknown }).cause;
+  }
+  return false;
+};
+
 /**
  * oRPC's `RequestLimitHandlerPlugin`, with the bound chosen by how the route
  * reads its body: a body read as a stream (`requestBodyHint: "octet-stream"`)
@@ -29,7 +43,9 @@ type Limited = Request & { readonly [OVER]?: Over };
  * A stream past its limit errors its reader with `PAYLOAD_TOO_LARGE`, and the
  * request answers that `413` whatever the handler made of the error: a refusal
  * of the body is the transport's, like the one a declared `content-length`
- * gets before any byte is read.
+ * gets before any byte is read. Nor is it a defect: `reportDefects` skips an
+ * error whose `cause` chain holds the refusal, which is how `@unthrown/orpc`
+ * carries it out of a handler that did not model the failure.
  */
 export const bodyLimitPlugin = (
   bufferedLimit: number,
@@ -93,7 +109,9 @@ const streamed = async (request: Request, limit: number, over: Over) => {
         seen += chunk.byteLength;
         if (seen <= limit) return controller.enqueue(chunk);
         over.tripped = true;
-        controller.error(new ORPCError("PAYLOAD_TOO_LARGE"));
+        const refusal = new ORPCError("PAYLOAD_TOO_LARGE");
+        refusals.add(refusal);
+        controller.error(refusal);
       },
     }),
   );

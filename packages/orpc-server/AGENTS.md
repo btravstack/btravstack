@@ -41,7 +41,9 @@ past it, the stream errors with `PAYLOAD_TOO_LARGE` and a handler
 interceptor answers `413` whatever the handler made of that error, because
 `@unthrown/orpc` turns an `ORPCError` defect cause into a `500` on purpose.
 The request carries that state under a symbol key, which survives the spreads
-other interceptors make of it. `@orpc/node`'s `TmpFileUploadHandlerPlugin`
+other interceptors make of it. `reportDefects` skips an error whose `cause`
+chain holds the refusal, so an oversized upload through a handler that did
+not model the failure is a `413`, never a reported defect. `@orpc/node`'s `TmpFileUploadHandlerPlugin`
 has the same three-kind model but spools files to disk and adds a peer; a
 route that streams needs neither. The default is finite because nothing is
 buffered: the limit bounds one client's hold on a connection and whatever the
