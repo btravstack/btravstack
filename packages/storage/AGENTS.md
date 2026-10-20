@@ -143,6 +143,14 @@ and `docs/reference/storage.md` is the reader's page.
   refusal. The buffered pool still queues, as the SDK does: its calls are
   short. RustFS proves a `head` and a `put` complete while every stream socket
   is held unread, which a shared pool of the same size does not.
+- **The agents are instances, never agent options.** Given options, the SDK
+  sends every body of 2 MiB or more (`Expect: 100-continue`: each 8 MiB part,
+  a large `put`) on a fresh unpooled connection, which no `maxSockets` bounds
+  and which keeps the request, and the part it carries, reachable until that
+  connection has closed. A 32 MiB `putStream` opened five connections; it now
+  opens one, which the s3 spec counts. Those lingering parts were what made the
+  256 MiB write's memory bound flaky on loaded runners, where the one-off
+  connections close late.
 - **Every pool default is the SDK's own**, stated rather than inherited, and
   `requestTimeoutMs` sets `throwOnRequestTimeout`: a bound that only logs a
   warning is not one.

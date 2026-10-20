@@ -329,8 +329,10 @@ export const Streaming = storage({ adapter: s3Storage({ streamMaxSockets: 20 }) 
 | `STORAGE_S3_REQUEST_TIMEOUT_MS`    | `requestTimeoutMs`    | no       | `0`, none   |
 
 An option pins its variable. **Every default is the AWS SDK's own**: 50
-keep-alive sockets per pool, and no timeout. Both timeouts and sizes apply to
-each pool.
+keep-alive sockets per pool, and no timeout. The timeouts apply to both pools.
+Every request goes over its pool's sockets, a large body included: the SDK on
+its own sends one of 2 MiB or more, each part of a streamed write among them,
+on a connection of its own outside any pool.
 
 - **`maxSockets`** sockets serve every call but the streamed ones. A call
   finding them all busy waits for one, as the SDK always did.

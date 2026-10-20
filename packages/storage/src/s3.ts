@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { Agent as HttpAgent } from "node:http";
+import { Agent as HttpsAgent } from "node:https";
 import type { Readable } from "node:stream";
 
 import {
@@ -134,7 +136,13 @@ const s3Schema = (options: S3StorageOptions) =>
     ),
   });
 
-/** A client over its own socket pool: keep-alive sockets, at most `maxSockets` of them. */
+/**
+ * A client over its own socket pool: keep-alive sockets, at most `maxSockets`
+ * of them. The agents are instances, not options: from options the SDK sends
+ * a body of 2 MiB or more (`Expect: 100-continue`, every 8 MiB part) on a
+ * fresh unpooled connection, which no `maxSockets` bounds and which keeps the
+ * request, and the part it carries, alive until that connection has closed.
+ */
 const s3Client = (config: ServiceOf<StorageConfig>, maxSockets: number): S3Client =>
   new S3Client({
     endpoint: config.endpoint,
@@ -149,8 +157,8 @@ const s3Client = (config: ServiceOf<StorageConfig>, maxSockets: number): S3Clien
       socketTimeout: config.socketTimeoutMs,
       requestTimeout: config.requestTimeoutMs,
       throwOnRequestTimeout: true,
-      httpAgent: { keepAlive: true, maxSockets },
-      httpsAgent: { keepAlive: true, maxSockets },
+      httpAgent: new HttpAgent({ keepAlive: true, maxSockets }),
+      httpsAgent: new HttpsAgent({ keepAlive: true, maxSockets }),
     },
   });
 

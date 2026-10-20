@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { Agent } from "node:http";
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
 
@@ -235,6 +236,8 @@ export type StorageFixtures = {
   readonly pooled: StorageService;
   /** The S3 adapter whose calls must be answered within 1 ms, which none can. */
   readonly hurried: StorageService;
+  /** How many HTTP connections the process has opened since the test began. */
+  readonly connections: () => number;
   /** The S3 adapter over an endpoint that is not listening — the failure every deployment eventually meets. */
   readonly unreachable: StorageService;
   /** The S3 adapter whose credentials cannot be resolved, which is the one way presigning itself fails. */
@@ -287,6 +290,19 @@ export const it = test.extend<StorageFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   keyPrefix: async ({}, use) => {
     await use(`test/${randomUUID()}/`);
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  connections: async ({}, use) => {
+    // Counted where every `http.Agent` opens a socket, so a connection made
+    // outside the pool is counted too; restored on every exit path.
+    const open = Agent.prototype.createConnection;
+    let made = 0;
+    Agent.prototype.createConnection = function (this: Agent, ...args) {
+      made += 1;
+      return open.apply(this, args);
+    };
+    await use(() => made);
+    Agent.prototype.createConnection = open;
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   s3: async ({}, use) => {
