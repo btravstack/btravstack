@@ -1675,8 +1675,9 @@ the named options do not cover.
 
 ### `plugins`
 
-`readonly NodeHttpHandlerPlugin<DefaultInitialContext>[]`, from
-`@orpc/server/node`, appended to the three configured above and forwarded
+`readonly StandardHandlerPlugin<DefaultInitialContext>[]`, from
+`@orpc/server/standard` (oRPC removed adapter plugins in `2.0.0-beta.37`, so
+every plugin is a standard one), appended to the three configured above and forwarded
 straight to `new RPCHandler(service, { plugins })` — any oRPC plugin the named
 options do not cover, imported from `@orpc/server/plugins`:
 `plugins: [new BatchHandlerPlugin()]`.

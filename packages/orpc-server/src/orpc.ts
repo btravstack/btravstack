@@ -40,7 +40,7 @@ import {
   type ProcedureImplementer,
   type Router,
 } from "@orpc/server";
-import { RPCHandler, type NodeHttpHandlerPlugin, type RPCHandlerOptions } from "@orpc/server/node";
+import { RPCHandler, type RPCHandlerOptions } from "@orpc/server/node";
 import {
   CORSHandlerPlugin,
   GetMethodCsrfProtectionHandlerPlugin,
@@ -49,7 +49,7 @@ import {
   type CORSHandlerPluginOptions,
   type ResponseCompressionHandlerPluginOptions,
 } from "@orpc/server/plugins";
-import { RPC_DEFAULT_ALLOW_METHODS } from "@orpc/server/standard";
+import { RPC_DEFAULT_ALLOW_METHODS, type StandardHandlerPlugin } from "@orpc/server/standard";
 
 import type {
   AllRequirementsOf,
@@ -116,7 +116,7 @@ export type OrpcOptions = {
    * not a middleware slot for application logic, which the package still
    * declines.
    */
-  readonly plugins?: readonly NodeHttpHandlerPlugin<DefaultInitialContext>[];
+  readonly plugins?: readonly StandardHandlerPlugin<DefaultInitialContext>[];
 };
 
 /**
@@ -146,7 +146,7 @@ export const pluginsOf = (
   options: OrpcOptions,
   config: ServiceOf<HttpConfig>,
   csrf: boolean,
-): readonly NodeHttpHandlerPlugin<DefaultInitialContext>[] => {
+): readonly StandardHandlerPlugin<DefaultInitialContext>[] => {
   const cors = corsOf(options.cors, config.corsOrigin);
   const compression =
     options.compression === undefined || typeof options.compression === "boolean"

@@ -5,7 +5,7 @@ environment it chooses, and stops it when the test ends. Install the test
 dependencies and the client the specs call through:
 
 ```sh
-pnpm add -D @btravstack/testing vitest @unthrown/vitest @orpc/client@2.0.0-beta.34
+pnpm add -D @btravstack/testing vitest @unthrown/vitest @orpc/client@2.0.0-beta.44
 ```
 
 Keep all `@orpc/*` packages on that same beta; an unversioned install resolves

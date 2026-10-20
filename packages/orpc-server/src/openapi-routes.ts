@@ -36,14 +36,12 @@ export const openApiRoutes = (options: OpenApiRoutesOptions = {}) => {
   return Provider.member(HttpHandler)({
     inject: { router: OrpcRouterPort, config: HttpConfig, observers: Observers },
     sync: ({ router, config, observers }) => {
-      const handlerOptions = {
-        // OpenAPI GET routes use HTTP's safe-method contract, not RPC's GET exception.
-        plugins: [...pluginsOf(options, config, false)],
-        clientInterceptors: reportDefects(observers),
-      };
       const handler = new NodeHttpHandler(
-        new StandardHandler(new ContractOpenApiCodec(router), handlerOptions),
-        handlerOptions,
+        new StandardHandler(new ContractOpenApiCodec(router), {
+          // OpenAPI GET routes use HTTP's safe-method contract, not RPC's GET exception.
+          plugins: [...pluginsOf(options, config, false)],
+          clientInterceptors: reportDefects(observers),
+        }),
       );
       return {
         prefix,

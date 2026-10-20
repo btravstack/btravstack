@@ -1518,7 +1518,7 @@ answerer. A document is generated separately through `openApiDocument()`; no
 spec or UI route is mounted by default. The installed oRPC reference plugin
 can serve one, but its raw generator would omit this package's authentication
 marker fold, so supply `openApiDocument()` as its `spec` callback. The catalog's
-`2.0.0-beta.34` plugin has an `allow` predicate for both spec and UI routes;
+`2.0.0-beta.44` plugin has an `allow` predicate for both spec and UI routes;
 a private document must use that predicate or an ingress gate.
 
 ## Several answerers, one runtime
