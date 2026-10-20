@@ -36,6 +36,7 @@ export type Answer = {
 };
 
 export type Bodies = {
+  /** Errors the broken download after the client has received its headers. */
   readonly breakDownload: () => void;
   /** Boots one app on an ephemeral port, over `env`, and answers its port. */
   readonly serve: (app: BodiesApp, env?: Readonly<Record<string, string>>) => Promise<number>;
