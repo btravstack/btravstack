@@ -94,7 +94,7 @@ export const it = test.extend<{
         createHttpClient({
           origins: [state.origin],
           maxResponseBytes: limits.maxResponseBytes ?? 1024,
-          deadlineMs: limits.deadlineMs ?? 1000,
+          deadlineMs: limits.deadlineMs ?? 30_000,
         }).getOrThrow(),
     };
     const server = https.createServer(

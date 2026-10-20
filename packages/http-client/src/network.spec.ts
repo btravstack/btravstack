@@ -120,7 +120,7 @@ describe("outbound HTTPS", () => {
       network.respond = (_req, res) => {
         if (phase === "body") res.write("partial");
       };
-      const pending = network.client().request({ url: network.origin });
+      const pending = network.client({ deadlineMs: 1000 }).request({ url: network.origin });
       if (phase !== "dns") await vi.waitUntil(() => network.requests.length === 1);
       // WHEN
       await vi.advanceTimersByTimeAsync(1001);
@@ -218,7 +218,7 @@ describe("bounded complete responses", () => {
   });
   it("snapshots the policy and request before asynchronous work", async ({ network }) => {
     // GIVEN
-    const policy = { origins: [network.origin], deadlineMs: 1000, maxResponseBytes: 5 };
+    const policy = { origins: [network.origin], deadlineMs: 30_000, maxResponseBytes: 5 };
     const client = createHttpClient(policy).getOrThrow();
     const headers = { authorization: "Bearer original" };
     const body = new Uint8Array([65]);
@@ -271,7 +271,7 @@ describe("connection boundaries", () => {
     // GIVEN
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     network.origin = blackhole.origin;
-    const client = network.client();
+    const client = network.client({ deadlineMs: 1000 });
     const pending = client.request({ url: blackhole.origin });
     await vi.waitUntil(() => blackhole.sockets.size === 1);
     // WHEN
@@ -296,7 +296,7 @@ describe("injected request ownership", () => {
       provides: [
         Provider(Policy)({
           inject: {},
-          value: { origins: [network.origin], maxResponseBytes: 100, deadlineMs: 1000 },
+          value: { origins: [network.origin], maxResponseBytes: 100, deadlineMs: 30_000 },
         }),
       ],
       exports: [HttpClient],

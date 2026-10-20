@@ -57,6 +57,9 @@ still verifies `api.example`; the CA is supplied only by the test fixture.
 The mTLS fixture requires and verifies a client certificate; ordinary HTTPS
 fixtures do not request one. Malformed identity lists and non-object bindings
 are modeled policy errors for JavaScript consumers too.
+The network fixture gives ordinary requests a 30-second policy deadline so
+runner contention does not turn successful TLS tests into deadline tests.
+Deadline cases pin their own one-second budget and advance fake timers.
 No production configuration bypasses the policy. Tests require loopback sockets,
 not Docker or public network access.
 
