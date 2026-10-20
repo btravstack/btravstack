@@ -22,7 +22,8 @@ See [custom error statuses](https://btravstack.github.io/btravstack/reference/ht
 pnpm add @btravstack/orpc-server @btravstack/http-server @btravstack/htmx-server \
   @btravstack/core @btravstack/config @btravstack/di @btravstack/contract \
   unthrown @orpc/server@2.0.0-beta.44 @orpc/contract@2.0.0-beta.44 \
-  @orpc/openapi@2.0.0-beta.44 @orpc/json-schema@2.0.0-beta.44 @unthrown/orpc@^0.4.2
+  @orpc/openapi@2.0.0-beta.44 @orpc/json-schema@2.0.0-beta.44 \
+  @orpc/client@2.0.0-beta.44 @unthrown/orpc@^0.4.2
 ```
 
 ## A worked example
