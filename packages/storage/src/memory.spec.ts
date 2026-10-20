@@ -300,6 +300,21 @@ describe("memoryStorageBackend", () => {
     await expect(written).toBeErrTagged("InvalidStorageOptions");
   });
 
+  it("answers the refused options without waiting on a cancel that never settles", async ({
+    memory,
+  }) => {
+    // GIVEN a source whose cancel hangs forever
+    const stream = new ReadableStream<Uint8Array>({
+      cancel: () => new Promise<void>(() => undefined),
+    });
+
+    // WHEN it is written under a malformed digest
+    const written = memory.putStream("a.bin", stream, { contentType: "t", sha256: "nope" });
+
+    // THEN the refusal is the answer, unheld by the cleanup
+    await expect(written).toBeErrTagged("InvalidStorageOptions");
+  });
+
   it("answers StreamInterrupted for a stream another reader holds", async ({ memory }) => {
     // GIVEN a stream already locked to a reader
     const stream = aStream(1);

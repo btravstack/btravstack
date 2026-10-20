@@ -175,7 +175,15 @@ const readPart = (
     (cause) => new StreamInterrupted({ key, cause }),
   );
 
-/** The SDK's own answer, settled; an abort or a cancel that fails changes nothing the caller can act on. */
+/** Cleanup the caller must not wait on: a source's cancel may never settle, and its failure changes nothing. */
+const unawaited = (promise: Promise<unknown>): void => {
+  promise.then(
+    () => undefined,
+    () => undefined,
+  );
+};
+
+/** The SDK's own answer, settled; an abort that fails changes nothing the caller can act on. */
 const settled = (promise: Promise<unknown>): AsyncResult<void, never> =>
   fromSafePromise(
     promise.then(
@@ -335,14 +343,14 @@ function streamUpload(
             ).flatMap(({ UploadId }) => multipart(UploadId, first)),
       )
       .map(() => undefined)
-      .flatTapErrCases((matcher) =>
+      .tapErrCases((matcher) =>
         matcher.with(
           P.tag("InvalidStorageOptions"),
           P.tag("ObjectExists"),
           P.tag("ChecksumMismatch"),
           P.tag("StreamInterrupted"),
           P.tag("StorageUnavailable"),
-          (error) => settled(source.reader.cancel(error)),
+          (error) => unawaited(source.reader.cancel(error)),
         ),
       );
   }

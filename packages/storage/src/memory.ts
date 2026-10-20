@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { Module, Provider } from "@btravstack/di";
-import { Err, ErrAsync, Ok, OkAsync, P, fromPromise, fromSafePromise } from "unthrown";
+import { Err, ErrAsync, Ok, OkAsync, P, fromPromise } from "unthrown";
 
 import { validateOptions } from "./options.js";
 import {
@@ -18,20 +18,19 @@ import {
 
 /**
  * Every byte of the stream, or the stream's own error; a refused option cancels
- * it unread, and a cancel that fails leaves the refusal the answer.
+ * it unread, and a cancel that fails or never settles leaves the refusal the
+ * answer, unwaited.
  */
 const collect = (key: string, stream: ReadableStream<Uint8Array>, options: WriteOptions) =>
   validateOptions(key, options)
     .toAsync()
-    .flatTapErrCases((matcher) =>
-      matcher.with(P.tag("InvalidStorageOptions"), () =>
-        fromSafePromise(
-          stream.cancel().then(
-            () => undefined,
-            () => undefined,
-          ),
-        ),
-      ),
+    .tapErrCases((matcher) =>
+      matcher.with(P.tag("InvalidStorageOptions"), () => {
+        stream.cancel().then(
+          () => undefined,
+          () => undefined,
+        );
+      }),
     )
     .flatMap(() =>
       fromPromise(

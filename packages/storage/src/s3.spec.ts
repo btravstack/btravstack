@@ -1133,6 +1133,49 @@ describe("s3Storage, streamed, when the store cannot be reached", () => {
     );
   });
 
+  it("answers the part's failure when the store refuses the abort too", async () => {
+    // GIVEN a store that opens a multipart upload, then refuses everything else
+    const client = new S3Client({
+      endpoint: "http://127.0.0.1:1",
+      region: "us-east-1",
+      forcePathStyle: true,
+      credentials: { accessKeyId: "none", secretAccessKey: "none" },
+    });
+    client.middlewareStack.add(
+      () => (args) =>
+        "PartNumber" in (args.input as object) || "MultipartUpload" in (args.input as object)
+          ? Promise.reject(new Error("no route"))
+          : (args.input as { UploadId?: string }).UploadId === undefined
+            ? Promise.resolve({ output: { $metadata: {}, UploadId: "u" } as never, response: {} })
+            : Promise.reject(new Error("no route either")),
+      { step: "initialize", name: "refuse" },
+    );
+
+    // WHEN a stream longer than a part is written
+    const written = s3StorageBackend(client, "bucket").putStream("a", aStream(9 * MiB), {
+      contentType: "t",
+    });
+
+    // THEN the part's failure is the answer, not the abort's
+    await expect(written).toBeErrWith(
+      expect.objectContaining({ _tag: "StorageUnavailable", reason: "no route" }),
+    );
+  });
+
+  it("answers without waiting on a source whose cancel never settles", async ({ unreachable }) => {
+    // GIVEN a source whose cancel hangs forever
+    const stream = new ReadableStream<Uint8Array>({
+      pull: (controller) => controller.enqueue(new Uint8Array(65_536)),
+      cancel: () => new Promise<void>(() => undefined),
+    });
+
+    // WHEN it is written while the store is down
+    const written = unreachable.putStream("a.bin", stream, { contentType: "t" });
+
+    // THEN the store's failure is the answer, unheld by the cleanup
+    await expect(written).toBeErrTagged("StorageUnavailable");
+  });
+
   it("answers StorageUnavailable naming getStream", async ({ unreachable }) => {
     // GIVEN an endpoint that is not listening
     // WHEN a key is streamed
