@@ -156,8 +156,12 @@ download never opens a stream nothing would read. A typed RPC client built
 from the contract still lists them, and calling one through `RPCLink` gets
 that `404`: call it with `fetch` or an OpenAPI client on its route instead.
 A download that forgets `responseBodyHint` still streams over OpenAPI, but
-over `/rpc` its handler runs: the answer's stream is cancelled, and the call
-answers `500`, reported to `Observers` as a defect, rather than `{}`.
+over `/rpc` its handler runs. Every stream found in the answer has its
+cancellation started, without waiting, and the call answers `500` at once,
+reported to `Observers` as a defect, rather than `{}`. The answer's objects,
+arrays, maps and sets are searched. A stream the handler holds a reader on is
+locked, and the backstop cannot free it: it is reported as a defect of its
+own, and releasing it is the handler's job.
 
 A download stream that errors midway resets the connection, so the client's
 read rejects rather than ending cleanly on a short body; response

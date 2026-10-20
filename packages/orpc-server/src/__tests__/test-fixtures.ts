@@ -192,6 +192,9 @@ const contentContract = {
       )
       .input(z.object({ key: z.string() }))
       .output(z.object({ body: z.instanceof(ReadableStream) })),
+    bundle: oc
+      .input(z.object({ key: z.string() }))
+      .output(z.map(z.string(), z.instanceof(ReadableStream))),
   },
   items: {
     create: oc
@@ -205,7 +208,8 @@ const contentContract = {
  * The `PUT` counts the bytes it reads, calling `sawFirstChunk` on the first; the
  * `GET` streams {@link DOWNLOAD} with its own headers, recording into `downloads`
  * the stream it opened and its cancellation, or errors midway for `broken`; the
- * `export` streams it too, from a route declaring `responseBodyHint`.
+ * `export` streams it too, from a route declaring `responseBodyHint`, and
+ * `bundle` answers it inside a `Map`.
  */
 const contentRouterOf = (sawFirstChunk: () => void, downloads: ("opened" | "cancelled")[]) =>
   defineHttp().OrpcRouter(contentContract)({
@@ -226,10 +230,11 @@ const contentRouterOf = (sawFirstChunk: () => void, downloads: ("opened" | "canc
                     "content-length": String(DOWNLOAD.length),
                     "content-disposition": 'attachment; filename="report.txt"',
                   },
-                  body: recorded(DOWNLOAD, downloads),
+                  body: downloadOf(key, downloads),
                 },
           ),
         export: () => OkAsync({ body: recorded(DOWNLOAD, downloads) }),
+        bundle: (_context, { key }) => OkAsync(new Map([[key, recorded(DOWNLOAD, downloads)]])),
       },
       items: { create: (_context, input) => OkAsync(input) },
     }),
@@ -248,9 +253,18 @@ const countBytes = async (
   return bytes;
 };
 
+/** {@link DOWNLOAD} as `recorded` streams it: `stuck` never settles its cancellation, `locked` has a reader. */
+const downloadOf = (key: string, downloads: ("opened" | "cancelled")[]) => {
+  if (key === "stuck") return recorded(DOWNLOAD, downloads, new Promise<void>(() => {}));
+  const stream = recorded(DOWNLOAD, downloads);
+  if (key === "locked") stream.getReader();
+  return stream;
+};
+
 const recorded = (
   text: string,
   downloads: ("opened" | "cancelled")[],
+  cancelled: Promise<void> = Promise.resolve(),
 ): ReadableStream<Uint8Array> =>
   new ReadableStream({
     start: () => void downloads.push("opened"),
@@ -258,7 +272,10 @@ const recorded = (
       controller.enqueue(new TextEncoder().encode(text));
       controller.close();
     },
-    cancel: () => void downloads.push("cancelled"),
+    cancel: () => {
+      downloads.push("cancelled");
+      return cancelled;
+    },
   });
 
 const brokenAfter = (text: string): ReadableStream<Uint8Array> =>

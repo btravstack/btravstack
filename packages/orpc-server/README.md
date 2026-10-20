@@ -421,8 +421,9 @@ body cleanly; declare `responseBodyHint: "octet-stream"` on that route. A
 route declaring either hint is served by the `openapi` routes only: the RPC
 answerer leaves it unmatched, so `/rpc` answers `404` before its handler
 runs, and a typed RPC client that lists it gets that `404`. An RPC answer
-that still carries a `ReadableStream` has it cancelled and answers `500`,
-reported as a defect. The recipe is
+that still carries a `ReadableStream` has its cancellation started and
+answers `500` at once, reported as a defect; a locked stream cannot be freed
+that way and is reported on its own. The recipe is
 [Serve an oRPC contract as OpenAPI routes](https://btravstack.github.io/btravstack/how-to/serve-an-openapi-contract#stream-a-binary-body).
 
 ## What it does not do

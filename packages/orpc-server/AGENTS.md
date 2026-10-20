@@ -65,11 +65,17 @@ anyway: the upload hint is what makes the OpenAPI codec stream the body, and
 the download hint is what an OpenAPI client decodes the answer by. A
 consumer who forgets the download hint meets the second layer:
 `cancelStreams`, a client interceptor inside `reportDefects`, walks the
-answer's plain objects and arrays. It cancels every `ReadableStream` it finds,
-awaiting the cancellations, and throws, so the call answers `500` and is
-reported as a defect, never `{}` over an open socket. It walks only plain
-records because an event iterator, or any other class instance, is
-serialized by its own rules and may wrap a stream it still needs.
+answer's plain objects, arrays, maps and sets (map keys included), guarded
+against cycles. It starts the cancellation of every unlocked
+`ReadableStream` it finds and throws at once, so the call answers `500` and
+is reported as a defect, never `{}` over an open socket. Nothing awaits a
+cancellation: a source whose `cancel` never settles would otherwise hold the
+request and its unit open. A locked stream, one the handler took a reader on,
+cannot be cancelled by anyone but that reader. It is reported as a defect of
+its own (`orpc.stream: "locked"`, with the count) so the leak is visible;
+freeing it is the handler's. It walks no other class instance, because an
+event iterator is serialized by its own rules and may wrap a stream it still
+needs.
 Detecting streams by probing the output schema with fabricated values was
 tried and dropped: every vendor-specific shape (transforms, narrowed or
 branded streams, checks that a missing sibling field skips, asynchronous or

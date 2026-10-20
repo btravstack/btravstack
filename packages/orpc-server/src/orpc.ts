@@ -238,31 +238,56 @@ const streamsBody = (procedure: AnyProcedureContract): boolean => {
   return meta?.requestBodyHint === "octet-stream" || meta?.responseBodyHint === "octet-stream";
 };
 
-/** Every `ReadableStream` an answer carries, through its plain objects and arrays. */
-const streamsIn = (value: unknown, seen: Set<unknown>): readonly ReadableStream[] => {
+/** Every `ReadableStream` an answer carries, through its plain objects, arrays, maps and sets. */
+const streamsIn = (value: unknown, seen: WeakSet<object>): readonly ReadableStream[] => {
   if (value instanceof ReadableStream) return [value];
   if (typeof value !== "object" || value === null || seen.has(value)) return [];
-  const prototype: unknown = Object.getPrototypeOf(value);
-  if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) return [];
   seen.add(value);
-  return Object.values(value).flatMap((child) => streamsIn(child, seen));
+  const prototype: unknown = Object.getPrototypeOf(value);
+  const children: readonly unknown[] =
+    value instanceof Map
+      ? [...value.keys(), ...value.values()]
+      : value instanceof Set
+        ? [...value]
+        : Array.isArray(value) || prototype === Object.prototype || prototype === null
+          ? Object.values(value)
+          : [];
+  return children.flatMap((child) => streamsIn(child, seen));
 };
 
 /**
  * The RPC wire writes a `ReadableStream` as `{}`, so an answer still carrying
- * one — from a procedure whose route declares no `responseBodyHint` — has its
- * streams cancelled and fails, which `reportDefects` reports.
+ * one — from a procedure whose route declares no `responseBodyHint` — fails at
+ * once, which `reportDefects` reports. Each stream's cancellation is started,
+ * never awaited. A locked stream cannot be cancelled, so the locked ones are
+ * reported as a defect of their own.
  */
-const cancelStreams: NonNullable<
-  RPCHandlerOptions<DefaultInitialContext>["clientInterceptors"]
->[number] = async ({ next }) => {
-  const output = await next();
-  const streams = streamsIn(output, new Set());
-  if (streams.length === 0) return output;
-  await Promise.allSettled(streams.map((stream) => stream.cancel()));
-  // oxlint-disable-next-line unthrown/no-throw -- oRPC answers what an interceptor throws, as a defect
-  throw new Error("[orpc-server] a ReadableStream cannot be answered over RPC");
-};
+const cancelStreams =
+  (
+    observers: ServiceOf<Observers>,
+  ): NonNullable<RPCHandlerOptions<DefaultInitialContext>["clientInterceptors"]>[number] =>
+  async ({ next, path }) => {
+    const output = await next();
+    const streams = streamsIn(output, new WeakSet());
+    if (streams.length === 0) return output;
+    const locked = streams.filter((stream) => stream.locked).length;
+    if (locked > 0)
+      observe(observers, {
+        component: "orpc",
+        name: "defect",
+        attributes: {},
+        details: { "orpc.path": path.join("."), "orpc.stream": "locked", "orpc.streams": locked },
+        traced: false,
+      })({
+        outcome: "error",
+        cause: new Error("[orpc-server] a locked ReadableStream cannot be cancelled"),
+      });
+    void Promise.allSettled(
+      streams.filter((stream) => !stream.locked).map((stream) => stream.cancel()),
+    );
+    // oxlint-disable-next-line unthrown/no-throw -- oRPC answers what an interceptor throws, as a defect
+    throw new Error("[orpc-server] a ReadableStream cannot be answered over RPC");
+  };
 
 /**
  * The oRPC starter: a provider of `HttpHandler` built from the router port,
@@ -270,7 +295,7 @@ const cancelStreams: NonNullable<
  * the runtime answers its `404`, and so does every procedure whose OpenAPI
  * route declares `requestBodyHint` or `responseBodyHint` `"octet-stream"`,
  * which `openApiRoutes()` serves instead. An answer that still carries a
- * `ReadableStream` has it cancelled and answers `500`. Nothing here maps a
+ * `ReadableStream` has its cancellation started and answers `500` at once. Nothing here maps a
  * `Result` to a status.
  */
 export const orpc = (options: OrpcOptions = {}) => {
@@ -285,7 +310,7 @@ export const orpc = (options: OrpcOptions = {}) => {
     sync: ({ router, config, cookieSchemes, observers }) => {
       const rpc = new RPCHandler(router, {
         plugins: [...pluginsOf(options, config, csrfOn(options.csrf, cookieSchemes))],
-        clientInterceptors: [...reportDefects(observers), cancelStreams],
+        clientInterceptors: [...reportDefects(observers), cancelStreams(observers)],
         filter: (procedure) => !streamsBody(procedure),
         allowMethods: (method, procedure) =>
           method === "GET" ? streamsOutput(procedure) : RPC_METHODS.has(method),
