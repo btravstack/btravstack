@@ -43,12 +43,12 @@ catalog:
   "@amqp-contract/contract": 3.0.0-beta.11
   "@amqp-contract/testing": 3.0.0-beta.11
   "@amqp-contract/worker": 3.0.0-beta.11
-  "@aws-sdk/client-s3": 3.1149.0
+  "@aws-sdk/client-s3": 3.1152.0
   "@electric-sql/pglite": 0.4.6
   "@pothos/core": 4.15.1
   "@pothos/plugin-errors": 4.9.3
   "@pothos/plugin-relay": 4.8.1
-  "@aws-sdk/s3-request-presigner": 3.1149.0
+  "@aws-sdk/s3-request-presigner": 3.1152.0
   "@btravstack/commitlint": 0.1.0
   "@btravstack/lefthook": 0.1.1
   "@btravstack/oxlint": 0.2.1
