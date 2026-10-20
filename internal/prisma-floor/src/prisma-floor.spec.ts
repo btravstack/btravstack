@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import { Env } from "@btravstack/config";
-import { Observers, type Operation, type Settle } from "@btravstack/core";
+import { Observers, type Operation, type Settle, type Settled } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import { prismaDatabase } from "@btravstack/prisma";
 import postgres from "@prisma/orm-postgres/runtime";
@@ -35,11 +35,12 @@ describe("the oldest Prisma train @btravstack/prisma supports", () => {
 
   it("boots over the floor client and observes every statement", async ({ floor }) => {
     // GIVEN the starter over an rc.11 client, as a role row security applies to
-    const operations: Operation[] = [];
-    const record = (operation: Operation): Settle => {
-      operations.push(operation);
-      return () => undefined;
-    };
+    const operations: (Operation & Settled)[] = [];
+    const record =
+      (operation: Operation): Settle =>
+      (settled) => {
+        operations.push({ ...operation, ...settled });
+      };
     const database = prismaDatabase("FloorDatabase")({
       client: ({ url, middleware }) => postgres<Contract>({ contractJson, url, middleware }),
     });
@@ -59,15 +60,17 @@ describe("the oldest Prisma train @btravstack/prisma supports", () => {
       ),
     );
 
-    // THEN the boot's two checks and the read each reached the observers as a query
+    // THEN the boot's two checks and the read were each observed as a query
+    // that opened before the driver ran and settled after it
     expect({ found, operations }).toEqual({
       found: expect.toBeOkWith(null),
       operations: [
-        expect.objectContaining({ component: "database", name: "query" }),
-        expect.objectContaining({ component: "database", name: "query" }),
+        expect.objectContaining({ component: "database", name: "query", outcome: "ok" }),
+        expect.objectContaining({ component: "database", name: "query", outcome: "ok" }),
         expect.objectContaining({
           component: "database",
           name: "query",
+          outcome: "ok",
           details: { sql: expect.stringContaining("customer") },
         }),
       ],

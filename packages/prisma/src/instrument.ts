@@ -36,14 +36,17 @@ export type SqlMiddlewareLike = {
  *
  * The operation STARTS before the driver runs and settles after it, because
  * `Observers` answers a finisher precisely so a span can be opened around the
- * work. On rc.18 the finisher rides the activity's own `ctx.state`; on rc.11 it
- * is keyed by the runtime's `ctx.planExecutionId`, held only while in flight.
+ * work. On rc.18 the finisher rides the activity's own `ctx.state`. On rc.11 it
+ * is keyed WEAKLY by the operation's context, the one object every hook of a
+ * statement is handed: a statement refused after `beforeQuery` (a later
+ * middleware, a codec, an abort) never reaches `afterQuery`, and a map keyed by
+ * `planExecutionId` would keep its finisher for the client's lifetime.
  */
 export const queryObserver = (
   observers: readonly ((operation: Operation) => Settle)[],
 ): SqlMiddlewareLike => {
   const key = Symbol("btravstack-query-observer");
-  const inFlight = new Map<string, Settle>();
+  const inFlight = new WeakMap<PlanContext, Settle>();
 
   const start = (plan: Plan, scope: Scope | undefined): Settle =>
     observe(observers, {
@@ -63,13 +66,13 @@ export const queryObserver = (
   };
 
   const beforePlan = (plan: Plan, ctx: PlanContext): Promise<void> => {
-    inFlight.set(ctx.planExecutionId, start(plan, ctx.scope));
+    inFlight.set(ctx, start(plan, ctx.scope));
     return Promise.resolve();
   };
 
   const afterPlan = (_plan: Plan, result: Completed, ctx: PlanContext): Promise<void> => {
-    const finish = inFlight.get(ctx.planExecutionId);
-    inFlight.delete(ctx.planExecutionId);
+    const finish = inFlight.get(ctx);
+    inFlight.delete(ctx);
     settle(finish, result.completed, result.source);
     return Promise.resolve();
   };
@@ -110,5 +113,5 @@ type ActivityEnded =
       readonly source?: string;
     }
   | { readonly kind: "transaction" };
-type PlanContext = { readonly planExecutionId: string; readonly scope?: Scope };
+type PlanContext = { readonly scope?: Scope };
 type Completed = { readonly completed: boolean; readonly source?: string };

@@ -243,8 +243,10 @@ an observer opens is one the statement runs _inside_. From rc.18 it opens in
 `beforeEncode` and settles in `activityEnded`, its finisher held in the
 activity's own `ctx.state`; transaction activities are ignored, and a statement
 refused before encoding opens nothing. Up to rc.17 it opens in `beforeQuery` or
-`beforeExecute` and settles in `afterQuery` or `afterExecute`, paired by
-`ctx.planExecutionId`. Either way both lanes are observed: a write with no
+`beforeExecute` and settles in `afterQuery` or `afterExecute`, paired by the
+context object the runtime hands every hook of one statement. A statement that
+rc.11 refuses after `beforeQuery` never reaches `afterQuery`, so its
+observation is never settled and is collected with that context. Either way both lanes are observed: a write with no
 `RETURNING`, run through `runtime().execute(plan)`, never reaches the query
 hooks, and overlapping statements settle independently.
 

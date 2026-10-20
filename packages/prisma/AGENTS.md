@@ -360,10 +360,16 @@ observed twice.
   `error`; `succeeded` settles `ok`. A statement refused before encoding never
   opens an observation.
 - **Up to rc.17: `beforeQuery` / `beforeExecute` open, `afterQuery` /
-  `afterExecute` settle**, paired by `ctx.planExecutionId` in a map holding
-  only what is in flight. Both pairs, because a SQL-builder write with no
-  `RETURNING` run through `runtime().execute(plan)` never touches the query
-  hooks. A failed statement arrives as `completed: false`.
+  `afterExecute` settle**, paired in a `WeakMap` keyed by the operation's
+  context, the one object rc.11 hands every hook of a statement (the floor
+  spec proves it against a real client). Weakly, because rc.11 does not end
+  every statement it began: one refused after `beforeQuery` (a later
+  middleware, a codec, an abort) never reaches `afterQuery`, and a map keyed
+  by `planExecutionId` would hold its finisher for the client's lifetime.
+  Such a statement's observation is never settled; it is collected with its
+  context. Both pairs, because a SQL-builder write with no `RETURNING` run
+  through `runtime().execute(plan)` never touches the query hooks. A failed
+  statement arrives as `completed: false`.
 
 Either way the operation STARTS before the driver runs, because `Observers`
 answers a finisher precisely so a span can be opened around the work, and the
