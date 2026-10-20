@@ -1,5 +1,16 @@
 # @btravstack/orpc-server
 
+## 0.44.1
+
+### Patch Changes
+
+- @btravstack/config@0.44.1
+  - @btravstack/contract@0.44.1
+  - @btravstack/core@0.44.1
+  - @btravstack/di@0.44.1
+  - @btravstack/htmx-server@0.44.1
+  - @btravstack/http-server@0.44.1
+
 ## 0.44.0
 
 ### Minor Changes
