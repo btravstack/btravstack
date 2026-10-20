@@ -11,6 +11,7 @@ export {
   StorageBackend,
   StorageUnavailable,
   StreamInterrupted,
+  StreamPoolFull,
 } from "./storage.js";
 export type {
   CopyOptions,

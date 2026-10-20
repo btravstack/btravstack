@@ -127,6 +127,25 @@ and `docs/reference/storage.md` is the reader's page.
 - **`getStream`'s span ends when the stream is answered**, not when it is read:
   observing the transfer would mean wrapping every chunk, and the store's own
   failure mid-read reaches the reader as the stream's error.
+- **Streamed calls have a socket pool of their own, and a full one refuses.**
+  `s3Storage()` builds two clients, each with its own keep-alive agent:
+  `getStream`, `putStream` and `putStreamIfAbsent` use one
+  (`STORAGE_S3_STREAM_MAX_SOCKETS`), every other call the other
+  (`STORAGE_S3_MAX_SOCKETS`), both 50 by default, the SDK's own size. Before
+  that, one shared pool of 50 let 50 slow readers stall every `head`, `put` and
+  health check in the process. A streamed call holds a slot from the call until
+  its body closes (`close` on the SDK's Node body: read to its end, cancelled,
+  broken off) or its write settles, counted in the adapter, so the agent never
+  queues a stream. One more answers `StreamPoolFull` at once, rather than
+  queueing: a queued stream waits for a reader elsewhere, which nothing in the
+  process bounds, so the service could not shed load. It settles `ok` with
+  `result: "saturated"`, a rate to alert on rather than a fault line per
+  refusal. The buffered pool still queues, as the SDK does: its calls are
+  short. RustFS proves a `head` and a `put` complete while every stream socket
+  is held unread, which a shared pool of the same size does not.
+- **Every pool default is the SDK's own**, stated rather than inherited, and
+  `requestTimeoutMs` sets `throwOnRequestTimeout`: a bound that only logs a
+  warning is not one.
 - **The memory adapter refuses to presign** rather than minting a `file://`
   URL. A fake URL is the worst kind of double: it passes locally and fails in
   the deployment for a reason no test could have shown. The arm exists in the

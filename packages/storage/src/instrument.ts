@@ -15,6 +15,7 @@ import type {
   StorageService,
   StorageUnavailable,
   StreamInterrupted,
+  StreamPoolFull,
 } from "./storage.js";
 
 type Operation =
@@ -36,7 +37,8 @@ type Failure =
   | ObjectNotFound
   | PresignNotSupported
   | StorageUnavailable
-  | StreamInterrupted;
+  | StreamInterrupted
+  | StreamPoolFull;
 
 /**
  * **A missing object settles `ok` with `result: "not_found"`, not `error`.**
@@ -45,7 +47,10 @@ type Failure =
  * `StorageUnavailable` is what pages somebody; invalid options and checksum
  * mismatches also settle as errors. A source stream that fails is the caller's
  * own answer (a client hanging up, a check refusing the bytes) and settles `ok`
- * with `result: "interrupted"`. The ordinary answers keep their own words in
+ * with `result: "interrupted"`. A stream refused because its pool was full
+ * settles `ok` with `result: "saturated"`: shedding load is the answer the
+ * pool's bound asked for, so it is counted, as a rate to alert on, rather
+ * than written as a fault line per refusal. The ordinary answers keep their own words in
  * `reason`, so an operator is not left hunting an object sitting where they put
  * it.
  */
@@ -62,7 +67,9 @@ const failed = <T>(failure: FailureView<Failure, T>): Settled => {
             ? ({ result: "not_found", reason: "this store cannot mint a url" } as const)
             : failure.error._tag === "StreamInterrupted"
               ? ({ result: "interrupted", reason: "the source stream failed" } as const)
-              : undefined;
+              : failure.error._tag === "StreamPoolFull"
+                ? ({ result: "saturated", reason: "every stream socket was held" } as const)
+                : undefined;
   return ordinary === undefined
     ? { outcome: "error", attributes: { result: "error" }, cause }
     : { outcome: "ok", attributes: ordinary };

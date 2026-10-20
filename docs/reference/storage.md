@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/storage"
-description: The complete surface of @btravstack/storage — the Storage and StorageBackend ports, StoredObject, StreamedObject, ObjectHead, WriteOptions, CopyOptions and the modeled storage failures, the memory and S3 adapters, storage(), the Observers seam it reports through, and the STORAGE_S3_* variables.
+description: The complete surface of @btravstack/storage — the Storage and StorageBackend ports, StoredObject, StreamedObject, ObjectHead, WriteOptions, CopyOptions and the modeled storage failures, the memory and S3 adapters, storage(), the Observers seam it reports through, and the STORAGE_S3_* variables and socket pools.
 ---
 
 <!-- doctest: group=order-temporal-worker -->
@@ -58,19 +58,19 @@ export const documents = Provider(
 });
 ```
 
-| Method                                                                            | Answers                                                                                                                   |
-| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `put(key, bytes, options: WriteOptions)`                                          | `AsyncResult<void, InvalidStorageOptions \| ChecksumMismatch \| StorageUnavailable>`                                      |
-| `putIfAbsent(key, bytes, options: WriteOptions)`                                  | `AsyncResult<void, ObjectExists \| InvalidStorageOptions \| ChecksumMismatch \| StorageUnavailable>`                      |
-| `putStream(key, stream, options: WriteOptions)`                                   | `AsyncResult<void, InvalidStorageOptions \| ChecksumMismatch \| StreamInterrupted \| StorageUnavailable>`                 |
-| `putStreamIfAbsent(key, stream, options: WriteOptions)`                           | `AsyncResult<void, ObjectExists \| InvalidStorageOptions \| ChecksumMismatch \| StreamInterrupted \| StorageUnavailable>` |
-| `get(key)`                                                                        | `AsyncResult<StoredObject, ObjectNotFound \| StorageUnavailable>`                                                         |
-| `getStream(key)`                                                                  | `AsyncResult<StreamedObject, ObjectNotFound \| StorageUnavailable>`                                                       |
-| `copy(from, to, options: CopyOptions)`                                            | `AsyncResult<void, ObjectNotFound \| InvalidStorageOptions \| StorageUnavailable>`                                        |
-| `head(key)`                                                                       | `AsyncResult<ObjectHead, ObjectNotFound \| StorageUnavailable>`                                                           |
-| `delete(key)`                                                                     | `AsyncResult<void, StorageUnavailable>`                                                                                   |
-| `presignedUrl(key, { ttlMs })`                                                    | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`                                                          |
-| `presignedUpload(key, { ttlMs, contentType, contentLength, sha256?, kmsKeyId? })` | `AsyncResult<string, PresignNotSupported \| InvalidStorageOptions \| StorageUnavailable>`                                 |
+| Method                                                                            | Answers                                                                                                                                     |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `put(key, bytes, options: WriteOptions)`                                          | `AsyncResult<void, InvalidStorageOptions \| ChecksumMismatch \| StorageUnavailable>`                                                        |
+| `putIfAbsent(key, bytes, options: WriteOptions)`                                  | `AsyncResult<void, ObjectExists \| InvalidStorageOptions \| ChecksumMismatch \| StorageUnavailable>`                                        |
+| `putStream(key, stream, options: WriteOptions)`                                   | `AsyncResult<void, InvalidStorageOptions \| ChecksumMismatch \| StreamInterrupted \| StreamPoolFull \| StorageUnavailable>`                 |
+| `putStreamIfAbsent(key, stream, options: WriteOptions)`                           | `AsyncResult<void, ObjectExists \| InvalidStorageOptions \| ChecksumMismatch \| StreamInterrupted \| StreamPoolFull \| StorageUnavailable>` |
+| `get(key)`                                                                        | `AsyncResult<StoredObject, ObjectNotFound \| StorageUnavailable>`                                                                           |
+| `getStream(key)`                                                                  | `AsyncResult<StreamedObject, ObjectNotFound \| StreamPoolFull \| StorageUnavailable>`                                                       |
+| `copy(from, to, options: CopyOptions)`                                            | `AsyncResult<void, ObjectNotFound \| InvalidStorageOptions \| StorageUnavailable>`                                                          |
+| `head(key)`                                                                       | `AsyncResult<ObjectHead, ObjectNotFound \| StorageUnavailable>`                                                                             |
+| `delete(key)`                                                                     | `AsyncResult<void, StorageUnavailable>`                                                                                                     |
+| `presignedUrl(key, { ttlMs })`                                                    | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`                                                                            |
+| `presignedUpload(key, { ttlMs, contentType, contentLength, sha256?, kmsKeyId? })` | `AsyncResult<string, PresignNotSupported \| InvalidStorageOptions \| StorageUnavailable>`                                                   |
 
 `WriteOptions` requires `contentType` and accepts `kmsKeyId`, `sha256` and
 `metadata`. `CopyOptions` requires `contentType` and accepts `kmsKeyId`,
@@ -227,6 +227,10 @@ export const served = (store: StorageService, key: string) =>
   The stream holds the store's connection until it is read to its end or
   cancelled, and a read the store breaks off errors it. Its span ends when the
   stream is answered, not when it is read.
+- **The streamed calls have a socket pool of their own** on S3, and one call
+  more than it holds answers `StreamPoolFull` at once, before anything is
+  sent; a write's stream is cancelled with it. See
+  [`s3Storage()`](#s3storage).
 - The memory adapter reads a stream whole, as a `Map` holds objects whole.
 
 **Keys are yours**, tenant included: `orders/{tenantId}/{orderId}/confirmation.json`
@@ -243,6 +247,7 @@ slot.
 | `ObjectExists`          | the key is already held           | treats the write as already done, or picks another key |
 | `ObjectNotFound`        | the key is not there              | gives up, or writes it                                 |
 | `StreamInterrupted`     | the source stream errored         | reads its own `cause`; nothing was written             |
+| `StreamPoolFull`        | every stream socket was held      | sheds the transfer (`503`), retries later              |
 | `StorageUnavailable`    | the store could not answer        | retries, degrades, or fails the request                |
 | `PresignNotSupported`   | this adapter cannot mint a URL    | serves the bytes itself, or composes another adapter   |
 
@@ -301,16 +306,47 @@ this can say so.
 
 ### `s3Storage()`
 
-One client, built with the scope and destroyed with it, against any
-S3-compatible store: AWS, RustFS, MinIO, R2, B2.
+Two clients, built with the scope and destroyed with it, against any
+S3-compatible store: AWS, RustFS, MinIO, R2, B2. Each has a socket pool of its
+own: `getStream`, `putStream` and `putStreamIfAbsent` use one, every other
+call the other.
 
-| Variable                       | Required | Default     |
-| ------------------------------ | -------- | ----------- |
-| `STORAGE_S3_ENDPOINT`          | yes      | none        |
-| `STORAGE_S3_BUCKET`            | yes      | none        |
-| `STORAGE_S3_ACCESS_KEY_ID`     | yes      | none        |
-| `STORAGE_S3_SECRET_ACCESS_KEY` | yes      | none        |
-| `STORAGE_S3_REGION`            | no       | `us-east-1` |
+```ts
+export const Streaming = storage({ adapter: s3Storage({ streamMaxSockets: 20 }) });
+```
+
+| Variable                           | Option                | Required | Default     |
+| ---------------------------------- | --------------------- | -------- | ----------- |
+| `STORAGE_S3_ENDPOINT`              |                       | yes      | none        |
+| `STORAGE_S3_BUCKET`                |                       | yes      | none        |
+| `STORAGE_S3_ACCESS_KEY_ID`         |                       | yes      | none        |
+| `STORAGE_S3_SECRET_ACCESS_KEY`     |                       | yes      | none        |
+| `STORAGE_S3_REGION`                |                       | no       | `us-east-1` |
+| `STORAGE_S3_MAX_SOCKETS`           | `maxSockets`          | no       | `50`        |
+| `STORAGE_S3_STREAM_MAX_SOCKETS`    | `streamMaxSockets`    | no       | `50`        |
+| `STORAGE_S3_CONNECTION_TIMEOUT_MS` | `connectionTimeoutMs` | no       | `0`, none   |
+| `STORAGE_S3_SOCKET_TIMEOUT_MS`     | `socketTimeoutMs`     | no       | `0`, none   |
+| `STORAGE_S3_REQUEST_TIMEOUT_MS`    | `requestTimeoutMs`    | no       | `0`, none   |
+
+An option pins its variable. **Every default is the AWS SDK's own**: 50
+keep-alive sockets per pool, and no timeout. Both timeouts and sizes apply to
+each pool.
+
+- **`maxSockets`** sockets serve every call but the streamed ones. A call
+  finding them all busy waits for one, as the SDK always did.
+- **`streamMaxSockets`** sockets serve the streamed calls, and bound them: each
+  holds one from the call until its stream closes (read to its end, cancelled,
+  broken off) or its write settles, and one more answers `StreamPoolFull` at
+  once rather than waiting behind readers nothing in the process bounds. A slow
+  download therefore never takes a socket a short call needs. How to size it,
+  and the ingress limits it does not replace, are in
+  [Stream a file through the process](/how-to/stream-a-file#_4-size-the-stream-pool).
+- **`connectionTimeoutMs`** bounds how long a call waits for a socket, a free
+  one from the pool or a new connection.
+- **`socketTimeoutMs`** is the SDK's idle-socket timeout.
+- **`requestTimeoutMs`** bounds a call until the store starts answering, its
+  request body included; past it the call fails as `StorageUnavailable`, where
+  the SDK on its own only logs a warning. It never cuts a response being read.
 
 The endpoint is **required rather than defaulted to AWS**: the stores this
 port exists for all have one, and a default pointing at Amazon would be a
@@ -334,12 +370,12 @@ export const DocumentsApp = Module("ReferenceDocumentsApp")({
 });
 ```
 
-| Signal    | Name                                                                                                                                                                         | Attributes                                                                                                                                                                        |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| span      | `storage.put` / `.put_if_absent` / `.put_stream` / `.put_stream_if_absent` / `.get` / `.get_stream` / `.copy` / `.head` / `.delete` / `.presigned_url` / `.presigned_upload` | `btravstack.storage.key`; error status on a failure                                                                                                                               |
-| counter   | `btravstack.storage.operations`                                                                                                                                              | `{ operation, outcome, result }` — `outcome` is `ok` or `error`; `result` is `ok`, `exists`, `not_found`, `interrupted` or `error`; all but `ok` and `error` carry their `reason` |
-| histogram | `btravstack.storage.duration`                                                                                                                                                | the same as the counter                                                                                                                                                           |
-| log       | `"storage.<operation> failed"` at `error`, for unavailable stores, invalid options or checksum mismatches                                                                    | `operation`, the key and `result`, with the failure as the cause                                                                                                                  |
+| Signal    | Name                                                                                                                                                                         | Attributes                                                                                                                                                                                     |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| span      | `storage.put` / `.put_if_absent` / `.put_stream` / `.put_stream_if_absent` / `.get` / `.get_stream` / `.copy` / `.head` / `.delete` / `.presigned_url` / `.presigned_upload` | `btravstack.storage.key`; error status on a failure                                                                                                                                            |
+| counter   | `btravstack.storage.operations`                                                                                                                                              | `{ operation, outcome, result }` — `outcome` is `ok` or `error`; `result` is `ok`, `exists`, `not_found`, `interrupted`, `saturated` or `error`; all but `ok` and `error` carry their `reason` |
+| histogram | `btravstack.storage.duration`                                                                                                                                                | the same as the counter                                                                                                                                                                        |
+| log       | `"storage.<operation> failed"` at `error`, for unavailable stores, invalid options or checksum mismatches                                                                    | `operation`, the key and `result`, with the failure as the cause                                                                                                                               |
 
 **A missing object settles `ok`, counted apart by `result: "not_found"`, and
 writes no line.** Asking for something that is not there is an ordinary answer
@@ -361,6 +397,11 @@ race is the answer the caller asked for, not an outage.
 **A failed source stream settles `ok` with `result: "interrupted"`** and
 `reason: "the source stream failed"`. A client hanging up or a caller's own
 check refusing the bytes is the caller's answer to give, not the store's fault.
+
+**A stream refused by a full pool settles `ok` with `result: "saturated"`**
+and `reason: "every stream socket was held"`. Shedding the transfer is what the
+pool's bound asked for, so it is a rate on the counter to alert on, not a fault
+line per refusal.
 
 **Observation is a set port, not a flag.** Every call is handed to whatever
 contributed to `Observers`, and this module contributes a no-op member of its
