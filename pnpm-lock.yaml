@@ -420,8 +420,8 @@ catalogs:
       specifier: 5.0.3
       version: 5.0.3
     zod:
-      specifier: 4.6.6
-      version: 4.6.6
+      specifier: 4.6.7
+      version: 4.6.7
   typedoc:
     typescript:
       specifier: 6.0.3
@@ -565,10 +565,10 @@ importers:
         version: 2.0.0-beta.44
       '@orpc/zod':
         specifier: 'catalog:'
-        version: 2.0.0-beta.44(zod@4.6.6)
+        version: 2.0.0-beta.44(zod@4.6.7)
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -596,14 +596,14 @@ importers:
         version: 5.12.1
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.4.0
       '@orpc/zod':
         specifier: 'catalog:'
-        version: 2.0.0-beta.44(zod@4.6.6)
+        version: 2.0.0-beta.44(zod@4.6.7)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5
@@ -645,7 +645,7 @@ importers:
         version: 5.12.1
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -679,7 +679,7 @@ importers:
         version: 5.12.1
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -710,7 +710,7 @@ importers:
         version: 3.0.0-beta.11
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -838,7 +838,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
 
   examples/order-api:
     dependencies:
@@ -953,7 +953,7 @@ importers:
         version: 0.4.0
       '@modelcontextprotocol/sdk':
         specifier: 'catalog:'
-        version: 1.32.1(supports-color@8.1.1)(zod@4.6.6)
+        version: 1.32.1(supports-color@8.1.1)(zod@4.6.7)
       '@orpc/tanstack-query':
         specifier: 'catalog:'
         version: 2.0.0-beta.44(@tanstack/query-core@5.104.1)
@@ -1004,7 +1004,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
 
   examples/order-api-client:
     dependencies:
@@ -1038,7 +1038,7 @@ importers:
         version: 2.0.0-beta.44
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
     devDependencies:
       '@btravstack/contract':
         specifier: workspace:*
@@ -1121,7 +1121,7 @@ importers:
         version: 5.12.1
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -1282,7 +1282,7 @@ importers:
         version: 8.0.0-beta.14(unthrown@5.12.1)
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -1413,7 +1413,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
 
   internal/consumer-check:
     devDependencies:
@@ -1482,7 +1482,7 @@ importers:
         version: 5.12.1
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -1628,7 +1628,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
 
   packages/cache:
     devDependencies:
@@ -1748,7 +1748,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
 
   packages/core:
     devDependencies:
@@ -1835,7 +1835,7 @@ importers:
         version: 0.4.0
       '@orpc/zod':
         specifier: 'catalog:'
-        version: 2.0.0-beta.44(zod@4.6.6)
+        version: 2.0.0-beta.44(zod@4.6.7)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5
@@ -1865,7 +1865,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
 
   packages/graphql-server:
     devDependencies:
@@ -1964,7 +1964,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
 
   packages/http-client:
     devDependencies:
@@ -2057,7 +2057,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
 
   packages/mailer:
     devDependencies:
@@ -2144,7 +2144,7 @@ importers:
         version: 0.4.0
       '@modelcontextprotocol/sdk':
         specifier: 'catalog:'
-        version: 1.32.1(supports-color@8.1.1)(zod@4.6.6)
+        version: 1.32.1(supports-color@8.1.1)(zod@4.6.7)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5
@@ -2171,7 +2171,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
 
   packages/oauth-client:
     devDependencies:
@@ -2339,7 +2339,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
 
   packages/outbox:
     devDependencies:
@@ -2438,7 +2438,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
 
   packages/prisma:
     devDependencies:
@@ -2657,7 +2657,7 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.6.6
+        version: 4.6.7
 
   packages/testing:
     devDependencies:
@@ -10331,8 +10331,8 @@ packages:
   zod@4.6.5:
     resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
-  zod@4.6.6:
-    resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -12352,7 +12352,7 @@ snapshots:
       - encoding
       - supports-color
 
-  '@modelcontextprotocol/sdk@1.32.1(supports-color@8.1.1)(zod@4.6.6)':
+  '@modelcontextprotocol/sdk@1.32.1(supports-color@8.1.1)(zod@4.6.7)':
     dependencies:
       '@hono/node-server': 1.19.15(hono@4.13.7)
       ajv: 8.20.0
@@ -12369,8 +12369,8 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
-      zod: 4.6.6
-      zod-to-json-schema: 3.25.2(zod@4.6.6)
+      zod: 4.6.7
+      zod-to-json-schema: 3.25.2(zod@4.6.7)
     transitivePeerDependencies:
       - supports-color
 
@@ -12839,11 +12839,11 @@ snapshots:
       - fastify
       - swagger-ui
 
-  '@orpc/zod@2.0.0-beta.44(zod@4.6.6)':
+  '@orpc/zod@2.0.0-beta.44(zod@4.6.7)':
     dependencies:
       '@openapi-spec/types': 0.3.0
       '@orpc/json-schema': 2.0.0-beta.44
-      zod: 4.6.6
+      zod: 4.6.7
     transitivePeerDependencies:
       - crossws
       - fastify
@@ -18263,12 +18263,12 @@ snapshots:
       compress-commons: 6.0.2
       readable-stream: 4.7.0
 
-  zod-to-json-schema@3.25.2(zod@4.6.6):
+  zod-to-json-schema@3.25.2(zod@4.6.7):
     dependencies:
-      zod: 4.6.6
+      zod: 4.6.7
 
   zod@4.6.5: {}
 
-  zod@4.6.6: {}
+  zod@4.6.7: {}
 
   zwitch@2.0.4: {}
