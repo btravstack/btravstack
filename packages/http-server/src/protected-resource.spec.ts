@@ -1,10 +1,13 @@
 import { it } from "@btravstack/internal-http-fixtures";
+import { OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
 
 const MCP = {
   resource: "https://api.test/mcp",
   authorizationServers: ["https://login.test/"],
 } as const;
+
+const PER_HOST = { path: "/mcp", authorizationServers: ["https://login.test/"] } as const;
 
 describe("protectedResource", () => {
   it("challenges the actual scope refusal with one sufficient alternative", async ({
@@ -717,5 +720,318 @@ describe("protectedResource", () => {
 
     // THEN no challenge is sent
     expect(response.headers.get("www-authenticate")).toBeNull();
+  });
+});
+
+describe("protectedResourcePerHost", () => {
+  it("serves a vouched host the metadata naming that host", async ({ perHostResource }) => {
+    // GIVEN a resource at /mcp on every host the application serves
+    const get = await perHostResource({ ...PER_HOST, scopes: ["orders:read"] });
+
+    // WHEN a client fetches the metadata through one of them
+    const answered = await get(
+      "/.well-known/oauth-protected-resource/mcp",
+      undefined,
+      "tenant-a.test",
+    );
+
+    // THEN the document describes that host's resource
+    expect({ status: answered.status, document: JSON.parse(answered.body) }).toEqual({
+      status: 200,
+      document: {
+        resource: "https://tenant-a.test/mcp",
+        authorization_servers: ["https://login.test/"],
+        scopes_supported: ["orders:read"],
+      },
+    });
+  });
+
+  it("challenges a refused caller on a vouched host with that host's metadata", async ({
+    perHostResource,
+  }) => {
+    // GIVEN a resource at /mcp on every served host
+    const get = await perHostResource(PER_HOST);
+
+    // WHEN a caller with no token reaches it through one of them
+    const answered = await get("/mcp", undefined, "tenant-a.test");
+
+    // THEN the 401 points at that host's own metadata
+    expect({ status: answered.status, challenge: answered.challenge }).toEqual({
+      status: 401,
+      challenge:
+        'Bearer resource_metadata="https://tenant-a.test/.well-known/oauth-protected-resource/mcp"',
+    });
+  });
+
+  it("serves each vouched host its own metadata from one process", async ({ perHostResource }) => {
+    // GIVEN one process serving two tenants' hosts
+    const get = await perHostResource(PER_HOST);
+
+    // WHEN a client fetches the metadata through each
+    const answered = await Promise.all(
+      ["tenant-a.test", "tenant-b.test"].map((host) =>
+        get("/.well-known/oauth-protected-resource/mcp", undefined, host),
+      ),
+    );
+
+    // THEN each document names its own host
+    expect(answered.map(({ body }) => JSON.parse(body).resource)).toEqual([
+      "https://tenant-a.test/mcp",
+      "https://tenant-b.test/mcp",
+    ]);
+  });
+
+  it.for(["evil.test", "tenant-a.test@evil.test", "tenant-a.test.evil.test", "["])(
+    "serves no metadata through the host %j, which nothing vouched for",
+    async (host, { perHostResource }) => {
+      // GIVEN a resource on the served hosts alone
+      const get = await perHostResource(PER_HOST);
+
+      // WHEN its metadata URL is fetched through a host the application does not serve
+      const answered = await get("/.well-known/oauth-protected-resource/mcp", undefined, host);
+
+      // THEN there is nothing there: a forged Host mints no discovery
+      expect(answered.status).toBe(404);
+    },
+  );
+
+  it.for(["evil.test", "tenant-a.test@evil.test", "tenant-a.test.evil.test", "["])(
+    "does not challenge a refusal through the host %j, which nothing vouched for",
+    async (host, { perHostResource }) => {
+      // GIVEN a resource on the served hosts alone
+      const get = await perHostResource(PER_HOST);
+
+      // WHEN the resource's path is refused through a host the application does not serve
+      const answered = await get("/mcp", undefined, host);
+
+      // THEN the refusal points nowhere
+      expect({ status: answered.status, challenge: answered.challenge }).toEqual({
+        status: 401,
+        challenge: null,
+      });
+    },
+  );
+
+  it("reads the authority of an absolute-form target over its Host", async ({
+    perHostResource,
+  }) => {
+    // GIVEN a resource on the served hosts
+    const get = await perHostResource(PER_HOST);
+
+    // WHEN a forward proxy names a served host in the target and another in Host
+    const answered = await get("https://tenant-a.test/mcp", undefined, "evil.test");
+
+    // THEN the target's authority is the one requested
+    expect(answered.challenge).toBe(
+      'Bearer resource_metadata="https://tenant-a.test/.well-known/oauth-protected-resource/mcp"',
+    );
+  });
+
+  it("asks about the host as the parser spells it, its case folded and default port dropped", async ({
+    perHostResource,
+  }) => {
+    // GIVEN an application recording which hosts it is asked about
+    const asked: string[] = [];
+    const get = await perHostResource(PER_HOST, (host) => {
+      asked.push(host);
+      return OkAsync(true);
+    });
+
+    // WHEN a proxy forwards the host capitalized, with the scheme's default port
+    const answered = await get("/mcp", undefined, "Tenant-A.test:443");
+
+    // THEN the application was asked about the host the challenge names
+    expect({ asked, challenge: answered.challenge }).toEqual({
+      asked: ["tenant-a.test"],
+      challenge:
+        'Bearer resource_metadata="https://tenant-a.test/.well-known/oauth-protected-resource/mcp"',
+    });
+  });
+
+  it("challenges a scope refusal on a vouched host with that host's metadata", async ({
+    perHostResource,
+  }) => {
+    // GIVEN a resource on the served hosts
+    const get = await perHostResource(PER_HOST);
+
+    // WHEN a verified Bearer credential lacks the scope through one of them
+    const answered = await get("/mcp", "scope", "tenant-b.test");
+
+    // THEN the 403 names the scope and that host's metadata
+    expect({ status: answered.status, challenge: answered.challenge }).toEqual({
+      status: 403,
+      challenge:
+        'Bearer resource_metadata="https://tenant-b.test/.well-known/oauth-protected-resource/mcp", error="insufficient_scope", scope="orders:read"',
+    });
+  });
+
+  it("asks about no host for a request that is not the resource's", async ({ perHostResource }) => {
+    // GIVEN an application recording which hosts it is asked about
+    const asked: string[] = [];
+    const get = await perHostResource(PER_HOST, (host) => {
+      asked.push(host);
+      return OkAsync(true);
+    });
+
+    // WHEN another path, a path below the resource and another query are refused
+    await Promise.all(
+      ["/rpc/orders", "/mcp/orders", "/mcp?tenant=b"].map((path) =>
+        get(path, undefined, "tenant-a.test"),
+      ),
+    );
+
+    // THEN none of them cost a lookup
+    expect(asked).toEqual([]);
+  });
+
+  it("names an http: resource on a loopback host", async ({ perHostResource }) => {
+    // GIVEN an application serving its development host
+    const get = await perHostResource(PER_HOST, (host) => OkAsync(host === "localhost:8080"));
+
+    // WHEN a local client is refused, reaching the listener directly
+    const answered = await get("/mcp", undefined, "localhost:8080");
+
+    // THEN the challenge names the cleartext URL the client called
+    expect(answered.challenge).toBe(
+      'Bearer resource_metadata="http://localhost:8080/.well-known/oauth-protected-resource/mcp"',
+    );
+  });
+
+  it("does not challenge an http: target off a loopback host", async ({ perHostResource }) => {
+    // GIVEN a resource on the served hosts
+    const get = await perHostResource(PER_HOST);
+
+    // WHEN a forward proxy asks for a served host's resource over http
+    const answered = await get("http://tenant-a.test/mcp");
+
+    // THEN a client would send its token in the open there, so nothing points it on
+    expect(answered.challenge).toBeNull();
+  });
+
+  it("challenges an http: target off a loopback host once allowInsecure is pinned", async ({
+    perHostResource,
+  }) => {
+    // GIVEN a resource whose deployment opted into cleartext
+    const get = await perHostResource({ ...PER_HOST, allowInsecure: true });
+
+    // WHEN a forward proxy asks for a served host's resource over http
+    const answered = await get("http://tenant-a.test/mcp");
+
+    // THEN the challenge names that cleartext URL
+    expect(answered.challenge).toBe(
+      'Bearer resource_metadata="http://tenant-a.test/.well-known/oauth-protected-resource/mcp"',
+    );
+  });
+
+  it("answers 404 for anything but a GET of the document", async ({ perHostResource }) => {
+    // GIVEN a resource on the served hosts
+    const get = await perHostResource(PER_HOST);
+
+    // WHEN its metadata URL is posted to through a served host
+    const answered = await get(
+      "/.well-known/oauth-protected-resource/mcp",
+      undefined,
+      "tenant-a.test",
+      {
+        method: "POST",
+      },
+    );
+
+    // THEN its mount answers, and has nothing there
+    expect(answered.status).toBe(404);
+  });
+
+  it.for(["/.well-known/oauth-protected-resource/mcp", "/mcp"])(
+    "answers 500 at %s when the served hosts cannot be asked",
+    async (path, { perHostResource }) => {
+      // GIVEN an application whose lookup defects
+      const get = await perHostResource(PER_HOST, () =>
+        fromSafePromise(Promise.reject(new Error("the directory is down"))),
+      );
+
+      // WHEN a request needs it
+      const answered = await get(path, undefined, "tenant-a.test");
+
+      // THEN it is the runtime's defect answer, not a refusal or a 404
+      expect(answered.status).toBe(500);
+    },
+  );
+
+  it.for(["mcp", "/mcp?", "/mcp?tenant=a", "/mcp#top", "//alias.test/mcp", "/a/../mcp", ""])(
+    "refuses the path %j at boot",
+    async (path, { perHostApp }) => {
+      // GIVEN a path the URL parser would not spell as given
+      const app = perHostApp({ ...PER_HOST, path });
+
+      // WHEN the application boots
+      // THEN it does not, and the variable is named
+      await expect(app.exited).toBeErrWith(
+        expect.objectContaining({
+          port: "HttpProtectedResourcePerHost",
+          issues: [
+            {
+              message:
+                "must be an absolute path as the URL parser spells it, with no query or fragment",
+              path: ["HTTP_RESOURCE_PATH"],
+            },
+          ],
+        }),
+      );
+    },
+  );
+
+  it("names every offending variable in one boot", async ({ perHostApp }) => {
+    // GIVEN a relative path and an authorization server that is not a URL
+    const app = perHostApp({ path: "mcp", authorizationServers: ["login.test"] });
+
+    // WHEN the application boots
+    // THEN both are reported together
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        issues: [
+          expect.objectContaining({ path: ["HTTP_RESOURCE_PATH"] }),
+          expect.objectContaining({ path: ["HTTP_RESOURCE_AUTHORIZATION_SERVERS"] }),
+        ],
+      }),
+    );
+  });
+
+  it("refuses a cleartext authorization server at boot", async ({ perHostApp }) => {
+    // GIVEN an issuer a client would sign in with in the open
+    const app = perHostApp({ ...PER_HOST, authorizationServers: ["http://login.test/"] });
+
+    // WHEN the application boots
+    // THEN it does not, and the opt-in is named on this call
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        issues: [
+          expect.objectContaining({
+            message: expect.stringContaining("`protectedResourcePerHost()`"),
+            path: ["HTTP_RESOURCE_AUTHORIZATION_SERVERS"],
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("reads the path and its issuers from the environment", async ({ perHostResource }) => {
+    // GIVEN no pins, and a deployment setting both variables
+    const get = await perHostResource({}, undefined, {
+      HTTP_RESOURCE_PATH: "/mcp",
+      HTTP_RESOURCE_AUTHORIZATION_SERVERS: "https://login.test/, https://partners.test/",
+    });
+
+    // WHEN the metadata is fetched through a served host
+    const answered = await get(
+      "/.well-known/oauth-protected-resource/mcp",
+      undefined,
+      "tenant-a.test",
+    );
+
+    // THEN it describes what the environment said
+    expect(JSON.parse(answered.body)).toEqual({
+      resource: "https://tenant-a.test/mcp",
+      authorization_servers: ["https://login.test/", "https://partners.test/"],
+    });
   });
 });

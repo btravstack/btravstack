@@ -12,7 +12,7 @@ import {
   type Unpinned,
 } from "@btravstack/config";
 import { Port, Provider, type AnyProvider, type ServiceOf } from "@btravstack/di";
-import { Err, Ok, type Result } from "unthrown";
+import { Err, Ok, OkAsync, allAsync, type AsyncResult, type Result } from "unthrown";
 
 import { HttpHandler, send } from "./handler.js";
 import { scopeChallengeOf } from "./scope-challenge.js";
@@ -29,6 +29,16 @@ export type HttpChallenge = {
 };
 
 /**
+ * A challenge whose target depends on the request: `resolve` answers it, or
+ * `undefined` for none, and is asked only for a request whose path, as sent,
+ * is `path` — settled before dispatch, so no other request waits on it.
+ */
+export type HttpRequestChallenge = {
+  readonly path: string;
+  readonly resolve: (request: IncomingMessage) => AsyncResult<HttpChallenge | undefined, never>;
+};
+
+/**
  * The challenges a `401` carries, one member per composed surface. Protected
  * resources also identify their metadata for typed Bearer scope refusals.
  * `httpServer` contributes the empty member that keeps the set from being the
@@ -38,7 +48,9 @@ export type HttpChallenge = {
  * A set port for `CookieSchemes`' reason: the runtime never sees what the
  * root provides beside it, so the header is a fact about the graph.
  */
-export class HttpChallenges extends Port.many("HttpChallenges")<HttpChallenge> {}
+export class HttpChallenges extends Port.many("HttpChallenges")<
+  HttpChallenge | HttpRequestChallenge
+> {}
 
 // The raw query, `?` included: WHATWG's `search` reads `""` for a bare `?`.
 const queryOf = (url: string): string => (url.includes("?") ? url.slice(url.indexOf("?")) : "");
@@ -105,8 +117,36 @@ const requestIsFor = (request: IncomingMessage): ((target: string) => boolean) =
  * Yoga — and RFC 9728 §5.2 reads a challenge on any other response as "the
  * metadata changed, fetch it again". Node's implicit header path calls
  * `writeHead` too, so `statusCode = 401; end()` is covered.
+ *
+ * Answers `undefined` once they are applied or, for a request an
+ * {@link HttpRequestChallenge} is due on, what applies them once it settles,
+ * which the runtime awaits before dispatch.
  */
 export const challengeOn = (
+  challenges: readonly (HttpChallenge | HttpRequestChallenge)[],
+): ((
+  request: IncomingMessage,
+  response: ServerResponse,
+) => AsyncResult<void, never> | undefined) => {
+  const fixed = challenges.filter((challenge): challenge is HttpChallenge => "value" in challenge);
+  const perRequest = challenges.filter(
+    (challenge): challenge is HttpRequestChallenge => "resolve" in challenge,
+  );
+  const challenge = applying(fixed);
+  return (request, response) => {
+    const path = requestPath(request.url ?? "");
+    const due = perRequest.filter((member) => member.path === path);
+    if (due.length === 0) {
+      challenge(request, response);
+      return undefined;
+    }
+    return allAsync(due.map(({ resolve }) => resolve(request))).map((resolved) =>
+      applying([...fixed, ...resolved.filter((found) => found !== undefined)])(request, response),
+    );
+  };
+};
+
+const applying = (
   challenges: readonly HttpChallenge[],
 ): ((request: IncomingMessage, response: ServerResponse) => void) => {
   const live = challenges.filter(({ value }) => value !== "");
@@ -200,6 +240,24 @@ const metadataPath = (resource: string): `/${string}` => {
   return `${WELL_KNOWN}${pathname === "/" ? "" : pathname}`;
 };
 
+// The metadata URL of a resource identifier, as a client is told to fetch it.
+const metadataOf = (resource: string): string => {
+  const url = new URL(resource);
+  return `${url.origin}${metadataPath(url.href)}${queryOf(url.href)}`;
+};
+
+/** The challenge a `401` for a resource carries, and the `403` scope refusal's metadata. */
+const challengeOf = (resource: string): HttpChallenge => {
+  const url = new URL(resource);
+  const metadata = metadataOf(resource);
+  return {
+    target: targetOf(url.protocol, url.host, url.pathname, resource),
+    // RFC 9110 §5.6.4: a quoted string escapes its quotes and backslashes.
+    value: `Bearer resource_metadata="${metadata.replace(/["\\]/g, "\\$&")}"`,
+    resourceMetadata: metadata,
+  };
+};
+
 const RESOURCE = "HTTP_RESOURCE_URI";
 const SERVERS = "HTTP_RESOURCE_AUTHORIZATION_SERVERS";
 
@@ -229,20 +287,50 @@ const isIssuer = (server: string): boolean => {
 // RFC 6749 §3.3's scope-token: printable ASCII, no space, `"` or `\`.
 const SCOPE_TOKEN = /^[\x21\x23-\x5B\x5D-\x7E]+$/;
 
+type Refused = (variable: string) => ConfigInvalid["issues"];
+
+const refusedOn =
+  (port: string, on: string): Refused =>
+  (variable) =>
+    cleartextRefused({
+      port,
+      variable,
+      option: "allowInsecure",
+      on,
+      what: "a client sends its access token to it",
+    }).issues;
+
+const issuerAndScopeIssues = (
+  authorizationServers: readonly string[],
+  scopes: readonly string[],
+  allowInsecure: boolean,
+  refused: Refused,
+): ConfigInvalid["issues"] => [
+  // `Config.list` splits and trims; whether an entry is an issuer is asked here.
+  ...(!authorizationServers.every(isIssuer)
+    ? [
+        {
+          message:
+            "must list issuer identifiers: absolute URLs as the parser spells them, with no credentials, query or fragment",
+          path: [SERVERS],
+        },
+      ]
+    : authorizationServers.some((server) => cleartext(server, allowInsecure) === "refused")
+      ? refused(SERVERS)
+      : []),
+  // A scope a client would send as two, or could not send at all, is not one.
+  ...(scopes.every((scope) => SCOPE_TOKEN.test(scope))
+    ? []
+    : [{ message: "must list OAuth scope tokens", path: ["scopes"] }]),
+];
+
 const checked = (
   resource: string,
   authorizationServers: readonly string[],
   scopes: readonly string[],
   allowInsecure: boolean,
 ): Result<ServiceOf<ProtectedResource>, ConfigInvalid> => {
-  const refused = (variable: string) =>
-    cleartextRefused({
-      port: "HttpProtectedResource",
-      variable,
-      option: "allowInsecure",
-      on: "protectedResource()",
-      what: "a client sends its access token to it",
-    }).issues;
+  const refused = refusedOn("HttpProtectedResource", "protectedResource()");
   const url = new URL(resource);
   const issues = [
     // RFC 9728 §1.2: a resource identifier has no fragment, which no request carries.
@@ -259,31 +347,12 @@ const checked = (
       ? [{ message: "must not end in an empty query", path: [RESOURCE] }]
       : []),
     ...(cleartext(resource, allowInsecure) === "refused" ? refused(RESOURCE) : []),
-    // `Config.list` splits and trims; whether an entry is an issuer is asked here.
-    ...(!authorizationServers.every(isIssuer)
-      ? [
-          {
-            message:
-              "must list issuer identifiers: absolute URLs as the parser spells them, with no credentials, query or fragment",
-            path: [SERVERS],
-          },
-        ]
-      : authorizationServers.some((server) => cleartext(server, allowInsecure) === "refused")
-        ? refused(SERVERS)
-        : []),
-    // A scope a client would send as two, or could not send at all, is not one.
-    ...(scopes.every((scope) => SCOPE_TOKEN.test(scope))
-      ? []
-      : [{ message: "must list OAuth scope tokens", path: ["scopes"] }]),
+    ...issuerAndScopeIssues(authorizationServers, scopes, allowInsecure, refused),
   ];
   // Published as serialized, so the document, the challenge and the URL a
   // client requests all spell it the same way (`東京` percent-encoded).
   return issues.length === 0
-    ? Ok({
-        resource: url.href,
-        authorizationServers,
-        metadata: `${url.origin}${metadataPath(url.href)}${queryOf(url.href)}`,
-      })
+    ? Ok({ resource: url.href, authorizationServers, metadata: metadataOf(url.href) })
     : Err(new ConfigInvalid({ port: "HttpProtectedResource", issues }));
 };
 
@@ -377,19 +446,200 @@ export const protectedResource = <const O extends ProtectedResourceOptions = Rec
   });
   const challenge = Provider.member(HttpChallenges)({
     inject: { bound: ProtectedResource },
-    sync: ({ bound }) => ({
-      target: targetOf(
-        new URL(bound.resource).protocol,
-        new URL(bound.resource).host,
-        new URL(bound.resource).pathname,
-        bound.resource,
-      ),
-      // RFC 9110 §5.6.4: a quoted string escapes its quotes and backslashes.
-      value: `Bearer resource_metadata="${bound.metadata.replace(/["\\]/g, "\\$&")}"`,
-      resourceMetadata: bound.metadata,
-    }),
+    sync: ({ bound }) => challengeOf(bound.resource),
   });
   // Cast for the needs alone: over generic options the schema's own needs type
   // cannot resolve, so `ProtectedResourceProvider` states the two variables.
   return [configuration as unknown as ProtectedResourceProvider<O>, answerer, challenge];
+};
+
+/**
+ * Whether this deployment serves a host — usually a domain a tenant verified,
+ * kept in the application's own data. Asked with the host as the URL parser
+ * spells it: lowercase, punycode, the scheme's default port dropped and any
+ * other port kept (`tenant-a.example`, `localhost:3000`).
+ */
+export class ServedHosts extends Port("HttpServedHosts")<
+  (host: string) => AsyncResult<boolean, never>
+> {}
+
+/** What {@link protectedResourcePerHost} was configured with, once the boot has checked it. */
+export class ProtectedResourcePerHost extends Port("HttpProtectedResourcePerHost")<{
+  /** The resource's path on every served host, as the URL parser spells it. */
+  readonly path: string;
+  readonly authorizationServers: readonly string[];
+}> {}
+
+export type ProtectedResourcePerHostOptions = {
+  /** Pins `HTTP_RESOURCE_PATH`: the resource's path on every served host, `/mcp` for one. */
+  readonly path?: string | undefined;
+  /** Pins `HTTP_RESOURCE_AUTHORIZATION_SERVERS`: the issuers whose tokens it accepts. */
+  readonly authorizationServers?: readonly string[] | undefined;
+  /** Advertised as `scopes_supported`. Omitted from the document when absent or empty. */
+  readonly scopes?: readonly string[];
+  /**
+   * Accept an `http:` authorization server, or an `http:` request target,
+   * that is NOT on a loopback host. Default `false`: a client follows these
+   * URLs with its credentials.
+   */
+  readonly allowInsecure?: boolean;
+};
+
+const PATH = "HTTP_RESOURCE_PATH";
+
+/** The provider of {@link ProtectedResourcePerHost}, its variables required unless pinned. */
+export type ProtectedResourcePerHostProvider<O> = Provider<
+  ProtectedResourcePerHost,
+  ConfigInvalid,
+  EnvReading<
+    | Unpinned<O, "path", "HTTP_RESOURCE_PATH">
+    | Unpinned<O, "authorizationServers", "HTTP_RESOURCE_AUTHORIZATION_SERVERS">,
+    | MaybePinned<O, "path", "HTTP_RESOURCE_PATH">
+    | MaybePinned<O, "authorizationServers", "HTTP_RESOURCE_AUTHORIZATION_SERVERS">
+  >
+>;
+
+/**
+ * The resource a request names under `path`: the request's own origin, its
+ * host from an absolute-form target or else `Host`. An origin-form request
+ * names no scheme, so it is `https:` — the listener speaks only cleartext,
+ * which a client reaches directly on a loopback host alone, so there `http:`.
+ */
+const requestResource = (
+  request: IncomingMessage,
+  path: string,
+  allowInsecure: boolean,
+): { readonly host: string; readonly resource: string } | undefined => {
+  const absolute = URL.parse(request.url ?? "");
+  const host = absolute?.host ?? request.headers.host ?? "";
+  const direct = URL.parse(`http://${host}`);
+  if (direct === null) return undefined;
+  const scheme =
+    absolute?.protocol ?? (cleartext(direct.href, false) === true ? "http:" : "https:");
+  const origin = URL.parse(`${scheme}//${host}`);
+  return origin === null || cleartext(origin.href, allowInsecure) === "refused"
+    ? undefined
+    : { host: origin.host, resource: `${origin.protocol}//${origin.host}${path}` };
+};
+
+/**
+ * This API as an OAuth 2.0 protected resource on every host the application
+ * serves — one resource per tenant domain, say — rather than on one
+ * configured URL: {@link protectedResource}'s discovery, with the resource
+ * identifier `<scheme>//<request host><path>` derived per request.
+ *
+ * ```ts
+ * export const Api = HttpModule("Api")({
+ *   router,
+ *   provides: [...protectedResourcePerHost({ path: "/mcp" }), servedHosts],
+ * });
+ * ```
+ *
+ * The host is admitted only when {@link ServedHosts} answers `true`: an
+ * unserved host gets a `404` for the metadata document and no challenge, so a
+ * forged `Host` never mints discovery for a domain the application did not
+ * vouch for. It is asked at most once per request to the resource or its metadata,
+ * and only for those. Every matching rule of {@link protectedResource}'s
+ * holds per host.
+ *
+ * It answers THREE providers, which is why it is spread: the configuration,
+ * the answerer and the {@link HttpChallenges} member.
+ */
+export const protectedResourcePerHost = <
+  const O extends ProtectedResourcePerHostOptions = Record<never, never>,
+>(
+  given?: O & OptionsAs<O, ProtectedResourcePerHostOptions>,
+): readonly [
+  ProtectedResourcePerHostProvider<O>,
+  Provider<HttpHandler, never, ProtectedResourcePerHost | ServedHosts>,
+  Provider<HttpChallenges, never, ProtectedResourcePerHost | ServedHosts>,
+] => {
+  const options: ProtectedResourcePerHostOptions = given ?? {};
+  const allowInsecure = options.allowInsecure ?? false;
+  const schema = Config.object({
+    path: Config.pinned(options.path, Config.string(PATH)),
+    authorizationServers: Config.pinned(options.authorizationServers, Config.list(SERVERS)),
+  });
+  const configuration = Provider(ProtectedResourcePerHost)({
+    inject: { env: Env },
+    make: ({ env }) =>
+      Config.parse(
+        "HttpProtectedResourcePerHost",
+        schema,
+      )(env).flatMap(({ path, authorizationServers }) => {
+        const issues = [
+          // Matched as sent, so a spelling the parser would rewrite matches nothing.
+          ...(URL.parse(path, "https://resource.invalid")?.pathname === path
+            ? []
+            : [
+                {
+                  message:
+                    "must be an absolute path as the URL parser spells it, with no query or fragment",
+                  path: [PATH],
+                },
+              ]),
+          ...issuerAndScopeIssues(
+            authorizationServers,
+            options.scopes ?? [],
+            allowInsecure,
+            refusedOn("HttpProtectedResourcePerHost", "protectedResourcePerHost()"),
+          ),
+        ];
+        return issues.length === 0
+          ? Ok({ path, authorizationServers })
+          : Err(new ConfigInvalid({ port: "HttpProtectedResourcePerHost", issues }));
+      }),
+  });
+  const answerer = Provider.member(HttpHandler)({
+    inject: { bound: ProtectedResourcePerHost, served: ServedHosts },
+    sync: ({ bound, served }) => {
+      const prefix = metadataPath(`https://resource.invalid${bound.path}`);
+      return {
+        prefix,
+        handle: async (request, response) => {
+          const named =
+            request.method === "GET"
+              ? requestResource(request, bound.path, allowInsecure)
+              : undefined;
+          // The document describes one resource (RFC 9728 §3.3), so its URL is
+          // matched exactly before the host is even asked about.
+          if (named === undefined || !requestIsFor(request)(metadataOf(named.resource))) {
+            send(response, 404);
+            return;
+          }
+          const answered = await served(named.host).map((vouched) => {
+            if (!vouched) return send(response, 404);
+            response.writeHead(200, { "content-type": "application/json" });
+            response.end(
+              JSON.stringify({
+                resource: named.resource,
+                authorization_servers: bound.authorizationServers,
+                ...(options.scopes?.length ? { scopes_supported: options.scopes } : {}),
+              }),
+            );
+          });
+          if (answered.isDefect()) {
+            // oxlint-disable-next-line unthrown/no-throw -- a handler has no defect channel: this is the runtime's 500
+            throw answered.cause;
+          }
+        },
+      };
+    },
+  });
+  const challenge = Provider.member(HttpChallenges)({
+    inject: { bound: ProtectedResourcePerHost, served: ServedHosts },
+    sync: ({ bound, served }) => ({
+      path: bound.path,
+      resolve: (request: IncomingMessage) => {
+        const named = requestResource(request, bound.path, allowInsecure);
+        return named === undefined || !requestIsFor(request)(named.resource)
+          ? OkAsync(undefined)
+          : served(named.host).map((vouched) =>
+              vouched ? challengeOf(named.resource) : undefined,
+            );
+      },
+    }),
+  });
+  // Cast for the needs alone, as protectedResource()'s is.
+  return [configuration as unknown as ProtectedResourcePerHostProvider<O>, answerer, challenge];
 };

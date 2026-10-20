@@ -45,9 +45,12 @@ import {
 import { Module, Port, Provider, type PortClassOf, type ServiceOf } from "@btravstack/di";
 import { html, HtmxFragmentsPort, htmx } from "@btravstack/htmx-server";
 import {
+  ServedHosts,
   apiKeyAuthenticator,
   protectedResource,
+  protectedResourcePerHost,
   type ProtectedResourceOptions,
+  type ProtectedResourcePerHostOptions,
 } from "@btravstack/http-server";
 import {
   HttpAuthenticator,
@@ -1693,58 +1696,59 @@ const noop: Handler = (_request, response, _signal) =>
   new Promise<void>((done) => response.end("ok", () => done()));
 
 /**
- * A protected resource over one answerer at the root, answering as its
- * `x-answer` header says: `ok` is served, `explicit` refused through
- * `writeHead`, the `challenged` ones refused with a challenge of their own
- * through `setHeader` or each header form `writeHead` takes, and anything
- * else refused through Node's implicit header.
+ * One answerer at the root, answering as its `x-answer` header says: `ok` is
+ * served, `explicit` refused through `writeHead`, the `challenged` ones refused
+ * with a challenge of their own through `setHeader` or each header form
+ * `writeHead` takes, and anything else refused through Node's implicit header.
  */
+const refusing: Handler = async (request, response) => {
+  const answer = request.headers["x-answer"];
+  const scopeRefusal = typeof answer === "string" && answer.startsWith("scope");
+  if (scopeRefusal || answer === "key-scoped") {
+    const authenticate = Object.assign(
+      () => OkAsync(granted({}, [])),
+      scopeRefusal ? { bearer: true as const } : {},
+    );
+    await resolveRequestScheme(
+      [
+        { user: [answer === "scope-invalid" ? 'orders"\r\nread' : "orders:read"] },
+        { user: ["orders:admin"] },
+      ],
+      { user: authenticate },
+      request,
+    );
+    if (answer === "scope-then-ok")
+      await resolveRequestScheme([{ user: [] }], { user: authenticate }, request);
+  }
+  await new Promise<void>((done) => {
+    const invalid = 'Bearer error="invalid_token"';
+    if (scopeRefusal && answer === "scope-explicit")
+      response.writeHead(403, { "WWW-Authenticate": 'Basic realm="legacy"' });
+    else if (scopeRefusal && answer === "scope-raw")
+      response.writeHead(403, ["WWW-Authenticate", 'Basic realm="legacy"']);
+    else if (scopeRefusal || answer === "key-scoped" || answer === "forbidden") {
+      if (answer === "scope-challenged")
+        response.setHeader("www-authenticate", 'Basic realm="legacy"');
+      response.statusCode = 403;
+    } else if (answer === "ok") response.statusCode = 200;
+    else if (answer === "explicit") response.writeHead(401, { "content-type": "text/plain" });
+    else if (answer === "challenged-explicit")
+      response.writeHead(401, { "WWW-Authenticate": invalid });
+    else if (answer === "challenged-raw") response.writeHead(401, ["WWW-Authenticate", invalid]);
+    else if (answer === "challenged") {
+      response.setHeader("www-authenticate", invalid);
+      response.statusCode = 401;
+    } else response.statusCode = 401;
+    response.end(() => done());
+  });
+};
+
+/** A protected resource over {@link refusing}. */
 const protectedAppOf = (options: ProtectedResourceOptions) =>
   Module("ProtectedApp")({
     imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
     provides: [
-      answering(async (request, response) => {
-        const answer = request.headers["x-answer"];
-        const scopeRefusal = typeof answer === "string" && answer.startsWith("scope");
-        if (scopeRefusal || answer === "key-scoped") {
-          const authenticate = Object.assign(
-            () => OkAsync(granted({}, [])),
-            scopeRefusal ? { bearer: true as const } : {},
-          );
-          await resolveRequestScheme(
-            [
-              { user: [answer === "scope-invalid" ? 'orders"\r\nread' : "orders:read"] },
-              { user: ["orders:admin"] },
-            ],
-            { user: authenticate },
-            request,
-          );
-          if (answer === "scope-then-ok")
-            await resolveRequestScheme([{ user: [] }], { user: authenticate }, request);
-        }
-        await new Promise<void>((done) => {
-          const invalid = 'Bearer error="invalid_token"';
-          if (scopeRefusal && answer === "scope-explicit")
-            response.writeHead(403, { "WWW-Authenticate": 'Basic realm="legacy"' });
-          else if (scopeRefusal && answer === "scope-raw")
-            response.writeHead(403, ["WWW-Authenticate", 'Basic realm="legacy"']);
-          else if (scopeRefusal || answer === "key-scoped" || answer === "forbidden") {
-            if (answer === "scope-challenged")
-              response.setHeader("www-authenticate", 'Basic realm="legacy"');
-            response.statusCode = 403;
-          } else if (answer === "ok") response.statusCode = 200;
-          else if (answer === "explicit") response.writeHead(401, { "content-type": "text/plain" });
-          else if (answer === "challenged-explicit")
-            response.writeHead(401, { "WWW-Authenticate": invalid });
-          else if (answer === "challenged-raw")
-            response.writeHead(401, ["WWW-Authenticate", invalid]);
-          else if (answer === "challenged") {
-            response.setHeader("www-authenticate", invalid);
-            response.statusCode = 401;
-          } else response.statusCode = 401;
-          response.end(() => done());
-        });
-      }),
+      answering(refusing),
       ...protectedResource(options),
       Provider.member(HttpChallenges)({
         inject: {},
@@ -1753,6 +1757,27 @@ const protectedAppOf = (options: ProtectedResourceOptions) =>
     ],
     exports: [HttpRuntime, HttpHandler],
   });
+
+/**
+ * A resource per host over {@link refusing}, beside an application serving
+ * the hosts `served` vouches for.
+ */
+const perHostAppOf = (
+  options: ProtectedResourcePerHostOptions,
+  served: ServiceOf<typeof ServedHosts>,
+) =>
+  Module("PerHostApp")({
+    imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+    provides: [
+      answering(refusing),
+      ...protectedResourcePerHost(options),
+      Provider(ServedHosts)({ inject: {}, value: served }),
+    ],
+    exports: [HttpRuntime, HttpHandler],
+  });
+
+const tenantHosts: ServiceOf<typeof ServedHosts> = (host) =>
+  OkAsync(host === "tenant-a.test" || host === "tenant-b.test");
 
 /**
  * One `GET` against a protected resource, with how to answer it and the `Host`
@@ -2135,6 +2160,23 @@ export type HttpFixtures = {
   ) => Promise<ProtectedCall>;
   /** `protectedRpcAppOf()`, booted, as a `GET` against it. */
   readonly protectedRpc: () => Promise<ProtectedCall>;
+  /**
+   * `protectedResourcePerHost()` over whatever options, served hosts and
+   * environment a test hands it, beside the same answerer. Unless given, the
+   * served hosts are `tenant-a.test` and `tenant-b.test`. Shut down by the
+   * fixture; a startup failure is the test's to assert on `app.exited`.
+   */
+  readonly perHostApp: (
+    options: ProtectedResourcePerHostOptions,
+    served?: ServiceOf<typeof ServedHosts>,
+    env?: Environment,
+  ) => App;
+  /** The same app, booted, as a `GET` against it. */
+  readonly perHostResource: (
+    options: ProtectedResourcePerHostOptions,
+    served?: ServiceOf<typeof ServedHosts>,
+    env?: Environment,
+  ) => Promise<ProtectedCall>;
   /**
    * An app whose starter binds `HttpConfig` from `env` (plus whatever `options`
    * pins), and what it bound. Shut down by the fixture; a startup failure is
@@ -2830,6 +2872,20 @@ export const it = test.extend<HttpFixtures>({
   protectedResource: async ({ protectedApp }, use) => {
     await use(async (options, env) => {
       const info = (await protectedApp(options, env).runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return protectedCallOf(info.port);
+    });
+  },
+
+  perHostApp: async ({ boot }, use) => {
+    await use((options, served = tenantHosts, env = {}) =>
+      boot(perHostAppOf(options, served), { env: env as never }),
+    );
+  },
+
+  perHostResource: async ({ perHostApp }, use) => {
+    await use(async (options, served, env) => {
+      const info = (await perHostApp(options, served, env).runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return protectedCallOf(info.port);
     });

@@ -40,6 +40,7 @@ is GraphQL's.
 
 A caller no requirement accepts gets a bare `401`, an under-scoped one a
 `403`. Compose `protectedResource()` from `@btravstack/http-server` and the
-`401` tells an MCP client where to sign in.
+`401` tells an MCP client where to sign in — or `protectedResourcePerHost()`,
+to serve one resource per tenant domain.
 
 See [Serve MCP](https://btravstack.github.io/btravstack/how-to/serve-mcp).

@@ -23,7 +23,12 @@ import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from
 import { CookieSchemes, crossSite, csrfOn } from "./cookie.js";
 import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
-import { HttpChallenges, challengeOn, type HttpChallenge } from "./protected-resource.js";
+import {
+  HttpChallenges,
+  challengeOn,
+  type HttpChallenge,
+  type HttpRequestChallenge,
+} from "./protected-resource.js";
 import { HttpSchemes, withFallback } from "./unit-scope.js";
 import type { AnyUnitModule, UnitsNeedsOf } from "./unit.js";
 
@@ -160,7 +165,7 @@ export const _internal_httpRuntime = (
   securityHeaders: HttpOptions["securityHeaders"],
   observers: readonly ((operation: Operation) => Settle)[],
   csrf = false,
-  challenges: readonly HttpChallenge[] = [],
+  challenges: readonly (HttpChallenge | HttpRequestChallenge)[] = [],
 ): Runtime<typeof HttpHandler, HttpInfo> => ({
   name: "http",
   resolves: [HttpHandler],
@@ -364,7 +369,7 @@ const listen = (
   securityHeaders: HttpOptions["securityHeaders"],
   observers: readonly ((operation: Operation) => Settle)[],
   csrf: boolean,
-  challenges: readonly HttpChallenge[],
+  challenges: readonly (HttpChallenge | HttpRequestChallenge)[],
 ): AsyncResult<Serving<HttpInfo>, RuntimeStartFailed> =>
   routesOf(answerers)
     .toAsync()
@@ -425,7 +430,6 @@ const listen = (
               // FIRST, before dispatch: covers the runtime's own 404/500 and a
               // drained response alike, not only what oRPC matched.
               for (const [name, value] of headers) response.setHeader(name, value);
-              challenge(request, response);
               open.add(response);
               response.once("close", () => open.delete(response));
               const answerer = answererFor(routes, request.url);
@@ -471,10 +475,18 @@ const listen = (
                     end(response, 404, "NotFound");
                     return closedOf(response);
                   }
-                  void answer(answerer.handle(request, response, signal, unit), response);
-                  // The unit's lifetime IS the response's, which is what makes the
-                  // kernel's "flush inside the unit" contract structural here.
-                  return closedOf(response);
+                  // Inside the unit, so a host lookup a challenge needs is work
+                  // the drain waits on, and a refused or unrouted request costs none.
+                  const challenged = challenge(request, response);
+                  const dispatch = (): AsyncResult<void, never> => {
+                    void answer(answerer.handle(request, response, signal, unit), response);
+                    // The unit's lifetime IS the response's, which is what makes the
+                    // kernel's "flush inside the unit" contract structural here.
+                    return closedOf(response);
+                  };
+                  // Settled before the answerer can write a status; a defect there
+                  // is this unit's, and the runtime's 500.
+                  return challenged === undefined ? dispatch() : challenged.flatMap(dispatch);
                 })
                 .recoverDefect((cause) => {
                   // The unit failed outside `answer`'s reach — a synchronous throw
