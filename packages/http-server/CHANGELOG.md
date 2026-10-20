@@ -1,5 +1,14 @@
 # @btravstack/http-server
 
+## 0.41.0
+
+### Patch Changes
+
+- @btravstack/config@0.41.0
+  - @btravstack/contract@0.41.0
+  - @btravstack/core@0.41.0
+  - @btravstack/di@0.41.0
+
 ## 0.40.0
 
 ### Patch Changes
