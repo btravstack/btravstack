@@ -1,5 +1,24 @@
 # @btravstack/http-server
 
+## 0.44.0
+
+### Minor Changes
+
+- 5dcf450: Add opt-in server-side OIDC token retention for delegated API calls. A shared
+  application-supplied store serializes refresh rotation and logout across replicas;
+  session cookies carry only an opaque reference alongside the principal. Expose the
+  same capability to framework adapters without an HTTP listener.
+- 0fcf5fa: **Breaking: `AuthenticatorService` takes the request's query as a second argument.** An authenticator written as `(headers) => …` keeps compiling and behaving as before; code that calls a service directly, such as a scheme's own spec, passes one: `service(headers, new URLSearchParams())`. `resolvePrincipal` takes it as an optional fourth argument.
+
+  A scheme can read a signed credential from the request URL, the way a capability URL (`GET /files/42?grant=<payload>.<mac>`) carries one: every scheme is handed `query: URLSearchParams` beside its headers, never the body, parsed once from `request.url` for the oRPC, OpenAPI, htmx, GraphQL and MCP answerers. A grant that is present and refused answers the new `CredentialRefused`, which the walk turns into `403` (as `UnderScoped`, with no scope hint) unless a later requirement accepts the caller; a missing one stays `Unauthenticated` and `401`. The resolved principal seeds the scheme's unit like a token's, so the runtime forks it and closes it once the answer is flushed, a streamed download included. Describe the scheme in `openApiDocument`'s `securitySchemes` as `{ type: "apiKey", in: "query", name: "grant" }`.
+
+### Patch Changes
+
+- @btravstack/config@0.44.0
+  - @btravstack/contract@0.44.0
+  - @btravstack/core@0.44.0
+  - @btravstack/di@0.44.0
+
 ## 0.43.0
 
 ### Minor Changes
