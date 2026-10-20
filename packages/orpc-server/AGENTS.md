@@ -64,9 +64,12 @@ It is detected from the procedure, not a flag a consumer could forget:
 schema that accepts a `ReadableStream` as the answer (or a detailed answer's
 `body`) and refuses `{}` there. The probe is Standard Schema `validate`, so
 it holds for any vendor; the `{}` half keeps a body that accepts anything
-(`z.unknown()`, an object of optional keys) on RPC. A schema that validates
-asynchronously cannot be probed synchronously at indexing, so it counts as
-not streaming, and `responseBodyHint` is the declaration for it. The typed
+(`z.unknown()`, an object of optional keys) on RPC. On a detailed answer an
+issue with no path counts against the body too, since the body is all the
+two probes differ in. A schema that validates asynchronously cannot be
+probed synchronously at indexing, so it counts as not streaming, its probe's
+rejection observed so it cannot crash the process, and `responseBodyHint` is
+the declaration for it. The typed
 RPC client still lists these procedures: removing them from
 `RouterContractClient` would mean a type-level copy of the probe, and its
 `404` is documented instead.

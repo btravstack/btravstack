@@ -254,10 +254,14 @@ const streamsBody = (procedure: AnyProcedureContract): boolean => {
 /** Whether `schema` refuses `body` where the answer carries it; `undefined` when it validates asynchronously. */
 const refuses = (schema: AnySchema, body: unknown, detailed: boolean): boolean | undefined => {
   const result = schema["~standard"].validate(detailed ? { body } : body);
-  if (result instanceof Promise) return undefined;
+  if (result instanceof Promise) {
+    // Unread, a probe that rejects would surface as an unhandled rejection.
+    void result.catch(() => undefined);
+    return undefined;
+  }
   return (result.issues ?? []).some((issue) => {
     const at = issue.path?.[0];
-    return !detailed || (typeof at === "object" ? at.key : at) === "body";
+    return !detailed || at === undefined || (typeof at === "object" ? at.key : at) === "body";
   });
 };
 

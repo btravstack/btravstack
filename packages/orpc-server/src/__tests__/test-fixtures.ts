@@ -5,7 +5,7 @@ import { Observers, type Operation, type Settled } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { CredentialRefused, HttpAuthenticator, Unauthenticated } from "@btravstack/http-server";
 import { it as base, type HttpFixtures } from "@btravstack/internal-http-fixtures";
-import { oc } from "@orpc/contract";
+import { oc, type Schema } from "@orpc/contract";
 import { openapi } from "@orpc/openapi";
 import { RequestCompressionHandlerPlugin } from "@orpc/server/plugins";
 import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
@@ -160,6 +160,16 @@ export const it: TestAPI<HttpFixtures & Fixtures> = base.extend<Fixtures>({
   },
 });
 
+/** A vendor-neutral output schema that validates asynchronously and rejects on anything but an item. */
+const asyncItem: Schema<{ name: string }> = {
+  "~standard": {
+    version: 1,
+    vendor: "fixture",
+    validate: (value) =>
+      Promise.resolve().then(() => ({ value: { name: (value as { name: string }).name.trim() } })),
+  },
+};
+
 const contentContract = {
   content: {
     put: oc
@@ -198,12 +208,13 @@ const contentContract = {
       .meta(openapi({ method: "POST", path: "/items" }))
       .input(z.object({ name: z.string() }))
       .output(z.object({ name: z.string() })),
-    checked: oc
-      .input(z.object({ name: z.string() }))
-      .output(z.custom<{ name: string }>().refine(async (item) => item !== null)),
+    checked: oc.input(z.object({ name: z.string() })).output(asyncItem),
     counted: oc
       .meta(openapi({ method: "GET", path: "/items/count", outputStructure: "detailed" }))
       .output(z.object({ body: z.object({ count: z.number().optional() }) })),
+    sized: oc
+      .meta(openapi({ method: "GET", path: "/items/size", outputStructure: "detailed" }))
+      .output(z.object({ body: z.unknown() }).refine(({ body }) => body instanceof ReadableStream)),
   },
 };
 
@@ -240,6 +251,7 @@ const contentRouterOf = (sawFirstChunk: () => void, downloads: ("opened" | "canc
         create: (_context, input) => OkAsync(input),
         checked: (_context, input) => OkAsync(input),
         counted: () => OkAsync({ body: { count: 1 } }),
+        sized: () => OkAsync({ body: recorded(DOWNLOAD, downloads) }),
       },
     }),
   });

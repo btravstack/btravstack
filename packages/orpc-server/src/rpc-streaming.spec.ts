@@ -36,9 +36,20 @@ describe("streaming procedures over RPC", () => {
     expect({ status, downloads: bodies.downloads }).toEqual({ status: 404, downloads: [] });
   });
 
+  it("refuses a download whose schema refuses a plain body at its root", async ({ bodies }) => {
+    // GIVEN a detailed route whose object-level check alone requires a streamed body
+    const port = await bodies.serve("buffered");
+
+    // WHEN it is called over RPC
+    const status = await bodies.rpc(port, "items/sized", undefined);
+
+    // THEN RPC answered the runtime's 404 and no stream was ever opened
+    expect({ status, downloads: bodies.downloads }).toEqual({ status: 404, downloads: [] });
+  });
+
   it("keeps serving every procedure that streams nothing", async ({ bodies }) => {
-    // GIVEN a plain procedure, one whose output validates asynchronously, and a
-    // detailed answer whose JSON body would also accept a stream
+    // GIVEN a plain procedure, one whose output validates asynchronously and
+    // rejects the probe, and a detailed answer whose JSON body would also accept a stream
     const port = await bodies.serve("buffered");
 
     // WHEN each is called over RPC
