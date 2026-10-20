@@ -86,7 +86,8 @@ for a file the application must see on the way — to encrypt, to hash, to
 store. Declare `requestBodyHint: "octet-stream"` with the `detailed` input
 structure, and the handler gets `body` as a `ReadableStream` while the client
 is still sending. An `outputStructure: "detailed"` answer whose `body` is a
-`ReadableStream` streams out under the `headers` it names.
+`ReadableStream` streams out under the `headers` it names; declare
+`responseBodyHint: "octet-stream"` on that route too.
 
 <!-- doctest: skip — a standalone contract fragment -->
 
@@ -115,7 +116,14 @@ export const contract = {
       )
       .output(z.object({ key: z.string() })),
     download: oc
-      .meta(openapi({ method: "GET", path: "/files/{key}", outputStructure: "detailed" }))
+      .meta(
+        openapi({
+          method: "GET",
+          path: "/files/{key}",
+          outputStructure: "detailed",
+          responseBodyHint: "octet-stream",
+        }),
+      )
       .input(z.object({ key: z.string() }))
       .output(
         z.object({
@@ -139,6 +147,21 @@ stream with oRPC's `PAYLOAD_TOO_LARGE` once it passes the limit, and the
 request answers `413` whatever the handler made of that error. The hint is
 the route's: a client cannot pick the larger limit by its headers, and the
 RPC wire reads every body under `bodyLimit`.
+
+A procedure that streams a body is served by the OpenAPI routes only, and
+its route says so: the upload's `requestBodyHint: "octet-stream"`, and
+`responseBodyHint: "octet-stream"` on the download. The RPC answerer leaves
+both unmatched, so `/rpc` answers `404` before the handler runs and a
+download never opens a stream nothing would read. A typed RPC client built
+from the contract still lists them, and calling one through `RPCLink` gets
+that `404`: call it with `fetch` or an OpenAPI client on its route instead.
+A download that forgets `responseBodyHint` still streams over OpenAPI, but
+over `/rpc` its handler runs. Every stream found in the answer has its
+cancellation started, without waiting, and the call answers `500` at once,
+reported to `Observers` as a defect, rather than `{}`. The answer's objects,
+arrays, maps and sets are searched. A stream the handler holds a reader on is
+locked, and the backstop cannot free it: it is reported as a defect of its
+own, and releasing it is the handler's job.
 
 A download stream that errors midway resets the connection, so the client's
 read rejects rather than ending cleanly on a short body; response

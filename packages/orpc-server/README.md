@@ -417,7 +417,13 @@ a body that passes it errors its stream and answers `413` whatever the
 handler made of the error. An `outputStructure: "detailed"` answer whose
 `body` is a `ReadableStream` streams out with the `headers` it names, and a
 stream that errors midway resets the connection rather than ending a short
-body cleanly. The recipe is
+body cleanly; declare `responseBodyHint: "octet-stream"` on that route. A
+route declaring either hint is served by the `openapi` routes only: the RPC
+answerer leaves it unmatched, so `/rpc` answers `404` before its handler
+runs, and a typed RPC client that lists it gets that `404`. An RPC answer
+that still carries a `ReadableStream` has its cancellation started and
+answers `500` at once, reported as a defect; a locked stream cannot be freed
+that way and is reported on its own. The recipe is
 [Serve an oRPC contract as OpenAPI routes](https://btravstack.github.io/btravstack/how-to/serve-an-openapi-contract#stream-a-binary-body).
 
 ## What it does not do

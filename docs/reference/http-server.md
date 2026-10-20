@@ -1688,7 +1688,12 @@ without reading the body (a refusal decided on its headers) answers at once,
 and nothing reads the rest on its behalf. The route decides,
 never the client: a body whose kind oRPC infers
 from its headers stays under `bodyLimit`, and so does every body on the RPC
-wire. Request decompression, when `plugins` adds it, is measured inflated
+wire. A procedure whose route declares `requestBodyHint` or
+`responseBodyHint` `"octet-stream"` is not served on the RPC wire at all:
+`orpc()` leaves it unmatched, so `/rpc` answers `404` before its handler runs,
+and an RPC answer that still carries a `ReadableStream` has its cancellation
+started and answers `500` at once
+([details](/how-to/serve-an-openapi-contract#stream-a-binary-body)). Request decompression, when `plugins` adds it, is measured inflated
 under both limits. The limit is finite by default because the body is never
 buffered: what it bounds is how long one client may hold a connection and
 whatever the handler streams the bytes into, not memory.

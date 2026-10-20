@@ -52,6 +52,37 @@ route that streams needs neither. The default is finite because nothing is
 buffered: the limit bounds one client's hold on a connection and whatever the
 handler streams into, not memory.
 
+**A procedure that streams a body is served over OpenAPI only.** The RPC
+serializer ignores `outputStructure: "detailed"` and writes a
+`ReadableStream` as `{}`, so a download over `/rpc` opened a stream nothing
+read or cancelled, holding whatever backed it until a timeout. Two layers
+keep it off. `orpc()` passes oRPC's own `filter` the route's meta: a
+procedure declaring `requestBodyHint` or `responseBodyHint` `"octet-stream"`
+is never indexed, so the request resolves unwritten. That is the runtime's
+`404`, as for an unknown procedure or a disallowed method, decided before
+decoding or the handler. The meta is deterministic, and the route needs it
+anyway: the upload hint is what makes the OpenAPI codec stream the body, and
+the download hint is what an OpenAPI client decodes the answer by. A
+consumer who forgets the download hint meets the second layer:
+`cancelStreams`, a client interceptor inside `reportDefects`, walks the
+answer's plain objects, arrays, maps and sets (map keys included), guarded
+against cycles. It starts the cancellation of every unlocked
+`ReadableStream` it finds and throws at once, so the call answers `500` and
+is reported as a defect, never `{}` over an open socket. Nothing awaits a
+cancellation: a source whose `cancel` never settles would otherwise hold the
+request and its unit open. A locked stream, one the handler took a reader on,
+cannot be cancelled by anyone but that reader. It is reported as a defect of
+its own (`orpc.stream: "locked"`, with the count) so the leak is visible;
+freeing it is the handler's. It walks no other class instance, because an
+event iterator is serialized by its own rules and may wrap a stream it still
+needs.
+Detecting streams by probing the output schema with fabricated values was
+tried and dropped: every vendor-specific shape (transforms, narrowed or
+branded streams, checks that a missing sibling field skips, asynchronous or
+throwing validators) was another false negative or a boot failure. The
+typed RPC client still lists these procedures; removing them from
+`RouterContractClient` would mean typing the meta, so the `404` is documented.
+
 `HttpModule` shares application-root exports with `GraphqlModule`: runtime
 ports are automatic, as are available `Logger` and `HealthChecks` ports.
 Business exports remain explicit; private imported providers remain private.

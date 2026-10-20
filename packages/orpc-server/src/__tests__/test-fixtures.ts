@@ -40,6 +40,8 @@ export type Bodies = {
   readonly serve: (app: BodiesApp, env?: Readonly<Record<string, string>>) => Promise<number>;
   /** Settles once the content route's `PUT` has read its first chunk. */
   readonly firstChunk: Promise<void>;
+  /** What became of each stream the content route's `GET` opened, in order. */
+  readonly downloads: readonly ("opened" | "cancelled")[];
   /** The defects the served apps reported in this test. */
   readonly defects: readonly Operation[];
   /** A raw `PUT`, its body written by the test, its answer read whole. */
@@ -50,6 +52,8 @@ export type Bodies = {
   ) => { readonly request: ReturnType<typeof request>; readonly answer: Promise<Answer> };
   /** A raw `GET` with no `accept-encoding`, read whole. */
   readonly get: (port: number, path: string) => Promise<Answer>;
+  /** Calls a procedure over `/rpc` with `input`, as the RPC link would, and answers its status. */
+  readonly rpc: (port: number, procedure: string, input: unknown) => Promise<number>;
 };
 
 /** The grant a capability URL carries, which its scheme accepts for file `42`. */
@@ -82,6 +86,7 @@ export const it: TestAPI<HttpFixtures & Fixtures> = base.extend<Fixtures>({
     let sawFirstChunk = (): void => {};
     const firstChunk = new Promise<void>((resolve) => (sawFirstChunk = resolve));
     const defects: Operation[] = [];
+    const downloads: ("opened" | "cancelled")[] = [];
     const observer = Provider.member(Observers)({
       inject: {},
       sync: () => (operation) => () => {
@@ -89,7 +94,7 @@ export const it: TestAPI<HttpFixtures & Fixtures> = base.extend<Fixtures>({
       },
     });
     const shared = {
-      router: contentRouterOf(() => sawFirstChunk()),
+      router: contentRouterOf(() => sawFirstChunk(), downloads),
       provides: [observer],
       port: 0,
       hostname: "127.0.0.1",
@@ -119,9 +124,11 @@ export const it: TestAPI<HttpFixtures & Fixtures> = base.extend<Fixtures>({
       serve: async (app, env = {}) =>
         (await boot(apps[app](), { env }).runtimeInfo()).get()?.port ?? 0,
       firstChunk,
+      downloads,
       defects,
       put,
       get,
+      rpc,
     });
   },
   capability: async ({ boot }, use) => {
@@ -174,6 +181,20 @@ const contentContract = {
       .output(
         z.object({ headers: z.record(z.string(), z.string()), body: z.instanceof(ReadableStream) }),
       ),
+    export: oc
+      .meta(
+        openapi({
+          method: "GET",
+          path: "/exports/{key}",
+          outputStructure: "detailed",
+          responseBodyHint: "octet-stream",
+        }),
+      )
+      .input(z.object({ key: z.string() }))
+      .output(z.object({ body: z.instanceof(ReadableStream) })),
+    bundle: oc
+      .input(z.object({ key: z.string() }))
+      .output(z.map(z.string(), z.instanceof(ReadableStream))),
   },
   items: {
     create: oc
@@ -185,9 +206,12 @@ const contentContract = {
 
 /**
  * The `PUT` counts the bytes it reads, calling `sawFirstChunk` on the first; the
- * `GET` streams {@link DOWNLOAD} with its own headers, or errors midway for `broken`.
+ * `GET` streams {@link DOWNLOAD} with its own headers, recording into `downloads`
+ * the stream it opened and its cancellation, or errors midway for `broken`; the
+ * `export` streams it too, from a route declaring `responseBodyHint`, and
+ * `bundle` answers it inside a `Map`.
  */
-const contentRouterOf = (sawFirstChunk: () => void) =>
+const contentRouterOf = (sawFirstChunk: () => void, downloads: ("opened" | "cancelled")[]) =>
   defineHttp().OrpcRouter(contentContract)({
     inject: {},
     sync: () => ({
@@ -206,9 +230,11 @@ const contentRouterOf = (sawFirstChunk: () => void) =>
                     "content-length": String(DOWNLOAD.length),
                     "content-disposition": 'attachment; filename="report.txt"',
                   },
-                  body: new Blob([DOWNLOAD]).stream(),
+                  body: downloadOf(key, downloads),
                 },
           ),
+        export: () => OkAsync({ body: recorded(DOWNLOAD, downloads) }),
+        bundle: (_context, { key }) => OkAsync(new Map([[key, recorded(DOWNLOAD, downloads)]])),
       },
       items: { create: (_context, input) => OkAsync(input) },
     }),
@@ -226,6 +252,31 @@ const countBytes = async (
   }
   return bytes;
 };
+
+/** {@link DOWNLOAD} as `recorded` streams it: `stuck` never settles its cancellation, `locked` has a reader. */
+const downloadOf = (key: string, downloads: ("opened" | "cancelled")[]) => {
+  if (key === "stuck") return recorded(DOWNLOAD, downloads, new Promise<void>(() => {}));
+  const stream = recorded(DOWNLOAD, downloads);
+  if (key === "locked") stream.getReader();
+  return stream;
+};
+
+const recorded = (
+  text: string,
+  downloads: ("opened" | "cancelled")[],
+  cancelled: Promise<void> = Promise.resolve(),
+): ReadableStream<Uint8Array> =>
+  new ReadableStream({
+    start: () => void downloads.push("opened"),
+    pull: (controller) => {
+      controller.enqueue(new TextEncoder().encode(text));
+      controller.close();
+    },
+    cancel: () => {
+      downloads.push("cancelled");
+      return cancelled;
+    },
+  });
 
 const brokenAfter = (text: string): ReadableStream<Uint8Array> =>
   new ReadableStream({
@@ -358,3 +409,12 @@ const capabilityRouterOf = (log: string[], released: Promise<void>) =>
       },
     }),
   });
+
+const rpc: Bodies["rpc"] = async (port, procedure, input) =>
+  (
+    await fetch(`http://127.0.0.1:${port}/rpc/${procedure}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ json: input }),
+    })
+  ).status;
