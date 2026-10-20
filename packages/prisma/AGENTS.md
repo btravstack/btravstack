@@ -67,7 +67,13 @@ production deploy and non-owner PostgreSQL boot in a non-root distroless image.
 **Nothing here imports `@prisma/orm-postgres`, and it is still a peer.** Every
 shape this package needs of a client is structural, so there is no import and
 knip reports the dependency unused — `knip.json` ignores it for this workspace
-deliberately. The peer stays because the BEHAVIOUR is version-specific:
+deliberately. The Postgres facade requires `temporal-polyfill` as a peer even when this
+starter imports no facade code. Its development consumers (`packages/prisma`,
+`packages/outbox` and `examples/order-api`) provide that peer explicitly;
+Knip's dependency allowances name it in those workspaces because their own
+source does not import it. The production infrastructure example holds it as
+a runtime dependency. Strict peer installation verifies that it is required.
+The peer stays because the BEHAVIOUR is version-specific:
 `affectedCount().build()`, `middleware` as a construction option,
 `runtime().close()` and the raw lane's tagged template are all Prisma 8's, and
 a range is the only place that can be said to an installer.
