@@ -622,6 +622,14 @@ The two rules this half exists to state, before the detail:
   the static members synchronously, as before. The metadata answerer asks the
   port itself.
 
+  **The lookup is raced against the response, and handed the unit's signal.**
+  The unit's lifetime is the response's, so a client that leaves while the
+  lookup is pending settles the unit at once, nothing is dispatched, and the
+  signal the port was given aborts as the unit settles. The race alone would
+  release the unit but leave the query running; the signal alone would rest
+  the guarantee on the application honouring it. A lookup defect that arrives
+  first is still the `500`.
+
 - **Password hashing and credential ISSUING are out of scope, deliberately.**
   All three authenticators above are on the **verifying** side, and that is
   the line: the credential is minted by whoever owns the identity — an OIDC

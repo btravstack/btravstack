@@ -123,7 +123,9 @@ export const TenantMcpApi = McpModule("TenantMcpApi")({
   verified at run time is served from its next request, with no restart.
 - **`ServedHosts` is asked on every request to `/mcp` and to its metadata**,
   before the answerer runs, and on no other. Back it with a cache when the
-  answer comes from a database.
+  answer comes from a database, and pass its second argument, the request's
+  `AbortSignal`, to the query: a client that leaves mid-lookup is not waited
+  for, and the signal aborts.
 - **The path comes from `HTTP_RESOURCE_PATH`** unless pinned, as here; the
   issuers from `HTTP_RESOURCE_AUTHORIZATION_SERVERS`.
 - **`jwtAuthenticator` checks one audience.** A client sending RFC 8707's

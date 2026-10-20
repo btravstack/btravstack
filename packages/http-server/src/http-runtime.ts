@@ -477,16 +477,26 @@ const listen = (
                   }
                   // Inside the unit, so a host lookup a challenge needs is work
                   // the drain waits on, and a refused or unrouted request costs none.
-                  const challenged = challenge(request, response);
+                  const challenged = challenge(request, response, signal);
                   const dispatch = (): AsyncResult<void, never> => {
                     void answer(answerer.handle(request, response, signal, unit), response);
                     // The unit's lifetime IS the response's, which is what makes the
                     // kernel's "flush inside the unit" contract structural here.
                     return closedOf(response);
                   };
-                  // Settled before the answerer can write a status; a defect there
-                  // is this unit's, and the runtime's 500.
-                  return challenged === undefined ? dispatch() : challenged.flatMap(dispatch);
+                  if (challenged === undefined) return dispatch();
+                  // Settled before the answerer can write a status, a defect there
+                  // being this unit's 500 — and raced against the response, whose
+                  // lifetime the unit's still is: a client gone mid-lookup settles
+                  // it now, and nothing is dispatched.
+                  return fromSafePromise(
+                    Promise.race([
+                      challenged.map(() => dispatch),
+                      closedOf(response).map(() => undefined),
+                    ]),
+                  )
+                    .flatMap((won) => won)
+                    .flatMap((next) => (next === undefined ? OkAsync() : next()));
                 })
                 .recoverDefect((cause) => {
                   // The unit failed outside `answer`'s reach — a synchronous throw

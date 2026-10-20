@@ -1765,11 +1765,12 @@ const protectedAppOf = (options: ProtectedResourceOptions) =>
 const perHostAppOf = (
   options: ProtectedResourcePerHostOptions,
   served: ServiceOf<typeof ServedHosts>,
+  handler: Handler = refusing,
 ) =>
   Module("PerHostApp")({
     imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
     provides: [
-      answering(refusing),
+      answering(handler),
       ...protectedResourcePerHost(options),
       Provider(ServedHosts)({ inject: {}, value: served }),
     ],
@@ -2177,6 +2178,14 @@ export type HttpFixtures = {
     served?: ServiceOf<typeof ServedHosts>,
     env?: Environment,
   ) => Promise<ProtectedCall>;
+  /**
+   * A resource per host at `/mcp` over an answerer counting the requests it is
+   * handed, and a `GET /mcp` through `tenant-a.test` whose client leaves once
+   * `served` has been asked about the host.
+   */
+  readonly abandonedLookup: (
+    served: ServiceOf<typeof ServedHosts>,
+  ) => Promise<{ readonly entered: () => number }>;
   /**
    * An app whose starter binds `HttpConfig` from `env` (plus whatever `options`
    * pins), and what it bound. Shut down by the fixture; a startup failure is
@@ -2888,6 +2897,39 @@ export const it = test.extend<HttpFixtures>({
       const info = (await perHostApp(options, served, env).runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return protectedCallOf(info.port);
+    });
+  },
+
+  abandonedLookup: async ({ boot }, use) => {
+    await use(async (served) => {
+      let entered = 0;
+      let asked = false;
+      const app = boot(
+        perHostAppOf(
+          { path: "/mcp", authorizationServers: ["https://login.test/"] },
+          (host, signal) => {
+            asked = true;
+            return served(host, signal);
+          },
+          (request, response, signal, host) => {
+            entered += 1;
+            return refusing(request, response, signal, host);
+          },
+        ),
+      );
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const request = httpRequest({
+        host: "127.0.0.1",
+        port: info.port,
+        path: "/mcp",
+        headers: { host: "tenant-a.test" },
+      });
+      request.on("error", () => {});
+      request.end();
+      await vi.waitUntil(() => asked);
+      request.destroy();
+      return { entered: () => entered };
     });
   },
 

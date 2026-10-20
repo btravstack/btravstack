@@ -1,6 +1,6 @@
 import { it } from "@btravstack/internal-http-fixtures";
 import { OkAsync, fromSafePromise } from "unthrown";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 
 const MCP = {
   resource: "https://api.test/mcp",
@@ -956,6 +956,47 @@ describe("protectedResourcePerHost", () => {
       expect(answered.status).toBe(500);
     },
   );
+
+  it("settles a request whose client left mid-lookup, and dispatches nothing", async ({
+    abandonedLookup,
+  }) => {
+    // GIVEN a lookup that answers only once released, and remembers the signal it was handed
+    let release: (vouched: boolean) => void = () => {};
+    let handed: AbortSignal | undefined;
+    const { entered } = await abandonedLookup((_host, signal) => {
+      handed = signal;
+      return fromSafePromise(new Promise<boolean>((done) => (release = done)));
+    });
+
+    // WHEN the client has left, the unit settled, and the lookup then vouches for the host
+    await vi.waitUntil(() => handed?.aborted);
+    release(true);
+    await new Promise((done) => setImmediate(done));
+
+    // THEN the unit settled with the lookup still pending, and no answerer was entered
+    expect({ settled: handed?.reason, entered: entered() }).toEqual({
+      settled: expect.objectContaining({ message: "The unit has settled" }),
+      entered: 0,
+    });
+  });
+
+  it("hands the lookup the request's signal, aborted once its unit settles", async ({
+    perHostResource,
+  }) => {
+    // GIVEN an application remembering the signal each lookup was handed
+    const handed: AbortSignal[] = [];
+    const get = await perHostResource(PER_HOST, (_host, signal) => {
+      handed.push(signal);
+      return OkAsync(true);
+    });
+
+    // WHEN a refused caller reaches the resource and its unit settles
+    await get("/mcp", undefined, "tenant-a.test");
+    await vi.waitUntil(() => handed.every((signal) => signal.aborted));
+
+    // THEN that signal was the unit's own
+    expect(handed.map((signal) => signal.reason?.message)).toEqual(["The unit has settled"]);
+  });
 
   it.for(["mcp", "/mcp?", "/mcp?tenant=a", "/mcp#top", "//alias.test/mcp", "/a/../mcp", ""])(
     "refuses the path %j at boot",

@@ -31,11 +31,16 @@ export type HttpChallenge = {
 /**
  * A challenge whose target depends on the request: `resolve` answers it, or
  * `undefined` for none, and is asked only for a request whose path, as sent,
- * is `path` — settled before dispatch, so no other request waits on it.
+ * is `path` — settled before dispatch, so no other request waits on it. It is
+ * handed the unit's signal; a client that leaves first settles the unit
+ * without waiting for it, and nothing is dispatched.
  */
 export type HttpRequestChallenge = {
   readonly path: string;
-  readonly resolve: (request: IncomingMessage) => AsyncResult<HttpChallenge | undefined, never>;
+  readonly resolve: (
+    request: IncomingMessage,
+    signal: AbortSignal,
+  ) => AsyncResult<HttpChallenge | undefined, never>;
 };
 
 /**
@@ -127,20 +132,21 @@ export const challengeOn = (
 ): ((
   request: IncomingMessage,
   response: ServerResponse,
+  signal: AbortSignal,
 ) => AsyncResult<void, never> | undefined) => {
   const fixed = challenges.filter((challenge): challenge is HttpChallenge => "value" in challenge);
   const perRequest = challenges.filter(
     (challenge): challenge is HttpRequestChallenge => "resolve" in challenge,
   );
   const challenge = applying(fixed);
-  return (request, response) => {
+  return (request, response, signal) => {
     const path = requestPath(request.url ?? "");
     const due = perRequest.filter((member) => member.path === path);
     if (due.length === 0) {
       challenge(request, response);
       return undefined;
     }
-    return allAsync(due.map(({ resolve }) => resolve(request))).map((resolved) =>
+    return allAsync(due.map(({ resolve }) => resolve(request, signal))).map((resolved) =>
       applying([...fixed, ...resolved.filter((found) => found !== undefined)])(request, response),
     );
   };
@@ -457,10 +463,12 @@ export const protectedResource = <const O extends ProtectedResourceOptions = Rec
  * Whether this deployment serves a host — usually a domain a tenant verified,
  * kept in the application's own data. Asked with the host as the URL parser
  * spells it: lowercase, punycode, the scheme's default port dropped and any
- * other port kept (`tenant-a.example`, `localhost:3000`).
+ * other port kept (`tenant-a.example`, `localhost:3000`), and the request
+ * unit's signal, aborted once the unit settles — a client that left included —
+ * so a query can be cancelled.
  */
 export class ServedHosts extends Port("HttpServedHosts")<
-  (host: string) => AsyncResult<boolean, never>
+  (host: string, signal: AbortSignal) => AsyncResult<boolean, never>
 > {}
 
 /** What {@link protectedResourcePerHost} was configured with, once the boot has checked it. */
@@ -596,7 +604,7 @@ export const protectedResourcePerHost = <
       const prefix = metadataPath(`https://resource.invalid${bound.path}`);
       return {
         prefix,
-        handle: async (request, response) => {
+        handle: async (request, response, signal) => {
           const named =
             request.method === "GET"
               ? requestResource(request, bound.path, allowInsecure)
@@ -607,7 +615,7 @@ export const protectedResourcePerHost = <
             send(response, 404);
             return;
           }
-          const answered = await served(named.host).map((vouched) => {
+          const answered = await served(named.host, signal).map((vouched) => {
             if (!vouched) return send(response, 404);
             response.writeHead(200, { "content-type": "application/json" });
             response.end(
@@ -630,11 +638,11 @@ export const protectedResourcePerHost = <
     inject: { bound: ProtectedResourcePerHost, served: ServedHosts },
     sync: ({ bound, served }) => ({
       path: bound.path,
-      resolve: (request: IncomingMessage) => {
+      resolve: (request: IncomingMessage, signal: AbortSignal) => {
         const named = requestResource(request, bound.path, allowInsecure);
         return named === undefined || !requestIsFor(request)(named.resource)
           ? OkAsync(undefined)
-          : served(named.host).map((vouched) =>
+          : served(named.host, signal).map((vouched) =>
               vouched ? challengeOf(named.resource) : undefined,
             );
       },

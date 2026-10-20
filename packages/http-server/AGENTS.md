@@ -376,7 +376,10 @@ This does not change ordinary di module visibility.
   on that path alone, because `writeHead` is synchronous and the answerer decides
   the status; every other request applies the static members as before. A
   per-host resource's `ServedHosts` port is the application's, asked on every
-  request to that path, so the application answers it from a cache.
+  request to that path, so the application answers it from a cache. The
+  lookup is raced against the response's `'close'`, since the unit's lifetime
+  is the response's: a client gone mid-lookup settles the unit and nothing is
+  dispatched. The port is handed the unit's signal, aborted as it settles.
 
 - **`html`/`raw` and `Html`** (`html.ts`) — a tagged template escaping every
   interpolation by default: `` html`<tr>${value}</tr>` `` HTML-escapes
