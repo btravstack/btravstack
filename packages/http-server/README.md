@@ -23,5 +23,6 @@ The HTTP runtime is composed by `HttpModule` (`@btravstack/orpc-server`) or
 `GraphqlModule` (`@btravstack/graphql-server`); its `HttpHandler` members route
 by longest matching prefix. `defineAuth()` names shared schemes without choosing a
 protocol. JWT, session and OIDC helpers remain on `/jwt`, `/session` and
-`/oidc`. See [the HTTP reference](https://btravstack.github.io/btravstack/reference/http-server)
+`/oidc`. `protectedResource()` publishes Protected Resource Metadata (RFC 9728)
+for one resource, `protectedResourcePerHost()` for one per served host. See [the HTTP reference](https://btravstack.github.io/btravstack/reference/http-server)
 for request units, security, configuration and shutdown behavior.

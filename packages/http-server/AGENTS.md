@@ -368,6 +368,16 @@ This does not change ordinary di module visibility.
   if the marker is forgotten. `AUTH.md` also covers the shipped authenticators
   (`apiKeyAuthenticator`, `jwtAuthenticator`), the session scheme and `oidc()`.
 
+- **Protected-resource discovery — `protectedResource()` and
+  `protectedResourcePerHost()`, their `HttpChallenges` members — is also
+  `AUTH.md`'s.** What touches the runtime (`http-runtime.ts`): a member is a
+  static `HttpChallenge` or an `HttpRequestChallenge` (a path and a resolver).
+  The runtime settles a resolver inside the unit, before dispatch, for a request
+  on that path alone, because `writeHead` is synchronous and the answerer decides
+  the status; every other request applies the static members as before. A
+  per-host resource's `ServedHosts` port is the application's, asked on every
+  request to that path, so the application answers it from a cache.
+
 - **`html`/`raw` and `Html`** (`html.ts`) — a tagged template escaping every
   interpolation by default: `` html`<tr>${value}</tr>` `` HTML-escapes
   `value`, a nested `Html` splices unescaped (once, not twice), and an array
