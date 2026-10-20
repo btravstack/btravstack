@@ -521,12 +521,13 @@ The two rules this half exists to state, before the detail:
   **A refused login is an OPERATION, reported to `Observers` like a cache
   miss.** Each of the three routes is one, `component: "oidc"`, and a refusal
   settles `error` carrying its own `reason` — `transient_missing`,
-  `state_mismatch`, `provider_refused`, `grant_failed`, `principal_refused`.
+  `state_mismatch`, `provider_refused`, `grant_failed`, `principal_refused`,
+  `token_store_failed`.
   That matters because a refused login is the one refusal in this package that
   DESTROYS information: the provider's reason must not cross the wire, a `401`
   is not an error the runtime's RED metrics count, and a rotated client secret,
   a dead token endpoint and a genuinely bad code all look identical from
-  outside. `reason` is a dimension and is bounded — five literals — while the
+  outside. `reason` is a dimension and is bounded — a fixed set of literals — while the
   provider's own `error_description` and the library error's message are
   caller-controlled and unbounded, so they ride the `cause`, which an observer
   puts on a line or a span and never on an instrument. It costs a root nothing:
@@ -935,3 +936,28 @@ The two rules this half exists to state, before the detail:
   for the phantom key, so `IsMarked` loses it too), which makes it a
   dropped protection rather than a bypass. `authenticated(...)` is applied to
   the finished node, which is what `@btravstack/contract` already documents.
+
+## Opt-in delegated OIDC credentials
+
+`oidcTokens()` on `/oidc-tokens` supplies the server-only capability a login
+uses when `tokens` names its port. `OidcTokenStore` is application-provided:
+its transaction callback holds exclusive ownership across replicas until its
+replacement commits, including deletion and missing records. Fencing expired
+lease holders is part of that contract. A per-process lock is not an adapter.
+
+`Session.tokenRef` is opaque and encrypted; credentials never enter the
+principal or cookie. A token-aware scheme checks the store on each request,
+and a stateless scheme refuses referenced sessions. That refusal makes a
+forgotten `tokens` option fail closed instead of bypassing logout. Refresh
+rotation and invalidation share one store transaction; neither extends the
+absolute session lifetime. Local deletion cannot recall an access token already
+handed to an in-flight call. The provider-wide revocation protocol is not used.
+
+The framework-neutral factory accepts an already-discovered client, the codec
+and store; it owns the same lifecycle without a Node listener. Its caller must
+enable signature validation and use that client's configured issuer/client ID.
+The provider form discovers and validates configuration at construction. Login
+and manager configurations must match. Token observations carry no credentials
+or SDK error bodies, only bounded operation names and sanitized failures.
+The public surface and store obligations are in
+`docs/reference/http-server.md#server-side-oidc-tokens`.

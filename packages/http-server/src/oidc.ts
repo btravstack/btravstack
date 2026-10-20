@@ -5,23 +5,19 @@ import {
   cleartext,
   cleartextRefused,
   Env,
-  type ConfigInvalid,
+  ConfigInvalid,
   type EnvReading,
   type MaybePinned,
   type OptionsAs,
   type Unpinned,
 } from "@btravstack/config";
 import { Observers, observe, type Operation, type Settle } from "@btravstack/core";
-import { Provider, type AnyPort, type AnyProvider } from "@btravstack/di";
+import { Provider, type AnyPort, type AnyProvider, type PortClassOf } from "@btravstack/di";
 import {
-  ClientSecretBasic,
-  allowInsecureRequests,
   authorizationCodeGrant,
   buildAuthorizationUrl,
   buildEndSessionUrl,
   calculatePKCECodeChallenge,
-  discovery,
-  enableNonRepudiationChecks,
   randomNonce,
   randomPKCECodeVerifier,
   randomState,
@@ -32,6 +28,8 @@ import { ErrAsync, TaggedError, fromPromise, type AsyncResult } from "unthrown";
 
 import { clearCookie, cookieScheme, cookieValue, setCookie } from "./cookie.js";
 import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
+import { discoverOidc, type OidcUnreachable } from "./oidc-discovery.js";
+import type { OidcTokensService } from "./oidc-token-store.js";
 import { injectedDeps, injectedServices } from "./options.js";
 import type { Injected, PrefixOf } from "./options.js";
 import { forLocation, returnTo } from "./redirect.js";
@@ -41,6 +39,8 @@ import {
   TRANSIENT_TTL_SEC,
   type SessionCodecService,
 } from "./session.js";
+
+export { OidcUnreachable } from "./oidc-discovery.js";
 
 /** What `oidc()`'s pins are, as their own type: every one may be set. */
 export type OidcPins = {
@@ -72,18 +72,12 @@ export type OidcAnswerer<Pre extends string = string, O = OidcPins, Needs = neve
   | SessionCodec
   | Observers
   | Needs
+  | TokenNeeds<O>
 > & { readonly port: typeof HttpHandler };
 
-/**
- * Discovery did not answer, at boot. `cause` is whatever `openid-client`
- * rejected with — a connection refused, a document that is not one, a 404 on
- * `.well-known` — kept whole rather than flattened to a message, since the
- * three read very differently to whoever is fixing the deployment.
- */
-export class OidcUnreachable extends TaggedError("OidcUnreachable")<{
-  readonly issuer: string;
-  readonly cause: unknown;
-}> {}
+type TokenNeeds<O> = O extends { readonly tokens?: infer T }
+  ? InstanceType<Extract<T, AnyPort>>
+  : never;
 
 /**
  * The provider would not exchange the code. Never a returned error — the
@@ -138,6 +132,8 @@ export type OidcOptions<
    * requires and the standard does not, such as a tenant.
    */
   readonly principal: (claims: IDToken, services: Injected<D>) => P | undefined;
+  /** Server-side token manager. Its binding must match this login. */
+  readonly tokens?: PortClassOf<string, OidcTokensService>;
   /**
    * Where a logout lands when the provider advertises no `end_session_endpoint`.
    * Default `/`.
@@ -173,6 +169,7 @@ const RELATIVE = "http://request.invalid";
 /** Everything the routes close over, decided once at boot. */
 type Bound<P> = {
   readonly config: Configuration;
+  readonly tokens?: OidcTokensService;
   /** The issuer and client id as configured, sealed into every session so its scheme can tell logins apart. */
   readonly issuer: string;
   readonly clientId: string;
@@ -221,7 +218,7 @@ const observed = (
  *
  * **The reason leaves the process exactly once, through the observer**, and
  * never on the wire: a refusal carries a status and nothing else. `reason` is
- * the bounded half — five literal values, safe on an instrument — and `cause`
+ * the bounded half — literal values, safe on an instrument — and `cause`
  * is the unbounded one, which is where a provider's own `error_description`
  * and a library error's message go: an observer puts a cause on a line or a
  * span, never on a metric.
@@ -353,15 +350,25 @@ const callback = async <P>(
   // taken only when they are strings, since the payload is a JSON document.
   const scope = claims["scope"];
   const sid = claims["sid"];
-  const sealed = await codec
-    .seal({
-      principal,
-      iss: bound.issuer,
-      clientId: bound.clientId,
-      ...(typeof sid === "string" ? { sid } : {}),
-      ...(typeof scope === "string" ? { scopes: scope.split(" ") } : {}),
-    })
-    .get();
+  const session = {
+    principal,
+    iss: bound.issuer,
+    clientId: bound.clientId,
+    ...(typeof sid === "string" ? { sid } : {}),
+    ...(typeof scope === "string" ? { scopes: scope.split(" ") } : {}),
+  };
+  const tokens = bound.tokens;
+  const sealed =
+    tokens === undefined
+      ? await codec.seal(session).get()
+      : await tokens
+          .invalidate(cookieValue(request.headers.cookie, SESSION_COOKIE))
+          .flatMap(() => tokens.create(session, claims.sub, granted.value))
+          .getOrUndefined();
+  if (sealed === undefined) {
+    refuse(response, 503, settle, "token_store_failed");
+    return;
+  }
 
   send(response, 303, {
     // `forLocation`, because Node's header validator refuses every code point
@@ -372,8 +379,22 @@ const callback = async <P>(
   });
 };
 
-const logout = <P>(response: ServerResponse, bound: Bound<P>): void => {
+const logout = async <P>(
+  request: IncomingMessage,
+  response: ServerResponse,
+  bound: Bound<P>,
+): Promise<void> => {
   observed(bound.observers, "logout", response);
+  if (bound.tokens !== undefined) {
+    const invalidated = await bound.tokens.invalidate(
+      cookieValue(request.headers.cookie, SESSION_COOKIE),
+    );
+    if (!invalidated.isOk()) {
+      invalidated.getOrUndefined();
+      send(response, 503, { "set-cookie": clearCookie(SESSION_COOKIE) });
+      return;
+    }
+  }
   const advertised = bound.config.serverMetadata().end_session_endpoint;
   send(response, 303, {
     // Parameterless: no `id_token_hint`, because the cookie holds a principal
@@ -385,36 +406,6 @@ const logout = <P>(response: ServerResponse, bound: Bound<P>): void => {
   });
 };
 
-/**
- * The discovery document, once, at boot — so a provider that is not there is a
- * typed startup failure rather than a 500 on the first login, and so the JWKS
- * cache and the metadata are one per process rather than one per request.
- */
-const discover = (
-  issuer: string,
-  clientId: string,
-  clientSecret: string,
-  // `http:` AND (loopback or the opt-in) — decided at boot by `insecureIssuer`
-  // below, never re-derived here, so the check that refuses a cleartext issuer
-  // and the switch that permits one cannot drift apart.
-  insecure: boolean,
-): AsyncResult<Configuration, OidcUnreachable> =>
-  fromPromise(
-    discovery(new URL(issuer), clientId, undefined, ClientSecretBasic(clientSecret), {
-      execute: insecure ? [allowInsecureRequests] : [],
-    }),
-    (cause) => new OidcUnreachable({ issuer, cause }),
-  ).map((config) => {
-    // Applied TWICE for a permitted plaintext issuer: as a `discovery` option
-    // and again on the configuration it answers, which that option does not
-    // reach.
-    if (insecure) allowInsecureRequests(config);
-    // Without this nothing verifies the ID token's SIGNATURE: OIDC Core lets a
-    // client trust a token that arrived over TLS from the token endpoint.
-    enableNonRepudiationChecks(config);
-    return config;
-  });
-
 const handlerFor =
   <P>(bound: Bound<P>, prefix: `/${string}`, codec: SessionCodecService): HttpAnswerer["handle"] =>
   async (request, response) => {
@@ -424,7 +415,7 @@ const handlerFor =
     const target = URL.parse(request.url ?? "/", RELATIVE) as URL;
     if (route === "GET /login") await login(target, response, bound, codec);
     else if (route === "GET /callback") await callback(target, request, response, bound, codec);
-    else if (route === "POST /logout") logout(response, bound);
+    else if (route === "POST /logout") await logout(request, response, bound);
     // This answerer owns every path under its mount, so a path naming no route
     // is answered here rather than left for the runtime's own 404.
     else send(response, 404);
@@ -512,18 +503,35 @@ export const oidc =
         env: Env,
         codec: SessionCodec,
         observers: Observers,
+        ...(options.tokens === undefined ? {} : { tokens: options.tokens }),
         ...injectedDeps(options.inject),
       },
       make: ({
         env,
         codec,
         observers,
+        tokens,
         ...services
       }): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> =>
         Config.parse(
           "HttpOidc",
           schema,
         )(env).flatMap((bound): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> => {
+          if (
+            tokens !== undefined &&
+            (tokens.issuer !== bound.issuer || tokens.clientId !== bound.clientId)
+          )
+            return ErrAsync(
+              new ConfigInvalid({
+                port: "HttpOidc",
+                issues: [
+                  {
+                    message: "the token manager must use this login's issuer and client id",
+                    path: [`${variables}_ISSUER`, `${variables}_CLIENT_ID`],
+                  },
+                ],
+              }),
+            );
           const insecure = cleartext(bound.issuer, options.allowInsecureIssuer ?? false);
           if (insecure === "refused")
             return ErrAsync(
@@ -535,12 +543,13 @@ export const oidc =
                 what: "it sends the client secret, the authorization code and every token in the open",
               }),
             );
-          return discover(bound.issuer, bound.clientId, bound.clientSecret, insecure).map(
+          return discoverOidc(bound.issuer, bound.clientId, bound.clientSecret, insecure).map(
             (config) => ({
               prefix,
               handle: handlerFor(
                 {
                   config,
+                  ...(tokens === undefined ? {} : { tokens }),
                   issuer: bound.issuer,
                   clientId: bound.clientId,
                   redirectUri: bound.redirectUri,

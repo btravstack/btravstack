@@ -4,7 +4,8 @@
   "entryPoints": [
     "../packages/http-server/src/index.ts",
     "../packages/http-server/src/oidc.ts",
-    "../packages/http-server/src/session.ts"
+    "../packages/http-server/src/session.ts",
+    "../packages/http-server/src/oidc-tokens.ts"
   ],
   "tsconfig": "../packages/http-server/tsconfig.json",
   "out": "api/http-server",

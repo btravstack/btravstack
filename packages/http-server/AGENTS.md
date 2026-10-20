@@ -1463,7 +1463,7 @@ that DESTROYS information: the provider's reason must not cross the wire, a
 `401` is not an error the runtime's RED metrics count, and `grant_failed` looks
 identical whether the client secret rotated, the token endpoint died, or the
 code was genuinely bad. So each refusal settles `outcome: "error"` with
-`attributes: { reason }` — five literal values, safe on an instrument — and the
+`attributes: { reason }` — a fixed set of literal values, safe on an instrument — and the
 unbounded half, the provider's `error_description` and the library error's
 message, rides the `cause`, which an observer puts on a line or a span and
 never on a metric. That split is why this could not be a `Logger`: a `warn`
@@ -1638,3 +1638,13 @@ see never appearing in the errors half of RED. `aborted` is
 request settles `error` whatever its status says. A deploy's own stream resets
 are therefore errors too, which is truthful — the `aborted` dimension is what
 separates them from a genuine `500`.
+
+## Delegated browser tokens
+
+The optional `/oidc-tokens` capability is described in `AUTH.md` and the HTTP
+reference. Retention is opt-in on both `oidc()` and `sessionAuthenticator()`.
+The shared-store transaction is the synchronization boundary for refresh and
+logout; process-local single-flight cannot satisfy it. An expired lease must
+not commit over a deletion. Credentials stay out of session principal data and
+observations. Existing stateless sessions retain their behavior; a cookie with
+a token reference requires the token-aware scheme.

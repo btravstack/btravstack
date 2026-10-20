@@ -22,9 +22,12 @@ A browser navigates to a fragment route, is refused, and is sent to
 `/auth/login`; it logs in at the identity provider and comes back holding
 `__Host-session`. Every fragment route marked `requires: [{ session: [] }]`
 reads that cookie the same way a marked procedure reads a bearer token — the
-same `resolvePrincipal` walk, the same `context.principal`. The application
+same `resolvePrincipal` walk, the same `context.principal`. By default the application
 holds no session store of its own: the cookie, encrypted and stamped with its
-own lifetime, **is** the session.
+own lifetime, **is** the session. For delegated downstream API calls, use the
+[server-side token manager](/reference/http-server#server-side-oidc-tokens):
+compose `oidcTokens()`, provide shared `OidcTokenStore` storage and pass its
+port as `tokens` to both the login answerer and session authenticator.
 
 ## Recipe
 

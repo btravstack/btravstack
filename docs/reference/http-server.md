@@ -814,6 +814,111 @@ query or fragment, or with dot segments — is a `ConfigInvalid` at boot, and th
 authorization servers and scopes are checked as `protectedResource()` checks
 them.
 
+## Server-side OIDC tokens
+
+`@btravstack/http-server/oidc-tokens` adds opt-in delegated API calls to the
+existing login. Compose `oidcTokens()`, provide `OidcTokenStore`, and pass the
+manager's port as `tokens` to both `oidc()` and `sessionAuthenticator()`.
+The default port is `OidcTokens`; `oidcTokens({ port: StaffTokens })` binds a
+second login to an application-declared port of `OidcTokensService`.
+
+<!-- doctest: isolate
+import { Module, Provider } from "@btravstack/di";
+import { defineAuth } from "@btravstack/http-server";
+import { oidc } from "@btravstack/http-server/oidc";
+import { oidcTokens, OidcTokenStore, type OidcTokenStoreService } from "@btravstack/http-server/oidc-tokens";
+import { sessionAuthenticator, sessionCodec } from "@btravstack/http-server/session";
+import type { IDToken } from "openid-client";
+type Identity = { readonly userId: string };
+declare const sharedStore: OidcTokenStoreService;
+declare const principal: (claims: IDToken) => Identity | undefined;
+-->
+
+```ts
+const tokens = oidcTokens();
+const browserAuth = defineAuth({
+  authenticators: {
+    session: sessionAuthenticator<Identity>()({ tokens: tokens.port }),
+  },
+});
+const login = oidc<Identity>()({ principal, tokens: tokens.port });
+const BrowserSessions = Module("BrowserSessions")({
+  provides: [
+    sessionCodec(),
+    Provider(OidcTokenStore)({ inject: {}, value: sharedStore }),
+    tokens,
+    ...login,
+  ],
+  exports: [tokens.port],
+});
+```
+
+An application root imports this infrastructure and composes its answerer
+using `browserAuth`. As with ordinary login, it supplies the OIDC variables,
+`HTTP_SESSION_KEYS`, and the HTTP runtime's observer contributions.
+`oidcTokens` reads `<variablePrefix>_ISSUER`, `_CLIENT_ID` and `_CLIENT_SECRET`,
+with `HTTP_OIDC` as the default prefix. Options pin those values. Discovery and
+the token manager are built once per provider; the login answerer separately
+discovers its own client. Their configured issuer and client ID must agree,
+or login construction fails with `ConfigInvalid`.
+
+### Store obligations
+
+There is no process-local production adapter. The application supplies a shared
+`OidcTokenStoreService` with these operations:
+
+- `create(reference, record)` inserts a new reference and refuses a collision.
+- `transact(reference, work)` serializes every operation for that reference
+  across replicas, including a missing row. It runs `work` with the latest
+  record, atomically commits the returned replacement, and returns `value`.
+  An `undefined` replacement deletes the row. A defect commits nothing.
+
+Refresh runs while this ownership is held. All invalidation must use the same
+boundary. A lease-based implementation must fence expired owners, including
+writes after deletion, so a late refresh cannot resurrect a logged-out session.
+Protect credentials at rest and expire rows at `sessionExpiresAt`. Expired or
+missing records never authenticate; storage failures use
+`OidcTokenStoreUnavailable`, containing no driver details or credentials.
+
+### Request capabilities and lifetime
+
+`OidcTokensService.session(cookie)` validates a raw `__Host-session` cookie and
+checks server-side revocation without refreshing. `accessToken(cookie)` resolves
+the bearer for a downstream call; `invalidate(cookie)` deletes retained
+credentials before returning success. Neither accepts a reference from a URL or
+form. The service validates the cookie's signature, lifetime, issuer and client
+before using its opaque reference. A session from a different login is refused.
+A stateless authenticator refuses a cookie carrying a server-side reference,
+so omitting `tokens` cannot bypass revocation.
+
+The encrypted cookie retains the application principal and a random 256-bit
+`tokenRef`; it contains no access token, refresh token or ID token. The callback
+stores only the access and refresh credentials, their absolute lifetimes and
+the verified subject. A successful re-login invalidates the previous session.
+Logout clears the cookie and deletes the record. A deletion failure answers
+`503` instead of reporting a successful logout; a shared-store outage cannot
+silently fall back to trusting the cookie alone.
+
+Access tokens are refreshed before expiry, with skew capped at half their
+lifetime. Refresh rotation is committed under the shared lock, and an omitted
+refresh token keeps the previous one. A refused refresh or an invalid replacement
+invalidates the retained session. A returned ID token cannot change its subject.
+Refresh never extends the absolute browser-session lifetime. An access token
+already handed to an in-flight caller cannot be recalled by local deletion;
+provider-wide token revocation is not performed.
+
+`createOidcTokens(configuration, codec, store, observers, clock, binding)` exposes
+the same capability without an HTTP listener. A framework adapter supplies an
+already-discovered `openid-client` configuration with signature validation and
+its registered issuer/client binding, then passes the raw session cookie per
+request. Keep returned tokens on the server: never return them from a page loader,
+serialize them with principal data, or put them in public configuration.
+
+Operations use `component: "oidc-tokens"` and bounded names `create`, `session`,
+`access`, `refresh`, `invalidate`. No reference, subject or credential is an
+observation attribute. Failures carry only their bounded `Err`/`Defect` reason, without the
+provider's raw body, message or cause. The original result still reaches the caller.
+
 ## `api.OrpcRouter(contract)({ inject: deps, sync })`
 
 Contract-first: `contract` is an oRPC router record (`Record<string,
