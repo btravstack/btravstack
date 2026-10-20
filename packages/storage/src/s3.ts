@@ -129,7 +129,9 @@ type Source = {
 
 /**
  * The next part of the stream, at most `PART_SIZE` however large the chunks
- * are, hashed as it passes; `ended` once the stream is done.
+ * are; `ended` once the stream is done. The digest takes the part's own copy,
+ * so it covers exactly the bytes sent, whatever the producer does to a chunk
+ * after handing it over.
  */
 const readPart = (
   source: Source,
@@ -140,13 +142,17 @@ const readPart = (
     (async (): Promise<Part> => {
       const chunks: Uint8Array[] = [];
       let length = 0;
+      const part = (ended: boolean): Part => {
+        const bytes = Buffer.concat(chunks, length);
+        digest.update(bytes);
+        return { bytes, ended };
+      };
       while (length < PART_SIZE) {
         let chunk = source.rest;
         source.rest = undefined;
         if (chunk === undefined) {
           const { done, value } = await source.reader.read();
-          if (done) return { bytes: Buffer.concat(chunks, length), ended: true };
-          digest.update(value);
+          if (done) return part(true);
           chunk = value;
         }
         const room = PART_SIZE - length;
@@ -161,11 +167,10 @@ const readPart = (
       // it is one `PutObject` rather than a multipart upload of one part.
       if (source.rest === undefined) {
         const { done, value } = await source.reader.read();
-        if (done) return { bytes: Buffer.concat(chunks, length), ended: true };
-        digest.update(value);
+        if (done) return part(true);
         source.rest = value;
       }
-      return { bytes: Buffer.concat(chunks, length), ended: false };
+      return part(false);
     })(),
     (cause) => new StreamInterrupted({ key, cause }),
   );
@@ -227,7 +232,7 @@ function streamUpload(
   > {
     const digest = createHash("sha256");
     const refused = (cause: unknown): ObjectExists | ChecksumMismatch | StorageUnavailable =>
-      isPreconditionFailed(cause)
+      ifAbsent && isPreconditionFailed(cause)
         ? new ObjectExists({ key })
         : isChecksumMismatch(cause)
           ? new ChecksumMismatch({ key })
@@ -300,6 +305,7 @@ function streamUpload(
             P.tag("StorageUnavailable"),
             // Parts left behind by an abort the store also refuses are never
             // an object, and the bucket's incomplete-upload rule reaps them.
+            // A defect skips this arm and leaves its parts to that rule: it is a bug.
             () =>
               settled(
                 client.send(
@@ -417,7 +423,7 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
             response.Body as { transformToWebStream: () => ReadableStream<Uint8Array> }
           ).transformToWebStream(),
           contentType: response.ContentType ?? "application/octet-stream",
-          size: response.ContentLength ?? 0,
+          size: response.ContentLength,
         })),
       (cause): ObjectNotFound | StorageUnavailable =>
         isMissing(cause) ? new ObjectNotFound({ key }) : unavailable("getStream", key, cause),

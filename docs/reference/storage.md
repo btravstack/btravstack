@@ -184,7 +184,10 @@ export const served = (store: StorageService, key: string) =>
   store.getStream(key).map(
     ({ stream, contentType, size }) =>
       new Response(stream, {
-        headers: { "content-type": contentType, "content-length": String(size) },
+        headers: {
+          "content-type": contentType,
+          ...(size === undefined ? {} : { "content-length": String(size) }),
+        },
       }),
   );
 ```
@@ -206,8 +209,8 @@ export const served = (store: StorageService, key: string) =>
   the stream's error as `cause`, so a caller that errors its own stream (a
   byte count that does not add up, a client that hangs up) gets that error
   back. Nothing was written.
-- **`sha256` is verified by the adapter**, hashed as the bytes pass and
-  compared before the object is completed: S3 keeps only a composite checksum
+- **`sha256` is verified by the adapter**, over each part's own copy, the
+  bytes actually sent, and compared before the object is completed: S3 keeps only a composite checksum
   for a multipart object, so the store keeps no digest and `head` answers no
   `sha256` for a streamed object.
 - **`putStreamIfAbsent` is the store's conditional write too.** It sends
@@ -217,7 +220,10 @@ export const served = (store: StorageService, key: string) =>
   `CompleteMultipartUpload`, and the gate's RustFS proves it: a second write is
   refused and a race has one winner.
 - **`getStream` answers once the store has begun sending.** `size` is the
-  object's length and `contentType` falls back to `application/octet-stream`.
+  object's length, or `undefined` when the store sent none (a length is not
+  invented), and `contentType` falls back to `application/octet-stream`.
+  `head` keeps its `size: number`, answering `0` for a store that sends no
+  length.
   The stream holds the store's connection until it is read to its end or
   cancelled, and a read the store breaks off errors it. Its span ends when the
   stream is answered, not when it is read.

@@ -94,7 +94,10 @@ export const content = Provider.member(HttpHandler)({
         return;
       }
       const { stream, contentType, size } = read.value;
-      response.writeHead(200, { "content-type": contentType, "content-length": size });
+      response.writeHead(200, {
+        "content-type": contentType,
+        ...(size === undefined ? {} : { "content-length": size }),
+      });
       await pipeline(Readable.fromWeb(stream as never), response);
     },
   }),

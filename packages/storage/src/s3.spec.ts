@@ -730,6 +730,39 @@ describe("s3Storage, streamed", { timeout: 60_000 }, () => {
     }).toEqual({ written: "ChecksumMismatch", stored: false });
   });
 
+  it("checks sha256 against the bytes it sends, even when the producer mutates a chunk it enqueued", async ({
+    s3,
+    keyPrefix,
+  }) => {
+    // GIVEN a producer that rewrites its first chunk after handing it over,
+    // and the digest of the bytes it first handed over
+    const key = `${keyPrefix}mutated.bin`;
+    const first = new Uint8Array(65_536).fill(1);
+    const second = new Uint8Array(65_536).fill(3);
+    const { sha256 } = await digestOf(new Blob([first.slice(), second]).stream());
+    let pulls = 0;
+    const source = new ReadableStream<Uint8Array>({
+      pull: (controller) => {
+        pulls += 1;
+        if (pulls === 1) controller.enqueue(first);
+        else if (pulls === 2) controller.enqueue(second);
+        else {
+          first.fill(2);
+          controller.close();
+        }
+      },
+    });
+
+    // WHEN it is written under that digest
+    const written = await s3.putStream(key, source, { contentType: "t", sha256 });
+
+    // THEN the digest covered what would have been stored, so nothing is
+    expect({
+      written: written.isErr() ? written.error._tag : written.tag,
+      stored: (await s3.head(key)).isOk(),
+    }).toEqual({ written: "ChecksumMismatch", stored: false });
+  });
+
   it("refuses invalid options before reading, and cancels the stream", async ({
     s3,
     keyPrefix,
@@ -815,6 +848,63 @@ describe("s3Storage, streamed", { timeout: 60_000 }, () => {
         size: (input["Body"] as Uint8Array | undefined)?.byteLength,
       })),
     ).toEqual([{ upload: undefined, size: 8 * MiB }]);
+  });
+
+  it("reads a refused precondition as an outage on an unconditional putStream", async () => {
+    // GIVEN a store that answers 412 to every command, which only a
+    // conditional write can have asked for
+    const client = new S3Client({
+      endpoint: "http://127.0.0.1:1",
+      region: "us-east-1",
+      forcePathStyle: true,
+      credentials: { accessKeyId: "none", secretAccessKey: "none" },
+    });
+    client.middlewareStack.add(
+      () => () =>
+        Promise.reject(
+          Object.assign(new Error("precondition"), { $metadata: { httpStatusCode: 412 } }),
+        ),
+      { step: "initialize", name: "refuse" },
+    );
+
+    // WHEN an unconditional stream is written
+    const written = s3StorageBackend(client, "bucket").putStream("a", aStream(1), {
+      contentType: "t",
+    });
+
+    // THEN it is not ObjectExists, which putStream never answers
+    await expect(written).toBeErrWith(
+      expect.objectContaining({ _tag: "StorageUnavailable", operation: "putStream" }),
+    );
+  });
+
+  it("answers no size when the store sends no length", async () => {
+    // GIVEN a store whose answer carries no ContentLength
+    const client = new S3Client({
+      endpoint: "http://127.0.0.1:1",
+      region: "us-east-1",
+      forcePathStyle: true,
+      credentials: { accessKeyId: "none", secretAccessKey: "none" },
+    });
+    client.middlewareStack.add(
+      () => () =>
+        Promise.resolve({
+          output: {
+            $metadata: {},
+            Body: { transformToWebStream: () => new Blob([]).stream() },
+          } as never,
+          response: {},
+        }),
+      { step: "initialize", name: "answer" },
+    );
+
+    // WHEN the key is streamed
+    const read = s3StorageBackend(client, "bucket")
+      .getStream("a")
+      .map(({ size, contentType }) => ({ size, contentType }));
+
+    // THEN its size is unknown rather than zero, and the type the honest default
+    await expect(read).toBeOkWith({ size: undefined, contentType: "application/octet-stream" });
   });
 
   it("hands the stream back unlocked once a write has settled", async ({ s3, keyPrefix }) => {
@@ -950,7 +1040,7 @@ describe("s3Storage, streamed", { timeout: 60_000 }, () => {
     );
 
     // THEN memory held a few parts at most, never the object
-    expect({ written: value.isOk(), bounded: growth < 128 * MiB }).toEqual({
+    expect({ written: value.isOk(), bounded: growth < 64 * MiB }).toEqual({
       written: true,
       bounded: true,
     });
@@ -969,7 +1059,8 @@ describe("s3Storage, streamed", { timeout: 60_000 }, () => {
         .then((digest) => digest.getOrThrow()),
     );
 
-    // THEN memory held a few chunks at most, never the object
+    // THEN memory held a few chunks at most, never the object — the SDK's
+    // response buffering leaves less room here than the write's one part
     expect({ read: value.size, bounded: growth < 128 * MiB }).toEqual({
       read: 256 * MiB,
       bounded: true,

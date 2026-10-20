@@ -108,9 +108,14 @@ and `docs/reference/storage.md` is the reader's page.
   happened to run.
 - **`sha256` on a stream is the adapter's check, not the store's.** S3 keeps
   only a composite checksum for a multipart object, so the digest is computed
-  as the bytes pass and compared before completion; `head` answers no `sha256`
-  for a streamed object, one part or many, so the answer does not depend on
-  its size.
+  and compared before completion; `head` answers no `sha256` for a streamed
+  object, one part or many, so the answer does not depend on its size. It is
+  taken over each part's `Buffer.concat` copy, never the chunks as read: the
+  copy is what is sent, so a producer rewriting a chunk it already enqueued
+  meets `ChecksumMismatch` rather than a digest of bytes the store never got.
+- **`getStream`'s `size` is `undefined` when the store sends no length.**
+  `head` keeps `size: number` and its `0` for the same case, since changing
+  it would change a published type.
 - **`putStreamIfAbsent` sends `If-None-Match: *` on the publishing write**,
   `PutObject` or `CompleteMultipartUpload`, so the key is refused only after
   the bytes were sent, and the refused upload is aborted. RustFS proves the

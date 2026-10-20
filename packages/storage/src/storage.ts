@@ -15,7 +15,8 @@ export type StoredObject = {
 export type StreamedObject = {
   readonly stream: ReadableStream<Uint8Array>;
   readonly contentType: string;
-  readonly size: number;
+  /** The object's length in bytes; `undefined` when the store did not say, never a guessed `0`. */
+  readonly size: number | undefined;
 };
 
 /** The key is not there. Only `get`, `getStream`, `head` and `copy` (its source) answer it — see `delete` and `presignedUrl` below. */
