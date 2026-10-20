@@ -18,9 +18,19 @@ import { Err, Ok, TaggedError, fromSafePromise, type AsyncResult, type Result } 
 export class Unauthenticated extends TaggedError("Unauthenticated") {}
 
 /**
- * A credential was valid but lacks one or more scopes the endpoint declared.
- * Distinct from {@link Unauthenticated} because the answers differ: an
- * anonymous caller gets `401`, an under-scoped one `403`.
+ * A credential the caller presented was refused — a capability URL whose
+ * signature does not verify, or that has expired. Distinct from
+ * {@link Unauthenticated} because a login cannot help: the walk answers it as
+ * {@link UnderScoped}, `403`, unless another requirement accepts the caller.
+ * Carries nothing, for `Unauthenticated`'s reason.
+ */
+export class CredentialRefused extends TaggedError("CredentialRefused") {}
+
+/**
+ * A credential was valid but lacks one or more scopes the endpoint declared,
+ * or a scheme refused a credential the caller presented
+ * ({@link CredentialRefused}). Distinct from {@link Unauthenticated} because
+ * the answers differ: an anonymous caller gets `401`, a refused one `403`.
  */
 export class UnderScoped extends TaggedError("UnderScoped") {
   /** One sufficient Bearer alternative, in declaration order; absent for other credentials. */
@@ -94,12 +104,15 @@ export const grantOf = (
 };
 
 /**
- * Headers, not the request: an authenticator has no business reading a body,
- * and the narrower argument is what keeps it testable without a socket.
+ * Headers and the URL's query, not the request: an authenticator has no
+ * business reading a body, and the narrower arguments are what keep it testable
+ * without a socket. The query carries a credential a browser follows as a
+ * plain link — a capability URL's signed grant — where no header can.
  */
 export type AuthenticatorService<P, Scope extends string = never> = ((
   headers: IncomingHttpHeaders,
-) => AsyncResult<Granted<P, Scope>, Unauthenticated>) & {
+  query: URLSearchParams,
+) => AsyncResult<Granted<P, Scope>, Unauthenticated | CredentialRefused>) & {
   /** Verifies an RFC 6750 Bearer credential from Authorization. */
   readonly bearer?: true;
 };
@@ -273,7 +286,10 @@ export const HttpAuthenticator = <P, Scope extends string = never>() => {
     // Mark the built service, where the shared authentication walk can see it.
     // Wrap rather than mutate a service the application's factory may share.
     const marked = (service: AuthenticatorService<P, Scope>): AuthenticatorService<P, Scope> =>
-      Object.assign((headers: IncomingHttpHeaders) => service(headers), { bearer: true as const });
+      Object.assign(
+        (headers: IncomingHttpHeaders, query: URLSearchParams) => service(headers, query),
+        { bearer: true as const },
+      );
     if (options.bearer !== true) return { options } as never;
     return {
       options: {
@@ -302,8 +318,9 @@ export const resolveScheme = (
   requirements: Requirements,
   authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
   headers: IncomingHttpHeaders,
+  query: URLSearchParams,
 ): AsyncResult<Resolved, Unauthenticated | UnderScoped> =>
-  fromSafePromise(walk(requirements, authenticators, headers)).flatMap((result) => result);
+  fromSafePromise(walk(requirements, authenticators, headers, query)).flatMap((result) => result);
 
 /**
  * What a handler is injected: the identity bare, or `{ scheme, identity }` when
@@ -323,8 +340,9 @@ export const resolvePrincipal = (
   requirements: Requirements,
   authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
   headers: IncomingHttpHeaders,
+  query: URLSearchParams = new URLSearchParams(),
 ): AsyncResult<unknown, Unauthenticated | UnderScoped> =>
-  resolveScheme(requirements, authenticators, headers).map((resolved) =>
+  resolveScheme(requirements, authenticators, headers, query).map((resolved) =>
     principalOf(requirements, resolved),
   );
 
@@ -332,6 +350,7 @@ const walk = async (
   requirements: Requirements,
   authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
   headers: IncomingHttpHeaders,
+  query: URLSearchParams,
   // oxlint-disable-next-line unthrown/prefer-async-result -- module-private; resolveScheme wraps it in fromSafePromise, which is the AsyncResult surface callers see
 ): Promise<Result<Resolved, Unauthenticated | UnderScoped>> => {
   let underScoped = false;
@@ -341,13 +360,16 @@ const walk = async (
       // Asserted, not guarded: the router declares one dep per scheme its
       // contract names, so di refuses the graph long before a request lands.
       const authenticate = authenticators[scheme] as AuthenticatorService<unknown>;
-      const resolved = await authenticate(headers);
+      const resolved = await authenticate(headers, query);
       // Returned rather than unwrapped: the defect channel survives the
       // `flatMap` above, so a broken authenticator reaches the caller as a
       // defect instead of a refusal. `as never`: a defect carries no value, so
       // the Ok channel it declares is uninhabited whatever this walk answers.
       if (resolved.isDefect()) return resolved as never;
-      if (resolved.isErr()) continue;
+      if (resolved.isErr()) {
+        if (resolved.error._tag === "CredentialRefused") underScoped = true;
+        continue;
+      }
       const answer = resolved.value;
       // The BRAND, never a structural `"scopes" in answer` test, which misreads
       // a claims-shaped bare identity as the scoped answer.

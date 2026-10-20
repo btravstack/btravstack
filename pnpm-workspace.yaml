@@ -256,6 +256,9 @@ overrides:
   "sharp@<0.35.5": "0.35.5"
   # GHSA-68fv-2mgg-jv7q: source-map-js. Via vite > postcss, dev and test only.
   "source-map-js@>=1.0.0 <1.2.2": "1.2.2"
+  # GHSA-r7fv-28h4-cvq7: markdown-it smartquotes quadratic complexity. Via
+  # markdownlint-cli2, which parses this repository's own Markdown.
+  "markdown-it@>=15.0.0 <15.0.2": "15.0.2"
 
 auditConfig:
   ignoreGhsas:

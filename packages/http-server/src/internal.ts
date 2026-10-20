@@ -3,6 +3,7 @@ export { principalOf, schemeDeps, schemeServices } from "./auth.js";
 export type { AuthenticatorService, Resolved } from "./auth.js";
 export { resolveRequestScheme } from "./scope-challenge.js";
 export {
+  CredentialRefused,
   HttpAuthenticator,
   Unauthenticated,
   UnderScoped,

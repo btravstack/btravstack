@@ -405,7 +405,9 @@ describe("sessionAuthenticator", () => {
         iss: "https://customers.test/",
         clientId: "login-test",
       })
-      .flatMap((sealed) => session.resolve(cookieHeader(`__Host-session=${sealed}`)));
+      .flatMap((sealed) =>
+        session.resolve(cookieHeader(`__Host-session=${sealed}`), new URLSearchParams()),
+      );
 
     // THEN it is refused: a second login's session is never read as this one's
     await expect(resolved).toBeErrTagged("Unauthenticated");
@@ -420,7 +422,9 @@ describe("sessionAuthenticator", () => {
         iss: "https://login.test/",
         clientId: "customer-app",
       })
-      .flatMap((sealed) => session.resolve(cookieHeader(`__Host-session=${sealed}`)));
+      .flatMap((sealed) =>
+        session.resolve(cookieHeader(`__Host-session=${sealed}`), new URLSearchParams()),
+      );
 
     // THEN it is refused: a login is its issuer AND its client, not the issuer alone
     await expect(resolved).toBeErrTagged("Unauthenticated");
@@ -431,7 +435,9 @@ describe("sessionAuthenticator", () => {
     // WHEN the browser presents it to this scheme
     const resolved = session
       .sealBare({ principal: { userId: "u-1" } })
-      .flatMap((sealed) => session.resolve(cookieHeader(`__Host-session=${sealed}`)));
+      .flatMap((sealed) =>
+        session.resolve(cookieHeader(`__Host-session=${sealed}`), new URLSearchParams()),
+      );
 
     // THEN it is refused, since nothing says which login it belongs to
     await expect(resolved).toBeErrTagged("Unauthenticated");
@@ -456,7 +462,9 @@ describe("sessionAuthenticator", () => {
           iss: "https://staff.test/",
           clientId: "staff-app",
         })
-        .flatMap((sealed) => resolve(cookieHeader(`__Host-session=${sealed}`))),
+        .flatMap((sealed) =>
+          resolve(cookieHeader(`__Host-session=${sealed}`), new URLSearchParams()),
+        ),
     );
 
     // THEN it is accepted under HTTP_OIDC_STAFF_*, not HTTP_OIDC_*
@@ -481,7 +489,9 @@ describe("sessionAuthenticator", () => {
     // WHEN the browser sends it back under the default cookie name
     const resolved = session
       .seal({ principal: { userId: "u-1" } })
-      .flatMap((sealed) => session.resolve(cookieHeader(`__Host-session=${sealed}`)));
+      .flatMap((sealed) =>
+        session.resolve(cookieHeader(`__Host-session=${sealed}`), new URLSearchParams()),
+      );
 
     // THEN the identity arrives BARE — a scheme with no vocabulary answers what
     // the application put in, with nothing wrapped around it
@@ -497,6 +507,7 @@ describe("sessionAuthenticator", () => {
       .flatMap((sealed) =>
         session.resolve(
           cookieHeader("__Host-session-theme=dark", "consented", `__Host-session=${sealed}`),
+          new URLSearchParams(),
         ),
       );
 
@@ -513,7 +524,10 @@ describe("sessionAuthenticator", () => {
         .seal({ principal: { userId: "second" } })
         // WHEN both arrive under the same name
         .flatMap((second) =>
-          session.resolve(cookieHeader(`__Host-session=${first}`, `__Host-session=${second}`)),
+          session.resolve(
+            cookieHeader(`__Host-session=${first}`, `__Host-session=${second}`),
+            new URLSearchParams(),
+          ),
         ),
     );
 
@@ -525,7 +539,7 @@ describe("sessionAuthenticator", () => {
   it("refuses a request with no cookie", async ({ session }) => {
     // GIVEN a request carrying no `cookie` header at all
     // WHEN it is resolved
-    const resolved = await session.resolve({});
+    const resolved = await session.resolve({}, new URLSearchParams());
 
     // THEN it is refused, carrying no reason: the starter answers 401
     expect(resolved).toBeErrTagged("Unauthenticated");
@@ -535,7 +549,10 @@ describe("sessionAuthenticator", () => {
     // GIVEN a header carrying other cookies only — a browser that never logged
     // in still sends the ones it has
     // WHEN it is resolved
-    const resolved = await session.resolve(cookieHeader("theme=dark", "consented=1"));
+    const resolved = await session.resolve(
+      cookieHeader("theme=dark", "consented=1"),
+      new URLSearchParams(),
+    );
 
     // THEN it takes the same path as no header at all
     expect(resolved).toBeErrTagged("Unauthenticated");
@@ -545,7 +562,10 @@ describe("sessionAuthenticator", () => {
     // GIVEN a cookie under the right name whose value is not a JWE this codec
     // sealed
     // WHEN it is resolved
-    const resolved = await session.resolve(cookieHeader("__Host-session=nonsense"));
+    const resolved = await session.resolve(
+      cookieHeader("__Host-session=nonsense"),
+      new URLSearchParams(),
+    );
 
     // THEN it is `Unauthenticated`, indistinguishable from no cookie at all:
     // the codec answers one `undefined` for every way of failing to open
@@ -557,7 +577,9 @@ describe("sessionAuthenticator", () => {
     const resolved = session
       .seal({ principal: { userId: "u-1" }, scopes: ["orders:export", "orders:destroy"] })
       // WHEN the scoped scheme reads it back
-      .flatMap((sealed) => session.scoped(cookieHeader(`__Host-session=${sealed}`)));
+      .flatMap((sealed) =>
+        session.scoped(cookieHeader(`__Host-session=${sealed}`), new URLSearchParams()),
+      );
 
     // THEN the grant is the intersection: a session naming a scope this scheme
     // cannot grant gets nothing extra for it
@@ -571,7 +593,9 @@ describe("sessionAuthenticator", () => {
     const resolved = session
       .seal({ principal: { userId: "u-1" } })
       // WHEN the scoped scheme reads it back
-      .flatMap((sealed) => session.scoped(cookieHeader(`__Host-session=${sealed}`)));
+      .flatMap((sealed) =>
+        session.scoped(cookieHeader(`__Host-session=${sealed}`), new URLSearchParams()),
+      );
 
     // THEN the answer is still the SCOPED shape — decided once at composition,
     // so a route requiring a scope refuses this caller rather than reading an
@@ -587,7 +611,9 @@ describe("sessionAuthenticator", () => {
     const resolved = session
       .seal({ principal: { userId: "u-1" } })
       // WHEN that scheme reads it back
-      .flatMap((sealed) => session.sid(cookieHeader(`__Host-session=${sealed}`)));
+      .flatMap((sealed) =>
+        session.sid(cookieHeader(`__Host-session=${sealed}`), new URLSearchParams()),
+      );
 
     // THEN it is refused: `principal` answering `undefined` is a REFUSAL, never
     // a principal of `undefined` handed to a handler
@@ -600,7 +626,9 @@ describe("sessionAuthenticator", () => {
     const resolved = session
       .seal({ principal: null })
       // WHEN the default scheme reads it back
-      .flatMap((sealed) => session.resolve(cookieHeader(`__Host-session=${sealed}`)));
+      .flatMap((sealed) =>
+        session.resolve(cookieHeader(`__Host-session=${sealed}`), new URLSearchParams()),
+      );
 
     // THEN the default `principal` refuses it, which is where that check
     // belongs: a handler is never handed `null` as its caller

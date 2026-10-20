@@ -54,7 +54,7 @@ These symbols are exported across the three packages. `defineHttp`, `HttpModule`
 | `granted`                  | value | `granted(identity, scopes)` — mints the scoped answer, stamped with a module-private symbol so the starter can tell it from a bare identity that carries a `scopes` field                                                                                                                                                                                                                                                                                                       |
 | `Granted`                  | type  | `Granted<P, Scope>` — the identity **bare** when the scheme has no scope vocabulary, a `Grant<P, Scope>` when it has one                                                                                                                                                                                                                                                                                                                                                        |
 | `Grant`                    | type  | `Grant<P, Scope>` — the branded `{ identity, scopes }` `granted()` returns; unforgeable from outside the package                                                                                                                                                                                                                                                                                                                                                                |
-| `AuthenticatorService`     | type  | `(headers: IncomingHttpHeaders) => AsyncResult<Granted<P, Scope>, Unauthenticated>` — headers in, credential out                                                                                                                                                                                                                                                                                                                                                                |
+| `AuthenticatorService`     | type  | `(headers: IncomingHttpHeaders, query: URLSearchParams) => AsyncResult<Granted<P, Scope>, Unauthenticated \| CredentialRefused>` — headers and the URL's query in, credential out                                                                                                                                                                                                                                                                                               |
 | `authenticatorPort`        | value | `authenticatorPort(scheme)` — the di port whose id is `` `HttpAuthenticator:${scheme}` ``; a router declares one per scheme its contract names                                                                                                                                                                                                                                                                                                                                  |
 | `principalPort`            | value | `principalPort(scheme)` — the di port whose id is `` `HttpPrincipal:${scheme}` ``, carrying that scheme's principal; a unit module names it in `needs` and the fork seeds it                                                                                                                                                                                                                                                                                                    |
 | `Principals`               | type  | `Principals<A>` — the scheme → principal-port map, what `auth.principals` is                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -62,6 +62,7 @@ These symbols are exported across the three packages. `defineHttp`, `HttpModule`
 | `UnitsOf`                  | type  | `UnitsOf<A>` — `Partial<Record<Kinds<A>, Module>>`, the record `auth.units<…>()` takes                                                                                                                                                                                                                                                                                                                                                                                          |
 | `Unauthenticated`          | value | a `TaggedError` with an empty payload — the refusal itself; the starter surfaces no reason to the client                                                                                                                                                                                                                                                                                                                                                                        |
 | `UnderScoped`              | value | `TaggedError("UnderScoped")` — a valid credential missing a declared scope, answered `403`                                                                                                                                                                                                                                                                                                                                                                                      |
+| `CredentialRefused`        | value | `TaggedError("CredentialRefused")` — a credential the caller presented and the scheme refused, answered `403` as `UnderScoped` is                                                                                                                                                                                                                                                                                                                                               |
 | `resolvePrincipal`         | value | the protocol-neutral authentication walk, shared by every answerer                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `Principal`                | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                                                                                                                                                                                                                                                        |
 | `SchemesOf`                | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -1242,11 +1243,17 @@ const granted: <P, const Scope extends string = never>(
 
 type AuthenticatorService<P, Scope extends string = never> = ((
   headers: IncomingHttpHeaders,
-) => AsyncResult<Granted<P, Scope>, Unauthenticated>) & { readonly bearer?: true };
+  query: URLSearchParams,
+) => AsyncResult<Granted<P, Scope>, Unauthenticated | CredentialRefused>) & {
+  readonly bearer?: true;
+};
 ```
 
-**Headers, not the request**: an authenticator has no business reading a body,
-and the narrower argument is what keeps it testable without a socket. `deps`
+**Headers and the query, not the request**: an authenticator has no business
+reading a body, and the narrower arguments are what keep it testable without a
+socket. The query is where a capability URL carries its signed grant, since a
+browser following a plain link sends no header of the application's choosing —
+see [A credential in the URL](/how-to/protect-a-procedure#a-credential-in-the-url). `deps`
 are di's, so a JWT verifier or a user directory is injected the way any
 provider's dependencies are, and that need travels with the authenticator into
 the graph. Both type arguments are **explicit** rather than
@@ -1335,6 +1342,12 @@ like.
 `Unauthenticated` is a `TaggedError` with an **empty payload**: the starter
 surfaces no reason, so a field would be write-only. Forwarding a reason would
 put "no such user" versus "bad signature" in a 401 body by default.
+
+`CredentialRefused` is its `403` sibling, equally empty: the caller **presented**
+a credential and the scheme refused it — a capability URL whose signature does
+not verify, or whose grant has expired. A login cannot help that caller, so the
+walk answers it as `UnderScoped` (with no scope hint) unless a later
+requirement accepts the caller, and `htmx({ login })` never redirects it.
 
 An authenticator that wants to record why reports it to
 [`Observers`](/reference/core/observability) before returning, and
@@ -1433,6 +1446,7 @@ a caller satisfies wins.
 | a requirement is satisfied                                      | the handler runs, principal injected         |
 | no requirement accepted the caller                              | **`401 UNAUTHORIZED`**                       |
 | a credential was valid but lacked a scope the requirement named | **`403 FORBIDDEN`**                          |
+| a scheme refused the credential presented (`CredentialRefused`) | **`403 FORBIDDEN`**                          |
 | an authenticator returned a `Defect`                            | oRPC's `INTERNAL_SERVER_ERROR`, walk stopped |
 
 Neither refusal carries a message: oRPC serializes `message` to the client, and

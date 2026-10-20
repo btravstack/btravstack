@@ -29,7 +29,10 @@ describe("HtmxFragments", () => {
     const serviceAuth = composed.authenticators["service"];
     assert.ok(userAuth !== undefined, 'no authenticator resolved for "user"');
     assert.ok(serviceAuth !== undefined, 'no authenticator resolved for "service"');
-    const [user, service] = await Promise.all([userAuth({}), serviceAuth({})]);
+    const [user, service] = await Promise.all([
+      userAuth({}, new URLSearchParams()),
+      serviceAuth({}, new URLSearchParams()),
+    ]);
 
     // WHEN the composed service is inspected end to end
     // THEN every route carries its OWN requirement, in the array's own

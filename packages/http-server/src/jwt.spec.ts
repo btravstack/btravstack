@@ -49,9 +49,12 @@ describe("jwtAuthenticator", () => {
     const token = await issuer.sign({ sub: "u-1", tenant: "acme" }).get();
 
     // WHEN it is presented
-    const resolved = await jwtService({
-      authorization: `Bearer ${token}`,
-    });
+    const resolved = await jwtService(
+      {
+        authorization: `Bearer ${token}`,
+      },
+      new URLSearchParams(),
+    );
 
     // THEN the claims became the application's own identity — the callback is
     // where a tenant enters, since no standard claim carries one
@@ -72,9 +75,12 @@ describe("jwtAuthenticator", () => {
       .get();
 
     // WHEN it is presented to a scheme whose vocabulary is the first alone
-    const resolved = await scopedJwtService({
-      authorization: `Bearer ${token}`,
-    });
+    const resolved = await scopedJwtService(
+      {
+        authorization: `Bearer ${token}`,
+      },
+      new URLSearchParams(),
+    );
 
     // THEN the grant is the INTERSECTION: a token claiming a scope this scheme
     // does not know grants nothing extra, so a compromised issuer cannot widen
@@ -95,9 +101,12 @@ describe("jwtAuthenticator", () => {
     const token = await issuer.sign({ sub: "u-1", tenant: "acme", scp: ["orders:export"] }).get();
 
     // WHEN it is presented
-    const resolved = await scopedJwtService({
-      authorization: `Bearer ${token}`,
-    });
+    const resolved = await scopedJwtService(
+      {
+        authorization: `Bearer ${token}`,
+      },
+      new URLSearchParams(),
+    );
 
     // THEN it grants the same as the RFC 8693 spelling — both are in the wild
     // and neither is guaranteed
@@ -111,9 +120,12 @@ describe("jwtAuthenticator", () => {
       .get();
 
     // WHEN it is presented here
-    const resolved = await jwtService({
-      authorization: `Bearer ${token}`,
-    });
+    const resolved = await jwtService(
+      {
+        authorization: `Bearer ${token}`,
+      },
+      new URLSearchParams(),
+    );
 
     // THEN it is refused. This is the check whose absence lets a token from a
     // sibling service be replayed against this one
@@ -126,7 +138,7 @@ describe("jwtAuthenticator", () => {
     const token = await issuer.sign({ sub: "u-1", tenant: "acme" }, { expiresIn: false }).get();
 
     // WHEN it is presented
-    const resolved = await jwtService({ authorization: `Bearer ${token}` });
+    const resolved = await jwtService({ authorization: `Bearer ${token}` }, new URLSearchParams());
 
     // THEN it is refused. `jose` validates `exp` only when it is PRESENT, so
     // without `requiredClaims` this token authenticates and never expires —
@@ -142,9 +154,12 @@ describe("jwtAuthenticator", () => {
       .get();
 
     // WHEN it is presented
-    const resolved = await jwtService({
-      authorization: `Bearer ${token}`,
-    });
+    const resolved = await jwtService(
+      {
+        authorization: `Bearer ${token}`,
+      },
+      new URLSearchParams(),
+    );
 
     // THEN it is refused
     expect(resolved).toBeErrTagged("Unauthenticated");
@@ -155,9 +170,12 @@ describe("jwtAuthenticator", () => {
     const token = await issuer.sign({ sub: "u-1", tenant: "acme" }, { expiresIn: "-1s" }).get();
 
     // WHEN it is presented
-    const resolved = await jwtService({
-      authorization: `Bearer ${token}`,
-    });
+    const resolved = await jwtService(
+      {
+        authorization: `Bearer ${token}`,
+      },
+      new URLSearchParams(),
+    );
 
     // THEN it is refused — `clockToleranceSec` defaults to 0, so leeway is an
     // opt-in rather than a silent grace period
@@ -173,9 +191,12 @@ describe("jwtAuthenticator", () => {
     const token = await stranger.sign({ sub: "u-1", tenant: "acme" }).get();
 
     // WHEN it is presented
-    const resolved = await jwtService({
-      authorization: `Bearer ${token}`,
-    });
+    const resolved = await jwtService(
+      {
+        authorization: `Bearer ${token}`,
+      },
+      new URLSearchParams(),
+    );
 
     // THEN the signature check refuses it: a matching `kid` is not a signature
     expect(resolved).toBeErrTagged("Unauthenticated");
@@ -191,9 +212,12 @@ describe("jwtAuthenticator", () => {
     const token = await hmacToken.get();
 
     // WHEN it is presented
-    const resolved = await jwtService({
-      authorization: `Bearer ${token}`,
-    });
+    const resolved = await jwtService(
+      {
+        authorization: `Bearer ${token}`,
+      },
+      new URLSearchParams(),
+    );
 
     // THEN the algorithm allowlist refuses it before any key is consulted —
     // which is why `DEFAULT_ALGORITHMS` is asymmetric-only and why the list
@@ -209,9 +233,12 @@ describe("jwtAuthenticator", () => {
     const token = await issuer.sign({ sub: "u-1" }).get();
 
     // WHEN it is presented
-    const resolved = await jwtService({
-      authorization: `Bearer ${token}`,
-    });
+    const resolved = await jwtService(
+      {
+        authorization: `Bearer ${token}`,
+      },
+      new URLSearchParams(),
+    );
 
     // THEN `principal` answering `undefined` is a REFUSAL rather than a
     // principal of `undefined` — a handler with a context that type-checks and
@@ -244,7 +271,7 @@ describe("jwtAuthenticator", () => {
   it("refuses a request carrying no bearer token", async ({ jwtService }) => {
     // GIVEN a header in the wrong scheme
     // WHEN it is presented
-    const resolved = await jwtService({ authorization: "Basic abc" });
+    const resolved = await jwtService({ authorization: "Basic abc" }, new URLSearchParams());
 
     // THEN it is refused before the JWKS is ever consulted
     expect(resolved).toBeErrTagged("Unauthenticated");
@@ -259,9 +286,12 @@ describe("jwtAuthenticator", () => {
     const token = await issuer.sign({ sub: "u-1", tenant: "acme" }).get();
 
     // WHEN it is presented
-    const resolved = await scopedJwtService({
-      authorization: `Bearer ${token}`,
-    });
+    const resolved = await scopedJwtService(
+      {
+        authorization: `Bearer ${token}`,
+      },
+      new URLSearchParams(),
+    );
 
     // THEN it is authenticated and grants nothing, which is what leaves the
     // 403 to the endpoint's own scope check rather than a 401 here
@@ -359,8 +389,11 @@ describe("jwtAuthenticator", () => {
       .get();
 
     // WHEN a token for each audience is presented
-    const pinned = await authenticate({ authorization: `Bearer ${forPin}` });
-    const variable = await authenticate({ authorization: `Bearer ${forVariable}` });
+    const pinned = await authenticate({ authorization: `Bearer ${forPin}` }, new URLSearchParams());
+    const variable = await authenticate(
+      { authorization: `Bearer ${forVariable}` },
+      new URLSearchParams(),
+    );
 
     // THEN the pin decided both answers: explicit beats environment, per field
     expect({ pinned: pinned.isOk(), variable: variable.isOk() }).toEqual({
@@ -384,7 +417,10 @@ describe("jwtAuthenticator", () => {
     const token = await issuer.sign({ sub: "u-1", tenant: "acme" }).get();
 
     // WHEN a token the customer issuer signed is presented
-    const resolved = await authenticate({ authorization: `Bearer ${token}` });
+    const resolved = await authenticate(
+      { authorization: `Bearer ${token}` },
+      new URLSearchParams(),
+    );
 
     // THEN the scheme verified it against its own issuer, not the first scheme's
     expect(resolved).toBeOkWith({ tenantId: "acme", userId: "u-1" });
@@ -494,7 +530,7 @@ describe("jwtAuthenticator", () => {
     const token = await issuer.sign({ sub: "u-1", tenant: "acme" }).get();
 
     // WHEN it is presented
-    await scheme.resolve({ authorization: `Bearer ${token}` });
+    await scheme.resolve({ authorization: `Bearer ${token}` }, new URLSearchParams());
 
     // THEN the outage settled an operation carrying a bounded reason and the
     // library's own cause. Unreported, a key-set incident refused every caller
@@ -518,7 +554,7 @@ describe("jwtAuthenticator", () => {
     void issuer;
 
     // WHEN it is presented
-    const answered = await scheme.resolve({});
+    const answered = await scheme.resolve({}, new URLSearchParams());
 
     // THEN it is refused and NOTHING was observed. A refused credential is not
     // an operation that failed, and a line per unauthenticated request is how a

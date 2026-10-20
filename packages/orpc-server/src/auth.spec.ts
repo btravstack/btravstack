@@ -1,5 +1,6 @@
 import { authenticated } from "@btravstack/contract";
 import {
+  CredentialRefused,
   HttpAuthenticator,
   Unauthenticated,
   granted,
@@ -105,6 +106,56 @@ describe("an authenticated procedure", () => {
     expect(resolved).toBeErrWith(
       expect.objectContaining({ _tag: "UnderScoped", scopes: undefined }),
     );
+  });
+
+  it("answers a presented but refused credential as UnderScoped, with no scope hint", async ({
+    headers,
+  }) => {
+    // GIVEN a scheme refusing the grant its caller presented, and another finding no credential
+    const authenticators = {
+      grant: () => ErrAsync(new CredentialRefused()),
+      user: () => ErrAsync(new Unauthenticated()),
+    };
+
+    // WHEN neither requirement accepts the caller
+    const resolved = await resolvePrincipal([{ grant: [] }, { user: [] }], authenticators, headers);
+
+    // THEN the refusal is the 403 arm, not the 401 a login could help
+    expect(resolved).toBeErrWith(
+      expect.objectContaining({ _tag: "UnderScoped", scopes: undefined }),
+    );
+  });
+
+  it("lets a later requirement accept a caller an earlier scheme refused", async ({ headers }) => {
+    // GIVEN a refused grant beside a key the second requirement accepts
+    const authenticators = {
+      grant: () => ErrAsync(new CredentialRefused()),
+      key: () => OkAsync({ appId: "reporting" }),
+    };
+
+    // WHEN the walk reaches the second requirement
+    const resolved = await resolvePrincipal([{ grant: [] }, { key: [] }], authenticators, headers);
+
+    // THEN the caller is the key's
+    expect(resolved).toBeOkWith({ scheme: "key", identity: { appId: "reporting" } });
+  });
+
+  it("hands each scheme the query it was called with", async ({ headers }) => {
+    // GIVEN a scheme reading its credential from the query
+    const authenticators = {
+      grant: (_headers: unknown, query: URLSearchParams) => OkAsync({ grant: query.get("grant") }),
+    };
+
+    // WHEN the walk is handed a query carrying one
+    const resolved = await resolvePrincipal(
+      [{ grant: [] }],
+      authenticators,
+      headers,
+      new URLSearchParams("grant=signed"),
+    );
+
+    // THEN the scheme read it
+    expect(resolved).toBeOkWith({ grant: "signed" });
   });
 
   it("hands the handler the identity its scheme resolves", async ({ rpcAuthed }) => {
