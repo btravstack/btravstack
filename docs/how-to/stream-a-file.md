@@ -37,6 +37,20 @@ that declares its length into a `File` in memory, and `bodyLimit` bounds it
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
+const CEILING = 1_073_741_824;
+
+/** Passes the bytes through, and errors the stream once more than `ceiling` have passed. */
+const capped = (ceiling: number) => {
+  let seen = 0;
+  return new TransformStream<Uint8Array, Uint8Array>({
+    transform: (chunk, controller) => {
+      seen += chunk.byteLength;
+      if (seen > ceiling) controller.error(new RangeError("the body is over the ceiling"));
+      else controller.enqueue(chunk);
+    },
+  });
+};
+
 export const content = Provider.member(HttpHandler)({
   inject: { store: Storage },
   sync: ({ store }) => ({
@@ -46,25 +60,34 @@ export const content = Provider.member(HttpHandler)({
       if (key === undefined) return;
 
       if (request.method === "PUT") {
+        if (Number(request.headers["content-length"] ?? 0) > CEILING) {
+          response.writeHead(413).end();
+          return;
+        }
+        const body = (Readable.toWeb(request) as ReadableStream<Uint8Array>).pipeThrough(
+          capped(CEILING),
+        );
         const written = await store
-          .putStream(key, Readable.toWeb(request) as ReadableStream<Uint8Array>, {
+          .putStream(key, body, {
             contentType: request.headers["content-type"] ?? "application/octet-stream",
           })
           .map(() => 204)
           .recoverErrCases((matcher) =>
             matcher
               .with(P.tag("StorageUnavailable"), () => 503)
-              .with(
-                P.tag("InvalidStorageOptions"),
-                P.tag("ChecksumMismatch"),
-                P.tag("StreamInterrupted"),
-                () => 400,
-              ),
+              .with(P.tag("StreamInterrupted"), ({ cause }) =>
+                cause instanceof RangeError ? 413 : 400,
+              )
+              .with(P.tag("InvalidStorageOptions"), P.tag("ChecksumMismatch"), () => 400),
           );
         response.writeHead(written.getOr(500)).end();
         return;
       }
 
+      if (request.method !== "GET") {
+        response.writeHead(405, { allow: "GET, PUT" }).end();
+        return;
+      }
       const read = await store.getStream(key);
       if (!read.isOk()) {
         response.writeHead(read.isErr() && read.error._tag === "ObjectNotFound" ? 404 : 503).end();
@@ -89,10 +112,12 @@ prefix. An answerer that returns without writing gets the runtime's `404`.
   check: a session, a signed grant in the URL, whatever decides which key this
   request may touch.
 - **A ceiling.** `bodyLimit` and `HTTP_BODY_LIMIT` bound what oRPC, fragments,
-  GraphQL and MCP read; nothing bounds this body. Refuse a declared
-  `content-length` you will not take before reading, and count the bytes as
-  they pass: a transform that errors past the ceiling ends the write with
-  `StreamInterrupted`, and nothing is stored.
+  GraphQL and MCP read; nothing bounds this body. The answerer above refuses a
+  declared `content-length` over its ceiling before reading, and counts the
+  bytes as they pass, since a chunked body declares none: `capped` errors the
+  stream past the ceiling, the write ends with `StreamInterrupted` carrying
+  that error, and nothing is stored. Keep it well under the store's own
+  ceiling for a streamed object.
 - **Time.** `HTTP_REQUEST_TIMEOUT_MS` (default five minutes) bounds the whole
   request, body included. A large upload over a slow link needs a deployment
   that raises it.
