@@ -71,9 +71,33 @@ The two rules this half exists to state, before the detail:
   one reading its issuer from the environment — fails the boot with a typed
   error rather than constructing happily and refusing every caller.
   `AuthenticatorService<P, Scope>` is
-  `(headers: IncomingHttpHeaders) => AsyncResult<Granted<P, Scope>, Unauthenticated>` —
-  **headers, not the request**: an authenticator has no business reading a
-  body, and the narrower argument is what keeps it testable without a socket.
+  `(headers: IncomingHttpHeaders, query: URLSearchParams) => AsyncResult<Granted<P, Scope>, Unauthenticated | CredentialRefused>` —
+  **headers and the query, not the request**: an authenticator has no business
+  reading a body, and the narrower arguments are what keep it testable without
+  a socket. The query is there for a **capability URL** (#620) — a signed
+  download link a browser follows as a plain link, so its credential cannot
+  travel in a header. `resolveRequestScheme` parses it once from `request.url`
+  for every answerer, so a query scheme is a scheme like the others: named by
+  the contract, its principal seeding its kind's unit, and the unit forked and
+  closed by the runtime once the answer is flushed — a streamed download keeps
+  reading from its unit after the handler has answered. Nothing here writes a
+  request's URL to `Observers`, an error body or a unit record, which is what
+  keeps a grant there as private as an `authorization` header; a new surface
+  that would must strip the query first. The OpenAPI document describes such a
+  scheme as `{ type: "apiKey", in: "query", name }` through `openApiDocument`'s
+  `securitySchemes`, the same split as every other scheme.
+
+  **`CredentialRefused` is a refusal a login cannot help, and answers `403`.**
+  `Unauthenticated` is "no credential this scheme accepts" — a missing grant
+  is one, and answers `401` like a missing token. A grant that is present but
+  does not verify, or has expired, is `CredentialRefused`; the walk folds it
+  into `UnderScoped` (no scope hint, so no `insufficient_scope` challenge)
+  unless a later requirement accepts the caller. Folding it rather than adding
+  an arm to `resolveScheme`'s error union keeps every answerer's exhaustive
+  triage, and `htmx({ login })` already sends only `Unauthenticated` to log in —
+  which also keeps a refused grant out of the `return` it would mint from
+  `request.url`. A scheme reading the query answers `CredentialRefused` for
+  every present value it refuses, for that reason.
   `Granted<P, Scope>` is `P` when `Scope` is `never` — a scheme with no scope
   vocabulary returns the identity bare, byte-for-byte what applications wrote
   before — and `Grant<P, Scope>` when it has one, so
@@ -725,7 +749,7 @@ The two rules this half exists to state, before the detail:
   belongs in `defineHttp` when the application serves it; the site's
   router-only samples compose `examples/order-api`'s router, so they carry
   `sessionCodec()` for exactly this reason.
-- **`resolveScheme(requirements, authenticators, headers)` →
+- **`resolveScheme(requirements, authenticators, headers, query)` →
   `AsyncResult<{ scheme, identity }, Unauthenticated | UnderScoped>`**
   (`auth.ts`) — the authentication walk, protocol-neutral: headers in, the
   scheme that answered and what it answered with, or a typed refusal, out —

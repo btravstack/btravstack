@@ -24,13 +24,15 @@ export const resolveRequestScheme = (
   request: IncomingMessage,
 ): AsyncResult<Resolved, Unauthenticated | UnderScoped> => {
   delete (request as ScopedRequest)[REFUSED];
-  return resolveScheme(requirements, authenticators, request.headers).mapErrCases((matcher) =>
-    matcher
-      .with(P.tag("Unauthenticated"), (error) => error)
-      .with(P.tag("UnderScoped"), (error) => {
-        if (error.scopes !== undefined) (request as ScopedRequest)[REFUSED] = error.scopes;
-        return error;
-      }),
+  const query = new URLSearchParams(URL.parse(request.url ?? "", "http://x")?.search);
+  return resolveScheme(requirements, authenticators, request.headers, query).mapErrCases(
+    (matcher) =>
+      matcher
+        .with(P.tag("Unauthenticated"), (error) => error)
+        .with(P.tag("UnderScoped"), (error) => {
+          if (error.scopes !== undefined) (request as ScopedRequest)[REFUSED] = error.scopes;
+          return error;
+        }),
   );
 };
 

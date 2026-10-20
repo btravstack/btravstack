@@ -7,16 +7,16 @@ import {
   HttpRuntime,
   Unauthenticated,
 } from "@btravstack/http-server";
-import { it } from "@btravstack/internal-http-fixtures";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { oc, type RouterContractClient } from "@orpc/contract";
 import { openapi as route } from "@orpc/openapi";
 import { OpenAPIReferenceHandlerPlugin } from "@orpc/openapi/plugins";
 import { ErrAsync, OkAsync } from "unthrown";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 import { z } from "zod";
 
+import { FORGED, GRANT, capabilityContract, it } from "./__tests__/test-fixtures.js";
 import { defineHttp } from "./define-http.js";
 import { HttpModule } from "./http-module.js";
 import { http } from "./http.js";
@@ -303,6 +303,69 @@ describe("OpenAPI routes", () => {
       status: 200,
       security: [{ user: [] }],
       scheme: { type: "http", scheme: "bearer" },
+    });
+  });
+  it("keeps a capability URL's unit open until its streamed answer is flushed", async ({
+    capability,
+  }) => {
+    // GIVEN a file served behind a grant in its URL, streamed from the unit
+    const origin = await capability.serve();
+
+    // WHEN a client follows the link, receives the headers, then lets the rest stream
+    const response = await fetch(`${origin}/api/files/42?grant=${GRANT}`);
+    capability.log.push("headers received");
+    capability.release();
+    const body = await response.text();
+    await vi.waitUntil(() => capability.log.includes("unit closed"));
+
+    // THEN the unit outlived the handler and closed once the answer was flushed
+    expect({ status: response.status, body, log: capability.log }).toEqual({
+      status: 200,
+      body: "42;last",
+      log: ["handler answered", "headers received", "streamed in an open unit", "unit closed"],
+    });
+  });
+
+  it("answers a refused grant 403 and a missing one 401, echoing and reporting no grant", async ({
+    capability,
+  }) => {
+    // GIVEN the capability app, its download free to stream
+    const origin = await capability.serve();
+    capability.release();
+
+    // WHEN one client presents no grant, one a forged grant and one a valid grant
+    const missing = await fetch(`${origin}/api/files/42`);
+    const refused = await fetch(`${origin}/api/files/42?grant=${FORGED}`);
+    const accepted = await fetch(`${origin}/api/files/42?grant=${GRANT}`);
+    const bodies = [await missing.text(), await refused.text(), await accepted.text()];
+    await vi.waitUntil(() => capability.log.includes("unit closed"));
+
+    // THEN the statuses tell absent from refused, and no answer or report carries a grant
+    expect({
+      statuses: [missing.status, refused.status, accepted.status],
+      refusals: bodies.slice(0, 2).join(),
+      observed: JSON.stringify(capability.observed),
+    }).toEqual({
+      statuses: [401, 403, 200],
+      refusals: expect.not.stringMatching(/payload/),
+      observed: expect.not.stringMatching(/payload/),
+    });
+  });
+
+  it("documents a capability URL's scheme as an apiKey in the query", async () => {
+    // GIVEN the contract marked with the grant scheme, described as OpenAPI's query apiKey
+    const securitySchemes = { grant: { type: "apiKey", in: "query", name: "grant" } } as const;
+
+    // WHEN its document is generated
+    const document = (await openApiDocument(capabilityContract, { securitySchemes })).get();
+
+    // THEN the operation requires the scheme, and the scheme is read from the query
+    expect({
+      security: document.paths?.["/files/{id}"]?.get?.security,
+      scheme: document.components?.securitySchemes?.["grant"],
+    }).toEqual({
+      security: [{ grant: [] }],
+      scheme: { type: "apiKey", in: "query", name: "grant" },
     });
   });
 });

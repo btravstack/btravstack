@@ -344,6 +344,52 @@ for the resource's exact URL. Its verified Bearer scope refusal then carries
 `error="insufficient_scope"`, the metadata URL and the first sufficient scope
 alternative. A business authorization `403` receives no scope challenge.
 
+### A credential in the URL
+
+A capability URL — a signed download link, `GET /files/42?grant=<payload>.<mac>`
+— carries its credential where a browser following a plain link can send it:
+the query. Every scheme is handed the request's query beside its headers, and
+never the body, so this is one more `HttpAuthenticator`:
+
+<!-- doctest: isolate
+import { CredentialRefused, HttpAuthenticator, Unauthenticated } from "@btravstack/http-server";
+import { ErrAsync, OkAsync } from "unthrown";
+declare const verifyGrant: (grant: string) => { readonly tenantId: string; readonly fileId: string } | undefined;
+-->
+
+```ts
+export const grantAuth = HttpAuthenticator<{
+  readonly tenantId: string;
+  readonly fileId: string;
+}>()({
+  inject: {},
+  sync: () => (_headers, query) => {
+    const grant = query.get("grant");
+    if (grant === null) return ErrAsync(new Unauthenticated());
+    const grantee = verifyGrant(grant);
+    return grantee === undefined
+      ? ErrAsync(new CredentialRefused())
+      : OkAsync(grantee);
+  },
+});
+```
+
+**No grant is `Unauthenticated`, a grant that does not verify is
+`CredentialRefused`.** The first answers `401`, as every other scheme's missing
+credential does; the second answers `403`, the arm an under-scoped caller gets,
+because the caller did present a credential and logging in would not help — so
+`htmx({ login })` never redirects it either. The grant's tenant and principal
+seed the scheme's unit like a token's claims: `auth.principals.grant` in the
+kind's module, forked by the runtime and closed once the answer is flushed, so
+a streamed download keeps reading from its unit after the handler has answered.
+Nothing in the stack writes a request's URL to a log, a span or an error body,
+which is what keeps the grant there as private as an `authorization` header.
+
+The contract names the scheme like any other, `authenticated({ grant: [] })`,
+and the OpenAPI document describes it as what it is,
+`securitySchemes: { grant: { type: "apiKey", in: "query", name: "grant" } }`
+on [`openApiDocument()`](/reference/http-server#openapidocument-—-from-btravstack-orpc-server-openapi).
+
 Building a scheme can also **fail**, and `make` is the arm for that:
 `jwtAuthenticator` is `HttpAuthenticator` over `{ inject: { env: Env }, make }`,
 whose `AsyncResult` carries `ConfigInvalid` into the graph's own error channel —
@@ -526,6 +572,7 @@ a caller satisfies wins.
 | --------------------------------------------------------------- | ----------------------------------------------------- |
 | no requirement accepted the caller                              | `401 UNAUTHORIZED`, the handler never entered         |
 | a credential was valid but lacked a scope the requirement named | `403 FORBIDDEN`, the handler never entered            |
+| a scheme refused the credential presented (`CredentialRefused`) | `403 FORBIDDEN`, the handler never entered            |
 | an authenticator defects                                        | oRPC's `INTERNAL_SERVER_ERROR` collapse — not a `401` |
 | an unmarked procedure, no credentials                           | served                                                |
 

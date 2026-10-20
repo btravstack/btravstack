@@ -1,12 +1,14 @@
 import { request, type IncomingMessage } from "node:http";
 
-import { Observers, type Operation } from "@btravstack/core";
-import { Provider } from "@btravstack/di";
+import { authenticated } from "@btravstack/contract";
+import { Observers, type Operation, type Settled } from "@btravstack/core";
+import { Module, Port, Provider } from "@btravstack/di";
+import { CredentialRefused, HttpAuthenticator, Unauthenticated } from "@btravstack/http-server";
 import { it as base, type HttpFixtures } from "@btravstack/internal-http-fixtures";
 import { oc } from "@orpc/contract";
 import { openapi } from "@orpc/openapi";
 import { RequestCompressionHandlerPlugin } from "@orpc/server/plugins";
-import { OkAsync, fromSafePromise } from "unthrown";
+import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
 import { vi, type TestAPI } from "vitest";
 import { z } from "zod";
 
@@ -50,7 +52,24 @@ export type Bodies = {
   readonly get: (port: number, path: string) => Promise<Answer>;
 };
 
-type Fixtures = { portWarnings: () => readonly unknown[]; bodies: Bodies };
+/** The grant a capability URL carries, which its scheme accepts for file `42`. */
+export const GRANT = "payload.signature";
+
+/** A grant the scheme refuses: present, so `403` rather than `401`. */
+export const FORGED = "payload.forged";
+
+export type Capability = {
+  /** Boots the capability app on an ephemeral port and answers its origin. */
+  readonly serve: () => Promise<string>;
+  /** What happened, in order: the handler, the client, the stream, the unit's close. */
+  readonly log: string[];
+  /** Lets the download stream its second chunk. */
+  readonly release: () => void;
+  /** Every operation the app reported, as started and as settled. */
+  readonly observed: readonly (Operation | Settled)[];
+};
+
+type Fixtures = { portWarnings: () => readonly unknown[]; bodies: Bodies; capability: Capability };
 
 export const it: TestAPI<HttpFixtures & Fixtures> = base.extend<Fixtures>({
   // oxlint-disable-next-line no-empty-pattern -- this fixture observes diagnostics without changing console behavior
@@ -103,6 +122,33 @@ export const it: TestAPI<HttpFixtures & Fixtures> = base.extend<Fixtures>({
       defects,
       put,
       get,
+    });
+  },
+  capability: async ({ boot }, use) => {
+    const log: string[] = [];
+    const observed: (Operation | Settled)[] = [];
+    let release = (): void => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    const observer = Provider.member(Observers)({
+      inject: {},
+      sync: () => (operation) => {
+        observed.push(operation);
+        return (settled) => void observed.push(settled);
+      },
+    });
+    const app = HttpModule("CapabilityUrls")({
+      router: capabilityRouterOf(log, released),
+      provides: [observer],
+      unit: { grant: grantUnitOf(log) },
+      port: 0,
+      hostname: "127.0.0.1",
+      openapi: true,
+    });
+    await use({
+      serve: async () => `http://127.0.0.1:${(await boot(app).runtimeInfo()).get()?.port ?? 0}`,
+      log,
+      release,
+      observed,
     });
   },
 });
@@ -225,4 +271,90 @@ const get: Bodies["get"] = (port, path) =>
     )
       .on("error", reject)
       .end();
+  });
+
+const grantAuth = HttpAuthenticator<{ readonly fileId: string }>()({
+  inject: {},
+  sync: () => (_headers, query) => {
+    const grant = query.get("grant");
+    if (grant === null) return ErrAsync(new Unauthenticated());
+    return grant === GRANT ? OkAsync({ fileId: "42" }) : ErrAsync(new CredentialRefused());
+  },
+});
+
+const capabilityAuth = defineHttp({ authenticators: { grant: grantAuth } });
+
+class Download extends Port("CapabilityDownload")<{
+  readonly fileId: string;
+  readonly open: () => boolean;
+}> {}
+
+/** The `grant` kind's unit: the file its principal names, and whether the unit is still open. */
+const grantUnitOf = (log: string[]) => {
+  let open = true;
+  return Module("GrantUnit")({
+    provides: [
+      Provider(Download)({
+        inject: { grantee: capabilityAuth.principals.grant },
+        sync: ({ grantee }) => ({ fileId: grantee.fileId, open: () => open }),
+        onStop: () => {
+          open = false;
+          log.push("unit closed");
+        },
+      }),
+    ],
+    exports: [Download],
+  });
+};
+
+const capabilityApi = capabilityAuth.units<{ grant: ReturnType<typeof grantUnitOf> }>();
+
+/** A file behind a capability URL: `GET /files/{id}?grant=…`, streamed. */
+export const capabilityContract = {
+  files: authenticated({ grant: [] })({
+    download: oc
+      .meta(openapi({ method: "GET", path: "/files/{id}", outputStructure: "detailed" }))
+      .input(z.object({ id: z.string() }))
+      .output(
+        z.object({ headers: z.record(z.string(), z.string()), body: z.instanceof(ReadableStream) }),
+      ),
+  }),
+};
+
+/**
+ * The download answers at once with a stream whose second chunk waits for
+ * `released`, then reports whether the unit it reads from was still open.
+ */
+const capabilityRouterOf = (log: string[], released: Promise<void>) =>
+  capabilityApi.OrpcRouter(capabilityContract)({
+    inject: {},
+    unit: { download: Download },
+    sync: () => ({
+      files: {
+        download: ({ context }) => {
+          const { download } = context.unit;
+          let pulls = 0;
+          const body = new ReadableStream<Uint8Array>(
+            {
+              pull: async (controller) => {
+                pulls += 1;
+                if (pulls > 1) {
+                  await released;
+                  log.push(
+                    download.open() ? "streamed in an open unit" : "streamed in a closed unit",
+                  );
+                  controller.enqueue(new TextEncoder().encode(";last"));
+                  controller.close();
+                  return;
+                }
+                controller.enqueue(new TextEncoder().encode(download.fileId));
+              },
+            },
+            { highWaterMark: 0 },
+          );
+          log.push("handler answered");
+          return OkAsync({ headers: { "content-type": "text/plain" }, body });
+        },
+      },
+    }),
   });
