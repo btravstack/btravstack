@@ -750,6 +750,54 @@ describe("s3Storage, streamed", { timeout: 60_000 }, () => {
     );
   });
 
+  it("cuts a chunk larger than a part across parts", async () => {
+    // GIVEN a client whose commands are captured at the SDK boundary, and a
+    // source that sends 20 MiB as one chunk
+    const sent: Record<string, unknown>[] = [];
+    const client = new S3Client({
+      endpoint: "http://127.0.0.1:1",
+      region: "us-east-1",
+      forcePathStyle: true,
+      credentials: { accessKeyId: "none", secretAccessKey: "none" },
+    });
+    client.middlewareStack.add(
+      (_next) => async (args) => {
+        sent.push(args.input as Record<string, unknown>);
+        return { output: { $metadata: {}, UploadId: "u", ETag: "e" } as never, response: {} };
+      },
+      { step: "initialize", name: "capture" },
+    );
+    const chunk = new Uint8Array(20 * MiB);
+    const source = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        controller.enqueue(chunk);
+        controller.close();
+      },
+    });
+
+    // WHEN it is written as it streams
+    await s3StorageBackend(client, "bucket").putStream("a", source, { contentType: "t" });
+
+    // THEN no part is larger than one part's size
+    expect(
+      sent
+        .filter((input) => input["PartNumber"] !== undefined)
+        .map((input) => (input["Body"] as Uint8Array).byteLength / MiB),
+    ).toEqual([8, 8, 4]);
+  });
+
+  it("answers StreamInterrupted for a stream another reader holds", async ({ s3, keyPrefix }) => {
+    // GIVEN a stream already locked to a reader
+    const stream = aStream(1);
+    stream.getReader();
+
+    // WHEN it is written
+    const written = s3.putStream(`${keyPrefix}locked.bin`, stream, { contentType: "t" });
+
+    // THEN the refusal to read it is an answer, not a throw
+    await expect(written).toBeErrTagged("StreamInterrupted");
+  });
+
   it("writes on the first putStreamIfAbsent and refuses the second, keeping the first bytes", async ({
     s3,
     keyPrefix,

@@ -119,7 +119,8 @@ export type StorageService = {
   /**
    * Writes the object as `stream` delivers it, never holding it whole: the S3
    * adapter sends a stream longer than one 8 MiB part as a multipart upload, one
-   * part at a time. The object appears only once the stream has ended and every
+   * part at a time. S3's 10,000 parts cap such an object near 78 GiB; a longer
+   * stream is refused by the store, as `StorageUnavailable`. The object appears only once the stream has ended and every
    * part is stored. A failure (the stream's own error, a `sha256` the bytes do
    * not match, the store) aborts the upload, so no partial object is ever
    * visible, and cancels the stream.
@@ -232,8 +233,8 @@ export type StorageService = {
  * slot.
  *
  * **Bytes, and streams beside them.** `put` and `get` hold a document whole;
- * `putStream`, `putStreamIfAbsent` and `getStream` move an object of any size
- * through the process in bounded memory.
+ * `putStream`, `putStreamIfAbsent` and `getStream` move a large object through
+ * the process in bounded memory.
  */
 export class Storage extends Port("Storage")<StorageService> {}
 

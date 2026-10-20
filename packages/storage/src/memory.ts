@@ -16,13 +16,21 @@ import {
   type StoredObject,
 } from "./storage.js";
 
-/** Every byte of the stream, or the stream's own error; a refused option cancels it unread. */
+/**
+ * Every byte of the stream, or the stream's own error; a refused option cancels
+ * it unread, and a cancel that fails leaves the refusal the answer.
+ */
 const collect = (key: string, stream: ReadableStream<Uint8Array>, options: WriteOptions) =>
   validateOptions(key, options)
     .toAsync()
     .flatTapErrCases((matcher) =>
       matcher.with(P.tag("InvalidStorageOptions"), () =>
-        fromSafePromise(stream.cancel().then(() => undefined)),
+        fromSafePromise(
+          stream.cancel().then(
+            () => undefined,
+            () => undefined,
+          ),
+        ),
       ),
     )
     .flatMap(() =>

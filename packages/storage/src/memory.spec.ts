@@ -288,6 +288,30 @@ describe("memoryStorageBackend", () => {
     expect(cancelled).toBe(true);
   });
 
+  it("answers the refused options even when cancelling the stream fails", async ({ memory }) => {
+    // GIVEN a stream already locked to a reader, so cancelling it rejects
+    const stream = aStream(1);
+    stream.getReader();
+
+    // WHEN it is written under a malformed digest
+    const written = memory.putStream("a.bin", stream, { contentType: "t", sha256: "nope" });
+
+    // THEN the refusal is the answer
+    await expect(written).toBeErrTagged("InvalidStorageOptions");
+  });
+
+  it("answers StreamInterrupted for a stream another reader holds", async ({ memory }) => {
+    // GIVEN a stream already locked to a reader
+    const stream = aStream(1);
+    stream.getReader();
+
+    // WHEN it is written
+    const written = memory.putStream("a.bin", stream, { contentType: "t" });
+
+    // THEN the refusal to read it is an answer, not a defect
+    await expect(written).toBeErrTagged("StreamInterrupted");
+  });
+
   it("writes on the first putStreamIfAbsent and refuses the second, keeping the first bytes", async ({
     memory,
   }) => {

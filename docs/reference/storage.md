@@ -169,8 +169,8 @@ arrives as a `StorageUnavailable` like any other failure to produce a URL.
 **Bytes, or a stream when the object must not sit in memory.** `put` and `get`
 hold a document whole — an invoice, a confirmation, an export — because
 `Uint8Array` is what every adapter and caller already has. `putStream`,
-`putStreamIfAbsent` and `getStream` move an object of any size through the
-process in bounded memory, over web `ReadableStream<Uint8Array>`:
+`putStreamIfAbsent` and `getStream` move a large object through the process
+in bounded memory, over web `ReadableStream<Uint8Array>`:
 
 ```ts
 export const archive = (
@@ -192,7 +192,11 @@ export const served = (store: StorageService, key: string) =>
 - **No partial object is ever visible.** The S3 adapter writes a stream that
   ends within one 8 MiB part with a single `PutObject`, and a longer one as a
   multipart upload, one part in flight at a time. The object appears only when
-  `CompleteMultipartUpload` succeeds, after the stream has ended. A failure
+  `CompleteMultipartUpload` succeeds, after the stream has ended. A chunk
+  larger than a part is cut across parts. S3 allows 10,000 parts, so a
+  streamed object tops out near 78 GiB: a longer stream is refused by the
+  store, and arrives as `StorageUnavailable`, which no retry will cure. Bound
+  what you accept well below it. A failure
   before that (the stream's own error, a `sha256` the bytes do not match, the
   store) aborts the upload and cancels the stream with the failure as its
   reason. Parts left behind when the store also refuses the abort are never

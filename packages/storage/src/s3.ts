@@ -17,7 +17,16 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import type { Scope } from "@btravstack/di";
 import { Module, Port, Provider } from "@btravstack/di";
-import { Err, Ok, OkAsync, P, fromPromise, fromSafePromise, type AsyncResult } from "unthrown";
+import {
+  Err,
+  Ok,
+  OkAsync,
+  P,
+  fromPromise,
+  fromSafePromise,
+  fromThrowable,
+  type AsyncResult,
+} from "unthrown";
 
 import { validateOptions } from "./options.js";
 import {
@@ -27,10 +36,12 @@ import {
   StorageBackend,
   StorageUnavailable,
   StreamInterrupted,
+  type InvalidStorageOptions,
   type ObjectHead,
   type StorageService,
   type StoredObject,
   type StreamedObject,
+  type WriteOptions,
 } from "./storage.js";
 
 /** What the graph bound from the environment for the S3 adapter. */
@@ -102,14 +113,26 @@ const encryption = (options: { readonly kmsKeyId?: string }) =>
 const hexToBase64 = (hex: string): string => Buffer.from(hex, "hex").toString("base64");
 const base64ToHex = (base64: string): string => Buffer.from(base64, "base64").toString("hex");
 
-/** Every part but the last must reach S3's 5 MiB floor; 8 MiB × 10,000 parts allows 78 GiB. */
+/**
+ * Every part but the last must reach S3's 5 MiB floor. At 8 MiB, S3's 10,000
+ * parts cap a streamed object near 78 GiB.
+ */
 const PART_SIZE = 8 * 1024 * 1024;
 
 type Part = { readonly bytes: Buffer; readonly ended: boolean };
 
-/** The next part of the stream, hashed as it passes; `ended` once the stream is done. */
+/** The stream being read, and what is left of a chunk that straddled the last part's end. */
+type Source = {
+  readonly reader: ReadableStreamDefaultReader<Uint8Array>;
+  rest: Uint8Array | undefined;
+};
+
+/**
+ * The next part of the stream, at most `PART_SIZE` however large the chunks
+ * are, hashed as it passes; `ended` once the stream is done.
+ */
 const readPart = (
-  reader: ReadableStreamDefaultReader<Uint8Array>,
+  source: Source,
   key: string,
   digest: ReturnType<typeof createHash>,
 ): AsyncResult<Part, StreamInterrupted> =>
@@ -118,11 +141,21 @@ const readPart = (
       const chunks: Uint8Array[] = [];
       let length = 0;
       while (length < PART_SIZE) {
-        const { done, value } = await reader.read();
-        if (done) return { bytes: Buffer.concat(chunks, length), ended: true };
-        digest.update(value);
-        chunks.push(value);
-        length += value.byteLength;
+        let chunk = source.rest;
+        source.rest = undefined;
+        if (chunk === undefined) {
+          const { done, value } = await source.reader.read();
+          if (done) return { bytes: Buffer.concat(chunks, length), ended: true };
+          digest.update(value);
+          chunk = value;
+        }
+        const room = PART_SIZE - length;
+        if (chunk.byteLength > room) {
+          source.rest = chunk.subarray(room);
+          chunk = chunk.subarray(0, room);
+        }
+        chunks.push(chunk);
+        length += chunk.byteLength;
       }
       return { bytes: Buffer.concat(chunks, length), ended: false };
     })(),
@@ -164,8 +197,22 @@ function streamUpload(
 ): StorageService["putStreamIfAbsent"] {
   const operation = ifAbsent ? "putStreamIfAbsent" : "putStream";
   const condition = ifAbsent ? { IfNoneMatch: "*" } : {};
-  return (key, stream, options) => {
-    const reader = stream.getReader();
+  return (key, stream, options) =>
+    fromThrowable(
+      () => stream.getReader(),
+      (cause) => new StreamInterrupted({ key, cause }),
+    )()
+      .toAsync()
+      .flatMap((reader) => write(key, { reader, rest: undefined }, options));
+
+  function write(
+    key: string,
+    source: Source,
+    options: WriteOptions,
+  ): AsyncResult<
+    void,
+    ObjectExists | InvalidStorageOptions | ChecksumMismatch | StreamInterrupted | StorageUnavailable
+  > {
     const digest = createHash("sha256");
     const refused = (cause: unknown): ObjectExists | ChecksumMismatch | StorageUnavailable =>
       isPreconditionFailed(cause)
@@ -213,7 +260,7 @@ function streamUpload(
         boolean,
         ObjectExists | ChecksumMismatch | StreamInterrupted | StorageUnavailable
       > =>
-        readPart(reader, key, digest)
+        readPart(source, key, digest)
           .flatMap(send)
           .flatMap((ended) => (ended ? OkAsync(ended) : rest()));
       return send(first)
@@ -253,7 +300,7 @@ function streamUpload(
 
     return validateOptions(key, options)
       .toAsync()
-      .flatMap(() => readPart(reader, key, digest))
+      .flatMap(() => readPart(source, key, digest))
       .flatMap((first) =>
         first.ended
           ? verified().flatMap(() =>
@@ -277,10 +324,10 @@ function streamUpload(
           P.tag("ChecksumMismatch"),
           P.tag("StreamInterrupted"),
           P.tag("StorageUnavailable"),
-          (error) => settled(reader.cancel(error)),
+          (error) => settled(source.reader.cancel(error)),
         ),
       );
-  };
+  }
 }
 
 /**
