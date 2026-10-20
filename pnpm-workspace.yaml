@@ -169,7 +169,7 @@ catalog:
   vite: 8.3.4
   vitepress: 1.6.4
   vitest: 5.0.3
-  zod: 4.6.6
+  zod: 4.6.7
 
 catalogs:
   # TypeDoc's own TypeScript: 7.x is the native port and ships no `typescript.js`,
