@@ -67,6 +67,7 @@
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "temporal-polyfill": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unthrown": "catalog:",

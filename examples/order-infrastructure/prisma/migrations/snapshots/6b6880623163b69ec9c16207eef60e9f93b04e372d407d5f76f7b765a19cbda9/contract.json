@@ -54,10 +54,6 @@
           "Order": {
             "fields": {
               "id": { "nullable": false, "type": { "codecId": "pg/int4@1", "kind": "scalar" } },
-              "operationId": {
-                "nullable": true,
-                "type": { "codecId": "pg/text@1", "kind": "scalar" }
-              },
               "orderId": {
                 "nullable": false,
                 "type": { "codecId": "pg/text@1", "kind": "scalar" }
@@ -79,7 +75,6 @@
             "storage": {
               "fields": {
                 "id": { "column": "id" },
-                "operationId": { "column": "operationId" },
                 "orderId": { "column": "orderId" },
                 "placedAt": { "column": "placedAt" },
                 "quantity": { "column": "quantity" },
@@ -161,15 +156,15 @@
           "table": {
             "customer": {
               "columns": {
-                "customerId": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false },
+                "customerId": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false },
                 "id": {
                   "codecId": "pg/int4@1",
+                  "dataType": "pg/int4",
                   "default": { "expression": "autoincrement()", "kind": "function" },
-                  "nativeType": "int4",
                   "nullable": false
                 },
-                "name": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false },
-                "tenantId": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false }
+                "name": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false },
+                "tenantId": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false }
               },
               "foreignKeys": [],
               "indexes": [],
@@ -180,20 +175,19 @@
               "columns": {
                 "id": {
                   "codecId": "pg/int4@1",
+                  "dataType": "pg/int4",
                   "default": { "expression": "autoincrement()", "kind": "function" },
-                  "nativeType": "int4",
                   "nullable": false
                 },
-                "operationId": { "codecId": "pg/text@1", "nativeType": "text", "nullable": true },
-                "orderId": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false },
+                "orderId": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false },
                 "placedAt": {
                   "codecId": "pg/timestamptz-string@1",
+                  "dataType": "pg/timestamptz",
                   "default": { "expression": "now()", "kind": "function" },
-                  "nativeType": "timestamptz",
                   "nullable": false
                 },
-                "quantity": { "codecId": "pg/int4@1", "nativeType": "int4", "nullable": false },
-                "tenantId": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false }
+                "quantity": { "codecId": "pg/int4@1", "dataType": "pg/int4", "nullable": false },
+                "tenantId": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false }
               },
               "foreignKeys": [],
               "indexes": [],
@@ -204,25 +198,25 @@
               "columns": {
                 "id": {
                   "codecId": "pg/int8@1",
+                  "dataType": "pg/int8",
                   "default": { "expression": "autoincrement()", "kind": "function" },
-                  "nativeType": "int8",
                   "nullable": false
                 },
-                "kind": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false },
+                "kind": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false },
                 "occurredAt": {
                   "codecId": "pg/timestamptz-string@1",
+                  "dataType": "pg/timestamptz",
                   "default": { "expression": "now()", "kind": "function" },
-                  "nativeType": "timestamptz",
                   "nullable": false
                 },
-                "payload": { "codecId": "pg/text@1", "nativeType": "text", "nullable": true },
+                "payload": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": true },
                 "publishedAt": {
                   "codecId": "pg/timestamptz-string@1",
-                  "nativeType": "timestamptz",
+                  "dataType": "pg/timestamptz",
                   "nullable": true
                 },
-                "subjectId": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false },
-                "tenantId": { "codecId": "pg/text@1", "nativeType": "text", "nullable": false }
+                "subjectId": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false },
+                "tenantId": { "codecId": "pg/text@1", "dataType": "pg/text", "nullable": false }
               },
               "foreignKeys": [],
               "indexes": [],
@@ -236,7 +230,7 @@
       },
       "public": { "entries": { "table": {} }, "id": "public", "kind": "postgres-schema" }
     },
-    "storageHash": "436a74bb21a12037db8d08183331abd70aba4e06fada08f0164412501bd39483"
+    "storageHash": "6b6880623163b69ec9c16207eef60e9f93b04e372d407d5f76f7b765a19cbda9"
   },
   "target": "postgres",
   "targetFamily": "sql"

@@ -346,8 +346,8 @@ read and mark the store issues is pinned to its tenant, so the model may carry
 
   policy_all outbox_tenant_isolation {
     target    = OutboxMessage
-    using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
-    withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
+    using     = sql`"tenantId" = current_setting('app.tenant_id', true)`
+    withCheck = sql`"tenantId" = current_setting('app.tenant_id', true)`
   }
 ```
 

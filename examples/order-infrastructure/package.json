@@ -28,6 +28,7 @@
     "@btravstack/outbox": "workspace:*",
     "@btravstack/prisma": "workspace:*",
     "@prisma/orm-postgres": "catalog:",
+    "temporal-polyfill": "catalog:",
     "unthrown": "catalog:"
   },
   "devDependencies": {

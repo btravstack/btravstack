@@ -9,10 +9,10 @@
 
 ```sh
 pnpm add @btravstack/prisma @btravstack/core @btravstack/config @btravstack/di unthrown \
-  @prisma/orm-postgres@8.0.0-rc.11
+  @prisma/orm-postgres@8.0.0-rc.18 temporal-polyfill@1.0.4
 ```
 
-Five peer dependencies — install every one, so the application holds a single
+Install the required peers and Postgres polyfill, so the application holds a single
 copy of each. The `prisma` CLI is yours, as a dev dependency: the client is
 built from _your_ emitted contract, so there is none for this package to ship.
 Node `>=22.12`.
@@ -96,7 +96,7 @@ the per-query observation below comes from.
   lane, folded into the kernel's `GET /healthz` with nothing wired. `/readyz`
   does not read it: failing readiness on a dependency every replica shares
   removes them all at once.
-- **Every query handed to `Observers`**, as one `afterQuery` middleware, so
+- **Every query handed to `Observers`**, as one SQL activity middleware, so
   composing `observability()` writes the failures as lines and `otel()` opens
   the spans and mints the instruments — with no flag here and no port list to
   satisfy when you compose neither. A middleware sees the ORM lane, the SQL
@@ -188,7 +188,7 @@ rather than the role `DATABASE_URL` carries. An application that migrates itself
 at boot races every other replica.
 
 **Engine-level tracing.** There is no engine: Prisma 8 is a TypeScript runtime
-and ships no instrumentation package, so the `afterQuery` middleware is the
+and ships no instrumentation package, so the SQL activity middleware is the
 whole seam and it already carries the runtime's own latency.
 
 **Transactions.** Commit boundaries belong to the adapter, spelled at the call —
