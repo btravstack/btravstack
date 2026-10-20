@@ -1404,6 +1404,17 @@ describe("s3Storage, with every stream socket held", { timeout: 60_000 }, () => 
     });
   });
 
+  it("closes a stalled store's socket after the socket timeout alone", async ({ stalled }) => {
+    // GIVEN a store that never answers, and only the socket timeout set
+    // WHEN an object is headed
+    const head = stalled.head("a.bin");
+
+    // THEN the idle socket was closed, rather than the call hanging
+    await expect(head).toBeErrWith(
+      expect.objectContaining({ operation: "head", reason: expect.stringContaining("inactivity") }),
+    );
+  });
+
   it("fails a call past its request timeout, rather than only warning", async ({
     hurried,
     keyPrefix,

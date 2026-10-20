@@ -137,6 +137,12 @@ const s3Schema = (options: S3StorageOptions) =>
   });
 
 /**
+ * `0` as the SDK's own absent value: handlers before 4.4 read `socketTimeout`
+ * only as `requestTimeout ?? socketTimeout`, so a `0` there would hide it.
+ */
+const unset = (ms: number): number | undefined => (ms === 0 ? undefined : ms);
+
+/**
  * A client over its own socket pool: keep-alive sockets, at most `maxSockets`
  * of them. The agents are instances, not options: from options the SDK sends
  * a body of 2 MiB or more (`Expect: 100-continue`, every 8 MiB part) on a
@@ -153,9 +159,9 @@ const s3Client = (config: ServiceOf<StorageConfig>, maxSockets: number): S3Clien
       secretAccessKey: config.secretAccessKey,
     },
     requestHandler: {
-      connectionTimeout: config.connectionTimeoutMs,
-      socketTimeout: config.socketTimeoutMs,
-      requestTimeout: config.requestTimeoutMs,
+      connectionTimeout: unset(config.connectionTimeoutMs),
+      socketTimeout: unset(config.socketTimeoutMs),
+      requestTimeout: unset(config.requestTimeoutMs),
       throwOnRequestTimeout: true,
       httpAgent: new HttpAgent({ keepAlive: true, maxSockets }),
       httpsAgent: new HttpsAgent({ keepAlive: true, maxSockets }),
