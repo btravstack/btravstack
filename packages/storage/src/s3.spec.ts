@@ -786,6 +786,61 @@ describe("s3Storage, streamed", { timeout: 60_000 }, () => {
     ).toEqual([8, 8, 4]);
   });
 
+  it("writes a stream of exactly one part as one object", async () => {
+    // GIVEN a client whose commands are captured at the SDK boundary
+    const sent: Record<string, unknown>[] = [];
+    const client = new S3Client({
+      endpoint: "http://127.0.0.1:1",
+      region: "us-east-1",
+      forcePathStyle: true,
+      credentials: { accessKeyId: "none", secretAccessKey: "none" },
+    });
+    client.middlewareStack.add(
+      (_next) => async (args) => {
+        sent.push(args.input as Record<string, unknown>);
+        return { output: { $metadata: {} } as never, response: {} };
+      },
+      { step: "initialize", name: "capture" },
+    );
+
+    // WHEN a stream of exactly 8 MiB is written
+    await s3StorageBackend(client, "bucket").putStream("a", aStream(8 * MiB), {
+      contentType: "t",
+    });
+
+    // THEN one command carried it whole, with no multipart upload around it
+    expect(
+      sent.map((input) => ({
+        upload: input["UploadId"],
+        size: (input["Body"] as Uint8Array | undefined)?.byteLength,
+      })),
+    ).toEqual([{ upload: undefined, size: 8 * MiB }]);
+  });
+
+  it("hands the stream back unlocked once a write has settled", async ({ s3, keyPrefix }) => {
+    // GIVEN a stream written to the store
+    const stream = aStream(9 * MiB);
+    await s3.putStream(`${keyPrefix}released.bin`, stream, { contentType: "t" });
+
+    // WHEN its lock is looked at
+    const locked = stream.locked;
+
+    // THEN the adapter released its reader
+    expect(locked).toBe(false);
+  });
+
+  it("hands a failed stream back unlocked too", async ({ s3, keyPrefix }) => {
+    // GIVEN a stream that broke while being written
+    const stream = aStream(9 * MiB, { failingAt: MiB });
+    await s3.putStream(`${keyPrefix}released.bin`, stream, { contentType: "t" });
+
+    // WHEN its lock is looked at
+    const locked = stream.locked;
+
+    // THEN the adapter released its reader
+    expect(locked).toBe(false);
+  });
+
   it("answers StreamInterrupted for a stream another reader holds", async ({ s3, keyPrefix }) => {
     // GIVEN a stream already locked to a reader
     const stream = aStream(1);

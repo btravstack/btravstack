@@ -157,6 +157,14 @@ const readPart = (
         chunks.push(chunk);
         length += chunk.byteLength;
       }
+      // A stream of exactly one part ends here or not at all: read ahead, so
+      // it is one `PutObject` rather than a multipart upload of one part.
+      if (source.rest === undefined) {
+        const { done, value } = await source.reader.read();
+        if (done) return { bytes: Buffer.concat(chunks, length), ended: true };
+        digest.update(value);
+        source.rest = value;
+      }
       return { bytes: Buffer.concat(chunks, length), ended: false };
     })(),
     (cause) => new StreamInterrupted({ key, cause }),
@@ -203,7 +211,11 @@ function streamUpload(
       (cause) => new StreamInterrupted({ key, cause }),
     )()
       .toAsync()
-      .flatMap((reader) => write(key, { reader, rest: undefined }, options));
+      .flatMap((reader) =>
+        write(key, { reader, rest: undefined }, options)
+          .tap(() => reader.releaseLock())
+          .tapFailure(() => reader.releaseLock()),
+      );
 
   function write(
     key: string,
