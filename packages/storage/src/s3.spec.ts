@@ -912,6 +912,36 @@ describe("s3Storage, streamed", { timeout: 60_000 }, () => {
     await expect(read).toBeOkWith({ size: undefined, contentType: "application/octet-stream" });
   });
 
+  it("gives the slot back for a body that closed before the stream was answered", async () => {
+    // GIVEN a pool of one, and a store whose body is already destroyed when it answers
+    const client = new S3Client({
+      endpoint: "http://127.0.0.1:1",
+      region: "us-east-1",
+      forcePathStyle: true,
+      credentials: { accessKeyId: "none", secretAccessKey: "none" },
+    });
+    client.middlewareStack.add(
+      () => () =>
+        Promise.resolve({
+          output: {
+            $metadata: {},
+            Body: Object.assign(Readable.from([]).destroy(), {
+              transformToWebStream: () => new Blob([]).stream(),
+            }),
+          } as never,
+          response: {},
+        }),
+      { step: "initialize", name: "answer" },
+    );
+    const store = s3StorageBackend(client, "bucket", { client, maxSockets: 1 });
+
+    // WHEN the key is streamed twice, one after the other
+    const read = store.getStream("a").flatMap(() => store.getStream("a"));
+
+    // THEN the first left no slot held
+    await expect(read).toBeOk();
+  });
+
   it("hands the stream back unlocked once a write has settled", async ({ s3, keyPrefix }) => {
     // GIVEN a stream written to the store
     const stream = aStream(9 * MiB);

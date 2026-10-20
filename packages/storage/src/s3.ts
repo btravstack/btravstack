@@ -76,16 +76,18 @@ export type S3StorageOptions = {
    */
   readonly streamMaxSockets?: number;
   /**
-   * Pins `STORAGE_S3_CONNECTION_TIMEOUT_MS` (default `0`, none): how long a
-   * call may wait for a socket, a free one or a new connection.
+   * Pins `STORAGE_S3_CONNECTION_TIMEOUT_MS` (default `0`, none): how long an
+   * attempt may wait for a socket, a free one or a new connection.
    */
   readonly connectionTimeoutMs?: number;
   /** Pins `STORAGE_S3_SOCKET_TIMEOUT_MS` (default `0`, none): the SDK's idle-socket timeout. */
   readonly socketTimeoutMs?: number;
   /**
-   * Pins `STORAGE_S3_REQUEST_TIMEOUT_MS` (default `0`, none): how long a call
-   * may take until the store starts answering, its request body included. Past
-   * it the call fails, where the SDK alone would only log a warning.
+   * Pins `STORAGE_S3_REQUEST_TIMEOUT_MS` (default `0`, none): how long an
+   * attempt may take until the store starts answering, its request body
+   * included. Past it the attempt fails, where the SDK alone would only log a
+   * warning. Every timeout is per attempt: the SDK retries a timed-out one (3
+   * attempts by default), so a call can take about three times as long.
    */
   readonly requestTimeoutMs?: number;
 };
@@ -579,8 +581,9 @@ export const s3StorageBackend = (
               transformToWebStream: () => ReadableStream<Uint8Array>;
             };
             // The body holds its socket until it closes: read to its end,
-            // cancelled, or broken off.
-            body.once("close", release);
+            // cancelled, or broken off — possibly before this line ran.
+            if (body.destroyed) release();
+            else body.once("close", release);
             return {
               stream: body.transformToWebStream(),
               contentType: response.ContentType ?? "application/octet-stream",

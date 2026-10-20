@@ -341,12 +341,17 @@ each pool.
   download therefore never takes a socket a short call needs. How to size it,
   and the ingress limits it does not replace, are in
   [Stream a file through the process](/how-to/stream-a-file#_4-size-the-stream-pool).
-- **`connectionTimeoutMs`** bounds how long a call waits for a socket, a free
-  one from the pool or a new connection.
+- **`connectionTimeoutMs`** bounds how long an attempt waits for a socket, a
+  free one from the pool or a new connection.
 - **`socketTimeoutMs`** is the SDK's idle-socket timeout.
-- **`requestTimeoutMs`** bounds a call until the store starts answering, its
-  request body included; past it the call fails as `StorageUnavailable`, where
-  the SDK on its own only logs a warning. It never cuts a response being read.
+- **`requestTimeoutMs`** bounds an attempt until the store starts answering,
+  its request body included; past it the attempt fails, and the call as
+  `StorageUnavailable`, where the SDK on its own only logs a warning. It never
+  cuts a response being read.
+
+**The timeouts are per attempt.** The SDK retries a timed-out attempt, three
+attempts by default, so a call can take about three times a timeout before it
+answers.
 
 The endpoint is **required rather than defaulted to AWS**: the stores this
 port exists for all have one, and a default pointing at Amazon would be a

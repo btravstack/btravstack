@@ -119,7 +119,9 @@ export const InvoicesApp = Module("InvoicesApp")({
 | `STORAGE_S3_REGION`                                         | environment                        | default `us-east-1`                                                           |
 | `STORAGE_S3_MAX_SOCKETS` / `maxSockets`                     | environment, or `s3Storage({...})` | sockets every call but the streamed ones shares — default `50`, the SDK's     |
 | `STORAGE_S3_STREAM_MAX_SOCKETS` / `streamMaxSockets`        | environment, or `s3Storage({...})` | the streamed calls' own pool, and their bound — default `50`                  |
-| `STORAGE_S3_{CONNECTION,SOCKET,REQUEST}_TIMEOUT_MS`         | environment, or `s3Storage({...})` | the SDK's timeouts, for both pools — default `0`, none                        |
+| `STORAGE_S3_CONNECTION_TIMEOUT_MS` / `connectionTimeoutMs`  | environment, or `s3Storage({...})` | how long an attempt waits for a socket — default `0`, none                    |
+| `STORAGE_S3_SOCKET_TIMEOUT_MS` / `socketTimeoutMs`          | environment, or `s3Storage({...})` | the SDK's idle-socket timeout — default `0`, none                             |
+| `STORAGE_S3_REQUEST_TIMEOUT_MS` / `requestTimeoutMs`        | environment, or `s3Storage({...})` | how long an attempt waits for the store to answer — default `0`, none         |
 
 The full table — defaults, semantics and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/storage),
