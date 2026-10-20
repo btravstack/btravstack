@@ -148,9 +148,7 @@ and `docs/reference/storage.md` is the reader's page.
   a large `put`) on a fresh unpooled connection, which no `maxSockets` bounds
   and which keeps the request, and the part it carries, reachable until that
   connection has closed. A 32 MiB `putStream` opened five connections; it now
-  opens one, which the s3 spec counts. Those lingering parts were what made the
-  256 MiB write's memory bound flaky on loaded runners, where the one-off
-  connections close late.
+  opens one, which the s3 spec counts.
 - **Every pool default is the SDK's own**, stated rather than inherited, and
   `requestTimeoutMs` sets `throwOnRequestTimeout`: a bound that only logs a
   warning is not one.
@@ -185,6 +183,14 @@ port are the TSDoc and comments of `src/storage.ts` and `src/s3.ts`.
 RustFS (`internal/test-infra`) is pre-1.0 and its `latest` tag moves, so the
 exact rc is pinned — and every operation the port needs was measured against
 that image _before_ the port was written.
+
+**Memory is sampled after two full collections, not one.** V8 frees an
+`ArrayBuffer`'s backing store on a background thread after the collection that
+found it dead (`--concurrent-array-buffer-sweeping`), and
+`process.memoryUsage().arrayBuffers` counts it until then. On a loaded runner
+one `gc()` left up to 80 MiB of dead 8 MiB parts counted, which is what made
+the 256 MiB bounds flaky; a second collection first finishes the previous
+sweep.
 
 Two failure fixtures, because one cannot reach both arms: an endpoint that is
 **not listening** (`http://127.0.0.1:1`) reaches `put`/`get`/`delete`, and a

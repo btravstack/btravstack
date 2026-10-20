@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Agent } from "node:http";
+import { createServer, type Socket } from "node:net";
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
 
@@ -91,7 +92,10 @@ export const saturatedStorage = (): Module<StorageBackend, never, never> => {
  */
 const scopedS3 = async (
   options: S3StorageOptions,
-  extra: { readonly STORAGE_S3_STREAM_MAX_SOCKETS?: string },
+  extra: {
+    readonly STORAGE_S3_ENDPOINT?: string;
+    readonly STORAGE_S3_STREAM_MAX_SOCKETS?: string;
+  },
   use: (service: StorageService) => Promise<void>,
 ): Promise<void> => {
   const env = {
@@ -131,6 +135,10 @@ export const MiB = 1_048_576;
 setFlagsFromString("--expose-gc");
 const collectGarbage = runInNewContext("gc") as () => void;
 const used = (): number => {
+  // Twice: V8 frees a dead ArrayBuffer's backing store on a background thread
+  // after the collection that found it, and `arrayBuffers` counts it until
+  // then. The second collection first finishes the first one's sweep.
+  collectGarbage();
   collectGarbage();
   const { heapUsed, arrayBuffers } = process.memoryUsage();
   return heapUsed + arrayBuffers;
@@ -236,6 +244,8 @@ export type StorageFixtures = {
   readonly pooled: StorageService;
   /** The S3 adapter whose calls must be answered within 1 ms, which none can. */
   readonly hurried: StorageService;
+  /** The S3 adapter over a store that accepts connections and never answers, with only `socketTimeoutMs: 200` set. */
+  readonly stalled: StorageService;
   /** How many HTTP connections the process has opened since the test began. */
   readonly connections: () => number;
   /** The S3 adapter over an endpoint that is not listening — the failure every deployment eventually meets. */
@@ -311,6 +321,21 @@ export const it = test.extend<StorageFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   pooled: async ({}, use) => {
     await scopedS3({ maxSockets: 2 }, { STORAGE_S3_STREAM_MAX_SOCKETS: "2" }, use);
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  stalled: async ({}, use) => {
+    // A real listener that takes every connection and sends nothing back.
+    const held: Socket[] = [];
+    const server = createServer((socket) => held.push(socket));
+    await new Promise<void>((listening) => server.listen(0, "127.0.0.1", listening));
+    const { port } = server.address() as { readonly port: number };
+    await scopedS3(
+      { socketTimeoutMs: 200 },
+      { STORAGE_S3_ENDPOINT: `http://127.0.0.1:${port}` },
+      use,
+    );
+    for (const socket of held) socket.destroy();
+    await new Promise((closed) => server.close(closed));
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   hurried: async ({}, use) => {
