@@ -28,9 +28,12 @@ instead. Stream through the process when it must.
 
 ## 1. An answerer of your own
 
-An oRPC procedure is the wrong shape for a file. oRPC reads a request body
-that declares its length into a `File` in memory, and `bodyLimit` bounds it
-(1 MiB by default). The runtime underneath reads no body at all: a bare
+A contract route can stream a file when its OpenAPI metadata says so:
+[Stream a binary body](/how-to/serve-an-openapi-contract#stream-a-binary-body)
+declares `requestBodyHint: "octet-stream"`, and `streamBodyLimit` bounds it.
+Any other oRPC procedure reads a request body that declares its length into a
+`File` in memory, under `bodyLimit` (1 MiB by default). For a route outside
+the contract, the runtime underneath reads no body at all: a bare
 `HttpAnswerer` mounted beside the router gets the request as it arrives.
 
 ```ts
@@ -114,8 +117,8 @@ prefix. An answerer that returns without writing gets the runtime's `404`.
   public until the answerer checks something. `authorizedKey` stands for that
   check: a session, a signed grant in the URL, whatever decides which key this
   request may touch.
-- **A ceiling.** `bodyLimit` and `HTTP_BODY_LIMIT` bound what oRPC, fragments,
-  GraphQL and MCP read; nothing bounds this body. The answerer above refuses a
+- **A ceiling.** `bodyLimit`, `streamBodyLimit` and their variables bound what
+  oRPC, fragments, GraphQL and MCP read; nothing bounds this body. The answerer above refuses a
   declared `content-length` over its ceiling before reading, and counts the
   bytes as they pass, since a chunked body declares none: `capped` errors the
   stream past the ceiling, the write ends with `StreamInterrupted` carrying

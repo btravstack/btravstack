@@ -3,7 +3,7 @@ import { Port } from "@btravstack/di";
 /**
  * What the transport is bound and configured with, as a service: the starter
  * binds it from `PORT` (default `3000`; `0` lets the OS pick), `HOST` (default
- * `0.0.0.0`), `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
+ * `0.0.0.0`), `HTTP_BODY_LIMIT`, `HTTP_STREAM_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
  * `HTTP_HEADERS_TIMEOUT_MS` and `HTTP_REQUEST_TIMEOUT_MS`, each pinned by the
  * matching option, and anything else in the graph may read it.
  */
@@ -12,6 +12,11 @@ export class HttpConfig extends Port("HttpConfig")<{
   readonly hostname: string;
   /** The largest request body a procedure reads, in bytes; `0` is unbounded. */
   readonly bodyLimit: number;
+  /**
+   * The largest request body a route reads as a stream, in bytes; `0` is
+   * unbounded. Counted while the body streams, never buffered.
+   */
+  readonly streamBodyLimit: number;
   /** Comma-separated allowed origins, or `*`. Empty is "the deployment said nothing". */
   readonly corsOrigin: string;
   readonly compression: boolean;

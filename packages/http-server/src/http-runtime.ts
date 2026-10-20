@@ -51,6 +51,14 @@ export type HttpInfo = { readonly port: number };
 export type HttpOptions = {
   readonly cors?: boolean | object;
   readonly bodyLimit?: number | false;
+  /**
+   * Pins `HttpConfig.streamBodyLimit` instead of reading
+   * `HTTP_STREAM_BODY_LIMIT` (default {@link DEFAULT_STREAM_BODY_LIMIT}): the
+   * largest body an oRPC route reads as a stream (`requestBodyHint:
+   * "octet-stream"`), in bytes, counted as it arrives; `false` pins the
+   * unbounded `0`. Every other body stays under `bodyLimit`.
+   */
+  readonly streamBodyLimit?: number | false;
   readonly compression?: boolean | object;
   readonly csrf?: boolean;
   /** Pins `HttpConfig.port` instead of reading `PORT`. */
@@ -97,6 +105,9 @@ type SocketOptions = HttpOptions;
 
 /** One MiB, the default request-body bound shared by all answerers. */
 export const DEFAULT_BODY_LIMIT = 1_048_576;
+
+/** One GiB, the default bound on a body a route reads as a stream: never buffered, so memory does not size it. */
+export const DEFAULT_STREAM_BODY_LIMIT = 1_073_741_824;
 
 /** How long a client may take to send its headers by default: Node's own default, stated rather than inherited. */
 export const DEFAULT_HEADERS_TIMEOUT_MS = 60_000;
@@ -184,6 +195,7 @@ export type HttpServerEnv = EnvReading<
   | "HTTP_HEADERS_TIMEOUT_MS"
   | "HTTP_REQUEST_TIMEOUT_MS"
   | "HTTP_BODY_LIMIT"
+  | "HTTP_STREAM_BODY_LIMIT"
   | "HTTP_CORS_ORIGIN"
   | "HTTP_COMPRESSION"
 >;
@@ -210,6 +222,7 @@ export const httpServer = <
     requestTimeoutMs,
     cors,
     bodyLimit,
+    streamBodyLimit,
     compression,
     securityHeaders,
   } = options;
@@ -230,6 +243,10 @@ export const httpServer = <
       bodyLimit: Config.pinned(
         bodyLimit === false ? 0 : bodyLimit,
         Config.integer("HTTP_BODY_LIMIT", { default: DEFAULT_BODY_LIMIT, min: 0 }),
+      ),
+      streamBodyLimit: Config.pinned(
+        streamBodyLimit === false ? 0 : streamBodyLimit,
+        Config.integer("HTTP_STREAM_BODY_LIMIT", { default: DEFAULT_STREAM_BODY_LIMIT, min: 0 }),
       ),
       // A record naming its own `origin` is what pins this; `corsOf` prefers
       // the record either way, so nothing here has to spell that precedence

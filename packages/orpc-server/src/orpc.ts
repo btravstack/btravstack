@@ -40,17 +40,17 @@ import {
   type ProcedureImplementer,
   type Router,
 } from "@orpc/server";
-import { RPCHandler, type NodeHttpHandlerPlugin, type RPCHandlerOptions } from "@orpc/server/node";
+import { RPCHandler, type RPCHandlerOptions } from "@orpc/server/node";
 import {
   CORSHandlerPlugin,
   GetMethodCsrfProtectionHandlerPlugin,
-  RequestLimitHandlerPlugin,
   ResponseCompressionHandlerPlugin,
   type CORSHandlerPluginOptions,
   type ResponseCompressionHandlerPluginOptions,
 } from "@orpc/server/plugins";
-import { RPC_DEFAULT_ALLOW_METHODS } from "@orpc/server/standard";
+import { RPC_DEFAULT_ALLOW_METHODS, type StandardHandlerPlugin } from "@orpc/server/standard";
 
+import { bodyLimitPlugin, refusedStream } from "./body-limit.js";
 import type {
   AllRequirementsOf,
   Built,
@@ -89,9 +89,21 @@ export type OrpcOptions = {
    * {@link DEFAULT_BODY_LIMIT}) — the largest request body a procedure will
    * read, in bytes; `false` pins the unbounded `0`. Over the limit is oRPC's
    * `PAYLOAD_TOO_LARGE`, decided on `content-length` when one is sent and while
-   * streaming otherwise.
+   * streaming otherwise. A body a route reads as a stream is bounded by
+   * `streamBodyLimit` instead.
    */
   readonly bodyLimit?: number | false;
+  /**
+   * Pins `HttpConfig.streamBodyLimit` instead of reading
+   * `HTTP_STREAM_BODY_LIMIT` (default {@link DEFAULT_STREAM_BODY_LIMIT}) — the
+   * largest body an OpenAPI route declaring `requestBodyHint: "octet-stream"`
+   * reads, in bytes; `false` pins the unbounded `0`. The handler gets the body
+   * as a `ReadableStream` while it arrives; a declared `content-length` over
+   * the limit is `PAYLOAD_TOO_LARGE` before reading, and the stream errors
+   * with it once more bytes than the limit have passed. The RPC wire reads
+   * every body by its headers, so `bodyLimit` bounds all of them.
+   */
+  readonly streamBodyLimit?: number | false;
   /**
    * Response compression, off unless this or `HTTP_COMPRESSION` turns it on. `true`
    * takes oRPC's own defaults (gzip then deflate, above 1 KB); a record is
@@ -116,7 +128,7 @@ export type OrpcOptions = {
    * not a middleware slot for application logic, which the package still
    * declines.
    */
-  readonly plugins?: readonly NodeHttpHandlerPlugin<DefaultInitialContext>[];
+  readonly plugins?: readonly StandardHandlerPlugin<DefaultInitialContext>[];
 };
 
 /**
@@ -146,7 +158,7 @@ export const pluginsOf = (
   options: OrpcOptions,
   config: ServiceOf<HttpConfig>,
   csrf: boolean,
-): readonly NodeHttpHandlerPlugin<DefaultInitialContext>[] => {
+): readonly StandardHandlerPlugin<DefaultInitialContext>[] => {
   const cors = corsOf(options.cors, config.corsOrigin);
   const compression =
     options.compression === undefined || typeof options.compression === "boolean"
@@ -160,9 +172,9 @@ export const pluginsOf = (
     // which a browser can be navigated to. Disjoint, so nothing is refused twice.
     ...(csrf ? [new GetMethodCsrfProtectionHandlerPlugin()] : []),
     ...(cors === undefined ? [] : [new CORSHandlerPlugin(cors)]),
-    ...(config.bodyLimit === 0
+    ...(config.bodyLimit === 0 && config.streamBodyLimit === 0
       ? []
-      : [new RequestLimitHandlerPlugin({ maxBodySize: config.bodyLimit })]),
+      : [bodyLimitPlugin(config.bodyLimit, config.streamBodyLimit)]),
     ...(compressionEnabled ? [new ResponseCompressionHandlerPlugin(compression)] : []),
     ...(options.plugins ?? []),
   ];
@@ -174,14 +186,19 @@ const STATUS_OF: Readonly<Record<string, number | undefined>> = COMMON_ERROR_STA
  * Reports what oRPC is about to answer a 5xx for to `Observers`, with its
  * cause. An error the contract declares is the caller's answer and is not
  * reported, even where its custom code answers `500`. A client interceptor, so
- * a body oRPC cannot decode never counts as a defect.
+ * a body oRPC cannot decode never counts as a defect; nor does a stream past
+ * `streamBodyLimit`, which answers `413` whatever the handler made of it.
  */
 export const reportDefects = (
   observers: ServiceOf<Observers>,
 ): NonNullable<RPCHandlerOptions<DefaultInitialContext>["clientInterceptors"]> => [
   onError((error, { path }) => {
     const answered = toORPCError(error);
-    if (!answered.defined && (STATUS_OF[answered.code] ?? DEFAULT_ERROR_STATUS) >= 500)
+    if (
+      !answered.defined &&
+      (STATUS_OF[answered.code] ?? DEFAULT_ERROR_STATUS) >= 500 &&
+      !refusedStream(error)
+    )
       observe(observers, {
         component: "orpc",
         name: "defect",

@@ -1421,7 +1421,7 @@ A sixth rule is about production code that tests keep honest:
    timeout has to agree with a pod's `terminationGracePeriodSeconds`, a CORS
    origin with whoever is calling, a body limit with what the endpoint
    accepts — all in the manifest, none in the image. So `PRE_DRAIN_DELAY_MS`,
-   `DRAIN_TIMEOUT_MS`, `STOP_TIMEOUT_MS`, `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
+   `DRAIN_TIMEOUT_MS`, `STOP_TIMEOUT_MS`, `HTTP_BODY_LIMIT`, `HTTP_STREAM_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
    `HTTP_HEADERS_TIMEOUT_MS`, `HTTP_REQUEST_TIMEOUT_MS`, `GRAPHQL_DEVELOPER_TOOLS`, `GRAPHQL_MAX_TOKENS`,
    `TEMPORAL_GRACE_PERIOD_MS`, `TEMPORAL_FORCE_AFTER_MS`,
    `AMQP_CONNECT_TIMEOUT_MS`, `OUTBOX_POLL_MS`, `OUTBOX_MAX_LAG_MS`,
