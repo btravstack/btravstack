@@ -52,6 +52,25 @@ route that streams needs neither. The default is finite because nothing is
 buffered: the limit bounds one client's hold on a connection and whatever the
 handler streams into, not memory.
 
+**A procedure that streams a body is served over OpenAPI only.** The RPC
+serializer ignores `outputStructure: "detailed"` and writes a
+`ReadableStream` as `{}`, so a download over `/rpc` opened a stream nothing
+read or cancelled, holding whatever backed it until a timeout. `orpc()`
+passes oRPC's own `filter` a detector, so such a procedure is never indexed
+and the request resolves unwritten: the runtime's `404`, as for an unknown
+procedure or a disallowed method, decided before decoding or the handler.
+It is detected from the procedure, not a flag a consumer could forget:
+`requestBodyHint` or `responseBodyHint` `"octet-stream"`, or an output
+schema that accepts a `ReadableStream` as the answer (or a detailed answer's
+`body`) and refuses `{}` there. The probe is Standard Schema `validate`, so
+it holds for any vendor; the `{}` half keeps a body that accepts anything
+(`z.unknown()`, an object of optional keys) on RPC. A schema that validates
+asynchronously cannot be probed synchronously at indexing, so it counts as
+not streaming, and `responseBodyHint` is the declaration for it. The typed
+RPC client still lists these procedures: removing them from
+`RouterContractClient` would mean a type-level copy of the probe, and its
+`404` is documented instead.
+
 `HttpModule` shares application-root exports with `GraphqlModule`: runtime
 ports are automatic, as are available `Logger` and `HealthChecks` ports.
 Business exports remain explicit; private imported providers remain private.

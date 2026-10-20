@@ -26,9 +26,12 @@ import type { Principal, SchemesOf } from "@btravstack/http-server/internal";
 import type { SchemePortsOf } from "@btravstack/http-server/internal";
 import {
   getAsyncIteratorObjectSchemaDetails,
+  type AnyProcedureContract,
+  type AnySchema,
   type ProcedureContract,
   type RouterContract,
 } from "@orpc/contract";
+import { getOpenAPIMeta } from "@orpc/openapi";
 import {
   COMMON_ERROR_STATUS_MAP,
   DEFAULT_ERROR_STATUS,
@@ -231,9 +234,39 @@ const streamsOutput = (procedure: AnyProcedure): boolean =>
   );
 
 /**
+ * Whether a procedure carries a body as a stream, which only its OpenAPI route
+ * can: it declares `requestBodyHint` or `responseBodyHint` `"octet-stream"`, or
+ * an output schema takes a `ReadableStream` as its answer — or as a detailed
+ * answer's `body` — and refuses a plain object there.
+ */
+const streamsBody = (procedure: AnyProcedureContract): boolean => {
+  const meta = getOpenAPIMeta(procedure);
+  if (meta?.requestBodyHint === "octet-stream" || meta?.responseBodyHint === "octet-stream")
+    return true;
+  const detailed = meta?.outputStructure === "detailed";
+  return (procedure["~orpc"].outputSchemas ?? []).some(
+    (schema) =>
+      refuses(schema, new ReadableStream(), detailed) === false &&
+      refuses(schema, {}, detailed) === true,
+  );
+};
+
+/** Whether `schema` refuses `body` where the answer carries it; `undefined` when it validates asynchronously. */
+const refuses = (schema: AnySchema, body: unknown, detailed: boolean): boolean | undefined => {
+  const result = schema["~standard"].validate(detailed ? { body } : body);
+  if (result instanceof Promise) return undefined;
+  return (result.issues ?? []).some((issue) => {
+    const at = issue.path?.[0];
+    return !detailed || (typeof at === "object" ? at.key : at) === "body";
+  });
+};
+
+/**
  * The oRPC starter: a provider of `HttpHandler` built from the router port,
  * mounted under `prefix`. A request oRPC does not match resolves unwritten and
- * the runtime answers its `404`. Nothing here maps a `Result` to a status.
+ * the runtime answers its `404`, and so does every procedure that streams a
+ * body, which `openApiRoutes()` serves instead. Nothing here maps a `Result`
+ * to a status.
  */
 export const orpc = (options: OrpcOptions = {}) => {
   const prefix = options.prefix ?? "/rpc";
@@ -248,6 +281,7 @@ export const orpc = (options: OrpcOptions = {}) => {
       const rpc = new RPCHandler(router, {
         plugins: [...pluginsOf(options, config, csrfOn(options.csrf, cookieSchemes))],
         clientInterceptors: reportDefects(observers),
+        filter: (procedure) => !streamsBody(procedure),
         allowMethods: (method, procedure) =>
           method === "GET" ? streamsOutput(procedure) : RPC_METHODS.has(method),
       });

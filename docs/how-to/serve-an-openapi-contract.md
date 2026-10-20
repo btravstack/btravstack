@@ -140,6 +140,18 @@ request answers `413` whatever the handler made of that error. The hint is
 the route's: a client cannot pick the larger limit by its headers, and the
 RPC wire reads every body under `bodyLimit`.
 
+A procedure that streams a body is served by the OpenAPI routes only. The
+RPC answerer leaves unmatched every procedure declaring
+`requestBodyHint: "octet-stream"` or `responseBodyHint: "octet-stream"`, and
+every one whose output schema takes a `ReadableStream` as its answer, or as a
+detailed answer's `body`, and refuses a plain object there. `/rpc` answers
+such a call `404` before its handler runs, so a download never opens a stream
+nothing would read. A typed RPC client built from the contract still lists
+the procedure, and calling it through `RPCLink` gets that `404`: call it with
+`fetch` or an OpenAPI client on its route instead. A body schema that accepts
+anything (`z.custom()` with no check) or validates asynchronously cannot show
+a stream, so a route like that declares `responseBodyHint: "octet-stream"`.
+
 A download stream that errors midway resets the connection, so the client's
 read rejects rather than ending cleanly on a short body; response
 compression, when on, keeps that. `HTTP_REQUEST_TIMEOUT_MS` (five minutes by
