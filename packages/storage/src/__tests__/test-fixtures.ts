@@ -246,8 +246,8 @@ export type StorageFixtures = {
   readonly hurried: StorageService;
   /** The S3 adapter over a store that accepts connections and never answers, with only `socketTimeoutMs: 200` set. */
   readonly stalled: StorageService;
-  /** How many HTTP connections the process has opened since the test began. */
-  readonly connections: () => number;
+  /** How many distinct `http.Agent`s have opened a connection since the test began. */
+  readonly agents: () => number;
   /** The S3 adapter over an endpoint that is not listening — the failure every deployment eventually meets. */
   readonly unreachable: StorageService;
   /** The S3 adapter whose credentials cannot be resolved, which is the one way presigning itself fails. */
@@ -302,16 +302,18 @@ export const it = test.extend<StorageFixtures>({
     await use(`test/${randomUUID()}/`);
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
-  connections: async ({}, use) => {
-    // Counted where every `http.Agent` opens a socket, so a connection made
-    // outside the pool is counted too; restored on every exit path.
+  agents: async ({}, use) => {
+    // Recorded where every `http.Agent` opens a socket, so a connection made
+    // outside the pool is seen too; restored on every exit path. Agents, not
+    // connections: a store may close a keep-alive socket, and a reconnect
+    // through the same pool is not a request outside it.
     const open = Agent.prototype.createConnection;
-    let made = 0;
+    const seen = new Set<Agent>();
     Agent.prototype.createConnection = function (this: Agent, ...args) {
-      made += 1;
+      seen.add(this);
       return open.apply(this, args);
     };
-    await use(() => made);
+    await use(() => seen.size);
     Agent.prototype.createConnection = open;
   },
   // oxlint-disable-next-line no-empty-pattern -- see above

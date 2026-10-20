@@ -147,8 +147,10 @@ and `docs/reference/storage.md` is the reader's page.
   sends every body of 2 MiB or more (`Expect: 100-continue`: each 8 MiB part,
   a large `put`) on a fresh unpooled connection, which no `maxSockets` bounds
   and which keeps the request, and the part it carries, reachable until that
-  connection has closed. A 32 MiB `putStream` opened five connections; it now
-  opens one, which the s3 spec counts.
+  connection has closed. A 32 MiB `putStream` opened connections through five
+  agents; it now uses the pool's one, which the s3 spec counts. It counts
+  agents, not connections, since a store may close a keep-alive socket and a
+  reconnect through the pool is not a request outside it.
 - **Every pool default is the SDK's own**, stated rather than inherited, and
   `requestTimeoutMs` sets `throwOnRequestTimeout`: a bound that only logs a
   warning is not one.

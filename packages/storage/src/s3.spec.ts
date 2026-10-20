@@ -1384,11 +1384,7 @@ describe("s3Storage, with every stream socket held", { timeout: 60_000 }, () => 
     await expect(read.map((reads) => reads.map(({ size }) => size))).toBeOkWith([MiB, MiB]);
   });
 
-  it("sends every part of a streamed write on one pooled connection", async ({
-    connections,
-    s3,
-    keyPrefix,
-  }) => {
+  it("sends every part of a streamed write through the pool", async ({ agents, s3, keyPrefix }) => {
     // GIVEN a source of four 8 MiB parts, each over the 2 MiB from which the
     // SDK sends `Expect: 100-continue`
     // WHEN it is written
@@ -1396,12 +1392,9 @@ describe("s3Storage, with every stream socket held", { timeout: 60_000 }, () => 
       contentType: "application/octet-stream",
     });
 
-    // THEN every request reused the pool's keep-alive socket, rather than each
-    // part opening a connection outside the pool that held it until it closed
-    expect({ written: written.isOk(), connections: connections() }).toEqual({
-      written: true,
-      connections: 1,
-    });
+    // THEN every connection came from the pool's agent, rather than each part
+    // opening one through an agent of its own that no pool bounds
+    expect({ written: written.isOk(), agents: agents() }).toEqual({ written: true, agents: 1 });
   });
 
   it("closes a stalled store's socket after the socket timeout alone", async ({ stalled }) => {
