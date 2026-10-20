@@ -43,7 +43,10 @@ interceptor answers `413` whatever the handler made of that error, because
 The request carries that state under a symbol key, which survives the spreads
 other interceptors make of it. `reportDefects` skips an error whose `cause`
 chain holds the refusal, so an oversized upload through a handler that did
-not model the failure is a `413`, never a reported defect. `@orpc/node`'s `TmpFileUploadHandlerPlugin`
+not model the failure is a `413`, never a reported defect. Nothing drains a
+body the handler left unread: a route that refuses on headers alone must
+answer at once rather than first read up to the stream limit, so the limit
+counts what the handler reads. `@orpc/node`'s `TmpFileUploadHandlerPlugin`
 has the same three-kind model but spools files to disk and adds a peer; a
 route that streams needs neither. The default is finite because nothing is
 buffered: the limit bounds one client's hold on a connection and whatever the

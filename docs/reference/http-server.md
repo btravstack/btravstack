@@ -1669,7 +1669,10 @@ bounds it instead of `bodyLimit`. A declared `content-length` over the limit
 is `PAYLOAD_TOO_LARGE` before a byte is read; a body that declares none, or
 lies, errors its stream with `PAYLOAD_TOO_LARGE` once more bytes than the
 limit have passed, and the request answers `413` whatever the handler made of
-that error. The route decides, never the client: a body whose kind oRPC infers
+that error. The limit counts what the handler reads: a handler that answers
+without reading the body (a refusal decided on its headers) answers at once,
+and nothing reads the rest on its behalf. The route decides,
+never the client: a body whose kind oRPC infers
 from its headers stays under `bodyLimit`, and so does every body on the RPC
 wire. Request decompression, when `plugins` adds it, is measured inflated
 under both limits. The limit is finite by default because the body is never
