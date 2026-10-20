@@ -125,7 +125,7 @@ catalog:
   effect: 3.22.2
   dataloader: 2.2.3
   graphql: 17.0.2
-  graphql-yoga: 5.24.4
+  graphql-yoga: 5.24.6
   jose: 6.2.12
   kysely: 0.29.6
   kysely-pglite-dialect: 1.3.1
