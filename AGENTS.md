@@ -206,7 +206,10 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    `@btravstack/graphql-server` supplies Yoga over a caller-built schema, and
    `@btravstack/mcp-server` supplies a Model Context Protocol server built with
    the official SDK.
-   The OIDC login remains in `@btravstack/http-server/oidc`. These packages
+   The OIDC login remains in `@btravstack/http-server/oidc`; opt-in delegated
+   browser credentials use `/oidc-tokens` with an application-provided shared
+   store, so refresh and logout serialize across replicas without putting
+   credentials in the principal or browser cookie. These packages
    declare their peers explicitly. The order API serves oRPC and htmx in one
    process; the GraphQL gateway is another process and calls it through
    `order-api-client`, with no oRPC server dependency. Its Pothos schema emits

@@ -81,11 +81,21 @@
         "types": "./dist/internal.d.cts",
         "default": "./dist/internal.cjs"
       }
+    },
+    "./oidc-tokens": {
+      "import": {
+        "types": "./dist/oidc-tokens.d.mts",
+        "default": "./dist/oidc-tokens.mjs"
+      },
+      "require": {
+        "types": "./dist/oidc-tokens.d.cts",
+        "default": "./dist/oidc-tokens.cjs"
+      }
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts src/internal.ts src/jwt.ts src/oidc.ts src/session.ts --format cjs,esm --dts --clean",
-    "dev": "tsdown src/index.ts src/internal.ts src/jwt.ts src/oidc.ts src/session.ts --format cjs,esm --dts --watch",
+    "build": "tsdown src/index.ts src/internal.ts src/jwt.ts src/oidc.ts src/oidc-tokens.ts src/session.ts --format cjs,esm --dts --clean",
+    "dev": "tsdown src/index.ts src/internal.ts src/jwt.ts src/oidc.ts src/oidc-tokens.ts src/session.ts --format cjs,esm --dts --watch",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit -p tsconfig.test-d.json"
   },
@@ -95,6 +105,7 @@
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/internal-test-infra": "workspace:*",
+    "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",

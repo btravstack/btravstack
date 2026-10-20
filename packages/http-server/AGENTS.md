@@ -1638,3 +1638,13 @@ see never appearing in the errors half of RED. `aborted` is
 request settles `error` whatever its status says. A deploy's own stream resets
 are therefore errors too, which is truthful — the `aborted` dimension is what
 separates them from a genuine `500`.
+
+## Delegated browser tokens
+
+The optional `/oidc-tokens` capability is described in `AUTH.md` and the HTTP
+reference. Retention is opt-in on both `oidc()` and `sessionAuthenticator()`.
+The shared-store transaction is the synchronization boundary for refresh and
+logout; process-local single-flight cannot satisfy it. An expired lease must
+not commit over a deletion. Credentials stay out of session principal data and
+observations. Existing stateless sessions retain their behavior; a cookie with
+a token reference requires the token-aware scheme.

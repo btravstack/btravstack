@@ -40,7 +40,6 @@ const allowed: Readonly<Record<string, string>> = {
   "@btravstack/http-server:DEFAULT_ALGORITHMS": literal,
   "@btravstack/http-server:DEFAULT_TTL_SEC": literal,
   "@btravstack/http-server:TRANSIENT_TTL_SEC": literal,
-  "@btravstack/http-server:SESSION_COOKIE": literal,
   "@btravstack/http-server:cookieScheme":
     "the member a hand-rolled cookie-reading surface contributes so `csrf` defaults on; the shipped ones contribute it internally and no example writes a scheme of its own",
   "@btravstack/http-server:principalPort":

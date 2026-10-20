@@ -77,6 +77,12 @@ import {
 import { jwtAuthenticator } from "@btravstack/http-server/jwt";
 import { oidc, type OidcUnreachable } from "@btravstack/http-server/oidc";
 import {
+  oidcTokens,
+  OidcTokens,
+  OidcTokenStore,
+  type OidcTokenStoreService,
+} from "@btravstack/http-server/oidc-tokens";
+import {
   SessionCodec,
   sessionAuthenticator,
   sessionCodec,
@@ -681,6 +687,21 @@ const bffRowFragment = bffApi.HtmxGet("/orders/:id/row", {
 
 const bffFragments = bffApi.HtmxFragments([bffRowFragment]);
 
+const tokenBffApi = defineHttp({
+  authenticators: {
+    session: sessionAuthenticator<OidcIdentity>()({
+      scopes: ["orders:export"],
+      tokens: OidcTokens,
+    }),
+  },
+});
+const tokenBffRow = tokenBffApi.HtmxGet("/orders/:id/row", {
+  requires: [{ session: ["orders:export"] }],
+})({
+  sync: () => (context, params) => OkAsync(html`<p>${params.id} ${context.principal.tenantId}</p>`),
+});
+const tokenBffFragments = tokenBffApi.HtmxFragments([tokenBffRow]);
+
 /**
  * `oidc()` reports each route to `Observers` and holds no logger of its own,
  * so this root composes the same recording observer the transport specs use —
@@ -691,16 +712,24 @@ const bffAppOf = (
   principal: (claims: IDToken) => OidcIdentity | undefined,
   member: (operation: Operation) => Settle,
   allowInsecureIssuer = false,
+  tokenStore?: OidcTokenStoreService,
 ) =>
   HttpModule("OidcBff")({
-    fragments: bffFragments,
+    fragments: tokenStore === undefined ? bffFragments : tokenBffFragments,
     port: 0,
     hostname: "127.0.0.1",
     fragmentsLogin: "/auth/login",
     provides: [
-      bffRowFragment,
+      ...(tokenStore === undefined
+        ? [bffRowFragment]
+        : [tokenBffRow, Provider(OidcTokenStore)({ inject: {}, value: tokenStore }), oidcTokens()]),
       sessionCodec(),
-      ...oidc()({ principal, scope: ORY_SCOPE, allowInsecureIssuer }),
+      ...oidc()({
+        principal,
+        scope: ORY_SCOPE,
+        allowInsecureIssuer,
+        ...(tokenStore === undefined ? {} : { tokens: OidcTokens }),
+      }),
       Provider.member(Observers)({ inject: {}, value: member }),
     ],
   });
@@ -2513,7 +2542,10 @@ export type HttpFixtures = {
    * argument is the `principal` under test — the default reads Ory's own
    * claims. Shut down by the fixture.
    */
-  readonly bff: (principal?: (claims: IDToken) => OidcIdentity | undefined) => Promise<Bff>;
+  readonly bff: (
+    principal?: (claims: IDToken) => OidcIdentity | undefined,
+    tokenStore?: OidcTokenStoreService,
+  ) => Promise<Bff>;
   /**
    * The same provider, but a root composing `oidc()` and `sessionCodec()` with
    * NO session scheme — so the only thing in the graph that touches a cookie is
@@ -3627,9 +3659,9 @@ export const it = test.extend<HttpFixtures>({
   ],
 
   bff: async ({ boot, ory: _ory }, use) => {
-    await use(async (principal = oidcPrincipal) => {
+    await use(async (principal = oidcPrincipal, tokenStore) => {
       const observer = recordingObserver();
-      const app = boot(bffAppOf(principal, observer.member), { env: oidcEnv });
+      const app = boot(bffAppOf(principal, observer.member, false, tokenStore), { env: oidcEnv });
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return bffOf(`http://127.0.0.1:${info.port}`, observer.taken);

@@ -10,6 +10,10 @@ export default mergeConfig(
     resolve: {
       alias: [
         {
+          find: /^@btravstack\/http-server\/oidc-tokens$/,
+          replacement: fileURLToPath(new URL("./src/oidc-tokens.ts", import.meta.url)),
+        },
+        {
           find: /^@btravstack\/http-server\/internal$/,
           replacement: fileURLToPath(new URL("../http-server/src/internal.ts", import.meta.url)),
         },

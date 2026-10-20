@@ -7,12 +7,13 @@ import {
   type OptionsAs,
   type Unpinned,
 } from "@btravstack/config";
-import { Port, Provider } from "@btravstack/di";
+import { Port, Provider, type AnyPort, type PortClassOf } from "@btravstack/di";
 import { CompactEncrypt, compactDecrypt } from "jose";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 import { HttpAuthenticator, Unauthenticated, grantOf, type Authenticator } from "./auth.js";
 import { cookieValue } from "./cookie.js";
+import type { OidcTokensService } from "./oidc-token-store.js";
 import type { PrefixOf, ScopesOf } from "./options.js";
 
 export { CookieSchemes, cookieScheme } from "./cookie.js";
@@ -28,6 +29,8 @@ export { CookieSchemes, cookieScheme } from "./cookie.js";
  */
 export type Session<P> = {
   readonly principal: P;
+  /** Opaque server-side credential reference, never an access or refresh token. */
+  readonly tokenRef?: string;
   /**
    * The provider's session id, kept for logout; absent when the session was not
    * minted by an OIDC login.
@@ -166,6 +169,8 @@ const sessionOf = (decoded: unknown, now: number): Session<unknown> | undefined 
   const session = stamped(decoded, TYP, now);
   return session !== undefined &&
     "principal" in session &&
+    (!("tokenRef" in session) ||
+      (typeof session["tokenRef"] === "string" && session["tokenRef"].length > 0)) &&
     (!("sid" in session) || typeof session["sid"] === "string") &&
     (!("scopes" in session) || scopesOf(session["scopes"])) &&
     (!("iss" in session) || typeof session["iss"] === "string") &&
@@ -235,11 +240,12 @@ const codec = (
   const [sealing] = keys;
   return {
     ttlSec,
-    seal: ({ principal, sid, scopes, iss, clientId }) =>
+    seal: ({ principal, sid, scopes, iss, clientId, tokenRef }) =>
       // `JSON.stringify` drops an absent field, so nothing spreads them in.
       sealed(sealing, ttlSec, (iat, exp) => ({
         typ: TYP,
         principal,
+        tokenRef,
         sid,
         scopes,
         iss,
@@ -345,6 +351,8 @@ export type SessionOptions<P, Scopes extends readonly string[], Pre extends stri
    * entirely for a scheme with no scopes.
    */
   readonly scopes?: Scopes;
+  /** Validate server-side session revocation with this login’s token manager. */
+  readonly tokens?: PortClassOf<string, OidcTokensService>;
   /**
    * What the session makes the caller. Answering `undefined` refuses it — the
    * hook for a session this endpoint will not take, and the default's own
@@ -405,6 +413,7 @@ export const sessionAuthenticator =
     P,
     ScopesOf<O>[number],
     | SessionCodec
+    | (O extends { readonly tokens?: infer T } ? InstanceType<Extract<T, AnyPort>> : never)
     | EnvReading<
         | Unpinned<O, "issuer", `${PrefixOf<O, "HTTP_OIDC">}_ISSUER`>
         | Unpinned<O, "clientId", `${PrefixOf<O, "HTTP_OIDC">}_CLIENT_ID`>,
@@ -433,22 +442,37 @@ export const sessionAuthenticator =
 
     return {
       ...HttpAuthenticator<P, Scopes[number]>()({
-        inject: { codec: SessionCodec, env: Env },
-        make: ({ codec, env }) =>
-          Config.parse(
+        inject: {
+          codec: SessionCodec,
+          env: Env,
+          ...(options.tokens === undefined ? {} : { tokens: options.tokens }),
+        },
+        make: ({ codec, env, tokens: injectedTokens }) => {
+          const tokens = injectedTokens as OidcTokensService | undefined;
+          return Config.parse(
             "HttpSessionScheme",
             schema,
-          )(env).map(
-            ({ issuer, clientId }) =>
-              (headers) =>
-                codec.unseal(cookieValue(headers.cookie, SESSION_COOKIE)).flatMap((session) => {
-                  if (session?.iss !== issuer || session.clientId !== clientId)
-                    return ErrAsync(new Unauthenticated());
-                  const principal = principalOf(session);
-                  if (principal === undefined) return ErrAsync(new Unauthenticated());
-                  return OkAsync(grantOf(principal, vocabulary, session.scopes) as never);
-                }),
-          ),
+          )(env).map(({ issuer, clientId }) => (headers) => {
+            const cookie = cookieValue(headers.cookie, SESSION_COOKIE);
+            const current =
+              tokens === undefined
+                ? codec
+                    .unseal(cookie)
+                    .map((session) => (session?.tokenRef === undefined ? session : undefined))
+                : tokens
+                    .session(cookie)
+                    .recoverErrCases((matcher) =>
+                      matcher.with({ _tag: "OidcTokenStoreUnavailable" }, () => undefined),
+                    );
+            return current.flatMap((session) => {
+              if (session?.iss !== issuer || session.clientId !== clientId)
+                return ErrAsync(new Unauthenticated());
+              const principal = principalOf(session);
+              if (principal === undefined) return ErrAsync(new Unauthenticated());
+              return OkAsync(grantOf(principal, vocabulary, session.scopes) as never);
+            });
+          });
+        },
       }),
       cookie: true as const,
       // Cast for the needs alone: over a generic prefix the schema's own needs
