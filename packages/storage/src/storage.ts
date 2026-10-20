@@ -46,6 +46,18 @@ export class StreamInterrupted extends TaggedError("StreamInterrupted")<{
   readonly cause: unknown;
 }> {}
 
+/**
+ * Every slot of the stream pool was held by another transfer, so this one was
+ * refused before anything was sent; a write's stream is cancelled. Only
+ * `getStream`, `putStream` and `putStreamIfAbsent` answer it. Shedding the load
+ * (a `503` with `Retry-After`) is the caller's to decide.
+ */
+export class StreamPoolFull extends TaggedError("StreamPoolFull")<{
+  readonly operation: "getStream" | "putStream" | "putStreamIfAbsent";
+  readonly key: string;
+  readonly maxSockets: number;
+}> {}
+
 /** The store could not answer — the endpoint is down, the credentials were refused, the bucket is gone. */
 export class StorageUnavailable extends TaggedError("StorageUnavailable")<{
   readonly operation:
@@ -135,7 +147,11 @@ export type StorageService = {
     options: WriteOptions,
   ) => AsyncResult<
     void,
-    InvalidStorageOptions | ChecksumMismatch | StreamInterrupted | StorageUnavailable
+    | InvalidStorageOptions
+    | ChecksumMismatch
+    | StreamInterrupted
+    | StreamPoolFull
+    | StorageUnavailable
   >;
   /**
    * `putStream`, completed only if no object holds the key: the first writer
@@ -149,13 +165,18 @@ export type StorageService = {
     options: WriteOptions,
   ) => AsyncResult<
     void,
-    ObjectExists | InvalidStorageOptions | ChecksumMismatch | StreamInterrupted | StorageUnavailable
+    | ObjectExists
+    | InvalidStorageOptions
+    | ChecksumMismatch
+    | StreamInterrupted
+    | StreamPoolFull
+    | StorageUnavailable
   >;
   readonly get: (key: string) => AsyncResult<StoredObject, ObjectNotFound | StorageUnavailable>;
   /** The object as a stream, with its type and size, answered once the store has begun sending it. */
   readonly getStream: (
     key: string,
-  ) => AsyncResult<StreamedObject, ObjectNotFound | StorageUnavailable>;
+  ) => AsyncResult<StreamedObject, ObjectNotFound | StreamPoolFull | StorageUnavailable>;
   /**
    * Copies `from` to `to` inside the store: no bytes pass through this process.
    * The copy replaces metadata (empty when omitted) and `contentType`, and, with

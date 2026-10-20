@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { Readable } from "node:stream";
 
 import { ListMultipartUploadsCommand, S3Client } from "@aws-sdk/client-s3";
 import { P, fromSafePromise } from "unthrown";
@@ -6,6 +7,7 @@ import { describe, expect } from "vitest";
 
 import { MiB, aDocument, aStream, digestOf, it, peakGrowth } from "./__tests__/test-fixtures.js";
 import { s3StorageBackend } from "./s3.js";
+import { StreamPoolFull } from "./storage.js";
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 const sha256Base64 = (bytes: Uint8Array): string =>
@@ -658,6 +660,7 @@ describe("s3Storage, streamed", { timeout: 60_000 }, () => {
           P.tag("StreamInterrupted"),
           P.tag("InvalidStorageOptions"),
           P.tag("ChecksumMismatch"),
+          P.tag("StreamPoolFull"),
           P.tag("StorageUnavailable"),
           () => s3.head(key),
         ),
@@ -891,7 +894,9 @@ describe("s3Storage, streamed", { timeout: 60_000 }, () => {
         Promise.resolve({
           output: {
             $metadata: {},
-            Body: { transformToWebStream: () => new Blob([]).stream() },
+            Body: Object.assign(Readable.from([]), {
+              transformToWebStream: () => new Blob([]).stream(),
+            }),
           } as never,
           response: {},
         }),
@@ -905,6 +910,36 @@ describe("s3Storage, streamed", { timeout: 60_000 }, () => {
 
     // THEN its size is unknown rather than zero, and the type the honest default
     await expect(read).toBeOkWith({ size: undefined, contentType: "application/octet-stream" });
+  });
+
+  it("gives the slot back for a body that closed before the stream was answered", async () => {
+    // GIVEN a pool of one, and a store whose body is already destroyed when it answers
+    const client = new S3Client({
+      endpoint: "http://127.0.0.1:1",
+      region: "us-east-1",
+      forcePathStyle: true,
+      credentials: { accessKeyId: "none", secretAccessKey: "none" },
+    });
+    client.middlewareStack.add(
+      () => () =>
+        Promise.resolve({
+          output: {
+            $metadata: {},
+            Body: Object.assign(Readable.from([]).destroy(), {
+              transformToWebStream: () => new Blob([]).stream(),
+            }),
+          } as never,
+          response: {},
+        }),
+      { step: "initialize", name: "answer" },
+    );
+    const store = s3StorageBackend(client, "bucket", { client, maxSockets: 1 });
+
+    // WHEN the key is streamed twice, one after the other
+    const read = store.getStream("a").flatMap(() => store.getStream("a"));
+
+    // THEN the first left no slot held
+    await expect(read).toBeOk();
   });
 
   it("hands the stream back unlocked once a write has settled", async ({ s3, keyPrefix }) => {
@@ -1184,6 +1219,218 @@ describe("s3Storage, streamed, when the store cannot be reached", () => {
     // THEN it is not called missing
     await expect(read).toBeErrWith(
       expect.objectContaining({ operation: "getStream", key: "a.bin" }),
+    );
+  });
+});
+
+describe("s3Storage, with every stream socket held", { timeout: 60_000 }, () => {
+  it("still answers a head and a put while as many streams as the pool holds are open and unread", async ({
+    pooled,
+    keyPrefix,
+  }) => {
+    // GIVEN an object larger than what a socket buffers, streamed by as many
+    // readers as the stream pool has sockets, none of them reading
+    const key = `${keyPrefix}large.bin`;
+    const document = aDocument();
+    const held = pooled
+      .put(key, new Uint8Array(32 * MiB), { contentType: "application/octet-stream" })
+      .flatMap(() => pooled.getStream(key))
+      .flatMap(() => pooled.getStream(key));
+
+    // WHEN a short call of each kind is made
+    const answered = held
+      .flatMap(() => pooled.head(key))
+      .flatMap(() =>
+        pooled.put(`${keyPrefix}small.json`, document.bytes, {
+          contentType: document.contentType,
+        }),
+      )
+      .flatMap(() => pooled.head(`${keyPrefix}small.json`));
+
+    // THEN both completed on sockets of their own
+    await expect(answered).toBeOkWith(
+      expect.objectContaining({ size: document.bytes.byteLength, contentType: "application/json" }),
+    );
+  });
+
+  it("refuses a stream past the pool's size, naming the bound it read", async ({
+    pooled,
+    keyPrefix,
+  }) => {
+    // GIVEN every stream socket held by an unread stream
+    const key = `${keyPrefix}large.bin`;
+    const held = pooled
+      .put(key, new Uint8Array(32 * MiB), { contentType: "application/octet-stream" })
+      .flatMap(() => pooled.getStream(key))
+      .flatMap(() => pooled.getStream(key));
+
+    // WHEN one more is asked for
+    const read = held.flatMap(() => pooled.getStream(key));
+
+    // THEN it is refused at once, with the bound read from STORAGE_S3_STREAM_MAX_SOCKETS
+    await expect(read).toBeErrWith(
+      expect.objectContaining({
+        constructor: StreamPoolFull,
+        operation: "getStream",
+        key,
+        maxSockets: 2,
+      }),
+    );
+  });
+
+  it("refuses a streamed write past the pool's size, and cancels its source", async ({
+    pooled,
+    keyPrefix,
+  }) => {
+    // GIVEN every stream socket held by an unread stream, and a source that reports its cancel
+    const key = `${keyPrefix}large.bin`;
+    let cancelled: unknown;
+    const source = aStream(MiB, { cancelled: (reason) => (cancelled = reason) });
+    const held = pooled
+      .put(key, new Uint8Array(32 * MiB), { contentType: "application/octet-stream" })
+      .flatMap(() => pooled.getStream(key))
+      .flatMap(() => pooled.getStream(key));
+
+    // WHEN a stream is written
+    const written = await held.flatMap(() =>
+      pooled.putStreamIfAbsent(`${keyPrefix}refused.bin`, source, {
+        contentType: "application/octet-stream",
+      }),
+    );
+
+    // THEN the write is refused before sending anything, and its source released with the refusal
+    expect({
+      written: written.isErr() ? written.error : written.tag,
+      cancelled,
+    }).toEqual({
+      written: expect.objectContaining({ operation: "putStreamIfAbsent", maxSockets: 2 }),
+      cancelled: expect.objectContaining({ _tag: "StreamPoolFull" }),
+    });
+  });
+
+  it("gives a socket back once its stream is cancelled or read to its end", async ({
+    pooled,
+    keyPrefix,
+  }) => {
+    // GIVEN two streams holding the pool, one then cancelled and one read to its end
+    const key = `${keyPrefix}large.bin`;
+    const released = pooled
+      .put(key, new Uint8Array(32 * MiB), { contentType: "application/octet-stream" })
+      .flatMap(() => pooled.getStream(key))
+      .flatMap((first) =>
+        pooled
+          .getStream(key)
+          .flatMap((second) =>
+            fromSafePromise(first.stream.cancel().then(() => digestOf(second.stream))),
+          ),
+      );
+
+    // WHEN the pool is filled again, and both are read
+    const reread = released
+      .flatMap(() => pooled.getStream(key))
+      .flatMap((first) =>
+        pooled
+          .getStream(key)
+          .flatMap((second) =>
+            fromSafePromise(Promise.all([digestOf(first.stream), digestOf(second.stream)])),
+          ),
+      );
+
+    // THEN both were answered, on sockets the first two gave back
+    await expect(reread.map((reads) => reads.map(({ size }) => size))).toBeOkWith([
+      32 * MiB,
+      32 * MiB,
+    ]);
+  });
+
+  it("gives a streamed write's slot back once it settles, failed or written", async ({
+    pooled,
+    keyPrefix,
+  }) => {
+    // GIVEN two writes whose sources fail, then two that succeed
+    const options = { contentType: "application/octet-stream" };
+    const broken = (name: string) =>
+      pooled
+        .putStream(`${keyPrefix}${name}`, aStream(MiB, { failingAt: 0 }), options)
+        .recoverErrCases((matcher) =>
+          matcher.with(
+            P.tag("StreamInterrupted"),
+            P.tag("InvalidStorageOptions"),
+            P.tag("ChecksumMismatch"),
+            P.tag("StreamPoolFull"),
+            P.tag("StorageUnavailable"),
+            () => undefined,
+          ),
+        );
+    const settled = broken("a.bin")
+      .flatMap(() => broken("b.bin"))
+      .flatMap(() => pooled.putStream(`${keyPrefix}c.bin`, aStream(MiB), options))
+      .flatMap(() => pooled.putStream(`${keyPrefix}d.bin`, aStream(MiB), options));
+
+    // WHEN the pool is asked for two more streams at once
+    const read = settled.flatMap(() =>
+      pooled
+        .getStream(`${keyPrefix}c.bin`)
+        .flatMap((first) =>
+          pooled
+            .getStream(`${keyPrefix}d.bin`)
+            .flatMap((second) =>
+              fromSafePromise(Promise.all([digestOf(first.stream), digestOf(second.stream)])),
+            ),
+        ),
+    );
+
+    // THEN no settled write kept its slot
+    await expect(read.map((reads) => reads.map(({ size }) => size))).toBeOkWith([MiB, MiB]);
+  });
+
+  it("sends every part of a streamed write on one pooled connection", async ({
+    connections,
+    s3,
+    keyPrefix,
+  }) => {
+    // GIVEN a source of four 8 MiB parts, each over the 2 MiB from which the
+    // SDK sends `Expect: 100-continue`
+    // WHEN it is written
+    const written = await s3.putStream(`${keyPrefix}parts.bin`, aStream(32 * MiB), {
+      contentType: "application/octet-stream",
+    });
+
+    // THEN every request reused the pool's keep-alive socket, rather than each
+    // part opening a connection outside the pool that held it until it closed
+    expect({ written: written.isOk(), connections: connections() }).toEqual({
+      written: true,
+      connections: 1,
+    });
+  });
+
+  it("closes a stalled store's socket after the socket timeout alone", async ({ stalled }) => {
+    // GIVEN a store that never answers, and only the socket timeout set
+    // WHEN an object is headed
+    const head = stalled.head("a.bin");
+
+    // THEN the idle socket was closed, rather than the call hanging
+    await expect(head).toBeErrWith(
+      expect.objectContaining({ operation: "head", reason: expect.stringContaining("inactivity") }),
+    );
+  });
+
+  it("fails a call past its request timeout, rather than only warning", async ({
+    hurried,
+    keyPrefix,
+  }) => {
+    // GIVEN a store whose calls must be answered within 1 ms
+    // WHEN 8 MiB are written
+    const written = hurried.put(`${keyPrefix}slow.bin`, new Uint8Array(8 * MiB), {
+      contentType: "application/octet-stream",
+    });
+
+    // THEN the bound is the SDK's error, not its log line
+    await expect(written).toBeErrWith(
+      expect.objectContaining({
+        operation: "put",
+        reason: expect.stringContaining("requestTimeout"),
+      }),
     );
   });
 });

@@ -6,6 +6,7 @@ import {
   defectiveStorage,
   failingStorage,
   it,
+  saturatedStorage,
 } from "./__tests__/test-fixtures.js";
 import { memoryStorage } from "./memory.js";
 
@@ -210,6 +211,31 @@ describe("storage, observed", () => {
           operation: "put_stream",
           result: "interrupted",
           reason: "the source stream failed",
+          outcome: "ok",
+          value: 1,
+        },
+      ],
+      faults: [],
+    });
+  });
+
+  it("counts a stream refused by a full pool as saturated, and does not log it as a fault", async ({
+    instrumented,
+  }) => {
+    // GIVEN an instrumented store whose stream pool is full
+    // WHEN a stream is read
+    await instrumented.run(saturatedStorage(), (service) => service.getStream("a.bin"));
+
+    // THEN the refusal is a rate on the counter, not a line per refusal
+    expect({
+      points: instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
+      faults: instrumented.lines().filter((line) => line.level === "error"),
+    }).toEqual({
+      points: [
+        {
+          operation: "get_stream",
+          result: "saturated",
+          reason: "every stream socket was held",
           outcome: "ok",
           value: 1,
         },

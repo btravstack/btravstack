@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { Agent as HttpAgent } from "node:http";
+import { Agent as HttpsAgent } from "node:https";
+import type { Readable } from "node:stream";
 
 import {
   AbortMultipartUploadCommand,
@@ -16,9 +19,10 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import type { Scope } from "@btravstack/di";
-import { Module, Port, Provider } from "@btravstack/di";
+import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import {
   Err,
+  ErrAsync,
   Ok,
   OkAsync,
   P,
@@ -36,6 +40,7 @@ import {
   StorageBackend,
   StorageUnavailable,
   StreamInterrupted,
+  StreamPoolFull,
   type InvalidStorageOptions,
   type ObjectHead,
   type StorageService,
@@ -51,10 +56,49 @@ class StorageConfig extends Port("StorageConfig")<{
   readonly bucket: string;
   readonly accessKeyId: string;
   readonly secretAccessKey: string;
+  readonly maxSockets: number;
+  readonly streamMaxSockets: number;
+  readonly connectionTimeoutMs: number;
+  readonly socketTimeoutMs: number;
+  readonly requestTimeoutMs: number;
 }> {}
 
+/** The socket pools' options, each pinning its variable; every default is the AWS SDK's own. */
+export type S3StorageOptions = {
+  /**
+   * Pins `STORAGE_S3_MAX_SOCKETS` (default `50`, the SDK's own): the
+   * sockets every call but the streamed ones shares.
+   */
+  readonly maxSockets?: number;
+  /**
+   * Pins `STORAGE_S3_STREAM_MAX_SOCKETS` (default `50`, the SDK's own):
+   * the sockets of the pool `getStream`, `putStream` and `putStreamIfAbsent`
+   * use, and so how many of them may run at once. One more is refused with
+   * `StreamPoolFull`.
+   */
+  readonly streamMaxSockets?: number;
+  /**
+   * Pins `STORAGE_S3_CONNECTION_TIMEOUT_MS` (default `0`, none): how long an
+   * attempt may wait for a socket, a free one or a new connection.
+   */
+  readonly connectionTimeoutMs?: number;
+  /** Pins `STORAGE_S3_SOCKET_TIMEOUT_MS` (default `0`, none): the SDK's idle-socket timeout. */
+  readonly socketTimeoutMs?: number;
+  /**
+   * Pins `STORAGE_S3_REQUEST_TIMEOUT_MS` (default `0`, none): how long an
+   * attempt may take until the store starts answering, its request body
+   * included. Past it the attempt fails, where the SDK alone would only log a
+   * warning. Every timeout is per attempt: the SDK retries a timed-out one (3
+   * attempts by default), so a call can take about three times as long.
+   */
+  readonly requestTimeoutMs?: number;
+};
+
+/** The AWS SDK's own socket pool size, stated rather than inherited, for each of the two pools. */
+const DEFAULT_MAX_SOCKETS = 50;
+
 /**
- * The five variables an S3-compatible store needs, and no sixth.
+ * The five variables an S3-compatible store needs, and the pools' optional ones.
  *
  * `STORAGE_S3_ENDPOINT` is required rather than defaulted to AWS: every store
  * this port exists for has one, and a default pointing at Amazon would be a
@@ -62,13 +106,67 @@ class StorageConfig extends Port("StorageConfig")<{
  * on — every self-hosted store requires it and AWS accepts it, so it is a value
  * that never changes.
  */
-const s3Schema = Config.object({
-  endpoint: Config.string("STORAGE_S3_ENDPOINT"),
-  region: Config.string("STORAGE_S3_REGION", { default: "us-east-1" }),
-  bucket: Config.string("STORAGE_S3_BUCKET"),
-  accessKeyId: Config.string("STORAGE_S3_ACCESS_KEY_ID"),
-  secretAccessKey: Config.string("STORAGE_S3_SECRET_ACCESS_KEY"),
-});
+const s3Schema = (options: S3StorageOptions) =>
+  Config.object({
+    endpoint: Config.string("STORAGE_S3_ENDPOINT"),
+    region: Config.string("STORAGE_S3_REGION", { default: "us-east-1" }),
+    bucket: Config.string("STORAGE_S3_BUCKET"),
+    accessKeyId: Config.string("STORAGE_S3_ACCESS_KEY_ID"),
+    secretAccessKey: Config.string("STORAGE_S3_SECRET_ACCESS_KEY"),
+    maxSockets: Config.pinned(
+      options.maxSockets,
+      Config.integer("STORAGE_S3_MAX_SOCKETS", { default: DEFAULT_MAX_SOCKETS, min: 1 }),
+    ),
+    streamMaxSockets: Config.pinned(
+      options.streamMaxSockets,
+      Config.integer("STORAGE_S3_STREAM_MAX_SOCKETS", { default: DEFAULT_MAX_SOCKETS, min: 1 }),
+    ),
+    // `0` is the SDK's own "no timeout", so it stays expressible.
+    connectionTimeoutMs: Config.pinned(
+      options.connectionTimeoutMs,
+      Config.integer("STORAGE_S3_CONNECTION_TIMEOUT_MS", { default: 0, min: 0 }),
+    ),
+    socketTimeoutMs: Config.pinned(
+      options.socketTimeoutMs,
+      Config.integer("STORAGE_S3_SOCKET_TIMEOUT_MS", { default: 0, min: 0 }),
+    ),
+    requestTimeoutMs: Config.pinned(
+      options.requestTimeoutMs,
+      Config.integer("STORAGE_S3_REQUEST_TIMEOUT_MS", { default: 0, min: 0 }),
+    ),
+  });
+
+/**
+ * `0` as the SDK's own absent value: handlers before 4.4 read `socketTimeout`
+ * only as `requestTimeout ?? socketTimeout`, so a `0` there would hide it.
+ */
+const unset = (ms: number): number | undefined => (ms === 0 ? undefined : ms);
+
+/**
+ * A client over its own socket pool: keep-alive sockets, at most `maxSockets`
+ * of them. The agents are instances, not options: from options the SDK sends
+ * a body of 2 MiB or more (`Expect: 100-continue`, every 8 MiB part) on a
+ * fresh unpooled connection, which no `maxSockets` bounds and which keeps the
+ * request, and the part it carries, alive until that connection has closed.
+ */
+const s3Client = (config: ServiceOf<StorageConfig>, maxSockets: number): S3Client =>
+  new S3Client({
+    endpoint: config.endpoint,
+    region: config.region,
+    forcePathStyle: true,
+    credentials: {
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: config.secretAccessKey,
+    },
+    requestHandler: {
+      connectionTimeout: unset(config.connectionTimeoutMs),
+      socketTimeout: unset(config.socketTimeoutMs),
+      requestTimeout: unset(config.requestTimeoutMs),
+      throwOnRequestTimeout: true,
+      httpAgent: new HttpAgent({ keepAlive: true, maxSockets }),
+      httpsAgent: new HttpsAgent({ keepAlive: true, maxSockets }),
+    },
+  });
 
 /**
  * The client, as a port of its own: a resourceful provider is handed back the
@@ -78,7 +176,29 @@ const s3Schema = Config.object({
 class S3Connection extends Port("S3Connection")<{
   readonly client: S3Client;
   readonly bucket: string;
+  readonly streams: S3Streams;
 }> {}
+
+/** The pool the streamed calls use: its own client, and how many may hold one of its sockets at once. */
+export type S3Streams = { readonly client: S3Client; readonly maxSockets: number };
+
+/**
+ * Up to `size` slots: `take` answers one slot's release, which counts once
+ * however often it is called, or `undefined` when every slot is held.
+ */
+const slots = (size: number) => {
+  let held = 0;
+  return (): (() => void) | undefined => {
+    if (held >= size) return undefined;
+    held += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      held -= 1;
+    };
+  };
+};
 
 const unavailable = (
   operation: StorageUnavailable["operation"],
@@ -360,217 +480,283 @@ function streamUpload(
  * The adapter's service over a client and a bucket. A delete of a key nobody
  * stored answers `Ok`, which is S3's own idempotent behaviour rather than a
  * fiction layered over it.
+ *
+ * The streamed calls go through `streams`: `getStream`, `putStream` and
+ * `putStreamIfAbsent` each hold one of its `maxSockets` slots, from the call
+ * until the object's stream closes or the write settles, and one more answers
+ * `StreamPoolFull` at once. Without it they share `client`, unbounded.
  */
-export const s3StorageBackend = (client: S3Client, bucket: string): StorageService => ({
-  put: (key, bytes, options) => {
-    const validated = validateOptions(key, options);
-    if (!validated.isOk()) return validated.toAsync();
-    return fromPromise(
-      client.send(
-        new PutObjectCommand({
-          Bucket: bucket,
-          Key: key,
-          Body: bytes,
-          ContentType: options.contentType,
-          Metadata: { ...options.metadata },
-          ...(options.sha256 === undefined ? {} : { ChecksumSHA256: hexToBase64(options.sha256) }),
-          ...encryption(options),
-        }),
-      ),
-      (cause) =>
-        isChecksumMismatch(cause) ? new ChecksumMismatch({ key }) : unavailable("put", key, cause),
-    ).map(() => undefined);
-  },
-  putIfAbsent: (key, bytes, options) => {
-    const validated = validateOptions(key, options);
-    if (!validated.isOk()) return validated.toAsync();
-    return fromPromise(
-      client.send(
-        new PutObjectCommand({
-          Bucket: bucket,
-          Key: key,
-          Body: bytes,
-          ContentType: options.contentType,
-          IfNoneMatch: "*",
-          Metadata: { ...options.metadata },
-          ...(options.sha256 === undefined ? {} : { ChecksumSHA256: hexToBase64(options.sha256) }),
-          ...encryption(options),
-        }),
-      ),
-      (cause): ObjectExists | ChecksumMismatch | StorageUnavailable =>
-        isChecksumMismatch(cause)
-          ? new ChecksumMismatch({ key })
-          : isPreconditionFailed(cause)
-            ? new ObjectExists({ key })
-            : unavailable("putIfAbsent", key, cause),
-    ).map(() => undefined);
-  },
-  putStream: streamUpload(client, bucket, false),
-  putStreamIfAbsent: streamUpload(client, bucket, true),
-  get: (key) =>
-    fromPromise(
-      client
-        .send(new GetObjectCommand({ Bucket: bucket, Key: key }))
-        .then(async (response): Promise<StoredObject> => ({
-          bytes: await (
-            response.Body as { transformToByteArray: () => Promise<Uint8Array> }
-          ).transformToByteArray(),
-          // A store that lost the type still has the bytes; the caller gets
-          // the honest default rather than an error it cannot act on.
-          contentType: response.ContentType ?? "application/octet-stream",
-        })),
-      (cause): ObjectNotFound | StorageUnavailable =>
-        isMissing(cause) ? new ObjectNotFound({ key }) : unavailable("get", key, cause),
-    ),
-  getStream: (key) =>
-    fromPromise(
-      client
-        .send(new GetObjectCommand({ Bucket: bucket, Key: key }))
-        .then((response): StreamedObject => ({
-          stream: (
-            response.Body as { transformToWebStream: () => ReadableStream<Uint8Array> }
-          ).transformToWebStream(),
-          contentType: response.ContentType ?? "application/octet-stream",
-          size: response.ContentLength,
-        })),
-      (cause): ObjectNotFound | StorageUnavailable =>
-        isMissing(cause) ? new ObjectNotFound({ key }) : unavailable("getStream", key, cause),
-    ),
-  copy: (from, to, options) => {
-    const validated = validateOptions(to, options);
-    if (!validated.isOk()) return validated.toAsync();
-    return fromPromise(
-      // Async so that a key `encodeURIComponent` refuses (an unpaired
-      // surrogate) is a rejection mapped below, not a synchronous throw.
-      (async () =>
+export const s3StorageBackend = (
+  client: S3Client,
+  bucket: string,
+  streams: S3Streams = { client, maxSockets: Number.POSITIVE_INFINITY },
+): StorageService => {
+  const take = slots(streams.maxSockets);
+  const full = (operation: StreamPoolFull["operation"], key: string) =>
+    new StreamPoolFull({ operation, key, maxSockets: streams.maxSockets });
+  /** A write that holds a slot until it settles, and cancels its source when there is none. */
+  const bounded =
+    <E>(
+      operation: "putStream" | "putStreamIfAbsent",
+      upload: (
+        key: string,
+        stream: ReadableStream<Uint8Array>,
+        options: WriteOptions,
+      ) => AsyncResult<void, E>,
+    ) =>
+    (
+      key: string,
+      stream: ReadableStream<Uint8Array>,
+      options: WriteOptions,
+    ): AsyncResult<void, E | StreamPoolFull> => {
+      const release = take();
+      if (release === undefined) {
+        const refused = full(operation, key);
+        unawaited(stream.cancel(refused));
+        return ErrAsync(refused);
+      }
+      return upload(key, stream, options).tap(release).tapFailure(release);
+    };
+  return {
+    put: (key, bytes, options) => {
+      const validated = validateOptions(key, options);
+      if (!validated.isOk()) return validated.toAsync();
+      return fromPromise(
         client.send(
-          new CopyObjectCommand({
+          new PutObjectCommand({
             Bucket: bucket,
-            Key: to,
-            CopySource: `${bucket}/${from.split("/").map(encodeURIComponent).join("/")}`,
-            MetadataDirective: "REPLACE",
-            // The tagging directive defaults to COPY; the package has no tags, so none are inherited.
-            TaggingDirective: "REPLACE",
-            // Annotations are copied by default and need extra permissions; the package has none.
-            AnnotationDirective: "EXCLUDE",
+            Key: key,
+            Body: bytes,
             ContentType: options.contentType,
             Metadata: { ...options.metadata },
-            ...(options.checksum === undefined ? {} : { ChecksumAlgorithm: "SHA256" as const }),
+            ...(options.sha256 === undefined
+              ? {}
+              : { ChecksumSHA256: hexToBase64(options.sha256) }),
             ...encryption(options),
           }),
-        ))(),
-      (cause): ObjectNotFound | StorageUnavailable =>
-        isMissing(cause) ? new ObjectNotFound({ key: from }) : unavailable("copy", from, cause),
-    ).map(() => undefined);
-  },
-  head: (key) =>
-    fromPromise(
-      client
-        .send(new HeadObjectCommand({ Bucket: bucket, Key: key, ChecksumMode: "ENABLED" }))
-        .then((response): ObjectHead => ({
-          metadata: { ...response.Metadata },
-          size: response.ContentLength ?? 0,
-          contentType: response.ContentType ?? "application/octet-stream",
-          // A multipart object's COMPOSITE checksum is a digest of part
-          // digests, not of the bytes: it is not a sha256 of the object.
-          ...(response.ChecksumSHA256 === undefined ||
-          response.ChecksumType === "COMPOSITE" ||
-          !/^[A-Za-z0-9+/]{43}=$/.test(response.ChecksumSHA256)
-            ? {}
-            : { sha256: base64ToHex(response.ChecksumSHA256) }),
-        })),
-      (cause): ObjectNotFound | StorageUnavailable =>
-        isMissing(cause) ? new ObjectNotFound({ key }) : unavailable("head", key, cause),
-    ),
-  delete: (key) =>
-    fromPromise(client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })), (cause) =>
-      unavailable("delete", key, cause),
-    ).map(() => undefined),
-  presignedUrl: (key, options) =>
-    fromPromise(
-      getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), {
-        // The SDK counts in seconds and the port in milliseconds, as every
-        // other duration in this stack does. The conversion lives here, once.
-        expiresIn: Math.ceil(options.ttlMs / 1_000),
-      }),
-      (cause) => unavailable("presignedUrl", key, cause),
-    ),
-  presignedUpload: (key, options) => {
-    const command = new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      ContentType: options.contentType,
-      ContentLength: options.contentLength,
-      ...encryption(options),
-      ...(options.sha256 === undefined ? {} : { ChecksumSHA256: hexToBase64(options.sha256) }),
-    });
-    const expiresIn = Math.ceil(options.ttlMs / 1_000);
-    return validateOptions(key, options)
-      .toAsync()
-      .flatMap(() =>
-        fromPromise(
-          getSignedUrl(client, command, {
-            expiresIn,
-            // The presigner leaves content-type unsigned unless explicitly named.
-            signableHeaders: new Set(["content-type"]),
-            // These headers must stay signed headers; hoisting would permit replacement.
-            unhoistableHeaders: new Set([
-              "x-amz-checksum-sha256",
-              "x-amz-server-side-encryption",
-              "x-amz-server-side-encryption-aws-kms-key-id",
-            ]),
-          }),
-          (cause) => unavailable("presignedUpload", key, cause),
         ),
+        (cause) =>
+          isChecksumMismatch(cause)
+            ? new ChecksumMismatch({ key })
+            : unavailable("put", key, cause),
+      ).map(() => undefined);
+    },
+    putIfAbsent: (key, bytes, options) => {
+      const validated = validateOptions(key, options);
+      if (!validated.isOk()) return validated.toAsync();
+      return fromPromise(
+        client.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: key,
+            Body: bytes,
+            ContentType: options.contentType,
+            IfNoneMatch: "*",
+            Metadata: { ...options.metadata },
+            ...(options.sha256 === undefined
+              ? {}
+              : { ChecksumSHA256: hexToBase64(options.sha256) }),
+            ...encryption(options),
+          }),
+        ),
+        (cause): ObjectExists | ChecksumMismatch | StorageUnavailable =>
+          isChecksumMismatch(cause)
+            ? new ChecksumMismatch({ key })
+            : isPreconditionFailed(cause)
+              ? new ObjectExists({ key })
+              : unavailable("putIfAbsent", key, cause),
+      ).map(() => undefined);
+    },
+    putStream: bounded("putStream", streamUpload(streams.client, bucket, false)),
+    putStreamIfAbsent: bounded("putStreamIfAbsent", streamUpload(streams.client, bucket, true)),
+    get: (key) =>
+      fromPromise(
+        client
+          .send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+          .then(async (response): Promise<StoredObject> => ({
+            bytes: await (
+              response.Body as { transformToByteArray: () => Promise<Uint8Array> }
+            ).transformToByteArray(),
+            // A store that lost the type still has the bytes; the caller gets
+            // the honest default rather than an error it cannot act on.
+            contentType: response.ContentType ?? "application/octet-stream",
+          })),
+        (cause): ObjectNotFound | StorageUnavailable =>
+          isMissing(cause) ? new ObjectNotFound({ key }) : unavailable("get", key, cause),
+      ),
+    getStream: (key) => {
+      const release = take();
+      if (release === undefined) return ErrAsync(full("getStream", key));
+      return fromPromise(
+        streams.client
+          .send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+          .then((response): StreamedObject => {
+            const body = response.Body as Readable & {
+              transformToWebStream: () => ReadableStream<Uint8Array>;
+            };
+            // The body holds its socket until it closes: read to its end,
+            // cancelled, or broken off — possibly before this line ran.
+            if (body.destroyed) release();
+            else body.once("close", release);
+            return {
+              stream: body.transformToWebStream(),
+              contentType: response.ContentType ?? "application/octet-stream",
+              size: response.ContentLength,
+            };
+          }),
+        (cause): ObjectNotFound | StorageUnavailable => {
+          release();
+          return isMissing(cause)
+            ? new ObjectNotFound({ key })
+            : unavailable("getStream", key, cause);
+        },
       );
-  },
-});
+    },
+    copy: (from, to, options) => {
+      const validated = validateOptions(to, options);
+      if (!validated.isOk()) return validated.toAsync();
+      return fromPromise(
+        // Async so that a key `encodeURIComponent` refuses (an unpaired
+        // surrogate) is a rejection mapped below, not a synchronous throw.
+        (async () =>
+          client.send(
+            new CopyObjectCommand({
+              Bucket: bucket,
+              Key: to,
+              CopySource: `${bucket}/${from.split("/").map(encodeURIComponent).join("/")}`,
+              MetadataDirective: "REPLACE",
+              // The tagging directive defaults to COPY; the package has no tags, so none are inherited.
+              TaggingDirective: "REPLACE",
+              // Annotations are copied by default and need extra permissions; the package has none.
+              AnnotationDirective: "EXCLUDE",
+              ContentType: options.contentType,
+              Metadata: { ...options.metadata },
+              ...(options.checksum === undefined ? {} : { ChecksumAlgorithm: "SHA256" as const }),
+              ...encryption(options),
+            }),
+          ))(),
+        (cause): ObjectNotFound | StorageUnavailable =>
+          isMissing(cause) ? new ObjectNotFound({ key: from }) : unavailable("copy", from, cause),
+      ).map(() => undefined);
+    },
+    head: (key) =>
+      fromPromise(
+        client
+          .send(new HeadObjectCommand({ Bucket: bucket, Key: key, ChecksumMode: "ENABLED" }))
+          .then((response): ObjectHead => ({
+            metadata: { ...response.Metadata },
+            size: response.ContentLength ?? 0,
+            contentType: response.ContentType ?? "application/octet-stream",
+            // A multipart object's COMPOSITE checksum is a digest of part
+            // digests, not of the bytes: it is not a sha256 of the object.
+            ...(response.ChecksumSHA256 === undefined ||
+            response.ChecksumType === "COMPOSITE" ||
+            !/^[A-Za-z0-9+/]{43}=$/.test(response.ChecksumSHA256)
+              ? {}
+              : { sha256: base64ToHex(response.ChecksumSHA256) }),
+          })),
+        (cause): ObjectNotFound | StorageUnavailable =>
+          isMissing(cause) ? new ObjectNotFound({ key }) : unavailable("head", key, cause),
+      ),
+    delete: (key) =>
+      fromPromise(client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })), (cause) =>
+        unavailable("delete", key, cause),
+      ).map(() => undefined),
+    presignedUrl: (key, options) =>
+      fromPromise(
+        getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), {
+          // The SDK counts in seconds and the port in milliseconds, as every
+          // other duration in this stack does. The conversion lives here, once.
+          expiresIn: Math.ceil(options.ttlMs / 1_000),
+        }),
+        (cause) => unavailable("presignedUrl", key, cause),
+      ),
+    presignedUpload: (key, options) => {
+      const command = new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        ContentType: options.contentType,
+        ContentLength: options.contentLength,
+        ...encryption(options),
+        ...(options.sha256 === undefined ? {} : { ChecksumSHA256: hexToBase64(options.sha256) }),
+      });
+      const expiresIn = Math.ceil(options.ttlMs / 1_000);
+      return validateOptions(key, options)
+        .toAsync()
+        .flatMap(() =>
+          fromPromise(
+            getSignedUrl(client, command, {
+              expiresIn,
+              // The presigner leaves content-type unsigned unless explicitly named.
+              signableHeaders: new Set(["content-type"]),
+              // These headers must stay signed headers; hoisting would permit replacement.
+              unhoistableHeaders: new Set([
+                "x-amz-checksum-sha256",
+                "x-amz-server-side-encryption",
+                "x-amz-server-side-encryption-aws-kms-key-id",
+              ]),
+            }),
+            (cause) => unavailable("presignedUpload", key, cause),
+          ),
+        );
+    },
+  };
+};
 
 /**
- * The S3 adapter: one client, built with the scope and destroyed with it, and
- * `StorageBackend` over it. Its two AWS SDK peers are **optional** and reached
- * only through this subpath, so an application composing the memory adapter
- * installs neither.
+ * The S3 adapter: two clients, built with the scope and destroyed with it, and
+ * `StorageBackend` over them. Each has a socket pool of its own: the streamed
+ * calls use one, every other call the other, so a stream a slow reader holds
+ * open never takes a socket a short call needs. Its two AWS SDK peers are
+ * **optional** and reached only through this subpath, so an application
+ * composing the memory adapter installs neither.
+ *
+ * ```ts
+ * storage({ adapter: s3Storage({ streamMaxSockets: 20 }) });
+ * ```
  */
-export const s3Storage = (): Module<
-  StorageBackend,
-  ConfigInvalid,
-  | EnvReading<
-      | "STORAGE_S3_ENDPOINT"
-      | "STORAGE_S3_BUCKET"
-      | "STORAGE_S3_ACCESS_KEY_ID"
-      | "STORAGE_S3_SECRET_ACCESS_KEY",
-      "STORAGE_S3_REGION"
-    >
-  | Scope
-> =>
+export const s3Storage = (
+  options: S3StorageOptions = {},
+): Module<StorageBackend, ConfigInvalid, S3StorageEnv | Scope> =>
   Module("S3Storage")({
     needs: [Env],
     provides: [
-      Config.provider(StorageConfig)(s3Schema),
+      Config.provider(StorageConfig)(s3Schema(options)),
       Provider(S3Connection)({
         inject: { config: StorageConfig },
         acquire: ({ config }) =>
           Ok({
-            client: new S3Client({
-              endpoint: config.endpoint,
-              region: config.region,
-              forcePathStyle: true,
-              credentials: {
-                accessKeyId: config.accessKeyId,
-                secretAccessKey: config.secretAccessKey,
-              },
-            }),
+            client: s3Client(config, config.maxSockets),
             bucket: config.bucket,
+            streams: {
+              client: s3Client(config, config.streamMaxSockets),
+              maxSockets: config.streamMaxSockets,
+            },
           }),
-        release: ({ client }) => {
+        release: ({ client, streams }) => {
           client.destroy();
+          streams.client.destroy();
         },
       }),
       Provider(StorageBackend)({
         inject: { connection: S3Connection },
-        sync: ({ connection }) => s3StorageBackend(connection.client, connection.bucket),
+        sync: ({ connection }) =>
+          s3StorageBackend(connection.client, connection.bucket, connection.streams),
       }),
     ],
     exports: [StorageBackend],
   });
+
+/** The variables {@link s3Storage} reads: four required, the rest defaulted or pinnable. */
+export type S3StorageEnv = EnvReading<
+  | "STORAGE_S3_ENDPOINT"
+  | "STORAGE_S3_BUCKET"
+  | "STORAGE_S3_ACCESS_KEY_ID"
+  | "STORAGE_S3_SECRET_ACCESS_KEY",
+  | "STORAGE_S3_REGION"
+  | "STORAGE_S3_MAX_SOCKETS"
+  | "STORAGE_S3_STREAM_MAX_SOCKETS"
+  | "STORAGE_S3_CONNECTION_TIMEOUT_MS"
+  | "STORAGE_S3_SOCKET_TIMEOUT_MS"
+  | "STORAGE_S3_REQUEST_TIMEOUT_MS"
+>;

@@ -127,6 +127,31 @@ and `docs/reference/storage.md` is the reader's page.
 - **`getStream`'s span ends when the stream is answered**, not when it is read:
   observing the transfer would mean wrapping every chunk, and the store's own
   failure mid-read reaches the reader as the stream's error.
+- **Streamed calls have a socket pool of their own, and a full one refuses.**
+  `s3Storage()` builds two clients, each with its own keep-alive agent:
+  `getStream`, `putStream` and `putStreamIfAbsent` use one
+  (`STORAGE_S3_STREAM_MAX_SOCKETS`), every other call the other
+  (`STORAGE_S3_MAX_SOCKETS`), both 50 by default, the SDK's own size. Before
+  that, one shared pool of 50 let 50 slow readers stall every `head`, `put` and
+  health check in the process. A streamed call holds a slot from the call until
+  its body closes (`close` on the SDK's Node body: read to its end, cancelled,
+  broken off) or its write settles, counted in the adapter, so the agent never
+  queues a stream. One more answers `StreamPoolFull` at once, rather than
+  queueing: a queued stream waits for a reader elsewhere, which nothing in the
+  process bounds, so the service could not shed load. It settles `ok` with
+  `result: "saturated"`, a rate to alert on rather than a fault line per
+  refusal. The buffered pool still queues, as the SDK does: its calls are
+  short. RustFS proves a `head` and a `put` complete while every stream socket
+  is held unread, which a shared pool of the same size does not.
+- **The agents are instances, never agent options.** Given options, the SDK
+  sends every body of 2 MiB or more (`Expect: 100-continue`: each 8 MiB part,
+  a large `put`) on a fresh unpooled connection, which no `maxSockets` bounds
+  and which keeps the request, and the part it carries, reachable until that
+  connection has closed. A 32 MiB `putStream` opened five connections; it now
+  opens one, which the s3 spec counts.
+- **Every pool default is the SDK's own**, stated rather than inherited, and
+  `requestTimeoutMs` sets `throwOnRequestTimeout`: a bound that only logs a
+  warning is not one.
 - **The memory adapter refuses to presign** rather than minting a `file://`
   URL. A fake URL is the worst kind of double: it passes locally and fails in
   the deployment for a reason no test could have shown. The arm exists in the
@@ -158,6 +183,14 @@ port are the TSDoc and comments of `src/storage.ts` and `src/s3.ts`.
 RustFS (`internal/test-infra`) is pre-1.0 and its `latest` tag moves, so the
 exact rc is pinned — and every operation the port needs was measured against
 that image _before_ the port was written.
+
+**Memory is sampled after two full collections, not one.** V8 frees an
+`ArrayBuffer`'s backing store on a background thread after the collection that
+found it dead (`--concurrent-array-buffer-sweeping`), and
+`process.memoryUsage().arrayBuffers` counts it until then. On a loaded runner
+one `gc()` left up to 80 MiB of dead 8 MiB parts counted, which is what made
+the 256 MiB bounds flaky; a second collection first finishes the previous
+sweep.
 
 Two failure fixtures, because one cannot reach both arms: an endpoint that is
 **not listening** (`http://127.0.0.1:1`) reaches `put`/`get`/`delete`, and a

@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { Agent } from "node:http";
+import { createServer, type Socket } from "node:net";
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
 
@@ -15,7 +17,7 @@ import { inject, test } from "vitest";
 
 import { memoryStorage } from "../memory.js";
 import { storage } from "../module.js";
-import { s3Storage, s3StorageBackend } from "../s3.js";
+import { s3Storage, s3StorageBackend, type S3StorageOptions } from "../s3.js";
 import { Storage, StorageBackend, StorageUnavailable, type StorageService } from "../storage.js";
 
 /** An adapter whose store is down, so the failure arms are reachable without breaking the shared one. */
@@ -63,6 +65,60 @@ export const defectiveStorage = (): Module<StorageBackend, never, never> =>
     exports: [StorageBackend],
   });
 
+/** The real S3 adapter over streams that may never run: a pool of no sockets refuses every one. */
+export const saturatedStorage = (): Module<StorageBackend, never, never> => {
+  const client = new S3Client({
+    endpoint: "http://127.0.0.1:1",
+    region: "us-east-1",
+    forcePathStyle: true,
+    credentials: { accessKeyId: "none", secretAccessKey: "none" },
+  });
+  return Module("SaturatedStorage")({
+    provides: [
+      Provider(StorageBackend)({
+        inject: {},
+        value: s3StorageBackend(client, "nowhere", { client, maxSockets: 0 }),
+      }),
+    ],
+    exports: [StorageBackend],
+  });
+};
+
+/**
+ * `s3Storage(options)` on the shared RustFS, its service handed to `use` inside
+ * the scope, so the clients it built are destroyed by the scope closing — the
+ * drain's own path, not a teardown of the fixture's. `extra` adds variables
+ * beside the four the store needs.
+ */
+const scopedS3 = async (
+  options: S3StorageOptions,
+  extra: {
+    readonly STORAGE_S3_ENDPOINT?: string;
+    readonly STORAGE_S3_STREAM_MAX_SOCKETS?: string;
+  },
+  use: (service: StorageService) => Promise<void>,
+): Promise<void> => {
+  const env = {
+    STORAGE_S3_ENDPOINT: inject("__TESTCONTAINERS_S3_ENDPOINT__"),
+    STORAGE_S3_BUCKET: inject("__TESTCONTAINERS_S3_BUCKET__"),
+    STORAGE_S3_ACCESS_KEY_ID: inject("__TESTCONTAINERS_S3_ACCESS_KEY__"),
+    STORAGE_S3_SECRET_ACCESS_KEY: inject("__TESTCONTAINERS_S3_SECRET_KEY__"),
+    ...extra,
+  };
+  const served = await Module.scoped(
+    Module("S3Fixture")({
+      imports: [s3Storage(options)],
+      provides: [Provider(Env)({ inject: {}, value: env })],
+      exports: [StorageBackend],
+    }),
+    (ctx) => fromSafePromise(use(ctx.get(StorageBackend))),
+  );
+
+  // A fixture that swallowed a failing scope would leave the test green on
+  // a client that never built.
+  served.getOrThrow();
+};
+
 /** A document a spec can store without restating bytes every time. */
 export const aDocument = (): { bytes: Uint8Array; contentType: string } => ({
   bytes: new TextEncoder().encode(`{"ok":true}`),
@@ -79,6 +135,10 @@ export const MiB = 1_048_576;
 setFlagsFromString("--expose-gc");
 const collectGarbage = runInNewContext("gc") as () => void;
 const used = (): number => {
+  // Twice: V8 frees a dead ArrayBuffer's backing store on a background thread
+  // after the collection that found it, and `arrayBuffers` counts it until
+  // then. The second collection first finishes the first one's sweep.
+  collectGarbage();
   collectGarbage();
   const { heapUsed, arrayBuffers } = process.memoryUsage();
   return heapUsed + arrayBuffers;
@@ -177,6 +237,17 @@ export type StorageFixtures = {
   readonly keyPrefix: string;
   /** The S3 adapter's service, connected for the length of the test. */
   readonly s3: StorageService;
+  /**
+   * The S3 adapter with two sockets per pool: `maxSockets` pinned, the stream
+   * pool's read from `STORAGE_S3_STREAM_MAX_SOCKETS`.
+   */
+  readonly pooled: StorageService;
+  /** The S3 adapter whose calls must be answered within 1 ms, which none can. */
+  readonly hurried: StorageService;
+  /** The S3 adapter over a store that accepts connections and never answers, with only `socketTimeoutMs: 200` set. */
+  readonly stalled: StorageService;
+  /** How many HTTP connections the process has opened since the test began. */
+  readonly connections: () => number;
   /** The S3 adapter over an endpoint that is not listening — the failure every deployment eventually meets. */
   readonly unreachable: StorageService;
   /** The S3 adapter whose credentials cannot be resolved, which is the one way presigning itself fails. */
@@ -231,28 +302,44 @@ export const it = test.extend<StorageFixtures>({
     await use(`test/${randomUUID()}/`);
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
-  s3: async ({}, use) => {
-    const env = {
-      STORAGE_S3_ENDPOINT: inject("__TESTCONTAINERS_S3_ENDPOINT__"),
-      STORAGE_S3_BUCKET: inject("__TESTCONTAINERS_S3_BUCKET__"),
-      STORAGE_S3_ACCESS_KEY_ID: inject("__TESTCONTAINERS_S3_ACCESS_KEY__"),
-      STORAGE_S3_SECRET_ACCESS_KEY: inject("__TESTCONTAINERS_S3_SECRET_KEY__"),
+  connections: async ({}, use) => {
+    // Counted where every `http.Agent` opens a socket, so a connection made
+    // outside the pool is counted too; restored on every exit path.
+    const open = Agent.prototype.createConnection;
+    let made = 0;
+    Agent.prototype.createConnection = function (this: Agent, ...args) {
+      made += 1;
+      return open.apply(this, args);
     };
-    const served = await Module.scoped(
-      Module("S3Fixture")({
-        imports: [s3Storage()],
-        provides: [Provider(Env)({ inject: {}, value: env })],
-        exports: [StorageBackend],
-      }),
-      // `use` runs INSIDE the scope, so the client the provider built is
-      // destroyed by the scope closing — the drain's own path, not a
-      // teardown of the fixture's.
-      (ctx) => fromSafePromise(use(ctx.get(StorageBackend))),
+    await use(() => made);
+    Agent.prototype.createConnection = open;
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  s3: async ({}, use) => {
+    await scopedS3({}, {}, use);
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  pooled: async ({}, use) => {
+    await scopedS3({ maxSockets: 2 }, { STORAGE_S3_STREAM_MAX_SOCKETS: "2" }, use);
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  stalled: async ({}, use) => {
+    // A real listener that takes every connection and sends nothing back.
+    const held: Socket[] = [];
+    const server = createServer((socket) => held.push(socket));
+    await new Promise<void>((listening) => server.listen(0, "127.0.0.1", listening));
+    const { port } = server.address() as { readonly port: number };
+    await scopedS3(
+      { socketTimeoutMs: 200 },
+      { STORAGE_S3_ENDPOINT: `http://127.0.0.1:${port}` },
+      use,
     );
-
-    // A fixture that swallowed a failing scope would leave the test green on
-    // a client that never built.
-    served.getOrThrow();
+    for (const socket of held) socket.destroy();
+    await new Promise((closed) => server.close(closed));
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  hurried: async ({}, use) => {
+    await scopedS3({ requestTimeoutMs: 1 }, {}, use);
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   unreachable: async ({}, use) => {

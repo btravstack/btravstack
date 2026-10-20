@@ -1,6 +1,6 @@
 ---
 title: Stream a file through the process
-description: Serve a raw PUT and GET from an answerer of your own, streaming the body into storage and back out, in bounded memory and outside the JSON body limit — and know what a cut connection, the drain and the request timeout do to it.
+description: Serve a raw PUT and GET from an answerer of your own, streaming the body into storage and back out, in bounded memory and outside the JSON body limit — know what a cut connection, the drain and the request timeout do to it, and size the store's stream pool.
 ---
 
 <!-- doctest: group=order-api -->
@@ -77,7 +77,7 @@ export const content = Provider.member(HttpHandler)({
           .map(() => 204)
           .recoverErrCases((matcher) =>
             matcher
-              .with(P.tag("StorageUnavailable"), () => 503)
+              .with(P.tag("StorageUnavailable"), P.tag("StreamPoolFull"), () => 503)
               .with(P.tag("StreamInterrupted"), ({ cause }) =>
                 cause instanceof RangeError ? 413 : 400,
               )
@@ -127,6 +127,8 @@ prefix. An answerer that returns without writing gets the runtime's `404`.
 - **Time.** `HTTP_REQUEST_TIMEOUT_MS` (default five minutes) bounds the whole
   request, body included. A large upload over a slow link needs a deployment
   that raises it.
+- **A share of the store's sockets.** See below: the adapter bounds how many
+  transfers run at once, and the ingress bounds who may hold them.
 
 ## 3. What a failure does
 
@@ -142,3 +144,51 @@ prefix. An answerer that returns without writing gets the runtime's `404`.
   never sent are not an object either; a bucket lifecycle rule for incomplete
   multipart uploads reaps them. Transfers that must outlive a deploy belong to
   a client that resumes, or to a presigned URL.
+
+## 4. Size the stream pool
+
+`s3Storage()` keeps two socket pools. `getStream`, `putStream` and
+`putStreamIfAbsent` use one of their own, `STORAGE_S3_STREAM_MAX_SOCKETS`
+sockets (default `50`, the AWS SDK's own pool size); every other call shares
+the other, `STORAGE_S3_MAX_SOCKETS` (also `50`). A stream holds its socket
+from the call until it closes, read to its end, cancelled or broken off, and a
+streamed write until it settles. Fifty clients reading slowly therefore hold
+the stream pool, never the sockets a `head`, a `put` or the health check needs.
+
+**One transfer more than the pool holds is refused at once**, with
+`StreamPoolFull` naming the bound (`maxSockets`); a write's stream is cancelled.
+Answer `503`, as the sample does, with a `Retry-After` if clients honour it,
+so the transfer is retried once a slot is free or on a replica with room. The adapter refuses rather than queues:
+a queued transfer would wait for a reader elsewhere to finish, which nothing in
+this process bounds, so the request would hang instead of being shed. Each
+refusal is counted as `result: "saturated"` on `btravstack.storage.operations`,
+the rate to alert on.
+
+**Size it as the transfers one replica serves at once**: the transfers a
+second, times how long one lasts. Two costs set the ceiling. An upload holds
+up to 16 MiB while it reads and sends a part, so the pool times 16 MiB must fit
+the container's memory beside everything else; and the replica's bandwidth is
+shared by every transfer in flight, so more of them each run slower. Raise the
+replicas, not just the pool, when the saturation rate climbs.
+
+```sh
+STORAGE_S3_STREAM_MAX_SOCKETS=20   # 20 transfers at once, up to 320 MiB of upload parts
+STORAGE_S3_MAX_SOCKETS=50          # the short calls keep the SDK's default
+```
+
+**The pool keeps slow transfers from starving short calls; it does not keep
+one client from taking every slot.** The ingress in front of the service still
+needs:
+
+- **connections per client**, capped below the pool, so one caller cannot hold
+  every stream socket and shed everyone else;
+- **a minimum transfer rate**, so a reader that stops reading, or a writer that
+  stops sending, gives its slot back. Node's HTTP server has none:
+  `HTTP_REQUEST_TIMEOUT_MS` bounds what the client sends and nothing bounds
+  how slowly it reads the response, so a stalled download holds its slot until
+  the client hangs up. Set an idle or minimum-rate timeout at the proxy or
+  load balancer in front of the service.
+
+`STORAGE_S3_CONNECTION_TIMEOUT_MS`, `STORAGE_S3_SOCKET_TIMEOUT_MS` and
+`STORAGE_S3_REQUEST_TIMEOUT_MS` bound the store's side of a call; their
+meaning is on [the reference page](/reference/storage#s3storage).

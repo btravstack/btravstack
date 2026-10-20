@@ -117,6 +117,11 @@ export const InvoicesApp = Module("InvoicesApp")({
 | `STORAGE_S3_BUCKET`                                         | environment                        | the bucket — required                                                         |
 | `STORAGE_S3_ACCESS_KEY_ID` / `STORAGE_S3_SECRET_ACCESS_KEY` | environment                        | the credentials — required                                                    |
 | `STORAGE_S3_REGION`                                         | environment                        | default `us-east-1`                                                           |
+| `STORAGE_S3_MAX_SOCKETS` / `maxSockets`                     | environment, or `s3Storage({...})` | sockets every call but the streamed ones shares — default `50`, the SDK's     |
+| `STORAGE_S3_STREAM_MAX_SOCKETS` / `streamMaxSockets`        | environment, or `s3Storage({...})` | the streamed calls' own pool, and their bound — default `50`                  |
+| `STORAGE_S3_CONNECTION_TIMEOUT_MS` / `connectionTimeoutMs`  | environment, or `s3Storage({...})` | how long an attempt waits for a socket — default `0`, none                    |
+| `STORAGE_S3_SOCKET_TIMEOUT_MS` / `socketTimeoutMs`          | environment, or `s3Storage({...})` | the SDK's idle-socket timeout — default `0`, none                             |
+| `STORAGE_S3_REQUEST_TIMEOUT_MS` / `requestTimeoutMs`        | environment, or `s3Storage({...})` | how long an attempt waits for the store to answer — default `0`, none         |
 
 The full table — defaults, semantics and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/storage),
@@ -125,7 +130,7 @@ which is this list's one detailed home.
 ## What it decides, and what it does not
 
 **It decides** that a missing object is an ordinary answer rather than a fault
-(counted `not_found`, without a fault line), that a held key under `putIfAbsent` is an ordinary answer (`ObjectExists`, counted `exists`), that `delete` is idempotent, that `copy` and `head` never move the bytes through the process, that writes can verify SHA-256 and publish user metadata atomically, that copies replace metadata and can compute SHA-256 server side, that presigned uploads can require a per-object KMS key, that a streamed write never leaves a partial object (a multipart upload, aborted on any failure), that
+(counted `not_found`, without a fault line), that a held key under `putIfAbsent` is an ordinary answer (`ObjectExists`, counted `exists`), that `delete` is idempotent, that `copy` and `head` never move the bytes through the process, that writes can verify SHA-256 and publish user metadata atomically, that copies replace metadata and can compute SHA-256 server side, that presigned uploads can require a per-object KMS key, that a streamed write never leaves a partial object (a multipart upload, aborted on any failure), that streamed transfers have a socket pool of their own and are refused (`StreamPoolFull`, counted `saturated`) rather than queued once it is full, that
 presigning asks the store nothing — and that an adapter which cannot presign
 says so instead of minting a URL that would fail only in production.
 
