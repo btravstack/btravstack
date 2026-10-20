@@ -165,4 +165,71 @@ describe("queryObserver", () => {
       }),
     ]);
   });
+
+  it("spans a query through the rc.11 hooks, paired by the operation's context", async ({
+    observed,
+  }) => {
+    // GIVEN the same middleware, run by a Prisma rc.11 to rc.17 runtime, which
+    // hands every hook of one statement the same context object
+    const hook = queryObserver(observed.members);
+    const statement = { scope: "transaction" } as const;
+
+    // WHEN a query runs through the hooks that runtime calls
+    await hook.beforeQuery({ sql: "SELECT 1" }, statement);
+    await hook.afterQuery({}, { completed: true, source: "driver" }, statement);
+
+    // THEN it is observed exactly as the rc.18 hooks observe it
+    expect(observed.taken()).toEqual([
+      {
+        component: "database",
+        name: "query",
+        attributes: { scope: "transaction", source: "driver" },
+        details: { sql: "SELECT 1" },
+        outcome: "ok",
+        failed: false,
+        traced: true,
+      },
+    ]);
+  });
+
+  it("settles an rc.11 write that did not complete as an error", async ({ observed }) => {
+    // GIVEN a write in flight on the rc.11 execute lane
+    const hook = queryObserver(observed.members);
+    const statement = {};
+    await hook.beforeExecute({ sql: "DELETE FROM …" }, statement);
+
+    // WHEN it does not complete
+    await hook.afterExecute({}, { completed: false }, statement);
+
+    // THEN its outcome is an error, on the lane a query-only middleware misses
+    expect(observed.taken()).toEqual([
+      expect.objectContaining({
+        outcome: "error",
+        attributes: { scope: "runtime" },
+        details: { sql: "DELETE FROM …" },
+      }),
+    ]);
+  });
+
+  it("keeps two rc.11 statements in flight apart, and forgets each once settled", async ({
+    observed,
+  }) => {
+    // GIVEN two overlapping rc.11 statements
+    const hook = queryObserver(observed.members);
+    const one = {};
+    const two = {};
+    await hook.beforeQuery({ sql: "first" }, one);
+    await hook.beforeQuery({ sql: "second" }, two);
+
+    // WHEN they settle out of order, and the first one's `after` arrives twice
+    await hook.afterQuery({}, { completed: false }, two);
+    await hook.afterQuery({}, { completed: true }, one);
+    await hook.afterQuery({}, { completed: true }, one);
+
+    // THEN each settled its own operation once
+    expect(observed.taken()).toEqual([
+      expect.objectContaining({ details: { sql: "second" }, outcome: "error" }),
+      expect.objectContaining({ details: { sql: "first" }, outcome: "ok" }),
+    ]);
+  });
 });

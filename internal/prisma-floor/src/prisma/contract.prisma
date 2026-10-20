@@ -1,0 +1,52 @@
+// use prisma-8
+//
+// The persistence example's contract as it was released on Prisma 8.0.0-rc.11,
+// before the rc.18 toolchain changed its syntax. `prisma/migrations` is that
+// release's history, byte for byte: it is the fixture, and it is never edited.
+
+namespace orders {
+  model Order {
+    id          Int               @id @default(autoincrement())
+    tenantId    String
+    orderId     String
+    quantity    Int
+    placedAt    TimestamptzString @default(now())
+    operationId String?
+
+    @@unique([tenantId, orderId])
+    @@rls
+  }
+
+  model Customer {
+    id         Int    @id @default(autoincrement())
+    tenantId   String
+    customerId String
+    name       String
+
+    @@unique([tenantId, customerId])
+  }
+
+  model OutboxMessage {
+    id          BigInt             @id @default(autoincrement())
+    tenantId    String
+    kind        String
+    subjectId   String
+    payload     String?
+    occurredAt  TimestamptzString  @default(now())
+    publishedAt TimestamptzString?
+
+    @@rls
+  }
+
+  policy_all order_tenant_isolation {
+    target    = Order
+    using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
+    withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
+  }
+
+  policy_all outbox_tenant_isolation {
+    target    = OutboxMessage
+    using     = "\"tenantId\" = current_setting('app.tenant_id', true)"
+    withCheck = "\"tenantId\" = current_setting('app.tenant_id', true)"
+  }
+}

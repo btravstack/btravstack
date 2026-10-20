@@ -24,20 +24,51 @@ declare const contractJson: unknown;
 > starter's own query middleware, and a client whose pool is the application
 > scope's. Prisma **8** — the runtime is `@prisma/orm-postgres`.
 
-## Upgrading the pinned release candidates
+## Supported Prisma trains
 
-The catalog uses Prisma CLI `8.0.0-rc.23`, CLI engine `0.7.0` and Postgres
-`8.0.0-rc.18`. The Postgres package requires `temporal-polyfill@^1.0.4`.
-Install the polyfill beside the Postgres facade with strict peer checks enabled.
+The `@prisma/orm-postgres` peer is `^8.0.0-rc.11`. Both Prisma 8 trains it
+admits are tested:
 
-The rc.18 middleware uses SQL encoding and statement activity hooks. Applications
-that implement middleware must migrate their hooks too. Existing table names
-need explicit `@@map` declarations because the default now preserves model case.
-Prisma's `data-type-in-contract` upgrade script converts stored contract snapshots
-and rewrites their hashes and migration references. After converting an existing
-database's migration history, verify its schema and run `prisma db sign` before
-deploying the upgraded application: its old marker names a replaced hash.
-The example's converted history also supports migration into an empty database.
+| Train  | `@prisma/orm-postgres` | `prisma` CLI  | `@prisma/cli-engine` | Tested by                                                        |
+| ------ | ---------------------- | ------------- | -------------------- | ---------------------------------------------------------------- |
+| Floor  | `8.0.0-rc.11`          | `8.0.0-rc.15` | `0.4.0`              | `internal/prisma-floor`: migrations released under it, unedited  |
+| Latest | `8.0.0-rc.18`          | `8.0.0-rc.23` | `0.7.0`              | the rest of the gate, including the order infrastructure example |
+
+The starter's middleware carries the hooks of both: `beforeQuery` /
+`afterQuery` / `beforeExecute` / `afterExecute` up to rc.17, and
+`beforeEncode` / `activityEnded` from rc.18. Each runtime calls only its own.
+Upgrading `@btravstack/prisma` therefore never requires upgrading Prisma.
+
+### Upgrading `@btravstack/prisma` with released migrations
+
+Upgrade `@btravstack/prisma` and its `@btravstack/*` peers. Keep the Prisma
+packages where they are. No contract, migration, snapshot or database marker
+changes, and `prisma db verify` keeps passing against the databases that
+already applied them. An application on `@btravstack/prisma` 0.44.0, which
+required rc.18, can return to rc.11 the same way.
+
+### Upgrading Prisma itself
+
+Upgrading Prisma is a separate decision, on your own schedule. It is not
+reversible for released migrations. The rc.15 toolchain stores a column's data
+type (`dataType`) instead of its database type name (`nativeType`), and later
+toolchains refuse an older snapshot:
+`contracts no longer store a column's database type name`. Prisma's only
+path is the `data-type-in-contract` script in its shipped upgrade notes
+(`@prisma/orm-postgres/skills/prisma-8/upgrading/`). It rewrites every stored
+contract, renames the snapshot directories to the new storage hashes, and
+rewrites each migration's `migrationHash`, the refs and every `migration.ts`.
+Every database then needs `prisma db sign`: until then `db migrate` fails with
+`MIGRATION.MARKER_MISMATCH` and `db verify` exits `4`.
+
+An application whose released migrations are never edited stays on the floor
+train until Prisma offers a path that keeps them. One that accepts the rewrite
+follows Prisma's notes for every step from its version to the latest. Three of
+those steps change what the application writes: from rc.12 a model's table
+name keeps its case unless `@@map` names it, from rc.14 the Postgres package
+requires `temporal-polyfill@^1.0.4` as a peer, and from rc.18 a policy's
+`using` and `withCheck` (like `@@index(where:)` and `@@check(expression:)`) are
+`sql` literals.
 
 ## Production dependency closure
 
@@ -183,8 +214,9 @@ arrow is where your contract and this starter meet, and the port is typed by
 exactly what it returns.
 
 It receives the URL, already validated, and the starter's own `middleware`.
-Spread that into the client rather than dropping it: it uses the SQL encoding and activity-completion
-hooks, and it is where the observation below comes from. Add your own middleware
+Spread that into the client rather than dropping it: it carries the statement
+hooks of every supported Prisma train, and it is where the observation below
+comes from. Add your own middleware
 beside it.
 
 This is also why the [`@btravstack/cache`](/reference/cache) shape — a fixed
@@ -206,11 +238,17 @@ a hook sees every statement on **every lane** — the ORM's, the SQL builder's a
 the raw one — without knowing the contract, which is the thing this package
 cannot see. The v7 `$allModels` wrapper saw only the first.
 
-**The operation opens in `beforeEncode` and settles in `activityEnded`.**
-Prisma's activity-local `ctx.state` holds its finisher, so overlapping statements
-settle independently. Both query and execute lanes use these hooks; transaction
-activities are ignored. Statements refused before SQL encoding open no query
-observation. Rendered SQL is available when the span opens.
+**The operation opens before the driver runs and settles after it**, so a span
+an observer opens is one the statement runs _inside_. From rc.18 it opens in
+`beforeEncode` and settles in `activityEnded`, its finisher held in the
+activity's own `ctx.state`; transaction activities are ignored, and a statement
+refused before encoding opens nothing. Up to rc.17 it opens in `beforeQuery` or
+`beforeExecute` and settles in `afterQuery` or `afterExecute`, paired by the
+context object the runtime hands every hook of one statement. A statement that
+rc.11 refuses after `beforeQuery` never reaches `afterQuery`, so its
+observation is never settled and is collected with that context. Either way both lanes are observed: a write with no
+`RETURNING`, run through `runtime().execute(plan)`, never reaches the query
+hooks, and overlapping statements settle independently.
 
 The operation is `component: "database"`, `name: "query"`, with `scope`
 (`runtime` / `connection` / `transaction`) and `source` (`driver` /
@@ -219,9 +257,11 @@ on `details`, where an unbounded value rides the span and the failure line but
 never an instrument. The row count is deliberately absent: it is unbounded, and
 one time series per row count is how a metrics bill becomes the incident.
 
-The statement activity outcome settles the observation, and a failed statement does reach the
-hook — measured against a real database, a duplicate insert arrives as
-`outcome: "failed"` before the rejection surfaces.
+The statement's outcome settles the observation (`outcome: "succeeded"` from
+rc.18, `completed: true` before it), and a failed statement does reach the
+hook — measured against a real database, a duplicate insert arrives as a
+failure before the rejection surfaces. A statement whose reader stopped early
+(`outcome: "stopped"`, rc.18 only) settles as an error.
 
 **Prisma 8 ships no OpenTelemetry instrumentation of its own**, so this is the
 whole seam rather than a second one. There is no `@prisma/instrumentation`
@@ -732,7 +772,7 @@ the index out of band and let the migration find it:
 **Engine-level tracing.** There is no engine. Prisma 8 is a TypeScript runtime
 and ships no instrumentation package, so the `Instrumentations` loader this
 starter contributed under Prisma 7 is gone, and with it the `Logger` it needed
-for one `debug` line. The SQL activity middleware is the whole seam, and it
+for one `debug` line. The statement middleware is the whole seam, and it
 carries the runtime's own `latencyMs`.
 
 **Transactions.** Commit boundaries belong to the adapter, spelled at the call;

@@ -21,6 +21,33 @@ the catalog pins `@prisma/orm-postgres` to `8.0.0-rc.18`. These are the
 versions adopted together, not a claim about the current dist-tags. Do not "fix" them to one number — for two of the three it
 names a version that was never published.
 
+**Two Prisma trains, and the peer admits both** (issue #641). The peer is
+`^8.0.0-rc.11`; the default catalog is the newest train and the
+`prisma-floor` catalog the oldest (`@prisma/orm-postgres@8.0.0-rc.11`,
+`prisma@8.0.0-rc.15`, `@prisma/cli-engine@0.4.0`), resolved only by
+`internal/prisma-floor`. The floor is not a courtesy. Toolchain rc.15 stores a
+column's `dataType` instead of its `nativeType`, later toolchains refuse an
+older snapshot, and Prisma's only path rewrites every released migration's
+snapshot and `migrationHash`, then re-signs every database
+(`data-type-in-contract` and `sign-databases-after-upgrade` in its upgrade
+notes). An
+application that never edits a released migration cannot take that path, and
+0.44.0, which raised the peer to rc.18 for the middleware alone, left it with
+no `@btravstack/prisma` release at all.
+
+- **Raising the floor is a breaking change**, made in a major with a migration
+  guide, never as a side effect of adopting a newer train. Adopting one means
+  the default catalog moves; the floor workspace stays.
+- **Everything this package touches must work on both.** The probe, the
+  row-security check, `/result`, `/rls` and the tenant listing use only
+  `raw.sql`, `affectedCount()`, `returnsRow()`, `runtime().query/close` and
+  `transaction`, which neither train changed. A new use of the client is
+  checked against the floor workspace, which boots the starter over a real
+  rc.11 client.
+- **The floor's migrations are a fixture, never edited**: the order example's
+  history as released under rc.11, applied by the floor CLI's `db migrate` and
+  checked by `db verify` against the released marker.
+
 **`@prisma/orm-postgres` ships its own agent skill**, at
 `node_modules/@prisma/orm-postgres/skills/prisma-8/`, which states that it is
 the source of truth for the exact installed version and to prefer it over
@@ -318,13 +345,37 @@ are deleted and `Instrumentations` is no longer in this module's exports.
 middleware sees every lane — the ORM's, the SQL builder's and the raw one —
 where `$allModels` saw only the first.
 
-**SQL encoding starts observation; statement activity completion settles it.**
-The Prisma 8 rc.18 hooks are `beforeEncode` and `activityEnded`. The former
-receives rendered SQL for both query and execute lanes. A symbol in
-`ctx.state` holds the observer's finisher for that activity, so concurrent
-statements stay separate without a process-wide map. Transaction activities
-are ignored. A `failed` or `stopped` statement settles `error`; `succeeded`
-settles `ok`. Statements refused before encoding never open an observation.
+**One middleware, the hooks of both trains** (issue #641). rc.18 replaced the
+per-statement hooks, and a consumer whose migrations were released under rc.11
+cannot follow it without rewriting them (see _Two Prisma trains_ above), so
+`queryObserver` carries both sets. Neither runtime refuses a hook it does not
+know (`checkMiddlewareCompatibility` reads only `familyId` and `targetId`), and
+the sets are disjoint, so each runtime calls its own pair and no statement is
+observed twice.
+
+- **From rc.18: `beforeEncode` opens, `activityEnded` settles.** `beforeEncode`
+  receives rendered SQL on both lanes. A symbol in `ctx.state` holds the
+  finisher for that activity, so concurrent statements stay apart without a
+  map. Transaction activities are ignored. `failed` or `stopped` settles
+  `error`; `succeeded` settles `ok`. A statement refused before encoding never
+  opens an observation.
+- **Up to rc.17: `beforeQuery` / `beforeExecute` open, `afterQuery` /
+  `afterExecute` settle**, paired in a `WeakMap` keyed by the operation's
+  context, the one object rc.11 hands every hook of a statement (the floor
+  spec proves it against a real client). Weakly, because rc.11 does not end
+  every statement it began: one refused after `beforeQuery` (a later
+  middleware, a codec, an abort) never reaches `afterQuery`, and a map keyed
+  by `planExecutionId` would hold its finisher for the client's lifetime.
+  Such a statement's observation is never settled; it is collected with its
+  context. Both pairs, because a SQL-builder write with no `RETURNING` run
+  through `runtime().execute(plan)` never touches the query hooks. A failed
+  statement arrives as `completed: false`.
+
+Either way the operation STARTS before the driver runs, because `Observers`
+answers a finisher precisely so a span can be opened around the work, and the
+runtime's own `latencyMs` is not passed along: the observer's duration is its
+own. `internal/prisma-floor` proves the rc.11 pair against a real client, and
+the order infrastructure example proves the rc.18 pair.
 
 **The middleware is a CONSTRUCTION option, not a wrapper**, which is why
 `PrismaBinding` carries it: Prisma 8 has no `$extends` to layer one over a

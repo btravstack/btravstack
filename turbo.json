@@ -19,6 +19,10 @@
       "inputs": ["$TURBO_DEFAULT$", "src/prisma/contract.prisma", "prisma.config.ts"],
       "outputs": ["src/prisma/contract.json", "src/prisma/contract.d.ts"]
     },
+    "@btravstack/internal-prisma-floor#generate": {
+      "inputs": ["$TURBO_DEFAULT$", "src/prisma/contract.prisma", "prisma.config.ts"],
+      "outputs": ["src/prisma/contract.json", "src/prisma/contract.d.ts"]
+    },
     "typecheck": {
       "dependsOn": ["build", "generate", "^generate"]
     },

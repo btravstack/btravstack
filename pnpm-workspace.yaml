@@ -178,6 +178,16 @@ catalogs:
   # resolves this catalog.
   typedoc:
     typescript: 6.0.3
+  # The OLDEST Prisma 8 train `@btravstack/prisma` supports, the floor of its
+  # `@prisma/orm-postgres` peer. rc.15 is the last CLI on toolchain rc.11, and
+  # an application whose migrations were released under it cannot leave without
+  # rewriting them (toolchain rc.15 stores a column's data type, not its
+  # database type name). The default catalog above is the newest train; only
+  # `internal/prisma-floor` resolves this one, so CI runs both.
+  prisma-floor:
+    "@prisma/cli-engine": 0.4.0
+    "@prisma/orm-postgres": 8.0.0-rc.11
+    prisma: 8.0.0-rc.15
 
 # Force patched versions of vulnerable transitive dependencies. Every advisory
 # below reaches us only through dev/build tooling (never a published package's

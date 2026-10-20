@@ -1,0 +1,68 @@
+[
+  {
+    "id": "column.orders.order.placedAt",
+    "label": "Add column \"placedAt\" to \"order\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "orders",
+        "objectType": "column",
+        "name": "placedAt",
+        "table": "order"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"placedAt\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": ["orders", "order", "placedAt"]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"placedAt\"",
+        "sql": "ALTER TABLE \"orders\".\"order\" ADD COLUMN \"placedAt\" timestamptz DEFAULT (now()) NOT NULL"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"placedAt\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": ["orders", "order", "placedAt"]
+      }
+    ]
+  },
+  {
+    "id": "backfill.order.placedAt",
+    "label": "Backfill \"order\".\"placedAt\" from each order's latest surviving placement outbox row; orders with none keep the migration time",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "orders",
+        "objectType": "column",
+        "name": "placedAt",
+        "table": "order"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure \"order\".\"placedAt\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 FROM \"information_schema\".\"columns\" WHERE \"table_schema\" = 'orders' AND \"table_name\" = 'order' AND \"column_name\" = 'placedAt') AS \"result\""
+      }
+    ],
+    "execute": [
+      {
+        "description": "copy each order's latest placement time out of the outbox",
+        "sql": "UPDATE \"orders\".\"order\" AS o SET \"placedAt\" = placed.\"occurredAt\" FROM (SELECT \"tenantId\", \"subjectId\", max(\"occurredAt\") AS \"occurredAt\" FROM \"orders\".\"outboxMessage\" WHERE \"kind\" = 'order' AND \"payload\" IS NOT NULL GROUP BY \"tenantId\", \"subjectId\") AS placed WHERE placed.\"tenantId\" = o.\"tenantId\" AND placed.\"subjectId\" = o.\"orderId\""
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify no order with a surviving placement row kept the migration time",
+        "sql": "SELECT NOT EXISTS (SELECT 1 FROM \"orders\".\"order\" AS o JOIN (SELECT \"tenantId\", \"subjectId\", max(\"occurredAt\") AS \"occurredAt\" FROM \"orders\".\"outboxMessage\" WHERE \"kind\" = 'order' AND \"payload\" IS NOT NULL GROUP BY \"tenantId\", \"subjectId\") AS placed ON placed.\"tenantId\" = o.\"tenantId\" AND placed.\"subjectId\" = o.\"orderId\" WHERE o.\"placedAt\" <> placed.\"occurredAt\") AS \"result\""
+      }
+    ]
+  }
+]

@@ -52,6 +52,10 @@
     "examples/order-infrastructure": {
       "ignore": ["prisma/migrations/**"]
     },
+    "internal/prisma-floor": {
+      "entry": ["src/prisma/contract.prisma"],
+      "ignore": ["prisma/migrations/**"]
+    },
     "examples/order-temporal-worker": {
       "entry": ["src/__tests__/legacy-workflows.ts"],
       "ignoreDependencies": ["zod"]

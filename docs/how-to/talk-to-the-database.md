@@ -56,7 +56,7 @@ is typed by **your** emitted `Contract` and built from **your**
 what the port carries.
 
 Spread `middleware` into the client rather than dropping it: that is the
-starter's own `afterQuery` hook, and it is where the per-query observation
+starter's own statement middleware, and it is where the per-query observation
 below comes from.
 
 ## 2. Declare the port your domain speaks
