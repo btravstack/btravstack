@@ -445,6 +445,7 @@ overrides:
   brace-expansion@>=4.0.0 <5.0.11: 5.0.12
   sharp@<0.35.5: 0.35.5
   source-map-js@>=1.0.0 <1.2.2: 1.2.2
+  markdown-it@>=15.0.0 <15.0.2: 15.0.2
 
 patchedDependencies:
   '@stryker-mutator/vitest-runner@10.0.0': 5f4ad60ad736e0e901c764ef6e54e6e8ddfa32b5e5d29ccc5f103c8703761a51
@@ -8533,8 +8534,8 @@ packages:
     resolution: {integrity: sha512-sHHjZ5fJKlgrG4qns2YwVcdNep35h5fERrfkD2YNsb9UFk0UIHarbiTaHKVMlPuWAoiilyK8Fv/jAm11slsY7Q==}
     hasBin: true
 
-  markdown-it@15.0.1:
-    resolution: {integrity: sha512-9/7gE95FNPkfUWrjJIoHZza2iLmuJlPD0UNMxPi7bxUrbCR525YZY0r+zyfes0dZI5ZZ/uNIXUJca0pJvtw41g==}
+  markdown-it@15.0.2:
+    resolution: {integrity: sha512-q4IGxMv56jCqT4OCRCADBoDP3LO4MhmTXjFbphHPXs4g3j9Xg5RDnxqN8IF/3vIWEU+VCnUq+7JUg/cfy2E6Qw==}
     hasBin: true
 
   markdownlint-cli2-formatter-default@0.0.6:
@@ -16148,7 +16149,7 @@ snapshots:
       punycode.js: 2.3.1
       uc.micro: 2.1.0
 
-  markdown-it@15.0.1:
+  markdown-it@15.0.2:
     dependencies:
       argparse: 3.0.2
       entities: 8.1.0
@@ -16167,7 +16168,7 @@ snapshots:
       js-yaml: 5.4.1
       jsonc-parser: 3.3.1
       jsonpointer: 5.0.1
-      markdown-it: 15.0.1
+      markdown-it: 15.0.2
       markdownlint: 0.41.1(supports-color@8.1.1)
       markdownlint-cli2-formatter-default: 0.0.6(markdownlint-cli2@0.23.3(supports-color@8.1.1))
       micromatch: 4.0.8
