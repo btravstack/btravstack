@@ -1463,7 +1463,7 @@ that DESTROYS information: the provider's reason must not cross the wire, a
 `401` is not an error the runtime's RED metrics count, and `grant_failed` looks
 identical whether the client secret rotated, the token endpoint died, or the
 code was genuinely bad. So each refusal settles `outcome: "error"` with
-`attributes: { reason }` — five literal values, safe on an instrument — and the
+`attributes: { reason }` — a fixed set of literal values, safe on an instrument — and the
 unbounded half, the provider's `error_description` and the library error's
 message, rides the `cause`, which an observer puts on a line or a span and
 never on a metric. That split is why this could not be a `Logger`: a `warn`

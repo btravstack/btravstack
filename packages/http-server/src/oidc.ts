@@ -218,7 +218,7 @@ const observed = (
  *
  * **The reason leaves the process exactly once, through the observer**, and
  * never on the wire: a refusal carries a status and nothing else. `reason` is
- * the bounded half — five literal values, safe on an instrument — and `cause`
+ * the bounded half — literal values, safe on an instrument — and `cause`
  * is the unbounded one, which is where a provider's own `error_description`
  * and a library error's message go: an observer puts a cause on a line or a
  * span, never on a metric.

@@ -521,12 +521,13 @@ The two rules this half exists to state, before the detail:
   **A refused login is an OPERATION, reported to `Observers` like a cache
   miss.** Each of the three routes is one, `component: "oidc"`, and a refusal
   settles `error` carrying its own `reason` — `transient_missing`,
-  `state_mismatch`, `provider_refused`, `grant_failed`, `principal_refused`.
+  `state_mismatch`, `provider_refused`, `grant_failed`, `principal_refused`,
+  `token_store_failed`.
   That matters because a refused login is the one refusal in this package that
   DESTROYS information: the provider's reason must not cross the wire, a `401`
   is not an error the runtime's RED metrics count, and a rotated client secret,
   a dead token endpoint and a genuinely bad code all look identical from
-  outside. `reason` is a dimension and is bounded — five literals — while the
+  outside. `reason` is a dimension and is bounded — a fixed set of literals — while the
   provider's own `error_description` and the library error's message are
   caller-controlled and unbounded, so they ride the `cause`, which an observer
   puts on a line or a span and never on an instrument. It costs a root nothing:
