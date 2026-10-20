@@ -549,8 +549,12 @@ This does not change ordinary di module visibility.
   answerer's limit: the runtime reads no body, so a bare `HttpAnswerer`
   streams one of any size and owes its own ceiling. `http-runtime.spec.ts`
   holds that, putting 256 MiB through a bare answerer and reading 256 MiB back
-  out of one in bounded live memory. oRPC is no route for a file: it reads a
-  body that declares its length into a `File`, whole.
+  out of one in bounded live memory. oRPC reads a body that declares its
+  length into a `File`, whole, unless its OpenAPI route declares
+  `requestBodyHint: "octet-stream"`: that body reaches the handler as a
+  stream, bounded by **`streamBodyLimit`** (`HTTP_STREAM_BODY_LIMIT`, 1 GiB)
+  instead. Both limits are one plugin in `orpc-server`'s `body-limit.ts`;
+  the reasoning is in that package's `AGENTS.md`.
 
   **`compression` is the RESPONSE half only.** `RequestCompressionHandlerPlugin`
   stays in `plugins`: inflating a body before the limit measures it is an

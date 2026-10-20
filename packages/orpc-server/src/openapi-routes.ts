@@ -21,7 +21,10 @@ class ContractOpenApiCodec extends OpenAPIHandlerCodec<DefaultInitialContext> {
 }
 
 /** Answerer-local policies; body limits and CSRF belong to the HTTP module. */
-export type OpenApiRoutesOptions = Omit<OrpcOptions, "prefix" | "bodyLimit" | "csrf"> & {
+export type OpenApiRoutesOptions = Omit<
+  OrpcOptions,
+  "prefix" | "bodyLimit" | "streamBodyLimit" | "csrf"
+> & {
   /** Where ordinary method-and-path requests are served. Default `/api`. */
   readonly prefix?: `/${string}`;
 };

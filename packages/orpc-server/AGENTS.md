@@ -26,6 +26,27 @@ range retains the older line for existing consumers, while the catalog checks
 the released 0.4.2 fixes with unthrown 5.12.1 and oRPC beta.44. The strict
 consumer gate still checks the older advertised floor.
 
+**A body is limited by how the route reads it.** `body-limit.ts` replaces
+oRPC's `RequestLimitHandlerPlugin` with one plugin under upstream's name and
+order (inside `~batch`, inside `~request-compression`, so a body is measured
+inflated). A `resolveBody` call with the hint `"octet-stream"` — what the
+OpenAPI codec passes for a route declaring `requestBodyHint: "octet-stream"` —
+gets the raw stream bounded by `HttpConfig.streamBodyLimit`
+(`HTTP_STREAM_BODY_LIMIT`, 1 GiB); every other call goes through upstream's
+own limiting interceptor, run with `bodyLimit`, so buffered bodies keep
+oRPC's parsing exactly. The hint is the route's, never inferred from headers,
+so a client cannot select the larger limit; the RPC codec never passes one.
+A declared `content-length` over the stream limit is refused before reading;
+past it, the stream errors with `PAYLOAD_TOO_LARGE` and a handler
+interceptor answers `413` whatever the handler made of that error, because
+`@unthrown/orpc` turns an `ORPCError` defect cause into a `500` on purpose.
+The request carries that state under a symbol key, which survives the spreads
+other interceptors make of it. `@orpc/node`'s `TmpFileUploadHandlerPlugin`
+has the same three-kind model but spools files to disk and adds a peer; a
+route that streams needs neither. The default is finite because nothing is
+buffered: the limit bounds one client's hold on a connection and whatever the
+handler streams into, not memory.
+
 `HttpModule` shares application-root exports with `GraphqlModule`: runtime
 ports are automatic, as are available `Logger` and `HealthChecks` ports.
 Business exports remain explicit; private imported providers remain private.

@@ -281,26 +281,27 @@ independent of the deployment options below.
 supplying neither is refused at the call. It is the only way to compose the
 starter, which is not exported:
 
-| Option             | What it is                                                                                                             |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `router`           | the router provider — what `api.OrpcRouter(contract)(...)` returns                                                     |
-| `fragments`        | the fragments provider — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces          |
-| `prefix`           | where the RPC endpoint is mounted (default `/rpc`)                                                                     |
-| `fragmentsPrefix`  | where htmx fragments are mounted (default `/`, `htmx()`'s own default)                                                 |
-| `openapi`          | serves the router as OpenAPI routes too — `true`, or `openApiRoutes()`'s options (off; needs `router`)                 |
-| `port`             | pins `PORT`                                                                                                            |
-| `hostname`         | pins `HOST`                                                                                                            |
-| `headersTimeoutMs` | pins `HTTP_HEADERS_TIMEOUT_MS` — how long a client may take to send its headers before a `408` (60 s)                  |
-| `requestTimeoutMs` | pins `HTTP_REQUEST_TIMEOUT_MS` — how long a client may take to send a whole request (300 s)                            |
-| `cors`             | pins `HTTP_CORS_ORIGIN` — `true` for oRPC's defaults, or its `CORSHandlerPluginOptions` (off); RPC and `openapi`       |
-| `bodyLimit`        | pins `HTTP_BODY_LIMIT` — the largest body a procedure or a fragment POST reads, in bytes (1 MiB; `false` is unbounded) |
-| `compression`      | pins `HTTP_COMPRESSION` — response compression, `true` for oRPC's defaults or its options record; RPC and `openapi`    |
-| `plugins`          | any other oRPC handler plugin, forwarded to `RPCHandler`                                                               |
-| `securityHeaders`  | response headers set on the raw listener, before dispatch (default on)                                                 |
-| `csrf`             | refuse a cross-site state change carrying cookies, before dispatch (default: on once a scheme reads a cookie)          |
-| `unit`             | kind → module: `anonymous`, or a scheme — both answerers fork the kind that authenticated the request                  |
+| Option             | What it is                                                                                                                    |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `router`           | the router provider — what `api.OrpcRouter(contract)(...)` returns                                                            |
+| `fragments`        | the fragments provider — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces                 |
+| `prefix`           | where the RPC endpoint is mounted (default `/rpc`)                                                                            |
+| `fragmentsPrefix`  | where htmx fragments are mounted (default `/`, `htmx()`'s own default)                                                        |
+| `openapi`          | serves the router as OpenAPI routes too — `true`, or `openApiRoutes()`'s options (off; needs `router`)                        |
+| `port`             | pins `PORT`                                                                                                                   |
+| `hostname`         | pins `HOST`                                                                                                                   |
+| `headersTimeoutMs` | pins `HTTP_HEADERS_TIMEOUT_MS` — how long a client may take to send its headers before a `408` (60 s)                         |
+| `requestTimeoutMs` | pins `HTTP_REQUEST_TIMEOUT_MS` — how long a client may take to send a whole request (300 s)                                   |
+| `cors`             | pins `HTTP_CORS_ORIGIN` — `true` for oRPC's defaults, or its `CORSHandlerPluginOptions` (off); RPC and `openapi`              |
+| `bodyLimit`        | pins `HTTP_BODY_LIMIT` — the largest body a procedure or a fragment POST reads, in bytes (1 MiB; `false` is unbounded)        |
+| `streamBodyLimit`  | pins `HTTP_STREAM_BODY_LIMIT` — the largest body an `openapi` route reads as a stream, in bytes (1 GiB; `false` is unbounded) |
+| `compression`      | pins `HTTP_COMPRESSION` — response compression, `true` for oRPC's defaults or its options record; RPC and `openapi`           |
+| `plugins`          | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                      |
+| `securityHeaders`  | response headers set on the raw listener, before dispatch (default on)                                                        |
+| `csrf`             | refuse a cross-site state change carrying cookies, before dispatch (default: on once a scheme reads a cookie)                 |
+| `unit`             | kind → module: `anonymous`, or a scheme — both answerers fork the kind that authenticated the request                         |
 
-`cors`, `bodyLimit` and `compression` **pin** a field of `HttpConfig` that is
+`cors`, `bodyLimit`, `streamBodyLimit` and `compression` **pin** a field of `HttpConfig` that is
 otherwise bound from the environment — explicit beats environment beats
 default, per field — so a deployment sets `HTTP_CORS_ORIGIN` or
 `HTTP_BODY_LIMIT` without a code change, and a test pins them instead. The rest
@@ -405,6 +406,18 @@ false and the pre-drain delay has been paid, so the reconnect lands on a
 replica that is staying — and the client resumes from `Last-Event-ID`. The
 recipe is
 [Stream with server-sent events](https://btravstack.github.io/btravstack/how-to/stream-with-server-sent-events).
+
+A raw body streams too, over the `openapi` routes. A route declaring
+`openapi({ method: "PUT", path: "/files/{key}", inputStructure: "detailed",
+requestBodyHint: "octet-stream" })` gets `input.body` as a `ReadableStream`
+while the client is still sending, bounded by `streamBodyLimit` rather than
+`bodyLimit`: a declared `content-length` over it is `413` before reading, and
+a body that passes it errors its stream and answers `413` whatever the
+handler made of the error. An `outputStructure: "detailed"` answer whose
+`body` is a `ReadableStream` streams out with the `headers` it names, and a
+stream that errors midway resets the connection rather than ending a short
+body cleanly. The recipe is
+[Serve an oRPC contract as OpenAPI routes](https://btravstack.github.io/btravstack/how-to/serve-an-openapi-contract#stream-a-binary-body).
 
 ## What it does not do
 

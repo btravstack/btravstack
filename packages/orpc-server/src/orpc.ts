@@ -44,13 +44,13 @@ import { RPCHandler, type RPCHandlerOptions } from "@orpc/server/node";
 import {
   CORSHandlerPlugin,
   GetMethodCsrfProtectionHandlerPlugin,
-  RequestLimitHandlerPlugin,
   ResponseCompressionHandlerPlugin,
   type CORSHandlerPluginOptions,
   type ResponseCompressionHandlerPluginOptions,
 } from "@orpc/server/plugins";
 import { RPC_DEFAULT_ALLOW_METHODS, type StandardHandlerPlugin } from "@orpc/server/standard";
 
+import { bodyLimitPlugin } from "./body-limit.js";
 import type {
   AllRequirementsOf,
   Built,
@@ -89,9 +89,21 @@ export type OrpcOptions = {
    * {@link DEFAULT_BODY_LIMIT}) — the largest request body a procedure will
    * read, in bytes; `false` pins the unbounded `0`. Over the limit is oRPC's
    * `PAYLOAD_TOO_LARGE`, decided on `content-length` when one is sent and while
-   * streaming otherwise.
+   * streaming otherwise. A body a route reads as a stream is bounded by
+   * `streamBodyLimit` instead.
    */
   readonly bodyLimit?: number | false;
+  /**
+   * Pins `HttpConfig.streamBodyLimit` instead of reading
+   * `HTTP_STREAM_BODY_LIMIT` (default {@link DEFAULT_STREAM_BODY_LIMIT}) — the
+   * largest body an OpenAPI route declaring `requestBodyHint: "octet-stream"`
+   * reads, in bytes; `false` pins the unbounded `0`. The handler gets the body
+   * as a `ReadableStream` while it arrives; a declared `content-length` over
+   * the limit is `PAYLOAD_TOO_LARGE` before reading, and the stream errors
+   * with it once more bytes than the limit have passed. The RPC wire reads
+   * every body by its headers, so `bodyLimit` bounds all of them.
+   */
+  readonly streamBodyLimit?: number | false;
   /**
    * Response compression, off unless this or `HTTP_COMPRESSION` turns it on. `true`
    * takes oRPC's own defaults (gzip then deflate, above 1 KB); a record is
@@ -160,9 +172,9 @@ export const pluginsOf = (
     // which a browser can be navigated to. Disjoint, so nothing is refused twice.
     ...(csrf ? [new GetMethodCsrfProtectionHandlerPlugin()] : []),
     ...(cors === undefined ? [] : [new CORSHandlerPlugin(cors)]),
-    ...(config.bodyLimit === 0
+    ...(config.bodyLimit === 0 && config.streamBodyLimit === 0
       ? []
-      : [new RequestLimitHandlerPlugin({ maxBodySize: config.bodyLimit })]),
+      : [bodyLimitPlugin(config.bodyLimit, config.streamBodyLimit)]),
     ...(compressionEnabled ? [new ResponseCompressionHandlerPlugin(compression)] : []),
     ...(options.plugins ?? []),
   ];
