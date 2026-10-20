@@ -72,10 +72,27 @@ export const aDocument = (): { bytes: Uint8Array; contentType: string } => ({
 /** One MiB, the unit every streamed size in these specs is counted in. */
 export const MiB = 1_048_576;
 
+// A full collection before each sample, so what is measured is what a
+// transfer still holds rather than garbage the collector has not reached.
+// Sampled by bytes moved, not by a timer: a collection every few
+// milliseconds starved a loaded runner's transfer.
+setFlagsFromString("--expose-gc");
+const collectGarbage = runInNewContext("gc") as () => void;
+const used = (): number => {
+  collectGarbage();
+  const { heapUsed, arrayBuffers } = process.memoryUsage();
+  return heapUsed + arrayBuffers;
+};
+let peak = 0;
+const sampled = (moved: number): void => {
+  if (moved % (32 * MiB) === 0) peak = Math.max(peak, used());
+};
+
 /**
  * `size` bytes in 64 KiB chunks, each a fresh buffer filled with its index, so
  * a reordered or dropped chunk changes the digest. `failingAt` errors the
  * stream once that many bytes are out; `cancelled` hears a cancel's reason.
+ * Every 32 MiB it sends is a sample of a running `peakGrowth`.
  */
 export const aStream = (
   size: number,
@@ -95,6 +112,7 @@ export const aStream = (
         controller.close();
         return;
       }
+      sampled(sent);
       const length = Math.min(65_536, size - sent);
       controller.enqueue(new Uint8Array(length).fill((sent / 65_536) % 251));
       sent += length;
@@ -103,44 +121,38 @@ export const aStream = (
   });
 };
 
-/** What a stream carried, read to its end: its length and its SHA-256. */
+/**
+ * What a stream carried, read to its end: its length and its SHA-256. Every
+ * 32 MiB it reads is a sample of a running `peakGrowth`.
+ */
 export const digestOf = async (
   stream: ReadableStream<Uint8Array>,
 ): Promise<{ readonly size: number; readonly sha256: string }> => {
   const digest = createHash("sha256");
   let size = 0;
+  let sampledAt = 0;
   for await (const chunk of stream) {
     digest.update(chunk);
     size += chunk.byteLength;
+    if (size - sampledAt >= 32 * MiB) {
+      sampledAt = size;
+      sampled(0);
+    }
   }
   return { size, sha256: digest.digest("hex") };
 };
 
-// A full collection before each sample, so what is measured is what a
-// transfer still holds rather than garbage the collector has not reached.
-setFlagsFromString("--expose-gc");
-const collectGarbage = runInNewContext("gc") as () => void;
-
 /**
  * `work`'s value, and how far the live heap plus array buffers rose above
- * where they stood before it: a transfer held whole rises by its size.
+ * where they stood before it, sampled as `aStream` and `digestOf` move bytes:
+ * a transfer held whole rises by its size.
  */
 export const peakGrowth = async <T>(
   work: () => PromiseLike<T>,
 ): Promise<{ readonly value: T; readonly growth: number }> => {
-  const used = (): number => {
-    const { heapUsed, arrayBuffers } = process.memoryUsage();
-    return heapUsed + arrayBuffers;
-  };
-  collectGarbage();
   const before = used();
-  let peak = before;
-  const sampling = setInterval(() => {
-    collectGarbage();
-    peak = Math.max(peak, used());
-  }, 20);
+  peak = before;
   const value = await work();
-  clearInterval(sampling);
   return { value, growth: Math.max(peak, used()) - before };
 };
 

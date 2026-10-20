@@ -2096,9 +2096,13 @@ const htmxAnswererOf = (): AsyncResult<HttpAnswerer, never> =>
 
 /** What a spec moving a large body needs: a source, and the memory moving it cost. */
 export type Streamed = {
-  /** `size` zero bytes, as 64 KiB chunks of one shared buffer, so the source itself allocates nothing. */
+  /**
+   * `size` zero bytes, as 64 KiB chunks of one shared buffer, so the source
+   * itself allocates nothing. Every 32 MiB it pulls is a sample of a running
+   * `peakGrowth`.
+   */
   readonly source: (size: number) => ReadableStream<Uint8Array>;
-  /** `work`'s value, and how far the live heap plus array buffers rose while it ran. */
+  /** `work`'s value, and how far the live heap plus array buffers rose while it ran, sampled by `source`. */
   readonly peakGrowth: <T>(
     work: () => Promise<T>,
   ) => Promise<{ readonly value: T; readonly growth: number }>;
@@ -2567,12 +2571,16 @@ export const it = test.extend<HttpFixtures>({
     const chunk = new Uint8Array(65_536);
     // A full collection before each sample, so what is measured is what the
     // transfer still holds rather than garbage the collector has not reached.
+    // Sampled by bytes moved, not by a timer: a collection every few
+    // milliseconds starved a loaded runner's transfer.
     setFlagsFromString("--expose-gc");
     const collectGarbage = runInNewContext("gc") as () => void;
     const used = (): number => {
+      collectGarbage();
       const { heapUsed, arrayBuffers } = process.memoryUsage();
       return heapUsed + arrayBuffers;
     };
+    let peak = 0;
     await use({
       source: (size) => {
         let sent = 0;
@@ -2582,6 +2590,7 @@ export const it = test.extend<HttpFixtures>({
               controller.close();
               return;
             }
+            if (sent % 33_554_432 === 0) peak = Math.max(peak, used());
             const length = Math.min(chunk.byteLength, size - sent);
             controller.enqueue(chunk.subarray(0, length));
             sent += length;
@@ -2589,15 +2598,9 @@ export const it = test.extend<HttpFixtures>({
         });
       },
       peakGrowth: async (work) => {
-        collectGarbage();
         const before = used();
-        let peak = before;
-        const sampling = setInterval(() => {
-          collectGarbage();
-          peak = Math.max(peak, used());
-        }, 20);
+        peak = before;
         const value = await work();
-        clearInterval(sampling);
         return { value, growth: Math.max(peak, used()) - before };
       },
     });
