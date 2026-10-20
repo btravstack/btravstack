@@ -1,5 +1,18 @@
 # @btravstack/http-server
 
+## 0.42.0
+
+### Minor Changes
+
+- b1c37f2: Add `protectedResourcePerHost()`: Protected Resource Metadata (RFC 9728) for a deployment serving one domain per tenant. The resource identifier is derived per request from its host and `HTTP_RESOURCE_PATH`, and admitted only when the application's `ServedHosts` port (handed the request unit's `AbortSignal`) vouches for that host: the metadata document and the `WWW-Authenticate` challenge on the `401` and the typed scope `403` name that host's resource, while an unserved or forged host gets a `404` and no challenge. `HttpChallenges` also takes an `HttpRequestChallenge`, which the runtime settles before dispatch for a request on its path alone.
+
+### Patch Changes
+
+- @btravstack/config@0.42.0
+  - @btravstack/contract@0.42.0
+  - @btravstack/core@0.42.0
+  - @btravstack/di@0.42.0
+
 ## 0.41.0
 
 ### Patch Changes
