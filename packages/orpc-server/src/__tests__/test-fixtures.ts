@@ -36,6 +36,7 @@ export type Answer = {
 };
 
 export type Bodies = {
+  readonly breakDownload: () => void;
   /** Boots one app on an ephemeral port, over `env`, and answers its port. */
   readonly serve: (app: BodiesApp, env?: Readonly<Record<string, string>>) => Promise<number>;
   /** Settles once the content route's `PUT` has read its first chunk. */
@@ -93,8 +94,15 @@ export const it: TestAPI<HttpFixtures & Fixtures> = base.extend<Fixtures>({
         if (operation.name === "defect") defects.push(operation);
       },
     });
+    let breakDownload = (): void => {};
     const shared = {
-      router: contentRouterOf(() => sawFirstChunk(), downloads),
+      router: contentRouterOf(
+        () => sawFirstChunk(),
+        downloads,
+        (controller) => {
+          breakDownload = () => controller.error(new Error("the store broke off"));
+        },
+      ),
       provides: [observer],
       port: 0,
       hostname: "127.0.0.1",
@@ -121,6 +129,7 @@ export const it: TestAPI<HttpFixtures & Fixtures> = base.extend<Fixtures>({
         HttpModule("UnboundedStreams")({ ...shared, streamBodyLimit: false, openapi: true }),
     };
     await use({
+      breakDownload: () => breakDownload(),
       serve: async (app, env = {}) =>
         (await boot(apps[app](), { env }).runtimeInfo()).get()?.port ?? 0,
       firstChunk,
@@ -211,7 +220,11 @@ const contentContract = {
  * `export` streams it too, from a route declaring `responseBodyHint`, and
  * `bundle` answers it inside a `Map`.
  */
-const contentRouterOf = (sawFirstChunk: () => void, downloads: ("opened" | "cancelled")[]) =>
+const contentRouterOf = (
+  sawFirstChunk: () => void,
+  downloads: ("opened" | "cancelled")[],
+  onBroken: (controller: ReadableStreamDefaultController<Uint8Array>) => void,
+) =>
   defineHttp().OrpcRouter(contentContract)({
     inject: {},
     sync: () => ({
@@ -223,7 +236,7 @@ const contentRouterOf = (sawFirstChunk: () => void, downloads: ("opened" | "canc
         get: (_context, { key }) =>
           OkAsync(
             key === "broken"
-              ? { headers: { "content-type": "text/plain" }, body: brokenAfter(DOWNLOAD) }
+              ? { headers: { "content-type": "text/plain" }, body: brokenAfter(DOWNLOAD, onBroken) }
               : {
                   headers: {
                     "content-type": "text/plain",
@@ -278,11 +291,14 @@ const recorded = (
     },
   });
 
-const brokenAfter = (text: string): ReadableStream<Uint8Array> =>
+const brokenAfter = (
+  text: string,
+  onReady: (controller: ReadableStreamDefaultController<Uint8Array>) => void,
+): ReadableStream<Uint8Array> =>
   new ReadableStream({
     start: (controller) => {
       controller.enqueue(new TextEncoder().encode(text));
-      setTimeout(() => controller.error(new Error("the store broke off")), 50);
+      onReady(controller);
     },
   });
 

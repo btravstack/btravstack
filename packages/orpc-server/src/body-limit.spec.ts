@@ -136,6 +136,8 @@ describe("body limits by kind", () => {
     // WHEN a client reads the answer
     const response = await fetch(`http://127.0.0.1:${port}/api/content/broken`);
 
+    bodies.breakDownload();
+
     // THEN the read rejects rather than ending cleanly on a short body
     await expect(response.text()).rejects.toThrow();
   });
@@ -148,6 +150,7 @@ describe("body limits by kind", () => {
     const response = await fetch(`http://127.0.0.1:${port}/api/content/broken`, {
       headers: { "accept-encoding": "gzip" },
     });
+    bodies.breakDownload();
     const read = await response.text().then(
       () => "ended",
       () => "rejected",
