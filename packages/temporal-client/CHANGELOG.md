@@ -1,5 +1,11 @@
 # @btravstack/temporal-client
 
+## 0.44.1
+
+### Patch Changes
+
+- @btravstack/di@0.44.1
+
 ## 0.44.0
 
 ### Patch Changes
