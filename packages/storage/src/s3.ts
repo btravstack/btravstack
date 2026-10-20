@@ -1,16 +1,32 @@
+import { createHash } from "node:crypto";
+
 import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
   CopyObjectCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
+  UploadPartCommand,
+  type CompletedPart,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
 import type { Scope } from "@btravstack/di";
 import { Module, Port, Provider } from "@btravstack/di";
-import { Ok, fromPromise } from "unthrown";
+import {
+  Err,
+  Ok,
+  OkAsync,
+  P,
+  fromPromise,
+  fromSafePromise,
+  fromThrowable,
+  type AsyncResult,
+} from "unthrown";
 
 import { validateOptions } from "./options.js";
 import {
@@ -19,9 +35,13 @@ import {
   ObjectNotFound,
   StorageBackend,
   StorageUnavailable,
+  StreamInterrupted,
+  type InvalidStorageOptions,
   type ObjectHead,
   type StorageService,
   type StoredObject,
+  type StreamedObject,
+  type WriteOptions,
 } from "./storage.js";
 
 /** What the graph bound from the environment for the S3 adapter. */
@@ -94,6 +114,249 @@ const hexToBase64 = (hex: string): string => Buffer.from(hex, "hex").toString("b
 const base64ToHex = (base64: string): string => Buffer.from(base64, "base64").toString("hex");
 
 /**
+ * Every part but the last must reach S3's 5 MiB floor. At 8 MiB, S3's 10,000
+ * parts cap a streamed object near 78 GiB.
+ */
+const PART_SIZE = 8 * 1024 * 1024;
+
+type Part = { readonly bytes: Buffer; readonly ended: boolean };
+
+/** The stream being read, and what is left of a chunk that straddled the last part's end. */
+type Source = {
+  readonly reader: ReadableStreamDefaultReader<Uint8Array>;
+  rest: Uint8Array | undefined;
+};
+
+/**
+ * The next part of the stream, at most `PART_SIZE` however large the chunks
+ * are; `ended` once the stream is done. The digest takes the part's own copy,
+ * so it covers exactly the bytes sent, whatever the producer does to a chunk
+ * after handing it over.
+ */
+const readPart = (
+  source: Source,
+  key: string,
+  digest: ReturnType<typeof createHash>,
+): AsyncResult<Part, StreamInterrupted> =>
+  fromPromise(
+    (async (): Promise<Part> => {
+      const chunks: Uint8Array[] = [];
+      let length = 0;
+      const part = (ended: boolean): Part => {
+        const bytes = Buffer.concat(chunks, length);
+        digest.update(bytes);
+        return { bytes, ended };
+      };
+      while (length < PART_SIZE) {
+        let chunk = source.rest;
+        source.rest = undefined;
+        if (chunk === undefined) {
+          const { done, value } = await source.reader.read();
+          if (done) return part(true);
+          chunk = value;
+        }
+        const room = PART_SIZE - length;
+        if (chunk.byteLength > room) {
+          source.rest = chunk.subarray(room);
+          chunk = chunk.subarray(0, room);
+        }
+        chunks.push(chunk);
+        length += chunk.byteLength;
+      }
+      // A stream of exactly one part ends here or not at all: read ahead, so
+      // it is one `PutObject` rather than a multipart upload of one part.
+      if (source.rest === undefined) {
+        const { done, value } = await source.reader.read();
+        if (done) return part(true);
+        source.rest = value;
+      }
+      return part(false);
+    })(),
+    (cause) => new StreamInterrupted({ key, cause }),
+  );
+
+/** Cleanup the caller must not wait on: a source's cancel may never settle, and its failure changes nothing. */
+const unawaited = (promise: Promise<unknown>): void => {
+  promise.then(
+    () => undefined,
+    () => undefined,
+  );
+};
+
+/** The SDK's own answer, settled; an abort that fails changes nothing the caller can act on. */
+const settled = (promise: Promise<unknown>): AsyncResult<void, never> =>
+  fromSafePromise(
+    promise.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+
+/**
+ * `putStream`, and with `ifAbsent` its conditional twin: `If-None-Match: *` on
+ * the write that publishes the object, so only that variant can meet a held
+ * key.
+ *
+ * ponytail: one part in flight at a time, so memory stays at the first part
+ * and the one being sent, and throughput at one round trip per 8 MiB; overlap
+ * reading and uploading if a deployment needs more.
+ */
+function streamUpload(
+  client: S3Client,
+  bucket: string,
+  ifAbsent: false,
+): StorageService["putStream"];
+function streamUpload(
+  client: S3Client,
+  bucket: string,
+  ifAbsent: true,
+): StorageService["putStreamIfAbsent"];
+function streamUpload(
+  client: S3Client,
+  bucket: string,
+  ifAbsent: boolean,
+): StorageService["putStreamIfAbsent"] {
+  const operation = ifAbsent ? "putStreamIfAbsent" : "putStream";
+  const condition = ifAbsent ? { IfNoneMatch: "*" } : {};
+  return (key, stream, options) =>
+    fromThrowable(
+      () => stream.getReader(),
+      (cause) => new StreamInterrupted({ key, cause }),
+    )()
+      .toAsync()
+      .flatMap((reader) =>
+        write(key, { reader, rest: undefined }, options)
+          .tap(() => reader.releaseLock())
+          .tapFailure(() => reader.releaseLock()),
+      );
+
+  function write(
+    key: string,
+    source: Source,
+    options: WriteOptions,
+  ): AsyncResult<
+    void,
+    ObjectExists | InvalidStorageOptions | ChecksumMismatch | StreamInterrupted | StorageUnavailable
+  > {
+    const digest = createHash("sha256");
+    const refused = (cause: unknown): ObjectExists | ChecksumMismatch | StorageUnavailable =>
+      ifAbsent && isPreconditionFailed(cause)
+        ? new ObjectExists({ key })
+        : isChecksumMismatch(cause)
+          ? new ChecksumMismatch({ key })
+          : unavailable(operation, key, cause);
+    const verified = () =>
+      (options.sha256 === undefined || digest.digest("hex") === options.sha256
+        ? Ok()
+        : Err(new ChecksumMismatch({ key }))
+      ).toAsync();
+    const description = {
+      Bucket: bucket,
+      Key: key,
+      ContentType: options.contentType,
+      Metadata: { ...options.metadata },
+      ...encryption(options),
+    };
+
+    const multipart = (UploadId: string | undefined, first: Part) => {
+      const parts: CompletedPart[] = [];
+      const send = ({ bytes, ended }: Part) =>
+        bytes.byteLength === 0
+          ? OkAsync(ended)
+          : fromPromise(
+              client.send(
+                new UploadPartCommand({
+                  Bucket: bucket,
+                  Key: key,
+                  UploadId,
+                  PartNumber: parts.length + 1,
+                  Body: bytes,
+                }),
+              ),
+              refused,
+            ).map(({ ETag, ChecksumCRC32 }) => {
+              parts.push({ PartNumber: parts.length + 1, ETag, ChecksumCRC32 });
+              return ended;
+            });
+      // Reading and sending are steps of their own, never the callback that
+      // recurses: a `flatMap` holds its input until what it returns settles,
+      // so a part handed to the recursion stayed in memory to the last one.
+      const rest = (): AsyncResult<
+        boolean,
+        ObjectExists | ChecksumMismatch | StreamInterrupted | StorageUnavailable
+      > =>
+        readPart(source, key, digest)
+          .flatMap(send)
+          .flatMap((ended) => (ended ? OkAsync(ended) : rest()));
+      return send(first)
+        .flatMap((ended) => (ended ? OkAsync(ended) : rest()))
+        .flatMap(verified)
+        .flatMap(() =>
+          fromPromise(
+            client.send(
+              new CompleteMultipartUploadCommand({
+                Bucket: bucket,
+                Key: key,
+                UploadId,
+                MultipartUpload: { Parts: parts },
+                ...condition,
+              }),
+            ),
+            refused,
+          ),
+        )
+        .flatTapErrCases((matcher) =>
+          matcher.with(
+            P.tag("ObjectExists"),
+            P.tag("ChecksumMismatch"),
+            P.tag("StreamInterrupted"),
+            P.tag("StorageUnavailable"),
+            // Parts left behind by an abort the store also refuses are never
+            // an object, and the bucket's incomplete-upload rule reaps them.
+            // A defect skips this arm and leaves its parts to that rule: it is a bug.
+            () =>
+              settled(
+                client.send(
+                  new AbortMultipartUploadCommand({ Bucket: bucket, Key: key, UploadId }),
+                ),
+              ),
+          ),
+        );
+    };
+
+    return validateOptions(key, options)
+      .toAsync()
+      .flatMap(() => readPart(source, key, digest))
+      .flatMap((first) =>
+        first.ended
+          ? verified().flatMap(() =>
+              fromPromise(
+                client.send(
+                  new PutObjectCommand({ ...description, Body: first.bytes, ...condition }),
+                ),
+                refused,
+              ),
+            )
+          : fromPromise(
+              client.send(new CreateMultipartUploadCommand(description)),
+              refused,
+            ).flatMap(({ UploadId }) => multipart(UploadId, first)),
+      )
+      .map(() => undefined)
+      .tapErrCases((matcher) =>
+        matcher.with(
+          P.tag("InvalidStorageOptions"),
+          P.tag("ObjectExists"),
+          P.tag("ChecksumMismatch"),
+          P.tag("StreamInterrupted"),
+          P.tag("StorageUnavailable"),
+          (error) => unawaited(source.reader.cancel(error)),
+        ),
+      );
+  }
+}
+
+/**
  * The adapter's service over a client and a bucket. A delete of a key nobody
  * stored answers `Ok`, which is S3's own idempotent behaviour rather than a
  * fiction layered over it.
@@ -142,6 +405,8 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
             : unavailable("putIfAbsent", key, cause),
     ).map(() => undefined);
   },
+  putStream: streamUpload(client, bucket, false),
+  putStreamIfAbsent: streamUpload(client, bucket, true),
   get: (key) =>
     fromPromise(
       client
@@ -156,6 +421,20 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
         })),
       (cause): ObjectNotFound | StorageUnavailable =>
         isMissing(cause) ? new ObjectNotFound({ key }) : unavailable("get", key, cause),
+    ),
+  getStream: (key) =>
+    fromPromise(
+      client
+        .send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+        .then((response): StreamedObject => ({
+          stream: (
+            response.Body as { transformToWebStream: () => ReadableStream<Uint8Array> }
+          ).transformToWebStream(),
+          contentType: response.ContentType ?? "application/octet-stream",
+          size: response.ContentLength,
+        })),
+      (cause): ObjectNotFound | StorageUnavailable =>
+        isMissing(cause) ? new ObjectNotFound({ key }) : unavailable("getStream", key, cause),
     ),
   copy: (from, to, options) => {
     const validated = validateOptions(to, options);

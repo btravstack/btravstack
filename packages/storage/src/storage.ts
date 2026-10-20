@@ -7,12 +7,24 @@ export type StoredObject = {
   readonly contentType: string;
 };
 
-/** The key is not there. Only `get`, `head` and `copy` (its source) answer it — see `delete` and `presignedUrl` below. */
+/**
+ * An object read as it streams. `stream` holds the store's connection until it
+ * is read to its end or cancelled, so a caller that stops early cancels it. A
+ * read the store breaks off errors the stream.
+ */
+export type StreamedObject = {
+  readonly stream: ReadableStream<Uint8Array>;
+  readonly contentType: string;
+  /** The object's length in bytes; `undefined` when the store did not say, never a guessed `0`. */
+  readonly size: number | undefined;
+};
+
+/** The key is not there. Only `get`, `getStream`, `head` and `copy` (its source) answer it — see `delete` and `presignedUrl` below. */
 export class ObjectNotFound extends TaggedError("ObjectNotFound")<{
   readonly key: string;
 }> {}
 
-/** An object already holds the key. Only `putIfAbsent` answers it. */
+/** An object already holds the key. Only `putIfAbsent` and `putStreamIfAbsent` answer it. */
 export class ObjectExists extends TaggedError("ObjectExists")<{
   readonly key: string;
 }> {}
@@ -28,12 +40,21 @@ export class ChecksumMismatch extends TaggedError("ChecksumMismatch")<{
   readonly key: string;
 }> {}
 
+/** The source stream errored before it ended, with `cause`; no object was written. */
+export class StreamInterrupted extends TaggedError("StreamInterrupted")<{
+  readonly key: string;
+  readonly cause: unknown;
+}> {}
+
 /** The store could not answer — the endpoint is down, the credentials were refused, the bucket is gone. */
 export class StorageUnavailable extends TaggedError("StorageUnavailable")<{
   readonly operation:
     | "put"
     | "putIfAbsent"
+    | "putStream"
+    | "putStreamIfAbsent"
     | "get"
+    | "getStream"
     | "copy"
     | "head"
     | "delete"
@@ -96,7 +117,45 @@ export type StorageService = {
     void,
     ObjectExists | InvalidStorageOptions | ChecksumMismatch | StorageUnavailable
   >;
+  /**
+   * Writes the object as `stream` delivers it, never holding it whole: the S3
+   * adapter sends a stream longer than one 8 MiB part as a multipart upload, one
+   * part at a time. S3's 10,000 parts cap such an object near 78 GiB; a longer
+   * stream is refused by the store, as `StorageUnavailable`. The object appears only once the stream has ended and every
+   * part is stored. A failure (the stream's own error, a `sha256` the bytes do
+   * not match, the store) aborts the upload, so no partial object is ever
+   * visible, and cancels the stream.
+   *
+   * `sha256` is verified by the adapter as the bytes pass, before the object
+   * is completed; the store keeps no digest, so `head` answers none.
+   */
+  readonly putStream: (
+    key: string,
+    stream: ReadableStream<Uint8Array>,
+    options: WriteOptions,
+  ) => AsyncResult<
+    void,
+    InvalidStorageOptions | ChecksumMismatch | StreamInterrupted | StorageUnavailable
+  >;
+  /**
+   * `putStream`, completed only if no object holds the key: the first writer
+   * wins, atomically, in the store. The S3 adapter sends `If-None-Match: *` on
+   * the write that publishes the object, so a held key is refused once the
+   * stream has been sent.
+   */
+  readonly putStreamIfAbsent: (
+    key: string,
+    stream: ReadableStream<Uint8Array>,
+    options: WriteOptions,
+  ) => AsyncResult<
+    void,
+    ObjectExists | InvalidStorageOptions | ChecksumMismatch | StreamInterrupted | StorageUnavailable
+  >;
   readonly get: (key: string) => AsyncResult<StoredObject, ObjectNotFound | StorageUnavailable>;
+  /** The object as a stream, with its type and size, answered once the store has begun sending it. */
+  readonly getStream: (
+    key: string,
+  ) => AsyncResult<StreamedObject, ObjectNotFound | StorageUnavailable>;
   /**
    * Copies `from` to `to` inside the store: no bytes pass through this process.
    * The copy replaces metadata (empty when omitted) and `contentType`, and, with
@@ -174,9 +233,9 @@ export type StorageService = {
  * application service, and the framework has no concept of a tenant to put in a
  * slot.
  *
- * **Bytes, not streams.** An object here is a document. Streaming would change
- * every signature, adapter and test to serve a case that wants a different
- * design anyway — a stated non-goal, not an oversight.
+ * **Bytes, and streams beside them.** `put` and `get` hold a document whole;
+ * `putStream`, `putStreamIfAbsent` and `getStream` move a large object through
+ * the process in bounded memory.
  */
 export class Storage extends Port("Storage")<StorageService> {}
 

@@ -1,3 +1,6 @@
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+
 import { it } from "@btravstack/internal-http-fixtures";
 import { describe, expect, vi } from "vitest";
 
@@ -271,6 +274,60 @@ describe("httpRuntime", () => {
     // THEN the work outliving its unit was told to stop, by the unit's settle
     // rather than by a drain nobody started
     expect(reason).toEqual(expect.objectContaining({ message: "The unit has settled" }));
+  });
+
+  it("hands an answerer its request body as it arrives, past the body limit", async ({
+    serve,
+    streamed,
+  }) => {
+    // GIVEN a bare answerer counting what it reads, under the default 1 MiB
+    // body limit — a limit each answerer applies, never the runtime
+    const { origin } = await serve(async (request, response) => {
+      let received = 0;
+      for await (const chunk of request) received += (chunk as Buffer).byteLength;
+      response.end(String(received));
+    });
+
+    // WHEN 256 MiB are put to it as a stream
+    const { value, growth } = await streamed.peakGrowth(async () =>
+      (
+        await fetch(origin, {
+          method: "PUT",
+          body: streamed.source(256 * 1_048_576),
+          duplex: "half",
+        } as RequestInit)
+      ).text(),
+    );
+
+    // THEN every byte reached it, and memory never rose by the body
+    expect({ received: Number(value), bounded: growth < 128 * 1_048_576 }).toEqual({
+      received: 256 * 1_048_576,
+      bounded: true,
+    });
+  });
+
+  it("streams an answerer's ReadableStream response without holding it", async ({
+    serve,
+    streamed,
+  }) => {
+    // GIVEN a bare answerer piping 256 MiB from a web stream into its response
+    const { origin } = await serve((_request, response) => {
+      response.writeHead(200, { "content-type": "application/octet-stream" });
+      return pipeline(Readable.fromWeb(streamed.source(256 * 1_048_576) as never), response);
+    });
+
+    // WHEN a client reads it to its end
+    const { value, growth } = await streamed.peakGrowth(async () => {
+      let received = 0;
+      for await (const chunk of (await fetch(origin)).body ?? []) received += chunk.byteLength;
+      return received;
+    });
+
+    // THEN every byte arrived, and memory never rose by the body
+    expect({ received: value, bounded: growth < 128 * 1_048_576 }).toEqual({
+      received: 256 * 1_048_576,
+      bounded: true,
+    });
   });
 
   it("answers 500 when the handler fails", async ({ serve }) => {

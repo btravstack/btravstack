@@ -87,27 +87,67 @@ and `docs/reference/storage.md` is the reader's page.
   Both encryption headers are mandatory. RustFS proves that changing or dropping
   either breaks the signature; SDK command assertions prove what key and mode
   are requested. Neither proves encryption, since RustFS has no KMS.
+- **A streamed write is a multipart upload that publishes nothing until it
+  ends.** `putStream` reads 8 MiB parts and sends one at a time; a stream that
+  ends within the first part is one `PutObject`. Any failure before
+  `CompleteMultipartUpload` (the source's error as `StreamInterrupted`, a
+  `sha256` mismatch, the store) aborts the upload and cancels the source with
+  the failure as its reason, so no partial object is ever visible. An abort the
+  store also refuses leaves parts that are no object, for the bucket's
+  incomplete-upload lifecycle rule. Hand-rolled over the client's own
+  commands rather than `@aws-sdk/lib-storage`'s `Upload`: a third optional peer
+  for one loop, whose conditional write and abort are what this port must state.
+- **A part handed to a recursing `flatMap` lives until the recursion ends.**
+  `AsyncResult.flatMap` awaits its callback's result inside a frame that holds
+  the input, so reading and sending each part are steps of their own and the
+  recursion continues from the `boolean` that says whether the stream ended.
+  Threading the part through it held every part to the last one, the whole
+  object live at the end. The 256 MiB specs measure live memory, a full
+  collection before each sample, so garbage the collector has not reached
+  cannot pass for a leak, and a leak cannot hide behind a collection that
+  happened to run.
+- **`sha256` on a stream is the adapter's check, not the store's.** S3 keeps
+  only a composite checksum for a multipart object, so the digest is computed
+  and compared before completion; `head` answers no `sha256` for a streamed
+  object, one part or many, so the answer does not depend on its size. It is
+  taken over each part's `Buffer.concat` copy, never the chunks as read: the
+  copy is what is sent, so a producer rewriting a chunk it already enqueued
+  meets `ChecksumMismatch` rather than a digest of bytes the store never got.
+- **`getStream`'s `size` is `undefined` when the store sends no length.**
+  `head` keeps `size: number` and its `0` for the same case, since changing
+  it would change a published type.
+- **`putStreamIfAbsent` sends `If-None-Match: *` on the publishing write**,
+  `PutObject` or `CompleteMultipartUpload`, so the key is refused only after
+  the bytes were sent, and the refused upload is aborted. RustFS proves the
+  refusal, the abort and a race with one winner.
+- **`StreamInterrupted` settles `ok` with `result: "interrupted"`.** The source
+  is the caller's: a client hanging up, or the caller's own check refusing the
+  bytes by erroring its stream, is an answer it gives itself. Its `cause` is
+  the stream's error, untouched, so that check gets its own refusal back.
+- **`getStream`'s span ends when the stream is answered**, not when it is read:
+  observing the transfer would mean wrapping every chunk, and the store's own
+  failure mid-read reaches the reader as the stream's error.
 - **The memory adapter refuses to presign** rather than minting a `file://`
   URL. A fake URL is the worst kind of double: it passes locally and fails in
   the deployment for a reason no test could have shown. The arm exists in the
   port precisely so an adapter that cannot do this can say so.
 
 `presignedUrl`'s missing `ObjectNotFound` arm, the application deciding what the
-adapter signs, bytes over streams, idempotent `delete`, the
+adapter signs, idempotent `delete`, the
 `application/octet-stream` default, path-style addressing and the private client
 port are the TSDoc and comments of `src/storage.ts` and `src/s3.ts`.
 
 ## Deliberately not here
 
-- **No streaming**, and no multipart parsing anywhere in the family: an upload
-  that transits the process is a unit held open for the length of a transfer.
-  Presigned writes are what replaced that, and they ship — see the
-  `presignedUpload` entry above for what the adapter does and does not decide.
-- **No listing and no S3 multipart upload.** Each is a real S3 feature and
-  neither has a consumer here; adding them speculatively is what issue #62 says
-  not to do. `copy` and `head` arrived with a consumer: a document store that
-  moves a verified upload to its final key and encrypts it, with no bytes
-  through the process.
+- **No multipart form parsing** anywhere in the family. A presigned write keeps
+  the bytes out of the process and stays the default; the streamed writes
+  arrived with a consumer that must see the bytes as they pass (a document
+  store sealing them), and take the body as a stream.
+- **No listing, and no multipart upload of the caller's own.** Listing is a
+  real S3 feature with no consumer here; adding it speculatively is what issue
+  #62 says not to do. Parts exist only inside `putStream`. `copy` and `head`
+  arrived with a consumer: a document store that moves a verified upload to its
+  final key, with no bytes through the process.
 - **No tags.** User metadata is atomic object description only.
 - **No bucket management.** Creating one is deployment, not runtime — the
   test infrastructure creates the gate's bucket, and a deployment creates its

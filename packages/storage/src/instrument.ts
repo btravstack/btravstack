@@ -14,12 +14,16 @@ import type {
   PresignNotSupported,
   StorageService,
   StorageUnavailable,
+  StreamInterrupted,
 } from "./storage.js";
 
 type Operation =
   | "put"
   | "put_if_absent"
+  | "put_stream"
+  | "put_stream_if_absent"
   | "get"
+  | "get_stream"
   | "copy"
   | "head"
   | "delete"
@@ -31,14 +35,17 @@ type Failure =
   | ObjectExists
   | ObjectNotFound
   | PresignNotSupported
-  | StorageUnavailable;
+  | StorageUnavailable
+  | StreamInterrupted;
 
 /**
  * **A missing object settles `ok` with `result: "not_found"`, not `error`.**
  * Asking for something that is not there is an ordinary answer, and a dashboard
  * that treats it as a fault teaches its readers to ignore the fault line.
  * `StorageUnavailable` is what pages somebody; invalid options and checksum
- * mismatches also settle as errors. The two ordinary answers keep their own words in
+ * mismatches also settle as errors. A source stream that fails is the caller's
+ * own answer (a client hanging up, a check refusing the bytes) and settles `ok`
+ * with `result: "interrupted"`. The ordinary answers keep their own words in
  * `reason`, so an operator is not left hunting an object sitting where they put
  * it.
  */
@@ -53,7 +60,9 @@ const failed = <T>(failure: FailureView<Failure, T>): Settled => {
           ? ({ result: "not_found", reason: "the object was not there" } as const)
           : failure.error._tag === "PresignNotSupported"
             ? ({ result: "not_found", reason: "this store cannot mint a url" } as const)
-            : undefined;
+            : failure.error._tag === "StreamInterrupted"
+              ? ({ result: "interrupted", reason: "the source stream failed" } as const)
+              : undefined;
   return ordinary === undefined
     ? { outcome: "error", attributes: { result: "error" }, cause }
     : { outcome: "ok", attributes: ordinary };
@@ -90,7 +99,18 @@ export const instrument = (
       const snapshot = { ...options, metadata: { ...options.metadata } };
       return observe("put_if_absent", key, () => backend.putIfAbsent(key, bytes, snapshot));
     },
+    putStream: (key, stream, options) => {
+      const snapshot = { ...options, metadata: { ...options.metadata } };
+      return observe("put_stream", key, () => backend.putStream(key, stream, snapshot));
+    },
+    putStreamIfAbsent: (key, stream, options) => {
+      const snapshot = { ...options, metadata: { ...options.metadata } };
+      return observe("put_stream_if_absent", key, () =>
+        backend.putStreamIfAbsent(key, stream, snapshot),
+      );
+    },
     get: (key) => observe("get", key, () => backend.get(key)),
+    getStream: (key) => observe("get_stream", key, () => backend.getStream(key)),
     copy: (from, to, options) => {
       const snapshot = { ...options, metadata: { ...options.metadata } };
       return observe("copy", from, () => backend.copy(from, to, snapshot));
