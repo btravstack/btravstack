@@ -10,8 +10,8 @@ of the gate resolves the newest train. `prisma/migrations` is the order
 example's history as released under rc.11, byte for byte. It is the fixture
 and is never edited or re-signed.
 
-`src/prisma-floor.spec.ts` migrates a database of its own with that train's
-`prisma db migrate`, then proves two things:
+`src/global-setup.ts` migrates a database of its own with that train's
+`prisma db migrate`, and `src/prisma-floor.spec.ts` proves two things:
 
 - `prisma db verify` passes with the released marker, so nothing the newer
   train needs reached the floor's history;

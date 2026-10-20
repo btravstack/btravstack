@@ -53,6 +53,7 @@
       "ignore": ["prisma/migrations/**"]
     },
     "internal/prisma-floor": {
+      "entry": ["src/prisma/contract.prisma"],
       "ignore": ["prisma/migrations/**"]
     },
     "examples/order-temporal-worker": {
