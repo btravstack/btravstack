@@ -78,6 +78,61 @@ export const McpApi = McpModule("McpApi")({
   an API-key refusal or a tool's business refusal gets no OAuth scope error.
 - **The body is bounded by `HTTP_BODY_LIMIT`**, as for every answerer.
 
+## Serve one resource per tenant domain
+
+When each tenant reaches the server on a domain of its own —
+`https://tenant-a.example/mcp`, `https://tenant-b.example/mcp` — each URL is a
+protected resource of its own, and its metadata must name it exactly. Compose
+`protectedResourcePerHost()` in place of `protectedResource()`, and answer
+which hosts you serve from your own tenancy data with `ServedHosts`:
+
+<!-- doctest: prelude
+import { Module, Port } from "@btravstack/di";
+import type { AsyncResult } from "unthrown";
+
+class Tenants extends Port("Tenants")<{
+  readonly servesDomain: (host: string) => AsyncResult<boolean, never>;
+}> {}
+declare const TenantsModule: Module<Tenants, never, never>;
+-->
+
+```ts
+import { Provider } from "@btravstack/di";
+import { ServedHosts, protectedResourcePerHost } from "@btravstack/http-server";
+
+export const TenantMcpApi = McpModule("TenantMcpApi")({
+  answerer,
+  imports: [TenantsModule],
+  provides: [
+    ...protectedResourcePerHost({ path: "/mcp", scopes: ["orders:read"] }),
+    Provider(ServedHosts)({
+      inject: { tenants: Tenants },
+      sync: ({ tenants }) => tenants.servesDomain,
+    }),
+  ],
+});
+```
+
+- **The resource is the request's own origin plus `path`**: a client calling
+  `https://tenant-a.example/mcp` is challenged with, and reads, metadata naming
+  exactly that URL. `ServedHosts` is asked with the host lowercase and its
+  default port dropped (`tenant-a.example`), so store verified domains that
+  way.
+- **A host you do not serve gets nothing**: its metadata URL is a `404` and its
+  `401` carries no challenge, whatever `Host` a caller forges. A domain
+  verified at run time is served from its next request, with no restart.
+- **`ServedHosts` is asked on every request to `/mcp` and to its metadata**,
+  before the answerer runs, and on no other. Back it with a cache when the
+  answer comes from a database, and pass its second argument, the request's
+  `AbortSignal`, to the query: a client that leaves mid-lookup is not waited
+  for, and the signal aborts.
+- **The path comes from `HTTP_RESOURCE_PATH`** unless pinned, as here; the
+  issuers from `HTTP_RESOURCE_AUTHORIZATION_SERVERS`.
+- **`jwtAuthenticator` checks one audience.** A client sending RFC 8707's
+  `resource` asks for a token whose audience is its tenant's own URL, which one
+  configured audience refuses for every other tenant: have the authorization
+  server mint the same audience for every tenant's resource.
+
 Prompts and resources are the SDK's too: `server.registerPrompt` and
 `server.registerResource` work unchanged. What the server would ask of the
 client — sampling, elicitation, roots — is not available: the server is

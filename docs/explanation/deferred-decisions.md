@@ -260,6 +260,16 @@ trigger, the answer is no.
   `@btravstack/http-server`), `Observers` for a tool's defect, and the body
   limit. The `order-api` example the trigger expected is not part of it yet.
 
+- **Several fixed protected resources per process are deferred** (issue
+  #613). `protectedResource()` binds one resource, and a second call is di's
+  duplicate provider. A deployment serving one domain per tenant composes
+  `protectedResourcePerHost()`, which derives the resource from each request's
+  host and admits only the hosts the application's `ServedHosts` vouches for:
+  domains are added at run time and live in the application's data. A
+  `variablePrefix` per call, binding a small set of resources known per
+  deployment (`HTTP_RESOURCE_TENANT_A_URI`…), is the shape that remains. The
+  trigger is a deployment whose resources differ in more than their host — a
+  path or authorization servers of their own — known before it boots.
 - **Rate limiting is declined; it belongs to the ingress** (issue #502). A
   per-process counter is the wrong unit: an `api` deployment is N pods, so a
   per-process budget is N independent budgets and none of them is the limit

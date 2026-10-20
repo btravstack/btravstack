@@ -594,6 +594,42 @@ The two rules this half exists to state, before the detail:
   credentials to the authorization server, so either in cleartext off a loopback
   host is a `ConfigInvalid` naming its variable.
 
+- **`protectedResourcePerHost({ path?, authorizationServers?, scopes?, allowInsecure? })`**
+  — the same discovery on every host the application serves, for a deployment
+  answering on one domain per tenant: the identifier is the request's own
+  `<scheme>//<host>` plus `path`. Several fixed resources per process, each
+  with its own variables, is the other shape the need allows, and is deferred
+  (`docs/explanation/deferred-decisions.md`).
+
+  **A host is admitted only when the application vouches for it**, through
+  the `ServedHosts` port it provides: verified domains are tenancy data, added
+  at run time, never environment. The metadata and the challenge name exactly
+  the host the port was asked about, so a forged `Host` mints discovery for no
+  domain the application did not vouch for. The port cannot fail (`never`):
+  its answer is yes or no, and a defect is the runtime's `500`.
+
+  **The scheme is not on the request.** An origin-form request names none, and
+  the listener speaks only cleartext, so it is `https:` — what a proxy
+  terminating TLS serves — except on a loopback host, which a client reaches
+  directly, where it is `http:`. An absolute-form target names its own, admitted
+  over `http:` off loopback only with `allowInsecure`.
+
+  **Its challenge is decided per request, so the runtime awaits it.**
+  `HttpChallenges` also takes an `HttpRequestChallenge`: a path and a resolver.
+  For a request whose path is that one, and no other, the runtime settles the
+  resolver inside the unit and before dispatch, since `writeHead` is
+  synchronous and the answerer decides the status; every other request applies
+  the static members synchronously, as before. The metadata answerer asks the
+  port itself.
+
+  **The lookup is raced against the response, and handed the unit's signal.**
+  The unit's lifetime is the response's, so a client that leaves while the
+  lookup is pending settles the unit at once, nothing is dispatched, and the
+  signal the port was given aborts as the unit settles. The race alone would
+  release the unit but leave the query running; the signal alone would rest
+  the guarantee on the application honouring it. A lookup defect that arrives
+  first is still the `500`.
+
 - **Password hashing and credential ISSUING are out of scope, deliberately.**
   All three authenticators above are on the **verifying** side, and that is
   the line: the credential is minted by whoever owns the identity — an OIDC
