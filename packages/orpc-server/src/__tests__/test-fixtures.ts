@@ -160,13 +160,16 @@ export const it: TestAPI<HttpFixtures & Fixtures> = base.extend<Fixtures>({
   },
 });
 
-/** A vendor-neutral output schema that validates asynchronously and rejects on anything but an item. */
+/** Vendor-neutral output schemas that throw on anything but an item, synchronously or by rejecting. */
+const itemOf = (value: unknown) => ({ value: { name: (value as { name: string }).name.trim() } });
+const throwingItem: Schema<{ name: string }> = {
+  "~standard": { version: 1, vendor: "fixture", validate: itemOf },
+};
 const asyncItem: Schema<{ name: string }> = {
   "~standard": {
     version: 1,
     vendor: "fixture",
-    validate: (value) =>
-      Promise.resolve().then(() => ({ value: { name: (value as { name: string }).name.trim() } })),
+    validate: (value) => Promise.resolve().then(() => itemOf(value)),
   },
 };
 
@@ -209,6 +212,7 @@ const contentContract = {
       .input(z.object({ name: z.string() }))
       .output(z.object({ name: z.string() })),
     checked: oc.input(z.object({ name: z.string() })).output(asyncItem),
+    strict: oc.input(z.object({ name: z.string() })).output(throwingItem),
     counted: oc
       .meta(openapi({ method: "GET", path: "/items/count", outputStructure: "detailed" }))
       .output(z.object({ body: z.object({ count: z.number().optional() }) })),
@@ -250,6 +254,7 @@ const contentRouterOf = (sawFirstChunk: () => void, downloads: ("opened" | "canc
       items: {
         create: (_context, input) => OkAsync(input),
         checked: (_context, input) => OkAsync(input),
+        strict: (_context, input) => OkAsync(input),
         counted: () => OkAsync({ body: { count: 1 } }),
         sized: () => OkAsync({ body: recorded(DOWNLOAD, downloads) }),
       },

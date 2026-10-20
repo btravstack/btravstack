@@ -52,6 +52,7 @@ import {
   type ResponseCompressionHandlerPluginOptions,
 } from "@orpc/server/plugins";
 import { RPC_DEFAULT_ALLOW_METHODS, type StandardHandlerPlugin } from "@orpc/server/standard";
+import { fromThrowable } from "unthrown";
 
 import { bodyLimitPlugin, refusedStream } from "./body-limit.js";
 import type {
@@ -251,9 +252,16 @@ const streamsBody = (procedure: AnyProcedureContract): boolean => {
   );
 };
 
-/** Whether `schema` refuses `body` where the answer carries it; `undefined` when it validates asynchronously. */
+// Boxed: `fromThrowable` refuses a function that returns a promise, which an asynchronous schema does.
+const probed = fromThrowable(
+  (schema: AnySchema, value: unknown) => ({ answer: schema["~standard"].validate(value) }),
+  () => "unprobeable" as const,
+);
+
+/** Whether `schema` refuses `body` where the answer carries it; `undefined` when it validates asynchronously or throws. */
 const refuses = (schema: AnySchema, body: unknown, detailed: boolean): boolean | undefined => {
-  const result = schema["~standard"].validate(detailed ? { body } : body);
+  const result = probed(schema, detailed ? { body } : body).getOr(undefined)?.answer;
+  if (result === undefined) return undefined;
   if (result instanceof Promise) {
     // Unread, a probe that rejects would surface as an unhandled rejection.
     void result.catch(() => undefined);

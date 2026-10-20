@@ -68,8 +68,9 @@ it holds for any vendor; the `{}` half keeps a body that accepts anything
 issue with no path counts against the body too, since the body is all the
 two probes differ in. A schema that validates asynchronously cannot be
 probed synchronously at indexing, so it counts as not streaming, its probe's
-rejection observed so it cannot crash the process, and `responseBodyHint` is
-the declaration for it. The typed
+rejection observed so it cannot crash the process; so does a schema that
+throws on a probe value, which would otherwise fail the boot. For both,
+`responseBodyHint` is the declaration. The typed
 RPC client still lists these procedures: removing them from
 `RouterContractClient` would mean a type-level copy of the probe, and its
 `404` is documented instead.

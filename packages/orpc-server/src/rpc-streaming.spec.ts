@@ -48,19 +48,21 @@ describe("streaming procedures over RPC", () => {
   });
 
   it("keeps serving every procedure that streams nothing", async ({ bodies }) => {
-    // GIVEN a plain procedure, one whose output validates asynchronously and
-    // rejects the probe, and a detailed answer whose JSON body would also accept a stream
+    // GIVEN a plain procedure, one whose output schema throws on the probe,
+    // one whose output validates asynchronously and rejects the probe, and a
+    // detailed answer whose JSON body would also accept a stream
     const port = await bodies.serve("buffered");
 
     // WHEN each is called over RPC
     const statuses = {
       create: await bodies.rpc(port, "items/create", { name: "x" }),
+      strict: await bodies.rpc(port, "items/strict", { name: "x" }),
       checked: await bodies.rpc(port, "items/checked", { name: "x" }),
       counted: await bodies.rpc(port, "items/counted", undefined),
     };
 
     // THEN RPC served them all
-    expect(statuses).toEqual({ create: 200, checked: 200, counted: 200 });
+    expect(statuses).toEqual({ create: 200, strict: 200, checked: 200, counted: 200 });
   });
 
   it("keeps serving the download over its OpenAPI route", async ({ bodies }) => {
