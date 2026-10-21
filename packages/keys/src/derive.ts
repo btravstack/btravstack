@@ -1,4 +1,4 @@
-import type { webcrypto } from "node:crypto";
+import { webcrypto } from "node:crypto";
 
 import { ErrAsync, TaggedError, fromSafePromise, type AsyncResult } from "unthrown";
 
@@ -49,16 +49,16 @@ const SEGMENT = /^[A-Za-z0-9._-]+$/;
  * because the root is already uniformly random (RFC 5869, section 3.1).
  */
 export const deriveKey = (
-  root: CryptoKey,
+  root: webcrypto.CryptoKey,
   purpose: KeyPurpose,
   derived: DerivedKey,
-): AsyncResult<CryptoKey, InvalidKeyPurpose> =>
+): AsyncResult<webcrypto.CryptoKey, InvalidKeyPurpose> =>
   SEGMENT.test(purpose.namespace) &&
   SEGMENT.test(purpose.purpose) &&
   Number.isSafeInteger(purpose.version) &&
   purpose.version > 0
     ? fromSafePromise(
-        crypto.subtle.deriveKey(
+        webcrypto.subtle.deriveKey(
           {
             name: "HKDF",
             hash: "SHA-256",

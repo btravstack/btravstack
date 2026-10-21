@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, webcrypto } from "node:crypto";
 
 import {
   CreateAliasCommand,
@@ -121,7 +121,7 @@ export const it = test.extend<KeysFixtures>({
 });
 
 /** One fixed message signed with an HMAC key, in hex: two keys are the same key exactly when their signatures agree. */
-export const signature = (key: CryptoKey): AsyncResult<string, never> =>
-  fromSafePromise(crypto.subtle.sign("HMAC", key, new TextEncoder().encode("a message"))).map(
+export const signature = (key: webcrypto.CryptoKey): AsyncResult<string, never> =>
+  fromSafePromise(webcrypto.subtle.sign("HMAC", key, new TextEncoder().encode("a message"))).map(
     (signed) => Buffer.from(signed).toString("hex"),
   );

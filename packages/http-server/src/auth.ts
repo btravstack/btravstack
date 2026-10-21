@@ -1,6 +1,7 @@
 import type { IncomingHttpHeaders } from "node:http";
 
 import type { Requirements } from "@btravstack/contract";
+import { observe, type Observers } from "@btravstack/core";
 import { Port, type AnyPort, type PortClassOf, type ServiceOf } from "@btravstack/di";
 import { Err, Ok, TaggedError, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
@@ -25,6 +26,9 @@ export class Unauthenticated extends TaggedError("Unauthenticated") {}
  * Carries nothing, for `Unauthenticated`'s reason.
  */
 export class CredentialRefused extends TaggedError("CredentialRefused") {}
+
+/** Authentication cannot decide because its dependency is unavailable. Carries no credential details. */
+export class AuthenticatorUnavailable extends TaggedError("AuthenticatorUnavailable") {}
 
 /**
  * A credential was valid but lacks one or more scopes the endpoint declared,
@@ -112,7 +116,10 @@ export const grantOf = (
 export type AuthenticatorService<P, Scope extends string = never> = ((
   headers: IncomingHttpHeaders,
   query: URLSearchParams,
-) => AsyncResult<Granted<P, Scope>, Unauthenticated | CredentialRefused>) & {
+) => AsyncResult<
+  Granted<P, Scope>,
+  Unauthenticated | CredentialRefused | AuthenticatorUnavailable
+>) & {
   /** Verifies an RFC 6750 Bearer credential from Authorization. */
   readonly bearer?: true;
 };
@@ -319,8 +326,11 @@ export const resolveScheme = (
   authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
   headers: IncomingHttpHeaders,
   query: URLSearchParams,
-): AsyncResult<Resolved, Unauthenticated | UnderScoped> =>
-  fromSafePromise(walk(requirements, authenticators, headers, query)).flatMap((result) => result);
+  observers: ServiceOf<typeof Observers> = [],
+): AsyncResult<Resolved, Unauthenticated | UnderScoped | AuthenticatorUnavailable> =>
+  fromSafePromise(walk(requirements, authenticators, headers, query, observers)).flatMap(
+    (result) => result,
+  );
 
 /**
  * What a handler is injected: the identity bare, or `{ scheme, identity }` when
@@ -341,7 +351,7 @@ export const resolvePrincipal = (
   authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
   headers: IncomingHttpHeaders,
   query: URLSearchParams = new URLSearchParams(),
-): AsyncResult<unknown, Unauthenticated | UnderScoped> =>
+): AsyncResult<unknown, Unauthenticated | UnderScoped | AuthenticatorUnavailable> =>
   resolveScheme(requirements, authenticators, headers, query).map((resolved) =>
     principalOf(requirements, resolved),
   );
@@ -351,8 +361,9 @@ const walk = async (
   authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
   headers: IncomingHttpHeaders,
   query: URLSearchParams,
+  observers: ServiceOf<typeof Observers>,
   // oxlint-disable-next-line unthrown/prefer-async-result -- module-private; resolveScheme wraps it in fromSafePromise, which is the AsyncResult surface callers see
-): Promise<Result<Resolved, Unauthenticated | UnderScoped>> => {
+): Promise<Result<Resolved, Unauthenticated | UnderScoped | AuthenticatorUnavailable>> => {
   let underScoped = false;
   let scopes: readonly string[] | undefined;
   for (const requirement of requirements) {
@@ -367,6 +378,18 @@ const walk = async (
       // the Ok channel it declares is uninhabited whatever this walk answers.
       if (resolved.isDefect()) return resolved as never;
       if (resolved.isErr()) {
+        if (resolved.error._tag === "AuthenticatorUnavailable") {
+          observe(observers, {
+            component: "auth",
+            name: "authenticate",
+            attributes: { scheme },
+            traced: false,
+          })({
+            outcome: "error",
+            cause: resolved.error,
+          });
+          return Err(resolved.error);
+        }
         if (resolved.error._tag === "CredentialRefused") underScoped = true;
         continue;
       }

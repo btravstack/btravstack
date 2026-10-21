@@ -5,6 +5,7 @@ import { Env } from "@btravstack/config";
 import { Observers, start, type Operation, type RunningApp, type Settled } from "@btravstack/core";
 import { Module, Port, Provider, type AnyProvider } from "@btravstack/di";
 import {
+  AuthenticatorUnavailable,
   HttpAuthenticator,
   Unauthenticated,
   apiKeyAuthenticator,
@@ -151,7 +152,26 @@ const unclosableAnswerer = mcp(auth, {
   server: () => new UnclosableServer({ name: "unclosable", version: "1.0.0" }),
 });
 
+const unavailableAuth = defineAuth({
+  authenticators: {
+    service: HttpAuthenticator<{ readonly appId: string }>()({
+      inject: {},
+      sync: () => () => ErrAsync(new AuthenticatorUnavailable()),
+    }),
+  },
+});
+const unavailableAnswerer = mcp(unavailableAuth, {
+  requires: [{ service: [] }],
+  server: () => new McpServer({ name: "never", version: "1.0.0" }),
+});
+
 const deployments = {
+  unavailable: {
+    answerer: unavailableAnswerer,
+    providers: unavailableAuth.providers,
+    unit,
+    path: "/mcp",
+  },
   bearer: (() => {
     const api = defineAuth({
       authenticators: {

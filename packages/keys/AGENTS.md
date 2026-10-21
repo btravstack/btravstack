@@ -81,3 +81,7 @@ with its TSDoc; `docs/reference/keys.md` is the reader's page and
   application's, recorded beside its ciphertexts.
 
 Observation: see the root `AGENTS.md`, **Observability is a set port, never a flag**.
+
+Keys use `webcrypto.CryptoKey` from `node:crypto`, including cached and derived
+keys. A Node consumer need not include the DOM library; the external consumer
+gate compiles key derivation and encryption with `lib: ["ES2024"]`.

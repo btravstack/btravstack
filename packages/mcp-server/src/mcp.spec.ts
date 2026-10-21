@@ -3,6 +3,29 @@ import { describe, expect, vi } from "vitest";
 import { it } from "./__tests__/test-fixtures.js";
 
 describe("mcp answerer", () => {
+  it("answers 503 and observes an unavailable authenticator", async ({ served }) => {
+    // GIVEN a verifier with an unavailable dependency
+    const server = await served({ deployment: "unavailable" });
+    // WHEN an MCP request arrives
+    const response = await server.post("k-1");
+    // THEN it reports the dependency outage before invoking the SDK
+    expect({
+      status: response.status,
+      auth: server.seen.filter(({ operation }) => operation.component === "auth"),
+    }).toEqual({
+      status: 503,
+      auth: [
+        expect.objectContaining({
+          operation: expect.objectContaining({
+            name: "authenticate",
+            attributes: { scheme: "service" },
+          }),
+          settled: expect.objectContaining({ outcome: "error" }),
+        }),
+      ],
+    });
+  });
+
   it("answers a tool call with what the caller's principal names", async ({ served }) => {
     // GIVEN the server, and a client holding a key that may call tools
     const client = await (await served()).connect("k-1");

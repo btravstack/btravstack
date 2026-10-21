@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   defineContract,
   defineEventConsumer,
@@ -474,6 +476,7 @@ const slicesOf = () => {
 };
 
 export type AmqpFixtures = {
+  readonly subscriptionContract: typeof subscriptionContract;
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
   /** Boots the starter over `handlers` — a record that acks everything when none is given. */
@@ -516,6 +519,10 @@ export type AmqpFixtures = {
 // `ChannelModel` / `ConsumeMessage` / `Options.Publish`.
 export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFixtures>({
   boot: bootFixture({ env: { AMQP_CONNECT_TIMEOUT_MS: "15000" } }),
+  // oxlint-disable-next-line no-empty-pattern -- a contract factory needs no other fixture
+  subscriptionContract: async ({}, use) => {
+    await use(subscriptionContract);
+  },
   serve: async ({ amqpConnectionUrl, boot }, use) => {
     await use(async (handlers = plainHandlers, options) => {
       const app = boot(
@@ -637,3 +644,19 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     });
   },
 });
+
+const subscriptionContract = (durable = false) => {
+  const exchange = defineExchange("subscription-test");
+  const event = defineEventPublisher(exchange, defineMessage(z.object({ id: z.string() })), {
+    routingKey: "changed",
+  });
+  const queue = defineQueue(`subscription-${randomUUID()}`, {
+    type: "classic",
+    durable,
+    exclusive: true,
+    autoDelete: true,
+    retry: { mode: "none" },
+    onPoison: "drop",
+  });
+  return defineContract({ consumers: { changed: defineEventConsumer(event, queue) } });
+};

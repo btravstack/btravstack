@@ -71,7 +71,7 @@ The two rules this half exists to state, before the detail:
   one reading its issuer from the environment — fails the boot with a typed
   error rather than constructing happily and refusing every caller.
   `AuthenticatorService<P, Scope>` is
-  `(headers: IncomingHttpHeaders, query: URLSearchParams) => AsyncResult<Granted<P, Scope>, Unauthenticated | CredentialRefused>` —
+  `(headers: IncomingHttpHeaders, query: URLSearchParams) => AsyncResult<Granted<P, Scope>, Unauthenticated | CredentialRefused | AuthenticatorUnavailable>` —
   **headers and the query, not the request**: an authenticator has no business
   reading a body, and the narrower arguments are what keep it testable without
   a socket. The query is there for a **capability URL** (#620) — a signed
@@ -751,7 +751,7 @@ The two rules this half exists to state, before the detail:
   router-only samples compose `examples/order-api`'s router, so they carry
   `sessionCodec()` for exactly this reason.
 - **`resolveScheme(requirements, authenticators, headers, query)` →
-  `AsyncResult<{ scheme, identity }, Unauthenticated | UnderScoped>`**
+  `AsyncResult<{ scheme, identity }, Unauthenticated | UnderScoped | AuthenticatorUnavailable>`**
   (`auth.ts`) — the authentication walk, protocol-neutral: headers in, the
   scheme that answered and what it answered with, or a typed refusal, out —
   with no oRPC in the signature. It tries the requirements **in the order the
@@ -961,3 +961,13 @@ and manager configurations must match. Token observations carry no credentials
 or SDK error bodies, only bounded operation names and sanitized failures.
 The public surface and store obligations are in
 `docs/reference/http-server.md#server-side-oidc-tokens`.
+
+## Authentication dependency outages
+
+`AuthenticatorUnavailable` carries no credential details. It short-circuits
+the authentication walk, like a defect, so an unavailable verifier never
+promotes a caller to another scheme. Every HTTP answerer maps it to `503`;
+htmx does not redirect it to login. The request adapter reports an `auth` /
+`authenticate` diagnostic operation with the scheme and `outcome: "error"`
+(`traced: false`, since it is a failure report rather than a timed verifier span). A defect
+remains `500`. JWT's existing JWKS classification is unchanged.

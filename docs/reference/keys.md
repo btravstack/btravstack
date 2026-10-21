@@ -45,14 +45,14 @@ type KeyGeneration = {
 
 `EnvelopeKeys`'s service has three methods.
 
-| Method                    | Answers                                                    |
-| ------------------------- | ---------------------------------------------------------- |
-| `rootKey(generation)`     | `AsyncResult<CryptoKey, KeyErased \| KeysUnavailable>`     |
-| `provision(owner, keyId)` | `AsyncResult<KeyGeneration, KeyErased \| KeysUnavailable>` |
-| `erase(owner)`            | `AsyncResult<void, KeysUnavailable>`                       |
+| Method                    | Answers                                                          |
+| ------------------------- | ---------------------------------------------------------------- |
+| `rootKey(generation)`     | `AsyncResult<webcrypto.CryptoKey, KeyErased \| KeysUnavailable>` |
+| `provision(owner, keyId)` | `AsyncResult<KeyGeneration, KeyErased \| KeysUnavailable>`       |
+| `erase(owner)`            | `AsyncResult<void, KeysUnavailable>`                             |
 
 - **`rootKey`** unwraps a generation in memory and answers a non-extractable
-  HKDF `CryptoKey` (usages `deriveKey`, `deriveBits`): a root to derive from,
+  HKDF `webcrypto.CryptoKey` (usages `deriveKey`, `deriveBits`): a root to derive from,
   never one to encrypt with. It is kept for the cache's TTL, and callers asking
   for one generation while it is being unwrapped share one request.
 - **`provision`** makes a new generation under the owner's KMS key and answers
@@ -111,9 +111,11 @@ export const readable = Provider(Readable)({
 ## deriveKey
 
 ```ts
+import type { webcrypto } from "node:crypto";
+
 import { deriveKey } from "@btravstack/keys";
 
-declare const root: CryptoKey;
+declare const root: webcrypto.CryptoKey;
 
 const sealing = deriveKey(root, { namespace: "payloads", purpose: "seal", version: 1 }, {
   algorithm: { name: "AES-GCM", length: 256 },
@@ -122,7 +124,7 @@ const sealing = deriveKey(root, { namespace: "payloads", purpose: "seal", versio
 ```
 
 `deriveKey(root, purpose, derived)` answers
-`AsyncResult<CryptoKey, InvalidKeyPurpose>`: HKDF-SHA-256 over the root, an
+`AsyncResult<webcrypto.CryptoKey, InvalidKeyPurpose>`: HKDF-SHA-256 over the root, an
 empty salt (the root is uniformly random already) and
 `info = <namespace>/<purpose>/v<version>`. The key is never extractable.
 

@@ -2,11 +2,57 @@ import { EventEmitter } from "node:events";
 import { request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 
 import type { UnitHost } from "@btravstack/core";
+import { Module, Provider } from "@btravstack/di";
+import { AuthenticatorUnavailable } from "@btravstack/http-server";
+import { HttpHandler, HttpRuntime, httpServer } from "@btravstack/http-server/internal";
 import { returnTo } from "@btravstack/http-server/internal";
 import { it } from "@btravstack/internal-http-fixtures";
+import { OkAsync, ErrAsync } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
+import { html, htmx, HtmxFragmentsPort } from "./index.js";
+
 describe("htmx", () => {
+  it("keeps dependency outages out of the login redirect", async ({ boot }) => {
+    // GIVEN a protected fragment whose authenticator cannot decide
+    const fragments = Provider(HtmxFragmentsPort)({
+      inject: {},
+      value: {
+        routes: [
+          {
+            method: "GET",
+            path: "/unavailable",
+            input: undefined,
+            unit: {},
+            requirements: [{ user: [] }],
+            handle: () => OkAsync(html`never`),
+          },
+        ],
+        authenticators: { user: () => ErrAsync(new AuthenticatorUnavailable()) },
+        principals: {},
+      },
+    });
+    const info = (
+      await boot(
+        Module("UnavailableFragment")({
+          imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+          provides: [fragments, htmx({ login: "/login" })],
+          exports: [HttpRuntime, HttpHandler],
+        }),
+      ).runtimeInfo()
+    ).get();
+    // WHEN a browser requests the fragment
+    const response = await fetch(`http://127.0.0.1:${info?.port}/unavailable`, {
+      redirect: "manual",
+    });
+    // THEN it receives an outage without a redirect
+    expect({
+      status: response.status,
+      location: response.headers.get("location"),
+      body: await response.text(),
+    }).toEqual({ status: 503, location: null, body: "" });
+  });
+
   it("challenges a verified Bearer caller refused by the fragment's scope requirement", async ({
     scopeFragment,
   }) => {

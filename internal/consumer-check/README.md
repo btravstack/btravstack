@@ -23,7 +23,9 @@ CI job rather than asking another repository for a new one.
    `moduleResolution: node16`, and TypeScript 5.9.3 — the version a consumer
    realistically holds, not the repository's own — installed into the
    throwaway project beside the tarballs, so this workspace depends on no
-   copy of it.
+   copy of it. It uses `lib: ["ES2024"]` without DOM declarations. The keys
+   case unwraps a root, derives a Node WebCrypto key and encrypts without casts;
+   a type assertion also refuses an unresolved root key degraded to `any`.
 
 2. **The tarballs are well formed.** `publint` on each, plus
    `@arethetypeswrong/cli --pack`, which is what caught that the

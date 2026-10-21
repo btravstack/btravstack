@@ -1,3 +1,5 @@
+import { webcrypto } from "node:crypto";
+
 import { allAsync, fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
 
@@ -111,10 +113,10 @@ const purpose = (overrides: Partial<KeyPurpose> = {}): KeyPurpose => ({
 
 const rootKey = () =>
   fromSafePromise(
-    crypto.subtle.importKey("raw", new Uint8Array(32).fill(7), "HKDF", false, ["deriveKey"]),
+    webcrypto.subtle.importKey("raw", new Uint8Array(32).fill(7), "HKDF", false, ["deriveKey"]),
   );
 
-const signed = (root: CryptoKey, keyPurpose: KeyPurpose) =>
+const signed = (root: webcrypto.CryptoKey, keyPurpose: KeyPurpose) =>
   deriveKey(root, keyPurpose, SIGNING).flatMap(signature);
 
 const SIGNING = { algorithm: { name: "HMAC", hash: "SHA-256" }, usages: ["sign"] } as const;

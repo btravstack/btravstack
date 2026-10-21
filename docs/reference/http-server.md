@@ -110,7 +110,7 @@ types — `jose`), `@btravstack/http-server/session` (`sessionCodec`,
 `SessionCodecService` / `SessionOptions` types — `jose` again),
 `@btravstack/http-server/oidc` (`oidc`, `OidcUnreachable`, and the
 `OidcOptions` type — `openid-client`), and
-`@btravstack/orpc-server/openapi` (`openApiDocument`, `openApiRoutes`, and
+`@btravstack/orpc-server/openapi` (`openApiDocument`, `openApiDocumentRoute`, `openApiRoutes`, and
 `OpenApiRoutesOptions` — `@orpc/openapi` and `@orpc/json-schema`). The first
 three sit behind an optional peer, so a graph that never imports one installs
 nothing; the OpenAPI peers are required, because `HttpModule`'s `openapi`
@@ -1303,6 +1303,16 @@ fence above does:
 };
 ```
 
+### Authentication dependency outages
+
+An application authenticator may return `ErrAsync(new AuthenticatorUnavailable())`
+when its dependency cannot decide. Import the error from
+`@btravstack/http-server`. It stops the authentication walk and all HTTP
+answerers return `503`, with no login redirect or credential details. The
+request reports an `auth` / `authenticate` operation with the `scheme` dimension
+and `outcome: "error"`. Defects still answer `500`; the JWT scheme's JWKS
+outage classification remains unchanged.
+
 ### `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })`
 
 How **one scheme** is implemented, and the primitive both shipped
@@ -1349,7 +1359,7 @@ const granted: <P, const Scope extends string = never>(
 type AuthenticatorService<P, Scope extends string = never> = ((
   headers: IncomingHttpHeaders,
   query: URLSearchParams,
-) => AsyncResult<Granted<P, Scope>, Unauthenticated | CredentialRefused>) & {
+) => AsyncResult<Granted<P, Scope>, Unauthenticated | CredentialRefused | AuthenticatorUnavailable>) & {
   readonly bearer?: true;
 };
 ```
@@ -2613,11 +2623,27 @@ generator stays behind the subpath, so the main entry never loads
 This package mounts no documentation route by default and ships no UI asset.
 `openApiRoutes()` serves the contract's ordinary HTTP routes, but does not
 publish its document. An application can write the document to a build artifact
-or pass it to oRPC's optional reference plugin. Use this package's
+or publish it through `openApiDocumentRoute({ path, document })`, or pass it to oRPC's optional reference plugin. Use this package's
 `openApiDocument()` as that plugin's `spec` source so the security marker fold is
 retained. `examples/order-api/src/openapi.ts` shows the document options, and
 the same document is the route list:
 [List what a process serves](/how-to/list-what-a-process-serves).
+
+## `openApiDocumentRoute()` — from `@btravstack/orpc-server/openapi`
+
+```ts
+import { openApiDocumentRoute, type OpenApiDocument } from "@btravstack/orpc-server/openapi";
+
+declare const document: OpenApiDocument;
+
+const documentRoute = openApiDocumentRoute({ path: "/v1/openapi.json", document });
+```
+
+Put `documentRoute` in the HTTP root's `provides`. It publishes the supplied
+document publicly, serialized once at boot. `GET` returns JSON and `HEAD`
+returns the same headers without a body. Only the exact path matches (query
+parameters are allowed); descendants and a trailing slash answer `404`. Other
+methods answer `405` with `Allow: GET, HEAD`. No document route is automatic.
 
 ## `openApiRoutes()` — from `@btravstack/orpc-server/openapi`
 

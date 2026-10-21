@@ -27,6 +27,8 @@ A port that seals a tenant's payloads under a key of that tenant's own, and
 the composition that provides the keys:
 
 ```ts
+import type { webcrypto } from "node:crypto";
+
 import {
   EnvelopeKeys,
   deriveKey,
@@ -40,7 +42,7 @@ import { kmsKeys } from "@btravstack/keys/kms";
 class PayloadKeys extends Port("ReadmePayloadKeys")<{
   readonly key: (
     generation: KeyGeneration,
-  ) => AsyncResult<CryptoKey, KeyErased | KeysUnavailable | InvalidKeyPurpose>;
+  ) => AsyncResult<webcrypto.CryptoKey, KeyErased | KeysUnavailable | InvalidKeyPurpose>;
 }> {}
 
 export const payloadKeys = Provider(PayloadKeys)({

@@ -1,4 +1,5 @@
 export {
+  AuthenticatorUnavailable,
   CredentialRefused,
   HttpAuthenticator,
   UnderScoped,

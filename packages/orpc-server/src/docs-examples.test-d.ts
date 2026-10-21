@@ -43,3 +43,11 @@ defineHttp().OrpcRouter(contract)({
       ErrAsync(errors.ITEM_MISSING({ data: { id: 42 } })),
   }),
 });
+
+import { AuthenticatorUnavailable, HttpAuthenticator } from "@btravstack/http-server";
+
+import { openApiDocumentRoute, type OpenApiDocument } from "./openapi.js";
+
+declare const document: OpenApiDocument;
+openApiDocumentRoute({ path: "/v1/openapi.json", document });
+HttpAuthenticator<{}>()({ inject: {}, sync: () => () => ErrAsync(new AuthenticatorUnavailable()) });
